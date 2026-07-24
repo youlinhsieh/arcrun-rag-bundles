@@ -684,6 +684,22 @@
     "CYPHER_EXECUTOR",
     "KBDB"
    ]
+  },
+  {
+   "name": "arcrun-rag-ui",
+   "tier": 2,
+   "main_file": "tier2/ui/index.js",
+   "main_module": "index.js",
+   "sha256": "e34b0a99f110e88723d8cdf226482df8c3e8840f9c617ae717fa68657190f824",
+   "compat_date": "2026-07-01",
+   "compat_flags": [],
+   "modules": [],
+   "requires": {
+    "kv": [],
+    "d1": [],
+    "ai": false,
+    "vars": {}
+   }
   }
  ]
 }
