@@ -1,7 +1,7 @@
 {
  "schema": "arcrun-rag-bundles/v1",
- "built": "2026-07-24",
- "source": "Arcrun@ad367e4",
+ "built": "2026-07-25",
+ "source": "Arcrun@646e689",
  "core": [
   {
    "name": "arcrun-array-ops",
@@ -555,6 +555,31 @@
    }
   },
   {
+   "name": "arcrun-code",
+   "tier": 1,
+   "main_file": "tier1/code/index.js",
+   "main_module": "index.js",
+   "sha256": "bebe67522902d97b10490767ce7b6a56cc6c7f0fe6ae380bb3ced80f0cb5a858",
+   "compat_date": "2025-02-19",
+   "compat_flags": [],
+   "modules": [
+    {
+     "name": "02028007bab4b877246b6f1a77434d1ce18122e5-quickjs.wasm",
+     "file": "tier1/code/02028007bab4b877246b6f1a77434d1ce18122e5-quickjs.wasm",
+     "type": "application/wasm",
+     "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232"
+    }
+   ],
+   "requires": {
+    "kv": [],
+    "d1": [],
+    "ai": false,
+    "vars": {
+     "COMPONENT_ID": "code"
+    }
+   }
+  },
+  {
    "name": "arcrun-cypher-executor",
    "tier": 2,
    "main_file": "tier2/cypher/index.js",
@@ -616,7 +641,7 @@
    "tier": 2,
    "main_file": "tier2/kbdb/index.js",
    "main_module": "index.js",
-   "sha256": "f9d3f5f4f296d58e0277811ec06dd0c476f551966863e1e7836cce6e3701e6d4",
+   "sha256": "9e591e684232fbbf86a4949fa9276a79278e1f01b73ae3fbf264832426543107",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat"

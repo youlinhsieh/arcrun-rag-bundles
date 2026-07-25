@@ -3142,7 +3142,18 @@ function libraryPredicate(libraries) {
   return `COALESCE(json_extract(metadata_json, '$.library'), 'general') IN (${placeholders})`;
 }
 __name(libraryPredicate, "libraryPredicate");
-async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source) {
+var NOT_DEPRECATED_PREDICATE = "(json_extract(metadata_json, '$.status') IS NULL OR json_extract(metadata_json, '$.status') != 'deprecated')";
+function isDeprecatedEntry(entry) {
+  if (!entry.metadata_json) return false;
+  try {
+    const meta = JSON.parse(entry.metadata_json);
+    return !!meta && meta.status === "deprecated";
+  } catch {
+    return false;
+  }
+}
+__name(isDeprecatedEntry, "isDeprecatedEntry");
+async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false) {
   const conds = ["content LIKE ?"];
   const params = [`%${q}%`];
   if (owner_id) {
@@ -3160,6 +3171,9 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   if (library && library.length > 0) {
     conds.push(libraryPredicate(library));
     params.push(...library);
+  }
+  if (!includeDeprecated) {
+    conds.push(NOT_DEPRECATED_PREDICATE);
   }
   const res = await db.prepare(`SELECT * FROM entries WHERE ${conds.join(" AND ")} ORDER BY updated_at DESC LIMIT ?`).bind(...params, Math.min(limit, 200)).all();
   return res.results ?? [];
@@ -3363,21 +3377,24 @@ entryRoutes.get("/search", async (c) => {
   const entry_type = c.req.query("entry_type") || void 0;
   const library = parseLibraryParam(c.req.query("library"));
   const mode = c.req.query("mode") === "semantic" ? "semantic" : "keyword";
+  const include_deprecated = c.req.query("include_deprecated") === "true";
   const topKNum = Number(c.req.query("top_k"));
   const top_k = Number.isFinite(topKNum) && topKNum > 0 ? Math.floor(topKNum) : void 0;
   const minScoreNum = Number(c.req.query("min_score"));
   const min_score = Number.isFinite(minScoreNum) && minScoreNum > 0 ? minScoreNum : void 0;
   if (mode === "semantic") {
+    const requestedTopK = top_k ?? 20;
+    const fetchTopK = include_deprecated ? requestedTopK : Math.min(requestedTopK * 3, 100);
     const hits = await semanticSearch(c.env, q, {
       owner_id,
       source,
       entry_type,
       library,
-      topK: top_k,
+      topK: fetchTopK,
       min_score
     });
     if (hits === null) {
-      const entries3 = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source);
+      const entries3 = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
       return c.json({
         success: true,
         entries: entries3,
@@ -3387,15 +3404,19 @@ entryRoutes.get("/search", async (c) => {
         capability_hint: "\u8A9E\u7FA9\u67E5\u8A62\u9700\u5148\u958B vectorize\uFF08embed \u6A21\u7D44\uFF09\u3002\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\u5373\u53EF\uFF08\u8A2D kbdb_embed:true + redeploy\uFF09\u3002\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\u3002"
       });
     }
-    const entries2 = (await Promise.all(
+    let entries2 = (await Promise.all(
       hits.map(async (h) => {
         const e = await getEntry(c.env.DB, h.id);
         return e ? { ...e, score: h.score } : null;
       })
     )).filter((e) => e !== null);
+    if (!include_deprecated) {
+      entries2 = entries2.filter((e) => !isDeprecatedEntry(e));
+    }
+    entries2 = entries2.slice(0, requestedTopK);
     return c.json({ success: true, entries: entries2, count: entries2.length, mode: "semantic" });
   }
-  const entries = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source);
+  const entries = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
   return c.json({ success: true, entries, count: entries.length, mode: "keyword" });
 });
 entryRoutes.get("/:id", async (c) => {
