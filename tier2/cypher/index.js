@@ -9,7 +9,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/_internal/utils.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/_internal/utils.mjs
 // @__NO_SIDE_EFFECTS__
 function createNotImplementedError(name) {
   return new Error(`[unenv] ${name} is not implemented yet!`);
@@ -31,7 +31,7 @@ function notImplementedClass(name) {
   };
 }
 var init_utils = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/_internal/utils.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/_internal/utils.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -41,10 +41,10 @@ var init_utils = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
 var _timeOrigin, _performanceNow, nodeTiming, PerformanceEntry, PerformanceMark, PerformanceMeasure, PerformanceResourceTiming, PerformanceObserverEntryList, Performance, PerformanceObserver, performance;
 var init_performance = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -288,9 +288,9 @@ var init_performance = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/perf_hooks.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/perf_hooks.mjs
 var init_perf_hooks = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/perf_hooks.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/perf_hooks.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -298,9 +298,9 @@ var init_perf_hooks = __esm({
   }
 });
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
 var init_performance2 = __esm({
-  "node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs"() {
     init_perf_hooks();
     globalThis.performance = performance;
     globalThis.Performance = Performance;
@@ -313,10 +313,10 @@ var init_performance2 = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/mock/noop.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/mock/noop.mjs
 var noop_default;
 var init_noop = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/mock/noop.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/mock/noop.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -325,11 +325,11 @@ var init_noop = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/console.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/console.mjs
 import { Writable } from "node:stream";
 var _console, _ignoreErrors, _stderr, _stdout, log, info, trace, debug, table, error, warn, createTask, clear, count, countReset, dir, dirxml, group, groupEnd, groupCollapsed, profile, profileEnd, time, timeEnd, timeLog, timeStamp, Console, _times, _stdoutErrorHandler, _stderrErrorHandler;
 var init_console = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/console.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/console.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -368,10 +368,10 @@ var init_console = __esm({
   }
 });
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
 var workerdConsole, assert, clear2, context, count2, countReset2, createTask2, debug2, dir2, dirxml2, error2, group2, groupCollapsed2, groupEnd2, info2, log2, profile2, profileEnd2, table2, time2, timeEnd2, timeLog2, timeStamp2, trace2, warn2, console_default;
 var init_console2 = __esm({
-  "node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -422,18 +422,18 @@ var init_console2 = __esm({
   }
 });
 
-// node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
 var init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console = __esm({
-  "node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console"() {
     init_console2();
     globalThis.console = console_default;
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
 var hrtime;
 var init_hrtime = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -457,10 +457,10 @@ var init_hrtime = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
 var ReadStream;
 var init_read_stream = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -482,10 +482,10 @@ var init_read_stream = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
 var WriteStream;
 var init_write_stream = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -540,9 +540,9 @@ var init_write_stream = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/tty.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/tty.mjs
 var init_tty = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/tty.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/tty.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -551,10 +551,10 @@ var init_tty = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
 var NODE_VERSION;
 var init_node_version = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -562,11 +562,11 @@ var init_node_version = __esm({
   }
 });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
 import { EventEmitter } from "node:events";
 var Process;
 var init_process = __esm({
-  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/process.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/process.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -809,10 +809,10 @@ var init_process = __esm({
   }
 });
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
 var globalProcess, getBuiltinModule, exit, platform, nextTick, unenvProcess, abort, addListener, allowedNodeEnvironmentFlags, hasUncaughtExceptionCaptureCallback, setUncaughtExceptionCaptureCallback, loadEnvFile, sourceMapsEnabled, arch, argv, argv0, chdir, config, connected, constrainedMemory, availableMemory, cpuUsage, cwd, debugPort, dlopen, disconnect, emit, emitWarning, env, eventNames, execArgv, execPath, finalization, features, getActiveResourcesInfo, getMaxListeners, hrtime3, kill, listeners, listenerCount, memoryUsage, on, off, once, pid, ppid, prependListener, prependOnceListener, rawListeners, release, removeAllListeners, removeListener, report, resourceUsage, setMaxListeners, setSourceMapsEnabled, stderr, stdin, stdout, title, throwDeprecation, traceDeprecation, umask, uptime, version, versions, domain, initgroups, moduleLoadList, reallyExit, openStdin, assert2, binding, send, exitCode, channel, getegid, geteuid, getgid, getgroups, getuid, setegid, seteuid, setgid, setgroups, setuid, permission, mainModule, _events, _eventsCount, _exiting, _maxListeners, _debugEnd, _debugProcess, _fatalException, _getActiveHandles, _getActiveRequests, _kill, _preload_modules, _rawDebug, _startProfilerIdleNotifier, _stopProfilerIdleNotifier, _tickCallback, _disconnect, _handleQueue, _pendingMessage, _channel, _send, _linkedBinding, _process, process_default;
 var init_process2 = __esm({
-  "node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -1047,18 +1047,18 @@ var init_process2 = __esm({
   }
 });
 
-// node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
 var init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process = __esm({
-  "node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process"() {
     init_process2();
     globalThis.process = process_default;
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -1108,19 +1108,19 @@ var init_compose = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -1128,7 +1128,7 @@ var init_constants = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -1159,7 +1159,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -1211,10 +1211,10 @@ var init_body = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -1423,10 +1423,10 @@ var init_url = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -1706,10 +1706,10 @@ var init_request = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -1756,10 +1756,10 @@ var init_html = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -2176,10 +2176,10 @@ var init_context = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -2195,10 +2195,10 @@ var init_router = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -2206,10 +2206,10 @@ var init_constants2 = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -2593,7 +2593,7 @@ var init_hono_base = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = /* @__PURE__ */ __name((method2, path2) => {
@@ -2614,7 +2614,7 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -2624,7 +2624,7 @@ var init_matcher = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -2646,7 +2646,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -2744,10 +2744,10 @@ var init_node = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -2812,7 +2812,7 @@ var init_trie = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -2894,7 +2894,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3011,9 +3011,9 @@ var init_router2 = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3023,9 +3023,9 @@ var init_prepared_router = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3034,10 +3034,10 @@ var init_reg_exp_router = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3101,9 +3101,9 @@ var init_router3 = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3111,10 +3111,10 @@ var init_smart_router = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3299,10 +3299,10 @@ var init_node2 = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3334,9 +3334,9 @@ var init_router4 = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3344,10 +3344,10 @@ var init_trie_router = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -3374,9 +3374,9 @@ var init_hono = __esm({
   }
 });
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -4351,7 +4351,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -4533,7 +4533,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
     init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
     init_performance2();
@@ -9559,7 +9559,7 @@ init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
 init_dist();
 
-// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
@@ -13458,6 +13458,8 @@ portalRouter.get(
     return c.json({
       valid: true,
       display_name: v.display_name ?? "",
+      email: v.email ?? "",
+      // t53：完成安裝清單在站內生 daemon config.json 要用（身分顯示欄）
       role,
       libraries,
       graph_allowed: await hasGraphAccess(c.env, libraries),
@@ -13639,13 +13641,153 @@ function toPublicLibrary(rec) {
   };
 }
 __name(toPublicLibrary, "toPublicLibrary");
+portalRouter.post(
+  "/portal/daemon/libraries",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
+    const recordId = await findUserRecordId(c.env, email);
+    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    if (!rec || (rec.values.status ?? "") !== "active" || !await verifyPassword(password, rec.values.password_hash ?? "")) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    await clearLoginFail(c.env, email);
+    const wanted = Array.isArray(body?.libraries) ? body.libraries : [];
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const have = new Set(existing.map((l) => String(l.values.name ?? "")));
+    const ns = portalNamespace(c.env);
+    const created = [];
+    for (const item of wanted) {
+      const name = String(item?.name ?? "").trim();
+      if (!isValidLibraryName(name) || name === "*" || have.has(name)) continue;
+      const res = await kbdbFetch(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({
+          template: LIBRARY_TEMPLATE,
+          owner_id: ns,
+          values: {
+            name,
+            display_name: String(item?.display_name ?? "").trim() || name,
+            description: "\u540C\u6B65\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u8CC7\u6599\u593E",
+            status: "active"
+          }
+        })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF09\u2192 ${res.status}`);
+      have.add(name);
+      created.push(name);
+    }
+    const after = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    return c.json({ success: true, created, libraries: after.map(toPublicLibrary) });
+  })
+);
+portalRouter.post(
+  "/portal/daemon/config",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    if (await isLocked(c.env, email)) {
+      return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
+    }
+    const recordId = await findUserRecordId(c.env, email);
+    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    if (!rec) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    if ((rec.values.status ?? "") !== "active") return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
+    if (!await verifyPassword(password, rec.values.password_hash ?? "")) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    await clearLoginFail(c.env, email);
+    const tenant2 = portalTenant(c.env);
+    return c.json({
+      success: true,
+      config: {
+        cypher_url: new URL(c.req.url).origin,
+        namespace: tenant2,
+        library: "kb",
+        extractor: "claude",
+        email,
+        instance_name: String(rec.values.display_name ?? "")
+      }
+    });
+  })
+);
+portalRouter.post(
+  "/portal/admin/chat-key",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const key = String(body?.key ?? "").trim();
+    if (!key) return c.json({ error: "\u8ACB\u8CBC\u4E0A\u4F60\u7684 Google AI \u91D1\u9470" }, 400);
+    const tenant2 = portalTenant(c.env);
+    const kvKey2 = `${tenant2}:wf:rag_chat`;
+    const raw2 = await c.env.WEBHOOKS.get(kvKey2, "text");
+    if (!raw2) return c.json({ error: "\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u5B89\u88DD AI \u554F\u7B54\u5DE5\u4F5C\u6D41" }, 404);
+    let record;
+    try {
+      record = JSON.parse(raw2);
+    } catch {
+      return c.json({ error: "AI \u554F\u7B54\u5DE5\u4F5C\u6D41\u8A18\u9304\u640D\u58DE\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD" }, 500);
+    }
+    let replaced = 0;
+    const visit = /* @__PURE__ */ __name((o) => {
+      if (Array.isArray(o)) {
+        o.forEach(visit);
+        return;
+      }
+      if (o && typeof o === "object") {
+        const rec = o;
+        for (const k of Object.keys(rec)) {
+          if (k.toLowerCase() === "x-goog-api-key") {
+            rec[k] = key;
+            replaced += 1;
+          } else visit(rec[k]);
+        }
+      }
+    }, "visit");
+    visit(record["graph"]);
+    visit(record["config"]);
+    if (replaced === 0) return c.json({ error: "\u5DE5\u4F5C\u6D41\u88E1\u627E\u4E0D\u5230\u91D1\u9470\u6B04\u4F4D\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD\u5F8C\u518D\u8A66" }, 500);
+    await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
+    return c.json({ success: true, replaced });
+  })
+);
 portalRouter.get(
   "/portal/admin/libraries",
   (c) => run(c, async () => {
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    return c.json({ success: true, libraries: libs.map(toPublicLibrary), count: libs.length });
+    const out = libs.map(toPublicLibrary);
+    const known = new Set(out.map((l) => l.name));
+    try {
+      const res = await kbdbFetch(c.env, `/entries/libraries?owner_id=${encodeURIComponent(portalTenant(c.env))}`);
+      if (res.ok) {
+        const body = await res.json();
+        for (const name of body.libraries ?? []) {
+          const n = String(name ?? "").trim();
+          if (!n || known.has(n)) continue;
+          known.add(n);
+          out.push({ record_id: "", name: n, display_name: n, description: "\u8CC7\u6599\u540C\u6B65\u6642\u81EA\u52D5\u51FA\u73FE\uFF08\u53EF\u5728\u6B64\u88DC\u986F\u793A\u540D\uFF09", status: "active", graph_source: false, auto: true });
+        }
+      }
+    } catch {
+    }
+    return c.json({ success: true, libraries: out, count: out.length });
   })
 );
 portalRouter.post(
@@ -14830,12 +14972,7 @@ var app = new Hono2();
 var STATIC_ORIGINS = ["https://arcrun.dev", "https://www.arcrun.dev"];
 app.use("*", cors({
   origin: /* @__PURE__ */ __name((origin, c) => {
-    if (!origin) return origin;
-    let extra = [];
-    try {
-      extra = String(c.env.UI_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
-    } catch {
-    }
+    const extra = (c.env.UI_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
     return [...STATIC_ORIGINS, ...extra].includes(origin) ? origin : null;
   }, "origin"),
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
