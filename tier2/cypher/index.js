@@ -14706,13 +14706,58 @@ function filterDeprecatedEntries(entries) {
   });
 }
 __name(filterDeprecatedEntries, "filterDeprecatedEntries");
+function normalizeCjkQuery(q) {
+  const isCjk = /* @__PURE__ */ __name((c) => /[぀-鿿豈-﫿]/.test(c), "isCjk");
+  const isAsciiAlnum = /* @__PURE__ */ __name((c) => /[぀-鿿豈-﫿]/.test(c), "isAsciiAlnum");
+  let result = "";
+  for (let i = 0; i < q.length; i++) {
+    const ch = q[i];
+    if (result.length > 0) {
+      const prev = result[result.length - 1];
+      if (prev !== " " && ch !== " " && (isCjk(prev) && /[A-Za-z0-9]/.test(ch) || /[A-Za-z0-9]/.test(prev) && isCjk(ch))) {
+        result += " ";
+      }
+    }
+    result += ch;
+  }
+  return result;
+}
+__name(normalizeCjkQuery, "normalizeCjkQuery");
+function findBestNodeMatch(searchTerm, nodeNames) {
+  const term = normalizeCjkQuery(searchTerm).toLowerCase();
+  if (!term) return null;
+  const hits = nodeNames.filter((n) => normalizeCjkQuery(n).toLowerCase().includes(term));
+  if (hits.length === 0) return null;
+  return hits.reduce((a, b) => a.length <= b.length ? a : b);
+}
+__name(findBestNodeMatch, "findBestNodeMatch");
+async function fuzzyFindNode(env2, tenant2, searchTerm) {
+  try {
+    const res = await kbdbFetch(env2, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.records)) return null;
+    const nodeNames = /* @__PURE__ */ new Set();
+    for (const r of body.records) {
+      const v = r?.values;
+      if (!v || typeof v !== "object") continue;
+      if (typeof v.subject === "string" && v.subject.trim()) nodeNames.add(v.subject.trim());
+      if (typeof v.object === "string" && v.object.trim()) nodeNames.add(v.object.trim());
+    }
+    return findBestNodeMatch(searchTerm, [...nodeNames]);
+  } catch {
+    return null;
+  }
+}
+__name(fuzzyFindNode, "fuzzyFindNode");
 portalDataRouter.get(
   "/portal/data/search",
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
-    const q = c.req.query("q");
-    if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
+    const qRaw = c.req.query("q");
+    if (!qRaw) return c.json({ error: "q \u5FC5\u586B" }, 400);
+    const q = normalizeCjkQuery(qRaw);
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) {
       return c.json({ success: true, entries: [], count: 0, mode: "keyword", note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002" });
@@ -14763,6 +14808,7 @@ portalDataRouter.get(
     if (!await hasGraphAccess(c.env, libraries)) {
       return c.json({ error: "\u7121\u77E5\u8B58\u5716\u8B5C\u6AA2\u8996\u6B0A\u9650" }, 403);
     }
+    const nodeName = normalizeCjkQuery(c.req.param("name"));
     const tenant2 = portalTenant(c.env);
     const wfGraph = await getTenantWorkflowGraph(c.env, "graph_neighbors");
     if (wfGraph) {
@@ -14771,7 +14817,7 @@ portalDataRouter.get(
       const result = await executeWebhookGraph(
         c.env,
         wfGraph,
-        { node: c.req.param("name"), depth, namespace: tenant2, owner: tenant2 },
+        { node: nodeName, depth, namespace: tenant2, owner: tenant2 },
         "graph_neighbors",
         tenant2,
         c.executionCtx
@@ -14785,8 +14831,24 @@ portalDataRouter.get(
     const headers = {};
     if (c.env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
     try {
-      const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(nodeName)}`, { headers });
+      if (!res.ok) {
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      }
+      const resText = await res.text().catch(() => "");
+      let data = null;
+      try {
+        data = JSON.parse(resText);
+      } catch {
+      }
+      if (data && Array.isArray(data.neighbors) && data.neighbors.length === 0 && Array.isArray(data.edges) && data.edges.length === 0) {
+        const fallbackName = await fuzzyFindNode(c.env, tenant2, nodeName);
+        if (fallbackName && fallbackName !== nodeName) {
+          const res2 = await fetch(`${base}/graph/neighbors/${encodeURIComponent(fallbackName)}`, { headers });
+          return new Response(res2.body, { status: res2.status, headers: { "Content-Type": "application/json" } });
+        }
+      }
+      return new Response(resText, { status: res.status, headers: { "Content-Type": "application/json" } });
     } catch (e) {
       return c.json({ error: `kbdb-graph-plugin \u4E0D\u53EF\u9054\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
     }
