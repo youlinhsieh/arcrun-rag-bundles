@@ -13780,7 +13780,7 @@ portalRouter.get(
         const body = await res.json();
         for (const name of body.libraries ?? []) {
           const n = String(name ?? "").trim();
-          if (!n || known.has(n)) continue;
+          if (!n || n === "general" || known.has(n)) continue;
           known.add(n);
           out.push({ record_id: "", name: n, display_name: n, description: "\u8CC7\u6599\u540C\u6B65\u6642\u81EA\u52D5\u51FA\u73FE\uFF08\u53EF\u5728\u6B64\u88DC\u986F\u793A\u540D\uFF09", status: "active", graph_source: false, auto: true });
         }

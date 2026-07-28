@@ -3992,6 +3992,20 @@ mapRoutes.get("/:library", async (c) => {
 
 // src/index.ts
 var app = new Hono2();
+app.use("*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (path === "/" || path === "/health") return next();
+  const token = c.env.KBDB_INTERNAL_TOKEN;
+  if (!token) {
+    console.warn("[kbdb] KBDB_INTERNAL_TOKEN \u672A\u8A2D\u5B9A\u2014\u2014\u5168\u90E8\u8ACB\u6C42\u62D2\u7D55\uFF0C\u8ACB\u91CD\u8DD1\u5B89\u88DD\u5668\u4EE5\u6CE8\u5165\u91D1\u9470");
+    return c.json({ error: "Unauthorized", detail: "kbdb \u5C1A\u672A\u8A2D\u5B9A\u5167\u90E8\u91D1\u9470\uFF0C\u8ACB\u91CD\u8DD1\u5B89\u88DD\u5668" }, 401);
+  }
+  const auth = c.req.header("Authorization");
+  if (!auth || auth !== `Bearer ${token}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  return next();
+});
 app.get("/", (c) => c.json({ service: "arcrun-kbdb", tier: "base", status: "ok" }));
 app.get("/health", (c) => c.json({ ok: true }));
 app.route("/entries", entryRoutes);
