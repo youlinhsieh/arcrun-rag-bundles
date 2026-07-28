@@ -641,7 +641,7 @@
    "tier": 2,
    "main_file": "tier2/kbdb/index.js",
    "main_module": "index.js",
-   "sha256": "9e591e684232fbbf86a4949fa9276a79278e1f01b73ae3fbf264832426543107",
+   "sha256": "00aacc830363121de44bf94b96a4b1b04238864aba6be6ccc12a86c5b389d16e",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat"
@@ -666,7 +666,7 @@
    "tier": 2,
    "main_file": "tier2/registry/index.js",
    "main_module": "index.js",
-   "sha256": "5b6ea052d6ff5078f7a268a41d2386f9bc1747dcc7fdefed293e8685c14c9570",
+   "sha256": "23a6bf2dbcba9318fb97620a7e7a6f10861da46189634f323d06e93524dcafdb",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat"
@@ -690,7 +690,7 @@
    "tier": 2,
    "main_file": "tier2/mcp/index.js",
    "main_module": "index.js",
-   "sha256": "6cc435db9df5ee7f4d60797b5b37f5c18db0d1f5684bcc580eef4811d9608e84",
+   "sha256": "10688458643ed59a8dd2e1eb83be60238ad01e58c540945b3e6ab3e324bb3b9c",
    "compat_date": "2024-11-27",
    "compat_flags": [
     "nodejs_compat"

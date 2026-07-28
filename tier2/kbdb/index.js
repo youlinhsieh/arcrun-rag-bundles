@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/_internal/utils.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/_internal/utils.mjs
 // @__NO_SIDE_EFFECTS__
 function createNotImplementedError(name) {
   return new Error(`[unenv] ${name} is not implemented yet!`);
@@ -26,7 +26,7 @@ function notImplementedClass(name) {
 }
 __name(notImplementedClass, "notImplementedClass");
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
 var _timeOrigin = globalThis.performance?.timeOrigin ?? Date.now();
 var _performanceNow = globalThis.performance?.now ? globalThis.performance.now.bind(globalThis.performance) : () => Date.now() - _timeOrigin;
 var nodeTiming = {
@@ -264,7 +264,7 @@ var PerformanceObserver = class {
 };
 var performance = globalThis.performance && "addEventListener" in globalThis.performance ? globalThis.performance : new Performance();
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
 if (!("__unenv__" in performance)) {
   const proto = Performance.prototype;
   for (const key of Object.getOwnPropertyNames(proto)) {
@@ -285,14 +285,14 @@ globalThis.PerformanceObserver = PerformanceObserver;
 globalThis.PerformanceObserverEntryList = PerformanceObserverEntryList;
 globalThis.PerformanceResourceTiming = PerformanceResourceTiming;
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
 import { Writable } from "node:stream";
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/mock/noop.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/mock/noop.mjs
 var noop_default = Object.assign(() => {
 }, { __unenv__: true });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
 var _console = globalThis.console;
 var _ignoreErrors = true;
 var _stderr = new Writable();
@@ -324,7 +324,7 @@ var _times = /* @__PURE__ */ new Map();
 var _stdoutErrorHandler = noop_default;
 var _stderrErrorHandler = noop_default;
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
 var workerdConsole = globalThis["console"];
 var {
   assert,
@@ -365,10 +365,10 @@ Object.assign(workerdConsole, {
 });
 var console_default = workerdConsole;
 
-// node_modules/.pnpm/wrangler@4.98.0_@cloudflare+workers-types@4.20260607.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/wrangler@4.98.0_@cloudflare+workers-types@4.20260607.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
 globalThis.console = console_default;
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
 var hrtime = /* @__PURE__ */ Object.assign(/* @__PURE__ */ __name(function hrtime2(startTime) {
   const now = Date.now();
   const seconds = Math.trunc(now / 1e3);
@@ -387,10 +387,10 @@ var hrtime = /* @__PURE__ */ Object.assign(/* @__PURE__ */ __name(function hrtim
   return BigInt(Date.now() * 1e6);
 }, "bigint") });
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
 import { EventEmitter } from "node:events";
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
 var ReadStream = class {
   static {
     __name(this, "ReadStream");
@@ -407,7 +407,7 @@ var ReadStream = class {
   }
 };
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
 var WriteStream = class {
   static {
     __name(this, "WriteStream");
@@ -457,10 +457,10 @@ var WriteStream = class {
   }
 };
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
 var NODE_VERSION = "22.14.0";
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
 var Process = class _Process extends EventEmitter {
   static {
     __name(this, "Process");
@@ -695,7 +695,7 @@ var Process = class _Process extends EventEmitter {
   _linkedBinding = void 0;
 };
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
 var globalProcess = globalThis["process"];
 var getBuiltinModule = globalProcess.getBuiltinModule;
 var workerdProcess = getBuiltinModule("node:process");
@@ -925,10 +925,10 @@ var _process = {
 };
 var process_default = _process;
 
-// node_modules/.pnpm/wrangler@4.98.0_@cloudflare+workers-types@4.20260607.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/wrangler@4.98.0_@cloudflare+workers-types@4.20260607.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
 globalThis.process = process_default;
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
 var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
   return (context2, next) => {
     let index = -1;
@@ -973,10 +973,10 @@ var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
   };
 }, "compose");
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
 var parseBody = /* @__PURE__ */ __name(async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -1050,7 +1050,7 @@ var handleParsingNestedValues = /* @__PURE__ */ __name((form, key, value) => {
   });
 }, "handleParsingNestedValues");
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
 var splitPath = /* @__PURE__ */ __name((path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -1254,7 +1254,7 @@ var getQueryParams = /* @__PURE__ */ __name((url, key) => {
 }, "getQueryParams");
 var decodeURIComponent_ = decodeURIComponent;
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = /* @__PURE__ */ __name((str) => tryDecode(str, decodeURIComponent_), "tryDecodeURIComponent");
 var HonoRequest = class {
   static {
@@ -1540,7 +1540,7 @@ var HonoRequest = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -1582,7 +1582,7 @@ var resolveCallback = /* @__PURE__ */ __name(async (str, phase, preserveCallback
   }
 }, "resolveCallback");
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = /* @__PURE__ */ __name((contentType, headers) => {
   return {
@@ -1992,7 +1992,7 @@ var Context = class {
   }, "notFound");
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -2003,10 +2003,10 @@ var UnsupportedPathError = class extends Error {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
 var notFoundHandler = /* @__PURE__ */ __name((c) => {
   return c.text("404 Not Found", 404);
 }, "notFoundHandler");
@@ -2385,7 +2385,7 @@ var Hono = class _Hono {
   }, "fire");
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
@@ -2407,7 +2407,7 @@ function match(method, path) {
 }
 __name(match, "match");
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -2519,7 +2519,7 @@ var Node = class _Node {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   static {
     __name(this, "Trie");
@@ -2578,7 +2578,7 @@ var Trie = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -2764,7 +2764,7 @@ var RegExpRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   static {
     __name(this, "SmartRouter");
@@ -2822,7 +2822,7 @@ var SmartRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = /* @__PURE__ */ __name((children) => {
   for (const _ in children) {
@@ -3000,7 +3000,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   static {
     __name(this, "TrieRouter");
@@ -3025,7 +3025,7 @@ var TrieRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
+// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   static {
     __name(this, "Hono");
@@ -3142,18 +3142,7 @@ function libraryPredicate(libraries) {
   return `COALESCE(json_extract(metadata_json, '$.library'), 'general') IN (${placeholders})`;
 }
 __name(libraryPredicate, "libraryPredicate");
-var NOT_DEPRECATED_PREDICATE = "(json_extract(metadata_json, '$.status') IS NULL OR json_extract(metadata_json, '$.status') != 'deprecated')";
-function isDeprecatedEntry(entry) {
-  if (!entry.metadata_json) return false;
-  try {
-    const meta = JSON.parse(entry.metadata_json);
-    return !!meta && meta.status === "deprecated";
-  } catch {
-    return false;
-  }
-}
-__name(isDeprecatedEntry, "isDeprecatedEntry");
-async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false) {
+async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source) {
   const conds = ["content LIKE ?"];
   const params = [`%${q}%`];
   if (owner_id) {
@@ -3171,9 +3160,6 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   if (library && library.length > 0) {
     conds.push(libraryPredicate(library));
     params.push(...library);
-  }
-  if (!includeDeprecated) {
-    conds.push(NOT_DEPRECATED_PREDICATE);
   }
   const res = await db.prepare(`SELECT * FROM entries WHERE ${conds.join(" AND ")} ORDER BY updated_at DESC LIMIT ?`).bind(...params, Math.min(limit, 200)).all();
   return res.results ?? [];
@@ -3355,6 +3341,18 @@ entryRoutes.post("/", async (c) => {
   }));
   return c.json({ success: true, entry });
 });
+entryRoutes.get("/libraries", async (c) => {
+  const owner = c.req.query("owner_id") || "";
+  const rows = await c.env.DB.prepare(
+    `SELECT DISTINCT COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') AS library
+       FROM entries
+      WHERE (?1 = '' OR owner_id = ?1)
+        AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
+      ORDER BY library`
+  ).bind(owner).all();
+  const libraries = (rows.results ?? []).map((r) => r.library).filter(Boolean);
+  return c.json({ success: true, libraries, count: libraries.length });
+});
 entryRoutes.get("/", async (c) => {
   const { entries, total } = await listEntries(c.env.DB, {
     entry_type: c.req.query("entry_type") || void 0,
@@ -3377,24 +3375,21 @@ entryRoutes.get("/search", async (c) => {
   const entry_type = c.req.query("entry_type") || void 0;
   const library = parseLibraryParam(c.req.query("library"));
   const mode = c.req.query("mode") === "semantic" ? "semantic" : "keyword";
-  const include_deprecated = c.req.query("include_deprecated") === "true";
   const topKNum = Number(c.req.query("top_k"));
   const top_k = Number.isFinite(topKNum) && topKNum > 0 ? Math.floor(topKNum) : void 0;
   const minScoreNum = Number(c.req.query("min_score"));
   const min_score = Number.isFinite(minScoreNum) && minScoreNum > 0 ? minScoreNum : void 0;
   if (mode === "semantic") {
-    const requestedTopK = top_k ?? 20;
-    const fetchTopK = include_deprecated ? requestedTopK : Math.min(requestedTopK * 3, 100);
     const hits = await semanticSearch(c.env, q, {
       owner_id,
       source,
       entry_type,
       library,
-      topK: fetchTopK,
+      topK: top_k,
       min_score
     });
     if (hits === null) {
-      const entries3 = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
+      const entries3 = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source);
       return c.json({
         success: true,
         entries: entries3,
@@ -3404,19 +3399,15 @@ entryRoutes.get("/search", async (c) => {
         capability_hint: "\u8A9E\u7FA9\u67E5\u8A62\u9700\u5148\u958B vectorize\uFF08embed \u6A21\u7D44\uFF09\u3002\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\u5373\u53EF\uFF08\u8A2D kbdb_embed:true + redeploy\uFF09\u3002\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\u3002"
       });
     }
-    let entries2 = (await Promise.all(
+    const entries2 = (await Promise.all(
       hits.map(async (h) => {
         const e = await getEntry(c.env.DB, h.id);
         return e ? { ...e, score: h.score } : null;
       })
     )).filter((e) => e !== null);
-    if (!include_deprecated) {
-      entries2 = entries2.filter((e) => !isDeprecatedEntry(e));
-    }
-    entries2 = entries2.slice(0, requestedTopK);
     return c.json({ success: true, entries: entries2, count: entries2.length, mode: "semantic" });
   }
-  const entries = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
+  const entries = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source);
   return c.json({ success: true, entries, count: entries.length, mode: "keyword" });
 });
 entryRoutes.get("/:id", async (c) => {
