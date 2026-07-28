@@ -9804,7 +9804,7 @@ init_dist();
 var healthRouter = new Hono2();
 healthRouter.get(
   "/health",
-  (c) => c.json({ ok: true })
+  (c) => c.json({ ok: true, bundle_version: c.env.ARCRUN_BUNDLE_VERSION ?? "" })
 );
 healthRouter.get(
   "/",
