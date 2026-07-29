@@ -3366,6 +3366,23 @@ entryRoutes.get("/libraries", async (c) => {
   const libraries = (rows.results ?? []).map((r) => r.library).filter(Boolean);
   return c.json({ success: true, libraries, count: libraries.length });
 });
+entryRoutes.get("/library-stats", async (c) => {
+  const owner = c.req.query("owner_id") || "";
+  const rows = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') AS library,
+       COUNT(DISTINCT page_name) AS card_count
+     FROM entries
+     WHERE (?1 = '' OR owner_id = ?1)
+       AND entry_type = 'block'
+       AND page_name IS NOT NULL
+       AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
+     GROUP BY library
+     ORDER BY library`
+  ).bind(owner).all();
+  const stats = (rows.results ?? []).map((r) => ({ library: r.library, card_count: r.card_count }));
+  return c.json({ success: true, stats });
+});
 entryRoutes.get("/", async (c) => {
   const { entries, total } = await listEntries(c.env.DB, {
     entry_type: c.req.query("entry_type") || void 0,
@@ -3638,6 +3655,29 @@ recordRoutes.post("/", async (c) => {
   } catch (e) {
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
+});
+recordRoutes.get("/triplet-stats", async (c) => {
+  const owner = c.req.query("owner_id") || "";
+  const rows = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(NULLIF(lib_e.content, ''), 'general') AS library,
+       COUNT(*) AS triplet_count
+     FROM (
+       SELECT DISTINCT ev.record_id
+       FROM entry_values ev
+       JOIN templates t ON ev.template_id = t.id
+       JOIN entries e ON ev.entry_id = e.id
+       WHERE t.name = 'triplet'
+         AND (?1 = '' OR e.owner_id = ?1)
+     ) AS tr
+     LEFT JOIN entry_values lev
+       ON lev.record_id = tr.record_id AND lev.slot_name = 'library'
+     LEFT JOIN entries lib_e ON lib_e.id = lev.entry_id
+     GROUP BY COALESCE(NULLIF(lib_e.content, ''), 'general')
+     ORDER BY library`
+  ).bind(owner).all();
+  const stats = (rows.results ?? []).map((r) => ({ library: r.library, triplet_count: r.triplet_count }));
+  return c.json({ success: true, stats });
 });
 recordRoutes.get("/by-template/:template", async (c) => {
   const records = await searchByTemplate(c.env.DB, c.req.param("template"), c.req.query("owner_id") || void 0);

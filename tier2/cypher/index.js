@@ -14032,9 +14032,29 @@ portalRouter.get(
     });
     const known = new Set(out.map((l) => l.name));
     try {
-      const res = await kbdbFetch(c.env, `/entries/libraries?owner_id=${encodeURIComponent(portalTenant(c.env))}`);
-      if (res.ok) {
-        const body = await res.json();
+      const tenant2 = portalTenant(c.env);
+      const ownerParam = `owner_id=${encodeURIComponent(tenant2)}`;
+      const [autoRes, cardRes, tripletRes] = await Promise.all([
+        kbdbFetch(c.env, `/entries/libraries?${ownerParam}`).catch(() => null),
+        kbdbFetch(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
+        kbdbFetch(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
+      ]);
+      const cardMap = /* @__PURE__ */ new Map();
+      if (cardRes?.ok) {
+        const body = await cardRes.json();
+        for (const s of body.stats ?? []) cardMap.set(s.library, s.card_count);
+      }
+      const tripletMap = /* @__PURE__ */ new Map();
+      if (tripletRes?.ok) {
+        const body = await tripletRes.json();
+        for (const s of body.stats ?? []) tripletMap.set(s.library, s.triplet_count);
+      }
+      for (const lib of out) {
+        lib.card_count = cardMap.get(lib.name) ?? 0;
+        lib.triplet_count = tripletMap.get(lib.name) ?? 0;
+      }
+      if (autoRes?.ok) {
+        const body = await autoRes.json();
         for (const name of body.libraries ?? []) {
           const n = String(name ?? "").trim();
           if (!n || n === "general" || known.has(n)) continue;
@@ -14048,6 +14068,8 @@ portalRouter.get(
             status: "active",
             graph_source: false,
             auto: true,
+            card_count: cardMap.get(n) ?? 0,
+            triplet_count: tripletMap.get(n) ?? 0,
             ...watching !== void 0 ? { daemon_watching: watching } : {}
           });
         }

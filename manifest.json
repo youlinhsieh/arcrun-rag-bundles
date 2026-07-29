@@ -1,14 +1,14 @@
 {
   "schema": "arcrun-rag-bundles/v1",
   "built": "2026-07-29",
-  "source": "Arcrun@646e689",
+  "source": "Arcrun@e28e190",
   "core": [
     {
       "name": "arcrun-array-ops",
       "tier": 1,
       "main_file": "tier1/array_ops/index.js",
       "main_module": "index.js",
-      "sha256": "43672b094117db835018106e3baadbc8e6ab289a03394b2ac30acf59325a4e41",
+      "sha256": "d296975f7b70cb6c07b858e39c6c736f8c4ec6b4fd9de4171348601321170a59",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -33,7 +33,7 @@
       "tier": 1,
       "main_file": "tier1/auth_oauth2/index.js",
       "main_module": "index.js",
-      "sha256": "7714857f62339e03e0af8cd2f4e67702de870d0e10799816c0cee39f0056c41c",
+      "sha256": "be411bebea2773cbb3f62a1d31c8d06c5b5c73d431c1593a61298ddc8c23f636",
       "compat_date": "2025-02-19",
       "compat_flags": [
         "nodejs_compat"
@@ -63,7 +63,7 @@
       "tier": 1,
       "main_file": "tier1/auth_service_account/index.js",
       "main_module": "index.js",
-      "sha256": "28c401fc38c77963e0301edd785db43c45ee263421d4cf60e615818a7da27231",
+      "sha256": "5c488af751ea91bcc9415964a415cc363dc08b2c1d35d7f194fda1103b34acfa",
       "compat_date": "2025-02-19",
       "compat_flags": [
         "nodejs_compat"
@@ -93,7 +93,7 @@
       "tier": 1,
       "main_file": "tier1/auth_static_key/index.js",
       "main_module": "index.js",
-      "sha256": "945a526e79afd86ecd22933fe173cd443010cc11a56a1a04691f6926748077fb",
+      "sha256": "d8a64ded2ed67820f864b54343eaf53114e5bafd00e96e16c507257df65b8ccb",
       "compat_date": "2025-02-19",
       "compat_flags": [
         "nodejs_compat"
@@ -146,11 +146,36 @@
       }
     },
     {
+      "name": "arcrun-code",
+      "tier": 1,
+      "main_file": "tier1/code/index.js",
+      "main_module": "index.js",
+      "sha256": "bebe67522902d97b10490767ce7b6a56cc6c7f0fe6ae380bb3ced80f0cb5a858",
+      "compat_date": "2025-02-19",
+      "compat_flags": [],
+      "modules": [
+        {
+          "name": "02028007bab4b877246b6f1a77434d1ce18122e5-quickjs.wasm",
+          "file": "tier1/code/02028007bab4b877246b6f1a77434d1ce18122e5-quickjs.wasm",
+          "type": "application/wasm",
+          "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232"
+        }
+      ],
+      "requires": {
+        "kv": [],
+        "d1": [],
+        "ai": false,
+        "vars": {
+          "COMPONENT_ID": "code"
+        }
+      }
+    },
+    {
       "name": "arcrun-cron",
       "tier": 1,
       "main_file": "tier1/cron/index.js",
       "main_module": "index.js",
-      "sha256": "c252a90ac53dda32ead78d2aca503082afaa5922494199e26544974333f3d309",
+      "sha256": "c6ee628ee9c431b6745404fa97118c5baefb2c58cf127e1a1057154e5ebda5d8",
       "compat_date": "2025-02-19",
       "compat_flags": [
         "nodejs_compat"
@@ -177,7 +202,7 @@
       "tier": 1,
       "main_file": "tier1/date_ops/index.js",
       "main_module": "index.js",
-      "sha256": "8d90fa9e28bb2979195b0600a6d68a322d23028ecb4e8405b43c8b35d1dd711d",
+      "sha256": "d2ea937112c5f110758d19490105033d48acfcaa67c5a317f53ad0fe27ba5b62",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -202,7 +227,7 @@
       "tier": 1,
       "main_file": "tier1/filter/index.js",
       "main_module": "index.js",
-      "sha256": "8e17bb1e1443b426d61c1b73c650d64fec59dc009017798ce95cf180bfbaec8a",
+      "sha256": "f7cc202973a62dabcb9d898a02036d14456dc688cbbdcf6361918b6ed623897d",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -227,7 +252,7 @@
       "tier": 1,
       "main_file": "tier1/foreach_control/index.js",
       "main_module": "index.js",
-      "sha256": "9f982412e6cbf7eb94a4f35ce3c34404cb18a56dbd45a858e7b8b1c56cf493ee",
+      "sha256": "e58e00ee10b8eaf5492d306b00fbe9d57fc82e764b05fb736400fbefe32d455a",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -252,7 +277,7 @@
       "tier": 1,
       "main_file": "tier1/http_request/index.js",
       "main_module": "index.js",
-      "sha256": "60062aa63d14c866ef992ae43fe666df420f032362b5f7f9874ce63c7efa5f92",
+      "sha256": "68ab02ffd5b8da64c816ded432af7bf2d013dc1766ad71a186e2af8cf584219c",
       "compat_date": "2025-02-19",
       "compat_flags": [
         "nodejs_compat",
@@ -280,7 +305,7 @@
       "tier": 1,
       "main_file": "tier1/if_control/index.js",
       "main_module": "index.js",
-      "sha256": "b2b3942fb3565d5819b52c1d68e6f764b7178c86c508c7acd4f699068d32b5c5",
+      "sha256": "ca9ecf8ce28d998af53867352bf8ca466e565d4dc8962500ffc188664e7bf51d",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -359,7 +384,7 @@
       "tier": 1,
       "main_file": "tier1/merge/index.js",
       "main_module": "index.js",
-      "sha256": "ccb13c336383cf1fed01f78c36eb394c345ae09984d175d6d5a12d5246f0b89d",
+      "sha256": "d59b4fabb9c0172e2299be2c7a55ddc2c0ecc09185308c66fae51e6c36189271",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -384,7 +409,7 @@
       "tier": 1,
       "main_file": "tier1/number_ops/index.js",
       "main_module": "index.js",
-      "sha256": "7a935bcee1b468f1299852a05e97e64fc1d62675d7a6f0cdcee2e2f2caf47df3",
+      "sha256": "94e31d1467b7f361cf9cc2b7deeb1c80a4e4883d2522f095db96529290e88b00",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -409,7 +434,7 @@
       "tier": 1,
       "main_file": "tier1/set/index.js",
       "main_module": "index.js",
-      "sha256": "a20c144576a62b60acae3bb79961f4ec493bd6c2a0e63a6d865ac9b1560f6db2",
+      "sha256": "d4a5d941b2971d7e85550e42771ccd877f1305cad59dfcc2e505d32f8c8cc536",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -434,7 +459,7 @@
       "tier": 1,
       "main_file": "tier1/string_ops/index.js",
       "main_module": "index.js",
-      "sha256": "5edee624dc5111877f10fd4f69cf6d93ef151ca9acb5d04b50197908a06c562b",
+      "sha256": "160fa0b98a15aca665ccf850bb2dd1ab3f95ce9f620fd0df3ee1329612671214",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -459,7 +484,7 @@
       "tier": 1,
       "main_file": "tier1/switch/index.js",
       "main_module": "index.js",
-      "sha256": "9e2a023fbeae41e15d232de7f895538ab39dec3113bdac9737884383f92d576f",
+      "sha256": "61e7c93fc06c2f0823ae1b48a8fd4e9fb26f84736d1322c77e11996e44645ecd",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -484,7 +509,7 @@
       "tier": 1,
       "main_file": "tier1/try_catch/index.js",
       "main_module": "index.js",
-      "sha256": "ed1ac75f0e73808e3a1ebd44e96faaac5ac5019b30fe66dec277ef7e1009ed1f",
+      "sha256": "6f239b4dd3de3e737f827dd1a9b13b4730f1148556218488463e53448857b6f5",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -509,7 +534,7 @@
       "tier": 1,
       "main_file": "tier1/validate_json/index.js",
       "main_module": "index.js",
-      "sha256": "d8030654c65df195d7e0e23a6d366bace35711896c21d8eff9fae70f853f150e",
+      "sha256": "eb1a4620b2e8c52823509a30054d0c5fe8f9d3d4e5da1f9404c699292761cff2",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -534,7 +559,7 @@
       "tier": 1,
       "main_file": "tier1/wait/index.js",
       "main_module": "index.js",
-      "sha256": "e596e83ac43525ea13940691571f56825e155d16d2ddbf54703a4efea63526ee",
+      "sha256": "df0461ebbe4473a3e47e3093b7b2c03712c65003480248b26f9ac13bc5d104f6",
       "compat_date": "2025-02-19",
       "compat_flags": [],
       "modules": [
@@ -555,36 +580,11 @@
       }
     },
     {
-      "name": "arcrun-code",
-      "tier": 1,
-      "main_file": "tier1/code/index.js",
-      "main_module": "index.js",
-      "sha256": "bebe67522902d97b10490767ce7b6a56cc6c7f0fe6ae380bb3ced80f0cb5a858",
-      "compat_date": "2025-02-19",
-      "compat_flags": [],
-      "modules": [
-        {
-          "name": "02028007bab4b877246b6f1a77434d1ce18122e5-quickjs.wasm",
-          "file": "tier1/code/02028007bab4b877246b6f1a77434d1ce18122e5-quickjs.wasm",
-          "type": "application/wasm",
-          "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232"
-        }
-      ],
-      "requires": {
-        "kv": [],
-        "d1": [],
-        "ai": false,
-        "vars": {
-          "COMPONENT_ID": "code"
-        }
-      }
-    },
-    {
       "name": "arcrun-cypher-executor",
       "tier": 2,
       "main_file": "tier2/cypher/index.js",
       "main_module": "index.js",
-      "sha256": "2dbc45586d7460f14073734822c775a517f037af99b1aec05b0db80046929987",
+      "sha256": "3bb8ffb70e7dfc79847d71a4be52899f04a1551f1a0123508c54de5f7835dd24",
       "compat_date": "2025-02-19",
       "compat_flags": [
         "nodejs_compat",
@@ -641,7 +641,7 @@
       "tier": 2,
       "main_file": "tier2/kbdb/index.js",
       "main_module": "index.js",
-      "sha256": "c04df8a52108503c48f61b3b7adccdda7f95a5d7b1331ff165d33290814ef3eb",
+      "sha256": "2a836d28302f3794794652e677ecd2f4d0e90474db8e648ce86a4a03aabda185",
       "compat_date": "2025-02-19",
       "compat_flags": [
         "nodejs_compat"
@@ -655,30 +655,6 @@
           }
         ],
         "ai": false,
-        "vars": {
-          "ENVIRONMENT": "production"
-        }
-      },
-      "stripped_services": []
-    },
-    {
-      "name": "arcrun-registry",
-      "tier": 2,
-      "main_file": "tier2/registry/index.js",
-      "main_module": "index.js",
-      "sha256": "23a6bf2dbcba9318fb97620a7e7a6f10861da46189634f323d06e93524dcafdb",
-      "compat_date": "2025-02-19",
-      "compat_flags": [
-        "nodejs_compat"
-      ],
-      "modules": [],
-      "requires": {
-        "kv": [
-          "SUBMISSIONS_KV",
-          "ANALYTICS_KV"
-        ],
-        "d1": [],
-        "ai": true,
         "vars": {
           "ENVIRONMENT": "production"
         }
@@ -725,6 +701,30 @@
         "ai": false,
         "vars": {}
       }
+    },
+    {
+      "name": "arcrun-registry",
+      "tier": 2,
+      "main_file": "tier2/registry/index.js",
+      "main_module": "index.js",
+      "sha256": "23a6bf2dbcba9318fb97620a7e7a6f10861da46189634f323d06e93524dcafdb",
+      "compat_date": "2025-02-19",
+      "compat_flags": [
+        "nodejs_compat"
+      ],
+      "modules": [],
+      "requires": {
+        "kv": [
+          "SUBMISSIONS_KV",
+          "ANALYTICS_KV"
+        ],
+        "d1": [],
+        "ai": true,
+        "vars": {
+          "ENVIRONMENT": "production"
+        }
+      },
+      "stripped_services": []
     }
   ]
 }
