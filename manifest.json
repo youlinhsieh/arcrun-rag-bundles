@@ -584,7 +584,7 @@
    "tier": 2,
    "main_file": "tier2/cypher/index.js",
    "main_module": "index.js",
-   "sha256": "b2ad7eb25daf7022b7958d914b356c86b34154f0414ca99fa5d36d4de5988cb8",
+   "sha256": "52eb86f1ddc7a3910f6811b96c99cd9d53716259e389c725625fbf40bec6ebf2",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat",
@@ -715,7 +715,7 @@
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "e9e38e04af36bd6af44dda86823f3f7bbb1653deaadcbc8cc59439bf98b7e9b2",
+   "sha256": "622e93d5e8ef573f92f3b4c8194875c0845ece44f9289e644316704961ce74b0",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],

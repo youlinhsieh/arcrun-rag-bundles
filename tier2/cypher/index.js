@@ -9362,6 +9362,24 @@ var init_graph_executor = __esm({
                 const itemResult = await this.executeNode(nextNode, graph, itemContext, /* @__PURE__ */ new Set(), trace3, fanIn, kvStore);
                 iterResults.push(itemResult);
               }
+              if (iterResults.length > 0) {
+                const failures = iterResults.filter(
+                  (r) => r !== null && typeof r === "object" && r.success === false
+                );
+                if (failures.length === iterResults.length) {
+                  const first = failures[0];
+                  const errParts = [];
+                  if (first.error) errParts.push(String(first.error));
+                  if (typeof first.status === "number") errParts.push(`HTTP ${first.status}`);
+                  const bodyData = first.data;
+                  if (bodyData && typeof bodyData.body === "string" && bodyData.body) {
+                    errParts.push(bodyData.body.slice(0, 200));
+                  }
+                  throw new Error(
+                    `FOREACH \u6240\u6709 ${iterResults.length} \u9805\u76EE\u5747\u5931\u6557\uFF08\u9996\u9805\uFF1A${errParts.join("\uFF1B") || "\u672A\u77E5\u932F\u8AA4"}\uFF09`
+                  );
+                }
+              }
               result = { ...result, results: iterResults };
               break;
             }
@@ -13689,6 +13707,20 @@ portalRouter.post(
     return c.json({ success: true, created, libraries: after.map(toPublicLibrary) });
   })
 );
+function extractorConfigKey(env2) {
+  return `${portalTenant(env2)}:portal:extractor_config`;
+}
+__name(extractorConfigKey, "extractorConfigKey");
+async function getExtractorConfig(env2) {
+  const raw2 = await env2.WEBHOOKS.get(extractorConfigKey(env2), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+__name(getExtractorConfig, "getExtractorConfig");
 portalRouter.post(
   "/portal/daemon/config",
   (c) => run(c, async () => {
@@ -13712,17 +13744,21 @@ portalRouter.post(
     }
     await clearLoginFail(c.env, email);
     const tenant2 = portalTenant(c.env);
-    return c.json({
-      success: true,
-      config: {
-        cypher_url: new URL(c.req.url).origin,
-        namespace: tenant2,
-        library: "kb",
-        extractor: "claude",
-        email,
-        instance_name: String(rec.values.display_name ?? "")
-      }
-    });
+    const extractorCfg = await getExtractorConfig(c.env);
+    const engine = extractorCfg?.engine ?? "gemma";
+    const daemonCfg = {
+      cypher_url: new URL(c.req.url).origin,
+      namespace: tenant2,
+      library: "kb",
+      extractor: engine,
+      email,
+      instance_name: String(rec.values.display_name ?? "")
+    };
+    if (engine === "gemma" && extractorCfg?.gemini_api_key) {
+      daemonCfg.gemini_api_key = extractorCfg.gemini_api_key;
+    }
+    if (extractorCfg?.llm_model) daemonCfg.llm_model = extractorCfg.llm_model;
+    return c.json({ success: true, config: daemonCfg });
   })
 );
 portalRouter.post(
@@ -13764,6 +13800,41 @@ portalRouter.post(
     if (replaced === 0) return c.json({ error: "\u5DE5\u4F5C\u6D41\u88E1\u627E\u4E0D\u5230\u91D1\u9470\u6B04\u4F4D\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD\u5F8C\u518D\u8A66" }, 500);
     await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
     return c.json({ success: true, replaced });
+  })
+);
+portalRouter.post(
+  "/portal/admin/extractor",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const engine = String(body?.engine ?? "").trim().toLowerCase();
+    if (engine !== "gemma" && engine !== "claude") {
+      return c.json({ error: "engine \u53EA\u80FD\u662F gemma \u6216 claude" }, 400);
+    }
+    const cfg = { engine };
+    if (engine === "gemma") {
+      const key = String(body?.gemini_api_key ?? "").trim();
+      if (key) cfg.gemini_api_key = key;
+    }
+    const model = String(body?.llm_model ?? "").trim();
+    if (model) cfg.llm_model = model;
+    await c.env.WEBHOOKS.put(extractorConfigKey(c.env), JSON.stringify(cfg));
+    return c.json({ success: true, engine: cfg.engine, has_key: engine === "gemma" && !!cfg.gemini_api_key });
+  })
+);
+portalRouter.get(
+  "/portal/admin/extractor",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const cfg = await getExtractorConfig(c.env);
+    return c.json({
+      success: true,
+      engine: cfg?.engine ?? "gemma",
+      has_key: cfg?.engine === "gemma" && !!cfg?.gemini_api_key,
+      llm_model: cfg?.llm_model ?? null
+    });
   })
 );
 portalRouter.get(
@@ -14817,7 +14888,8 @@ portalDataRouter.get(
       const result = await executeWebhookGraph(
         c.env,
         wfGraph,
-        { node: nodeName, depth, namespace: tenant2, owner: tenant2 },
+        // t116: 補傳 kbdb_base，讓 workflow 的 {{input.kbdb_base}}/records/... 能正確解析
+        { node: nodeName, depth, namespace: tenant2, owner: tenant2, kbdb_base: c.env.KBDB_BASE_URL ?? "" },
         "graph_neighbors",
         tenant2,
         c.executionCtx
