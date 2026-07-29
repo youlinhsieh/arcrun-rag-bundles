@@ -726,5 +726,18 @@
       },
       "stripped_services": []
     }
-  ]
+  ],
+  "daemon": {
+    "version": "v0.15.0",
+    "built": "20260729-2238",
+    "notes": "t149 多帳號同步修復＋t150 版本一致性（collector 與 tray 同版）",
+    "mac": {
+      "file": "daemon/ArcrunRAG-mac-unsigned.zip",
+      "sha256": "459ced6ba660eec81fcbfcecc644f694860bbc3568c833c783d0391ac9076be8"
+    },
+    "win": {
+      "file": "daemon/ArcrunRAG-win-unsigned.zip",
+      "sha256": "1191af74b3c841536f08625d2449fa4add3e829c93d5cebc391da59e6f7e05a6"
+    }
+  }
 }
