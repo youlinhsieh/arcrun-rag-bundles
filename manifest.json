@@ -1,6 +1,6 @@
 {
  "schema": "arcrun-rag-bundles/v1",
- "built": "2026-07-28",
+ "built": "2026-07-29",
  "source": "Arcrun@646e689",
  "core": [
   {
@@ -584,7 +584,7 @@
    "tier": 2,
    "main_file": "tier2/cypher/index.js",
    "main_module": "index.js",
-   "sha256": "52eb86f1ddc7a3910f6811b96c99cd9d53716259e389c725625fbf40bec6ebf2",
+   "sha256": "2dbc45586d7460f14073734822c775a517f037af99b1aec05b0db80046929987",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat",
@@ -641,7 +641,7 @@
    "tier": 2,
    "main_file": "tier2/kbdb/index.js",
    "main_module": "index.js",
-   "sha256": "6c2cf560dbd5bbb75fd023d59e1c71db43657f166692ae82ef9421ebc6a81f46",
+   "sha256": "c04df8a52108503c48f61b3b7adccdda7f95a5d7b1331ff165d33290814ef3eb",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat"
@@ -715,7 +715,7 @@
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "622e93d5e8ef573f92f3b4c8194875c0845ece44f9289e644316704961ce74b0",
+   "sha256": "4f939fe83492fb2fe58e8c68bb6433f9967892c30ec6a7fd3cd1bc17274541b8",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],

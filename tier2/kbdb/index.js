@@ -3137,6 +3137,19 @@ async function deleteEntry(db, id) {
   await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
 }
 __name(deleteEntry, "deleteEntry");
+async function deprecateEntriesByLibrary(db, ownerId, library) {
+  const result = await db.prepare(
+    `UPDATE entries
+         SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
+             updated_at = unixepoch()
+       WHERE owner_id = ?
+         AND COALESCE(json_extract(metadata_json, '$.library'), 'general') = ?
+         AND (json_extract(metadata_json, '$.status') IS NULL
+              OR json_extract(metadata_json, '$.status') != 'deprecated')`
+  ).bind(ownerId, library).run();
+  return result.meta?.changes ?? 0;
+}
+__name(deprecateEntriesByLibrary, "deprecateEntriesByLibrary");
 function libraryPredicate(libraries) {
   const placeholders = libraries.map(() => "?").join(",");
   return `COALESCE(json_extract(metadata_json, '$.library'), 'general') IN (${placeholders})`;
@@ -3415,6 +3428,14 @@ entryRoutes.get("/:id", async (c) => {
   if (!entry) return c.json({ success: false, error: "not found" }, 404);
   return c.json({ success: true, entry });
 });
+entryRoutes.patch("/deprecate-by-library", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const ownerId = String(body?.owner_id ?? "").trim();
+  const library = String(body?.library ?? "").trim();
+  if (!ownerId || !library) return c.json({ success: false, error: "owner_id \u8207 library \u5FC5\u586B" }, 400);
+  const count3 = await deprecateEntriesByLibrary(c.env.DB, ownerId, library);
+  return c.json({ success: true, deprecated_count: count3 });
+});
 entryRoutes.patch("/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const entry = await updateEntry(c.env.DB, c.req.param("id"), body);
@@ -3566,6 +3587,17 @@ async function searchByTemplate(db, template, owner_id, limit = 100) {
   return ids.map((id) => byId.get(id)).filter((r) => !!r);
 }
 __name(searchByTemplate, "searchByTemplate");
+async function deleteRecord(db, recordId) {
+  const evRes = await db.prepare("SELECT entry_id FROM entry_values WHERE record_id = ?").bind(recordId).all();
+  const rows = evRes.results ?? [];
+  if (rows.length === 0) return false;
+  await db.prepare("DELETE FROM entry_values WHERE record_id = ?").bind(recordId).run();
+  for (const { entry_id } of rows) {
+    await db.prepare("DELETE FROM entries WHERE id = ?").bind(entry_id).run();
+  }
+  return true;
+}
+__name(deleteRecord, "deleteRecord");
 
 // src/routes/templates.ts
 var templateRoutes = new Hono2();
@@ -3628,6 +3660,11 @@ recordRoutes.patch("/:recordId", async (c) => {
   } catch (e) {
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
+});
+recordRoutes.delete("/:recordId", async (c) => {
+  const found = await deleteRecord(c.env.DB, c.req.param("recordId"));
+  if (!found) return c.json({ success: false, error: "not found" }, 404);
+  return c.json({ success: true });
 });
 
 // src/actions/recipe-stat.ts
