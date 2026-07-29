@@ -733,7 +733,7 @@
     "notes": "t149 多帳號同步修復＋t150 版本一致性（collector 與 tray 同版）",
     "mac": {
       "file": "daemon/ArcrunRAG-mac-unsigned.zip",
-      "sha256": "459ced6ba660eec81fcbfcecc644f694860bbc3568c833c783d0391ac9076be8"
+      "sha256": "2974c172440960924dbe089757ad0bf37f6288b86d83e39abd169a9966413d46"
     },
     "win": {
       "file": "daemon/ArcrunRAG-win-unsigned.zip",
