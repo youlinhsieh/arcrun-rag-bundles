@@ -3571,6 +3571,11 @@ var init_recipes = __esm({
         method: (body.method ?? "POST").toUpperCase(),
         headers: body.headers,
         body: body.body,
+        // ③ payload/回應/binding 三層（3.12）：全選填，沒給就是 undefined＝既有行為
+        body_template: body.body_template,
+        response_map: body.response_map,
+        auth: body.auth,
+        binding_name: body.binding_name,
         auth_service: body.auth_service,
         credentials_required: body.credentials_required,
         created_at: existing?.created_at ?? now2,
@@ -3844,6 +3849,10 @@ var init_constants3 = __esm({
       "IS_A",
       "ON_SUCCESS",
       "ON_FAIL",
+      // 新增：條件語意（SDD workflow-discovery 3.11）—— 讀上游 if_control/switch 的 branch
+      "ON_TRUE",
+      "ON_FALSE",
+      "ON_BRANCH",
       // 新增：觸發語意
       "ON_CLICK",
       "CALLS_SUBFLOW",
@@ -3858,9 +3867,19 @@ var init_constants3 = __esm({
       "\u5931\u6557\u6642": "ON_FAIL",
       "\u5C0D\u6BCF\u500B": "FOREACH",
       "\u689D\u4EF6\u6EFF\u8DB3\u6642": "IF",
+      // 條件分支語意（SDD workflow-discovery 3.11）：讓意圖工作流寫得出兩條路
+      "\u6210\u7ACB\u6642": "ON_TRUE",
+      "\u70BA\u771F\u6642": "ON_TRUE",
+      "\u4E0D\u6210\u7ACB\u6642": "ON_FALSE",
+      "\u70BA\u5047\u6642": "ON_FALSE",
+      "\u5426\u5247": "ON_FALSE",
       // 英文別名
       "SUCCESS": "ON_SUCCESS",
       "FAIL": "ON_FAIL",
+      "TRUE": "ON_TRUE",
+      "FALSE": "ON_FALSE",
+      "ELSE": "ON_FALSE",
+      "BRANCH": "ON_BRANCH",
       "CLICK": "ON_CLICK",
       "SUBFLOW": "CALLS_SUBFLOW"
     };
@@ -3875,6 +3894,94 @@ var init_constants3 = __esm({
         return { ...c, count: (Number(c.count) || 0) + 1 };
       }]
     ]);
+  }
+});
+
+// src/lib/recipe-payload.ts
+function getPath2(obj, path) {
+  let cur = obj;
+  for (const part of path.split(".")) {
+    if (cur === null || cur === void 0) return void 0;
+    if (typeof cur !== "object") return void 0;
+    cur = cur[part];
+  }
+  return cur;
+}
+function renderBodyTemplate(template, ctx) {
+  if (template === void 0 || template === null) return void 0;
+  return renderValue(template, ctx);
+}
+function renderValue(v, ctx) {
+  if (typeof v === "string") return renderString(v, ctx);
+  if (Array.isArray(v)) return v.map((item) => renderValue(item, ctx));
+  if (v !== null && typeof v === "object") {
+    const out = {};
+    for (const [k, val] of Object.entries(v)) {
+      out[k] = renderValue(val, ctx);
+    }
+    return out;
+  }
+  return v;
+}
+function renderString(s, ctx) {
+  const single = s.match(/^\s*\{\{([\w.]+)\}\}\s*$/);
+  if (single) {
+    const val = getPath2(ctx, single[1]);
+    return val === void 0 ? s : val;
+  }
+  return s.replace(/\{\{([\w.]+)\}\}/g, (_, key) => {
+    const val = getPath2(ctx, key);
+    if (val === void 0) return `{{${key}}}`;
+    return typeof val === "string" ? val : JSON.stringify(val);
+  });
+}
+function applyResponseMap(body, map) {
+  if (!map) return { raw: body };
+  let picked = map.text_path ? getPath2(body, map.text_path) : body;
+  if (map.thinking_model && Array.isArray(picked)) {
+    const real = picked.filter(
+      (p) => !(p && typeof p === "object" && p.thought === true)
+    );
+    const last = real[real.length - 1];
+    picked = last && typeof last === "object" ? last.text : last;
+  }
+  if (typeof picked !== "string") return { text: void 0, raw: body };
+  return { text: sanitize(picked, map), raw: body };
+}
+function sanitize(input, map) {
+  let s = input.trim();
+  if (map.answer_marker) {
+    const idx = s.lastIndexOf(map.answer_marker);
+    if (idx >= 0) s = s.slice(idx + map.answer_marker.length);
+  }
+  const prefixes = map.strip_prefixes ?? [];
+  if (prefixes.length > 0) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      s = s.trimStart();
+      for (const p of prefixes) {
+        if (p && s.startsWith(p)) {
+          s = s.slice(p.length);
+          changed = true;
+        }
+      }
+    }
+  }
+  return s.trim();
+}
+var init_recipe_payload = __esm({
+  "src/lib/recipe-payload.ts"() {
+    "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    __name(getPath2, "getPath");
+    __name(renderBodyTemplate, "renderBodyTemplate");
+    __name(renderValue, "renderValue");
+    __name(renderString, "renderString");
+    __name(applyResponseMap, "applyResponseMap");
+    __name(sanitize, "sanitize");
   }
 });
 
@@ -3903,7 +4010,7 @@ function createComponentLoader(env2) {
     }
     if (isRecipeHash(componentId)) {
       const recipe = await resolveRecipe(componentId, env2.RECIPES);
-      if (recipe) return makeRecipeRunner(recipe);
+      if (recipe) return pickRecipeRunner(recipe, env2);
       throw new Error(`\u627E\u4E0D\u5230 recipe hash "${componentId}"\uFF0C\u8ACB\u78BA\u8A8D\u5DF2\u900F\u904E acr push \u4E0A\u50B3`);
     }
     const logicRunner = makeLogicRunner(componentId, env2);
@@ -3911,7 +4018,7 @@ function createComponentLoader(env2) {
     const authRecipe = await resolveAuthRecipe(componentId, env2.RECIPES);
     if (authRecipe) return makeAuthRecipeRunner(authRecipe);
     const kvRecipe = await resolveRecipe(componentId, env2.RECIPES);
-    if (kvRecipe) return makeRecipeRunner(kvRecipe);
+    if (kvRecipe) return pickRecipeRunner(kvRecipe, env2);
     if (WASM_HTTP_RUNNER_IDS.has(componentId)) {
       return makeHttpRunner(wasmWorkerUrl(componentId, env2.WORKER_SUBDOMAIN));
     }
@@ -4000,6 +4107,44 @@ function makeLogicRunner(canonicalId, env2) {
   }
   return makeHttpRunner(wasmWorkerUrl(canonicalId, env2.WORKER_SUBDOMAIN));
 }
+function pickRecipeRunner(recipe, env2) {
+  return recipe.auth === "binding" ? makeBindingRecipeRunner(recipe, env2) : makeRecipeRunner(recipe);
+}
+function makeBindingRecipeRunner(recipe, env2) {
+  return async (ctx) => {
+    const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
+    const name = recipe.binding_name ?? "AI";
+    const binding2 = env2[name];
+    if (!binding2) {
+      return {
+        success: false,
+        error: `recipe "${recipe.canonical_id}" \u5BA3\u544A auth: binding\u3001binding_name: "${name}"\uFF0C\u4F46\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}\u3002\u8ACB\u5728 wrangler.toml \u88DC\u4E0A\u8A72 binding \u5F8C\u91CD\u65B0\u90E8\u7F72\u3002`
+      };
+    }
+    const target = recipe.endpoint;
+    const payload = renderBodyTemplate(recipe.body_template ?? recipe.body, ctxObj) ?? Object.fromEntries(Object.entries(ctxObj).filter(([k]) => !k.startsWith("_")));
+    try {
+      const runner = binding2;
+      if (typeof runner.run !== "function") {
+        return {
+          success: false,
+          error: `binding "${name}" \u6C92\u6709 run() \u65B9\u6CD5\uFF0C\u76EE\u524D binding \u578B\u53EA\u652F\u63F4 run(model, input) \u5F62\u72C0\uFF08\u5982 env.AI\uFF09\u3002`
+        };
+      }
+      const data = await runner.run(target, payload);
+      if (recipe.response_map) {
+        const normalized = applyResponseMap(data, recipe.response_map);
+        return { success: true, data, text: normalized.text };
+      }
+      return { success: true, data };
+    } catch (e) {
+      return {
+        success: false,
+        error: `binding "${name}" \u547C\u53EB\u5931\u6557\uFF08${target}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}`
+      };
+    }
+  };
+}
 function makeRecipeRunner(recipe) {
   return async (ctx) => {
     const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
@@ -4018,7 +4163,9 @@ function makeRecipeRunner(recipe) {
       headers[k] = interpolate2(v);
     }
     let bodyStr;
-    if (recipe.body) {
+    if (recipe.body_template) {
+      bodyStr = JSON.stringify(renderBodyTemplate(recipe.body_template, ctxObj));
+    } else if (recipe.body) {
       bodyStr = interpolate2(JSON.stringify(recipe.body));
     } else if (method !== "GET") {
       const bodyObj = Object.fromEntries(
@@ -4032,6 +4179,10 @@ function makeRecipeRunner(recipe) {
       body: bodyStr
     });
     const data = await readBodyOnce(res);
+    if (recipe.response_map) {
+      const normalized = applyResponseMap(data, recipe.response_map);
+      return { success: res.ok, status: res.status, data, text: normalized.text };
+    }
     return { success: res.ok, status: res.status, data };
   };
 }
@@ -4080,6 +4231,7 @@ var init_component_loader = __esm({
     init_constants3();
     init_hash();
     init_recipes();
+    init_recipe_payload();
     WASM_HTTP_RUNNER_IDS = /* @__PURE__ */ new Set([
       // 通用 HTTP 零件
       "http_request",
@@ -4120,6 +4272,8 @@ var init_component_loader = __esm({
     __name(makeTriggerWorkflowRunner, "makeTriggerWorkflowRunner");
     __name(makeHttpRunner, "makeHttpRunner");
     __name(makeLogicRunner, "makeLogicRunner");
+    __name(pickRecipeRunner, "pickRecipeRunner");
+    __name(makeBindingRecipeRunner, "makeBindingRecipeRunner");
     __name(makeRecipeRunner, "makeRecipeRunner");
     __name(makeAuthRecipeRunner, "makeAuthRecipeRunner");
     __name(readBodyOnce, "readBodyOnce");
@@ -8959,6 +9113,16 @@ function getNestedValue(ctx, path) {
   }
   return cur;
 }
+function readBranch(result) {
+  if (!result || typeof result !== "object") return void 0;
+  const r = result;
+  const data = r.data && typeof r.data === "object" ? r.data : void 0;
+  const named = data?.branch ?? r.branch;
+  if (typeof named === "string") return named;
+  const bool = data?.result ?? r.result;
+  if (typeof bool === "boolean") return bool ? "true" : "false";
+  return void 0;
+}
 function isFailure(result) {
   if (!result || typeof result !== "object") return false;
   const r = result;
@@ -9346,6 +9510,33 @@ var init_graph_executor = __esm({
               }
               break;
             }
+            // ── 條件邊（SDD workflow-discovery 3.11 / CP arcrun-usable 步驟 5 缺口①）──
+            // 為什麼要有：`if_control` 回 {result, branch} 卻沒有邊讀得懂它，
+            // AI 照規矩用了零件仍得寫 code 判斷走哪條 ⇒「全變成 code」的根（Arcrun#5）。
+            // 讀法對齊零件 output_schema：優先 data.branch（if_control/switch 的正式形狀），
+            // 相容 top-level branch / result 布林。讀不出分支＝不走（誠實，不亂挑一條）。
+            case "ON_TRUE": {
+              if (readBranch(result) === "true") {
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
+              }
+              break;
+            }
+            case "ON_FALSE": {
+              if (readBranch(result) === "false") {
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
+              }
+              break;
+            }
+            case "ON_BRANCH": {
+              const actual = readBranch(result);
+              if (edge.branch !== void 0 && actual !== void 0 && actual === edge.branch) {
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
+              }
+              break;
+            }
             case "FOREACH": {
               const iteratorKey = edge.iterator ?? "item";
               let items = getIterableFromContext(result, iteratorKey);
@@ -9407,6 +9598,7 @@ var init_graph_executor = __esm({
     __name(interpolateValue, "interpolateValue");
     __name(interpolateData, "interpolateData");
     __name(getNestedValue, "getNestedValue");
+    __name(readBranch, "readBranch");
     __name(isFailure, "isFailure");
     __name(evaluateCondition, "evaluateCondition");
     __name(getIterableFromContext, "getIterableFromContext");
@@ -9435,9 +9627,11 @@ var init_schemas = __esm({
       edges: z.array(z.object({
         from: z.string(),
         to: z.string(),
-        type: z.enum(["PIPE", "IF", "FOREACH", "CONTINUE", "IS_A", "ON_SUCCESS", "ON_FAIL", "ON_CLICK", "CALLS_SUBFLOW", "CONTAINS", "HAS_STYLE", "HAS_BEHAVIOR"]),
+        type: z.enum(["PIPE", "IF", "FOREACH", "CONTINUE", "IS_A", "ON_SUCCESS", "ON_FAIL", "ON_TRUE", "ON_FALSE", "ON_BRANCH", "ON_CLICK", "CALLS_SUBFLOW", "CONTAINS", "HAS_STYLE", "HAS_BEHAVIOR"]),
         condition: z.string().optional(),
-        iterator: z.string().optional()
+        iterator: z.string().optional(),
+        branch: z.string().optional()
+        // ON_BRANCH 的具名分支（SDD workflow-discovery 3.11）
       }))
     });
     executeSchema = z.object({
@@ -10041,6 +10235,41 @@ init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
 init_component_loader();
 init_recipes();
+
+// src/lib/branch-hints.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+var BRANCH_HINTS = {
+  if_control: {
+    branch_field: "data.branch",
+    branches: ["true", "false"],
+    edge_types: ["ON_TRUE", "ON_FALSE"],
+    usage: '\u9019\u9846\u7B97\u5B8C\u6703\u8F38\u51FA data.branch\uFF08"true"\uFF0F"false"\uFF09\u3002\u4E0B\u6E38\u63A5\u5169\u689D\u908A\uFF1AON_TRUE \u63A5\u689D\u4EF6\u6210\u7ACB\u8981\u505A\u7684\u4E8B\uFF0CON_FALSE \u63A5\u4E0D\u6210\u7ACB\u8981\u505A\u7684\u4E8B\u3002**\u4E0D\u9700\u8981\u81EA\u5DF1\u5BEB code \u5224\u65B7\u8D70\u54EA\u689D**\u2014\u2014\u5F15\u64CE\u4F9D branch \u81EA\u52D5\u9078\u8DEF\u3002',
+    example: "\u5224\u65B7\u6709\u6C92\u6709\u65B0\u8CC7\u6599 >> ON_TRUE >> \u50B3\u5230 telegram\n\u5224\u65B7\u6709\u6C92\u6709\u65B0\u8CC7\u6599 >> ON_FALSE >> \u7D50\u675F\n\uFF08\u4E2D\u6587\u8A9E\u610F\u8A5E\u4EA6\u53EF\uFF1A\u300C\u6210\u7ACB\u6642\u300D\uFF1DON_TRUE\u3001\u300C\u5426\u5247\u300D\uFF1DON_FALSE\uFF09"
+  },
+  switch: {
+    branch_field: "data.branch",
+    branches: "\u7531 input_schema.cases[].branch \u8207 default_branch \u6C7A\u5B9A\uFF08N \u8DEF\uFF0C\u975E\u56FA\u5B9A\u6E05\u55AE\uFF09",
+    edge_types: ["ON_BRANCH"],
+    usage: "\u9019\u9846\u4F9D value \u6BD4\u5C0D cases\uFF0C\u8F38\u51FA data.branch\uFF1D\u547D\u4E2D\u90A3\u500B case \u7684 branch \u540D\uFF08\u90FD\u6C92\u4E2D\u5247\u662F default_branch\uFF09\u3002\u4E0B\u6E38**\u6BCF\u689D\u8DEF\u5404\u63A5\u4E00\u689D ON_BRANCH \u908A\uFF0C\u4E26\u5728\u908A\u4E0A\u6A19 branch \u7B49\u65BC\u4F60\u5728 cases \u88E1\u53D6\u7684\u540D\u5B57**\u3002default_branch \u4E0D\u9700\u8981\u7279\u5225\u7684\u908A\u578B\uFF0C\u7167\u6A23\u7528 ON_BRANCH \u6A19\u5B83\u7684\u540D\u5B57\u5373\u53EF\u3002",
+    example: '{"cases":[{"match":"active","branch":"branch_active"}],"default_branch":"branch_default"}\nedges: [\n  {"from":"my_switch","to":"\u8655\u7406\u555F\u7528","type":"ON_BRANCH","branch":"branch_active"},\n  {"from":"my_switch","to":"\u8655\u7406\u5176\u4ED6","type":"ON_BRANCH","branch":"branch_default"}\n]'
+  },
+  try_catch: {
+    branch_field: "data.branch",
+    branches: ["try", "catch"],
+    edge_types: ["ON_BRANCH"],
+    usage: '\u9019\u9846\u770B\u4E0A\u6E38 error \u662F\u5426\u975E\u7A7A\uFF0C\u8F38\u51FA data.branch\uFF08"try"\uFF1D\u6C92\u932F\uFF0F"catch"\uFF1D\u6709\u932F\uFF09\u3002\u4E0B\u6E38\u63A5\u5169\u689D ON_BRANCH \u908A\uFF0Cbranch \u5206\u5225\u6A19 "try" \u8207 "catch"\u3002**\u932F\u8AA4\u8655\u7406\u4E0D\u9700\u8981\u5BEB code**\u2014\u2014\u628A\u8981\u88DC\u6551\u7684\u7BC0\u9EDE\u63A5\u5728 catch \u90A3\u689D\u908A\u5F8C\u9762\u5373\u53EF\u3002',
+    example: 'edges: [\n  {"from":"my_try_catch","to":"\u6B63\u5E38\u6D41\u7A0B","type":"ON_BRANCH","branch":"try"},\n  {"from":"my_try_catch","to":"\u88DC\u6551\u6D41\u7A0B","type":"ON_BRANCH","branch":"catch"}\n]'
+  }
+};
+function branchHintFor(componentId) {
+  if (!componentId) return void 0;
+  return BRANCH_HINTS[componentId.toLowerCase()];
+}
+__name(branchHintFor, "branchHintFor");
+
+// src/actions/search-nodes.ts
 async function searchNodes(parsed, config2, env2, mode = "discover", target) {
   const nodeResults = {};
   const missingNodes = [];
@@ -10103,7 +10332,8 @@ async function searchNodes(parsed, config2, env2, mode = "discover", target) {
         source: "component",
         input_schema: hit.input_schema,
         success_rate: typeof hit.success_rate === "number" ? hit.success_rate : void 0,
-        stability: typeof hit.stability === "string" ? hit.stability : void 0
+        stability: typeof hit.stability === "string" ? hit.stability : void 0,
+        branch_hint: branchHintFor(componentId)
       };
       continue;
     }
@@ -10115,7 +10345,8 @@ async function searchNodes(parsed, config2, env2, mode = "discover", target) {
         type: role,
         source: "recipe",
         description: recipe.description,
-        endpoint: recipe.endpoint
+        endpoint: recipe.endpoint,
+        payload_hint: buildPayloadHint(recipe)
       };
       continue;
     }
@@ -10205,7 +10436,8 @@ async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, en
         source: "component",
         input_schema: q.entry.input_schema,
         success_rate: q.entry.success_rate,
-        stability: q.entry.stability
+        stability: q.entry.stability,
+        branch_hint: branchHintFor(componentId)
       },
       missing: false
     };
@@ -10219,7 +10451,8 @@ async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, en
         type: role,
         source: "recipe",
         description: recipe.description,
-        endpoint: recipe.endpoint
+        endpoint: recipe.endpoint,
+        payload_hint: buildPayloadHint(recipe)
       },
       missing: false
     };
@@ -10289,6 +10522,9 @@ function trySubstitution(nodeName, catalogEntries, recipes) {
     input_schema: top.entry.input_schema,
     success_rate: typeof top.entry.success_rate === "number" ? top.entry.success_rate : void 0,
     stability: typeof top.entry.stability === "string" ? top.entry.stability : void 0,
+    // 替換成分岔零件時（例「判斷有沒有新資料」→ if_control）一併附分支用法，
+    // 否則 AI 換到零件卻不知道怎麼接兩條路，仍會退回寫 code。
+    branch_hint: branchHintFor(top.entry.canonical_id),
     substitution: {
       from: nodeName,
       componentId: top.entry.canonical_id,
@@ -10392,6 +10628,32 @@ function buildSuggestion(componentId) {
   return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\uFF0C\u4E14\u540D\u5B57\u5224\u4E0D\u51FA\u578B\u3002\u7F3A\u5916\u90E8 API \u2192 \u81EA\u5DF1\u5BEB recipe\uFF08skill\u300Cwrite_recipe\u300D\uFF09\uFF1B\u7F3A\u8A08\u7B97\u80FD\u529B \u2192 \u6295\u7A3F\u96F6\u4EF6 PR\uFF08skill\u300Cadd_new_wasm_component\u300D\uFF0Ccomponent \u9032 WASM \u6C99\u7BB1\uFF09\u3002`;
 }
 __name(buildSuggestion, "buildSuggestion");
+function buildPayloadHint(recipe) {
+  const parts = [];
+  if (recipe.body_template) {
+    parts.push("payload \u5DF2\u6536\u5728 recipe \u7684 body_template \u88E1\uFF0C\u4F60\u53EA\u8981\u628A {{\u8B8A\u6578}} \u5C0D\u61C9\u7684\u503C\u653E\u9032\u7BC0\u9EDE context");
+  } else if (recipe.body) {
+    parts.push("payload \u5F62\u72C0\u898B body \u6B04\u4F4D\uFF08{{\u8B8A\u6578}} \u7531\u7BC0\u9EDE context \u586B\uFF09");
+  } else {
+    parts.push("\u672A\u5B9A\u7FA9 body_template\uFF1A\u7BC0\u9EDE context \u6703\u6574\u5305\u7576 body \u9001\u51FA\uFF08_ \u958B\u982D\u7684\u5167\u90E8\u6B04\u4F4D\u6703\u88AB\u5254\u9664\uFF09");
+  }
+  if (recipe.response_map) {
+    parts.push("\u56DE\u61C9\u5DF2\u6B63\u898F\u5316\uFF1A\u57F7\u884C\u7D50\u679C\u9664\u4E86\u539F\u59CB data\uFF0C\u53E6\u9644 text\uFF08\u53D6\u503C\u8DEF\u5F91\u7B49\u898F\u5247\u5BEB\u5728 recipe \u88E1\uFF0C\u63DB\u6E90\u4E0D\u5FC5\u6539 workflow\uFF09");
+  } else {
+    parts.push("\u672A\u5B9A\u7FA9 response_map\uFF1A\u56DE\u61C9\u539F\u6A23\u653E\u5728 data\uFF0C\u53D6\u503C\u8981\u81EA\u5DF1\u6307\u8DEF\u5F91");
+  }
+  if (recipe.auth === "binding") {
+    parts.push(`\u8A8D\u8B49\uFF1Dbinding\uFF08\u514D\u91D1\u9470\uFF0C\u7528\u5E73\u53F0\u5167\u5EFA ${recipe.binding_name ?? "AI"}\uFF09`);
+  } else if (recipe.auth_service) {
+    parts.push(`\u8A8D\u8B49\u8D70 auth recipe\u300C${recipe.auth_service}\u300D\uFF08\u91D1\u9470\u7531\u7CFB\u7D71\u5728\u57F7\u884C\u524D\u6CE8\u5165\uFF0C\u4F60\u4E0D\u5FC5\u4E5F\u4E0D\u8A72\u586B\uFF09`);
+  }
+  return {
+    body_template: recipe.body_template,
+    response_map: recipe.response_map,
+    usage: parts.join("\uFF1B") + "\u3002"
+  };
+}
+__name(buildPayloadHint, "buildPayloadHint");
 async function fetchComponent(registryBase, id) {
   try {
     const res = await fetch(`${registryBase}/components/${encodeURIComponent(id)}`, {
@@ -10475,12 +10737,19 @@ function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config2) {
       iterator = foreachMatch[1];
       label = "\u5C0D\u6BCF\u500B";
     }
+    let branch;
+    const branchMatch = label.match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
+    if (branchMatch) {
+      branch = branchMatch[1];
+      label = "ON_BRANCH";
+    }
     const edge = {
       from: e.from.toLowerCase().replace(/\s+/g, "-"),
       to: e.to.toLowerCase().replace(/\s+/g, "-"),
       type: toEdgeType(label)
     };
     if (iterator) edge.iterator = iterator;
+    if (branch) edge.branch = branch;
     return edge;
   });
   return { id: graphId, name: graphName, nodes, edges };
@@ -10592,12 +10861,18 @@ async function searchByTarget(target, query, env2, apiKey) {
       );
       if (!res2.ok) return { ok: false, status: 502, error: `registry \u641C\u5C0B\u5931\u6557\uFF08HTTP ${res2.status}\uFF09` };
       const body2 = await res2.json();
+      const results = (body2.data?.results ?? []).map((r) => {
+        if (!r || typeof r !== "object") return r;
+        const rec = r;
+        const hint = branchHintFor(typeof rec.canonical_id === "string" ? rec.canonical_id : void 0);
+        return hint ? { ...rec, branch_hint: hint } : rec;
+      });
       return {
         ok: true,
         body: {
           target,
           query,
-          results: body2.data?.results ?? [],
+          results,
           count: body2.data?.count ?? 0
         }
       };
@@ -10620,7 +10895,9 @@ async function searchByTarget(target, query, env2, apiKey) {
         canonical_id: r.canonical_id,
         display_name: r.display_name,
         description: r.description,
-        endpoint: r.endpoint
+        endpoint: r.endpoint,
+        // 3.12：逐顆查 recipe 時也要說得出「payload 怎麼填、回應怎麼取值」
+        payload_hint: buildPayloadHint(r)
       });
     }
     return {
