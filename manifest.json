@@ -1,7 +1,7 @@
 {
   "schema": "arcrun-rag-bundles/v1",
   "built": "2026-07-29",
-  "source": "Arcrun@e28e190",
+  "source": "Arcrun@0a426c4",
   "core": [
     {
       "name": "arcrun-array-ops",
@@ -584,7 +584,7 @@
       "tier": 2,
       "main_file": "tier2/cypher/index.js",
       "main_module": "index.js",
-      "sha256": "3bb8ffb70e7dfc79847d71a4be52899f04a1551f1a0123508c54de5f7835dd24",
+      "sha256": "19c5bda3e1757b146ffa2f7a78742fe61a21501a7f454ef000d920d0cfe1eb25",
       "compat_date": "2025-02-19",
       "compat_flags": [
         "nodejs_compat",
@@ -666,7 +666,7 @@
       "tier": 2,
       "main_file": "tier2/mcp/index.js",
       "main_module": "index.js",
-      "sha256": "10688458643ed59a8dd2e1eb83be60238ad01e58c540945b3e6ab3e324bb3b9c",
+      "sha256": "a9bb0f19c473db5f69f1dcaf4a6f0fa53f11af1ae442112c75bcd6ea9563f935",
       "compat_date": "2024-11-27",
       "compat_flags": [
         "nodejs_compat"
