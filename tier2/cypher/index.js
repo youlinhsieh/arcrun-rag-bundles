@@ -9447,6 +9447,61 @@ var init_schemas = __esm({
   }
 });
 
+// src/actions/execution-evaluator.ts
+function componentVerdictsFromTrace(nodes, trace3) {
+  const componentByNodeId = /* @__PURE__ */ new Map();
+  for (const n of nodes) {
+    if (n.type === "Component" && n.componentId) componentByNodeId.set(n.id, n.componentId);
+  }
+  const verdicts = [];
+  for (const step of trace3) {
+    const componentId = componentByNodeId.get(step.nodeId);
+    if (!componentId) continue;
+    const out = step.output;
+    const outputSaysFailed = typeof out === "object" && out !== null && !Array.isArray(out) && out.success === false;
+    verdicts.push({
+      component_id: componentId,
+      success: !step.error && !outputSaysFailed,
+      duration_ms: Math.max(0, Number(step.duration_ms) || 0)
+    });
+  }
+  return verdicts;
+}
+async function recordComponentStats(env2, nodes, trace3) {
+  try {
+    const base = (env2.REGISTRY_BASE_URL ?? (env2.WORKER_SUBDOMAIN ? wasmWorkerUrl("registry", env2.WORKER_SUBDOMAIN) : void 0))?.replace(/\/$/, "");
+    if (!base) return;
+    const verdicts = componentVerdictsFromTrace(nodes, trace3);
+    if (verdicts.length === 0) return;
+    await Promise.all(
+      verdicts.map(
+        (v) => fetch(`${base}/analytics/record`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            canonical_id: v.component_id,
+            success: v.success,
+            duration_ms: v.duration_ms
+          })
+        }).catch(() => void 0)
+        // 統計失敗不影響執行
+      )
+    );
+  } catch {
+  }
+}
+var init_execution_evaluator = __esm({
+  "src/actions/execution-evaluator.ts"() {
+    "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    init_component_loader();
+    __name(componentVerdictsFromTrace, "componentVerdictsFromTrace");
+    __name(recordComponentStats, "recordComponentStats");
+  }
+});
+
 // src/actions/webhook-handlers.ts
 var webhook_handlers_exports = {};
 __export(webhook_handlers_exports, {
@@ -9504,6 +9559,15 @@ async function executeWebhookGraph(env2, graph, triggerContext, token, apiKey, c
       agent_user_agent: userAgent
     }, ctx);
     recordRecipeStats(env2, executor.usedRecipeKeys, true, Date.now(), ctx);
+    {
+      const statsPromise = recordComponentStats(
+        env2,
+        parsed.data.nodes,
+        result.trace
+      );
+      if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
+      else void statsPromise;
+    }
     return { success: true, data: result.data, duration_ms };
   } catch (err) {
     const duration_ms = Date.now() - start;
@@ -9518,6 +9582,15 @@ async function executeWebhookGraph(env2, graph, triggerContext, token, apiKey, c
     }, ctx);
     if (!isPaused) {
       recordRecipeStats(env2, executor.usedRecipeKeys, false, Date.now(), ctx);
+    }
+    if (!isPaused && err instanceof ExecutionError) {
+      const statsPromise = recordComponentStats(
+        env2,
+        parsed.data.nodes,
+        err.trace
+      );
+      if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
+      else void statsPromise;
     }
     if (err instanceof ExecutionError) {
       const traceFormatted = err.trace.map((s) => ({
@@ -9546,6 +9619,7 @@ var init_webhook_handlers = __esm({
     init_schemas();
     init_component_loader();
     init_telemetry();
+    init_execution_evaluator();
     __name(recordRecipeStats, "recordRecipeStats");
     __name(generateToken, "generateToken");
     __name(validateAndParseWebhook, "validateAndParseWebhook");
@@ -9802,10 +9876,12 @@ init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
 init_dist();
 var healthRouter = new Hono2();
-healthRouter.get(
-  "/health",
-  (c) => c.json({ ok: true })
-);
+healthRouter.get("/health", (c) => {
+  const bundleVersion = c.env.ARCRUN_BUNDLE_VERSION;
+  return c.json(
+    bundleVersion ? { ok: true, bundle_version: bundleVersion } : { ok: true }
+  );
+});
 healthRouter.get(
   "/",
   (c) => c.json({
@@ -9909,17 +9985,7 @@ init_types();
 init_graph_executor();
 init_schemas();
 init_component_loader();
-
-// src/actions/execution-evaluator.ts
-init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
-init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
-init_performance2();
-async function writeEvaluation(_env, _record) {
-}
-__name(writeEvaluation, "writeEvaluation");
-async function updateComponentStats(_env, _componentId, _verdict, _durationMs) {
-}
-__name(updateComponentStats, "updateComponentStats");
+init_execution_evaluator();
 
 // src/actions/triplet-parser.ts
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
@@ -9950,6 +10016,11 @@ function parseTriplets(rawTriplets) {
 __name(parseTriplets, "parseTriplets");
 var INPUT_NAMES = /* @__PURE__ */ new Set(["input", "trigger", "webhook", "start"]);
 var OUTPUT_NAMES = /* @__PURE__ */ new Set(["output", "result", "end", "done"]);
+function isVirtualIoName(name) {
+  const lower = name.toLowerCase();
+  return INPUT_NAMES.has(lower) || OUTPUT_NAMES.has(lower);
+}
+__name(isVirtualIoName, "isVirtualIoName");
 function resolveNodeRole(name, parsed) {
   if (INPUT_NAMES.has(name.toLowerCase())) return "Input";
   if (OUTPUT_NAMES.has(name.toLowerCase())) return "Output";
@@ -9969,13 +10040,41 @@ init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
 init_component_loader();
-async function searchNodes(parsed, config2, env2) {
+init_recipes();
+async function searchNodes(parsed, config2, env2, mode = "discover", target) {
   const nodeResults = {};
   const missingNodes = [];
+  if (mode === "compile") {
+    for (const nodeName of parsed.nodeNames) {
+      const role = resolveNodeRole(nodeName, parsed);
+      if ((role === "Input" || role === "Output") && isVirtualIoName(nodeName)) {
+        nodeResults[nodeName] = { status: "found", componentId: nodeName.toLowerCase(), type: role };
+        continue;
+      }
+      const configComponent = config2?.[nodeName]?.component;
+      nodeResults[nodeName] = {
+        status: configComponent ? "found" : "unchecked",
+        componentId: configComponent ?? nodeName,
+        type: role
+      };
+    }
+    return { nodeResults, missingNodes };
+  }
   const sub = env2?.WORKER_SUBDOMAIN;
+  const registryBase = env2?.REGISTRY_BASE_URL ?? (sub ? wasmWorkerUrl("registry", sub) : void 0);
+  const wantComponents = target !== "recipe";
+  const wantRecipes = target !== "component";
+  const catalog = !wantComponents ? { status: "ok", entries: [] } : registryBase ? await fetchCatalog(registryBase) : { status: "unreachable", entries: [] };
+  const recipes = wantRecipes && env2?.RECIPES ? await listAllRecipes2(env2.RECIPES) : [];
+  const byId = /* @__PURE__ */ new Map();
+  for (const e of catalog.entries) {
+    const prev = byId.get(e.canonical_id);
+    if (!prev || (e.score ?? 0) > (prev.score ?? 0)) byId.set(e.canonical_id, e);
+    for (const a of e.aliases ?? []) if (!byId.has(a)) byId.set(a, e);
+  }
   for (const nodeName of parsed.nodeNames) {
     const role = resolveNodeRole(nodeName, parsed);
-    if (role === "Input" || role === "Output") {
+    if ((role === "Input" || role === "Output") && isVirtualIoName(nodeName)) {
       nodeResults[nodeName] = { status: "found", componentId: nodeName.toLowerCase(), type: role };
       continue;
     }
@@ -9985,36 +10084,317 @@ async function searchNodes(parsed, config2, env2) {
       nodeResults[nodeName] = { status: "found", componentId, type: role };
       continue;
     }
-    if (!sub) {
+    if (catalog.status === "unreachable") {
       nodeResults[nodeName] = { status: "unknown", componentId, type: role };
       continue;
     }
-    const q = await fetchComponent(sub, componentId);
-    if (!q.ok) {
-      nodeResults[nodeName] = { status: "unknown", componentId, type: role };
+    if (catalog.status === "no_endpoint") {
+      const legacy = await legacyPerNodeLookup(registryBase, componentId, nodeName, role, env2, recipes);
+      nodeResults[nodeName] = legacy.info;
+      if (legacy.missing) missingNodes.push(nodeName);
       continue;
     }
-    if (q.entry) {
+    const hit = byId.get(componentId);
+    if (hit) {
       nodeResults[nodeName] = {
         status: "found",
         componentId,
         type: role,
-        input_schema: q.entry.input_schema,
-        success_rate: q.entry.success_rate,
-        stability: q.entry.stability
+        source: "component",
+        input_schema: hit.input_schema,
+        success_rate: typeof hit.success_rate === "number" ? hit.success_rate : void 0,
+        stability: typeof hit.stability === "string" ? hit.stability : void 0
       };
       continue;
     }
-    nodeResults[nodeName] = { status: "missing", componentId, type: role };
+    const recipe = recipes.find((r) => r.canonical_id === componentId);
+    if (recipe) {
+      nodeResults[nodeName] = {
+        status: "found",
+        componentId: recipe.canonical_id,
+        type: role,
+        source: "recipe",
+        description: recipe.description,
+        endpoint: recipe.endpoint
+      };
+      continue;
+    }
+    const substituted = trySubstitution(nodeName, catalog.entries, recipes);
+    if (substituted) {
+      nodeResults[nodeName] = { ...substituted, type: role };
+      continue;
+    }
+    const similarComponents = similarFromCatalog(catalog.entries, nodeName);
+    const similarRecipes = similarFromRecipes(recipes, nodeName);
+    nodeResults[nodeName] = {
+      status: "not_found",
+      componentId,
+      type: role,
+      suggestion: buildSuggestion(componentId),
+      ...similarComponents.length > 0 ? { similar_components: similarComponents } : {},
+      ...similarRecipes.length > 0 ? { similar_recipes: similarRecipes } : {}
+    };
     missingNodes.push(nodeName);
   }
   return { nodeResults, missingNodes };
 }
 __name(searchNodes, "searchNodes");
-async function fetchComponent(subdomain, id) {
+async function fetchCatalog(registryBase) {
   try {
-    const base = wasmWorkerUrl("registry", subdomain);
-    const res = await fetch(`${base}/components/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${registryBase}/components/catalog`, { signal: AbortSignal.timeout(1e4) });
+    if (res.status === 404) return { status: "no_endpoint", entries: [] };
+    if (!res.ok) return { status: "unreachable", entries: [] };
+    const body = await res.json();
+    return { status: "ok", entries: body.data?.components ?? [] };
+  } catch {
+    return { status: "unreachable", entries: [] };
+  }
+}
+__name(fetchCatalog, "fetchCatalog");
+async function listAllRecipes2(kv) {
+  try {
+    const list = await kv.list({ prefix: "recipe:" });
+    return (await Promise.all(
+      list.keys.map((k) => kv.get(k.name, "json"))
+    )).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+__name(listAllRecipes2, "listAllRecipes");
+function similarFromCatalog(entries, nodeName) {
+  const searchableOf = /* @__PURE__ */ __name((e) => [e.canonical_id, e.display_name ?? "", e.description ?? "", ...e.aliases ?? [], ...e.tags ?? []].join(" ").toLowerCase(), "searchableOf");
+  const full = nodeName.toLowerCase();
+  const direct = entries.filter((e) => searchableOf(e).includes(full)).map((e) => e.canonical_id);
+  if (direct.length > 0) return [...new Set(direct)].slice(0, 3);
+  const tokens = extractTokens(nodeName);
+  if (tokens.length === 0) return [];
+  const count3 = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const hay = searchableOf(e);
+    const hits = tokens.filter((t) => hay.includes(t)).length;
+    if (hits > 0) count3.set(e.canonical_id, Math.max(count3.get(e.canonical_id) ?? 0, hits));
+  }
+  return [...count3.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
+}
+__name(similarFromCatalog, "similarFromCatalog");
+function similarFromRecipes(recipes, nodeName) {
+  const tokens = [nodeName.toLowerCase(), ...extractTokens(nodeName)];
+  const seen = /* @__PURE__ */ new Set();
+  const matched = [];
+  for (const r of recipes) {
+    if (seen.has(r.canonical_id)) continue;
+    const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
+    if (tokens.some((t) => hay.includes(t))) {
+      seen.add(r.canonical_id);
+      matched.push(r.canonical_id);
+    }
+  }
+  return matched.slice(0, 3);
+}
+__name(similarFromRecipes, "similarFromRecipes");
+async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, env2, recipes) {
+  const q = await fetchComponent(registryBase, componentId);
+  if (!q.ok) return { info: { status: "unknown", componentId, type: role }, missing: false };
+  if (q.entry) {
+    return {
+      info: {
+        status: "found",
+        componentId,
+        type: role,
+        source: "component",
+        input_schema: q.entry.input_schema,
+        success_rate: q.entry.success_rate,
+        stability: q.entry.stability
+      },
+      missing: false
+    };
+  }
+  const recipe = recipes.find((r) => r.canonical_id === componentId) ?? (env2?.RECIPES ? await resolveRecipe(componentId, env2.RECIPES) : null);
+  if (recipe) {
+    return {
+      info: {
+        status: "found",
+        componentId: recipe.canonical_id,
+        type: role,
+        source: "recipe",
+        description: recipe.description,
+        endpoint: recipe.endpoint
+      },
+      missing: false
+    };
+  }
+  const similarComponents = await searchSimilarComponents(registryBase, nodeName);
+  const similarRecipes = similarFromRecipes(recipes, nodeName);
+  return {
+    info: {
+      status: "not_found",
+      componentId,
+      type: role,
+      suggestion: buildSuggestion(componentId),
+      ...similarComponents.length > 0 ? { similar_components: similarComponents } : {},
+      ...similarRecipes.length > 0 ? { similar_recipes: similarRecipes } : {}
+    },
+    missing: true
+  };
+}
+__name(legacyPerNodeLookup, "legacyPerNodeLookup");
+function trySubstitution(nodeName, catalogEntries, recipes) {
+  const lower = nodeName.toLowerCase();
+  const serviceHits = SERVICE_HINTS.filter((w) => lower.includes(w));
+  if (serviceHits.length > 0) {
+    const matched = /* @__PURE__ */ new Map();
+    for (const r of recipes) {
+      const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
+      if (serviceHits.every((h) => hay.includes(h))) matched.set(r.canonical_id, r);
+    }
+    if (matched.size !== 1) return null;
+    const recipe = [...matched.values()][0];
+    return {
+      status: "resolved",
+      componentId: recipe.canonical_id,
+      source: "recipe",
+      description: recipe.description,
+      endpoint: recipe.endpoint,
+      substitution: {
+        from: nodeName,
+        componentId: "http_request",
+        // recipe＝http_request＋參數模板的具名封裝
+        recipe: recipe.canonical_id,
+        reason: `\u670D\u52D9\u8A5E\u300C${serviceHits.join("\u3001")}\u300D\u552F\u4E00\u547D\u4E2D recipe\u300C${recipe.canonical_id}\u300D\uFF1Bworkflow config \u5BEB component: ${recipe.canonical_id}\uFF08\u5E95\u5C64\u96F6\u4EF6\uFF1Dhttp_request\uFF09\uFF0C\u53EA\u9700\u586B payload`
+      }
+    };
+  }
+  const tokens = extractTokens(nodeName);
+  if (tokens.length === 0) return null;
+  const byCanonical = /* @__PURE__ */ new Map();
+  for (const e of catalogEntries) {
+    const strongHay = [e.canonical_id, e.display_name ?? "", ...e.aliases ?? []].join(" ").toLowerCase();
+    const weakHay = [e.description ?? "", ...e.tags ?? []].join(" ").toLowerCase();
+    const strongHits = tokens.filter((t) => strongHay.includes(t));
+    const weakCount = tokens.filter((t) => weakHay.includes(t)).length;
+    const score = strongHits.length * 10 + weakCount;
+    if (score === 0) continue;
+    const prev = byCanonical.get(e.canonical_id);
+    if (!prev || score > prev.score) byCanonical.set(e.canonical_id, { entry: e, score, strongHits });
+  }
+  const ranked = [...byCanonical.values()].sort((a, b) => b.score - a.score);
+  const top = ranked[0];
+  if (!top || top.strongHits.length === 0) return null;
+  if (ranked[1] && ranked[1].score >= top.score) return null;
+  return {
+    status: "resolved",
+    componentId: top.entry.canonical_id,
+    source: "component",
+    input_schema: top.entry.input_schema,
+    success_rate: typeof top.entry.success_rate === "number" ? top.entry.success_rate : void 0,
+    stability: typeof top.entry.stability === "string" ? top.entry.stability : void 0,
+    substitution: {
+      from: nodeName,
+      componentId: top.entry.canonical_id,
+      reason: `\u65B7\u8A5E\u300C${top.strongHits.join("\u3001")}\u300D\u547D\u4E2D\u96F6\u4EF6\u300C${top.entry.canonical_id}\u300D\uFF08${top.entry.display_name ?? ""}\uFF09\u5F37\u6B04\u4F4D\u4E14\u5206\u6578\u552F\u4E00\u6700\u9AD8\uFF1B\u53EA\u9700\u7167 input_schema \u586B payload`
+    }
+  };
+}
+__name(trySubstitution, "trySubstitution");
+var SERVICE_HINTS = [
+  "google",
+  "gmail",
+  "sheets",
+  "slides",
+  "gdocs",
+  "drive",
+  "calendar",
+  "youtube",
+  "slack",
+  "telegram",
+  "discord",
+  "line",
+  "whatsapp",
+  "twilio",
+  "notion",
+  "airtable",
+  "trello",
+  "jira",
+  "asana",
+  "linear",
+  "github",
+  "gitea",
+  "gitlab",
+  "bitbucket",
+  "stripe",
+  "paypal",
+  "shopify",
+  "hubspot",
+  "salesforce",
+  "openai",
+  "anthropic",
+  "claude",
+  "gemini",
+  "groq",
+  "twitter",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "dropbox",
+  "zoom",
+  "sendgrid",
+  "mailgun",
+  "kbdb"
+];
+var COMPUTE_HINTS = [
+  "encrypt",
+  "decrypt",
+  "cipher",
+  "aes",
+  "rsa",
+  "sha",
+  "md5",
+  "hmac",
+  "hash",
+  "sign",
+  "verify",
+  "encode",
+  "decode",
+  "base64",
+  "hex",
+  "compress",
+  "decompress",
+  "zip",
+  "gzip",
+  "uuid",
+  "random",
+  "regex",
+  "math",
+  "calc",
+  "sort",
+  "dedup",
+  "diff",
+  "template",
+  "render",
+  "convert",
+  "transform",
+  "parse",
+  "format",
+  "csv",
+  "xml"
+];
+function buildSuggestion(componentId) {
+  const lower = componentId.toLowerCase();
+  const serviceHit = SERVICE_HINTS.find((w) => lower.includes(w));
+  const computeHit = COMPUTE_HINTS.find((w) => lower.includes(w));
+  if (serviceHit) {
+    return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\u3002\u540D\u5B57\u542B\u670D\u52D9\u8A5E\u300C${serviceHit}\u300D\uFF1D\u5916\u90E8 API \u6A23\u8C8C \u2192 \u6C92\u6709\u6B64 recipe\uFF0C\u53EF\u81EA\u5DF1\u5BEB\uFF1A\u5BEB\u6CD5\u770B skill\u300Cwrite_recipe\u300D\uFF08arcrun_get_skill('write_recipe')\uFF09\uFF0C\u5BEB\u597D\u7528 acr recipe push \u6216 POST /recipes \u88DD\u4E0A\u5373\u53EF\u7528\uFF0C\u4E0D\u7528\u6539\u5E73\u53F0\u3002`;
+  }
+  if (computeHit) {
+    return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\u3002\u540D\u5B57\u542B\u8A08\u7B97\u8A5E\u300C${computeHit}\u300D\uFF1D\u8A08\u7B97\u539F\u8A9E\u6A23\u8C8C \u2192 \u6C92\u6709\u6B64\u96F6\u4EF6\uFF0C\u53EF\u6295\u7A3F PR \u65B0\u589E WASM component\uFF1A\u505A\u6CD5\u770B skill\u300Cadd_new_wasm_component\u300D\uFF08arcrun_get_skill('add_new_wasm_component')\uFF09\u3002`;
+  }
+  return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\uFF0C\u4E14\u540D\u5B57\u5224\u4E0D\u51FA\u578B\u3002\u7F3A\u5916\u90E8 API \u2192 \u81EA\u5DF1\u5BEB recipe\uFF08skill\u300Cwrite_recipe\u300D\uFF09\uFF1B\u7F3A\u8A08\u7B97\u80FD\u529B \u2192 \u6295\u7A3F\u96F6\u4EF6 PR\uFF08skill\u300Cadd_new_wasm_component\u300D\uFF0Ccomponent \u9032 WASM \u6C99\u7BB1\uFF09\u3002`;
+}
+__name(buildSuggestion, "buildSuggestion");
+async function fetchComponent(registryBase, id) {
+  try {
+    const res = await fetch(`${registryBase}/components/${encodeURIComponent(id)}`, {
       signal: AbortSignal.timeout(5e3)
     });
     if (res.status === 404) return { ok: true };
@@ -10035,6 +10415,43 @@ async function fetchComponent(subdomain, id) {
   }
 }
 __name(fetchComponent, "fetchComponent");
+function extractTokens(name) {
+  const tokens = [];
+  const ascii = name.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
+  tokens.push(...ascii);
+  const cjkRuns = name.match(/[一-鿿]+/g) ?? [];
+  for (const run2 of cjkRuns) {
+    for (let i = 0; i + 2 <= run2.length; i++) tokens.push(run2.slice(i, i + 2));
+  }
+  return [...new Set(tokens)].slice(0, 8);
+}
+__name(extractTokens, "extractTokens");
+async function searchRegistryIds(registryBase, q) {
+  try {
+    const res = await fetch(`${registryBase}/components/search?q=${encodeURIComponent(q)}`, {
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return (body.data?.results ?? []).map((r) => r.canonical_id).filter((s) => !!s);
+  } catch {
+    return [];
+  }
+}
+__name(searchRegistryIds, "searchRegistryIds");
+async function searchSimilarComponents(registryBase, nodeName) {
+  const direct = await searchRegistryIds(registryBase, nodeName);
+  if (direct.length > 0) return direct.slice(0, 3);
+  const tokens = extractTokens(nodeName);
+  if (tokens.length === 0) return [];
+  const hits = await Promise.all(tokens.map((t) => searchRegistryIds(registryBase, t)));
+  const count3 = /* @__PURE__ */ new Map();
+  for (const ids of hits) {
+    for (const id of ids) count3.set(id, (count3.get(id) ?? 0) + 1);
+  }
+  return [...count3.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
+}
+__name(searchSimilarComponents, "searchSimilarComponents");
 
 // src/actions/graph-builder.ts
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
@@ -10071,12 +10488,12 @@ function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config2) {
 __name(buildExecutionGraph, "buildExecutionGraph");
 
 // src/actions/cypher-handlers.ts
-async function handleCypherSearch(triplets, env2) {
+async function handleCypherSearch(triplets, env2, mode = "discover", target) {
   const parsed = parseTriplets(triplets);
   if (!parsed) {
     throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE");
   }
-  const { nodeResults, missingNodes } = await searchNodes(parsed, void 0, env2);
+  const { nodeResults, missingNodes } = await searchNodes(parsed, void 0, env2, mode, target);
   const graph = buildExecutionGraph(parsed, nodeResults, "cypher-search-result", "Cypher Search Result");
   return { nodes: nodeResults, cypher: { nodes: graph.nodes, edges: graph.edges }, missing: missingNodes };
 }
@@ -10086,7 +10503,7 @@ async function handleCypherExecute(triplets, context2, graphId, graphName, confi
   if (!parsed) {
     throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE");
   }
-  const { nodeResults } = await searchNodes(parsed, config2, env2);
+  const { nodeResults } = await searchNodes(parsed, config2, env2, "compile");
   const graph = buildExecutionGraph(parsed, nodeResults, graphId, graphName, config2);
   const parseResult = graphSchema.safeParse(graph);
   if (!parseResult.success) {
@@ -10098,17 +10515,7 @@ async function handleCypherExecute(triplets, context2, graphId, graphName, confi
   try {
     const result = await executor.execute(parseResult.data, context2 ?? {}, env2.EXEC_CONTEXT);
     const duration_ms = Date.now() - start;
-    const componentId = graph.nodes.find((n) => n.componentId)?.componentId ?? graphId;
-    const runId = `${graphId}-${Date.now()}`;
-    waitUntil(writeEvaluation(env2, {
-      run_id: runId,
-      workflow_id: graphId,
-      component_id: componentId,
-      verdict: "success",
-      duration_ms,
-      evaluated_at: Date.now()
-    }));
-    waitUntil(updateComponentStats(env2, componentId, "success", duration_ms));
+    waitUntil(recordComponentStats(env2, graph.nodes, result.trace));
     return { success: true, data: result.data, trace: result.trace, duration_ms, graph };
   } catch (err) {
     const duration_ms = Date.now() - start;
@@ -10125,19 +10532,8 @@ async function handleCypherExecute(triplets, context2, graphId, graphName, confi
       };
     }
     const errMsg = err instanceof Error ? err.message : String(err);
-    const componentId = graph.nodes.find((n) => n.componentId)?.componentId ?? graphId;
-    const runId = `${graphId}-${Date.now()}`;
-    waitUntil(writeEvaluation(env2, {
-      run_id: runId,
-      workflow_id: graphId,
-      component_id: componentId,
-      verdict: "failed",
-      duration_ms,
-      error_message: errMsg.slice(0, 200),
-      evaluated_at: Date.now()
-    }));
-    waitUntil(updateComponentStats(env2, componentId, "failed", duration_ms));
     if (err instanceof ExecutionError) {
+      waitUntil(recordComponentStats(env2, graph.nodes, err.trace));
       const traceFormatted = err.trace.map((s) => ({
         node: s.nodeId,
         status: s.error ? "failed" : "success",
@@ -10157,19 +10553,130 @@ async function handleCypherExecute(triplets, context2, graphId, graphName, confi
 }
 __name(handleCypherExecute, "handleCypherExecute");
 
+// src/actions/target-search.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+init_component_loader();
+
+// src/lib/workflow-search.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+async function fetchTenantWorkflowSearch(env2, apiKey, q, mode = "semantic") {
+  const base = (env2.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+  const headers = { "Content-Type": "application/json" };
+  if (env2.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env2.KBDB_INTERNAL_TOKEN}`;
+  const params = new URLSearchParams({
+    q,
+    owner_id: apiKey,
+    // 租戶隔離（只搜本租戶的 workflow）
+    entry_type: "workflow",
+    // base 通用 filter（Q4），只回 workflow entry
+    mode
+  });
+  return fetch(`${base}/entries/search?${params.toString()}`, { headers });
+}
+__name(fetchTenantWorkflowSearch, "fetchTenantWorkflowSearch");
+
+// src/actions/target-search.ts
+async function searchByTarget(target, query, env2, apiKey) {
+  if (target === "component") {
+    const sub = env2.WORKER_SUBDOMAIN;
+    const registryBase = env2.REGISTRY_BASE_URL ?? (sub ? wasmWorkerUrl("registry", sub) : void 0);
+    if (!registryBase) return { ok: false, status: 502, error: "registry \u4F4D\u7F6E\u672A\u8A2D\u5B9A\uFF08WORKER_SUBDOMAIN\uFF0FREGISTRY_BASE_URL \u7686\u7F3A\uFF09" };
+    try {
+      const res2 = await fetch(
+        `${registryBase}/components/search?q=${encodeURIComponent(query)}`,
+        { signal: AbortSignal.timeout(1e4) }
+      );
+      if (!res2.ok) return { ok: false, status: 502, error: `registry \u641C\u5C0B\u5931\u6557\uFF08HTTP ${res2.status}\uFF09` };
+      const body2 = await res2.json();
+      return {
+        ok: true,
+        body: {
+          target,
+          query,
+          results: body2.data?.results ?? [],
+          count: body2.data?.count ?? 0
+        }
+      };
+    } catch (e) {
+      return { ok: false, status: 502, error: `registry \u67E5\u4E0D\u901A\uFF1A${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+  if (target === "recipe") {
+    if (!env2.RECIPES) return { ok: false, status: 502, error: "RECIPES KV \u672A\u7D81\u5B9A" };
+    const all = await listAllRecipes2(env2.RECIPES);
+    const q = query.toLowerCase();
+    const seen = /* @__PURE__ */ new Set();
+    const results = [];
+    for (const r of all) {
+      if (seen.has(r.canonical_id)) continue;
+      const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) continue;
+      seen.add(r.canonical_id);
+      results.push({
+        canonical_id: r.canonical_id,
+        display_name: r.display_name,
+        description: r.description,
+        endpoint: r.endpoint
+      });
+    }
+    return {
+      ok: true,
+      body: {
+        target,
+        query,
+        results,
+        count: results.length,
+        note: "\u641C\u7684\u662F\u672C\u90E8\u7F72\u79C1\u5EAB\uFF08workflow \u53EF\u76F4\u63A5 component: <canonical_id> \u5F15\u7528\uFF09\u3002\u516C\u5EAB\uFF08\u591A\u4F5C\u8005\u5E02\u5834\uFF09\u8D70 MCP arcrun_recipe_search\uFF0FGET /public-recipes\u3002"
+      }
+    };
+  }
+  if (!apiKey) return { ok: false, status: 401, error: "target=workflow \u9700\u8981 X-Arcrun-API-Key header\uFF08workflow \u641C\u5C0B\u9650\u672C\u79DF\u6236\uFF09" };
+  const res = await fetchTenantWorkflowSearch(env2, apiKey, query);
+  if (!res.ok) return { ok: false, status: 502, error: `workflow \u641C\u5C0B\u5931\u6557\uFF08KBDB HTTP ${res.status}\uFF09` };
+  const body = await res.json();
+  return { ok: true, body: { target, query, ...body } };
+}
+__name(searchByTarget, "searchByTarget");
+
 // src/routes/cypher.ts
 var cypherRouter = new Hono2();
+var VALID_TARGETS = /* @__PURE__ */ new Set(["component", "recipe", "workflow"]);
 cypherRouter.post("/cypher/search", async (c) => {
   const body = await c.req.json();
   const rawTriplets = body?.triplets;
+  const target = typeof body?.target === "string" ? body.target : void 0;
+  if (target !== void 0 && !VALID_TARGETS.has(target)) {
+    return c.json({ error: `target \u53EA\u63A5\u53D7 component\uFF0Frecipe\uFF0Fworkflow\uFF0C\u6536\u5230\u300C${target}\u300D` }, 400);
+  }
+  const query = typeof body?.query === "string" ? body.query.trim() : "";
+  if (query) {
+    if (!target) {
+      return c.json({ error: "\u7D66 query \u5FC5\u9808\u540C\u6642\u7D66 target\uFF08component\uFF0Frecipe\uFF0Fworkflow\uFF09\uFF0C\u6307\u660E\u8981\u641C\u54EA\u500B\u5EAB" }, 400);
+    }
+    const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
+    const r = await searchByTarget(target, query, c.env, apiKey);
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    return c.json(r.body);
+  }
   if (!Array.isArray(rawTriplets) || rawTriplets.length === 0) {
-    return c.json({ error: "triplets \u5FC5\u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217" }, 400);
+    return c.json({ error: "triplets \u5FC5\u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u6216\u7D66 query + target \u505A\u540D\u5B57\u641C\u5C0B\uFF09" }, 400);
+  }
+  const mode = body?.mode === "compile" ? "compile" : "discover";
+  if (target && mode === "compile") {
+    return c.json({ error: "mode=compile\uFF08\u8907\u88FD\u8DEF\u5F91\uFF09\u4E0D\u67E5\u5EAB\uFF0C\u4E0D\u63A5\u53D7 target\uFF1B\u8981\u6307\u5B9A\u641C\u5C0B\u5C0D\u8C61\u8ACB\u7528 discover\uFF08\u9810\u8A2D\uFF09" }, 400);
+  }
+  if (target === "workflow") {
+    return c.json({ error: 'target=workflow \u662F\u540D\u5B57\u641C\u5C0B\uFF0C\u8ACB\u6539\u5E36 { target: "workflow", query: "..." }\uFF08\u4E0D\u5403 triplets\uFF09' }, 400);
   }
   try {
     const now2 = /* @__PURE__ */ new Date();
     const timestamp = now2.toISOString();
     const versionId = `search-v1-${now2.getFullYear()}${String(now2.getMonth() + 1).padStart(2, "0")}${String(now2.getDate()).padStart(2, "0")}-${String(now2.getHours()).padStart(2, "0")}${String(now2.getMinutes()).padStart(2, "0")}${String(now2.getSeconds()).padStart(2, "0")}`;
-    const result = await handleCypherSearch(rawTriplets, c.env);
+    const result = await handleCypherSearch(rawTriplets, c.env, mode, target);
     const response = {
       version: versionId,
       timestamp,
@@ -11117,18 +11624,7 @@ webhooksNamedRouter.get("/workflows/search", async (c) => {
   const q = c.req.query("q");
   if (!q) return c.json({ error: "q \u5FC5\u586B\uFF1A\u7528\u81EA\u7136\u8A9E\u8A00\u63CF\u8FF0\u8981\u627E\u7684\u5DE5\u4F5C\u6D41\uFF08\u5982\u300C\u628A\u8CC7\u6599\u5BEB\u9032 Google Sheets\u300D\uFF09" }, 400);
   const mode = c.req.query("mode") === "keyword" ? "keyword" : "semantic";
-  const base = (c.env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
-  const headers = { "Content-Type": "application/json" };
-  if (c.env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
-  const params = new URLSearchParams({
-    q,
-    owner_id: apiKey,
-    // 租戶隔離（只搜本租戶的 workflow）
-    entry_type: "workflow",
-    // base 通用 filter（Q4），只回 workflow entry
-    mode
-  });
-  const res = await fetch(`${base}/entries/search?${params.toString()}`, { headers });
+  const res = await fetchTenantWorkflowSearch(c.env, apiKey, q, mode);
   return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
 });
 webhooksNamedRouter.post("/workflows/backfill-search-entries", async (c) => {
@@ -11340,6 +11836,22 @@ webhooksNamedRouter.post("/webhooks/named/:ns/:name/query", async (c) => {
 });
 webhooksNamedRouter.get("/q/:ns/:name", async (c) => {
   return queryNamed(c, c.req.param("ns"), c.req.param("name"), queryStringContext(c));
+});
+webhooksNamedRouter.get("/webhooks/named/:name/definition", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const name = c.req.param("name");
+  const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
+  if (!raw2) return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"` }, 404);
+  const rec = JSON.parse(raw2);
+  return c.json({
+    name: rec.name,
+    description: rec.description ?? "",
+    graph: rec.graph,
+    config: rec.config ?? {},
+    created_at: rec.created_at ?? "",
+    ...rec.cron_expr ? { cron_expr: rec.cron_expr } : {}
+  });
 });
 webhooksNamedRouter.get("/webhooks/named", async (c) => {
   const apiKey = c.req.header("X-Arcrun-API-Key");
@@ -13701,40 +14213,55 @@ portalRouter.get(
   })
 );
 portalRouter.post(
-  "/portal/admin/libraries",
+  "/portal/daemon/libraries",
   (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
     const body = await c.req.json().catch(() => null);
-    const name = String(body?.name ?? "").trim();
-    if (!isValidLibraryName(name) || name === "*") {
-      return c.json({ error: '\u5EAB\u540D\u9650 A-Za-z0-9_-\uFF081-64 \u5B57\u5143\uFF1B"*" \u662F\u4FDD\u7559\u503C\u4E0D\u53EF\u767B\u8A18\uFF09' }, 400);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    const items = Array.isArray(body?.libraries) ? body.libraries : [];
+    if (items.length === 0) return c.json({ success: true, registered: [], skipped: [] });
+    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
+    const recordId = await findUserRecordId(c.env, email);
+    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    if (!rec || (rec.values.status ?? "") !== "active" || !await verifyPassword(password, rec.values.password_hash ?? "")) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
+    await clearLoginFail(c.env, email);
     const seeded = await ensurePortalTemplates(c.env);
     if (seeded.errors.length > 0) {
       return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
     }
     const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    if (existing.some((l) => (l.values.name ?? "") === name)) {
-      return c.json({ error: `\u5EAB ${name} \u5DF2\u767B\u8A18` }, 409);
-    }
+    const have = new Set(existing.map((l) => l.values.name ?? ""));
     const ns = portalNamespace(c.env);
-    const res = await kbdbFetch(c.env, "/records", {
-      method: "POST",
-      body: JSON.stringify({
-        template: LIBRARY_TEMPLATE,
-        owner_id: ns,
-        values: {
-          name,
-          display_name: String(body?.display_name ?? "").trim() || name,
-          description: String(body?.description ?? "").trim(),
-          status: "active"
-        }
-      })
-    });
-    if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF09\u2192 ${res.status}`);
-    const created = await res.json();
-    return c.json({ success: true, library: created.record ? toPublicLibrary(created.record) : { name } });
+    const registered = [];
+    const skipped = [];
+    for (const it of items) {
+      const name = String(it?.name ?? "").trim();
+      const displayName = String(it?.display_name ?? "").trim() || name;
+      if (!isValidLibraryName(name) || name === "*") {
+        skipped.push(name || "(\u7A7A)");
+        continue;
+      }
+      if (have.has(name)) {
+        skipped.push(name);
+        continue;
+      }
+      const res = await kbdbFetch(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({
+          template: LIBRARY_TEMPLATE,
+          owner_id: ns,
+          values: { name, display_name: displayName, description: "", status: "active" }
+        })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF0Cdaemon \u767B\u8A18\uFF09\u2192 ${res.status}`);
+      have.add(name);
+      registered.push(name);
+    }
+    return c.json({ success: true, registered, skipped });
   })
 );
 portalRouter.patch(

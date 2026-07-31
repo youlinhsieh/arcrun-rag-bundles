@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/_internal/utils.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/_internal/utils.mjs
 // @__NO_SIDE_EFFECTS__
 function createNotImplementedError(name) {
   return new Error(`[unenv] ${name} is not implemented yet!`);
@@ -26,7 +26,7 @@ function notImplementedClass(name) {
 }
 __name(notImplementedClass, "notImplementedClass");
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
 var _timeOrigin = globalThis.performance?.timeOrigin ?? Date.now();
 var _performanceNow = globalThis.performance?.now ? globalThis.performance.now.bind(globalThis.performance) : () => Date.now() - _timeOrigin;
 var nodeTiming = {
@@ -264,7 +264,7 @@ var PerformanceObserver = class {
 };
 var performance = globalThis.performance && "addEventListener" in globalThis.performance ? globalThis.performance : new Performance();
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
 if (!("__unenv__" in performance)) {
   const proto = Performance.prototype;
   for (const key of Object.getOwnPropertyNames(proto)) {
@@ -285,14 +285,14 @@ globalThis.PerformanceObserver = PerformanceObserver;
 globalThis.PerformanceObserverEntryList = PerformanceObserverEntryList;
 globalThis.PerformanceResourceTiming = PerformanceResourceTiming;
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
 import { Writable } from "node:stream";
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/mock/noop.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/mock/noop.mjs
 var noop_default = Object.assign(() => {
 }, { __unenv__: true });
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
 var _console = globalThis.console;
 var _ignoreErrors = true;
 var _stderr = new Writable();
@@ -324,7 +324,7 @@ var _times = /* @__PURE__ */ new Map();
 var _stdoutErrorHandler = noop_default;
 var _stderrErrorHandler = noop_default;
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
 var workerdConsole = globalThis["console"];
 var {
   assert,
@@ -365,10 +365,10 @@ Object.assign(workerdConsole, {
 });
 var console_default = workerdConsole;
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/wrangler@4.83.0_@cloudflare+workers-types@4.20260414.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
+// node_modules/.pnpm/wrangler@4.83.0_@cloudflare+workers-types@4.20260414.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
 globalThis.console = console_default;
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
 var hrtime = /* @__PURE__ */ Object.assign(/* @__PURE__ */ __name(function hrtime2(startTime) {
   const now = Date.now();
   const seconds = Math.trunc(now / 1e3);
@@ -387,10 +387,10 @@ var hrtime = /* @__PURE__ */ Object.assign(/* @__PURE__ */ __name(function hrtim
   return BigInt(Date.now() * 1e6);
 }, "bigint") });
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
 import { EventEmitter } from "node:events";
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
 var ReadStream = class {
   static {
     __name(this, "ReadStream");
@@ -407,7 +407,7 @@ var ReadStream = class {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
 var WriteStream = class {
   static {
     __name(this, "WriteStream");
@@ -457,10 +457,10 @@ var WriteStream = class {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
 var NODE_VERSION = "22.14.0";
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
+// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
 var Process = class _Process extends EventEmitter {
   static {
     __name(this, "Process");
@@ -695,7 +695,7 @@ var Process = class _Process extends EventEmitter {
   _linkedBinding = void 0;
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
 var globalProcess = globalThis["process"];
 var getBuiltinModule = globalProcess.getBuiltinModule;
 var workerdProcess = getBuiltinModule("node:process");
@@ -925,10 +925,10 @@ var _process = {
 };
 var process_default = _process;
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/wrangler@4.83.0_@cloudflare+workers-types@4.20260414.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
+// node_modules/.pnpm/wrangler@4.83.0_@cloudflare+workers-types@4.20260414.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
 globalThis.process = process_default;
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/compose.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/compose.js
 var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
   return (context2, next) => {
     let index = -1;
@@ -973,10 +973,10 @@ var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
   };
 }, "compose");
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/request/constants.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/utils/body.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/utils/body.js
 var parseBody = /* @__PURE__ */ __name(async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -1050,7 +1050,7 @@ var handleParsingNestedValues = /* @__PURE__ */ __name((form, key, value) => {
   });
 }, "handleParsingNestedValues");
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/utils/url.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/utils/url.js
 var splitPath = /* @__PURE__ */ __name((path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -1254,7 +1254,7 @@ var getQueryParams = /* @__PURE__ */ __name((url, key) => {
 }, "getQueryParams");
 var decodeURIComponent_ = decodeURIComponent;
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/request.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = /* @__PURE__ */ __name((str) => tryDecode(str, decodeURIComponent_), "tryDecodeURIComponent");
 var HonoRequest = class {
   static {
@@ -1525,7 +1525,7 @@ var HonoRequest = class {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/utils/html.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -1567,7 +1567,7 @@ var resolveCallback = /* @__PURE__ */ __name(async (str, phase, preserveCallback
   }
 }, "resolveCallback");
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/context.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = /* @__PURE__ */ __name((contentType, headers) => {
   return {
@@ -1977,7 +1977,7 @@ var Context = class {
   }, "notFound");
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1988,10 +1988,10 @@ var UnsupportedPathError = class extends Error {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/utils/constants.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/hono-base.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/hono-base.js
 var notFoundHandler = /* @__PURE__ */ __name((c) => {
   return c.text("404 Not Found", 404);
 }, "notFoundHandler");
@@ -2099,14 +2099,14 @@ var Hono = class _Hono {
    * app.route("/api", app2) // GET /api/user
    * ```
    */
-  route(path, app7) {
+  route(path, app8) {
     const subApp = this.basePath(path);
-    app7.routes.map((r) => {
+    app8.routes.map((r) => {
       let handler;
-      if (app7.errorHandler === errorHandler) {
+      if (app8.errorHandler === errorHandler) {
         handler = r.handler;
       } else {
-        handler = /* @__PURE__ */ __name(async (c, next) => (await compose([], app7.errorHandler)(c, () => r.handler(c, next))).res, "handler");
+        handler = /* @__PURE__ */ __name(async (c, next) => (await compose([], app8.errorHandler)(c, () => r.handler(c, next))).res, "handler");
         handler[COMPOSED_HANDLER] = r.handler;
       }
       subApp.#addRoute(r.method, r.path, handler);
@@ -2365,7 +2365,7 @@ var Hono = class _Hono {
   }, "fire");
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
@@ -2387,7 +2387,7 @@ function match(method, path) {
 }
 __name(match, "match");
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/reg-exp-router/node.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -2499,7 +2499,7 @@ var Node = class _Node {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/reg-exp-router/trie.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   static {
     __name(this, "Trie");
@@ -2558,7 +2558,7 @@ var Trie = class {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/reg-exp-router/router.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -2744,7 +2744,7 @@ var RegExpRouter = class {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/smart-router/router.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   static {
     __name(this, "SmartRouter");
@@ -2802,7 +2802,7 @@ var SmartRouter = class {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/trie-router/node.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = /* @__PURE__ */ __name((children) => {
   for (const _ in children) {
@@ -2980,7 +2980,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/trie-router/router.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   static {
     __name(this, "TrieRouter");
@@ -3005,7 +3005,7 @@ var TrieRouter = class {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/hono.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   static {
     __name(this, "Hono");
@@ -3023,7 +3023,7 @@ var Hono2 = class extends Hono {
   }
 };
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/middleware/cors/index.js
+// node_modules/.pnpm/hono@4.12.12/node_modules/hono/dist/middleware/cors/index.js
 var cors = /* @__PURE__ */ __name((options) => {
   const defaults = {
     origin: "*",
@@ -3356,7 +3356,7 @@ app.get("/", (c) => {
 });
 var guide_default = app;
 
-// ../../../../Users/youlinhsieh/Documents/tech_projects/InkStoneCo/matrix/arcrun/registry/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 var util;
 (function(util2) {
   util2.assertEqual = (val) => val;
@@ -8110,13 +8110,40 @@ function toComponentRecord(v) {
     avg_duration_ms: parseFloat(String(v.avg_duration_ms ?? "0")),
     call_count: parseInt(String(v.call_count ?? "0"), 10),
     wasm_r2_key: v.wasm_r2_key ? String(v.wasm_r2_key) : void 0,
-    score: computeScore(v)
+    score: computeScore(v),
+    input_schema: isPlainObject(v.input_schema) ? v.input_schema : void 0,
+    output_schema: isPlainObject(v.output_schema) ? v.output_schema : void 0
   };
 }
 __name(toComponentRecord, "toComponentRecord");
+function isPlainObject(x) {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+__name(isPlainObject, "isPlainObject");
 
 // src/routes/query.ts
 var app4 = new Hono2();
+app4.get("/catalog", async (c) => {
+  const list = await c.env.SUBMISSIONS_KV.list({ prefix: "comp:" });
+  const seen = /* @__PURE__ */ new Set();
+  const components = [];
+  for (const key of list.keys) {
+    const raw2 = await c.env.SUBMISSIONS_KV.get(key.name);
+    if (!raw2) continue;
+    let v;
+    try {
+      v = JSON.parse(raw2);
+    } catch {
+      continue;
+    }
+    if (v.status === "tombstone" || v.visibility !== "public") continue;
+    const dedup = `${String(v.component_hash_id ?? "")}:${String(v.version ?? "")}`;
+    if (seen.has(dedup)) continue;
+    seen.add(dedup);
+    components.push(toComponentRecord(v));
+  }
+  return c.json({ success: true, data: { components, count: components.length } });
+});
 app4.get("/search", async (c) => {
   const q = c.req.query("q");
   if (!q || q.trim() === "") {
@@ -8168,16 +8195,114 @@ app5.post("/", async (c) => {
 });
 var init_default = app5;
 
-// src/index.ts
+// src/actions/recordAnalytics.ts
+async function recordAnalytics(input, env2) {
+  const hashId = input.canonical_id.startsWith("cmp_") ? input.canonical_id : await env2.SUBMISSIONS_KV.get(`idx:${input.canonical_id}`);
+  if (!hashId) {
+    return { ok: false, error: `\u96F6\u4EF6 ${input.canonical_id} \u4E0D\u5728\u7D22\u5F15` };
+  }
+  const list = await env2.SUBMISSIONS_KV.list({ prefix: `comp:${hashId}:` });
+  let targetKey = null;
+  let targetRecord = null;
+  let bestScore = -Infinity;
+  for (const key of list.keys) {
+    const raw2 = await env2.SUBMISSIONS_KV.get(key.name);
+    if (!raw2) continue;
+    let v;
+    try {
+      v = JSON.parse(raw2);
+    } catch {
+      continue;
+    }
+    if (v.status === "tombstone") continue;
+    if (input.version) {
+      if (String(v.version) === input.version) {
+        targetKey = key.name;
+        targetRecord = v;
+        break;
+      }
+      continue;
+    }
+    const score = computeScore(v);
+    if (score > bestScore) {
+      bestScore = score;
+      targetKey = key.name;
+      targetRecord = v;
+    }
+  }
+  if (!targetKey || !targetRecord) {
+    return { ok: false, error: `\u96F6\u4EF6 ${input.canonical_id} \u7121\u53EF\u7528\u7248\u672C\u8A18\u9304` };
+  }
+  const version2 = String(targetRecord.version ?? "v1");
+  const canonicalId = String(targetRecord.canonical_id ?? input.canonical_id);
+  const statsKey = `stats:${hashId}:${version2}`;
+  let counters = { total_runs: 0, success_runs: 0, total_ms: 0 };
+  const rawStats = await env2.ANALYTICS_KV.get(statsKey);
+  if (rawStats) {
+    try {
+      const parsed = JSON.parse(rawStats);
+      counters = {
+        total_runs: Number(parsed.total_runs) || 0,
+        success_runs: Number(parsed.success_runs) || 0,
+        total_ms: Number(parsed.total_ms) || 0
+      };
+    } catch {
+    }
+  }
+  counters.total_runs += 1;
+  counters.success_runs += input.success ? 1 : 0;
+  counters.total_ms += Math.max(0, Number(input.duration_ms) || 0);
+  await env2.ANALYTICS_KV.put(statsKey, JSON.stringify(counters));
+  const successRate = counters.success_runs / counters.total_runs;
+  const avgDurationMs = Math.round(counters.total_ms / counters.total_runs);
+  targetRecord.success_rate = successRate;
+  targetRecord.avg_duration_ms = avgDurationMs;
+  targetRecord.call_count = counters.total_runs;
+  await env2.SUBMISSIONS_KV.put(targetKey, JSON.stringify(targetRecord));
+  return {
+    ok: true,
+    canonical_id: canonicalId,
+    version: version2,
+    total_runs: counters.total_runs,
+    success_runs: counters.success_runs,
+    success_rate: successRate,
+    avg_duration_ms: avgDurationMs
+  };
+}
+__name(recordAnalytics, "recordAnalytics");
+
+// src/routes/analytics.ts
 var app6 = new Hono2();
-app6.use("*", cors());
-app6.get("/", (c) => c.json({ service: "component-registry", version: "1.0.0", status: "ok" }));
-app6.route("/components/guide", guide_default);
-app6.route("/components/validate-contract", validateContract_default);
-app6.route("/components", query_default);
-app6.route("/components", components_default);
-app6.route("/init", init_default);
-var index_default = app6;
+app6.post("/record", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.canonical_id !== "string" || body.canonical_id.trim() === "") {
+    return c.json({ ok: false, error: "canonical_id \u5FC5\u586B" }, 400);
+  }
+  if (typeof body.success !== "boolean") {
+    return c.json({ ok: false, error: "success \u5FC5\u9808\u70BA boolean" }, 400);
+  }
+  const result = await recordAnalytics({
+    canonical_id: body.canonical_id.trim(),
+    version: typeof body.version === "string" && body.version !== "" ? body.version : void 0,
+    success: body.success,
+    duration_ms: typeof body.duration_ms === "number" ? body.duration_ms : 0
+  }, c.env);
+  if (!result.ok) return c.json(result, 404);
+  return c.json(result);
+});
+var analytics_default = app6;
+
+// src/index.ts
+var app7 = new Hono2();
+app7.use("*", cors());
+app7.get("/", (c) => c.json({ service: "component-registry", version: "1.0.0", status: "ok" }));
+app7.route("/components/guide", guide_default);
+app7.route("/components/validate-contract", validateContract_default);
+app7.route("/components", query_default);
+app7.route("/components", components_default);
+app7.route("/init", init_default);
+app7.route("/analytics", analytics_default);
+var index_default = app7;
 export {
   index_default as default
 };
