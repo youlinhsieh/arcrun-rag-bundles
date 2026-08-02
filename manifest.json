@@ -1,7 +1,7 @@
 {
  "schema": "arcrun-rag-bundles/v1",
- "release": "1.4.2",
- "fingerprint": "97435ba445964b5be8c4f470a113e63ed96cbf916a710d1d6b673b3910ab681e",
+ "release": "1.4.3",
+ "fingerprint": "d585b208dbdb46f052e145d8b962b95900c3c9d87b589bcb3ff5ddaa6d696584",
  "built": "2026-08-02",
  "source": "Arcrun@36cdc8f",
  "daemon": {
@@ -595,7 +595,7 @@
    "tier": 2,
    "main_file": "tier2/kbdb/index.js",
    "main_module": "index.js",
-   "sha256": "9e591e684232fbbf86a4949fa9276a79278e1f01b73ae3fbf264832426543107",
+   "sha256": "ab879f093cb227bf27f7477f04ce71dec5322cebd4f8df934434e76451f90cca",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat"
@@ -614,7 +614,7 @@
     }
    },
    "stripped_services": [],
-   "bytes": 127818
+   "bytes": 105841
   },
   {
    "name": "arcrun-registry",
