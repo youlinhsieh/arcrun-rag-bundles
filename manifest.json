@@ -1,7 +1,7 @@
 {
  "schema": "arcrun-rag-bundles/v1",
- "release": "1.4.1",
- "fingerprint": "8944c301cf3a4229987b0a92c5facff12b0effb3c39edbad5a6ef80f87e9dfef",
+ "release": "1.4.2",
+ "fingerprint": "97435ba445964b5be8c4f470a113e63ed96cbf916a710d1d6b673b3910ab681e",
  "built": "2026-08-02",
  "source": "Arcrun@36cdc8f",
  "daemon": {
@@ -672,7 +672,7 @@
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "1c044075a41969786a4da4cb9f07cddb2387f2dbad27a3a076afb4ddbdaf9042",
+   "sha256": "a806bd13f5487390b1ea2c4e77937e0d7569b66392ce73c0c0e862ad31c530c4",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],
@@ -682,7 +682,7 @@
     "ai": false,
     "vars": {}
    },
-   "bytes": 487616
+   "bytes": 488328
   }
  ]
 }
