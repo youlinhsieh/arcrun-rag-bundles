@@ -4,6 +4,19 @@
  "fingerprint": "8944c301cf3a4229987b0a92c5facff12b0effb3c39edbad5a6ef80f87e9dfef",
  "built": "2026-08-02",
  "source": "Arcrun@36cdc8f",
+ "daemon": {
+  "version": "v0.15.1",
+  "built": "20260802-2046",
+  "notes": "CIS 品牌 icon 落地（先前 zip 早於 icon commit 5 小時，發出去的還是舊圖）",
+  "mac": {
+   "file": "daemon/ArcrunRAG-mac-unsigned.zip",
+   "sha256": "4e1e581fb737a85b6f03ae8f17f4da0a8a6fb78a7601100539f931e7ead8efff"
+  },
+  "win": {
+   "file": "daemon/ArcrunRAG-win-unsigned.zip",
+   "sha256": "3325723220da8fe202c1178c5f52b2d6b9e31abc74ba98d12eb553b55ddfda54"
+  }
+ },
  "core": [
   {
    "name": "arcrun-array-ops",
