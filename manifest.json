@@ -1,6 +1,8 @@
 {
  "schema": "arcrun-rag-bundles/v1",
- "built": "2026-07-31",
+ "release": "1.4.0",
+ "fingerprint": "b918cb323d29978829b55ffe89a4394e0475382d6eebbacd2c96a19c837a055a",
+ "built": "2026-08-02",
  "source": "Arcrun@eefbed9",
  "core": [
   {
@@ -26,7 +28,8 @@
     "vars": {
      "COMPONENT_ID": "array_ops"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-auth-oauth2",
@@ -56,7 +59,8 @@
     "vars": {
      "COMPONENT_ID": "auth_oauth2"
     }
-   }
+   },
+   "bytes": 106357
   },
   {
    "name": "arcrun-auth-service-account",
@@ -86,7 +90,8 @@
     "vars": {
      "COMPONENT_ID": "auth_service_account"
     }
-   }
+   },
+   "bytes": 108254
   },
   {
    "name": "arcrun-auth-static-key",
@@ -116,7 +121,8 @@
     "vars": {
      "COMPONENT_ID": "auth_static_key"
     }
-   }
+   },
+   "bytes": 107843
   },
   {
    "name": "arcrun-cron",
@@ -143,7 +149,8 @@
     "vars": {
      "COMPONENT_ID": "cron"
     }
-   }
+   },
+   "bytes": 105381
   },
   {
    "name": "arcrun-date-ops",
@@ -168,7 +175,8 @@
     "vars": {
      "COMPONENT_ID": "date_ops"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-filter",
@@ -193,7 +201,8 @@
     "vars": {
      "COMPONENT_ID": "filter"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-foreach-control",
@@ -218,7 +227,8 @@
     "vars": {
      "COMPONENT_ID": "foreach_control"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-http-request",
@@ -246,7 +256,8 @@
     "vars": {
      "COMPONENT_ID": "http_request"
     }
-   }
+   },
+   "bytes": 106424
   },
   {
    "name": "arcrun-if-control",
@@ -271,7 +282,8 @@
     "vars": {
      "COMPONENT_ID": "if_control"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-merge",
@@ -296,7 +308,8 @@
     "vars": {
      "COMPONENT_ID": "merge"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-number-ops",
@@ -321,7 +334,8 @@
     "vars": {
      "COMPONENT_ID": "number_ops"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-set",
@@ -346,7 +360,8 @@
     "vars": {
      "COMPONENT_ID": "set"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-string-ops",
@@ -371,7 +386,8 @@
     "vars": {
      "COMPONENT_ID": "string_ops"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-switch",
@@ -396,7 +412,8 @@
     "vars": {
      "COMPONENT_ID": "switch"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-try-catch",
@@ -421,7 +438,8 @@
     "vars": {
      "COMPONENT_ID": "try_catch"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-validate-json",
@@ -446,7 +464,8 @@
     "vars": {
      "COMPONENT_ID": "validate_json"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-wait",
@@ -471,7 +490,8 @@
     "vars": {
      "COMPONENT_ID": "wait"
     }
-   }
+   },
+   "bytes": 71642
   },
   {
    "name": "arcrun-code",
@@ -496,7 +516,8 @@
     "vars": {
      "COMPONENT_ID": "code"
     }
-   }
+   },
+   "bytes": 168842
   },
   {
    "name": "arcrun-cypher-executor",
@@ -553,7 +574,8 @@
     "SVC_NUMBER_OPS",
     "SVC_DATE_OPS",
     "SVC_VALIDATE_JSON"
-   ]
+   ],
+   "bytes": 577900
   },
   {
    "name": "arcrun-kbdb",
@@ -578,7 +600,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "stripped_services": []
+   "stripped_services": [],
+   "bytes": 127818
   },
   {
    "name": "arcrun-registry",
@@ -602,7 +625,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "stripped_services": []
+   "stripped_services": [],
+   "bytes": 250971
   },
   {
    "name": "arcrun-mcp",
@@ -627,14 +651,15 @@
     "COMPONENT_REGISTRY",
     "CYPHER_EXECUTOR",
     "KBDB"
-   ]
+   ],
+   "bytes": 1303925
   },
   {
    "name": "arcrun-rag-ui",
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "fbaa932ae5120fdc1fbfc59f5cdca58833abf9f4568b23152f9f9dbd53e29dc7",
+   "sha256": "1c044075a41969786a4da4cb9f07cddb2387f2dbad27a3a076afb4ddbdaf9042",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],
@@ -643,20 +668,8 @@
     "d1": [],
     "ai": false,
     "vars": {}
-   }
+   },
+   "bytes": 487616
   }
- ],
- "daemon": {
-  "version": "v0.15.0",
-  "built": "20260729-2238",
-  "notes": "t149 多帳號同步修復＋t150 版本一致性（collector 與 tray 同版）",
-  "mac": {
-   "file": "daemon/ArcrunRAG-mac-unsigned.zip",
-   "sha256": "2974c172440960924dbe089757ad0bf37f6288b86d83e39abd169a9966413d46"
-  },
-  "win": {
-   "file": "daemon/ArcrunRAG-win-unsigned.zip",
-   "sha256": "1191af74b3c841536f08625d2449fa4add3e829c93d5cebc391da59e6f7e05a6"
-  }
- }
+ ]
 }
