@@ -1,9 +1,9 @@
 {
  "schema": "arcrun-rag-bundles/v1",
- "release": "1.4.0",
- "fingerprint": "b918cb323d29978829b55ffe89a4394e0475382d6eebbacd2c96a19c837a055a",
+ "release": "1.4.1",
+ "fingerprint": "8944c301cf3a4229987b0a92c5facff12b0effb3c39edbad5a6ef80f87e9dfef",
  "built": "2026-08-02",
- "source": "Arcrun@eefbed9",
+ "source": "Arcrun@36cdc8f",
  "core": [
   {
    "name": "arcrun-array-ops",
@@ -524,7 +524,7 @@
    "tier": 2,
    "main_file": "tier2/cypher/index.js",
    "main_module": "index.js",
-   "sha256": "0e03e7f1093e115865a7c8f38335f5e30747c53113fd96df2bc73d0135823a6d",
+   "sha256": "e0abee47bcbfe9cd2460a809ea1f5adfea8088571932befbbbbcbd6b37c9d68d",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat",
@@ -575,7 +575,7 @@
     "SVC_DATE_OPS",
     "SVC_VALIDATE_JSON"
    ],
-   "bytes": 577900
+   "bytes": 517719
   },
   {
    "name": "arcrun-kbdb",
