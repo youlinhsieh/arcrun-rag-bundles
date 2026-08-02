@@ -8128,6 +8128,24 @@ var init_graph_executor = __esm({
                 const itemResult = await this.executeNode(nextNode, graph, itemContext, /* @__PURE__ */ new Set(), trace, fanIn, kvStore);
                 iterResults.push(itemResult);
               }
+              if (iterResults.length > 0) {
+                const failures = iterResults.filter(
+                  (r) => r !== null && typeof r === "object" && r.success === false
+                );
+                if (failures.length === iterResults.length) {
+                  const first = failures[0];
+                  const errParts = [];
+                  if (first.error) errParts.push(String(first.error));
+                  if (typeof first.status === "number") errParts.push(`HTTP ${first.status}`);
+                  const bodyData = first.data;
+                  if (bodyData && typeof bodyData.body === "string" && bodyData.body) {
+                    errParts.push(bodyData.body.slice(0, 200));
+                  }
+                  throw new Error(
+                    `FOREACH \u6240\u6709 ${iterResults.length} \u9805\u76EE\u5747\u5931\u6557\uFF08\u9996\u9805\uFF1A${errParts.join("\uFF1B") || "\u672A\u77E5\u932F\u8AA4"}\uFF09`
+                  );
+                }
+              }
               result = { ...result, results: iterResults };
               break;
             }
@@ -12292,6 +12310,33 @@ var PORTAL_TEMPLATE_SEEDS = [
     description: "RAG Portal \u5EAB\u76EE\u9304\u767B\u8A18\uFF08portal-auth \xA73.2\uFF1B\u5EAB\uFF1Dmetadata_json.$.library \u6A19\u8A18\uFF09",
     slots: ["name", "display_name", "description", "status", "graph_source"],
     created_by: "system"
+  },
+  {
+    // t130：rag_ingest_card.post_triplet 寫 POST /records {template:'triplet'}。
+    // 新實例若無此 template 回 400「template not found: triplet」→ 三元組全滅。
+    // slots 來源：kbdb_list_templates 核實（2026-07-19，library-map.test.ts PROD_TRIPLET_SLOTS）
+    // + library（library-map.ts M1 預案：recompute 歸庫用，ensurePortalTemplates 若缺則 PATCH 補入）。
+    name: "triplet",
+    description: "KBDB \u77E5\u8B58\u5716\u8B5C\u4E09\u5143\u7D44\uFF08kbdb-graph-plugin \u5BEB\u5165\uFF1Bportal \u8B80\u6B64 template \u5EFA\u9130\u63A5\u5716\uFF09",
+    slots: [
+      "subject",
+      "predicate",
+      "object",
+      "source_block_id",
+      "confidence",
+      "clusters_json",
+      "bridge_score",
+      "subject_entity_type",
+      "object_entity_type",
+      "status",
+      "superseded_by",
+      "source_uri",
+      "content_hash",
+      "source_anchor",
+      "predicate_embed",
+      "library"
+    ],
+    created_by: "system"
   }
 ];
 
@@ -12415,6 +12460,15 @@ async function patchRecordValues(env, recordId, values) {
   const body = await res.json();
   if (!body.record) throw new KbdbError(`PATCH /records/${recordId} \u56DE\u61C9\u7F3A record`);
   return body.record;
+}
+async function deleteKbdbRecord(env, recordId) {
+  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
+  if (res.status === 404) return false;
+  if (!res.ok) throw new KbdbError(`DELETE /records/${recordId} \u2192 ${res.status}`);
+  return true;
+}
+function daemonActiveKey(env) {
+  return `${portalTenant(env)}:portal:daemon_active_libs`;
 }
 async function listRecordsByTemplate(env, template) {
   const ns = portalNamespace(env);
@@ -12636,6 +12690,8 @@ portalRouter.get(
     return c.json({
       valid: true,
       display_name: v.display_name ?? "",
+      email: v.email ?? "",
+      // t53：完成安裝清單在站內生 daemon config.json 要用（身分顯示欄）
       role,
       libraries,
       graph_allowed: await hasGraphAccess(c.env, libraries),
@@ -12816,13 +12872,379 @@ function toPublicLibrary(rec) {
     graph_source: (v.graph_source ?? "") === "true"
   };
 }
+portalRouter.post(
+  "/portal/daemon/libraries",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
+    const recordId = await findUserRecordId(c.env, email);
+    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    if (!rec || (rec.values.status ?? "") !== "active" || !await verifyPassword(password, rec.values.password_hash ?? "")) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    await clearLoginFail(c.env, email);
+    const wanted = Array.isArray(body?.libraries) ? body.libraries : [];
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const have = new Set(existing.map((l) => String(l.values.name ?? "")));
+    const ns = portalNamespace(c.env);
+    const created = [];
+    for (const item of wanted) {
+      const name = String(item?.name ?? "").trim();
+      if (!isValidLibraryName(name) || name === "*" || have.has(name)) continue;
+      const res = await kbdbFetch(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({
+          template: LIBRARY_TEMPLATE,
+          owner_id: ns,
+          values: {
+            name,
+            display_name: String(item?.display_name ?? "").trim() || name,
+            description: "\u540C\u6B65\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u8CC7\u6599\u593E",
+            status: "active"
+          }
+        })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF09\u2192 ${res.status}`);
+      have.add(name);
+      created.push(name);
+    }
+    const after = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const activeNames = wanted.map((item) => String(item?.name ?? "").trim()).filter(Boolean);
+    if (activeNames.length > 0) {
+      await c.env.WEBHOOKS.put(daemonActiveKey(c.env), JSON.stringify(activeNames), { expirationTtl: 172800 });
+    }
+    return c.json({ success: true, created, libraries: after.map(toPublicLibrary) });
+  })
+);
+function extractorConfigKey(env) {
+  return `${portalTenant(env)}:portal:extractor_config`;
+}
+async function getExtractorConfig(env) {
+  const raw2 = await env.WEBHOOKS.get(extractorConfigKey(env), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+portalRouter.post(
+  "/portal/daemon/config",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    if (await isLocked(c.env, email)) {
+      return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
+    }
+    const recordId = await findUserRecordId(c.env, email);
+    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    if (!rec) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    if ((rec.values.status ?? "") !== "active") return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
+    if (!await verifyPassword(password, rec.values.password_hash ?? "")) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    await clearLoginFail(c.env, email);
+    const tenant2 = portalTenant(c.env);
+    const extractorCfg = await getExtractorConfig(c.env);
+    const engine = extractorCfg?.engine ?? "gemma";
+    const daemonCfg = {
+      cypher_url: new URL(c.req.url).origin,
+      namespace: tenant2,
+      library: "kb",
+      extractor: engine,
+      email,
+      instance_name: String(rec.values.display_name ?? "")
+    };
+    if (engine === "gemma" && extractorCfg?.gemini_api_key) {
+      daemonCfg.gemini_api_key = extractorCfg.gemini_api_key;
+    }
+    if (extractorCfg?.llm_model) daemonCfg.llm_model = extractorCfg.llm_model;
+    return c.json({ success: true, config: daemonCfg });
+  })
+);
+function aiConfigKey(env) {
+  return `${portalTenant(env)}:portal:ai_config`;
+}
+function daemonCapsKey(env) {
+  return `${portalTenant(env)}:portal:daemon_caps`;
+}
+async function getAiConfig(env) {
+  const raw2 = await env.WEBHOOKS.get(aiConfigKey(env), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function getDaemonCaps(env) {
+  const raw2 = await env.WEBHOOKS.get(daemonCapsKey(env), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function syncExtractorFromAiConfig(env, cfg) {
+  const exCfg = {
+    engine: cfg.use_claude_for_extract ? "claude" : "gemma"
+  };
+  if (!cfg.use_claude_for_extract && cfg.gemini_api_key) {
+    exCfg.gemini_api_key = cfg.gemini_api_key;
+  }
+  await env.WEBHOOKS.put(extractorConfigKey(env), JSON.stringify(exCfg));
+}
+portalRouter.post(
+  "/portal/admin/ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const newKey = String(body?.gemini_api_key ?? "").trim();
+    const useClause = typeof body?.use_claude_for_extract === "boolean" ? body.use_claude_for_extract : void 0;
+    const existing = await getAiConfig(c.env) ?? {};
+    const merged = {
+      gemini_api_key: newKey || existing.gemini_api_key,
+      use_claude_for_extract: useClause !== void 0 ? useClause : existing.use_claude_for_extract ?? false
+    };
+    if (!merged.gemini_api_key) return c.json({ error: "\u8ACB\u8CBC\u4E0A\u4F60\u7684 Gemini API Key" }, 400);
+    if (newKey) {
+      const tenant2 = portalTenant(c.env);
+      const kvKey2 = `${tenant2}:wf:rag_chat`;
+      const raw2 = await c.env.WEBHOOKS.get(kvKey2, "text");
+      if (raw2) {
+        try {
+          const record = JSON.parse(raw2);
+          const visit = (o) => {
+            if (Array.isArray(o)) {
+              o.forEach(visit);
+              return;
+            }
+            if (o && typeof o === "object") {
+              const rec = o;
+              for (const k of Object.keys(rec)) {
+                if (k.toLowerCase() === "x-goog-api-key") {
+                  rec[k] = newKey;
+                } else visit(rec[k]);
+              }
+            }
+          };
+          visit(record["graph"]);
+          visit(record["config"]);
+          await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
+        } catch {
+        }
+      }
+    }
+    await c.env.WEBHOOKS.put(aiConfigKey(c.env), JSON.stringify(merged));
+    await syncExtractorFromAiConfig(c.env, merged);
+    return c.json({
+      success: true,
+      has_key: true,
+      use_claude_for_extract: merged.use_claude_for_extract ?? false
+    });
+  })
+);
+portalRouter.get(
+  "/portal/admin/ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const cfg = await getAiConfig(c.env);
+    const caps = await getDaemonCaps(c.env);
+    return c.json({
+      success: true,
+      has_key: !!cfg?.gemini_api_key,
+      use_claude_for_extract: cfg?.use_claude_for_extract ?? false,
+      claude_available: caps?.has_claude ?? false
+    });
+  })
+);
+portalRouter.post(
+  "/portal/daemon/report-capabilities",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A" }, 429);
+    const recordId = await findUserRecordId(c.env, email);
+    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    if (!rec) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    if ((rec.values.status ?? "") !== "active") return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
+    if (!await verifyPassword(password, rec.values.password_hash ?? "")) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    await clearLoginFail(c.env, email);
+    const caps = {
+      has_claude: body?.has_claude === true,
+      ...body?.daemon_version ? { daemon_version: String(body.daemon_version) } : {},
+      ...body?.os ? { os: String(body.os) } : {}
+    };
+    const TTL_7D = 7 * 24 * 60 * 60;
+    await c.env.WEBHOOKS.put(daemonCapsKey(c.env), JSON.stringify(caps), { expirationTtl: TTL_7D });
+    return c.json({ success: true });
+  })
+);
+portalRouter.post(
+  "/portal/admin/chat-key",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const key = String(body?.key ?? "").trim();
+    if (!key) return c.json({ error: "\u8ACB\u8CBC\u4E0A\u4F60\u7684 Google AI \u91D1\u9470" }, 400);
+    const tenant2 = portalTenant(c.env);
+    const kvKey2 = `${tenant2}:wf:rag_chat`;
+    const raw2 = await c.env.WEBHOOKS.get(kvKey2, "text");
+    if (!raw2) return c.json({ error: "\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u5B89\u88DD AI \u554F\u7B54\u5DE5\u4F5C\u6D41" }, 404);
+    let record;
+    try {
+      record = JSON.parse(raw2);
+    } catch {
+      return c.json({ error: "AI \u554F\u7B54\u5DE5\u4F5C\u6D41\u8A18\u9304\u640D\u58DE\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD" }, 500);
+    }
+    let replaced = 0;
+    const visit = (o) => {
+      if (Array.isArray(o)) {
+        o.forEach(visit);
+        return;
+      }
+      if (o && typeof o === "object") {
+        const rec = o;
+        for (const k of Object.keys(rec)) {
+          if (k.toLowerCase() === "x-goog-api-key") {
+            rec[k] = key;
+            replaced += 1;
+          } else visit(rec[k]);
+        }
+      }
+    };
+    visit(record["graph"]);
+    visit(record["config"]);
+    if (replaced === 0) return c.json({ error: "\u5DE5\u4F5C\u6D41\u88E1\u627E\u4E0D\u5230\u91D1\u9470\u6B04\u4F4D\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD\u5F8C\u518D\u8A66" }, 500);
+    await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
+    return c.json({ success: true, replaced });
+  })
+);
+portalRouter.post(
+  "/portal/admin/extractor",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const engine = String(body?.engine ?? "").trim().toLowerCase();
+    if (engine !== "gemma" && engine !== "claude") {
+      return c.json({ error: "engine \u53EA\u80FD\u662F gemma \u6216 claude" }, 400);
+    }
+    const cfg = { engine };
+    if (engine === "gemma") {
+      const key = String(body?.gemini_api_key ?? "").trim();
+      if (key) cfg.gemini_api_key = key;
+    }
+    const model = String(body?.llm_model ?? "").trim();
+    if (model) cfg.llm_model = model;
+    await c.env.WEBHOOKS.put(extractorConfigKey(c.env), JSON.stringify(cfg));
+    return c.json({ success: true, engine: cfg.engine, has_key: engine === "gemma" && !!cfg.gemini_api_key });
+  })
+);
+portalRouter.get(
+  "/portal/admin/extractor",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const cfg = await getExtractorConfig(c.env);
+    return c.json({
+      success: true,
+      engine: cfg?.engine ?? "gemma",
+      has_key: cfg?.engine === "gemma" && !!cfg?.gemini_api_key,
+      llm_model: cfg?.llm_model ?? null
+    });
+  })
+);
 portalRouter.get(
   "/portal/admin/libraries",
   (c) => run(c, async () => {
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    return c.json({ success: true, libraries: libs.map(toPublicLibrary), count: libs.length });
+    let daemonActive = null;
+    try {
+      const raw2 = await c.env.WEBHOOKS.get(daemonActiveKey(c.env), "text");
+      if (raw2) daemonActive = new Set(JSON.parse(raw2).map((n) => String(n).trim()));
+    } catch {
+    }
+    const out = libs.map((rec) => {
+      const lib = toPublicLibrary(rec);
+      const watching = daemonActive === null ? void 0 : daemonActive.has(lib.name);
+      return { ...lib, ...watching !== void 0 ? { daemon_watching: watching } : {} };
+    });
+    const known = new Set(out.map((l) => l.name));
+    try {
+      const tenant2 = portalTenant(c.env);
+      const ownerParam = `owner_id=${encodeURIComponent(tenant2)}`;
+      const [autoRes, cardRes, tripletRes] = await Promise.all([
+        kbdbFetch(c.env, `/entries/libraries?${ownerParam}`).catch(() => null),
+        kbdbFetch(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
+        kbdbFetch(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
+      ]);
+      const cardMap = /* @__PURE__ */ new Map();
+      if (cardRes?.ok) {
+        const body = await cardRes.json();
+        for (const s of body.stats ?? []) cardMap.set(s.library, s.card_count);
+      }
+      const tripletMap = /* @__PURE__ */ new Map();
+      if (tripletRes?.ok) {
+        const body = await tripletRes.json();
+        for (const s of body.stats ?? []) tripletMap.set(s.library, s.triplet_count);
+      }
+      for (const lib of out) {
+        lib.card_count = cardMap.get(lib.name) ?? 0;
+        lib.triplet_count = tripletMap.get(lib.name) ?? 0;
+      }
+      if (autoRes?.ok) {
+        const body = await autoRes.json();
+        for (const name of body.libraries ?? []) {
+          const n = String(name ?? "").trim();
+          if (!n || n === "general" || known.has(n)) continue;
+          known.add(n);
+          const watching = daemonActive === null ? void 0 : daemonActive.has(n);
+          out.push({
+            record_id: "",
+            name: n,
+            display_name: n,
+            description: "\u8CC7\u6599\u540C\u6B65\u6642\u81EA\u52D5\u51FA\u73FE\uFF08\u53EF\u5728\u6B64\u88DC\u986F\u793A\u540D\uFF09",
+            status: "active",
+            graph_source: false,
+            auto: true,
+            card_count: cardMap.get(n) ?? 0,
+            triplet_count: tripletMap.get(n) ?? 0,
+            ...watching !== void 0 ? { daemon_watching: watching } : {}
+          });
+        }
+      }
+    } catch {
+    }
+    return c.json({ success: true, libraries: out, count: out.length });
   })
 );
 portalRouter.post(
@@ -12944,6 +13366,30 @@ portalRouter.get(
     });
   })
 );
+portalRouter.delete(
+  "/portal/admin/libraries/by-name/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = decodeURIComponent(c.req.param("name"));
+    const body = await c.req.json().catch(() => null);
+    const confirm = String(body?.confirm ?? "").trim();
+    if (!confirm) return c.json({ error: 'body \u9808\u5E36 { confirm: "<\u5EAB\u540D>" } \u624D\u57F7\u884C\uFF08\u79FB\u9664\u6703\u5F71\u97FF\u8CC7\u6599\u53EF\u641C\u6027\uFF09' }, 400);
+    if (confirm !== name) return c.json({ error: `confirm \u503C\u300C${confirm}\u300D\u8207\u5EAB\u540D\u300C${name}\u300D\u4E0D\u7B26` }, 400);
+    const ownerId = portalTenant(c.env);
+    const res = await kbdbFetch(c.env, "/entries/deprecate-by-library", {
+      method: "PATCH",
+      body: JSON.stringify({ owner_id: ownerId, library: name })
+    });
+    if (!res.ok) throw new KbdbError(`PATCH /entries/deprecate-by-library \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({
+      success: true,
+      deprecated_count: data.deprecated_count ?? 0,
+      message: `\u5DF2\u5F9E\u81EA\u52D5\u6E05\u55AE\u79FB\u9664\u300C${name}\u300D\uFF08\u5171\u6A19\u8A18 ${data.deprecated_count ?? 0} \u7B46\u8CC7\u6599\u4E0D\u53EF\u641C\uFF09\u3002\u8CC7\u6599\u4FDD\u7559\u53EF\u9084\u539F\u2014\u2014\u91CD\u65B0\u540C\u6B65\u6642\u6703\u518D\u51FA\u73FE\u3002`
+    });
+  })
+);
 portalRouter.post(
   "/portal/admin/ai",
   (c) => run(c, async () => {
@@ -12977,6 +13423,24 @@ portalRouter.post(
       success: true,
       has_key: rawKey ? true : void 0,
       use_claude_for_extract: pref.use_claude_for_extract
+    });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/libraries/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recordId = c.req.param("id");
+    const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const target = libs.find((l) => l.record_id === recordId);
+    if (!target) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
+    const found = await deleteKbdbRecord(c.env, recordId);
+    if (!found) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
+    return c.json({
+      success: true,
+      name: target.values.name ?? "",
+      message: `\u5DF2\u5F9E\u76EE\u9304\u79FB\u9664\u300C${target.values.display_name ?? target.values.name ?? ""}\u300D\u3002\u8CC7\u6599\u4ECD\u5728\uFF0C\u91CD\u65B0\u540C\u6B65\u6703\u518D\u51FA\u73FE\u3002`
     });
   })
 );
@@ -13746,6 +14210,23 @@ function mapGraphWorkflowOutput(data) {
   const edges = Array.isArray(layer.edges) ? layer.edges : [];
   return { neighbors, edges, count: neighbors.length };
 }
+function dedupeSourcesByPage(sources) {
+  const seen = /* @__PURE__ */ new Map();
+  for (const s of sources) {
+    if (!s || typeof s !== "object") continue;
+    const item = s;
+    const page = typeof item.page_name === "string" ? item.page_name : typeof item.page === "string" ? item.page : "";
+    const existing = seen.get(page);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      seen.set(page, { item, count: 1 });
+    }
+  }
+  return [...seen.values()].map(
+    ({ item, count }) => count > 1 ? { ...item, hit_count: count } : item
+  );
+}
 function notFound(c) {
   return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u8CC7\u6599" }, 404);
 }
@@ -13773,13 +14254,55 @@ function filterDeprecatedEntries(entries) {
     return true;
   });
 }
+function normalizeCjkQuery(q) {
+  const isCjk = (c) => /[぀-鿿豈-﫿]/.test(c);
+  const isAsciiAlnum = (c) => /[぀-鿿豈-﫿]/.test(c);
+  let result = "";
+  for (let i = 0; i < q.length; i++) {
+    const ch = q[i];
+    if (result.length > 0) {
+      const prev = result[result.length - 1];
+      if (prev !== " " && ch !== " " && (isCjk(prev) && /[A-Za-z0-9]/.test(ch) || /[A-Za-z0-9]/.test(prev) && isCjk(ch))) {
+        result += " ";
+      }
+    }
+    result += ch;
+  }
+  return result;
+}
+function findBestNodeMatch(searchTerm, nodeNames) {
+  const term = normalizeCjkQuery(searchTerm).toLowerCase();
+  if (!term) return null;
+  const hits = nodeNames.filter((n) => normalizeCjkQuery(n).toLowerCase().includes(term));
+  if (hits.length === 0) return null;
+  return hits.reduce((a, b) => a.length <= b.length ? a : b);
+}
+async function fuzzyFindNode(env, tenant2, searchTerm) {
+  try {
+    const res = await kbdbFetch(env, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.records)) return null;
+    const nodeNames = /* @__PURE__ */ new Set();
+    for (const r of body.records) {
+      const v = r?.values;
+      if (!v || typeof v !== "object") continue;
+      if (typeof v.subject === "string" && v.subject.trim()) nodeNames.add(v.subject.trim());
+      if (typeof v.object === "string" && v.object.trim()) nodeNames.add(v.object.trim());
+    }
+    return findBestNodeMatch(searchTerm, [...nodeNames]);
+  } catch {
+    return null;
+  }
+}
 portalDataRouter.get(
   "/portal/data/search",
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
-    const q = c.req.query("q");
-    if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
+    const qRaw = c.req.query("q");
+    if (!qRaw) return c.json({ error: "q \u5FC5\u586B" }, 400);
+    const q = normalizeCjkQuery(qRaw);
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) {
       return c.json({ success: true, entries: [], count: 0, mode: "keyword", note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002" });
@@ -13830,6 +14353,7 @@ portalDataRouter.get(
     if (!await hasGraphAccess(c.env, libraries)) {
       return c.json({ error: "\u7121\u77E5\u8B58\u5716\u8B5C\u6AA2\u8996\u6B0A\u9650" }, 403);
     }
+    const nodeName = normalizeCjkQuery(c.req.param("name"));
     const tenant2 = portalTenant(c.env);
     const wfGraph = await getTenantWorkflowGraph(c.env, "graph_neighbors");
     if (wfGraph) {
@@ -13838,7 +14362,8 @@ portalDataRouter.get(
       const result = await executeWebhookGraph(
         c.env,
         wfGraph,
-        { node: c.req.param("name"), depth, namespace: tenant2, owner: tenant2 },
+        // t116: 補傳 kbdb_base；t128: 補傳 template（workflow fetch_triplets.url 用 {{input.template}}）
+        { node: nodeName, depth, namespace: tenant2, owner: tenant2, kbdb_base: c.env.KBDB_BASE_URL ?? "", template: "triplet" },
         "graph_neighbors",
         tenant2,
         c.executionCtx
@@ -13852,8 +14377,24 @@ portalDataRouter.get(
     const headers = {};
     if (c.env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
     try {
-      const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(nodeName)}`, { headers });
+      if (!res.ok) {
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      }
+      const resText = await res.text().catch(() => "");
+      let data = null;
+      try {
+        data = JSON.parse(resText);
+      } catch {
+      }
+      if (data && Array.isArray(data.neighbors) && data.neighbors.length === 0 && Array.isArray(data.edges) && data.edges.length === 0) {
+        const fallbackName = await fuzzyFindNode(c.env, tenant2, nodeName);
+        if (fallbackName && fallbackName !== nodeName) {
+          const res2 = await fetch(`${base}/graph/neighbors/${encodeURIComponent(fallbackName)}`, { headers });
+          return new Response(res2.body, { status: res2.status, headers: { "Content-Type": "application/json" } });
+        }
+      }
+      return new Response(resText, { status: res.status, headers: { "Content-Type": "application/json" } });
     } catch (e) {
       return c.json({ error: `kbdb-graph-plugin \u4E0D\u53EF\u9054\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
     }
@@ -13924,9 +14465,10 @@ portalDataRouter.get(
       return c.json({ error: `rag_chat workflow \u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` }, 502);
     }
     const inner = unwrapWorkflowData(result.data, "answer");
+    const rawSources = Array.isArray(inner.sources) ? inner.sources : [];
     return c.json({
       answer: typeof inner.answer === "string" ? inner.answer : "",
-      sources: Array.isArray(inner.sources) ? inner.sources : [],
+      sources: dedupeSourcesByPage(rawSources),
       graph_facts: inner.graph_facts ?? null
     });
   })
