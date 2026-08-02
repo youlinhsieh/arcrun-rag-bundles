@@ -5,16 +5,16 @@
  "built": "2026-08-02",
  "source": "Arcrun@36cdc8f",
  "daemon": {
-  "version": "v0.15.1",
-  "built": "20260802-2046",
-  "notes": "CIS 品牌 icon 落地（先前 zip 早於 icon commit 5 小時，發出去的還是舊圖）",
+  "version": "v0.15.2",
+  "built": "20260803-0030",
+  "notes": "修「知識庫需要更新」永遠消不掉：版本比較支援 semver（v0.15.1 仍是字串比日期）",
   "mac": {
    "file": "daemon/ArcrunRAG-mac-unsigned.zip",
-   "sha256": "4e1e581fb737a85b6f03ae8f17f4da0a8a6fb78a7601100539f931e7ead8efff"
+   "sha256": "48fa8deb6e649f1fe302c1ac7b169d0c95651ea4b0ebb0caf5767fe026455f22"
   },
   "win": {
    "file": "daemon/ArcrunRAG-win-unsigned.zip",
-   "sha256": "3325723220da8fe202c1178c5f52b2d6b9e31abc74ba98d12eb553b55ddfda54"
+   "sha256": "496382665f40a11f131e6f6aeb9538956964190a09d0da75231ba8571619e56c"
   }
  },
  "core": [
