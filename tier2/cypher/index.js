@@ -1,5 +1,6 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
@@ -8,12 +9,1061 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/_internal/utils.mjs
+// @__NO_SIDE_EFFECTS__
+function createNotImplementedError(name) {
+  return new Error(`[unenv] ${name} is not implemented yet!`);
+}
+// @__NO_SIDE_EFFECTS__
+function notImplemented(name) {
+  const fn = /* @__PURE__ */ __name(() => {
+    throw /* @__PURE__ */ createNotImplementedError(name);
+  }, "fn");
+  return Object.assign(fn, { __unenv__: true });
+}
+// @__NO_SIDE_EFFECTS__
+function notImplementedClass(name) {
+  return class {
+    __unenv__ = true;
+    constructor() {
+      throw new Error(`[unenv] ${name} is not implemented yet!`);
+    }
+  };
+}
+var init_utils = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/_internal/utils.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    __name(createNotImplementedError, "createNotImplementedError");
+    __name(notImplemented, "notImplemented");
+    __name(notImplementedClass, "notImplementedClass");
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
+var _timeOrigin, _performanceNow, nodeTiming, PerformanceEntry, PerformanceMark, PerformanceMeasure, PerformanceResourceTiming, PerformanceObserverEntryList, Performance, PerformanceObserver, performance;
+var init_performance = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    init_utils();
+    _timeOrigin = globalThis.performance?.timeOrigin ?? Date.now();
+    _performanceNow = globalThis.performance?.now ? globalThis.performance.now.bind(globalThis.performance) : () => Date.now() - _timeOrigin;
+    nodeTiming = {
+      name: "node",
+      entryType: "node",
+      startTime: 0,
+      duration: 0,
+      nodeStart: 0,
+      v8Start: 0,
+      bootstrapComplete: 0,
+      environment: 0,
+      loopStart: 0,
+      loopExit: 0,
+      idleTime: 0,
+      uvMetricsInfo: {
+        loopCount: 0,
+        events: 0,
+        eventsWaiting: 0
+      },
+      detail: void 0,
+      toJSON() {
+        return this;
+      }
+    };
+    PerformanceEntry = class {
+      static {
+        __name(this, "PerformanceEntry");
+      }
+      __unenv__ = true;
+      detail;
+      entryType = "event";
+      name;
+      startTime;
+      constructor(name, options) {
+        this.name = name;
+        this.startTime = options?.startTime || _performanceNow();
+        this.detail = options?.detail;
+      }
+      get duration() {
+        return _performanceNow() - this.startTime;
+      }
+      toJSON() {
+        return {
+          name: this.name,
+          entryType: this.entryType,
+          startTime: this.startTime,
+          duration: this.duration,
+          detail: this.detail
+        };
+      }
+    };
+    PerformanceMark = class PerformanceMark2 extends PerformanceEntry {
+      static {
+        __name(this, "PerformanceMark");
+      }
+      entryType = "mark";
+      constructor() {
+        super(...arguments);
+      }
+      get duration() {
+        return 0;
+      }
+    };
+    PerformanceMeasure = class extends PerformanceEntry {
+      static {
+        __name(this, "PerformanceMeasure");
+      }
+      entryType = "measure";
+    };
+    PerformanceResourceTiming = class extends PerformanceEntry {
+      static {
+        __name(this, "PerformanceResourceTiming");
+      }
+      entryType = "resource";
+      serverTiming = [];
+      connectEnd = 0;
+      connectStart = 0;
+      decodedBodySize = 0;
+      domainLookupEnd = 0;
+      domainLookupStart = 0;
+      encodedBodySize = 0;
+      fetchStart = 0;
+      initiatorType = "";
+      name = "";
+      nextHopProtocol = "";
+      redirectEnd = 0;
+      redirectStart = 0;
+      requestStart = 0;
+      responseEnd = 0;
+      responseStart = 0;
+      secureConnectionStart = 0;
+      startTime = 0;
+      transferSize = 0;
+      workerStart = 0;
+      responseStatus = 0;
+    };
+    PerformanceObserverEntryList = class {
+      static {
+        __name(this, "PerformanceObserverEntryList");
+      }
+      __unenv__ = true;
+      getEntries() {
+        return [];
+      }
+      getEntriesByName(_name, _type) {
+        return [];
+      }
+      getEntriesByType(type) {
+        return [];
+      }
+    };
+    Performance = class {
+      static {
+        __name(this, "Performance");
+      }
+      __unenv__ = true;
+      timeOrigin = _timeOrigin;
+      eventCounts = /* @__PURE__ */ new Map();
+      _entries = [];
+      _resourceTimingBufferSize = 0;
+      navigation = void 0;
+      timing = void 0;
+      timerify(_fn, _options) {
+        throw createNotImplementedError("Performance.timerify");
+      }
+      get nodeTiming() {
+        return nodeTiming;
+      }
+      eventLoopUtilization() {
+        return {};
+      }
+      markResourceTiming() {
+        return new PerformanceResourceTiming("");
+      }
+      onresourcetimingbufferfull = null;
+      now() {
+        if (this.timeOrigin === _timeOrigin) {
+          return _performanceNow();
+        }
+        return Date.now() - this.timeOrigin;
+      }
+      clearMarks(markName) {
+        this._entries = markName ? this._entries.filter((e) => e.name !== markName) : this._entries.filter((e) => e.entryType !== "mark");
+      }
+      clearMeasures(measureName) {
+        this._entries = measureName ? this._entries.filter((e) => e.name !== measureName) : this._entries.filter((e) => e.entryType !== "measure");
+      }
+      clearResourceTimings() {
+        this._entries = this._entries.filter((e) => e.entryType !== "resource" || e.entryType !== "navigation");
+      }
+      getEntries() {
+        return this._entries;
+      }
+      getEntriesByName(name, type) {
+        return this._entries.filter((e) => e.name === name && (!type || e.entryType === type));
+      }
+      getEntriesByType(type) {
+        return this._entries.filter((e) => e.entryType === type);
+      }
+      mark(name, options) {
+        const entry = new PerformanceMark(name, options);
+        this._entries.push(entry);
+        return entry;
+      }
+      measure(measureName, startOrMeasureOptions, endMark) {
+        let start;
+        let end;
+        if (typeof startOrMeasureOptions === "string") {
+          start = this.getEntriesByName(startOrMeasureOptions, "mark")[0]?.startTime;
+          end = this.getEntriesByName(endMark, "mark")[0]?.startTime;
+        } else {
+          start = Number.parseFloat(startOrMeasureOptions?.start) || this.now();
+          end = Number.parseFloat(startOrMeasureOptions?.end) || this.now();
+        }
+        const entry = new PerformanceMeasure(measureName, {
+          startTime: start,
+          detail: {
+            start,
+            end
+          }
+        });
+        this._entries.push(entry);
+        return entry;
+      }
+      setResourceTimingBufferSize(maxSize) {
+        this._resourceTimingBufferSize = maxSize;
+      }
+      addEventListener(type, listener, options) {
+        throw createNotImplementedError("Performance.addEventListener");
+      }
+      removeEventListener(type, listener, options) {
+        throw createNotImplementedError("Performance.removeEventListener");
+      }
+      dispatchEvent(event) {
+        throw createNotImplementedError("Performance.dispatchEvent");
+      }
+      toJSON() {
+        return this;
+      }
+    };
+    PerformanceObserver = class {
+      static {
+        __name(this, "PerformanceObserver");
+      }
+      __unenv__ = true;
+      static supportedEntryTypes = [];
+      _callback = null;
+      constructor(callback) {
+        this._callback = callback;
+      }
+      takeRecords() {
+        return [];
+      }
+      disconnect() {
+        throw createNotImplementedError("PerformanceObserver.disconnect");
+      }
+      observe(options) {
+        throw createNotImplementedError("PerformanceObserver.observe");
+      }
+      bind(fn) {
+        return fn;
+      }
+      runInAsyncScope(fn, thisArg, ...args) {
+        return fn.call(thisArg, ...args);
+      }
+      asyncId() {
+        return 0;
+      }
+      triggerAsyncId() {
+        return 0;
+      }
+      emitDestroy() {
+        return this;
+      }
+    };
+    performance = globalThis.performance && "addEventListener" in globalThis.performance ? globalThis.performance : new Performance();
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/perf_hooks.mjs
+var init_perf_hooks = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/perf_hooks.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    init_performance();
+  }
+});
+
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
+var init_performance2 = __esm({
+  "node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs"() {
+    init_perf_hooks();
+    globalThis.performance = performance;
+    globalThis.Performance = Performance;
+    globalThis.PerformanceEntry = PerformanceEntry;
+    globalThis.PerformanceMark = PerformanceMark;
+    globalThis.PerformanceMeasure = PerformanceMeasure;
+    globalThis.PerformanceObserver = PerformanceObserver;
+    globalThis.PerformanceObserverEntryList = PerformanceObserverEntryList;
+    globalThis.PerformanceResourceTiming = PerformanceResourceTiming;
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/mock/noop.mjs
+var noop_default;
+var init_noop = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/mock/noop.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    noop_default = Object.assign(() => {
+    }, { __unenv__: true });
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/console.mjs
+import { Writable } from "node:stream";
+var _console, _ignoreErrors, _stderr, _stdout, log, info, trace, debug, table, error, warn, createTask, clear, count, countReset, dir, dirxml, group, groupEnd, groupCollapsed, profile, profileEnd, time, timeEnd, timeLog, timeStamp, Console, _times, _stdoutErrorHandler, _stderrErrorHandler;
+var init_console = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/console.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    init_noop();
+    init_utils();
+    _console = globalThis.console;
+    _ignoreErrors = true;
+    _stderr = new Writable();
+    _stdout = new Writable();
+    log = _console?.log ?? noop_default;
+    info = _console?.info ?? log;
+    trace = _console?.trace ?? info;
+    debug = _console?.debug ?? log;
+    table = _console?.table ?? log;
+    error = _console?.error ?? log;
+    warn = _console?.warn ?? error;
+    createTask = _console?.createTask ?? /* @__PURE__ */ notImplemented("console.createTask");
+    clear = _console?.clear ?? noop_default;
+    count = _console?.count ?? noop_default;
+    countReset = _console?.countReset ?? noop_default;
+    dir = _console?.dir ?? noop_default;
+    dirxml = _console?.dirxml ?? noop_default;
+    group = _console?.group ?? noop_default;
+    groupEnd = _console?.groupEnd ?? noop_default;
+    groupCollapsed = _console?.groupCollapsed ?? noop_default;
+    profile = _console?.profile ?? noop_default;
+    profileEnd = _console?.profileEnd ?? noop_default;
+    time = _console?.time ?? noop_default;
+    timeEnd = _console?.timeEnd ?? noop_default;
+    timeLog = _console?.timeLog ?? noop_default;
+    timeStamp = _console?.timeStamp ?? noop_default;
+    Console = _console?.Console ?? /* @__PURE__ */ notImplementedClass("console.Console");
+    _times = /* @__PURE__ */ new Map();
+    _stdoutErrorHandler = noop_default;
+    _stderrErrorHandler = noop_default;
+  }
+});
+
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
+var workerdConsole, assert, clear2, context, count2, countReset2, createTask2, debug2, dir2, dirxml2, error2, group2, groupCollapsed2, groupEnd2, info2, log2, profile2, profileEnd2, table2, time2, timeEnd2, timeLog2, timeStamp2, trace2, warn2, console_default;
+var init_console2 = __esm({
+  "node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    init_console();
+    workerdConsole = globalThis["console"];
+    ({
+      assert,
+      clear: clear2,
+      context: (
+        // @ts-expect-error undocumented public API
+        context
+      ),
+      count: count2,
+      countReset: countReset2,
+      createTask: (
+        // @ts-expect-error undocumented public API
+        createTask2
+      ),
+      debug: debug2,
+      dir: dir2,
+      dirxml: dirxml2,
+      error: error2,
+      group: group2,
+      groupCollapsed: groupCollapsed2,
+      groupEnd: groupEnd2,
+      info: info2,
+      log: log2,
+      profile: profile2,
+      profileEnd: profileEnd2,
+      table: table2,
+      time: time2,
+      timeEnd: timeEnd2,
+      timeLog: timeLog2,
+      timeStamp: timeStamp2,
+      trace: trace2,
+      warn: warn2
+    } = workerdConsole);
+    Object.assign(workerdConsole, {
+      Console,
+      _ignoreErrors,
+      _stderr,
+      _stderrErrorHandler,
+      _stdout,
+      _stdoutErrorHandler,
+      _times
+    });
+    console_default = workerdConsole;
+  }
+});
+
+// node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
+var init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console = __esm({
+  "node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console"() {
+    init_console2();
+    globalThis.console = console_default;
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
+var hrtime;
+var init_hrtime = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    hrtime = /* @__PURE__ */ Object.assign(/* @__PURE__ */ __name(function hrtime2(startTime) {
+      const now2 = Date.now();
+      const seconds = Math.trunc(now2 / 1e3);
+      const nanos = now2 % 1e3 * 1e6;
+      if (startTime) {
+        let diffSeconds = seconds - startTime[0];
+        let diffNanos = nanos - startTime[0];
+        if (diffNanos < 0) {
+          diffSeconds = diffSeconds - 1;
+          diffNanos = 1e9 + diffNanos;
+        }
+        return [diffSeconds, diffNanos];
+      }
+      return [seconds, nanos];
+    }, "hrtime"), { bigint: /* @__PURE__ */ __name(function bigint() {
+      return BigInt(Date.now() * 1e6);
+    }, "bigint") });
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
+var ReadStream;
+var init_read_stream = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    ReadStream = class {
+      static {
+        __name(this, "ReadStream");
+      }
+      fd;
+      isRaw = false;
+      isTTY = false;
+      constructor(fd) {
+        this.fd = fd;
+      }
+      setRawMode(mode) {
+        this.isRaw = mode;
+        return this;
+      }
+    };
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
+var WriteStream;
+var init_write_stream = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    WriteStream = class {
+      static {
+        __name(this, "WriteStream");
+      }
+      fd;
+      columns = 80;
+      rows = 24;
+      isTTY = false;
+      constructor(fd) {
+        this.fd = fd;
+      }
+      clearLine(dir3, callback) {
+        callback && callback();
+        return false;
+      }
+      clearScreenDown(callback) {
+        callback && callback();
+        return false;
+      }
+      cursorTo(x, y, callback) {
+        callback && typeof callback === "function" && callback();
+        return false;
+      }
+      moveCursor(dx, dy, callback) {
+        callback && callback();
+        return false;
+      }
+      getColorDepth(env2) {
+        return 1;
+      }
+      hasColors(count3, env2) {
+        return false;
+      }
+      getWindowSize() {
+        return [this.columns, this.rows];
+      }
+      write(str2, encoding, cb) {
+        if (str2 instanceof Uint8Array) {
+          str2 = new TextDecoder().decode(str2);
+        }
+        try {
+          console.log(str2);
+        } catch {
+        }
+        cb && typeof cb === "function" && cb();
+        return false;
+      }
+    };
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/tty.mjs
+var init_tty = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/tty.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    init_read_stream();
+    init_write_stream();
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
+var NODE_VERSION;
+var init_node_version = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    NODE_VERSION = "22.14.0";
+  }
+});
+
+// node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
+import { EventEmitter } from "node:events";
+var Process;
+var init_process = __esm({
+  "node_modules/.pnpm/unenv@2.0.0-rc.21/node_modules/unenv/dist/runtime/node/internal/process/process.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    init_tty();
+    init_utils();
+    init_node_version();
+    Process = class _Process extends EventEmitter {
+      static {
+        __name(this, "Process");
+      }
+      env;
+      hrtime;
+      nextTick;
+      constructor(impl) {
+        super();
+        this.env = impl.env;
+        this.hrtime = impl.hrtime;
+        this.nextTick = impl.nextTick;
+        for (const prop of [...Object.getOwnPropertyNames(_Process.prototype), ...Object.getOwnPropertyNames(EventEmitter.prototype)]) {
+          const value = this[prop];
+          if (typeof value === "function") {
+            this[prop] = value.bind(this);
+          }
+        }
+      }
+      // --- event emitter ---
+      emitWarning(warning, type, code) {
+        console.warn(`${code ? `[${code}] ` : ""}${type ? `${type}: ` : ""}${warning}`);
+      }
+      emit(...args) {
+        return super.emit(...args);
+      }
+      listeners(eventName) {
+        return super.listeners(eventName);
+      }
+      // --- stdio (lazy initializers) ---
+      #stdin;
+      #stdout;
+      #stderr;
+      get stdin() {
+        return this.#stdin ??= new ReadStream(0);
+      }
+      get stdout() {
+        return this.#stdout ??= new WriteStream(1);
+      }
+      get stderr() {
+        return this.#stderr ??= new WriteStream(2);
+      }
+      // --- cwd ---
+      #cwd = "/";
+      chdir(cwd2) {
+        this.#cwd = cwd2;
+      }
+      cwd() {
+        return this.#cwd;
+      }
+      // --- dummy props and getters ---
+      arch = "";
+      platform = "";
+      argv = [];
+      argv0 = "";
+      execArgv = [];
+      execPath = "";
+      title = "";
+      pid = 200;
+      ppid = 100;
+      get version() {
+        return `v${NODE_VERSION}`;
+      }
+      get versions() {
+        return { node: NODE_VERSION };
+      }
+      get allowedNodeEnvironmentFlags() {
+        return /* @__PURE__ */ new Set();
+      }
+      get sourceMapsEnabled() {
+        return false;
+      }
+      get debugPort() {
+        return 0;
+      }
+      get throwDeprecation() {
+        return false;
+      }
+      get traceDeprecation() {
+        return false;
+      }
+      get features() {
+        return {};
+      }
+      get release() {
+        return {};
+      }
+      get connected() {
+        return false;
+      }
+      get config() {
+        return {};
+      }
+      get moduleLoadList() {
+        return [];
+      }
+      constrainedMemory() {
+        return 0;
+      }
+      availableMemory() {
+        return 0;
+      }
+      uptime() {
+        return 0;
+      }
+      resourceUsage() {
+        return {};
+      }
+      // --- noop methods ---
+      ref() {
+      }
+      unref() {
+      }
+      // --- unimplemented methods ---
+      umask() {
+        throw createNotImplementedError("process.umask");
+      }
+      getBuiltinModule() {
+        return void 0;
+      }
+      getActiveResourcesInfo() {
+        throw createNotImplementedError("process.getActiveResourcesInfo");
+      }
+      exit() {
+        throw createNotImplementedError("process.exit");
+      }
+      reallyExit() {
+        throw createNotImplementedError("process.reallyExit");
+      }
+      kill() {
+        throw createNotImplementedError("process.kill");
+      }
+      abort() {
+        throw createNotImplementedError("process.abort");
+      }
+      dlopen() {
+        throw createNotImplementedError("process.dlopen");
+      }
+      setSourceMapsEnabled() {
+        throw createNotImplementedError("process.setSourceMapsEnabled");
+      }
+      loadEnvFile() {
+        throw createNotImplementedError("process.loadEnvFile");
+      }
+      disconnect() {
+        throw createNotImplementedError("process.disconnect");
+      }
+      cpuUsage() {
+        throw createNotImplementedError("process.cpuUsage");
+      }
+      setUncaughtExceptionCaptureCallback() {
+        throw createNotImplementedError("process.setUncaughtExceptionCaptureCallback");
+      }
+      hasUncaughtExceptionCaptureCallback() {
+        throw createNotImplementedError("process.hasUncaughtExceptionCaptureCallback");
+      }
+      initgroups() {
+        throw createNotImplementedError("process.initgroups");
+      }
+      openStdin() {
+        throw createNotImplementedError("process.openStdin");
+      }
+      assert() {
+        throw createNotImplementedError("process.assert");
+      }
+      binding() {
+        throw createNotImplementedError("process.binding");
+      }
+      // --- attached interfaces ---
+      permission = { has: /* @__PURE__ */ notImplemented("process.permission.has") };
+      report = {
+        directory: "",
+        filename: "",
+        signal: "SIGUSR2",
+        compact: false,
+        reportOnFatalError: false,
+        reportOnSignal: false,
+        reportOnUncaughtException: false,
+        getReport: /* @__PURE__ */ notImplemented("process.report.getReport"),
+        writeReport: /* @__PURE__ */ notImplemented("process.report.writeReport")
+      };
+      finalization = {
+        register: /* @__PURE__ */ notImplemented("process.finalization.register"),
+        unregister: /* @__PURE__ */ notImplemented("process.finalization.unregister"),
+        registerBeforeExit: /* @__PURE__ */ notImplemented("process.finalization.registerBeforeExit")
+      };
+      memoryUsage = Object.assign(() => ({
+        arrayBuffers: 0,
+        rss: 0,
+        external: 0,
+        heapTotal: 0,
+        heapUsed: 0
+      }), { rss: /* @__PURE__ */ __name(() => 0, "rss") });
+      // --- undefined props ---
+      mainModule = void 0;
+      domain = void 0;
+      // optional
+      send = void 0;
+      exitCode = void 0;
+      channel = void 0;
+      getegid = void 0;
+      geteuid = void 0;
+      getgid = void 0;
+      getgroups = void 0;
+      getuid = void 0;
+      setegid = void 0;
+      seteuid = void 0;
+      setgid = void 0;
+      setgroups = void 0;
+      setuid = void 0;
+      // internals
+      _events = void 0;
+      _eventsCount = void 0;
+      _exiting = void 0;
+      _maxListeners = void 0;
+      _debugEnd = void 0;
+      _debugProcess = void 0;
+      _fatalException = void 0;
+      _getActiveHandles = void 0;
+      _getActiveRequests = void 0;
+      _kill = void 0;
+      _preload_modules = void 0;
+      _rawDebug = void 0;
+      _startProfilerIdleNotifier = void 0;
+      _stopProfilerIdleNotifier = void 0;
+      _tickCallback = void 0;
+      _disconnect = void 0;
+      _handleQueue = void 0;
+      _pendingMessage = void 0;
+      _channel = void 0;
+      _send = void 0;
+      _linkedBinding = void 0;
+    };
+  }
+});
+
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
+var globalProcess, getBuiltinModule, exit, platform, nextTick, unenvProcess, abort, addListener, allowedNodeEnvironmentFlags, hasUncaughtExceptionCaptureCallback, setUncaughtExceptionCaptureCallback, loadEnvFile, sourceMapsEnabled, arch, argv, argv0, chdir, config, connected, constrainedMemory, availableMemory, cpuUsage, cwd, debugPort, dlopen, disconnect, emit, emitWarning, env, eventNames, execArgv, execPath, finalization, features, getActiveResourcesInfo, getMaxListeners, hrtime3, kill, listeners, listenerCount, memoryUsage, on, off, once, pid, ppid, prependListener, prependOnceListener, rawListeners, release, removeAllListeners, removeListener, report, resourceUsage, setMaxListeners, setSourceMapsEnabled, stderr, stdin, stdout, title, throwDeprecation, traceDeprecation, umask, uptime, version, versions, domain, initgroups, moduleLoadList, reallyExit, openStdin, assert2, binding, send, exitCode, channel, getegid, geteuid, getgid, getgroups, getuid, setegid, seteuid, setgid, setgroups, setuid, permission, mainModule, _events, _eventsCount, _exiting, _maxListeners, _debugEnd, _debugProcess, _fatalException, _getActiveHandles, _getActiveRequests, _kill, _preload_modules, _rawDebug, _startProfilerIdleNotifier, _stopProfilerIdleNotifier, _tickCallback, _disconnect, _handleQueue, _pendingMessage, _channel, _send, _linkedBinding, _process, process_default;
+var init_process2 = __esm({
+  "node_modules/.pnpm/@cloudflare+unenv-preset@2.7.3_unenv@2.0.0-rc.21_workerd@1.20250906.0/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    init_hrtime();
+    init_process();
+    globalProcess = globalThis["process"];
+    getBuiltinModule = globalProcess.getBuiltinModule;
+    ({ exit, platform, nextTick } = getBuiltinModule(
+      "node:process"
+    ));
+    unenvProcess = new Process({
+      env: globalProcess.env,
+      hrtime,
+      nextTick
+    });
+    ({
+      abort,
+      addListener,
+      allowedNodeEnvironmentFlags,
+      hasUncaughtExceptionCaptureCallback,
+      setUncaughtExceptionCaptureCallback,
+      loadEnvFile,
+      sourceMapsEnabled,
+      arch,
+      argv,
+      argv0,
+      chdir,
+      config,
+      connected,
+      constrainedMemory,
+      availableMemory,
+      cpuUsage,
+      cwd,
+      debugPort,
+      dlopen,
+      disconnect,
+      emit,
+      emitWarning,
+      env,
+      eventNames,
+      execArgv,
+      execPath,
+      finalization,
+      features,
+      getActiveResourcesInfo,
+      getMaxListeners,
+      hrtime: hrtime3,
+      kill,
+      listeners,
+      listenerCount,
+      memoryUsage,
+      on,
+      off,
+      once,
+      pid,
+      ppid,
+      prependListener,
+      prependOnceListener,
+      rawListeners,
+      release,
+      removeAllListeners,
+      removeListener,
+      report,
+      resourceUsage,
+      setMaxListeners,
+      setSourceMapsEnabled,
+      stderr,
+      stdin,
+      stdout,
+      title,
+      throwDeprecation,
+      traceDeprecation,
+      umask,
+      uptime,
+      version,
+      versions,
+      domain,
+      initgroups,
+      moduleLoadList,
+      reallyExit,
+      openStdin,
+      assert: assert2,
+      binding,
+      send,
+      exitCode,
+      channel,
+      getegid,
+      geteuid,
+      getgid,
+      getgroups,
+      getuid,
+      setegid,
+      seteuid,
+      setgid,
+      setgroups,
+      setuid,
+      permission,
+      mainModule,
+      _events,
+      _eventsCount,
+      _exiting,
+      _maxListeners,
+      _debugEnd,
+      _debugProcess,
+      _fatalException,
+      _getActiveHandles,
+      _getActiveRequests,
+      _kill,
+      _preload_modules,
+      _rawDebug,
+      _startProfilerIdleNotifier,
+      _stopProfilerIdleNotifier,
+      _tickCallback,
+      _disconnect,
+      _handleQueue,
+      _pendingMessage,
+      _channel,
+      _send,
+      _linkedBinding
+    } = unenvProcess);
+    _process = {
+      abort,
+      addListener,
+      allowedNodeEnvironmentFlags,
+      hasUncaughtExceptionCaptureCallback,
+      setUncaughtExceptionCaptureCallback,
+      loadEnvFile,
+      sourceMapsEnabled,
+      arch,
+      argv,
+      argv0,
+      chdir,
+      config,
+      connected,
+      constrainedMemory,
+      availableMemory,
+      cpuUsage,
+      cwd,
+      debugPort,
+      dlopen,
+      disconnect,
+      emit,
+      emitWarning,
+      env,
+      eventNames,
+      execArgv,
+      execPath,
+      exit,
+      finalization,
+      features,
+      getBuiltinModule,
+      getActiveResourcesInfo,
+      getMaxListeners,
+      hrtime: hrtime3,
+      kill,
+      listeners,
+      listenerCount,
+      memoryUsage,
+      nextTick,
+      on,
+      off,
+      once,
+      pid,
+      platform,
+      ppid,
+      prependListener,
+      prependOnceListener,
+      rawListeners,
+      release,
+      removeAllListeners,
+      removeListener,
+      report,
+      resourceUsage,
+      setMaxListeners,
+      setSourceMapsEnabled,
+      stderr,
+      stdin,
+      stdout,
+      title,
+      throwDeprecation,
+      traceDeprecation,
+      umask,
+      uptime,
+      version,
+      versions,
+      // @ts-expect-error old API
+      domain,
+      initgroups,
+      moduleLoadList,
+      reallyExit,
+      openStdin,
+      assert: assert2,
+      binding,
+      send,
+      exitCode,
+      channel,
+      getegid,
+      geteuid,
+      getgid,
+      getgroups,
+      getuid,
+      setegid,
+      seteuid,
+      setgid,
+      setgroups,
+      setuid,
+      permission,
+      mainModule,
+      _events,
+      _eventsCount,
+      _exiting,
+      _maxListeners,
+      _debugEnd,
+      _debugProcess,
+      _fatalException,
+      _getActiveHandles,
+      _getActiveRequests,
+      _kill,
+      _preload_modules,
+      _rawDebug,
+      _startProfilerIdleNotifier,
+      _stopProfilerIdleNotifier,
+      _tickCallback,
+      _disconnect,
+      _handleQueue,
+      _pendingMessage,
+      _channel,
+      _send,
+      _linkedBinding
+    };
+    process_default = _process;
+  }
+});
+
+// node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
+var init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process = __esm({
+  "node_modules/.pnpm/wrangler@4.35.0_@cloudflare+workers-types@4.20260404.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process"() {
+    init_process2();
+    globalThis.process = process_default;
+  }
+});
+
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
-    compose = (middleware, onError, onNotFound) => {
-      return (context, next) => {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
+      return (context2, next) => {
         let index = -1;
         return dispatch(0);
         async function dispatch(i) {
@@ -26,52 +1076,59 @@ var init_compose = __esm({
           let handler;
           if (middleware[i]) {
             handler = middleware[i][0][0];
-            context.req.routeIndex = i;
+            context2.req.routeIndex = i;
           } else {
             handler = i === middleware.length && next || void 0;
           }
           if (handler) {
             try {
-              res = await handler(context, () => dispatch(i + 1));
+              res = await handler(context2, () => dispatch(i + 1));
             } catch (err) {
               if (err instanceof Error && onError) {
-                context.error = err;
-                res = await onError(err, context);
+                context2.error = err;
+                res = await onError(err, context2);
                 isError = true;
               } else {
                 throw err;
               }
             }
           } else {
-            if (context.finalized === false && onNotFound) {
-              res = await onNotFound(context);
+            if (context2.finalized === false && onNotFound) {
+              res = await onNotFound(context2);
             }
           }
-          if (res && (context.finalized === false || isError)) {
-            context.res = res;
+          if (res && (context2.finalized === false || isError)) {
+            context2.res = res;
           }
-          return context;
+          return context2;
         }
+        __name(dispatch, "dispatch");
       };
-    };
+    }, "compose");
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -102,9 +1159,12 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_request();
-    parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
+    parseBody = /* @__PURE__ */ __name(async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
       const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
       const contentType = headers.get("Content-Type");
@@ -112,8 +1172,10 @@ var init_body = __esm({
         return parseFormData(request, { all, dot });
       }
       return {};
-    };
-    handleParsingAllValues = (form, key, value) => {
+    }, "parseBody");
+    __name(parseFormData, "parseFormData");
+    __name(convertFormDataToBodyData, "convertFormDataToBodyData");
+    handleParsingAllValues = /* @__PURE__ */ __name((form, key, value) => {
       if (form[key] !== void 0) {
         if (Array.isArray(form[key])) {
           ;
@@ -128,8 +1190,8 @@ var init_body = __esm({
           form[key] = [value];
         }
       }
-    };
-    handleParsingNestedValues = (form, key, value) => {
+    }, "handleParsingAllValues");
+    handleParsingNestedValues = /* @__PURE__ */ __name((form, key, value) => {
       if (/(?:^|\.)__proto__\./.test(key)) {
         return;
       }
@@ -145,27 +1207,30 @@ var init_body = __esm({
           nestedForm = nestedForm[key2];
         }
       });
-    };
+    }, "handleParsingNestedValues");
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
-    splitPath = (path) => {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    splitPath = /* @__PURE__ */ __name((path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
         paths.shift();
       }
       return paths;
-    };
-    splitRoutingPath = (routePath) => {
+    }, "splitPath");
+    splitRoutingPath = /* @__PURE__ */ __name((routePath) => {
       const { groups, path } = extractGroupsFromPath(routePath);
       const paths = splitPath(path);
       return replaceGroupMarks(paths, groups);
-    };
-    extractGroupsFromPath = (path) => {
+    }, "splitRoutingPath");
+    extractGroupsFromPath = /* @__PURE__ */ __name((path) => {
       const groups = [];
       path = path.replace(/\{[^}]+\}/g, (match2, index) => {
         const mark = `@${index}`;
@@ -173,8 +1238,8 @@ var init_url = __esm({
         return mark;
       });
       return { groups, path };
-    };
-    replaceGroupMarks = (paths, groups) => {
+    }, "extractGroupsFromPath");
+    replaceGroupMarks = /* @__PURE__ */ __name((paths, groups) => {
       for (let i = groups.length - 1; i >= 0; i--) {
         const [mark] = groups[i];
         for (let j = paths.length - 1; j >= 0; j--) {
@@ -185,9 +1250,9 @@ var init_url = __esm({
         }
       }
       return paths;
-    };
+    }, "replaceGroupMarks");
     patternCache = {};
-    getPattern = (label, next) => {
+    getPattern = /* @__PURE__ */ __name((label, next) => {
       if (label === "*") {
         return "*";
       }
@@ -204,8 +1269,8 @@ var init_url = __esm({
         return patternCache[cacheKey];
       }
       return null;
-    };
-    tryDecode = (str2, decoder) => {
+    }, "getPattern");
+    tryDecode = /* @__PURE__ */ __name((str2, decoder) => {
       try {
         return decoder(str2);
       } catch {
@@ -217,9 +1282,9 @@ var init_url = __esm({
           }
         });
       }
-    };
-    tryDecodeURI = (str2) => tryDecode(str2, decodeURI);
-    getPath = (request) => {
+    }, "tryDecode");
+    tryDecodeURI = /* @__PURE__ */ __name((str2) => tryDecode(str2, decodeURI), "tryDecodeURI");
+    getPath = /* @__PURE__ */ __name((request) => {
       const url = request.url;
       const start = url.indexOf("/", url.indexOf(":") + 4);
       let i = start;
@@ -236,18 +1301,18 @@ var init_url = __esm({
         }
       }
       return url.slice(start, i);
-    };
-    getPathNoStrict = (request) => {
+    }, "getPath");
+    getPathNoStrict = /* @__PURE__ */ __name((request) => {
       const result = getPath(request);
       return result.length > 1 && result.at(-1) === "/" ? result.slice(0, -1) : result;
-    };
-    mergePath = (base, sub, ...rest) => {
+    }, "getPathNoStrict");
+    mergePath = /* @__PURE__ */ __name((base, sub, ...rest) => {
       if (rest.length) {
         sub = mergePath(sub, ...rest);
       }
       return `${base?.[0] === "/" ? "" : "/"}${base}${sub === "/" ? "" : `${base?.at(-1) === "/" ? "" : "/"}${sub?.[0] === "/" ? sub.slice(1) : sub}`}`;
-    };
-    checkOptionalParameter = (path) => {
+    }, "mergePath");
+    checkOptionalParameter = /* @__PURE__ */ __name((path) => {
       if (path.charCodeAt(path.length - 1) !== 63 || !path.includes(":")) {
         return null;
       }
@@ -273,8 +1338,8 @@ var init_url = __esm({
         }
       });
       return results.filter((v, i, a) => a.indexOf(v) === i);
-    };
-    _decodeURI = (value) => {
+    }, "checkOptionalParameter");
+    _decodeURI = /* @__PURE__ */ __name((value) => {
       if (!/[%+]/.test(value)) {
         return value;
       }
@@ -282,8 +1347,8 @@ var init_url = __esm({
         value = value.replace(/\+/g, " ");
       }
       return value.indexOf("%") !== -1 ? tryDecode(value, decodeURIComponent_) : value;
-    };
-    _getQueryParam = (url, key, multiple) => {
+    }, "_decodeURI");
+    _getQueryParam = /* @__PURE__ */ __name((url, key, multiple) => {
       let encoded;
       if (!multiple && key && !/[%+]/.test(key)) {
         let keyIndex2 = url.indexOf("?", 8);
@@ -349,25 +1414,31 @@ var init_url = __esm({
         }
       }
       return key ? results[key] : results;
-    };
+    }, "_getQueryParam");
     getQueryParam = _getQueryParam;
-    getQueryParams = (url, key) => {
+    getQueryParams = /* @__PURE__ */ __name((url, key) => {
       return _getQueryParam(url, key, true);
-    };
+    }, "getQueryParams");
     decodeURIComponent_ = decodeURIComponent;
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_http_exception();
     init_constants();
     init_body();
     init_url();
-    tryDecodeURIComponent = (str2) => tryDecode(str2, decodeURIComponent_);
+    tryDecodeURIComponent = /* @__PURE__ */ __name((str2) => tryDecode(str2, decodeURIComponent_), "tryDecodeURIComponent");
     HonoRequest = class {
+      static {
+        __name(this, "HonoRequest");
+      }
       /**
        * `.raw` can get the raw Request object.
        *
@@ -448,7 +1519,7 @@ var init_request = __esm({
       async parseBody(options) {
         return parseBody(this, options);
       }
-      #cachedBody = (key) => {
+      #cachedBody = /* @__PURE__ */ __name((key) => {
         const { bodyCache, raw: raw2 } = this;
         const cachedBody = bodyCache[key];
         if (cachedBody) {
@@ -464,7 +1535,7 @@ var init_request = __esm({
           });
         }
         return bodyCache[key] = raw2[key]();
-      };
+      }, "#cachedBody");
       /**
        * `.json()` can parse Request body of type `application/json`
        *
@@ -635,22 +1706,25 @@ var init_request = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
       Stream: 3
     };
-    raw = (value, callbacks) => {
+    raw = /* @__PURE__ */ __name((value, callbacks) => {
       const escapedString = new String(value);
       escapedString.isEscaped = true;
       escapedString.callbacks = callbacks;
       return escapedString;
-    };
-    resolveCallback = async (str2, phase, preserveCallbacks, context, buffer) => {
+    }, "raw");
+    resolveCallback = /* @__PURE__ */ __name(async (str2, phase, preserveCallbacks, context2, buffer) => {
       if (typeof str2 === "object" && !(str2 instanceof String)) {
         if (!(str2 instanceof Promise)) {
           str2 = str2.toString();
@@ -668,9 +1742,9 @@ var init_html = __esm({
       } else {
         buffer = [str2];
       }
-      const resStr = Promise.all(callbacks.map((c) => c({ phase, buffer, context }))).then(
+      const resStr = Promise.all(callbacks.map((c) => c({ phase, buffer, context: context2 }))).then(
         (res) => Promise.all(
-          res.filter(Boolean).map((str22) => resolveCallback(str22, phase, false, context, buffer))
+          res.filter(Boolean).map((str22) => resolveCallback(str22, phase, false, context2, buffer))
         ).then(() => buffer[0])
       );
       if (preserveCallbacks) {
@@ -678,25 +1752,31 @@ var init_html = __esm({
       } else {
         return resStr;
       }
-    };
+    }, "resolveCallback");
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
-    setDefaultContentType = (contentType, headers) => {
+    setDefaultContentType = /* @__PURE__ */ __name((contentType, headers) => {
       return {
         "Content-Type": contentType,
         ...headers
       };
-    };
-    createResponseInstance = (body, init) => new Response(body, init);
+    }, "setDefaultContentType");
+    createResponseInstance = /* @__PURE__ */ __name((body, init) => new Response(body, init), "createResponseInstance");
     Context = class {
+      static {
+        __name(this, "Context");
+      }
       #rawRequest;
       #req;
       /**
@@ -836,23 +1916,23 @@ var init_context = __esm({
        * })
        * ```
        */
-      render = (...args) => {
+      render = /* @__PURE__ */ __name((...args) => {
         this.#renderer ??= (content) => this.html(content);
         return this.#renderer(...args);
-      };
+      }, "render");
       /**
        * Sets the layout for the response.
        *
        * @param layout - The layout to set.
        * @returns The layout function.
        */
-      setLayout = (layout) => this.#layout = layout;
+      setLayout = /* @__PURE__ */ __name((layout) => this.#layout = layout, "setLayout");
       /**
        * Gets the current layout for the response.
        *
        * @returns The current layout function.
        */
-      getLayout = () => this.#layout;
+      getLayout = /* @__PURE__ */ __name(() => this.#layout, "getLayout");
       /**
        * `.setRenderer()` can set the layout in the custom middleware.
        *
@@ -874,9 +1954,9 @@ var init_context = __esm({
        * })
        * ```
        */
-      setRenderer = (renderer) => {
+      setRenderer = /* @__PURE__ */ __name((renderer) => {
         this.#renderer = renderer;
-      };
+      }, "setRenderer");
       /**
        * `.header()` can set headers.
        *
@@ -893,7 +1973,7 @@ var init_context = __esm({
        * })
        * ```
        */
-      header = (name, value, options) => {
+      header = /* @__PURE__ */ __name((name, value, options) => {
         if (this.finalized) {
           this.#res = createResponseInstance(this.#res.body, this.#res);
         }
@@ -905,10 +1985,10 @@ var init_context = __esm({
         } else {
           headers.set(name, value);
         }
-      };
-      status = (status) => {
+      }, "header");
+      status = /* @__PURE__ */ __name((status) => {
         this.#status = status;
-      };
+      }, "status");
       /**
        * `.set()` can set the value specified by the key.
        *
@@ -922,10 +2002,10 @@ var init_context = __esm({
        * })
        * ```
        */
-      set = (key, value) => {
+      set = /* @__PURE__ */ __name((key, value) => {
         this.#var ??= /* @__PURE__ */ new Map();
         this.#var.set(key, value);
-      };
+      }, "set");
       /**
        * `.get()` can use the value specified by the key.
        *
@@ -939,9 +2019,9 @@ var init_context = __esm({
        * })
        * ```
        */
-      get = (key) => {
+      get = /* @__PURE__ */ __name((key) => {
         return this.#var ? this.#var.get(key) : void 0;
-      };
+      }, "get");
       /**
        * `.var` can access the value of a variable.
        *
@@ -986,7 +2066,7 @@ var init_context = __esm({
         const status = typeof arg === "number" ? arg : arg?.status ?? this.#status;
         return createResponseInstance(data, { status, headers: responseHeaders });
       }
-      newResponse = (...args) => this.#newResponse(...args);
+      newResponse = /* @__PURE__ */ __name((...args) => this.#newResponse(...args), "newResponse");
       /**
        * `.body()` can return the HTTP response.
        * You can set headers with `.header()` and set HTTP status code with `.status`.
@@ -1008,7 +2088,7 @@ var init_context = __esm({
        * })
        * ```
        */
-      body = (data, arg, headers) => this.#newResponse(data, arg, headers);
+      body = /* @__PURE__ */ __name((data, arg, headers) => this.#newResponse(data, arg, headers), "body");
       /**
        * `.text()` can render text as `Content-Type:text/plain`.
        *
@@ -1021,13 +2101,13 @@ var init_context = __esm({
        * })
        * ```
        */
-      text = (text, arg, headers) => {
+      text = /* @__PURE__ */ __name((text, arg, headers) => {
         return !this.#preparedHeaders && !this.#status && !arg && !headers && !this.finalized ? new Response(text) : this.#newResponse(
           text,
           arg,
           setDefaultContentType(TEXT_PLAIN, headers)
         );
-      };
+      }, "text");
       /**
        * `.json()` can render JSON as `Content-Type:application/json`.
        *
@@ -1040,17 +2120,17 @@ var init_context = __esm({
        * })
        * ```
        */
-      json = (object, arg, headers) => {
+      json = /* @__PURE__ */ __name((object, arg, headers) => {
         return this.#newResponse(
           JSON.stringify(object),
           arg,
           setDefaultContentType("application/json", headers)
         );
-      };
-      html = (html, arg, headers) => {
-        const res = (html2) => this.#newResponse(html2, arg, setDefaultContentType("text/html; charset=UTF-8", headers));
+      }, "json");
+      html = /* @__PURE__ */ __name((html, arg, headers) => {
+        const res = /* @__PURE__ */ __name((html2) => this.#newResponse(html2, arg, setDefaultContentType("text/html; charset=UTF-8", headers)), "res");
         return typeof html === "object" ? resolveCallback(html, HtmlEscapedCallbackPhase.Stringify, false, {}).then(res) : res(html);
-      };
+      }, "html");
       /**
        * `.redirect()` can Redirect, default status code is 302.
        *
@@ -1066,7 +2146,7 @@ var init_context = __esm({
        * })
        * ```
        */
-      redirect = (location, status) => {
+      redirect = /* @__PURE__ */ __name((location, status) => {
         const locationString = String(location);
         this.header(
           "Location",
@@ -1075,7 +2155,7 @@ var init_context = __esm({
           !/[^\x00-\xFF]/.test(locationString) ? locationString : encodeURI(locationString)
         );
         return this.newResponse(null, status ?? 302);
-      };
+      }, "redirect");
       /**
        * `.notFound()` can return the Not Found Response.
        *
@@ -1088,56 +2168,71 @@ var init_context = __esm({
        * })
        * ```
        */
-      notFound = () => {
+      notFound = /* @__PURE__ */ __name(() => {
         this.#notFoundHandler ??= () => createResponseInstance();
         return this.#notFoundHandler(this);
-      };
+      }, "notFound");
     };
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
     MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is already built.";
     UnsupportedPathError = class extends Error {
+      static {
+        __name(this, "UnsupportedPathError");
+      }
     };
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_compose();
     init_context();
     init_router();
     init_constants2();
     init_url();
-    notFoundHandler = (c) => {
+    notFoundHandler = /* @__PURE__ */ __name((c) => {
       return c.text("404 Not Found", 404);
-    };
-    errorHandler = (err, c) => {
+    }, "notFoundHandler");
+    errorHandler = /* @__PURE__ */ __name((err, c) => {
       if ("getResponse" in err) {
         const res = err.getResponse();
         return c.newResponse(res.body, res);
       }
       console.error(err);
       return c.text("Internal Server Error", 500);
-    };
+    }, "errorHandler");
     Hono = class _Hono {
+      static {
+        __name(this, "_Hono");
+      }
       get;
       post;
       put;
@@ -1237,7 +2332,7 @@ var init_hono_base = __esm({
           if (app2.errorHandler === errorHandler) {
             handler = r.handler;
           } else {
-            handler = async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res;
+            handler = /* @__PURE__ */ __name(async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res, "handler");
             handler[COMPOSED_HANDLER] = r.handler;
           }
           subApp.#addRoute(r.method, r.path, handler);
@@ -1278,10 +2373,10 @@ var init_hono_base = __esm({
        * })
        * ```
        */
-      onError = (handler) => {
+      onError = /* @__PURE__ */ __name((handler) => {
         this.errorHandler = handler;
         return this;
-      };
+      }, "onError");
       /**
        * `.notFound()` allows you to customize a Not Found Response.
        *
@@ -1297,10 +2392,10 @@ var init_hono_base = __esm({
        * })
        * ```
        */
-      notFound = (handler) => {
+      notFound = /* @__PURE__ */ __name((handler) => {
         this.#notFoundHandler = handler;
         return this;
-      };
+      }, "notFound");
       /**
        * `.mount()` allows you to mount applications built with other frameworks into your Hono application.
        *
@@ -1342,7 +2437,7 @@ var init_hono_base = __esm({
           } else {
             optionHandler = options.optionHandler;
             if (options.replaceRequest === false) {
-              replaceRequest = (request) => request;
+              replaceRequest = /* @__PURE__ */ __name((request) => request, "replaceRequest");
             } else {
               replaceRequest = options.replaceRequest;
             }
@@ -1368,13 +2463,13 @@ var init_hono_base = __esm({
             return new Request(url, request);
           };
         })();
-        const handler = async (c, next) => {
+        const handler = /* @__PURE__ */ __name(async (c, next) => {
           const res = await applicationHandler(replaceRequest(c.req.raw), ...getOptions(c));
           if (res) {
             return res;
           }
           await next();
-        };
+        }, "handler");
         this.#addRoute(METHOD_NAME_ALL, mergePath(path, "*"), handler);
         return this;
       }
@@ -1391,16 +2486,16 @@ var init_hono_base = __esm({
         }
         throw err;
       }
-      #dispatch(request, executionCtx, env, method) {
+      #dispatch(request, executionCtx, env2, method) {
         if (method === "HEAD") {
-          return (async () => new Response(null, await this.#dispatch(request, executionCtx, env, "GET")))();
+          return (async () => new Response(null, await this.#dispatch(request, executionCtx, env2, "GET")))();
         }
-        const path = this.getPath(request, { env });
+        const path = this.getPath(request, { env: env2 });
         const matchResult = this.router.match(method, path);
         const c = new Context(request, {
           path,
           matchResult,
-          env,
+          env: env2,
           executionCtx,
           notFoundHandler: this.#notFoundHandler
         });
@@ -1420,13 +2515,13 @@ var init_hono_base = __esm({
         const composed = compose(matchResult[0], this.errorHandler, this.#notFoundHandler);
         return (async () => {
           try {
-            const context = await composed(c);
-            if (!context.finalized) {
+            const context2 = await composed(c);
+            if (!context2.finalized) {
               throw new Error(
                 "Context is not finalized. Did you forget to return a Response object or `await next()`?"
               );
             }
-            return context.res;
+            return context2.res;
           } catch (err) {
             return this.#handleError(err, c);
           }
@@ -1443,9 +2538,9 @@ var init_hono_base = __esm({
        * @returns {Response | Promise<Response>} response of request
        *
        */
-      fetch = (request, ...rest) => {
+      fetch = /* @__PURE__ */ __name((request, ...rest) => {
         return this.#dispatch(request, rest[1], rest[0], request.method);
-      };
+      }, "fetch");
       /**
        * `.request()` is a useful method for testing.
        * You can pass a URL or pathname to send a GET request.
@@ -1458,7 +2553,7 @@ var init_hono_base = __esm({
        * ```
        * @see https://hono.dev/docs/api/hono#request
        */
-      request = (input, requestInit, Env, executionCtx) => {
+      request = /* @__PURE__ */ __name((input, requestInit, Env, executionCtx) => {
         if (input instanceof Request) {
           return this.fetch(requestInit ? new Request(input, requestInit) : input, Env, executionCtx);
         }
@@ -1471,7 +2566,7 @@ var init_hono_base = __esm({
           Env,
           executionCtx
         );
-      };
+      }, "request");
       /**
        * `.fire()` automatically adds a global fetch event listener.
        * This can be useful for environments that adhere to the Service Worker API, such as non-ES module Cloudflare Workers.
@@ -1489,19 +2584,19 @@ var init_hono_base = __esm({
        * @see https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API
        * @see https://developers.cloudflare.com/workers/reference/migrate-to-module-workers/
        */
-      fire = () => {
+      fire = /* @__PURE__ */ __name(() => {
         addEventListener("fetch", (event) => {
           event.respondWith(this.#dispatch(event.request, event, void 0, event.request.method));
         });
-      };
+      }, "fire");
     };
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = ((method2, path2) => {
+  const match2 = /* @__PURE__ */ __name((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -1513,19 +2608,23 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  });
+  }, "match2");
   this.match = match2;
   return match2(method, path);
 }
 var emptyParam;
 var init_matcher = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_router();
     emptyParam = [];
+    __name(match, "match");
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1547,17 +2646,24 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
     PATH_ERROR = /* @__PURE__ */ Symbol();
     regExpMetaChars = new Set(".\\+*[^]$()");
+    __name(compareKey, "compareKey");
     Node = class _Node {
+      static {
+        __name(this, "_Node");
+      }
       #index;
       #varIndex;
       #children = /* @__PURE__ */ Object.create(null);
-      insert(tokens, index, paramMap, context, pathErrorCheckOnly) {
+      insert(tokens, index, paramMap, context2, pathErrorCheckOnly) {
         if (tokens.length === 0) {
           if (this.#index !== void 0) {
             throw PATH_ERROR;
@@ -1595,7 +2701,7 @@ var init_node = __esm({
             }
             node = this.#children[regexpStr] = new _Node();
             if (name !== "") {
-              node.#varIndex = context.varIndex++;
+              node.#varIndex = context2.varIndex++;
             }
           }
           if (!pathErrorCheckOnly && name !== "") {
@@ -1615,7 +2721,7 @@ var init_node = __esm({
             node = this.#children[token] = new _Node();
           }
         }
-        node.insert(restTokens, index, paramMap, context, pathErrorCheckOnly);
+        node.insert(restTokens, index, paramMap, context2, pathErrorCheckOnly);
       }
       buildRegExpStr() {
         const childKeys = Object.keys(this.#children).sort(compareKey);
@@ -1638,12 +2744,18 @@ var init_node = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_node();
     Trie = class {
+      static {
+        __name(this, "Trie");
+      }
       #context = { varIndex: 0 };
       #root = new Node();
       insert(path, index, pathErrorCheckOnly) {
@@ -1700,7 +2812,7 @@ var init_trie = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1782,7 +2894,10 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_router();
     init_url();
     init_matcher();
@@ -1790,7 +2905,14 @@ var init_router2 = __esm({
     init_trie();
     nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
     wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
+    __name(buildWildcardRegExp, "buildWildcardRegExp");
+    __name(clearWildcardRegExpCache, "clearWildcardRegExpCache");
+    __name(buildMatcherFromPreprocessedRoutes, "buildMatcherFromPreprocessedRoutes");
+    __name(findMiddleware, "findMiddleware");
     RegExpRouter = class {
+      static {
+        __name(this, "RegExpRouter");
+      }
       name = "RegExpRouter";
       #middleware;
       #routes;
@@ -1889,29 +3011,41 @@ var init_router2 = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_router2();
     init_prepared_router();
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_router();
     SmartRouter = class {
+      static {
+        __name(this, "SmartRouter");
+      }
       name = "SmartRouter";
       #routers = [];
       #routes = [];
@@ -1967,27 +3101,36 @@ var init_router3 = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_router3();
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
-    hasChildren = (children) => {
+    hasChildren = /* @__PURE__ */ __name((children) => {
       for (const _ in children) {
         return true;
       }
       return false;
-    };
+    }, "hasChildren");
     Node2 = class _Node2 {
+      static {
+        __name(this, "_Node");
+      }
       #methods;
       #children;
       #patterns;
@@ -2156,13 +3299,19 @@ var init_node2 = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_url();
     init_node2();
     TrieRouter = class {
+      static {
+        __name(this, "TrieRouter");
+      }
       name = "TrieRouter";
       #node;
       constructor() {
@@ -2185,22 +3334,31 @@ var init_router4 = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_router4();
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
     init_trie_router();
     Hono2 = class extends Hono {
+      static {
+        __name(this, "Hono");
+      }
       /**
        * Creates an instance of the Hono class.
        *
@@ -2216,14 +3374,17 @@ var init_hono = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_hono();
   }
 });
 
-// ../../wt-batch/cypher-executor/src/types.ts
+// src/types.ts
 async function kvGetNodeOutput(store, nodeId) {
   try {
     const val = await store.kv.get(`${store.runId}:node:${nodeId}`, "json");
@@ -2244,9 +3405,16 @@ async function kvSetNodeOutput(store, nodeId, output) {
 }
 var WorkflowPaused, ExecutionError;
 var init_types = __esm({
-  "../../wt-batch/cypher-executor/src/types.ts"() {
+  "src/types.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    __name(kvGetNodeOutput, "kvGetNodeOutput");
     WorkflowPaused = class extends Error {
+      static {
+        __name(this, "WorkflowPaused");
+      }
       task_id;
       run_id;
       paused_node_id;
@@ -2261,21 +3429,25 @@ var init_types = __esm({
       }
     };
     ExecutionError = class extends Error {
+      static {
+        __name(this, "ExecutionError");
+      }
       failed_node;
       failed_input;
       trace;
-      constructor(message, failed_node, failed_input, trace) {
+      constructor(message, failed_node, failed_input, trace3) {
         super(message);
         this.name = "ExecutionError";
         this.failed_node = failed_node;
         this.failed_input = failed_input;
-        this.trace = trace;
+        this.trace = trace3;
       }
     };
+    __name(kvSetNodeOutput, "kvSetNodeOutput");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/hash.ts
+// src/lib/hash.ts
 async function deriveRecipeHash(canonicalId) {
   return "rec_" + await sha256Prefix(canonicalId);
 }
@@ -2291,12 +3463,19 @@ async function sha256Prefix(input) {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 8);
 }
 var init_hash = __esm({
-  "../../wt-batch/cypher-executor/src/lib/hash.ts"() {
+  "src/lib/hash.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    __name(deriveRecipeHash, "deriveRecipeHash");
+    __name(isComponentHash, "isComponentHash");
+    __name(isRecipeHash, "isRecipeHash");
+    __name(sha256Prefix, "sha256Prefix");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/routes/recipes.ts
+// src/routes/recipes.ts
 async function installRecipeRecord(kv, recipe) {
   const uuid = recipe.uuid;
   const { canonical_id, hash_id } = recipe;
@@ -2310,11 +3489,11 @@ async function installRecipeRecord(kv, recipe) {
     kv.put(`idx:${hash_id}`, canonical_id)
   ]);
 }
-async function fetchMarketStat(env, canonicalId) {
+async function fetchMarketStat(env2, canonicalId) {
   try {
-    const base = (env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
+    const base = (env2.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
     const headers = {};
-    if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+    if (env2.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env2.KBDB_INTERNAL_TOKEN}`;
     const res = await fetch(`${base}/recipe-stats/${encodeURIComponent(canonicalId)}`, { headers });
     if (!res.ok) return null;
     const json = await res.json();
@@ -2356,13 +3535,17 @@ async function resolveAuthRecipe(service, kv) {
 }
 var recipesRouter, kIdxCanonical, kIdxInstalled;
 var init_recipes = __esm({
-  "../../wt-batch/cypher-executor/src/routes/recipes.ts"() {
+  "src/routes/recipes.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_dist();
     init_hash();
     recipesRouter = new Hono2();
-    kIdxCanonical = (canonicalId) => `idx:canonical:${canonicalId}`;
-    kIdxInstalled = (canonicalId) => `idx:installed:${canonicalId}`;
+    kIdxCanonical = /* @__PURE__ */ __name((canonicalId) => `idx:canonical:${canonicalId}`, "kIdxCanonical");
+    kIdxInstalled = /* @__PURE__ */ __name((canonicalId) => `idx:installed:${canonicalId}`, "kIdxInstalled");
+    __name(installRecipeRecord, "installRecipeRecord");
     recipesRouter.post("/recipes", async (c) => {
       let body;
       try {
@@ -2499,6 +3682,8 @@ var init_recipes = __esm({
       const recipes = all.filter((r) => r.uuid || !hasUuidVersion.has(r.canonical_id));
       return c.json({ success: true, recipes, count: recipes.length });
     });
+    __name(fetchMarketStat, "fetchMarketStat");
+    __name(listAllRecipes, "listAllRecipes");
     recipesRouter.get("/public-recipes", async (c) => {
       const q = (c.req.query("q") ?? "").trim().toLowerCase();
       const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
@@ -2530,19 +3715,19 @@ var init_recipes = __esm({
       const canonicalId = c.req.param("canonical_id").trim().toLowerCase();
       const author = c.req.query("author");
       const all = await listAllRecipes(c.env.RECIPES);
-      let versions = all.filter((r) => r.canonical_id === canonicalId);
-      if (author) versions = versions.filter((r) => r.author === author);
-      if (versions.length === 0) {
+      let versions2 = all.filter((r) => r.canonical_id === canonicalId);
+      if (author) versions2 = versions2.filter((r) => r.author === author);
+      if (versions2.length === 0) {
         return c.json({
           found: false,
           canonical_id: canonicalId,
           hint: `\u516C\u5EAB\u7121 recipe\u300C${canonicalId}\u300D${author ? `\uFF08author=${author}\uFF09` : ""}\u3002\u53EF\u81EA\u884C\u5EFA\u7ACB\u4E26 submit-p \u6295\u7A3F\u6210\u70BA\u4F5C\u8005\uFF08app-store \u6A21\u578B\uFF09\u3002`
         });
       }
-      let best = versions[0];
+      let best = versions2[0];
       let bestStat = null;
       let bestScore = -1;
-      for (const v of versions) {
+      for (const v of versions2) {
         const stat = await fetchMarketStat(c.env, v.uuid ?? v.canonical_id);
         const score = stat?.success_count ?? 0;
         if (score > bestScore) {
@@ -2580,6 +3765,8 @@ var init_recipes = __esm({
       await Promise.all(ops);
       return c.json({ success: true, deleted: recipe.uuid ?? canonicalId });
     });
+    __name(resolveRecipe, "resolveRecipe");
+    __name(resolveAuthRecipe, "resolveAuthRecipe");
     recipesRouter.post("/auth-recipes", async (c) => {
       let body;
       try {
@@ -2644,11 +3831,14 @@ var init_recipes = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/constants.ts
+// src/lib/constants.ts
 var VALID_EDGE_TYPES, SEMANTIC_EDGE_MAP, BUILTIN_COMPONENTS;
 var init_constants3 = __esm({
-  "../../wt-batch/cypher-executor/src/lib/constants.ts"() {
+  "src/lib/constants.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     VALID_EDGE_TYPES = /* @__PURE__ */ new Set([
       // 現有
       "PIPE",
@@ -2707,7 +3897,7 @@ var init_constants3 = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/recipe-payload.ts
+// src/lib/recipe-payload.ts
 function getPath2(obj, path) {
   let cur = obj;
   for (const part of path.split(".")) {
@@ -2781,20 +3971,29 @@ function sanitize(input, map) {
   return s.trim();
 }
 var init_recipe_payload = __esm({
-  "../../wt-batch/cypher-executor/src/lib/recipe-payload.ts"() {
+  "src/lib/recipe-payload.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    __name(getPath2, "getPath");
+    __name(renderBodyTemplate, "renderBodyTemplate");
+    __name(renderValue, "renderValue");
+    __name(renderString, "renderString");
+    __name(applyResponseMap, "applyResponseMap");
+    __name(sanitize, "sanitize");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/component-loader.ts
+// src/lib/component-loader.ts
 function wasmWorkerUrl(canonicalId, subdomain) {
   const kebab = canonicalId.replace(/_/g, "-");
   return `https://arcrun-${kebab}.${subdomain}.workers.dev`;
 }
-function createComponentLoader(env) {
+function createComponentLoader(env2) {
   return async (componentId) => {
     if (componentId === "trigger_workflow") {
-      return makeTriggerWorkflowRunner(env);
+      return makeTriggerWorkflowRunner(env2);
     }
     const builtin = BUILTIN_COMPONENTS.get(componentId);
     if (builtin) return builtin;
@@ -2802,26 +4001,26 @@ function createComponentLoader(env) {
       return makeHttpRunner(componentId);
     }
     if (isComponentHash(componentId)) {
-      const canonicalId = await env.WEBHOOKS.get(`idx:${componentId}`);
+      const canonicalId = await env2.WEBHOOKS.get(`idx:${componentId}`);
       if (canonicalId) {
-        const runner = makeLogicRunner(canonicalId, env);
+        const runner = makeLogicRunner(canonicalId, env2);
         if (runner) return runner;
       }
       throw new Error(`\u627E\u4E0D\u5230\u96F6\u4EF6 hash "${componentId}"\uFF0C\u8ACB\u78BA\u8A8D\u5DF2\u900F\u904E acr push \u4E0A\u50B3`);
     }
     if (isRecipeHash(componentId)) {
-      const recipe = await resolveRecipe(componentId, env.RECIPES);
-      if (recipe) return pickRecipeRunner(recipe, env);
+      const recipe = await resolveRecipe(componentId, env2.RECIPES);
+      if (recipe) return pickRecipeRunner(recipe, env2);
       throw new Error(`\u627E\u4E0D\u5230 recipe hash "${componentId}"\uFF0C\u8ACB\u78BA\u8A8D\u5DF2\u900F\u904E acr push \u4E0A\u50B3`);
     }
-    const logicRunner = makeLogicRunner(componentId, env);
+    const logicRunner = makeLogicRunner(componentId, env2);
     if (logicRunner) return logicRunner;
-    const authRecipe = await resolveAuthRecipe(componentId, env.RECIPES);
+    const authRecipe = await resolveAuthRecipe(componentId, env2.RECIPES);
     if (authRecipe) return makeAuthRecipeRunner(authRecipe);
-    const kvRecipe = await resolveRecipe(componentId, env.RECIPES);
-    if (kvRecipe) return pickRecipeRunner(kvRecipe, env);
+    const kvRecipe = await resolveRecipe(componentId, env2.RECIPES);
+    if (kvRecipe) return pickRecipeRunner(kvRecipe, env2);
     if (WASM_HTTP_RUNNER_IDS.has(componentId)) {
-      return makeHttpRunner(wasmWorkerUrl(componentId, env.WORKER_SUBDOMAIN));
+      return makeHttpRunner(wasmWorkerUrl(componentId, env2.WORKER_SUBDOMAIN));
     }
     throw new Error(
       `\u627E\u4E0D\u5230\u96F6\u4EF6 "${componentId}"\u3002
@@ -2830,7 +4029,7 @@ function createComponentLoader(env) {
     );
   };
 }
-function makeTriggerWorkflowRunner(env) {
+function makeTriggerWorkflowRunner(env2) {
   return async (ctx) => {
     const c = ctx && typeof ctx === "object" ? ctx : {};
     const workflowName = String(c.workflow_name ?? "");
@@ -2840,7 +4039,7 @@ function makeTriggerWorkflowRunner(env) {
     if (!workflowName) return { success: false, error: "trigger_workflow \u7F3A workflow_name" };
     if (!apiKey) return { success: false, error: "trigger_workflow \u7F3A api_key" };
     const wfKey = `${apiKey}:wf:${workflowName}`;
-    const wfRaw = await env.WEBHOOKS.get(wfKey, "text");
+    const wfRaw = await env2.WEBHOOKS.get(wfKey, "text");
     if (!wfRaw) return { success: false, error: `\u627E\u4E0D\u5230 workflow "${workflowName}" (key=${wfKey})` };
     let record;
     try {
@@ -2852,7 +4051,7 @@ function makeTriggerWorkflowRunner(env) {
     const { executeWebhookGraph: executeWebhookGraph2 } = await Promise.resolve().then(() => (init_webhook_handlers(), webhook_handlers_exports));
     const triggerContext = { ...input, _triggered_by: "trigger_workflow" };
     if (wait) {
-      const r = await executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey);
+      const r = await executeWebhookGraph2(env2, record.graph, triggerContext, workflowName, apiKey);
       const isPaused = !r.success && typeof r.error === "string" && /workflow paused/i.test(r.error);
       return {
         success: r.success || isPaused,
@@ -2861,7 +4060,7 @@ function makeTriggerWorkflowRunner(env) {
         sub_result: r
       };
     } else {
-      void executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey).catch((e) => console.error("[trigger_workflow] fire-and-forget fail", workflowName, e));
+      void executeWebhookGraph2(env2, record.graph, triggerContext, workflowName, apiKey).catch((e) => console.error("[trigger_workflow] fire-and-forget fail", workflowName, e));
       return { success: true, triggered_workflow: workflowName, mode: "fire_and_forget" };
     }
   };
@@ -2884,10 +4083,10 @@ function makeHttpRunner(url) {
     }
   };
 }
-function makeLogicRunner(canonicalId, env) {
+function makeLogicRunner(canonicalId, env2) {
   const bindingKey = LOGIC_BINDING_MAP[canonicalId];
   if (!bindingKey) return null;
-  const svc = env[bindingKey];
+  const svc = env2[bindingKey];
   if (svc) {
     return async (ctx) => {
       const res = await svc.fetch(new Request("https://component/", {
@@ -2906,17 +4105,17 @@ function makeLogicRunner(canonicalId, env) {
       }
     };
   }
-  return makeHttpRunner(wasmWorkerUrl(canonicalId, env.WORKER_SUBDOMAIN));
+  return makeHttpRunner(wasmWorkerUrl(canonicalId, env2.WORKER_SUBDOMAIN));
 }
-function pickRecipeRunner(recipe, env) {
-  return recipe.auth === "binding" ? makeBindingRecipeRunner(recipe, env) : makeRecipeRunner(recipe);
+function pickRecipeRunner(recipe, env2) {
+  return recipe.auth === "binding" ? makeBindingRecipeRunner(recipe, env2) : makeRecipeRunner(recipe);
 }
-function makeBindingRecipeRunner(recipe, env) {
+function makeBindingRecipeRunner(recipe, env2) {
   return async (ctx) => {
     const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
     const name = recipe.binding_name ?? "AI";
-    const binding = env[name];
-    if (!binding) {
+    const binding2 = env2[name];
+    if (!binding2) {
       return {
         success: false,
         error: `recipe "${recipe.canonical_id}" \u5BA3\u544A auth: binding\u3001binding_name: "${name}"\uFF0C\u4F46\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}\u3002\u8ACB\u5728 wrangler.toml \u88DC\u4E0A\u8A72 binding \u5F8C\u91CD\u65B0\u90E8\u7F72\u3002`
@@ -2925,7 +4124,7 @@ function makeBindingRecipeRunner(recipe, env) {
     const target = recipe.endpoint;
     const payload = renderBodyTemplate(recipe.body_template ?? recipe.body, ctxObj) ?? Object.fromEntries(Object.entries(ctxObj).filter(([k]) => !k.startsWith("_")));
     try {
-      const runner = binding;
+      const runner = binding2;
       if (typeof runner.run !== "function") {
         return {
           success: false,
@@ -2950,10 +4149,10 @@ function makeRecipeRunner(recipe) {
   return async (ctx) => {
     const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
     const authPath = ctxObj._auth_path ?? {};
-    const interpolate2 = (s) => s.replace(
+    const interpolate2 = /* @__PURE__ */ __name((s) => s.replace(
       /\{\{(auth\.)?(\w+)\}\}/g,
       (_, authPrefix, k) => String(authPrefix ? authPath[k] ?? "" : ctxObj[k] ?? "")
-    );
+    ), "interpolate");
     const method = (recipe.method ?? "POST").toUpperCase();
     const authHeaders = ctxObj._auth_headers ?? {};
     const headers = {
@@ -3024,8 +4223,11 @@ async function readBodyOnce(res) {
 }
 var WASM_HTTP_RUNNER_IDS, LOGIC_BINDING_MAP;
 var init_component_loader = __esm({
-  "../../wt-batch/cypher-executor/src/lib/component-loader.ts"() {
+  "src/lib/component-loader.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_constants3();
     init_hash();
     init_recipes();
@@ -3048,6 +4250,7 @@ var init_component_loader = __esm({
       "auth_oauth2",
       "auth_mtls"
     ]);
+    __name(wasmWorkerUrl, "wasmWorkerUrl");
     LOGIC_BINDING_MAP = {
       if_control: "SVC_IF_CONTROL",
       switch: "SVC_SWITCH",
@@ -3065,28 +4268,37 @@ var init_component_loader = __esm({
       // ai_transform_compile / ai_transform_run 已刪除（2026-05-29）：
       // Arcrun 是 AI 呼叫的工具，工作流不該內嵌 AI 節點回頭呼叫 AI（n8n 才需要，因它沒大腦）。
     };
+    __name(createComponentLoader, "createComponentLoader");
+    __name(makeTriggerWorkflowRunner, "makeTriggerWorkflowRunner");
+    __name(makeHttpRunner, "makeHttpRunner");
+    __name(makeLogicRunner, "makeLogicRunner");
+    __name(pickRecipeRunner, "pickRecipeRunner");
+    __name(makeBindingRecipeRunner, "makeBindingRecipeRunner");
+    __name(makeRecipeRunner, "makeRecipeRunner");
+    __name(makeAuthRecipeRunner, "makeAuthRecipeRunner");
+    __name(readBodyOnce, "readBodyOnce");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/wasi-shim.ts
-async function routedKvGet(env, apiKey, key) {
+// src/lib/wasi-shim.ts
+async function routedKvGet(env2, apiKey, key) {
   if (key.startsWith("auth_recipe:")) {
-    return env.RECIPES.get(key);
+    return env2.RECIPES.get(key);
   }
   const credMatch = key.match(/^([^:]+):cred:.+$/);
   if (credMatch) {
     if (credMatch[1] !== apiKey) {
       return null;
     }
-    return env.CREDENTIALS_KV.get(key);
+    return env2.CREDENTIALS_KV.get(key);
   }
   return null;
 }
-async function routedKvPut(env, apiKey, key, value, ttlSeconds) {
+async function routedKvPut(env2, apiKey, key, value, ttlSeconds) {
   const oauth2Match = key.match(/^([^:]+):oauth2:.+$/);
   if (oauth2Match && oauth2Match[1] === apiKey) {
     const opts = ttlSeconds > 0 ? { expirationTtl: ttlSeconds } : void 0;
-    await env.CREDENTIALS_KV.put(key, value, opts);
+    await env2.CREDENTIALS_KV.put(key, value, opts);
     return;
   }
 }
@@ -3101,30 +4313,38 @@ async function rsaPkcs1Sha256Sign(data, pkcs8) {
   const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, data);
   return new Uint8Array(sig);
 }
-function secretGet(env, ref) {
+function secretGet(env2, ref) {
   if (!/^CRED_/.test(ref)) return null;
-  const value = env[ref];
+  const value = env2[ref];
   return typeof value === "string" ? value : null;
 }
-function createArcrunHostFunctions(env, apiKey) {
+function createArcrunHostFunctions(env2, apiKey) {
   return {
-    kv_get: (key) => routedKvGet(env, apiKey, key),
-    kv_put: (key, value, ttlSeconds) => routedKvPut(env, apiKey, key, value, ttlSeconds),
-    crypto_sign_rs256: (data, pkcs8) => rsaPkcs1Sha256Sign(data, pkcs8),
-    secret_get: async (ref) => secretGet(env, ref)
+    kv_get: /* @__PURE__ */ __name((key) => routedKvGet(env2, apiKey, key), "kv_get"),
+    kv_put: /* @__PURE__ */ __name((key, value, ttlSeconds) => routedKvPut(env2, apiKey, key, value, ttlSeconds), "kv_put"),
+    crypto_sign_rs256: /* @__PURE__ */ __name((data, pkcs8) => rsaPkcs1Sha256Sign(data, pkcs8), "crypto_sign_rs256"),
+    secret_get: /* @__PURE__ */ __name(async (ref) => secretGet(env2, ref), "secret_get")
   };
 }
 var init_wasi_shim = __esm({
-  "../../wt-batch/cypher-executor/src/lib/wasi-shim.ts"() {
+  "src/lib/wasi-shim.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    __name(routedKvGet, "routedKvGet");
+    __name(routedKvPut, "routedKvPut");
+    __name(rsaPkcs1Sha256Sign, "rsaPkcs1Sha256Sign");
+    __name(secretGet, "secretGet");
+    __name(createArcrunHostFunctions, "createArcrunHostFunctions");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/actions/auth-dispatcher.ts
-async function resolveSecretsFromNewHome(env, apiKey, names) {
+// src/actions/auth-dispatcher.ts
+async function resolveSecretsFromNewHome(env2, apiKey, names) {
   const resolved = {};
   if (names.length === 0) return resolved;
-  const db = env.CREDENTIALS_DB;
+  const db = env2.CREDENTIALS_DB;
   if (!db) return resolved;
   let rows;
   try {
@@ -3138,7 +4358,7 @@ async function resolveSecretsFromNewHome(env, apiKey, names) {
     return resolved;
   }
   if (rows.length === 0) return resolved;
-  const secretGet2 = createArcrunHostFunctions(env, apiKey).secret_get;
+  const secretGet2 = createArcrunHostFunctions(env2, apiKey).secret_get;
   if (!secretGet2) return resolved;
   const resolvedNames = [];
   for (const row of rows) {
@@ -3160,21 +4380,21 @@ async function resolveSecretsFromNewHome(env, apiKey, names) {
   }
   return resolved;
 }
-async function tryAuthDispatch(componentId, input, env, apiKey) {
+async function tryAuthDispatch(componentId, input, env2, apiKey) {
   if (AUTH_PRIMITIVE_IDS.has(componentId)) {
     return null;
   }
   let service = componentId;
-  const apiRecipe = await resolveRecipe(componentId, env.RECIPES);
+  const apiRecipe = await resolveRecipe(componentId, env2.RECIPES);
   if (apiRecipe?.auth_service) {
     service = apiRecipe.auth_service;
   }
-  const recipe = await resolveAuthRecipe(service, env.RECIPES);
+  const recipe = await resolveAuthRecipe(service, env2.RECIPES);
   if (!recipe) return null;
   if (!SUPPORTED_PRIMITIVES.has(recipe.primitive)) return null;
   const secretNames = recipe.required_secrets.filter((s) => !s.optional).map((s) => s.key);
-  const resolvedSecrets = await resolveSecretsFromNewHome(env, apiKey, secretNames);
-  const primitiveUrl = wasmWorkerUrl(`auth_${recipe.primitive}`, env.WORKER_SUBDOMAIN);
+  const resolvedSecrets = await resolveSecretsFromNewHome(env2, apiKey, secretNames);
+  const primitiveUrl = wasmWorkerUrl(`auth_${recipe.primitive}`, env2.WORKER_SUBDOMAIN);
   const res = await fetch(primitiveUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -3232,13 +4452,13 @@ function replaceCredentialRefs(value, resolved) {
   }
   return value;
 }
-async function resolveCredentialRefs(data, env, apiKey) {
+async function resolveCredentialRefs(data, env2, apiKey) {
   const names = /* @__PURE__ */ new Set();
   collectCredentialNames(data, names);
   if (names.size === 0) return data;
   const nameList = [...names];
-  const resolvedSecrets = await resolveSecretsFromNewHome(env, apiKey, nameList);
-  const url = wasmWorkerUrl("auth_static_key", env.WORKER_SUBDOMAIN);
+  const resolvedSecrets = await resolveSecretsFromNewHome(env2, apiKey, nameList);
+  const url = wasmWorkerUrl("auth_static_key", env2.WORKER_SUBDOMAIN);
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -3261,11 +4481,15 @@ async function resolveCredentialRefs(data, env, apiKey) {
 }
 var SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
 var init_auth_dispatcher = __esm({
-  "../../wt-batch/cypher-executor/src/actions/auth-dispatcher.ts"() {
+  "src/actions/auth-dispatcher.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_recipes();
     init_component_loader();
     init_wasi_shim();
+    __name(resolveSecretsFromNewHome, "resolveSecretsFromNewHome");
     SUPPORTED_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
     AUTH_PRIMITIVE_IDS = /* @__PURE__ */ new Set([
       "auth_static_key",
@@ -3273,11 +4497,15 @@ var init_auth_dispatcher = __esm({
       "auth_oauth2",
       "auth_mtls"
     ]);
+    __name(tryAuthDispatch, "tryAuthDispatch");
     CREDENTIAL_REF = /\{\{credential\.(\w+)\}\}/g;
+    __name(collectCredentialNames, "collectCredentialNames");
+    __name(replaceCredentialRefs, "replaceCredentialRefs");
+    __name(resolveCredentialRefs, "resolveCredentialRefs");
   }
 });
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3320,7 +4548,7 @@ function processCreateParams(params) {
   }
   if (errorMap2)
     return { errorMap: errorMap2, description };
-  const customMap = (iss, ctx) => {
+  const customMap = /* @__PURE__ */ __name((iss, ctx) => {
     var _a, _b;
     const { message } = params;
     if (iss.code === "invalid_enum_value") {
@@ -3332,7 +4560,7 @@ function processCreateParams(params) {
     if (iss.code !== "invalid_type")
       return { message: ctx.defaultError };
     return { message: (_b = message !== null && message !== void 0 ? message : invalid_type_error) !== null && _b !== void 0 ? _b : ctx.defaultError };
-  };
+  }, "customMap");
   return { errorMap: customMap, description };
 }
 function timeRegexSource(args) {
@@ -3356,11 +4584,11 @@ function datetimeRegex(args) {
   regex = `${regex}(${opts.join("|")})`;
   return new RegExp(`^${regex}$`);
 }
-function isValidIP(ip, version) {
-  if ((version === "v4" || !version) && ipv4Regex.test(ip)) {
+function isValidIP(ip, version2) {
+  if ((version2 === "v4" || !version2) && ipv4Regex.test(ip)) {
     return true;
   }
-  if ((version === "v6" || !version) && ipv6Regex.test(ip)) {
+  if ((version2 === "v6" || !version2) && ipv6Regex.test(ip)) {
     return true;
   }
   return false;
@@ -3382,7 +4610,7 @@ function deepPartialify(schema) {
     }
     return new ZodObject({
       ...schema._def,
-      shape: () => newShape
+      shape: /* @__PURE__ */ __name(() => newShape, "shape")
     });
   } else if (schema instanceof ZodArray) {
     return new ZodArray({
@@ -3459,15 +4687,20 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "../../wt-batch/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
       }
+      __name(assertIs, "assertIs");
       util2.assertIs = assertIs;
       function assertNever(_x) {
         throw new Error();
       }
+      __name(assertNever, "assertNever");
       util2.assertNever = assertNever;
       util2.arrayToEnum = (items) => {
         const obj = {};
@@ -3509,6 +4742,7 @@ var init_lib = __esm({
       function joinValues(array, separator = " | ") {
         return array.map((val) => typeof val === "string" ? `'${val}'` : val).join(separator);
       }
+      __name(joinValues, "joinValues");
       util2.joinValues = joinValues;
       util2.jsonStringifyReplacer = (_, value) => {
         if (typeof value === "bigint") {
@@ -3548,7 +4782,7 @@ var init_lib = __esm({
       "map",
       "set"
     ]);
-    getParsedType = (data) => {
+    getParsedType = /* @__PURE__ */ __name((data) => {
       const t = typeof data;
       switch (t) {
         case "undefined":
@@ -3588,7 +4822,7 @@ var init_lib = __esm({
         default:
           return ZodParsedType.unknown;
       }
-    };
+    }, "getParsedType");
     ZodIssueCode = util.arrayToEnum([
       "invalid_type",
       "invalid_literal",
@@ -3607,11 +4841,14 @@ var init_lib = __esm({
       "not_multiple_of",
       "not_finite"
     ]);
-    quotelessJson = (obj) => {
+    quotelessJson = /* @__PURE__ */ __name((obj) => {
       const json = JSON.stringify(obj, null, 2);
       return json.replace(/"([^"]+)":/g, "$1:");
-    };
+    }, "quotelessJson");
     ZodError = class _ZodError extends Error {
+      static {
+        __name(this, "ZodError");
+      }
       constructor(issues) {
         super();
         this.issues = [];
@@ -3638,8 +4875,8 @@ var init_lib = __esm({
           return issue.message;
         };
         const fieldErrors = { _errors: [] };
-        const processError = (error) => {
-          for (const issue of error.issues) {
+        const processError = /* @__PURE__ */ __name((error3) => {
+          for (const issue of error3.issues) {
             if (issue.code === "invalid_union") {
               issue.unionErrors.map(processError);
             } else if (issue.code === "invalid_return_type") {
@@ -3665,7 +4902,7 @@ var init_lib = __esm({
               }
             }
           }
-        };
+        }, "processError");
         processError(this);
         return fieldErrors;
       }
@@ -3701,10 +4938,10 @@ var init_lib = __esm({
       }
     };
     ZodError.create = (issues) => {
-      const error = new ZodError(issues);
-      return error;
+      const error3 = new ZodError(issues);
+      return error3;
     };
-    errorMap = (issue, _ctx) => {
+    errorMap = /* @__PURE__ */ __name((issue, _ctx) => {
       let message;
       switch (issue.code) {
         case ZodIssueCode.invalid_type:
@@ -3801,9 +5038,11 @@ var init_lib = __esm({
           util.assertNever(issue);
       }
       return { message };
-    };
+    }, "errorMap");
     overrideErrorMap = errorMap;
-    makeIssue = (params) => {
+    __name(setErrorMap, "setErrorMap");
+    __name(getErrorMap, "getErrorMap");
+    makeIssue = /* @__PURE__ */ __name((params) => {
       const { data, path, errorMaps, issueData } = params;
       const fullPath = [...path, ...issueData.path || []];
       const fullIssue = {
@@ -3827,9 +5066,13 @@ var init_lib = __esm({
         path: fullPath,
         message: errorMessage
       };
-    };
+    }, "makeIssue");
     EMPTY_PATH = [];
+    __name(addIssueToContext, "addIssueToContext");
     ParseStatus = class _ParseStatus {
+      static {
+        __name(this, "ParseStatus");
+      }
       constructor() {
         this.value = "valid";
       }
@@ -3886,17 +5129,22 @@ var init_lib = __esm({
     INVALID = Object.freeze({
       status: "aborted"
     });
-    DIRTY = (value) => ({ status: "dirty", value });
-    OK = (value) => ({ status: "valid", value });
-    isAborted = (x) => x.status === "aborted";
-    isDirty = (x) => x.status === "dirty";
-    isValid = (x) => x.status === "valid";
-    isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
+    DIRTY = /* @__PURE__ */ __name((value) => ({ status: "dirty", value }), "DIRTY");
+    OK = /* @__PURE__ */ __name((value) => ({ status: "valid", value }), "OK");
+    isAborted = /* @__PURE__ */ __name((x) => x.status === "aborted", "isAborted");
+    isDirty = /* @__PURE__ */ __name((x) => x.status === "dirty", "isDirty");
+    isValid = /* @__PURE__ */ __name((x) => x.status === "valid", "isValid");
+    isAsync = /* @__PURE__ */ __name((x) => typeof Promise !== "undefined" && x instanceof Promise, "isAsync");
+    __name(__classPrivateFieldGet, "__classPrivateFieldGet");
+    __name(__classPrivateFieldSet, "__classPrivateFieldSet");
     (function(errorUtil2) {
       errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
       errorUtil2.toString = (message) => typeof message === "string" ? message : message === null || message === void 0 ? void 0 : message.message;
     })(errorUtil || (errorUtil = {}));
     ParseInputLazyPath = class {
+      static {
+        __name(this, "ParseInputLazyPath");
+      }
       constructor(parent, value, path, key) {
         this._cachedPath = [];
         this.parent = parent;
@@ -3915,7 +5163,7 @@ var init_lib = __esm({
         return this._cachedPath;
       }
     };
-    handleResult = (ctx, result) => {
+    handleResult = /* @__PURE__ */ __name((ctx, result) => {
       if (isValid(result)) {
         return { success: true, data: result.value };
       } else {
@@ -3927,14 +5175,18 @@ var init_lib = __esm({
           get error() {
             if (this._error)
               return this._error;
-            const error = new ZodError(ctx.common.issues);
-            this._error = error;
+            const error3 = new ZodError(ctx.common.issues);
+            this._error = error3;
             return this._error;
           }
         };
       }
-    };
+    }, "handleResult");
+    __name(processCreateParams, "processCreateParams");
     ZodType = class {
+      static {
+        __name(this, "ZodType");
+      }
       constructor(def) {
         this.spa = this.safeParseAsync;
         this._def = def;
@@ -4050,7 +5302,7 @@ var init_lib = __esm({
         return handleResult(ctx, result);
       }
       refine(check, message) {
-        const getIssueProperties = (val) => {
+        const getIssueProperties = /* @__PURE__ */ __name((val) => {
           if (typeof message === "string" || typeof message === "undefined") {
             return { message };
           } else if (typeof message === "function") {
@@ -4058,13 +5310,13 @@ var init_lib = __esm({
           } else {
             return message;
           }
-        };
+        }, "getIssueProperties");
         return this._refinement((val, ctx) => {
           const result = check(val);
-          const setError = () => ctx.addIssue({
+          const setError = /* @__PURE__ */ __name(() => ctx.addIssue({
             code: ZodIssueCode.custom,
             ...getIssueProperties(val)
-          });
+          }), "setError");
           if (typeof Promise !== "undefined" && result instanceof Promise) {
             return result.then((data) => {
               if (!data) {
@@ -4190,7 +5442,14 @@ var init_lib = __esm({
     base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
     dateRegexSource = `((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))`;
     dateRegex = new RegExp(`^${dateRegexSource}$`);
+    __name(timeRegexSource, "timeRegexSource");
+    __name(timeRegex, "timeRegex");
+    __name(datetimeRegex, "datetimeRegex");
+    __name(isValidIP, "isValidIP");
     ZodString = class _ZodString extends ZodType {
+      static {
+        __name(this, "ZodString");
+      }
       _parse(input) {
         if (this._def.coerce) {
           input.data = String(input.data);
@@ -4691,7 +5950,11 @@ var init_lib = __esm({
         ...processCreateParams(params)
       });
     };
+    __name(floatSafeRemainder, "floatSafeRemainder");
     ZodNumber = class _ZodNumber extends ZodType {
+      static {
+        __name(this, "ZodNumber");
+      }
       constructor() {
         super(...arguments);
         this.min = this.gte;
@@ -4923,6 +6186,9 @@ var init_lib = __esm({
       });
     };
     ZodBigInt = class _ZodBigInt extends ZodType {
+      static {
+        __name(this, "ZodBigInt");
+      }
       constructor() {
         super(...arguments);
         this.min = this.gte;
@@ -5089,6 +6355,9 @@ var init_lib = __esm({
       });
     };
     ZodBoolean = class extends ZodType {
+      static {
+        __name(this, "ZodBoolean");
+      }
       _parse(input) {
         if (this._def.coerce) {
           input.data = Boolean(input.data);
@@ -5114,6 +6383,9 @@ var init_lib = __esm({
       });
     };
     ZodDate = class _ZodDate extends ZodType {
+      static {
+        __name(this, "ZodDate");
+      }
       _parse(input) {
         if (this._def.coerce) {
           input.data = new Date(input.data);
@@ -5223,6 +6495,9 @@ var init_lib = __esm({
       });
     };
     ZodSymbol = class extends ZodType {
+      static {
+        __name(this, "ZodSymbol");
+      }
       _parse(input) {
         const parsedType = this._getType(input);
         if (parsedType !== ZodParsedType.symbol) {
@@ -5244,6 +6519,9 @@ var init_lib = __esm({
       });
     };
     ZodUndefined = class extends ZodType {
+      static {
+        __name(this, "ZodUndefined");
+      }
       _parse(input) {
         const parsedType = this._getType(input);
         if (parsedType !== ZodParsedType.undefined) {
@@ -5265,6 +6543,9 @@ var init_lib = __esm({
       });
     };
     ZodNull = class extends ZodType {
+      static {
+        __name(this, "ZodNull");
+      }
       _parse(input) {
         const parsedType = this._getType(input);
         if (parsedType !== ZodParsedType.null) {
@@ -5286,6 +6567,9 @@ var init_lib = __esm({
       });
     };
     ZodAny = class extends ZodType {
+      static {
+        __name(this, "ZodAny");
+      }
       constructor() {
         super(...arguments);
         this._any = true;
@@ -5301,6 +6585,9 @@ var init_lib = __esm({
       });
     };
     ZodUnknown = class extends ZodType {
+      static {
+        __name(this, "ZodUnknown");
+      }
       constructor() {
         super(...arguments);
         this._unknown = true;
@@ -5316,6 +6603,9 @@ var init_lib = __esm({
       });
     };
     ZodNever = class extends ZodType {
+      static {
+        __name(this, "ZodNever");
+      }
       _parse(input) {
         const ctx = this._getOrReturnCtx(input);
         addIssueToContext(ctx, {
@@ -5333,6 +6623,9 @@ var init_lib = __esm({
       });
     };
     ZodVoid = class extends ZodType {
+      static {
+        __name(this, "ZodVoid");
+      }
       _parse(input) {
         const parsedType = this._getType(input);
         if (parsedType !== ZodParsedType.undefined) {
@@ -5354,6 +6647,9 @@ var init_lib = __esm({
       });
     };
     ZodArray = class _ZodArray extends ZodType {
+      static {
+        __name(this, "ZodArray");
+      }
       _parse(input) {
         const { ctx, status } = this._processInputParams(input);
         const def = this._def;
@@ -5454,7 +6750,11 @@ var init_lib = __esm({
         ...processCreateParams(params)
       });
     };
+    __name(deepPartialify, "deepPartialify");
     ZodObject = class _ZodObject extends ZodType {
+      static {
+        __name(this, "ZodObject");
+      }
       constructor() {
         super(...arguments);
         this._cached = null;
@@ -5563,7 +6863,7 @@ var init_lib = __esm({
           ...this._def,
           unknownKeys: "strict",
           ...message !== void 0 ? {
-            errorMap: (issue, ctx) => {
+            errorMap: /* @__PURE__ */ __name((issue, ctx) => {
               var _a, _b, _c, _d;
               const defaultError = (_c = (_b = (_a = this._def).errorMap) === null || _b === void 0 ? void 0 : _b.call(_a, issue, ctx).message) !== null && _c !== void 0 ? _c : ctx.defaultError;
               if (issue.code === "unrecognized_keys")
@@ -5573,7 +6873,7 @@ var init_lib = __esm({
               return {
                 message: defaultError
               };
-            }
+            }, "errorMap")
           } : {}
         });
       }
@@ -5609,10 +6909,10 @@ var init_lib = __esm({
       extend(augmentation) {
         return new _ZodObject({
           ...this._def,
-          shape: () => ({
+          shape: /* @__PURE__ */ __name(() => ({
             ...this._def.shape(),
             ...augmentation
-          })
+          }), "shape")
         });
       }
       /**
@@ -5624,10 +6924,10 @@ var init_lib = __esm({
         const merged = new _ZodObject({
           unknownKeys: merging._def.unknownKeys,
           catchall: merging._def.catchall,
-          shape: () => ({
+          shape: /* @__PURE__ */ __name(() => ({
             ...this._def.shape(),
             ...merging._def.shape()
-          }),
+          }), "shape"),
           typeName: ZodFirstPartyTypeKind.ZodObject
         });
         return merged;
@@ -5706,7 +7006,7 @@ var init_lib = __esm({
         });
         return new _ZodObject({
           ...this._def,
-          shape: () => shape
+          shape: /* @__PURE__ */ __name(() => shape, "shape")
         });
       }
       omit(mask) {
@@ -5718,7 +7018,7 @@ var init_lib = __esm({
         });
         return new _ZodObject({
           ...this._def,
-          shape: () => shape
+          shape: /* @__PURE__ */ __name(() => shape, "shape")
         });
       }
       /**
@@ -5739,7 +7039,7 @@ var init_lib = __esm({
         });
         return new _ZodObject({
           ...this._def,
-          shape: () => newShape
+          shape: /* @__PURE__ */ __name(() => newShape, "shape")
         });
       }
       required(mask) {
@@ -5758,7 +7058,7 @@ var init_lib = __esm({
         });
         return new _ZodObject({
           ...this._def,
-          shape: () => newShape
+          shape: /* @__PURE__ */ __name(() => newShape, "shape")
         });
       }
       keyof() {
@@ -5767,7 +7067,7 @@ var init_lib = __esm({
     };
     ZodObject.create = (shape, params) => {
       return new ZodObject({
-        shape: () => shape,
+        shape: /* @__PURE__ */ __name(() => shape, "shape"),
         unknownKeys: "strip",
         catchall: ZodNever.create(),
         typeName: ZodFirstPartyTypeKind.ZodObject,
@@ -5776,7 +7076,7 @@ var init_lib = __esm({
     };
     ZodObject.strictCreate = (shape, params) => {
       return new ZodObject({
-        shape: () => shape,
+        shape: /* @__PURE__ */ __name(() => shape, "shape"),
         unknownKeys: "strict",
         catchall: ZodNever.create(),
         typeName: ZodFirstPartyTypeKind.ZodObject,
@@ -5793,6 +7093,9 @@ var init_lib = __esm({
       });
     };
     ZodUnion = class extends ZodType {
+      static {
+        __name(this, "ZodUnion");
+      }
       _parse(input) {
         const { ctx } = this._processInputParams(input);
         const options = this._def.options;
@@ -5815,6 +7118,7 @@ var init_lib = __esm({
           });
           return INVALID;
         }
+        __name(handleResults, "handleResults");
         if (ctx.common.async) {
           return Promise.all(options.map(async (option) => {
             const childCtx = {
@@ -5883,7 +7187,7 @@ var init_lib = __esm({
         ...processCreateParams(params)
       });
     };
-    getDiscriminator = (type) => {
+    getDiscriminator = /* @__PURE__ */ __name((type) => {
       if (type instanceof ZodLazy) {
         return getDiscriminator(type.schema);
       } else if (type instanceof ZodEffects) {
@@ -5913,8 +7217,11 @@ var init_lib = __esm({
       } else {
         return [];
       }
-    };
+    }, "getDiscriminator");
     ZodDiscriminatedUnion = class _ZodDiscriminatedUnion extends ZodType {
+      static {
+        __name(this, "ZodDiscriminatedUnion");
+      }
       _parse(input) {
         const { ctx } = this._processInputParams(input);
         if (ctx.parsedType !== ZodParsedType.object) {
@@ -5990,10 +7297,14 @@ var init_lib = __esm({
         });
       }
     };
+    __name(mergeValues, "mergeValues");
     ZodIntersection = class extends ZodType {
+      static {
+        __name(this, "ZodIntersection");
+      }
       _parse(input) {
         const { status, ctx } = this._processInputParams(input);
-        const handleParsed = (parsedLeft, parsedRight) => {
+        const handleParsed = /* @__PURE__ */ __name((parsedLeft, parsedRight) => {
           if (isAborted(parsedLeft) || isAborted(parsedRight)) {
             return INVALID;
           }
@@ -6008,7 +7319,7 @@ var init_lib = __esm({
             status.dirty();
           }
           return { status: status.value, value: merged.data };
-        };
+        }, "handleParsed");
         if (ctx.common.async) {
           return Promise.all([
             this._def.left._parseAsync({
@@ -6044,6 +7355,9 @@ var init_lib = __esm({
       });
     };
     ZodTuple = class _ZodTuple extends ZodType {
+      static {
+        __name(this, "ZodTuple");
+      }
       _parse(input) {
         const { status, ctx } = this._processInputParams(input);
         if (ctx.parsedType !== ZodParsedType.array) {
@@ -6111,6 +7425,9 @@ var init_lib = __esm({
       });
     };
     ZodRecord = class _ZodRecord extends ZodType {
+      static {
+        __name(this, "ZodRecord");
+      }
       get keySchema() {
         return this._def.keyType;
       }
@@ -6164,6 +7481,9 @@ var init_lib = __esm({
       }
     };
     ZodMap = class extends ZodType {
+      static {
+        __name(this, "ZodMap");
+      }
       get keySchema() {
         return this._def.keyType;
       }
@@ -6230,6 +7550,9 @@ var init_lib = __esm({
       });
     };
     ZodSet = class _ZodSet extends ZodType {
+      static {
+        __name(this, "ZodSet");
+      }
       _parse(input) {
         const { status, ctx } = this._processInputParams(input);
         if (ctx.parsedType !== ZodParsedType.set) {
@@ -6279,6 +7602,7 @@ var init_lib = __esm({
           }
           return { status: status.value, value: parsedSet };
         }
+        __name(finalizeSet, "finalizeSet");
         const elements = [...ctx.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx, item, ctx.path, i)));
         if (ctx.common.async) {
           return Promise.all(elements).then((elements2) => finalizeSet(elements2));
@@ -6315,6 +7639,9 @@ var init_lib = __esm({
       });
     };
     ZodFunction = class _ZodFunction extends ZodType {
+      static {
+        __name(this, "ZodFunction");
+      }
       constructor() {
         super(...arguments);
         this.validate = this.implement;
@@ -6329,7 +7656,7 @@ var init_lib = __esm({
           });
           return INVALID;
         }
-        function makeArgsIssue(args, error) {
+        function makeArgsIssue(args, error3) {
           return makeIssue({
             data: args,
             path: ctx.path,
@@ -6341,11 +7668,12 @@ var init_lib = __esm({
             ].filter((x) => !!x),
             issueData: {
               code: ZodIssueCode.invalid_arguments,
-              argumentsError: error
+              argumentsError: error3
             }
           });
         }
-        function makeReturnsIssue(returns, error) {
+        __name(makeArgsIssue, "makeArgsIssue");
+        function makeReturnsIssue(returns, error3) {
           return makeIssue({
             data: returns,
             path: ctx.path,
@@ -6357,24 +7685,25 @@ var init_lib = __esm({
             ].filter((x) => !!x),
             issueData: {
               code: ZodIssueCode.invalid_return_type,
-              returnTypeError: error
+              returnTypeError: error3
             }
           });
         }
+        __name(makeReturnsIssue, "makeReturnsIssue");
         const params = { errorMap: ctx.common.contextualErrorMap };
         const fn = ctx.data;
         if (this._def.returns instanceof ZodPromise) {
           const me = this;
           return OK(async function(...args) {
-            const error = new ZodError([]);
+            const error3 = new ZodError([]);
             const parsedArgs = await me._def.args.parseAsync(args, params).catch((e) => {
-              error.addIssue(makeArgsIssue(args, e));
-              throw error;
+              error3.addIssue(makeArgsIssue(args, e));
+              throw error3;
             });
             const result = await Reflect.apply(fn, this, parsedArgs);
             const parsedReturns = await me._def.returns._def.type.parseAsync(result, params).catch((e) => {
-              error.addIssue(makeReturnsIssue(result, e));
-              throw error;
+              error3.addIssue(makeReturnsIssue(result, e));
+              throw error3;
             });
             return parsedReturns;
           });
@@ -6430,6 +7759,9 @@ var init_lib = __esm({
       }
     };
     ZodLazy = class extends ZodType {
+      static {
+        __name(this, "ZodLazy");
+      }
       get schema() {
         return this._def.getter();
       }
@@ -6447,6 +7779,9 @@ var init_lib = __esm({
       });
     };
     ZodLiteral = class extends ZodType {
+      static {
+        __name(this, "ZodLiteral");
+      }
       _parse(input) {
         if (input.data !== this._def.value) {
           const ctx = this._getOrReturnCtx(input);
@@ -6470,7 +7805,11 @@ var init_lib = __esm({
         ...processCreateParams(params)
       });
     };
+    __name(createZodEnum, "createZodEnum");
     ZodEnum = class _ZodEnum extends ZodType {
+      static {
+        __name(this, "ZodEnum");
+      }
       constructor() {
         super(...arguments);
         _ZodEnum_cache.set(this, void 0);
@@ -6541,6 +7880,9 @@ var init_lib = __esm({
     _ZodEnum_cache = /* @__PURE__ */ new WeakMap();
     ZodEnum.create = createZodEnum;
     ZodNativeEnum = class extends ZodType {
+      static {
+        __name(this, "ZodNativeEnum");
+      }
       constructor() {
         super(...arguments);
         _ZodNativeEnum_cache.set(this, void 0);
@@ -6584,6 +7926,9 @@ var init_lib = __esm({
       });
     };
     ZodPromise = class extends ZodType {
+      static {
+        __name(this, "ZodPromise");
+      }
       unwrap() {
         return this._def.type;
       }
@@ -6614,6 +7959,9 @@ var init_lib = __esm({
       });
     };
     ZodEffects = class extends ZodType {
+      static {
+        __name(this, "ZodEffects");
+      }
       innerType() {
         return this._def.schema;
       }
@@ -6624,14 +7972,14 @@ var init_lib = __esm({
         const { status, ctx } = this._processInputParams(input);
         const effect = this._def.effect || null;
         const checkCtx = {
-          addIssue: (arg) => {
+          addIssue: /* @__PURE__ */ __name((arg) => {
             addIssueToContext(ctx, arg);
             if (arg.fatal) {
               status.abort();
             } else {
               status.dirty();
             }
-          },
+          }, "addIssue"),
           get path() {
             return ctx.path;
           }
@@ -6674,7 +8022,7 @@ var init_lib = __esm({
           }
         }
         if (effect.type === "refinement") {
-          const executeRefinement = (acc) => {
+          const executeRefinement = /* @__PURE__ */ __name((acc) => {
             const result = effect.refinement(acc, checkCtx);
             if (ctx.common.async) {
               return Promise.resolve(result);
@@ -6683,7 +8031,7 @@ var init_lib = __esm({
               throw new Error("Async refinement encountered during synchronous parse operation. Use .parseAsync instead.");
             }
             return acc;
-          };
+          }, "executeRefinement");
           if (ctx.common.async === false) {
             const inner = this._def.schema._parseSync({
               data: ctx.data,
@@ -6750,6 +8098,9 @@ var init_lib = __esm({
       });
     };
     ZodOptional = class extends ZodType {
+      static {
+        __name(this, "ZodOptional");
+      }
       _parse(input) {
         const parsedType = this._getType(input);
         if (parsedType === ZodParsedType.undefined) {
@@ -6769,6 +8120,9 @@ var init_lib = __esm({
       });
     };
     ZodNullable = class extends ZodType {
+      static {
+        __name(this, "ZodNullable");
+      }
       _parse(input) {
         const parsedType = this._getType(input);
         if (parsedType === ZodParsedType.null) {
@@ -6788,6 +8142,9 @@ var init_lib = __esm({
       });
     };
     ZodDefault = class extends ZodType {
+      static {
+        __name(this, "ZodDefault");
+      }
       _parse(input) {
         const { ctx } = this._processInputParams(input);
         let data = ctx.data;
@@ -6813,6 +8170,9 @@ var init_lib = __esm({
       });
     };
     ZodCatch = class extends ZodType {
+      static {
+        __name(this, "ZodCatch");
+      }
       _parse(input) {
         const { ctx } = this._processInputParams(input);
         const newCtx = {
@@ -6866,6 +8226,9 @@ var init_lib = __esm({
       });
     };
     ZodNaN = class extends ZodType {
+      static {
+        __name(this, "ZodNaN");
+      }
       _parse(input) {
         const parsedType = this._getType(input);
         if (parsedType !== ZodParsedType.nan) {
@@ -6888,6 +8251,9 @@ var init_lib = __esm({
     };
     BRAND = Symbol("zod_brand");
     ZodBranded = class extends ZodType {
+      static {
+        __name(this, "ZodBranded");
+      }
       _parse(input) {
         const { ctx } = this._processInputParams(input);
         const data = ctx.data;
@@ -6902,10 +8268,13 @@ var init_lib = __esm({
       }
     };
     ZodPipeline = class _ZodPipeline extends ZodType {
+      static {
+        __name(this, "ZodPipeline");
+      }
       _parse(input) {
         const { status, ctx } = this._processInputParams(input);
         if (ctx.common.async) {
-          const handleAsync = async () => {
+          const handleAsync = /* @__PURE__ */ __name(async () => {
             const inResult = await this._def.in._parseAsync({
               data: ctx.data,
               path: ctx.path,
@@ -6923,7 +8292,7 @@ var init_lib = __esm({
                 parent: ctx
               });
             }
-          };
+          }, "handleAsync");
           return handleAsync();
         } else {
           const inResult = this._def.in._parseSync({
@@ -6957,14 +8326,17 @@ var init_lib = __esm({
       }
     };
     ZodReadonly = class extends ZodType {
+      static {
+        __name(this, "ZodReadonly");
+      }
       _parse(input) {
         const result = this._def.innerType._parse(input);
-        const freeze = (data) => {
+        const freeze = /* @__PURE__ */ __name((data) => {
           if (isValid(data)) {
             data.value = Object.freeze(data.value);
           }
           return data;
-        };
+        }, "freeze");
         return isAsync(result) ? result.then((data) => freeze(data)) : freeze(result);
       }
       unwrap() {
@@ -6978,6 +8350,7 @@ var init_lib = __esm({
         ...processCreateParams(params)
       });
     };
+    __name(custom, "custom");
     late = {
       object: ZodObject.lazycreate
     };
@@ -7019,9 +8392,9 @@ var init_lib = __esm({
       ZodFirstPartyTypeKind2["ZodPipeline"] = "ZodPipeline";
       ZodFirstPartyTypeKind2["ZodReadonly"] = "ZodReadonly";
     })(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
-    instanceOfType = (cls, params = {
+    instanceOfType = /* @__PURE__ */ __name((cls, params = {
       message: `Input not instance of ${cls.name}`
-    }) => custom((data) => data instanceof cls, params);
+    }) => custom((data) => data instanceof cls, params), "instanceOfType");
     stringType = ZodString.create;
     numberType = ZodNumber.create;
     nanType = ZodNaN.create;
@@ -7056,18 +8429,18 @@ var init_lib = __esm({
     nullableType = ZodNullable.create;
     preprocessType = ZodEffects.createWithPreprocess;
     pipelineType = ZodPipeline.create;
-    ostring = () => stringType().optional();
-    onumber = () => numberType().optional();
-    oboolean = () => booleanType().optional();
+    ostring = /* @__PURE__ */ __name(() => stringType().optional(), "ostring");
+    onumber = /* @__PURE__ */ __name(() => numberType().optional(), "onumber");
+    oboolean = /* @__PURE__ */ __name(() => booleanType().optional(), "oboolean");
     coerce = {
-      string: ((arg) => ZodString.create({ ...arg, coerce: true })),
-      number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
-      boolean: ((arg) => ZodBoolean.create({
+      string: /* @__PURE__ */ __name((arg) => ZodString.create({ ...arg, coerce: true }), "string"),
+      number: /* @__PURE__ */ __name((arg) => ZodNumber.create({ ...arg, coerce: true }), "number"),
+      boolean: /* @__PURE__ */ __name((arg) => ZodBoolean.create({
         ...arg,
         coerce: true
-      })),
-      bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
-      date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
+      }), "boolean"),
+      bigint: /* @__PURE__ */ __name((arg) => ZodBigInt.create({ ...arg, coerce: true }), "bigint"),
+      date: /* @__PURE__ */ __name((arg) => ZodDate.create({ ...arg, coerce: true }), "date")
     };
     NEVER = INVALID;
     z = /* @__PURE__ */ Object.freeze({
@@ -7189,11 +8562,14 @@ var init_lib = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/prompt-recipe-schema.ts
+// src/lib/prompt-recipe-schema.ts
 var TransformSchema, KBDBBlockFragmentSchema, KVFragmentSchema, FragmentSchema, InputSchema, PromptAssemblySchema, OutputSpecSchema, PromptRecipeSchema;
 var init_prompt_recipe_schema = __esm({
-  "../../wt-batch/cypher-executor/src/lib/prompt-recipe-schema.ts"() {
+  "src/lib/prompt-recipe-schema.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_lib();
     TransformSchema = z.string().regex(/^[a-z_]+(:.+)?$/, "transform \u5FC5\u9808\u70BA name \u6216 name:arg \u683C\u5F0F");
     KBDBBlockFragmentSchema = z.object({
@@ -7255,7 +8631,7 @@ var init_prompt_recipe_schema = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/recipe-loader.ts
+// src/lib/recipe-loader.ts
 async function loadPromptRecipe(recipeRef, recipesKv) {
   const key = recipeRef.startsWith("prompt_recipe:") ? recipeRef : `prompt_recipe:${recipeRef}`;
   const raw2 = await recipesKv.get(key);
@@ -7280,19 +8656,26 @@ async function loadPromptRecipe(recipeRef, recipesKv) {
 }
 var RecipeLoadError;
 var init_recipe_loader = __esm({
-  "../../wt-batch/cypher-executor/src/lib/recipe-loader.ts"() {
+  "src/lib/recipe-loader.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_prompt_recipe_schema();
     RecipeLoadError = class extends Error {
       constructor(message, recipe) {
         super(message);
         this.recipe = recipe;
       }
+      static {
+        __name(this, "RecipeLoadError");
+      }
     };
+    __name(loadPromptRecipe, "loadPromptRecipe");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/recipe-transforms.ts
+// src/lib/recipe-transforms.ts
 function applyTransform(value, spec) {
   const colonIdx = spec.indexOf(":");
   const name = colonIdx === -1 ? spec : spec.slice(0, colonIdx);
@@ -7303,41 +8686,45 @@ function applyTransform(value, spec) {
 }
 var transforms;
 var init_recipe_transforms = __esm({
-  "../../wt-batch/cypher-executor/src/lib/recipe-transforms.ts"() {
+  "src/lib/recipe-transforms.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     transforms = {
-      json_array: (v) => JSON.stringify(v ?? []),
-      to_string: (v) => {
+      json_array: /* @__PURE__ */ __name((v) => JSON.stringify(v ?? []), "json_array"),
+      to_string: /* @__PURE__ */ __name((v) => {
         if (v === null || v === void 0) return "";
         if (typeof v === "object") return JSON.stringify(v);
         return String(v);
-      },
-      join: (v, sep) => {
+      }, "to_string"),
+      join: /* @__PURE__ */ __name((v, sep) => {
         if (!Array.isArray(v)) throw new Error("join: input \u4E0D\u662F array");
         return v.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(sep ?? "\n");
-      },
-      markdown_list: (v) => {
+      }, "join"),
+      markdown_list: /* @__PURE__ */ __name((v) => {
         if (!Array.isArray(v)) throw new Error("markdown_list: input \u4E0D\u662F array");
         return v.map((x) => `- ${typeof x === "string" ? x : JSON.stringify(x)}`).join("\n");
-      },
-      extract_field: (v, field) => {
+      }, "markdown_list"),
+      extract_field: /* @__PURE__ */ __name((v, field) => {
         if (!field) throw new Error("extract_field: \u9700\u8981 field \u53C3\u6578\uFF0C\u4F8B\u5982 extract_field:page_name");
         if (!Array.isArray(v)) throw new Error("extract_field: input \u4E0D\u662F array");
         return v.map((x) => x && typeof x === "object" ? x[field] : void 0);
-      },
-      first: (v) => {
+      }, "extract_field"),
+      first: /* @__PURE__ */ __name((v) => {
         if (!Array.isArray(v)) return v;
         return v[0];
-      },
-      pluck_content: (v) => {
+      }, "first"),
+      pluck_content: /* @__PURE__ */ __name((v) => {
         if (!Array.isArray(v)) throw new Error("pluck_content: input \u4E0D\u662F array");
         return v.map((b) => b && typeof b === "object" ? String(b.content ?? "") : "").filter((s) => s.length > 0).join("\n\n---\n\n");
-      }
+      }, "pluck_content")
     };
+    __name(applyTransform, "applyTransform");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/recipe-expander.ts
+// src/lib/recipe-expander.ts
 function getByPath(ctx, path) {
   const parts = path.split(".");
   let cur = ctx;
@@ -7351,8 +8738,8 @@ function getByPath(ctx, path) {
 function interpolate(template, vars) {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] !== void 0 ? vars[key] : `{{${key}}}`);
 }
-async function fetchKbdbBlock(env, apiKey, fragment) {
-  const base = (env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
+async function fetchKbdbBlock(env2, apiKey, fragment) {
+  const base = (env2.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
   let url;
   if (fragment.block_id) {
     url = `${base}/blocks/${encodeURIComponent(fragment.block_id)}`;
@@ -7368,13 +8755,13 @@ async function fetchKbdbBlock(env, apiKey, fragment) {
   if (fieldVal === void 0) throw new Error(`block \u7F3A\u6B04\u4F4D "${fragment.field}"`);
   return fieldVal;
 }
-async function resolveFragment(env, apiKey, frag) {
+async function resolveFragment(env2, apiKey, frag) {
   if (frag.source === "kv") {
-    const val = await env.RECIPES.get(frag.key);
+    const val = await env2.RECIPES.get(frag.key);
     if (val === null) throw new Error(`KV \u627E\u4E0D\u5230 key: ${frag.key}`);
     return { var: frag.var, value: val };
   }
-  return { var: frag.var, value: await fetchKbdbBlock(env, apiKey, frag) };
+  return { var: frag.var, value: await fetchKbdbBlock(env2, apiKey, frag) };
 }
 function resolveInput(input, ctx) {
   let val = getByPath(ctx, input.from);
@@ -7388,11 +8775,11 @@ function resolveInput(input, ctx) {
     throw new Error(`${e instanceof Error ? e.message : String(e)} [path=${input.from}, type=${valType}]`);
   }
 }
-async function expandPromptRecipe(recipeRef, ctx, env, apiKey) {
-  const recipe = await loadPromptRecipe(recipeRef, env.RECIPES);
+async function expandPromptRecipe(recipeRef, ctx, env2, apiKey) {
+  const recipe = await loadPromptRecipe(recipeRef, env2.RECIPES);
   const vars = {};
   for (const frag of recipe.fragments) {
-    const { var: name, value } = await resolveFragment(env, apiKey, frag);
+    const { var: name, value } = await resolveFragment(env2, apiKey, frag);
     vars[name] = typeof value === "string" ? value : JSON.stringify(value);
   }
   for (const inp of recipe.inputs) {
@@ -7414,14 +8801,23 @@ ${user}`;
   };
 }
 var init_recipe_expander = __esm({
-  "../../wt-batch/cypher-executor/src/lib/recipe-expander.ts"() {
+  "src/lib/recipe-expander.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_recipe_loader();
     init_recipe_transforms();
+    __name(getByPath, "getByPath");
+    __name(interpolate, "interpolate");
+    __name(fetchKbdbBlock, "fetchKbdbBlock");
+    __name(resolveFragment, "resolveFragment");
+    __name(resolveInput, "resolveInput");
+    __name(expandPromptRecipe, "expandPromptRecipe");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/paused-runs.ts
+// src/lib/paused-runs.ts
 async function readIndex(kv, apiKey) {
   const raw2 = await kv.get(`${IDX_PREFIX}${apiKey}`);
   if (!raw2) return [];
@@ -7510,15 +8906,26 @@ function parseRecipeOutput(result, format, requiredFields) {
 }
 var KEY_PREFIX, IDX_PREFIX, TTL_SECONDS;
 var init_paused_runs = __esm({
-  "../../wt-batch/cypher-executor/src/lib/paused-runs.ts"() {
+  "src/lib/paused-runs.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     KEY_PREFIX = "paused_run:";
     IDX_PREFIX = "paused_idx:";
     TTL_SECONDS = 24 * 60 * 60;
+    __name(readIndex, "readIndex");
+    __name(writeIndex, "writeIndex");
+    __name(persistPausedRun, "persistPausedRun");
+    __name(loadPausedRun, "loadPausedRun");
+    __name(listPausedRunsByApiKey, "listPausedRunsByApiKey");
+    __name(consumePausedRun, "consumePausedRun");
+    __name(isResumablePending, "isResumablePending");
+    __name(parseRecipeOutput, "parseRecipeOutput");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/magic-vars.ts
+// src/lib/magic-vars.ts
 function isoWeekNumber(d) {
   const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dayNum = (target.getUTCDay() + 6) % 7;
@@ -7580,12 +8987,18 @@ function buildMagicVars(now2 = /* @__PURE__ */ new Date()) {
   };
 }
 var init_magic_vars = __esm({
-  "../../wt-batch/cypher-executor/src/lib/magic-vars.ts"() {
+  "src/lib/magic-vars.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    __name(isoWeekNumber, "isoWeekNumber");
+    __name(pad2, "pad2");
+    __name(buildMagicVars, "buildMagicVars");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/telemetry.ts
+// src/lib/telemetry.ts
 async function hashApiKey(apiKey) {
   if (!apiKey) return "anon";
   const encoder = new TextEncoder();
@@ -7594,15 +9007,15 @@ async function hashApiKey(apiKey) {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-function kbdbCreateBlockUrl(env) {
-  const subdomain = env.WORKER_SUBDOMAIN || "uncle6-me";
+function kbdbCreateBlockUrl(env2) {
+  const subdomain = env2.WORKER_SUBDOMAIN || "uncle6-me";
   return `https://arcrun-kbdb-create-block.${subdomain}.workers.dev`;
 }
-function recordTelemetry(env, apiKey, record, ctx) {
+function recordTelemetry(env2, apiKey, record, ctx) {
   const promise = (async () => {
     try {
       const api_key_hash = await hashApiKey(apiKey ?? "");
-      const platformKey = env.PLATFORM_API_KEY || apiKey || "";
+      const platformKey = env2.PLATFORM_API_KEY || apiKey || "";
       if (!platformKey) {
         console.warn("[telemetry] no api_key, skipping");
         return;
@@ -7619,7 +9032,7 @@ function recordTelemetry(env, apiKey, record, ctx) {
           `event:${record.event_type}`
         ])
       };
-      const res = await fetch(kbdbCreateBlockUrl(env), {
+      const res = await fetch(kbdbCreateBlockUrl(env2), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
@@ -7640,14 +9053,20 @@ function recordTelemetry(env, apiKey, record, ctx) {
   }
 }
 var init_telemetry = __esm({
-  "../../wt-batch/cypher-executor/src/lib/telemetry.ts"() {
+  "src/lib/telemetry.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
+    __name(hashApiKey, "hashApiKey");
+    __name(kbdbCreateBlockUrl, "kbdbCreateBlockUrl");
+    __name(recordTelemetry, "recordTelemetry");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/graph-executor.ts
-function propagateCtx(context, upstreamResult, upstreamNodeId) {
-  const baseCtx = typeof context === "object" && context !== null ? context : {};
+// src/graph-executor.ts
+function propagateCtx(context2, upstreamResult, upstreamNodeId) {
+  const baseCtx = typeof context2 === "object" && context2 !== null ? context2 : {};
   const baseResult = typeof upstreamResult === "object" && upstreamResult !== null ? upstreamResult : {};
   return {
     ...baseCtx,
@@ -7709,9 +9128,9 @@ function isFailure(result) {
   const r = result;
   return r["success"] === false || "error" in r;
 }
-function evaluateCondition(condition, context) {
-  if (!context || typeof context !== "object") return false;
-  const ctx = context;
+function evaluateCondition(condition, context2) {
+  if (!context2 || typeof context2 !== "object") return false;
+  const ctx = context2;
   const expr = condition.replace(/result\./g, "").replace(/ctx\./g, "");
   const eqMatch = expr.match(/^(\w+)\s*===?\s*(.+)$/);
   if (eqMatch) {
@@ -7728,8 +9147,8 @@ function evaluateCondition(condition, context) {
   if (key && key in ctx) return !!ctx[key];
   return true;
 }
-function getIterableFromContext(context, key) {
-  if (!context || typeof context !== "object") return [];
+function getIterableFromContext(context2, key) {
+  if (!context2 || typeof context2 !== "object") return [];
   const variants = [
     key + "s",
     // paragraph → paragraphs
@@ -7740,7 +9159,7 @@ function getIterableFromContext(context, key) {
     key
     // singular fallback
   ];
-  const obj = context;
+  const obj = context2;
   for (const v of variants) {
     if (Array.isArray(obj[v])) return obj[v];
   }
@@ -7756,8 +9175,11 @@ function getIterableFromContext(context, key) {
 }
 var GraphExecutor;
 var init_graph_executor = __esm({
-  "../../wt-batch/cypher-executor/src/graph-executor.ts"() {
+  "src/graph-executor.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_types();
     init_auth_dispatcher();
     init_recipe_expander();
@@ -7766,6 +9188,9 @@ var init_graph_executor = __esm({
     init_magic_vars();
     init_telemetry();
     GraphExecutor = class _GraphExecutor {
+      static {
+        __name(this, "GraphExecutor");
+      }
       loader;
       workflowLoader;
       env;
@@ -7779,14 +9204,14 @@ var init_graph_executor = __esm({
       // 暫停時持久化 state 用，需在 execute 進入時設定
       currentGraph;
       currentRunId;
-      constructor(loader, workflowLoader, env, apiKey) {
+      constructor(loader, workflowLoader, env2, apiKey) {
         this.loader = loader;
         this.workflowLoader = workflowLoader;
-        this.env = env;
+        this.env = env2;
         this.apiKey = apiKey;
       }
       async execute(graph, initialContext, kvNamespace) {
-        const trace = [];
+        const trace3 = [];
         const kvStore = kvNamespace ? { runId: `${graph.id}-${Date.now()}`, kv: kvNamespace } : void 0;
         this.currentGraph = graph;
         this.currentRunId = kvStore?.runId ?? `${graph.id}-${Date.now()}`;
@@ -7797,7 +9222,7 @@ var init_graph_executor = __esm({
         const hasIncoming = new Set(graph.edges.map((e) => e.to));
         const startNodes = graph.nodes.filter((n) => !hasIncoming.has(n.id));
         if (startNodes.length === 0) {
-          return { data: ctxWithMagic, trace };
+          return { data: ctxWithMagic, trace: trace3 };
         }
         const fanIn = /* @__PURE__ */ new Map();
         for (const node of graph.nodes) {
@@ -7808,7 +9233,7 @@ var init_graph_executor = __esm({
         }
         const results = await Promise.all(
           startNodes.map(
-            (node) => this.executeNode(node, graph, ctxWithMagic, /* @__PURE__ */ new Set(), trace, fanIn, kvStore)
+            (node) => this.executeNode(node, graph, ctxWithMagic, /* @__PURE__ */ new Set(), trace3, fanIn, kvStore)
           )
         );
         let mergedResult;
@@ -7823,7 +9248,7 @@ var init_graph_executor = __esm({
             {}
           );
         }
-        return { data: mergedResult, trace };
+        return { data: mergedResult, trace: trace3 };
       }
       /**
        * 從 paused state 繼續執行 workflow
@@ -7844,7 +9269,7 @@ var init_graph_executor = __esm({
         );
         this.currentGraph = graph;
         this.currentRunId = `${graph.id}-resume-${Date.now()}`;
-        const trace = [...prior_trace];
+        const trace3 = [...prior_trace];
         const kvStore = kvNamespace ? { runId: this.currentRunId, kv: kvNamespace } : void 0;
         if (kvStore) {
           await kvSetNodeOutput(kvStore, paused_node_id, callback_result);
@@ -7860,7 +9285,7 @@ var init_graph_executor = __esm({
         }
         const downstreamEdges = graph.edges.filter((e) => e.from === paused_node_id);
         if (downstreamEdges.length === 0) {
-          return { data: callback_result, trace };
+          return { data: callback_result, trace: trace3 };
         }
         const fanIn = /* @__PURE__ */ new Map();
         for (const node of graph.nodes) {
@@ -7873,7 +9298,7 @@ var init_graph_executor = __esm({
         const downstreamNodes = downstreamEdges.map((e) => graph.nodes.find((n) => n.id === e.to)).filter((n) => !!n);
         const results = await Promise.all(
           downstreamNodes.map(
-            (node) => this.executeNode(node, graph, mergedContext, visited, trace, fanIn, kvStore)
+            (node) => this.executeNode(node, graph, mergedContext, visited, trace3, fanIn, kvStore)
           )
         );
         let mergedResult;
@@ -7888,25 +9313,25 @@ var init_graph_executor = __esm({
             {}
           );
         }
-        return { data: mergedResult, trace };
+        return { data: mergedResult, trace: trace3 };
       }
-      async executeNode(node, graph, context, visited, trace, fanIn, kvStore) {
-        const nodeKey = `${node.id}:${JSON.stringify(context).slice(0, 50)}`;
-        if (visited.has(nodeKey)) return context;
+      async executeNode(node, graph, context2, visited, trace3, fanIn, kvStore) {
+        const nodeKey = `${node.id}:${JSON.stringify(context2).slice(0, 50)}`;
+        if (visited.has(nodeKey)) return context2;
         visited.add(nodeKey);
         const start = Date.now();
-        let result = context;
-        let nodeInput = context;
+        let result = context2;
+        let nodeInput = context2;
         try {
           switch (node.type) {
             case "Input":
-              result = node.data ?? context;
+              result = node.data ?? context2;
               nodeInput = result;
               break;
             case "Component": {
               if (!node.componentId) throw new Error(`\u7BC0\u9EDE ${node.id} \u7F3A\u5C11 componentId`);
               const runner = await this.loader(node.componentId);
-              const ctx = context;
+              const ctx = context2;
               const resolvedData = interpolateData(node.data, ctx);
               let mergedContext = {
                 ...ctx,
@@ -7955,7 +9380,7 @@ var init_graph_executor = __esm({
               result = await runner(mergedContext);
               const pending = isResumablePending(result);
               if (pending && this.env?.EXEC_CONTEXT && this.currentGraph && this.currentRunId) {
-                trace.push({
+                trace3.push({
                   nodeId: node.id,
                   type: node.type,
                   input: nodeInput,
@@ -7966,15 +9391,15 @@ var init_graph_executor = __esm({
                   run_id: this.currentRunId,
                   graph: this.currentGraph,
                   paused_node_id: node.id,
-                  paused_context: context,
+                  paused_context: context2,
                   paused_pending_result: result,
-                  trace_so_far: trace,
+                  trace_so_far: trace3,
                   api_key: this.apiKey,
                   expires_at: Date.now() + 24 * 60 * 60 * 1e3,
                   recipe_output_format: mergedContext._recipe_output_format,
                   recipe_output_required_fields: mergedContext._recipe_output_required_fields
                 });
-                throw new WorkflowPaused(pending.task_id, this.currentRunId, node.id, trace);
+                throw new WorkflowPaused(pending.task_id, this.currentRunId, node.id, trace3);
               }
               result = parseRecipeOutput(
                 result,
@@ -7989,14 +9414,14 @@ var init_graph_executor = __esm({
               break;
             }
             case "Output":
-              result = context;
+              result = context2;
               break;
           }
         } catch (e) {
           if (e instanceof WorkflowPaused) throw e;
           const errMsg = e.message || String(e);
           const duration_ms2 = Date.now() - start;
-          trace.push({
+          trace3.push({
             nodeId: node.id,
             type: node.type,
             input: nodeInput,
@@ -8018,11 +9443,11 @@ var init_graph_executor = __esm({
             `Node ${node.id} failed: ${errMsg}`,
             node.id,
             nodeInput,
-            trace
+            trace3
           );
         }
         const duration_ms = Date.now() - start;
-        trace.push({
+        trace3.push({
           nodeId: node.id,
           type: node.type,
           input: nodeInput,
@@ -8043,7 +9468,7 @@ var init_graph_executor = __esm({
           if (!nextNode) continue;
           switch (edge.type) {
             case "PIPE": {
-              const pipeContext = propagateCtx(context, result, node.id);
+              const pipeContext = propagateCtx(context2, result, node.id);
               if (kvStore) {
                 const kvOutput = await kvGetNodeOutput(kvStore, node.id);
                 if (kvOutput !== void 0) {
@@ -8056,32 +9481,32 @@ var init_graph_executor = __esm({
                 Object.assign(fanInState.ctx, pipeContext);
                 fanInState.remaining--;
                 if (fanInState.remaining === 0) {
-                  result = await this.executeNode(nextNode, graph, fanInState.ctx, visited, trace, fanIn, kvStore);
+                  result = await this.executeNode(nextNode, graph, fanInState.ctx, visited, trace3, fanIn, kvStore);
                 }
               } else {
-                result = await this.executeNode(nextNode, graph, pipeContext, visited, trace, fanIn, kvStore);
+                result = await this.executeNode(nextNode, graph, pipeContext, visited, trace3, fanIn, kvStore);
               }
               break;
             }
             case "ON_SUCCESS": {
               if (!isFailure(result)) {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
               }
               break;
             }
             case "ON_FAIL": {
               if (isFailure(result)) {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
               }
               break;
             }
             case "IF": {
               const passes = evaluateCondition(edge.condition ?? "true", result);
               if (passes) {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
               }
               break;
             }
@@ -8092,23 +9517,23 @@ var init_graph_executor = __esm({
             // 相容 top-level branch / result 布林。讀不出分支＝不走（誠實，不亂挑一條）。
             case "ON_TRUE": {
               if (readBranch(result) === "true") {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
               }
               break;
             }
             case "ON_FALSE": {
               if (readBranch(result) === "false") {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
               }
               break;
             }
             case "ON_BRANCH": {
               const actual = readBranch(result);
               if (edge.branch !== void 0 && actual !== void 0 && actual === edge.branch) {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+                const mergedCtx = propagateCtx(context2, result, node.id);
+                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
               }
               break;
             }
@@ -8116,16 +9541,16 @@ var init_graph_executor = __esm({
               const iteratorKey = edge.iterator ?? "item";
               let items = getIterableFromContext(result, iteratorKey);
               if (items.length === 0) {
-                items = getIterableFromContext(context, iteratorKey);
+                items = getIterableFromContext(context2, iteratorKey);
               }
               const iterResults = [];
-              const baseForeachCtx = propagateCtx(context, result, node.id);
+              const baseForeachCtx = propagateCtx(context2, result, node.id);
               for (const item of items) {
                 const itemContext = {
                   ...baseForeachCtx,
                   [iteratorKey]: item
                 };
-                const itemResult = await this.executeNode(nextNode, graph, itemContext, /* @__PURE__ */ new Set(), trace, fanIn, kvStore);
+                const itemResult = await this.executeNode(nextNode, graph, itemContext, /* @__PURE__ */ new Set(), trace3, fanIn, kvStore);
                 iterResults.push(itemResult);
               }
               if (iterResults.length > 0) {
@@ -8167,8 +9592,8 @@ var init_graph_executor = __esm({
               break;
             }
             case "ON_CLICK": {
-              const mergedCtx = propagateCtx(context, result, node.id);
-              result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+              const mergedCtx = propagateCtx(context2, result, node.id);
+              result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace3, fanIn, kvStore);
               break;
             }
             case "IS_A": {
@@ -8186,14 +9611,26 @@ var init_graph_executor = __esm({
         return result;
       }
     };
+    __name(propagateCtx, "propagateCtx");
+    __name(interpolateString, "interpolateString");
+    __name(interpolateValue, "interpolateValue");
+    __name(interpolateData, "interpolateData");
+    __name(getNestedValue, "getNestedValue");
+    __name(readBranch, "readBranch");
+    __name(isFailure, "isFailure");
+    __name(evaluateCondition, "evaluateCondition");
+    __name(getIterableFromContext, "getIterableFromContext");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/lib/schemas.ts
+// src/lib/schemas.ts
 var graphSchema, executeSchema;
 var init_schemas = __esm({
-  "../../wt-batch/cypher-executor/src/lib/schemas.ts"() {
+  "src/lib/schemas.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_lib();
     graphSchema = z.object({
       id: z.string().min(1),
@@ -8222,14 +9659,14 @@ var init_schemas = __esm({
   }
 });
 
-// ../../wt-batch/cypher-executor/src/actions/execution-evaluator.ts
-function componentVerdictsFromTrace(nodes, trace) {
+// src/actions/execution-evaluator.ts
+function componentVerdictsFromTrace(nodes, trace3) {
   const componentByNodeId = /* @__PURE__ */ new Map();
   for (const n of nodes) {
     if (n.type === "Component" && n.componentId) componentByNodeId.set(n.id, n.componentId);
   }
   const verdicts = [];
-  for (const step of trace) {
+  for (const step of trace3) {
     const componentId = componentByNodeId.get(step.nodeId);
     if (!componentId) continue;
     const out = step.output;
@@ -8242,11 +9679,11 @@ function componentVerdictsFromTrace(nodes, trace) {
   }
   return verdicts;
 }
-async function recordComponentStats(env, nodes, trace) {
+async function recordComponentStats(env2, nodes, trace3) {
   try {
-    const base = (env.REGISTRY_BASE_URL ?? (env.WORKER_SUBDOMAIN ? wasmWorkerUrl("registry", env.WORKER_SUBDOMAIN) : void 0))?.replace(/\/$/, "");
+    const base = (env2.REGISTRY_BASE_URL ?? (env2.WORKER_SUBDOMAIN ? wasmWorkerUrl("registry", env2.WORKER_SUBDOMAIN) : void 0))?.replace(/\/$/, "");
     if (!base) return;
-    const verdicts = componentVerdictsFromTrace(nodes, trace);
+    const verdicts = componentVerdictsFromTrace(nodes, trace3);
     if (verdicts.length === 0) return;
     await Promise.all(
       verdicts.map(
@@ -8266,24 +9703,29 @@ async function recordComponentStats(env, nodes, trace) {
   }
 }
 var init_execution_evaluator = __esm({
-  "../../wt-batch/cypher-executor/src/actions/execution-evaluator.ts"() {
+  "src/actions/execution-evaluator.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_component_loader();
+    __name(componentVerdictsFromTrace, "componentVerdictsFromTrace");
+    __name(recordComponentStats, "recordComponentStats");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/actions/webhook-handlers.ts
+// src/actions/webhook-handlers.ts
 var webhook_handlers_exports = {};
 __export(webhook_handlers_exports, {
   executeWebhookGraph: () => executeWebhookGraph,
   generateToken: () => generateToken,
   validateAndParseWebhook: () => validateAndParseWebhook
 });
-function recordRecipeStats(env, recipeKeys, ok, at, ctx) {
+function recordRecipeStats(env2, recipeKeys, ok, at, ctx) {
   if (recipeKeys.size === 0) return;
-  const base = (env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
+  const base = (env2.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
   const headers = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  if (env2.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env2.KBDB_INTERNAL_TOKEN}`;
   const promise = Promise.all(
     [...recipeKeys].map(
       (key) => fetch(`${base}/recipe-stats/record`, {
@@ -8307,31 +9749,31 @@ async function validateAndParseWebhook(raw2) {
     return null;
   }
 }
-async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ctx, userAgent) {
+async function executeWebhookGraph(env2, graph, triggerContext, token, apiKey, ctx, userAgent) {
   const parsed = graphSchema.safeParse(graph);
   if (!parsed.success) {
     return { success: false, error: "\u5716\u5B9A\u7FA9\u5DF2\u5931\u6548", duration_ms: 0 };
   }
-  const loader = createComponentLoader(env);
-  const executor = new GraphExecutor(loader, void 0, env, apiKey);
+  const loader = createComponentLoader(env2);
+  const executor = new GraphExecutor(loader, void 0, env2, apiKey);
   const start = Date.now();
   try {
     const result = await executor.execute(
       parsed.data,
       { ...triggerContext, _webhook_token: token },
-      env.EXEC_CONTEXT
+      env2.EXEC_CONTEXT
     );
     const duration_ms = Date.now() - start;
-    recordTelemetry(env, apiKey, {
+    recordTelemetry(env2, apiKey, {
       event_type: "run_success",
       workflow_name: token,
       duration_ms,
       agent_user_agent: userAgent
     }, ctx);
-    recordRecipeStats(env, executor.usedRecipeKeys, true, Date.now(), ctx);
+    recordRecipeStats(env2, executor.usedRecipeKeys, true, Date.now(), ctx);
     {
       const statsPromise = recordComponentStats(
-        env,
+        env2,
         parsed.data.nodes,
         result.trace
       );
@@ -8343,7 +9785,7 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
     const duration_ms = Date.now() - start;
     const errMsg = err instanceof Error ? err.message : String(err);
     const isPaused = /workflow paused/i.test(errMsg);
-    recordTelemetry(env, apiKey, {
+    recordTelemetry(env2, apiKey, {
       event_type: isPaused ? "run_success" : "run_fail",
       workflow_name: token,
       error_code: isPaused ? "paused_awaiting_resume" : "execution_error",
@@ -8351,11 +9793,11 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
       agent_user_agent: userAgent
     }, ctx);
     if (!isPaused) {
-      recordRecipeStats(env, executor.usedRecipeKeys, false, Date.now(), ctx);
+      recordRecipeStats(env2, executor.usedRecipeKeys, false, Date.now(), ctx);
     }
     if (!isPaused && err instanceof ExecutionError) {
       const statsPromise = recordComponentStats(
-        env,
+        env2,
         parsed.data.nodes,
         err.trace
       );
@@ -8379,22 +9821,35 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
   }
 }
 var init_webhook_handlers = __esm({
-  "../../wt-batch/cypher-executor/src/actions/webhook-handlers.ts"() {
+  "src/actions/webhook-handlers.ts"() {
     "use strict";
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+    init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+    init_performance2();
     init_types();
     init_graph_executor();
     init_schemas();
     init_component_loader();
     init_telemetry();
     init_execution_evaluator();
+    __name(recordRecipeStats, "recordRecipeStats");
+    __name(generateToken, "generateToken");
+    __name(validateAndParseWebhook, "validateAndParseWebhook");
+    __name(executeWebhookGraph, "executeWebhookGraph");
   }
 });
 
-// ../../wt-batch/cypher-executor/src/index.ts
+// src/index.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 
-// ../../wt-batch/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
-var cors = (options) => {
+// node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+var cors = /* @__PURE__ */ __name((options) => {
   const defaults = {
     origin: "*",
     allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
@@ -8430,10 +9885,11 @@ var cors = (options) => {
       return () => [];
     }
   })(opts.allowMethods);
-  return async function cors2(c, next) {
+  return /* @__PURE__ */ __name(async function cors2(c, next) {
     function set(key, value) {
       c.res.headers.set(key, value);
     }
+    __name(set, "set");
     const allowOrigin = await findAllowOrigin(c.req.header("origin") || "", c);
     if (allowOrigin) {
       set("Access-Control-Allow-Origin", allowOrigin);
@@ -8478,10 +9934,18 @@ var cors = (options) => {
     if (opts.origin !== "*" || opts.credentials) {
       c.header("Vary", "Origin", { append: true });
     }
-  };
-};
+  }, "cors2");
+}, "cors");
 
-// ../../wt-batch/cypher-executor/src/lib/cron-match.ts
+// src/scheduled.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+
+// src/lib/cron-match.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 function matchField(expr, value, min, max) {
   if (expr === "*") return true;
   for (const part of expr.split(",")) {
@@ -8489,6 +9953,7 @@ function matchField(expr, value, min, max) {
   }
   return false;
 }
+__name(matchField, "matchField");
 function matchPart(part, value, min, max) {
   if (part.startsWith("*/")) {
     const step = parseInt(part.slice(2), 10);
@@ -8512,12 +9977,14 @@ function matchPart(part, value, min, max) {
   if (n < min || n > max) return false;
   return value === n;
 }
+__name(matchPart, "matchPart");
 function cronMatch(expr, date) {
   const fields = expr.trim().split(/\s+/);
   if (fields.length !== 5) return false;
   const [m, h, dom, mon, dow] = fields;
   return matchField(m, date.getUTCMinutes(), 0, 59) && matchField(h, date.getUTCHours(), 0, 23) && matchField(dom, date.getUTCDate(), 1, 31) && matchField(mon, date.getUTCMonth() + 1, 1, 12) && matchField(dow, date.getUTCDay(), 0, 6);
 }
+__name(cronMatch, "cronMatch");
 function extractCronExpr(graph) {
   if (!graph || typeof graph !== "object") return null;
   const nodes = graph.nodes;
@@ -8529,17 +9996,23 @@ function extractCronExpr(graph) {
   }
   return null;
 }
+__name(extractCronExpr, "extractCronExpr");
 
-// ../../wt-batch/cypher-executor/src/lib/cron-index.ts
+// src/lib/cron-index.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var CRON_INDEX_KEY = "cron-idx:_all";
 function cronEntryKey(apiKey, name) {
   return `${apiKey}:${name}`;
 }
+__name(cronEntryKey, "cronEntryKey");
 function parseCronEntryKey(entryKey) {
   const idx = entryKey.indexOf(":");
   if (idx <= 0) return null;
   return { apiKey: entryKey.slice(0, idx), name: entryKey.slice(idx + 1) };
 }
+__name(parseCronEntryKey, "parseCronEntryKey");
 async function readCronIndex(kv) {
   const raw2 = await kv.get(CRON_INDEX_KEY, "text");
   if (!raw2) return {};
@@ -8550,6 +10023,7 @@ async function readCronIndex(kv) {
     return {};
   }
 }
+__name(readCronIndex, "readCronIndex");
 async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
   const index = await readCronIndex(kv);
   const entryKey = cronEntryKey(apiKey, name);
@@ -8562,13 +10036,14 @@ async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
   }
   await kv.put(CRON_INDEX_KEY, JSON.stringify(index));
 }
+__name(updateCronIndexEntry, "updateCronIndexEntry");
 
-// ../../wt-batch/cypher-executor/src/scheduled.ts
+// src/scheduled.ts
 init_webhook_handlers();
-async function handleScheduled(controller, env, ctx) {
+async function handleScheduled(controller, env2, ctx) {
   const now2 = new Date(controller.scheduledTime);
   console.log("[scheduled] tick", now2.toISOString(), "controller.cron=", controller.cron);
-  const index = await readCronIndex(env.WEBHOOKS);
+  const index = await readCronIndex(env2.WEBHOOKS);
   const entries = Object.entries(index);
   let triggered = 0;
   for (const [entryKey, cronExpr] of entries) {
@@ -8578,7 +10053,7 @@ async function handleScheduled(controller, env, ctx) {
     if (!cronExpr) continue;
     if (!cronMatch(cronExpr, now2)) continue;
     const wfKey = `${apiKey}:wf:${name}`;
-    const wfRaw = await env.WEBHOOKS.get(wfKey, "text");
+    const wfRaw = await env2.WEBHOOKS.get(wfKey, "text");
     if (!wfRaw) {
       console.warn("[scheduled] cron-idx \u5C0D\u61C9 workflow \u4E0D\u5B58\u5728", wfKey);
       continue;
@@ -8597,7 +10072,7 @@ async function handleScheduled(controller, env, ctx) {
       _scheduled_at: now2.toISOString()
     };
     ctx.waitUntil(
-      executeWebhookGraph(env, record.graph, triggerContext, name, apiKey).then(
+      executeWebhookGraph(env2, record.graph, triggerContext, name, apiKey).then(
         (r) => console.log("[scheduled] done", name, r.success, r.duration_ms + "ms"),
         (e) => console.error("[scheduled] fail", name, e)
       )
@@ -8605,8 +10080,12 @@ async function handleScheduled(controller, env, ctx) {
   }
   console.log(`[scheduled] scanned ${entries.length} cron-idx entries, ${triggered} triggered`);
 }
+__name(handleScheduled, "handleScheduled");
 
-// ../../wt-batch/cypher-executor/src/routes/health.ts
+// src/routes/health.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 var healthRouter = new Hono2();
 healthRouter.get("/health", (c) => {
@@ -8624,15 +10103,21 @@ healthRouter.get(
   })
 );
 
-// ../../wt-batch/cypher-executor/src/routes/execute.ts
+// src/routes/execute.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_types();
 init_graph_executor();
 init_schemas();
 init_component_loader();
 
-// ../../wt-batch/cypher-executor/src/actions/execution-logger.ts
-async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message) {
+// src/actions/execution-logger.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+async function writeExecutionVerdict(env2, workflowId, nodes, verdict, durationMs, message) {
   try {
     const componentIds = nodes.filter((n) => n.type === "Component" && n.componentId).map((n) => n.componentId);
     const record = {
@@ -8644,15 +10129,16 @@ async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs
       recorded_at: (/* @__PURE__ */ new Date()).toISOString()
     };
     const key = `stats:${workflowId}:${Date.now()}`;
-    await env.ANALYTICS_KV.put(key, JSON.stringify(record), {
+    await env2.ANALYTICS_KV.put(key, JSON.stringify(record), {
       expirationTtl: 60 * 60 * 24 * 90
       // 保留 90 天
     });
   } catch {
   }
 }
+__name(writeExecutionVerdict, "writeExecutionVerdict");
 
-// ../../wt-batch/cypher-executor/src/routes/execute.ts
+// src/routes/execute.ts
 var executeRouter = new Hono2();
 executeRouter.post("/execute", async (c) => {
   const body = await c.req.json();
@@ -8660,13 +10146,13 @@ executeRouter.post("/execute", async (c) => {
   if (!parsed.success) {
     return c.json({ error: "\u5716\u5B9A\u7FA9\u9A57\u8B49\u5931\u6557", details: parsed.error.issues }, 400);
   }
-  const { graph, context } = parsed.data;
+  const { graph, context: context2 } = parsed.data;
   const apiKey = c.req.header("x-arcrun-api-key") ?? void 0;
   const loader = createComponentLoader(c.env);
   const executor = new GraphExecutor(loader, void 0, c.env, apiKey);
   const start = Date.now();
   try {
-    const result = await executor.execute(graph, context, c.env.EXEC_CONTEXT);
+    const result = await executor.execute(graph, context2, c.env.EXEC_CONTEXT);
     const duration_ms = Date.now() - start;
     c.executionCtx.waitUntil(
       writeExecutionVerdict(c.env, graph.id, graph.nodes, "success", duration_ms, "\u57F7\u884C\u5B8C\u6210")
@@ -8697,17 +10183,26 @@ executeRouter.post("/execute", async (c) => {
   }
 });
 
-// ../../wt-batch/cypher-executor/src/routes/cypher.ts
+// src/routes/cypher.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 
-// ../../wt-batch/cypher-executor/src/actions/cypher-handlers.ts
+// src/actions/cypher-handlers.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_types();
 init_graph_executor();
 init_schemas();
 init_component_loader();
 init_execution_evaluator();
 
-// ../../wt-batch/cypher-executor/src/actions/triplet-parser.ts
+// src/actions/triplet-parser.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_constants3();
 function parseTriplets(rawTriplets) {
   const edges = [];
@@ -8730,29 +10225,39 @@ function parseTriplets(rawTriplets) {
   const sinkNodes = new Set([...toSet].filter((n) => !fromSet.has(n)));
   return { edges, nodeNames, sourceNodes, sinkNodes };
 }
+__name(parseTriplets, "parseTriplets");
 var INPUT_NAMES = /* @__PURE__ */ new Set(["input", "trigger", "webhook", "start"]);
 var OUTPUT_NAMES = /* @__PURE__ */ new Set(["output", "result", "end", "done"]);
 function isVirtualIoName(name) {
   const lower = name.toLowerCase();
   return INPUT_NAMES.has(lower) || OUTPUT_NAMES.has(lower);
 }
+__name(isVirtualIoName, "isVirtualIoName");
 function resolveNodeRole(name, parsed) {
   if (INPUT_NAMES.has(name.toLowerCase())) return "Input";
   if (OUTPUT_NAMES.has(name.toLowerCase())) return "Output";
   if (parsed.sourceNodes.has(name)) return "Input";
   return "Component";
 }
+__name(resolveNodeRole, "resolveNodeRole");
 function toEdgeType(label) {
   const upper = label.toUpperCase();
   if (VALID_EDGE_TYPES.has(upper)) return upper;
   return SEMANTIC_EDGE_MAP[label] ?? SEMANTIC_EDGE_MAP[upper] ?? "PIPE";
 }
+__name(toEdgeType, "toEdgeType");
 
-// ../../wt-batch/cypher-executor/src/actions/search-nodes.ts
+// src/actions/search-nodes.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_component_loader();
 init_recipes();
 
-// ../../wt-batch/cypher-executor/src/lib/branch-hints.ts
+// src/lib/branch-hints.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var BRANCH_HINTS = {
   if_control: {
     branch_field: "data.branch",
@@ -8780,9 +10285,10 @@ function branchHintFor(componentId) {
   if (!componentId) return void 0;
   return BRANCH_HINTS[componentId.toLowerCase()];
 }
+__name(branchHintFor, "branchHintFor");
 
-// ../../wt-batch/cypher-executor/src/actions/search-nodes.ts
-async function searchNodes(parsed, config, env, mode = "discover", target) {
+// src/actions/search-nodes.ts
+async function searchNodes(parsed, config2, env2, mode = "discover", target) {
   const nodeResults = {};
   const missingNodes = [];
   if (mode === "compile") {
@@ -8792,7 +10298,7 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
         nodeResults[nodeName] = { status: "found", componentId: nodeName.toLowerCase(), type: role };
         continue;
       }
-      const configComponent = config?.[nodeName]?.component;
+      const configComponent = config2?.[nodeName]?.component;
       nodeResults[nodeName] = {
         status: configComponent ? "found" : "unchecked",
         componentId: configComponent ?? nodeName,
@@ -8801,12 +10307,12 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
     }
     return { nodeResults, missingNodes };
   }
-  const sub = env?.WORKER_SUBDOMAIN;
-  const registryBase = env?.REGISTRY_BASE_URL ?? (sub ? wasmWorkerUrl("registry", sub) : void 0);
+  const sub = env2?.WORKER_SUBDOMAIN;
+  const registryBase = env2?.REGISTRY_BASE_URL ?? (sub ? wasmWorkerUrl("registry", sub) : void 0);
   const wantComponents = target !== "recipe";
   const wantRecipes = target !== "component";
   const catalog = !wantComponents ? { status: "ok", entries: [] } : registryBase ? await fetchCatalog(registryBase) : { status: "unreachable", entries: [] };
-  const recipes = wantRecipes && env?.RECIPES ? await listAllRecipes2(env.RECIPES) : [];
+  const recipes = wantRecipes && env2?.RECIPES ? await listAllRecipes2(env2.RECIPES) : [];
   const byId = /* @__PURE__ */ new Map();
   for (const e of catalog.entries) {
     const prev = byId.get(e.canonical_id);
@@ -8819,7 +10325,7 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
       nodeResults[nodeName] = { status: "found", componentId: nodeName.toLowerCase(), type: role };
       continue;
     }
-    const configComponent = config?.[nodeName]?.component;
+    const configComponent = config2?.[nodeName]?.component;
     const componentId = configComponent ?? nodeName;
     if (configComponent) {
       nodeResults[nodeName] = { status: "found", componentId, type: role };
@@ -8830,7 +10336,7 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
       continue;
     }
     if (catalog.status === "no_endpoint") {
-      const legacy = await legacyPerNodeLookup(registryBase, componentId, nodeName, role, env, recipes);
+      const legacy = await legacyPerNodeLookup(registryBase, componentId, nodeName, role, env2, recipes);
       nodeResults[nodeName] = legacy.info;
       if (legacy.missing) missingNodes.push(nodeName);
       continue;
@@ -8881,6 +10387,7 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
   }
   return { nodeResults, missingNodes };
 }
+__name(searchNodes, "searchNodes");
 async function fetchCatalog(registryBase) {
   try {
     const res = await fetch(`${registryBase}/components/catalog`, { signal: AbortSignal.timeout(1e4) });
@@ -8892,6 +10399,7 @@ async function fetchCatalog(registryBase) {
     return { status: "unreachable", entries: [] };
   }
 }
+__name(fetchCatalog, "fetchCatalog");
 async function listAllRecipes2(kv) {
   try {
     const list = await kv.list({ prefix: "recipe:" });
@@ -8902,21 +10410,23 @@ async function listAllRecipes2(kv) {
     return [];
   }
 }
+__name(listAllRecipes2, "listAllRecipes");
 function similarFromCatalog(entries, nodeName) {
-  const searchableOf = (e) => [e.canonical_id, e.display_name ?? "", e.description ?? "", ...e.aliases ?? [], ...e.tags ?? []].join(" ").toLowerCase();
+  const searchableOf = /* @__PURE__ */ __name((e) => [e.canonical_id, e.display_name ?? "", e.description ?? "", ...e.aliases ?? [], ...e.tags ?? []].join(" ").toLowerCase(), "searchableOf");
   const full = nodeName.toLowerCase();
   const direct = entries.filter((e) => searchableOf(e).includes(full)).map((e) => e.canonical_id);
   if (direct.length > 0) return [...new Set(direct)].slice(0, 3);
   const tokens = extractTokens(nodeName);
   if (tokens.length === 0) return [];
-  const count = /* @__PURE__ */ new Map();
+  const count3 = /* @__PURE__ */ new Map();
   for (const e of entries) {
     const hay = searchableOf(e);
     const hits = tokens.filter((t) => hay.includes(t)).length;
-    if (hits > 0) count.set(e.canonical_id, Math.max(count.get(e.canonical_id) ?? 0, hits));
+    if (hits > 0) count3.set(e.canonical_id, Math.max(count3.get(e.canonical_id) ?? 0, hits));
   }
-  return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
+  return [...count3.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
 }
+__name(similarFromCatalog, "similarFromCatalog");
 function similarFromRecipes(recipes, nodeName) {
   const tokens = [nodeName.toLowerCase(), ...extractTokens(nodeName)];
   const seen = /* @__PURE__ */ new Set();
@@ -8931,7 +10441,8 @@ function similarFromRecipes(recipes, nodeName) {
   }
   return matched.slice(0, 3);
 }
-async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, env, recipes) {
+__name(similarFromRecipes, "similarFromRecipes");
+async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, env2, recipes) {
   const q = await fetchComponent(registryBase, componentId);
   if (!q.ok) return { info: { status: "unknown", componentId, type: role }, missing: false };
   if (q.entry) {
@@ -8949,7 +10460,7 @@ async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, en
       missing: false
     };
   }
-  const recipe = recipes.find((r) => r.canonical_id === componentId) ?? (env?.RECIPES ? await resolveRecipe(componentId, env.RECIPES) : null);
+  const recipe = recipes.find((r) => r.canonical_id === componentId) ?? (env2?.RECIPES ? await resolveRecipe(componentId, env2.RECIPES) : null);
   if (recipe) {
     return {
       info: {
@@ -8978,6 +10489,7 @@ async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, en
     missing: true
   };
 }
+__name(legacyPerNodeLookup, "legacyPerNodeLookup");
 function trySubstitution(nodeName, catalogEntries, recipes) {
   const lower = nodeName.toLowerCase();
   const serviceHits = SERVICE_HINTS.filter((w) => lower.includes(w));
@@ -9038,6 +10550,7 @@ function trySubstitution(nodeName, catalogEntries, recipes) {
     }
   };
 }
+__name(trySubstitution, "trySubstitution");
 var SERVICE_HINTS = [
   "google",
   "gmail",
@@ -9132,6 +10645,7 @@ function buildSuggestion(componentId) {
   }
   return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\uFF0C\u4E14\u540D\u5B57\u5224\u4E0D\u51FA\u578B\u3002\u7F3A\u5916\u90E8 API \u2192 \u81EA\u5DF1\u5BEB recipe\uFF08skill\u300Cwrite_recipe\u300D\uFF09\uFF1B\u7F3A\u8A08\u7B97\u80FD\u529B \u2192 \u6295\u7A3F\u96F6\u4EF6 PR\uFF08skill\u300Cadd_new_wasm_component\u300D\uFF0Ccomponent \u9032 WASM \u6C99\u7BB1\uFF09\u3002`;
 }
+__name(buildSuggestion, "buildSuggestion");
 function buildPayloadHint(recipe) {
   const parts = [];
   if (recipe.body_template) {
@@ -9157,6 +10671,7 @@ function buildPayloadHint(recipe) {
     usage: parts.join("\uFF1B") + "\u3002"
   };
 }
+__name(buildPayloadHint, "buildPayloadHint");
 async function fetchComponent(registryBase, id) {
   try {
     const res = await fetch(`${registryBase}/components/${encodeURIComponent(id)}`, {
@@ -9179,6 +10694,7 @@ async function fetchComponent(registryBase, id) {
     return { ok: false };
   }
 }
+__name(fetchComponent, "fetchComponent");
 function extractTokens(name) {
   const tokens = [];
   const ascii = name.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
@@ -9189,6 +10705,7 @@ function extractTokens(name) {
   }
   return [...new Set(tokens)].slice(0, 8);
 }
+__name(extractTokens, "extractTokens");
 async function searchRegistryIds(registryBase, q) {
   try {
     const res = await fetch(`${registryBase}/components/search?q=${encodeURIComponent(q)}`, {
@@ -9201,25 +10718,30 @@ async function searchRegistryIds(registryBase, q) {
     return [];
   }
 }
+__name(searchRegistryIds, "searchRegistryIds");
 async function searchSimilarComponents(registryBase, nodeName) {
   const direct = await searchRegistryIds(registryBase, nodeName);
   if (direct.length > 0) return direct.slice(0, 3);
   const tokens = extractTokens(nodeName);
   if (tokens.length === 0) return [];
   const hits = await Promise.all(tokens.map((t) => searchRegistryIds(registryBase, t)));
-  const count = /* @__PURE__ */ new Map();
+  const count3 = /* @__PURE__ */ new Map();
   for (const ids of hits) {
-    for (const id of ids) count.set(id, (count.get(id) ?? 0) + 1);
+    for (const id of ids) count3.set(id, (count3.get(id) ?? 0) + 1);
   }
-  return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
+  return [...count3.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
 }
+__name(searchSimilarComponents, "searchSimilarComponents");
 
-// ../../wt-batch/cypher-executor/src/actions/graph-builder.ts
-function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
+// src/actions/graph-builder.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config2) {
   const nodes = [...parsed.nodeNames].map((name) => {
     const nr = nodeResults[name];
     const id = name.toLowerCase().replace(/\s+/g, "-");
-    const nodeConfig = config?.[name] ?? {};
+    const nodeConfig = config2?.[name] ?? {};
     const componentId = nodeConfig.component ?? nr.componentId;
     const { component: _component, ...staticParams } = nodeConfig;
     const data = Object.keys(staticParams).length > 0 ? staticParams : void 0;
@@ -9250,35 +10772,37 @@ function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
   });
   return { id: graphId, name: graphName, nodes, edges };
 }
+__name(buildExecutionGraph, "buildExecutionGraph");
 
-// ../../wt-batch/cypher-executor/src/actions/cypher-handlers.ts
-async function handleCypherSearch(triplets, env, mode = "discover", target) {
+// src/actions/cypher-handlers.ts
+async function handleCypherSearch(triplets, env2, mode = "discover", target) {
   const parsed = parseTriplets(triplets);
   if (!parsed) {
     throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE");
   }
-  const { nodeResults, missingNodes } = await searchNodes(parsed, void 0, env, mode, target);
+  const { nodeResults, missingNodes } = await searchNodes(parsed, void 0, env2, mode, target);
   const graph = buildExecutionGraph(parsed, nodeResults, "cypher-search-result", "Cypher Search Result");
   return { nodes: nodeResults, cypher: { nodes: graph.nodes, edges: graph.edges }, missing: missingNodes };
 }
-async function handleCypherExecute(triplets, context, graphId, graphName, config, env, waitUntil, apiKey) {
+__name(handleCypherSearch, "handleCypherSearch");
+async function handleCypherExecute(triplets, context2, graphId, graphName, config2, env2, waitUntil, apiKey) {
   const parsed = parseTriplets(triplets);
   if (!parsed) {
     throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE");
   }
-  const { nodeResults } = await searchNodes(parsed, config, env, "compile");
-  const graph = buildExecutionGraph(parsed, nodeResults, graphId, graphName, config);
+  const { nodeResults } = await searchNodes(parsed, config2, env2, "compile");
+  const graph = buildExecutionGraph(parsed, nodeResults, graphId, graphName, config2);
   const parseResult = graphSchema.safeParse(graph);
   if (!parseResult.success) {
     throw new Error("\u5716\u5B9A\u7FA9\u7522\u751F\u5931\u6557");
   }
-  const loader = createComponentLoader(env);
-  const executor = new GraphExecutor(loader, void 0, env, apiKey);
+  const loader = createComponentLoader(env2);
+  const executor = new GraphExecutor(loader, void 0, env2, apiKey);
   const start = Date.now();
   try {
-    const result = await executor.execute(parseResult.data, context ?? {}, env.EXEC_CONTEXT);
+    const result = await executor.execute(parseResult.data, context2 ?? {}, env2.EXEC_CONTEXT);
     const duration_ms = Date.now() - start;
-    waitUntil(recordComponentStats(env, graph.nodes, result.trace));
+    waitUntil(recordComponentStats(env2, graph.nodes, result.trace));
     return { success: true, data: result.data, trace: result.trace, duration_ms, graph };
   } catch (err) {
     const duration_ms = Date.now() - start;
@@ -9296,7 +10820,7 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
     }
     const errMsg = err instanceof Error ? err.message : String(err);
     if (err instanceof ExecutionError) {
-      waitUntil(recordComponentStats(env, graph.nodes, err.trace));
+      waitUntil(recordComponentStats(env2, graph.nodes, err.trace));
       const traceFormatted = err.trace.map((s) => ({
         node: s.nodeId,
         status: s.error ? "failed" : "success",
@@ -9314,15 +10838,22 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
     throw err;
   }
 }
+__name(handleCypherExecute, "handleCypherExecute");
 
-// ../../wt-batch/cypher-executor/src/actions/target-search.ts
+// src/actions/target-search.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_component_loader();
 
-// ../../wt-batch/cypher-executor/src/lib/workflow-search.ts
-async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
-  const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+// src/lib/workflow-search.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+async function fetchTenantWorkflowSearch(env2, apiKey, q, mode = "semantic") {
+  const base = (env2.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
   const headers = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  if (env2.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env2.KBDB_INTERNAL_TOKEN}`;
   const params = new URLSearchParams({
     q,
     owner_id: apiKey,
@@ -9333,12 +10864,13 @@ async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
   });
   return fetch(`${base}/entries/search?${params.toString()}`, { headers });
 }
+__name(fetchTenantWorkflowSearch, "fetchTenantWorkflowSearch");
 
-// ../../wt-batch/cypher-executor/src/actions/target-search.ts
-async function searchByTarget(target, query, env, apiKey) {
+// src/actions/target-search.ts
+async function searchByTarget(target, query, env2, apiKey) {
   if (target === "component") {
-    const sub = env.WORKER_SUBDOMAIN;
-    const registryBase = env.REGISTRY_BASE_URL ?? (sub ? wasmWorkerUrl("registry", sub) : void 0);
+    const sub = env2.WORKER_SUBDOMAIN;
+    const registryBase = env2.REGISTRY_BASE_URL ?? (sub ? wasmWorkerUrl("registry", sub) : void 0);
     if (!registryBase) return { ok: false, status: 502, error: "registry \u4F4D\u7F6E\u672A\u8A2D\u5B9A\uFF08WORKER_SUBDOMAIN\uFF0FREGISTRY_BASE_URL \u7686\u7F3A\uFF09" };
     try {
       const res2 = await fetch(
@@ -9367,8 +10899,8 @@ async function searchByTarget(target, query, env, apiKey) {
     }
   }
   if (target === "recipe") {
-    if (!env.RECIPES) return { ok: false, status: 502, error: "RECIPES KV \u672A\u7D81\u5B9A" };
-    const all = await listAllRecipes2(env.RECIPES);
+    if (!env2.RECIPES) return { ok: false, status: 502, error: "RECIPES KV \u672A\u7D81\u5B9A" };
+    const all = await listAllRecipes2(env2.RECIPES);
     const q = query.toLowerCase();
     const seen = /* @__PURE__ */ new Set();
     const results = [];
@@ -9398,13 +10930,14 @@ async function searchByTarget(target, query, env, apiKey) {
     };
   }
   if (!apiKey) return { ok: false, status: 401, error: "target=workflow \u9700\u8981 X-Arcrun-API-Key header\uFF08workflow \u641C\u5C0B\u9650\u672C\u79DF\u6236\uFF09" };
-  const res = await fetchTenantWorkflowSearch(env, apiKey, query);
+  const res = await fetchTenantWorkflowSearch(env2, apiKey, query);
   if (!res.ok) return { ok: false, status: 502, error: `workflow \u641C\u5C0B\u5931\u6557\uFF08KBDB HTTP ${res.status}\uFF09` };
   const body = await res.json();
   return { ok: true, body: { target, query, ...body } };
 }
+__name(searchByTarget, "searchByTarget");
 
-// ../../wt-batch/cypher-executor/src/routes/cypher.ts
+// src/routes/cypher.ts
 var cypherRouter = new Hono2();
 var VALID_TARGETS = /* @__PURE__ */ new Set(["component", "recipe", "workflow"]);
 cypherRouter.post("/cypher/search", async (c) => {
@@ -9497,7 +11030,10 @@ cypherRouter.post("/cypher/execute", async (c) => {
   }
 });
 
-// ../../wt-batch/cypher-executor/src/routes/validate.ts
+// src/routes/validate.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_schemas();
 init_telemetry();
@@ -9534,10 +11070,16 @@ validateRouter.post("/validate", async (c) => {
   return c.json({ valid: true, nodeCount: parsed.data.nodes.length, edgeCount: parsed.data.edges.length });
 });
 
-// ../../wt-batch/cypher-executor/src/routes/docs.ts
+// src/routes/docs.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 
-// ../../wt-batch/cypher-executor/src/lib/openapi.ts
+// src/lib/openapi.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var OPENAPI_SPEC = {
   openapi: "3.0.3",
   info: {
@@ -9845,7 +11387,7 @@ var OPENAPI_SPEC = {
   }
 };
 
-// ../../wt-batch/cypher-executor/src/routes/docs.ts
+// src/routes/docs.ts
 var docsRouter = new Hono2();
 docsRouter.get("/openapi.json", (c) => {
   return c.json(OPENAPI_SPEC);
@@ -9888,13 +11430,19 @@ docsRouter.get("/docs", (c) => {
   return c.html(htmlStr);
 });
 
-// ../../wt-batch/cypher-executor/src/routes/webhooks.ts
+// src/routes/webhooks.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_webhook_handlers();
 
-// ../../wt-batch/cypher-executor/src/actions/webhook-graph-resolver.ts
+// src/actions/webhook-graph-resolver.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_schemas();
-async function resolveWebhookGraph(body, description, env) {
+async function resolveWebhookGraph(body, description, env2) {
   if (Array.isArray(body.triplets) && body.triplets.length > 0) {
     const parsed = parseTriplets(body.triplets);
     if (!parsed) return { resolvedGraph: {}, error: "\u7121\u6CD5\u89E3\u6790 triplets" };
@@ -9934,8 +11482,9 @@ async function resolveWebhookGraph(body, description, env) {
   }
   return { resolvedGraph: {}, error: "\u9700\u63D0\u4F9B graph \u7269\u4EF6\u6216 triplets \u9663\u5217" };
 }
+__name(resolveWebhookGraph, "resolveWebhookGraph");
 
-// ../../wt-batch/cypher-executor/src/routes/webhooks.ts
+// src/routes/webhooks.ts
 var webhooksRouter = new Hono2();
 webhooksRouter.post("/webhooks", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -9988,7 +11537,10 @@ webhooksRouter.post("/webhooks/:token/trigger", async (c) => {
   return c.json(result, result.success ? 200 : 500);
 });
 
-// ../../wt-batch/cypher-executor/src/routes/webhooks-crud.ts
+// src/routes/webhooks-crud.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_webhook_handlers();
 var webhooksCrudRouter = new Hono2();
@@ -10047,7 +11599,10 @@ webhooksCrudRouter.delete("/webhooks/:token", async (c) => {
   return c.json({ deleted: true, token });
 });
 
-// ../../wt-batch/cypher-executor/src/routes/webhooks-list.ts
+// src/routes/webhooks-list.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_webhook_handlers();
 var webhooksListRouter = new Hono2();
@@ -10072,10 +11627,13 @@ webhooksListRouter.get("/webhooks", async (c) => {
   return c.json({ webhooks, total: webhooks.length });
 });
 
-// ../../wt-batch/cypher-executor/src/index.ts
+// src/index.ts
 init_recipes();
 
-// ../../wt-batch/cypher-executor/src/routes/credentials.ts
+// src/routes/credentials.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_hash();
 var credentialsRouter = new Hono2();
@@ -10084,28 +11642,32 @@ async function deriveSecretRef(apiKey, name) {
   const hash8 = await sha256Prefix(apiKey);
   return `CRED_${name.toUpperCase()}_${hash8.toUpperCase()}`;
 }
-async function storeCredential(env, apiKey, name, value, service) {
+__name(deriveSecretRef, "deriveSecretRef");
+async function storeCredential(env2, apiKey, name, value, service) {
   const secretRef = await deriveSecretRef(apiKey, name);
-  await putWorkerSecret(env, secretRef, value);
-  await upsertCredentialRow(env.CREDENTIALS_DB, apiKey, name, service, "standard", secretRef);
+  await putWorkerSecret(env2, secretRef, value);
+  await upsertCredentialRow(env2.CREDENTIALS_DB, apiKey, name, service, "standard", secretRef);
 }
+__name(storeCredential, "storeCredential");
 function validateName(name) {
   return typeof name === "string" && /^\w+$/.test(name);
 }
+__name(validateName, "validateName");
 function validSensitivity(s) {
   return s === "standard" || s === "high";
 }
-async function putWorkerSecret(env, secretRef, value) {
-  if (!env.CF_SECRETS_API_TOKEN || !env.CF_ACCOUNT_ID) {
+__name(validSensitivity, "validSensitivity");
+async function putWorkerSecret(env2, secretRef, value) {
+  if (!env2.CF_SECRETS_API_TOKEN || !env2.CF_ACCOUNT_ID) {
     throw new Error(
       "\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u5BEB\u5165\u8DEF\u5F91\u672A\u5C31\u7DD2\uFF08\u898B credential-store-migration.md T3\uFF1Aacr init/update \u61C9\u78BA\u4FDD\u9019\u5169\u9805\u5C31\u7DD2\uFF09"
     );
   }
-  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets`;
+  const url = `https://api.cloudflare.com/client/v4/accounts/${env2.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets`;
   const res = await fetch(url, {
     method: "PUT",
     headers: {
-      Authorization: `Bearer ${env.CF_SECRETS_API_TOKEN}`,
+      Authorization: `Bearer ${env2.CF_SECRETS_API_TOKEN}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ name: secretRef, text: value, type: "secret_text" })
@@ -10116,14 +11678,15 @@ async function putWorkerSecret(env, secretRef, value) {
     throw new Error(`CF Workers Secrets \u5BEB\u5165\u5931\u6557\uFF1A${detail}`);
   }
 }
-async function deleteWorkerSecret(env, secretRef) {
-  if (!env.CF_SECRETS_API_TOKEN || !env.CF_ACCOUNT_ID) {
+__name(putWorkerSecret, "putWorkerSecret");
+async function deleteWorkerSecret(env2, secretRef) {
+  if (!env2.CF_SECRETS_API_TOKEN || !env2.CF_ACCOUNT_ID) {
     throw new Error("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
   }
-  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
+  const url = `https://api.cloudflare.com/client/v4/accounts/${env2.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
   const res = await fetch(url, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${env.CF_SECRETS_API_TOKEN}` }
+    headers: { Authorization: `Bearer ${env2.CF_SECRETS_API_TOKEN}` }
   });
   if (res.status === 404) return;
   const body = await res.json().catch(() => null);
@@ -10132,6 +11695,7 @@ async function deleteWorkerSecret(env, secretRef) {
     throw new Error(`CF Workers Secrets \u522A\u9664\u5931\u6557\uFF1A${detail}`);
   }
 }
+__name(deleteWorkerSecret, "deleteWorkerSecret");
 async function upsertCredentialRow(db, apiKey, name, service, sensitivity, secretRef) {
   const now2 = Math.floor(Date.now() / 1e3);
   await db.prepare(
@@ -10143,6 +11707,7 @@ async function upsertCredentialRow(db, apiKey, name, service, sensitivity, secre
          secret_ref = excluded.secret_ref`
   ).bind(apiKey, name, service, sensitivity, secretRef, now2).run();
 }
+__name(upsertCredentialRow, "upsertCredentialRow");
 async function listCredentialRows(db, apiKey) {
   const rows = await db.prepare(
     `SELECT name, service, sensitivity, created_at, last_used_at
@@ -10150,17 +11715,20 @@ async function listCredentialRows(db, apiKey) {
   ).bind(apiKey).all();
   return rows.results ?? [];
 }
+__name(listCredentialRows, "listCredentialRows");
 async function findSecretRef(db, apiKey, name) {
   const row = await db.prepare(`SELECT secret_ref FROM credentials WHERE api_key = ? AND name = ?`).bind(apiKey, name).first();
   return row?.secret_ref ?? null;
 }
-async function writeCredential(env, apiKey, name, value, service, sensitivityRaw) {
+__name(findSecretRef, "findSecretRef");
+async function writeCredential(env2, apiKey, name, value, service, sensitivityRaw) {
   const sensitivity = validSensitivity(sensitivityRaw) ? sensitivityRaw : "standard";
   const secretRef = await deriveSecretRef(apiKey, name);
-  await putWorkerSecret(env, secretRef, value);
-  await upsertCredentialRow(env.CREDENTIALS_DB, apiKey, name, service ?? null, sensitivity, secretRef);
+  await putWorkerSecret(env2, secretRef, value);
+  await upsertCredentialRow(env2.CREDENTIALS_DB, apiKey, name, service ?? null, sensitivity, secretRef);
   return { secretRef, sensitivity };
 }
+__name(writeCredential, "writeCredential");
 credentialsRouter.post("/credentials", async (c) => {
   const apiKey = c.req.header("X-Arcrun-API-Key");
   if (!apiKey) {
@@ -10258,7 +11826,10 @@ credentialsRouter.get("/credentials", async (c) => {
   }
 });
 
-// ../../wt-batch/cypher-executor/src/routes/webhooks-named.ts
+// src/routes/webhooks-named.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_webhook_handlers();
 init_telemetry();
@@ -10266,10 +11837,11 @@ var webhooksNamedRouter = new Hono2();
 function kvKey(apiKey, name) {
   return `${apiKey}:wf:${name}`;
 }
-async function writeWorkflowSearchEntry(env, apiKey, name, description, workflowId) {
-  const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+__name(kvKey, "kvKey");
+async function writeWorkflowSearchEntry(env2, apiKey, name, description, workflowId) {
+  const base = (env2.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
   const headers = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  if (env2.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env2.KBDB_INTERNAL_TOKEN}`;
   await fetch(`${base}/entries`, {
     method: "POST",
     headers,
@@ -10290,6 +11862,7 @@ async function writeWorkflowSearchEntry(env, apiKey, name, description, workflow
     })
   });
 }
+__name(writeWorkflowSearchEntry, "writeWorkflowSearchEntry");
 webhooksNamedRouter.post("/webhooks/named", async (c) => {
   const apiKey = c.req.header("X-Arcrun-API-Key");
   if (!apiKey) {
@@ -10473,14 +12046,17 @@ async function triggerNamed(c, apiKey, name) {
   );
   return c.json(result, result.success ? 200 : 500);
 }
+__name(triggerNamed, "triggerNamed");
 var MAX_QUERY_OUTPUT_BYTES = 5 * 1024 * 1024;
 function queryStringContext(c) {
   return { ...c.req.query() };
 }
+__name(queryStringContext, "queryStringContext");
 async function bodyContext(c) {
   const body = await c.req.json().catch(() => null);
   return body && typeof body === "object" ? body : {};
 }
+__name(bodyContext, "bodyContext");
 async function queryNamed(c, apiKey, name, triggerContext) {
   const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
   if (!raw2) {
@@ -10539,6 +12115,7 @@ async function queryNamed(c, apiKey, name, triggerContext) {
     }
   });
 }
+__name(queryNamed, "queryNamed");
 webhooksNamedRouter.get("/webhooks/named/:name/query", async (c) => {
   const apiKey = c.req.header("X-Arcrun-API-Key");
   if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
@@ -10610,7 +12187,10 @@ webhooksNamedRouter.delete("/webhooks/named/:name", async (c) => {
   return c.json({ deleted: true, name });
 });
 
-// ../../wt-batch/cypher-executor/src/routes/auth.ts
+// src/routes/auth.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 var authRouter = new Hono2();
 function getLandingOrigin(c) {
@@ -10619,25 +12199,30 @@ function getLandingOrigin(c) {
   if (origin && allowed.includes(origin)) return origin;
   return "https://arcrun.dev";
 }
+__name(getLandingOrigin, "getLandingOrigin");
 function generateApiKey() {
   return "ak_" + randomToken(24);
 }
+__name(generateApiKey, "generateApiKey");
 async function upsertAuthRecipe(recipes, recipe) {
   const key = `auth_recipe:${recipe.service}`;
   const existing = await recipes.get(key);
   if (existing) return;
   await recipes.put(key, JSON.stringify({ ...recipe, created_at: Date.now(), updated_at: Date.now() }));
 }
+__name(upsertAuthRecipe, "upsertAuthRecipe");
 function randomToken(bytes = 32) {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+__name(randomToken, "randomToken");
 function getSessionId(req) {
   const cookie = req.headers.get("cookie") ?? "";
   const match2 = cookie.match(/arcrun_session=([a-f0-9]+)/);
   return match2 ? match2[1] : null;
 }
+__name(getSessionId, "getSessionId");
 function getApiKeyFromRequest(req) {
   const direct = req.headers.get("x-arcrun-api-key");
   if (direct) return direct;
@@ -10645,6 +12230,7 @@ function getApiKeyFromRequest(req) {
   const match2 = auth.match(/^Bearer\s+(ak_\S+)/i);
   return match2 ? match2[1] : null;
 }
+__name(getApiKeyFromRequest, "getApiKeyFromRequest");
 async function resolveSession(c) {
   const sessId = getSessionId(c.req.raw);
   if (sessId) {
@@ -10664,6 +12250,7 @@ async function resolveSession(c) {
   }
   return null;
 }
+__name(resolveSession, "resolveSession");
 authRouter.get("/auth/google/start", async (c) => {
   const clientId = c.env.GOOGLE_CLIENT_ID;
   if (!clientId) return c.json({ error: "Google OAuth not configured" }, 503);
@@ -10708,10 +12295,10 @@ authRouter.get("/auth/github/start", async (c) => {
 authRouter.get("/auth/callback", async (c) => {
   const code = c.req.query("code");
   const state = c.req.query("state");
-  const error = c.req.query("error");
+  const error3 = c.req.query("error");
   const landingOrigin = getLandingOrigin(c);
-  if (error || !code || !state) {
-    return Response.redirect(`${landingOrigin}/login?error=${encodeURIComponent(error ?? "cancelled")}`, 302);
+  if (error3 || !code || !state) {
+    return Response.redirect(`${landingOrigin}/login?error=${encodeURIComponent(error3 ?? "cancelled")}`, 302);
   }
   const stateRecord = await c.env.SESSIONS_KV.get(`state:${state}`, "json");
   if (!stateRecord) {
@@ -10939,7 +12526,10 @@ authRouter.delete("/me/api-key", async (c) => {
   });
 });
 
-// ../../wt-batch/cypher-executor/src/routes/resume.ts
+// src/routes/resume.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_types();
 init_graph_executor();
@@ -11009,7 +12599,10 @@ resumeRouter.post("/workflows/resume", async (c) => {
   }
 });
 
-// ../../wt-batch/cypher-executor/src/routes/executions.ts
+// src/routes/executions.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_paused_runs();
 var executionsRouter = new Hono2();
@@ -11144,12 +12737,18 @@ executionsRouter.get("/workflows/:name/executions", async (c) => {
   });
 });
 
-// ../../wt-batch/cypher-executor/src/routes/init-seed.ts
+// src/routes/init-seed.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_hash();
 init_recipes();
 
-// ../../wt-batch/cypher-executor/src/lib/api-recipe-seeds.ts
+// src/lib/api-recipe-seeds.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var API_RECIPE_SEEDS = [
   // ── KBDB（Supabase 模式，auth_service=kbdb static_key）──
   {
@@ -11236,10 +12835,52 @@ var API_RECIPE_SEEDS = [
     endpoint: "https://notify-api.line.me/api/notify",
     method: "POST",
     auth_service: "line_notify"
+  },
+  // ── LLM 對話（binding＝免金鑰，3.12 第四型認證的第一個真實案例）──
+  //
+  // 為什麼進種子（而非寫在某個產品的安裝器裡）：「裝好之後預設有哪些 recipe」是平台能力，
+  // 與本檔其餘種子同理由（見檔頭）。裝完 /init/seed 就有 ⇒ **用戶不填任何金鑰就能問答**。
+  //
+  // 換模型／換供應商＝**改這一筆 recipe**（endpoint + body_template + response_map），
+  // workflow 的 ask_llm 節點不動——這正是「換源＝換 recipe 不是換引擎」。
+  //
+  // 選型實測（2026-08-03，在 1.4.4 實例上跑真實長度的 RAG prompt，每個模型連跑 2 次）：
+  //   @cf/meta/llama-4-scout-17b-16e-instruct        2373／2173 ms　✅ 答案最完整、引用正確
+  //   @cf/meta/llama-3.3-70b-instruct-fp8-fast       3261／2147 ms　✅ 可用但波動較大
+  //   @cf/mistralai/mistral-small-3.1-24b-instruct   3560／3631 ms
+  //   @cf/qwen/qwen2.5-coder-32b-instruct            3572／3353 ms
+  //   @cf/openai/gpt-oss-120b                        1971／2295 ms　❌ 回應形狀不同，response 取不到文字
+  //   @cf/google/gemma-3-12b-it                      ❌ 5018 This account is not allowed to access this model
+  // 對照舊路徑（Gemini `gemma-4-31b-it`）：同型提問 **16.87 s**，且吐整段英文思考草稿
+  //   ⇒ 選 llama-4-scout：**快 7 倍以上，且不需要淨化思考草稿**。
+  {
+    canonical_id: "workers_ai_chat",
+    display_name: "Workers AI \u5C0D\u8A71\uFF08\u514D\u91D1\u9470\uFF09",
+    description: "Cloudflare Workers AI \u6587\u5B57\u751F\u6210\uFF0C\u8D70 env.AI binding \u21D2 \u4E0D\u9700\u8981\u4EFB\u4F55 API \u91D1\u9470\u3002ctx \u5E36 prompt\uFF0C\u56DE\u61C9\u6B63\u898F\u5316\u6210 text\uFF08\u542B\u3010\u7B54\u3011\u6A19\u8A18\u8207\u524D\u7DB4\u6DE8\u5316\uFF09\u3002\u63DB\u6A21\u578B\uFF1D\u6539\u672C recipe \u7684 endpoint\uFF0Cworkflow \u4E0D\u52D5\u3002",
+    endpoint: "@cf/meta/llama-4-scout-17b-16e-instruct",
+    method: "POST",
+    auth: "binding",
+    binding_name: "AI",
+    body_template: {
+      messages: [{ role: "user", content: "{{prompt}}" }],
+      max_tokens: 1024,
+      temperature: 0.2
+    },
+    response_map: {
+      // Workers AI chat 回應：{ response: "…" }（另有 OpenAI 相容的 choices，取 response 最穩）
+      text_path: "response",
+      // 提示詞要求答案以【答】開頭；模型偶爾會在前面多帶一行 ⇒ 取最後一個標記之後
+      answer_marker: "\u3010\u7B54\u3011",
+      // 前綴組合順序不定，循環剝殼（規則見 recipe-payload.ts sanitize）
+      strip_prefixes: ["*", "-", "\u2022", ">", "#", '"', "\u300C", "\u3010\u7B54\u3011", "Answer:", "Draft:"]
+    }
   }
 ];
 
-// ../../wt-batch/cypher-executor/src/lib/auth-recipe-seeds.ts
+// src/lib/auth-recipe-seeds.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var now = Date.now();
 var AUTH_RECIPE_SEEDS = [
   // ── Static Key 類 ──────────────────────────────────────────────────────────
@@ -11942,21 +13583,29 @@ var AUTH_RECIPE_SEEDS = [
   }
 ];
 
-// ../../wt-batch/cypher-executor/src/routes/portal.ts
+// src/routes/portal.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 
-// ../../wt-batch/cypher-executor/src/routes/kbdb-proxy.ts
+// src/routes/kbdb-proxy.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 var kbdbProxyRouter = new Hono2();
-function kbdbBase(env) {
-  const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+function kbdbBase(env2) {
+  const base = (env2.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
   const headers = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  if (env2.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env2.KBDB_INTERNAL_TOKEN}`;
   return { base, headers };
 }
+__name(kbdbBase, "kbdbBase");
 function tenant(c) {
   return c.req.header("X-Arcrun-API-Key") ?? null;
 }
+__name(tenant, "tenant");
 var NEED_KEY = { error: "\u7F3A\u5C11 X-Arcrun-API-Key header" };
 kbdbProxyRouter.post("/kbdb/templates", async (c) => {
   const owner = tenant(c);
@@ -12067,10 +13716,11 @@ kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
   const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, { headers });
   return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
 });
-function graphBase(env) {
-  if (env.KBDB_GRAPH_URL) return env.KBDB_GRAPH_URL.replace(/\/$/, "");
-  return `https://kbdb-graph-plugin.${env.WORKER_SUBDOMAIN}.workers.dev`;
+function graphBase(env2) {
+  if (env2.KBDB_GRAPH_URL) return env2.KBDB_GRAPH_URL.replace(/\/$/, "");
+  return `https://kbdb-graph-plugin.${env2.WORKER_SUBDOMAIN}.workers.dev`;
 }
+__name(graphBase, "graphBase");
 kbdbProxyRouter.get("/kbdb/graph/neighbors/:name", async (c) => {
   if (!tenant(c)) return c.json(NEED_KEY, 401);
   const base = graphBase(c.env);
@@ -12120,36 +13770,44 @@ kbdbProxyRouter.patch("/kbdb/entries/:id", async (c) => {
   return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
 });
 
-// ../../wt-batch/cypher-executor/src/routes/console-auth.ts
+// src/routes/console-auth.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 var consoleAuthRouter = new Hono2();
 var CREDS_KEY = "console:credentials";
 var SESSION_PREFIX = "console_sess:";
 var SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
-async function validateConsoleSession(env, authHeader) {
+async function validateConsoleSession(env2, authHeader) {
   const token = (authHeader ?? "").match(/^Bearer\s+(\S+)/i)?.[1];
   if (!token) return false;
-  const sess = await env.SESSIONS_KV.get(`${SESSION_PREFIX}${token}`);
+  const sess = await env2.SESSIONS_KV.get(`${SESSION_PREFIX}${token}`);
   return !!sess;
 }
+__name(validateConsoleSession, "validateConsoleSession");
 function randomHex(bytes) {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+__name(randomHex, "randomHex");
 async function sha256Hex(input) {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+__name(sha256Hex, "sha256Hex");
 async function hashPassword(password, salt) {
   let h = `${salt}:${password}`;
   for (let i = 0; i < 3; i++) h = await sha256Hex(h);
   return h;
 }
+__name(hashPassword, "hashPassword");
 function tenantOf(c) {
   return c.env.CONSOLE_TENANT || "leo";
 }
+__name(tenantOf, "tenantOf");
 consoleAuthRouter.get("/console/auth-status", async (c) => {
   const existing = await c.env.SESSIONS_KV.get(CREDS_KEY);
   return c.json({ configured: !!existing });
@@ -12223,7 +13881,10 @@ consoleAuthRouter.post("/console/logout", async (c) => {
   return c.json({ success: true });
 });
 
-// ../../wt-batch/cypher-executor/src/lib/portal-auth.ts
+// src/lib/portal-auth.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var PBKDF2_ALGO_PREFIX = "pbkdf2-sha256";
 var PBKDF2_ITERATIONS = 1e5;
 function b64encode(bytes) {
@@ -12231,6 +13892,7 @@ function b64encode(bytes) {
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin);
 }
+__name(b64encode, "b64encode");
 function b64decode(s) {
   try {
     const bin = atob(s);
@@ -12241,6 +13903,7 @@ function b64decode(s) {
     return null;
   }
 }
+__name(b64decode, "b64decode");
 async function deriveBits(password, salt, iterations) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, [
     "deriveBits"
@@ -12252,6 +13915,7 @@ async function deriveBits(password, salt, iterations) {
   );
   return new Uint8Array(bits);
 }
+__name(deriveBits, "deriveBits");
 function constantTimeEqual(a, b) {
   const ab = new TextEncoder().encode(a);
   const bb = new TextEncoder().encode(b);
@@ -12262,11 +13926,13 @@ function constantTimeEqual(a, b) {
   }
   return diff === 0;
 }
+__name(constantTimeEqual, "constantTimeEqual");
 async function hashPassword2(password, iterations = PBKDF2_ITERATIONS) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const hash = await deriveBits(password, salt, iterations);
   return `${PBKDF2_ALGO_PREFIX}$${iterations}$${b64encode(salt)}$${b64encode(hash)}`;
 }
+__name(hashPassword2, "hashPassword");
 async function verifyPassword(password, stored) {
   const parts = (stored ?? "").split("$");
   if (parts.length !== 4 || parts[0] !== PBKDF2_ALGO_PREFIX) return false;
@@ -12277,11 +13943,13 @@ async function verifyPassword(password, stored) {
   const derived = await deriveBits(password, salt, iterations);
   return constantTimeEqual(b64encode(derived), parts[3]);
 }
+__name(verifyPassword, "verifyPassword");
 function randomHex2(bytes) {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+__name(randomHex2, "randomHex");
 function generatePassword(length = 16) {
   const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   const arr = new Uint8Array(length);
@@ -12290,8 +13958,12 @@ function generatePassword(length = 16) {
   for (const b of arr) out += charset[b % charset.length];
   return out;
 }
+__name(generatePassword, "generatePassword");
 
-// ../../wt-batch/cypher-executor/src/lib/portal-seeds.ts
+// src/lib/portal-seeds.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var PORTAL_TEMPLATE_SEEDS = [
   {
     // design §2.1：portal 同仁帳號。password_hash 存 KDF 輸出（pbkdf2-sha256$…，D-6），
@@ -12340,7 +14012,7 @@ var PORTAL_TEMPLATE_SEEDS = [
   }
 ];
 
-// ../../wt-batch/cypher-executor/src/routes/portal.ts
+// src/routes/portal.ts
 var portalRouter = new Hono2();
 var SESSION_PREFIX2 = "portal_sess:";
 var LOCKFAIL_PREFIX = "portal_lockfail:";
@@ -12349,24 +14021,31 @@ var LOCK_TTL_SECONDS = 15 * 60;
 var DEFAULT_SESSION_TTL = 604800;
 var USER_TEMPLATE = "portal_user";
 var LIBRARY_TEMPLATE = "portal_library";
-function portalTenant(env) {
-  return env.CONSOLE_TENANT || "leo";
+function portalTenant(env2) {
+  return env2.CONSOLE_TENANT || "leo";
 }
-function portalNamespace(env) {
-  return `${portalTenant(env)}::portal`;
+__name(portalTenant, "portalTenant");
+function portalNamespace(env2) {
+  return `${portalTenant(env2)}::portal`;
 }
-function sessionTtl(env) {
-  const n = Number.parseInt(env.PORTAL_SESSION_TTL ?? "", 10);
+__name(portalNamespace, "portalNamespace");
+function sessionTtl(env2) {
+  const n = Number.parseInt(env2.PORTAL_SESSION_TTL ?? "", 10);
   return Number.isFinite(n) && n >= 60 ? n : DEFAULT_SESSION_TTL;
 }
+__name(sessionTtl, "sessionTtl");
 function bearerToken(c) {
   const auth = c.req.header("authorization") ?? "";
   return auth.match(/^Bearer\s+(\S+)/i)?.[1] ?? null;
 }
+__name(bearerToken, "bearerToken");
 var KbdbError = class extends Error {
+  static {
+    __name(this, "KbdbError");
+  }
 };
-async function kbdbFetch(env, path, init) {
-  const { base, headers } = kbdbBase(env);
+async function kbdbFetch(env2, path, init) {
+  const { base, headers } = kbdbBase(env2);
   let res;
   try {
     res = await fetch(`${base}${path}`, { ...init, headers: { ...headers, ...init?.headers } });
@@ -12375,6 +14054,7 @@ async function kbdbFetch(env, path, init) {
   }
   return res;
 }
+__name(kbdbFetch, "kbdbFetch");
 async function run(c, fn) {
   try {
     return await fn();
@@ -12383,13 +14063,14 @@ async function run(c, fn) {
     throw e;
   }
 }
-async function ensurePortalTemplates(env) {
+__name(run, "run");
+async function ensurePortalTemplates(env2) {
   const created = [];
   const existing = [];
   const errors = [];
   for (const seed of PORTAL_TEMPLATE_SEEDS) {
     try {
-      const got = await kbdbFetch(env, `/templates/${encodeURIComponent(seed.name)}`);
+      const got = await kbdbFetch(env2, `/templates/${encodeURIComponent(seed.name)}`);
       if (got.ok) {
         const body = await got.json().catch(() => null);
         const tpl = body?.template;
@@ -12402,7 +14083,7 @@ async function ensurePortalTemplates(env) {
           }
           const missing = seed.slots.filter((s) => !currentSlots.includes(s));
           if (missing.length > 0) {
-            const patched = await kbdbFetch(env, `/templates/${encodeURIComponent(tpl.id)}`, {
+            const patched = await kbdbFetch(env2, `/templates/${encodeURIComponent(tpl.id)}`, {
               method: "PATCH",
               body: JSON.stringify({ slots: [...currentSlots, ...missing] })
             });
@@ -12413,7 +14094,7 @@ async function ensurePortalTemplates(env) {
         continue;
       }
       if (got.status !== 404) throw new KbdbError(`GET /templates/${seed.name} \u2192 ${got.status}`);
-      const res = await kbdbFetch(env, "/templates", {
+      const res = await kbdbFetch(env2, "/templates", {
         method: "POST",
         body: JSON.stringify({
           name: seed.name,
@@ -12430,29 +14111,32 @@ async function ensurePortalTemplates(env) {
   }
   return { created, existing, errors };
 }
-async function findUserRecordId(env, email) {
-  const ns = portalNamespace(env);
+__name(ensurePortalTemplates, "ensurePortalTemplates");
+async function findUserRecordId(env2, email) {
+  const ns = portalNamespace(env2);
   const params = new URLSearchParams({
     page_name: email,
     entry_type: USER_TEMPLATE,
     owner_id: ns,
     limit: "1"
   });
-  const res = await kbdbFetch(env, `/entries?${params.toString()}`);
+  const res = await kbdbFetch(env2, `/entries?${params.toString()}`);
   if (!res.ok) throw new KbdbError(`head entry \u67E5\u627E \u2192 ${res.status}`);
   const body = await res.json();
   const content = body.entries?.[0]?.content;
   return content ?? null;
 }
-async function getRecordById(env, recordId) {
-  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`);
+__name(findUserRecordId, "findUserRecordId");
+async function getRecordById(env2, recordId) {
+  const res = await kbdbFetch(env2, `/records/${encodeURIComponent(recordId)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new KbdbError(`GET /records/${recordId} \u2192 ${res.status}`);
   const body = await res.json();
   return body.record ?? null;
 }
-async function patchRecordValues(env, recordId, values) {
-  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, {
+__name(getRecordById, "getRecordById");
+async function patchRecordValues(env2, recordId, values) {
+  const res = await kbdbFetch(env2, `/records/${encodeURIComponent(recordId)}`, {
     method: "PATCH",
     body: JSON.stringify({ values })
   });
@@ -12461,26 +14145,30 @@ async function patchRecordValues(env, recordId, values) {
   if (!body.record) throw new KbdbError(`PATCH /records/${recordId} \u56DE\u61C9\u7F3A record`);
   return body.record;
 }
-async function deleteKbdbRecord(env, recordId) {
-  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
+__name(patchRecordValues, "patchRecordValues");
+async function deleteKbdbRecord(env2, recordId) {
+  const res = await kbdbFetch(env2, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
   if (res.status === 404) return false;
   if (!res.ok) throw new KbdbError(`DELETE /records/${recordId} \u2192 ${res.status}`);
   return true;
 }
-function daemonActiveKey(env) {
-  return `${portalTenant(env)}:portal:daemon_active_libs`;
+__name(deleteKbdbRecord, "deleteKbdbRecord");
+function daemonActiveKey(env2) {
+  return `${portalTenant(env2)}:portal:daemon_active_libs`;
 }
-async function listRecordsByTemplate(env, template) {
-  const ns = portalNamespace(env);
-  const res = await kbdbFetch(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
+__name(daemonActiveKey, "daemonActiveKey");
+async function listRecordsByTemplate(env2, template) {
+  const ns = portalNamespace(env2);
+  const res = await kbdbFetch(env2, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
   if (!res.ok) throw new KbdbError(`GET /records/by-template/${template} \u2192 ${res.status}`);
   const body = await res.json();
   return body.records ?? [];
 }
-async function createPortalUser(env, input) {
-  const ns = portalNamespace(env);
+__name(listRecordsByTemplate, "listRecordsByTemplate");
+async function createPortalUser(env2, input) {
+  const ns = portalNamespace(env2);
   const now2 = (/* @__PURE__ */ new Date()).toISOString();
-  const res = await kbdbFetch(env, "/records", {
+  const res = await kbdbFetch(env2, "/records", {
     method: "POST",
     body: JSON.stringify({
       template: USER_TEMPLATE,
@@ -12501,7 +14189,7 @@ async function createPortalUser(env, input) {
   const body = await res.json();
   const recordId = body.record?.record_id;
   if (!recordId) throw new KbdbError("POST /records \u56DE\u61C9\u7F3A record_id");
-  const head = await kbdbFetch(env, "/entries", {
+  const head = await kbdbFetch(env2, "/entries", {
     method: "POST",
     body: JSON.stringify({
       entry_type: USER_TEMPLATE,
@@ -12513,6 +14201,7 @@ async function createPortalUser(env, input) {
   if (!head.ok) throw new KbdbError(`head entry \u5EFA\u7ACB\u5931\u6557\uFF08record ${recordId} \u5DF2\u5EFA\uFF0C\u9700\u4EBA\u5DE5\u6536\u62FE\uFF09\u2192 ${head.status}`);
   return recordId;
 }
+__name(createPortalUser, "createPortalUser");
 function parseLibraries(raw2) {
   if (!raw2) return [];
   try {
@@ -12522,15 +14211,19 @@ function parseLibraries(raw2) {
   }
   return [];
 }
+__name(parseLibraries, "parseLibraries");
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
 }
+__name(isValidEmail, "isValidEmail");
 function isValidLibraryName(name) {
   return /^(\*|[A-Za-z0-9_-]{1,64})$/.test(name);
 }
+__name(isValidLibraryName, "isValidLibraryName");
 function validLibrariesInput(libs) {
   return Array.isArray(libs) && libs.length > 0 && libs.every((x) => typeof x === "string" && isValidLibraryName(x));
 }
+__name(validLibrariesInput, "validLibrariesInput");
 function toPublicUser(rec) {
   const v = rec.values;
   return {
@@ -12544,6 +14237,7 @@ function toPublicUser(rec) {
     updated_at: v.updated_at ?? ""
   };
 }
+__name(toPublicUser, "toPublicUser");
 async function requirePortalUser(c) {
   const token = bearerToken(c);
   if (!token) return { ok: false, res: c.json({ error: "\u672A\u767B\u5165" }, 401) };
@@ -12569,6 +14263,7 @@ async function requirePortalUser(c) {
   }
   return { ok: true, user: { token, recordId, values: rec.values } };
 }
+__name(requirePortalUser, "requirePortalUser");
 async function requirePortalAdmin(c) {
   const auth = await requirePortalUser(c);
   if (!auth.ok) return auth;
@@ -12577,37 +14272,43 @@ async function requirePortalAdmin(c) {
   }
   return auth;
 }
-async function graphSourceLibraries(env) {
-  const libs = await listRecordsByTemplate(env, LIBRARY_TEMPLATE);
+__name(requirePortalAdmin, "requirePortalAdmin");
+async function graphSourceLibraries(env2) {
+  const libs = await listRecordsByTemplate(env2, LIBRARY_TEMPLATE);
   const marked = libs.filter((l) => (l.values.graph_source ?? "") === "true" && (l.values.status ?? "active") !== "disabled").map((l) => l.values.name ?? "").filter(Boolean);
   return marked.length > 0 ? marked : ["general"];
 }
-async function hasGraphAccess(env, userLibraries) {
+__name(graphSourceLibraries, "graphSourceLibraries");
+async function hasGraphAccess(env2, userLibraries) {
   if (userLibraries.includes("*")) return true;
   if (userLibraries.length === 0) return false;
-  const sources = await graphSourceLibraries(env);
+  const sources = await graphSourceLibraries(env2);
   return sources.some((s) => userLibraries.includes(s));
 }
-function workflowsVisible(env, role) {
-  const setting = (env.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
+__name(hasGraphAccess, "hasGraphAccess");
+function workflowsVisible(env2, role) {
+  const setting = (env2.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
   if (setting === "off") return false;
   if (setting === "all") return true;
   return role === "admin";
 }
-function uploadEnabled(env) {
-  return Boolean(env.PORTAL_UPLOAD_REPO && env.PORTAL_UPLOAD_GITEA && env.PORTAL_UPLOAD_TOKEN);
+__name(workflowsVisible, "workflowsVisible");
+function uploadEnabled(env2) {
+  return Boolean(env2.PORTAL_UPLOAD_REPO && env2.PORTAL_UPLOAD_GITEA && env2.PORTAL_UPLOAD_TOKEN);
 }
-async function assertPortalUserRecord(env, recordId) {
-  const rec = await getRecordById(env, recordId);
+__name(uploadEnabled, "uploadEnabled");
+async function assertPortalUserRecord(env2, recordId) {
+  const rec = await getRecordById(env2, recordId);
   if (!rec) return null;
   const email = rec.values.email;
   if (!email) return null;
-  const headRecordId = await findUserRecordId(env, email);
+  const headRecordId = await findUserRecordId(env2, email);
   if (headRecordId !== recordId) return null;
   return rec;
 }
-async function isLocked(env, email) {
-  const raw2 = await env.SESSIONS_KV.get(`${LOCKFAIL_PREFIX}${email}`);
+__name(assertPortalUserRecord, "assertPortalUserRecord");
+async function isLocked(env2, email) {
+  const raw2 = await env2.SESSIONS_KV.get(`${LOCKFAIL_PREFIX}${email}`);
   if (!raw2) return false;
   try {
     return (JSON.parse(raw2).count ?? 0) >= LOCK_LIMIT;
@@ -12615,22 +14316,25 @@ async function isLocked(env, email) {
     return false;
   }
 }
-async function recordLoginFail(env, email) {
+__name(isLocked, "isLocked");
+async function recordLoginFail(env2, email) {
   const key = `${LOCKFAIL_PREFIX}${email}`;
-  const raw2 = await env.SESSIONS_KV.get(key);
-  let count = 0;
+  const raw2 = await env2.SESSIONS_KV.get(key);
+  let count3 = 0;
   if (raw2) {
     try {
-      count = JSON.parse(raw2).count ?? 0;
+      count3 = JSON.parse(raw2).count ?? 0;
     } catch {
-      count = 0;
+      count3 = 0;
     }
   }
-  await env.SESSIONS_KV.put(key, JSON.stringify({ count: count + 1 }), { expirationTtl: LOCK_TTL_SECONDS });
+  await env2.SESSIONS_KV.put(key, JSON.stringify({ count: count3 + 1 }), { expirationTtl: LOCK_TTL_SECONDS });
 }
-async function clearLoginFail(env, email) {
-  await env.SESSIONS_KV.delete(`${LOCKFAIL_PREFIX}${email}`);
+__name(recordLoginFail, "recordLoginFail");
+async function clearLoginFail(env2, email) {
+  await env2.SESSIONS_KV.delete(`${LOCKFAIL_PREFIX}${email}`);
 }
+__name(clearLoginFail, "clearLoginFail");
 portalRouter.post(
   "/portal/login",
   (c) => run(c, async () => {
@@ -12872,6 +14576,7 @@ function toPublicLibrary(rec) {
     graph_source: (v.graph_source ?? "") === "true"
   };
 }
+__name(toPublicLibrary, "toPublicLibrary");
 portalRouter.post(
   "/portal/daemon/libraries",
   (c) => run(c, async () => {
@@ -12924,18 +14629,6 @@ portalRouter.post(
     return c.json({ success: true, created, libraries: after.map(toPublicLibrary) });
   })
 );
-function extractorConfigKey(env) {
-  return `${portalTenant(env)}:portal:extractor_config`;
-}
-async function getExtractorConfig(env) {
-  const raw2 = await env.WEBHOOKS.get(extractorConfigKey(env), "text");
-  if (!raw2) return null;
-  try {
-    return JSON.parse(raw2);
-  } catch {
-    return null;
-  }
-}
 portalRouter.post(
   "/portal/daemon/config",
   (c) => run(c, async () => {
@@ -12959,150 +14652,14 @@ portalRouter.post(
     }
     await clearLoginFail(c.env, email);
     const tenant2 = portalTenant(c.env);
-    const extractorCfg = await getExtractorConfig(c.env);
-    const engine = extractorCfg?.engine ?? "gemma";
     const daemonCfg = {
       cypher_url: new URL(c.req.url).origin,
       namespace: tenant2,
       library: "kb",
-      extractor: engine,
       email,
       instance_name: String(rec.values.display_name ?? "")
     };
-    if (engine === "gemma" && extractorCfg?.gemini_api_key) {
-      daemonCfg.gemini_api_key = extractorCfg.gemini_api_key;
-    }
-    if (extractorCfg?.llm_model) daemonCfg.llm_model = extractorCfg.llm_model;
     return c.json({ success: true, config: daemonCfg });
-  })
-);
-function aiConfigKey(env) {
-  return `${portalTenant(env)}:portal:ai_config`;
-}
-function daemonCapsKey(env) {
-  return `${portalTenant(env)}:portal:daemon_caps`;
-}
-async function getAiConfig(env) {
-  const raw2 = await env.WEBHOOKS.get(aiConfigKey(env), "text");
-  if (!raw2) return null;
-  try {
-    return JSON.parse(raw2);
-  } catch {
-    return null;
-  }
-}
-async function getDaemonCaps(env) {
-  const raw2 = await env.WEBHOOKS.get(daemonCapsKey(env), "text");
-  if (!raw2) return null;
-  try {
-    return JSON.parse(raw2);
-  } catch {
-    return null;
-  }
-}
-async function syncExtractorFromAiConfig(env, cfg) {
-  const exCfg = {
-    engine: cfg.use_claude_for_extract ? "claude" : "gemma"
-  };
-  if (!cfg.use_claude_for_extract && cfg.gemini_api_key) {
-    exCfg.gemini_api_key = cfg.gemini_api_key;
-  }
-  await env.WEBHOOKS.put(extractorConfigKey(env), JSON.stringify(exCfg));
-}
-portalRouter.post(
-  "/portal/admin/ai",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const newKey = String(body?.gemini_api_key ?? "").trim();
-    const useClause = typeof body?.use_claude_for_extract === "boolean" ? body.use_claude_for_extract : void 0;
-    const existing = await getAiConfig(c.env) ?? {};
-    const merged = {
-      gemini_api_key: newKey || existing.gemini_api_key,
-      use_claude_for_extract: useClause !== void 0 ? useClause : existing.use_claude_for_extract ?? false
-    };
-    if (!merged.gemini_api_key) return c.json({ error: "\u8ACB\u8CBC\u4E0A\u4F60\u7684 Gemini API Key" }, 400);
-    if (newKey) {
-      const tenant2 = portalTenant(c.env);
-      const kvKey2 = `${tenant2}:wf:rag_chat`;
-      const raw2 = await c.env.WEBHOOKS.get(kvKey2, "text");
-      if (raw2) {
-        try {
-          const record = JSON.parse(raw2);
-          const visit = (o) => {
-            if (Array.isArray(o)) {
-              o.forEach(visit);
-              return;
-            }
-            if (o && typeof o === "object") {
-              const rec = o;
-              for (const k of Object.keys(rec)) {
-                if (k.toLowerCase() === "x-goog-api-key") {
-                  rec[k] = newKey;
-                } else visit(rec[k]);
-              }
-            }
-          };
-          visit(record["graph"]);
-          visit(record["config"]);
-          await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
-        } catch {
-        }
-      }
-    }
-    await c.env.WEBHOOKS.put(aiConfigKey(c.env), JSON.stringify(merged));
-    await syncExtractorFromAiConfig(c.env, merged);
-    return c.json({
-      success: true,
-      has_key: true,
-      use_claude_for_extract: merged.use_claude_for_extract ?? false
-    });
-  })
-);
-portalRouter.get(
-  "/portal/admin/ai",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const cfg = await getAiConfig(c.env);
-    const caps = await getDaemonCaps(c.env);
-    return c.json({
-      success: true,
-      has_key: !!cfg?.gemini_api_key,
-      use_claude_for_extract: cfg?.use_claude_for_extract ?? false,
-      claude_available: caps?.has_claude ?? false
-    });
-  })
-);
-portalRouter.post(
-  "/portal/daemon/report-capabilities",
-  (c) => run(c, async () => {
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const password = String(body?.password ?? "");
-    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A" }, 429);
-    const recordId = await findUserRecordId(c.env, email);
-    const rec = recordId ? await getRecordById(c.env, recordId) : null;
-    if (!rec) {
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    if ((rec.values.status ?? "") !== "active") return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
-    if (!await verifyPassword(password, rec.values.password_hash ?? "")) {
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    await clearLoginFail(c.env, email);
-    const caps = {
-      has_claude: body?.has_claude === true,
-      ...body?.daemon_version ? { daemon_version: String(body.daemon_version) } : {},
-      ...body?.os ? { os: String(body.os) } : {}
-    };
-    const TTL_7D = 7 * 24 * 60 * 60;
-    await c.env.WEBHOOKS.put(daemonCapsKey(c.env), JSON.stringify(caps), { expirationTtl: TTL_7D });
-    return c.json({ success: true });
   })
 );
 portalRouter.post(
@@ -13124,7 +14681,7 @@ portalRouter.post(
       return c.json({ error: "AI \u554F\u7B54\u5DE5\u4F5C\u6D41\u8A18\u9304\u640D\u58DE\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD" }, 500);
     }
     let replaced = 0;
-    const visit = (o) => {
+    const visit = /* @__PURE__ */ __name((o) => {
       if (Array.isArray(o)) {
         o.forEach(visit);
         return;
@@ -13138,47 +14695,12 @@ portalRouter.post(
           } else visit(rec[k]);
         }
       }
-    };
+    }, "visit");
     visit(record["graph"]);
     visit(record["config"]);
     if (replaced === 0) return c.json({ error: "\u5DE5\u4F5C\u6D41\u88E1\u627E\u4E0D\u5230\u91D1\u9470\u6B04\u4F4D\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD\u5F8C\u518D\u8A66" }, 500);
     await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
     return c.json({ success: true, replaced });
-  })
-);
-portalRouter.post(
-  "/portal/admin/extractor",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const engine = String(body?.engine ?? "").trim().toLowerCase();
-    if (engine !== "gemma" && engine !== "claude") {
-      return c.json({ error: "engine \u53EA\u80FD\u662F gemma \u6216 claude" }, 400);
-    }
-    const cfg = { engine };
-    if (engine === "gemma") {
-      const key = String(body?.gemini_api_key ?? "").trim();
-      if (key) cfg.gemini_api_key = key;
-    }
-    const model = String(body?.llm_model ?? "").trim();
-    if (model) cfg.llm_model = model;
-    await c.env.WEBHOOKS.put(extractorConfigKey(c.env), JSON.stringify(cfg));
-    return c.json({ success: true, engine: cfg.engine, has_key: engine === "gemma" && !!cfg.gemini_api_key });
-  })
-);
-portalRouter.get(
-  "/portal/admin/extractor",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const cfg = await getExtractorConfig(c.env);
-    return c.json({
-      success: true,
-      engine: cfg?.engine ?? "gemma",
-      has_key: cfg?.engine === "gemma" && !!cfg?.gemini_api_key,
-      llm_model: cfg?.llm_model ?? null
-    });
   })
 );
 portalRouter.get(
@@ -13331,17 +14853,6 @@ portalRouter.patch(
     return c.json({ success: true, library: toPublicLibrary(updated) });
   })
 );
-var AI_PREF_KEY = (tenantSlug) => `portal_ai_pref:${tenantSlug}`;
-async function readAiPref(env, tenantSlug) {
-  try {
-    const raw2 = await env.WEBHOOKS.get(AI_PREF_KEY(tenantSlug));
-    if (!raw2) return { use_claude_for_extract: false };
-    const p = JSON.parse(raw2);
-    return { use_claude_for_extract: !!p.use_claude_for_extract };
-  } catch {
-    return { use_claude_for_extract: false };
-  }
-}
 portalRouter.get(
   "/portal/admin/ai",
   (c) => run(c, async () => {
@@ -13355,15 +14866,7 @@ portalRouter.get(
     } catch {
       hasKey = false;
     }
-    const pref = await readAiPref(c.env, tenantSlug);
-    return c.json({
-      success: true,
-      has_key: hasKey,
-      // 目前後端沒有「這台電腦有沒有 Claude Code」的訊號來源（該由小幫手回報）
-      // ⇒ 誠實回 false，前端會顯示「連上小幫手後才知道…」，不假綠。
-      claude_available: false,
-      use_claude_for_extract: pref.use_claude_for_extract
-    });
+    return c.json({ success: true, has_key: hasKey });
   })
 );
 portalRouter.delete(
@@ -13397,33 +14900,19 @@ portalRouter.post(
     if (!auth.ok) return auth.res;
     const body = await c.req.json().catch(() => null);
     const rawKey = typeof body?.gemini_api_key === "string" ? body.gemini_api_key.trim() : "";
-    const hasPref = typeof body?.use_claude_for_extract === "boolean";
-    if (!rawKey && !hasPref) {
-      return c.json({ error: "\u6C92\u6709\u8981\u8B8A\u66F4\u7684\u9805\u76EE\uFF08\u91D1\u9470\u7559\u7A7A\u4E14\u672A\u6539\u8A2D\u5B9A\uFF09" }, 400);
+    if (!rawKey) {
+      return c.json({ error: "\u6C92\u6709\u8981\u8B8A\u66F4\u7684\u9805\u76EE\uFF08\u91D1\u9470\u7559\u7A7A\uFF09" }, 400);
     }
     const tenantSlug = portalTenant(c.env);
-    if (rawKey) {
-      try {
-        await storeCredential(c.env, tenantSlug, "gemini_api_key", rawKey, "gemini");
-      } catch (e) {
-        return c.json(
-          { error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` },
-          502
-        );
-      }
-    }
-    if (hasPref) {
-      await c.env.WEBHOOKS.put(
-        AI_PREF_KEY(tenantSlug),
-        JSON.stringify({ use_claude_for_extract: !!body.use_claude_for_extract })
+    try {
+      await storeCredential(c.env, tenantSlug, "gemini_api_key", rawKey, "gemini");
+    } catch (e) {
+      return c.json(
+        { error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` },
+        502
       );
     }
-    const pref = await readAiPref(c.env, tenantSlug);
-    return c.json({
-      success: true,
-      has_key: rawKey ? true : void 0,
-      use_claude_for_extract: pref.use_claude_for_extract
-    });
+    return c.json({ success: true, has_key: true });
   })
 );
 portalRouter.delete(
@@ -13445,7 +14934,7 @@ portalRouter.delete(
   })
 );
 
-// ../../wt-batch/cypher-executor/src/routes/init-seed.ts
+// src/routes/init-seed.ts
 var initSeedRouter = new Hono2();
 initSeedRouter.post("/init/seed", async (c) => {
   const now2 = Date.now();
@@ -13467,6 +14956,13 @@ initSeedRouter.post("/init/seed", async (c) => {
         endpoint: seed.endpoint,
         method: (seed.method ?? "POST").toUpperCase(),
         auth_service: seed.auth_service,
+        // ③ payload/回應/binding 三層（3.12）：不列進來的欄位會被**靜默吃掉**——
+        // 種子帶了 body_template/response_map/auth 卻沒進 KV，症狀是 recipe 存在但跑起來
+        // 「像沒設定過」，且哪裡都不會紅（08-02 manifest.daemon 欄被列舉式重建吃掉的同型）。
+        body_template: seed.body_template,
+        response_map: seed.response_map,
+        auth: seed.auth,
+        binding_name: seed.binding_name,
         created_at: existing?.created_at ?? now2,
         updated_at: now2
       };
@@ -13511,14 +15007,26 @@ initSeedRouter.post("/init/seed", async (c) => {
   );
 });
 
-// ../../wt-batch/cypher-executor/src/routes/console-dashboard.ts
+// src/routes/console-dashboard.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 
-// ../../wt-batch/cypher-executor/src/lib/taipei-time.ts
+// src/lib/console-dashboard-model.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+
+// src/lib/taipei-time.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var TAIPEI_OFFSET_MS = 8 * 3600 * 1e3;
 function taipeiDayKey(ms) {
   return new Date(ms + TAIPEI_OFFSET_MS).toISOString().slice(0, 10);
 }
+__name(taipeiDayKey, "taipeiDayKey");
 var TAIPEI_CLIENT_JS = [
   "var TAIPEI_OFFSET_MS = 28800000; // UTC+8\uFF0C\u53F0\u5317\u7121 DST",
   "function tpePad(n) { n = String(n); return n.length < 2 ? '0' + n : n; }",
@@ -13529,7 +15037,7 @@ var TAIPEI_CLIENT_JS = [
   "function taipeiMonthDay(ms) { var d = new Date(ms + TAIPEI_OFFSET_MS); return { month: d.getUTCMonth() + 1, day: d.getUTCDate() }; }"
 ].join("\n");
 
-// ../../wt-batch/cypher-executor/src/lib/console-dashboard-model.ts
+// src/lib/console-dashboard-model.ts
 function parseCreatedAtMs(s) {
   if (s === null || s === void 0 || s === "") return null;
   if (typeof s === "number") return s < 1e12 ? s * 1e3 : s;
@@ -13541,6 +15049,7 @@ function parseCreatedAtMs(s) {
   const ms = Date.parse(iso);
   return Number.isNaN(ms) ? null : ms;
 }
+__name(parseCreatedAtMs, "parseCreatedAtMs");
 function parseJsonContent(e) {
   if (!e.content) return null;
   try {
@@ -13550,19 +15059,21 @@ function parseJsonContent(e) {
     return null;
   }
 }
+__name(parseJsonContent, "parseJsonContent");
 function agoMinutes(nowMs, ms) {
   return ms === null ? -1 : Math.max(0, Math.round((nowMs - ms) / 6e4));
 }
+__name(agoMinutes, "agoMinutes");
 function buildRouteModel(entries, nowMs) {
   const todayKey = taipeiDayKey(nowMs);
   const byTitle = /* @__PURE__ */ new Map();
   for (const e of entries) {
     const j = parseJsonContent(e);
-    const title = typeof j?.title === "string" ? j.title : null;
-    if (!title || byTitle.has(title)) continue;
+    const title2 = typeof j?.title === "string" ? j.title : null;
+    if (!title2 || byTitle.has(title2)) continue;
     const ms = parseCreatedAtMs(e.created_at);
-    byTitle.set(title, {
-      title,
+    byTitle.set(title2, {
+      title: title2,
       status: typeof j?.status === "string" ? j.status : "todo",
       order: typeof j?.order === "number" ? j.order : 999,
       scope: j?.scope === "week" ? "week" : "today",
@@ -13585,6 +15096,7 @@ function buildRouteModel(entries, nowMs) {
     today_total: todayTasks.length
   };
 }
+__name(buildRouteModel, "buildRouteModel");
 var URGENCY_EMOJI = /(🔴|🟡|🟢|⚪)/u;
 var CLOSED_MARKERS = /(✅|已完成|已解|銷案|已銷)/u;
 function parseSprintWaitingTable(md, sprintFile) {
@@ -13614,10 +15126,12 @@ function parseSprintWaitingTable(md, sprintFile) {
   if (!sawTable) return null;
   return sortWaitingItems(items);
 }
+__name(parseSprintWaitingTable, "parseSprintWaitingTable");
 function sortWaitingItems(items) {
-  const rank = (u) => u === "\u{1F534}" ? 0 : u === "\u{1F7E1}" ? 1 : 2;
+  const rank = /* @__PURE__ */ __name((u) => u === "\u{1F534}" ? 0 : u === "\u{1F7E1}" ? 1 : 2, "rank");
   return items.map((it, i) => ({ it, i })).sort((a, b) => rank(a.it.urgency) - rank(b.it.urgency) || a.i - b.i).map((x) => x.it);
 }
+__name(sortWaitingItems, "sortWaitingItems");
 function cleanWaitingTitle(raw2) {
   let s = raw2.replace(/\*\*/g, "").replace(/~~/g, "").replace(/`/g, "").trim();
   s = s.replace(/^(?:🔴|🟡|🟢|⚪)\s*/u, "");
@@ -13626,16 +15140,18 @@ function cleanWaitingTitle(raw2) {
   if (s.length > 80) s = `${s.slice(0, 79)}\u2026`;
   return trimUnbalancedParen(s);
 }
+__name(cleanWaitingTitle, "cleanWaitingTitle");
 function pickLatestSprintFiles(names, n = 2) {
   return names.filter((name) => /^sprint-.*\.md$/.test(name)).sort().slice(-n).reverse();
 }
+__name(pickLatestSprintFiles, "pickLatestSprintFiles");
 function buildWaitingFallback(entries, nowMs) {
   const byTitle = /* @__PURE__ */ new Map();
   for (const e of entries) {
     const j = parseJsonContent(e);
-    const title = typeof j?.title === "string" ? j.title : null;
-    if (!title || byTitle.has(title)) continue;
-    byTitle.set(title, {
+    const title2 = typeof j?.title === "string" ? j.title : null;
+    if (!title2 || byTitle.has(title2)) continue;
+    byTitle.set(title2, {
       status: typeof j?.status === "string" ? j.status : "open",
       at_ms: parseCreatedAtMs(e.created_at)
     });
@@ -13647,13 +15163,14 @@ function buildWaitingFallback(entries, nowMs) {
   );
   const ago = agoMinutes(nowMs, newestMs);
   return {
-    items: open.map(([title]) => ({ title })),
+    items: open.map(([title2]) => ({ title: title2 })),
     source: byTitle.size ? "kbdb_dash_wait" : "none",
     updated_ago_minutes: ago,
     stale: ago < 0 || ago > 24 * 60,
     note: byTitle.size ? void 0 : "\u7BA1\u7DDA\u672A\u63A5\uFF1Adash_wait \u7121\u8CC7\u6599\u3001Gitea sprint \u8B80\u53D6\u672A\u8A2D\u5B9A\uFF08GITEA_TOKEN\uFF09"
   };
 }
+__name(buildWaitingFallback, "buildWaitingFallback");
 var BOARD_LINE = /^- \[([^\]]*)\]\s*(.*)$/u;
 var DONE_STAMP = /完成（([^）\n]*)/gu;
 var STAMP_DAY = /\d{4}-\d{2}-\d{2}/u;
@@ -13662,6 +15179,7 @@ function nextDayKey(day) {
   const ms = Date.parse(`${day}T00:00:00Z`);
   return Number.isNaN(ms) ? day : new Date(ms + 24 * 3600 * 1e3).toISOString().slice(0, 10);
 }
+__name(nextDayKey, "nextDayKey");
 function classifyBoardMark(mark) {
   if (mark === " " || mark === "") return "todo";
   if (mark === "x" || mark === "X") return "done";
@@ -13669,11 +15187,12 @@ function classifyBoardMark(mark) {
   if (mark.startsWith("!")) return "blocked";
   return null;
 }
+__name(classifyBoardMark, "classifyBoardMark");
 function extractCompletedDays(text) {
   const days = [];
-  const push = (d) => {
+  const push = /* @__PURE__ */ __name((d) => {
     if (!days.includes(d)) days.push(d);
-  };
+  }, "push");
   for (const m of text.matchAll(DONE_STAMP)) {
     const content = m[1];
     const day = content.match(STAMP_DAY)?.[0];
@@ -13683,6 +15202,7 @@ function extractCompletedDays(text) {
   }
   return days;
 }
+__name(extractCompletedDays, "extractCompletedDays");
 function trimUnbalancedParen(s) {
   let depth = 0;
   let lastOpen = -1;
@@ -13697,6 +15217,7 @@ function trimUnbalancedParen(s) {
   if (depth > 0 && lastOpen >= 0) s = s.slice(0, lastOpen).trim();
   return s;
 }
+__name(trimUnbalancedParen, "trimUnbalancedParen");
 function cleanBoardTitle(raw2) {
   let s = raw2.replace(/\*\*/g, "").replace(/~~/g, "").replace(/`/g, "").trim();
   const colon = s.indexOf("\uFF1A");
@@ -13704,6 +15225,7 @@ function cleanBoardTitle(raw2) {
   if (s.length > 80) s = `${s.slice(0, 79)}\u2026`;
   return trimUnbalancedParen(s.trim());
 }
+__name(cleanBoardTitle, "cleanBoardTitle");
 function parseSprintTaskBoard(md, sprintFile) {
   const secIdx = md.search(/^##\s*任務板/mu);
   if (secIdx < 0) return null;
@@ -13722,9 +15244,9 @@ function parseSprintTaskBoard(md, sprintFile) {
       current = null;
       const status = classifyBoardMark(m[1]);
       const body = m[2];
-      const title = cleanBoardTitle(body);
-      if (status === null || !title) continue;
-      current = { title, status, completed_days: extractCompletedDays(body), sprint: sprintFile };
+      const title2 = cleanBoardTitle(body);
+      if (status === null || !title2) continue;
+      current = { title: title2, status, completed_days: extractCompletedDays(body), sprint: sprintFile };
       tasks.push(current);
       continue;
     }
@@ -13740,6 +15262,7 @@ function parseSprintTaskBoard(md, sprintFile) {
   }
   return tasks.length ? tasks : null;
 }
+__name(parseSprintTaskBoard, "parseSprintTaskBoard");
 function buildSprintRouteModel(tasks, nowMs) {
   const todayKey = taipeiDayKey(nowMs);
   const doneToday = tasks.filter((t) => t.status === "done" && t.completed_days.includes(todayKey));
@@ -13751,6 +15274,7 @@ function buildSprintRouteModel(tasks, nowMs) {
     done_today_titles: doneToday.map((t) => t.title)
   };
 }
+__name(buildSprintRouteModel, "buildSprintRouteModel");
 var GITEA_WAITING_CACHE_TTL_SECONDS = 90;
 function reviveWaitingAges(model, fetchedAtMs, nowMs) {
   if (model.updated_ago_minutes < 0) return model;
@@ -13758,8 +15282,12 @@ function reviveWaitingAges(model, fetchedAtMs, nowMs) {
   const ago = model.updated_ago_minutes + drift;
   return { ...model, updated_ago_minutes: ago, stale: ago > 48 * 60 };
 }
+__name(reviveWaitingAges, "reviveWaitingAges");
 
-// ../../wt-batch/cypher-executor/src/lib/console-triage-model.ts
+// src/lib/console-triage-model.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 var TIER_ALIASES = {
   ai: "ai",
   collab: "collab",
@@ -13771,13 +15299,16 @@ var TIER_ALIASES = {
 function normalizeStatus(v) {
   return v === "done" ? "done" : "new";
 }
+__name(normalizeStatus, "normalizeStatus");
 function normalizeTier(v) {
   const mapped = typeof v === "string" ? TIER_ALIASES[v.trim()] : void 0;
   return mapped ? { tier: mapped, unclassified: false } : { tier: "collab", unclassified: true };
 }
+__name(normalizeTier, "normalizeTier");
 function str(v) {
   return typeof v === "string" ? v.trim() : "";
 }
+__name(str, "str");
 function todoToTriageItem(e) {
   const j = parseJsonContent(e);
   const { tier, unclassified } = normalizeTier(j?.owner_tier);
@@ -13795,6 +15326,7 @@ function todoToTriageItem(e) {
     at_ms: parseCreatedAtMs(e.created_at)
   };
 }
+__name(todoToTriageItem, "todoToTriageItem");
 function inboxToTriageItem(e) {
   const j = parseJsonContent(e);
   const from = str(j?.from);
@@ -13812,6 +15344,7 @@ function inboxToTriageItem(e) {
     at_ms: parseCreatedAtMs(e.created_at)
   };
 }
+__name(inboxToTriageItem, "inboxToTriageItem");
 function applyTriageCheck(content, action, nowIso) {
   let obj;
   try {
@@ -13826,6 +15359,7 @@ function applyTriageCheck(content, action, nowIso) {
   }
   return JSON.stringify({ ...obj, status: "done", checked_via: "console", checked_at: nowIso });
 }
+__name(applyTriageCheck, "applyTriageCheck");
 function buildTriageModel(todoEntries, inboxEntries) {
   const items = [
     ...todoEntries.map(todoToTriageItem),
@@ -13843,15 +15377,16 @@ function buildTriageModel(todoEntries, inboxEntries) {
   }
   return { items, projects, counts };
 }
+__name(buildTriageModel, "buildTriageModel");
 
-// ../../wt-batch/cypher-executor/src/routes/console-dashboard.ts
+// src/routes/console-dashboard.ts
 var consoleDashboardRouter = new Hono2();
 var STALE_MINUTES = 240;
 var JUDGE_START_HOUR = 9;
 var JUDGE_END_HOUR = 22;
 var STANDARD_TASK_STATUS = /* @__PURE__ */ new Set(["done", "doing", "todo", "blocked"]);
-async function fetchEntries(env, tenant2, entryType, limit) {
-  const { base, headers } = kbdbBase(env);
+async function fetchEntries(env2, tenant2, entryType, limit) {
+  const { base, headers } = kbdbBase(env2);
   const params = new URLSearchParams({ owner_id: tenant2, entry_type: entryType, limit: String(limit) });
   try {
     const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
@@ -13862,6 +15397,7 @@ async function fetchEntries(env, tenant2, entryType, limit) {
     return [];
   }
 }
+__name(fetchEntries, "fetchEntries");
 async function fetchJson(url, headers) {
   try {
     const res = await fetch(url, headers ? { headers } : void 0);
@@ -13871,27 +15407,29 @@ async function fetchJson(url, headers) {
     return null;
   }
 }
-async function fetchEntryTotal(env, filters) {
-  const { base, headers } = kbdbBase(env);
+__name(fetchJson, "fetchJson");
+async function fetchEntryTotal(env2, filters) {
+  const { base, headers } = kbdbBase(env2);
   const params = new URLSearchParams({ ...filters, limit: "1" });
   const data = await fetchJson(`${base}/entries?${params.toString()}`, headers);
   return data && typeof data.total === "number" ? data.total : null;
 }
-async function fetchGiteaSprint(env, nowMs) {
-  const base = (env.GITEA_BASE_URL ?? "").replace(/\/$/, "");
-  const token = env.GITEA_TOKEN;
+__name(fetchEntryTotal, "fetchEntryTotal");
+async function fetchGiteaSprint(env2, nowMs) {
+  const base = (env2.GITEA_BASE_URL ?? "").replace(/\/$/, "");
+  const token = env2.GITEA_TOKEN;
   if (!base || !token) return null;
-  const repo = env.GITEA_SPRINT_REPO ?? "Leo/InkStoneCo";
-  const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
+  const repo = env2.GITEA_SPRINT_REPO ?? "Leo/InkStoneCo";
+  const dir3 = env2.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
   const headers = { Authorization: `token ${token}` };
   try {
-    const files = await fetchJson(`${base}/api/v1/repos/${repo}/contents/${encodeURI(dir)}`, headers);
+    const files = await fetchJson(`${base}/api/v1/repos/${repo}/contents/${encodeURI(dir3)}`, headers);
     if (!files) return null;
     const sprints = pickLatestSprintFiles(files.map((f) => f.name));
     if (!sprints.length) return null;
     const parsed = await Promise.all(
       sprints.map(async (name) => {
-        const rawRes = await fetch(`${base}/api/v1/repos/${repo}/raw/${encodeURI(`${dir}/${name}`)}`, { headers });
+        const rawRes = await fetch(`${base}/api/v1/repos/${repo}/raw/${encodeURI(`${dir3}/${name}`)}`, { headers });
         if (!rawRes.ok) return null;
         const text = await rawRes.text();
         return { waiting: parseSprintWaitingTable(text, name), board: parseSprintTaskBoard(text, name) };
@@ -13903,7 +15441,7 @@ async function fetchGiteaSprint(env, nowMs) {
     const boardMerged = parsed.map((p) => p?.board).filter((b) => b != null).flat();
     let ago = -1;
     const commits = await fetchJson(
-      `${base}/api/v1/repos/${repo}/commits?path=${encodeURIComponent(`${dir}/${readFiles[0]}`)}&limit=1&stat=false&verification=false&files=false`,
+      `${base}/api/v1/repos/${repo}/commits?path=${encodeURIComponent(`${dir3}/${readFiles[0]}`)}&limit=1&stat=false&verification=false&files=false`,
       headers
     );
     const date = commits?.[0]?.commit?.committer?.date;
@@ -13925,12 +15463,13 @@ async function fetchGiteaSprint(env, nowMs) {
     return null;
   }
 }
-async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSprint) {
-  if (!env.GITEA_BASE_URL || !env.GITEA_TOKEN) return null;
-  const repo = env.GITEA_SPRINT_REPO ?? "Leo/InkStoneCo";
-  const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
+__name(fetchGiteaSprint, "fetchGiteaSprint");
+async function cachedGiteaSprint(env2, nowMs, waitUntil, fetcher = fetchGiteaSprint) {
+  if (!env2.GITEA_BASE_URL || !env2.GITEA_TOKEN) return null;
+  const repo = env2.GITEA_SPRINT_REPO ?? "Leo/InkStoneCo";
+  const dir3 = env2.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
   const cacheKey = new Request(
-    `https://console-dashboard.arcrun.internal/gitea-waiting?${new URLSearchParams({ base: env.GITEA_BASE_URL, repo, dir }).toString()}`
+    `https://console-dashboard.arcrun.internal/gitea-waiting?${new URLSearchParams({ base: env2.GITEA_BASE_URL, repo, dir: dir3 }).toString()}`
   );
   const cache = caches.default;
   try {
@@ -13945,7 +15484,7 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
     }
   } catch {
   }
-  const fresh = await fetcher(env, nowMs);
+  const fresh = await fetcher(env2, nowMs);
   if (!fresh) return null;
   const envelope = { snapshot: fresh, fetched_at_ms: nowMs };
   try {
@@ -13964,6 +15503,7 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
   }
   return { ...fresh, cache: "miss" };
 }
+__name(cachedGiteaSprint, "cachedGiteaSprint");
 consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
   const tenant2 = c.env.CONSOLE_TENANT || "leo";
   const now2 = Date.now();
@@ -14181,12 +15721,15 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
   return c.json({ success: true, entry_id: entryId, action, status: action === "restore" ? "new" : "done" });
 });
 
-// ../../wt-batch/cypher-executor/src/routes/portal-data.ts
+// src/routes/portal-data.ts
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
 init_dist();
 init_webhook_handlers();
 var portalDataRouter = new Hono2();
-async function getTenantWorkflowGraph(env, name) {
-  const raw2 = await env.WEBHOOKS.get(`${portalTenant(env)}:wf:${name}`, "text");
+async function getTenantWorkflowGraph(env2, name) {
+  const raw2 = await env2.WEBHOOKS.get(`${portalTenant(env2)}:wf:${name}`, "text");
   if (!raw2) return null;
   try {
     const rec = JSON.parse(raw2);
@@ -14195,6 +15738,7 @@ async function getTenantWorkflowGraph(env, name) {
     return null;
   }
 }
+__name(getTenantWorkflowGraph, "getTenantWorkflowGraph");
 function unwrapWorkflowData(data, key) {
   const outer = data && typeof data === "object" ? data : {};
   if (key in outer) return outer;
@@ -14204,12 +15748,14 @@ function unwrapWorkflowData(data, key) {
   }
   return outer;
 }
+__name(unwrapWorkflowData, "unwrapWorkflowData");
 function mapGraphWorkflowOutput(data) {
   const layer = unwrapWorkflowData(data, "neighbors");
   const neighbors = Array.isArray(layer.neighbors) ? layer.neighbors : [];
   const edges = Array.isArray(layer.edges) ? layer.edges : [];
   return { neighbors, edges, count: neighbors.length };
 }
+__name(mapGraphWorkflowOutput, "mapGraphWorkflowOutput");
 function dedupeSourcesByPage(sources) {
   const seen = /* @__PURE__ */ new Map();
   for (const s of sources) {
@@ -14224,12 +15770,14 @@ function dedupeSourcesByPage(sources) {
     }
   }
   return [...seen.values()].map(
-    ({ item, count }) => count > 1 ? { ...item, hit_count: count } : item
+    ({ item, count: count3 }) => count3 > 1 ? { ...item, hit_count: count3 } : item
   );
 }
+__name(dedupeSourcesByPage, "dedupeSourcesByPage");
 function notFound(c) {
   return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u8CC7\u6599" }, 404);
 }
+__name(notFound, "notFound");
 function entryLibrary(entry) {
   try {
     const meta = JSON.parse(entry.metadata_json ?? "null");
@@ -14238,9 +15786,11 @@ function entryLibrary(entry) {
   }
   return "general";
 }
+__name(entryLibrary, "entryLibrary");
 function canReadLibrary(userLibraries, library) {
   return userLibraries.includes("*") || userLibraries.includes(library);
 }
+__name(canReadLibrary, "canReadLibrary");
 var INTERNAL_ENTRY_TYPES = /* @__PURE__ */ new Set(["value", "workflow"]);
 function filterDeprecatedEntries(entries) {
   return entries.filter((e) => {
@@ -14254,9 +15804,10 @@ function filterDeprecatedEntries(entries) {
     return true;
   });
 }
+__name(filterDeprecatedEntries, "filterDeprecatedEntries");
 function normalizeCjkQuery(q) {
-  const isCjk = (c) => /[぀-鿿豈-﫿]/.test(c);
-  const isAsciiAlnum = (c) => /[぀-鿿豈-﫿]/.test(c);
+  const isCjk = /* @__PURE__ */ __name((c) => /[぀-鿿豈-﫿]/.test(c), "isCjk");
+  const isAsciiAlnum = /* @__PURE__ */ __name((c) => /[぀-鿿豈-﫿]/.test(c), "isAsciiAlnum");
   let result = "";
   for (let i = 0; i < q.length; i++) {
     const ch = q[i];
@@ -14270,6 +15821,7 @@ function normalizeCjkQuery(q) {
   }
   return result;
 }
+__name(normalizeCjkQuery, "normalizeCjkQuery");
 function findBestNodeMatch(searchTerm, nodeNames) {
   const term = normalizeCjkQuery(searchTerm).toLowerCase();
   if (!term) return null;
@@ -14277,9 +15829,10 @@ function findBestNodeMatch(searchTerm, nodeNames) {
   if (hits.length === 0) return null;
   return hits.reduce((a, b) => a.length <= b.length ? a : b);
 }
-async function fuzzyFindNode(env, tenant2, searchTerm) {
+__name(findBestNodeMatch, "findBestNodeMatch");
+async function fuzzyFindNode(env2, tenant2, searchTerm) {
   try {
-    const res = await kbdbFetch(env, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}`);
+    const res = await kbdbFetch(env2, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.records)) return null;
@@ -14295,6 +15848,7 @@ async function fuzzyFindNode(env, tenant2, searchTerm) {
     return null;
   }
 }
+__name(fuzzyFindNode, "fuzzyFindNode");
 portalDataRouter.get(
   "/portal/data/search",
   (c) => run(c, async () => {
@@ -14483,6 +16037,7 @@ function sanitizeUploadFilename(raw2) {
   if (name.length > 100) return null;
   return name;
 }
+__name(sanitizeUploadFilename, "sanitizeUploadFilename");
 var MAX_UPLOAD_B64_CHARS = 3 * 1024 * 1024;
 portalDataRouter.post(
   "/portal/data/upload",
@@ -14575,11 +16130,11 @@ portalDataRouter.get(
   })
 );
 
-// ../../wt-batch/cypher-executor/src/index.ts
+// src/index.ts
 var app = new Hono2();
 var STATIC_ORIGINS = ["https://arcrun.dev", "https://www.arcrun.dev"];
 app.use("*", cors({
-  origin: (origin, c) => {
+  origin: /* @__PURE__ */ __name((origin, c) => {
     if (!origin) return origin;
     let extra = [];
     try {
@@ -14587,7 +16142,7 @@ app.use("*", cors({
     } catch {
     }
     return [...STATIC_ORIGINS, ...extra].includes(origin) ? origin : null;
-  },
+  }, "origin"),
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization", "X-Arcrun-API-Key"],
   credentials: true
@@ -14619,3 +16174,4 @@ var index_default = {
 export {
   index_default as default
 };
+//# sourceMappingURL=index.js.map

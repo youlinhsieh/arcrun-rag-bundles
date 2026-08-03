@@ -1,20 +1,20 @@
 {
  "schema": "arcrun-rag-bundles/v1",
- "release": "1.4.4",
- "fingerprint": "15328aa6468603ff8d378fe65b9cff7ef7c026be436897af0c81fd9124b5d4ef",
- "built": "2026-08-02",
+ "release": "1.4.5",
+ "fingerprint": "289c4d409bdba857340a25ac77f9e910676f81cc2ba6a4c79d5d82daa9e77b99",
+ "built": "2026-08-03",
  "source": "Arcrun@36cdc8f",
  "daemon": {
-  "version": "v0.15.2",
-  "built": "20260803-0030",
-  "notes": "修「知識庫需要更新」永遠消不掉：版本比較支援 semver（v0.15.1 仍是字串比日期）",
+  "version": "v0.15.3",
+  "built": "20260803-2249",
+  "notes": "LLM 設定移回地端：托盤新增「AI 設定…」自己填 Gemini Key、萃取一律走 Gemini（不再被雲端指定 claude）；修托盤點多次會開多個 icon",
   "mac": {
    "file": "daemon/ArcrunRAG-mac-unsigned.zip",
-   "sha256": "48fa8deb6e649f1fe302c1ac7b169d0c95651ea4b0ebb0caf5767fe026455f22"
+   "sha256": "a1c890f21e17bb418ac20cc0826a36c241afbe84d62d6500c6ec2a8052227e4b"
   },
   "win": {
    "file": "daemon/ArcrunRAG-win-unsigned.zip",
-   "sha256": "496382665f40a11f131e6f6aeb9538956964190a09d0da75231ba8571619e56c"
+   "sha256": "dd216325b2d8282f180bf229399b5082956e2027c6159bccb0ec9d38b2776547"
   }
  },
  "core": [
@@ -537,7 +537,7 @@
    "tier": 2,
    "main_file": "tier2/cypher/index.js",
    "main_module": "index.js",
-   "sha256": "0ae0134bab4318fdc50eb86f0ee3b86721507264729dfb866ba8ea0fac2fca9e",
+   "sha256": "98c84dc08eebed7bc30bde74564d159fd92e41f87c75f43f07f55393c546a11d",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat",
@@ -588,7 +588,7 @@
     "SVC_DATE_OPS",
     "SVC_VALIDATE_JSON"
    ],
-   "bytes": 540532
+   "bytes": 599071
   },
   {
    "name": "arcrun-kbdb",
@@ -672,7 +672,7 @@
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "a806bd13f5487390b1ea2c4e77937e0d7569b66392ce73c0c0e862ad31c530c4",
+   "sha256": "4b2b07ef08dd0767650d3e0cd40ae9e3e34bdcb134baa5fc1a848d8ca3d5807e",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],
@@ -682,7 +682,7 @@
     "ai": false,
     "vars": {}
    },
-   "bytes": 488328
+   "bytes": 243810
   }
  ]
 }
