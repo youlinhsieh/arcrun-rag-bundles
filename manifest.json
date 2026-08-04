@@ -5,16 +5,24 @@
  "built": "2026-08-04",
  "source": "Arcrun@a7d5475",
  "daemon": {
-  "version": "v0.15.6",
-  "built": "20260804-1634",
-  "notes": "修好「更新後仍在用 Gemini」：舊設定會自動改用雲端 AI（免金鑰）。Gemini 仍可在托盤「AI 設定…」自行切換。",
+  "version": "v0.15.7",
+  "built": "20260804-1807",
+  "notes": "Mac 改用 DMG 安裝（拖進 Applications）；修好「更新完又跳回舊版」——不管 app 放哪都更新得了。",
   "mac": {
    "file": "daemon/ArcrunRAG-mac-unsigned.zip",
-   "sha256": "c31803a4f56c00bcc154f101ca7b2029d59acb01acb53cf26756e8eb563708e1"
+   "sha256": "f264dda7391f3006686d6ee8311960054206fb1ffee8f50e2f5a896159522565"
   },
   "win": {
-   "file": "daemon/ArcrunRAG-win-unsigned-v0.15.6.zip",
-   "sha256": "dbb7b0beb5136a707dd0750373b149dd19fb36519bfaa68e0665e5ea51b491b2"
+   "file": "daemon/ArcrunRAG-win-unsigned-v0.15.7.zip",
+   "sha256": "32fe44450ca77c62d11953041899af0e190dfb8469b5c7807ba0afffe6aa031d"
+  },
+  "mac_dmg": {
+   "file": "daemon/ArcrunRAG-v0.15.7.dmg",
+   "sha256": "0eb3f76b60bf689178af8e4d8b06cbadade106912b6fc7ee29fb1cb82ccc928c"
+  },
+  "win_msix": {
+   "file": "daemon/ArcrunRAG-v0.15.7.msix",
+   "sha256": "5bf7c911b8f3a817b34454a814e7da94e7d96d1c0654ed1e185915edc24ec259"
   }
  },
  "core": [
