@@ -14578,6 +14578,49 @@ function toPublicLibrary(rec) {
 }
 __name(toPublicLibrary, "toPublicLibrary");
 portalRouter.post(
+  "/portal/daemon/extract",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    if (apiKey !== portalTenant(c.env)) return c.json({ error: "X-Arcrun-API-Key \u4E0D\u6B63\u78BA" }, 401);
+    const body = await c.req.json().catch(() => null);
+    const pageName = String(body?.page_name ?? "").trim();
+    const srcText = String(body?.text ?? "");
+    if (!pageName || !srcText.trim()) return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
+    if (!c.env.AI) {
+      return c.json({ error: "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A Workers AI\uFF08wrangler.toml \u9700\u6709 [ai] binding\uFF09\uFF0C\u8ACB\u66F4\u65B0\u77E5\u8B58\u5EAB\u7248\u672C" }, 501);
+    }
+    const REL = ">".repeat(2);
+    const prompt = `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
+# ${pageName}
+## \u4E00\u53E5\u8A71\u5B9A\u7FA9
+\uFF08\u4E00\u884C\uFF09
+## \u8981\u9EDE
+- \uFF083-12 \u689D\uFF0C\u5177\u9AD4\u3001\u542B\u6578\u5B57\u689D\u4EF6\uFF09
+## \u95DC\u9375\u5BE6\u9AD4
+- **\u5BE6\u9AD4\u540D** \u2014 \u4E00\u53E5\u8AAA\u660E
+## \u95DC\u806F
+- \u5BE6\u9AD4A ${REL} \u95DC\u4FC2 ${REL} \u5BE6\u9AD4B\uFF083-8 \u884C\uFF0C\u7528\u4E0A\u9762\u5BE6\u9AD4\u540D\uFF09
+
+\u539F\u7A3F\uFF1A
+${srcText}`;
+    try {
+      const out = await c.env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 2048,
+        temperature: 0.2
+      });
+      const card = String(out?.response ?? "").trim();
+      if (!card) return c.json({ error: "Workers AI \u6C92\u6709\u56DE\u50B3\u5167\u5BB9" }, 502);
+      const marker = `# ${pageName}`;
+      const idx = card.lastIndexOf(marker);
+      return c.json({ success: true, card: (idx >= 0 ? card.slice(idx) : card).trim() + "\n" });
+    } catch (e) {
+      return c.json({ error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+    }
+  })
+);
+portalRouter.post(
   "/portal/daemon/libraries",
   (c) => run(c, async () => {
     const body = await c.req.json().catch(() => null);

@@ -1,20 +1,20 @@
 {
  "schema": "arcrun-rag-bundles/v1",
- "release": "1.4.6",
- "fingerprint": "74b763b5645e90377a9da4b51e606d41d7664ef6c3a30899db37df6b36a1e5f0",
+ "release": "1.4.7",
+ "fingerprint": "cf86d0d480ab3b9932f58efc34dab95b80bceb0c72be3314bec9a0ba8d4bb899",
  "built": "2026-08-04",
  "source": "Arcrun@36cdc8f",
  "daemon": {
-  "version": "v0.15.4",
-  "built": "20260804-1008",
-  "notes": "修「知識庫需要更新」永遠消不掉：版本比較改逐段整數（semver 之後字串比較恆判過舊）",
+  "version": "v0.15.5",
+  "built": "20260804-1539",
+  "notes": "萃取改用雲端 Workers AI，不再需要 Gemini API Key（Gemini 保留為選配，可在托盤「AI 設定…」切換）",
   "mac": {
    "file": "daemon/ArcrunRAG-mac-unsigned.zip",
-   "sha256": "776ace798ce96556e881b80fa17895878dc0aa89aeebe55487151718d57d5934"
+   "sha256": "a38c64bcb1c34f08dafe53796541e2c59e68f23f5382c68b085812a901cb75ea"
   },
   "win": {
    "file": "daemon/ArcrunRAG-win-unsigned.zip",
-   "sha256": "26bd7e3f049fadf165da04d195960f16fb7ad481be297c441937c311d7c29039"
+   "sha256": "a7ee49bf9a232d0f2ef7e1f01ac3ad179338fb3b7ecb4a79e4893a8a7487388f"
   }
  },
  "core": [
@@ -537,7 +537,7 @@
    "tier": 2,
    "main_file": "tier2/cypher/index.js",
    "main_module": "index.js",
-   "sha256": "98c84dc08eebed7bc30bde74564d159fd92e41f87c75f43f07f55393c546a11d",
+   "sha256": "4f55754531954634526a34f0cb44875455b75124acb808ac3999b61d8a85ecea",
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat",
@@ -588,7 +588,7 @@
     "SVC_DATE_OPS",
     "SVC_VALIDATE_JSON"
    ],
-   "bytes": 599071
+   "bytes": 601468
   },
   {
    "name": "arcrun-kbdb",
