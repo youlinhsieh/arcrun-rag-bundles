@@ -14582,7 +14582,6 @@ portalRouter.post(
   (c) => run(c, async () => {
     const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
     if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-    if (apiKey !== portalTenant(c.env)) return c.json({ error: "X-Arcrun-API-Key \u4E0D\u6B63\u78BA" }, 401);
     const body = await c.req.json().catch(() => null);
     const pageName = String(body?.page_name ?? "").trim();
     const srcText = String(body?.text ?? "");
