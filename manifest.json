@@ -13,7 +13,7 @@
    "sha256": "c31803a4f56c00bcc154f101ca7b2029d59acb01acb53cf26756e8eb563708e1"
   },
   "win": {
-   "file": "daemon/ArcrunRAG-win-unsigned.zip",
+   "file": "daemon/ArcrunRAG-win-unsigned-v0.15.6.zip",
    "sha256": "dbb7b0beb5136a707dd0750373b149dd19fb36519bfaa68e0665e5ea51b491b2"
   }
  },
