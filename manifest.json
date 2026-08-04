@@ -5,16 +5,16 @@
  "built": "2026-08-04",
  "source": "Arcrun@36cdc8f",
  "daemon": {
-  "version": "v0.15.3",
-  "built": "20260803-2249",
-  "notes": "LLM 設定移回地端：托盤新增「AI 設定…」自己填 Gemini Key、萃取一律走 Gemini（不再被雲端指定 claude）；修托盤點多次會開多個 icon",
+  "version": "v0.15.4",
+  "built": "20260804-1008",
+  "notes": "修「知識庫需要更新」永遠消不掉：版本比較改逐段整數（semver 之後字串比較恆判過舊）",
   "mac": {
    "file": "daemon/ArcrunRAG-mac-unsigned.zip",
-   "sha256": "a1c890f21e17bb418ac20cc0826a36c241afbe84d62d6500c6ec2a8052227e4b"
+   "sha256": "776ace798ce96556e881b80fa17895878dc0aa89aeebe55487151718d57d5934"
   },
   "win": {
    "file": "daemon/ArcrunRAG-win-unsigned.zip",
-   "sha256": "dd216325b2d8282f180bf229399b5082956e2027c6159bccb0ec9d38b2776547"
+   "sha256": "26bd7e3f049fadf165da04d195960f16fb7ad481be297c441937c311d7c29039"
   }
  },
  "core": [
