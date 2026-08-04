@@ -15906,7 +15906,12 @@ portalDataRouter.get(
     }
     const params = new URLSearchParams({ q, owner_id: portalTenant(c.env) });
     if (!libraries.includes("*")) params.set("library", libraries.join(","));
-    if (c.req.query("mode") === "semantic") params.set("mode", "semantic");
+    if (c.req.query("mode") === "semantic") {
+      params.set("mode", "semantic");
+      const msRaw = Number(c.req.query("min_score"));
+      const minScore = Number.isFinite(msRaw) && msRaw > 0 && msRaw < 1 ? msRaw : 0.75;
+      params.set("min_score", String(minScore));
+    }
     const entryType = c.req.query("entry_type");
     if (entryType) params.set("entry_type", entryType);
     const limit = c.req.query("limit");
