@@ -3298,8 +3298,12 @@ function createWasiShim(stdinData, hostFunctions) {
           try {
             const result = await hostFunctions.http_request(url, method, headers, body);
             return writeOut(memory.buffer, outPtr, outLenPtr, new TextEncoder().encode(result));
-          } catch {
-            return 1;
+          } catch (e) {
+            const errDetail = e instanceof Error ? e.message : String(e);
+            const errEnv = new TextEncoder().encode(
+              JSON.stringify({ error: `fetch failed: ${errDetail}`, status: 0, body: "" })
+            );
+            return writeOut(memory.buffer, outPtr, outLenPtr, errEnv);
           }
         }) : () => 1,
         // kv_get(keyPtr, keyLen, outPtr, outLenPtr) → 0 成功；1 錯誤；2 找不到 key

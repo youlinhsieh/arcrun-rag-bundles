@@ -264,7 +264,7 @@ var PerformanceObserver = class {
 };
 var performance = globalThis.performance && "addEventListener" in globalThis.performance ? globalThis.performance : new Performance();
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
 if (!("__unenv__" in performance)) {
   const proto = Performance.prototype;
   for (const key of Object.getOwnPropertyNames(proto)) {
@@ -324,7 +324,7 @@ var _times = /* @__PURE__ */ new Map();
 var _stdoutErrorHandler = noop_default;
 var _stderrErrorHandler = noop_default;
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
 var workerdConsole = globalThis["console"];
 var {
   assert,
@@ -365,7 +365,7 @@ Object.assign(workerdConsole, {
 });
 var console_default = workerdConsole;
 
-// node_modules/.pnpm/wrangler@4.83.0_@cloudflare+workers-types@4.20260420.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
+// node_modules/.pnpm/wrangler@4.98.0_@cloudflare+workers-types@4.20260608.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
 globalThis.console = console_default;
 
 // node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
@@ -695,7 +695,7 @@ var Process = class _Process extends EventEmitter {
   _linkedBinding = void 0;
 };
 
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
+// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.1_unenv@2.0.0-rc.24_workerd@1.20260603.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
 var globalProcess = globalThis["process"];
 var getBuiltinModule = globalProcess.getBuiltinModule;
 var workerdProcess = getBuiltinModule("node:process");
@@ -925,13 +925,13 @@ var _process = {
 };
 var process_default = _process;
 
-// node_modules/.pnpm/wrangler@4.83.0_@cloudflare+workers-types@4.20260420.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
+// node_modules/.pnpm/wrangler@4.98.0_@cloudflare+workers-types@4.20260608.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
 globalThis.process = process_default;
 
 // src/index.ts
-import componentWasm from "./cfef89ca6e0f809fe5774d8e3db5e48222abb7f6-component.wasm";
+import componentWasm from "./440cbdafcbe277a299c3013d0a3dc6fdf9bb0fa2-component.wasm";
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/compose.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/compose.js
 var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
   return (context2, next) => {
     let index = -1;
@@ -976,10 +976,10 @@ var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
   };
 }, "compose");
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/request/constants.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/body.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/utils/body.js
 var parseBody = /* @__PURE__ */ __name(async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -1053,7 +1053,7 @@ var handleParsingNestedValues = /* @__PURE__ */ __name((form, key, value) => {
   });
 }, "handleParsingNestedValues");
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/url.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/utils/url.js
 var splitPath = /* @__PURE__ */ __name((path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -1257,7 +1257,7 @@ var getQueryParams = /* @__PURE__ */ __name((url, key) => {
 }, "getQueryParams");
 var decodeURIComponent_ = decodeURIComponent;
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/request.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = /* @__PURE__ */ __name((str) => tryDecode(str, decodeURIComponent_), "tryDecodeURIComponent");
 var HonoRequest = class {
   static {
@@ -1406,6 +1406,21 @@ var HonoRequest = class {
     return this.#cachedBody("arrayBuffer");
   }
   /**
+   * `.bytes()` parses the request body as a `Uint8Array`.
+   *
+   * @see {@link https://hono.dev/docs/api/request#bytes}
+   *
+   * @example
+   * ```ts
+   * app.post('/entry', async (c) => {
+   *   const body = await c.req.bytes()
+   * })
+   * ```
+   */
+  bytes() {
+    return this.#cachedBody("arrayBuffer").then((buffer) => new Uint8Array(buffer));
+  }
+  /**
    * Parses the request body as a `Blob`.
    * @example
    * ```ts
@@ -1528,7 +1543,7 @@ var HonoRequest = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/html.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -1570,7 +1585,7 @@ var resolveCallback = /* @__PURE__ */ __name(async (str, phase, preserveCallback
   }
 }, "resolveCallback");
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/context.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = /* @__PURE__ */ __name((contentType, headers) => {
   return {
@@ -1980,7 +1995,7 @@ var Context = class {
   }, "notFound");
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1991,10 +2006,10 @@ var UnsupportedPathError = class extends Error {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/constants.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/hono-base.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/hono-base.js
 var notFoundHandler = /* @__PURE__ */ __name((c) => {
   return c.text("404 Not Found", 404);
 }, "notFoundHandler");
@@ -2112,7 +2127,7 @@ var Hono = class _Hono {
         handler = /* @__PURE__ */ __name(async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res, "handler");
         handler[COMPOSED_HANDLER] = r.handler;
       }
-      subApp.#addRoute(r.method, r.path, handler);
+      subApp.#addRoute(r.method, r.path, handler, r.basePath);
     });
     return this;
   }
@@ -2236,7 +2251,7 @@ var Hono = class _Hono {
       const pathPrefixLength = mergedPath === "/" ? 0 : mergedPath.length;
       return (request) => {
         const url = new URL(request.url);
-        url.pathname = url.pathname.slice(pathPrefixLength) || "/";
+        url.pathname = this.getPath(request).slice(pathPrefixLength) || "/";
         return new Request(url, request);
       };
     })();
@@ -2250,10 +2265,15 @@ var Hono = class _Hono {
     this.#addRoute(METHOD_NAME_ALL, mergePath(path, "*"), handler);
     return this;
   }
-  #addRoute(method, path, handler) {
+  #addRoute(method, path, handler, baseRoutePath) {
     method = method.toUpperCase();
     path = mergePath(this._basePath, path);
-    const r = { basePath: this._basePath, path, method, handler };
+    const r = {
+      basePath: baseRoutePath !== void 0 ? mergePath(this._basePath, baseRoutePath) : this._basePath,
+      path,
+      method,
+      handler
+    };
     this.router.add(method, path, [handler, r]);
     this.routes.push(r);
   }
@@ -2368,7 +2388,7 @@ var Hono = class _Hono {
   }, "fire");
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
@@ -2390,7 +2410,7 @@ function match(method, path) {
 }
 __name(match, "match");
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/node.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -2502,7 +2522,7 @@ var Node = class _Node {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/trie.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   static {
     __name(this, "Trie");
@@ -2561,7 +2581,7 @@ var Trie = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/router.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -2747,7 +2767,7 @@ var RegExpRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/smart-router/router.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   static {
     __name(this, "SmartRouter");
@@ -2805,7 +2825,7 @@ var SmartRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/trie-router/node.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = /* @__PURE__ */ __name((children) => {
   for (const _ in children) {
@@ -2983,7 +3003,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/trie-router/router.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   static {
     __name(this, "TrieRouter");
@@ -3008,7 +3028,7 @@ var TrieRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/hono.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   static {
     __name(this, "Hono");
@@ -3026,16 +3046,13 @@ var Hono2 = class extends Hono {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/middleware/cors/index.js
+// node_modules/.pnpm/hono@4.12.24/node_modules/hono/dist/middleware/cors/index.js
 var cors = /* @__PURE__ */ __name((options) => {
-  const defaults = {
+  const opts = {
     origin: "*",
     allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
     allowHeaders: [],
-    exposeHeaders: []
-  };
-  const opts = {
-    ...defaults,
+    exposeHeaders: [],
     ...options
   };
   const findAllowOrigin = ((optsOrigin) => {
@@ -3487,13 +3504,19 @@ __name(createWasiShim, "createWasiShim");
 // src/index.ts
 var app = new Hono2();
 app.use("*", cors());
-app.get("/", (c) => c.json({ ok: true, component: "cron" }));
+app.get("/", (c) => c.json({ ok: true, component: "claude_api", version: "v2-mira-daemon" }));
 app.post("/", async (c) => {
   let input;
   try {
     input = await c.req.json();
   } catch {
     return c.json({ success: false, error: "request body must be JSON" }, 400);
+  }
+  if (!input.mira_token && c.env.MIRA_TOKEN) {
+    input.mira_token = c.env.MIRA_TOKEN;
+  }
+  if (!input.mira_url && c.env.MIRA_URL) {
+    input.mira_url = c.env.MIRA_URL;
   }
   try {
     const result = await runWasm(input);
@@ -3507,7 +3530,33 @@ app.post("/", async (c) => {
 });
 var index_default = app;
 async function runWasm(input) {
-  const shim = createWasiShim(JSON.stringify(input));
+  const hostFunctions = {
+    http_request: /* @__PURE__ */ __name(async (url, method, headersJson, body) => {
+      const headers = {};
+      if (headersJson) {
+        try {
+          const parsed = JSON.parse(headersJson);
+          if (parsed && typeof parsed === "object") {
+            for (const [k, v] of Object.entries(parsed)) {
+              if (typeof v === "string") headers[k] = v;
+            }
+          }
+        } catch {
+        }
+      }
+      const init = { method, headers };
+      if (body && method.toUpperCase() !== "GET" && method.toUpperCase() !== "HEAD") {
+        init.body = body;
+      }
+      const res = await fetch(url, init);
+      const text = await res.text();
+      if (!res.ok) {
+        return JSON.stringify({ error: `HTTP ${res.status}`, status: res.status, body: text });
+      }
+      return text;
+    }, "http_request")
+  };
+  const shim = createWasiShim(JSON.stringify(input), hostFunctions);
   const instance = await WebAssembly.instantiate(
     componentWasm,
     shim.imports
@@ -3515,6 +3564,8 @@ async function runWasm(input) {
   shim.setMemory(instance.exports.memory);
   await shim.run(instance);
   const stdout2 = shim.getStdout().trim();
+  const stderr2 = shim.getStderr().trim();
+  if (stderr2) console.error("[claude_api wasm stderr]", stderr2);
   if (!stdout2) throw new Error("WASM component produced no output");
   return JSON.parse(stdout2);
 }
