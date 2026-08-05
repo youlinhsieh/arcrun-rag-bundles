@@ -2251,6 +2251,7 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
 
 // ../../matrix/arcrun/kbdb/src/embed.ts
 var DEFAULT_EMBED_MODEL = "@cf/baai/bge-m3";
+var DEFAULT_MIN_SCORE = 0.5;
 function embedModel(env) {
   const m = (env.EMBED_MODEL ?? "").trim();
   return m || DEFAULT_EMBED_MODEL;
@@ -2391,7 +2392,7 @@ async function semanticSearch(env, q, opts = {}) {
     returnMetadata: "indexed",
     ...Object.keys(filter).length ? { filter } : {}
   });
-  const minScore = opts.min_score ?? 0;
+  const minScore = opts.min_score ?? DEFAULT_MIN_SCORE;
   return (res.matches ?? []).filter((m) => m.score >= minScore).map((m) => ({
     id: m.id,
     score: m.score,

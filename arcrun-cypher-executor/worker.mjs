@@ -14190,8 +14190,7 @@ portalDataRouter.get(
     if (c.req.query("mode") === "semantic") {
       params.set("mode", "semantic");
       const msRaw = Number(c.req.query("min_score"));
-      const minScore = Number.isFinite(msRaw) && msRaw > 0 && msRaw < 1 ? msRaw : 0.75;
-      params.set("min_score", String(minScore));
+      if (Number.isFinite(msRaw) && msRaw > 0 && msRaw < 1) params.set("min_score", String(msRaw));
     }
     const entryType = c.req.query("entry_type");
     if (entryType) params.set("entry_type", entryType);

@@ -1,13 +1,13 @@
 {
  "schema": 1,
- "release": "1.4.12",
- "fingerprint": "57e833f3c89e2ba2b1f7f94c1145cba36a40e60262386ccd1f40531d8f8f5e7b",
+ "release": "1.4.14",
+ "fingerprint": "83a6a86108fa7fdf92d85268d3a3a069872b918723e053b26eb3ad696268e0b8",
  "built": "2026-08-05",
  "source": "Arcrun@23f2fd4",
  "daemon": {
-  "version": "v0.18.4",
-  "built": "20260805-1530",
-  "notes": "全新桌面 App：點托盤圖示直接開視窗、每個知識庫一頁、深淺色可切。修好「一個檔失敗就卡住整個資料夾」（改成退避重試，不再無限重撞）、同一份檔重複上傳會蓋掉舊的不再堆疊、刪掉的檔案真的從知識庫移除。",
+  "version": "v0.18.5",
+  "built": "20260805-1819",
+  "notes": "修好「語意搜尋什麼都搜不到」（換新 AI 模型後分數門檻沒跟著調，把正確答案全擋掉了）。首頁狀態不再說謊：整理中會顯示「同步中」，做完顯示「幾點整理了幾份」，且不會過十幾秒就被清空。Mac 安裝畫面補上拖曳版面（Arcrun 和「應用程式」左右並排）。",
   "mac": {
    "file": "daemon/ArcrunRAG-mac-unsigned-v0.18.4.zip",
    "sha256": "0e3fb960373a83eb452b0e2afe96bb51d36b4228cbc84d02a43d052e73af03df"
@@ -18,7 +18,7 @@
   },
   "mac_dmg": {
    "file": "daemon/ArcrunRAG-mac.dmg",
-   "sha256": "aced0bc7e8a2dc374347379645690ab51b7fe0b675d42fa800474ac2ca32613c"
+   "sha256": "31634a2889a0bb4e99d435b3df54b658c6d4e0fb8756dbc8ddefa2e76d05578b"
   },
   "win_msix": {
    "file": "daemon/ArcrunRAG-v0.15.7.msix",
@@ -31,7 +31,7 @@
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 539200,
+   "js_bytes": 539163,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -73,15 +73,15 @@
     "services": 13
    },
    "warnings": [],
-   "sha256": "aba89e37228975eb49b651352cfe996140e22be5833a2e25c37a809d5496f889",
-   "bytes": 539200
+   "sha256": "787879760212e1fbc5bee6467bf648a82ec2690a5a2b5601bd2603930e0c03f7",
+   "bytes": 539163
   },
   {
    "name": "arcrun-kbdb",
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 107161,
+   "js_bytes": 107206,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -102,8 +102,8 @@
     }
    },
    "warnings": [],
-   "sha256": "442c1016573501d0e578e3ab17bc5abca8265810bebeae90391bcc39c1fb8e59",
-   "bytes": 107161
+   "sha256": "104b790bdf98852a56d74fb0266a162675a6e13f66f41c7f5a14f16dfa10fa49",
+   "bytes": 107206
   },
   {
    "name": "arcrun-http-request",
@@ -165,6 +165,24 @@
    "warnings": [],
    "sha256": "761acc054b6f01bc2c37dce3b5923cd40d4ac8ac986bc0452f36e16463299a74",
    "bytes": 154438
+  },
+  {
+   "name": "arcrun-rag-ui",
+   "tier": 2,
+   "canonical": null,
+   "main_module": "index.js",
+   "main_file": "tier2/ui/index.js",
+   "modules": [],
+   "compat_date": "2026-07-01",
+   "compat_flags": [],
+   "requires": {
+    "kv": [],
+    "d1": [],
+    "ai": false,
+    "vars": {}
+   },
+   "sha256": "93da30352a66ab4eee333dd783a2c245dbba4bbec4dca43744d70d4d16005541",
+   "bytes": 486798
   }
  ],
  "built_for": "oauth-installer-lazy-load",
