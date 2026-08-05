@@ -2160,6 +2160,20 @@ async function updateEntry(db, id, patch) {
 async function deleteEntry(db, id) {
   await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
 }
+async function embeddedIdsByLibrary(db, ownerId, library) {
+  const rows = await db.prepare(
+    `SELECT id FROM entries
+        WHERE owner_id = ?
+          AND COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') = ?
+          AND is_embedded = 1`
+  ).bind(ownerId, library).all();
+  return (rows.results ?? []).map((r) => r.id);
+}
+async function markUnembedded(db, ids) {
+  if (ids.length === 0) return;
+  const holes = ids.map(() => "?").join(",");
+  await db.prepare(`UPDATE entries SET is_embedded = 0 WHERE id IN (${holes})`).bind(...ids).run();
+}
 async function deprecateEntriesByLibrary(db, ownerId, library) {
   const result = await db.prepare(
     `UPDATE entries
@@ -2251,7 +2265,11 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
 
 // ../../matrix/arcrun/kbdb/src/embed.ts
 var DEFAULT_EMBED_MODEL = "@cf/baai/bge-m3";
-var DEFAULT_MIN_SCORE = 0.5;
+var MIN_SCORE_ABS_FLOOR = 0.45;
+var MIN_SCORE_TOP_RATIO = 0.8;
+function relativeMinScore(topScore) {
+  return Math.max(MIN_SCORE_ABS_FLOOR, topScore * MIN_SCORE_TOP_RATIO);
+}
 function embedModel(env) {
   const m = (env.EMBED_MODEL ?? "").trim();
   return m || DEFAULT_EMBED_MODEL;
@@ -2318,7 +2336,7 @@ async function backfillEmbeddings(env, opts = {}) {
   const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
   const offset = Math.max(opts.offset ?? 0, 0);
   const basePredicate = opts.reindex ? "content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1" : BACKFILL_PREDICATE;
-  const conds = [basePredicate];
+  const conds = [basePredicate, "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'"];
   const params = [];
   if (opts.owner_id) {
     conds.push("owner_id = ?");
@@ -2392,7 +2410,7 @@ async function semanticSearch(env, q, opts = {}) {
     returnMetadata: "indexed",
     ...Object.keys(filter).length ? { filter } : {}
   });
-  const minScore = opts.min_score ?? DEFAULT_MIN_SCORE;
+  const minScore = opts.min_score ?? MIN_SCORE_ABS_FLOOR;
   return (res.matches ?? []).filter((m) => m.score >= minScore).map((m) => ({
     id: m.id,
     score: m.score,
@@ -2505,6 +2523,10 @@ entryRoutes.get("/search", async (c) => {
     if (!include_deprecated) {
       entries2 = entries2.filter((e) => !isDeprecatedEntry(e));
     }
+    if (min_score === void 0 && entries2.length > 1) {
+      const cut = relativeMinScore(entries2[0].score);
+      entries2 = entries2.filter((e) => e.score >= cut);
+    }
     entries2 = entries2.slice(0, requestedTopK);
     return c.json({ success: true, entries: entries2, count: entries2.length, mode: "semantic" });
   }
@@ -2521,8 +2543,18 @@ entryRoutes.patch("/deprecate-by-library", async (c) => {
   const ownerId = String(body?.owner_id ?? "").trim();
   const library = String(body?.library ?? "").trim();
   if (!ownerId || !library) return c.json({ success: false, error: "owner_id \u8207 library \u5FC5\u586B" }, 400);
+  const ids = embedEnabled(c.env) ? await embeddedIdsByLibrary(c.env.DB, ownerId, library) : [];
   const count = await deprecateEntriesByLibrary(c.env.DB, ownerId, library);
-  return c.json({ success: true, deprecated_count: count });
+  let vectors_deleted = 0;
+  if (ids.length > 0) {
+    try {
+      await c.env.VECTORIZE.deleteByIds(ids);
+      await markUnembedded(c.env.DB, ids);
+      vectors_deleted = ids.length;
+    } catch {
+    }
+  }
+  return c.json({ success: true, deprecated_count: count, vectors_deleted });
 });
 entryRoutes.patch("/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));

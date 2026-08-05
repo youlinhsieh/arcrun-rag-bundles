@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "release": "1.4.14",
- "fingerprint": "83a6a86108fa7fdf92d85268d3a3a069872b918723e053b26eb3ad696268e0b8",
+ "release": "1.4.15",
+ "fingerprint": "afe3e3af85acea5878e2b4013ebfd512f88ce00f9f7f1547a6d7915d099ed1b1",
  "built": "2026-08-05",
  "source": "Arcrun@23f2fd4",
  "daemon": {
@@ -81,7 +81,7 @@
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 107206,
+   "js_bytes": 108500,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -102,8 +102,8 @@
     }
    },
    "warnings": [],
-   "sha256": "104b790bdf98852a56d74fb0266a162675a6e13f66f41c7f5a14f16dfa10fa49",
-   "bytes": 107206
+   "sha256": "919b692f88fa72210173fe0a5f913ad59b9a251c108ddd17b1de5e6df24e4a19",
+   "bytes": 108500
   },
   {
    "name": "arcrun-http-request",
