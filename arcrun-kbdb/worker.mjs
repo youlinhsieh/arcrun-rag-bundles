@@ -1,11 +1,5 @@
-var __defProp = Object.defineProperty;
-var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
-
-// src/index.ts
-import componentWasm from "./1920d78cdde1384d775cbc6647957409cf185584-component.wasm";
-
-// node_modules/hono/dist/compose.js
-var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
+var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
     let index = -1;
     return dispatch(0);
@@ -45,15 +39,14 @@ var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
       }
       return context;
     }
-    __name(dispatch, "dispatch");
   };
-}, "compose");
+};
 
-// node_modules/hono/dist/request/constants.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// node_modules/hono/dist/utils/body.js
-var parseBody = /* @__PURE__ */ __name(async (request, options = /* @__PURE__ */ Object.create(null)) => {
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
+var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
   const contentType = headers.get("Content-Type");
@@ -61,7 +54,7 @@ var parseBody = /* @__PURE__ */ __name(async (request, options = /* @__PURE__ */
     return parseFormData(request, { all, dot });
   }
   return {};
-}, "parseBody");
+};
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -69,7 +62,6 @@ async function parseFormData(request, options) {
   }
   return {};
 }
-__name(parseFormData, "parseFormData");
 function convertFormDataToBodyData(formData, options) {
   const form = /* @__PURE__ */ Object.create(null);
   formData.forEach((value, key) => {
@@ -91,8 +83,7 @@ function convertFormDataToBodyData(formData, options) {
   }
   return form;
 }
-__name(convertFormDataToBodyData, "convertFormDataToBodyData");
-var handleParsingAllValues = /* @__PURE__ */ __name((form, key, value) => {
+var handleParsingAllValues = (form, key, value) => {
   if (form[key] !== void 0) {
     if (Array.isArray(form[key])) {
       ;
@@ -107,8 +98,8 @@ var handleParsingAllValues = /* @__PURE__ */ __name((form, key, value) => {
       form[key] = [value];
     }
   }
-}, "handleParsingAllValues");
-var handleParsingNestedValues = /* @__PURE__ */ __name((form, key, value) => {
+};
+var handleParsingNestedValues = (form, key, value) => {
   if (/(?:^|\.)__proto__\./.test(key)) {
     return;
   }
@@ -124,22 +115,22 @@ var handleParsingNestedValues = /* @__PURE__ */ __name((form, key, value) => {
       nestedForm = nestedForm[key2];
     }
   });
-}, "handleParsingNestedValues");
+};
 
-// node_modules/hono/dist/utils/url.js
-var splitPath = /* @__PURE__ */ __name((path) => {
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
+var splitPath = (path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
     paths.shift();
   }
   return paths;
-}, "splitPath");
-var splitRoutingPath = /* @__PURE__ */ __name((routePath) => {
+};
+var splitRoutingPath = (routePath) => {
   const { groups, path } = extractGroupsFromPath(routePath);
   const paths = splitPath(path);
   return replaceGroupMarks(paths, groups);
-}, "splitRoutingPath");
-var extractGroupsFromPath = /* @__PURE__ */ __name((path) => {
+};
+var extractGroupsFromPath = (path) => {
   const groups = [];
   path = path.replace(/\{[^}]+\}/g, (match2, index) => {
     const mark = `@${index}`;
@@ -147,8 +138,8 @@ var extractGroupsFromPath = /* @__PURE__ */ __name((path) => {
     return mark;
   });
   return { groups, path };
-}, "extractGroupsFromPath");
-var replaceGroupMarks = /* @__PURE__ */ __name((paths, groups) => {
+};
+var replaceGroupMarks = (paths, groups) => {
   for (let i = groups.length - 1; i >= 0; i--) {
     const [mark] = groups[i];
     for (let j = paths.length - 1; j >= 0; j--) {
@@ -159,9 +150,9 @@ var replaceGroupMarks = /* @__PURE__ */ __name((paths, groups) => {
     }
   }
   return paths;
-}, "replaceGroupMarks");
+};
 var patternCache = {};
-var getPattern = /* @__PURE__ */ __name((label, next) => {
+var getPattern = (label, next) => {
   if (label === "*") {
     return "*";
   }
@@ -178,8 +169,8 @@ var getPattern = /* @__PURE__ */ __name((label, next) => {
     return patternCache[cacheKey];
   }
   return null;
-}, "getPattern");
-var tryDecode = /* @__PURE__ */ __name((str, decoder) => {
+};
+var tryDecode = (str, decoder) => {
   try {
     return decoder(str);
   } catch {
@@ -191,9 +182,9 @@ var tryDecode = /* @__PURE__ */ __name((str, decoder) => {
       }
     });
   }
-}, "tryDecode");
-var tryDecodeURI = /* @__PURE__ */ __name((str) => tryDecode(str, decodeURI), "tryDecodeURI");
-var getPath = /* @__PURE__ */ __name((request) => {
+};
+var tryDecodeURI = (str) => tryDecode(str, decodeURI);
+var getPath = (request) => {
   const url = request.url;
   const start = url.indexOf("/", url.indexOf(":") + 4);
   let i = start;
@@ -210,18 +201,18 @@ var getPath = /* @__PURE__ */ __name((request) => {
     }
   }
   return url.slice(start, i);
-}, "getPath");
-var getPathNoStrict = /* @__PURE__ */ __name((request) => {
+};
+var getPathNoStrict = (request) => {
   const result = getPath(request);
   return result.length > 1 && result.at(-1) === "/" ? result.slice(0, -1) : result;
-}, "getPathNoStrict");
-var mergePath = /* @__PURE__ */ __name((base, sub, ...rest) => {
+};
+var mergePath = (base, sub, ...rest) => {
   if (rest.length) {
     sub = mergePath(sub, ...rest);
   }
   return `${base?.[0] === "/" ? "" : "/"}${base}${sub === "/" ? "" : `${base?.at(-1) === "/" ? "" : "/"}${sub?.[0] === "/" ? sub.slice(1) : sub}`}`;
-}, "mergePath");
-var checkOptionalParameter = /* @__PURE__ */ __name((path) => {
+};
+var checkOptionalParameter = (path) => {
   if (path.charCodeAt(path.length - 1) !== 63 || !path.includes(":")) {
     return null;
   }
@@ -247,8 +238,8 @@ var checkOptionalParameter = /* @__PURE__ */ __name((path) => {
     }
   });
   return results.filter((v, i, a) => a.indexOf(v) === i);
-}, "checkOptionalParameter");
-var _decodeURI = /* @__PURE__ */ __name((value) => {
+};
+var _decodeURI = (value) => {
   if (!/[%+]/.test(value)) {
     return value;
   }
@@ -256,8 +247,8 @@ var _decodeURI = /* @__PURE__ */ __name((value) => {
     value = value.replace(/\+/g, " ");
   }
   return value.indexOf("%") !== -1 ? tryDecode(value, decodeURIComponent_) : value;
-}, "_decodeURI");
-var _getQueryParam = /* @__PURE__ */ __name((url, key, multiple) => {
+};
+var _getQueryParam = (url, key, multiple) => {
   let encoded;
   if (!multiple && key && !/[%+]/.test(key)) {
     let keyIndex2 = url.indexOf("?", 8);
@@ -323,19 +314,16 @@ var _getQueryParam = /* @__PURE__ */ __name((url, key, multiple) => {
     }
   }
   return key ? results[key] : results;
-}, "_getQueryParam");
+};
 var getQueryParam = _getQueryParam;
-var getQueryParams = /* @__PURE__ */ __name((url, key) => {
+var getQueryParams = (url, key) => {
   return _getQueryParam(url, key, true);
-}, "getQueryParams");
+};
 var decodeURIComponent_ = decodeURIComponent;
 
-// node_modules/hono/dist/request.js
-var tryDecodeURIComponent = /* @__PURE__ */ __name((str) => tryDecode(str, decodeURIComponent_), "tryDecodeURIComponent");
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
+var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
 var HonoRequest = class {
-  static {
-    __name(this, "HonoRequest");
-  }
   /**
    * `.raw` can get the raw Request object.
    *
@@ -416,7 +404,7 @@ var HonoRequest = class {
   async parseBody(options) {
     return parseBody(this, options);
   }
-  #cachedBody = /* @__PURE__ */ __name((key) => {
+  #cachedBody = (key) => {
     const { bodyCache, raw: raw2 } = this;
     const cachedBody = bodyCache[key];
     if (cachedBody) {
@@ -432,7 +420,7 @@ var HonoRequest = class {
       });
     }
     return bodyCache[key] = raw2[key]();
-  }, "#cachedBody");
+  };
   /**
    * `.json()` can parse Request body of type `application/json`
    *
@@ -477,6 +465,21 @@ var HonoRequest = class {
    */
   arrayBuffer() {
     return this.#cachedBody("arrayBuffer");
+  }
+  /**
+   * `.bytes()` parses the request body as a `Uint8Array`.
+   *
+   * @see {@link https://hono.dev/docs/api/request#bytes}
+   *
+   * @example
+   * ```ts
+   * app.post('/entry', async (c) => {
+   *   const body = await c.req.bytes()
+   * })
+   * ```
+   */
+  bytes() {
+    return this.#cachedBody("arrayBuffer").then((buffer) => new Uint8Array(buffer));
   }
   /**
    * Parses the request body as a `Blob`.
@@ -601,19 +604,19 @@ var HonoRequest = class {
   }
 };
 
-// node_modules/hono/dist/utils/html.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
   Stream: 3
 };
-var raw = /* @__PURE__ */ __name((value, callbacks) => {
+var raw = (value, callbacks) => {
   const escapedString = new String(value);
   escapedString.isEscaped = true;
   escapedString.callbacks = callbacks;
   return escapedString;
-}, "raw");
-var resolveCallback = /* @__PURE__ */ __name(async (str, phase, preserveCallbacks, context, buffer) => {
+};
+var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => {
   if (typeof str === "object" && !(str instanceof String)) {
     if (!(str instanceof Promise)) {
       str = str.toString();
@@ -641,21 +644,18 @@ var resolveCallback = /* @__PURE__ */ __name(async (str, phase, preserveCallback
   } else {
     return resStr;
   }
-}, "resolveCallback");
+};
 
-// node_modules/hono/dist/context.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
-var setDefaultContentType = /* @__PURE__ */ __name((contentType, headers) => {
+var setDefaultContentType = (contentType, headers) => {
   return {
     "Content-Type": contentType,
     ...headers
   };
-}, "setDefaultContentType");
-var createResponseInstance = /* @__PURE__ */ __name((body, init) => new Response(body, init), "createResponseInstance");
+};
+var createResponseInstance = (body, init) => new Response(body, init);
 var Context = class {
-  static {
-    __name(this, "Context");
-  }
   #rawRequest;
   #req;
   /**
@@ -795,23 +795,23 @@ var Context = class {
    * })
    * ```
    */
-  render = /* @__PURE__ */ __name((...args) => {
+  render = (...args) => {
     this.#renderer ??= (content) => this.html(content);
     return this.#renderer(...args);
-  }, "render");
+  };
   /**
    * Sets the layout for the response.
    *
    * @param layout - The layout to set.
    * @returns The layout function.
    */
-  setLayout = /* @__PURE__ */ __name((layout) => this.#layout = layout, "setLayout");
+  setLayout = (layout) => this.#layout = layout;
   /**
    * Gets the current layout for the response.
    *
    * @returns The current layout function.
    */
-  getLayout = /* @__PURE__ */ __name(() => this.#layout, "getLayout");
+  getLayout = () => this.#layout;
   /**
    * `.setRenderer()` can set the layout in the custom middleware.
    *
@@ -833,9 +833,9 @@ var Context = class {
    * })
    * ```
    */
-  setRenderer = /* @__PURE__ */ __name((renderer) => {
+  setRenderer = (renderer) => {
     this.#renderer = renderer;
-  }, "setRenderer");
+  };
   /**
    * `.header()` can set headers.
    *
@@ -852,7 +852,7 @@ var Context = class {
    * })
    * ```
    */
-  header = /* @__PURE__ */ __name((name, value, options) => {
+  header = (name, value, options) => {
     if (this.finalized) {
       this.#res = createResponseInstance(this.#res.body, this.#res);
     }
@@ -864,10 +864,10 @@ var Context = class {
     } else {
       headers.set(name, value);
     }
-  }, "header");
-  status = /* @__PURE__ */ __name((status) => {
+  };
+  status = (status) => {
     this.#status = status;
-  }, "status");
+  };
   /**
    * `.set()` can set the value specified by the key.
    *
@@ -881,10 +881,10 @@ var Context = class {
    * })
    * ```
    */
-  set = /* @__PURE__ */ __name((key, value) => {
+  set = (key, value) => {
     this.#var ??= /* @__PURE__ */ new Map();
     this.#var.set(key, value);
-  }, "set");
+  };
   /**
    * `.get()` can use the value specified by the key.
    *
@@ -898,9 +898,9 @@ var Context = class {
    * })
    * ```
    */
-  get = /* @__PURE__ */ __name((key) => {
+  get = (key) => {
     return this.#var ? this.#var.get(key) : void 0;
-  }, "get");
+  };
   /**
    * `.var` can access the value of a variable.
    *
@@ -945,7 +945,7 @@ var Context = class {
     const status = typeof arg === "number" ? arg : arg?.status ?? this.#status;
     return createResponseInstance(data, { status, headers: responseHeaders });
   }
-  newResponse = /* @__PURE__ */ __name((...args) => this.#newResponse(...args), "newResponse");
+  newResponse = (...args) => this.#newResponse(...args);
   /**
    * `.body()` can return the HTTP response.
    * You can set headers with `.header()` and set HTTP status code with `.status`.
@@ -967,7 +967,7 @@ var Context = class {
    * })
    * ```
    */
-  body = /* @__PURE__ */ __name((data, arg, headers) => this.#newResponse(data, arg, headers), "body");
+  body = (data, arg, headers) => this.#newResponse(data, arg, headers);
   /**
    * `.text()` can render text as `Content-Type:text/plain`.
    *
@@ -980,13 +980,13 @@ var Context = class {
    * })
    * ```
    */
-  text = /* @__PURE__ */ __name((text, arg, headers) => {
+  text = (text, arg, headers) => {
     return !this.#preparedHeaders && !this.#status && !arg && !headers && !this.finalized ? new Response(text) : this.#newResponse(
       text,
       arg,
       setDefaultContentType(TEXT_PLAIN, headers)
     );
-  }, "text");
+  };
   /**
    * `.json()` can render JSON as `Content-Type:application/json`.
    *
@@ -999,17 +999,17 @@ var Context = class {
    * })
    * ```
    */
-  json = /* @__PURE__ */ __name((object, arg, headers) => {
+  json = (object, arg, headers) => {
     return this.#newResponse(
       JSON.stringify(object),
       arg,
       setDefaultContentType("application/json", headers)
     );
-  }, "json");
-  html = /* @__PURE__ */ __name((html, arg, headers) => {
-    const res = /* @__PURE__ */ __name((html2) => this.#newResponse(html2, arg, setDefaultContentType("text/html; charset=UTF-8", headers)), "res");
+  };
+  html = (html, arg, headers) => {
+    const res = (html2) => this.#newResponse(html2, arg, setDefaultContentType("text/html; charset=UTF-8", headers));
     return typeof html === "object" ? resolveCallback(html, HtmlEscapedCallbackPhase.Stringify, false, {}).then(res) : res(html);
-  }, "html");
+  };
   /**
    * `.redirect()` can Redirect, default status code is 302.
    *
@@ -1025,7 +1025,7 @@ var Context = class {
    * })
    * ```
    */
-  redirect = /* @__PURE__ */ __name((location, status) => {
+  redirect = (location, status) => {
     const locationString = String(location);
     this.header(
       "Location",
@@ -1034,7 +1034,7 @@ var Context = class {
       !/[^\x00-\xFF]/.test(locationString) ? locationString : encodeURI(locationString)
     );
     return this.newResponse(null, status ?? 302);
-  }, "redirect");
+  };
   /**
    * `.notFound()` can return the Not Found Response.
    *
@@ -1047,42 +1047,36 @@ var Context = class {
    * })
    * ```
    */
-  notFound = /* @__PURE__ */ __name(() => {
+  notFound = () => {
     this.#notFoundHandler ??= () => createResponseInstance();
     return this.#notFoundHandler(this);
-  }, "notFound");
+  };
 };
 
-// node_modules/hono/dist/router.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
 var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is already built.";
 var UnsupportedPathError = class extends Error {
-  static {
-    __name(this, "UnsupportedPathError");
-  }
 };
 
-// node_modules/hono/dist/utils/constants.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// node_modules/hono/dist/hono-base.js
-var notFoundHandler = /* @__PURE__ */ __name((c) => {
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
+var notFoundHandler = (c) => {
   return c.text("404 Not Found", 404);
-}, "notFoundHandler");
-var errorHandler = /* @__PURE__ */ __name((err, c) => {
+};
+var errorHandler = (err, c) => {
   if ("getResponse" in err) {
     const res = err.getResponse();
     return c.newResponse(res.body, res);
   }
   console.error(err);
   return c.text("Internal Server Error", 500);
-}, "errorHandler");
+};
 var Hono = class _Hono {
-  static {
-    __name(this, "_Hono");
-  }
   get;
   post;
   put;
@@ -1182,10 +1176,10 @@ var Hono = class _Hono {
       if (app2.errorHandler === errorHandler) {
         handler = r.handler;
       } else {
-        handler = /* @__PURE__ */ __name(async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res, "handler");
+        handler = async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res;
         handler[COMPOSED_HANDLER] = r.handler;
       }
-      subApp.#addRoute(r.method, r.path, handler);
+      subApp.#addRoute(r.method, r.path, handler, r.basePath);
     });
     return this;
   }
@@ -1223,10 +1217,10 @@ var Hono = class _Hono {
    * })
    * ```
    */
-  onError = /* @__PURE__ */ __name((handler) => {
+  onError = (handler) => {
     this.errorHandler = handler;
     return this;
-  }, "onError");
+  };
   /**
    * `.notFound()` allows you to customize a Not Found Response.
    *
@@ -1242,10 +1236,10 @@ var Hono = class _Hono {
    * })
    * ```
    */
-  notFound = /* @__PURE__ */ __name((handler) => {
+  notFound = (handler) => {
     this.#notFoundHandler = handler;
     return this;
-  }, "notFound");
+  };
   /**
    * `.mount()` allows you to mount applications built with other frameworks into your Hono application.
    *
@@ -1287,7 +1281,7 @@ var Hono = class _Hono {
       } else {
         optionHandler = options.optionHandler;
         if (options.replaceRequest === false) {
-          replaceRequest = /* @__PURE__ */ __name((request) => request, "replaceRequest");
+          replaceRequest = (request) => request;
         } else {
           replaceRequest = options.replaceRequest;
         }
@@ -1309,24 +1303,29 @@ var Hono = class _Hono {
       const pathPrefixLength = mergedPath === "/" ? 0 : mergedPath.length;
       return (request) => {
         const url = new URL(request.url);
-        url.pathname = url.pathname.slice(pathPrefixLength) || "/";
+        url.pathname = this.getPath(request).slice(pathPrefixLength) || "/";
         return new Request(url, request);
       };
     })();
-    const handler = /* @__PURE__ */ __name(async (c, next) => {
+    const handler = async (c, next) => {
       const res = await applicationHandler(replaceRequest(c.req.raw), ...getOptions(c));
       if (res) {
         return res;
       }
       await next();
-    }, "handler");
+    };
     this.#addRoute(METHOD_NAME_ALL, mergePath(path, "*"), handler);
     return this;
   }
-  #addRoute(method, path, handler) {
+  #addRoute(method, path, handler, baseRoutePath) {
     method = method.toUpperCase();
     path = mergePath(this._basePath, path);
-    const r = { basePath: this._basePath, path, method, handler };
+    const r = {
+      basePath: baseRoutePath !== void 0 ? mergePath(this._basePath, baseRoutePath) : this._basePath,
+      path,
+      method,
+      handler
+    };
     this.router.add(method, path, [handler, r]);
     this.routes.push(r);
   }
@@ -1388,9 +1387,9 @@ var Hono = class _Hono {
    * @returns {Response | Promise<Response>} response of request
    *
    */
-  fetch = /* @__PURE__ */ __name((request, ...rest) => {
+  fetch = (request, ...rest) => {
     return this.#dispatch(request, rest[1], rest[0], request.method);
-  }, "fetch");
+  };
   /**
    * `.request()` is a useful method for testing.
    * You can pass a URL or pathname to send a GET request.
@@ -1403,7 +1402,7 @@ var Hono = class _Hono {
    * ```
    * @see https://hono.dev/docs/api/hono#request
    */
-  request = /* @__PURE__ */ __name((input, requestInit, Env, executionCtx) => {
+  request = (input, requestInit, Env, executionCtx) => {
     if (input instanceof Request) {
       return this.fetch(requestInit ? new Request(input, requestInit) : input, Env, executionCtx);
     }
@@ -1416,7 +1415,7 @@ var Hono = class _Hono {
       Env,
       executionCtx
     );
-  }, "request");
+  };
   /**
    * `.fire()` automatically adds a global fetch event listener.
    * This can be useful for environments that adhere to the Service Worker API, such as non-ES module Cloudflare Workers.
@@ -1434,18 +1433,18 @@ var Hono = class _Hono {
    * @see https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API
    * @see https://developers.cloudflare.com/workers/reference/migrate-to-module-workers/
    */
-  fire = /* @__PURE__ */ __name(() => {
+  fire = () => {
     addEventListener("fetch", (event) => {
       event.respondWith(this.#dispatch(event.request, event, void 0, event.request.method));
     });
-  }, "fire");
+  };
 };
 
-// node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = /* @__PURE__ */ __name(((method2, path2) => {
+  const match2 = ((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -1457,13 +1456,12 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  }), "match2");
+  });
   this.match = match2;
   return match2(method, path);
 }
-__name(match, "match");
 
-// node_modules/hono/dist/router/reg-exp-router/node.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1488,11 +1486,7 @@ function compareKey(a, b) {
   }
   return a.length === b.length ? a < b ? -1 : 1 : b.length - a.length;
 }
-__name(compareKey, "compareKey");
 var Node = class _Node {
-  static {
-    __name(this, "_Node");
-  }
   #index;
   #varIndex;
   #children = /* @__PURE__ */ Object.create(null);
@@ -1575,11 +1569,8 @@ var Node = class _Node {
   }
 };
 
-// node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
-  static {
-    __name(this, "Trie");
-  }
   #context = { varIndex: 0 };
   #root = new Node();
   insert(path, index, pathErrorCheckOnly) {
@@ -1634,7 +1625,7 @@ var Trie = class {
   }
 };
 
-// node_modules/hono/dist/router/reg-exp-router/router.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -1645,11 +1636,9 @@ function buildWildcardRegExp(path) {
     )}$`
   );
 }
-__name(buildWildcardRegExp, "buildWildcardRegExp");
 function clearWildcardRegExpCache() {
   wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 }
-__name(clearWildcardRegExpCache, "clearWildcardRegExpCache");
 function buildMatcherFromPreprocessedRoutes(routes) {
   const trie = new Trie();
   const handlerData = [];
@@ -1707,7 +1696,6 @@ function buildMatcherFromPreprocessedRoutes(routes) {
   }
   return [regexp, handlerMap, staticMap];
 }
-__name(buildMatcherFromPreprocessedRoutes, "buildMatcherFromPreprocessedRoutes");
 function findMiddleware(middleware, path) {
   if (!middleware) {
     return void 0;
@@ -1719,11 +1707,7 @@ function findMiddleware(middleware, path) {
   }
   return void 0;
 }
-__name(findMiddleware, "findMiddleware");
 var RegExpRouter = class {
-  static {
-    __name(this, "RegExpRouter");
-  }
   name = "RegExpRouter";
   #middleware;
   #routes;
@@ -1820,11 +1804,8 @@ var RegExpRouter = class {
   }
 };
 
-// node_modules/hono/dist/router/smart-router/router.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
-  static {
-    __name(this, "SmartRouter");
-  }
   name = "SmartRouter";
   #routers = [];
   #routes = [];
@@ -1878,18 +1859,15 @@ var SmartRouter = class {
   }
 };
 
-// node_modules/hono/dist/router/trie-router/node.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
-var hasChildren = /* @__PURE__ */ __name((children) => {
+var hasChildren = (children) => {
   for (const _ in children) {
     return true;
   }
   return false;
-}, "hasChildren");
+};
 var Node2 = class _Node2 {
-  static {
-    __name(this, "_Node");
-  }
   #methods;
   #children;
   #patterns;
@@ -2056,11 +2034,8 @@ var Node2 = class _Node2 {
   }
 };
 
-// node_modules/hono/dist/router/trie-router/router.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
-  static {
-    __name(this, "TrieRouter");
-  }
   name = "TrieRouter";
   #node;
   constructor() {
@@ -2081,11 +2056,8 @@ var TrieRouter = class {
   }
 };
 
-// node_modules/hono/dist/hono.js
+// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
-  static {
-    __name(this, "Hono");
-  }
   /**
    * Creates an instance of the Hono class.
    *
@@ -2099,241 +2071,1075 @@ var Hono2 = class extends Hono {
   }
 };
 
-// node_modules/hono/dist/middleware/cors/index.js
-var cors = /* @__PURE__ */ __name((options) => {
-  const defaults = {
-    origin: "*",
-    allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
-    allowHeaders: [],
-    exposeHeaders: []
-  };
-  const opts = {
-    ...defaults,
-    ...options
-  };
-  const findAllowOrigin = ((optsOrigin) => {
-    if (typeof optsOrigin === "string") {
-      if (optsOrigin === "*") {
-        if (opts.credentials) {
-          return (origin) => origin || null;
-        }
-        return () => optsOrigin;
-      } else {
-        return (origin) => optsOrigin === origin ? origin : null;
-      }
-    } else if (typeof optsOrigin === "function") {
-      return optsOrigin;
+// ../../matrix/arcrun/kbdb/src/actions/entry-crud.ts
+function uid(prefix) {
+  return `${prefix}_${crypto.randomUUID()}`;
+}
+async function createEntry(db, input) {
+  const id = input.id ?? uid("e");
+  await db.prepare(
+    `INSERT INTO entries (id, content, entry_type, owner_id, parent_id, page_name, refs_json, tags_json, task_status, confidence, metadata_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    id,
+    input.content ?? null,
+    input.entry_type,
+    input.owner_id ?? null,
+    input.parent_id ?? null,
+    input.page_name ?? null,
+    input.refs_json ?? "[]",
+    input.tags_json ?? "[]",
+    input.task_status ?? null,
+    input.confidence ?? null,
+    input.metadata_json ?? null
+  ).run();
+  const row = await getEntry(db, id);
+  if (!row) throw new Error("createEntry: insert succeeded but row not found");
+  return row;
+}
+async function getEntry(db, id) {
+  const row = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
+  return row ?? null;
+}
+async function listEntries(db, f = {}) {
+  const conds = [];
+  const params = [];
+  if (f.entry_type) {
+    conds.push("entry_type = ?");
+    params.push(f.entry_type);
+  }
+  if (f.owner_id) {
+    conds.push("owner_id = ?");
+    params.push(f.owner_id);
+  }
+  if (f.parent_id) {
+    conds.push("parent_id = ?");
+    params.push(f.parent_id);
+  }
+  if (f.page_name) {
+    conds.push("page_name = ?");
+    params.push(f.page_name);
+  }
+  if (f.source) {
+    conds.push("json_extract(metadata_json, '$.source') = ?");
+    params.push(f.source);
+  }
+  if (f.library && f.library.length > 0) {
+    conds.push(libraryPredicate(f.library));
+    params.push(...f.library);
+  }
+  if (f.q) {
+    const m = buildContentLike(f.q);
+    conds.push(...m.conds);
+    params.push(...m.params);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const limit = Math.min(f.limit ?? 100, 1e3);
+  const offset = f.offset ?? 0;
+  const [rowsRes, countRow] = await Promise.all([
+    db.prepare(`SELECT * FROM entries ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
+    db.prepare(`SELECT COUNT(*) as total FROM entries ${where}`).bind(...params).first()
+  ]);
+  return { entries: rowsRes.results ?? [], total: countRow?.total ?? 0 };
+}
+async function updateEntry(db, id, patch) {
+  const cols = [];
+  const params = [];
+  const map = patch;
+  for (const k of ["content", "parent_id", "page_name", "refs_json", "tags_json", "task_status", "confidence", "metadata_json"]) {
+    if (k in map && map[k] !== void 0) {
+      cols.push(`${k} = ?`);
+      params.push(map[k]);
+    }
+  }
+  if (cols.length === 0) return getEntry(db, id);
+  cols.push("updated_at = unixepoch()");
+  await db.prepare(`UPDATE entries SET ${cols.join(", ")} WHERE id = ?`).bind(...params, id).run();
+  return getEntry(db, id);
+}
+async function deleteEntry(db, id) {
+  await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
+}
+async function deprecateEntriesByLibrary(db, ownerId, library) {
+  const result = await db.prepare(
+    `UPDATE entries
+         SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
+             updated_at = unixepoch()
+       WHERE owner_id = ?
+         AND COALESCE(json_extract(metadata_json, '$.library'), 'general') = ?
+         AND (json_extract(metadata_json, '$.status') IS NULL
+              OR json_extract(metadata_json, '$.status') != 'deprecated')`
+  ).bind(ownerId, library).run();
+  return result.meta?.changes ?? 0;
+}
+var MAX_LIKE_Q_BYTES = 48;
+var MAX_LIKE_TERMS = 6;
+var utf8Len = (s) => new TextEncoder().encode(s).length;
+function chunkByBytes(s, maxBytes) {
+  const out = [];
+  let cur = "";
+  for (const ch of s) {
+    if (utf8Len(cur + ch) > maxBytes) {
+      if (cur) out.push(cur);
+      cur = ch;
     } else {
-      return (origin) => optsOrigin.includes(origin) ? origin : null;
+      cur += ch;
     }
-  })(opts.origin);
-  const findAllowMethods = ((optsAllowMethods) => {
-    if (typeof optsAllowMethods === "function") {
-      return optsAllowMethods;
-    } else if (Array.isArray(optsAllowMethods)) {
-      return () => optsAllowMethods;
-    } else {
-      return () => [];
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+function buildContentLike(q) {
+  if (utf8Len(q) <= MAX_LIKE_Q_BYTES) {
+    return { conds: ["content LIKE ?"], params: [`%${q}%`], split: false };
+  }
+  const terms = [];
+  for (const word of q.split(/\s+/).filter(Boolean)) {
+    for (const piece of chunkByBytes(word, MAX_LIKE_Q_BYTES)) {
+      terms.push(piece);
+      if (terms.length >= MAX_LIKE_TERMS) break;
     }
-  })(opts.allowMethods);
-  return /* @__PURE__ */ __name(async function cors2(c, next) {
-    function set(key, value) {
-      c.res.headers.set(key, value);
-    }
-    __name(set, "set");
-    const allowOrigin = await findAllowOrigin(c.req.header("origin") || "", c);
-    if (allowOrigin) {
-      set("Access-Control-Allow-Origin", allowOrigin);
-    }
-    if (opts.credentials) {
-      set("Access-Control-Allow-Credentials", "true");
-    }
-    if (opts.exposeHeaders?.length) {
-      set("Access-Control-Expose-Headers", opts.exposeHeaders.join(","));
-    }
-    if (c.req.method === "OPTIONS") {
-      if (opts.origin !== "*" || opts.credentials) {
-        set("Vary", "Origin");
+    if (terms.length >= MAX_LIKE_TERMS) break;
+  }
+  if (terms.length === 0) terms.push(chunkByBytes(q, MAX_LIKE_Q_BYTES)[0] ?? "");
+  return {
+    conds: terms.map(() => "content LIKE ?"),
+    params: terms.map((t) => `%${t}%`),
+    split: true
+  };
+}
+function libraryPredicate(libraries) {
+  const placeholders = libraries.map(() => "?").join(",");
+  return `COALESCE(json_extract(metadata_json, '$.library'), 'general') IN (${placeholders})`;
+}
+var NOT_DEPRECATED_PREDICATE = "(json_extract(metadata_json, '$.status') IS NULL OR json_extract(metadata_json, '$.status') != 'deprecated')";
+function isDeprecatedEntry(entry) {
+  if (!entry.metadata_json) return false;
+  try {
+    const meta = JSON.parse(entry.metadata_json);
+    return !!meta && meta.status === "deprecated";
+  } catch {
+    return false;
+  }
+}
+async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false) {
+  const m = buildContentLike(q);
+  const conds = [...m.conds];
+  const params = [...m.params];
+  if (owner_id) {
+    conds.push("owner_id = ?");
+    params.push(owner_id);
+  }
+  if (entry_type) {
+    conds.push("entry_type = ?");
+    params.push(entry_type);
+  }
+  if (source) {
+    conds.push("json_extract(metadata_json, '$.source') = ?");
+    params.push(source);
+  }
+  if (library && library.length > 0) {
+    conds.push(libraryPredicate(library));
+    params.push(...library);
+  }
+  if (!includeDeprecated) {
+    conds.push(NOT_DEPRECATED_PREDICATE);
+  }
+  const res = await db.prepare(`SELECT * FROM entries WHERE ${conds.join(" AND ")} ORDER BY updated_at DESC LIMIT ?`).bind(...params, Math.min(limit, 200)).all();
+  return res.results ?? [];
+}
+
+// ../../matrix/arcrun/kbdb/src/embed.ts
+var DEFAULT_EMBED_MODEL = "@cf/baai/bge-m3";
+function embedModel(env) {
+  const m = (env.EMBED_MODEL ?? "").trim();
+  return m || DEFAULT_EMBED_MODEL;
+}
+function embedEnabled(env) {
+  return !!(env.VECTORIZE && env.AI);
+}
+async function embedText(env, text) {
+  const t = (text ?? "").trim();
+  if (!t || !env.AI) return null;
+  const res = await env.AI.run(embedModel(env), { text: [t] });
+  return res?.data?.[0] ?? null;
+}
+async function embedOnWrite(env, entry) {
+  if (!embedEnabled(env)) return false;
+  if (!isEmbeddable(entry)) return false;
+  const vec = await embedText(env, entry.content ?? "");
+  if (!vec) return false;
+  await env.VECTORIZE.upsert([
+    {
+      id: entry.id,
+      values: vec,
+      // metadata 走 indexed 範圍：owner_id（租戶隔離）、entry_type、source（#5.1 過濾與語義共用）、
+      // library（portal-auth P1「庫」filter）。library 在寫入端正規化：未標記＝'general'（design §3.2
+      // 「未蓋章的舊資料視同 general」——D1 側用查詢端 COALESCE fallback，Vectorize filter 做不了
+      // COALESCE，故在 upsert 時蓋 'general'，查詢端單純 $in 即可）。
+      metadata: {
+        owner_id: entry.owner_id ?? "",
+        entry_type: entry.entry_type,
+        source: readSource(entry) ?? "",
+        library: readLibrary(entry) ?? "general"
       }
-      if (opts.maxAge != null) {
-        set("Access-Control-Max-Age", opts.maxAge.toString());
+    }
+  ]);
+  await env.DB.prepare("UPDATE entries SET is_embedded = 1 WHERE id = ?").bind(entry.id).run();
+  return true;
+}
+function isEmbeddable(entry) {
+  const meta = parseMeta(entry.metadata_json);
+  return meta?.embed === true;
+}
+function readSource(entry) {
+  const meta = parseMeta(entry.metadata_json);
+  const s = meta?.source;
+  return typeof s === "string" ? s : null;
+}
+function readLibrary(entry) {
+  const meta = parseMeta(entry.metadata_json);
+  const l = meta?.library;
+  return typeof l === "string" && l.trim() !== "" ? l : null;
+}
+function parseMeta(json) {
+  if (!json) return null;
+  try {
+    const p = JSON.parse(json);
+    return p && typeof p === "object" ? p : null;
+  } catch {
+    return null;
+  }
+}
+var BACKFILL_PREDICATE = "is_embedded = 0 AND content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1";
+async function backfillEmbeddings(env, opts = {}) {
+  if (!embedEnabled(env)) return { enabled: false, processed: 0, skipped: 0, remaining: 0, scanned: 0 };
+  const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
+  const offset = Math.max(opts.offset ?? 0, 0);
+  const basePredicate = opts.reindex ? "content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1" : BACKFILL_PREDICATE;
+  const conds = [basePredicate];
+  const params = [];
+  if (opts.owner_id) {
+    conds.push("owner_id = ?");
+    params.push(opts.owner_id);
+  }
+  if (opts.source) {
+    conds.push("json_extract(metadata_json, '$.source') = ?");
+    params.push(opts.source);
+  }
+  const where = conds.join(" AND ");
+  const res = await env.DB.prepare(`SELECT * FROM entries WHERE ${where} ORDER BY created_at ASC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all();
+  const rows = res.results ?? [];
+  const scanned = rows.length;
+  let processed = 0;
+  const embeddable = rows.filter((e) => (e.content ?? "").trim().length > 0);
+  if (embeddable.length > 0 && env.AI && env.VECTORIZE) {
+    const texts = embeddable.map((e) => (e.content ?? "").trim());
+    const out = await env.AI.run(embedModel(env), { text: texts });
+    const data = out?.data ?? [];
+    const vectors = embeddable.map((e, i) => ({ e, vec: data[i] })).filter((x) => Array.isArray(x.vec) && x.vec.length > 0).map((x) => ({
+      id: x.e.id,
+      values: x.vec,
+      metadata: {
+        owner_id: x.e.owner_id ?? "",
+        entry_type: x.e.entry_type,
+        source: readSource(x.e) ?? "",
+        library: readLibrary(x.e) ?? "general"
+        // 同 embedOnWrite：寫入端正規化（P1）
       }
-      const allowMethods = await findAllowMethods(c.req.header("origin") || "", c);
-      if (allowMethods.length) {
-        set("Access-Control-Allow-Methods", allowMethods.join(","));
-      }
-      let headers = opts.allowHeaders;
-      if (!headers?.length) {
-        const requestHeaders = c.req.header("Access-Control-Request-Headers");
-        if (requestHeaders) {
-          headers = requestHeaders.split(/\s*,\s*/);
-        }
-      }
-      if (headers?.length) {
-        set("Access-Control-Allow-Headers", headers.join(","));
-        c.res.headers.append("Vary", "Access-Control-Request-Headers");
-      }
-      c.res.headers.delete("Content-Length");
-      c.res.headers.delete("Content-Type");
-      return new Response(null, {
-        headers: c.res.headers,
-        status: 204,
-        statusText: "No Content"
+    }));
+    if (vectors.length > 0) {
+      await env.VECTORIZE.upsert(vectors);
+      const ids = vectors.map((v) => v.id);
+      const placeholders = ids.map(() => "?").join(",");
+      await env.DB.prepare(`UPDATE entries SET is_embedded = 1 WHERE id IN (${placeholders})`).bind(...ids).run();
+      processed = vectors.length;
+    }
+  }
+  const remRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM entries WHERE ${where}`).bind(...params).first();
+  const totalMatching = remRow?.c ?? 0;
+  const remaining = opts.reindex ? Math.max(0, totalMatching - (offset + scanned)) : totalMatching;
+  return { enabled: true, processed, skipped: scanned - processed, remaining, scanned };
+}
+async function backfillStatus(env, opts = {}) {
+  const conds = [];
+  const params = [];
+  if (opts.owner_id) {
+    conds.push("owner_id = ?");
+    params.push(opts.owner_id);
+  }
+  if (opts.source) {
+    conds.push("json_extract(metadata_json, '$.source') = ?");
+    params.push(opts.source);
+  }
+  const extra = conds.length ? ` AND ${conds.join(" AND ")}` : "";
+  const pendingRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM entries WHERE ${BACKFILL_PREDICATE}${extra}`).bind(...params).first();
+  const embeddedRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM entries WHERE is_embedded = 1 AND json_extract(metadata_json, '$.embed') = 1${extra}`).bind(...params).first();
+  return { enabled: embedEnabled(env), pending: pendingRow?.c ?? 0, embedded: embeddedRow?.c ?? 0 };
+}
+async function semanticSearch(env, q, opts = {}) {
+  if (!embedEnabled(env)) return null;
+  const vec = await embedText(env, q);
+  if (!vec) return [];
+  const filter = {};
+  if (opts.owner_id) filter.owner_id = opts.owner_id;
+  if (opts.source) filter.source = opts.source;
+  if (opts.entry_type) filter.entry_type = opts.entry_type;
+  if (opts.library && opts.library.length > 0) filter.library = { $in: opts.library };
+  const res = await env.VECTORIZE.query(vec, {
+    topK: Math.min(opts.topK ?? 20, 100),
+    returnMetadata: "indexed",
+    ...Object.keys(filter).length ? { filter } : {}
+  });
+  const minScore = opts.min_score ?? 0;
+  return (res.matches ?? []).filter((m) => m.score >= minScore).map((m) => ({
+    id: m.id,
+    score: m.score,
+    owner_id: m.metadata?.owner_id,
+    entry_type: m.metadata?.entry_type,
+    source: m.metadata?.source,
+    library: m.metadata?.library
+  }));
+}
+
+// ../../matrix/arcrun/kbdb/src/routes/entries.ts
+var entryRoutes = new Hono2();
+function parseLibraryParam(raw2) {
+  if (!raw2) return void 0;
+  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
+  return libs.length > 0 ? libs : void 0;
+}
+entryRoutes.post("/", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.entry_type) return c.json({ success: false, error: "entry_type required" }, 400);
+  const entry = await createEntry(c.env.DB, body);
+  if (embedEnabled(c.env)) c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
+  }));
+  return c.json({ success: true, entry });
+});
+entryRoutes.get("/libraries", async (c) => {
+  const owner = c.req.query("owner_id") || "";
+  const rows = await c.env.DB.prepare(
+    `SELECT DISTINCT COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') AS library
+       FROM entries
+      WHERE (?1 = '' OR owner_id = ?1)
+        AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
+      ORDER BY library`
+  ).bind(owner).all();
+  const libraries = (rows.results ?? []).map((r) => r.library).filter(Boolean);
+  return c.json({ success: true, libraries, count: libraries.length });
+});
+entryRoutes.get("/library-stats", async (c) => {
+  const owner = c.req.query("owner_id") || "";
+  const rows = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') AS library,
+       COUNT(DISTINCT page_name) AS card_count
+     FROM entries
+     WHERE (?1 = '' OR owner_id = ?1)
+       AND entry_type = 'block'
+       AND page_name IS NOT NULL
+       AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
+     GROUP BY library
+     ORDER BY library`
+  ).bind(owner).all();
+  const stats = (rows.results ?? []).map((r) => ({ library: r.library, card_count: r.card_count }));
+  return c.json({ success: true, stats });
+});
+entryRoutes.get("/", async (c) => {
+  const { entries, total } = await listEntries(c.env.DB, {
+    entry_type: c.req.query("entry_type") || void 0,
+    owner_id: c.req.query("owner_id") || void 0,
+    parent_id: c.req.query("parent_id") || void 0,
+    page_name: c.req.query("page_name") || void 0,
+    source: c.req.query("source") || void 0,
+    library: parseLibraryParam(c.req.query("library")),
+    q: c.req.query("q") || c.req.query("search") || void 0,
+    limit: c.req.query("limit") ? Number(c.req.query("limit")) : void 0,
+    offset: c.req.query("offset") ? Number(c.req.query("offset")) : void 0
+  });
+  return c.json({ success: true, entries, count: entries.length, total });
+});
+entryRoutes.get("/search", async (c) => {
+  const q = c.req.query("q");
+  if (!q) return c.json({ success: false, error: "q required" }, 400);
+  const owner_id = c.req.query("owner_id") || void 0;
+  const source = c.req.query("source") || void 0;
+  const entry_type = c.req.query("entry_type") || void 0;
+  const library = parseLibraryParam(c.req.query("library"));
+  const mode = c.req.query("mode") === "semantic" ? "semantic" : "keyword";
+  const include_deprecated = c.req.query("include_deprecated") === "true";
+  const topKNum = Number(c.req.query("top_k"));
+  const top_k = Number.isFinite(topKNum) && topKNum > 0 ? Math.floor(topKNum) : void 0;
+  const minScoreNum = Number(c.req.query("min_score"));
+  const min_score = Number.isFinite(minScoreNum) && minScoreNum > 0 ? minScoreNum : void 0;
+  if (mode === "semantic") {
+    const requestedTopK = top_k ?? 20;
+    const fetchTopK = include_deprecated ? requestedTopK : Math.min(requestedTopK * 3, 100);
+    const hits = await semanticSearch(c.env, q, {
+      owner_id,
+      source,
+      entry_type,
+      library,
+      topK: fetchTopK,
+      min_score
+    });
+    if (hits === null) {
+      const entries3 = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
+      return c.json({
+        success: true,
+        entries: entries3,
+        count: entries3.length,
+        mode: "keyword",
+        requested_mode: "semantic",
+        capability_hint: "\u8A9E\u7FA9\u67E5\u8A62\u9700\u5148\u958B vectorize\uFF08embed \u6A21\u7D44\uFF09\u3002\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\u5373\u53EF\uFF08\u8A2D kbdb_embed:true + redeploy\uFF09\u3002\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\u3002"
       });
     }
-    await next();
-    if (opts.origin !== "*" || opts.credentials) {
-      c.header("Vary", "Origin", { append: true });
+    let entries2 = (await Promise.all(
+      hits.map(async (h) => {
+        const e = await getEntry(c.env.DB, h.id);
+        return e ? { ...e, score: h.score } : null;
+      })
+    )).filter((e) => e !== null);
+    if (!include_deprecated) {
+      entries2 = entries2.filter((e) => !isDeprecatedEntry(e));
     }
-  }, "cors2");
-}, "cors");
+    entries2 = entries2.slice(0, requestedTopK);
+    return c.json({ success: true, entries: entries2, count: entries2.length, mode: "semantic" });
+  }
+  const entries = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
+  return c.json({ success: true, entries, count: entries.length, mode: "keyword" });
+});
+entryRoutes.get("/:id", async (c) => {
+  const entry = await getEntry(c.env.DB, c.req.param("id"));
+  if (!entry) return c.json({ success: false, error: "not found" }, 404);
+  return c.json({ success: true, entry });
+});
+entryRoutes.patch("/deprecate-by-library", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const ownerId = String(body?.owner_id ?? "").trim();
+  const library = String(body?.library ?? "").trim();
+  if (!ownerId || !library) return c.json({ success: false, error: "owner_id \u8207 library \u5FC5\u586B" }, 400);
+  const count = await deprecateEntriesByLibrary(c.env.DB, ownerId, library);
+  return c.json({ success: true, deprecated_count: count });
+});
+entryRoutes.patch("/:id", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const entry = await updateEntry(c.env.DB, c.req.param("id"), body);
+  if (!entry) return c.json({ success: false, error: "not found" }, 404);
+  if (embedEnabled(c.env) && body.content !== void 0) {
+    c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
+    }));
+  }
+  return c.json({ success: true, entry });
+});
+entryRoutes.delete("/:id", async (c) => {
+  if (embedEnabled(c.env)) {
+    c.executionCtx.waitUntil(c.env.VECTORIZE.deleteByIds([c.req.param("id")]).then(() => {
+    }).catch(() => {
+    }));
+  }
+  await deleteEntry(c.env.DB, c.req.param("id"));
+  return c.json({ success: true });
+});
 
-// src/index.ts
-var app = new Hono2();
-app.use("*", cors());
-app.get("/", (c) => c.json({ ok: true, component: COMPONENT_ID }));
-app.post("/", async (c) => {
-  let input;
-  try {
-    input = await c.req.json();
-  } catch {
-    return c.json({ success: false, error: "request body must be JSON" }, 400);
+// ../../matrix/arcrun/kbdb/src/actions/record-crud.ts
+function uid2(prefix) {
+  return `${prefix}_${crypto.randomUUID()}`;
+}
+async function createTemplate(db, input) {
+  const id = input.id ?? uid2("tpl");
+  await db.prepare(`INSERT INTO templates (id, name, description, slots_json, created_by) VALUES (?, ?, ?, ?, ?)`).bind(id, input.name, input.description ?? null, JSON.stringify(input.slots), input.created_by ?? null).run();
+  const row = await getTemplate(db, id);
+  if (!row) throw new Error("createTemplate: row not found after insert");
+  return row;
+}
+async function getTemplate(db, idOrName) {
+  const row = await db.prepare("SELECT * FROM templates WHERE id = ? OR name = ? LIMIT 1").bind(idOrName, idOrName).first();
+  return row ?? null;
+}
+async function listTemplates(db) {
+  const res = await db.prepare("SELECT * FROM templates ORDER BY created_at DESC").all();
+  return res.results ?? [];
+}
+async function updateTemplate(db, id, patch) {
+  const cols = [];
+  const params = [];
+  if (patch.description !== void 0) {
+    cols.push("description = ?");
+    params.push(patch.description);
+  }
+  if (patch.slots !== void 0) {
+    cols.push("slots_json = ?");
+    params.push(JSON.stringify(patch.slots));
+  }
+  if (cols.length === 0) return getTemplate(db, id);
+  cols.push("updated_at = unixepoch()");
+  await db.prepare(`UPDATE templates SET ${cols.join(", ")} WHERE id = ?`).bind(...params, id).run();
+  return getTemplate(db, id);
+}
+async function createRecord(db, input) {
+  const tpl = await getTemplate(db, input.template);
+  if (!tpl) throw new Error(`template not found: ${input.template}`);
+  const slots = JSON.parse(tpl.slots_json);
+  const recordId = input.record_id ?? uid2("rec");
+  for (const slot of slots) {
+    if (!(slot in input.values)) continue;
+    const entry = await createEntry(db, {
+      content: input.values[slot],
+      entry_type: "value",
+      owner_id: input.owner_id ?? null
+    });
+    await db.prepare(`INSERT INTO entry_values (id, record_id, template_id, slot_name, entry_id) VALUES (?, ?, ?, ?, ?)`).bind(uid2("ev"), recordId, tpl.id, slot, entry.id).run();
+  }
+  return { record_id: recordId, template_id: tpl.id, values: input.values };
+}
+async function updateRecord(db, recordId, values) {
+  const evRes = await db.prepare(
+    `SELECT ev.slot_name AS slot_name, ev.entry_id AS entry_id, ev.template_id AS template_id, e.owner_id AS owner_id
+       FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
+       WHERE ev.record_id = ?`
+  ).bind(recordId).all();
+  const evRows = evRes.results ?? [];
+  if (evRows.length === 0) return null;
+  const templateId = evRows[0].template_id;
+  const recordOwnerId = evRows.find((r) => r.owner_id != null)?.owner_id ?? null;
+  const slotToEntry = new Map(evRows.map((r) => [r.slot_name, r.entry_id]));
+  const tpl = await getTemplate(db, templateId);
+  const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntry.keys()];
+  for (const [slot, content] of Object.entries(values)) {
+    if (!allowed.includes(slot)) {
+      throw new Error(`slot not in template: ${slot}`);
+    }
+    const entryId = slotToEntry.get(slot);
+    if (entryId) {
+      await db.prepare(`UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`).bind(content, entryId).run();
+    } else {
+      const entry = await createEntry(db, { content, entry_type: "value", owner_id: recordOwnerId });
+      await db.prepare(`INSERT INTO entry_values (id, record_id, template_id, slot_name, entry_id) VALUES (?, ?, ?, ?, ?)`).bind(uid2("ev"), recordId, templateId, slot, entry.id).run();
+    }
+  }
+  return getRecord(db, recordId);
+}
+async function getRecord(db, recordId) {
+  const res = await db.prepare(
+    `SELECT ev.slot_name as slot, e.content as content, ev.template_id as template_id
+       FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
+       WHERE ev.record_id = ?`
+  ).bind(recordId).all();
+  const rows = res.results ?? [];
+  if (rows.length === 0) return null;
+  const values = {};
+  for (const r of rows) values[r.slot] = r.content;
+  return { record_id: recordId, template_id: rows[0].template_id, values };
+}
+async function searchByTemplate(db, template, owner_id, limit = 100) {
+  const tpl = await getTemplate(db, template);
+  if (!tpl) return [];
+  const cap = Math.min(limit, 500);
+  const res = owner_id ? await db.prepare(
+    `SELECT DISTINCT ev.record_id as record_id FROM entry_values ev
+           JOIN entries e ON ev.entry_id = e.id
+           WHERE ev.template_id = ? AND e.owner_id = ?
+           ORDER BY ev.created_at DESC LIMIT ?`
+  ).bind(tpl.id, owner_id, cap).all() : await db.prepare(`SELECT DISTINCT record_id FROM entry_values WHERE template_id = ? ORDER BY created_at DESC LIMIT ?`).bind(tpl.id, cap).all();
+  const ids = (res.results ?? []).map((r) => r.record_id);
+  if (ids.length === 0) return [];
+  const byId = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const placeholders = chunk.map(() => "?").join(",");
+    const evRes = await db.prepare(
+      `SELECT ev.record_id as record_id, ev.slot_name as slot, e.content as content, ev.template_id as template_id
+         FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
+         WHERE ev.record_id IN (${placeholders})`
+    ).bind(...chunk).all();
+    for (const r of evRes.results ?? []) {
+      let rec = byId.get(r.record_id);
+      if (!rec) {
+        rec = { record_id: r.record_id, template_id: r.template_id, values: {} };
+        byId.set(r.record_id, rec);
+      }
+      rec.values[r.slot] = r.content;
+    }
+  }
+  return ids.map((id) => byId.get(id)).filter((r) => !!r);
+}
+async function deleteRecord(db, recordId) {
+  const evRes = await db.prepare("SELECT entry_id FROM entry_values WHERE record_id = ?").bind(recordId).all();
+  const rows = evRes.results ?? [];
+  if (rows.length === 0) return false;
+  await db.prepare("DELETE FROM entry_values WHERE record_id = ?").bind(recordId).run();
+  for (const { entry_id } of rows) {
+    await db.prepare("DELETE FROM entries WHERE id = ?").bind(entry_id).run();
+  }
+  return true;
+}
+
+// ../../matrix/arcrun/kbdb/src/routes/templates.ts
+var templateRoutes = new Hono2();
+templateRoutes.post("/", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.name || !Array.isArray(body.slots)) {
+    return c.json({ success: false, error: "name and slots[] required" }, 400);
+  }
+  const tpl = await createTemplate(c.env.DB, body);
+  return c.json({ success: true, template: tpl });
+});
+templateRoutes.get("/", async (c) => {
+  const templates = await listTemplates(c.env.DB);
+  return c.json({ success: true, templates, count: templates.length });
+});
+templateRoutes.get("/:idOrName", async (c) => {
+  const tpl = await getTemplate(c.env.DB, c.req.param("idOrName"));
+  if (!tpl) return c.json({ success: false, error: "not found" }, 404);
+  return c.json({ success: true, template: tpl });
+});
+templateRoutes.patch("/:id", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const tpl = await updateTemplate(c.env.DB, c.req.param("id"), body);
+  if (!tpl) return c.json({ success: false, error: "not found" }, 404);
+  return c.json({ success: true, template: tpl });
+});
+
+// ../../matrix/arcrun/kbdb/src/routes/records.ts
+var recordRoutes = new Hono2();
+recordRoutes.post("/", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.template || !body.values) {
+    return c.json({ success: false, error: "template and values required" }, 400);
   }
   try {
-    const result = await runWasm(componentWasm, input);
-    return c.json(result);
+    const rec = await createRecord(c.env.DB, body);
+    return c.json({ success: true, record: rec });
   } catch (e) {
-    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
-var index_default = app;
-async function runWasm(wasmModule, input) {
-  const stdinBytes = new TextEncoder().encode(JSON.stringify(input));
-  let stdinOffset = 0;
-  const stdoutChunks = [];
-  let memory = null;
-  const getView = /* @__PURE__ */ __name(() => new DataView(memory.buffer), "getView");
-  const wasi = {
-    wasi_snapshot_preview1: {
-      fd_write(fd, iovs, iovs_len, nwritten_ptr) {
-        if (fd !== 1 && fd !== 2) return 76;
-        const view = getView();
-        let total2 = 0;
-        for (let i = 0; i < iovs_len; i++) {
-          const base = view.getUint32(iovs + i * 8, true);
-          const len = view.getUint32(iovs + i * 8 + 4, true);
-          if (len === 0) continue;
-          const chunk = new Uint8Array(memory.buffer, base, len);
-          const copy = new Uint8Array(len);
-          copy.set(chunk);
-          if (fd === 1) stdoutChunks.push(copy);
-          total2 += len;
-        }
-        view.setUint32(nwritten_ptr, total2, true);
-        return 0;
-      },
-      fd_read(fd, iovs, iovs_len, nread_ptr) {
-        if (fd !== 0) return 76;
-        const view = getView();
-        let total2 = 0;
-        for (let i = 0; i < iovs_len; i++) {
-          const base = view.getUint32(iovs + i * 8, true);
-          const len = view.getUint32(iovs + i * 8 + 4, true);
-          const remaining = stdinBytes.length - stdinOffset;
-          if (remaining <= 0) break;
-          const toCopy = Math.min(len, remaining);
-          new Uint8Array(memory.buffer, base, toCopy).set(
-            stdinBytes.subarray(stdinOffset, stdinOffset + toCopy)
-          );
-          stdinOffset += toCopy;
-          total2 += toCopy;
-        }
-        view.setUint32(nread_ptr, total2, true);
-        return 0;
-      },
-      proc_exit(code) {
-        throw new Error(`wasm exit: ${code}`);
-      },
-      random_get(ptr, len) {
-        crypto.getRandomValues(new Uint8Array(memory.buffer, ptr, len));
-        return 0;
-      },
-      fd_seek: /* @__PURE__ */ __name(() => 76, "fd_seek"),
-      fd_close: /* @__PURE__ */ __name(() => 0, "fd_close"),
-      fd_fdstat_get: /* @__PURE__ */ __name(() => 76, "fd_fdstat_get"),
-      fd_prestat_get: /* @__PURE__ */ __name(() => 76, "fd_prestat_get"),
-      fd_prestat_dir_name: /* @__PURE__ */ __name(() => 76, "fd_prestat_dir_name"),
-      environ_get: /* @__PURE__ */ __name(() => 0, "environ_get"),
-      environ_sizes_get: /* @__PURE__ */ __name((cp, sp) => {
-        if (memory) {
-          const v = getView();
-          v.setUint32(cp, 0, true);
-          v.setUint32(sp, 0, true);
-        }
-        return 0;
-      }, "environ_sizes_get"),
-      args_get: /* @__PURE__ */ __name(() => 0, "args_get"),
-      args_sizes_get: /* @__PURE__ */ __name((ap, bp) => {
-        if (memory) {
-          const v = getView();
-          v.setUint32(ap, 0, true);
-          v.setUint32(bp, 0, true);
-        }
-        return 0;
-      }, "args_sizes_get"),
-      clock_time_get: /* @__PURE__ */ __name((_id, _prec, tp) => {
-        if (memory) getView().setBigUint64(tp, BigInt(Date.now()) * 1000000n, true);
-        return 0;
-      }, "clock_time_get"),
-      clock_res_get: /* @__PURE__ */ __name(() => 76, "clock_res_get"),
-      poll_oneoff: /* @__PURE__ */ __name(() => 76, "poll_oneoff"),
-      sched_yield: /* @__PURE__ */ __name(() => 0, "sched_yield"),
-      proc_raise: /* @__PURE__ */ __name(() => 76, "proc_raise"),
-      sock_accept: /* @__PURE__ */ __name(() => 76, "sock_accept"),
-      sock_recv: /* @__PURE__ */ __name(() => 76, "sock_recv"),
-      sock_send: /* @__PURE__ */ __name(() => 76, "sock_send"),
-      sock_shutdown: /* @__PURE__ */ __name(() => 76, "sock_shutdown"),
-      path_open: /* @__PURE__ */ __name(() => 76, "path_open"),
-      path_create_directory: /* @__PURE__ */ __name(() => 76, "path_create_directory"),
-      path_remove_directory: /* @__PURE__ */ __name(() => 76, "path_remove_directory"),
-      path_rename: /* @__PURE__ */ __name(() => 76, "path_rename"),
-      path_unlink_file: /* @__PURE__ */ __name(() => 76, "path_unlink_file"),
-      path_filestat_get: /* @__PURE__ */ __name(() => 76, "path_filestat_get"),
-      path_readlink: /* @__PURE__ */ __name(() => 76, "path_readlink"),
-      path_symlink: /* @__PURE__ */ __name(() => 76, "path_symlink"),
-      path_link: /* @__PURE__ */ __name(() => 76, "path_link")
-    },
-    // u6u host functions (no-op for pure logic components)
-    u6u: { http_request: /* @__PURE__ */ __name(() => 1, "http_request") }
-  };
-  const instance = await WebAssembly.instantiate(wasmModule, wasi);
-  memory = instance.exports.memory;
-  const promising = WebAssembly["promising"];
-  const startFn = instance.exports._start ?? instance.exports.main;
-  if (typeof startFn !== "function") throw new Error("WASM missing _start or main export");
+recordRoutes.get("/triplet-stats", async (c) => {
+  const owner = c.req.query("owner_id") || "";
+  const rows = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(NULLIF(lib_e.content, ''), 'general') AS library,
+       COUNT(*) AS triplet_count
+     FROM (
+       SELECT DISTINCT ev.record_id
+       FROM entry_values ev
+       JOIN templates t ON ev.template_id = t.id
+       JOIN entries e ON ev.entry_id = e.id
+       WHERE t.name = 'triplet'
+         AND (?1 = '' OR e.owner_id = ?1)
+     ) AS tr
+     LEFT JOIN entry_values lev
+       ON lev.record_id = tr.record_id AND lev.slot_name = 'library'
+     LEFT JOIN entries lib_e ON lib_e.id = lev.entry_id
+     GROUP BY COALESCE(NULLIF(lib_e.content, ''), 'general')
+     ORDER BY library`
+  ).bind(owner).all();
+  const stats = (rows.results ?? []).map((r) => ({ library: r.library, triplet_count: r.triplet_count }));
+  return c.json({ success: true, stats });
+});
+recordRoutes.get("/by-template/:template", async (c) => {
+  const records = await searchByTemplate(c.env.DB, c.req.param("template"), c.req.query("owner_id") || void 0);
+  return c.json({ success: true, records, count: records.length });
+});
+recordRoutes.get("/:recordId", async (c) => {
+  const rec = await getRecord(c.env.DB, c.req.param("recordId"));
+  if (!rec) return c.json({ success: false, error: "not found" }, 404);
+  return c.json({ success: true, record: rec });
+});
+recordRoutes.patch("/:recordId", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.values || typeof body.values !== "object") {
+    return c.json({ success: false, error: "values required" }, 400);
+  }
   try {
-    if (promising) {
-      await promising(startFn)();
-    } else {
-      startFn();
-    }
+    const rec = await updateRecord(c.env.DB, c.req.param("recordId"), body.values);
+    if (!rec) return c.json({ success: false, error: "not found" }, 404);
+    return c.json({ success: true, record: rec });
   } catch (e) {
-    if (!(e instanceof Error && e.message === "wasm exit: 0")) throw e;
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
-  const decoder = new TextDecoder();
-  const total = stdoutChunks.reduce((n, c) => n + c.length, 0);
-  const merged = new Uint8Array(total);
-  let off = 0;
-  for (const chunk of stdoutChunks) {
-    merged.set(chunk, off);
-    off += chunk.length;
-  }
-  const stdout = decoder.decode(merged).trim();
-  if (!stdout) throw new Error("WASM component produced no output");
-  return JSON.parse(stdout);
+});
+recordRoutes.delete("/:recordId", async (c) => {
+  const found = await deleteRecord(c.env.DB, c.req.param("recordId"));
+  if (!found) return c.json({ success: false, error: "not found" }, 404);
+  return c.json({ success: true });
+});
+
+// ../../matrix/arcrun/kbdb/src/actions/recipe-stat.ts
+function statId(canonicalId) {
+  return `recipestat:${canonicalId}`;
 }
-__name(runWasm, "runWasm");
+async function recordRecipeResult(db, canonicalId, ok, nowMs) {
+  const id = statId(canonicalId);
+  const existing = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(id).first();
+  let stat;
+  if (existing) {
+    const prev = existing.metadata_json ? JSON.parse(existing.metadata_json) : emptyStat(canonicalId);
+    stat = {
+      canonical_id: canonicalId,
+      success_count: prev.success_count + (ok ? 1 : 0),
+      failure_count: prev.failure_count + (ok ? 0 : 1),
+      last_status: ok ? "success" : "failure",
+      last_at: nowMs
+    };
+    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify(stat), id).run();
+  } else {
+    stat = {
+      canonical_id: canonicalId,
+      success_count: ok ? 1 : 0,
+      failure_count: ok ? 0 : 1,
+      last_status: ok ? "success" : "failure",
+      last_at: nowMs
+    };
+    await db.prepare("INSERT INTO entries (id, content, entry_type, metadata_json) VALUES (?, ?, ?, ?)").bind(id, canonicalId, "recipe_stat", JSON.stringify(stat)).run();
+  }
+  return stat;
+}
+async function getRecipeStat(db, canonicalId) {
+  const row = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(statId(canonicalId)).first();
+  if (!row || !row.metadata_json) return emptyStat(canonicalId);
+  return JSON.parse(row.metadata_json);
+}
+function emptyStat(canonicalId) {
+  return { canonical_id: canonicalId, success_count: 0, failure_count: 0, last_status: null, last_at: null };
+}
+
+// ../../matrix/arcrun/kbdb/src/routes/recipe-stats.ts
+var recipeStatRoutes = new Hono2();
+recipeStatRoutes.post("/record", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.canonical_id || typeof body.ok !== "boolean") {
+    return c.json({ success: false, error: "canonical_id and ok(boolean) required" }, 400);
+  }
+  const at = typeof body.at === "number" ? body.at : 0;
+  const stat = await recordRecipeResult(c.env.DB, body.canonical_id, body.ok, at);
+  return c.json({ success: true, stat });
+});
+recipeStatRoutes.get("/:canonical_id", async (c) => {
+  const stat = await getRecipeStat(c.env.DB, c.req.param("canonical_id"));
+  return c.json({ success: true, stat });
+});
+
+// ../../matrix/arcrun/kbdb/src/routes/embed.ts
+var embedRoutes = new Hono2();
+var OFF_HINT = "\u8A9E\u7FA9\u88DC\u5D4C\u9700\u5148\u958B embed \u6A21\u7D44\uFF08Vectorize+AI binding\uFF09\u3002\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\uFF08\u8A2D kbdb_embed:true + redeploy \u6CE8\u5165 binding\uFF09\u5F8C\u518D\u547C\u53EB\u672C\u7AEF\u9EDE\u3002";
+embedRoutes.post("/backfill", async (c) => {
+  if (!embedEnabled(c.env)) {
+    return c.json(
+      { success: false, error: "embed module not enabled (need VECTORIZE + AI bindings)", capability_hint: OFF_HINT },
+      409
+    );
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const result = await backfillEmbeddings(c.env, {
+    limit: body.limit !== void 0 ? Number(body.limit) : void 0,
+    owner_id: body.owner_id || void 0,
+    source: body.source || void 0,
+    // reindex（Arcrun#11）：重推既有向量讓事後建立的 Vectorize metadata index 收錄（見 embed.ts）。
+    reindex: body.reindex === true,
+    offset: body.offset !== void 0 ? Number(body.offset) : void 0
+  });
+  return c.json({ success: true, ...result });
+});
+embedRoutes.get("/backfill/status", async (c) => {
+  const status = await backfillStatus(c.env, {
+    owner_id: c.req.query("owner_id") || void 0,
+    source: c.req.query("source") || void 0
+  });
+  return c.json({ success: true, ...status });
+});
+
+// ../../matrix/arcrun/kbdb/src/actions/library-map.ts
+var LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
+var LIBRARY_MAP_TEMPLATE_NAME = "library_map";
+var LIBRARY_MAP_SLOTS = [
+  "library",
+  "narrative",
+  "top_entities",
+  "relation_profile",
+  "bridges",
+  "triplet_count",
+  "commit_hash",
+  "status"
+];
+var DEFAULT_TRIPLET_TEMPLATE = "triplet";
+async function ensureLibraryMapTemplate(db) {
+  const existing = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (existing) return;
+  try {
+    await createTemplate(db, {
+      id: LIBRARY_MAP_TEMPLATE_ID,
+      name: LIBRARY_MAP_TEMPLATE_NAME,
+      description: "per-library map block\uFF08\u85CF\u66F8\u5730\u5716\uFF1Agraph \u6A5F\u68B0\u5C0E\u51FA\uFF0C\u96F6 LLM \u751F\u6210\uFF1BArcrun#39\uFF09",
+      slots: LIBRARY_MAP_SLOTS,
+      created_by: "system"
+    });
+  } catch {
+    if (!await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME)) throw new Error("ensureLibraryMapTemplate failed");
+  }
+}
+async function ensureTripletLibrarySlot(db, tripletTemplate) {
+  const tpl = await getTemplate(db, tripletTemplate);
+  if (!tpl) throw new Error(`triplet template not found: ${tripletTemplate}`);
+  const slots = JSON.parse(tpl.slots_json);
+  if (slots.includes("library")) return false;
+  await updateTemplate(db, tpl.id, { slots: [...slots, "library"] });
+  return true;
+}
+function tripletPivotSql(ownerFiltered) {
+  return `SELECT ev.record_id AS rid,
+       MAX(CASE WHEN ev.slot_name = 'subject' THEN e.content END) AS subject,
+       MAX(CASE WHEN ev.slot_name = 'object' THEN e.content END) AS object,
+       MAX(CASE WHEN ev.slot_name = 'predicate' THEN e.content END) AS predicate,
+       MAX(CASE WHEN ev.slot_name = 'status' THEN e.content END) AS status,
+       MAX(CASE WHEN ev.slot_name = 'library' THEN e.content END) AS library,
+       MAX(CASE WHEN ev.slot_name = 'source_uri' THEN e.content END) AS source_uri
+     FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
+     WHERE ev.template_id = ?${ownerFiltered ? " AND e.owner_id = ?" : ""}
+     GROUP BY ev.record_id`;
+}
+function mapPivotSql(ownerFiltered) {
+  return `SELECT ev.record_id AS rid,
+       MAX(CASE WHEN ev.slot_name = 'library' THEN e.content END) AS library,
+       MAX(CASE WHEN ev.slot_name = 'narrative' THEN e.content END) AS narrative,
+       MAX(CASE WHEN ev.slot_name = 'top_entities' THEN e.content END) AS top_entities,
+       MAX(CASE WHEN ev.slot_name = 'relation_profile' THEN e.content END) AS relation_profile,
+       MAX(CASE WHEN ev.slot_name = 'bridges' THEN e.content END) AS bridges,
+       MAX(CASE WHEN ev.slot_name = 'triplet_count' THEN e.content END) AS triplet_count,
+       MAX(CASE WHEN ev.slot_name = 'commit_hash' THEN e.content END) AS commit_hash,
+       MAX(CASE WHEN ev.slot_name = 'status' THEN e.content END) AS status,
+       MAX(ev.created_at) AS ts
+     FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
+     WHERE ev.template_id = ?${ownerFiltered ? " AND e.owner_id = ?" : ""}
+     GROUP BY ev.record_id`;
+}
+function parseJsonArray(raw2) {
+  if (!raw2) return [];
+  try {
+    const v = JSON.parse(raw2);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+async function recomputeLibraryMap(db, input) {
+  const library = input.library.trim();
+  if (!library) throw new Error("library required");
+  const tripletTemplateName = input.triplet_template ?? DEFAULT_TRIPLET_TEMPLATE;
+  const topN = Math.min(Math.max(Math.floor(input.top_n ?? 10), 1), 50);
+  await ensureLibraryMapTemplate(db);
+  const librarySlotAdded = await ensureTripletLibrarySlot(db, tripletTemplateName);
+  const tripletTpl = await getTemplate(db, tripletTemplateName);
+  if (!tripletTpl) throw new Error(`triplet template not found: ${tripletTemplateName}`);
+  const owner = input.owner_id || void 0;
+  const pivot = tripletPivotSql(!!owner);
+  const pivotParams = owner ? [tripletTpl.id, owner] : [tripletTpl.id];
+  const libCond = input.source_prefix ? `(t.library = ? OR (t.library IS NULL AND t.source_uri LIKE ? || '%'))` : `t.library = ?`;
+  const libParams = input.source_prefix ? [library, input.source_prefix] : [library];
+  const withLib = `WITH t AS (${pivot}), lib AS (
+     SELECT * FROM t WHERE COALESCE(t.status, 'active') = 'active' AND ${libCond})`;
+  const baseParams = [...pivotParams, ...libParams];
+  const [countRow, topRes, relRes, bridgeRes] = await Promise.all([
+    db.prepare(`${withLib} SELECT COUNT(*) AS n FROM lib`).bind(...baseParams).first(),
+    // degree＝entity 在該庫 active triplet 的出現次數（subject＋object 兩側都算；同名並列取名字序穩定輸出）
+    db.prepare(
+      `${withLib} SELECT name, COUNT(*) AS degree FROM (
+           SELECT subject AS name FROM lib UNION ALL SELECT object AS name FROM lib)
+         WHERE name IS NOT NULL GROUP BY name ORDER BY degree DESC, name ASC LIMIT ?`
+    ).bind(...baseParams, topN).all(),
+    // predicate 分布＝庫的「性格」（spec §3 relation_profile）
+    db.prepare(
+      `${withLib} SELECT predicate, COUNT(*) AS n FROM lib
+         WHERE predicate IS NOT NULL GROUP BY predicate ORDER BY n DESC, predicate ASC LIMIT 100`
+    ).bind(...baseParams).all(),
+    // bridges＝本庫 entity 同時出現在其他庫（跨庫 join）。對面那側只能靠 library slot 標記值
+    //（source_prefix 只描述本庫的前綴，無法反推他庫）→ M3 backfill 前 bridges 會偏稀疏，誠實現況。
+    db.prepare(
+      `${withLib}, labeled AS (
+           SELECT DISTINCT name, library FROM (
+             SELECT subject AS name, library FROM t WHERE COALESCE(status,'active') = 'active'
+             UNION SELECT object AS name, library FROM t WHERE COALESCE(status,'active') = 'active')
+           WHERE name IS NOT NULL AND library IS NOT NULL AND library != ?),
+         mine AS (
+           SELECT DISTINCT subject AS name FROM lib WHERE subject IS NOT NULL
+           UNION SELECT DISTINCT object AS name FROM lib WHERE object IS NOT NULL)
+         SELECT l.name AS entity, l.library AS library FROM labeled l
+         JOIN mine m ON m.name = l.name ORDER BY l.name ASC, l.library ASC`
+    ).bind(...baseParams, library).all()
+  ]);
+  const tripletCount = countRow?.n ?? 0;
+  const topEntities = (topRes.results ?? []).map((r) => ({ name: r.name, degree: r.degree }));
+  const relationProfile = (relRes.results ?? []).map((r) => ({ predicate: r.predicate, count: r.n }));
+  const bridgeMap = /* @__PURE__ */ new Map();
+  for (const r of bridgeRes.results ?? []) {
+    if (!bridgeMap.has(r.entity) && bridgeMap.size >= 50) continue;
+    const libs = bridgeMap.get(r.entity) ?? [];
+    if (!libs.includes(r.library)) libs.push(r.library);
+    bridgeMap.set(r.entity, libs);
+  }
+  const bridges = [...bridgeMap.entries()].map(([entity, libraries]) => ({ entity, libraries }));
+  const narrative = input.narrative?.trim() || "";
+  const coreNames = topEntities.slice(0, 3).map((t) => t.name);
+  const content = `${library}\uFF1A${narrative || "\uFF08narrative \u5F85 ingest \u88DC\u5BEB\uFF09"}\u3002\u6838\u5FC3\uFF1A${coreNames.length ? coreNames.join("\u3001") : "\uFF08\u5C1A\u7121 entities\uFF09"}`;
+  const blockEntry = await createEntry(db, {
+    content,
+    entry_type: "block",
+    owner_id: owner ?? null,
+    page_name: `library-map:${library}`,
+    metadata_json: JSON.stringify({ kind: "library_map", library })
+  });
+  const values = {
+    library,
+    narrative,
+    top_entities: JSON.stringify(topEntities),
+    relation_profile: JSON.stringify(relationProfile),
+    bridges: JSON.stringify(bridges),
+    triplet_count: String(tripletCount),
+    status: "active"
+  };
+  if (input.commit_hash) values.commit_hash = input.commit_hash;
+  await createRecord(db, {
+    template: LIBRARY_MAP_TEMPLATE_NAME,
+    record_id: blockEntry.id,
+    values,
+    owner_id: owner ?? null
+  });
+  const mapTpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  const oldParams = owner ? [mapTpl.id, owner, library, blockEntry.id] : [mapTpl.id, library, blockEntry.id];
+  const oldRes = await db.prepare(
+    `WITH m AS (${mapPivotSql(!!owner)})
+       SELECT rid FROM m WHERE m.library = ? AND COALESCE(m.status, 'active') = 'active' AND m.rid != ?`
+  ).bind(...oldParams).all();
+  const superseded = [];
+  for (const row of oldRes.results ?? []) {
+    await updateRecord(db, row.rid, { status: "superseded" });
+    superseded.push(row.rid);
+  }
+  return {
+    map: {
+      record_id: blockEntry.id,
+      library,
+      narrative: narrative || null,
+      content,
+      top_entities: topEntities,
+      relation_profile: relationProfile,
+      bridges,
+      triplet_count: tripletCount,
+      commit_hash: input.commit_hash ?? null,
+      status: "active",
+      updated_at: blockEntry.created_at
+    },
+    superseded,
+    triplet_template: tripletTemplateName,
+    triplet_library_slot_added: librarySlotAdded
+  };
+}
+async function listLibraryMaps(db, owner_id) {
+  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (!tpl) return [];
+  const params = owner_id ? [tpl.id, owner_id] : [tpl.id];
+  const res = await db.prepare(
+    `WITH m AS (${mapPivotSql(!!owner_id)})
+       SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
+       ORDER BY m.ts DESC`
+  ).bind(...params).all();
+  const byLib = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) {
+    if (!r.library || byLib.has(r.library)) continue;
+    byLib.set(r.library, {
+      library: r.library,
+      narrative: r.narrative || null,
+      top_entities: parseJsonArray(r.top_entities).slice(0, 3).map((t) => t.name),
+      triplet_count: Number(r.triplet_count ?? 0) || 0,
+      updated_at: r.ts
+    });
+  }
+  return [...byLib.values()].sort((a, b) => a.library.localeCompare(b.library));
+}
+async function getLibraryMapDetail(db, library, owner_id) {
+  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (!tpl) return null;
+  const params = owner_id ? [tpl.id, owner_id, library] : [tpl.id, library];
+  const row = await db.prepare(
+    `WITH m AS (${mapPivotSql(!!owner_id)})
+       SELECT * FROM m WHERE m.library = ? AND COALESCE(m.status, 'active') = 'active'
+       ORDER BY m.ts DESC LIMIT 1`
+  ).bind(...params).first();
+  if (!row) return null;
+  const blockEntry = await getEntry(db, row.rid);
+  return {
+    record_id: row.rid,
+    library,
+    narrative: row.narrative || null,
+    content: blockEntry?.content ?? null,
+    top_entities: parseJsonArray(row.top_entities),
+    relation_profile: parseJsonArray(row.relation_profile),
+    bridges: parseJsonArray(row.bridges),
+    triplet_count: Number(row.triplet_count ?? 0) || 0,
+    commit_hash: row.commit_hash || null,
+    status: row.status ?? "active",
+    updated_at: row.ts
+  };
+}
+
+// ../../matrix/arcrun/kbdb/src/routes/map.ts
+var mapRoutes = new Hono2();
+mapRoutes.post("/recompute", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const library = c.req.query("library") || (typeof body.library === "string" ? body.library : "");
+  if (!library || !library.trim()) return c.json({ success: false, error: "library required" }, 400);
+  try {
+    const result = await recomputeLibraryMap(c.env.DB, {
+      library,
+      narrative: typeof body.narrative === "string" ? body.narrative : void 0,
+      commit_hash: typeof body.commit_hash === "string" ? body.commit_hash : void 0,
+      owner_id: typeof body.owner_id === "string" ? body.owner_id : c.req.query("owner_id") || void 0,
+      source_prefix: typeof body.source_prefix === "string" ? body.source_prefix : void 0,
+      triplet_template: typeof body.triplet_template === "string" ? body.triplet_template : void 0,
+      top_n: typeof body.top_n === "number" ? body.top_n : void 0
+    });
+    return c.json({ success: true, ...result });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+mapRoutes.get("/", async (c) => {
+  const libraries = await listLibraryMaps(c.env.DB, c.req.query("owner_id") || void 0);
+  return c.json({ success: true, libraries, count: libraries.length });
+});
+mapRoutes.get("/:library", async (c) => {
+  const map = await getLibraryMapDetail(c.env.DB, c.req.param("library"), c.req.query("owner_id") || void 0);
+  if (!map) return c.json({ success: false, error: "not found" }, 404);
+  return c.json({ success: true, map });
+});
+
+// ../../matrix/arcrun/kbdb/src/index.ts
+var app = new Hono2();
+app.use("*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (path === "/" || path === "/health") return next();
+  const token = c.env.KBDB_INTERNAL_TOKEN;
+  if (!token) {
+    console.warn("[kbdb] KBDB_INTERNAL_TOKEN \u672A\u8A2D\u5B9A\u2014\u2014\u5168\u90E8\u8ACB\u6C42\u62D2\u7D55\uFF0C\u8ACB\u91CD\u8DD1\u5B89\u88DD\u5668\u4EE5\u6CE8\u5165\u91D1\u9470");
+    return c.json({ error: "Unauthorized", detail: "kbdb \u5C1A\u672A\u8A2D\u5B9A\u5167\u90E8\u91D1\u9470\uFF0C\u8ACB\u91CD\u8DD1\u5B89\u88DD\u5668" }, 401);
+  }
+  const auth = c.req.header("Authorization");
+  if (!auth || auth !== `Bearer ${token}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  return next();
+});
+app.get("/", (c) => c.json({ service: "arcrun-kbdb", tier: "base", status: "ok" }));
+app.get("/health", (c) => c.json({ ok: true }));
+app.route("/entries", entryRoutes);
+app.route("/templates", templateRoutes);
+app.route("/records", recordRoutes);
+app.route("/recipe-stats", recipeStatRoutes);
+app.route("/embed", embedRoutes);
+app.route("/map", mapRoutes);
+var index_default = app;
 export {
   index_default as default
 };
-//# sourceMappingURL=index.js.map

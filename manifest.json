@@ -1,8 +1,8 @@
 {
- "schema": "arcrun-rag-bundles/v1",
- "release": "1.4.11",
- "fingerprint": "96f334adc810ece67273768a4b2cf51f6ac6d00b9dd1ffe1211398ef6c9a8cc2",
- "built": "2026-08-04",
+ "schema": 1,
+ "release": "1.4.12",
+ "fingerprint": "57e833f3c89e2ba2b1f7f94c1145cba36a40e60262386ccd1f40531d8f8f5e7b",
+ "built": "2026-08-05",
  "source": "Arcrun@23f2fd4",
  "daemon": {
   "version": "v0.18.4",
@@ -13,12 +13,12 @@
    "sha256": "0e3fb960373a83eb452b0e2afe96bb51d36b4228cbc84d02a43d052e73af03df"
   },
   "win": {
-   "file": "daemon/ArcrunRAG-win-unsigned-v0.15.7.zip",
-   "sha256": "32fe44450ca77c62d11953041899af0e190dfb8469b5c7807ba0afffe6aa031d"
+   "file": "daemon/ArcrunRAG-win-unsigned-v0.18.4.zip",
+   "sha256": "e509345eff4fbedc9fc1c1139247995ff13a5b724bbcff8d790697b52f407b88"
   },
   "mac_dmg": {
-   "file": "daemon/ArcrunRAG-v0.18.4.dmg",
-   "sha256": "c40feab4640ddccfb63fc452b88586d925c78ee76c8d1b0e15a43ec5412bf377"
+   "file": "daemon/ArcrunRAG-mac.dmg",
+   "sha256": "aced0bc7e8a2dc374347379645690ab51b7fe0b675d42fa800474ac2ca32613c"
   },
   "win_msix": {
    "file": "daemon/ArcrunRAG-v0.15.7.msix",
@@ -27,533 +27,17 @@
  },
  "core": [
   {
-   "name": "arcrun-array-ops",
-   "tier": 1,
-   "main_file": "tier1/array_ops/index.js",
-   "main_module": "index.js",
-   "sha256": "43672b094117db835018106e3baadbc8e6ab289a03394b2ac30acf59325a4e41",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "2c05e315c753986af9193c194998f3109a0a17df-component.wasm",
-     "file": "tier1/array_ops/2c05e315c753986af9193c194998f3109a0a17df-component.wasm",
-     "type": "application/wasm",
-     "sha256": "74dc9d99f8b9ef43628b55c85c05beb1af8f6f90d78d07cd132ffe4b865147ae"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "array_ops"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-auth-oauth2",
-   "tier": 1,
-   "main_file": "tier1/auth_oauth2/index.js",
-   "main_module": "index.js",
-   "sha256": "29224fc83d1995a9e6cbca1c17863729e848f49d974d4de5cfdbcb32315ce8b9",
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat"
-   ],
-   "modules": [
-    {
-     "name": "1e5dae631ff4edb232828412daf37439b7234e8a-component.wasm",
-     "file": "tier1/auth_oauth2/1e5dae631ff4edb232828412daf37439b7234e8a-component.wasm",
-     "type": "application/wasm",
-     "sha256": "3622c20644e6c8c39487109e7353e2590bad90b1207139e34dfb0cf1c2696664"
-    }
-   ],
-   "requires": {
-    "kv": [
-     "CREDENTIALS_KV",
-     "RECIPES"
-    ],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "auth_oauth2"
-    }
-   },
-   "bytes": 106643
-  },
-  {
-   "name": "arcrun-auth-service-account",
-   "tier": 1,
-   "main_file": "tier1/auth_service_account/index.js",
-   "main_module": "index.js",
-   "sha256": "d220f97e9d9f864a4baab54863d723cf1b6ba7d3d4443ee094e46cdd8ab51ab6",
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat"
-   ],
-   "modules": [
-    {
-     "name": "65dfefeaf42ca5ed95b583203575f4563fecd4a9-component.wasm",
-     "file": "tier1/auth_service_account/65dfefeaf42ca5ed95b583203575f4563fecd4a9-component.wasm",
-     "type": "application/wasm",
-     "sha256": "7d0808b4b9a2df4fbb54977eafe34a5bdb99e0cc941d97462c62e26f3651951e"
-    }
-   ],
-   "requires": {
-    "kv": [
-     "CREDENTIALS_KV",
-     "RECIPES"
-    ],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "auth_service_account"
-    }
-   },
-   "bytes": 108540
-  },
-  {
-   "name": "arcrun-auth-static-key",
-   "tier": 1,
-   "main_file": "tier1/auth_static_key/index.js",
-   "main_module": "index.js",
-   "sha256": "d529b4870f39e2b4dc0a98e83ab5dc3a50ae8e8d1f3d95e52ace456ce9d520df",
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat"
-   ],
-   "modules": [
-    {
-     "name": "26a79169f7ae71b46962b7df87289a4d06899272-component.wasm",
-     "file": "tier1/auth_static_key/26a79169f7ae71b46962b7df87289a4d06899272-component.wasm",
-     "type": "application/wasm",
-     "sha256": "cd0f69a80ced0979749e0ec30b1981795a49eaa56bdb2ba102cd4b64f4670369"
-    }
-   ],
-   "requires": {
-    "kv": [
-     "CREDENTIALS_KV",
-     "RECIPES"
-    ],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "auth_static_key"
-    }
-   },
-   "bytes": 108129
-  },
-  {
-   "name": "arcrun-claude-api",
-   "tier": 1,
-   "main_file": "tier1/claude_api/index.js",
-   "main_module": "index.js",
-   "sha256": "6a7930be77f1ba189b9f1287d35ebaf8e34899e85d57e0d0141adb2d7b9bc4cd",
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat"
-   ],
-   "modules": [
-    {
-     "name": "440cbdafcbe277a299c3013d0a3dc6fdf9bb0fa2-component.wasm",
-     "file": "tier1/claude_api/440cbdafcbe277a299c3013d0a3dc6fdf9bb0fa2-component.wasm",
-     "type": "application/wasm",
-     "sha256": "fd13da9d0a490429547a304fc41e636d07f054cfbf6045b082ffa33f3c543f56"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "claude_api"
-    }
-   },
-   "bytes": 107324
-  },
-  {
-   "name": "arcrun-cron",
-   "tier": 1,
-   "main_file": "tier1/cron/index.js",
-   "main_module": "index.js",
-   "sha256": "1036f331a85f1c12378d8d5f8b9ffd3f9d06dcb4d8c9cba2fa705b5c186d33ae",
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat"
-   ],
-   "modules": [
-    {
-     "name": "cfef89ca6e0f809fe5774d8e3db5e48222abb7f6-component.wasm",
-     "file": "tier1/cron/cfef89ca6e0f809fe5774d8e3db5e48222abb7f6-component.wasm",
-     "type": "application/wasm",
-     "sha256": "afb3a14f8c8f00f4f5573f44153cb1dcf6fc715b2fb47c2afb0aaf95b74d3cde"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "cron"
-    }
-   },
-   "bytes": 105667
-  },
-  {
-   "name": "arcrun-date-ops",
-   "tier": 1,
-   "main_file": "tier1/date_ops/index.js",
-   "main_module": "index.js",
-   "sha256": "8d90fa9e28bb2979195b0600a6d68a322d23028ecb4e8405b43c8b35d1dd711d",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "b02bbde53cd62d1e12579e8238de745a1129fdc3-component.wasm",
-     "file": "tier1/date_ops/b02bbde53cd62d1e12579e8238de745a1129fdc3-component.wasm",
-     "type": "application/wasm",
-     "sha256": "4e2c1329ce4014aa86a9a6449d8699e67c6c616f5c07088dc21216d4036ca41e"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "date_ops"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-filter",
-   "tier": 1,
-   "main_file": "tier1/filter/index.js",
-   "main_module": "index.js",
-   "sha256": "8e17bb1e1443b426d61c1b73c650d64fec59dc009017798ce95cf180bfbaec8a",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "d5253d0bc89bf79b101ea87b8010786decf28eb2-component.wasm",
-     "file": "tier1/filter/d5253d0bc89bf79b101ea87b8010786decf28eb2-component.wasm",
-     "type": "application/wasm",
-     "sha256": "6a0692b386522918b3b5af79cf7877394d1f02c350018dbaef68ef380dad1b9e"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "filter"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-foreach-control",
-   "tier": 1,
-   "main_file": "tier1/foreach_control/index.js",
-   "main_module": "index.js",
-   "sha256": "9f982412e6cbf7eb94a4f35ce3c34404cb18a56dbd45a858e7b8b1c56cf493ee",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "f1948f457d59667fe7c6c1867389ceda8e3a01b4-component.wasm",
-     "file": "tier1/foreach_control/f1948f457d59667fe7c6c1867389ceda8e3a01b4-component.wasm",
-     "type": "application/wasm",
-     "sha256": "8ae161ab37cc78ef6fae65364a47f7accb572378b395c4637daa2ffa57f14632"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "foreach_control"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-http-request",
-   "tier": 1,
-   "main_file": "tier1/http_request/index.js",
-   "main_module": "index.js",
-   "sha256": "94c3edb558ef53cf741bf284d3af47d3b4549fa8d85f45ca747effee4444d30a",
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat",
-    "global_fetch_strictly_public"
-   ],
-   "modules": [
-    {
-     "name": "dece047f15695e86a2f04ca9d75ec85829146a39-component.wasm",
-     "file": "tier1/http_request/dece047f15695e86a2f04ca9d75ec85829146a39-component.wasm",
-     "type": "application/wasm",
-     "sha256": "cc15cc785703e7bbb8dbff2d38dc84a4ac24e2f44316182730abae0f170ef133"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "http_request"
-    }
-   },
-   "bytes": 106710
-  },
-  {
-   "name": "arcrun-if-control",
-   "tier": 1,
-   "main_file": "tier1/if_control/index.js",
-   "main_module": "index.js",
-   "sha256": "b2b3942fb3565d5819b52c1d68e6f764b7178c86c508c7acd4f699068d32b5c5",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "8f00b54a9af7ec82c27b8f62b9951af22eaa4612-component.wasm",
-     "file": "tier1/if_control/8f00b54a9af7ec82c27b8f62b9951af22eaa4612-component.wasm",
-     "type": "application/wasm",
-     "sha256": "87c81e9cf5e664f60c06a364508dd365d49953e1b7afba6a5753fce5a4c82636"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "if_control"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-merge",
-   "tier": 1,
-   "main_file": "tier1/merge/index.js",
-   "main_module": "index.js",
-   "sha256": "ccb13c336383cf1fed01f78c36eb394c345ae09984d175d6d5a12d5246f0b89d",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "e99ec54d9c509604b6fffd4b9184d3942a413520-component.wasm",
-     "file": "tier1/merge/e99ec54d9c509604b6fffd4b9184d3942a413520-component.wasm",
-     "type": "application/wasm",
-     "sha256": "55a4d143246df172f60b5e15e7b26e55279deda9db436e3d65bccc25c86d7cd9"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "merge"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-number-ops",
-   "tier": 1,
-   "main_file": "tier1/number_ops/index.js",
-   "main_module": "index.js",
-   "sha256": "7a935bcee1b468f1299852a05e97e64fc1d62675d7a6f0cdcee2e2f2caf47df3",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "70f7f87bddfc4341aea7f2f953f00b0e38209bc1-component.wasm",
-     "file": "tier1/number_ops/70f7f87bddfc4341aea7f2f953f00b0e38209bc1-component.wasm",
-     "type": "application/wasm",
-     "sha256": "452d1940f6e2b2b36dc97c145abcb7b5bacdbfa7631c742827c2f6f6db87b4ea"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "number_ops"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-set",
-   "tier": 1,
-   "main_file": "tier1/set/index.js",
-   "main_module": "index.js",
-   "sha256": "a20c144576a62b60acae3bb79961f4ec493bd6c2a0e63a6d865ac9b1560f6db2",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "6e202a50e05d7a48b3d3318e149670cd87f213c9-component.wasm",
-     "file": "tier1/set/6e202a50e05d7a48b3d3318e149670cd87f213c9-component.wasm",
-     "type": "application/wasm",
-     "sha256": "f5afcf6e57401d2d83b21fb971ec80ca56d5e8e4bdb74a004f3d118875ed57c4"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "set"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-string-ops",
-   "tier": 1,
-   "main_file": "tier1/string_ops/index.js",
-   "main_module": "index.js",
-   "sha256": "5edee624dc5111877f10fd4f69cf6d93ef151ca9acb5d04b50197908a06c562b",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "d2e03502220d42d7f65d990289a947213d6e1972-component.wasm",
-     "file": "tier1/string_ops/d2e03502220d42d7f65d990289a947213d6e1972-component.wasm",
-     "type": "application/wasm",
-     "sha256": "41f3243ee18bb9f4fcbaa417bd773347128dec2971132e240eddec19ba6a9da2"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "string_ops"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-switch",
-   "tier": 1,
-   "main_file": "tier1/switch/index.js",
-   "main_module": "index.js",
-   "sha256": "9e2a023fbeae41e15d232de7f895538ab39dec3113bdac9737884383f92d576f",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "1920d78cdde1384d775cbc6647957409cf185584-component.wasm",
-     "file": "tier1/switch/1920d78cdde1384d775cbc6647957409cf185584-component.wasm",
-     "type": "application/wasm",
-     "sha256": "6d993dc9b1affe16b600aaa7cae5af977108cc08513bb11d9d9db908285fea8b"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "switch"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-try-catch",
-   "tier": 1,
-   "main_file": "tier1/try_catch/index.js",
-   "main_module": "index.js",
-   "sha256": "ed1ac75f0e73808e3a1ebd44e96faaac5ac5019b30fe66dec277ef7e1009ed1f",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "6a99d0d167de81d14f89a86557dc913fd84af607-component.wasm",
-     "file": "tier1/try_catch/6a99d0d167de81d14f89a86557dc913fd84af607-component.wasm",
-     "type": "application/wasm",
-     "sha256": "10eaddc5ef0d3dc68e3f009970541ac7f5fce30dcdbecec9a333afd5a29e3486"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "try_catch"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-validate-json",
-   "tier": 1,
-   "main_file": "tier1/validate_json/index.js",
-   "main_module": "index.js",
-   "sha256": "d8030654c65df195d7e0e23a6d366bace35711896c21d8eff9fae70f853f150e",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "d0c376152f3b536223d350c5cd10609e89062211-component.wasm",
-     "file": "tier1/validate_json/d0c376152f3b536223d350c5cd10609e89062211-component.wasm",
-     "type": "application/wasm",
-     "sha256": "8142ffd3cc57efbb9128faaf450b646111b0f2e2575cc29a7b562a7b185912ab"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "validate_json"
-    }
-   },
-   "bytes": 71642
-  },
-  {
-   "name": "arcrun-wait",
-   "tier": 1,
-   "main_file": "tier1/wait/index.js",
-   "main_module": "index.js",
-   "sha256": "e596e83ac43525ea13940691571f56825e155d16d2ddbf54703a4efea63526ee",
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "modules": [
-    {
-     "name": "7a79aab24cf9a299e7a22147080b3c7bdfe3493d-component.wasm",
-     "file": "tier1/wait/7a79aab24cf9a299e7a22147080b3c7bdfe3493d-component.wasm",
-     "type": "application/wasm",
-     "sha256": "52ca2d184bf3dcc646bb94f29f7f3e69b5540276363e83a54cb435ff33ca2f3c"
-    }
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "wait"
-    }
-   },
-   "bytes": 71642
-  },
-  {
    "name": "arcrun-cypher-executor",
-   "tier": 2,
-   "main_file": "tier2/cypher/index.js",
-   "main_module": "index.js",
-   "sha256": "8f0b446009ba030d9f2eb18a9231aba4efec637d9e426b17dec5b3036c22f3c3",
+   "canonical": null,
+   "main_module": "worker.mjs",
+   "main_file": "arcrun-cypher-executor/worker.mjs",
+   "js_bytes": 539200,
+   "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat",
     "global_fetch_strictly_public"
    ],
-   "modules": [],
    "requires": {
     "kv": [
      "EXEC_CONTEXT",
@@ -566,9 +50,11 @@
     ],
     "d1": [
      {
-      "binding": "CREDENTIALS_DB"
+      "binding": "CREDENTIALS_DB",
+      "database_name": "arcrun-kbdb"
      }
     ],
+    "vectorize": 0,
     "ai": true,
     "vars": {
      "ENVIRONMENT": "production",
@@ -583,99 +69,104 @@
      "GITEA_SPRINT_DIR": "system-dev/docs/3-specs/autonomy-dispatch"
     }
    },
-   "stripped_services": [
-    "SVC_IF_CONTROL",
-    "SVC_SWITCH",
-    "SVC_FOREACH_CONTROL",
-    "SVC_FILTER",
-    "SVC_MERGE",
-    "SVC_TRY_CATCH",
-    "SVC_WAIT",
-    "SVC_SET",
-    "SVC_ARRAY_OPS",
-    "SVC_STRING_OPS",
-    "SVC_NUMBER_OPS",
-    "SVC_DATE_OPS",
-    "SVC_VALIDATE_JSON"
-   ],
-   "bytes": 601563
+   "stripped": {
+    "services": 13
+   },
+   "warnings": [],
+   "sha256": "aba89e37228975eb49b651352cfe996140e22be5833a2e25c37a809d5496f889",
+   "bytes": 539200
   },
   {
    "name": "arcrun-kbdb",
-   "tier": 2,
-   "main_file": "tier2/kbdb/index.js",
-   "main_module": "index.js",
-   "sha256": "163aac464d8b98eddca782563a4ad521f5c0455adbc8f6609f9068733da530f8",
+   "canonical": null,
+   "main_module": "worker.mjs",
+   "main_file": "arcrun-kbdb/worker.mjs",
+   "js_bytes": 107161,
+   "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
     "nodejs_compat"
    ],
-   "modules": [],
    "requires": {
     "kv": [],
     "d1": [
      {
-      "binding": "DB"
+      "binding": "DB",
+      "database_name": "arcrun-kbdb"
      }
     ],
+    "vectorize": 0,
     "ai": false,
     "vars": {
      "ENVIRONMENT": "production"
     }
    },
-   "stripped_services": [],
-   "bytes": 133750
+   "warnings": [],
+   "sha256": "442c1016573501d0e578e3ab17bc5abca8265810bebeae90391bcc39c1fb8e59",
+   "bytes": 107161
   },
   {
-   "name": "arcrun-registry",
-   "tier": 2,
-   "main_file": "tier2/registry/index.js",
-   "main_module": "index.js",
-   "sha256": "6e7c6239e03cedf1acd56cc5ef7c30acacab021c9833aa0c87e6909569b1785d",
+   "name": "arcrun-http-request",
+   "canonical": "http_request",
+   "main_module": "worker.mjs",
+   "main_file": "arcrun-http-request/worker.mjs",
+   "js_bytes": 80519,
+   "modules": [
+    {
+     "name": "component.wasm",
+     "type": "application/wasm",
+     "file": "arcrun-http-request/component.wasm",
+     "sha256": "cc15cc785703e7bbb8dbff2d38dc84a4ac24e2f44316182730abae0f170ef133"
+    }
+   ],
    "compat_date": "2025-02-19",
    "compat_flags": [
-    "nodejs_compat"
+    "nodejs_compat",
+    "global_fetch_strictly_public"
    ],
-   "modules": [],
    "requires": {
-    "kv": [
-     "SUBMISSIONS_KV",
-     "ANALYTICS_KV"
-    ],
+    "kv": [],
     "d1": [],
-    "ai": true,
+    "vectorize": 0,
+    "ai": false,
     "vars": {
-     "ENVIRONMENT": "production"
+     "COMPONENT_ID": "http_request"
     }
    },
-   "stripped_services": [],
-   "bytes": 250971
+   "warnings": [],
+   "sha256": "8a175938bf1c98b8dce489ff3085a13f512a5bf18edd0d148233177ce8a20e21",
+   "bytes": 80519
   },
   {
-   "name": "arcrun-mcp",
-   "tier": 2,
-   "main_file": "tier2/mcp/index.js",
-   "main_module": "index.js",
-   "sha256": "65515d2f20647fca61a51df47437d2b088f83b8d6f227b3bb0d8ead2ebac9982",
-   "compat_date": "2024-11-27",
-   "compat_flags": [
-    "nodejs_compat"
+   "name": "arcrun-code",
+   "canonical": "code",
+   "main_module": "worker.mjs",
+   "main_file": "arcrun-code/worker.mjs",
+   "js_bytes": 154438,
+   "modules": [
+    {
+     "name": "quickjs.wasm",
+     "type": "application/wasm",
+     "file": "arcrun-code/quickjs.wasm",
+     "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232"
+    }
    ],
-   "modules": [],
+   "compat_date": "2025-02-19",
+   "compat_flags": [],
    "requires": {
-    "kv": [
-     "OAUTH_KV"
-    ],
+    "kv": [],
     "d1": [],
+    "vectorize": 0,
     "ai": false,
-    "vars": {}
+    "vars": {
+     "COMPONENT_ID": "code"
+    }
    },
-   "stripped_services": [
-    "COMPONENT_REGISTRY",
-    "CYPHER_EXECUTOR",
-    "KBDB"
-   ],
-   "bytes": 1304459
+   "warnings": [],
+   "sha256": "761acc054b6f01bc2c37dce3b5923cd40d4ac8ac986bc0452f36e16463299a74",
+   "bytes": 154438
   }
- ]
+ ],
+ "built_for": "oauth-installer-lazy-load",
+ "notes": []
 }

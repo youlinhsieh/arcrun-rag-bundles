@@ -1,939 +1,9 @@
-var __defProp = Object.defineProperty;
-var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
+// ../../matrix/arcrun/.component-builds/http_request/src/index.ts
+import componentWasm from "./component.wasm";
 
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/_internal/utils.mjs
-// @__NO_SIDE_EFFECTS__
-function createNotImplementedError(name) {
-  return new Error(`[unenv] ${name} is not implemented yet!`);
-}
-__name(createNotImplementedError, "createNotImplementedError");
-// @__NO_SIDE_EFFECTS__
-function notImplemented(name) {
-  const fn = /* @__PURE__ */ __name(() => {
-    throw /* @__PURE__ */ createNotImplementedError(name);
-  }, "fn");
-  return Object.assign(fn, { __unenv__: true });
-}
-__name(notImplemented, "notImplemented");
-// @__NO_SIDE_EFFECTS__
-function notImplementedClass(name) {
-  return class {
-    __unenv__ = true;
-    constructor() {
-      throw new Error(`[unenv] ${name} is not implemented yet!`);
-    }
-  };
-}
-__name(notImplementedClass, "notImplementedClass");
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/perf_hooks/performance.mjs
-var _timeOrigin = globalThis.performance?.timeOrigin ?? Date.now();
-var _performanceNow = globalThis.performance?.now ? globalThis.performance.now.bind(globalThis.performance) : () => Date.now() - _timeOrigin;
-var nodeTiming = {
-  name: "node",
-  entryType: "node",
-  startTime: 0,
-  duration: 0,
-  nodeStart: 0,
-  v8Start: 0,
-  bootstrapComplete: 0,
-  environment: 0,
-  loopStart: 0,
-  loopExit: 0,
-  idleTime: 0,
-  uvMetricsInfo: {
-    loopCount: 0,
-    events: 0,
-    eventsWaiting: 0
-  },
-  detail: void 0,
-  toJSON() {
-    return this;
-  }
-};
-var PerformanceEntry = class {
-  static {
-    __name(this, "PerformanceEntry");
-  }
-  __unenv__ = true;
-  detail;
-  entryType = "event";
-  name;
-  startTime;
-  constructor(name, options) {
-    this.name = name;
-    this.startTime = options?.startTime || _performanceNow();
-    this.detail = options?.detail;
-  }
-  get duration() {
-    return _performanceNow() - this.startTime;
-  }
-  toJSON() {
-    return {
-      name: this.name,
-      entryType: this.entryType,
-      startTime: this.startTime,
-      duration: this.duration,
-      detail: this.detail
-    };
-  }
-};
-var PerformanceMark = class PerformanceMark2 extends PerformanceEntry {
-  static {
-    __name(this, "PerformanceMark");
-  }
-  entryType = "mark";
-  constructor() {
-    super(...arguments);
-  }
-  get duration() {
-    return 0;
-  }
-};
-var PerformanceMeasure = class extends PerformanceEntry {
-  static {
-    __name(this, "PerformanceMeasure");
-  }
-  entryType = "measure";
-};
-var PerformanceResourceTiming = class extends PerformanceEntry {
-  static {
-    __name(this, "PerformanceResourceTiming");
-  }
-  entryType = "resource";
-  serverTiming = [];
-  connectEnd = 0;
-  connectStart = 0;
-  decodedBodySize = 0;
-  domainLookupEnd = 0;
-  domainLookupStart = 0;
-  encodedBodySize = 0;
-  fetchStart = 0;
-  initiatorType = "";
-  name = "";
-  nextHopProtocol = "";
-  redirectEnd = 0;
-  redirectStart = 0;
-  requestStart = 0;
-  responseEnd = 0;
-  responseStart = 0;
-  secureConnectionStart = 0;
-  startTime = 0;
-  transferSize = 0;
-  workerStart = 0;
-  responseStatus = 0;
-};
-var PerformanceObserverEntryList = class {
-  static {
-    __name(this, "PerformanceObserverEntryList");
-  }
-  __unenv__ = true;
-  getEntries() {
-    return [];
-  }
-  getEntriesByName(_name, _type) {
-    return [];
-  }
-  getEntriesByType(type) {
-    return [];
-  }
-};
-var Performance = class {
-  static {
-    __name(this, "Performance");
-  }
-  __unenv__ = true;
-  timeOrigin = _timeOrigin;
-  eventCounts = /* @__PURE__ */ new Map();
-  _entries = [];
-  _resourceTimingBufferSize = 0;
-  navigation = void 0;
-  timing = void 0;
-  timerify(_fn, _options) {
-    throw createNotImplementedError("Performance.timerify");
-  }
-  get nodeTiming() {
-    return nodeTiming;
-  }
-  eventLoopUtilization() {
-    return {};
-  }
-  markResourceTiming() {
-    return new PerformanceResourceTiming("");
-  }
-  onresourcetimingbufferfull = null;
-  now() {
-    if (this.timeOrigin === _timeOrigin) {
-      return _performanceNow();
-    }
-    return Date.now() - this.timeOrigin;
-  }
-  clearMarks(markName) {
-    this._entries = markName ? this._entries.filter((e) => e.name !== markName) : this._entries.filter((e) => e.entryType !== "mark");
-  }
-  clearMeasures(measureName) {
-    this._entries = measureName ? this._entries.filter((e) => e.name !== measureName) : this._entries.filter((e) => e.entryType !== "measure");
-  }
-  clearResourceTimings() {
-    this._entries = this._entries.filter((e) => e.entryType !== "resource" || e.entryType !== "navigation");
-  }
-  getEntries() {
-    return this._entries;
-  }
-  getEntriesByName(name, type) {
-    return this._entries.filter((e) => e.name === name && (!type || e.entryType === type));
-  }
-  getEntriesByType(type) {
-    return this._entries.filter((e) => e.entryType === type);
-  }
-  mark(name, options) {
-    const entry = new PerformanceMark(name, options);
-    this._entries.push(entry);
-    return entry;
-  }
-  measure(measureName, startOrMeasureOptions, endMark) {
-    let start;
-    let end;
-    if (typeof startOrMeasureOptions === "string") {
-      start = this.getEntriesByName(startOrMeasureOptions, "mark")[0]?.startTime;
-      end = this.getEntriesByName(endMark, "mark")[0]?.startTime;
-    } else {
-      start = Number.parseFloat(startOrMeasureOptions?.start) || this.now();
-      end = Number.parseFloat(startOrMeasureOptions?.end) || this.now();
-    }
-    const entry = new PerformanceMeasure(measureName, {
-      startTime: start,
-      detail: {
-        start,
-        end
-      }
-    });
-    this._entries.push(entry);
-    return entry;
-  }
-  setResourceTimingBufferSize(maxSize) {
-    this._resourceTimingBufferSize = maxSize;
-  }
-  addEventListener(type, listener, options) {
-    throw createNotImplementedError("Performance.addEventListener");
-  }
-  removeEventListener(type, listener, options) {
-    throw createNotImplementedError("Performance.removeEventListener");
-  }
-  dispatchEvent(event) {
-    throw createNotImplementedError("Performance.dispatchEvent");
-  }
-  toJSON() {
-    return this;
-  }
-};
-var PerformanceObserver = class {
-  static {
-    __name(this, "PerformanceObserver");
-  }
-  __unenv__ = true;
-  static supportedEntryTypes = [];
-  _callback = null;
-  constructor(callback) {
-    this._callback = callback;
-  }
-  takeRecords() {
-    return [];
-  }
-  disconnect() {
-    throw createNotImplementedError("PerformanceObserver.disconnect");
-  }
-  observe(options) {
-    throw createNotImplementedError("PerformanceObserver.observe");
-  }
-  bind(fn) {
-    return fn;
-  }
-  runInAsyncScope(fn, thisArg, ...args) {
-    return fn.call(thisArg, ...args);
-  }
-  asyncId() {
-    return 0;
-  }
-  triggerAsyncId() {
-    return 0;
-  }
-  emitDestroy() {
-    return this;
-  }
-};
-var performance = globalThis.performance && "addEventListener" in globalThis.performance ? globalThis.performance : new Performance();
-
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/polyfill/performance.mjs
-if (!("__unenv__" in performance)) {
-  const proto = Performance.prototype;
-  for (const key of Object.getOwnPropertyNames(proto)) {
-    if (key !== "constructor" && !(key in performance)) {
-      const desc = Object.getOwnPropertyDescriptor(proto, key);
-      if (desc) {
-        Object.defineProperty(performance, key, desc);
-      }
-    }
-  }
-}
-globalThis.performance = performance;
-globalThis.Performance = Performance;
-globalThis.PerformanceEntry = PerformanceEntry;
-globalThis.PerformanceMark = PerformanceMark;
-globalThis.PerformanceMeasure = PerformanceMeasure;
-globalThis.PerformanceObserver = PerformanceObserver;
-globalThis.PerformanceObserverEntryList = PerformanceObserverEntryList;
-globalThis.PerformanceResourceTiming = PerformanceResourceTiming;
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
-import { Writable } from "node:stream";
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/mock/noop.mjs
-var noop_default = Object.assign(() => {
-}, { __unenv__: true });
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/console.mjs
-var _console = globalThis.console;
-var _ignoreErrors = true;
-var _stderr = new Writable();
-var _stdout = new Writable();
-var log = _console?.log ?? noop_default;
-var info = _console?.info ?? log;
-var trace = _console?.trace ?? info;
-var debug = _console?.debug ?? log;
-var table = _console?.table ?? log;
-var error = _console?.error ?? log;
-var warn = _console?.warn ?? error;
-var createTask = _console?.createTask ?? /* @__PURE__ */ notImplemented("console.createTask");
-var clear = _console?.clear ?? noop_default;
-var count = _console?.count ?? noop_default;
-var countReset = _console?.countReset ?? noop_default;
-var dir = _console?.dir ?? noop_default;
-var dirxml = _console?.dirxml ?? noop_default;
-var group = _console?.group ?? noop_default;
-var groupEnd = _console?.groupEnd ?? noop_default;
-var groupCollapsed = _console?.groupCollapsed ?? noop_default;
-var profile = _console?.profile ?? noop_default;
-var profileEnd = _console?.profileEnd ?? noop_default;
-var time = _console?.time ?? noop_default;
-var timeEnd = _console?.timeEnd ?? noop_default;
-var timeLog = _console?.timeLog ?? noop_default;
-var timeStamp = _console?.timeStamp ?? noop_default;
-var Console = _console?.Console ?? /* @__PURE__ */ notImplementedClass("console.Console");
-var _times = /* @__PURE__ */ new Map();
-var _stdoutErrorHandler = noop_default;
-var _stderrErrorHandler = noop_default;
-
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/console.mjs
-var workerdConsole = globalThis["console"];
-var {
-  assert,
-  clear: clear2,
-  // @ts-expect-error undocumented public API
-  context,
-  count: count2,
-  countReset: countReset2,
-  // @ts-expect-error undocumented public API
-  createTask: createTask2,
-  debug: debug2,
-  dir: dir2,
-  dirxml: dirxml2,
-  error: error2,
-  group: group2,
-  groupCollapsed: groupCollapsed2,
-  groupEnd: groupEnd2,
-  info: info2,
-  log: log2,
-  profile: profile2,
-  profileEnd: profileEnd2,
-  table: table2,
-  time: time2,
-  timeEnd: timeEnd2,
-  timeLog: timeLog2,
-  timeStamp: timeStamp2,
-  trace: trace2,
-  warn: warn2
-} = workerdConsole;
-Object.assign(workerdConsole, {
-  Console,
-  _ignoreErrors,
-  _stderr,
-  _stderrErrorHandler,
-  _stdout,
-  _stdoutErrorHandler,
-  _times
-});
-var console_default = workerdConsole;
-
-// node_modules/.pnpm/wrangler@4.83.0_@cloudflare+workers-types@4.20260420.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-console
-globalThis.console = console_default;
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/hrtime.mjs
-var hrtime = /* @__PURE__ */ Object.assign(/* @__PURE__ */ __name(function hrtime2(startTime) {
-  const now = Date.now();
-  const seconds = Math.trunc(now / 1e3);
-  const nanos = now % 1e3 * 1e6;
-  if (startTime) {
-    let diffSeconds = seconds - startTime[0];
-    let diffNanos = nanos - startTime[0];
-    if (diffNanos < 0) {
-      diffSeconds = diffSeconds - 1;
-      diffNanos = 1e9 + diffNanos;
-    }
-    return [diffSeconds, diffNanos];
-  }
-  return [seconds, nanos];
-}, "hrtime"), { bigint: /* @__PURE__ */ __name(function bigint() {
-  return BigInt(Date.now() * 1e6);
-}, "bigint") });
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
-import { EventEmitter } from "node:events";
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/read-stream.mjs
-var ReadStream = class {
-  static {
-    __name(this, "ReadStream");
-  }
-  fd;
-  isRaw = false;
-  isTTY = false;
-  constructor(fd) {
-    this.fd = fd;
-  }
-  setRawMode(mode) {
-    this.isRaw = mode;
-    return this;
-  }
-};
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/tty/write-stream.mjs
-var WriteStream = class {
-  static {
-    __name(this, "WriteStream");
-  }
-  fd;
-  columns = 80;
-  rows = 24;
-  isTTY = false;
-  constructor(fd) {
-    this.fd = fd;
-  }
-  clearLine(dir3, callback) {
-    callback && callback();
-    return false;
-  }
-  clearScreenDown(callback) {
-    callback && callback();
-    return false;
-  }
-  cursorTo(x, y, callback) {
-    callback && typeof callback === "function" && callback();
-    return false;
-  }
-  moveCursor(dx, dy, callback) {
-    callback && callback();
-    return false;
-  }
-  getColorDepth(env2) {
-    return 1;
-  }
-  hasColors(count3, env2) {
-    return false;
-  }
-  getWindowSize() {
-    return [this.columns, this.rows];
-  }
-  write(str, encoding, cb) {
-    if (str instanceof Uint8Array) {
-      str = new TextDecoder().decode(str);
-    }
-    try {
-      console.log(str);
-    } catch {
-    }
-    cb && typeof cb === "function" && cb();
-    return false;
-  }
-};
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/node-version.mjs
-var NODE_VERSION = "22.14.0";
-
-// node_modules/.pnpm/unenv@2.0.0-rc.24/node_modules/unenv/dist/runtime/node/internal/process/process.mjs
-var Process = class _Process extends EventEmitter {
-  static {
-    __name(this, "Process");
-  }
-  env;
-  hrtime;
-  nextTick;
-  constructor(impl) {
-    super();
-    this.env = impl.env;
-    this.hrtime = impl.hrtime;
-    this.nextTick = impl.nextTick;
-    for (const prop of [...Object.getOwnPropertyNames(_Process.prototype), ...Object.getOwnPropertyNames(EventEmitter.prototype)]) {
-      const value = this[prop];
-      if (typeof value === "function") {
-        this[prop] = value.bind(this);
-      }
-    }
-  }
-  // --- event emitter ---
-  emitWarning(warning, type, code) {
-    console.warn(`${code ? `[${code}] ` : ""}${type ? `${type}: ` : ""}${warning}`);
-  }
-  emit(...args) {
-    return super.emit(...args);
-  }
-  listeners(eventName) {
-    return super.listeners(eventName);
-  }
-  // --- stdio (lazy initializers) ---
-  #stdin;
-  #stdout;
-  #stderr;
-  get stdin() {
-    return this.#stdin ??= new ReadStream(0);
-  }
-  get stdout() {
-    return this.#stdout ??= new WriteStream(1);
-  }
-  get stderr() {
-    return this.#stderr ??= new WriteStream(2);
-  }
-  // --- cwd ---
-  #cwd = "/";
-  chdir(cwd2) {
-    this.#cwd = cwd2;
-  }
-  cwd() {
-    return this.#cwd;
-  }
-  // --- dummy props and getters ---
-  arch = "";
-  platform = "";
-  argv = [];
-  argv0 = "";
-  execArgv = [];
-  execPath = "";
-  title = "";
-  pid = 200;
-  ppid = 100;
-  get version() {
-    return `v${NODE_VERSION}`;
-  }
-  get versions() {
-    return { node: NODE_VERSION };
-  }
-  get allowedNodeEnvironmentFlags() {
-    return /* @__PURE__ */ new Set();
-  }
-  get sourceMapsEnabled() {
-    return false;
-  }
-  get debugPort() {
-    return 0;
-  }
-  get throwDeprecation() {
-    return false;
-  }
-  get traceDeprecation() {
-    return false;
-  }
-  get features() {
-    return {};
-  }
-  get release() {
-    return {};
-  }
-  get connected() {
-    return false;
-  }
-  get config() {
-    return {};
-  }
-  get moduleLoadList() {
-    return [];
-  }
-  constrainedMemory() {
-    return 0;
-  }
-  availableMemory() {
-    return 0;
-  }
-  uptime() {
-    return 0;
-  }
-  resourceUsage() {
-    return {};
-  }
-  // --- noop methods ---
-  ref() {
-  }
-  unref() {
-  }
-  // --- unimplemented methods ---
-  umask() {
-    throw createNotImplementedError("process.umask");
-  }
-  getBuiltinModule() {
-    return void 0;
-  }
-  getActiveResourcesInfo() {
-    throw createNotImplementedError("process.getActiveResourcesInfo");
-  }
-  exit() {
-    throw createNotImplementedError("process.exit");
-  }
-  reallyExit() {
-    throw createNotImplementedError("process.reallyExit");
-  }
-  kill() {
-    throw createNotImplementedError("process.kill");
-  }
-  abort() {
-    throw createNotImplementedError("process.abort");
-  }
-  dlopen() {
-    throw createNotImplementedError("process.dlopen");
-  }
-  setSourceMapsEnabled() {
-    throw createNotImplementedError("process.setSourceMapsEnabled");
-  }
-  loadEnvFile() {
-    throw createNotImplementedError("process.loadEnvFile");
-  }
-  disconnect() {
-    throw createNotImplementedError("process.disconnect");
-  }
-  cpuUsage() {
-    throw createNotImplementedError("process.cpuUsage");
-  }
-  setUncaughtExceptionCaptureCallback() {
-    throw createNotImplementedError("process.setUncaughtExceptionCaptureCallback");
-  }
-  hasUncaughtExceptionCaptureCallback() {
-    throw createNotImplementedError("process.hasUncaughtExceptionCaptureCallback");
-  }
-  initgroups() {
-    throw createNotImplementedError("process.initgroups");
-  }
-  openStdin() {
-    throw createNotImplementedError("process.openStdin");
-  }
-  assert() {
-    throw createNotImplementedError("process.assert");
-  }
-  binding() {
-    throw createNotImplementedError("process.binding");
-  }
-  // --- attached interfaces ---
-  permission = { has: /* @__PURE__ */ notImplemented("process.permission.has") };
-  report = {
-    directory: "",
-    filename: "",
-    signal: "SIGUSR2",
-    compact: false,
-    reportOnFatalError: false,
-    reportOnSignal: false,
-    reportOnUncaughtException: false,
-    getReport: /* @__PURE__ */ notImplemented("process.report.getReport"),
-    writeReport: /* @__PURE__ */ notImplemented("process.report.writeReport")
-  };
-  finalization = {
-    register: /* @__PURE__ */ notImplemented("process.finalization.register"),
-    unregister: /* @__PURE__ */ notImplemented("process.finalization.unregister"),
-    registerBeforeExit: /* @__PURE__ */ notImplemented("process.finalization.registerBeforeExit")
-  };
-  memoryUsage = Object.assign(() => ({
-    arrayBuffers: 0,
-    rss: 0,
-    external: 0,
-    heapTotal: 0,
-    heapUsed: 0
-  }), { rss: /* @__PURE__ */ __name(() => 0, "rss") });
-  // --- undefined props ---
-  mainModule = void 0;
-  domain = void 0;
-  // optional
-  send = void 0;
-  exitCode = void 0;
-  channel = void 0;
-  getegid = void 0;
-  geteuid = void 0;
-  getgid = void 0;
-  getgroups = void 0;
-  getuid = void 0;
-  setegid = void 0;
-  seteuid = void 0;
-  setgid = void 0;
-  setgroups = void 0;
-  setuid = void 0;
-  // internals
-  _events = void 0;
-  _eventsCount = void 0;
-  _exiting = void 0;
-  _maxListeners = void 0;
-  _debugEnd = void 0;
-  _debugProcess = void 0;
-  _fatalException = void 0;
-  _getActiveHandles = void 0;
-  _getActiveRequests = void 0;
-  _kill = void 0;
-  _preload_modules = void 0;
-  _rawDebug = void 0;
-  _startProfilerIdleNotifier = void 0;
-  _stopProfilerIdleNotifier = void 0;
-  _tickCallback = void 0;
-  _disconnect = void 0;
-  _handleQueue = void 0;
-  _pendingMessage = void 0;
-  _channel = void 0;
-  _send = void 0;
-  _linkedBinding = void 0;
-};
-
-// node_modules/.pnpm/@cloudflare+unenv-preset@2.16.0_unenv@2.0.0-rc.24_workerd@1.20260415.1/node_modules/@cloudflare/unenv-preset/dist/runtime/node/process.mjs
-var globalProcess = globalThis["process"];
-var getBuiltinModule = globalProcess.getBuiltinModule;
-var workerdProcess = getBuiltinModule("node:process");
-var unenvProcess = new Process({
-  env: globalProcess.env,
-  hrtime,
-  // `nextTick` is available from workerd process v1
-  nextTick: workerdProcess.nextTick
-});
-var { exit, features, platform } = workerdProcess;
-var {
-  _channel,
-  _debugEnd,
-  _debugProcess,
-  _disconnect,
-  _events,
-  _eventsCount,
-  _exiting,
-  _fatalException,
-  _getActiveHandles,
-  _getActiveRequests,
-  _handleQueue,
-  _kill,
-  _linkedBinding,
-  _maxListeners,
-  _pendingMessage,
-  _preload_modules,
-  _rawDebug,
-  _send,
-  _startProfilerIdleNotifier,
-  _stopProfilerIdleNotifier,
-  _tickCallback,
-  abort,
-  addListener,
-  allowedNodeEnvironmentFlags,
-  arch,
-  argv,
-  argv0,
-  assert: assert2,
-  availableMemory,
-  binding,
-  channel,
-  chdir,
-  config,
-  connected,
-  constrainedMemory,
-  cpuUsage,
-  cwd,
-  debugPort,
-  disconnect,
-  dlopen,
-  domain,
-  emit,
-  emitWarning,
-  env,
-  eventNames,
-  execArgv,
-  execPath,
-  exitCode,
-  finalization,
-  getActiveResourcesInfo,
-  getegid,
-  geteuid,
-  getgid,
-  getgroups,
-  getMaxListeners,
-  getuid,
-  hasUncaughtExceptionCaptureCallback,
-  hrtime: hrtime3,
-  initgroups,
-  kill,
-  listenerCount,
-  listeners,
-  loadEnvFile,
-  mainModule,
-  memoryUsage,
-  moduleLoadList,
-  nextTick,
-  off,
-  on,
-  once,
-  openStdin,
-  permission,
-  pid,
-  ppid,
-  prependListener,
-  prependOnceListener,
-  rawListeners,
-  reallyExit,
-  ref,
-  release,
-  removeAllListeners,
-  removeListener,
-  report,
-  resourceUsage,
-  send,
-  setegid,
-  seteuid,
-  setgid,
-  setgroups,
-  setMaxListeners,
-  setSourceMapsEnabled,
-  setuid,
-  setUncaughtExceptionCaptureCallback,
-  sourceMapsEnabled,
-  stderr,
-  stdin,
-  stdout,
-  throwDeprecation,
-  title,
-  traceDeprecation,
-  umask,
-  unref,
-  uptime,
-  version,
-  versions
-} = unenvProcess;
-var _process = {
-  abort,
-  addListener,
-  allowedNodeEnvironmentFlags,
-  hasUncaughtExceptionCaptureCallback,
-  setUncaughtExceptionCaptureCallback,
-  loadEnvFile,
-  sourceMapsEnabled,
-  arch,
-  argv,
-  argv0,
-  chdir,
-  config,
-  connected,
-  constrainedMemory,
-  availableMemory,
-  cpuUsage,
-  cwd,
-  debugPort,
-  dlopen,
-  disconnect,
-  emit,
-  emitWarning,
-  env,
-  eventNames,
-  execArgv,
-  execPath,
-  exit,
-  finalization,
-  features,
-  getBuiltinModule,
-  getActiveResourcesInfo,
-  getMaxListeners,
-  hrtime: hrtime3,
-  kill,
-  listeners,
-  listenerCount,
-  memoryUsage,
-  nextTick,
-  on,
-  off,
-  once,
-  pid,
-  platform,
-  ppid,
-  prependListener,
-  prependOnceListener,
-  rawListeners,
-  release,
-  removeAllListeners,
-  removeListener,
-  report,
-  resourceUsage,
-  setMaxListeners,
-  setSourceMapsEnabled,
-  stderr,
-  stdin,
-  stdout,
-  title,
-  throwDeprecation,
-  traceDeprecation,
-  umask,
-  uptime,
-  version,
-  versions,
-  // @ts-expect-error old API
-  domain,
-  initgroups,
-  moduleLoadList,
-  reallyExit,
-  openStdin,
-  assert: assert2,
-  binding,
-  send,
-  exitCode,
-  channel,
-  getegid,
-  geteuid,
-  getgid,
-  getgroups,
-  getuid,
-  setegid,
-  seteuid,
-  setgid,
-  setgroups,
-  setuid,
-  permission,
-  mainModule,
-  _events,
-  _eventsCount,
-  _exiting,
-  _maxListeners,
-  _debugEnd,
-  _debugProcess,
-  _fatalException,
-  _getActiveHandles,
-  _getActiveRequests,
-  _kill,
-  _preload_modules,
-  _rawDebug,
-  _startProfilerIdleNotifier,
-  _stopProfilerIdleNotifier,
-  _tickCallback,
-  _disconnect,
-  _handleQueue,
-  _pendingMessage,
-  _channel,
-  _send,
-  _linkedBinding
-};
-var process_default = _process;
-
-// node_modules/.pnpm/wrangler@4.83.0_@cloudflare+workers-types@4.20260420.1/node_modules/wrangler/_virtual_unenv_global_polyfill-@cloudflare-unenv-preset-node-process
-globalThis.process = process_default;
-
-// src/index.ts
-import componentWasm from "./cfef89ca6e0f809fe5774d8e3db5e48222abb7f6-component.wasm";
-
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/compose.js
-var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
-  return (context2, next) => {
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/compose.js
+var compose = (middleware, onError, onNotFound) => {
+  return (context, next) => {
     let index = -1;
     return dispatch(0);
     async function dispatch(i) {
@@ -946,41 +16,40 @@ var compose = /* @__PURE__ */ __name((middleware, onError, onNotFound) => {
       let handler;
       if (middleware[i]) {
         handler = middleware[i][0][0];
-        context2.req.routeIndex = i;
+        context.req.routeIndex = i;
       } else {
         handler = i === middleware.length && next || void 0;
       }
       if (handler) {
         try {
-          res = await handler(context2, () => dispatch(i + 1));
+          res = await handler(context, () => dispatch(i + 1));
         } catch (err) {
           if (err instanceof Error && onError) {
-            context2.error = err;
-            res = await onError(err, context2);
+            context.error = err;
+            res = await onError(err, context);
             isError = true;
           } else {
             throw err;
           }
         }
       } else {
-        if (context2.finalized === false && onNotFound) {
-          res = await onNotFound(context2);
+        if (context.finalized === false && onNotFound) {
+          res = await onNotFound(context);
         }
       }
-      if (res && (context2.finalized === false || isError)) {
-        context2.res = res;
+      if (res && (context.finalized === false || isError)) {
+        context.res = res;
       }
-      return context2;
+      return context;
     }
-    __name(dispatch, "dispatch");
   };
-}, "compose");
+};
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/request/constants.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/body.js
-var parseBody = /* @__PURE__ */ __name(async (request, options = /* @__PURE__ */ Object.create(null)) => {
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/body.js
+var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
   const contentType = headers.get("Content-Type");
@@ -988,7 +57,7 @@ var parseBody = /* @__PURE__ */ __name(async (request, options = /* @__PURE__ */
     return parseFormData(request, { all, dot });
   }
   return {};
-}, "parseBody");
+};
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -996,7 +65,6 @@ async function parseFormData(request, options) {
   }
   return {};
 }
-__name(parseFormData, "parseFormData");
 function convertFormDataToBodyData(formData, options) {
   const form = /* @__PURE__ */ Object.create(null);
   formData.forEach((value, key) => {
@@ -1018,8 +86,7 @@ function convertFormDataToBodyData(formData, options) {
   }
   return form;
 }
-__name(convertFormDataToBodyData, "convertFormDataToBodyData");
-var handleParsingAllValues = /* @__PURE__ */ __name((form, key, value) => {
+var handleParsingAllValues = (form, key, value) => {
   if (form[key] !== void 0) {
     if (Array.isArray(form[key])) {
       ;
@@ -1034,8 +101,8 @@ var handleParsingAllValues = /* @__PURE__ */ __name((form, key, value) => {
       form[key] = [value];
     }
   }
-}, "handleParsingAllValues");
-var handleParsingNestedValues = /* @__PURE__ */ __name((form, key, value) => {
+};
+var handleParsingNestedValues = (form, key, value) => {
   if (/(?:^|\.)__proto__\./.test(key)) {
     return;
   }
@@ -1051,22 +118,22 @@ var handleParsingNestedValues = /* @__PURE__ */ __name((form, key, value) => {
       nestedForm = nestedForm[key2];
     }
   });
-}, "handleParsingNestedValues");
+};
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/url.js
-var splitPath = /* @__PURE__ */ __name((path) => {
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/url.js
+var splitPath = (path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
     paths.shift();
   }
   return paths;
-}, "splitPath");
-var splitRoutingPath = /* @__PURE__ */ __name((routePath) => {
+};
+var splitRoutingPath = (routePath) => {
   const { groups, path } = extractGroupsFromPath(routePath);
   const paths = splitPath(path);
   return replaceGroupMarks(paths, groups);
-}, "splitRoutingPath");
-var extractGroupsFromPath = /* @__PURE__ */ __name((path) => {
+};
+var extractGroupsFromPath = (path) => {
   const groups = [];
   path = path.replace(/\{[^}]+\}/g, (match2, index) => {
     const mark = `@${index}`;
@@ -1074,8 +141,8 @@ var extractGroupsFromPath = /* @__PURE__ */ __name((path) => {
     return mark;
   });
   return { groups, path };
-}, "extractGroupsFromPath");
-var replaceGroupMarks = /* @__PURE__ */ __name((paths, groups) => {
+};
+var replaceGroupMarks = (paths, groups) => {
   for (let i = groups.length - 1; i >= 0; i--) {
     const [mark] = groups[i];
     for (let j = paths.length - 1; j >= 0; j--) {
@@ -1086,9 +153,9 @@ var replaceGroupMarks = /* @__PURE__ */ __name((paths, groups) => {
     }
   }
   return paths;
-}, "replaceGroupMarks");
+};
 var patternCache = {};
-var getPattern = /* @__PURE__ */ __name((label, next) => {
+var getPattern = (label, next) => {
   if (label === "*") {
     return "*";
   }
@@ -1105,8 +172,8 @@ var getPattern = /* @__PURE__ */ __name((label, next) => {
     return patternCache[cacheKey];
   }
   return null;
-}, "getPattern");
-var tryDecode = /* @__PURE__ */ __name((str, decoder) => {
+};
+var tryDecode = (str, decoder) => {
   try {
     return decoder(str);
   } catch {
@@ -1118,9 +185,9 @@ var tryDecode = /* @__PURE__ */ __name((str, decoder) => {
       }
     });
   }
-}, "tryDecode");
-var tryDecodeURI = /* @__PURE__ */ __name((str) => tryDecode(str, decodeURI), "tryDecodeURI");
-var getPath = /* @__PURE__ */ __name((request) => {
+};
+var tryDecodeURI = (str) => tryDecode(str, decodeURI);
+var getPath = (request) => {
   const url = request.url;
   const start = url.indexOf("/", url.indexOf(":") + 4);
   let i = start;
@@ -1137,18 +204,18 @@ var getPath = /* @__PURE__ */ __name((request) => {
     }
   }
   return url.slice(start, i);
-}, "getPath");
-var getPathNoStrict = /* @__PURE__ */ __name((request) => {
+};
+var getPathNoStrict = (request) => {
   const result = getPath(request);
   return result.length > 1 && result.at(-1) === "/" ? result.slice(0, -1) : result;
-}, "getPathNoStrict");
-var mergePath = /* @__PURE__ */ __name((base, sub, ...rest) => {
+};
+var mergePath = (base, sub, ...rest) => {
   if (rest.length) {
     sub = mergePath(sub, ...rest);
   }
   return `${base?.[0] === "/" ? "" : "/"}${base}${sub === "/" ? "" : `${base?.at(-1) === "/" ? "" : "/"}${sub?.[0] === "/" ? sub.slice(1) : sub}`}`;
-}, "mergePath");
-var checkOptionalParameter = /* @__PURE__ */ __name((path) => {
+};
+var checkOptionalParameter = (path) => {
   if (path.charCodeAt(path.length - 1) !== 63 || !path.includes(":")) {
     return null;
   }
@@ -1174,8 +241,8 @@ var checkOptionalParameter = /* @__PURE__ */ __name((path) => {
     }
   });
   return results.filter((v, i, a) => a.indexOf(v) === i);
-}, "checkOptionalParameter");
-var _decodeURI = /* @__PURE__ */ __name((value) => {
+};
+var _decodeURI = (value) => {
   if (!/[%+]/.test(value)) {
     return value;
   }
@@ -1183,8 +250,8 @@ var _decodeURI = /* @__PURE__ */ __name((value) => {
     value = value.replace(/\+/g, " ");
   }
   return value.indexOf("%") !== -1 ? tryDecode(value, decodeURIComponent_) : value;
-}, "_decodeURI");
-var _getQueryParam = /* @__PURE__ */ __name((url, key, multiple) => {
+};
+var _getQueryParam = (url, key, multiple) => {
   let encoded;
   if (!multiple && key && !/[%+]/.test(key)) {
     let keyIndex2 = url.indexOf("?", 8);
@@ -1250,19 +317,16 @@ var _getQueryParam = /* @__PURE__ */ __name((url, key, multiple) => {
     }
   }
   return key ? results[key] : results;
-}, "_getQueryParam");
+};
 var getQueryParam = _getQueryParam;
-var getQueryParams = /* @__PURE__ */ __name((url, key) => {
+var getQueryParams = (url, key) => {
   return _getQueryParam(url, key, true);
-}, "getQueryParams");
+};
 var decodeURIComponent_ = decodeURIComponent;
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/request.js
-var tryDecodeURIComponent = /* @__PURE__ */ __name((str) => tryDecode(str, decodeURIComponent_), "tryDecodeURIComponent");
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/request.js
+var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
 var HonoRequest = class {
-  static {
-    __name(this, "HonoRequest");
-  }
   /**
    * `.raw` can get the raw Request object.
    *
@@ -1343,7 +407,7 @@ var HonoRequest = class {
   async parseBody(options) {
     return parseBody(this, options);
   }
-  #cachedBody = /* @__PURE__ */ __name((key) => {
+  #cachedBody = (key) => {
     const { bodyCache, raw: raw2 } = this;
     const cachedBody = bodyCache[key];
     if (cachedBody) {
@@ -1359,7 +423,7 @@ var HonoRequest = class {
       });
     }
     return bodyCache[key] = raw2[key]();
-  }, "#cachedBody");
+  };
   /**
    * `.json()` can parse Request body of type `application/json`
    *
@@ -1528,19 +592,19 @@ var HonoRequest = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/html.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
   Stream: 3
 };
-var raw = /* @__PURE__ */ __name((value, callbacks) => {
+var raw = (value, callbacks) => {
   const escapedString = new String(value);
   escapedString.isEscaped = true;
   escapedString.callbacks = callbacks;
   return escapedString;
-}, "raw");
-var resolveCallback = /* @__PURE__ */ __name(async (str, phase, preserveCallbacks, context2, buffer) => {
+};
+var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => {
   if (typeof str === "object" && !(str instanceof String)) {
     if (!(str instanceof Promise)) {
       str = str.toString();
@@ -1558,9 +622,9 @@ var resolveCallback = /* @__PURE__ */ __name(async (str, phase, preserveCallback
   } else {
     buffer = [str];
   }
-  const resStr = Promise.all(callbacks.map((c) => c({ phase, buffer, context: context2 }))).then(
+  const resStr = Promise.all(callbacks.map((c) => c({ phase, buffer, context }))).then(
     (res) => Promise.all(
-      res.filter(Boolean).map((str2) => resolveCallback(str2, phase, false, context2, buffer))
+      res.filter(Boolean).map((str2) => resolveCallback(str2, phase, false, context, buffer))
     ).then(() => buffer[0])
   );
   if (preserveCallbacks) {
@@ -1568,21 +632,18 @@ var resolveCallback = /* @__PURE__ */ __name(async (str, phase, preserveCallback
   } else {
     return resStr;
   }
-}, "resolveCallback");
+};
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/context.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
-var setDefaultContentType = /* @__PURE__ */ __name((contentType, headers) => {
+var setDefaultContentType = (contentType, headers) => {
   return {
     "Content-Type": contentType,
     ...headers
   };
-}, "setDefaultContentType");
-var createResponseInstance = /* @__PURE__ */ __name((body, init) => new Response(body, init), "createResponseInstance");
+};
+var createResponseInstance = (body, init) => new Response(body, init);
 var Context = class {
-  static {
-    __name(this, "Context");
-  }
   #rawRequest;
   #req;
   /**
@@ -1722,23 +783,23 @@ var Context = class {
    * })
    * ```
    */
-  render = /* @__PURE__ */ __name((...args) => {
+  render = (...args) => {
     this.#renderer ??= (content) => this.html(content);
     return this.#renderer(...args);
-  }, "render");
+  };
   /**
    * Sets the layout for the response.
    *
    * @param layout - The layout to set.
    * @returns The layout function.
    */
-  setLayout = /* @__PURE__ */ __name((layout) => this.#layout = layout, "setLayout");
+  setLayout = (layout) => this.#layout = layout;
   /**
    * Gets the current layout for the response.
    *
    * @returns The current layout function.
    */
-  getLayout = /* @__PURE__ */ __name(() => this.#layout, "getLayout");
+  getLayout = () => this.#layout;
   /**
    * `.setRenderer()` can set the layout in the custom middleware.
    *
@@ -1760,9 +821,9 @@ var Context = class {
    * })
    * ```
    */
-  setRenderer = /* @__PURE__ */ __name((renderer) => {
+  setRenderer = (renderer) => {
     this.#renderer = renderer;
-  }, "setRenderer");
+  };
   /**
    * `.header()` can set headers.
    *
@@ -1779,7 +840,7 @@ var Context = class {
    * })
    * ```
    */
-  header = /* @__PURE__ */ __name((name, value, options) => {
+  header = (name, value, options) => {
     if (this.finalized) {
       this.#res = createResponseInstance(this.#res.body, this.#res);
     }
@@ -1791,10 +852,10 @@ var Context = class {
     } else {
       headers.set(name, value);
     }
-  }, "header");
-  status = /* @__PURE__ */ __name((status) => {
+  };
+  status = (status) => {
     this.#status = status;
-  }, "status");
+  };
   /**
    * `.set()` can set the value specified by the key.
    *
@@ -1808,10 +869,10 @@ var Context = class {
    * })
    * ```
    */
-  set = /* @__PURE__ */ __name((key, value) => {
+  set = (key, value) => {
     this.#var ??= /* @__PURE__ */ new Map();
     this.#var.set(key, value);
-  }, "set");
+  };
   /**
    * `.get()` can use the value specified by the key.
    *
@@ -1825,9 +886,9 @@ var Context = class {
    * })
    * ```
    */
-  get = /* @__PURE__ */ __name((key) => {
+  get = (key) => {
     return this.#var ? this.#var.get(key) : void 0;
-  }, "get");
+  };
   /**
    * `.var` can access the value of a variable.
    *
@@ -1872,7 +933,7 @@ var Context = class {
     const status = typeof arg === "number" ? arg : arg?.status ?? this.#status;
     return createResponseInstance(data, { status, headers: responseHeaders });
   }
-  newResponse = /* @__PURE__ */ __name((...args) => this.#newResponse(...args), "newResponse");
+  newResponse = (...args) => this.#newResponse(...args);
   /**
    * `.body()` can return the HTTP response.
    * You can set headers with `.header()` and set HTTP status code with `.status`.
@@ -1894,7 +955,7 @@ var Context = class {
    * })
    * ```
    */
-  body = /* @__PURE__ */ __name((data, arg, headers) => this.#newResponse(data, arg, headers), "body");
+  body = (data, arg, headers) => this.#newResponse(data, arg, headers);
   /**
    * `.text()` can render text as `Content-Type:text/plain`.
    *
@@ -1907,13 +968,13 @@ var Context = class {
    * })
    * ```
    */
-  text = /* @__PURE__ */ __name((text, arg, headers) => {
+  text = (text, arg, headers) => {
     return !this.#preparedHeaders && !this.#status && !arg && !headers && !this.finalized ? new Response(text) : this.#newResponse(
       text,
       arg,
       setDefaultContentType(TEXT_PLAIN, headers)
     );
-  }, "text");
+  };
   /**
    * `.json()` can render JSON as `Content-Type:application/json`.
    *
@@ -1926,17 +987,17 @@ var Context = class {
    * })
    * ```
    */
-  json = /* @__PURE__ */ __name((object, arg, headers) => {
+  json = (object, arg, headers) => {
     return this.#newResponse(
       JSON.stringify(object),
       arg,
       setDefaultContentType("application/json", headers)
     );
-  }, "json");
-  html = /* @__PURE__ */ __name((html, arg, headers) => {
-    const res = /* @__PURE__ */ __name((html2) => this.#newResponse(html2, arg, setDefaultContentType("text/html; charset=UTF-8", headers)), "res");
+  };
+  html = (html, arg, headers) => {
+    const res = (html2) => this.#newResponse(html2, arg, setDefaultContentType("text/html; charset=UTF-8", headers));
     return typeof html === "object" ? resolveCallback(html, HtmlEscapedCallbackPhase.Stringify, false, {}).then(res) : res(html);
-  }, "html");
+  };
   /**
    * `.redirect()` can Redirect, default status code is 302.
    *
@@ -1952,7 +1013,7 @@ var Context = class {
    * })
    * ```
    */
-  redirect = /* @__PURE__ */ __name((location, status) => {
+  redirect = (location, status) => {
     const locationString = String(location);
     this.header(
       "Location",
@@ -1961,7 +1022,7 @@ var Context = class {
       !/[^\x00-\xFF]/.test(locationString) ? locationString : encodeURI(locationString)
     );
     return this.newResponse(null, status ?? 302);
-  }, "redirect");
+  };
   /**
    * `.notFound()` can return the Not Found Response.
    *
@@ -1974,42 +1035,36 @@ var Context = class {
    * })
    * ```
    */
-  notFound = /* @__PURE__ */ __name(() => {
+  notFound = () => {
     this.#notFoundHandler ??= () => createResponseInstance();
     return this.#notFoundHandler(this);
-  }, "notFound");
+  };
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
 var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is already built.";
 var UnsupportedPathError = class extends Error {
-  static {
-    __name(this, "UnsupportedPathError");
-  }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/constants.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/hono-base.js
-var notFoundHandler = /* @__PURE__ */ __name((c) => {
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/hono-base.js
+var notFoundHandler = (c) => {
   return c.text("404 Not Found", 404);
-}, "notFoundHandler");
-var errorHandler = /* @__PURE__ */ __name((err, c) => {
+};
+var errorHandler = (err, c) => {
   if ("getResponse" in err) {
     const res = err.getResponse();
     return c.newResponse(res.body, res);
   }
   console.error(err);
   return c.text("Internal Server Error", 500);
-}, "errorHandler");
+};
 var Hono = class _Hono {
-  static {
-    __name(this, "_Hono");
-  }
   get;
   post;
   put;
@@ -2109,7 +1164,7 @@ var Hono = class _Hono {
       if (app2.errorHandler === errorHandler) {
         handler = r.handler;
       } else {
-        handler = /* @__PURE__ */ __name(async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res, "handler");
+        handler = async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res;
         handler[COMPOSED_HANDLER] = r.handler;
       }
       subApp.#addRoute(r.method, r.path, handler);
@@ -2150,10 +1205,10 @@ var Hono = class _Hono {
    * })
    * ```
    */
-  onError = /* @__PURE__ */ __name((handler) => {
+  onError = (handler) => {
     this.errorHandler = handler;
     return this;
-  }, "onError");
+  };
   /**
    * `.notFound()` allows you to customize a Not Found Response.
    *
@@ -2169,10 +1224,10 @@ var Hono = class _Hono {
    * })
    * ```
    */
-  notFound = /* @__PURE__ */ __name((handler) => {
+  notFound = (handler) => {
     this.#notFoundHandler = handler;
     return this;
-  }, "notFound");
+  };
   /**
    * `.mount()` allows you to mount applications built with other frameworks into your Hono application.
    *
@@ -2214,7 +1269,7 @@ var Hono = class _Hono {
       } else {
         optionHandler = options.optionHandler;
         if (options.replaceRequest === false) {
-          replaceRequest = /* @__PURE__ */ __name((request) => request, "replaceRequest");
+          replaceRequest = (request) => request;
         } else {
           replaceRequest = options.replaceRequest;
         }
@@ -2240,13 +1295,13 @@ var Hono = class _Hono {
         return new Request(url, request);
       };
     })();
-    const handler = /* @__PURE__ */ __name(async (c, next) => {
+    const handler = async (c, next) => {
       const res = await applicationHandler(replaceRequest(c.req.raw), ...getOptions(c));
       if (res) {
         return res;
       }
       await next();
-    }, "handler");
+    };
     this.#addRoute(METHOD_NAME_ALL, mergePath(path, "*"), handler);
     return this;
   }
@@ -2263,16 +1318,16 @@ var Hono = class _Hono {
     }
     throw err;
   }
-  #dispatch(request, executionCtx, env2, method) {
+  #dispatch(request, executionCtx, env, method) {
     if (method === "HEAD") {
-      return (async () => new Response(null, await this.#dispatch(request, executionCtx, env2, "GET")))();
+      return (async () => new Response(null, await this.#dispatch(request, executionCtx, env, "GET")))();
     }
-    const path = this.getPath(request, { env: env2 });
+    const path = this.getPath(request, { env });
     const matchResult = this.router.match(method, path);
     const c = new Context(request, {
       path,
       matchResult,
-      env: env2,
+      env,
       executionCtx,
       notFoundHandler: this.#notFoundHandler
     });
@@ -2292,13 +1347,13 @@ var Hono = class _Hono {
     const composed = compose(matchResult[0], this.errorHandler, this.#notFoundHandler);
     return (async () => {
       try {
-        const context2 = await composed(c);
-        if (!context2.finalized) {
+        const context = await composed(c);
+        if (!context.finalized) {
           throw new Error(
             "Context is not finalized. Did you forget to return a Response object or `await next()`?"
           );
         }
-        return context2.res;
+        return context.res;
       } catch (err) {
         return this.#handleError(err, c);
       }
@@ -2315,9 +1370,9 @@ var Hono = class _Hono {
    * @returns {Response | Promise<Response>} response of request
    *
    */
-  fetch = /* @__PURE__ */ __name((request, ...rest) => {
+  fetch = (request, ...rest) => {
     return this.#dispatch(request, rest[1], rest[0], request.method);
-  }, "fetch");
+  };
   /**
    * `.request()` is a useful method for testing.
    * You can pass a URL or pathname to send a GET request.
@@ -2330,7 +1385,7 @@ var Hono = class _Hono {
    * ```
    * @see https://hono.dev/docs/api/hono#request
    */
-  request = /* @__PURE__ */ __name((input, requestInit, Env, executionCtx) => {
+  request = (input, requestInit, Env, executionCtx) => {
     if (input instanceof Request) {
       return this.fetch(requestInit ? new Request(input, requestInit) : input, Env, executionCtx);
     }
@@ -2343,7 +1398,7 @@ var Hono = class _Hono {
       Env,
       executionCtx
     );
-  }, "request");
+  };
   /**
    * `.fire()` automatically adds a global fetch event listener.
    * This can be useful for environments that adhere to the Service Worker API, such as non-ES module Cloudflare Workers.
@@ -2361,18 +1416,18 @@ var Hono = class _Hono {
    * @see https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API
    * @see https://developers.cloudflare.com/workers/reference/migrate-to-module-workers/
    */
-  fire = /* @__PURE__ */ __name(() => {
+  fire = () => {
     addEventListener("fetch", (event) => {
       event.respondWith(this.#dispatch(event.request, event, void 0, event.request.method));
     });
-  }, "fire");
+  };
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = /* @__PURE__ */ __name(((method2, path2) => {
+  const match2 = ((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -2384,13 +1439,12 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  }), "match2");
+  });
   this.match = match2;
   return match2(method, path);
 }
-__name(match, "match");
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -2415,15 +1469,11 @@ function compareKey(a, b) {
   }
   return a.length === b.length ? a < b ? -1 : 1 : b.length - a.length;
 }
-__name(compareKey, "compareKey");
 var Node = class _Node {
-  static {
-    __name(this, "_Node");
-  }
   #index;
   #varIndex;
   #children = /* @__PURE__ */ Object.create(null);
-  insert(tokens, index, paramMap, context2, pathErrorCheckOnly) {
+  insert(tokens, index, paramMap, context, pathErrorCheckOnly) {
     if (tokens.length === 0) {
       if (this.#index !== void 0) {
         throw PATH_ERROR;
@@ -2461,7 +1511,7 @@ var Node = class _Node {
         }
         node = this.#children[regexpStr] = new _Node();
         if (name !== "") {
-          node.#varIndex = context2.varIndex++;
+          node.#varIndex = context.varIndex++;
         }
       }
       if (!pathErrorCheckOnly && name !== "") {
@@ -2481,7 +1531,7 @@ var Node = class _Node {
         node = this.#children[token] = new _Node();
       }
     }
-    node.insert(restTokens, index, paramMap, context2, pathErrorCheckOnly);
+    node.insert(restTokens, index, paramMap, context, pathErrorCheckOnly);
   }
   buildRegExpStr() {
     const childKeys = Object.keys(this.#children).sort(compareKey);
@@ -2502,11 +1552,8 @@ var Node = class _Node {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
-  static {
-    __name(this, "Trie");
-  }
   #context = { varIndex: 0 };
   #root = new Node();
   insert(path, index, pathErrorCheckOnly) {
@@ -2561,7 +1608,7 @@ var Trie = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -2572,11 +1619,9 @@ function buildWildcardRegExp(path) {
     )}$`
   );
 }
-__name(buildWildcardRegExp, "buildWildcardRegExp");
 function clearWildcardRegExpCache() {
   wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 }
-__name(clearWildcardRegExpCache, "clearWildcardRegExpCache");
 function buildMatcherFromPreprocessedRoutes(routes) {
   const trie = new Trie();
   const handlerData = [];
@@ -2634,7 +1679,6 @@ function buildMatcherFromPreprocessedRoutes(routes) {
   }
   return [regexp, handlerMap, staticMap];
 }
-__name(buildMatcherFromPreprocessedRoutes, "buildMatcherFromPreprocessedRoutes");
 function findMiddleware(middleware, path) {
   if (!middleware) {
     return void 0;
@@ -2646,11 +1690,7 @@ function findMiddleware(middleware, path) {
   }
   return void 0;
 }
-__name(findMiddleware, "findMiddleware");
 var RegExpRouter = class {
-  static {
-    __name(this, "RegExpRouter");
-  }
   name = "RegExpRouter";
   #middleware;
   #routes;
@@ -2747,11 +1787,8 @@ var RegExpRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/smart-router/router.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
-  static {
-    __name(this, "SmartRouter");
-  }
   name = "SmartRouter";
   #routers = [];
   #routes = [];
@@ -2805,18 +1842,15 @@ var SmartRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/trie-router/node.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
-var hasChildren = /* @__PURE__ */ __name((children) => {
+var hasChildren = (children) => {
   for (const _ in children) {
     return true;
   }
   return false;
-}, "hasChildren");
+};
 var Node2 = class _Node2 {
-  static {
-    __name(this, "_Node");
-  }
   #methods;
   #children;
   #patterns;
@@ -2983,11 +2017,8 @@ var Node2 = class _Node2 {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/trie-router/router.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
-  static {
-    __name(this, "TrieRouter");
-  }
   name = "TrieRouter";
   #node;
   constructor() {
@@ -3008,11 +2039,8 @@ var TrieRouter = class {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/hono.js
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
-  static {
-    __name(this, "Hono");
-  }
   /**
    * Creates an instance of the Hono class.
    *
@@ -3026,8 +2054,8 @@ var Hono2 = class extends Hono {
   }
 };
 
-// node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/middleware/cors/index.js
-var cors = /* @__PURE__ */ __name((options) => {
+// ../../matrix/arcrun/.component-builds/http_request/node_modules/.pnpm/hono@4.12.14/node_modules/hono/dist/middleware/cors/index.js
+var cors = (options) => {
   const defaults = {
     origin: "*",
     allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
@@ -3063,11 +2091,10 @@ var cors = /* @__PURE__ */ __name((options) => {
       return () => [];
     }
   })(opts.allowMethods);
-  return /* @__PURE__ */ __name(async function cors2(c, next) {
+  return async function cors2(c, next) {
     function set(key, value) {
       c.res.headers.set(key, value);
     }
-    __name(set, "set");
     const allowOrigin = await findAllowOrigin(c.req.header("origin") || "", c);
     if (allowOrigin) {
       set("Access-Control-Allow-Origin", allowOrigin);
@@ -3112,10 +2139,10 @@ var cors = /* @__PURE__ */ __name((options) => {
     if (opts.origin !== "*" || opts.credentials) {
       c.header("Vary", "Origin", { append: true });
     }
-  }, "cors2");
-}, "cors");
+  };
+};
 
-// ../../cypher-executor/src/lib/wasi-shim.ts
+// ../../matrix/arcrun/cypher-executor/src/lib/wasi-shim.ts
 var WASI_ESUCCESS = 0;
 var WASI_ENOSYS = 76;
 var FD_STDIN = 0;
@@ -3131,7 +2158,6 @@ function createWasiShim(stdinData, hostFunctions) {
     if (!memory) throw new Error("WASI memory not set \u2014 call setMemory() after instantiate");
     return new DataView(memory.buffer);
   }
-  __name(getMemoryView, "getMemoryView");
   function writeOut(buf, outPtr, outLenPtr, data) {
     try {
       new Uint8Array(buf, outPtr, data.length).set(data);
@@ -3141,7 +2167,6 @@ function createWasiShim(stdinData, hostFunctions) {
       return 1;
     }
   }
-  __name(writeOut, "writeOut");
   function fd_write(fd, iovs, iovs_len, nwritten_ptr) {
     if (fd !== FD_STDOUT && fd !== FD_STDERR) return WASI_ENOSYS;
     const view = getMemoryView();
@@ -3161,7 +2186,6 @@ function createWasiShim(stdinData, hostFunctions) {
     view.setUint32(nwritten_ptr, totalWritten, true);
     return WASI_ESUCCESS;
   }
-  __name(fd_write, "fd_write");
   function fd_read(fd, iovs, iovs_len, nread_ptr) {
     if (fd !== FD_STDIN) return WASI_ENOSYS;
     const view = getMemoryView();
@@ -3182,17 +2206,14 @@ function createWasiShim(stdinData, hostFunctions) {
     view.setUint32(nread_ptr, totalRead, true);
     return WASI_ESUCCESS;
   }
-  __name(fd_read, "fd_read");
   function proc_exit(code) {
     throw new Error(`wasm exit: ${code}`);
   }
-  __name(proc_exit, "proc_exit");
   function random_get(buf_ptr, buf_len) {
     const view = new Uint8Array(memory.buffer, buf_ptr, buf_len);
     crypto.getRandomValues(view);
     return WASI_ESUCCESS;
   }
-  __name(random_get, "random_get");
   let asyncifyDataPtr = 0;
   const ASYNCIFY_BUF_SIZE = 1024 * 1024;
   let asyncifyPendingPromise = null;
@@ -3202,7 +2223,6 @@ function createWasiShim(stdinData, hostFunctions) {
     const SuspendingCtor = WebAssembly["Suspending"];
     return SuspendingCtor ? new SuspendingCtor(fn) : fn;
   }
-  __name(jspiSuspending, "jspiSuspending");
   function asyncifyWrap(fn) {
     return (...args) => {
       if (!memory) return 1;
@@ -3220,7 +2240,6 @@ function createWasiShim(stdinData, hostFunctions) {
       return 0;
     };
   }
-  __name(asyncifyWrap, "asyncifyWrap");
   function hostWrap(fn) {
     const SuspendingCtor = WebAssembly["Suspending"];
     if (SuspendingCtor) {
@@ -3228,7 +2247,6 @@ function createWasiShim(stdinData, hostFunctions) {
     }
     return asyncifyWrap(fn);
   }
-  __name(hostWrap, "hostWrap");
   const shim = {
     imports: {
       wasi_snapshot_preview1: {
@@ -3237,54 +2255,54 @@ function createWasiShim(stdinData, hostFunctions) {
         proc_exit,
         random_get,
         // 其餘 syscall 回傳 ENOSYS（不允許網路/檔案系統操作）
-        fd_seek: /* @__PURE__ */ __name(() => WASI_ENOSYS, "fd_seek"),
-        fd_close: /* @__PURE__ */ __name(() => WASI_ESUCCESS, "fd_close"),
-        fd_fdstat_get: /* @__PURE__ */ __name(() => WASI_ENOSYS, "fd_fdstat_get"),
-        fd_prestat_get: /* @__PURE__ */ __name(() => WASI_ENOSYS, "fd_prestat_get"),
-        fd_prestat_dir_name: /* @__PURE__ */ __name(() => WASI_ENOSYS, "fd_prestat_dir_name"),
-        environ_get: /* @__PURE__ */ __name(() => WASI_ESUCCESS, "environ_get"),
-        environ_sizes_get: /* @__PURE__ */ __name((count_ptr, size_ptr) => {
+        fd_seek: () => WASI_ENOSYS,
+        fd_close: () => WASI_ESUCCESS,
+        fd_fdstat_get: () => WASI_ENOSYS,
+        fd_prestat_get: () => WASI_ENOSYS,
+        fd_prestat_dir_name: () => WASI_ENOSYS,
+        environ_get: () => WASI_ESUCCESS,
+        environ_sizes_get: (count_ptr, size_ptr) => {
           if (memory) {
             const view = getMemoryView();
             view.setUint32(count_ptr, 0, true);
             view.setUint32(size_ptr, 0, true);
           }
           return WASI_ESUCCESS;
-        }, "environ_sizes_get"),
-        args_get: /* @__PURE__ */ __name(() => WASI_ESUCCESS, "args_get"),
-        args_sizes_get: /* @__PURE__ */ __name((argc_ptr, argv_buf_size_ptr) => {
+        },
+        args_get: () => WASI_ESUCCESS,
+        args_sizes_get: (argc_ptr, argv_buf_size_ptr) => {
           if (memory) {
             const view = getMemoryView();
             view.setUint32(argc_ptr, 0, true);
             view.setUint32(argv_buf_size_ptr, 0, true);
           }
           return WASI_ESUCCESS;
-        }, "args_sizes_get"),
-        clock_time_get: /* @__PURE__ */ __name((id, precision, time_ptr) => {
+        },
+        clock_time_get: (id, precision, time_ptr) => {
           if (memory) {
             const view = getMemoryView();
             const now = BigInt(Date.now()) * 1000000n;
             view.setBigUint64(time_ptr, now, true);
           }
           return WASI_ESUCCESS;
-        }, "clock_time_get"),
-        clock_res_get: /* @__PURE__ */ __name(() => WASI_ENOSYS, "clock_res_get"),
-        poll_oneoff: /* @__PURE__ */ __name(() => WASI_ENOSYS, "poll_oneoff"),
-        sched_yield: /* @__PURE__ */ __name(() => WASI_ESUCCESS, "sched_yield"),
-        proc_raise: /* @__PURE__ */ __name(() => WASI_ENOSYS, "proc_raise"),
-        sock_accept: /* @__PURE__ */ __name(() => WASI_ENOSYS, "sock_accept"),
-        sock_recv: /* @__PURE__ */ __name(() => WASI_ENOSYS, "sock_recv"),
-        sock_send: /* @__PURE__ */ __name(() => WASI_ENOSYS, "sock_send"),
-        sock_shutdown: /* @__PURE__ */ __name(() => WASI_ENOSYS, "sock_shutdown"),
-        path_open: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_open"),
-        path_create_directory: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_create_directory"),
-        path_remove_directory: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_remove_directory"),
-        path_rename: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_rename"),
-        path_unlink_file: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_unlink_file"),
-        path_filestat_get: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_filestat_get"),
-        path_readlink: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_readlink"),
-        path_symlink: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_symlink"),
-        path_link: /* @__PURE__ */ __name(() => WASI_ENOSYS, "path_link")
+        },
+        clock_res_get: () => WASI_ENOSYS,
+        poll_oneoff: () => WASI_ENOSYS,
+        sched_yield: () => WASI_ESUCCESS,
+        proc_raise: () => WASI_ENOSYS,
+        sock_accept: () => WASI_ENOSYS,
+        sock_recv: () => WASI_ENOSYS,
+        sock_send: () => WASI_ENOSYS,
+        sock_shutdown: () => WASI_ENOSYS,
+        path_open: () => WASI_ENOSYS,
+        path_create_directory: () => WASI_ENOSYS,
+        path_remove_directory: () => WASI_ENOSYS,
+        path_rename: () => WASI_ENOSYS,
+        path_unlink_file: () => WASI_ENOSYS,
+        path_filestat_get: () => WASI_ENOSYS,
+        path_readlink: () => WASI_ENOSYS,
+        path_symlink: () => WASI_ENOSYS,
+        path_link: () => WASI_ENOSYS
       },
       // u6u host functions：讓 .wasm 零件透過 host function 呼叫外部服務
       // .wasm 零件用 //go:wasmimport u6u <name> 宣告
@@ -3334,9 +2352,9 @@ function createWasiShim(stdinData, hostFunctions) {
         // 與 kv_get 同款 pointer/memory-write 機制；差別只在 host 端實作來源（env[ref] 而非 KV.get）。
         secret_get: hostFunctions?.secret_get ? hostWrap(async (refPtr, refLen, outPtr, outLenPtr) => {
           if (!memory) return 1;
-          const ref2 = new TextDecoder().decode(new Uint8Array(memory.buffer, refPtr, refLen));
+          const ref = new TextDecoder().decode(new Uint8Array(memory.buffer, refPtr, refLen));
           try {
-            const result = await hostFunctions.secret_get(ref2);
+            const result = await hostFunctions.secret_get(ref);
             if (result === null) return 2;
             const encoded = new TextEncoder().encode(result);
             return writeOut(memory.buffer, outPtr, outLenPtr, encoded);
@@ -3363,7 +2381,7 @@ function createWasiShim(stdinData, hostFunctions) {
         // .wasm 仍宣告 `//go:wasmimport u6u crypto_decrypt`，import 缺項會讓 WASM
         // **instantiate 直接失敗**（不是呼叫才失敗）→ 所有認證零件全掛。故保留成 stub，
         // 讓連結成立。待三個零件的 Go 原始碼移除該 wasmimport 並重編 wasm 後，才可刪掉這條。
-        crypto_decrypt: /* @__PURE__ */ __name(() => 1, "crypto_decrypt"),
+        crypto_decrypt: () => 1,
         // crypto_sign_rs256(dataPtr, dataLen, pkcs8Ptr, pkcs8Len, outPtr, outLenPtr) → 0 成功
         crypto_sign_rs256: hostFunctions?.crypto_sign_rs256 ? hostWrap(async (dataPtr, dataLen, pkcs8Ptr, pkcs8Len, outPtr, outLenPtr) => {
           if (!memory) return 1;
@@ -3482,12 +2500,11 @@ function createWasiShim(stdinData, hostFunctions) {
   };
   return shim;
 }
-__name(createWasiShim, "createWasiShim");
 
-// src/index.ts
+// ../../matrix/arcrun/.component-builds/http_request/src/index.ts
 var app = new Hono2();
 app.use("*", cors());
-app.get("/", (c) => c.json({ ok: true, component: "cron" }));
+app.get("/", (c) => c.json({ ok: true, component: "http_request" }));
 app.post("/", async (c) => {
   let input;
   try {
@@ -3507,19 +2524,49 @@ app.post("/", async (c) => {
 });
 var index_default = app;
 async function runWasm(input) {
-  const shim = createWasiShim(JSON.stringify(input));
+  const hostFunctions = {
+    http_request: async (url, method, headersJson, body) => {
+      const headers = {};
+      if (headersJson) {
+        try {
+          const parsed = JSON.parse(headersJson);
+          if (parsed && typeof parsed === "object") {
+            for (const [k, v] of Object.entries(parsed)) {
+              if (typeof v === "string") headers[k] = v;
+            }
+          }
+        } catch {
+        }
+      }
+      const init = { method, headers };
+      if (body && method.toUpperCase() !== "GET" && method.toUpperCase() !== "HEAD") {
+        init.body = body;
+      }
+      const res = await fetch(url, init);
+      const text = await res.text();
+      if (!res.ok) {
+        return JSON.stringify({
+          error: `HTTP ${res.status}`,
+          status: res.status,
+          body: text
+        });
+      }
+      return text;
+    }
+  };
+  const shim = createWasiShim(JSON.stringify(input), hostFunctions);
   const instance = await WebAssembly.instantiate(
     componentWasm,
     shim.imports
   );
   shim.setMemory(instance.exports.memory);
   await shim.run(instance);
-  const stdout2 = shim.getStdout().trim();
-  if (!stdout2) throw new Error("WASM component produced no output");
-  return JSON.parse(stdout2);
+  const stdout = shim.getStdout().trim();
+  const stderr = shim.getStderr().trim();
+  if (stderr) console.error("[http_request wasm stderr]", stderr);
+  if (!stdout) throw new Error("WASM component produced no output");
+  return JSON.parse(stdout);
 }
-__name(runWasm, "runWasm");
 export {
   index_default as default
 };
-//# sourceMappingURL=index.js.map
