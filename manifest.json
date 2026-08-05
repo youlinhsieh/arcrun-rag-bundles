@@ -5,20 +5,20 @@
  "built": "2026-08-04",
  "source": "Arcrun@23f2fd4",
  "daemon": {
-  "version": "v0.15.7",
-  "built": "20260804-1807",
-  "notes": "Mac 改用 DMG 安裝（拖進 Applications）；修好「更新完又跳回舊版」——不管 app 放哪都更新得了。",
+  "version": "v0.18.4",
+  "built": "20260805-1530",
+  "notes": "全新桌面 App：點托盤圖示直接開視窗、每個知識庫一頁、深淺色可切。修好「一個檔失敗就卡住整個資料夾」（改成退避重試，不再無限重撞）、同一份檔重複上傳會蓋掉舊的不再堆疊、刪掉的檔案真的從知識庫移除。",
   "mac": {
-   "file": "daemon/ArcrunRAG-mac-unsigned-v0.15.7.zip",
-   "sha256": "f264dda7391f3006686d6ee8311960054206fb1ffee8f50e2f5a896159522565"
+   "file": "daemon/ArcrunRAG-mac-unsigned-v0.18.4.zip",
+   "sha256": "0e3fb960373a83eb452b0e2afe96bb51d36b4228cbc84d02a43d052e73af03df"
   },
   "win": {
    "file": "daemon/ArcrunRAG-win-unsigned-v0.15.7.zip",
    "sha256": "32fe44450ca77c62d11953041899af0e190dfb8469b5c7807ba0afffe6aa031d"
   },
   "mac_dmg": {
-   "file": "daemon/ArcrunRAG-v0.15.7.dmg",
-   "sha256": "0eb3f76b60bf689178af8e4d8b06cbadade106912b6fc7ee29fb1cb82ccc928c"
+   "file": "daemon/ArcrunRAG-v0.18.4.dmg",
+   "sha256": "c40feab4640ddccfb63fc452b88586d925c78ee76c8d1b0e15a43ec5412bf377"
   },
   "win_msix": {
    "file": "daemon/ArcrunRAG-v0.15.7.msix",
