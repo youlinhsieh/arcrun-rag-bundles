@@ -5,24 +5,28 @@
  "built": "2026-08-06",
  "source": "Arcrun@23f2fd4",
  "daemon": {
-  "version": "v0.18.8",
+  "version": "v0.18.21",
   "built": "2026-08-06",
-  "notes": "Mac 使用者請務必更新——這版修好「關不掉、所以新版裝不上去」。 🔴 「結束 Arcrun」現在真的會結束：以前在選單列圖示按右鍵選「結束 Arcrun」， 程式其實還活著，只是視窗被藏起來——唯一關得掉的方法是「強制結束」。 最直接的後果是下載新版時蓋不過舊版，不知道怎麼強制結束的人就卡在那裡了。 🖥️ Dock 不再出現重複的圖示：常駐小工具照慣例只在選單列出現一個圖示， 但 Arcrun 之前選單列和 Dock 兩邊都有。現在只留選單列那一個。 （順帶：它也不會再出現在「強制結束」清單裡了——那是同一個原因造成的。） 🔳 視窗可以全螢幕了：Mac 版左上角的綠色按鈕之前是灰的、按不動（Windows 版正常）。 📐 視窗預設大小改成螢幕的 70%（上一版的 50% 太小）。",
+  "notes": "🏪 開始提供 Microsoft Store 版本（.msix）：除了原本的 .exe， 現在也一併發佈商店格式的安裝包，正在送審。 上架後 Windows 就不會再把 Arcrun 當成可疑程式攔下來（商店版由微軟簽章）。",
   "mac": {
-   "file": "daemon/Arcrun-v0.18.8.dmg",
-   "sha256": "5421e8d489094791f6fdbc283c04e7bb7c000409d161641bfa71c5b75b6d1f97"
+   "file": "daemon/Arcrun-v0.18.21.dmg",
+   "sha256": "b60ffddc97a6f5e5a2bae671110a948e5cdd1c12ad7b35d07a3f416282f44f15"
   },
   "win": {
-   "file": "daemon/Arcrun-win-v0.18.8.exe",
-   "sha256": "522240684b5124b0f19f2243106690ddff5efa14b0ce3cc309922941a8780f58"
+   "file": "daemon/Arcrun-win-v0.18.21.exe",
+   "sha256": "bbf68aa20409a2c1a8cc31c47a8cafcefb191f5793099759f2b911c891e96fdb"
   },
   "mac_dmg": {
    "file": "daemon/ArcrunRAG-mac.dmg",
-   "sha256": "5421e8d489094791f6fdbc283c04e7bb7c000409d161641bfa71c5b75b6d1f97"
+   "sha256": "b60ffddc97a6f5e5a2bae671110a948e5cdd1c12ad7b35d07a3f416282f44f15"
   },
   "win_msix": {
    "file": "daemon/ArcrunRAG-v0.15.7.msix",
    "sha256": "5bf7c911b8f3a817b34454a814e7da94e7d96d1c0654ed1e185915edc24ec259"
+  },
+  "msix": {
+   "file": "daemon/Arcrun-v0.18.21.msix",
+   "sha256": "c94da7f25c0c561921fa972f7d7f76f3cf7d3813defbbc68b9512de18c1b9bc8"
   }
  },
  "core": [
