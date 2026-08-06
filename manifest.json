@@ -1,24 +1,24 @@
 {
  "schema": 1,
- "release": "1.4.15",
- "fingerprint": "afe3e3af85acea5878e2b4013ebfd512f88ce00f9f7f1547a6d7915d099ed1b1",
- "built": "2026-08-05",
+ "release": "1.4.16",
+ "fingerprint": "e96ff55736c3460576208e82c1768fbb9b45a2e1d904717f125e50aea96181ca",
+ "built": "2026-08-06",
  "source": "Arcrun@23f2fd4",
  "daemon": {
-  "version": "v0.18.5",
-  "built": "20260805-1819",
-  "notes": "修好「語意搜尋什麼都搜不到」（換新 AI 模型後分數門檻沒跟著調，把正確答案全擋掉了）。首頁狀態不再說謊：整理中會顯示「同步中」，做完顯示「幾點整理了幾份」，且不會過十幾秒就被清空。Mac 安裝畫面補上拖曳版面（Arcrun 和「應用程式」左右並排）。",
+  "version": "v0.18.7",
+  "built": "2026-08-06",
+  "notes": "Windows 使用者請務必更新——這版把 Windows 版幾個「根本不能用」的問題一次修掉。 Mac 使用者這版沒有功能變化，不更新也沒關係。 🪟 下載下來只有一個檔案了：以前是 zip，解開還有兩個 exe， 很容易只拿走其中一個——而少拿那個，同步就永遠不會動，畫面還不會告訴你原因。 現在直接下載一個 Arcrun.exe，雙擊就跑，不必解壓縮、不必找第二個檔。 🔴 Windows 上「同步引擎沒有在跑」修好了：以前不管同步引擎有沒有在跑， 首頁一律顯示「同步引擎沒有在跑」——因為判斷方式用了一個 Windows 上根本不存在的指令。 現在會誠實反映真實狀態。 🔴 托盤不會再開出一堆圖示：以前每點一次程式就多開一個， 托盤會出現好幾個一模一樣的圖示，分不清該點哪個。 現在第二次點只會把既有視窗叫回來。 🎨 圖示換成 Arcrun 的標誌：Windows 版的視窗與托盤圖示之前一直是開發工具的預設「W」， 現在是正確的 Arcrun 標誌。 📐 視窗大小改成螢幕的一半：以前寫死的尺寸在部分筆電上會高到超出畫面， 現在會依你的螢幕自動調整並置中。",
   "mac": {
-   "file": "daemon/ArcrunRAG-mac-unsigned-v0.18.4.zip",
-   "sha256": "0e3fb960373a83eb452b0e2afe96bb51d36b4228cbc84d02a43d052e73af03df"
+   "file": "daemon/Arcrun-v0.18.7.dmg",
+   "sha256": "34b57a1f7ed82445d785d1129fd285b1a25016a031b5ed4f036a481a436c7474"
   },
   "win": {
-   "file": "daemon/ArcrunRAG-win-unsigned-v0.18.4.zip",
-   "sha256": "e509345eff4fbedc9fc1c1139247995ff13a5b724bbcff8d790697b52f407b88"
+   "file": "daemon/Arcrun-win-v0.18.7.exe",
+   "sha256": "37549e858825fd3b888af792933217647864278e29a935200a5d98e6d88fb6ce"
   },
   "mac_dmg": {
    "file": "daemon/ArcrunRAG-mac.dmg",
-   "sha256": "31634a2889a0bb4e99d435b3df54b658c6d4e0fb8756dbc8ddefa2e76d05578b"
+   "sha256": "34b57a1f7ed82445d785d1129fd285b1a25016a031b5ed4f036a481a436c7474"
   },
   "win_msix": {
    "file": "daemon/ArcrunRAG-v0.15.7.msix",
@@ -169,20 +169,19 @@
   {
    "name": "arcrun-rag-ui",
    "tier": 2,
-   "canonical": null,
-   "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "modules": [],
+   "main_module": "index.js",
+   "sha256": "310ffec494c2a14f5f8b1372c2d41819b9227d0a6b65ae9e758604faabd619fb",
    "compat_date": "2026-07-01",
    "compat_flags": [],
+   "modules": [],
    "requires": {
     "kv": [],
     "d1": [],
     "ai": false,
     "vars": {}
    },
-   "sha256": "93da30352a66ab4eee333dd783a2c245dbba4bbec4dca43744d70d4d16005541",
-   "bytes": 486798
+   "bytes": 490941
   }
  ],
  "built_for": "oauth-installer-lazy-load",
