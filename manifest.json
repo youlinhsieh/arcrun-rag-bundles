@@ -1,193 +1,194 @@
 {
- "schema": 1,
- "release": "1.4.16",
- "fingerprint": "e96ff55736c3460576208e82c1768fbb9b45a2e1d904717f125e50aea96181ca",
- "built": "2026-08-06",
- "source": "Arcrun@23f2fd4",
- "daemon": {
-  "version": "v0.18.21",
-  "built": "2026-08-06",
-  "notes": "🏪 開始提供 Microsoft Store 版本（.msix）：除了原本的 .exe， 現在也一併發佈商店格式的安裝包，正在送審。 上架後 Windows 就不會再把 Arcrun 當成可疑程式攔下來（商店版由微軟簽章）。",
-  "mac": {
-   "file": "daemon/Arcrun-v0.18.21.dmg",
-   "sha256": "b60ffddc97a6f5e5a2bae671110a948e5cdd1c12ad7b35d07a3f416282f44f15"
-  },
-  "win": {
-   "file": "daemon/Arcrun-win-v0.18.21.exe",
-   "sha256": "bbf68aa20409a2c1a8cc31c47a8cafcefb191f5793099759f2b911c891e96fdb"
-  },
-  "mac_dmg": {
-   "file": "daemon/ArcrunRAG-mac.dmg",
-   "sha256": "b60ffddc97a6f5e5a2bae671110a948e5cdd1c12ad7b35d07a3f416282f44f15"
-  },
-  "win_msix": {
-   "file": "daemon/ArcrunRAG-v0.15.7.msix",
-   "sha256": "5bf7c911b8f3a817b34454a814e7da94e7d96d1c0654ed1e185915edc24ec259"
-  },
-  "msix": {
-   "file": "daemon/Arcrun-v0.18.21.msix",
-   "sha256": "c94da7f25c0c561921fa972f7d7f76f3cf7d3813defbbc68b9512de18c1b9bc8"
-  }
- },
- "core": [
-  {
-   "name": "arcrun-cypher-executor",
-   "canonical": null,
-   "main_module": "worker.mjs",
-   "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 539163,
-   "modules": [],
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat",
-    "global_fetch_strictly_public"
-   ],
-   "requires": {
-    "kv": [
-     "EXEC_CONTEXT",
-     "WEBHOOKS",
-     "CREDENTIALS_KV",
-     "ANALYTICS_KV",
-     "RECIPES",
-     "USERS_KV",
-     "SESSIONS_KV"
-    ],
-    "d1": [
-     {
-      "binding": "CREDENTIALS_DB",
-      "database_name": "arcrun-kbdb"
-     }
-    ],
-    "vectorize": 0,
-    "ai": true,
-    "vars": {
-     "ENVIRONMENT": "production",
-     "CF_ACCOUNT_ID": "",
-     "WORKER_SUBDOMAIN": "uncle6-me",
-     "KBDB_BASE_URL": "https://arcrun-kbdb.uncle6-me.workers.dev",
-     "CONSOLE_TENANT": "leo",
-     "PORTAL_SESSION_TTL": "604800",
-     "PORTAL_SHOW_WORKFLOWS": "admin",
-     "GITEA_BASE_URL": "https://git.uncle6.me",
-     "GITEA_SPRINT_REPO": "Leo/InkStoneCo",
-     "GITEA_SPRINT_DIR": "system-dev/docs/3-specs/autonomy-dispatch"
+  "schema": 1,
+  "release": "1.4.20",
+  "fingerprint": "e96ff55736c3460576208e82c1768fbb9b45a2e1d904717f125e50aea96181ca",
+  "built": "2026-08-07",
+  "source": "Arcrun@c7a0b31",
+  "daemon": {
+    "version": "v0.18.21",
+    "built": "2026-08-06",
+    "notes": "🏪 開始提供 Microsoft Store 版本（.msix）：除了原本的 .exe， 現在也一併發佈商店格式的安裝包，正在送審。 上架後 Windows 就不會再把 Arcrun 當成可疑程式攔下來（商店版由微軟簽章）。",
+    "mac": {
+      "file": "daemon/Arcrun-v0.18.21.dmg",
+      "sha256": "b60ffddc97a6f5e5a2bae671110a948e5cdd1c12ad7b35d07a3f416282f44f15"
+    },
+    "win": {
+      "file": "daemon/Arcrun-win-v0.18.21.exe",
+      "sha256": "bbf68aa20409a2c1a8cc31c47a8cafcefb191f5793099759f2b911c891e96fdb"
+    },
+    "mac_dmg": {
+      "file": "daemon/ArcrunRAG-mac.dmg",
+      "sha256": "b60ffddc97a6f5e5a2bae671110a948e5cdd1c12ad7b35d07a3f416282f44f15"
+    },
+    "win_msix": {
+      "file": "daemon/ArcrunRAG-v0.15.7.msix",
+      "sha256": "5bf7c911b8f3a817b34454a814e7da94e7d96d1c0654ed1e185915edc24ec259"
+    },
+    "msix": {
+      "file": "daemon/Arcrun-v0.18.21.msix",
+      "sha256": "c94da7f25c0c561921fa972f7d7f76f3cf7d3813defbbc68b9512de18c1b9bc8"
     }
-   },
-   "stripped": {
-    "services": 13
-   },
-   "warnings": [],
-   "sha256": "787879760212e1fbc5bee6467bf648a82ec2690a5a2b5601bd2603930e0c03f7",
-   "bytes": 539163
   },
-  {
-   "name": "arcrun-kbdb",
-   "canonical": null,
-   "main_module": "worker.mjs",
-   "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 108500,
-   "modules": [],
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat"
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [
-     {
-      "binding": "DB",
-      "database_name": "arcrun-kbdb"
-     }
-    ],
-    "vectorize": 0,
-    "ai": false,
-    "vars": {
-     "ENVIRONMENT": "production"
-    }
-   },
-   "warnings": [],
-   "sha256": "919b692f88fa72210173fe0a5f913ad59b9a251c108ddd17b1de5e6df24e4a19",
-   "bytes": 108500
-  },
-  {
-   "name": "arcrun-http-request",
-   "canonical": "http_request",
-   "main_module": "worker.mjs",
-   "main_file": "arcrun-http-request/worker.mjs",
-   "js_bytes": 80519,
-   "modules": [
+  "core": [
     {
-     "name": "component.wasm",
-     "type": "application/wasm",
-     "file": "arcrun-http-request/component.wasm",
-     "sha256": "cc15cc785703e7bbb8dbff2d38dc84a4ac24e2f44316182730abae0f170ef133"
-    }
-   ],
-   "compat_date": "2025-02-19",
-   "compat_flags": [
-    "nodejs_compat",
-    "global_fetch_strictly_public"
-   ],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "vectorize": 0,
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "http_request"
-    }
-   },
-   "warnings": [],
-   "sha256": "8a175938bf1c98b8dce489ff3085a13f512a5bf18edd0d148233177ce8a20e21",
-   "bytes": 80519
-  },
-  {
-   "name": "arcrun-code",
-   "canonical": "code",
-   "main_module": "worker.mjs",
-   "main_file": "arcrun-code/worker.mjs",
-   "js_bytes": 154438,
-   "modules": [
+      "name": "arcrun-cypher-executor",
+      "canonical": null,
+      "main_module": "worker.mjs",
+      "main_file": "arcrun-cypher-executor/worker.mjs",
+      "js_bytes": 547200,
+      "modules": [],
+      "compat_date": "2025-02-19",
+      "compat_flags": [
+        "nodejs_compat",
+        "global_fetch_strictly_public"
+      ],
+      "requires": {
+        "kv": [
+          "EXEC_CONTEXT",
+          "WEBHOOKS",
+          "CREDENTIALS_KV",
+          "ANALYTICS_KV",
+          "RECIPES",
+          "USERS_KV",
+          "SESSIONS_KV"
+        ],
+        "d1": [
+          {
+            "binding": "CREDENTIALS_DB",
+            "database_name": "arcrun-kbdb"
+          }
+        ],
+        "vectorize": 0,
+        "ai": true,
+        "vars": {
+          "ENVIRONMENT": "production",
+          "CF_ACCOUNT_ID": "",
+          "WORKER_SUBDOMAIN": "uncle6-me",
+          "KBDB_BASE_URL": "https://arcrun-kbdb.uncle6-me.workers.dev",
+          "CONSOLE_TENANT": "leo",
+          "PORTAL_SESSION_TTL": "604800",
+          "PORTAL_SHOW_WORKFLOWS": "admin",
+          "GITEA_BASE_URL": "https://git.uncle6.me",
+          "GITEA_SPRINT_REPO": "Leo/InkStoneCo",
+          "GITEA_SPRINT_DIR": "system-dev/docs/3-specs/autonomy-dispatch"
+        }
+      },
+      "stripped": {
+        "services": 13
+      },
+      "warnings": [],
+      "sha256": "c0c98d24e5cc4edf750befe1e22bc21b89e94fafd301249c6061b34a6bd4d60c",
+      "bytes": 547200
+    },
     {
-     "name": "quickjs.wasm",
-     "type": "application/wasm",
-     "file": "arcrun-code/quickjs.wasm",
-     "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232"
+      "name": "arcrun-kbdb",
+      "canonical": null,
+      "main_module": "worker.mjs",
+      "main_file": "arcrun-kbdb/worker.mjs",
+      "js_bytes": 120285,
+      "modules": [],
+      "compat_date": "2025-02-19",
+      "compat_flags": [
+        "nodejs_compat"
+      ],
+      "requires": {
+        "kv": [],
+        "d1": [
+          {
+            "binding": "DB",
+            "database_name": "arcrun-kbdb"
+          }
+        ],
+        "vectorize": 1,
+        "ai": true,
+        "vars": {
+          "MULTI_TENANT": "false",
+          "ENVIRONMENT": "production"
+        }
+      },
+      "warnings": [],
+      "sha256": "f8f7541fb7632c96a9b81539b804f29a7519fdb5af21fe43813d36a70da2272e",
+      "bytes": 120285
+    },
+    {
+      "name": "arcrun-http-request",
+      "canonical": "http_request",
+      "main_module": "worker.mjs",
+      "main_file": "arcrun-http-request/worker.mjs",
+      "js_bytes": 80519,
+      "modules": [
+        {
+          "name": "component.wasm",
+          "type": "application/wasm",
+          "file": "arcrun-http-request/component.wasm",
+          "sha256": "cc15cc785703e7bbb8dbff2d38dc84a4ac24e2f44316182730abae0f170ef133"
+        }
+      ],
+      "compat_date": "2025-02-19",
+      "compat_flags": [
+        "nodejs_compat",
+        "global_fetch_strictly_public"
+      ],
+      "requires": {
+        "kv": [],
+        "d1": [],
+        "vectorize": 0,
+        "ai": false,
+        "vars": {
+          "COMPONENT_ID": "http_request"
+        }
+      },
+      "warnings": [],
+      "sha256": "8a175938bf1c98b8dce489ff3085a13f512a5bf18edd0d148233177ce8a20e21",
+      "bytes": 80519
+    },
+    {
+      "name": "arcrun-code",
+      "canonical": "code",
+      "main_module": "worker.mjs",
+      "main_file": "arcrun-code/worker.mjs",
+      "js_bytes": 154438,
+      "modules": [
+        {
+          "name": "quickjs.wasm",
+          "type": "application/wasm",
+          "file": "arcrun-code/quickjs.wasm",
+          "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232"
+        }
+      ],
+      "compat_date": "2025-02-19",
+      "compat_flags": [],
+      "requires": {
+        "kv": [],
+        "d1": [],
+        "vectorize": 0,
+        "ai": false,
+        "vars": {
+          "COMPONENT_ID": "code"
+        }
+      },
+      "warnings": [],
+      "sha256": "761acc054b6f01bc2c37dce3b5923cd40d4ac8ac986bc0452f36e16463299a74",
+      "bytes": 154438
+    },
+    {
+      "name": "arcrun-rag-ui",
+      "tier": 2,
+      "main_file": "tier2/ui/index.js",
+      "main_module": "index.js",
+      "sha256": "089ee208de75fff645f53c487abb8adc12dc7143cc5fc4972b761bd06d842453",
+      "compat_date": "2026-07-01",
+      "compat_flags": [],
+      "modules": [],
+      "requires": {
+        "kv": [],
+        "d1": [],
+        "ai": false,
+        "vars": {}
+      },
+      "bytes": 495557
     }
-   ],
-   "compat_date": "2025-02-19",
-   "compat_flags": [],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "vectorize": 0,
-    "ai": false,
-    "vars": {
-     "COMPONENT_ID": "code"
-    }
-   },
-   "warnings": [],
-   "sha256": "761acc054b6f01bc2c37dce3b5923cd40d4ac8ac986bc0452f36e16463299a74",
-   "bytes": 154438
-  },
-  {
-   "name": "arcrun-rag-ui",
-   "tier": 2,
-   "main_file": "tier2/ui/index.js",
-   "main_module": "index.js",
-   "sha256": "310ffec494c2a14f5f8b1372c2d41819b9227d0a6b65ae9e758604faabd619fb",
-   "compat_date": "2026-07-01",
-   "compat_flags": [],
-   "modules": [],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {}
-   },
-   "bytes": 490941
-  }
- ],
- "built_for": "oauth-installer-lazy-load",
- "notes": []
+  ],
+  "built_for": "oauth-installer-lazy-load",
+  "notes": []
 }

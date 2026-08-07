@@ -3125,44 +3125,512 @@ var init_wasi_shim = __esm({
   }
 });
 
+// ../../matrix/arcrun/cypher-executor/src/routes/kbdb-proxy.ts
+function kbdbBase(env) {
+  const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+  const headers = { "Content-Type": "application/json" };
+  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  return { base, headers };
+}
+function tenant(c) {
+  return c.req.header("X-Arcrun-API-Key") ?? null;
+}
+function graphBase(env) {
+  if (env.KBDB_GRAPH_URL) return env.KBDB_GRAPH_URL.replace(/\/$/, "");
+  return `https://kbdb-graph-plugin.${env.WORKER_SUBDOMAIN}.workers.dev`;
+}
+var kbdbProxyRouter, NEED_KEY;
+var init_kbdb_proxy = __esm({
+  "../../matrix/arcrun/cypher-executor/src/routes/kbdb-proxy.ts"() {
+    "use strict";
+    init_dist();
+    kbdbProxyRouter = new Hono2();
+    NEED_KEY = { error: "\u7F3A\u5C11 X-Arcrun-API-Key header" };
+    kbdbProxyRouter.post("/kbdb/templates", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !body.name || !Array.isArray(body.slots)) {
+        return c.json({ error: "name \u8207 slots[] \u5FC5\u586B" }, 400);
+      }
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/templates`, {
+        method: "POST",
+        headers,
+        // created_by 帶上租戶當溯源，但 template 本身全域可見可用
+        body: JSON.stringify({ name: body.name, slots: body.slots, description: body.description, created_by: owner })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/templates", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/templates`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/templates/:idOrName", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/templates/${encodeURIComponent(c.req.param("idOrName"))}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.post("/kbdb/records", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !body.template || !body.values) {
+        return c.json({ error: "template \u8207 values \u5FC5\u586B" }, 400);
+      }
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records`, {
+        method: "POST",
+        headers,
+        // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
+        body: JSON.stringify({ template: body.template, values: body.values, owner_id: owner })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/records/by-template/:template", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(
+        `${base}/records/by-template/${encodeURIComponent(c.req.param("template"))}?owner_id=${encodeURIComponent(owner)}`,
+        { headers }
+      );
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/records/:recordId", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/search", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const q = c.req.query("q");
+      if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const params = new URLSearchParams({ q, owner_id: owner });
+      for (const k of ["entry_type", "source", "library", "mode"]) {
+        const v = c.req.query(k);
+        if (v) params.set(k, v);
+      }
+      const res = await fetch(`${base}/entries/search?${params.toString()}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.post("/kbdb/entries", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !body.entry_type) return c.json({ error: "entry_type \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/entries`, {
+        method: "POST",
+        headers,
+        // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
+        body: JSON.stringify({ ...body, owner_id: owner })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/entries", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = new URLSearchParams();
+      params.set("owner_id", owner);
+      for (const k of ["entry_type", "parent_id", "page_name", "source", "library", "limit", "offset"]) {
+        const v = c.req.query(k);
+        if (v) params.set(k, v);
+      }
+      const q = c.req.query("q") || c.req.query("search");
+      if (q) params.set("q", q);
+      const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/graph/neighbors/:name", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const base = graphBase(c.env);
+      const headers = {};
+      if (c.env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
+      try {
+        const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}`, { headers });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ error: `kbdb-graph-plugin \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.get("/kbdb/map", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const owner = c.req.query("owner_id");
+      const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
+      try {
+        const res = await fetch(`${base}/map${qs}`, { headers });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.get("/kbdb/map/:library", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const owner = c.req.query("owner_id");
+      const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
+      try {
+        const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}${qs}`, { headers });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.patch("/kbdb/entries/:id", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => ({}));
+      const { owner_id: _drop, ...patch } = body ?? {};
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(patch)
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+  }
+});
+
+// ../../matrix/arcrun/cypher-executor/src/routes/credentials.ts
+async function deriveSecretRef(apiKey, name) {
+  const hash8 = await sha256Prefix(apiKey);
+  return `CRED_${name.toUpperCase()}_${hash8.toUpperCase()}`;
+}
+async function storeCredential(env, apiKey, name, value, service) {
+  const secretRef = await deriveSecretRef(apiKey, name);
+  await putWorkerSecret(env, secretRef, value);
+  await upsertCredentialEntry(env, apiKey, name, service, "standard", secretRef);
+}
+function validateName(name) {
+  return typeof name === "string" && /^\w+$/.test(name);
+}
+function validSensitivity(s) {
+  return s === "standard" || s === "high";
+}
+async function putWorkerSecret(env, secretRef, value) {
+  if (!env.CF_SECRETS_API_TOKEN || !env.CF_ACCOUNT_ID) {
+    throw new Error(
+      "\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u5BEB\u5165\u8DEF\u5F91\u672A\u5C31\u7DD2\uFF08\u898B credential-store-migration.md T3\uFF1Aacr init/update \u61C9\u78BA\u4FDD\u9019\u5169\u9805\u5C31\u7DD2\uFF09"
+    );
+  }
+  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${env.CF_SECRETS_API_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ name: secretRef, text: value, type: "secret_text" })
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.success) {
+    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
+    throw new Error(`CF Workers Secrets \u5BEB\u5165\u5931\u6557\uFF1A${detail}`);
+  }
+}
+async function deleteWorkerSecret(env, secretRef) {
+  if (!env.CF_SECRETS_API_TOKEN || !env.CF_ACCOUNT_ID) {
+    throw new Error("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
+  }
+  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${env.CF_SECRETS_API_TOKEN}` }
+  });
+  if (res.status === 404) return;
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.success) {
+    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
+    throw new Error(`CF Workers Secrets \u522A\u9664\u5931\u6557\uFF1A${detail}`);
+  }
+}
+function parseMeta(row) {
+  try {
+    const m = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    return {
+      service: typeof m.service === "string" ? m.service : null,
+      sensitivity: m.sensitivity === "high" ? "high" : "standard",
+      secret_ref: typeof m.secret_ref === "string" ? m.secret_ref : "",
+      last_used_at: typeof m.last_used_at === "number" ? m.last_used_at : null
+    };
+  } catch {
+    return { service: null, sensitivity: "standard", secret_ref: "", last_used_at: null };
+  }
+}
+async function kbdbCredFetch(env, path, init) {
+  const { base, headers } = kbdbBase(env);
+  return fetch(`${base}${path}`, {
+    ...init,
+    headers: { ...headers, ...init?.headers }
+  });
+}
+function invalidateCredentialCache(apiKey) {
+  delete dirCache[apiKey];
+}
+async function getCredentialDirectory(env, apiKey) {
+  const now2 = Date.now();
+  const cached = dirCache[apiKey];
+  if (cached && now2 - cached.fetchedAt < DIR_CACHE_TTL_MS) return cached.rows;
+  const qs = new URLSearchParams({ owner_id: apiKey, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
+  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
+  if (!res.ok) {
+    return [];
+  }
+  const body = await res.json().catch(() => null);
+  const rows = (body?.entries ?? []).filter((e) => !!e.page_name).map((e) => {
+    const meta = parseMeta(e);
+    return {
+      id: e.id,
+      name: e.page_name,
+      secret_ref: meta.secret_ref,
+      service: meta.service,
+      sensitivity: meta.sensitivity,
+      last_used_at: meta.last_used_at
+    };
+  });
+  dirCache[apiKey] = { rows, fetchedAt: now2 };
+  return rows;
+}
+async function getCredentialSecretRefs(env, apiKey) {
+  const rows = await getCredentialDirectory(env, apiKey);
+  const out = {};
+  for (const r of rows) {
+    if (r.secret_ref) out[r.name] = r.secret_ref;
+  }
+  return out;
+}
+function touchLastUsed(env, apiKey, names) {
+  const cached = dirCache[apiKey];
+  if (!cached || names.length === 0) return;
+  const now2 = Math.floor(Date.now() / 1e3);
+  for (const r of cached.rows) {
+    if (!names.includes(r.name)) continue;
+    const meta = {
+      service: r.service,
+      sensitivity: r.sensitivity,
+      secret_ref: r.secret_ref,
+      last_used_at: now2
+    };
+    kbdbCredFetch(env, `/entries/${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata_json: JSON.stringify(meta) })
+    }).catch(() => {
+    });
+    r.last_used_at = now2;
+  }
+}
+async function findCredentialEntry(env, apiKey, name) {
+  const qs = new URLSearchParams({
+    owner_id: apiKey,
+    entry_type: CREDENTIAL_ENTRY_TYPE,
+    page_name: name,
+    limit: "1"
+  });
+  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
+  if (!res.ok) throw new Error(`KBDB /entries \u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
+  const body = await res.json().catch(() => null);
+  return body?.entries?.[0] ?? null;
+}
+async function upsertCredentialEntry(env, apiKey, name, service, sensitivity, secretRef) {
+  const existing = await findCredentialEntry(env, apiKey, name);
+  const meta = {
+    service,
+    sensitivity,
+    secret_ref: secretRef,
+    last_used_at: existing ? parseMeta(existing).last_used_at : null
+  };
+  if (existing) {
+    const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(existing.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata_json: JSON.stringify(meta) })
+    });
+    if (!res.ok) throw new Error(`credential \u76EE\u9304\u66F4\u65B0\u5931\u6557\uFF1AHTTP ${res.status}`);
+  } else {
+    const res = await kbdbCredFetch(env, `/entries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_type: CREDENTIAL_ENTRY_TYPE,
+        owner_id: apiKey,
+        page_name: name,
+        metadata_json: JSON.stringify(meta)
+      })
+    });
+    if (!res.ok) throw new Error(`credential \u76EE\u9304\u5EFA\u7ACB\u5931\u6557\uFF1AHTTP ${res.status}`);
+  }
+  invalidateCredentialCache(apiKey);
+}
+async function listCredentialRows(env, apiKey) {
+  const qs = new URLSearchParams({ owner_id: apiKey, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
+  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
+  if (!res.ok) throw new Error(`credential \u76EE\u9304\u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
+  const body = await res.json().catch(() => null);
+  const rows = (body?.entries ?? []).filter((e) => !!e.page_name).map((e) => {
+    const meta = parseMeta(e);
+    return { name: e.page_name, service: meta.service, sensitivity: meta.sensitivity, created_at: e.created_at, last_used_at: meta.last_used_at };
+  });
+  return rows;
+}
+async function hasCredential(env, apiKey, name) {
+  const entry = await findCredentialEntry(env, apiKey, name);
+  return entry !== null;
+}
+async function writeCredential(env, apiKey, name, value, service, sensitivityRaw) {
+  const sensitivity = validSensitivity(sensitivityRaw) ? sensitivityRaw : "standard";
+  const secretRef = await deriveSecretRef(apiKey, name);
+  await putWorkerSecret(env, secretRef, value);
+  await upsertCredentialEntry(env, apiKey, name, service ?? null, sensitivity, secretRef);
+  return { secretRef, sensitivity };
+}
+var credentialsRouter, CYPHER_SCRIPT_NAME, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache;
+var init_credentials = __esm({
+  "../../matrix/arcrun/cypher-executor/src/routes/credentials.ts"() {
+    "use strict";
+    init_dist();
+    init_hash();
+    init_kbdb_proxy();
+    credentialsRouter = new Hono2();
+    CYPHER_SCRIPT_NAME = "arcrun-cypher-executor";
+    CREDENTIAL_ENTRY_TYPE = "credential";
+    DIR_CACHE_TTL_MS = 6e4;
+    dirCache = {};
+    credentialsRouter.post("/credentials", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const body = await c.req.json().catch(() => null);
+      if (!validateName(body?.name)) {
+        return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+      }
+      if (!body?.value || typeof body.value !== "string") {
+        return c.json({ error: "value \u5FC5\u586B\uFF08credential \u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF09" }, 400);
+      }
+      try {
+        const { secretRef, sensitivity } = await writeCredential(
+          c.env,
+          apiKey,
+          body.name,
+          body.value,
+          body.service,
+          body.sensitivity
+        );
+        return c.json({ success: true, name: body.name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+    credentialsRouter.put("/credentials/:name", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const name = c.req.param("name");
+      if (!validateName(name)) {
+        return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+      }
+      const body = await c.req.json().catch(() => null);
+      if (!body?.value || typeof body.value !== "string") {
+        return c.json({ error: "value \u5FC5\u586B\uFF08credential \u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF09" }, 400);
+      }
+      try {
+        const { secretRef, sensitivity } = await writeCredential(
+          c.env,
+          apiKey,
+          name,
+          body.value,
+          body.service,
+          body.sensitivity
+        );
+        return c.json({ success: true, name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+    credentialsRouter.delete("/credentials/:name", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const name = c.req.param("name");
+      try {
+        const entry = await findCredentialEntry(c.env, apiKey, name);
+        if (entry) {
+          const meta = parseMeta(entry);
+          if (meta.secret_ref) await deleteWorkerSecret(c.env, meta.secret_ref);
+          const res = await kbdbCredFetch(c.env, `/entries/${encodeURIComponent(entry.id)}`, { method: "DELETE" });
+          if (!res.ok) throw new Error(`credential \u76EE\u9304\u522A\u9664\u5931\u6557\uFF1AHTTP ${res.status}`);
+          invalidateCredentialCache(apiKey);
+          return c.json({ success: true, name, source: "workers-secrets" });
+        }
+        await c.env.CREDENTIALS_KV.delete(`${apiKey}:cred:${name}`);
+        return c.json({ success: true, name, source: "legacy-kv" });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+    credentialsRouter.get("/credentials/catalog", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      try {
+        const rows = await listCredentialRows(c.env, apiKey);
+        return c.json({ success: true, credentials: rows, total: rows.length });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+    credentialsRouter.get("/credentials", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      try {
+        const rows = await listCredentialRows(c.env, apiKey);
+        return c.json({ success: true, credentials: rows, total: rows.length });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+  }
+});
+
 // ../../matrix/arcrun/cypher-executor/src/actions/auth-dispatcher.ts
 async function resolveSecretsFromNewHome(env, apiKey, names) {
   const resolved = {};
   if (names.length === 0) return resolved;
-  const db = env.CREDENTIALS_DB;
-  if (!db) return resolved;
-  let rows;
-  try {
-    const placeholders = names.map(() => "?").join(", ");
-    const result = await db.prepare(
-      `SELECT name, secret_ref FROM credentials
-         WHERE api_key = ? AND name IN (${placeholders})`
-    ).bind(apiKey, ...names).all();
-    rows = result.results ?? [];
-  } catch {
-    return resolved;
-  }
-  if (rows.length === 0) return resolved;
+  const refs = await getCredentialSecretRefs(env, apiKey);
+  if (Object.keys(refs).length === 0) return resolved;
   const secretGet2 = createArcrunHostFunctions(env, apiKey).secret_get;
   if (!secretGet2) return resolved;
   const resolvedNames = [];
-  for (const row of rows) {
-    const value = await secretGet2(row.secret_ref);
+  for (const name of names) {
+    const ref = refs[name];
+    if (!ref) continue;
+    const value = await secretGet2(ref);
     if (value === null) continue;
-    resolved[row.name] = value;
-    resolvedNames.push(row.name);
+    resolved[name] = value;
+    resolvedNames.push(name);
   }
-  if (resolvedNames.length > 0) {
-    try {
-      const now2 = Math.floor(Date.now() / 1e3);
-      const placeholders = resolvedNames.map(() => "?").join(", ");
-      await db.prepare(
-        `UPDATE credentials SET last_used_at = ?
-           WHERE api_key = ? AND name IN (${placeholders})`
-      ).bind(now2, apiKey, ...resolvedNames).run();
-    } catch {
-    }
-  }
+  if (resolvedNames.length > 0) touchLastUsed(env, apiKey, resolvedNames);
   return resolved;
 }
 async function tryAuthDispatch(componentId, input, env, apiKey) {
@@ -3271,6 +3739,7 @@ var init_auth_dispatcher = __esm({
     init_recipes();
     init_component_loader();
     init_wasi_shim();
+    init_credentials();
     SUPPORTED_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
     AUTH_PRIMITIVE_IDS = /* @__PURE__ */ new Set([
       "auth_static_key",
@@ -8638,21 +9107,28 @@ init_schemas();
 init_component_loader();
 
 // ../../matrix/arcrun/cypher-executor/src/actions/execution-logger.ts
-async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message) {
+init_kbdb_proxy();
+function extractTarget(input) {
+  if (!input) return void 0;
+  const raw2 = input.page_name ?? input.path;
+  if (raw2 === void 0 || raw2 === null) return void 0;
+  return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
+}
+async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message, input, apiKey) {
+  void nodes;
   try {
-    const componentIds = nodes.filter((n) => n.type === "Component" && n.componentId).map((n) => n.componentId);
-    const record = {
-      workflow_id: workflowId,
-      component_ids: componentIds,
-      verdict,
-      duration_ms: durationMs,
-      message,
-      recorded_at: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    const key = `stats:${workflowId}:${Date.now()}`;
-    await env.ANALYTICS_KV.put(key, JSON.stringify(record), {
-      expirationTtl: 60 * 60 * 24 * 90
-      // 保留 90 天
+    const { base, headers } = kbdbBase(env);
+    await fetch(`${base}/execution-log/record`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        owner_id: apiKey ?? null,
+        verdict,
+        duration_ms: Math.max(0, Math.round(durationMs)),
+        message: message ?? "",
+        target: extractTarget(input) ?? null
+      })
     });
   } catch {
   }
@@ -8675,14 +9151,14 @@ executeRouter.post("/execute", async (c) => {
     const result = await executor.execute(graph, context, c.env.EXEC_CONTEXT);
     const duration_ms = Date.now() - start;
     c.executionCtx.waitUntil(
-      writeExecutionVerdict(c.env, graph.id, graph.nodes, "success", duration_ms, "\u57F7\u884C\u5B8C\u6210")
+      writeExecutionVerdict(c.env, graph.id, graph.nodes, "success", duration_ms, "\u57F7\u884C\u5B8C\u6210", context, apiKey)
     );
     return c.json({ success: true, data: result.data, trace: result.trace, duration_ms });
   } catch (err) {
     const duration_ms = Date.now() - start;
     const errMsg = err instanceof Error ? err.message : String(err);
     c.executionCtx.waitUntil(
-      writeExecutionVerdict(c.env, graph.id, graph.nodes, "failed", duration_ms, errMsg.slice(0, 100))
+      writeExecutionVerdict(c.env, graph.id, graph.nodes, "failed", duration_ms, errMsg.slice(0, 100), context, apiKey)
     );
     if (err instanceof ExecutionError) {
       const traceFormatted = err.trace.map((s) => ({
@@ -9989,7 +10465,7 @@ webhooksRouter.post("/webhooks/:token/trigger", async (c) => {
   const workflowId = graph.id ?? token;
   const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "")
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey)
   );
   return c.json(result, result.success ? 200 : 500);
 });
@@ -10080,189 +10556,7 @@ webhooksListRouter.get("/webhooks", async (c) => {
 
 // ../../matrix/arcrun/cypher-executor/src/index.ts
 init_recipes();
-
-// ../../matrix/arcrun/cypher-executor/src/routes/credentials.ts
-init_dist();
-init_hash();
-var credentialsRouter = new Hono2();
-var CYPHER_SCRIPT_NAME = "arcrun-cypher-executor";
-async function deriveSecretRef(apiKey, name) {
-  const hash8 = await sha256Prefix(apiKey);
-  return `CRED_${name.toUpperCase()}_${hash8.toUpperCase()}`;
-}
-async function storeCredential(env, apiKey, name, value, service) {
-  const secretRef = await deriveSecretRef(apiKey, name);
-  await putWorkerSecret(env, secretRef, value);
-  await upsertCredentialRow(env.CREDENTIALS_DB, apiKey, name, service, "standard", secretRef);
-}
-function validateName(name) {
-  return typeof name === "string" && /^\w+$/.test(name);
-}
-function validSensitivity(s) {
-  return s === "standard" || s === "high";
-}
-async function putWorkerSecret(env, secretRef, value) {
-  if (!env.CF_SECRETS_API_TOKEN || !env.CF_ACCOUNT_ID) {
-    throw new Error(
-      "\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u5BEB\u5165\u8DEF\u5F91\u672A\u5C31\u7DD2\uFF08\u898B credential-store-migration.md T3\uFF1Aacr init/update \u61C9\u78BA\u4FDD\u9019\u5169\u9805\u5C31\u7DD2\uFF09"
-    );
-  }
-  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets`;
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${env.CF_SECRETS_API_TOKEN}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ name: secretRef, text: value, type: "secret_text" })
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !body?.success) {
-    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
-    throw new Error(`CF Workers Secrets \u5BEB\u5165\u5931\u6557\uFF1A${detail}`);
-  }
-}
-async function deleteWorkerSecret(env, secretRef) {
-  if (!env.CF_SECRETS_API_TOKEN || !env.CF_ACCOUNT_ID) {
-    throw new Error("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
-  }
-  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${env.CF_SECRETS_API_TOKEN}` }
-  });
-  if (res.status === 404) return;
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !body?.success) {
-    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
-    throw new Error(`CF Workers Secrets \u522A\u9664\u5931\u6557\uFF1A${detail}`);
-  }
-}
-async function upsertCredentialRow(db, apiKey, name, service, sensitivity, secretRef) {
-  const now2 = Math.floor(Date.now() / 1e3);
-  await db.prepare(
-    `INSERT INTO credentials (api_key, name, service, sensitivity, secret_ref, created_at, last_used_at)
-       VALUES (?, ?, ?, ?, ?, ?, NULL)
-       ON CONFLICT(api_key, name) DO UPDATE SET
-         service = excluded.service,
-         sensitivity = excluded.sensitivity,
-         secret_ref = excluded.secret_ref`
-  ).bind(apiKey, name, service, sensitivity, secretRef, now2).run();
-}
-async function listCredentialRows(db, apiKey) {
-  const rows = await db.prepare(
-    `SELECT name, service, sensitivity, created_at, last_used_at
-       FROM credentials WHERE api_key = ? ORDER BY created_at DESC`
-  ).bind(apiKey).all();
-  return rows.results ?? [];
-}
-async function findSecretRef(db, apiKey, name) {
-  const row = await db.prepare(`SELECT secret_ref FROM credentials WHERE api_key = ? AND name = ?`).bind(apiKey, name).first();
-  return row?.secret_ref ?? null;
-}
-async function writeCredential(env, apiKey, name, value, service, sensitivityRaw) {
-  const sensitivity = validSensitivity(sensitivityRaw) ? sensitivityRaw : "standard";
-  const secretRef = await deriveSecretRef(apiKey, name);
-  await putWorkerSecret(env, secretRef, value);
-  await upsertCredentialRow(env.CREDENTIALS_DB, apiKey, name, service ?? null, sensitivity, secretRef);
-  return { secretRef, sensitivity };
-}
-credentialsRouter.post("/credentials", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  const body = await c.req.json().catch(() => null);
-  if (!validateName(body?.name)) {
-    return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
-  }
-  if (!body?.value || typeof body.value !== "string") {
-    return c.json({ error: "value \u5FC5\u586B\uFF08credential \u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF09" }, 400);
-  }
-  try {
-    const { secretRef, sensitivity } = await writeCredential(
-      c.env,
-      apiKey,
-      body.name,
-      body.value,
-      body.service,
-      body.sensitivity
-    );
-    return c.json({ success: true, name: body.name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
-  } catch (e) {
-    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-  }
-});
-credentialsRouter.put("/credentials/:name", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  const name = c.req.param("name");
-  if (!validateName(name)) {
-    return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
-  }
-  const body = await c.req.json().catch(() => null);
-  if (!body?.value || typeof body.value !== "string") {
-    return c.json({ error: "value \u5FC5\u586B\uFF08credential \u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF09" }, 400);
-  }
-  try {
-    const { secretRef, sensitivity } = await writeCredential(
-      c.env,
-      apiKey,
-      name,
-      body.value,
-      body.service,
-      body.sensitivity
-    );
-    return c.json({ success: true, name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
-  } catch (e) {
-    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-  }
-});
-credentialsRouter.delete("/credentials/:name", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  const name = c.req.param("name");
-  try {
-    const secretRef = await findSecretRef(c.env.CREDENTIALS_DB, apiKey, name);
-    if (secretRef) {
-      await deleteWorkerSecret(c.env, secretRef);
-      await c.env.CREDENTIALS_DB.prepare(`DELETE FROM credentials WHERE api_key = ? AND name = ?`).bind(apiKey, name).run();
-      return c.json({ success: true, name, source: "workers-secrets" });
-    }
-    await c.env.CREDENTIALS_KV.delete(`${apiKey}:cred:${name}`);
-    return c.json({ success: true, name, source: "legacy-kv" });
-  } catch (e) {
-    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-  }
-});
-credentialsRouter.get("/credentials/catalog", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  try {
-    const rows = await listCredentialRows(c.env.CREDENTIALS_DB, apiKey);
-    return c.json({ success: true, credentials: rows, total: rows.length });
-  } catch (e) {
-    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-  }
-});
-credentialsRouter.get("/credentials", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  try {
-    const rows = await listCredentialRows(c.env.CREDENTIALS_DB, apiKey);
-    return c.json({ success: true, credentials: rows, total: rows.length });
-  } catch (e) {
-    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-  }
-});
+init_credentials();
 
 // ../../matrix/arcrun/cypher-executor/src/routes/webhooks-named.ts
 init_dist();
@@ -10460,7 +10754,7 @@ async function triggerNamed(c, apiKey, name) {
   if (c.req.query("async") === "1") {
     c.executionCtx.waitUntil(
       executeWebhookGraph(c.env, record.graph, triggerContext, name, apiKey, c.executionCtx, userAgent).then(
-        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "")
+        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "", triggerContext, apiKey)
       )
     );
     return c.json({ accepted: true }, 202);
@@ -10475,7 +10769,7 @@ async function triggerNamed(c, apiKey, name) {
     userAgent
   );
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "")
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey)
   );
   return c.json(result, result.success ? 200 : 500);
 }
@@ -10512,7 +10806,7 @@ async function queryNamed(c, apiKey, name, triggerContext) {
     userAgent
   );
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "")
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey)
   );
   if (!result.success) {
     const paused = typeof result.error === "string" && /workflow paused/i.test(result.error);
@@ -10618,6 +10912,7 @@ webhooksNamedRouter.delete("/webhooks/named/:name", async (c) => {
 
 // ../../matrix/arcrun/cypher-executor/src/routes/auth.ts
 init_dist();
+init_credentials();
 var authRouter = new Hono2();
 function getLandingOrigin(c) {
   const origin = c.req.raw.headers.get("origin");
@@ -11018,6 +11313,7 @@ resumeRouter.post("/workflows/resume", async (c) => {
 // ../../matrix/arcrun/cypher-executor/src/routes/executions.ts
 init_dist();
 init_paused_runs();
+init_kbdb_proxy();
 var executionsRouter = new Hono2();
 executionsRouter.get("/executions/paused", async (c) => {
   const apiKey = c.req.header("X-Arcrun-API-Key");
@@ -11120,25 +11416,18 @@ executionsRouter.get("/workflows/:name/executions", async (c) => {
       next_actions: ["call /webhooks/named \u770B\u4F60\u6709\u4EC0\u9EBC workflow"]
     }, 404);
   }
-  const list = await c.env.ANALYTICS_KV.list({ prefix: `stats:${name}:`, limit: 1e3 });
-  const sorted = [...list.keys].sort((a, b) => {
-    const ta = parseInt(a.name.split(":").pop() ?? "0", 10);
-    const tb = parseInt(b.name.split(":").pop() ?? "0", 10);
-    return tb - ta;
-  }).slice(0, limit);
-  const executions = [];
-  for (const key of sorted) {
-    const raw2 = await c.env.ANALYTICS_KV.get(key.name);
-    if (!raw2) continue;
-    try {
-      const record = JSON.parse(raw2);
-      executions.push({
-        timestamp: key.name.split(":").pop(),
-        ...record
-      });
-    } catch {
-    }
-  }
+  const { base, headers } = kbdbBase(c.env);
+  const params = new URLSearchParams({ workflow_id: name, owner_id: apiKey, limit: String(limit) });
+  const kbdbRes = await fetch(`${base}/execution-log?${params.toString()}`, { headers });
+  const kbdbBody = await kbdbRes.json().catch(() => null);
+  const executions = (kbdbRes.ok && kbdbBody?.success ? kbdbBody.executions ?? [] : []).map((r) => ({
+    timestamp: String(r.recorded_at),
+    workflow_id: name,
+    verdict: r.verdict,
+    duration_ms: r.duration_ms,
+    message: r.message ?? "",
+    ...r.target ? { target: r.target } : {}
+  }));
   return c.json({
     ok: true,
     data: {
@@ -11146,7 +11435,7 @@ executionsRouter.get("/workflows/:name/executions", async (c) => {
       count: executions.length,
       executions
     },
-    hints: executions.length === 0 ? ["\u5C1A\u672A\u6709\u4EFB\u4F55\u57F7\u884C\u7D00\u9304\uFF08\u6216\u90FD\u904E\u4E86 90d TTL\uFF09\u3002\u5148 call /webhooks/named/:name/trigger \u8DD1\u4E00\u6B21"] : [`\u6700\u8FD1 ${executions.length} \u6B21\u3002\u770B\u5230 verdict=failed \u7684\uFF0Ccall /executions/:task_id \u770B paused state \u6216\u7E7C\u7E8C debug`]
+    hints: executions.length === 0 ? ["\u5C1A\u672A\u6709\u4EFB\u4F55\u57F7\u884C\u7D00\u9304\u3002\u5148 call /webhooks/named/:name/trigger \u8DD1\u4E00\u6B21"] : [`\u6700\u8FD1 ${executions.length} \u6B21\u3002\u770B\u5230 verdict=failed \u7684\uFF0Ccall /executions/:task_id \u770B paused state \u6216\u7E7C\u7E8C debug`]
   });
 });
 
@@ -11989,181 +12278,7 @@ var AUTH_RECIPE_SEEDS = [
 
 // ../../matrix/arcrun/cypher-executor/src/routes/portal.ts
 init_dist();
-
-// ../../matrix/arcrun/cypher-executor/src/routes/kbdb-proxy.ts
-init_dist();
-var kbdbProxyRouter = new Hono2();
-function kbdbBase(env) {
-  const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
-  const headers = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-  return { base, headers };
-}
-function tenant(c) {
-  return c.req.header("X-Arcrun-API-Key") ?? null;
-}
-var NEED_KEY = { error: "\u7F3A\u5C11 X-Arcrun-API-Key header" };
-kbdbProxyRouter.post("/kbdb/templates", async (c) => {
-  const owner = tenant(c);
-  if (!owner) return c.json(NEED_KEY, 401);
-  const body = await c.req.json().catch(() => null);
-  if (!body || !body.name || !Array.isArray(body.slots)) {
-    return c.json({ error: "name \u8207 slots[] \u5FC5\u586B" }, 400);
-  }
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(`${base}/templates`, {
-    method: "POST",
-    headers,
-    // created_by 帶上租戶當溯源，但 template 本身全域可見可用
-    body: JSON.stringify({ name: body.name, slots: body.slots, description: body.description, created_by: owner })
-  });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.get("/kbdb/templates", async (c) => {
-  if (!tenant(c)) return c.json(NEED_KEY, 401);
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(`${base}/templates`, { headers });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.get("/kbdb/templates/:idOrName", async (c) => {
-  if (!tenant(c)) return c.json(NEED_KEY, 401);
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(`${base}/templates/${encodeURIComponent(c.req.param("idOrName"))}`, { headers });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.post("/kbdb/records", async (c) => {
-  const owner = tenant(c);
-  if (!owner) return c.json(NEED_KEY, 401);
-  const body = await c.req.json().catch(() => null);
-  if (!body || !body.template || !body.values) {
-    return c.json({ error: "template \u8207 values \u5FC5\u586B" }, 400);
-  }
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(`${base}/records`, {
-    method: "POST",
-    headers,
-    // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
-    body: JSON.stringify({ template: body.template, values: body.values, owner_id: owner })
-  });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.get("/kbdb/records/by-template/:template", async (c) => {
-  const owner = tenant(c);
-  if (!owner) return c.json(NEED_KEY, 401);
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(
-    `${base}/records/by-template/${encodeURIComponent(c.req.param("template"))}?owner_id=${encodeURIComponent(owner)}`,
-    { headers }
-  );
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.get("/kbdb/records/:recordId", async (c) => {
-  if (!tenant(c)) return c.json(NEED_KEY, 401);
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, { headers });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.get("/kbdb/search", async (c) => {
-  const owner = tenant(c);
-  if (!owner) return c.json(NEED_KEY, 401);
-  const q = c.req.query("q");
-  if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
-  const { base, headers } = kbdbBase(c.env);
-  const params = new URLSearchParams({ q, owner_id: owner });
-  for (const k of ["entry_type", "source", "library", "mode"]) {
-    const v = c.req.query(k);
-    if (v) params.set(k, v);
-  }
-  const res = await fetch(`${base}/entries/search?${params.toString()}`, { headers });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.post("/kbdb/entries", async (c) => {
-  const owner = tenant(c);
-  if (!owner) return c.json(NEED_KEY, 401);
-  const body = await c.req.json().catch(() => null);
-  if (!body || !body.entry_type) return c.json({ error: "entry_type \u5FC5\u586B" }, 400);
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(`${base}/entries`, {
-    method: "POST",
-    headers,
-    // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
-    body: JSON.stringify({ ...body, owner_id: owner })
-  });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.get("/kbdb/entries", async (c) => {
-  const owner = tenant(c);
-  if (!owner) return c.json(NEED_KEY, 401);
-  const { base, headers } = kbdbBase(c.env);
-  const params = new URLSearchParams();
-  params.set("owner_id", owner);
-  for (const k of ["entry_type", "parent_id", "page_name", "source", "library", "limit", "offset"]) {
-    const v = c.req.query(k);
-    if (v) params.set(k, v);
-  }
-  const q = c.req.query("q") || c.req.query("search");
-  if (q) params.set("q", q);
-  const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
-  if (!tenant(c)) return c.json(NEED_KEY, 401);
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, { headers });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-function graphBase(env) {
-  if (env.KBDB_GRAPH_URL) return env.KBDB_GRAPH_URL.replace(/\/$/, "");
-  return `https://kbdb-graph-plugin.${env.WORKER_SUBDOMAIN}.workers.dev`;
-}
-kbdbProxyRouter.get("/kbdb/graph/neighbors/:name", async (c) => {
-  if (!tenant(c)) return c.json(NEED_KEY, 401);
-  const base = graphBase(c.env);
-  const headers = {};
-  if (c.env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
-  try {
-    const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}`, { headers });
-    return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-  } catch (e) {
-    return c.json({ error: `kbdb-graph-plugin \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-  }
-});
-kbdbProxyRouter.get("/kbdb/map", async (c) => {
-  if (!tenant(c)) return c.json(NEED_KEY, 401);
-  const { base, headers } = kbdbBase(c.env);
-  const owner = c.req.query("owner_id");
-  const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
-  try {
-    const res = await fetch(`${base}/map${qs}`, { headers });
-    return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-  } catch (e) {
-    return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-  }
-});
-kbdbProxyRouter.get("/kbdb/map/:library", async (c) => {
-  if (!tenant(c)) return c.json(NEED_KEY, 401);
-  const { base, headers } = kbdbBase(c.env);
-  const owner = c.req.query("owner_id");
-  const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
-  try {
-    const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}${qs}`, { headers });
-    return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-  } catch (e) {
-    return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-  }
-});
-kbdbProxyRouter.patch("/kbdb/entries/:id", async (c) => {
-  if (!tenant(c)) return c.json(NEED_KEY, 401);
-  const body = await c.req.json().catch(() => ({}));
-  const { owner_id: _drop, ...patch } = body ?? {};
-  const { base, headers } = kbdbBase(c.env);
-  const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify(patch)
-  });
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
+init_kbdb_proxy();
 
 // ../../matrix/arcrun/cypher-executor/src/routes/console-auth.ts
 init_dist();
@@ -12386,6 +12501,7 @@ var PORTAL_TEMPLATE_SEEDS = [
 ];
 
 // ../../matrix/arcrun/cypher-executor/src/routes/portal.ts
+init_credentials();
 var portalRouter = new Hono2();
 var SESSION_PREFIX2 = "portal_sess:";
 var LOCKFAIL_PREFIX = "portal_lockfail:";
@@ -13243,8 +13359,7 @@ portalRouter.get(
     const tenantSlug = portalTenant(c.env);
     let hasKey = false;
     try {
-      const row = await c.env.CREDENTIALS_DB.prepare("SELECT 1 FROM credentials WHERE api_key = ? AND name = ? LIMIT 1").bind(tenantSlug, "gemini_api_key").first();
-      hasKey = !!row;
+      hasKey = await hasCredential(c.env, tenantSlug, "gemini_api_key");
     } catch {
       hasKey = false;
     }
@@ -13389,8 +13504,12 @@ initSeedRouter.post("/init/seed", async (c) => {
   );
 });
 
+// ../../matrix/arcrun/cypher-executor/src/index.ts
+init_kbdb_proxy();
+
 // ../../matrix/arcrun/cypher-executor/src/routes/console-dashboard.ts
 init_dist();
+init_kbdb_proxy();
 
 // ../../matrix/arcrun/cypher-executor/src/lib/taipei-time.ts
 var TAIPEI_OFFSET_MS = 8 * 3600 * 1e3;
@@ -14061,6 +14180,7 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
 
 // ../../matrix/arcrun/cypher-executor/src/routes/portal-data.ts
 init_dist();
+init_kbdb_proxy();
 init_webhook_handlers();
 var portalDataRouter = new Hono2();
 async function getTenantWorkflowGraph(env, name) {
@@ -14119,7 +14239,7 @@ function entryLibrary(entry) {
 function canReadLibrary(userLibraries, library) {
   return userLibraries.includes("*") || userLibraries.includes(library);
 }
-var INTERNAL_ENTRY_TYPES = /* @__PURE__ */ new Set(["value", "workflow"]);
+var INTERNAL_ENTRY_TYPES = /* @__PURE__ */ new Set(["value", "workflow", "execution_log", "execution_log_usage"]);
 function filterDeprecatedEntries(entries) {
   return entries.filter((e) => {
     if (e.entry_type && INTERNAL_ENTRY_TYPES.has(e.entry_type)) return false;
@@ -14436,24 +14556,72 @@ portalDataRouter.get(
           }
         }
         let last_execution = null;
-        const stats = await c.env.ANALYTICS_KV.list({ prefix: `stats:${name}:`, limit: 1e3 });
-        if (stats.keys.length > 0) {
-          const latest = stats.keys.reduce((a, b) => a.name > b.name ? a : b);
-          const ts = latest.name.split(":").pop() ?? "";
-          const rawStat = await c.env.ANALYTICS_KV.get(latest.name);
-          let verdict;
-          if (rawStat) {
-            try {
-              verdict = JSON.parse(rawStat).verdict;
-            } catch {
-            }
-          }
-          last_execution = { timestamp: ts, verdict };
+        const execRes = await kbdbFetch(
+          c.env,
+          `/execution-log/latest?${new URLSearchParams({ workflow_id: name, owner_id: tenant2 }).toString()}`
+        );
+        const execBody = await execRes.json().catch(() => null);
+        if (execRes.ok && execBody?.success && execBody.execution) {
+          last_execution = { timestamp: String(execBody.execution.recorded_at), verdict: execBody.execution.verdict };
         }
         return { name, description, created_at, cron_expr, last_execution };
       })
     );
     return c.json({ success: true, workflows, total: workflows.length, read_only: true });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/diagnostics",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = portalTenant(c.env);
+    const notes = [];
+    let embedding = { checked: false };
+    try {
+      const [statusRes, selftestRes] = await Promise.all([
+        kbdbFetch(c.env, `/embed/backfill/status?${new URLSearchParams({ owner_id: tenant2 }).toString()}`),
+        kbdbFetch(c.env, `/embed/selftest?${new URLSearchParams({ owner_id: tenant2 }).toString()}`)
+      ]);
+      const statusBody = await statusRes.json().catch(() => null);
+      const selftestBody = await selftestRes.json().catch(() => null);
+      embedding = {
+        checked: true,
+        module_enabled: statusBody?.enabled ?? false,
+        // Vectorize+AI binding 都在，才有「index」這回事
+        cards_embedded: statusBody?.embedded ?? 0,
+        cards_pending: statusBody?.pending ?? 0,
+        self_test: {
+          ran: selftestBody?.tested ?? false,
+          // 三態：true=能搜到自己 ／ false=搜不到自己（index 收錄有缺）／ null=還沒東西可測或模組未開
+          found_itself: selftestBody?.tested ? selftestBody?.passed ?? null : null,
+          note: selftestBody?.note ?? ""
+        }
+      };
+    } catch (e) {
+      notes.push(`embed \u5065\u5EB7\u72C0\u614B\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+    }
+    let library_count = 0;
+    let triplet_count = 0;
+    try {
+      const mapRes = await kbdbFetch(c.env, `/map?${new URLSearchParams({ owner_id: tenant2 }).toString()}`);
+      const mapBody = await mapRes.json().catch(() => null);
+      const libs = Array.isArray(mapBody?.libraries) ? mapBody.libraries : [];
+      library_count = libs.length;
+      triplet_count = libs.reduce((sum, l) => sum + (Number(l.triplet_count) || 0), 0);
+    } catch (e) {
+      notes.push(`\u77E5\u8B58\u5EAB\u898F\u6A21\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+    }
+    notes.push("\u76EE\u524D\u96F2\u7AEF\u6C92\u6709\u4FDD\u5B58\u300C\u8403\u53D6/\u4E0A\u50B3\u5931\u6557\u300D\u7684\u6B77\u53F2\u7D00\u9304\uFF0C\u53EA\u80FD\u770B\u5230\u76EE\u524D\u7684\u805A\u5408\u8A08\u6578\uFF08\u4E0A\u9762 cards_pending\uFF0Fcards_embedded\uFF09\uFF1B\u82E5\u8981\u67E5\u67D0\u4E00\u6B21\u5931\u6557\u7684\u7576\u4E0B\u539F\u56E0\uFF0C\u9700\u5728\u5931\u6557\u7576\u4E0B\u7531\u5C01\u6E2C\u8005\u622A\u5716\u540C\u6B65\u5C0F\u5E6B\u624B\u8996\u7A97\u3002");
+    return c.json({
+      generated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      instance_url: new URL(c.req.url).origin,
+      bundle_version: c.env.ARCRUN_BUNDLE_VERSION ?? null,
+      library_count,
+      triplet_count,
+      embedding,
+      notes
+    });
   })
 );
 

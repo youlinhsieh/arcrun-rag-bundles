@@ -2137,7 +2137,7 @@ async function listEntries(db, f = {}) {
   const limit = Math.min(f.limit ?? 100, 1e3);
   const offset = f.offset ?? 0;
   const [rowsRes, countRow] = await Promise.all([
-    db.prepare(`SELECT * FROM entries ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
+    db.prepare(`SELECT * FROM entries ${where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
     db.prepare(`SELECT COUNT(*) as total FROM entries ${where}`).bind(...params).first()
   ]);
   return { entries: rowsRes.results ?? [], total: countRow?.total ?? 0 };
@@ -2396,6 +2396,37 @@ async function backfillStatus(env, opts = {}) {
   const embeddedRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM entries WHERE is_embedded = 1 AND json_extract(metadata_json, '$.embed') = 1${extra}`).bind(...params).first();
   return { enabled: embedEnabled(env), pending: pendingRow?.c ?? 0, embedded: embeddedRow?.c ?? 0 };
 }
+async function embedSelfTest(env, opts = {}) {
+  if (!embedEnabled(env)) {
+    return { enabled: false, tested: false, passed: null, note: "embed \u6A21\u7D44\u672A\u958B\uFF08\u7F3A Vectorize/AI binding\uFF09\uFF0C\u8A9E\u7FA9\u641C\u5C0B\u9019\u689D\u8DEF\u76EE\u524D\u4E0D\u5B58\u5728" };
+  }
+  const conds = ["is_embedded = 1", "content IS NOT NULL AND content <> ''"];
+  const params = [];
+  if (opts.owner_id) {
+    conds.push("owner_id = ?");
+    params.push(opts.owner_id);
+  }
+  const where = conds.join(" AND ");
+  const row = await env.DB.prepare(`SELECT * FROM entries WHERE ${where} ORDER BY updated_at DESC LIMIT 1`).bind(...params).first();
+  if (!row) {
+    return { enabled: true, tested: false, passed: null, note: "\u5C1A\u7121\u4EFB\u4F55\u5361\u7247\u88AB\u6A19\u8A18\u70BA\u300C\u5DF2\u5D4C\u5165\u300D\uFF0C\u7121\u6CD5\u81EA\u6211\u6AA2\u67E5\uFF08\u53EF\u80FD\u662F\u9084\u6C92\u5361\u7247\uFF0C\u4E5F\u53EF\u80FD\u662F\u5D4C\u5165\u5F9E\u672A\u6210\u529F\u904E\uFF09" };
+  }
+  const sample = (row.content ?? "").trim().slice(0, 200);
+  if (!sample) {
+    return { enabled: true, tested: false, passed: null, note: "\u53D6\u6A23\u5361\u7247\u5167\u5BB9\u70BA\u7A7A\uFF0C\u8DF3\u904E\u81EA\u6211\u6AA2\u67E5" };
+  }
+  const hits = await semanticSearch(env, sample, { owner_id: opts.owner_id, topK: 10, min_score: 0 });
+  if (hits === null) {
+    return { enabled: false, tested: false, passed: null, note: "embed \u6A21\u7D44\u56DE\u5831\u672A\u958B\uFF08binding \u6AA2\u67E5\u671F\u9593\u6D88\u5931\uFF0C\u7F55\u898B\uFF09" };
+  }
+  const passed = hits.some((h) => h.id === row.id);
+  return {
+    enabled: true,
+    tested: true,
+    passed,
+    note: passed ? "\u62FF\u4E00\u5F35\u5DF2\u6A19\u8A18\u300C\u5DF2\u5D4C\u5165\u300D\u7684\u5361\u7247\u81EA\u6211\u67E5\u8A62\uFF0C\u80FD\u641C\u5230\u81EA\u5DF1\u2014\u2014\u8A9E\u7FA9\u641C\u5C0B\u9019\u689D\u8DEF\u662F\u901A\u7684" : "\u62FF\u4E00\u5F35\u5DF2\u6A19\u8A18\u300C\u5DF2\u5D4C\u5165\u300D\u7684\u5361\u7247\u81EA\u6211\u67E5\u8A62\uFF0C\u537B\u641C\u4E0D\u5230\u81EA\u5DF1\u2014\u2014\u50CF\u662F index \u6C92\u6536\u9304\u5230\u9019\u6279\u5411\u91CF\uFF08\u9700\u8981\u91CD\u65B0 reindex\uFF09"
+  };
+}
 async function semanticSearch(env, q, opts = {}) {
   if (!embedEnabled(env)) return null;
   const vec = await embedText(env, q);
@@ -2419,6 +2450,36 @@ async function semanticSearch(env, q, opts = {}) {
     source: m.metadata?.source,
     library: m.metadata?.library
   }));
+}
+
+// ../../matrix/arcrun/kbdb/src/actions/credential-legacy-migration.ts
+async function legacyCredentialsTableExists(db) {
+  const row = await db.prepare(`SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'credentials'`).first();
+  return row !== null;
+}
+async function migrateLegacyCredentialsForOwner(db, ownerId) {
+  if (!ownerId) return 0;
+  if (!await legacyCredentialsTableExists(db)) return 0;
+  const before = await db.prepare(`SELECT COUNT(*) AS n FROM entries WHERE entry_type = 'credential' AND owner_id = ?1`).bind(ownerId).first();
+  await db.prepare(
+    `INSERT INTO entries (id, entry_type, owner_id, page_name, metadata_json, created_at, updated_at)
+       SELECT
+         'e_cred_' || lower(hex(randomblob(8))),
+         'credential',
+         c.api_key,
+         c.name,
+         json_object('service', c.service, 'sensitivity', c.sensitivity, 'secret_ref', c.secret_ref, 'last_used_at', c.last_used_at),
+         c.created_at,
+         unixepoch()
+       FROM credentials c
+       WHERE c.api_key = ?1
+         AND NOT EXISTS (
+           SELECT 1 FROM entries e
+           WHERE e.entry_type = 'credential' AND e.owner_id = c.api_key AND e.page_name = c.name
+         )`
+  ).bind(ownerId).run();
+  const after = await db.prepare(`SELECT COUNT(*) AS n FROM entries WHERE entry_type = 'credential' AND owner_id = ?1`).bind(ownerId).first();
+  return (after?.n ?? 0) - (before?.n ?? 0);
 }
 
 // ../../matrix/arcrun/kbdb/src/routes/entries.ts
@@ -2466,9 +2527,15 @@ entryRoutes.get("/library-stats", async (c) => {
   return c.json({ success: true, stats });
 });
 entryRoutes.get("/", async (c) => {
+  const entryType = c.req.query("entry_type") || void 0;
+  const ownerId = c.req.query("owner_id") || void 0;
+  if (entryType === "credential" && ownerId) {
+    await migrateLegacyCredentialsForOwner(c.env.DB, ownerId).catch(() => {
+    });
+  }
   const { entries, total } = await listEntries(c.env.DB, {
-    entry_type: c.req.query("entry_type") || void 0,
-    owner_id: c.req.query("owner_id") || void 0,
+    entry_type: entryType,
+    owner_id: ownerId,
     parent_id: c.req.query("parent_id") || void 0,
     page_name: c.req.query("page_name") || void 0,
     source: c.req.query("source") || void 0,
@@ -2511,7 +2578,8 @@ entryRoutes.get("/search", async (c) => {
         count: entries3.length,
         mode: "keyword",
         requested_mode: "semantic",
-        capability_hint: "\u8A9E\u7FA9\u67E5\u8A62\u9700\u5148\u958B vectorize\uFF08embed \u6A21\u7D44\uFF09\u3002\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\u5373\u53EF\uFF08\u8A2D kbdb_embed:true + redeploy\uFF09\u3002\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\u3002"
+        capability_hint: "\u8A9E\u610F\u641C\u5C0B\u9084\u6C92\u958B\u901A\uFF0C\u9019\u6B21\u986F\u793A\u7684\u662F\u95DC\u9375\u5B57\u6BD4\u5C0D\u7D50\u679C\uFF0C\u4E0D\u662F\u7528\u300C\u610F\u601D\u300D\u627E\u7684\u2014\u2014\u4F60\u6253\u7684\u5B57\u8981\u76E1\u91CF\u8CBC\u8FD1\u8CC7\u6599\u88E1\u5BE6\u969B\u51FA\u73FE\u7684\u8A5E\u624D\u5BB9\u6613\u641C\u5230\u3002\u60F3\u555F\u7528\u8A9E\u610F\u641C\u5C0B\uFF0C\u8ACB\u806F\u7D61\u6211\u5011\u5354\u52A9\u958B\u901A\u3002",
+        admin_hint: "\u8A9E\u7FA9\u67E5\u8A62\u9700\u5148\u958B vectorize\uFF08embed \u6A21\u7D44\uFF09\u3002\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\u5373\u53EF\uFF08\u8A2D kbdb_embed:true + redeploy\uFF09\u3002\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\u3002"
       });
     }
     let entries2 = (await Promise.all(
@@ -2528,6 +2596,36 @@ entryRoutes.get("/search", async (c) => {
       entries2 = entries2.filter((e) => e.score >= cut);
     }
     entries2 = entries2.slice(0, requestedTopK);
+    if (entries2.length === 0) {
+      let empty_reason;
+      let capability_hint;
+      let admin_hint;
+      if (hits.length === 0) {
+        const status = await backfillStatus(c.env, { owner_id });
+        if (status.embedded === 0) {
+          empty_reason = "no_index";
+          capability_hint = "\u9019\u500B\u77E5\u8B58\u5EAB\u76EE\u524D\u9084\u6C92\u6709\u53EF\u4F9B\u8A9E\u610F\u641C\u5C0B\u7684\u8CC7\u6599\uFF0C\u6240\u4EE5\u641C\u4E0D\u5230\u2014\u2014\u4E0D\u662F\u4F60\u6253\u7684\u5B57\u6709\u554F\u984C\u3002\u8ACB\u806F\u7D61\u6211\u5011\u78BA\u8A8D\u7D22\u5F15\u6709\u6C92\u6709\u5EFA\u597D\u3002";
+          admin_hint = `owner_id=${owner_id ?? "(all)"} \u7BC4\u570D backfillStatus.embedded=0\uFF1A\u5F9E\u672A embed\uFF0C\u6216 backfill \u672A\u8DD1\u904E\u3002`;
+        } else {
+          empty_reason = "no_match";
+          capability_hint = "\u6C92\u6709\u627E\u5230\u7B26\u5408\u7684\u5167\u5BB9\uFF0C\u63DB\u500B\u8AAA\u6CD5\u6216\u66F4\u5177\u9AD4\u7684\u95DC\u9375\u5B57\u518D\u8A66\u8A66\u770B\u3002";
+          admin_hint = `owner_id=${owner_id ?? "(all)"} \u5DF2\u6709 ${status.embedded} \u7B46\u5D4C\u5165\u8CC7\u6599\uFF0C\u4F46\u672C\u6B21\u67E5\u8A62\u5728 Vectorize \u7AEF\u96F6\u547D\u4E2D\uFF08\u542B embed.ts \u7D55\u5C0D\u9580\u6ABB\u904E\u6FFE\uFF09\u3002`;
+        }
+      } else {
+        empty_reason = "stale_index";
+        capability_hint = "\u627E\u5230\u7684\u5167\u5BB9\u90FD\u5DF2\u7D93\u88AB\u4E0B\u67B6\u6216\u79FB\u9664\u4E86\uFF0C\u6240\u4EE5\u6C92\u6709\u53EF\u986F\u793A\u7684\u7D50\u679C\u2014\u2014\u63DB\u500B\u95DC\u9375\u5B57\u518D\u8A66\u8A66\u770B\uFF0C\u6216\u806F\u7D61\u6211\u5011\u78BA\u8A8D\u7D22\u5F15\u6709\u6C92\u6709\u904E\u671F\u3002";
+        admin_hint = `Vectorize \u547D\u4E2D ${hits.length} \u7B46\uFF0C\u4F46 hydrate \u5F8C\u5168\u90E8\u662F\u5DF2\u4E0B\u67B6\u6216\u627E\u4E0D\u5230\u5C0D\u61C9\u8CC7\u6599\uFF08\u5B64\u5152\u5411\u91CF\uFF09\uFF0C\u975E\u5206\u6578\u9580\u6ABB\u9020\u6210\u2014\u2014\u76F8\u5C0D\u9580\u6ABB\u6578\u5B78\u4E0A\u4E0D\u53EF\u80FD\u780D\u5149\u975E\u7A7A\u7D50\u679C\uFF08cut<=top\uFF09\u3002`;
+      }
+      return c.json({
+        success: true,
+        entries: entries2,
+        count: entries2.length,
+        mode: "semantic",
+        empty_reason,
+        capability_hint,
+        admin_hint
+      });
+    }
     return c.json({ success: true, entries: entries2, count: entries2.length, mode: "semantic" });
   }
   const entries = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
@@ -2883,6 +2981,10 @@ embedRoutes.get("/backfill/status", async (c) => {
   });
   return c.json({ success: true, ...status });
 });
+embedRoutes.get("/selftest", async (c) => {
+  const result = await embedSelfTest(c.env, { owner_id: c.req.query("owner_id") || void 0 });
+  return c.json({ success: true, ...result });
+});
 
 // ../../matrix/arcrun/kbdb/src/actions/library-map.ts
 var LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
@@ -3148,6 +3250,134 @@ mapRoutes.get("/:library", async (c) => {
   return c.json({ success: true, map });
 });
 
+// ../../matrix/arcrun/kbdb/src/actions/execution-log.ts
+var SUCCESS_MESSAGE_MAX = 200;
+var FAILED_MESSAGE_MAX = 2e3;
+var TARGET_MAX = 300;
+var DEFAULT_DAILY_LIMIT = 2e4;
+var DEGRADE_RATIO = 0.8;
+function dailyLimit(env) {
+  const raw2 = env.EXECUTION_LOG_DAILY_WRITE_LIMIT;
+  const n = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_DAILY_LIMIT;
+}
+function utcDay() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function truncate(s, max) {
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(0, max - 1)) + "\u2026";
+}
+async function checkUsage(db, limit) {
+  const id = `exlog-usage:${utcDay()}`;
+  const existing = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(id).first();
+  let count;
+  if (existing) {
+    let prevWrites = 0;
+    try {
+      const prev = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
+      prevWrites = Number(prev.writes) || 0;
+    } catch {
+      prevWrites = 0;
+    }
+    count = prevWrites + 1;
+    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify({ day: utcDay(), writes: count }), id).run();
+  } else {
+    count = 1;
+    await db.prepare(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'execution_log_usage', ?)`).bind(id, JSON.stringify({ day: utcDay(), writes: count })).run();
+  }
+  if (count > limit) return "skip";
+  if (count > limit * DEGRADE_RATIO) return "log_failure_only";
+  return "log";
+}
+async function recordExecutionLog(db, env, input) {
+  const limit = dailyLimit(env);
+  let mode;
+  try {
+    mode = await checkUsage(db, limit);
+  } catch {
+    mode = "log";
+  }
+  if (mode === "skip") return { written: false, mode };
+  if (mode === "log_failure_only" && input.verdict !== "failed") return { written: false, mode };
+  const maxLen = input.verdict === "failed" ? FAILED_MESSAGE_MAX : SUCCESS_MESSAGE_MAX;
+  const target = input.target ? truncate(String(input.target), TARGET_MAX) : null;
+  await createEntry(db, {
+    entry_type: "execution_log",
+    owner_id: input.owner_id ?? null,
+    page_name: input.workflow_id,
+    // 索引欄位（idx_entries_page）＝查詢鍵，讀取端靠它篩單一 workflow
+    content: truncate(input.message ?? "", maxLen),
+    metadata_json: JSON.stringify({
+      verdict: input.verdict,
+      duration_ms: Math.max(0, Math.round(input.duration_ms)),
+      target
+    })
+  });
+  return { written: true, mode };
+}
+async function listExecutionLog(db, workflowId, ownerId, limit) {
+  const { entries } = await listEntries(db, {
+    entry_type: "execution_log",
+    page_name: workflowId,
+    owner_id: ownerId,
+    limit
+  });
+  return entries.map((e) => {
+    let meta = {};
+    try {
+      meta = e.metadata_json ? JSON.parse(e.metadata_json) : {};
+    } catch {
+    }
+    return {
+      workflow_id: workflowId,
+      verdict: meta.verdict ?? "unknown",
+      duration_ms: meta.duration_ms ?? 0,
+      message: e.content ?? "",
+      ...meta.target ? { target: meta.target } : {},
+      recorded_at: e.created_at
+    };
+  });
+}
+async function latestExecutionLog(db, workflowId, ownerId) {
+  const rows = await listExecutionLog(db, workflowId, ownerId, 1);
+  return rows[0] ?? null;
+}
+
+// ../../matrix/arcrun/kbdb/src/routes/execution-log.ts
+var executionLogRoutes = new Hono2();
+executionLogRoutes.post("/record", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.workflow_id || body.verdict !== "success" && body.verdict !== "failed") {
+    return c.json({ success: false, error: 'workflow_id \u8207 verdict("success"|"failed") \u5FC5\u586B' }, 400);
+  }
+  const result = await recordExecutionLog(c.env.DB, c.env, {
+    workflow_id: body.workflow_id,
+    owner_id: body.owner_id ?? null,
+    verdict: body.verdict,
+    duration_ms: typeof body.duration_ms === "number" ? body.duration_ms : 0,
+    message: body.message ?? "",
+    target: body.target ?? null
+  });
+  return c.json({ success: true, ...result });
+});
+executionLogRoutes.get("/", async (c) => {
+  const workflowId = c.req.query("workflow_id");
+  if (!workflowId) return c.json({ success: false, error: "workflow_id \u5FC5\u586B" }, 400);
+  const ownerId = c.req.query("owner_id") || void 0;
+  const limitParam = c.req.query("limit");
+  const limit = Math.min(Math.max(parseInt(limitParam || "10", 10) || 10, 1), 100);
+  const executions = await listExecutionLog(c.env.DB, workflowId, ownerId, limit);
+  return c.json({ success: true, executions });
+});
+executionLogRoutes.get("/latest", async (c) => {
+  const workflowId = c.req.query("workflow_id");
+  if (!workflowId) return c.json({ success: false, error: "workflow_id \u5FC5\u586B" }, 400);
+  const ownerId = c.req.query("owner_id") || void 0;
+  const execution = await latestExecutionLog(c.env.DB, workflowId, ownerId);
+  return c.json({ success: true, execution });
+});
+
 // ../../matrix/arcrun/kbdb/src/index.ts
 var app = new Hono2();
 app.use("*", async (c, next) => {
@@ -3170,6 +3400,7 @@ app.route("/entries", entryRoutes);
 app.route("/templates", templateRoutes);
 app.route("/records", recordRoutes);
 app.route("/recipe-stats", recipeStatRoutes);
+app.route("/execution-log", executionLogRoutes);
 app.route("/embed", embedRoutes);
 app.route("/map", mapRoutes);
 var index_default = app;
