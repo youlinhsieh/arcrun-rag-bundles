@@ -3115,7 +3115,11 @@ async function recomputeLibraryMap(db, input) {
     bridgeMap.set(r.entity, libs);
   }
   const bridges = [...bridgeMap.entries()].map(([entity, libraries]) => ({ entity, libraries }));
-  const narrative = input.narrative?.trim() || "";
+  let narrative = input.narrative?.trim();
+  if (!narrative) {
+    const prev = await getLibraryMapDetail(db, library, owner);
+    narrative = prev?.narrative?.trim() || "";
+  }
   const coreNames = topEntities.slice(0, 3).map((t) => t.name);
   const content = `${library}\uFF1A${narrative || "\uFF08narrative \u5F85 ingest \u88DC\u5BEB\uFF09"}\u3002\u6838\u5FC3\uFF1A${coreNames.length ? coreNames.join("\u3001") : "\uFF08\u5C1A\u7121 entities\uFF09"}`;
   const blockEntry = await createEntry(db, {
@@ -3170,6 +3174,68 @@ async function recomputeLibraryMap(db, input) {
     triplet_template: tripletTemplateName,
     triplet_library_slot_added: librarySlotAdded
   };
+}
+async function liveTripletCountsByLibrary(db, tripletTemplateId, owner_id) {
+  const params = owner_id ? [tripletTemplateId, owner_id] : [tripletTemplateId];
+  const res = await db.prepare(
+    `SELECT COALESCE(NULLIF(lib_e.content, ''), 'general') AS library, COUNT(*) AS n
+       FROM (
+         SELECT DISTINCT ev.record_id
+         FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
+         WHERE ev.template_id = ?${owner_id ? " AND e.owner_id = ?" : ""}
+       ) AS tr
+       LEFT JOIN entry_values lev ON lev.record_id = tr.record_id AND lev.slot_name = 'library'
+       LEFT JOIN entries lib_e ON lib_e.id = lev.entry_id
+       GROUP BY COALESCE(NULLIF(lib_e.content, ''), 'general')`
+  ).bind(...params).all();
+  const m = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) m.set(r.library, r.n);
+  return m;
+}
+async function knownLibraryNames(db, owner_id) {
+  const names = /* @__PURE__ */ new Set();
+  const entryParams = owner_id ? [owner_id] : [];
+  const entryRows = await db.prepare(
+    `SELECT DISTINCT json_extract(metadata_json, '$.library') AS library FROM entries
+       WHERE ${owner_id ? "owner_id = ?" : "1=1"} AND json_extract(metadata_json, '$.library') IS NOT NULL`
+  ).bind(...entryParams).all();
+  for (const r of entryRows.results ?? []) if (r.library) names.add(r.library);
+  const libTpl = await getTemplate(db, "portal_library");
+  if (libTpl) {
+    const libParams = owner_id ? [libTpl.id, owner_id] : [libTpl.id];
+    const libRows = await db.prepare(
+      `SELECT MAX(CASE WHEN ev.slot_name = 'name' THEN e.content END) AS name
+         FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
+         WHERE ev.template_id = ?${owner_id ? " AND e.owner_id = ?" : ""}
+         GROUP BY ev.record_id`
+    ).bind(...libParams).all();
+    for (const r of libRows.results ?? []) if (r.name) names.add(r.name);
+  }
+  return names;
+}
+async function ensureFreshLibraryMaps(db, owner_id, tripletTemplateName = DEFAULT_TRIPLET_TEMPLATE) {
+  const tripletTpl = await getTemplate(db, tripletTemplateName);
+  if (!tripletTpl) return;
+  const [liveCounts, cached, known] = await Promise.all([
+    liveTripletCountsByLibrary(db, tripletTpl.id, owner_id),
+    listLibraryMaps(db, owner_id),
+    knownLibraryNames(db, owner_id)
+  ]);
+  const cachedByLib = new Map(cached.map((m) => [m.library, m]));
+  const stale = /* @__PURE__ */ new Set();
+  for (const [library, count] of liveCounts) {
+    const c = cachedByLib.get(library);
+    if (!c || c.triplet_count !== count) stale.add(library);
+  }
+  for (const name of known) {
+    if (!liveCounts.has(name) && !cachedByLib.has(name)) stale.add(name);
+  }
+  await Promise.all(
+    [...stale].map(
+      (library) => recomputeLibraryMap(db, { library, owner_id, triplet_template: tripletTemplateName }).catch(() => {
+      })
+    )
+  );
 }
 async function listLibraryMaps(db, owner_id) {
   const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
@@ -3241,11 +3307,18 @@ mapRoutes.post("/recompute", async (c) => {
   }
 });
 mapRoutes.get("/", async (c) => {
-  const libraries = await listLibraryMaps(c.env.DB, c.req.query("owner_id") || void 0);
+  const owner = c.req.query("owner_id") || void 0;
+  await ensureFreshLibraryMaps(c.env.DB, owner).catch(() => {
+  });
+  const libraries = await listLibraryMaps(c.env.DB, owner);
   return c.json({ success: true, libraries, count: libraries.length });
 });
 mapRoutes.get("/:library", async (c) => {
-  const map = await getLibraryMapDetail(c.env.DB, c.req.param("library"), c.req.query("owner_id") || void 0);
+  const owner = c.req.query("owner_id") || void 0;
+  const library = c.req.param("library");
+  await ensureFreshLibraryMaps(c.env.DB, owner).catch(() => {
+  });
+  const map = await getLibraryMapDetail(c.env.DB, library, owner);
   if (!map) return c.json({ success: false, error: "not found" }, 404);
   return c.json({ success: true, map });
 });
