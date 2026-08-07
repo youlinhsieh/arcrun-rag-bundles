@@ -5,16 +5,16 @@
  "built": "2026-08-07",
  "source": "Arcrun@962d863",
  "daemon": {
-  "version": "v0.18.22",
+  "version": "v0.18.23",
   "built": "2026-08-08",
-  "notes": "📁 裝好就有一個「Arcrun 範例庫（可刪除）」資料夾，丟檔進去就能立刻試「變成知識卡 → 搜得到」；不需要的話直接刪掉，不會再出現。\n📦 一次丟很多檔不會再塞爆：改成分批上傳，而且**你剛改過的檔會先處理**。\n⏸️ 當天額度用完時會講人話告訴你還剩多少、幾點恢復，並自動放慢，隔天會**從中斷的地方接著跑**，不用重丟。\n🔁 同一份內容有好幾種格式（例如同時有 .md 和 .json）只會整理一次，不再重複吃額度。",
+  "notes": "🔄 **修好「按了檢查更新卻更新不了」**：以前會跳出看不懂的解壓錯誤然後卡住，只能自己去網站手動下載——這個問題從 v0.18.5 起存在了七個版本。現在按下去會真的更新完成。\n✅ **已經是最新版就不再叫你重新啟動**：以前手動裝好新版後還是一直催你重開，現在會實際比對版號。\n🪟 **Windows 也會自己更新了**：以前只會幫你開下載資料夾要自己換檔，現在直接完成更新並重啟。",
   "mac": {
-   "file": "daemon/Arcrun-v0.18.22.dmg",
-   "sha256": "ce402743cd16a003eb957956d8d929e9258e3f3e4b67a75d1d6b0f20232e5446"
+   "file": "daemon/Arcrun-v0.18.23.dmg",
+   "sha256": "c2effcb364dea7890454a402a9c8bffa7f235a6c04b56186dd07416d65a9c8d4"
   },
   "win": {
-   "file": "daemon/Arcrun-win-v0.18.22.exe",
-   "sha256": "40f4657fbc3276194efb5b3eb94a7ff173eed61a7af5159e49232335f5880f6d"
+   "file": "daemon/Arcrun-win-v0.18.23.exe",
+   "sha256": "b945a6fa6c851a45bd0592584a6d2c6735af5a41acb65250e1e01a3f93f9cb57"
   },
   "mac_dmg": {
    "file": "daemon/ArcrunRAG-mac.dmg",
@@ -25,8 +25,8 @@
    "sha256": "5bf7c911b8f3a817b34454a814e7da94e7d96d1c0654ed1e185915edc24ec259"
   },
   "msix": {
-   "file": "daemon/Arcrun-v0.18.22.msix",
-   "sha256": "642f20012b42d650fc180b3ac5df5a6f2e366ccc0230ede508598150548b96d6"
+   "file": "daemon/Arcrun-v0.18.23.msix",
+   "sha256": "2e55da970938f39e7ee55f1a7b4c2da9c31422442c3a713b7cedc6631f8807e5"
   }
  },
  "core": [
