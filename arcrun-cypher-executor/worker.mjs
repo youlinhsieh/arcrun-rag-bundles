@@ -13430,6 +13430,90 @@ portalRouter.delete(
     });
   })
 );
+async function buildDiagnostics(env, tenant2) {
+  const notes = [];
+  let embedding = { checked: false };
+  try {
+    const [statusRes, selftestRes] = await Promise.all([
+      kbdbFetch(env, `/embed/backfill/status?${new URLSearchParams({ owner_id: tenant2 }).toString()}`),
+      kbdbFetch(env, `/embed/selftest?${new URLSearchParams({ owner_id: tenant2 }).toString()}`)
+    ]);
+    const statusBody = await statusRes.json().catch(() => null);
+    const selftestBody = await selftestRes.json().catch(() => null);
+    embedding = {
+      checked: true,
+      module_enabled: statusBody?.enabled ?? false,
+      // Vectorize+AI binding 都在，才有「index」這回事
+      cards_embedded: statusBody?.embedded ?? 0,
+      cards_pending: statusBody?.pending ?? 0,
+      self_test: {
+        ran: selftestBody?.tested ?? false,
+        // 三態：true=能搜到自己 ／ false=搜不到自己（index 收錄有缺）／ null=還沒東西可測或模組未開
+        found_itself: selftestBody?.tested ? selftestBody?.passed ?? null : null,
+        note: selftestBody?.note ?? ""
+      }
+    };
+  } catch (e) {
+    notes.push(`embed \u5065\u5EB7\u72C0\u614B\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+  let library_count = 0;
+  let triplet_count = 0;
+  const ownerParam = new URLSearchParams({ owner_id: tenant2 }).toString();
+  try {
+    const [registeredLibs, autoRes, tripletRes] = await Promise.all([
+      listRecordsByTemplate(env, LIBRARY_TEMPLATE).catch(() => []),
+      kbdbFetch(env, `/entries/libraries?${ownerParam}`),
+      kbdbFetch(env, `/records/triplet-stats?${ownerParam}`)
+    ]);
+    const knownLibs = new Set(
+      registeredLibs.map((r) => (r.values.name ?? "").trim()).filter((n) => !!n)
+    );
+    const autoBody = await autoRes.json().catch(() => null);
+    for (const name of autoBody?.libraries ?? []) {
+      const n = String(name ?? "").trim();
+      if (n && n !== "general") knownLibs.add(n);
+    }
+    library_count = knownLibs.size;
+    const tripletBody = await tripletRes.json().catch(() => null);
+    triplet_count = (tripletBody?.stats ?? []).reduce((sum, s) => sum + (Number(s.triplet_count) || 0), 0);
+  } catch (e) {
+    notes.push(`\u77E5\u8B58\u5EAB\u898F\u6A21\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+  let library_scope_check = { ran: false };
+  if (library_count === 0 && triplet_count === 0) {
+    try {
+      const probeRes = await kbdbFetch(env, `/entries?${new URLSearchParams({ owner_id: tenant2, limit: "1" }).toString()}`);
+      const probeBody = await probeRes.json().catch(() => null);
+      const total = probeBody?.total ?? 0;
+      library_scope_check = {
+        ran: true,
+        any_entries_found: total > 0,
+        note: total > 0 ? `\u9019\u500B\u79DF\u6236\u5E95\u4E0B\u67E5\u5F97\u5230\u5176\u4ED6\u8CC7\u6599\uFF08entries \u5171 ${total} \u7B46\uFF09\uFF0C\u4F46\u5EAB\uFF0F\u4E09\u5143\u7D44\u7D71\u8A08\u4ECD\u56DE 0\u2014\u2014\u50CF\u662F\u67E5\u8A62\u65B9\u5F0F\u6216\u79DF\u6236\u5C0D\u4E0D\u4E0A\uFF0C\u4E0D\u50CF\u771F\u7684\u6C92\u8CC7\u6599\uFF0C\u9700\u8981\u4EBA\u518D\u67E5\u4E00\u6B21` : "\u9019\u500B\u79DF\u6236\u5E95\u4E0B\u5B8C\u5168\u67E5\u4E0D\u5230\u4EFB\u4F55\u8CC7\u6599\u2014\u2014\u6BD4\u8F03\u50CF\u662F\u771F\u7684\u9084\u6C92\u6709\u8CC7\u6599\uFF0C\u4E0D\u662F\u67E5\u8A62\u65B9\u5F0F\u932F\u4E86"
+      };
+    } catch (e) {
+      library_scope_check = {
+        ran: true,
+        any_entries_found: null,
+        note: `\u81EA\u6211\u63A2\u6E2C\u67E5\u8A62\u672C\u8EAB\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
+      };
+    }
+  }
+  return { library_count, triplet_count, library_scope_check, embedding, notes };
+}
+portalRouter.get(
+  "/portal/daemon/diagnostics",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const core = await buildDiagnostics(c.env, apiKey);
+    return c.json({
+      generated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      instance_url: new URL(c.req.url).origin,
+      bundle_version: c.env.ARCRUN_BUNDLE_VERSION ?? null,
+      ...core
+    });
+  })
+);
 
 // ../../matrix/arcrun/cypher-executor/src/routes/init-seed.ts
 var initSeedRouter = new Hono2();
@@ -14576,83 +14660,12 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = portalTenant(c.env);
-    const notes = [];
-    let embedding = { checked: false };
-    try {
-      const [statusRes, selftestRes] = await Promise.all([
-        kbdbFetch(c.env, `/embed/backfill/status?${new URLSearchParams({ owner_id: tenant2 }).toString()}`),
-        kbdbFetch(c.env, `/embed/selftest?${new URLSearchParams({ owner_id: tenant2 }).toString()}`)
-      ]);
-      const statusBody = await statusRes.json().catch(() => null);
-      const selftestBody = await selftestRes.json().catch(() => null);
-      embedding = {
-        checked: true,
-        module_enabled: statusBody?.enabled ?? false,
-        // Vectorize+AI binding 都在，才有「index」這回事
-        cards_embedded: statusBody?.embedded ?? 0,
-        cards_pending: statusBody?.pending ?? 0,
-        self_test: {
-          ran: selftestBody?.tested ?? false,
-          // 三態：true=能搜到自己 ／ false=搜不到自己（index 收錄有缺）／ null=還沒東西可測或模組未開
-          found_itself: selftestBody?.tested ? selftestBody?.passed ?? null : null,
-          note: selftestBody?.note ?? ""
-        }
-      };
-    } catch (e) {
-      notes.push(`embed \u5065\u5EB7\u72C0\u614B\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
-    }
-    let library_count = 0;
-    let triplet_count = 0;
-    const ownerParam = new URLSearchParams({ owner_id: tenant2 }).toString();
-    try {
-      const [registeredLibs, autoRes, tripletRes] = await Promise.all([
-        listRecordsByTemplate(c.env, LIBRARY_TEMPLATE).catch(() => []),
-        kbdbFetch(c.env, `/entries/libraries?${ownerParam}`),
-        kbdbFetch(c.env, `/records/triplet-stats?${ownerParam}`)
-      ]);
-      const knownLibs = new Set(
-        registeredLibs.map((r) => (r.values.name ?? "").trim()).filter((n) => !!n)
-      );
-      const autoBody = await autoRes.json().catch(() => null);
-      for (const name of autoBody?.libraries ?? []) {
-        const n = String(name ?? "").trim();
-        if (n && n !== "general") knownLibs.add(n);
-      }
-      library_count = knownLibs.size;
-      const tripletBody = await tripletRes.json().catch(() => null);
-      triplet_count = (tripletBody?.stats ?? []).reduce((sum, s) => sum + (Number(s.triplet_count) || 0), 0);
-    } catch (e) {
-      notes.push(`\u77E5\u8B58\u5EAB\u898F\u6A21\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
-    }
-    let library_scope_check = { ran: false };
-    if (library_count === 0 && triplet_count === 0) {
-      try {
-        const probeRes = await kbdbFetch(c.env, `/entries?${new URLSearchParams({ owner_id: tenant2, limit: "1" }).toString()}`);
-        const probeBody = await probeRes.json().catch(() => null);
-        const total = probeBody?.total ?? 0;
-        library_scope_check = {
-          ran: true,
-          any_entries_found: total > 0,
-          note: total > 0 ? `\u9019\u500B\u79DF\u6236\u5E95\u4E0B\u67E5\u5F97\u5230\u5176\u4ED6\u8CC7\u6599\uFF08entries \u5171 ${total} \u7B46\uFF09\uFF0C\u4F46\u5EAB\uFF0F\u4E09\u5143\u7D44\u7D71\u8A08\u4ECD\u56DE 0\u2014\u2014\u50CF\u662F\u67E5\u8A62\u65B9\u5F0F\u6216\u79DF\u6236\u5C0D\u4E0D\u4E0A\uFF0C\u4E0D\u50CF\u771F\u7684\u6C92\u8CC7\u6599\uFF0C\u9700\u8981\u4EBA\u518D\u67E5\u4E00\u6B21` : "\u9019\u500B\u79DF\u6236\u5E95\u4E0B\u5B8C\u5168\u67E5\u4E0D\u5230\u4EFB\u4F55\u8CC7\u6599\u2014\u2014\u6BD4\u8F03\u50CF\u662F\u771F\u7684\u9084\u6C92\u6709\u8CC7\u6599\uFF0C\u4E0D\u662F\u67E5\u8A62\u65B9\u5F0F\u932F\u4E86"
-        };
-      } catch (e) {
-        library_scope_check = {
-          ran: true,
-          any_entries_found: null,
-          note: `\u81EA\u6211\u63A2\u6E2C\u67E5\u8A62\u672C\u8EAB\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
-        };
-      }
-    }
-    notes.push("\u76EE\u524D\u96F2\u7AEF\u6C92\u6709\u4FDD\u5B58\u300C\u8403\u53D6/\u4E0A\u50B3\u5931\u6557\u300D\u7684\u6B77\u53F2\u7D00\u9304\uFF0C\u53EA\u80FD\u770B\u5230\u76EE\u524D\u7684\u805A\u5408\u8A08\u6578\uFF08\u4E0A\u9762 cards_pending\uFF0Fcards_embedded\uFF09\uFF1B\u82E5\u8981\u67E5\u67D0\u4E00\u6B21\u5931\u6557\u7684\u7576\u4E0B\u539F\u56E0\uFF0C\u9700\u5728\u5931\u6557\u7576\u4E0B\u7531\u5C01\u6E2C\u8005\u622A\u5716\u540C\u6B65\u5C0F\u5E6B\u624B\u8996\u7A97\u3002");
+    const core = await buildDiagnostics(c.env, tenant2);
     return c.json({
       generated_at: (/* @__PURE__ */ new Date()).toISOString(),
       instance_url: new URL(c.req.url).origin,
       bundle_version: c.env.ARCRUN_BUNDLE_VERSION ?? null,
-      library_count,
-      triplet_count,
-      library_scope_check,
-      embedding,
-      notes
+      ...core
     });
   })
 );
@@ -14668,7 +14681,9 @@ app.use("*", cors({
       extra = String(c.env.UI_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
     } catch {
     }
-    return [...STATIC_ORIGINS, ...extra].includes(origin) ? origin : null;
+    const sub = String(c.env.WORKER_SUBDOMAIN || "").trim();
+    const sibling = sub ? [`https://arcrun-rag-ui.${sub}.workers.dev`] : [];
+    return [...STATIC_ORIGINS, ...sibling, ...extra].includes(origin) ? origin : null;
   },
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization", "X-Arcrun-API-Key"],

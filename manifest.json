@@ -1,13 +1,13 @@
 {
  "schema": 1,
- "release": "1.4.22",
- "fingerprint": "6bf8d7222dfcbcfff450345967b5145e0c1304098dfbace43fb6b510662964d6",
+ "release": "1.4.24",
+ "fingerprint": "a1b862edd414f4e44160a38fe52bef67435635f7633e29e5401550b502d34182",
  "built": "2026-08-07",
- "source": "Arcrun@962d863",
+ "source": "Arcrun@466e56b",
  "daemon": {
   "version": "v0.18.24",
   "built": "2026-08-08",
-  "notes": "🔴 **修好「失敗原因每幾秒就消失」**：以前一個檔案沒送上去，展開看原因會看到「這個檔是在舊版失敗的，當時沒有記下原因」——即使你完全沒有更新過。現在展開失敗檔案，看得到真正的失敗原因。\n📊 **首頁改成看總量，不用逐檔猜**：以前首頁只顯示「這一輪」處理了幾份，如果你的資料夾有幾千份檔案，會搞不清楚「雲端只有一百多張卡，是壞了還是還在跑」。現在首頁直接告訴你：共幾份、已經送上去幾份、還在排隊幾份、送不上去幾份——四個數字相加就是你資料夾裡的總檔案數。「送不上去」的分類預設收起來，想看細節再展開。\n🩺 **「疑難排解」按鈕搬進小幫手本體**：以前雲端網頁上的診斷按鈕看不到你電腦上的真實狀況（總檔案數、失敗分類、小幫手版本）——因為那顆按鈕跑在瀏覽器裡，碰不到你電腦的檔案。現在小幫手裡有一顆匯出診斷檔的按鈕，把雲端與本機的狀況合併成一份檔案，還看得出小幫手本身是不是還活著在跑（不會誤以為當機）；回報問題時附上這份檔案，我們就能一次看懂發生什麼事。\n🔒 **診斷檔不會洩漏你電腦上的資料夾路徑**：以前如果同步引擎剛好停住，診斷檔裡的錯誤訊息會帶出你電腦完整的資料夾路徑（例如你的使用者名稱、桌面上的資料夾結構）。現在只會保留到資料夾名稱本身，你可以放心把診斷檔分享出來讓我們協助排查，不會連帶交出你電腦的目錄結構。",
+  "notes": "修好「失敗原因每幾秒就消失」・首頁改成看總量，不用逐檔猜・「疑難排解」按鈕搬進小幫手本體・診斷檔不會洩漏你電腦上的資料夾路徑",
   "mac": {
    "file": "daemon/Arcrun-v0.18.24.dmg",
    "sha256": "7d34e6dbec7d6e3daa3e7cfd6314f6b166b044a137b18f2784404e6bdb37fd79"
@@ -35,7 +35,7 @@
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 549124,
+   "js_bytes": 549258,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -77,8 +77,8 @@
     "services": 13
    },
    "warnings": [],
-   "sha256": "d532c5aebc5c34ebc0e6737520ea1384da079815c96733522c89841ac9eca446",
-   "bytes": 549124
+   "sha256": "a27a4807305b1d1d877ecd9cb5011a2d0518cbf24428412bee1732dd94977640",
+   "bytes": 549258
   },
   {
    "name": "arcrun-kbdb",
@@ -175,7 +175,7 @@
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "9480aef806ea2afc3622e6b040c80ffe697db1515003013acbba4deca36b3dec",
+   "sha256": "ced317ce5e41707cfcb41b81c453045ffbc960147b2ebaa5cc11c0131ce7ea7c",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],
@@ -185,9 +185,15 @@
     "ai": false,
     "vars": {}
    },
-   "bytes": 495556
+   "bytes": 499341
   }
  ],
  "built_for": "oauth-installer-lazy-load",
- "notes": []
+ "notes": [],
+ "promoted_from": {
+  "target": "stage",
+  "sha": "ab4ef017090301c74168c0f53cb94a2633c87be5",
+  "release": "1.4.24",
+  "promoted_at": "2026-08-08T15:24:25.771Z"
+ }
 }
