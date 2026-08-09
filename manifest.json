@@ -1,20 +1,20 @@
 {
  "schema": 1,
- "release": "1.4.24",
- "fingerprint": "a1b862edd414f4e44160a38fe52bef67435635f7633e29e5401550b502d34182",
+ "release": "1.4.29",
+ "fingerprint": "03678fa4e0a7947209150c8b04383fef4b82a8545aec94d46b374545ae0e3cdf",
  "built": "2026-08-07",
- "source": "Arcrun@466e56b",
+ "source": "Arcrun@19c82df",
  "daemon": {
-  "version": "v0.18.24",
-  "built": "2026-08-08",
-  "notes": "修好「失敗原因每幾秒就消失」・首頁改成看總量，不用逐檔猜・「疑難排解」按鈕搬進小幫手本體・診斷檔不會洩漏你電腦上的資料夾路徑",
+  "version": "v0.18.25",
+  "built": "20260809-1848",
+  "notes": "第一次打開改成兩步引導",
   "mac": {
-   "file": "daemon/Arcrun-v0.18.24.dmg",
-   "sha256": "7d34e6dbec7d6e3daa3e7cfd6314f6b166b044a137b18f2784404e6bdb37fd79"
+   "file": "daemon/Arcrun-v0.18.25.dmg",
+   "sha256": "8c1f8f6c22704f8a82a60c34313da48c2da7e7ff0ee94a3f88d4ccfe2a78ca2f"
   },
   "win": {
-   "file": "daemon/Arcrun-win-v0.18.24.exe",
-   "sha256": "791afe80279b13c25e76e56089ab077b92600bdf195ab7c907c91775d38ac858"
+   "file": "daemon/Arcrun-win-v0.18.25.exe",
+   "sha256": "83f7d135a5ce02f64d516086658b27b26a1c02854d6bdfc0a0c06cf2f9fe559f"
   },
   "mac_dmg": {
    "file": "daemon/ArcrunRAG-mac.dmg",
@@ -25,8 +25,8 @@
    "sha256": "5bf7c911b8f3a817b34454a814e7da94e7d96d1c0654ed1e185915edc24ec259"
   },
   "msix": {
-   "file": "daemon/Arcrun-v0.18.24.msix",
-   "sha256": "a5a977aa258b3fbe1b01b39e1263bd3d1284e348b20e64ccbc6e1240406f6c56"
+   "file": "daemon/Arcrun-v0.18.25.msix",
+   "sha256": "782a3b2212884f789e1725f82046cf34ef6bb02e1a8b585cab8e4ae6c6e441ca"
   }
  },
  "core": [
@@ -35,7 +35,7 @@
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 549258,
+   "js_bytes": 552429,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -77,15 +77,15 @@
     "services": 13
    },
    "warnings": [],
-   "sha256": "a27a4807305b1d1d877ecd9cb5011a2d0518cbf24428412bee1732dd94977640",
-   "bytes": 549258
+   "sha256": "5162d75d4d0d73cd4fc8984ea6e5fb8e027704d96b5bde5c1dad094ff2b00819",
+   "bytes": 552429
   },
   {
    "name": "arcrun-kbdb",
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 123450,
+   "js_bytes": 132590,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -106,8 +106,8 @@
     }
    },
    "warnings": [],
-   "sha256": "067e0e09d453f8b233897b87166d448edad5b612a4267574a8486aa9a002f83b",
-   "bytes": 123450
+   "sha256": "5eec50d5846b3d36194d891a5dd846247e0832d8d18d591e42f5fb9ea87519fe",
+   "bytes": 132590
   },
   {
    "name": "arcrun-http-request",
@@ -175,7 +175,7 @@
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "ced317ce5e41707cfcb41b81c453045ffbc960147b2ebaa5cc11c0131ce7ea7c",
+   "sha256": "b04d3f2efab9844a37853f767fedf7275ceefc7d3218a75c1494ea06e54bae40",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],
@@ -185,15 +185,15 @@
     "ai": false,
     "vars": {}
    },
-   "bytes": 499341
+   "bytes": 508088
   }
  ],
  "built_for": "oauth-installer-lazy-load",
  "notes": [],
  "promoted_from": {
   "target": "stage",
-  "sha": "ab4ef017090301c74168c0f53cb94a2633c87be5",
-  "release": "1.4.24",
-  "promoted_at": "2026-08-08T15:28:39.353Z"
+  "sha": "b0a2f84eb47f020c6d6fa892553b7b60d44553b4",
+  "release": "1.4.29",
+  "promoted_at": "2026-08-09T11:19:56.447Z"
  }
 }

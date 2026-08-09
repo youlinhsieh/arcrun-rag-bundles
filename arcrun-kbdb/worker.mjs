@@ -2415,7 +2415,15 @@ async function embedSelfTest(env, opts = {}) {
   if (!sample) {
     return { enabled: true, tested: false, passed: null, note: "\u53D6\u6A23\u5361\u7247\u5167\u5BB9\u70BA\u7A7A\uFF0C\u8DF3\u904E\u81EA\u6211\u6AA2\u67E5" };
   }
-  const hits = await semanticSearch(env, sample, { owner_id: opts.owner_id, topK: 10, min_score: 0 });
+  let hits;
+  try {
+    hits = await semanticSearch(env, sample, { owner_id: opts.owner_id, topK: 10, min_score: 0 });
+  } catch (e) {
+    if (e instanceof EmbedQueryFailedError) {
+      return { enabled: true, tested: false, passed: null, note: `\u81EA\u6211\u6AA2\u67E5\u6C92\u8DD1\u6210\uFF1A${e.message}\uFF08\u8A9E\u7FA9\u641C\u5C0B\u6B64\u523B\u540C\u6A23\u6703\u6545\u969C\uFF0C\u591A\u534A\u662F Workers AI \u984D\u5EA6\u6216\u670D\u52D9\u554F\u984C\uFF09` };
+    }
+    throw e;
+  }
   if (hits === null) {
     return { enabled: false, tested: false, passed: null, note: "embed \u6A21\u7D44\u56DE\u5831\u672A\u958B\uFF08binding \u6AA2\u67E5\u671F\u9593\u6D88\u5931\uFF0C\u7F55\u898B\uFF09" };
   }
@@ -2427,10 +2435,22 @@ async function embedSelfTest(env, opts = {}) {
     note: passed ? "\u62FF\u4E00\u5F35\u5DF2\u6A19\u8A18\u300C\u5DF2\u5D4C\u5165\u300D\u7684\u5361\u7247\u81EA\u6211\u67E5\u8A62\uFF0C\u80FD\u641C\u5230\u81EA\u5DF1\u2014\u2014\u8A9E\u7FA9\u641C\u5C0B\u9019\u689D\u8DEF\u662F\u901A\u7684" : "\u62FF\u4E00\u5F35\u5DF2\u6A19\u8A18\u300C\u5DF2\u5D4C\u5165\u300D\u7684\u5361\u7247\u81EA\u6211\u67E5\u8A62\uFF0C\u537B\u641C\u4E0D\u5230\u81EA\u5DF1\u2014\u2014\u50CF\u662F index \u6C92\u6536\u9304\u5230\u9019\u6279\u5411\u91CF\uFF08\u9700\u8981\u91CD\u65B0 reindex\uFF09"
   };
 }
+var EmbedQueryFailedError = class extends Error {
+  constructor(detail) {
+    super(`\u67E5\u8A62\u5411\u91CF\u5316\u5931\u6557\uFF1A${detail}`);
+    this.name = "EmbedQueryFailedError";
+  }
+};
 async function semanticSearch(env, q, opts = {}) {
   if (!embedEnabled(env)) return null;
-  const vec = await embedText(env, q);
-  if (!vec) return [];
+  if (!(q ?? "").trim()) return [];
+  let vec;
+  try {
+    vec = await embedText(env, q);
+  } catch (e) {
+    throw new EmbedQueryFailedError(e instanceof Error ? e.message : String(e));
+  }
+  if (!vec) throw new EmbedQueryFailedError("Workers AI \u6C92\u6709\u56DE\u51FA\u5411\u91CF\uFF08\u56DE\u61C9\u5F62\u72C0\u7570\u5E38\u6216\u7A7A\u56DE\u61C9\uFF09");
   const filter = {};
   if (opts.owner_id) filter.owner_id = opts.owner_id;
   if (opts.source) filter.source = opts.source;
@@ -2484,6 +2504,18 @@ async function migrateLegacyCredentialsForOwner(db, ownerId) {
 
 // ../../matrix/arcrun/kbdb/src/routes/entries.ts
 var entryRoutes = new Hono2();
+function fireAndForget(c, p) {
+  let ctx;
+  try {
+    ctx = c.executionCtx;
+  } catch {
+    ctx = void 0;
+  }
+  if (ctx) ctx.waitUntil(p.catch(() => {
+  }));
+  else void p.catch(() => {
+  });
+}
 function parseLibraryParam(raw2) {
   if (!raw2) return void 0;
   const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
@@ -2562,14 +2594,32 @@ entryRoutes.get("/search", async (c) => {
   if (mode === "semantic") {
     const requestedTopK = top_k ?? 20;
     const fetchTopK = include_deprecated ? requestedTopK : Math.min(requestedTopK * 3, 100);
-    const hits = await semanticSearch(c.env, q, {
-      owner_id,
-      source,
-      entry_type,
-      library,
-      topK: fetchTopK,
-      min_score
-    });
+    let hits;
+    try {
+      hits = await semanticSearch(c.env, q, {
+        owner_id,
+        source,
+        entry_type,
+        library,
+        topK: fetchTopK,
+        min_score
+      });
+    } catch (e) {
+      if (e instanceof EmbedQueryFailedError) {
+        const entries3 = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
+        return c.json({
+          success: true,
+          entries: entries3,
+          count: entries3.length,
+          mode: "keyword",
+          requested_mode: "semantic",
+          degraded_reason: "embed_query_failed",
+          capability_hint: "\u8A9E\u610F\u641C\u5C0B\u66AB\u6642\u6545\u969C\uFF0C\u5148\u7528\u95DC\u9375\u5B57\u5E6B\u4F60\u627E\u4E86\u4E0B\u9762\u7684\u7D50\u679C\u3002\u9019\u662F\u6211\u5011\u7CFB\u7D71\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u7684\u64CD\u4F5C\u554F\u984C\uFF0C\u4F60\u4E0D\u9700\u8981\u505A\u4EFB\u4F55\u4E8B\uFF0C\u7A0D\u5F8C\u5B83\u6703\u81EA\u52D5\u6062\u5FA9\u3002",
+          admin_hint: `${e.message}\u3002\u5E38\u898B\u539F\u56E0\uFF1AWorkers AI \u7576\u65E5\u984D\u5EA6\u7528\u5B8C\u6216\u670D\u52D9\u66AB\u6642\u7570\u5E38\uFF1B\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\uFF0C\u8CC7\u6599\u8207\u7D22\u5F15\u7686\u672A\u53D7\u5F71\u97FF\u3002`
+        });
+      }
+      throw e;
+    }
     if (hits === null) {
       const entries3 = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
       return c.json({
@@ -2578,18 +2628,36 @@ entryRoutes.get("/search", async (c) => {
         count: entries3.length,
         mode: "keyword",
         requested_mode: "semantic",
-        capability_hint: "\u8A9E\u610F\u641C\u5C0B\u9084\u6C92\u958B\u901A\uFF0C\u9019\u6B21\u986F\u793A\u7684\u662F\u95DC\u9375\u5B57\u6BD4\u5C0D\u7D50\u679C\uFF0C\u4E0D\u662F\u7528\u300C\u610F\u601D\u300D\u627E\u7684\u2014\u2014\u4F60\u6253\u7684\u5B57\u8981\u76E1\u91CF\u8CBC\u8FD1\u8CC7\u6599\u88E1\u5BE6\u969B\u51FA\u73FE\u7684\u8A5E\u624D\u5BB9\u6613\u641C\u5230\u3002\u60F3\u555F\u7528\u8A9E\u610F\u641C\u5C0B\uFF0C\u8ACB\u806F\u7D61\u6211\u5011\u5354\u52A9\u958B\u901A\u3002",
-        admin_hint: "\u8A9E\u7FA9\u67E5\u8A62\u9700\u5148\u958B vectorize\uFF08embed \u6A21\u7D44\uFF09\u3002\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\u5373\u53EF\uFF08\u8A2D kbdb_embed:true + redeploy\uFF09\u3002\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\u3002"
+        degraded_reason: "module_off",
+        capability_hint: "\u8A9E\u610F\u641C\u5C0B\u76EE\u524D\u6545\u969C\uFF0C\u5148\u7528\u95DC\u9375\u5B57\u5E6B\u4F60\u627E\u4E86\u4E0B\u9762\u7684\u7D50\u679C\u3002\u9019\u662F\u6211\u5011\u7CFB\u7D71\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u7684\u64CD\u4F5C\u554F\u984C\uFF0C\u4F60\u4E0D\u9700\u8981\u505A\u4EFB\u4F55\u4E8B\uFF0C\u6211\u5011\u6703\u4FEE\u597D\u5B83\u3002",
+        admin_hint: "\u6545\u969C\uFF1Akbdb worker \u7F3A VECTORIZE/AI binding\uFF08embedEnabled=false\uFF09\u3002\u8A9E\u610F\u641C\u5C0B\u662F\u5B89\u88DD\u5373\u63D0\u4F9B\u7684\u529F\u80FD\uFF0C\u7F3A binding\uFF1D\u90E8\u7F72\u5C64\u4E8B\u6545\uFF08\u5E38\u898B\uFF1Aredeploy \u6C92\u5E36 kbdb_embed \u6CE8\u5165\u3001\u6216\u5B89\u88DD\u6642 Vectorize index \u5EFA\u7ACB\u5931\u6557\u88AB\u653E\u884C\uFF09\u3002\u4FEE\u6CD5\uFF1A\u78BA\u8A8D Vectorize index \u5B58\u5728\u5F8C\u4EE5 kbdb_embed:true \u91CD\u90E8 kbdb\u3002\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\u3002"
       });
     }
+    const orphanIds = [];
+    const deprecatedIds = [];
     let entries2 = (await Promise.all(
       hits.map(async (h) => {
         const e = await getEntry(c.env.DB, h.id);
-        return e ? { ...e, score: h.score } : null;
+        if (!e) {
+          orphanIds.push(h.id);
+          return null;
+        }
+        return { ...e, score: h.score };
       })
     )).filter((e) => e !== null);
     if (!include_deprecated) {
-      entries2 = entries2.filter((e) => !isDeprecatedEntry(e));
+      entries2 = entries2.filter((e) => {
+        const dep = isDeprecatedEntry(e);
+        if (dep) deprecatedIds.push(e.id);
+        return !dep;
+      });
+    }
+    const staleIds = [...orphanIds, ...deprecatedIds];
+    if (staleIds.length > 0 && c.env.VECTORIZE) {
+      fireAndForget(c, (async () => {
+        await c.env.VECTORIZE.deleteByIds(staleIds);
+        await markUnembedded(c.env.DB, deprecatedIds);
+      })());
     }
     if (min_score === void 0 && entries2.length > 1) {
       const cut = relativeMinScore(entries2[0].score);
@@ -2602,19 +2670,25 @@ entryRoutes.get("/search", async (c) => {
       let admin_hint;
       if (hits.length === 0) {
         const status = await backfillStatus(c.env, { owner_id });
-        if (status.embedded === 0) {
+        if (status.embedded === 0 && status.pending > 0) {
           empty_reason = "no_index";
-          capability_hint = "\u9019\u500B\u77E5\u8B58\u5EAB\u76EE\u524D\u9084\u6C92\u6709\u53EF\u4F9B\u8A9E\u610F\u641C\u5C0B\u7684\u8CC7\u6599\uFF0C\u6240\u4EE5\u641C\u4E0D\u5230\u2014\u2014\u4E0D\u662F\u4F60\u6253\u7684\u5B57\u6709\u554F\u984C\u3002\u8ACB\u806F\u7D61\u6211\u5011\u78BA\u8A8D\u7D22\u5F15\u6709\u6C92\u6709\u5EFA\u597D\u3002";
-          admin_hint = `owner_id=${owner_id ?? "(all)"} \u7BC4\u570D backfillStatus.embedded=0\uFF1A\u5F9E\u672A embed\uFF0C\u6216 backfill \u672A\u8DD1\u904E\u3002`;
+          capability_hint = "\u8A9E\u610F\u641C\u5C0B\u7684\u7D22\u5F15\u51FA\u4E86\u72C0\u6CC1\uFF0C\u6240\u4EE5\u66AB\u6642\u641C\u4E0D\u5230\u2014\u2014\u9019\u662F\u6211\u5011\u7CFB\u7D71\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u6253\u7684\u5B57\u6709\u554F\u984C\u3002\u7CFB\u7D71\u6B63\u5728\u81EA\u52D5\u91CD\u5EFA\uFF0C\u7A0D\u5F8C\u518D\u641C\u4E00\u6B21\u770B\u770B\u3002";
+          admin_hint = `owner_id=${owner_id ?? "(all)"} \u7BC4\u570D embedded=0 \u4F46 pending=${status.pending}\uFF1A\u8CC7\u6599\u5728\u3001\u7D22\u5F15\u5F9E\u6C92\u5EFA\u6210\uFF1D\u5BEB\u5165\u7AEF\u5D4C\u5165\u5F9E\u672A\u6210\u529F\uFF08\u6545\u969C\uFF09\u3002\u672C\u6B21\u5DF2\u80CC\u666F\u89F8\u767C backfill \u81EA\u7652\uFF08\u6BCF\u6279 100\uFF0C\u51AA\u7B49\uFF09\u3002`;
+          fireAndForget(c, backfillEmbeddings(c.env, { owner_id, limit: 100 }));
+        } else if (status.embedded === 0) {
+          empty_reason = "no_index";
+          capability_hint = "\u9019\u500B\u77E5\u8B58\u5EAB\u9084\u6C92\u6709\u6574\u7406\u597D\u7684\u5167\u5BB9\u53EF\u4EE5\u641C\u5C0B\u2014\u2014\u901A\u5E38\u662F\u525B\u88DD\u597D\u3001\u8CC7\u6599\u9084\u6C92\u540C\u6B65\u9032\u4F86\u3002\u7B49\u540C\u6B65\u5C0F\u5E6B\u624B\u8DD1\u5B8C\u518D\u4F86\u641C\u5C31\u6709\u4E86\u3002";
+          admin_hint = `owner_id=${owner_id ?? "(all)"} \u7BC4\u570D embedded=0 \u4E14 pending=0\uFF1A\u6C92\u6709\u4EFB\u4F55\u6A19\u8A18 embed:true \u7684 entry\u2014\u2014\u591A\u534A\u662F ingest \u9084\u6C92\u8DD1\uFF08\u6B63\u5E38\u7684\u7A7A\uFF09\uFF0C\u5C11\u6578\u60C5\u6CC1\u662F ingest \u7BA1\u7DDA\u6C92\u6A19 embed \u65D7\u6A19\uFF08\u8981\u67E5\u7BA1\u7DDA\uFF09\u3002`;
         } else {
           empty_reason = "no_match";
           capability_hint = "\u6C92\u6709\u627E\u5230\u7B26\u5408\u7684\u5167\u5BB9\uFF0C\u63DB\u500B\u8AAA\u6CD5\u6216\u66F4\u5177\u9AD4\u7684\u95DC\u9375\u5B57\u518D\u8A66\u8A66\u770B\u3002";
           admin_hint = `owner_id=${owner_id ?? "(all)"} \u5DF2\u6709 ${status.embedded} \u7B46\u5D4C\u5165\u8CC7\u6599\uFF0C\u4F46\u672C\u6B21\u67E5\u8A62\u5728 Vectorize \u7AEF\u96F6\u547D\u4E2D\uFF08\u542B embed.ts \u7D55\u5C0D\u9580\u6ABB\u904E\u6FFE\uFF09\u3002`;
+          if (status.pending > 0) fireAndForget(c, backfillEmbeddings(c.env, { owner_id, limit: 100 }));
         }
       } else {
         empty_reason = "stale_index";
-        capability_hint = "\u627E\u5230\u7684\u5167\u5BB9\u90FD\u5DF2\u7D93\u88AB\u4E0B\u67B6\u6216\u79FB\u9664\u4E86\uFF0C\u6240\u4EE5\u6C92\u6709\u53EF\u986F\u793A\u7684\u7D50\u679C\u2014\u2014\u63DB\u500B\u95DC\u9375\u5B57\u518D\u8A66\u8A66\u770B\uFF0C\u6216\u806F\u7D61\u6211\u5011\u78BA\u8A8D\u7D22\u5F15\u6709\u6C92\u6709\u904E\u671F\u3002";
-        admin_hint = `Vectorize \u547D\u4E2D ${hits.length} \u7B46\uFF0C\u4F46 hydrate \u5F8C\u5168\u90E8\u662F\u5DF2\u4E0B\u67B6\u6216\u627E\u4E0D\u5230\u5C0D\u61C9\u8CC7\u6599\uFF08\u5B64\u5152\u5411\u91CF\uFF09\uFF0C\u975E\u5206\u6578\u9580\u6ABB\u9020\u6210\u2014\u2014\u76F8\u5C0D\u9580\u6ABB\u6578\u5B78\u4E0A\u4E0D\u53EF\u80FD\u780D\u5149\u975E\u7A7A\u7D50\u679C\uFF08cut<=top\uFF09\u3002`;
+        capability_hint = "\u9019\u6B21\u6BD4\u5C0D\u5230\u7684\u5167\u5BB9\u6E90\u982D\u5DF2\u7D93\u88AB\u79FB\u9664\u6216\u4E0B\u67B6\u4E86\uFF0C\u6240\u4EE5\u6C92\u6709\u53EF\u986F\u793A\u7684\u7D50\u679C\u3002\u7CFB\u7D71\u5DF2\u81EA\u52D5\u6E05\u7406\u904E\u671F\u7D22\u5F15\uFF08\u6211\u5011\u7684\u554F\u984C\uFF0C\u4F60\u4E0D\u7528\u505A\u4EFB\u4F55\u4E8B\uFF09\uFF0C\u63DB\u500B\u95DC\u9375\u5B57\u5C31\u80FD\u6B63\u5E38\u641C\u3002";
+        admin_hint = `Vectorize \u547D\u4E2D ${hits.length} \u7B46\uFF0C\u4F46 hydrate \u5F8C\u5168\u90E8\u662F\u5DF2\u4E0B\u67B6\u6216\u627E\u4E0D\u5230\u5C0D\u61C9\u8CC7\u6599\uFF08\u5B64\u5152\u5411\u91CF\uFF09\uFF0C\u975E\u5206\u6578\u9580\u6ABB\u9020\u6210\u2014\u2014\u76F8\u5C0D\u9580\u6ABB\u6578\u5B78\u4E0A\u4E0D\u53EF\u80FD\u780D\u5149\u975E\u7A7A\u7D50\u679C\uFF08cut<=top\uFF09\u3002\u672C\u6B21\u5DF2\u80CC\u666F\u89F8\u767C\u5411\u91CF\u6E05\u7406\uFF08deleteByIds\uFF09\u3002`;
       }
       return c.json({
         success: true,
@@ -3416,6 +3490,83 @@ async function latestExecutionLog(db, workflowId, ownerId) {
   const rows = await listExecutionLog(db, workflowId, ownerId, 1);
   return rows[0] ?? null;
 }
+var DEFAULT_RETENTION_DAYS = 90;
+var CLEANUP_BATCH_LIMIT = 500;
+function retentionConfigId(ownerId) {
+  return `exlog-retention:${ownerId}`;
+}
+async function getRetentionDays(db, ownerId) {
+  if (!ownerId) return DEFAULT_RETENTION_DAYS;
+  const row = await db.prepare(`SELECT metadata_json FROM entries WHERE id = ?`).bind(retentionConfigId(ownerId)).first();
+  if (!row) return DEFAULT_RETENTION_DAYS;
+  try {
+    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    if (parsed.retention_days === null) return null;
+    const n = Number(parsed.retention_days);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_RETENTION_DAYS;
+  } catch {
+    return DEFAULT_RETENTION_DAYS;
+  }
+}
+async function setRetentionDays(db, ownerId, days) {
+  const id = retentionConfigId(ownerId);
+  const metadata = JSON.stringify({ retention_days: days, updated_at: Math.floor(Date.now() / 1e3) });
+  const existing = await db.prepare(`SELECT id FROM entries WHERE id = ?`).bind(id).first();
+  if (existing) {
+    await db.prepare(`UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?`).bind(metadata, id).run();
+  } else {
+    await db.prepare(
+      `INSERT INTO entries (id, entry_type, owner_id, metadata_json) VALUES (?, 'execution_log_retention_config', ?, ?)`
+    ).bind(id, ownerId, metadata).run();
+  }
+}
+async function cleanupExpiredLogs(db) {
+  const nowSec = Math.floor(Date.now() / 1e3);
+  const overridesRes = await db.prepare(`SELECT owner_id, metadata_json FROM entries WHERE entry_type = 'execution_log_retention_config'`).all();
+  const overrides = overridesRes.results ?? [];
+  const neverDeleteOwners = [];
+  const customOwners = [];
+  for (const row of overrides) {
+    if (!row.owner_id) continue;
+    let parsed = {};
+    try {
+      parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    } catch {
+      continue;
+    }
+    if (parsed.retention_days === null) {
+      neverDeleteOwners.push(row.owner_id);
+    } else {
+      const n = Number(parsed.retention_days);
+      if (Number.isFinite(n) && n > 0) customOwners.push({ owner_id: row.owner_id, days: n });
+    }
+  }
+  let deleted = 0;
+  for (const { owner_id, days } of customOwners) {
+    const cutoff = nowSec - days * 86400;
+    const res = await db.prepare(
+      `DELETE FROM entries WHERE id IN (
+           SELECT id FROM entries WHERE entry_type = 'execution_log' AND owner_id = ? AND created_at < ?
+           LIMIT ?
+         )`
+    ).bind(owner_id, cutoff, CLEANUP_BATCH_LIMIT).run();
+    deleted += res.meta?.changes ?? 0;
+  }
+  const defaultCutoff = nowSec - DEFAULT_RETENTION_DAYS * 86400;
+  const excluded = [...neverDeleteOwners, ...customOwners.map((o) => o.owner_id)];
+  const sql = excluded.length > 0 ? `DELETE FROM entries WHERE id IN (
+           SELECT id FROM entries WHERE entry_type = 'execution_log'
+             AND created_at < ?
+             AND (owner_id IS NULL OR owner_id NOT IN (${excluded.map(() => "?").join(",")}))
+           LIMIT ?
+         )` : `DELETE FROM entries WHERE id IN (
+           SELECT id FROM entries WHERE entry_type = 'execution_log' AND created_at < ? LIMIT ?
+         )`;
+  const binds = excluded.length > 0 ? [defaultCutoff, ...excluded, CLEANUP_BATCH_LIMIT] : [defaultCutoff, CLEANUP_BATCH_LIMIT];
+  const res2 = await db.prepare(sql).bind(...binds).run();
+  deleted += res2.meta?.changes ?? 0;
+  return { deleted, checked_overrides: overrides.length };
+}
 
 // ../../matrix/arcrun/kbdb/src/routes/execution-log.ts
 var executionLogRoutes = new Hono2();
@@ -3449,6 +3600,26 @@ executionLogRoutes.get("/latest", async (c) => {
   const ownerId = c.req.query("owner_id") || void 0;
   const execution = await latestExecutionLog(c.env.DB, workflowId, ownerId);
   return c.json({ success: true, execution });
+});
+executionLogRoutes.get("/retention", async (c) => {
+  const ownerId = c.req.query("owner_id");
+  if (!ownerId) return c.json({ success: false, error: "owner_id \u5FC5\u586B" }, 400);
+  const retentionDays = await getRetentionDays(c.env.DB, ownerId);
+  return c.json({ success: true, owner_id: ownerId, retention_days: retentionDays, default_days: DEFAULT_RETENTION_DAYS });
+});
+executionLogRoutes.put("/retention", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.owner_id) return c.json({ success: false, error: "owner_id \u5FC5\u586B" }, 400);
+  const days = body.retention_days;
+  if (days !== null && (typeof days !== "number" || !Number.isFinite(days) || days <= 0)) {
+    return c.json({ success: false, error: "retention_days \u5FC5\u9808\u662F\u6B63\u6574\u6578\uFF0C\u6216 null\uFF08\u4EE3\u8868\u4E0D\u522A\u9664\uFF09" }, 400);
+  }
+  await setRetentionDays(c.env.DB, body.owner_id, days === null ? null : Math.round(days));
+  return c.json({ success: true, owner_id: body.owner_id, retention_days: days === null ? null : Math.round(days) });
+});
+executionLogRoutes.post("/cleanup", async (c) => {
+  const result = await cleanupExpiredLogs(c.env.DB);
+  return c.json({ success: true, ...result });
 });
 
 // ../../matrix/arcrun/kbdb/src/index.ts

@@ -8456,7 +8456,7 @@ var init_graph_executor = __esm({
                 mergedContext._recipe_output_format,
                 mergedContext._recipe_output_required_fields
               );
-              if (kvStore && result !== null && result !== void 0) {
+              if (kvStore && result !== null && result !== void 0 && graph.edges.some((e) => e.from === node.id && e.type === "PIPE")) {
                 await kvSetNodeOutput(kvStore, node.id, result);
               }
               void this.recordComponentReference?.(node.componentId, graph.id).catch(() => {
@@ -9040,6 +9040,7 @@ async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
 
 // ../../matrix/arcrun/cypher-executor/src/scheduled.ts
 init_webhook_handlers();
+init_kbdb_proxy();
 async function handleScheduled(controller, env, ctx) {
   const now2 = new Date(controller.scheduledTime);
   console.log("[scheduled] tick", now2.toISOString(), "controller.cron=", controller.cron);
@@ -9079,6 +9080,15 @@ async function handleScheduled(controller, env, ctx) {
     );
   }
   console.log(`[scheduled] scanned ${entries.length} cron-idx entries, ${triggered} triggered`);
+  if (now2.getUTCHours() === 2 && now2.getUTCMinutes() === 30) {
+    const { base, headers } = kbdbBase(env);
+    ctx.waitUntil(
+      fetch(`${base}/execution-log/cleanup`, { method: "POST", headers }).then(async (r) => {
+        const body = await r.json().catch(() => null);
+        console.log("[scheduled] execution-log cleanup", r.status, JSON.stringify(body));
+      }).catch((e) => console.error("[scheduled] execution-log cleanup failed", e))
+    );
+  }
 }
 
 // ../../matrix/arcrun/cypher-executor/src/routes/health.ts
@@ -12913,6 +12923,25 @@ portalRouter.post(
     return c.json({ success: true, record_id: recordId, email, role: "admin" });
   })
 );
+portalRouter.post(
+  "/portal/admin/recover-password",
+  (c) => run(c, async () => {
+    const consoleOk = await validateConsoleSession(c.env, c.req.header("authorization"));
+    if (!consoleOk) return c.json({ error: "\u9700\u8981 console owner session\uFF08\u5148\u767B\u5165 /console\uFF09" }, 401);
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    if (!isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
+    const recordId = await findUserRecordId(c.env, email);
+    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    if (!recordId || !rec) return c.json({ error: `\u627E\u4E0D\u5230 email\uFF1D${email} \u7684 portal \u5E33\u865F` }, 404);
+    const password = generatePassword();
+    await patchRecordValues(c.env, recordId, {
+      password_hash: await hashPassword2(password),
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    return c.json({ success: true, email, password });
+  })
+);
 portalRouter.get(
   "/portal/admin/users",
   (c) => run(c, async () => {
@@ -13364,6 +13393,38 @@ portalRouter.get(
       hasKey = false;
     }
     return c.json({ success: true, has_key: hasKey });
+  })
+);
+portalRouter.get(
+  "/portal/admin/execution-log-retention",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const ownerId = portalTenant(c.env);
+    const res = await kbdbFetch(c.env, `/execution-log/retention?owner_id=${encodeURIComponent(ownerId)}`);
+    if (!res.ok) throw new KbdbError(`GET /execution-log/retention \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({ success: true, retention_days: data.retention_days ?? null, default_days: data.default_days ?? 90 });
+  })
+);
+portalRouter.put(
+  "/portal/admin/execution-log-retention",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const days = body?.retention_days;
+    if (days !== null && days !== void 0 && (typeof days !== "number" || !Number.isFinite(days) || days <= 0)) {
+      return c.json({ error: "retention_days \u5FC5\u9808\u662F\u6B63\u6574\u6578\uFF0C\u6216 null\uFF08\u4EE3\u8868\u4E0D\u522A\u9664\uFF09" }, 400);
+    }
+    const ownerId = portalTenant(c.env);
+    const res = await kbdbFetch(c.env, "/execution-log/retention", {
+      method: "PUT",
+      body: JSON.stringify({ owner_id: ownerId, retention_days: days === void 0 ? null : days })
+    });
+    if (!res.ok) throw new KbdbError(`PUT /execution-log/retention \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({ success: true, retention_days: data.retention_days ?? null });
   })
 );
 portalRouter.delete(
