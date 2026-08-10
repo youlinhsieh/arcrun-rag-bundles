@@ -9128,6 +9128,9 @@ function authStoreWritable(env) {
 }
 function readAuthStore(env) {
   if (overlay && Date.now() - overlayAt < AUTH_OVERLAY_TTL_MS) return overlay;
+  return readAuthStoreFromEnv(env);
+}
+function readAuthStoreFromEnv(env) {
   const bag = env;
   const out = emptyStore();
   for (const name of shardNames(env)) {
@@ -9223,9 +9226,24 @@ async function hydrateFromAccelerator(env) {
     return false;
   }
 }
+async function authStoreRecentlyWritten(env) {
+  try {
+    return Boolean(await env.SESSIONS_KV.get(ACCEL_KEY));
+  } catch {
+    return false;
+  }
+}
+function unionStores(a, b) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const u of [...a.users, ...b.users]) {
+    const prev = byId.get(u.id);
+    if (!prev || (u.updated_at ?? "") >= (prev.updated_at ?? "")) byId.set(u.id, u);
+  }
+  return { version: 1, console: a.console ?? b.console ?? null, users: [...byId.values()] };
+}
 async function mutateAuthStore(env, fn) {
-  const data = readAuthStore(env);
-  const next = { version: 1, console: data.console, users: [...data.users] };
+  await hydrateFromAccelerator(env);
+  const next = unionStores(readAuthStore(env), readAuthStoreFromEnv(env));
   await fn(next);
   await writeAuthStore(env, next);
   return next;
@@ -13016,9 +13034,23 @@ async function requirePortalUser(c) {
     await c.env.SESSIONS_KV.delete(`${SESSION_PREFIX2}${token}`);
     return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
   }
-  const rec = await getRecordById(c.env, recordId);
+  let rec = await getRecordById(c.env, recordId);
+  if (!rec && await hydrateFromAccelerator(c.env)) {
+    rec = await getRecordById(c.env, recordId);
+  }
   if (!rec) {
-    await c.env.SESSIONS_KV.delete(`${SESSION_PREFIX2}${token}`);
+    if (await authStoreRecentlyWritten(c.env)) {
+      return {
+        ok: false,
+        res: c.json(
+          {
+            error: "\u8A8D\u8B49\u8CC7\u6599\u6B63\u5728\u66F4\u65B0\u4E2D\uFF08Cloudflare \u6B63\u5728\u92EA\u958B\u65B0\u7248\u672C\uFF09\uFF0C\u8ACB\u7A0D\u5019\u5E7E\u79D2\u518D\u8A66\u2014\u2014\u4F60\u4E26\u6C92\u6709\u88AB\u767B\u51FA\u3002",
+            code: "auth_store_propagating"
+          },
+          503
+        )
+      };
+    }
     return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
   }
   if ((rec.values.status ?? "") !== "active") {

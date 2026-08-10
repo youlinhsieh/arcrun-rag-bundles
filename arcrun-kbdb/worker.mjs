@@ -2739,13 +2739,18 @@ entryRoutes.patch("/:id", async (c) => {
   return c.json({ success: true, entry });
 });
 entryRoutes.delete("/:id", async (c) => {
+  const id = c.req.param("id");
+  let vector_deleted = null;
   if (embedEnabled(c.env)) {
-    c.executionCtx.waitUntil(c.env.VECTORIZE.deleteByIds([c.req.param("id")]).then(() => {
-    }).catch(() => {
-    }));
+    try {
+      await c.env.VECTORIZE.deleteByIds([id]);
+      vector_deleted = true;
+    } catch {
+      vector_deleted = false;
+    }
   }
-  await deleteEntry(c.env.DB, c.req.param("id"));
-  return c.json({ success: true });
+  await deleteEntry(c.env.DB, id);
+  return c.json({ success: true, vector_deleted });
 });
 
 // ../../matrix/arcrun/kbdb/src/actions/record-crud.ts

@@ -1,9 +1,9 @@
 {
  "schema": 1,
- "release": "1.4.30",
- "fingerprint": "becca61c342094e9d699500518ffec65b142ed79042acac394d0fddd80488900",
+ "release": "1.4.33",
+ "fingerprint": "4fb344a0466fb8ca13480d1f71e012f2858d08683e580e35e612097864fbdacc",
  "built": "2026-08-10",
- "source": "Arcrun@c4cee35",
+ "source": "Arcrun@eebb691",
  "daemon": {
   "version": "v0.18.25",
   "built": "20260809-1848",
@@ -35,7 +35,7 @@
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 563077,
+   "js_bytes": 564132,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -77,15 +77,15 @@
     "services": 13
    },
    "warnings": [],
-   "sha256": "8db22e7845349146bf08fcb0bf691e6d0bf2d370e8c9310d59c859678d7f9a24",
-   "bytes": 563077
+   "sha256": "b9ff5f63430accd2d345389481dcd72fc3a57a6c3b3f856e67c6c750028501b2",
+   "bytes": 564132
   },
   {
    "name": "arcrun-kbdb",
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 132590,
+   "js_bytes": 132667,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -106,8 +106,8 @@
     }
    },
    "warnings": [],
-   "sha256": "5eec50d5846b3d36194d891a5dd846247e0832d8d18d591e42f5fb9ea87519fe",
-   "bytes": 132590
+   "sha256": "b9b95766282ef409c882174c59445cdffd2f6c238f669cefe37f128c7c7b2762",
+   "bytes": 132667
   },
   {
    "name": "arcrun-http-request",
@@ -175,7 +175,7 @@
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "b04d3f2efab9844a37853f767fedf7275ceefc7d3218a75c1494ea06e54bae40",
+   "sha256": "276883752c8e93c0be65cb2f0e7ce596125f6be7d2b05a34d6e3e8c7303e7d0d",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],
@@ -185,15 +185,39 @@
     "ai": false,
     "vars": {}
    },
-   "bytes": 508088
+   "bytes": 509551
+  },
+  {
+   "name": "arcrun-mcp",
+   "canonical": null,
+   "main_module": "worker.mjs",
+   "main_file": "arcrun-mcp/worker.mjs",
+   "js_bytes": 1172208,
+   "modules": [],
+   "compat_date": "2024-11-27",
+   "compat_flags": [
+    "nodejs_compat"
+   ],
+   "requires": {
+    "kv": [
+     "OAUTH_KV"
+    ],
+    "d1": [],
+    "vectorize": 0,
+    "ai": false,
+    "vars": {}
+   },
+   "warnings": [],
+   "sha256": "886ba67cd1b99f710f4f439845967b4a92542e716d52fe5ea21e623c33016cdd",
+   "bytes": 1172208
   }
  ],
  "built_for": "oauth-installer-lazy-load",
  "notes": [],
  "promoted_from": {
   "target": "stage",
-  "sha": "595a7c607ebe5b24ae050f5c364487a6167ed317",
-  "release": "1.4.30",
-  "promoted_at": "2026-08-10T06:34:30.864Z"
+  "sha": "aaa98a55bb7a057973c93dc91aa5e2338590c804",
+  "release": "1.4.33",
+  "promoted_at": "2026-08-10T15:32:31.702Z"
  }
 }
