@@ -9093,12 +9093,163 @@ async function handleScheduled(controller, env, ctx) {
 
 // ../../matrix/arcrun/cypher-executor/src/routes/health.ts
 init_dist();
+
+// ../../matrix/arcrun/cypher-executor/src/lib/portal-auth-store.ts
+init_credentials();
+var AUTH_STORE_PREFIX = "ARCRUN_AUTH_STORE";
+var SHARD_MAX_BYTES = 4600;
+var AUTH_OVERLAY_TTL_MS = 18e4;
+var ACCEL_KEY = "auth_store_recent";
+var ACCEL_TTL_SECONDS = 600;
+var AUTH_ID_PREFIX = "auth:";
+var AuthStoreWriteError = class extends Error {
+};
+var overlay = null;
+var overlayAt = 0;
+function emptyStore() {
+  return { version: 1, console: null, users: [] };
+}
+function shardNames(env) {
+  const bag = env;
+  return Object.keys(bag).filter((k) => k === AUTH_STORE_PREFIX || /^ARCRUN_AUTH_STORE_\d+$/.test(k)).filter((k) => typeof bag[k] === "string" && bag[k].length > 0).sort((a, b) => shardIndex(a) - shardIndex(b));
+}
+function shardIndex(name) {
+  if (name === AUTH_STORE_PREFIX) return 0;
+  return Number.parseInt(name.slice(AUTH_STORE_PREFIX.length + 1), 10) || 0;
+}
+function shardNameOf(index) {
+  return index === 0 ? AUTH_STORE_PREFIX : `${AUTH_STORE_PREFIX}_${index}`;
+}
+function authStorePresent(env) {
+  return shardNames(env).length > 0 || overlay !== null && Date.now() - overlayAt < AUTH_OVERLAY_TTL_MS;
+}
+function authStoreWritable(env) {
+  return Boolean(env.CF_SECRETS_API_TOKEN && env.CF_ACCOUNT_ID);
+}
+function readAuthStore(env) {
+  if (overlay && Date.now() - overlayAt < AUTH_OVERLAY_TTL_MS) return overlay;
+  const bag = env;
+  const out = emptyStore();
+  for (const name of shardNames(env)) {
+    let parsed = null;
+    try {
+      parsed = JSON.parse(bag[name]);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+    if (parsed.console && !out.console) out.console = parsed.console;
+    if (Array.isArray(parsed.users)) {
+      for (const u of parsed.users) {
+        if (u && typeof u.email === "string" && typeof u.id === "string") out.users.push(u);
+      }
+    }
+  }
+  return out;
+}
+function findAuthUserByEmail(env, email) {
+  const needle = email.trim().toLowerCase();
+  return readAuthStore(env).users.find((u) => u.email.toLowerCase() === needle) ?? null;
+}
+function findAuthUserById(env, id) {
+  return readAuthStore(env).users.find((u) => u.id === id) ?? null;
+}
+function isAuthStoreId(recordId) {
+  return recordId.startsWith(AUTH_ID_PREFIX);
+}
+function newAuthUserId() {
+  const arr = new Uint8Array(12);
+  crypto.getRandomValues(arr);
+  return AUTH_ID_PREFIX + Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function writeAuthStore(env, data) {
+  if (!authStoreWritable(env)) {
+    throw new AuthStoreWriteError(
+      "\u9019\u53F0\u5BE6\u4F8B\u9084\u4E0D\u80FD\u5BEB\u5165\u8A8D\u8B49\u5132\u5B58\uFF08\u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID\uFF09\u3002\u8A8D\u8B49\u5206\u96E2\u9700\u8981\u9019\u5169\u9805\u624D\u5BEB\u5F97\u9032 Workers Secrets\u2014\u2014\u8ACB\u91CD\u65B0\u57F7\u884C\u5B89\u88DD\uFF0F\u66F4\u65B0\u8B93\u5B83\u5C31\u7DD2\u3002"
+    );
+  }
+  const shards = [];
+  let current = { v: 1, console: data.console ?? null, users: [] };
+  for (const u of data.users) {
+    const trial = { ...current, users: [...current.users ?? [], u] };
+    const size = new TextEncoder().encode(JSON.stringify(trial)).length;
+    if (size > SHARD_MAX_BYTES && (current.users ?? []).length > 0) {
+      shards.push(JSON.stringify(current));
+      current = { v: 1, users: [u] };
+    } else {
+      current = trial;
+    }
+  }
+  shards.push(JSON.stringify(current));
+  for (const s of shards) {
+    if (new TextEncoder().encode(s).length > 5e3) {
+      throw new AuthStoreWriteError("\u55AE\u7B46\u8A8D\u8B49\u8CC7\u6599\u8D85\u904E Cloudflare \u8B8A\u6578 5 KB \u4E0A\u9650\uFF0C\u7121\u6CD5\u5BEB\u5165\u3002");
+    }
+  }
+  const existing = shardNames(env);
+  for (let i = 0; i < shards.length; i++) {
+    await putWorkerSecret(env, shardNameOf(i), shards[i]);
+  }
+  for (const name of existing) {
+    if (shardIndex(name) >= shards.length) await deleteWorkerSecret(env, name);
+  }
+  overlay = { version: 1, console: data.console ?? null, users: [...data.users] };
+  overlayAt = Date.now();
+  try {
+    await env.SESSIONS_KV.put(
+      ACCEL_KEY,
+      JSON.stringify({ written_at: Date.now(), data: overlay }),
+      { expirationTtl: ACCEL_TTL_SECONDS }
+    );
+  } catch {
+  }
+}
+async function hydrateFromAccelerator(env) {
+  let raw2 = null;
+  try {
+    raw2 = await env.SESSIONS_KV.get(ACCEL_KEY);
+  } catch {
+    return false;
+  }
+  if (!raw2) return false;
+  try {
+    const parsed = JSON.parse(raw2);
+    if (!parsed?.data || !Array.isArray(parsed.data.users)) return false;
+    if (overlay && overlayAt >= (parsed.written_at ?? 0)) return false;
+    overlay = { version: 1, console: parsed.data.console ?? null, users: parsed.data.users };
+    overlayAt = parsed.written_at ?? Date.now();
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function mutateAuthStore(env, fn) {
+  const data = readAuthStore(env);
+  const next = { version: 1, console: data.console, users: [...data.users] };
+  await fn(next);
+  await writeAuthStore(env, next);
+  return next;
+}
+function authStoreStatus(env) {
+  const data = readAuthStore(env);
+  return {
+    present: authStorePresent(env),
+    writable: authStoreWritable(env),
+    users: data.users.length,
+    console_configured: Boolean(data.console),
+    shards: shardNames(env).length
+  };
+}
+
+// ../../matrix/arcrun/cypher-executor/src/routes/health.ts
 var healthRouter = new Hono2();
 healthRouter.get("/health", (c) => {
   const bundleVersion = c.env.ARCRUN_BUNDLE_VERSION;
-  return c.json(
-    bundleVersion ? { ok: true, bundle_version: bundleVersion } : { ok: true }
-  );
+  return c.json({
+    ok: true,
+    ...bundleVersion ? { bundle_version: bundleVersion } : {},
+    auth_store: authStoreStatus(c.env)
+  });
 });
 healthRouter.get(
   "/",
@@ -12320,13 +12471,50 @@ async function hashPassword(password, salt) {
 function tenantOf(c) {
   return c.env.CONSOLE_TENANT || "leo";
 }
+async function loadCredentials(env) {
+  let fromStore = readAuthStore(env).console;
+  if (!fromStore && await hydrateFromAccelerator(env)) {
+    fromStore = readAuthStore(env).console;
+  }
+  if (fromStore) return { creds: fromStore, source: "secrets" };
+  const raw2 = await env.SESSIONS_KV.get(CREDS_KEY);
+  if (!raw2) return { creds: null, source: "none" };
+  let legacy = null;
+  try {
+    legacy = JSON.parse(raw2);
+  } catch {
+    return { creds: null, source: "none" };
+  }
+  try {
+    await mutateAuthStore(env, (data) => {
+      if (!data.console) data.console = legacy;
+    });
+  } catch {
+  }
+  return { creds: legacy, source: "legacy-kv" };
+}
+async function saveCredentials(env, record) {
+  await mutateAuthStore(env, (data) => {
+    data.console = record;
+  });
+}
 consoleAuthRouter.get("/console/auth-status", async (c) => {
-  const existing = await c.env.SESSIONS_KV.get(CREDS_KEY);
-  return c.json({ configured: !!existing });
+  const { creds, source } = await loadCredentials(c.env);
+  return c.json({ configured: !!creds, credentials_source: source, auth_store: authStoreStatus(c.env) });
 });
 consoleAuthRouter.post("/console/setup", async (c) => {
-  const existing = await c.env.SESSIONS_KV.get(CREDS_KEY);
-  if (existing) return c.json({ error: "\u5DF2\u8A2D\u5B9A\u904E\u5E33\u5BC6\uFF0C\u8ACB\u6539\u7528\u767B\u5165\uFF1B\u8981\u63DB\u5E33\u5BC6\u8ACB\u7528 /console/setup/reset\uFF08\u9700\u820A\u5BC6\u78BC\uFF09" }, 409);
+  const { creds: existing } = await loadCredentials(c.env);
+  if (existing) {
+    return c.json(
+      {
+        error: "\u9019\u53F0\u5BE6\u4F8B\u5DF2\u7D93\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\u4E86\uFF0C**\u4F60\u525B\u624D\u8F38\u5165\u7684\u5BC6\u78BC\u6C92\u6709\u88AB\u63A1\u7528**\uFF0C\u76EE\u524D\u7684\u5BC6\u78BC\u4ECD\u662F\u7576\u521D\u8A2D\u5B9A\u7684\u90A3\u4E00\u7D44\u3002\u8981\u7528\u820A\u5BC6\u78BC\u767B\u5165\uFF0C\u6216\u7528 /console/setup/reset\uFF08\u9700\u8981\u820A\u5BC6\u78BC\uFF09\u63DB\u4E00\u7D44\u3002",
+        code: "already_configured",
+        password_applied: false,
+        reset_path: "/console/setup/reset"
+      },
+      409
+    );
+  }
   const body = await c.req.json().catch(() => null);
   const email = (body?.email ?? "").trim();
   const password = body?.password ?? "";
@@ -12335,7 +12523,12 @@ consoleAuthRouter.post("/console/setup", async (c) => {
   const salt = randomHex(16);
   const hash = await hashPassword(password, salt);
   const record = { email: email.toLowerCase(), salt, hash, created_at: (/* @__PURE__ */ new Date()).toISOString() };
-  await c.env.SESSIONS_KV.put(CREDS_KEY, JSON.stringify(record));
+  try {
+    await saveCredentials(c.env, record);
+  } catch (e) {
+    const msg = e instanceof AuthStoreWriteError ? e.message : String(e);
+    return c.json({ error: `\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${msg}`, code: "auth_store_not_writable" }, 502);
+  }
   const token = randomHex(32);
   await c.env.SESSIONS_KV.put(`${SESSION_PREFIX}${token}`, JSON.stringify({ created_at: Date.now() }), {
     expirationTtl: SESSION_TTL_SECONDS
@@ -12343,9 +12536,8 @@ consoleAuthRouter.post("/console/setup", async (c) => {
   return c.json({ success: true, session_token: token, tenant: tenantOf(c) });
 });
 consoleAuthRouter.post("/console/setup/reset", async (c) => {
-  const raw2 = await c.env.SESSIONS_KV.get(CREDS_KEY);
-  if (!raw2) return c.json({ error: "\u5C1A\u672A\u8A2D\u5B9A\u904E\uFF0C\u8ACB\u7528 /console/setup" }, 400);
-  const existing = JSON.parse(raw2);
+  const { creds: existing } = await loadCredentials(c.env);
+  if (!existing) return c.json({ error: "\u5C1A\u672A\u8A2D\u5B9A\u904E\uFF0C\u8ACB\u7528 /console/setup" }, 400);
   const body = await c.req.json().catch(() => null);
   const currentPassword = body?.current_password ?? "";
   const email = (body?.email ?? "").trim();
@@ -12357,19 +12549,42 @@ consoleAuthRouter.post("/console/setup/reset", async (c) => {
   const salt = randomHex(16);
   const hash = await hashPassword(password, salt);
   const record = { email: email.toLowerCase(), salt, hash, created_at: existing.created_at };
-  await c.env.SESSIONS_KV.put(CREDS_KEY, JSON.stringify(record));
+  try {
+    await saveCredentials(c.env, record);
+  } catch (e) {
+    const msg = e instanceof AuthStoreWriteError ? e.message : String(e);
+    return c.json({ error: `\u65B0\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${msg}`, code: "auth_store_not_writable" }, 502);
+  }
   return c.json({ success: true });
 });
 consoleAuthRouter.post("/console/login", async (c) => {
-  const raw2 = await c.env.SESSIONS_KV.get(CREDS_KEY);
-  if (!raw2) return c.json({ error: "\u5C1A\u672A\u8A2D\u5B9A\u5E33\u5BC6\uFF0C\u8ACB\u5148\u5B8C\u6210\u9996\u6B21\u8A2D\u5B9A" }, 400);
-  const existing = JSON.parse(raw2);
+  const { creds: existing } = await loadCredentials(c.env);
+  if (!existing) {
+    return c.json(
+      {
+        error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\uFF08\u6216\u8B80\u4E0D\u5230\uFF09\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8ACB\u5148\u5B8C\u6210\u9996\u6B21\u8A2D\u5B9A\u3002",
+        code: "auth_store_empty",
+        auth_store: authStoreStatus(c.env)
+      },
+      400
+    );
+  }
   const body = await c.req.json().catch(() => null);
   const email = (body?.email ?? "").trim().toLowerCase();
   const password = body?.password ?? "";
   if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-  const hash = await hashPassword(password, existing.salt);
-  if (email !== existing.email || hash !== existing.hash) {
+  let creds = existing;
+  let hash = await hashPassword(password, creds.salt);
+  if (email !== creds.email || hash !== creds.hash) {
+    if (await hydrateFromAccelerator(c.env)) {
+      const again = (await loadCredentials(c.env)).creds;
+      if (again) {
+        creds = again;
+        hash = await hashPassword(password, creds.salt);
+      }
+    }
+  }
+  if (email !== creds.email || hash !== creds.hash) {
     return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
   }
   const token = randomHex(32);
@@ -12550,6 +12765,9 @@ async function run(c, fn) {
   try {
     return await fn();
   } catch (e) {
+    if (e instanceof AuthStoreWriteError) {
+      return c.json({ error: `\u8A8D\u8B49\u5132\u5B58\u5BEB\u5165\u5931\u6557\uFF1A${e.message}`, code: "auth_store_not_writable" }, 502);
+    }
     if (e instanceof KbdbError) return c.json({ error: `KBDB \u4E0D\u53EF\u9054\u6216\u56DE\u932F\uFF1A${e.message}` }, 502);
     throw e;
   }
@@ -12601,7 +12819,53 @@ async function ensurePortalTemplates(env) {
   }
   return { created, existing, errors };
 }
+function authUserToRecord(u) {
+  return {
+    record_id: u.id,
+    template_id: USER_TEMPLATE,
+    values: {
+      email: u.email,
+      display_name: u.display_name,
+      status: u.status,
+      role: u.role,
+      password_hash: u.password_hash,
+      libraries: JSON.stringify(u.libraries ?? []),
+      created_at: u.created_at,
+      updated_at: u.updated_at
+    }
+  };
+}
+function recordValuesToAuthUser(id, v) {
+  return {
+    id,
+    email: (v.email ?? "").toLowerCase(),
+    display_name: v.display_name ?? "",
+    status: v.status ?? "active",
+    role: v.role ?? "user",
+    libraries: parseLibraries(v.libraries),
+    password_hash: v.password_hash ?? "",
+    created_at: v.created_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+    updated_at: v.updated_at ?? (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function promoteLegacyUser(env, rec) {
+  try {
+    const email = (rec.values.email ?? "").toLowerCase();
+    if (!email) return;
+    if (findAuthUserByEmail(env, email)) return;
+    await mutateAuthStore(env, (data) => {
+      if (data.users.some((u) => u.email === email)) return;
+      data.users.push(recordValuesToAuthUser(newAuthUserId(), rec.values));
+    });
+  } catch {
+  }
+}
 async function findUserRecordId(env, email) {
+  const inStore = findAuthUserByEmail(env, email);
+  if (inStore) return inStore.id;
+  return findLegacyUserRecordId(env, email);
+}
+async function findLegacyUserRecordId(env, email) {
   const ns = portalNamespace(env);
   const params = new URLSearchParams({
     page_name: email,
@@ -12616,6 +12880,10 @@ async function findUserRecordId(env, email) {
   return content ?? null;
 }
 async function getRecordById(env, recordId) {
+  if (isAuthStoreId(recordId)) {
+    const u = findAuthUserById(env, recordId);
+    return u ? authUserToRecord(u) : null;
+  }
   const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new KbdbError(`GET /records/${recordId} \u2192 ${res.status}`);
@@ -12623,6 +12891,18 @@ async function getRecordById(env, recordId) {
   return body.record ?? null;
 }
 async function patchRecordValues(env, recordId, values) {
+  if (isAuthStoreId(recordId)) {
+    let updated = null;
+    await mutateAuthStore(env, (data) => {
+      const idx = data.users.findIndex((u) => u.id === recordId);
+      if (idx < 0) throw new KbdbError(`\u8A8D\u8B49\u5132\u5B58\u627E\u4E0D\u5230\u5E33\u865F ${recordId}`);
+      const merged = { ...authUserToRecord(data.users[idx]).values, ...values };
+      updated = recordValuesToAuthUser(recordId, merged);
+      data.users[idx] = updated;
+    });
+    if (!updated) throw new KbdbError(`\u8A8D\u8B49\u5132\u5B58\u66F4\u65B0\u5931\u6557 ${recordId}`);
+    return authUserToRecord(updated);
+  }
   const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, {
     method: "PATCH",
     body: JSON.stringify({ values })
@@ -12633,6 +12913,17 @@ async function patchRecordValues(env, recordId, values) {
   return body.record;
 }
 async function deleteKbdbRecord(env, recordId) {
+  if (isAuthStoreId(recordId)) {
+    let found = false;
+    await mutateAuthStore(env, (data) => {
+      const idx = data.users.findIndex((u) => u.id === recordId);
+      if (idx >= 0) {
+        data.users.splice(idx, 1);
+        found = true;
+      }
+    });
+    return found;
+  }
   const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
   if (res.status === 404) return false;
   if (!res.ok) throw new KbdbError(`DELETE /records/${recordId} \u2192 ${res.status}`);
@@ -12642,6 +12933,20 @@ function daemonActiveKey(env) {
   return `${portalTenant(env)}:portal:daemon_active_libs`;
 }
 async function listRecordsByTemplate(env, template) {
+  if (template === USER_TEMPLATE) {
+    const fromStore = readAuthStore(env).users.map(authUserToRecord);
+    const seen = new Set(fromStore.map((r) => (r.values.email ?? "").toLowerCase()));
+    let legacy = [];
+    try {
+      legacy = await listLegacyRecordsByTemplate(env, template);
+    } catch {
+      legacy = [];
+    }
+    return [...fromStore, ...legacy.filter((r) => !seen.has((r.values.email ?? "").toLowerCase()))];
+  }
+  return listLegacyRecordsByTemplate(env, template);
+}
+async function listLegacyRecordsByTemplate(env, template) {
   const ns = portalNamespace(env);
   const res = await kbdbFetch(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
   if (!res.ok) throw new KbdbError(`GET /records/by-template/${template} \u2192 ${res.status}`);
@@ -12649,40 +12954,22 @@ async function listRecordsByTemplate(env, template) {
   return body.records ?? [];
 }
 async function createPortalUser(env, input) {
-  const ns = portalNamespace(env);
   const now2 = (/* @__PURE__ */ new Date()).toISOString();
-  const res = await kbdbFetch(env, "/records", {
-    method: "POST",
-    body: JSON.stringify({
-      template: USER_TEMPLATE,
-      owner_id: ns,
-      values: {
-        email: input.email,
-        display_name: input.display_name,
-        status: "active",
-        role: input.role,
-        password_hash: input.password_hash,
-        libraries: JSON.stringify(input.libraries),
-        created_at: now2,
-        updated_at: now2
-      }
-    })
+  const id = newAuthUserId();
+  await mutateAuthStore(env, (data) => {
+    data.users.push({
+      id,
+      email: input.email.toLowerCase(),
+      display_name: input.display_name,
+      status: "active",
+      role: input.role,
+      libraries: input.libraries,
+      password_hash: input.password_hash,
+      created_at: now2,
+      updated_at: now2
+    });
   });
-  if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_user\uFF09\u2192 ${res.status}`);
-  const body = await res.json();
-  const recordId = body.record?.record_id;
-  if (!recordId) throw new KbdbError("POST /records \u56DE\u61C9\u7F3A record_id");
-  const head = await kbdbFetch(env, "/entries", {
-    method: "POST",
-    body: JSON.stringify({
-      entry_type: USER_TEMPLATE,
-      page_name: input.email,
-      content: recordId,
-      owner_id: ns
-    })
-  });
-  if (!head.ok) throw new KbdbError(`head entry \u5EFA\u7ACB\u5931\u6557\uFF08record ${recordId} \u5DF2\u5EFA\uFF0C\u9700\u4EBA\u5DE5\u6536\u62FE\uFF09\u2192 ${head.status}`);
-  return recordId;
+  return id;
 }
 function parseLibraries(raw2) {
   if (!raw2) return [];
@@ -12802,6 +13089,29 @@ async function recordLoginFail(env, email) {
 async function clearLoginFail(env, email) {
   await env.SESSIONS_KV.delete(`${LOCKFAIL_PREFIX}${email}`);
 }
+async function instanceHasNoAuthData(env) {
+  if (readAuthStore(env).users.length > 0) return false;
+  try {
+    return (await listLegacyRecordsByTemplate(env, USER_TEMPLATE)).length === 0;
+  } catch {
+    return true;
+  }
+}
+async function findAndVerifyUser(env, email, password) {
+  const attempt = async () => {
+    const recordId = await findUserRecordId(env, email);
+    const rec = recordId ? await getRecordById(env, recordId) : null;
+    const ok = rec ? await verifyPassword(password, rec.values.password_hash ?? "") : false;
+    return { recordId, rec, ok };
+  };
+  const first = await attempt();
+  if (first.ok) return first;
+  if (await hydrateFromAccelerator(env)) {
+    const second = await attempt();
+    if (second.ok || second.rec) return second;
+  }
+  return first;
+}
 portalRouter.post(
   "/portal/login",
   (c) => run(c, async () => {
@@ -12812,24 +13122,29 @@ portalRouter.post(
     if (await isLocked(c.env, email)) {
       return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
     }
-    const recordId = await findUserRecordId(c.env, email);
-    if (!recordId) {
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    const rec = await getRecordById(c.env, recordId);
-    if (!rec) {
+    const { recordId, rec, ok } = await findAndVerifyUser(c.env, email, password);
+    if (!recordId || !rec) {
+      if (await instanceHasNoAuthData(c.env)) {
+        return c.json(
+          {
+            error: "\u9019\u53F0\u5BE6\u4F8B\u8B80\u4E0D\u5230\u4EFB\u4F55\u767B\u5165\u8CC7\u6599\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8A8D\u8B49\u5132\u5B58\u662F\u7A7A\u7684\uFF0C\u8ACB\u91CD\u65B0\u57F7\u884C\u5B89\u88DD\uFF0F\u66F4\u65B0\u4EE5\u91CD\u65B0\u5EFA\u7ACB\u7BA1\u7406\u54E1\u5E33\u865F\u3002",
+            code: "auth_store_empty",
+            auth_store: authStoreStatus(c.env)
+          },
+          503
+        );
+      }
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
     if ((rec.values.status ?? "") !== "active") {
       return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
     }
-    const ok = await verifyPassword(password, rec.values.password_hash ?? "");
     if (!ok) {
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
+    if (!isAuthStoreId(recordId)) await promoteLegacyUser(c.env, rec);
     await clearLoginFail(c.env, email);
     const token = randomHex2(32);
     await c.env.SESSIONS_KV.put(`${SESSION_PREFIX2}${token}`, JSON.stringify({ record_id: recordId }), {
@@ -13112,9 +13427,8 @@ portalRouter.post(
     const password = String(body?.password ?? "");
     if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
     if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
-    const recordId = await findUserRecordId(c.env, email);
-    const rec = recordId ? await getRecordById(c.env, recordId) : null;
-    if (!rec || (rec.values.status ?? "") !== "active" || !await verifyPassword(password, rec.values.password_hash ?? "")) {
+    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
+    if (!rec || (rec.values.status ?? "") !== "active" || !ok) {
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
@@ -13166,14 +13480,13 @@ portalRouter.post(
     if (await isLocked(c.env, email)) {
       return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
     }
-    const recordId = await findUserRecordId(c.env, email);
-    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
     if (!rec) {
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
     if ((rec.values.status ?? "") !== "active") return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
-    if (!await verifyPassword(password, rec.values.password_hash ?? "")) {
+    if (!ok) {
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
@@ -13306,9 +13619,8 @@ portalRouter.post(
     const items = Array.isArray(body?.libraries) ? body.libraries : [];
     if (items.length === 0) return c.json({ success: true, registered: [], skipped: [] });
     if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
-    const recordId = await findUserRecordId(c.env, email);
-    const rec = recordId ? await getRecordById(c.env, recordId) : null;
-    if (!rec || (rec.values.status ?? "") !== "active" || !await verifyPassword(password, rec.values.password_hash ?? "")) {
+    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
+    if (!rec || (rec.values.status ?? "") !== "active" || !ok) {
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
