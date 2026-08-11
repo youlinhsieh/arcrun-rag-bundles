@@ -1,9 +1,9 @@
 {
  "schema": 1,
- "release": "1.4.33",
- "fingerprint": "4fb344a0466fb8ca13480d1f71e012f2858d08683e580e35e612097864fbdacc",
- "built": "2026-08-10",
- "source": "Arcrun@eebb691",
+ "release": "1.4.35",
+ "fingerprint": "d241afc9489600203d7f1179ffe563dae84f2b0a1a8f4b613cc89c447e8ad1a5",
+ "built": "2026-08-11",
+ "source": "Arcrun@d1c44a5",
  "daemon": {
   "version": "v0.18.25",
   "built": "20260809-1848",
@@ -35,7 +35,7 @@
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 564132,
+   "js_bytes": 571136,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -77,15 +77,15 @@
     "services": 13
    },
    "warnings": [],
-   "sha256": "b9ff5f63430accd2d345389481dcd72fc3a57a6c3b3f856e67c6c750028501b2",
-   "bytes": 564132
+   "sha256": "fa29f7df569c442f00081f9ee4f127339363a36c6467f0efa13476054146fedf",
+   "bytes": 571136
   },
   {
    "name": "arcrun-kbdb",
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 132667,
+   "js_bytes": 136576,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -106,8 +106,8 @@
     }
    },
    "warnings": [],
-   "sha256": "b9b95766282ef409c882174c59445cdffd2f6c238f669cefe37f128c7c7b2762",
-   "bytes": 132667
+   "sha256": "138956bf7c3df55dd797b6d0a174908764a53f3ba685c659ec5f0e2a06e181ed",
+   "bytes": 136576
   },
   {
    "name": "arcrun-http-request",
@@ -171,23 +171,6 @@
    "bytes": 154438
   },
   {
-   "name": "arcrun-rag-ui",
-   "tier": 2,
-   "main_file": "tier2/ui/index.js",
-   "main_module": "index.js",
-   "sha256": "276883752c8e93c0be65cb2f0e7ce596125f6be7d2b05a34d6e3e8c7303e7d0d",
-   "compat_date": "2026-07-01",
-   "compat_flags": [],
-   "modules": [],
-   "requires": {
-    "kv": [],
-    "d1": [],
-    "ai": false,
-    "vars": {}
-   },
-   "bytes": 509551
-  },
-  {
    "name": "arcrun-mcp",
    "canonical": null,
    "main_module": "worker.mjs",
@@ -210,6 +193,23 @@
    "warnings": [],
    "sha256": "886ba67cd1b99f710f4f439845967b4a92542e716d52fe5ea21e623c33016cdd",
    "bytes": 1172208
+  },
+  {
+   "name": "arcrun-rag-ui",
+   "tier": 2,
+   "main_file": "tier2/ui/index.js",
+   "main_module": "index.js",
+   "sha256": "dd88fb04de28d999eb76f756f818d24ef9f75d19f0846b2b1c8830f9c5eb775b",
+   "compat_date": "2026-07-01",
+   "compat_flags": [],
+   "modules": [],
+   "requires": {
+    "kv": [],
+    "d1": [],
+    "ai": false,
+    "vars": {}
+   },
+   "bytes": 519945
   }
  ],
  "built_for": "oauth-installer-lazy-load",

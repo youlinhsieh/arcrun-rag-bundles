@@ -12685,6 +12685,10 @@ function randomHex2(bytes) {
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+async function sha256Hex2(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 function generatePassword(length = 16) {
   const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   const arr = new Uint8Array(length);
@@ -13219,26 +13223,166 @@ portalRouter.get(
     });
   })
 );
-portalRouter.post(
-  "/portal/me/password",
-  (c) => run(c, async () => {
-    const auth = await requirePortalUser(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const current = String(body?.current ?? "");
-    const next = String(body?.new ?? "");
-    if (!current || !next) return c.json({ error: "current \u8207 new \u5FC5\u586B" }, 400);
-    if (next.length < 8) return c.json({ error: "\u65B0\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
-    const ok = await verifyPassword(current, auth.user.values.password_hash ?? "");
-    if (!ok) return c.json({ error: "\u820A\u5BC6\u78BC\u4E0D\u6B63\u78BA" }, 401);
-    const newHash = await hashPassword2(next);
-    await patchRecordValues(c.env, auth.user.recordId, {
-      password_hash: newHash,
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+var PWRESET_PREFIX = "portal_pwreset:";
+var PWRESET_TTL_SECONDS = 30 * 60;
+var PWRESET_THROTTLE_PREFIX = "portal_pwreset_req:";
+var PWRESET_THROTTLE_SECONDS = 120;
+var RELAY_TICKET_PREFIX = "portal_relay_ticket:";
+var RELAY_TICKET_TTL_SECONDS = 120;
+function portalUiOrigin(env) {
+  const declared = String(env.UI_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (declared.length > 0) return declared[0];
+  const sub = String(env.WORKER_SUBDOMAIN ?? "").trim();
+  return sub ? `https://arcrun-rag-ui.${sub}.workers.dev` : null;
+}
+async function issueResetToken(env, recordId, email) {
+  const token = randomHex2(32);
+  const payload = { record_id: recordId, email, created_at: (/* @__PURE__ */ new Date()).toISOString() };
+  await env.SESSIONS_KV.put(`${PWRESET_PREFIX}${await sha256Hex2(token)}`, JSON.stringify(payload), {
+    expirationTtl: PWRESET_TTL_SECONDS
+  });
+  return token;
+}
+async function peekResetToken(env, token) {
+  if (!token || !/^[0-9a-f]{16,128}$/i.test(token)) return null;
+  const raw2 = await env.SESSIONS_KV.get(`${PWRESET_PREFIX}${await sha256Hex2(token)}`);
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function consumeResetToken(env, token) {
+  const payload = await peekResetToken(env, token);
+  if (!payload) return null;
+  await env.SESSIONS_KV.delete(`${PWRESET_PREFIX}${await sha256Hex2(token)}`);
+  return payload;
+}
+async function writeNewPassword(env, recordId, newPassword) {
+  const newHash = await hashPassword2(newPassword);
+  await patchRecordValues(env, recordId, {
+    password_hash: newHash,
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  });
+}
+async function relayResetLink(env, apiOrigin, email, ticket) {
+  const base = String(env.PORTAL_MAIL_RELAY_BASE ?? "").trim().replace(/\/$/, "");
+  if (!base) return "not_configured";
+  const headers = { "Content-Type": "application/json" };
+  if (env.PORTAL_MAIL_RELAY_KEY) headers["X-Arcrun-Relay-Key"] = env.PORTAL_MAIL_RELAY_KEY;
+  try {
+    const res = await fetch(`${base}/api/send-password-reset`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email, api_origin: apiOrigin, ticket })
     });
-    return c.json({ success: true });
+    return res.ok ? "sent" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+portalRouter.post(
+  "/portal/password/relay-verify",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const ticket = String(body?.ticket ?? "").trim();
+    if (!ticket || !/^[0-9a-f]{8,64}$/i.test(ticket)) return c.json({ ok: false }, 400);
+    const key = `${RELAY_TICKET_PREFIX}${ticket}`;
+    const raw2 = await c.env.SESSIONS_KV.get(key);
+    if (!raw2) return c.json({ ok: false }, 404);
+    await c.env.SESSIONS_KV.delete(key);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw2);
+    } catch {
+      return c.json({ ok: false }, 404);
+    }
+    return c.json({ ok: true, email_sha256: await sha256Hex2(parsed.email), link: parsed.link });
   })
 );
+portalRouter.get("/portal/password/reset-link", (c) => {
+  const token = c.req.query("token") ?? "";
+  const ui = portalUiOrigin(c.env);
+  if (!ui) return c.text("\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A portal \u524D\u7AEF\u7DB2\u5740\uFF0C\u7121\u6CD5\u5C0E\u5411\u4FEE\u6539\u5BC6\u78BC\u756B\u9762\u3002", 500);
+  return c.redirect(`${ui}/portal/#/reset?token=${encodeURIComponent(token)}`, 302);
+});
+portalRouter.post(
+  "/portal/password/forgot",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    if (!email || !isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
+    if (!String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim()) {
+      return c.json(
+        {
+          error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u8A2D\u5B9A\u5BC4\u4FE1\u670D\u52D9\uFF0C\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u7684\u9023\u7D50\u5BC4\u4E0D\u51FA\u53BB\u3002\u8ACB\u91CD\u65B0\u57F7\u884C\u5B89\u88DD\uFF0F\u66F4\u65B0\u8B93\u5B83\u5C31\u7DD2\uFF0C\u6216\u8ACB\u7BA1\u7406\u54E1\u76F4\u63A5\u5E6B\u4F60\u6539\u5BC6\u78BC\u3002",
+          code: "mail_relay_not_configured"
+        },
+        503
+      );
+    }
+    const generic = {
+      success: true,
+      message: "\u5982\u679C\u9019\u500B email \u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6709\u5E33\u865F\uFF0C\u6211\u5011\u5DF2\u7D93\u628A\u300C\u4FEE\u6539\u5BC6\u78BC\u300D\u7684\u9023\u7D50\u5BC4\u904E\u53BB\u4E86\uFF08\u9023\u7D50 30 \u5206\u9418\u5167\u6709\u6548\u3001\u53EA\u80FD\u7528\u4E00\u6B21\uFF09\u3002"
+    };
+    const throttleKey = `${PWRESET_THROTTLE_PREFIX}${email}`;
+    if (await c.env.SESSIONS_KV.get(throttleKey)) return c.json(generic);
+    await c.env.SESSIONS_KV.put(throttleKey, "1", { expirationTtl: PWRESET_THROTTLE_SECONDS });
+    const recordId = await findUserRecordId(c.env, email).catch(() => null);
+    if (!recordId) return c.json(generic);
+    const token = await issueResetToken(c.env, recordId, email);
+    const apiOrigin = new URL(c.req.url).origin;
+    const link = `${apiOrigin}/portal/password/reset-link?token=${encodeURIComponent(token)}`;
+    const ticket = randomHex2(16);
+    await c.env.SESSIONS_KV.put(`${RELAY_TICKET_PREFIX}${ticket}`, JSON.stringify({ email, link }), {
+      expirationTtl: RELAY_TICKET_TTL_SECONDS
+    });
+    await relayResetLink(c.env, apiOrigin, email, ticket);
+    return c.json(generic);
+  })
+);
+portalRouter.get(
+  "/portal/password/reset",
+  (c) => run(c, async () => {
+    const payload = await peekResetToken(c.env, c.req.query("token") ?? "");
+    if (!payload) {
+      return c.json(
+        { valid: false, error: "\u9019\u689D\u9023\u7D50\u5DF2\u7D93\u5931\u6548\u4E86\uFF08\u53EA\u80FD\u7528\u4E00\u6B21\u300130 \u5206\u9418\u5167\u6709\u6548\uFF09\u3002\u8ACB\u56DE\u767B\u5165\u9801\u91CD\u65B0\u6309\u4E00\u6B21\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u3002" },
+        400
+      );
+    }
+    return c.json({ valid: true, email: payload.email });
+  })
+);
+async function handlePasswordChange(c) {
+  const body = await c.req.json().catch(() => null);
+  const next = String(body?.new ?? "");
+  const resetToken = String(body?.reset_token ?? "").trim();
+  if (!next) return c.json({ error: "new\uFF08\u65B0\u5BC6\u78BC\uFF09\u5FC5\u586B" }, 400);
+  if (next.length < 8) return c.json({ error: "\u65B0\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
+  if (resetToken) {
+    const payload = await consumeResetToken(c.env, resetToken);
+    if (!payload) {
+      return c.json(
+        { error: "\u9019\u689D\u9023\u7D50\u5DF2\u7D93\u5931\u6548\u4E86\uFF08\u53EA\u80FD\u7528\u4E00\u6B21\u300130 \u5206\u9418\u5167\u6709\u6548\uFF09\u3002\u8ACB\u56DE\u767B\u5165\u9801\u91CD\u65B0\u6309\u4E00\u6B21\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u3002", code: "reset_token_invalid" },
+        400
+      );
+    }
+    await writeNewPassword(c.env, payload.record_id, next);
+    return c.json({ success: true, email: payload.email, via: "reset_link" });
+  }
+  const auth = await requirePortalUser(c);
+  if (!auth.ok) return auth.res;
+  const current = String(body?.current ?? "");
+  if (!current) return c.json({ error: "current\uFF08\u73FE\u6709\u5BC6\u78BC\uFF09\u5FC5\u586B" }, 400);
+  const ok = await verifyPassword(current, auth.user.values.password_hash ?? "");
+  if (!ok) return c.json({ error: "\u820A\u5BC6\u78BC\u4E0D\u6B63\u78BA" }, 401);
+  await writeNewPassword(c.env, auth.user.recordId, next);
+  return c.json({ success: true, via: "current_password" });
+}
+portalRouter.post("/portal/password/change", (c) => run(c, () => handlePasswordChange(c)));
+portalRouter.post("/portal/me/password", (c) => run(c, () => handlePasswordChange(c)));
 portalRouter.post(
   "/portal/admin/bootstrap",
   (c) => run(c, async () => {

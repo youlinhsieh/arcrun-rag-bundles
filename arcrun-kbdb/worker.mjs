@@ -2222,6 +2222,144 @@ function buildContentLike(q) {
     split: true
   };
 }
+var MAX_SEARCH_TERMS = 6;
+var MAX_TERM_WEIGHT = 8;
+var KEYWORD_RELATIVE_CUT = 0.6;
+var CJK_STOP_CHARS = new Set(
+  "\u7684\u4E86\u662F\u5728\u6211\u4F60\u4ED6\u5979\u5B83\u5011\u9019\u90A3\u54EA\u8AB0\u55CE\u5462\u5427\u554A\u5440\u561B\u5594\u54E6\u4EC0\u9EBC\u600E\u4E4B\u4E4E\u800C\u4F46\u4E26\u537B\u5C31\u90FD\u4E5F\u5F88\u592A\u53EA\u9084\u53C8\u518D\u6BCF\u4E9B\u628A\u88AB\u8DDF\u8B93\u82E5".split("")
+);
+var ASCII_STOP_WORDS = /* @__PURE__ */ new Set([
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "of",
+  "to",
+  "in",
+  "on",
+  "at",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "do",
+  "does",
+  "did",
+  "for",
+  "it",
+  "its",
+  "this",
+  "that",
+  "these",
+  "those",
+  "with",
+  "what",
+  "how",
+  "why",
+  "when",
+  "where",
+  "who",
+  "which",
+  "can",
+  "could",
+  "should",
+  "would",
+  "my",
+  "our",
+  "your",
+  "their",
+  "me",
+  "we",
+  "you",
+  "they"
+]);
+var isCjkChar = (ch) => /[぀-ヿ㐀-䶿一-鿿豈-﫿]/.test(ch);
+var isWordChar = (ch) => /[A-Za-z0-9_.-]/.test(ch);
+function splitRuns(q) {
+  const runs = [];
+  let cur = "";
+  let curCjk = false;
+  const flush = () => {
+    if (cur) runs.push({ text: cur, cjk: curCjk });
+    cur = "";
+  };
+  for (const ch of q) {
+    const cjk = isCjkChar(ch);
+    if (!cjk && !isWordChar(ch)) {
+      flush();
+      continue;
+    }
+    if (cur && cjk !== curCjk) flush();
+    cur += ch;
+    curCjk = cjk;
+  }
+  flush();
+  return runs;
+}
+function contentBigrams(run) {
+  const chars = [...run];
+  const out = [];
+  for (let i = 0; i + 1 < chars.length; i++) {
+    if (CJK_STOP_CHARS.has(chars[i]) || CJK_STOP_CHARS.has(chars[i + 1])) continue;
+    out.push(chars[i] + chars[i + 1]);
+  }
+  return out;
+}
+function tokenizeQuery(q) {
+  const found = /* @__PURE__ */ new Map();
+  const add = (t, w) => {
+    for (const piece of chunkByBytes(t, MAX_LIKE_Q_BYTES)) {
+      if (!piece) continue;
+      found.set(piece, Math.max(found.get(piece) ?? 0, Math.min(w, MAX_TERM_WEIGHT)));
+    }
+  };
+  const runs = splitRuns(q);
+  const isQuestion = runs.length > 1;
+  for (const run of runs) {
+    if (!run.cjk) {
+      const w = run.text.toLowerCase();
+      if (w.length >= 2 && !ASCII_STOP_WORDS.has(w)) add(run.text, run.text.length);
+      continue;
+    }
+    const chars = [...run.text];
+    if (chars.length >= 2 && chars.length <= 4) add(run.text, chars.length);
+    if (isQuestion || chars.length > 4) for (const bg of contentBigrams(run.text)) add(bg, 2);
+  }
+  return [...found.entries()].map(([term, weight]) => ({ term, weight })).sort((a, b) => b.weight - a.weight || a.term.localeCompare(b.term)).slice(0, MAX_SEARCH_TERMS);
+}
+function buildSearchScore(q) {
+  const trimmed = q.trim();
+  const terms = tokenizeQuery(trimmed);
+  if (terms.length === 0) {
+    const m = buildContentLike(trimmed);
+    return {
+      scoreExpr: m.conds.map(() => "CASE WHEN content LIKE ? THEN 1 ELSE 0 END").join(" + "),
+      scoreParams: m.params,
+      terms: [],
+      legacyShape: true
+    };
+  }
+  const parts = [];
+  const params = [];
+  for (const { term, weight } of terms) {
+    parts.push(`CASE WHEN content LIKE ? THEN ${weight} ELSE 0 END`);
+    params.push(`%${term}%`);
+  }
+  const single = terms.length === 1 && terms[0].term === trimmed;
+  if (!single && utf8Len(trimmed) <= MAX_LIKE_Q_BYTES) {
+    const bonus = terms.reduce((s, t) => s + t.weight, 0);
+    parts.push(`CASE WHEN content LIKE ? THEN ${bonus} ELSE 0 END`);
+    params.push(`%${trimmed}%`);
+  }
+  return { scoreExpr: parts.join(" + "), scoreParams: params, terms, legacyShape: single };
+}
+function applyRelativeCut(rows) {
+  if (rows.length <= 1) return rows;
+  const cut = rows[0].match_score * KEYWORD_RELATIVE_CUT;
+  return rows.filter((r) => r.match_score >= cut);
+}
 function libraryPredicate(libraries) {
   const placeholders = libraries.map(() => "?").join(",");
   return `COALESCE(json_extract(metadata_json, '$.library'), 'general') IN (${placeholders})`;
@@ -2237,9 +2375,9 @@ function isDeprecatedEntry(entry) {
   }
 }
 async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false) {
-  const m = buildContentLike(q);
-  const conds = [...m.conds];
-  const params = [...m.params];
+  const plan = buildSearchScore(q);
+  const conds = [];
+  const params = [...plan.scoreParams];
   if (owner_id) {
     conds.push("owner_id = ?");
     params.push(owner_id);
@@ -2259,8 +2397,15 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   if (!includeDeprecated) {
     conds.push(NOT_DEPRECATED_PREDICATE);
   }
-  const res = await db.prepare(`SELECT * FROM entries WHERE ${conds.join(" AND ")} ORDER BY updated_at DESC LIMIT ?`).bind(...params, Math.min(limit, 200)).all();
-  return res.results ?? [];
+  const inner = conds.length > 0 ? `WHERE ${conds.join(" AND ")}` : "";
+  const res = await db.prepare(
+    `SELECT * FROM (
+         SELECT *, (${plan.scoreExpr}) AS match_score FROM entries ${inner}
+       ) WHERE match_score > 0
+       ORDER BY match_score DESC, updated_at DESC
+       LIMIT ?`
+  ).bind(...params, Math.min(limit, 200)).all();
+  return applyRelativeCut(res.results ?? []);
 }
 
 // ../../matrix/arcrun/kbdb/src/embed.ts
