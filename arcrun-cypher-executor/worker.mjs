@@ -9266,7 +9266,13 @@ healthRouter.get("/health", (c) => {
   return c.json({
     ok: true,
     ...bundleVersion ? { bundle_version: bundleVersion } : {},
-    auth_store: authStoreStatus(c.env)
+    auth_store: authStoreStatus(c.env),
+    // arcrun-rag#38/#69/#25（2026-08-11）：安裝器判斷「要不要重推」只比 bundle_version——
+    // 但這次要修的洞是「installer 從沒注入過 PORTAL_MAIL_RELAY_BASE」，跟 bundle 內容
+    // 版本無關（同一個 cypher 版本，有的實例有這個 var、有的沒有）。純比版本號的話，
+    // 已經在最新版的實例（如 leo 自己那台）永遠不會因為「按更新」而重推，這個 var
+    // 就永遠補不進去。只回布林（有沒有設，不回值本身）——不洩漏郵差網址。
+    mail_relay_configured: Boolean(String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim())
   });
 });
 healthRouter.get(
@@ -13316,7 +13322,7 @@ portalRouter.post(
     if (!String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim()) {
       return c.json(
         {
-          error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u8A2D\u5B9A\u5BC4\u4FE1\u670D\u52D9\uFF0C\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u7684\u9023\u7D50\u5BC4\u4E0D\u51FA\u53BB\u3002\u8ACB\u91CD\u65B0\u57F7\u884C\u5B89\u88DD\uFF0F\u66F4\u65B0\u8B93\u5B83\u5C31\u7DD2\uFF0C\u6216\u8ACB\u7BA1\u7406\u54E1\u76F4\u63A5\u5E6B\u4F60\u6539\u5BC6\u78BC\u3002",
+          error: "\u5BC4\u4FE1\u529F\u80FD\u9084\u6C92\u63A5\u4E0A\uFF0C\u6240\u4EE5\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u7684\u4FE1\u5BC4\u4E0D\u51FA\u53BB\u3002\u8ACB\u7167\u7576\u521D\u6536\u5230\u7684\u5B89\u88DD\u7DB2\u5740\uFF0C\u91CD\u65B0\u57F7\u884C\u4E00\u6B21\u5B89\u88DD\uFF08\u9078\u540C\u4E00\u500B Cloudflare \u5E33\u865F\uFF09\u2014\u2014\u5B8C\u6210\u5F8C\u9019\u500B\u529F\u80FD\u5C31\u6703\u81EA\u52D5\u63A5\u4E0A\uFF0C\u4E0D\u9700\u8981\u81EA\u5DF1\u8A2D\u5B9A\u4EFB\u4F55\u6771\u897F\uFF0C\u4E5F\u4E0D\u7528\u627E\u4EFB\u4F55\u4EBA\u5E6B\u5FD9\u3002",
           code: "mail_relay_not_configured"
         },
         503
@@ -13324,7 +13330,7 @@ portalRouter.post(
     }
     const generic = {
       success: true,
-      message: "\u5982\u679C\u9019\u500B email \u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6709\u5E33\u865F\uFF0C\u6211\u5011\u5DF2\u7D93\u628A\u300C\u4FEE\u6539\u5BC6\u78BC\u300D\u7684\u9023\u7D50\u5BC4\u904E\u53BB\u4E86\uFF08\u9023\u7D50 30 \u5206\u9418\u5167\u6709\u6548\u3001\u53EA\u80FD\u7528\u4E00\u6B21\uFF09\u3002"
+      message: "\u5982\u679C\u9019\u500B email \u6709\u5E33\u865F\uFF0C\u6211\u5011\u5DF2\u7D93\u628A\u300C\u4FEE\u6539\u5BC6\u78BC\u300D\u7684\u9023\u7D50\u5BC4\u904E\u53BB\u4E86\uFF08\u9023\u7D50 30 \u5206\u9418\u5167\u6709\u6548\u3001\u53EA\u80FD\u7528\u4E00\u6B21\uFF09\u3002"
     };
     const throttleKey = `${PWRESET_THROTTLE_PREFIX}${email}`;
     if (await c.env.SESSIONS_KV.get(throttleKey)) return c.json(generic);
