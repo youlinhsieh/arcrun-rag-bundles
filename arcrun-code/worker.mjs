@@ -1,22 +1,17 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res, err2) => function __init() {
-  if (err2) throw err2[0];
-  try {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  } catch (e) {
-    throw err2 = [e], e;
-  }
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs
+// registry/components/code/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs
 var EvalFlags, IntrinsicsFlags, JSPromiseStateEnum, GetOwnPropertyNamesFlags, IsEqualOp;
 var init_dist = __esm({
-  "../../matrix/arcrun/registry/components/code/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs"() {
+  "registry/components/code/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs"() {
     EvalFlags = { JS_EVAL_TYPE_GLOBAL: 0, JS_EVAL_TYPE_MODULE: 1, JS_EVAL_TYPE_DIRECT: 2, JS_EVAL_TYPE_INDIRECT: 3, JS_EVAL_TYPE_MASK: 3, JS_EVAL_FLAG_STRICT: 8, JS_EVAL_FLAG_STRIP: 16, JS_EVAL_FLAG_COMPILE_ONLY: 32, JS_EVAL_FLAG_BACKTRACE_BARRIER: 64 };
     IntrinsicsFlags = { BaseObjects: 1, Date: 2, Eval: 4, StringNormalize: 8, RegExp: 16, RegExpCompiler: 32, JSON: 64, Proxy: 128, MapSet: 256, TypedArrays: 512, Promise: 1024, BigInt: 2048, BigFloat: 4096, BigDecimal: 8192, OperatorOverloading: 16384, BignumExt: 32768 };
     JSPromiseStateEnum = { Pending: 0, Fulfilled: 1, Rejected: 2 };
@@ -25,7 +20,7 @@ var init_dist = __esm({
   }
 });
 
-// ../../matrix/arcrun/registry/components/code/node_modules/quickjs-emscripten-core/dist/chunk-JTKJZQYV.mjs
+// registry/components/code/node_modules/quickjs-emscripten-core/dist/chunk-JTKJZQYV.mjs
 function debugLog(...args) {
   QTS_DEBUG && console.log("quickjs-emscripten:", ...args);
 }
@@ -107,9 +102,9 @@ function applyBaseRuntimeOptions(runtime, options) {
 function applyModuleEvalRuntimeOptions(runtime, options) {
   options.moduleLoader && runtime.setModuleLoader(options.moduleLoader), options.shouldInterrupt && runtime.setInterruptHandler(options.shouldInterrupt), options.memoryLimitBytes !== void 0 && runtime.setMemoryLimit(options.memoryLimitBytes), options.maxStackSizeBytes !== void 0 && runtime.setMaxStackSize(options.maxStackSizeBytes);
 }
-var __defProp2, __export2, QTS_DEBUG, errors_exports, QuickJSUnwrapError, QuickJSWrongOwner, QuickJSUseAfterFree, QuickJSNotImplemented, QuickJSAsyncifyError, QuickJSAsyncifySuspended, QuickJSMemoryLeakDetected, QuickJSEmscriptenModuleError, QuickJSUnknownIntrinsic, QuickJSPromisePending, QuickJSEmptyGetOwnPropertyNames, AwaitYield, UsingDisposable, SymbolDispose, prototypeAsAny, Lifetime, StaticLifetime, WeakLifetime, Scope, AbstractDisposableResult, DisposableSuccess, DisposableFail, DisposableResult, QuickJSDeferredPromise, ModuleMemory, DefaultIntrinsics, QuickJSIterator, ContextMemory, QuickJSContext, QuickJSRuntime, QuickJSEmscriptenModuleCallbacks, QuickJSModuleCallbacks, QuickJSWASMModule;
+var __defProp2, __export2, QTS_DEBUG, errors_exports, QuickJSUnwrapError, QuickJSWrongOwner, QuickJSUseAfterFree, QuickJSNotImplemented, QuickJSAsyncifyError, QuickJSAsyncifySuspended, QuickJSMemoryLeakDetected, QuickJSEmscriptenModuleError, QuickJSUnknownIntrinsic, QuickJSPromisePending, QuickJSEmptyGetOwnPropertyNames, AwaitYield, UsingDisposable, SymbolDispose, prototypeAsAny, Lifetime, StaticLifetime, WeakLifetime, Scope, AbstractDisposableResult, DisposableSuccess, DisposableFail, DisposableResult, QuickJSDeferredPromise, ModuleMemory, UnstableSymbol, DefaultIntrinsics, QuickJSIterator, ContextMemory, QuickJSContext, QuickJSRuntime, QuickJSEmscriptenModuleCallbacks, QuickJSModuleCallbacks, QuickJSWASMModule;
 var init_chunk_JTKJZQYV = __esm({
-  "../../matrix/arcrun/registry/components/code/node_modules/quickjs-emscripten-core/dist/chunk-JTKJZQYV.mjs"() {
+  "registry/components/code/node_modules/quickjs-emscripten-core/dist/chunk-JTKJZQYV.mjs"() {
     init_dist();
     init_dist();
     __defProp2 = Object.defineProperty;
@@ -195,7 +190,7 @@ var init_chunk_JTKJZQYV = __esm({
         return this.dispose();
       }
     };
-    SymbolDispose = Symbol.dispose ?? /* @__PURE__ */ Symbol.for("Symbol.dispose");
+    SymbolDispose = Symbol.dispose ?? Symbol.for("Symbol.dispose");
     prototypeAsAny = UsingDisposable.prototype;
     prototypeAsAny[SymbolDispose] || (prototypeAsAny[SymbolDispose] = function() {
       return this.dispose();
@@ -414,6 +409,7 @@ Lifetime used`) : new QuickJSUseAfterFree("Lifetime not alive");
         return this.module._free(ptr), str;
       }
     };
+    UnstableSymbol = Symbol("Unstable");
     DefaultIntrinsics = Object.freeze({ BaseObjects: true, Date: true, Eval: true, StringNormalize: true, RegExp: true, JSON: true, Proxy: true, MapSet: true, TypedArrays: true, Promise: true });
     QuickJSIterator = class extends UsingDisposable {
       constructor(handle, context) {
@@ -777,7 +773,7 @@ ${cause.stack}Host: ${hostStack}`), Object.assign(exception, rest), exception;
         }
         return result.value;
       }
-      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
+      [Symbol.for("nodejs.util.inspect.custom")]() {
         return this.alive ? `${this.constructor.name} { ctx: ${this.ctx.value} rt: ${this.rt.value} }` : `${this.constructor.name} { disposed }`;
       }
       getFunction(fn_id) {
@@ -913,7 +909,7 @@ ${cause.stack}Host: ${hostStack}`), Object.assign(exception, rest), exception;
       debugLog(...msg) {
         this._debugMode && console.log("quickjs-emscripten:", ...msg);
       }
-      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
+      [Symbol.for("nodejs.util.inspect.custom")]() {
         return this.alive ? `${this.constructor.name} { rt: ${this.rt.value} }` : `${this.constructor.name} { disposed }`;
       }
       getSystemContext() {
@@ -1041,7 +1037,7 @@ Attempted to suspend at:`);
   }
 });
 
-// ../../matrix/arcrun/registry/components/code/node_modules/quickjs-emscripten-core/dist/module-6F3E5H7Y.mjs
+// registry/components/code/node_modules/quickjs-emscripten-core/dist/module-6F3E5H7Y.mjs
 var module_6F3E5H7Y_exports = {};
 __export(module_6F3E5H7Y_exports, {
   QuickJSModuleCallbacks: () => QuickJSModuleCallbacks,
@@ -1050,19 +1046,19 @@ __export(module_6F3E5H7Y_exports, {
   applyModuleEvalRuntimeOptions: () => applyModuleEvalRuntimeOptions
 });
 var init_module_6F3E5H7Y = __esm({
-  "../../matrix/arcrun/registry/components/code/node_modules/quickjs-emscripten-core/dist/module-6F3E5H7Y.mjs"() {
+  "registry/components/code/node_modules/quickjs-emscripten-core/dist/module-6F3E5H7Y.mjs"() {
     init_chunk_JTKJZQYV();
   }
 });
 
-// ../../matrix/arcrun/registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs
+// registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs
 var ffi_exports = {};
 __export(ffi_exports, {
   QuickJSFFI: () => QuickJSFFI
 });
 var QuickJSFFI;
 var init_ffi = __esm({
-  "../../matrix/arcrun/registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs"() {
+  "registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs"() {
     QuickJSFFI = class {
       constructor(module) {
         this.module = module;
@@ -1140,7 +1136,7 @@ var init_ffi = __esm({
   }
 });
 
-// ../../matrix/arcrun/registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs
+// registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs
 var emscripten_module_browser_exports = {};
 __export(emscripten_module_browser_exports, {
   default: () => emscripten_module_browser_default
@@ -1343,10 +1339,10 @@ async function QuickJSRaw(moduleArg = {}) {
       x ? (0 === h && (h = ra()), g[m] = x(e[m])) : g[m] = e[m];
     }
     b = a(...g);
-    return b = (function(k) {
+    return b = function(k) {
       0 !== h && sa(h);
       return "string" === d ? R(k) : "boolean" === d ? !!k : k;
-    })(b);
+    }(b);
   };
   c.wasmMemory ? r = c.wasmMemory : r = new WebAssembly.Memory({ initial: (c.INITIAL_MEMORY || 16777216) / 65536, maximum: 32768 });
   K();
@@ -1468,7 +1464,7 @@ async function QuickJSRaw(moduleArg = {}) {
   }, t: function(a, d) {
     c.callbacks.freeHostRef(void 0, a, d);
   } }, Z;
-  Z = await (async function() {
+  Z = await async function() {
     function a(b) {
       b = Z = b.exports;
       c._malloc = b.v;
@@ -1555,7 +1551,7 @@ async function QuickJSRaw(moduleArg = {}) {
     });
     M ??= c.locateFile ? c.locateFile ? c.locateFile("emscripten-module.wasm", u) : u + "emscripten-module.wasm" : new URL("emscripten-module.wasm", import.meta.url).href;
     return a((await ea(d)).instance);
-  })();
+  }();
   (function() {
     function a() {
       c.calledRun = true;
@@ -1587,12 +1583,12 @@ async function QuickJSRaw(moduleArg = {}) {
 }
 var emscripten_module_browser_default;
 var init_emscripten_module_browser = __esm({
-  "../../matrix/arcrun/registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs"() {
+  "registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.browser.mjs"() {
     emscripten_module_browser_default = QuickJSRaw;
   }
 });
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/compose.js
+// registry/components/code/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
     let index = -1;
@@ -1636,10 +1632,10 @@ var compose = (middleware, onError, onNotFound) => {
   };
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/request/constants.js
+// registry/components/code/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/utils/body.js
+// registry/components/code/node_modules/hono/dist/utils/body.js
 var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -1711,7 +1707,7 @@ var handleParsingNestedValues = (form, key, value) => {
   });
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/utils/url.js
+// registry/components/code/node_modules/hono/dist/utils/url.js
 var splitPath = (path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -1915,7 +1911,7 @@ var getQueryParams = (url, key) => {
 };
 var decodeURIComponent_ = decodeURIComponent;
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/request.js
+// registry/components/code/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
 var HonoRequest = class {
   /**
@@ -2198,7 +2194,7 @@ var HonoRequest = class {
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/utils/html.js
+// registry/components/code/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -2240,7 +2236,7 @@ var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => 
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/context.js
+// registry/components/code/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = (contentType, headers) => {
   return {
@@ -2647,7 +2643,7 @@ var Context = class {
   };
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/router.js
+// registry/components/code/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -2655,10 +2651,10 @@ var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is
 var UnsupportedPathError = class extends Error {
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/utils/constants.js
+// registry/components/code/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/hono-base.js
+// registry/components/code/node_modules/hono/dist/hono-base.js
 var notFoundHandler = (c) => {
   return c.text("404 Not Found", 404);
 };
@@ -3034,11 +3030,11 @@ var Hono = class _Hono {
   };
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// registry/components/code/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = ((method2, path2) => {
+  const match2 = (method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -3050,12 +3046,12 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  });
+  };
   this.match = match2;
   return match2(method, path);
 }
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/router/reg-exp-router/node.js
+// registry/components/code/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -3163,7 +3159,7 @@ var Node = class _Node {
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/router/reg-exp-router/trie.js
+// registry/components/code/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   #context = { varIndex: 0 };
   #root = new Node();
@@ -3219,7 +3215,7 @@ var Trie = class {
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/router/reg-exp-router/router.js
+// registry/components/code/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -3398,7 +3394,7 @@ var RegExpRouter = class {
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/router/smart-router/router.js
+// registry/components/code/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   name = "SmartRouter";
   #routers = [];
@@ -3453,7 +3449,7 @@ var SmartRouter = class {
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/router/trie-router/node.js
+// registry/components/code/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = (children) => {
   for (const _ in children) {
@@ -3628,7 +3624,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/router/trie-router/router.js
+// registry/components/code/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   name = "TrieRouter";
   #node;
@@ -3650,7 +3646,7 @@ var TrieRouter = class {
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/hono.js
+// registry/components/code/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   /**
    * Creates an instance of the Hono class.
@@ -3665,7 +3661,7 @@ var Hono2 = class extends Hono {
   }
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/hono/dist/middleware/cors/index.js
+// registry/components/code/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const opts = {
     origin: "*",
@@ -3747,7 +3743,7 @@ var cors = (options) => {
   };
 };
 
-// ../../matrix/arcrun/registry/components/code/node_modules/quickjs-emscripten-core/dist/index.mjs
+// registry/components/code/node_modules/quickjs-emscripten-core/dist/index.mjs
 init_chunk_JTKJZQYV();
 init_dist();
 async function newQuickJSWASMModuleFromVariant(variantOrPromise) {
@@ -3810,14 +3806,14 @@ function newMockExtensions(log) {
   } };
 }
 
-// ../../matrix/arcrun/registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs
+// registry/components/code/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs
 var variant = { type: "sync", importFFI: () => Promise.resolve().then(() => (init_ffi(), ffi_exports)).then((mod) => mod.QuickJSFFI), importModuleLoader: () => Promise.resolve().then(() => (init_emscripten_module_browser(), emscripten_module_browser_exports)).then((mod) => mod.default) };
 var src_default = variant;
 
-// ../../matrix/arcrun/registry/components/code/index.ts
+// registry/components/code/index.ts
 import wasmModule from "./quickjs.wasm";
 
-// ../../matrix/arcrun/registry/components/code/sandbox.mjs
+// registry/components/code/sandbox.mjs
 var _variant = null;
 function setVariant(v) {
   _variant = v;
@@ -3987,7 +3983,7 @@ function err(message, error_type) {
   return { success: false, error: message, error_type };
 }
 
-// ../../matrix/arcrun/registry/components/code/index.ts
+// registry/components/code/index.ts
 setVariant(newVariant(src_default, { wasmModule }));
 var app = new Hono2();
 app.use("*", cors());
@@ -4012,7 +4008,7 @@ app.post("/", async (c) => {
     );
   }
 });
-var index_default = app;
+var code_default = app;
 export {
-  index_default as default
+  code_default as default
 };

@@ -1,22 +1,17 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res, err) => function __init() {
-  if (err) throw err[0];
-  try {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  } catch (e) {
-    throw err = [e], e;
-  }
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -62,21 +57,21 @@ var init_compose = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -107,7 +102,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -154,10 +149,10 @@ var init_body = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -363,10 +358,10 @@ var init_url = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants();
     init_body();
@@ -640,10 +635,10 @@ var init_request = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -687,10 +682,10 @@ var init_html = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1101,10 +1096,10 @@ var init_context = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1114,18 +1109,18 @@ var init_router = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1503,10 +1498,10 @@ var init_hono_base = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = ((method2, path2) => {
+  const match2 = (method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -1518,19 +1513,19 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  });
+  };
   this.match = match2;
   return match2(method, path);
 }
 var emptyParam;
 var init_matcher = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1552,7 +1547,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1643,10 +1638,10 @@ var init_node = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1705,7 +1700,7 @@ var init_trie = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1787,7 +1782,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -1894,27 +1889,27 @@ var init_router2 = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -1972,17 +1967,17 @@ var init_router3 = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2161,10 +2156,10 @@ var init_node2 = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2190,17 +2185,17 @@ var init_router4 = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2221,14 +2216,14 @@ var init_hono = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/types.ts
+// cypher-executor/src/types.ts
 async function kvGetNodeOutput(store, nodeId) {
   try {
     const val = await store.kv.get(`${store.runId}:node:${nodeId}`, "json");
@@ -2249,7 +2244,7 @@ async function kvSetNodeOutput(store, nodeId, output) {
 }
 var WorkflowPaused, ExecutionError;
 var init_types = __esm({
-  "../../matrix/arcrun/cypher-executor/src/types.ts"() {
+  "cypher-executor/src/types.ts"() {
     "use strict";
     WorkflowPaused = class extends Error {
       task_id;
@@ -2280,7 +2275,7 @@ var init_types = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/hash.ts
+// cypher-executor/src/lib/hash.ts
 async function deriveRecipeHash(canonicalId) {
   return "rec_" + await sha256Prefix(canonicalId);
 }
@@ -2296,12 +2291,12 @@ async function sha256Prefix(input) {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 8);
 }
 var init_hash = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/hash.ts"() {
+  "cypher-executor/src/lib/hash.ts"() {
     "use strict";
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/recipes.ts
+// cypher-executor/src/routes/recipes.ts
 async function installRecipeRecord(kv, recipe) {
   const uuid = recipe.uuid;
   const { canonical_id, hash_id } = recipe;
@@ -2361,7 +2356,7 @@ async function resolveAuthRecipe(service, kv) {
 }
 var recipesRouter, kIdxCanonical, kIdxInstalled;
 var init_recipes = __esm({
-  "../../matrix/arcrun/cypher-executor/src/routes/recipes.ts"() {
+  "cypher-executor/src/routes/recipes.ts"() {
     "use strict";
     init_dist();
     init_hash();
@@ -2649,10 +2644,10 @@ var init_recipes = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/constants.ts
+// cypher-executor/src/lib/constants.ts
 var VALID_EDGE_TYPES, SEMANTIC_EDGE_MAP, BUILTIN_COMPONENTS;
 var init_constants3 = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/constants.ts"() {
+  "cypher-executor/src/lib/constants.ts"() {
     "use strict";
     VALID_EDGE_TYPES = /* @__PURE__ */ new Set([
       // 現有
@@ -2712,7 +2707,7 @@ var init_constants3 = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/recipe-payload.ts
+// cypher-executor/src/lib/recipe-payload.ts
 function getPath2(obj, path) {
   let cur = obj;
   for (const part of path.split(".")) {
@@ -2786,12 +2781,12 @@ function sanitize(input, map) {
   return s.trim();
 }
 var init_recipe_payload = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/recipe-payload.ts"() {
+  "cypher-executor/src/lib/recipe-payload.ts"() {
     "use strict";
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/component-loader.ts
+// cypher-executor/src/lib/component-loader.ts
 function wasmWorkerUrl(canonicalId, subdomain) {
   const kebab = canonicalId.replace(/_/g, "-");
   return `https://arcrun-${kebab}.${subdomain}.workers.dev`;
@@ -3029,7 +3024,7 @@ async function readBodyOnce(res) {
 }
 var WASM_HTTP_RUNNER_IDS, LOGIC_BINDING_MAP;
 var init_component_loader = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/component-loader.ts"() {
+  "cypher-executor/src/lib/component-loader.ts"() {
     "use strict";
     init_constants3();
     init_hash();
@@ -3073,7 +3068,7 @@ var init_component_loader = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/wasi-shim.ts
+// cypher-executor/src/lib/wasi-shim.ts
 async function routedKvGet(env, apiKey, key) {
   if (key.startsWith("auth_recipe:")) {
     return env.RECIPES.get(key);
@@ -3120,12 +3115,12 @@ function createArcrunHostFunctions(env, apiKey) {
   };
 }
 var init_wasi_shim = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/wasi-shim.ts"() {
+  "cypher-executor/src/lib/wasi-shim.ts"() {
     "use strict";
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/kbdb-proxy.ts
+// cypher-executor/src/routes/kbdb-proxy.ts
 function kbdbBase(env) {
   const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
   const headers = { "Content-Type": "application/json" };
@@ -3141,7 +3136,7 @@ function graphBase(env) {
 }
 var kbdbProxyRouter, NEED_KEY;
 var init_kbdb_proxy = __esm({
-  "../../matrix/arcrun/cypher-executor/src/routes/kbdb-proxy.ts"() {
+  "cypher-executor/src/routes/kbdb-proxy.ts"() {
     "use strict";
     init_dist();
     kbdbProxyRouter = new Hono2();
@@ -3306,7 +3301,7 @@ var init_kbdb_proxy = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/credentials.ts
+// cypher-executor/src/routes/credentials.ts
 async function deriveSecretRef(apiKey, name) {
   const hash8 = await sha256Prefix(apiKey);
   return `CRED_${name.toUpperCase()}_${hash8.toUpperCase()}`;
@@ -3501,7 +3496,7 @@ async function writeCredential(env, apiKey, name, value, service, sensitivityRaw
 }
 var credentialsRouter, CYPHER_SCRIPT_NAME, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache;
 var init_credentials = __esm({
-  "../../matrix/arcrun/cypher-executor/src/routes/credentials.ts"() {
+  "cypher-executor/src/routes/credentials.ts"() {
     "use strict";
     init_dist();
     init_hash();
@@ -3613,7 +3608,7 @@ var init_credentials = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/actions/auth-dispatcher.ts
+// cypher-executor/src/actions/auth-dispatcher.ts
 async function resolveSecretsFromNewHome(env, apiKey, names) {
   const resolved = {};
   if (names.length === 0) return resolved;
@@ -3734,7 +3729,7 @@ async function resolveCredentialRefs(data, env, apiKey) {
 }
 var SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
 var init_auth_dispatcher = __esm({
-  "../../matrix/arcrun/cypher-executor/src/actions/auth-dispatcher.ts"() {
+  "cypher-executor/src/actions/auth-dispatcher.ts"() {
     "use strict";
     init_recipes();
     init_component_loader();
@@ -3751,7 +3746,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3933,7 +3928,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "../../matrix/arcrun/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -7360,7 +7355,7 @@ var init_lib = __esm({
         ...processCreateParams(params)
       });
     };
-    BRAND = /* @__PURE__ */ Symbol("zod_brand");
+    BRAND = Symbol("zod_brand");
     ZodBranded = class extends ZodType {
       _parse(input) {
         const { ctx } = this._processInputParams(input);
@@ -7534,14 +7529,14 @@ var init_lib = __esm({
     onumber = () => numberType().optional();
     oboolean = () => booleanType().optional();
     coerce = {
-      string: ((arg) => ZodString.create({ ...arg, coerce: true })),
-      number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
-      boolean: ((arg) => ZodBoolean.create({
+      string: (arg) => ZodString.create({ ...arg, coerce: true }),
+      number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
+      boolean: (arg) => ZodBoolean.create({
         ...arg,
         coerce: true
-      })),
-      bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
-      date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
+      }),
+      bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
+      date: (arg) => ZodDate.create({ ...arg, coerce: true })
     };
     NEVER = INVALID;
     z = /* @__PURE__ */ Object.freeze({
@@ -7663,10 +7658,10 @@ var init_lib = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/prompt-recipe-schema.ts
+// cypher-executor/src/lib/prompt-recipe-schema.ts
 var TransformSchema, KBDBBlockFragmentSchema, KVFragmentSchema, FragmentSchema, InputSchema, PromptAssemblySchema, OutputSpecSchema, PromptRecipeSchema;
 var init_prompt_recipe_schema = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/prompt-recipe-schema.ts"() {
+  "cypher-executor/src/lib/prompt-recipe-schema.ts"() {
     "use strict";
     init_lib();
     TransformSchema = z.string().regex(/^[a-z_]+(:.+)?$/, "transform \u5FC5\u9808\u70BA name \u6216 name:arg \u683C\u5F0F");
@@ -7729,7 +7724,7 @@ var init_prompt_recipe_schema = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/recipe-loader.ts
+// cypher-executor/src/lib/recipe-loader.ts
 async function loadPromptRecipe(recipeRef, recipesKv) {
   const key = recipeRef.startsWith("prompt_recipe:") ? recipeRef : `prompt_recipe:${recipeRef}`;
   const raw2 = await recipesKv.get(key);
@@ -7754,7 +7749,7 @@ async function loadPromptRecipe(recipeRef, recipesKv) {
 }
 var RecipeLoadError;
 var init_recipe_loader = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/recipe-loader.ts"() {
+  "cypher-executor/src/lib/recipe-loader.ts"() {
     "use strict";
     init_prompt_recipe_schema();
     RecipeLoadError = class extends Error {
@@ -7762,12 +7757,11 @@ var init_recipe_loader = __esm({
         super(message);
         this.recipe = recipe;
       }
-      recipe;
     };
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/recipe-transforms.ts
+// cypher-executor/src/lib/recipe-transforms.ts
 function applyTransform(value, spec) {
   const colonIdx = spec.indexOf(":");
   const name = colonIdx === -1 ? spec : spec.slice(0, colonIdx);
@@ -7778,7 +7772,7 @@ function applyTransform(value, spec) {
 }
 var transforms;
 var init_recipe_transforms = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/recipe-transforms.ts"() {
+  "cypher-executor/src/lib/recipe-transforms.ts"() {
     "use strict";
     transforms = {
       json_array: (v) => JSON.stringify(v ?? []),
@@ -7812,7 +7806,7 @@ var init_recipe_transforms = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/recipe-expander.ts
+// cypher-executor/src/lib/recipe-expander.ts
 function getByPath(ctx, path) {
   const parts = path.split(".");
   let cur = ctx;
@@ -7889,14 +7883,14 @@ ${user}`;
   };
 }
 var init_recipe_expander = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/recipe-expander.ts"() {
+  "cypher-executor/src/lib/recipe-expander.ts"() {
     "use strict";
     init_recipe_loader();
     init_recipe_transforms();
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/paused-runs.ts
+// cypher-executor/src/lib/paused-runs.ts
 async function readIndex(kv, apiKey) {
   const raw2 = await kv.get(`${IDX_PREFIX}${apiKey}`);
   if (!raw2) return [];
@@ -7985,7 +7979,7 @@ function parseRecipeOutput(result, format, requiredFields) {
 }
 var KEY_PREFIX, IDX_PREFIX, TTL_SECONDS;
 var init_paused_runs = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/paused-runs.ts"() {
+  "cypher-executor/src/lib/paused-runs.ts"() {
     "use strict";
     KEY_PREFIX = "paused_run:";
     IDX_PREFIX = "paused_idx:";
@@ -7993,7 +7987,7 @@ var init_paused_runs = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/magic-vars.ts
+// cypher-executor/src/lib/magic-vars.ts
 function isoWeekNumber(d) {
   const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dayNum = (target.getUTCDay() + 6) % 7;
@@ -8055,12 +8049,12 @@ function buildMagicVars(now2 = /* @__PURE__ */ new Date()) {
   };
 }
 var init_magic_vars = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/magic-vars.ts"() {
+  "cypher-executor/src/lib/magic-vars.ts"() {
     "use strict";
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/telemetry.ts
+// cypher-executor/src/lib/telemetry.ts
 async function hashApiKey(apiKey) {
   if (!apiKey) return "anon";
   const encoder = new TextEncoder();
@@ -8115,12 +8109,12 @@ function recordTelemetry(env, apiKey, record, ctx) {
   }
 }
 var init_telemetry = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/telemetry.ts"() {
+  "cypher-executor/src/lib/telemetry.ts"() {
     "use strict";
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/graph-executor.ts
+// cypher-executor/src/graph-executor.ts
 function propagateCtx(context, upstreamResult, upstreamNodeId) {
   const baseCtx = typeof context === "object" && context !== null ? context : {};
   const baseResult = typeof upstreamResult === "object" && upstreamResult !== null ? upstreamResult : {};
@@ -8231,7 +8225,7 @@ function getIterableFromContext(context, key) {
 }
 var GraphExecutor;
 var init_graph_executor = __esm({
-  "../../matrix/arcrun/cypher-executor/src/graph-executor.ts"() {
+  "cypher-executor/src/graph-executor.ts"() {
     "use strict";
     init_types();
     init_auth_dispatcher();
@@ -8664,10 +8658,10 @@ var init_graph_executor = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/schemas.ts
+// cypher-executor/src/lib/schemas.ts
 var graphSchema, executeSchema;
 var init_schemas = __esm({
-  "../../matrix/arcrun/cypher-executor/src/lib/schemas.ts"() {
+  "cypher-executor/src/lib/schemas.ts"() {
     "use strict";
     init_lib();
     graphSchema = z.object({
@@ -8697,7 +8691,7 @@ var init_schemas = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/actions/execution-evaluator.ts
+// cypher-executor/src/actions/execution-evaluator.ts
 function componentVerdictsFromTrace(nodes, trace) {
   const componentByNodeId = /* @__PURE__ */ new Map();
   for (const n of nodes) {
@@ -8741,13 +8735,13 @@ async function recordComponentStats(env, nodes, trace) {
   }
 }
 var init_execution_evaluator = __esm({
-  "../../matrix/arcrun/cypher-executor/src/actions/execution-evaluator.ts"() {
+  "cypher-executor/src/actions/execution-evaluator.ts"() {
     "use strict";
     init_component_loader();
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/actions/webhook-handlers.ts
+// cypher-executor/src/actions/webhook-handlers.ts
 var webhook_handlers_exports = {};
 __export(webhook_handlers_exports, {
   executeWebhookGraph: () => executeWebhookGraph,
@@ -8769,7 +8763,7 @@ function recordRecipeStats(env, recipeKeys, ok, at, ctx) {
     )
   ).then(() => void 0);
   if (ctx?.waitUntil) ctx.waitUntil(promise);
-  else void promise;
+  else ;
 }
 function generateToken() {
   const tokenBytes = crypto.getRandomValues(new Uint8Array(16));
@@ -8811,7 +8805,7 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
         result.trace
       );
       if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
-      else void statsPromise;
+      else ;
     }
     return { success: true, data: result.data, duration_ms };
   } catch (err) {
@@ -8835,7 +8829,7 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
         err.trace
       );
       if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
-      else void statsPromise;
+      else ;
     }
     if (err instanceof ExecutionError) {
       const traceFormatted = err.trace.map((s) => ({
@@ -8854,7 +8848,7 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
   }
 }
 var init_webhook_handlers = __esm({
-  "../../matrix/arcrun/cypher-executor/src/actions/webhook-handlers.ts"() {
+  "cypher-executor/src/actions/webhook-handlers.ts"() {
     "use strict";
     init_types();
     init_graph_executor();
@@ -8865,10 +8859,10 @@ var init_webhook_handlers = __esm({
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/index.ts
+// cypher-executor/src/index.ts
 init_dist();
 
-// ../../matrix/arcrun/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const defaults = {
     origin: "*",
@@ -8956,7 +8950,7 @@ var cors = (options) => {
   };
 };
 
-// ../../matrix/arcrun/cypher-executor/src/lib/cron-match.ts
+// cypher-executor/src/lib/cron-match.ts
 function matchField(expr, value, min, max) {
   if (expr === "*") return true;
   for (const part of expr.split(",")) {
@@ -9005,7 +8999,7 @@ function extractCronExpr(graph) {
   return null;
 }
 
-// ../../matrix/arcrun/cypher-executor/src/lib/cron-index.ts
+// cypher-executor/src/lib/cron-index.ts
 var CRON_INDEX_KEY = "cron-idx:_all";
 function cronEntryKey(apiKey, name) {
   return `${apiKey}:${name}`;
@@ -9038,7 +9032,7 @@ async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
   await kv.put(CRON_INDEX_KEY, JSON.stringify(index));
 }
 
-// ../../matrix/arcrun/cypher-executor/src/scheduled.ts
+// cypher-executor/src/scheduled.ts
 init_webhook_handlers();
 init_kbdb_proxy();
 async function handleScheduled(controller, env, ctx) {
@@ -9091,10 +9085,10 @@ async function handleScheduled(controller, env, ctx) {
   }
 }
 
-// ../../matrix/arcrun/cypher-executor/src/routes/health.ts
+// cypher-executor/src/routes/health.ts
 init_dist();
 
-// ../../matrix/arcrun/cypher-executor/src/lib/portal-auth-store.ts
+// cypher-executor/src/lib/portal-auth-store.ts
 init_credentials();
 var AUTH_STORE_PREFIX = "ARCRUN_AUTH_STORE";
 var SHARD_MAX_BYTES = 4600;
@@ -9259,7 +9253,7 @@ function authStoreStatus(env) {
   };
 }
 
-// ../../matrix/arcrun/cypher-executor/src/routes/health.ts
+// cypher-executor/src/routes/health.ts
 var healthRouter = new Hono2();
 healthRouter.get("/health", (c) => {
   const bundleVersion = c.env.ARCRUN_BUNDLE_VERSION;
@@ -9284,14 +9278,14 @@ healthRouter.get(
   })
 );
 
-// ../../matrix/arcrun/cypher-executor/src/routes/execute.ts
+// cypher-executor/src/routes/execute.ts
 init_dist();
 init_types();
 init_graph_executor();
 init_schemas();
 init_component_loader();
 
-// ../../matrix/arcrun/cypher-executor/src/actions/execution-logger.ts
+// cypher-executor/src/actions/execution-logger.ts
 init_kbdb_proxy();
 function extractTarget(input) {
   if (!input) return void 0;
@@ -9300,7 +9294,6 @@ function extractTarget(input) {
   return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
 }
 async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message, input, apiKey) {
-  void nodes;
   try {
     const { base, headers } = kbdbBase(env);
     await fetch(`${base}/execution-log/record`, {
@@ -9319,7 +9312,7 @@ async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs
   }
 }
 
-// ../../matrix/arcrun/cypher-executor/src/routes/execute.ts
+// cypher-executor/src/routes/execute.ts
 var executeRouter = new Hono2();
 executeRouter.post("/execute", async (c) => {
   const body = await c.req.json();
@@ -9364,17 +9357,17 @@ executeRouter.post("/execute", async (c) => {
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/cypher.ts
+// cypher-executor/src/routes/cypher.ts
 init_dist();
 
-// ../../matrix/arcrun/cypher-executor/src/actions/cypher-handlers.ts
+// cypher-executor/src/actions/cypher-handlers.ts
 init_types();
 init_graph_executor();
 init_schemas();
 init_component_loader();
 init_execution_evaluator();
 
-// ../../matrix/arcrun/cypher-executor/src/actions/triplet-parser.ts
+// cypher-executor/src/actions/triplet-parser.ts
 init_constants3();
 function parseTriplets(rawTriplets) {
   const edges = [];
@@ -9415,11 +9408,11 @@ function toEdgeType(label) {
   return SEMANTIC_EDGE_MAP[label] ?? SEMANTIC_EDGE_MAP[upper] ?? "PIPE";
 }
 
-// ../../matrix/arcrun/cypher-executor/src/actions/search-nodes.ts
+// cypher-executor/src/actions/search-nodes.ts
 init_component_loader();
 init_recipes();
 
-// ../../matrix/arcrun/cypher-executor/src/lib/branch-hints.ts
+// cypher-executor/src/lib/branch-hints.ts
 var BRANCH_HINTS = {
   if_control: {
     branch_field: "data.branch",
@@ -9448,7 +9441,7 @@ function branchHintFor(componentId) {
   return BRANCH_HINTS[componentId.toLowerCase()];
 }
 
-// ../../matrix/arcrun/cypher-executor/src/actions/search-nodes.ts
+// cypher-executor/src/actions/search-nodes.ts
 async function searchNodes(parsed, config, env, mode = "discover", target) {
   const nodeResults = {};
   const missingNodes = [];
@@ -9881,7 +9874,7 @@ async function searchSimilarComponents(registryBase, nodeName) {
   return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
 }
 
-// ../../matrix/arcrun/cypher-executor/src/actions/graph-builder.ts
+// cypher-executor/src/actions/graph-builder.ts
 function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
   const nodes = [...parsed.nodeNames].map((name) => {
     const nr = nodeResults[name];
@@ -9918,7 +9911,7 @@ function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
   return { id: graphId, name: graphName, nodes, edges };
 }
 
-// ../../matrix/arcrun/cypher-executor/src/actions/cypher-handlers.ts
+// cypher-executor/src/actions/cypher-handlers.ts
 async function handleCypherSearch(triplets, env, mode = "discover", target) {
   const parsed = parseTriplets(triplets);
   if (!parsed) {
@@ -9982,10 +9975,10 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
   }
 }
 
-// ../../matrix/arcrun/cypher-executor/src/actions/target-search.ts
+// cypher-executor/src/actions/target-search.ts
 init_component_loader();
 
-// ../../matrix/arcrun/cypher-executor/src/lib/workflow-search.ts
+// cypher-executor/src/lib/workflow-search.ts
 async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
   const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
   const headers = { "Content-Type": "application/json" };
@@ -10001,7 +9994,7 @@ async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
   return fetch(`${base}/entries/search?${params.toString()}`, { headers });
 }
 
-// ../../matrix/arcrun/cypher-executor/src/actions/target-search.ts
+// cypher-executor/src/actions/target-search.ts
 async function searchByTarget(target, query, env, apiKey) {
   if (target === "component") {
     const sub = env.WORKER_SUBDOMAIN;
@@ -10071,7 +10064,7 @@ async function searchByTarget(target, query, env, apiKey) {
   return { ok: true, body: { target, query, ...body } };
 }
 
-// ../../matrix/arcrun/cypher-executor/src/routes/cypher.ts
+// cypher-executor/src/routes/cypher.ts
 var cypherRouter = new Hono2();
 var VALID_TARGETS = /* @__PURE__ */ new Set(["component", "recipe", "workflow"]);
 cypherRouter.post("/cypher/search", async (c) => {
@@ -10164,7 +10157,7 @@ cypherRouter.post("/cypher/execute", async (c) => {
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/validate.ts
+// cypher-executor/src/routes/validate.ts
 init_dist();
 init_schemas();
 init_telemetry();
@@ -10201,10 +10194,10 @@ validateRouter.post("/validate", async (c) => {
   return c.json({ valid: true, nodeCount: parsed.data.nodes.length, edgeCount: parsed.data.edges.length });
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/docs.ts
+// cypher-executor/src/routes/docs.ts
 init_dist();
 
-// ../../matrix/arcrun/cypher-executor/src/lib/openapi.ts
+// cypher-executor/src/lib/openapi.ts
 var OPENAPI_SPEC = {
   openapi: "3.0.3",
   info: {
@@ -10512,7 +10505,7 @@ var OPENAPI_SPEC = {
   }
 };
 
-// ../../matrix/arcrun/cypher-executor/src/routes/docs.ts
+// cypher-executor/src/routes/docs.ts
 var docsRouter = new Hono2();
 docsRouter.get("/openapi.json", (c) => {
   return c.json(OPENAPI_SPEC);
@@ -10555,11 +10548,11 @@ docsRouter.get("/docs", (c) => {
   return c.html(htmlStr);
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/webhooks.ts
+// cypher-executor/src/routes/webhooks.ts
 init_dist();
 init_webhook_handlers();
 
-// ../../matrix/arcrun/cypher-executor/src/actions/webhook-graph-resolver.ts
+// cypher-executor/src/actions/webhook-graph-resolver.ts
 init_schemas();
 async function resolveWebhookGraph(body, description, env) {
   if (Array.isArray(body.triplets) && body.triplets.length > 0) {
@@ -10602,7 +10595,7 @@ async function resolveWebhookGraph(body, description, env) {
   return { resolvedGraph: {}, error: "\u9700\u63D0\u4F9B graph \u7269\u4EF6\u6216 triplets \u9663\u5217" };
 }
 
-// ../../matrix/arcrun/cypher-executor/src/routes/webhooks.ts
+// cypher-executor/src/routes/webhooks.ts
 var webhooksRouter = new Hono2();
 webhooksRouter.post("/webhooks", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -10655,7 +10648,7 @@ webhooksRouter.post("/webhooks/:token/trigger", async (c) => {
   return c.json(result, result.success ? 200 : 500);
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/webhooks-crud.ts
+// cypher-executor/src/routes/webhooks-crud.ts
 init_dist();
 init_webhook_handlers();
 var webhooksCrudRouter = new Hono2();
@@ -10714,7 +10707,7 @@ webhooksCrudRouter.delete("/webhooks/:token", async (c) => {
   return c.json({ deleted: true, token });
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/webhooks-list.ts
+// cypher-executor/src/routes/webhooks-list.ts
 init_dist();
 init_webhook_handlers();
 var webhooksListRouter = new Hono2();
@@ -10739,11 +10732,11 @@ webhooksListRouter.get("/webhooks", async (c) => {
   return c.json({ webhooks, total: webhooks.length });
 });
 
-// ../../matrix/arcrun/cypher-executor/src/index.ts
+// cypher-executor/src/index.ts
 init_recipes();
 init_credentials();
 
-// ../../matrix/arcrun/cypher-executor/src/routes/webhooks-named.ts
+// cypher-executor/src/routes/webhooks-named.ts
 init_dist();
 init_webhook_handlers();
 init_telemetry();
@@ -11095,7 +11088,7 @@ webhooksNamedRouter.delete("/webhooks/named/:name", async (c) => {
   return c.json({ deleted: true, name });
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/auth.ts
+// cypher-executor/src/routes/auth.ts
 init_dist();
 init_credentials();
 var authRouter = new Hono2();
@@ -11425,7 +11418,7 @@ authRouter.delete("/me/api-key", async (c) => {
   });
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/resume.ts
+// cypher-executor/src/routes/resume.ts
 init_dist();
 init_types();
 init_graph_executor();
@@ -11495,7 +11488,7 @@ resumeRouter.post("/workflows/resume", async (c) => {
   }
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/executions.ts
+// cypher-executor/src/routes/executions.ts
 init_dist();
 init_paused_runs();
 init_kbdb_proxy();
@@ -11624,12 +11617,12 @@ executionsRouter.get("/workflows/:name/executions", async (c) => {
   });
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/init-seed.ts
+// cypher-executor/src/routes/init-seed.ts
 init_dist();
 init_hash();
 init_recipes();
 
-// ../../matrix/arcrun/cypher-executor/src/lib/api-recipe-seeds.ts
+// cypher-executor/src/lib/api-recipe-seeds.ts
 var API_RECIPE_SEEDS = [
   // ── KBDB（Supabase 模式，auth_service=kbdb static_key）──
   {
@@ -11758,7 +11751,7 @@ var API_RECIPE_SEEDS = [
   }
 ];
 
-// ../../matrix/arcrun/cypher-executor/src/lib/auth-recipe-seeds.ts
+// cypher-executor/src/lib/auth-recipe-seeds.ts
 var now = Date.now();
 var AUTH_RECIPE_SEEDS = [
   // ── Static Key 類 ──────────────────────────────────────────────────────────
@@ -12461,11 +12454,11 @@ var AUTH_RECIPE_SEEDS = [
   }
 ];
 
-// ../../matrix/arcrun/cypher-executor/src/routes/portal.ts
+// cypher-executor/src/routes/portal.ts
 init_dist();
 init_kbdb_proxy();
 
-// ../../matrix/arcrun/cypher-executor/src/routes/console-auth.ts
+// cypher-executor/src/routes/console-auth.ts
 init_dist();
 var consoleAuthRouter = new Hono2();
 var CREDS_KEY = "console:credentials";
@@ -12632,7 +12625,7 @@ consoleAuthRouter.post("/console/logout", async (c) => {
   return c.json({ success: true });
 });
 
-// ../../matrix/arcrun/cypher-executor/src/lib/portal-auth.ts
+// cypher-executor/src/lib/portal-auth.ts
 var PBKDF2_ALGO_PREFIX = "pbkdf2-sha256";
 var PBKDF2_ITERATIONS = 1e5;
 function b64encode(bytes) {
@@ -12704,7 +12697,7 @@ function generatePassword(length = 16) {
   return out;
 }
 
-// ../../matrix/arcrun/cypher-executor/src/lib/portal-seeds.ts
+// cypher-executor/src/lib/portal-seeds.ts
 var PORTAL_TEMPLATE_SEEDS = [
   {
     // design §2.1：portal 同仁帳號。password_hash 存 KDF 輸出（pbkdf2-sha256$…，D-6），
@@ -12753,7 +12746,7 @@ var PORTAL_TEMPLATE_SEEDS = [
   }
 ];
 
-// ../../matrix/arcrun/cypher-executor/src/routes/portal.ts
+// cypher-executor/src/routes/portal.ts
 init_credentials();
 var portalRouter = new Hono2();
 var SESSION_PREFIX2 = "portal_sess:";
@@ -14070,7 +14063,7 @@ portalRouter.get(
   })
 );
 
-// ../../matrix/arcrun/cypher-executor/src/routes/init-seed.ts
+// cypher-executor/src/routes/init-seed.ts
 var initSeedRouter = new Hono2();
 initSeedRouter.post("/init/seed", async (c) => {
   const now2 = Date.now();
@@ -14143,14 +14136,14 @@ initSeedRouter.post("/init/seed", async (c) => {
   );
 });
 
-// ../../matrix/arcrun/cypher-executor/src/index.ts
+// cypher-executor/src/index.ts
 init_kbdb_proxy();
 
-// ../../matrix/arcrun/cypher-executor/src/routes/console-dashboard.ts
+// cypher-executor/src/routes/console-dashboard.ts
 init_dist();
 init_kbdb_proxy();
 
-// ../../matrix/arcrun/cypher-executor/src/lib/taipei-time.ts
+// cypher-executor/src/lib/taipei-time.ts
 var TAIPEI_OFFSET_MS = 8 * 3600 * 1e3;
 function taipeiDayKey(ms) {
   return new Date(ms + TAIPEI_OFFSET_MS).toISOString().slice(0, 10);
@@ -14165,7 +14158,7 @@ var TAIPEI_CLIENT_JS = [
   "function taipeiMonthDay(ms) { var d = new Date(ms + TAIPEI_OFFSET_MS); return { month: d.getUTCMonth() + 1, day: d.getUTCDate() }; }"
 ].join("\n");
 
-// ../../matrix/arcrun/cypher-executor/src/lib/console-dashboard-model.ts
+// cypher-executor/src/lib/console-dashboard-model.ts
 function parseCreatedAtMs(s) {
   if (s === null || s === void 0 || s === "") return null;
   if (typeof s === "number") return s < 1e12 ? s * 1e3 : s;
@@ -14395,7 +14388,7 @@ function reviveWaitingAges(model, fetchedAtMs, nowMs) {
   return { ...model, updated_ago_minutes: ago, stale: ago > 48 * 60 };
 }
 
-// ../../matrix/arcrun/cypher-executor/src/lib/console-triage-model.ts
+// cypher-executor/src/lib/console-triage-model.ts
 var TIER_ALIASES = {
   ai: "ai",
   collab: "collab",
@@ -14480,7 +14473,7 @@ function buildTriageModel(todoEntries, inboxEntries) {
   return { items, projects, counts };
 }
 
-// ../../matrix/arcrun/cypher-executor/src/routes/console-dashboard.ts
+// cypher-executor/src/routes/console-dashboard.ts
 var consoleDashboardRouter = new Hono2();
 var STALE_MINUTES = 240;
 var JUDGE_START_HOUR = 9;
@@ -14817,7 +14810,7 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
   return c.json({ success: true, entry_id: entryId, action, status: action === "restore" ? "new" : "done" });
 });
 
-// ../../matrix/arcrun/cypher-executor/src/routes/portal-data.ts
+// cypher-executor/src/routes/portal-data.ts
 init_dist();
 init_kbdb_proxy();
 init_webhook_handlers();
@@ -15225,7 +15218,7 @@ portalDataRouter.get(
   })
 );
 
-// ../../matrix/arcrun/cypher-executor/src/index.ts
+// cypher-executor/src/index.ts
 var app = new Hono2();
 var STATIC_ORIGINS = ["https://arcrun.dev", "https://www.arcrun.dev"];
 app.use("*", cors({
@@ -15264,10 +15257,10 @@ app.route("/", consoleAuthRouter);
 app.route("/", consoleDashboardRouter);
 app.route("/", portalRouter);
 app.route("/", portalDataRouter);
-var index_default = {
+var src_default = {
   fetch: app.fetch,
   scheduled: handleScheduled
 };
 export {
-  index_default as default
+  src_default as default
 };

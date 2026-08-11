@@ -1,20 +1,20 @@
 {
  "schema": 1,
- "release": "1.4.36",
- "fingerprint": "3db1a1704122e58c6b40bd48e8675fbdbdccfa69d0d735bc7247101bae9c8c25",
+ "release": "1.4.37",
+ "fingerprint": "512c731665e616ac12bdd3b345acf74f20e12eb39ccbe1bbc38fb19a693e3341",
  "built": "2026-08-11",
- "source": "Arcrun@788295e",
+ "source": "Arcrun@d8bbf2241bd6",
  "daemon": {
-  "version": "v0.18.25",
-  "built": "20260809-1848",
-  "notes": "第一次打開改成兩步引導",
+  "version": "v0.18.26",
+  "built": "20260811-2013",
+  "notes": "不會再把整理結果寫進你的 Logseq／Obsidian 筆記庫・不會再無聲蓋掉你原本就有的檔案",
   "mac": {
-   "file": "daemon/Arcrun-v0.18.25.dmg",
-   "sha256": "8c1f8f6c22704f8a82a60c34313da48c2da7e7ff0ee94a3f88d4ccfe2a78ca2f"
+   "file": "daemon/Arcrun-v0.18.26.dmg",
+   "sha256": "2537f50a69889ecc67d0395739b4d6a06a6982fe29dc9ce0f3be865a946d429e"
   },
   "win": {
-   "file": "daemon/Arcrun-win-v0.18.25.exe",
-   "sha256": "83f7d135a5ce02f64d516086658b27b26a1c02854d6bdfc0a0c06cf2f9fe559f"
+   "file": "daemon/Arcrun-win-v0.18.26.exe",
+   "sha256": "35c0a5c55bf9059567599c9e08254ea84865dd9d2089c3b71f180e7b1b7e97c8"
   },
   "mac_dmg": {
    "file": "daemon/ArcrunRAG-mac.dmg",
@@ -35,7 +35,7 @@
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 571965,
+   "js_bytes": 568855,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -76,16 +76,17 @@
    "stripped": {
     "services": 13
    },
-   "warnings": [],
-   "sha256": "bfa7287b2bab47a804286a1dcc52d84d58aae31a6a64b20182f8e17eecccb2fe",
-   "bytes": 571965
+   "source_commit": "797e7f751cc42cb1f5d9e2e187f18cf51eb981a1",
+   "source_content_sha256": "66e2a6341854e8b2de0567a46282b94669e73b95d152b05b17b0f8b58e257fec",
+   "sha256": "66e2a6341854e8b2de0567a46282b94669e73b95d152b05b17b0f8b58e257fec",
+   "bytes": 568855
   },
   {
    "name": "arcrun-kbdb",
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 136576,
+   "js_bytes": 135910,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -105,16 +106,17 @@
      "ENVIRONMENT": "production"
     }
    },
-   "warnings": [],
-   "sha256": "138956bf7c3df55dd797b6d0a174908764a53f3ba685c659ec5f0e2a06e181ed",
-   "bytes": 136576
+   "source_commit": "a7e23badf2a771be779a861e69e7efa6e8141dfe",
+   "source_content_sha256": "5e5a7a030f4fd1f5549ace6791c3827b6497b0bfdd9add46af041af47c472905",
+   "sha256": "5e5a7a030f4fd1f5549ace6791c3827b6497b0bfdd9add46af041af47c472905",
+   "bytes": 135910
   },
   {
    "name": "arcrun-http-request",
    "canonical": "http_request",
    "main_module": "worker.mjs",
    "main_file": "arcrun-http-request/worker.mjs",
-   "js_bytes": 80519,
+   "js_bytes": 80073,
    "modules": [
     {
      "name": "component.wasm",
@@ -137,16 +139,17 @@
      "COMPONENT_ID": "http_request"
     }
    },
-   "warnings": [],
-   "sha256": "8a175938bf1c98b8dce489ff3085a13f512a5bf18edd0d148233177ce8a20e21",
-   "bytes": 80519
+   "source_commit": "1e85dfb49b0e8d81c0854781d93ee4e6a300c7b3",
+   "source_content_sha256": "9a9dcb71879a7bdfd9fec1bd94eb9742e12cb63733d822ce63eeb1be30008d15",
+   "sha256": "9a9dcb71879a7bdfd9fec1bd94eb9742e12cb63733d822ce63eeb1be30008d15",
+   "bytes": 80073
   },
   {
    "name": "arcrun-code",
    "canonical": "code",
    "main_module": "worker.mjs",
    "main_file": "arcrun-code/worker.mjs",
-   "js_bytes": 154438,
+   "js_bytes": 153671,
    "modules": [
     {
      "name": "quickjs.wasm",
@@ -166,16 +169,17 @@
      "COMPONENT_ID": "code"
     }
    },
-   "warnings": [],
-   "sha256": "761acc054b6f01bc2c37dce3b5923cd40d4ac8ac986bc0452f36e16463299a74",
-   "bytes": 154438
+   "source_commit": "621cb8d948d61be6202063fd02effb3f538437fe",
+   "source_content_sha256": "285a7406ec694ae47dccfaf48517f712c74d207a1689dffa15c39f1555b45be5",
+   "sha256": "285a7406ec694ae47dccfaf48517f712c74d207a1689dffa15c39f1555b45be5",
+   "bytes": 153671
   },
   {
    "name": "arcrun-mcp",
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-mcp/worker.mjs",
-   "js_bytes": 1172208,
+   "js_bytes": 1165130,
    "modules": [],
    "compat_date": "2024-11-27",
    "compat_flags": [
@@ -190,9 +194,10 @@
     "ai": false,
     "vars": {}
    },
-   "warnings": [],
-   "sha256": "886ba67cd1b99f710f4f439845967b4a92542e716d52fe5ea21e623c33016cdd",
-   "bytes": 1172208
+   "source_commit": "035e8b255b0dcbd4238707f7d2ac8ccf9ee1ba72",
+   "source_content_sha256": "be15033f32e605f03f69bd10cd87782dafa34dbafeee2ce367bd7361a062a291",
+   "sha256": "be15033f32e605f03f69bd10cd87782dafa34dbafeee2ce367bd7361a062a291",
+   "bytes": 1165130
   },
   {
    "name": "arcrun-rag-ui",

@@ -1,4 +1,4 @@
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
     let index = -1;
@@ -42,10 +42,10 @@ var compose = (middleware, onError, onNotFound) => {
   };
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
 var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -117,7 +117,7 @@ var handleParsingNestedValues = (form, key, value) => {
   });
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
 var splitPath = (path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -321,7 +321,7 @@ var getQueryParams = (url, key) => {
 };
 var decodeURIComponent_ = decodeURIComponent;
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
 var HonoRequest = class {
   /**
@@ -604,7 +604,7 @@ var HonoRequest = class {
   }
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -646,7 +646,7 @@ var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => 
   }
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = (contentType, headers) => {
   return {
@@ -1053,7 +1053,7 @@ var Context = class {
   };
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1061,10 +1061,10 @@ var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is
 var UnsupportedPathError = class extends Error {
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
 var notFoundHandler = (c) => {
   return c.text("404 Not Found", 404);
 };
@@ -1440,11 +1440,11 @@ var Hono = class _Hono {
   };
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = ((method2, path2) => {
+  const match2 = (method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -1456,12 +1456,12 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  });
+  };
   this.match = match2;
   return match2(method, path);
 }
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1569,7 +1569,7 @@ var Node = class _Node {
   }
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   #context = { varIndex: 0 };
   #root = new Node();
@@ -1625,7 +1625,7 @@ var Trie = class {
   }
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -1804,7 +1804,7 @@ var RegExpRouter = class {
   }
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   name = "SmartRouter";
   #routers = [];
@@ -1859,7 +1859,7 @@ var SmartRouter = class {
   }
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = (children) => {
   for (const _ in children) {
@@ -2034,7 +2034,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   name = "TrieRouter";
   #node;
@@ -2056,7 +2056,7 @@ var TrieRouter = class {
   }
 };
 
-// ../../matrix/arcrun/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   /**
    * Creates an instance of the Hono class.
@@ -2071,7 +2071,7 @@ var Hono2 = class extends Hono {
   }
 };
 
-// ../../matrix/arcrun/kbdb/src/actions/entry-crud.ts
+// kbdb/src/actions/entry-crud.ts
 function uid(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
@@ -2408,7 +2408,7 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   return applyRelativeCut(res.results ?? []);
 }
 
-// ../../matrix/arcrun/kbdb/src/embed.ts
+// kbdb/src/embed.ts
 var DEFAULT_EMBED_MODEL = "@cf/baai/bge-m3";
 var MIN_SCORE_ABS_FLOOR = 0.45;
 var MIN_SCORE_TOP_RATIO = 0.8;
@@ -2617,7 +2617,7 @@ async function semanticSearch(env, q, opts = {}) {
   }));
 }
 
-// ../../matrix/arcrun/kbdb/src/actions/credential-legacy-migration.ts
+// kbdb/src/actions/credential-legacy-migration.ts
 async function legacyCredentialsTableExists(db) {
   const row = await db.prepare(`SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'credentials'`).first();
   return row !== null;
@@ -2647,7 +2647,7 @@ async function migrateLegacyCredentialsForOwner(db, ownerId) {
   return (after?.n ?? 0) - (before?.n ?? 0);
 }
 
-// ../../matrix/arcrun/kbdb/src/routes/entries.ts
+// kbdb/src/routes/entries.ts
 var entryRoutes = new Hono2();
 function fireAndForget(c, p) {
   let ctx;
@@ -2898,7 +2898,7 @@ entryRoutes.delete("/:id", async (c) => {
   return c.json({ success: true, vector_deleted });
 });
 
-// ../../matrix/arcrun/kbdb/src/actions/record-crud.ts
+// kbdb/src/actions/record-crud.ts
 function uid2(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
@@ -3031,7 +3031,7 @@ async function deleteRecord(db, recordId) {
   return true;
 }
 
-// ../../matrix/arcrun/kbdb/src/routes/templates.ts
+// kbdb/src/routes/templates.ts
 var templateRoutes = new Hono2();
 templateRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -3057,7 +3057,7 @@ templateRoutes.patch("/:id", async (c) => {
   return c.json({ success: true, template: tpl });
 });
 
-// ../../matrix/arcrun/kbdb/src/routes/records.ts
+// kbdb/src/routes/records.ts
 var recordRoutes = new Hono2();
 recordRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -3122,7 +3122,7 @@ recordRoutes.delete("/:recordId", async (c) => {
   return c.json({ success: true });
 });
 
-// ../../matrix/arcrun/kbdb/src/actions/recipe-stat.ts
+// kbdb/src/actions/recipe-stat.ts
 function statId(canonicalId) {
   return `recipestat:${canonicalId}`;
 }
@@ -3161,7 +3161,7 @@ function emptyStat(canonicalId) {
   return { canonical_id: canonicalId, success_count: 0, failure_count: 0, last_status: null, last_at: null };
 }
 
-// ../../matrix/arcrun/kbdb/src/routes/recipe-stats.ts
+// kbdb/src/routes/recipe-stats.ts
 var recipeStatRoutes = new Hono2();
 recipeStatRoutes.post("/record", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -3177,7 +3177,7 @@ recipeStatRoutes.get("/:canonical_id", async (c) => {
   return c.json({ success: true, stat });
 });
 
-// ../../matrix/arcrun/kbdb/src/routes/embed.ts
+// kbdb/src/routes/embed.ts
 var embedRoutes = new Hono2();
 var OFF_HINT = "\u8A9E\u7FA9\u88DC\u5D4C\u9700\u5148\u958B embed \u6A21\u7D44\uFF08Vectorize+AI binding\uFF09\u3002\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\uFF08\u8A2D kbdb_embed:true + redeploy \u6CE8\u5165 binding\uFF09\u5F8C\u518D\u547C\u53EB\u672C\u7AEF\u9EDE\u3002";
 embedRoutes.post("/backfill", async (c) => {
@@ -3210,7 +3210,7 @@ embedRoutes.get("/selftest", async (c) => {
   return c.json({ success: true, ...result });
 });
 
-// ../../matrix/arcrun/kbdb/src/actions/library-map.ts
+// kbdb/src/actions/library-map.ts
 var LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
 var LIBRARY_MAP_TEMPLATE_NAME = "library_map";
 var LIBRARY_MAP_SLOTS = [
@@ -3509,7 +3509,7 @@ async function getLibraryMapDetail(db, library, owner_id) {
   };
 }
 
-// ../../matrix/arcrun/kbdb/src/routes/map.ts
+// kbdb/src/routes/map.ts
 var mapRoutes = new Hono2();
 mapRoutes.post("/recompute", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -3547,7 +3547,7 @@ mapRoutes.get("/:library", async (c) => {
   return c.json({ success: true, map });
 });
 
-// ../../matrix/arcrun/kbdb/src/actions/execution-log.ts
+// kbdb/src/actions/execution-log.ts
 var SUCCESS_MESSAGE_MAX = 200;
 var FAILED_MESSAGE_MAX = 2e3;
 var TARGET_MAX = 300;
@@ -3718,7 +3718,7 @@ async function cleanupExpiredLogs(db) {
   return { deleted, checked_overrides: overrides.length };
 }
 
-// ../../matrix/arcrun/kbdb/src/routes/execution-log.ts
+// kbdb/src/routes/execution-log.ts
 var executionLogRoutes = new Hono2();
 executionLogRoutes.post("/record", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -3772,7 +3772,7 @@ executionLogRoutes.post("/cleanup", async (c) => {
   return c.json({ success: true, ...result });
 });
 
-// ../../matrix/arcrun/kbdb/src/index.ts
+// kbdb/src/index.ts
 var app = new Hono2();
 app.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
@@ -3797,7 +3797,7 @@ app.route("/recipe-stats", recipeStatRoutes);
 app.route("/execution-log", executionLogRoutes);
 app.route("/embed", embedRoutes);
 app.route("/map", mapRoutes);
-var index_default = app;
+var src_default = app;
 export {
-  index_default as default
+  src_default as default
 };
