@@ -1427,7 +1427,7 @@ var Hono = class _Hono {
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = (method2, path2) => {
+  const match2 = ((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -1439,7 +1439,7 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  };
+  });
   this.match = match2;
   return match2(method, path);
 }
@@ -2522,7 +2522,7 @@ app.post("/", async (c) => {
     );
   }
 });
-var src_default = app;
+var index_default = app;
 async function runWasm(input) {
   const hostFunctions = {
     http_request: async (url, method, headersJson, body) => {
@@ -2568,5 +2568,5 @@ async function runWasm(input) {
   return JSON.parse(stdout);
 }
 export {
-  src_default as default
+  index_default as default
 };

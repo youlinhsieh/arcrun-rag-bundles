@@ -1,7 +1,12 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+var __esm = (fn, res, err2) => function __init() {
+  if (err2) throw err2[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err2 = [e], e;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -102,7 +107,7 @@ function applyBaseRuntimeOptions(runtime, options) {
 function applyModuleEvalRuntimeOptions(runtime, options) {
   options.moduleLoader && runtime.setModuleLoader(options.moduleLoader), options.shouldInterrupt && runtime.setInterruptHandler(options.shouldInterrupt), options.memoryLimitBytes !== void 0 && runtime.setMemoryLimit(options.memoryLimitBytes), options.maxStackSizeBytes !== void 0 && runtime.setMaxStackSize(options.maxStackSizeBytes);
 }
-var __defProp2, __export2, QTS_DEBUG, errors_exports, QuickJSUnwrapError, QuickJSWrongOwner, QuickJSUseAfterFree, QuickJSNotImplemented, QuickJSAsyncifyError, QuickJSAsyncifySuspended, QuickJSMemoryLeakDetected, QuickJSEmscriptenModuleError, QuickJSUnknownIntrinsic, QuickJSPromisePending, QuickJSEmptyGetOwnPropertyNames, AwaitYield, UsingDisposable, SymbolDispose, prototypeAsAny, Lifetime, StaticLifetime, WeakLifetime, Scope, AbstractDisposableResult, DisposableSuccess, DisposableFail, DisposableResult, QuickJSDeferredPromise, ModuleMemory, UnstableSymbol, DefaultIntrinsics, QuickJSIterator, ContextMemory, QuickJSContext, QuickJSRuntime, QuickJSEmscriptenModuleCallbacks, QuickJSModuleCallbacks, QuickJSWASMModule;
+var __defProp2, __export2, QTS_DEBUG, errors_exports, QuickJSUnwrapError, QuickJSWrongOwner, QuickJSUseAfterFree, QuickJSNotImplemented, QuickJSAsyncifyError, QuickJSAsyncifySuspended, QuickJSMemoryLeakDetected, QuickJSEmscriptenModuleError, QuickJSUnknownIntrinsic, QuickJSPromisePending, QuickJSEmptyGetOwnPropertyNames, AwaitYield, UsingDisposable, SymbolDispose, prototypeAsAny, Lifetime, StaticLifetime, WeakLifetime, Scope, AbstractDisposableResult, DisposableSuccess, DisposableFail, DisposableResult, QuickJSDeferredPromise, ModuleMemory, DefaultIntrinsics, QuickJSIterator, ContextMemory, QuickJSContext, QuickJSRuntime, QuickJSEmscriptenModuleCallbacks, QuickJSModuleCallbacks, QuickJSWASMModule;
 var init_chunk_JTKJZQYV = __esm({
   "registry/components/code/node_modules/quickjs-emscripten-core/dist/chunk-JTKJZQYV.mjs"() {
     init_dist();
@@ -190,7 +195,7 @@ var init_chunk_JTKJZQYV = __esm({
         return this.dispose();
       }
     };
-    SymbolDispose = Symbol.dispose ?? Symbol.for("Symbol.dispose");
+    SymbolDispose = Symbol.dispose ?? /* @__PURE__ */ Symbol.for("Symbol.dispose");
     prototypeAsAny = UsingDisposable.prototype;
     prototypeAsAny[SymbolDispose] || (prototypeAsAny[SymbolDispose] = function() {
       return this.dispose();
@@ -409,7 +414,6 @@ Lifetime used`) : new QuickJSUseAfterFree("Lifetime not alive");
         return this.module._free(ptr), str;
       }
     };
-    UnstableSymbol = Symbol("Unstable");
     DefaultIntrinsics = Object.freeze({ BaseObjects: true, Date: true, Eval: true, StringNormalize: true, RegExp: true, JSON: true, Proxy: true, MapSet: true, TypedArrays: true, Promise: true });
     QuickJSIterator = class extends UsingDisposable {
       constructor(handle, context) {
@@ -773,7 +777,7 @@ ${cause.stack}Host: ${hostStack}`), Object.assign(exception, rest), exception;
         }
         return result.value;
       }
-      [Symbol.for("nodejs.util.inspect.custom")]() {
+      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
         return this.alive ? `${this.constructor.name} { ctx: ${this.ctx.value} rt: ${this.rt.value} }` : `${this.constructor.name} { disposed }`;
       }
       getFunction(fn_id) {
@@ -909,7 +913,7 @@ ${cause.stack}Host: ${hostStack}`), Object.assign(exception, rest), exception;
       debugLog(...msg) {
         this._debugMode && console.log("quickjs-emscripten:", ...msg);
       }
-      [Symbol.for("nodejs.util.inspect.custom")]() {
+      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
         return this.alive ? `${this.constructor.name} { rt: ${this.rt.value} }` : `${this.constructor.name} { disposed }`;
       }
       getSystemContext() {
@@ -1339,10 +1343,10 @@ async function QuickJSRaw(moduleArg = {}) {
       x ? (0 === h && (h = ra()), g[m] = x(e[m])) : g[m] = e[m];
     }
     b = a(...g);
-    return b = function(k) {
+    return b = (function(k) {
       0 !== h && sa(h);
       return "string" === d ? R(k) : "boolean" === d ? !!k : k;
-    }(b);
+    })(b);
   };
   c.wasmMemory ? r = c.wasmMemory : r = new WebAssembly.Memory({ initial: (c.INITIAL_MEMORY || 16777216) / 65536, maximum: 32768 });
   K();
@@ -1464,7 +1468,7 @@ async function QuickJSRaw(moduleArg = {}) {
   }, t: function(a, d) {
     c.callbacks.freeHostRef(void 0, a, d);
   } }, Z;
-  Z = await async function() {
+  Z = await (async function() {
     function a(b) {
       b = Z = b.exports;
       c._malloc = b.v;
@@ -1551,7 +1555,7 @@ async function QuickJSRaw(moduleArg = {}) {
     });
     M ??= c.locateFile ? c.locateFile ? c.locateFile("emscripten-module.wasm", u) : u + "emscripten-module.wasm" : new URL("emscripten-module.wasm", import.meta.url).href;
     return a((await ea(d)).instance);
-  }();
+  })();
   (function() {
     function a() {
       c.calledRun = true;
@@ -3034,7 +3038,7 @@ var Hono = class _Hono {
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = (method2, path2) => {
+  const match2 = ((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -3046,7 +3050,7 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  };
+  });
   this.match = match2;
   return match2(method, path);
 }
@@ -4008,7 +4012,7 @@ app.post("/", async (c) => {
     );
   }
 });
-var code_default = app;
+var index_default = app;
 export {
-  code_default as default
+  index_default as default
 };

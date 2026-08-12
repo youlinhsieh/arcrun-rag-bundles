@@ -1444,7 +1444,7 @@ var Hono = class _Hono {
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = (method2, path2) => {
+  const match2 = ((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -1456,7 +1456,7 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  };
+  });
   this.match = match2;
   return match2(method, path);
 }
@@ -2408,6 +2408,57 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   return applyRelativeCut(res.results ?? []);
 }
 
+// kbdb/src/actions/maintenance-quota.ts
+var DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT = 2e4;
+function maintenanceDailyLimit(env) {
+  const raw2 = env.KBDB_MAINTENANCE_DAILY_WRITE_LIMIT;
+  const n = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT;
+}
+function utcDay() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function maintenanceUsageId() {
+  return `kbdb-maintenance-usage:${utcDay()}`;
+}
+async function getMaintenanceUsageToday(db) {
+  const row = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(maintenanceUsageId()).first();
+  if (!row) return 0;
+  try {
+    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    return Number(parsed.writes) || 0;
+  } catch {
+    return 0;
+  }
+}
+async function addMaintenanceUsage(db, by) {
+  if (by <= 0) return;
+  const id = maintenanceUsageId();
+  const existing = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(id).first();
+  let prev = 0;
+  if (existing) {
+    try {
+      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
+      prev = Number(parsed.writes) || 0;
+    } catch {
+      prev = 0;
+    }
+    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify({ day: utcDay(), writes: prev + by }), id).run();
+  } else {
+    await db.prepare(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'kbdb_maintenance_usage', ?)`).bind(id, JSON.stringify({ day: utcDay(), writes: by })).run();
+  }
+}
+async function maintenanceBudgetToday(env, db) {
+  const limit = maintenanceDailyLimit(env);
+  let used = 0;
+  try {
+    used = await getMaintenanceUsageToday(db);
+  } catch {
+    used = 0;
+  }
+  return { limit, used, remaining: Math.max(0, limit - used) };
+}
+
 // kbdb/src/embed.ts
 var DEFAULT_EMBED_MODEL = "@cf/baai/bge-m3";
 var MIN_SCORE_ABS_FLOOR = 0.45;
@@ -2449,7 +2500,7 @@ async function embedOnWrite(env, entry) {
       }
     }
   ]);
-  await env.DB.prepare("UPDATE entries SET is_embedded = 1 WHERE id = ?").bind(entry.id).run();
+  await env.DB.prepare("UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id = ?").bind(embedModel(env), entry.id).run();
   return true;
 }
 function isEmbeddable(entry) {
@@ -2476,12 +2527,47 @@ function parseMeta(json) {
   }
 }
 var BACKFILL_PREDICATE = "is_embedded = 0 AND content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1";
-async function backfillEmbeddings(env, opts = {}) {
-  if (!embedEnabled(env)) return { enabled: false, processed: 0, skipped: 0, remaining: 0, scanned: 0 };
-  const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
-  const offset = Math.max(opts.offset ?? 0, 0);
-  const basePredicate = opts.reindex ? "content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1" : BACKFILL_PREDICATE;
-  const conds = [basePredicate, "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'"];
+var DEFAULT_BACKFILL_DAILY_LIMIT = 1800;
+function backfillDailyLimit(env) {
+  const raw2 = env.EMBED_BACKFILL_DAILY_LIMIT;
+  const n = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_BACKFILL_DAILY_LIMIT;
+}
+function utcDay2() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function backfillUsageId() {
+  return `embed-backfill-usage:${utcDay2()}`;
+}
+async function getBackfillUsageToday(db) {
+  const row = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(backfillUsageId()).first();
+  if (!row) return 0;
+  try {
+    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    return Number(parsed.embedded) || 0;
+  } catch {
+    return 0;
+  }
+}
+async function addBackfillUsage(db, by) {
+  if (by <= 0) return;
+  const id = backfillUsageId();
+  const existing = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(id).first();
+  let prev = 0;
+  if (existing) {
+    try {
+      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
+      prev = Number(parsed.embedded) || 0;
+    } catch {
+      prev = 0;
+    }
+    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify({ day: utcDay2(), embedded: prev + by }), id).run();
+  } else {
+    await db.prepare(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'embed_backfill_usage', ?)`).bind(id, JSON.stringify({ day: utcDay2(), embedded: by })).run();
+  }
+}
+function selectionCriteriaPredicate(opts) {
+  const conds = [];
   const params = [];
   if (opts.owner_id) {
     conds.push("owner_id = ?");
@@ -2491,12 +2577,55 @@ async function backfillEmbeddings(env, opts = {}) {
     conds.push("json_extract(metadata_json, '$.source') = ?");
     params.push(opts.source);
   }
+  if (opts.library) {
+    conds.push("COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') = ?");
+    params.push(opts.library);
+  }
+  if (typeof opts.since === "number") {
+    conds.push("created_at >= ?");
+    params.push(opts.since);
+  }
+  if (typeof opts.until === "number") {
+    conds.push("created_at < ?");
+    params.push(opts.until);
+  }
+  return { conds, params };
+}
+async function backfillEmbeddings(env, opts = {}) {
+  if (!embedEnabled(env)) {
+    return {
+      enabled: false,
+      processed: 0,
+      skipped: 0,
+      remaining: 0,
+      scanned: 0,
+      quota_limit: 0,
+      quota_used_today: 0,
+      quota_exceeded: false
+    };
+  }
+  const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
+  const offset = Math.max(opts.offset ?? 0, 0);
+  const basePredicate = opts.reindex ? "content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1" : BACKFILL_PREDICATE;
+  const sel = selectionCriteriaPredicate(opts);
+  const conds = [basePredicate, "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'", ...sel.conds];
+  const params = [...sel.params];
   const where = conds.join(" AND ");
-  const res = await env.DB.prepare(`SELECT * FROM entries WHERE ${where} ORDER BY created_at ASC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all();
+  const res = await env.DB.prepare(`SELECT * FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all();
   const rows = res.results ?? [];
   const scanned = rows.length;
+  const dailyCap = backfillDailyLimit(env);
+  let usedToday = 0;
+  try {
+    usedToday = await getBackfillUsageToday(env.DB);
+  } catch {
+    usedToday = 0;
+  }
+  const remainingQuota = Math.max(0, dailyCap - usedToday);
   let processed = 0;
-  const embeddable = rows.filter((e) => (e.content ?? "").trim().length > 0);
+  const candidates = rows.filter((e) => (e.content ?? "").trim().length > 0);
+  const embeddable = candidates.slice(0, remainingQuota);
+  const quotaExceeded = candidates.length > embeddable.length;
   if (embeddable.length > 0 && env.AI && env.VECTORIZE) {
     const texts = embeddable.map((e) => (e.content ?? "").trim());
     const out = await env.AI.run(embedModel(env), { text: texts });
@@ -2516,14 +2645,27 @@ async function backfillEmbeddings(env, opts = {}) {
       await env.VECTORIZE.upsert(vectors);
       const ids = vectors.map((v) => v.id);
       const placeholders = ids.map(() => "?").join(",");
-      await env.DB.prepare(`UPDATE entries SET is_embedded = 1 WHERE id IN (${placeholders})`).bind(...ids).run();
+      await env.DB.prepare(`UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id IN (${placeholders})`).bind(embedModel(env), ...ids).run();
       processed = vectors.length;
+      try {
+        await addBackfillUsage(env.DB, processed);
+      } catch {
+      }
     }
   }
   const remRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM entries WHERE ${where}`).bind(...params).first();
   const totalMatching = remRow?.c ?? 0;
   const remaining = opts.reindex ? Math.max(0, totalMatching - (offset + scanned)) : totalMatching;
-  return { enabled: true, processed, skipped: scanned - processed, remaining, scanned };
+  return {
+    enabled: true,
+    processed,
+    skipped: scanned - processed,
+    remaining,
+    scanned,
+    quota_limit: dailyCap,
+    quota_used_today: usedToday + processed,
+    quota_exceeded: quotaExceeded
+  };
 }
 async function backfillStatus(env, opts = {}) {
   const conds = [];
@@ -2540,6 +2682,74 @@ async function backfillStatus(env, opts = {}) {
   const pendingRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM entries WHERE ${BACKFILL_PREDICATE}${extra}`).bind(...params).first();
   const embeddedRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM entries WHERE is_embedded = 1 AND json_extract(metadata_json, '$.embed') = 1${extra}`).bind(...params).first();
   return { enabled: embedEnabled(env), pending: pendingRow?.c ?? 0, embedded: embeddedRow?.c ?? 0 };
+}
+async function reconcileEmbedGeneration(env, opts = {}) {
+  if (!embedEnabled(env)) {
+    return {
+      enabled: false,
+      checked: 0,
+      confirmed_current: 0,
+      reset_to_pending: 0,
+      remaining: 0,
+      scanned: 0,
+      quota_limit: 0,
+      quota_used_today: 0,
+      quota_exceeded: false
+    };
+  }
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+  const currentModel = embedModel(env);
+  const sel = selectionCriteriaPredicate(opts);
+  const conds = [
+    "is_embedded = 1",
+    "(content_hash IS NULL OR content_hash != ?)",
+    "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'",
+    ...sel.conds
+  ];
+  const params = [currentModel, ...sel.params];
+  const where = conds.join(" AND ");
+  const res = await env.DB.prepare(`SELECT id FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ?`).bind(...params, limit).all();
+  const scannedIds = (res.results ?? []).map((r) => r.id);
+  const scanned = scannedIds.length;
+  const budget = await maintenanceBudgetToday(env, env.DB);
+  const ids = scannedIds.slice(0, budget.remaining);
+  const quotaExceeded = scanned > ids.length;
+  const checked = ids.length;
+  let confirmed_current = 0;
+  let reset_to_pending = 0;
+  if (ids.length > 0 && env.VECTORIZE) {
+    const found = await env.VECTORIZE.getByIds(ids);
+    const foundIds = new Set(found.map((v) => v.id));
+    const presentIds = ids.filter((id) => foundIds.has(id));
+    const missingIds = ids.filter((id) => !foundIds.has(id));
+    if (presentIds.length > 0) {
+      const ph = presentIds.map(() => "?").join(",");
+      await env.DB.prepare(`UPDATE entries SET content_hash = ? WHERE id IN (${ph})`).bind(currentModel, ...presentIds).run();
+      confirmed_current = presentIds.length;
+    }
+    if (missingIds.length > 0) {
+      const ph = missingIds.map(() => "?").join(",");
+      await env.DB.prepare(`UPDATE entries SET is_embedded = 0, content_hash = NULL WHERE id IN (${ph})`).bind(...missingIds).run();
+      reset_to_pending = missingIds.length;
+    }
+  }
+  const remRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM entries WHERE ${where}`).bind(...params).first();
+  const written = confirmed_current + reset_to_pending;
+  try {
+    await addMaintenanceUsage(env.DB, written);
+  } catch {
+  }
+  return {
+    enabled: true,
+    checked,
+    confirmed_current,
+    reset_to_pending,
+    remaining: remRow?.c ?? 0,
+    scanned,
+    quota_limit: budget.limit,
+    quota_used_today: budget.used + written,
+    quota_exceeded: quotaExceeded
+  };
 }
 async function embedSelfTest(env, opts = {}) {
   if (!embedEnabled(env)) {
@@ -2645,6 +2855,90 @@ async function migrateLegacyCredentialsForOwner(db, ownerId) {
   ).bind(ownerId).run();
   const after = await db.prepare(`SELECT COUNT(*) AS n FROM entries WHERE entry_type = 'credential' AND owner_id = ?1`).bind(ownerId).first();
   return (after?.n ?? 0) - (before?.n ?? 0);
+}
+
+// kbdb/src/actions/library-backfill.ts
+var MAX_PAGE_NAMES = 300;
+var HARD_LIMIT_CAP = 500;
+function criteriaPredicate(c) {
+  const conds = [
+    "(json_extract(metadata_json, '$.library') IS NULL OR json_extract(metadata_json, '$.library') = '')"
+  ];
+  const params = [];
+  if (c.owner_id) {
+    conds.push("owner_id = ?");
+    params.push(c.owner_id);
+  }
+  if (c.entry_type) {
+    conds.push("entry_type = ?");
+    params.push(c.entry_type);
+  }
+  if (c.page_names && c.page_names.length > 0) {
+    const names = c.page_names.slice(0, MAX_PAGE_NAMES);
+    conds.push(`page_name IN (${names.map(() => "?").join(",")})`);
+    params.push(...names);
+  }
+  if (c.source_prefix) {
+    conds.push("json_extract(metadata_json, '$.source') LIKE ? || '%'");
+    params.push(c.source_prefix);
+  }
+  if (c.page_name_prefix) {
+    conds.push("page_name LIKE ? || '%'");
+    params.push(c.page_name_prefix);
+  }
+  if (typeof c.since === "number") {
+    conds.push("created_at >= ?");
+    params.push(c.since);
+  }
+  if (typeof c.until === "number") {
+    conds.push("created_at < ?");
+    params.push(c.until);
+  }
+  return { conds, params };
+}
+async function backfillEntryLibraryTags(db, env, opts) {
+  const library = (opts.library ?? "").trim();
+  if (!library) throw new Error("library required");
+  const ownerId = (opts.owner_id ?? "").trim();
+  if (!ownerId) throw new Error("owner_id required\uFF08\u6A19\u5EAB\u662F\u8DE8\u5927\u91CF\u65E2\u6709\u8CC7\u6599\u7684\u6279\u6B21\u5BEB\u5165\uFF0C\u4E0D\u51C6\u7121\u79DF\u6236\u7BC4\u570D\u5730\u6383\u5168\u5EAB\u2014\u20142026-08-11 leo \u76F4\u4EE4\uFF09");
+  const limit = Math.min(Math.max(opts.limit ?? 100, 1), HARD_LIMIT_CAP);
+  const sel = criteriaPredicate({ ...opts, owner_id: ownerId });
+  const where = sel.conds.join(" AND ");
+  const params = sel.params;
+  const res = await db.prepare(`SELECT id FROM entries WHERE ${where} ORDER BY created_at ASC LIMIT ?`).bind(...params, limit).all();
+  const scannedIds = (res.results ?? []).map((r) => r.id);
+  const scanned = scannedIds.length;
+  const budget = await maintenanceBudgetToday(env, db);
+  const ids = scannedIds.slice(0, budget.remaining);
+  const quotaExceeded = scanned > ids.length;
+  let tagged = 0;
+  if (ids.length > 0) {
+    const ph = ids.map(() => "?").join(",");
+    await db.prepare(
+      `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.library', ?), updated_at = unixepoch() WHERE id IN (${ph})`
+    ).bind(library, ...ids).run();
+    tagged = ids.length;
+  }
+  try {
+    await addMaintenanceUsage(db, tagged);
+  } catch {
+  }
+  const remRow = await db.prepare(`SELECT COUNT(*) as c FROM entries WHERE ${where}`).bind(...params).first();
+  return {
+    library,
+    scanned,
+    tagged,
+    remaining: remRow?.c ?? 0,
+    quota_limit: budget.limit,
+    quota_used_today: budget.used + tagged,
+    quota_exceeded: quotaExceeded
+  };
+}
+async function libraryBackfillStatus(db, opts = {}) {
+  const sel = criteriaPredicate(opts);
+  const where = sel.conds.join(" AND ");
+  const row = await db.prepare(`SELECT COUNT(*) as c FROM entries WHERE ${where}`).bind(...sel.params).first();
+  return { pending: row?.c ?? 0 };
 }
 
 // kbdb/src/routes/entries.ts
@@ -2872,6 +3166,39 @@ entryRoutes.patch("/deprecate-by-library", async (c) => {
     }
   }
   return c.json({ success: true, deprecated_count: count, vectors_deleted });
+});
+entryRoutes.post("/backfill-library", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const library = String(body.library ?? "").trim();
+  const ownerId = String(body.owner_id ?? "").trim();
+  if (!library || !ownerId) return c.json({ success: false, error: "library \u8207 owner_id \u5FC5\u586B" }, 400);
+  try {
+    const result = await backfillEntryLibraryTags(c.env.DB, c.env, {
+      library,
+      owner_id: ownerId,
+      entry_type: body.entry_type || void 0,
+      page_names: Array.isArray(body.page_names) && body.page_names.length > 0 ? body.page_names : void 0,
+      source_prefix: body.source_prefix || void 0,
+      page_name_prefix: body.page_name_prefix || void 0,
+      since: body.since !== void 0 ? Number(body.since) : void 0,
+      until: body.until !== void 0 ? Number(body.until) : void 0,
+      limit: body.limit !== void 0 ? Number(body.limit) : void 0
+    });
+    return c.json({ success: true, ...result });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+entryRoutes.get("/backfill-library/status", async (c) => {
+  const status = await libraryBackfillStatus(c.env.DB, {
+    owner_id: c.req.query("owner_id") || void 0,
+    entry_type: c.req.query("entry_type") || void 0,
+    source_prefix: c.req.query("source_prefix") || void 0,
+    page_name_prefix: c.req.query("page_name_prefix") || void 0,
+    since: c.req.query("since") ? Number(c.req.query("since")) : void 0,
+    until: c.req.query("until") ? Number(c.req.query("until")) : void 0
+  });
+  return c.json({ success: true, ...status });
 });
 entryRoutes.patch("/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -3192,6 +3519,9 @@ embedRoutes.post("/backfill", async (c) => {
     limit: body.limit !== void 0 ? Number(body.limit) : void 0,
     owner_id: body.owner_id || void 0,
     source: body.source || void 0,
+    library: body.library || void 0,
+    since: body.since !== void 0 ? Number(body.since) : void 0,
+    until: body.until !== void 0 ? Number(body.until) : void 0,
     // reindex（Arcrun#11）：重推既有向量讓事後建立的 Vectorize metadata index 收錄（見 embed.ts）。
     reindex: body.reindex === true,
     offset: body.offset !== void 0 ? Number(body.offset) : void 0
@@ -3204,6 +3534,23 @@ embedRoutes.get("/backfill/status", async (c) => {
     source: c.req.query("source") || void 0
   });
   return c.json({ success: true, ...status });
+});
+embedRoutes.post("/reconcile", async (c) => {
+  if (!embedEnabled(c.env)) {
+    return c.json(
+      { success: false, error: "embed module not enabled (need VECTORIZE + AI bindings)", capability_hint: OFF_HINT },
+      409
+    );
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const result = await reconcileEmbedGeneration(c.env, {
+    limit: body.limit !== void 0 ? Number(body.limit) : void 0,
+    owner_id: body.owner_id || void 0,
+    library: body.library || void 0,
+    since: body.since !== void 0 ? Number(body.since) : void 0,
+    until: body.until !== void 0 ? Number(body.until) : void 0
+  });
+  return c.json({ success: true, ...result });
 });
 embedRoutes.get("/selftest", async (c) => {
   const result = await embedSelfTest(c.env, { owner_id: c.req.query("owner_id") || void 0 });
@@ -3402,14 +3749,18 @@ async function recomputeLibraryMap(db, input) {
 async function liveTripletCountsByLibrary(db, tripletTemplateId, owner_id) {
   const params = owner_id ? [tripletTemplateId, owner_id] : [tripletTemplateId];
   const res = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在巢狀 worktree matrix/arcrun/.worktree-fix-87/（避免打斷另一 session 佔用中的 matrix/arcrun 主 checkout），hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到中間多出的 worktree 目錄層，非繞牆
     `SELECT COALESCE(NULLIF(lib_e.content, ''), 'general') AS library, COUNT(*) AS n
        FROM (
-         SELECT DISTINCT ev.record_id
+         SELECT ev.record_id AS rid,
+              MAX(CASE WHEN ev.slot_name = 'status' THEN e.content END) AS status
          FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
          WHERE ev.template_id = ?${owner_id ? " AND e.owner_id = ?" : ""}
+         GROUP BY ev.record_id
        ) AS tr
-       LEFT JOIN entry_values lev ON lev.record_id = tr.record_id AND lev.slot_name = 'library'
+       LEFT JOIN entry_values lev ON lev.record_id = tr.rid AND lev.slot_name = 'library'
        LEFT JOIN entries lib_e ON lib_e.id = lev.entry_id
+       WHERE COALESCE(tr.status, 'active') = 'active'
        GROUP BY COALESCE(NULLIF(lib_e.content, ''), 'general')`
   ).bind(...params).all();
   const m = /* @__PURE__ */ new Map();
@@ -3558,7 +3909,7 @@ function dailyLimit(env) {
   const n = raw2 ? parseInt(raw2, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_DAILY_LIMIT;
 }
-function utcDay() {
+function utcDay3() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 function truncate(s, max) {
@@ -3566,7 +3917,7 @@ function truncate(s, max) {
   return s.slice(0, Math.max(0, max - 1)) + "\u2026";
 }
 async function checkUsage(db, limit) {
-  const id = `exlog-usage:${utcDay()}`;
+  const id = `exlog-usage:${utcDay3()}`;
   const existing = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(id).first();
   let count;
   if (existing) {
@@ -3578,10 +3929,10 @@ async function checkUsage(db, limit) {
       prevWrites = 0;
     }
     count = prevWrites + 1;
-    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify({ day: utcDay(), writes: count }), id).run();
+    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify({ day: utcDay3(), writes: count }), id).run();
   } else {
     count = 1;
-    await db.prepare(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'execution_log_usage', ?)`).bind(id, JSON.stringify({ day: utcDay(), writes: count })).run();
+    await db.prepare(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'execution_log_usage', ?)`).bind(id, JSON.stringify({ day: utcDay3(), writes: count })).run();
   }
   if (count > limit) return "skip";
   if (count > limit * DEGRADE_RATIO) return "log_failure_only";
@@ -3797,7 +4148,7 @@ app.route("/recipe-stats", recipeStatRoutes);
 app.route("/execution-log", executionLogRoutes);
 app.route("/embed", embedRoutes);
 app.route("/map", mapRoutes);
-var src_default = app;
+var index_default = app;
 export {
-  src_default as default
+  index_default as default
 };

@@ -5,7 +5,11 @@ var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -8223,7 +8227,7 @@ var Hono = class _Hono {
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = (method2, path2) => {
+  const match2 = ((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -8235,7 +8239,7 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  };
+  });
   this.match = match2;
   return match2(method, path);
 }
@@ -12954,7 +12958,7 @@ ZodNaN.create = (params) => {
     ...processCreateParams(params)
   });
 };
-var BRAND = Symbol("zod_brand");
+var BRAND = /* @__PURE__ */ Symbol("zod_brand");
 var ZodBranded = class extends ZodType {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
@@ -13156,14 +13160,14 @@ var ostring = () => stringType().optional();
 var onumber = () => numberType().optional();
 var oboolean = () => booleanType().optional();
 var coerce = {
-  string: (arg) => ZodString.create({ ...arg, coerce: true }),
-  number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
-  boolean: (arg) => ZodBoolean.create({
+  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
+  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
+  boolean: ((arg) => ZodBoolean.create({
     ...arg,
     coerce: true
-  }),
-  bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
-  date: (arg) => ZodDate.create({ ...arg, coerce: true })
+  })),
+  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
+  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
 };
 var NEVER = INVALID;
 
@@ -13214,7 +13218,6 @@ function $constructor(name, initializer3, params) {
   Object.defineProperty(_, "name", { value: name });
   return _;
 }
-var $brand = Symbol("zod_brand");
 var $ZodAsyncError = class extends Error {
   constructor() {
     super(`Encountered Promise during synchronous parse. Use .parseAsync() instead.`);
@@ -15718,8 +15721,6 @@ function en_default2() {
 }
 
 // mcp/node_modules/.pnpm/zod@3.25.76/node_modules/zod/v4/core/registries.js
-var $output = Symbol("ZodOutput");
-var $input = Symbol("ZodInput");
 var $ZodRegistry = class {
   constructor() {
     this._map = /* @__PURE__ */ new Map();
@@ -16997,10 +16998,10 @@ var ZodMiniType = /* @__PURE__ */ $constructor("ZodMiniType", (inst, def) => {
   };
   inst.clone = (_def, params) => clone(inst, _def, params);
   inst.brand = () => inst;
-  inst.register = (reg, meta) => {
+  inst.register = ((reg, meta) => {
     reg.add(inst, meta);
     return inst;
-  };
+  });
 });
 var ZodMiniObject = /* @__PURE__ */ $constructor("ZodMiniObject", (inst, def) => {
   $ZodObject.init(inst, def);
@@ -17263,10 +17264,10 @@ var ZodType2 = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
   };
   inst.clone = (def2, params) => clone(inst, def2, params);
   inst.brand = () => inst;
-  inst.register = (reg, meta) => {
+  inst.register = ((reg, meta) => {
     reg.add(inst, meta);
     return inst;
-  };
+  });
   inst.parse = (data, params) => parse2(inst, data, params, { callee: inst.parse });
   inst.safeParse = (data, params) => safeParse3(inst, data, params);
   inst.parseAsync = async (data, params) => parseAsync2(inst, data, params, { callee: inst.parseAsync });
@@ -19238,11 +19239,13 @@ function assertCompleteRequestPrompt(request) {
   if (request.params.ref.type !== "ref/prompt") {
     throw new TypeError(`Expected CompleteRequestPrompt, but got ${request.params.ref.type}`);
   }
+  void request;
 }
 function assertCompleteRequestResourceTemplate(request) {
   if (request.params.ref.type !== "ref/resource") {
     throw new TypeError(`Expected CompleteRequestResourceTemplate, but got ${request.params.ref.type}`);
   }
+  void request;
 }
 var CompleteResultSchema = ResultSchema.extend({
   completion: looseObject({
@@ -19395,7 +19398,7 @@ function isTerminal(status) {
 }
 
 // mcp/node_modules/.pnpm/zod-to-json-schema@3.25.2_zod@3.25.76/node_modules/zod-to-json-schema/dist/esm/Options.js
-var ignoreOverride = Symbol("Let zodToJsonSchema decide on which parser to use");
+var ignoreOverride = /* @__PURE__ */ Symbol("Let zodToJsonSchema decide on which parser to use");
 var defaultOptions = {
   name: void 0,
   $refStrategy: "root",
@@ -22371,7 +22374,7 @@ var Server = class extends Protocol {
 };
 
 // mcp/node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_zod@3.25.76/node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
-var COMPLETABLE_SYMBOL = Symbol.for("mcp.completable");
+var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
 function isCompletable(schema4) {
   return !!schema4 && typeof schema4 === "object" && COMPLETABLE_SYMBOL in schema4;
 }
@@ -24686,13 +24689,13 @@ function registerAllIntrospectionTools(server, env) {
 }
 
 // mcp/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/nodes/identity.js
-var ALIAS = Symbol.for("yaml.alias");
-var DOC = Symbol.for("yaml.document");
-var MAP = Symbol.for("yaml.map");
-var PAIR = Symbol.for("yaml.pair");
-var SCALAR = Symbol.for("yaml.scalar");
-var SEQ = Symbol.for("yaml.seq");
-var NODE_TYPE = Symbol.for("yaml.node.type");
+var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
+var DOC = /* @__PURE__ */ Symbol.for("yaml.document");
+var MAP = /* @__PURE__ */ Symbol.for("yaml.map");
+var PAIR = /* @__PURE__ */ Symbol.for("yaml.pair");
+var SCALAR = /* @__PURE__ */ Symbol.for("yaml.scalar");
+var SEQ = /* @__PURE__ */ Symbol.for("yaml.seq");
+var NODE_TYPE = /* @__PURE__ */ Symbol.for("yaml.node.type");
 var isAlias = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === ALIAS;
 var isDocument = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === DOC;
 var isMap = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
@@ -24722,9 +24725,9 @@ function isNode(node) {
 var hasAnchor = (node) => (isScalar(node) || isCollection(node)) && !!node.anchor;
 
 // mcp/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/visit.js
-var BREAK = Symbol("break visit");
-var SKIP = Symbol("skip children");
-var REMOVE = Symbol("remove node");
+var BREAK = /* @__PURE__ */ Symbol("break visit");
+var SKIP = /* @__PURE__ */ Symbol("skip children");
+var REMOVE = /* @__PURE__ */ Symbol("remove node");
 function visit(node, visitor) {
   const visitor_ = initVisitor(visitor);
   if (isDocument(node)) {
@@ -29317,9 +29320,9 @@ ${end.comment}` : end.comment;
 };
 
 // mcp/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/parse/cst-visit.js
-var BREAK2 = Symbol("break visit");
-var SKIP2 = Symbol("skip children");
-var REMOVE2 = Symbol("remove item");
+var BREAK2 = /* @__PURE__ */ Symbol("break visit");
+var SKIP2 = /* @__PURE__ */ Symbol("skip children");
+var REMOVE2 = /* @__PURE__ */ Symbol("remove item");
 function visit2(cst, visitor) {
   if ("type" in cst && cst.type === "document")
     cst = { start: cst.start, value: cst.value };
@@ -33389,7 +33392,7 @@ app.post("/", partnerAuthMiddleware, async (c) => {
   const partnerToken = c.get("partner_token");
   return handleMcpRequest(c.req.raw, c.env, orgNamespace, partnerToken);
 });
-var src_default = _app;
+var index_default = _app;
 export {
-  src_default as default
+  index_default as default
 };

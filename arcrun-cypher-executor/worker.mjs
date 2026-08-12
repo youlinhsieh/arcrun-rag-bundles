@@ -1,7 +1,12 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -1501,7 +1506,7 @@ var init_hono_base = __esm({
 // cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = (method2, path2) => {
+  const match2 = ((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -1513,7 +1518,7 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  };
+  });
   this.match = match2;
   return match2(method, path);
 }
@@ -3022,7 +3027,7 @@ async function readBodyOnce(res) {
     return text;
   }
 }
-var WASM_HTTP_RUNNER_IDS, LOGIC_BINDING_MAP;
+var WASM_HTTP_RUNNER_IDS, LOGIC_BINDING_MAP, RUNTIME_NATIVE_COMPONENT_IDS;
 var init_component_loader = __esm({
   "cypher-executor/src/lib/component-loader.ts"() {
     "use strict";
@@ -3065,6 +3070,12 @@ var init_component_loader = __esm({
       // ai_transform_compile / ai_transform_run 已刪除（2026-05-29）：
       // Arcrun 是 AI 呼叫的工具，工作流不該內嵌 AI 節點回頭呼叫 AI（n8n 才需要，因它沒大腦）。
     };
+    RUNTIME_NATIVE_COMPONENT_IDS = /* @__PURE__ */ new Set([
+      "trigger_workflow",
+      ...BUILTIN_COMPONENTS.keys(),
+      ...Object.keys(LOGIC_BINDING_MAP),
+      ...WASM_HTTP_RUNNER_IDS
+    ]);
   }
 });
 
@@ -3199,6 +3210,20 @@ var init_kbdb_proxy = __esm({
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
       const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.patch("/kbdb/records/:recordId", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || typeof body.values !== "object" || body.values === null) {
+        return c.json({ error: "values \u5FC5\u586B\uFF08{slot\u540D: \u5167\u5BB9}\uFF09" }, 400);
+      }
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ values: body.values })
+      });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
     kbdbProxyRouter.get("/kbdb/search", async (c) => {
@@ -7355,7 +7380,7 @@ var init_lib = __esm({
         ...processCreateParams(params)
       });
     };
-    BRAND = Symbol("zod_brand");
+    BRAND = /* @__PURE__ */ Symbol("zod_brand");
     ZodBranded = class extends ZodType {
       _parse(input) {
         const { ctx } = this._processInputParams(input);
@@ -7529,14 +7554,14 @@ var init_lib = __esm({
     onumber = () => numberType().optional();
     oboolean = () => booleanType().optional();
     coerce = {
-      string: (arg) => ZodString.create({ ...arg, coerce: true }),
-      number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
-      boolean: (arg) => ZodBoolean.create({
+      string: ((arg) => ZodString.create({ ...arg, coerce: true })),
+      number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
+      boolean: ((arg) => ZodBoolean.create({
         ...arg,
         coerce: true
-      }),
-      bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
-      date: (arg) => ZodDate.create({ ...arg, coerce: true })
+      })),
+      bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
+      date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
     };
     NEVER = INVALID;
     z = /* @__PURE__ */ Object.freeze({
@@ -7757,6 +7782,7 @@ var init_recipe_loader = __esm({
         super(message);
         this.recipe = recipe;
       }
+      recipe;
     };
   }
 });
@@ -8763,7 +8789,7 @@ function recordRecipeStats(env, recipeKeys, ok, at, ctx) {
     )
   ).then(() => void 0);
   if (ctx?.waitUntil) ctx.waitUntil(promise);
-  else ;
+  else void promise;
 }
 function generateToken() {
   const tokenBytes = crypto.getRandomValues(new Uint8Array(16));
@@ -8805,7 +8831,7 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
         result.trace
       );
       if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
-      else ;
+      else void statsPromise;
     }
     return { success: true, data: result.data, duration_ms };
   } catch (err) {
@@ -8829,7 +8855,7 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
         err.trace
       );
       if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
-      else ;
+      else void statsPromise;
     }
     if (err instanceof ExecutionError) {
       const traceFormatted = err.trace.map((s) => ({
@@ -9294,6 +9320,7 @@ function extractTarget(input) {
   return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
 }
 async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message, input, apiKey) {
+  void nodes;
   try {
     const { base, headers } = kbdbBase(env);
     await fetch(`${base}/execution-log/record`, {
@@ -9483,6 +9510,16 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
     const componentId = configComponent ?? nodeName;
     if (configComponent) {
       nodeResults[nodeName] = { status: "found", componentId, type: role };
+      continue;
+    }
+    if (wantComponents && RUNTIME_NATIVE_COMPONENT_IDS.has(componentId)) {
+      nodeResults[nodeName] = {
+        status: "found",
+        componentId,
+        type: role,
+        source: "builtin",
+        branch_hint: branchHintFor(componentId)
+      };
       continue;
     }
     if (catalog.status === "unreachable") {
@@ -15257,10 +15294,10 @@ app.route("/", consoleAuthRouter);
 app.route("/", consoleDashboardRouter);
 app.route("/", portalRouter);
 app.route("/", portalDataRouter);
-var src_default = {
+var index_default = {
   fetch: app.fetch,
   scheduled: handleScheduled
 };
 export {
-  src_default as default
+  index_default as default
 };
