@@ -2189,11 +2189,18 @@ async function deprecateEntriesByLibrary(db, ownerId, library) {
 var MAX_LIKE_Q_BYTES = 48;
 var MAX_LIKE_TERMS = 6;
 var utf8Len = (s) => new TextEncoder().encode(s).length;
+var LIKE_ESCAPE = "\\";
+var CONTENT_LIKE = `content LIKE ? ESCAPE '${LIKE_ESCAPE}'`;
+function escapeLikeLiteral(s) {
+  return s.replace(/[\\%_]/g, (ch) => LIKE_ESCAPE + ch);
+}
+var likeBytes = (s) => utf8Len(escapeLikeLiteral(s));
+var likePattern = (s) => `%${escapeLikeLiteral(s)}%`;
 function chunkByBytes(s, maxBytes) {
   const out = [];
   let cur = "";
   for (const ch of s) {
-    if (utf8Len(cur + ch) > maxBytes) {
+    if (likeBytes(cur + ch) > maxBytes) {
       if (cur) out.push(cur);
       cur = ch;
     } else {
@@ -2204,8 +2211,8 @@ function chunkByBytes(s, maxBytes) {
   return out;
 }
 function buildContentLike(q) {
-  if (utf8Len(q) <= MAX_LIKE_Q_BYTES) {
-    return { conds: ["content LIKE ?"], params: [`%${q}%`], split: false };
+  if (likeBytes(q) <= MAX_LIKE_Q_BYTES) {
+    return { conds: [CONTENT_LIKE], params: [likePattern(q)], split: false };
   }
   const terms = [];
   for (const word of q.split(/\s+/).filter(Boolean)) {
@@ -2217,8 +2224,8 @@ function buildContentLike(q) {
   }
   if (terms.length === 0) terms.push(chunkByBytes(q, MAX_LIKE_Q_BYTES)[0] ?? "");
   return {
-    conds: terms.map(() => "content LIKE ?"),
-    params: terms.map((t) => `%${t}%`),
+    conds: terms.map(() => CONTENT_LIKE),
+    params: terms.map(likePattern),
     split: true
   };
 }
@@ -2335,7 +2342,7 @@ function buildSearchScore(q) {
   if (terms.length === 0) {
     const m = buildContentLike(trimmed);
     return {
-      scoreExpr: m.conds.map(() => "CASE WHEN content LIKE ? THEN 1 ELSE 0 END").join(" + "),
+      scoreExpr: m.conds.map(() => `CASE WHEN ${CONTENT_LIKE} THEN 1 ELSE 0 END`).join(" + "),
       scoreParams: m.params,
       terms: [],
       legacyShape: true
@@ -2344,14 +2351,14 @@ function buildSearchScore(q) {
   const parts = [];
   const params = [];
   for (const { term, weight } of terms) {
-    parts.push(`CASE WHEN content LIKE ? THEN ${weight} ELSE 0 END`);
-    params.push(`%${term}%`);
+    parts.push(`CASE WHEN ${CONTENT_LIKE} THEN ${weight} ELSE 0 END`);
+    params.push(likePattern(term));
   }
   const single = terms.length === 1 && terms[0].term === trimmed;
-  if (!single && utf8Len(trimmed) <= MAX_LIKE_Q_BYTES) {
+  if (!single && likeBytes(trimmed) <= MAX_LIKE_Q_BYTES) {
     const bonus = terms.reduce((s, t) => s + t.weight, 0);
-    parts.push(`CASE WHEN content LIKE ? THEN ${bonus} ELSE 0 END`);
-    params.push(`%${trimmed}%`);
+    parts.push(`CASE WHEN ${CONTENT_LIKE} THEN ${bonus} ELSE 0 END`);
+    params.push(likePattern(trimmed));
   }
   return { scoreExpr: parts.join(" + "), scoreParams: params, terms, legacyShape: single };
 }
@@ -3274,7 +3281,7 @@ async function createRecord(db, input) {
     });
     await db.prepare(`INSERT INTO entry_values (id, record_id, template_id, slot_name, entry_id) VALUES (?, ?, ?, ?, ?)`).bind(uid2("ev"), recordId, tpl.id, slot, entry.id).run();
   }
-  return { record_id: recordId, template_id: tpl.id, values: input.values };
+  return { record_id: recordId, template_id: tpl.id, values: input.values, owner_id: input.owner_id ?? null };
 }
 async function updateRecord(db, recordId, values) {
   const evRes = await db.prepare(
@@ -3305,7 +3312,7 @@ async function updateRecord(db, recordId, values) {
 }
 async function getRecord(db, recordId) {
   const res = await db.prepare(
-    `SELECT ev.slot_name as slot, e.content as content, ev.template_id as template_id
+    `SELECT ev.slot_name as slot, e.content as content, ev.template_id as template_id, e.owner_id as owner_id
        FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
        WHERE ev.record_id = ?`
   ).bind(recordId).all();
@@ -3313,7 +3320,8 @@ async function getRecord(db, recordId) {
   if (rows.length === 0) return null;
   const values = {};
   for (const r of rows) values[r.slot] = r.content;
-  return { record_id: recordId, template_id: rows[0].template_id, values };
+  const owner_id = rows.find((r) => r.owner_id != null)?.owner_id ?? null;
+  return { record_id: recordId, template_id: rows[0].template_id, values, owner_id };
 }
 async function searchByTemplate(db, template, owner_id, limit = 100) {
   const tpl = await getTemplate(db, template);
@@ -3332,17 +3340,18 @@ async function searchByTemplate(db, template, owner_id, limit = 100) {
     const chunk = ids.slice(i, i + 90);
     const placeholders = chunk.map(() => "?").join(",");
     const evRes = await db.prepare(
-      `SELECT ev.record_id as record_id, ev.slot_name as slot, e.content as content, ev.template_id as template_id
+      `SELECT ev.record_id as record_id, ev.slot_name as slot, e.content as content, ev.template_id as template_id, e.owner_id as owner_id
          FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
          WHERE ev.record_id IN (${placeholders})`
     ).bind(...chunk).all();
     for (const r of evRes.results ?? []) {
       let rec = byId.get(r.record_id);
       if (!rec) {
-        rec = { record_id: r.record_id, template_id: r.template_id, values: {} };
+        rec = { record_id: r.record_id, template_id: r.template_id, values: {}, owner_id: null };
         byId.set(r.record_id, rec);
       }
       rec.values[r.slot] = r.content;
+      if (rec.owner_id == null && r.owner_id != null) rec.owner_id = r.owner_id;
     }
   }
   return ids.map((id) => byId.get(id)).filter((r) => !!r);

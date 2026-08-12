@@ -2650,7 +2650,7 @@ var init_recipes = __esm({
 });
 
 // cypher-executor/src/lib/constants.ts
-var VALID_EDGE_TYPES, SEMANTIC_EDGE_MAP, BUILTIN_COMPONENTS;
+var VALID_EDGE_TYPES, SEMANTIC_EDGE_MAP, WAIT_MAX_MS, BUILTIN_COMPONENTS;
 var init_constants3 = __esm({
   "cypher-executor/src/lib/constants.ts"() {
     "use strict";
@@ -2698,6 +2698,7 @@ var init_constants3 = __esm({
       "CLICK": "ON_CLICK",
       "SUBFLOW": "CALLS_SUBFLOW"
     };
+    WAIT_MAX_MS = 3e4;
     BUILTIN_COMPONENTS = /* @__PURE__ */ new Map([
       ["comp_passthrough", (ctx) => ctx],
       ["comp_uppercase", (ctx) => {
@@ -2707,6 +2708,54 @@ var init_constants3 = __esm({
       ["comp_counter", (ctx) => {
         const c = ctx;
         return { ...c, count: (Number(c.count) || 0) + 1 };
+      }],
+      // ── wait：等待 N 毫秒後繼續（Arcrun#101，2026-08-12）────────────────────────
+      //
+      // 為什麼「等待」搬進引擎，而不是修那顆 WASM：
+      //
+      // 舊實作是 registry/components/wait/main.go（TinyGo → WASM），用 time.Sleep。
+      // TinyGo 的 sleep 走 WASI `poll_oneoff`；而每顆 component worker 的 WASI shim 把
+      // poll_oneoff 實作成 ENOSYS（`.component-builds/*/src/index.ts`：`poll_oneoff: () => 76`）
+      // ⇒ TinyGo 排程器拿不到「睡到某個時間」的手段，退化成迴圈重讀 `clock_time_get`
+      // 自旋等時間到（wasm 內可見 runtime.sleepTicks / sleepQueue / runtime.ticks 符號）。
+      //
+      // 🔴 到這裡為止是**查得到原始碼的事實**。再往下「所以那個自旋迴圈的結束條件永遠
+      //    不成立」曾被當成結論寫在這裡，但**寫了測試去證，反而被打臉**：在
+      //    vitest-pool-workers 的 workerd 裡，同步自旋 2553 圈之後 Date.now() 就前進了
+      //    ⇒ 時鐘並沒有全程凍結。
+      //    ⇒ 「為什麼三秒的等待會拖到 35 秒才死」的完整機制**目前仍是推測**，
+      //      證據只有下面 leo 的四次實測。別把它當定論往外傳。
+      //
+      // 所以症狀不是「等 N 秒花 N 秒 CPU」，而是「不管 ms 填多少都跑到 CPU 上限被砍」。
+      // leo 2026-08-12 在 youlin stage 實測（只有 input >> wait 兩個節點）：
+      //   ms=3000 → 38.9s 後 503 / ms=20000 → 34.0s / ms=30000 → 34.9s / 寫死 3000 → 34.8s
+      // 四個值同一個死法、與 ms 無關 —— 3 秒的等待撐到 35 秒才死，就是「迴圈根本沒結束」
+      // 的證據（若成本與時長成正比，ms=3000 只會花 3 秒 CPU，根本不該死）。
+      // 也就是說 wait 零件在 Workers 上從來沒有真的等待成功過，不只是貴。
+      //
+      // 純 WASI 沙箱（stdin→stdout、無 socket、同步呼叫）本來就沒有「不花 CPU 地等」這種
+      // 東西 —— 會等的只有宿主。故 wait 與 trigger_workflow 同類：**是 orchestrator 的
+      // 執行排程職責，不是業務邏輯**（rule 02 §2.3 明列「workflow 執行排程」屬 cypher-executor
+      // 合法職責；§2.2 禁的是解密／簽章／template 展開／具體 API 呼叫，等待都不是）。
+      // 搬進引擎不違反「業務邏輯走 WASM」鐵律。引擎這側 await 一個 timer 只花 wall-clock、
+      // 不記 CPU ⇒ 等 30 秒與等 3 秒同價（皆 ≈0）。
+      //
+      // I/O 契約沿用 component.contract.yaml，既有 workflow 的 wait 節點定義不必改：
+      //   吃 ms（必填 > 0）＋可選 context；ms > WAIT_MAX_MS 截斷；
+      //   回 { success: true, data: { ...context, waited_ms } }；ms <= 0 回 success:false。
+      // 唯一刻意的放寬：ms 允許數字字串（"3000"）。WASM 版 json.Unmarshal 進 int 會直接
+      // 失敗，但 node.data 走 interpolateData 後 `ms: "{{input.delay}}"` 必然是字串
+      // ⇒ 收字串只會把「本來就跑不動的」變成跑得動，不會改變任何既有成功案例的行為。
+      ["wait", async (ctx) => {
+        const c = ctx && typeof ctx === "object" ? ctx : {};
+        const requested = typeof c.ms === "number" ? c.ms : Number(c.ms);
+        if (!Number.isFinite(requested) || requested <= 0) {
+          return { success: false, error: "ms \u5FC5\u9808\u5927\u65BC 0" };
+        }
+        const ms = Math.min(Math.floor(requested), WAIT_MAX_MS);
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        const passthrough = c.context && typeof c.context === "object" && !Array.isArray(c.context) ? c.context : {};
+        return { success: true, data: { ...passthrough, waited_ms: ms } };
       }]
     ]);
   }
@@ -3060,7 +3109,12 @@ var init_component_loader = __esm({
       filter: "SVC_FILTER",
       merge: "SVC_MERGE",
       try_catch: "SVC_TRY_CATCH",
-      wait: "SVC_WAIT",
+      // wait 已於 Arcrun#101（2026-08-12）移進 BUILTIN_COMPONENTS（step 1）——
+      // 等待是 orchestrator 的排程職責，WASI 沙箱裡做不到「不花 CPU 地等」。理由全文見
+      // constants.ts 的 wait 註解。這裡刻意**移除**而非留著：step 1 本來就先於 step 5 命中，
+      // 留下這行只會讓讀者以為 wait 還走 SVC_WAIT（實際永遠走不到）＝誤導人的死路由。
+      // wrangler.toml 的 SVC_WAIT binding 不動（rule 3.1：13 個既有 binding 保留不新增），
+      // 拆綁定要重新部署、與本票無關。
       set: "SVC_SET",
       array_ops: "SVC_ARRAY_OPS",
       string_ops: "SVC_STRING_OPS",
@@ -3144,6 +3198,11 @@ function tenant(c) {
 function graphBase(env) {
   if (env.KBDB_GRAPH_URL) return env.KBDB_GRAPH_URL.replace(/\/$/, "");
   return `https://kbdb-graph-plugin.${env.WORKER_SUBDOMAIN}.workers.dev`;
+}
+function graphHeaders(env) {
+  const headers = {};
+  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  return headers;
 }
 var kbdbProxyRouter, NEED_KEY;
 var init_kbdb_proxy = __esm({
@@ -3278,8 +3337,7 @@ var init_kbdb_proxy = __esm({
     kbdbProxyRouter.get("/kbdb/graph/neighbors/:name", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const base = graphBase(c.env);
-      const headers = {};
-      if (c.env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
+      const headers = graphHeaders(c.env);
       try {
         const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}`, { headers });
         return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
@@ -13227,7 +13285,12 @@ portalRouter.post(
       session_token: token,
       display_name: rec.values.display_name ?? "",
       role: rec.values.role ?? "user",
-      libraries: parseLibraries(rec.values.libraries)
+      libraries: parseLibraries(rec.values.libraries),
+      // session 還能活多久（秒）。**非機密**（是這台實例的 TTL 設定，不是任何人的憑據），
+      // 但呼叫端需要它才能把自己發的憑證對齊這個上限——arcrun-mcp 用它把 OAuth
+      // access_token 的 TTL 夾到 min(自己的 TTL, 這個值)：否則 MCP token 活 30 天、
+      // 底下的 portal session 7 天就死，使用者會在第 8 天遇到「連著卻查不到」的鬼打牆。
+      session_expires_in: sessionTtl(c.env)
       // 絕不回租戶字串（design §3.3：portal_user 拿到租戶字串就能繞過庫 filter 直打 /kbdb/*）
     });
   })
@@ -14537,6 +14600,20 @@ async function fetchJson(url, headers) {
     return null;
   }
 }
+async function fetchTripletTotal(env, tenant2) {
+  const { base, headers } = kbdbBase(env);
+  const data = await fetchJson(
+    `${base}/records/triplet-stats?owner_id=${encodeURIComponent(tenant2)}`,
+    headers
+  );
+  if (!data || !Array.isArray(data.stats)) return null;
+  let total = 0;
+  for (const row of data.stats) {
+    if (typeof row?.triplet_count !== "number") return null;
+    total += row.triplet_count;
+  }
+  return total;
+}
 async function fetchEntryTotal(env, filters) {
   const { base, headers } = kbdbBase(env);
   const params = new URLSearchParams({ ...filters, limit: "1" });
@@ -14644,6 +14721,7 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
     kbdbHealth,
     embedStatus,
     graphStats,
+    tripletTotal,
     entriesTotal,
     wikiCardTotal,
     workflowTotal
@@ -14655,7 +14733,13 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
     cachedGiteaSprint(c.env, now2, (p) => c.executionCtx.waitUntil(p)),
     fetchJson(`${kbdbUrl}/health`, kbdbHeaders),
     fetchJson(`${kbdbUrl}/embed/backfill/status`, kbdbHeaders),
-    fetchJson(`${graphUrl}/triplets/stats`),
+    // graph-plugin 只拿來判「圖服務活著沒」（燈號）——數字不從這裡拿，見 fetchTripletTotal。
+    // headers 一定要帶：plugin 的 /triplets 前綴掛 Bearer 閘，漏帶＝永遠 401＝永遠假紅燈（#100）。
+    fetchJson(
+      `${graphUrl}/triplets/stats`,
+      graphHeaders(c.env)
+    ),
+    fetchTripletTotal(c.env, tenant2),
     // owner_id 一律鎖本租戶：原本不帶 owner 會混到別租戶（實測 459,137 vs leo 的 458,732）
     fetchEntryTotal(c.env, { owner_id: tenant2 }),
     fetchEntryTotal(c.env, { entry_type: "wiki_card", owner_id: tenant2 }),
@@ -14763,13 +14847,14 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
     system: {
       kbdb_ok: kbdbHealth ? kbdbHealth.ok === true : false,
       embed: embedStatus ? { enabled: embedStatus.enabled === true, embedded: embedStatus.embedded ?? null, pending: embedStatus.pending ?? null } : null,
-      graph: graphStats ? { ok: true, triplets: graphStats.total ?? null } : { ok: false, triplets: null },
+      // ok = plugin 通不通（graphStats 讀得到就是通）；triplets = KBDB 真 COUNT（與 plugin 分頁長度無關）
+      graph: { ok: graphStats !== null, triplets: tripletTotal },
       workflow_total: workflowTotal
     },
     kb: {
       entries_total: entriesTotal,
       wiki_card_total: wikiCardTotal,
-      triplets_total: graphStats?.total ?? null
+      triplets_total: tripletTotal
     },
     generated_at: new Date(now2).toISOString()
   });
@@ -14777,22 +14862,22 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
 consoleDashboardRouter.get("/console/kb-scale-data", async (c) => {
   const tenant2 = c.env.CONSOLE_TENANT || "leo";
   const { base, headers } = kbdbBase(c.env);
-  const graphUrl = graphBase(c.env);
   const now2 = Date.now();
-  const [wikiCards, graphStats, embedStatus] = await Promise.all([
+  const [wikiCards, tripletTotal, embedStatus] = await Promise.all([
     // limit=1 順手拿最新一筆 created_at（list 為 created_at DESC）＝「最近寫入時間」
     fetchJson(
       `${base}/entries?${new URLSearchParams({ owner_id: tenant2, entry_type: "wiki_card", limit: "1" }).toString()}`,
       headers
     ),
-    fetchJson(`${graphUrl}/triplets/stats`),
+    // #100：三元組數改讀 KBDB 真 COUNT，不再讀 graph-plugin 的分頁長度（見 fetchTripletTotal 註）
+    fetchTripletTotal(c.env, tenant2),
     fetchJson(`${base}/embed/backfill/status`, headers)
   ]);
   const latestMs = parseCreatedAtMs(wikiCards?.entries?.[0]?.created_at ?? null);
   return c.json({
     wiki_card_total: typeof wikiCards?.total === "number" ? wikiCards.total : null,
     wiki_card_latest_ago_minutes: latestMs === null ? -1 : agoMinutes(now2, latestMs),
-    triplets_total: typeof graphStats?.total === "number" ? graphStats.total : null,
+    triplets_total: tripletTotal,
     embedded: embedStatus?.embedded ?? null,
     embed_enabled: embedStatus ? embedStatus.enabled === true : null,
     generated_at: new Date(now2).toISOString()
@@ -14944,6 +15029,27 @@ function findBestNodeMatch(searchTerm, nodeNames) {
   if (hits.length === 0) return null;
   return hits.reduce((a, b) => a.length <= b.length ? a : b);
 }
+async function tripletCount(env, owner) {
+  try {
+    const res = await kbdbFetch(env, `/records/triplet-stats?owner_id=${encodeURIComponent(owner)}`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.stats)) return null;
+    let total = 0;
+    for (const row of body.stats) {
+      if (typeof row?.triplet_count !== "number") return null;
+      total += row.triplet_count;
+    }
+    return total;
+  } catch {
+    return null;
+  }
+}
+async function tripletCensus(env, tenant2) {
+  const owned = await tripletCount(env, tenant2);
+  if (owned !== 0) return { owned, any: null };
+  return { owned, any: await tripletCount(env, "") };
+}
 async function fuzzyFindNode(env, tenant2, searchTerm) {
   try {
     const res = await kbdbFetch(env, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}`);
@@ -15045,8 +15151,7 @@ portalDataRouter.get(
       return c.json(mapGraphWorkflowOutput(result.data));
     }
     const base = graphBase(c.env);
-    const headers = {};
-    if (c.env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
+    const headers = graphHeaders(c.env);
     try {
       const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(nodeName)}`, { headers });
       if (!res.ok) {
@@ -15081,12 +15186,19 @@ portalDataRouter.get(
       return c.json({ error: "\u7121\u77E5\u8B58\u5716\u8B5C\u6AA2\u8996\u6B0A\u9650" }, 403);
     }
     const tenant2 = portalTenant(c.env);
-    const res = await kbdbFetch(c.env, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}`);
+    const [res, census] = await Promise.all([
+      kbdbFetch(c.env, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}&limit=500`),
+      tripletCensus(c.env, tenant2)
+    ]);
+    const tripletsTotal = census.owned;
     if (!res.ok) {
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     }
     const body = await res.json().catch(() => null);
-    const records = body && Array.isArray(body.records) ? body.records : [];
+    if (!body || !Array.isArray(body.records)) {
+      return c.json({ error: "\u4E09\u5143\u7D44\u8B80\u53D6\u5931\u6557\uFF1AKBDB \u56DE\u61C9\u4E0D\u662F\u9810\u671F\u7684 records \u6E05\u55AE" }, 502);
+    }
+    const records = body.records;
     const EDGE_CAP = 500;
     const seen = /* @__PURE__ */ new Set();
     const edges = [];
@@ -15112,7 +15224,24 @@ portalDataRouter.get(
       degree.set(o, (degree.get(o) ?? 0) + 1);
     }
     const nodes = [...degree.entries()].map(([name, d]) => ({ name, degree: d }));
-    return c.json({ nodes, edges, node_count: nodes.length, edge_count: edges.length, truncated });
+    let emptyReason = null;
+    if (nodes.length === 0) {
+      if (census.owned === null) emptyReason = "unreadable";
+      else if (census.owned > 0) emptyReason = "scope_mismatch";
+      else if (census.any === null) emptyReason = "unreadable";
+      else emptyReason = census.any > 0 ? "scope_mismatch" : "confirmed_empty";
+    }
+    return c.json({
+      nodes,
+      edges,
+      node_count: nodes.length,
+      edge_count: edges.length,
+      // 取到的 record 已達 KBDB 單頁上限 → 這張圖只是全庫的一部分，別讓 meta 看起來像全部
+      truncated: truncated || records.length >= 500,
+      triplets_total: tripletsTotal,
+      empty_confirmed: nodes.length > 0 || emptyReason === "confirmed_empty",
+      empty_reason: emptyReason
+    });
   })
 );
 portalDataRouter.get(
@@ -15237,6 +15366,151 @@ portalDataRouter.get(
       })
     );
     return c.json({ success: true, workflows, total: workflows.length, read_only: true });
+  })
+);
+function recordLibrary(values) {
+  const lib = values?.library;
+  return typeof lib === "string" && lib.trim() ? lib.trim() : null;
+}
+function canReadRecord(rec, tenant2, libraries) {
+  if ((rec.owner_id ?? "") !== tenant2) return false;
+  const lib = recordLibrary(rec.values);
+  return lib === null || canReadLibrary(libraries, lib);
+}
+portalDataRouter.get(
+  "/portal/data/map",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    if (libraries.length === 0) {
+      return c.json({ success: true, libraries: [], count: 0, note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002" });
+    }
+    const res = await kbdbFetch(c.env, `/map?owner_id=${encodeURIComponent(portalTenant(c.env))}`);
+    if (!res.ok) {
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    }
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.libraries)) {
+      return c.json({ error: "\u85CF\u66F8\u5730\u5716\u8B80\u53D6\u5931\u6557\uFF1AKBDB \u56DE\u61C9\u4E0D\u662F\u9810\u671F\u7684 libraries \u6E05\u55AE" }, 502);
+    }
+    const allowed = body.libraries.filter(
+      (l) => typeof l?.library === "string" && canReadLibrary(libraries, l.library)
+    );
+    return c.json({ success: true, libraries: allowed, count: allowed.length });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/map/:library",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const library = c.req.param("library");
+    if (!canReadLibrary(libraries, library)) return notFound(c);
+    const res = await kbdbFetch(
+      c.env,
+      `/map/${encodeURIComponent(library)}?owner_id=${encodeURIComponent(portalTenant(c.env))}`
+    );
+    if (res.status === 404) return notFound(c);
+    if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
+    return new Response(res.body, { status: 200, headers: { "Content-Type": "application/json" } });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/templates",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const res = await kbdbFetch(c.env, "/templates");
+    if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
+    return new Response(res.body, { status: 200, headers: { "Content-Type": "application/json" } });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/templates",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.name !== "string" || !body.name.trim() || !Array.isArray(body.slots)) {
+      return c.json({ error: "name \u8207 slots[] \u5FC5\u586B" }, 400);
+    }
+    const res = await kbdbFetch(c.env, "/templates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: body.name,
+        slots: body.slots,
+        description: typeof body.description === "string" ? body.description : void 0,
+        created_by: portalTenant(c.env)
+      })
+    });
+    return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/records/by-template/:template",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    if (libraries.length === 0) return c.json({ success: true, records: [], count: 0 });
+    const tenant2 = portalTenant(c.env);
+    const res = await kbdbFetch(
+      c.env,
+      `/records/by-template/${encodeURIComponent(c.req.param("template"))}?owner_id=${encodeURIComponent(tenant2)}`
+    );
+    if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.records)) {
+      return c.json({ error: "record \u8B80\u53D6\u5931\u6557\uFF1AKBDB \u56DE\u61C9\u4E0D\u662F\u9810\u671F\u7684 records \u6E05\u55AE" }, 502);
+    }
+    const records = body.records.filter((r) => canReadRecord(r, tenant2, libraries));
+    return c.json({ success: true, records, count: records.length });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/records/:recordId",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    if (libraries.length === 0) return notFound(c);
+    const res = await kbdbFetch(c.env, `/records/${encodeURIComponent(c.req.param("recordId"))}`);
+    if (res.status === 404) return notFound(c);
+    if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
+    const body = await res.json().catch(() => null);
+    const record = body?.record;
+    if (!record) return notFound(c);
+    if (!canReadRecord(record, portalTenant(c.env), libraries)) return notFound(c);
+    return c.json({ success: true, record });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/records",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    if (libraries.length === 0) {
+      return c.json({ error: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u7121\u6CD5\u5BEB\u5165" }, 403);
+    }
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.template !== "string" || !body.template.trim() || !body.values || typeof body.values !== "object") {
+      return c.json({ error: "template \u8207 values \u5FC5\u586B" }, 400);
+    }
+    const values = body.values;
+    const targetLib = recordLibrary(values);
+    if (targetLib !== null && !canReadLibrary(libraries, targetLib)) {
+      return c.json({ error: `\u7121\u300C${targetLib}\u300D\u5EAB\u7684\u6B0A\u9650\uFF0C\u4E0D\u80FD\u5BEB\u5165\u8A72\u5EAB` }, 403);
+    }
+    const res = await kbdbFetch(c.env, "/records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ template: body.template, values, owner_id: portalTenant(c.env) })
+    });
+    return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
   })
 );
 portalDataRouter.get(

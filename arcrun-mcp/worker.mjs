@@ -9093,6 +9093,8 @@ async function partnerAuthMiddleware(c, next) {
       }
       c.set("org_namespace", at.namespace);
       c.set("partner_token", at.namespace);
+      c.set("portal", at.portal);
+      c.set("auth_path", "oauth");
       await next();
       return;
     }
@@ -9101,6 +9103,7 @@ async function partnerAuthMiddleware(c, next) {
     const ns = c.env.MCP_OWNER_NAMESPACE || "leo";
     c.set("org_namespace", ns);
     c.set("partner_token", ns);
+    c.set("auth_path", "service");
     await next();
     return;
   }
@@ -9118,12 +9121,14 @@ async function partnerAuthMiddleware(c, next) {
     }
     c.set("org_namespace", info.org_namespace);
     c.set("partner_token", token);
+    c.set("auth_path", "service");
     await next();
     return;
   }
   if (c.env.ALLOW_PLAINTEXT_NAMESPACE === "true") {
     c.set("org_namespace", token);
     c.set("partner_token", token);
+    c.set("auth_path", "service");
     await next();
     return;
   }
@@ -9396,8 +9401,8 @@ var ZodIssueCode = util.arrayToEnum([
   "not_finite"
 ]);
 var quotelessJson = (obj) => {
-  const json = JSON.stringify(obj, null, 2);
-  return json.replace(/"([^"]+)":/g, "$1:");
+  const json2 = JSON.stringify(obj, null, 2);
+  return json2.replace(/"([^"]+)":/g, "$1:");
 };
 var ZodError = class _ZodError extends Error {
   get errors() {
@@ -16259,24 +16264,24 @@ var JSONSchemaGenerator = class {
         const _json = result.schema;
         switch (def.type) {
           case "string": {
-            const json = _json;
-            json.type = "string";
+            const json2 = _json;
+            json2.type = "string";
             const { minimum, maximum, format, patterns, contentEncoding } = schema4._zod.bag;
             if (typeof minimum === "number")
-              json.minLength = minimum;
+              json2.minLength = minimum;
             if (typeof maximum === "number")
-              json.maxLength = maximum;
+              json2.maxLength = maximum;
             if (format) {
-              json.format = formatMap[format] ?? format;
-              if (json.format === "")
-                delete json.format;
+              json2.format = formatMap[format] ?? format;
+              if (json2.format === "")
+                delete json2.format;
             }
             if (contentEncoding)
-              json.contentEncoding = contentEncoding;
+              json2.contentEncoding = contentEncoding;
             if (patterns && patterns.size > 0) {
               const regexes = [...patterns];
               if (regexes.length === 1)
-                json.pattern = regexes[0].source;
+                json2.pattern = regexes[0].source;
               else if (regexes.length > 1) {
                 result.schema.allOf = [
                   ...regexes.map((regex) => ({
@@ -16289,41 +16294,41 @@ var JSONSchemaGenerator = class {
             break;
           }
           case "number": {
-            const json = _json;
+            const json2 = _json;
             const { minimum, maximum, format, multipleOf, exclusiveMaximum, exclusiveMinimum } = schema4._zod.bag;
             if (typeof format === "string" && format.includes("int"))
-              json.type = "integer";
+              json2.type = "integer";
             else
-              json.type = "number";
+              json2.type = "number";
             if (typeof exclusiveMinimum === "number")
-              json.exclusiveMinimum = exclusiveMinimum;
+              json2.exclusiveMinimum = exclusiveMinimum;
             if (typeof minimum === "number") {
-              json.minimum = minimum;
+              json2.minimum = minimum;
               if (typeof exclusiveMinimum === "number") {
                 if (exclusiveMinimum >= minimum)
-                  delete json.minimum;
+                  delete json2.minimum;
                 else
-                  delete json.exclusiveMinimum;
+                  delete json2.exclusiveMinimum;
               }
             }
             if (typeof exclusiveMaximum === "number")
-              json.exclusiveMaximum = exclusiveMaximum;
+              json2.exclusiveMaximum = exclusiveMaximum;
             if (typeof maximum === "number") {
-              json.maximum = maximum;
+              json2.maximum = maximum;
               if (typeof exclusiveMaximum === "number") {
                 if (exclusiveMaximum <= maximum)
-                  delete json.maximum;
+                  delete json2.maximum;
                 else
-                  delete json.exclusiveMaximum;
+                  delete json2.exclusiveMaximum;
               }
             }
             if (typeof multipleOf === "number")
-              json.multipleOf = multipleOf;
+              json2.multipleOf = multipleOf;
             break;
           }
           case "boolean": {
-            const json = _json;
-            json.type = "boolean";
+            const json2 = _json;
+            json2.type = "boolean";
             break;
           }
           case "bigint": {
@@ -16371,23 +16376,23 @@ var JSONSchemaGenerator = class {
             break;
           }
           case "array": {
-            const json = _json;
+            const json2 = _json;
             const { minimum, maximum } = schema4._zod.bag;
             if (typeof minimum === "number")
-              json.minItems = minimum;
+              json2.minItems = minimum;
             if (typeof maximum === "number")
-              json.maxItems = maximum;
-            json.type = "array";
-            json.items = this.process(def.element, { ...params, path: [...params.path, "items"] });
+              json2.maxItems = maximum;
+            json2.type = "array";
+            json2.items = this.process(def.element, { ...params, path: [...params.path, "items"] });
             break;
           }
           case "object": {
-            const json = _json;
-            json.type = "object";
-            json.properties = {};
+            const json2 = _json;
+            json2.type = "object";
+            json2.properties = {};
             const shape = def.shape;
             for (const key in shape) {
-              json.properties[key] = this.process(shape[key], {
+              json2.properties[key] = this.process(shape[key], {
                 ...params,
                 path: [...params.path, "properties", key]
               });
@@ -16402,15 +16407,15 @@ var JSONSchemaGenerator = class {
               }
             }));
             if (requiredKeys.size > 0) {
-              json.required = Array.from(requiredKeys);
+              json2.required = Array.from(requiredKeys);
             }
             if (def.catchall?._zod.def.type === "never") {
-              json.additionalProperties = false;
+              json2.additionalProperties = false;
             } else if (!def.catchall) {
               if (this.io === "output")
-                json.additionalProperties = false;
+                json2.additionalProperties = false;
             } else if (def.catchall) {
-              json.additionalProperties = this.process(def.catchall, {
+              json2.additionalProperties = this.process(def.catchall, {
                 ...params,
                 path: [...params.path, "additionalProperties"]
               });
@@ -16418,15 +16423,15 @@ var JSONSchemaGenerator = class {
             break;
           }
           case "union": {
-            const json = _json;
-            json.anyOf = def.options.map((x, i) => this.process(x, {
+            const json2 = _json;
+            json2.anyOf = def.options.map((x, i) => this.process(x, {
               ...params,
               path: [...params.path, "anyOf", i]
             }));
             break;
           }
           case "intersection": {
-            const json = _json;
+            const json2 = _json;
             const a = this.process(def.left, {
               ...params,
               path: [...params.path, "allOf", 0]
@@ -16440,17 +16445,17 @@ var JSONSchemaGenerator = class {
               ...isSimpleIntersection(a) ? a.allOf : [a],
               ...isSimpleIntersection(b) ? b.allOf : [b]
             ];
-            json.allOf = allOf;
+            json2.allOf = allOf;
             break;
           }
           case "tuple": {
-            const json = _json;
-            json.type = "array";
+            const json2 = _json;
+            json2.type = "array";
             const prefixItems = def.items.map((x, i) => this.process(x, { ...params, path: [...params.path, "prefixItems", i] }));
             if (this.target === "draft-2020-12") {
-              json.prefixItems = prefixItems;
+              json2.prefixItems = prefixItems;
             } else {
-              json.items = prefixItems;
+              json2.items = prefixItems;
             }
             if (def.rest) {
               const rest = this.process(def.rest, {
@@ -16458,29 +16463,29 @@ var JSONSchemaGenerator = class {
                 path: [...params.path, "items"]
               });
               if (this.target === "draft-2020-12") {
-                json.items = rest;
+                json2.items = rest;
               } else {
-                json.additionalItems = rest;
+                json2.additionalItems = rest;
               }
             }
             if (def.rest) {
-              json.items = this.process(def.rest, {
+              json2.items = this.process(def.rest, {
                 ...params,
                 path: [...params.path, "items"]
               });
             }
             const { minimum, maximum } = schema4._zod.bag;
             if (typeof minimum === "number")
-              json.minItems = minimum;
+              json2.minItems = minimum;
             if (typeof maximum === "number")
-              json.maxItems = maximum;
+              json2.maxItems = maximum;
             break;
           }
           case "record": {
-            const json = _json;
-            json.type = "object";
-            json.propertyNames = this.process(def.keyType, { ...params, path: [...params.path, "propertyNames"] });
-            json.additionalProperties = this.process(def.valueType, {
+            const json2 = _json;
+            json2.type = "object";
+            json2.propertyNames = this.process(def.keyType, { ...params, path: [...params.path, "propertyNames"] });
+            json2.additionalProperties = this.process(def.valueType, {
               ...params,
               path: [...params.path, "additionalProperties"]
             });
@@ -16499,17 +16504,17 @@ var JSONSchemaGenerator = class {
             break;
           }
           case "enum": {
-            const json = _json;
+            const json2 = _json;
             const values = getEnumValues(def.entries);
             if (values.every((v) => typeof v === "number"))
-              json.type = "number";
+              json2.type = "number";
             if (values.every((v) => typeof v === "string"))
-              json.type = "string";
-            json.enum = values;
+              json2.type = "string";
+            json2.enum = values;
             break;
           }
           case "literal": {
-            const json = _json;
+            const json2 = _json;
             const vals = [];
             for (const val of def.values) {
               if (val === void 0) {
@@ -16530,23 +16535,23 @@ var JSONSchemaGenerator = class {
             if (vals.length === 0) {
             } else if (vals.length === 1) {
               const val = vals[0];
-              json.type = val === null ? "null" : typeof val;
-              json.const = val;
+              json2.type = val === null ? "null" : typeof val;
+              json2.const = val;
             } else {
               if (vals.every((v) => typeof v === "number"))
-                json.type = "number";
+                json2.type = "number";
               if (vals.every((v) => typeof v === "string"))
-                json.type = "string";
+                json2.type = "string";
               if (vals.every((v) => typeof v === "boolean"))
-                json.type = "string";
+                json2.type = "string";
               if (vals.every((v) => v === null))
-                json.type = "null";
-              json.enum = vals;
+                json2.type = "null";
+              json2.enum = vals;
             }
             break;
           }
           case "file": {
-            const json = _json;
+            const json2 = _json;
             const file = {
               type: "string",
               format: "binary",
@@ -16560,15 +16565,15 @@ var JSONSchemaGenerator = class {
             if (mime) {
               if (mime.length === 1) {
                 file.contentMediaType = mime[0];
-                Object.assign(json, file);
+                Object.assign(json2, file);
               } else {
-                json.anyOf = mime.map((m) => {
+                json2.anyOf = mime.map((m) => {
                   const mFile = { ...file, contentMediaType: m };
                   return mFile;
                 });
               }
             } else {
-              Object.assign(json, file);
+              Object.assign(json2, file);
             }
             break;
           }
@@ -16589,8 +16594,8 @@ var JSONSchemaGenerator = class {
             break;
           }
           case "success": {
-            const json = _json;
-            json.type = "boolean";
+            const json2 = _json;
+            json2.type = "boolean";
             break;
           }
           case "default": {
@@ -16625,12 +16630,12 @@ var JSONSchemaGenerator = class {
             break;
           }
           case "template_literal": {
-            const json = _json;
+            const json2 = _json;
             const pattern = schema4._zod.pattern;
             if (!pattern)
               throw new Error("Pattern not found in template literal");
-            json.type = "string";
-            json.pattern = pattern.source;
+            json2.type = "string";
+            json2.pattern = pattern.source;
             break;
           }
           case "pipe": {
@@ -25680,27 +25685,27 @@ function lineLengthOverLimit(str, lineWidth, indentLength) {
   return true;
 }
 function doubleQuotedString(value, ctx) {
-  const json = JSON.stringify(value);
+  const json2 = JSON.stringify(value);
   if (ctx.options.doubleQuotedAsJSON)
-    return json;
+    return json2;
   const { implicitKey } = ctx;
   const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
   const indent = ctx.indent || (containsDocumentMarker(value) ? "  " : "");
   let str = "";
   let start = 0;
-  for (let i = 0, ch = json[i]; ch; ch = json[++i]) {
-    if (ch === " " && json[i + 1] === "\\" && json[i + 2] === "n") {
-      str += json.slice(start, i) + "\\ ";
+  for (let i = 0, ch = json2[i]; ch; ch = json2[++i]) {
+    if (ch === " " && json2[i + 1] === "\\" && json2[i + 2] === "n") {
+      str += json2.slice(start, i) + "\\ ";
       i += 1;
       start = i;
       ch = "\\";
     }
     if (ch === "\\")
-      switch (json[i + 1]) {
+      switch (json2[i + 1]) {
         case "u":
           {
-            str += json.slice(start, i);
-            const code = json.substr(i + 2, 4);
+            str += json2.slice(start, i);
+            const code = json2.substr(i + 2, 4);
             switch (code) {
               case "0000":
                 str += "\\0";
@@ -25730,23 +25735,23 @@ function doubleQuotedString(value, ctx) {
                 if (code.substr(0, 2) === "00")
                   str += "\\x" + code.substr(2);
                 else
-                  str += json.substr(i, 6);
+                  str += json2.substr(i, 6);
             }
             i += 5;
             start = i + 1;
           }
           break;
         case "n":
-          if (implicitKey || json[i + 2] === '"' || json.length < minMultiLineLength) {
+          if (implicitKey || json2[i + 2] === '"' || json2.length < minMultiLineLength) {
             i += 1;
           } else {
-            str += json.slice(start, i) + "\n\n";
-            while (json[i + 2] === "\\" && json[i + 3] === "n" && json[i + 4] !== '"') {
+            str += json2.slice(start, i) + "\n\n";
+            while (json2[i + 2] === "\\" && json2[i + 3] === "n" && json2[i + 4] !== '"') {
               str += "\n";
               i += 2;
             }
             str += indent;
-            if (json[i + 2] === " ")
+            if (json2[i + 2] === " ")
               str += "\\";
             i += 1;
             start = i + 1;
@@ -25756,7 +25761,7 @@ function doubleQuotedString(value, ctx) {
           i += 1;
       }
   }
-  str = start ? str + json.slice(start) : json;
+  str = start ? str + json2.slice(start) : json2;
   return implicitKey ? str : foldFlowLines(str, indent, FOLD_QUOTED, getFoldOptions(ctx, false));
 }
 function singleQuotedString(value, ctx) {
@@ -27829,11 +27834,11 @@ var Document = class _Document {
       throw new Error(`With a null YAML version, the { schema: Schema } option is required`);
   }
   // json & jsonArg are only used from toJSON()
-  toJS({ json, jsonArg, mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
+  toJS({ json: json2, jsonArg, mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
     const ctx = {
       anchors: /* @__PURE__ */ new Map(),
       doc: this,
-      keep: !json,
+      keep: !json2,
       mapAsMap: mapAsMap === true,
       mapKeyWarned: false,
       maxAliasCount: typeof maxAliasCount === "number" ? maxAliasCount : 100
@@ -31708,16 +31713,73 @@ function registerRecipeDelete(server, env) {
   );
 }
 
-// mcp/src/tools/kbdb_data.ts
-function registerAllKbdbDataTools(server, env) {
-  registerCreateTemplate(server, env);
-  registerListTemplates(server, env);
-  registerCreateRecord(server, env);
-  registerGetRecord(server, env);
-  registerQuery(server, env);
-  registerSearch(server, env);
+// mcp/src/lib/portal-client.ts
+async function portalFetch(env, session, path, opts = {}) {
+  if (!env.CYPHER_EXECUTOR) {
+    throw new Error("CYPHER_EXECUTOR service binding not configured");
+  }
+  const url = new URL(`https://cypher${path}`);
+  for (const [k, v] of Object.entries(opts.query ?? {})) {
+    if (v !== void 0 && v !== "") url.searchParams.set(k, String(v));
+  }
+  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
+    method: opts.method ?? "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session}`
+    },
+    body: opts.body !== void 0 ? JSON.stringify(opts.body) : void 0
+  });
 }
-function registerCreateTemplate(server, env) {
+function resolveKnowledgeIdentity(authPath, portal) {
+  if (authPath !== "oauth") return { kind: "service" };
+  return portal?.session ? { kind: "portal", portal } : { kind: "stale" };
+}
+function staleIdentityError() {
+  return errorResponse(
+    "identity_missing",
+    "\u9019\u689D MCP \u9023\u7DDA\u662F\u820A\u7248\u7C3D\u767C\u7684 token\uFF0C\u88E1\u9762\u6C92\u6709\u767B\u5165\u8005\u8EAB\u5206\uFF0C\u56E0\u6B64\u67E5\u4E0D\u5230\u4EFB\u4F55\u77E5\u8B58\u5167\u5BB9\u3002\u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u5728 claude.ai \u7684 connector \u8A2D\u5B9A\u88E1\u91CD\u65B0\u6388\u6B0A\u3001\u8F38\u5165\u4F60\u7684 Portal \u5E33\u5BC6\uFF09\u5373\u53EF\u2014\u2014\u4E0D\u9700\u8981\u53E6\u5916\u627E\u4EFB\u4F55 credential \u6216\u91D1\u9470\u3002",
+    [
+      "\u5230 claude.ai \u2192 Settings \u2192 Connectors\uFF0C\u628A\u9019\u500B connector \u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u6703\u8DF3\u51FA\u8F38\u5165 Portal \u5E33\u5BC6\u7684\u9801\u9762\uFF09",
+      "\u91CD\u9023\u5F8C kbdb_* \u5168\u90E8\u5DE5\u5177\u90FD\u6703\u7528\u4F60\u9019\u500B\u5E33\u865F\u7684\u6B0A\u9650\u67E5\u8A62"
+    ]
+  );
+}
+async function portalError(res, what) {
+  const detail = await res.text().catch(() => "");
+  if (res.status === 401) {
+    return errorResponse(
+      "session_expired",
+      `${what}\u5931\u6557\uFF1A\u767B\u5165\u968E\u6BB5\u5DF2\u904E\u671F\uFF08portal session \u5230\u671F\u6216\u5DF2\u767B\u51FA\uFF09\u3002`,
+      [
+        "\u5230 claude.ai \u2192 Settings \u2192 Connectors \u91CD\u65B0\u9023\u7DDA\u9019\u500B connector\uFF08\u91CD\u65B0\u8F38\u5165 Portal \u5E33\u5BC6\uFF09",
+        "\u91CD\u9023\u5F8C\u6B0A\u9650\u8207\u4F60\u5728 portal \u7DB2\u9801\u4E0A\u770B\u5230\u7684\u4E00\u81F4"
+      ],
+      detail
+    );
+  }
+  if (res.status === 403) {
+    return errorResponse(
+      "forbidden",
+      `${what}\u5931\u6557\uFF1A\u9019\u500B\u5E33\u865F\u6C92\u6709\u9019\u9805\u6B0A\u9650\uFF08\u5E33\u865F\u53EF\u80FD\u5DF2\u505C\u7528\uFF0C\u6216\u6C92\u6709\u88AB\u6388\u6B0A\u8A72\u77E5\u8B58\u5EAB\uFF09\u3002`,
+      ["\u8ACB\u77E5\u8B58\u5EAB\u7BA1\u7406\u54E1\u5728 portal \u7684\u5E33\u865F\u7BA1\u7406\u88E1\u78BA\u8A8D\u4F60\u7684\u72C0\u614B\u8207\u53EF\u7528\u77E5\u8B58\u5EAB"],
+      detail
+    );
+  }
+  return errorResponse(`portal_${res.status}`, `${what}\u5931\u6557\uFF08HTTP ${res.status}\uFF09`, ["\u7A0D\u5F8C\u91CD\u8A66"], detail);
+}
+
+// mcp/src/tools/kbdb_data.ts
+var OWNER_IGNORED_HINT = "owner_id \u5728\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF1A\u67E5\u8A62\u7BC4\u570D\u7531\u4F60\u7684\u5E33\u865F\u6B0A\u9650\u6C7A\u5B9A\uFF08\u8207\u4F60\u5728 portal \u7DB2\u9801\u770B\u5230\u7684\u4E00\u81F4\uFF09";
+function registerAllKbdbDataTools(server, env, identity) {
+  registerCreateTemplate(server, env, identity);
+  registerListTemplates(server, env, identity);
+  registerCreateRecord(server, env, identity);
+  registerGetRecord(server, env, identity);
+  registerQuery(server, env, identity);
+  registerSearch(server, env, identity);
+}
+function registerCreateTemplate(server, env, identity) {
   server.tool(
     "kbdb_create_template",
     "\u5EFA\u4E00\u500B KBDB template\uFF08\u842C\u7528\u8868\u88E1\u7684\u4E00\u7A2E\u8CC7\u6599\u5F62\u72C0\uFF0C\u985E Supabase \u7684\u865B\u64EC\u8868\uFF09\u3002KBDB \u4E0D\u80FD\u5EFA\u771F\u7684\u8CC7\u6599\u8868\u2014\u2014\u8981\u5B58\u300C\u65B0\u985E\u578B\u300D\u7684\u7D50\u69CB\u5316\u8CC7\u6599\u6642\uFF0C\u5C31\u5EFA\u4E00\u500B template \u4E26\u7528 slots \u5217\u51FA\u5B83\u7684\u6B04\u4F4D\u540D\uFF0C\u4E4B\u5F8C\u7528 kbdb_create_record \u586B\u503C\u3002\u4F8B\uFF1Aname='contact', slots=['name','email','phone']\u3002",
@@ -31725,16 +31787,21 @@ function registerCreateTemplate(server, env) {
       name: external_exports.string().min(1).describe("template \u540D\u7A31\uFF08\u552F\u4E00\u8B58\u5225\uFF0C\u4E4B\u5F8C\u586B record \u7528\u9019\u500B\u540D\u5B57\uFF09\uFF0C\u5982 'contact' / 'note'"),
       slots: external_exports.array(external_exports.string().min(1)).min(1).describe("\u6B04\u4F4D\u540D\u6E05\u55AE\uFF0C\u5982 ['name','email','phone']"),
       description: external_exports.string().optional().describe("\u9019\u500B template \u7528\u9014\u7684\u7C21\u8FF0\uFF08\u9078\u586B\uFF09"),
-      created_by: external_exports.string().optional().describe("\u5EFA\u7ACB\u8005\u6A19\u8A18\uFF08\u9078\u586B\uFF09")
+      created_by: external_exports.string().optional().describe("\u5EFA\u7ACB\u8005\u6A19\u8A18\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u7531 server \u8A18\u9304\uFF0C\u4E0D\u5403\u6B64\u503C\uFF09")
     },
     async ({ name, slots, description, created_by }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
-        const res = await kbdbFetch(env, "/templates", {
+        const res = identity.kind === "portal" ? await portalFetch(env, identity.portal.session, "/portal/data/templates", {
+          method: "POST",
+          body: { name, slots, description }
+        }) : await kbdbFetch(env, "/templates", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, slots, description, created_by })
         });
         if (!res.ok) {
+          if (identity.kind === "portal") return portalError(res, `\u5EFA template\u300C${name}\u300D`);
           return errorResponse("create_template_failed", `\u5EFA template \u5931\u6557`, ["\u6AA2\u67E5 name \u662F\u5426\u91CD\u8907", "\u78BA\u8A8D slots \u662F\u975E\u7A7A\u5B57\u4E32\u9663\u5217"], await res.text().catch(() => ""));
         }
         const data = await res.json();
@@ -31747,54 +31814,70 @@ function registerCreateTemplate(server, env) {
     }
   );
 }
-function registerListTemplates(server, env) {
+function registerListTemplates(server, env, identity) {
   server.tool(
     "kbdb_list_templates",
     "\u5217\u51FA KBDB \u88E1\u6240\u6709 template\uFF08\u5DF2\u5B9A\u7FA9\u7684\u8CC7\u6599\u5F62\u72C0\uFF09\u3002\u8981\u5B58\u8CC7\u6599\u524D\u5148\u770B\u6709\u6C92\u6709\u73FE\u6210 template \u53EF\u7528\uFF0C\u6C92\u6709\u518D kbdb_create_template\u3002",
     {},
     async () => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
-        const res = await kbdbFetch(env, "/templates");
-        if (!res.ok) return errorResponse("list_templates_failed", `\u5217 template \u5931\u6557`, ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
+        const res = identity.kind === "portal" ? await portalFetch(env, identity.portal.session, "/portal/data/templates") : await kbdbFetch(env, "/templates");
+        if (!res.ok) {
+          if (identity.kind === "portal") return portalError(res, "\u5217 template");
+          return errorResponse("list_templates_failed", `\u5217 template \u5931\u6557`, ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
+        }
         const data = await res.json();
-        return successResponse(data, ["\u6BCF\u500B template \u7684 slots_json \u662F\u5B83\u7684\u6B04\u4F4D\u6E05\u55AE", "\u586B\u8CC7\u6599\u7528 kbdb_create_record"]);
+        return successResponse(data, [
+          "\u6BCF\u500B template \u7684 slots_json \u662F\u5B83\u7684\u6B04\u4F4D\u6E05\u55AE",
+          "\u586B\u8CC7\u6599\u7528 kbdb_create_record",
+          "template \u662F\u5168\u57DF\u5171\u4EAB\u7684\u300C\u8CC7\u6599\u5F62\u72C0\u300D\u5B9A\u7FA9\uFF08schema\uFF09\uFF0C\u4E0D\u542B\u4EFB\u4F55\u4EBA\u7684\u5167\u5BB9\u2014\u2014\u5167\u5BB9\u7684\u6B0A\u9650\u5728 record/entry \u90A3\u5C64"
+        ]);
       } catch (e) {
         return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
       }
     }
   );
 }
-function registerCreateRecord(server, env) {
+function registerCreateRecord(server, env, identity) {
   server.tool(
     "kbdb_create_record",
     "\u4F9D\u67D0 template \u586B\u4E00\u7B46 record\uFF08\u4E00\u5217\u8CC7\u6599\uFF09\u3002values \u662F {slot\u540D: \u5167\u5BB9}\uFF0Cslot \u540D\u8981\u5C0D\u5F97\u4E0A template \u7684 slots\u3002template \u4E0D\u5B58\u5728\u6703\u5931\u6557\u2014\u2014\u5148 kbdb_list_templates \u78BA\u8A8D\uFF0C\u6216 kbdb_create_template \u5EFA\u4E00\u500B\u3002",
     {
       template: external_exports.string().min(1).describe("template \u7684 name \u6216 id"),
       values: external_exports.record(external_exports.string()).describe("\u6B04\u4F4D\u5167\u5BB9 {slot\u540D: \u5B57\u4E32\u5167\u5BB9}\uFF0C\u5982 {name:'Leo', email:'leo@x.com'}"),
-      owner_id: external_exports.string().optional().describe("\u8CC7\u6599\u6B78\u5C6C\u6A19\u8A18\uFF08\u9078\u586B\uFF0C\u5982\u5C08\u6848 id / \u7528\u6236 id\uFF09")
+      owner_id: external_exports.string().optional().describe("\u8CC7\u6599\u6B78\u5C6C\u6A19\u8A18\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E00\u5F8B\u7531 server \u5B9A\u6210\u4F60\u7684\u6B78\u5C6C\uFF0C\u4E0D\u5403\u6B64\u503C\uFF09")
     },
     async ({ template, values, owner_id }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
-        const res = await kbdbFetch(env, "/records", {
+        const res = identity.kind === "portal" ? await portalFetch(env, identity.portal.session, "/portal/data/records", {
+          method: "POST",
+          body: { template, values }
+        }) : await kbdbFetch(env, "/records", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ template, values, owner_id })
         });
         if (!res.ok) {
+          if (identity.kind === "portal") return portalError(res, `\u586B record\uFF08template\u300C${template}\u300D\uFF09`);
           return errorResponse("create_record_failed", `\u586B record \u5931\u6557`, [
             `\u78BA\u8A8D template\u300C${template}\u300D\u5B58\u5728\uFF08kbdb_list_templates\uFF09`,
             "values \u7684 slot \u540D\u8981\u5C0D\u5F97\u4E0A template \u7684 slots"
           ], await res.text().catch(() => ""));
         }
         const data = await res.json();
-        return successResponse(data, [`\u5DF2\u5B58\u5165\u3002\u7528 kbdb_query(template='${template}') \u5217\u51FA\u6B64 template \u7684\u6240\u6709 record`]);
+        return successResponse(data, [
+          `\u5DF2\u5B58\u5165\u3002\u7528 kbdb_query(template='${template}') \u5217\u51FA\u6B64 template \u7684\u6240\u6709 record`,
+          ...identity.kind === "portal" ? [OWNER_IGNORED_HINT] : []
+        ]);
       } catch (e) {
         return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
       }
     }
   );
 }
-function registerGetRecord(server, env) {
+function registerGetRecord(server, env, identity) {
   server.tool(
     "kbdb_get_record",
     "\u7528 record_id \u53D6\u4E00\u7B46 record \u7684\u6240\u6709\u6B04\u4F4D\u5167\u5BB9\u3002record_id \u5F9E kbdb_create_record \u56DE\u50B3\u6216 kbdb_query \u5217\u51FA\u53D6\u5F97\u3002",
@@ -31802,10 +31885,19 @@ function registerGetRecord(server, env) {
       record_id: external_exports.string().min(1).describe("record \u7684 id\uFF08rec_xxx\uFF09")
     },
     async ({ record_id }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
-        const res = await kbdbFetch(env, `/records/${encodeURIComponent(record_id)}`);
-        if (res.status === 404) return errorResponse("not_found", `record\u300C${record_id}\u300D\u4E0D\u5B58\u5728`, ["\u78BA\u8A8D record_id \u6B63\u78BA", "\u7528 kbdb_query \u5217\u51FA\u67D0 template \u7684 record \u53D6 id"]);
-        if (!res.ok) return errorResponse("get_record_failed", `\u53D6 record \u5931\u6557`, ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
+        const res = identity.kind === "portal" ? await portalFetch(env, identity.portal.session, `/portal/data/records/${encodeURIComponent(record_id)}`) : await kbdbFetch(env, `/records/${encodeURIComponent(record_id)}`);
+        if (res.status === 404) {
+          return errorResponse("not_found", `\u67E5\u7121 record\u300C${record_id}\u300D\uFF08\u4E0D\u5B58\u5728\uFF0C\u6216\u4E0D\u5728\u4F60\u7684\u6B0A\u9650\u7BC4\u570D\u5167\uFF09`, [
+            "\u78BA\u8A8D record_id \u6B63\u78BA",
+            "\u7528 kbdb_query \u5217\u51FA\u67D0 template \u7684 record \u53D6 id"
+          ]);
+        }
+        if (!res.ok) {
+          if (identity.kind === "portal") return portalError(res, "\u53D6 record");
+          return errorResponse("get_record_failed", `\u53D6 record \u5931\u6557`, ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
+        }
         const data = await res.json();
         return successResponse(data);
       } catch (e) {
@@ -31814,47 +31906,74 @@ function registerGetRecord(server, env) {
     }
   );
 }
-function registerQuery(server, env) {
+function registerQuery(server, env, identity) {
   server.tool(
     "kbdb_query",
     "\u5217\u51FA\u67D0 template \u5E95\u4E0B\u7684\u6240\u6709 record\uFF08\u7D50\u69CB\u5316\u67E5\u8A62\uFF0C\u6309 template \u53D6\u6574\u6279\u8CC7\u6599\uFF09\u3002\u8981\u6309\u95DC\u9375\u5B57\u627E\u5167\u5BB9\u7528 kbdb_search\u3002",
     {
       template: external_exports.string().min(1).describe("template \u7684 name \u6216 id"),
-      owner_id: external_exports.string().optional().describe("\u53EA\u53D6\u67D0\u6B78\u5C6C\u7684 record\uFF08\u9078\u586B\uFF09")
+      owner_id: external_exports.string().optional().describe("\u53EA\u53D6\u67D0\u6B78\u5C6C\u7684 record\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09")
     },
     async ({ template, owner_id }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
-        const path = `/records/by-template/${encodeURIComponent(template)}` + (owner_id ? `?owner_id=${encodeURIComponent(owner_id)}` : "");
-        const res = await kbdbFetch(env, path);
-        if (!res.ok) return errorResponse("query_failed", `\u67E5\u8A62 record \u5931\u6557`, [`\u78BA\u8A8D template\u300C${template}\u300D\u5B58\u5728`], await res.text().catch(() => ""));
+        const res = identity.kind === "portal" ? await portalFetch(
+          env,
+          identity.portal.session,
+          `/portal/data/records/by-template/${encodeURIComponent(template)}`
+        ) : await kbdbFetch(
+          env,
+          `/records/by-template/${encodeURIComponent(template)}` + (owner_id ? `?owner_id=${encodeURIComponent(owner_id)}` : "")
+        );
+        if (!res.ok) {
+          if (identity.kind === "portal") return portalError(res, `\u67E5\u8A62 template\u300C${template}\u300D\u7684 record`);
+          return errorResponse("query_failed", `\u67E5\u8A62 record \u5931\u6557`, [`\u78BA\u8A8D template\u300C${template}\u300D\u5B58\u5728`], await res.text().catch(() => ""));
+        }
         const data = await res.json();
-        return successResponse(data, ["\u7528 kbdb_get_record(record_id) \u53D6\u55AE\u7B46\u5168\u6587", "\u6309\u95DC\u9375\u5B57\u627E\u5167\u5BB9\u6539\u7528 kbdb_search"]);
+        return successResponse(data, [
+          "\u7528 kbdb_get_record(record_id) \u53D6\u55AE\u7B46\u5168\u6587",
+          "\u6309\u95DC\u9375\u5B57\u627E\u5167\u5BB9\u6539\u7528 kbdb_search",
+          ...identity.kind === "portal" ? [OWNER_IGNORED_HINT] : []
+        ]);
       } catch (e) {
         return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
       }
     }
   );
 }
-function registerSearch(server, env) {
+function registerSearch(server, env, identity) {
   server.tool(
     "kbdb_search",
     "\u641C\u5C0B KBDB \u5167\u5BB9\u3002mode='keyword'\uFF08\u9810\u8A2D\uFF0CD1 LIKE \u95DC\u9375\u5B57\uFF0C\u57FA\u672C\u76E4\u6C38\u9060\u53EF\u7528\uFF09\u6216 'semantic'\uFF08AI \u5411\u91CF\u8A9E\u7FA9\u641C\u5C0B\uFF0C\u9700\u5148\u958B embed \u6A21\u7D44\uFF09\u3002\u8A9E\u7FA9\u6C92\u958B\u6642\u6703\u81EA\u52D5\u964D\u7D1A\u95DC\u9375\u5B57\u4E26\u544A\u8A34\u4F60\u600E\u9EBC\u958B\u3002\u8981\u6309 template \u53D6\u6574\u6279\u7D50\u69CB\u5316\u8CC7\u6599\u7528 kbdb_query\u3002",
     {
       q: external_exports.string().min(1).describe("\u641C\u5C0B\u95DC\u9375\u5B57 / \u8A9E\u7FA9\u67E5\u8A62\u53E5"),
-      owner_id: external_exports.string().optional().describe("\u9650\u5B9A\u67D0\u6B78\u5C6C\u7BC4\u570D\u5167\u641C\uFF08\u9078\u586B\uFF09"),
+      owner_id: external_exports.string().optional().describe("\u9650\u5B9A\u67D0\u6B78\u5C6C\u7BC4\u570D\u5167\u641C\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09"),
       source: external_exports.string().optional().describe("\u53EA\u641C\u67D0\u4F86\u6E90\uFF08ingest source.uri\uFF0C\u9078\u586B\uFF09"),
       mode: external_exports.enum(["keyword", "semantic"]).optional().describe("keyword\uFF08\u9810\u8A2D\uFF09\u6216 semantic\uFF08\u9700\u958B vectorize\uFF09")
     },
     async ({ q, owner_id, source, mode }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
-        const qs = new URLSearchParams({ q });
-        if (owner_id) qs.set("owner_id", owner_id);
-        if (source) qs.set("source", source);
-        if (mode) qs.set("mode", mode);
-        const res = await kbdbFetch(env, `/entries/search?${qs.toString()}`);
-        if (!res.ok) return errorResponse("search_failed", `\u641C\u5C0B\u5931\u6557`, ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
+        let res;
+        if (identity.kind === "portal") {
+          res = await portalFetch(env, identity.portal.session, "/portal/data/search", {
+            query: { q, mode }
+          });
+        } else {
+          const qs = new URLSearchParams({ q });
+          if (owner_id) qs.set("owner_id", owner_id);
+          if (source) qs.set("source", source);
+          if (mode) qs.set("mode", mode);
+          res = await kbdbFetch(env, `/entries/search?${qs.toString()}`);
+        }
+        if (!res.ok) {
+          if (identity.kind === "portal") return portalError(res, "\u641C\u5C0B");
+          return errorResponse("search_failed", `\u641C\u5C0B\u5931\u6557`, ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
+        }
         const data = await res.json();
         const hints = data.capability_hint ? [data.capability_hint, "\u8981\u958B\uFF1A\u8DDF\u7528\u6236\u78BA\u8A8D\u5F8C\uFF0CCC \u53EF\u4EE3\u958B\uFF08\u5BEB config kbdb_embed:true + acr update\uFF09"] : data.mode === "semantic" ? ["mode:semantic = AI \u5411\u91CF\u8A9E\u7FA9\u641C\u5C0B"] : ["mode:keyword = D1 LIKE\uFF08\u57FA\u672C\u76E4\uFF09", "\u60F3\u8981\u8A9E\u7FA9\u641C\u5C0B\uFF1Amode='semantic'\uFF08\u9700\u5148\u958B vectorize\uFF09"];
+        if (identity.kind === "portal") hints.push(OWNER_IGNORED_HINT);
+        if (data.note) hints.push(data.note);
         return successResponse(data, hints);
       } catch (e) {
         return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
@@ -31870,10 +31989,10 @@ var INSTALL_HINTS = [
   "\u5B89\u88DD\uFF1A\u62FF registry/examples/graph-neighbors/workflow.yaml\uFF0Ccall arcrun_push_workflow \u90E8\u7F72\uFF08name \u5FC5\u9808\u662F graph_neighbors\uFF09",
   "\u6216\u7528 CLI\uFF1Aacr push registry/examples/graph-neighbors/workflow.yaml"
 ];
-function registerAllKbdbGraphTools(server, env, orgNamespace) {
-  registerGraphNeighbors(server, env, orgNamespace);
+function registerAllKbdbGraphTools(server, env, orgNamespace, identity) {
+  registerGraphNeighbors(server, env, orgNamespace, identity);
 }
-function registerGraphNeighbors(server, env, orgNamespace) {
+function registerGraphNeighbors(server, env, orgNamespace, identity) {
   server.tool(
     "kbdb_graph_neighbors",
     "knowledge graph \u9130\u5C45\u67E5\u8A62\uFF081-hop/N-hop \u95DC\u4FC2\u904D\u6B77\uFF09\uFF1A\u7D66\u4E00\u500B\u7BC0\u9EDE\u540D\uFF0C\u6CBF KBDB triplet\uFF08subject-predicate-object\uFF09\u8A18\u9304\u505A BFS\uFF0C\u56DE\u50B3 depth \u8DF3\u5167\u7684\u9130\u5C45\u6E05\u55AE\uFF08[{node, predicate, from, depth}]\uFF09\u3002\u8207 kbdb_search\uFF08\u95DC\u9375\u5B57/\u8A9E\u7FA9\uFF09\u4E92\u88DC\uFF1A\u627E\u300C\u8DDF X \u6709\u95DC\u4FC2\u7684\u6771\u897F\u300D\u7528\u672C\u5DE5\u5177\uFF0C\u627E\u300C\u5167\u5BB9\u542B\u95DC\u9375\u5B57\u7684\u6771\u897F\u300D\u7528 kbdb_search\u3002\u9700\u8981 namespace \u88E1\u5DF2\u90E8\u7F72 graph_neighbors workflow\uFF08\u6C92\u88DD\u6703\u56DE\u5B89\u88DD\u6307\u5F15\uFF0C\u4E0D\u6703 crash\uFF09\u3002",
@@ -31884,8 +32003,8 @@ function registerGraphNeighbors(server, env, orgNamespace) {
       depth: external_exports.number().int().min(1).max(10).optional().describe(
         "\u6700\u5927\u8DF3\u6578\uFF08N-hop\uFF09\uFF0C\u9810\u8A2D 1\uFF08\u53EA\u770B\u76F4\u63A5\u9130\u5C45\uFF09"
       ),
-      kbdb_base: external_exports.string().min(1).describe(
-        "\u4F60\u81EA\u5DF1\u90E8\u7F72\u7684 KBDB \u5C0D\u5916 base URL\uFF08\u5982 https://arcrun-kbdb.<\u4F60\u7684subdomain>.workers.dev \u6216 KBDB custom domain\uFF09\u3002workflow \u523B\u610F\u4E0D\u5BEB\u6B7B\u4EFB\u4F55\u4E00\u5BB6\u7684\u5EAB\u2014\u2014\u5E36\u932F\uFF08\u6216\u7167\u6284\u5225\u4EBA\u7684\u503C\uFF09\uFF1D\u67E5\u8A62\u6253\u9032\u5225\u4EBA\u7684\u5EAB"
+      kbdb_base: external_exports.string().min(1).optional().describe(
+        "\u3010\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u9700\u8981\uFF0C\u7559\u7A7A\u5373\u53EF\u3011\u4F60\u81EA\u5DF1\u90E8\u7F72\u7684 KBDB \u5C0D\u5916 base URL\u3002\u4EE5\u5E33\u5BC6\u9023\u7DDA\u7684 MCP \u7531 server \u7AEF\u81EA\u5DF1\u77E5\u9053\u8981\u67E5\u54EA\u500B\u5EAB\u2014\u2014\u4E0D\u5FC5\u3001\u4E5F\u4E0D\u8A72\u7531\u4F60\u6307\u5B9A\uFF08\u6307\u5B9A\u4E86\u4E5F\u4E0D\u6703\u63A1\u7528\uFF09\u3002\u53EA\u6709\u670D\u52D9\u7D1A token\uFF08static token / partner key\uFF09\u9023\u7DDA\u6642\u624D\u9700\u8981\u586B\u3002"
       ),
       template: external_exports.string().optional().describe(
         "triplet \u8A18\u9304\u7684 template \u540D\uFF0C\u9810\u8A2D 'graph_triplet'\uFF08\u4EE5\u5BE6\u969B\u90E8\u7F72\u7684 kbdb-graph-plugin triplet template \u70BA\u6E96\uFF0C\u4E0D\u78BA\u5B9A\u53EF kbdb_list_templates \u67E5\uFF09"
@@ -31895,6 +32014,34 @@ function registerGraphNeighbors(server, env, orgNamespace) {
       )
     },
     async ({ subject, depth, kbdb_base, template, directed }) => {
+      if (identity.kind === "stale") return staleIdentityError();
+      if (identity.kind === "portal") {
+        try {
+          const res = await portalFetch(
+            env,
+            identity.portal.session,
+            `/portal/data/graph/neighbors/${encodeURIComponent(subject)}`,
+            { query: { depth: depth ?? 1 } }
+          );
+          if (!res.ok) return portalError(res, `\u67E5\u300C${subject}\u300D\u7684\u9130\u5C45`);
+          const out = await res.json().catch(() => null);
+          return successResponse(out, [
+            `${out?.count ?? 0} \u500B\u9130\u5C45\uFF08depth \u4E0A\u9650 ${depth ?? 1}\uFF09`,
+            "count=0 \u4E14\u4E0D\u78BA\u5B9A\u8CC7\u6599\u6709\u6C92\u6709\u9032\u5716\uFF1Akbdb_query(template='triplet') \u770B\u4E09\u5143\u7D44\u8A18\u9304",
+            "\u627E\u95DC\u9375\u5B57\u5167\u5BB9\u6539\u7528 kbdb_search\uFF1B\u53D6\u55AE\u7B46\u5168\u6587\u7528 kbdb_get_record",
+            "\u67E5\u8A62\u7BC4\u570D\uFF1D\u4F60\u9019\u500B\u5E33\u865F\u88AB\u6388\u6B0A\u7684\u77E5\u8B58\u5EAB\uFF08\u8207 portal \u7DB2\u9801\u4E0A\u7684\u95DC\u806F\u6AA2\u8996\u4E00\u81F4\uFF09"
+          ]);
+        } catch (e) {
+          return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
+        }
+      }
+      if (!kbdb_base) {
+        return errorResponse(
+          "kbdb_base_required",
+          "\u4EE5\u670D\u52D9\u7D1A token \u9023\u7DDA\u6642\uFF0Cgraph \u67E5\u8A62\u9700\u8981 kbdb_base\uFF08\u4F60\u81EA\u5DF1 KBDB \u7684\u5C0D\u5916 URL\uFF09",
+          ["\u6539\u7528\u5E33\u5BC6\u9023\u7DDA\uFF08OAuth\uFF09\u5247\u4E0D\u9700\u8981\u6B64\u53C3\u6578", "\u6216\u5E36\u4E0A kbdb_base \u518D\u8A66\u4E00\u6B21"]
+        );
+      }
       if (!orgNamespace) {
         return errorResponse(
           "no_namespace",
@@ -32005,14 +32152,17 @@ function renderLibraryMapLines(libraries) {
 var MAP_FETCH_TIMEOUT_MS = 1500;
 var CACHE_TTL_OK_MS = 5 * 60 * 1e3;
 var CACHE_TTL_FAIL_MS = 60 * 1e3;
-var instructionsCache = null;
-async function buildLibraryMapInstructions(env) {
+var instructionsCache = /* @__PURE__ */ new Map();
+async function buildLibraryMapInstructions(env, identity) {
+  if (identity.kind === "stale") return null;
+  const cacheKey = identity.kind === "portal" ? `portal:${identity.portal.session}` : "service";
   const now = Date.now();
-  if (instructionsCache && instructionsCache.expiresAt > now) return instructionsCache.text;
+  const hit = instructionsCache.get(cacheKey);
+  if (hit && hit.expiresAt > now) return hit.text;
   let text = null;
   try {
     const res = await Promise.race([
-      kbdbFetch(env, "/map"),
+      identity.kind === "portal" ? portalFetch(env, identity.portal.session, "/portal/data/map") : kbdbFetch(env, "/map"),
       new Promise(
         (_, reject) => setTimeout(() => reject(new Error("library map fetch timeout")), MAP_FETCH_TIMEOUT_MS)
       )
@@ -32027,7 +32177,13 @@ async function buildLibraryMapInstructions(env) {
   } catch {
     text = null;
   }
-  instructionsCache = { text, expiresAt: now + (text ? CACHE_TTL_OK_MS : CACHE_TTL_FAIL_MS) };
+  instructionsCache.set(cacheKey, {
+    text,
+    expiresAt: now + (text ? CACHE_TTL_OK_MS : CACHE_TTL_FAIL_MS)
+  });
+  if (instructionsCache.size > 64) {
+    for (const [k, v] of instructionsCache) if (v.expiresAt <= now) instructionsCache.delete(k);
+  }
   return text;
 }
 
@@ -32036,10 +32192,10 @@ var RECOMPUTE_HINTS = [
   "\u5730\u5716\u6BCF\u6B21\u67E5\u8A62\u90FD\u6703\u81EA\u52D5\u6838\u5C0D\u5373\u6642\u4E09\u5143\u7D44\u6578\u4E26\u91CD\u7B97\u904E\u671F\u7684\u5EAB\uFF0C\u4E0D\u5FC5\u624B\u52D5\u8655\u7406",
   "\u5C11\u898B\u60C5\u6CC1\uFF08\u820A\u4E09\u5143\u7D44\u6C92\u6709 library \u6A19\u8A18\uFF09\u624D\u9700\u8981\u624B\u52D5\uFF1APOST /map/recompute?library=<\u5EAB\u540D>\uFF08\u53EF\u5E36 body {narrative, source_prefix}\uFF09"
 ];
-function registerAllKbdbMapTools(server, env) {
-  registerGetMap(server, env);
+function registerAllKbdbMapTools(server, env, identity) {
+  registerGetMap(server, env, identity);
 }
-function registerGetMap(server, env) {
+function registerGetMap(server, env, identity) {
   server.tool(
     "kbdb_get_map",
     "\u85CF\u66F8\u5730\u5716\uFF1AKBDB \u5168\u9928\u5C0E\u89BD\u3002\u4E0D\u5E36\u53C3\u6578\uFF1D\u5168\u9928\u5730\u5716\uFF08\u6BCF\u5EAB\u4E00\u884C\uFF1A\u5EAB\u540D\uFF0Bnarrative\uFF0B\u6838\u5FC3 top 3 entities\uFF0Btriplet \u6578\uFF09\uFF0C\u5E36 library \u53C3\u6578\uFF1D\u8A72\u5EAB\u8A73\u5716\uFF08\u5B8C\u6574 top_entities/relation_profile/\u8DE8\u5EAB bridges\uFF09\u3002\u4E0D\u78BA\u5B9A\u8A72\u67E5\u4EC0\u9EBC\u6642\uFF0C\u5148\u547C\u53EB\u6B64\u5DE5\u5177\u2014\u2014\u5148\u770B\u5730\u5716\u5B9A\u4F4D\u8A72\u9032\u54EA\u500B\u5EAB\uFF0C\u518D\u7528 kbdb_search\uFF08\u95DC\u9375\u5B57/\u8A9E\u7FA9\uFF09\u6216 kbdb_graph_neighbors\uFF08\u95DC\u4FC2\u904D\u6B77\uFF09\u9032\u5EAB\u67E5\u7D30\u7BC0\u3002",
@@ -32047,13 +32203,19 @@ function registerGetMap(server, env) {
       library: external_exports.string().min(1).optional().describe(
         "\u5EAB\u540D\uFF08\u5982 'kb'\uFF0F'notes'\uFF09\u3002\u5E36\u4E86\u56DE\u8A72\u5EAB\u8A73\u5716\uFF1B\u4E0D\u5E36\u56DE\u5168\u9928\u5730\u5716\uFF08\u5148\u770B\u5168\u9928\u518D\u6311\u5EAB\uFF09"
       ),
-      owner_id: external_exports.string().optional().describe("\u9650\u5B9A\u67D0\u8CC7\u6599\u6B78\u5C6C\u7BC4\u570D\uFF08\u9078\u586B\uFF0C\u8207\u5176\u4ED6 kbdb_* \u5DE5\u5177\u540C\u7FA9\uFF09")
+      owner_id: external_exports.string().optional().describe(
+        "\u9650\u5B9A\u67D0\u8CC7\u6599\u6B78\u5C6C\u7BC4\u570D\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u770B\u5F97\u5230\u54EA\u4E9B\u5EAB\u7531\u4F60\u7684\u5E33\u865F\u6B0A\u9650\u6C7A\u5B9A\uFF09"
+      )
     },
     async ({ library, owner_id }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
-        const qs = owner_id ? `?owner_id=${encodeURIComponent(owner_id)}` : "";
+        const isPortal = identity.kind === "portal";
+        const qs = !isPortal && owner_id ? `?owner_id=${encodeURIComponent(owner_id)}` : "";
+        const mapFetch = (path) => identity.kind === "portal" ? portalFetch(env, identity.portal.session, `/portal/data${path}`) : kbdbFetch(env, path);
         if (!library) {
-          const res2 = await kbdbFetch(env, `/map${qs}`);
+          const res2 = await mapFetch(`/map${qs}`);
+          if (!res2.ok && isPortal) return portalError(res2, "\u53D6\u5168\u9928\u5730\u5716");
           if (!res2.ok) {
             return errorResponse(
               "map_fetch_failed",
@@ -32071,7 +32233,8 @@ function registerGetMap(server, env) {
           }));
           if (libraries.length === 0) {
             return successResponse({ libraries: [], count: 0 }, [
-              "\u5168\u9928\u5730\u5716\u662F\u7A7A\u7684\uFF1A\u9019\u500B\u79DF\u6236\u76EE\u524D\u6C92\u6709\u4EFB\u4F55\u4E09\u5143\u7D44\u8CC7\u6599\uFF08\u4E0D\u662F\u5730\u5716\u6C92\u7B97\uFF0C\u662F\u771F\u7684\u9084\u6C92\u6709\u8CC7\u6599\uFF09",
+              isPortal ? "\u770B\u4E0D\u5230\u4EFB\u4F55\u5EAB\uFF1A\u53EF\u80FD\u662F\u9019\u500B\u77E5\u8B58\u5EAB\u771F\u7684\u9084\u6C92\u6709\u4E09\u5143\u7D44\u8CC7\u6599\uFF0C\u4E5F\u53EF\u80FD\u662F\u4F60\u7684\u5E33\u865F\u9084\u6C92\u88AB\u6388\u6B0A\u4EFB\u4F55\u5EAB\u2014\u2014\u8ACB\u5411\u7BA1\u7406\u54E1\u78BA\u8A8D\u4F60\u7684\u53EF\u7528\u77E5\u8B58\u5EAB" : "\u5168\u9928\u5730\u5716\u662F\u7A7A\u7684\uFF1A\u9019\u500B\u79DF\u6236\u76EE\u524D\u6C92\u6709\u4EFB\u4F55\u4E09\u5143\u7D44\u8CC7\u6599\uFF08\u4E0D\u662F\u5730\u5716\u6C92\u7B97\uFF0C\u662F\u771F\u7684\u9084\u6C92\u6709\u8CC7\u6599\uFF09",
+              ...data2.note ? [data2.note] : [],
               ...RECOMPUTE_HINTS
             ]);
           }
@@ -32080,14 +32243,15 @@ function registerGetMap(server, env) {
             "\u9032\u5EAB\u67E5\u5167\u5BB9\uFF1Akbdb_search\uFF08\u95DC\u9375\u5B57/\u8A9E\u7FA9\uFF09\uFF1B\u67E5\u95DC\u4FC2\uFF1Akbdb_graph_neighbors"
           ]);
         }
-        const res = await kbdbFetch(env, `/map/${encodeURIComponent(library)}${qs}`);
+        const res = await mapFetch(`/map/${encodeURIComponent(library)}${qs}`);
         if (res.status === 404) {
           return errorResponse(
             "map_not_found",
-            `\u67E5\u7121\u5EAB\u300C${library}\u300D\u2014\u2014\u9019\u500B\u540D\u5B57\u5728\u9019\u500B\u79DF\u6236\u7684\u8CC7\u6599\u88E1\u5F9E\u6C92\u51FA\u73FE\u904E\uFF08\u4E0D\u662F\u300C\u9019\u5EAB\u662F\u7A7A\u7684\u300D\uFF0C\u662F\u6839\u672C\u6C92\u6709\u9019\u500B\u5EAB\uFF1B\u5730\u5716\u662F\u5373\u6642\u6838\u5C0D\u91CD\u7B97\u7684\uFF0C\u4E0D\u662F\u5FD8\u4E86 recompute\uFF09`,
-            ["kbdb_get_map \u4E0D\u5E36\u53C3\u6578\u770B\u5168\u9928\u6709\u54EA\u4E9B\u5EAB\uFF08\u78BA\u8A8D\u5EAB\u540D\uFF09", ...RECOMPUTE_HINTS]
+            isPortal ? `\u67E5\u7121\u5EAB\u300C${library}\u300D\u2014\u2014\u9019\u500B\u540D\u5B57\u4E0D\u5B58\u5728\uFF0C\u6216\u4E0D\u5728\u4F60\u88AB\u6388\u6B0A\u7684\u77E5\u8B58\u5EAB\u7BC4\u570D\u5167\uFF08\u5169\u8005\u523B\u610F\u540C\u4E00\u53E5\u8A71\uFF0C\u4E0D\u6D29\u6F0F\u67D0\u500B\u5EAB\u5B58\u4E0D\u5B58\u5728\uFF09` : `\u67E5\u7121\u5EAB\u300C${library}\u300D\u2014\u2014\u9019\u500B\u540D\u5B57\u5728\u9019\u500B\u79DF\u6236\u7684\u8CC7\u6599\u88E1\u5F9E\u6C92\u51FA\u73FE\u904E\uFF08\u4E0D\u662F\u300C\u9019\u5EAB\u662F\u7A7A\u7684\u300D\uFF0C\u662F\u6839\u672C\u6C92\u6709\u9019\u500B\u5EAB\uFF1B\u5730\u5716\u662F\u5373\u6642\u6838\u5C0D\u91CD\u7B97\u7684\uFF0C\u4E0D\u662F\u5FD8\u4E86 recompute\uFF09`,
+            ["kbdb_get_map \u4E0D\u5E36\u53C3\u6578\u770B\u5168\u9928\u6709\u54EA\u4E9B\u5EAB\uFF08\u78BA\u8A8D\u5EAB\u540D\uFF0F\u78BA\u8A8D\u4F60\u6709\u6B0A\u9650\u7684\u5EAB\uFF09", ...RECOMPUTE_HINTS]
           );
         }
+        if (!res.ok && isPortal) return portalError(res, `\u53D6\u5EAB\u300C${library}\u300D\u8A73\u5716`);
         if (!res.ok) {
           return errorResponse(
             "map_fetch_failed",
@@ -32118,27 +32282,51 @@ function registerGetMap(server, env) {
 }
 
 // mcp/src/tools/arcrun_whoami.ts
-function registerWhoami(server, env, orgNamespace) {
+function registerWhoami(server, env, orgNamespace, identity) {
   server.tool(
     toolName("whoami"),
-    "\u56DE\u5831\u9019\u500B MCP \u9023\u7DDA\u76EE\u524D\u751F\u6548\u7684\u8EAB\u4EFD\uFF1A\u7D81\u54EA\u500B\u5E33\u865F / namespace\u3001cypher \u9023\u5411\u54EA\u3002\u90E8\u7F72 / \u89F8\u767C / \u67E5 workflow \u524D\u5148 call \u6B64 tool \u78BA\u8A8D\u5E33\u865F\uFF0C**\u4E0D\u8981\u81EA\u5DF1 curl \u731C\u5E33\u865F URL**\uFF08\u6703\u6253\u5230\u932F\u5E33\u865F\uFF09\u3002",
+    "\u56DE\u5831\u9019\u500B MCP \u9023\u7DDA\u76EE\u524D\u751F\u6548\u7684\u8EAB\u4EFD\uFF1A\u4EE5\u5E33\u5BC6\u9023\u7DDA\u6642\u56DE\u300C\u767B\u5165\u7684\u662F\u8AB0\u3001\u80FD\u770B\u54EA\u4E9B\u77E5\u8B58\u5EAB\u300D\uFF1B\u670D\u52D9\u7D1A token \u9023\u7DDA\u6642\u56DE\u7D81\u5B9A\u7684\u5E33\u865F namespace\u3002\u90E8\u7F72 / \u89F8\u767C / \u67E5 workflow \u524D\u5148 call \u6B64 tool \u78BA\u8A8D\u8EAB\u4EFD\uFF0C**\u4E0D\u8981\u81EA\u5DF1 curl \u731C\u5E33\u865F URL**\uFF08\u6703\u6253\u5230\u932F\u5E33\u865F\uFF09\u3002",
     {},
     async () => {
-      const identity = {
-        account_namespace: orgNamespace || "(\u672A\u8A2D)",
+      const base = {
         cypher: "service-binding:CYPHER_EXECUTOR",
-        kbdb: "service-binding:KBDB",
+        kbdb: "service-binding:KBDB"
+      };
+      if (identity.kind === "portal") {
+        const { display_name, role, libraries } = identity.portal;
+        return json({
+          ...base,
+          auth: "portal-login\uFF08\u9019\u689D\u9023\u7DDA\u662F\u6709\u4EBA\u8F38\u5165 Portal \u5E33\u5BC6\u6388\u6B0A\u7684\uFF09",
+          logged_in_as: display_name || "(\u672A\u8A2D\u986F\u793A\u540D\u7A31)",
+          role,
+          libraries: libraries.length ? libraries : ["(\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB)"],
+          knowledge_scope: libraries.includes("*") ? "\u5168\u90E8\u77E5\u8B58\u5EAB\uFF08\u6B64\u5E33\u865F\u6709\u5168\u5EAB\u6B0A\u9650\uFF09" : `\u50C5\u9650\u4E0A\u5217\u77E5\u8B58\u5EAB\u2014\u2014kbdb_* \u67E5\u5F97\u5230\u7684\u6771\u897F\u8207\u9019\u500B\u5E33\u865F\u5728 portal \u7DB2\u9801\u4E0A\u770B\u5F97\u5230\u7684\u5B8C\u5168\u4E00\u81F4`,
+          note: "\u4F60\u662F\u300C\u4E3B\u4EBA\u6388\u6B0A\u7684 AI\u300D\uFF1A\u4E3B\u4EBA\u67E5\u5F97\u5230\u7684\u4F60\u67E5\u5F97\u5230\uFF0C\u4E3B\u4EBA\u67E5\u4E0D\u5230\u7684\u4F60\u4E5F\u67E5\u4E0D\u5230\u3002kbdb_* \u4E0D\u9700\u8981\u4EFB\u4F55\u984D\u5916\u7684 credential / \u91D1\u9470 / kbdb_base\u2014\u2014\u5DF2\u7D93\u767B\u5165\u904E\u4E86\uFF0C\u4E0D\u6703\u518D\u554F\u7B2C\u4E8C\u6B21\u3002"
+        });
+      }
+      if (identity.kind === "stale") {
+        return json({
+          ...base,
+          auth: "\u820A\u7248 token\uFF08\u6C92\u6709\u767B\u5165\u8005\u8EAB\u5206\uFF09",
+          knowledge_scope: "\u67E5\u4E0D\u5230\u4EFB\u4F55\u77E5\u8B58\u5167\u5BB9",
+          note: "\u9019\u689D\u9023\u7DDA\u662F\u672C\u6B21\u6539\u7248\u524D\u7C3D\u767C\u7684 token\u3002\u5230 claude.ai \u2192 Settings \u2192 Connectors \u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u8F38\u5165 Portal \u5E33\u5BC6\uFF09\u5373\u53EF\u6062\u5FA9\uFF0C\u4E0D\u9700\u8981\u627E\u4EFB\u4F55 credential\u3002"
+        });
+      }
+      return json({
+        ...base,
+        auth: "service token\uFF08static token / partner key\uFF0C\u4EE3\u8868\u6574\u500B\u5BE6\u4F8B\u6216\u79DF\u6236\uFF0C\u4E0D\u662F\u67D0\u500B\u4EBA\uFF09",
+        account_namespace: orgNamespace || "(\u672A\u8A2D)",
         note: "\u6B64 MCP \u5DF2\u7D81\u5B9A\u4E0A\u8FF0\u5E33\u865F\u3002\u90E8\u7F72/\u89F8\u767C/\u67E5\u8A62\u90FD\u8D70\u9019\u500B\u8EAB\u4EFD\uFF1B\u52FF\u81EA\u884C curl \u5176\u4ED6 URL \u731C\u5E33\u865F\u3002"
-      };
-      return {
-        content: [{ type: "text", text: JSON.stringify(identity, null, 2) }]
-      };
+      });
     }
   );
 }
+function json(obj) {
+  return { content: [{ type: "text", text: JSON.stringify(obj, null, 2) }] };
+}
 
 // mcp/src/tools/registry.ts
-function registerAllTools(server, env, orgNamespace, partnerToken) {
+function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
   registerSearchComponents(server, env, orgNamespace);
   registerSearchWorkflows(server, env, orgNamespace, partnerToken);
   registerListComponents(server, env, orgNamespace);
@@ -32154,15 +32342,15 @@ function registerAllTools(server, env, orgNamespace, partnerToken) {
   registerAllWorkflowCrudTools(server, env);
   registerAllSkillExampleTools(server, env);
   registerAllRecipeTools(server, env);
-  registerAllKbdbDataTools(server, env);
-  registerAllKbdbGraphTools(server, env, orgNamespace);
-  registerAllKbdbMapTools(server, env);
-  registerWhoami(server, env, orgNamespace);
+  registerAllKbdbDataTools(server, env, identity);
+  registerAllKbdbGraphTools(server, env, orgNamespace, identity);
+  registerAllKbdbMapTools(server, env, identity);
+  registerWhoami(server, env, orgNamespace, identity);
 }
 
 // mcp/src/mcp-handler.ts
-async function handleMcpRequest(request, env, orgNamespace, partnerToken) {
-  const mapInstructions = await buildLibraryMapInstructions(env);
+async function handleMcpRequest(request, env, orgNamespace, partnerToken, identity) {
+  const mapInstructions = await buildLibraryMapInstructions(env, identity);
   const startHere = [
     "# Arcrun \u2014 \u4F60\u5DF2\u7D93\u914D\u5099\u4E86\u9019\u5957\u5DE5\u5177\uFF0C\u5225\u4E0A\u7DB2\u627E",
     "",
@@ -32203,7 +32391,7 @@ ${mapInstructions}` : startHere;
     { name: "arcrun-mcp-server", version: "1.0.0" },
     { instructions }
   );
-  registerAllTools(server, env, orgNamespace, partnerToken);
+  registerAllTools(server, env, orgNamespace, partnerToken, identity);
   await server.connect(transport);
   return transport.handleRequest(request);
 }
@@ -32940,9 +33128,10 @@ var CORS_JSON = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Cache-Control": "no-store"
 };
-function ownerNamespace(env) {
+function workflowTenant(env) {
   return env.MCP_OWNER_NAMESPACE || "leo";
 }
+var FALLBACK_PORTAL_SESSION_TTL = 604800;
 function tokenTtl(env) {
   const n = parseInt(env.MCP_TOKEN_TTL ?? "", 10);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_TOKEN_TTL;
@@ -33097,7 +33286,8 @@ function registerOAuthRoutes(app2) {
     if (!email2 || !password) {
       return c.html(consentPage(consent, "\u8ACB\u8F38\u5165\u4F60\u7684 Portal \u5E33\u865F\u8207\u5BC6\u78BC\u3002"), 401);
     }
-    let loginOk = false;
+    let portal = null;
+    let portalTtl = FALLBACK_PORTAL_SESSION_TTL;
     try {
       const res = await c.env.CYPHER_EXECUTOR.fetch(
         new Request("https://cypher/portal/login", {
@@ -33106,11 +33296,24 @@ function registerOAuthRoutes(app2) {
           body: JSON.stringify({ email: email2, password })
         })
       );
-      loginOk = res.ok;
+      if (res.ok) {
+        const body = await res.json().catch(() => null);
+        const session = typeof body?.session_token === "string" ? body.session_token : "";
+        if (session) {
+          portal = {
+            session,
+            display_name: typeof body?.display_name === "string" ? body.display_name : "",
+            role: typeof body?.role === "string" ? body.role : "user",
+            libraries: Array.isArray(body?.libraries) ? body.libraries.filter((x) => typeof x === "string") : []
+          };
+          const ttl = Number(body?.session_expires_in);
+          if (Number.isFinite(ttl) && ttl > 0) portalTtl = ttl;
+        }
+      }
     } catch {
       return c.html(consentPage(consent, "\u66AB\u6642\u7121\u6CD5\u9A57\u8B49\u5E33\u5BC6\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u3002"), 503);
     }
-    if (!loginOk) {
+    if (!portal) {
       return c.html(consentPage(consent, "\u5E33\u865F\u6216\u5BC6\u78BC\u4E0D\u6B63\u78BA\uFF0C\u8ACB\u91CD\u8A66\u3002"), 401);
     }
     if (!c.env.OAUTH_KV) {
@@ -33124,7 +33327,9 @@ function registerOAuthRoutes(app2) {
       code_challenge_method: "S256",
       scope: consent.scope,
       resource: consent.resource,
-      namespace: ownerNamespace(c.env)
+      namespace: workflowTenant(c.env),
+      portal,
+      portal_session_expires_in: portalTtl
     });
     const location = redirectWith(redirectUri, {
       code,
@@ -33161,7 +33366,7 @@ function registerOAuthRoutes(app2) {
     if (!pkceOk) {
       return err("invalid_grant", "PKCE verification failed");
     }
-    const ttl = tokenTtl(c.env);
+    const ttl = Math.min(tokenTtl(c.env), data.portal_session_expires_in || FALLBACK_PORTAL_SESSION_TTL);
     const accessToken = randomToken(32);
     await putAccessToken(
       c.env.OAUTH_KV,
@@ -33170,6 +33375,7 @@ function registerOAuthRoutes(app2) {
         namespace: data.namespace,
         client_id: data.client_id,
         scope: data.scope,
+        portal: data.portal,
         // RFC 8707：aud 一律用「本 server canonical resource URI」（非 client 原樣值）。
         // authorize 已只存 canonical，這裡再以當前 origin 重算一次確保與 partner-auth 嚴格比對一致。
         aud: resourceUri(originOf(c.req.url)),
@@ -33390,7 +33596,8 @@ app.options("/mcp", (c) => {
 app.post("/", partnerAuthMiddleware, async (c) => {
   const orgNamespace = c.get("org_namespace");
   const partnerToken = c.get("partner_token");
-  return handleMcpRequest(c.req.raw, c.env, orgNamespace, partnerToken);
+  const identity = resolveKnowledgeIdentity(c.get("auth_path"), c.get("portal"));
+  return handleMcpRequest(c.req.raw, c.env, orgNamespace, partnerToken, identity);
 });
 var index_default = _app;
 export {
