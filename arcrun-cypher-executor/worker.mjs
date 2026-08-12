@@ -9341,9 +9341,11 @@ function authStoreStatus(env) {
 var healthRouter = new Hono2();
 healthRouter.get("/health", (c) => {
   const bundleVersion = c.env.ARCRUN_BUNDLE_VERSION;
+  const bundleCommit = c.env.ARCRUN_BUNDLE_COMMIT;
   return c.json({
     ok: true,
     ...bundleVersion ? { bundle_version: bundleVersion } : {},
+    ...bundleCommit ? { bundle_commit: bundleCommit } : {},
     auth_store: authStoreStatus(c.env),
     // arcrun-rag#38/#69/#25（2026-08-11）：安裝器判斷「要不要重推」只比 bundle_version——
     // 但這次要修的洞是「installer 從沒注入過 PORTAL_MAIL_RELAY_BASE」，跟 bundle 內容

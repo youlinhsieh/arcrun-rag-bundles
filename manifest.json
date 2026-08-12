@@ -1,9 +1,9 @@
 {
  "schema": 1,
- "release": "1.4.41",
- "fingerprint": "a24a5258d011560dfd9cd3f93a5dae0850564c65c4e63761809444060b0b4e92",
+ "release": "1.4.42",
+ "fingerprint": "930cbf828a224c0c986437e0fe545e53535a242d60aa428930166c074728f7ce",
  "built": "2026-08-12",
- "source": "Arcrun@89b80ff90e95",
+ "source": "Arcrun@21293568d550",
  "daemon": {
   "version": "v0.18.26",
   "built": "20260811-2013",
@@ -35,7 +35,7 @@
    "canonical": null,
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 584610,
+   "js_bytes": 584721,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -76,10 +76,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "10d150ac2b4385af95a457f3c411430c4a146cf9",
-   "source_content_sha256": "6a424274ecf7beb28b747672296c4c33f949c6d7b134e8054e640e92198910ba",
-   "sha256": "6a424274ecf7beb28b747672296c4c33f949c6d7b134e8054e640e92198910ba",
-   "bytes": 584610
+   "source_commit": "53b05c6d3d4a5a02661880dd5565fa9feb743bb6",
+   "source_content_sha256": "b7c810d7654c05d197abe9a37acce2ed5f77e1af09595d5b4316b69166edf11a",
+   "sha256": "b7c810d7654c05d197abe9a37acce2ed5f77e1af09595d5b4316b69166edf11a",
+   "bytes": 584721
   },
   {
    "name": "arcrun-kbdb",
@@ -106,7 +106,7 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "10d150ac2b4385af95a457f3c411430c4a146cf9",
+   "source_commit": "f87d0e92f49690253e7c89c5badc82a08eb5d21b",
    "source_content_sha256": "8b23853cbc88aee0ca15ef20ca46e92bd8e75064cd311af2847f4d51811960b1",
    "sha256": "8b23853cbc88aee0ca15ef20ca46e92bd8e75064cd311af2847f4d51811960b1",
    "bytes": 149797
@@ -204,7 +204,7 @@
    "tier": 2,
    "main_file": "tier2/ui/index.js",
    "main_module": "index.js",
-   "sha256": "2cbf796ee5eeed99b71cda2d551934f6c48e77e7ae244985bf43b2274cc9dcac",
+   "sha256": "61024914df4c3471ed8f4e9b8ed2f286a4f84ea7f86a846c20b1e7d3299f4a31",
    "compat_date": "2026-07-01",
    "compat_flags": [],
    "modules": [],
@@ -214,7 +214,7 @@
     "ai": false,
     "vars": {}
    },
-   "bytes": 522727
+   "bytes": 523913
   }
  ],
  "built_for": "oauth-installer-lazy-load",
