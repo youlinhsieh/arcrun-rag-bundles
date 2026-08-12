@@ -12557,6 +12557,45 @@ init_kbdb_proxy();
 
 // cypher-executor/src/routes/console-auth.ts
 init_dist();
+
+// cypher-executor/src/lib/tenant.ts
+var TenantUnresolvedError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "TenantUnresolvedError";
+  }
+};
+function knowledgeOwner(env) {
+  const injected = (env.ARCRUN_NAMESPACE ?? "").trim();
+  if (injected) return injected;
+  const legacy = (env.CONSOLE_TENANT ?? "").trim();
+  if (legacy) return legacy;
+  throw new TenantUnresolvedError(
+    "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08ARCRUN_NAMESPACE / CONSOLE_TENANT \u90FD\u6C92\u8A2D\uFF09\u2014\u2014\u4E0D\u77E5\u9053\u8981\u53BB\u54EA\u4E00\u683C\u627E\u8CC7\u6599\u3002\u8ACB\u8DD1 `acr update` \u8B93\u5B83\u5F9E\u4F60\u7684 ~/.arcrun/config.yaml \u6CE8\u5165\u3002"
+  );
+}
+function tenantFromApiKey(apiKey) {
+  const key = (apiKey ?? "").trim();
+  if (!key) throw new TenantUnresolvedError("\u7F3A\u5C11 X-Arcrun-API-Key\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u67E5\u8A62\u7BC4\u570D");
+  return key;
+}
+function accountTenant(env) {
+  return env.CONSOLE_TENANT || "leo";
+}
+function ownerQuery(tenant2) {
+  return `owner_id=${encodeURIComponent(tenant2)}`;
+}
+function ownerField(tenant2) {
+  return tenant2;
+}
+function censusQueryAllTenants() {
+  return "owner_id=";
+}
+function isOwnedBy(value, tenant2) {
+  return typeof value === "string" && value === tenant2;
+}
+
+// cypher-executor/src/routes/console-auth.ts
 var consoleAuthRouter = new Hono2();
 var CREDS_KEY = "console:credentials";
 var SESSION_PREFIX = "console_sess:";
@@ -12583,7 +12622,7 @@ async function hashPassword(password, salt) {
   return h;
 }
 function tenantOf(c) {
-  return c.env.CONSOLE_TENANT || "leo";
+  return knowledgeOwner(c.env);
 }
 async function loadCredentials(env) {
   let fromStore = readAuthStore(env).console;
@@ -12854,10 +12893,10 @@ var DEFAULT_SESSION_TTL = 604800;
 var USER_TEMPLATE = "portal_user";
 var LIBRARY_TEMPLATE = "portal_library";
 function portalTenant(env) {
-  return env.CONSOLE_TENANT || "leo";
+  return accountTenant(env);
 }
 function portalNamespace(env) {
-  return `${portalTenant(env)}::portal`;
+  return `${accountTenant(env)}::portal`;
 }
 function sessionTtl(env) {
   const n = Number.parseInt(env.PORTAL_SESSION_TTL ?? "", 10);
@@ -12885,6 +12924,9 @@ async function run(c, fn) {
   } catch (e) {
     if (e instanceof AuthStoreWriteError) {
       return c.json({ error: `\u8A8D\u8B49\u5132\u5B58\u5BEB\u5165\u5931\u6557\uFF1A${e.message}`, code: "auth_store_not_writable" }, 502);
+    }
+    if (e instanceof TenantUnresolvedError) {
+      return c.json({ error: e.message, code: "tenant_unresolved" }, 500);
     }
     if (e instanceof KbdbError) return c.json({ error: `KBDB \u4E0D\u53EF\u9054\u6216\u56DE\u932F\uFF1A${e.message}` }, 502);
     throw e;
@@ -13768,10 +13810,9 @@ portalRouter.post(
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
     await clearLoginFail(c.env, email);
-    const tenant2 = portalTenant(c.env);
     const daemonCfg = {
       cypher_url: new URL(c.req.url).origin,
-      namespace: tenant2,
+      namespace: knowledgeOwner(c.env),
       library: "kb",
       email,
       instance_name: String(rec.values.display_name ?? "")
@@ -13787,7 +13828,7 @@ portalRouter.post(
     const body = await c.req.json().catch(() => null);
     const key = String(body?.key ?? "").trim();
     if (!key) return c.json({ error: "\u8ACB\u8CBC\u4E0A\u4F60\u7684 Google AI \u91D1\u9470" }, 400);
-    const tenant2 = portalTenant(c.env);
+    const tenant2 = knowledgeOwner(c.env);
     const kvKey2 = `${tenant2}:wf:rag_chat`;
     const raw2 = await c.env.WEBHOOKS.get(kvKey2, "text");
     if (!raw2) return c.json({ error: "\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u5B89\u88DD AI \u554F\u7B54\u5DE5\u4F5C\u6D41" }, 404);
@@ -13839,8 +13880,8 @@ portalRouter.get(
     });
     const known = new Set(out.map((l) => l.name));
     try {
-      const tenant2 = portalTenant(c.env);
-      const ownerParam = `owner_id=${encodeURIComponent(tenant2)}`;
+      const tenant2 = knowledgeOwner(c.env);
+      const ownerParam = ownerQuery(tenant2);
       const [autoRes, cardRes, tripletRes] = await Promise.all([
         kbdbFetch(c.env, `/entries/libraries?${ownerParam}`).catch(() => null),
         kbdbFetch(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
@@ -13989,8 +14030,8 @@ portalRouter.get(
   (c) => run(c, async () => {
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
-    const ownerId = portalTenant(c.env);
-    const res = await kbdbFetch(c.env, `/execution-log/retention?owner_id=${encodeURIComponent(ownerId)}`);
+    const ownerId = knowledgeOwner(c.env);
+    const res = await kbdbFetch(c.env, `/execution-log/retention?${ownerQuery(ownerId)}`);
     if (!res.ok) throw new KbdbError(`GET /execution-log/retention \u2192 ${res.status}`);
     const data = await res.json();
     return c.json({ success: true, retention_days: data.retention_days ?? null, default_days: data.default_days ?? 90 });
@@ -14006,10 +14047,10 @@ portalRouter.put(
     if (days !== null && days !== void 0 && (typeof days !== "number" || !Number.isFinite(days) || days <= 0)) {
       return c.json({ error: "retention_days \u5FC5\u9808\u662F\u6B63\u6574\u6578\uFF0C\u6216 null\uFF08\u4EE3\u8868\u4E0D\u522A\u9664\uFF09" }, 400);
     }
-    const ownerId = portalTenant(c.env);
+    const ownerId = knowledgeOwner(c.env);
     const res = await kbdbFetch(c.env, "/execution-log/retention", {
       method: "PUT",
-      body: JSON.stringify({ owner_id: ownerId, retention_days: days === void 0 ? null : days })
+      body: JSON.stringify({ owner_id: ownerField(ownerId), retention_days: days === void 0 ? null : days })
     });
     if (!res.ok) throw new KbdbError(`PUT /execution-log/retention \u2192 ${res.status}`);
     const data = await res.json();
@@ -14026,10 +14067,10 @@ portalRouter.delete(
     const confirm = String(body?.confirm ?? "").trim();
     if (!confirm) return c.json({ error: 'body \u9808\u5E36 { confirm: "<\u5EAB\u540D>" } \u624D\u57F7\u884C\uFF08\u79FB\u9664\u6703\u5F71\u97FF\u8CC7\u6599\u53EF\u641C\u6027\uFF09' }, 400);
     if (confirm !== name) return c.json({ error: `confirm \u503C\u300C${confirm}\u300D\u8207\u5EAB\u540D\u300C${name}\u300D\u4E0D\u7B26` }, 400);
-    const ownerId = portalTenant(c.env);
+    const ownerId = knowledgeOwner(c.env);
     const res = await kbdbFetch(c.env, "/entries/deprecate-by-library", {
       method: "PATCH",
-      body: JSON.stringify({ owner_id: ownerId, library: name })
+      body: JSON.stringify({ owner_id: ownerField(ownerId), library: name })
     });
     if (!res.ok) throw new KbdbError(`PATCH /entries/deprecate-by-library \u2192 ${res.status}`);
     const data = await res.json();
@@ -14085,8 +14126,8 @@ async function buildDiagnostics(env, tenant2) {
   let embedding = { checked: false };
   try {
     const [statusRes, selftestRes] = await Promise.all([
-      kbdbFetch(env, `/embed/backfill/status?${new URLSearchParams({ owner_id: tenant2 }).toString()}`),
-      kbdbFetch(env, `/embed/selftest?${new URLSearchParams({ owner_id: tenant2 }).toString()}`)
+      kbdbFetch(env, `/embed/backfill/status?${ownerQuery(tenant2)}`),
+      kbdbFetch(env, `/embed/selftest?${ownerQuery(tenant2)}`)
     ]);
     const statusBody = await statusRes.json().catch(() => null);
     const selftestBody = await selftestRes.json().catch(() => null);
@@ -14108,7 +14149,7 @@ async function buildDiagnostics(env, tenant2) {
   }
   let library_count = 0;
   let triplet_count = 0;
-  const ownerParam = new URLSearchParams({ owner_id: tenant2 }).toString();
+  const ownerParam = ownerQuery(tenant2);
   try {
     const [registeredLibs, autoRes, tripletRes] = await Promise.all([
       listRecordsByTemplate(env, LIBRARY_TEMPLATE).catch(() => []),
@@ -14132,7 +14173,7 @@ async function buildDiagnostics(env, tenant2) {
   let library_scope_check = { ran: false };
   if (library_count === 0 && triplet_count === 0) {
     try {
-      const probeRes = await kbdbFetch(env, `/entries?${new URLSearchParams({ owner_id: tenant2, limit: "1" }).toString()}`);
+      const probeRes = await kbdbFetch(env, `/entries?${new URLSearchParams({ owner_id: ownerField(tenant2), limit: "1" }).toString()}`);
       const probeBody = await probeRes.json().catch(() => null);
       const total = probeBody?.total ?? 0;
       library_scope_check = {
@@ -14155,7 +14196,7 @@ portalRouter.get(
   (c) => run(c, async () => {
     const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
     if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-    const core = await buildDiagnostics(c.env, apiKey);
+    const core = await buildDiagnostics(c.env, tenantFromApiKey(apiKey));
     return c.json({
       generated_at: (/* @__PURE__ */ new Date()).toISOString(),
       instance_url: new URL(c.req.url).origin,
@@ -14710,7 +14751,7 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
   return { ...fresh, cache: "miss" };
 }
 consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
-  const tenant2 = c.env.CONSOLE_TENANT || "leo";
+  const tenant2 = knowledgeOwner(c.env);
   const now2 = Date.now();
   const { base: kbdbUrl, headers: kbdbHeaders } = kbdbBase(c.env);
   const graphUrl = graphBase(c.env);
@@ -14862,7 +14903,7 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
   });
 });
 consoleDashboardRouter.get("/console/kb-scale-data", async (c) => {
-  const tenant2 = c.env.CONSOLE_TENANT || "leo";
+  const tenant2 = knowledgeOwner(c.env);
   const { base, headers } = kbdbBase(c.env);
   const now2 = Date.now();
   const [wikiCards, tripletTotal, embedStatus] = await Promise.all([
@@ -14897,7 +14938,7 @@ consoleDashboardRouter.get("/console/settings-data", (c) => {
 consoleDashboardRouter.get("/console/triage-data", async (c) => {
   const ok = await validateConsoleSession(c.env, c.req.header("authorization"));
   if (!ok) return c.json({ error: "\u9700\u8981\u767B\u5165\uFF08console session\uFF09" }, 401);
-  const tenant2 = c.env.CONSOLE_TENANT || "leo";
+  const tenant2 = knowledgeOwner(c.env);
   const [todoEntries, inboxEntries] = await Promise.all([
     fetchEntries(c.env, tenant2, "todo", 500),
     fetchEntries(c.env, tenant2, "inbox", 200)
@@ -14912,7 +14953,7 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
   const entryId = typeof body?.entry_id === "string" ? body.entry_id.trim() : "";
   if (!entryId) return c.json({ error: "entry_id \u5FC5\u586B" }, 400);
   const action = body?.action === "restore" ? "restore" : "check";
-  const tenant2 = c.env.CONSOLE_TENANT || "leo";
+  const tenant2 = knowledgeOwner(c.env);
   const { base, headers } = kbdbBase(c.env);
   const got = await fetchJson(
     `${base}/entries/${encodeURIComponent(entryId)}`,
@@ -14940,7 +14981,7 @@ init_kbdb_proxy();
 init_webhook_handlers();
 var portalDataRouter = new Hono2();
 async function getTenantWorkflowGraph(env, name) {
-  const raw2 = await env.WEBHOOKS.get(`${portalTenant(env)}:wf:${name}`, "text");
+  const raw2 = await env.WEBHOOKS.get(`${knowledgeOwner(env)}:wf:${name}`, "text");
   if (!raw2) return null;
   try {
     const rec = JSON.parse(raw2);
@@ -15033,7 +15074,7 @@ function findBestNodeMatch(searchTerm, nodeNames) {
 }
 async function tripletCount(env, owner) {
   try {
-    const res = await kbdbFetch(env, `/records/triplet-stats?owner_id=${encodeURIComponent(owner)}`);
+    const res = await kbdbFetch(env, `/records/triplet-stats?${owner === null ? censusQueryAllTenants() : ownerQuery(owner)}`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.stats)) return null;
@@ -15050,11 +15091,11 @@ async function tripletCount(env, owner) {
 async function tripletCensus(env, tenant2) {
   const owned = await tripletCount(env, tenant2);
   if (owned !== 0) return { owned, any: null };
-  return { owned, any: await tripletCount(env, "") };
+  return { owned, any: await tripletCount(env, null) };
 }
 async function fuzzyFindNode(env, tenant2, searchTerm) {
   try {
-    const res = await kbdbFetch(env, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}`);
+    const res = await kbdbFetch(env, `/records/by-template/triplet?${ownerQuery(tenant2)}`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.records)) return null;
@@ -15082,7 +15123,7 @@ portalDataRouter.get(
     if (libraries.length === 0) {
       return c.json({ success: true, entries: [], count: 0, mode: "keyword", note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002" });
     }
-    const params = new URLSearchParams({ q, owner_id: portalTenant(c.env) });
+    const params = new URLSearchParams({ q, owner_id: ownerField(knowledgeOwner(c.env)) });
     if (!libraries.includes("*")) params.set("library", libraries.join(","));
     if (c.req.query("mode") === "semantic") {
       params.set("mode", "semantic");
@@ -15118,7 +15159,7 @@ portalDataRouter.get(
     const body = await res.json();
     const entry = body.entry;
     if (!entry) return notFound(c);
-    if ((entry.owner_id ?? "") !== portalTenant(c.env)) return notFound(c);
+    if (!isOwnedBy(entry.owner_id, knowledgeOwner(c.env))) return notFound(c);
     if (!canReadLibrary(libraries, entryLibrary(entry))) return notFound(c);
     return c.json({ success: true, entry });
   })
@@ -15133,7 +15174,7 @@ portalDataRouter.get(
       return c.json({ error: "\u7121\u77E5\u8B58\u5716\u8B5C\u6AA2\u8996\u6B0A\u9650" }, 403);
     }
     const nodeName = normalizeCjkQuery(c.req.param("name"));
-    const tenant2 = portalTenant(c.env);
+    const tenant2 = knowledgeOwner(c.env);
     const wfGraph = await getTenantWorkflowGraph(c.env, "graph_neighbors");
     if (wfGraph) {
       const depthRaw = c.req.query("depth") ?? "";
@@ -15187,9 +15228,9 @@ portalDataRouter.get(
     if (!await hasGraphAccess(c.env, libraries)) {
       return c.json({ error: "\u7121\u77E5\u8B58\u5716\u8B5C\u6AA2\u8996\u6B0A\u9650" }, 403);
     }
-    const tenant2 = portalTenant(c.env);
+    const tenant2 = knowledgeOwner(c.env);
     const [res, census] = await Promise.all([
-      kbdbFetch(c.env, `/records/by-template/triplet?owner_id=${encodeURIComponent(tenant2)}&limit=500`),
+      kbdbFetch(c.env, `/records/by-template/triplet?${ownerQuery(tenant2)}&limit=500`),
       tripletCensus(c.env, tenant2)
     ]);
     const tripletsTotal = census.owned;
@@ -15260,7 +15301,7 @@ portalDataRouter.get(
       wfGraph,
       { question },
       "rag_chat",
-      portalTenant(c.env),
+      knowledgeOwner(c.env),
       c.executionCtx
     );
     if (!result.success) {
@@ -15336,7 +15377,7 @@ portalDataRouter.get(
     if (!workflowsVisible(c.env, auth.user.values.role ?? "user")) {
       return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
     }
-    const tenant2 = portalTenant(c.env);
+    const tenant2 = knowledgeOwner(c.env);
     const prefix = `${tenant2}:wf:`;
     const list = await c.env.WEBHOOKS.list({ prefix });
     const workflows = await Promise.all(
@@ -15358,7 +15399,7 @@ portalDataRouter.get(
         let last_execution = null;
         const execRes = await kbdbFetch(
           c.env,
-          `/execution-log/latest?${new URLSearchParams({ workflow_id: name, owner_id: tenant2 }).toString()}`
+          `/execution-log/latest?${new URLSearchParams({ workflow_id: name, owner_id: ownerField(tenant2) }).toString()}`
         );
         const execBody = await execRes.json().catch(() => null);
         if (execRes.ok && execBody?.success && execBody.execution) {
@@ -15375,7 +15416,7 @@ function recordLibrary(values) {
   return typeof lib === "string" && lib.trim() ? lib.trim() : null;
 }
 function canReadRecord(rec, tenant2, libraries) {
-  if ((rec.owner_id ?? "") !== tenant2) return false;
+  if (!isOwnedBy(rec.owner_id, tenant2)) return false;
   const lib = recordLibrary(rec.values);
   return lib === null || canReadLibrary(libraries, lib);
 }
@@ -15386,9 +15427,17 @@ portalDataRouter.get(
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) {
-      return c.json({ success: true, libraries: [], count: 0, note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002" });
+      return c.json({
+        success: true,
+        libraries: [],
+        count: 0,
+        empty_confirmed: true,
+        empty_reason: "no_library_grant",
+        note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002"
+      });
     }
-    const res = await kbdbFetch(c.env, `/map?owner_id=${encodeURIComponent(portalTenant(c.env))}`);
+    const tenant2 = knowledgeOwner(c.env);
+    const res = await kbdbFetch(c.env, `/map?${ownerQuery(tenant2)}`);
     if (!res.ok) {
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     }
@@ -15399,7 +15448,49 @@ portalDataRouter.get(
     const allowed = body.libraries.filter(
       (l) => typeof l?.library === "string" && canReadLibrary(libraries, l.library)
     );
-    return c.json({ success: true, libraries: allowed, count: allowed.length });
+    if (allowed.length > 0) {
+      return c.json({ success: true, libraries: allowed, count: allowed.length, empty_confirmed: false, empty_reason: null });
+    }
+    if (body.libraries.length > 0) {
+      return c.json({
+        success: true,
+        libraries: [],
+        count: 0,
+        empty_confirmed: true,
+        empty_reason: "filtered_out",
+        note: "\u9019\u500B\u5E33\u865F\u76EE\u524D\u6C92\u6709\u4EFB\u4F55\u77E5\u8B58\u5EAB\u7684\u6AA2\u8996\u6B0A\u9650\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u958B\u901A\u3002"
+      });
+    }
+    const census = await tripletCensus(c.env, tenant2);
+    if (census.owned === null || census.owned === 0 && census.any === null) {
+      return c.json({
+        success: true,
+        libraries: [],
+        count: 0,
+        empty_confirmed: false,
+        empty_reason: "unreadable",
+        note: "\u8B80\u4E0D\u5230\u77E5\u8B58\u5EAB\u7684\u7D71\u8A08\uFF0C\u7121\u6CD5\u78BA\u8A8D\u5EAB\u88E1\u6709\u6C92\u6709\u6771\u897F\u2014\u2014\u9019\u4E0D\u662F\u300C\u9084\u6C92\u6709\u77E5\u8B58\u300D\uFF0C\u662F\u9019\u6B21\u8B80\u53D6\u5931\u6557\u3002\u8ACB\u7A0D\u5F8C\u91CD\u6574\u6216\u901A\u77E5\u7BA1\u7406\u54E1\u3002"
+      });
+    }
+    if (census.owned === 0 && (census.any ?? 0) > 0) {
+      return c.json({
+        success: true,
+        libraries: [],
+        count: 0,
+        empty_confirmed: false,
+        empty_reason: "scope_mismatch",
+        instance_triplet_count: census.any,
+        note: `\u8B80\u4E0D\u5230\u4F60\u9019\u500B\u5E33\u865F\u7BC4\u570D\u5167\u7684\u85CF\u66F8\u2014\u2014\u4F46\u9019\u53F0\u5BE6\u4F8B\u88E1\u6709 ${census.any} \u689D\u77E5\u8B58\u95DC\u806F\u3002\u9019\u4E0D\u662F\u300C\u9084\u6C92\u6709\u77E5\u8B58\u300D\uFF0C\u4E0D\u7528\u53BB\u91CD\u65B0\u4E0A\u50B3\uFF1B\u6BD4\u8F03\u50CF\u77E5\u8B58\u7684\u6B78\u5C6C\u547D\u540D\u7A7A\u9593\u5C0D\u4E0D\u4E0A\u3002\u8ACB\u901A\u77E5\u7BA1\u7406\u54E1\u8DD1\u4E00\u6B21 \`acr update\`\uFF08\u6703\u628A\u4F60\u5B89\u88DD\u6642\u7684\u547D\u540D\u7A7A\u9593\u540C\u6B65\u7D66\u96F2\u7AEF\uFF09\uFF0C\u6216\u6AA2\u67E5 ARCRUN_NAMESPACE \u8A2D\u5B9A\u3002`
+      });
+    }
+    return c.json({
+      success: true,
+      libraries: [],
+      count: 0,
+      empty_confirmed: true,
+      empty_reason: "confirmed_empty",
+      note: "\u77E5\u8B58\u5EAB\u9084\u6C92\u6709\u4EFB\u4F55\u5167\u5BB9\u2014\u2014\u4E0A\u50B3\u6587\u4EF6\u5F8C\u5C31\u6703\u51FA\u73FE\u5728\u9019\u88E1\u3002"
+    });
   })
 );
 portalDataRouter.get(
@@ -15412,7 +15503,7 @@ portalDataRouter.get(
     if (!canReadLibrary(libraries, library)) return notFound(c);
     const res = await kbdbFetch(
       c.env,
-      `/map/${encodeURIComponent(library)}?owner_id=${encodeURIComponent(portalTenant(c.env))}`
+      `/map/${encodeURIComponent(library)}?${ownerQuery(knowledgeOwner(c.env))}`
     );
     if (res.status === 404) return notFound(c);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
@@ -15445,7 +15536,7 @@ portalDataRouter.post(
         name: body.name,
         slots: body.slots,
         description: typeof body.description === "string" ? body.description : void 0,
-        created_by: portalTenant(c.env)
+        created_by: knowledgeOwner(c.env)
       })
     });
     return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
@@ -15458,10 +15549,10 @@ portalDataRouter.get(
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) return c.json({ success: true, records: [], count: 0 });
-    const tenant2 = portalTenant(c.env);
+    const tenant2 = knowledgeOwner(c.env);
     const res = await kbdbFetch(
       c.env,
-      `/records/by-template/${encodeURIComponent(c.req.param("template"))}?owner_id=${encodeURIComponent(tenant2)}`
+      `/records/by-template/${encodeURIComponent(c.req.param("template"))}?${ownerQuery(tenant2)}`
     );
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json().catch(() => null);
@@ -15485,7 +15576,7 @@ portalDataRouter.get(
     const body = await res.json().catch(() => null);
     const record = body?.record;
     if (!record) return notFound(c);
-    if (!canReadRecord(record, portalTenant(c.env), libraries)) return notFound(c);
+    if (!canReadRecord(record, knowledgeOwner(c.env), libraries)) return notFound(c);
     return c.json({ success: true, record });
   })
 );
@@ -15510,7 +15601,7 @@ portalDataRouter.post(
     const res = await kbdbFetch(c.env, "/records", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ template: body.template, values, owner_id: portalTenant(c.env) })
+      body: JSON.stringify({ template: body.template, values, owner_id: ownerField(knowledgeOwner(c.env)) })
     });
     return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
   })
@@ -15520,7 +15611,7 @@ portalDataRouter.get(
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
-    const tenant2 = portalTenant(c.env);
+    const tenant2 = knowledgeOwner(c.env);
     const core = await buildDiagnostics(c.env, tenant2);
     return c.json({
       generated_at: (/* @__PURE__ */ new Date()).toISOString(),
