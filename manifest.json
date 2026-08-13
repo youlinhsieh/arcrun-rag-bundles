@@ -5,16 +5,16 @@
  "built": "2026-08-13",
  "source": "Arcrun@1ccee0055ebd",
  "daemon": {
-  "version": "v0.18.26",
-  "built": "20260811-2013",
-  "notes": "不會再把整理結果寫進你的 Logseq／Obsidian 筆記庫・不會再無聲蓋掉你原本就有的檔案",
+  "version": "v0.18.27",
+  "built": "20260813-1907",
+  "notes": "監看的是筆記庫「裡面的某個資料夾」時，保護不會再失效・機器寫的檔案，一眼就看得出不是你自己的",
   "mac": {
-   "file": "daemon/Arcrun-v0.18.26.dmg",
-   "sha256": "2537f50a69889ecc67d0395739b4d6a06a6982fe29dc9ce0f3be865a946d429e"
+   "file": "daemon/Arcrun-v0.18.27.dmg",
+   "sha256": "4bb674c71231b663f58b3f1d26ef5ca579ffb4c3e3167d7edb8629cfe5a3a11b"
   },
   "win": {
-   "file": "daemon/Arcrun-win-v0.18.26.exe",
-   "sha256": "35c0a5c55bf9059567599c9e08254ea84865dd9d2089c3b71f180e7b1b7e97c8"
+   "file": "daemon/Arcrun-win-v0.18.27.exe",
+   "sha256": "071950458535fdb0d4fea81649c5e1038f6b1a9eccee107c7bd1a9a206073fff"
   },
   "mac_dmg": {
    "file": "daemon/ArcrunRAG-mac.dmg",
