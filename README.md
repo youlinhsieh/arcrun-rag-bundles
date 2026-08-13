@@ -12,7 +12,7 @@ Served via jsDelivr; fetched automatically during install — you never need to 
 - `arcrun-mcp/` — **arcrun-mcp**
 - `daemon/` — 桌面 App（Mac／Windows）安裝檔
 
-Built from `Arcrun@2fcae722e7d7` by `installer/scripts/ship.mjs`（arcrun-rag repo，release 1.4.43，built 2026-08-12）。
+Built from `Arcrun@1ccee0055ebd` by `installer/scripts/ship.mjs`（arcrun-rag repo，release 1.4.44，built 2026-08-13）。
 
 ⚠️ 這份檔案由出貨管線每次自動重寫（`installer/scripts/render-bundles-readme.mjs`）——
 不要手動改這裡列的零件清單，要改就改 `installer/scripts/bundle-components.mjs`（唯一真相源，改一個地方兩條出貨路徑同時生效）。

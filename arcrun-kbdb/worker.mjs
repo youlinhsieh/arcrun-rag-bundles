@@ -3736,6 +3736,7 @@ async function recomputeLibraryMap(db, input) {
     await updateRecord(db, row.rid, { status: "superseded" });
     superseded.push(row.rid);
   }
+  const entryCount = (await liveEntryCountsByLibrary(db, owner)).get(library) ?? 0;
   return {
     map: {
       record_id: blockEntry.id,
@@ -3746,6 +3747,7 @@ async function recomputeLibraryMap(db, input) {
       relation_profile: relationProfile,
       bridges,
       triplet_count: tripletCount,
+      entry_count: entryCount,
       commit_hash: input.commit_hash ?? null,
       status: "active",
       updated_at: blockEntry.created_at
@@ -3771,6 +3773,21 @@ async function liveTripletCountsByLibrary(db, tripletTemplateId, owner_id) {
        LEFT JOIN entries lib_e ON lib_e.id = lev.entry_id
        WHERE COALESCE(tr.status, 'active') = 'active'
        GROUP BY COALESCE(NULLIF(lib_e.content, ''), 'general')`
+  ).bind(...params).all();
+  const m = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) m.set(r.library, r.n);
+  return m;
+}
+async function liveEntryCountsByLibrary(db, owner_id) {
+  const params = owner_id ? [owner_id] : [];
+  const res = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在巢狀 worktree /private/tmp/wt-arcrun-library-map-honesty-87/（同 962d863/5919c6b 已記載的假警報成因：hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到中間多出的 worktree 目錄層，非繞牆）
+    `SELECT COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') AS library,
+              COUNT(*) AS n
+       FROM entries
+       WHERE ${owner_id ? "owner_id = ? AND " : ""}entry_type != 'value'
+         AND NOT (entry_type = 'block' AND COALESCE(json_extract(metadata_json, '$.kind'), '') = 'library_map')
+       GROUP BY COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general')`
   ).bind(...params).all();
   const m = /* @__PURE__ */ new Map();
   for (const r of res.results ?? []) m.set(r.library, r.n);
@@ -3825,11 +3842,15 @@ async function listLibraryMaps(db, owner_id) {
   const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
   if (!tpl) return [];
   const params = owner_id ? [tpl.id, owner_id] : [tpl.id];
-  const res = await db.prepare(
-    `WITH m AS (${mapPivotSql(!!owner_id)})
-       SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
-       ORDER BY m.ts DESC`
-  ).bind(...params).all();
+  const [res, entryCounts] = await Promise.all([
+    db.prepare(
+      // kbdb-sql-ok：牆內本體（kbdb/src/actions/），既有查詢（listLibraryMaps 原本就有）此次改包進 Promise.all 才重新觸發掃描，非新增違規；worktree 路徑假警報同上方 liveEntryCountsByLibrary 註解
+      `WITH m AS (${mapPivotSql(!!owner_id)})
+         SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
+         ORDER BY m.ts DESC`
+    ).bind(...params).all(),
+    liveEntryCountsByLibrary(db, owner_id)
+  ]);
   const byLib = /* @__PURE__ */ new Map();
   for (const r of res.results ?? []) {
     if (!r.library || byLib.has(r.library)) continue;
@@ -3838,6 +3859,7 @@ async function listLibraryMaps(db, owner_id) {
       narrative: r.narrative || null,
       top_entities: parseJsonArray(r.top_entities).slice(0, 3).map((t) => t.name),
       triplet_count: Number(r.triplet_count ?? 0) || 0,
+      entry_count: entryCounts.get(r.library) ?? 0,
       updated_at: r.ts
     });
   }
@@ -3853,7 +3875,10 @@ async function getLibraryMapDetail(db, library, owner_id) {
        ORDER BY m.ts DESC LIMIT 1`
   ).bind(...params).first();
   if (!row) return null;
-  const blockEntry = await getEntry(db, row.rid);
+  const [blockEntry, entryCounts] = await Promise.all([
+    getEntry(db, row.rid),
+    liveEntryCountsByLibrary(db, owner_id)
+  ]);
   return {
     record_id: row.rid,
     library,
@@ -3863,6 +3888,7 @@ async function getLibraryMapDetail(db, library, owner_id) {
     relation_profile: parseJsonArray(row.relation_profile),
     bridges: parseJsonArray(row.bridges),
     triplet_count: Number(row.triplet_count ?? 0) || 0,
+    entry_count: entryCounts.get(library) ?? 0,
     commit_hash: row.commit_hash || null,
     status: row.status ?? "active",
     updated_at: row.ts

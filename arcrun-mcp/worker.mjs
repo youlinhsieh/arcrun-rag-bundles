@@ -31262,16 +31262,109 @@ function registerAllWorkflowCrudTools(server, env) {
   registerRunWorkflow(server, env);
 }
 
+// mcp/src/lib/portal-client.ts
+async function portalFetch(env, session, path, opts = {}) {
+  if (!env.CYPHER_EXECUTOR) {
+    throw new Error("CYPHER_EXECUTOR service binding not configured");
+  }
+  const url = new URL(`https://cypher${path}`);
+  for (const [k, v] of Object.entries(opts.query ?? {})) {
+    if (v !== void 0 && v !== "") url.searchParams.set(k, String(v));
+  }
+  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
+    method: opts.method ?? "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session}`
+    },
+    body: opts.body !== void 0 ? JSON.stringify(opts.body) : void 0
+  });
+}
+function resolveKnowledgeIdentity(authPath, portal) {
+  if (authPath !== "oauth") return { kind: "service" };
+  return portal?.session ? { kind: "portal", portal } : { kind: "stale" };
+}
+function staleIdentityError() {
+  return errorResponse(
+    "identity_missing",
+    "\u9019\u689D MCP \u9023\u7DDA\u662F\u820A\u7248\u7C3D\u767C\u7684 token\uFF0C\u88E1\u9762\u6C92\u6709\u767B\u5165\u8005\u8EAB\u5206\uFF0C\u56E0\u6B64\u67E5\u4E0D\u5230\u4EFB\u4F55\u77E5\u8B58\u5167\u5BB9\u3002\u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u5728 claude.ai \u7684 connector \u8A2D\u5B9A\u88E1\u91CD\u65B0\u6388\u6B0A\u3001\u8F38\u5165\u4F60\u7684 Portal \u5E33\u5BC6\uFF09\u5373\u53EF\u2014\u2014\u4E0D\u9700\u8981\u53E6\u5916\u627E\u4EFB\u4F55 credential \u6216\u91D1\u9470\u3002",
+    [
+      "\u5230 claude.ai \u2192 Settings \u2192 Connectors\uFF0C\u628A\u9019\u500B connector \u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u6703\u8DF3\u51FA\u8F38\u5165 Portal \u5E33\u5BC6\u7684\u9801\u9762\uFF09",
+      "\u91CD\u9023\u5F8C kbdb_* \u5168\u90E8\u5DE5\u5177\u90FD\u6703\u7528\u4F60\u9019\u500B\u5E33\u865F\u7684\u6B0A\u9650\u67E5\u8A62"
+    ]
+  );
+}
+async function portalError(res, what) {
+  const detail = await res.text().catch(() => "");
+  if (res.status === 401) {
+    return errorResponse(
+      "session_expired",
+      `${what}\u5931\u6557\uFF1A\u767B\u5165\u968E\u6BB5\u5DF2\u904E\u671F\uFF08portal session \u5230\u671F\u6216\u5DF2\u767B\u51FA\uFF09\u3002`,
+      [
+        "\u5230 claude.ai \u2192 Settings \u2192 Connectors \u91CD\u65B0\u9023\u7DDA\u9019\u500B connector\uFF08\u91CD\u65B0\u8F38\u5165 Portal \u5E33\u5BC6\uFF09",
+        "\u91CD\u9023\u5F8C\u6B0A\u9650\u8207\u4F60\u5728 portal \u7DB2\u9801\u4E0A\u770B\u5230\u7684\u4E00\u81F4"
+      ],
+      detail
+    );
+  }
+  if (res.status === 403) {
+    return errorResponse(
+      "forbidden",
+      `${what}\u5931\u6557\uFF1A\u9019\u500B\u5E33\u865F\u6C92\u6709\u9019\u9805\u6B0A\u9650\uFF08\u5E33\u865F\u53EF\u80FD\u5DF2\u505C\u7528\uFF0C\u6216\u6C92\u6709\u88AB\u6388\u6B0A\u8A72\u77E5\u8B58\u5EAB\uFF09\u3002`,
+      ["\u8ACB\u77E5\u8B58\u5EAB\u7BA1\u7406\u54E1\u5728 portal \u7684\u5E33\u865F\u7BA1\u7406\u88E1\u78BA\u8A8D\u4F60\u7684\u72C0\u614B\u8207\u53EF\u7528\u77E5\u8B58\u5EAB"],
+      detail
+    );
+  }
+  return errorResponse(`portal_${res.status}`, `${what}\u5931\u6557\uFF08HTTP ${res.status}\uFF09`, ["\u7A0D\u5F8C\u91CD\u8A66"], detail);
+}
+
 // mcp/src/tools/arcrun_skills_examples.ts
+var KbdbAccessError = class extends Error {
+  constructor(status, what, detail) {
+    super(`KBDB ${what} HTTP ${status}`);
+    this.status = status;
+    this.what = what;
+    this.detail = detail;
+  }
+  status;
+  what;
+  detail;
+};
+function kbdbFailure(e, searchHint, identity) {
+  const portalNote = identity.kind === "portal" ? "\u4F60\u9019\u689D\u662F\u5E33\u5BC6\u767B\u5165\u7684\u9023\u7DDA\uFF0C\u4F46 skill\uFF0Fexample \u9019\u6279\u5DE5\u5177\u76EE\u524D\u4ECD\u8D70**\u670D\u52D9\u5167\u90E8\u6191\u64DA**\uFF08\u9084\u6C92\u63A5\u4E0A\u767B\u5165\u8EAB\u5206\uFF09\u2014\u2014\u6240\u4EE5\u5B83\u8B80\u4E0D\u5230\uFF0C\u4E0D\u4EE3\u8868\u4F60\u7684\u5E33\u865F\u8B80\u4E0D\u5230\u3002" : "";
+  if (e instanceof KbdbAccessError) {
+    const unauthorized = e.status === 401 || e.status === 403;
+    return errorResponse(
+      unauthorized ? "kbdb_unauthorized" : "kbdb_unreachable",
+      (unauthorized ? `\u8B80\u4E0D\u5230 KBDB\uFF08HTTP ${e.status}\uFF1A\u9019\u689D\u9023\u7DDA\u7684\u6191\u64DA\u88AB\u62D2\u6216\u6839\u672C\u6C92\u5E36\uFF09\u3002` : `\u8B80\u4E0D\u5230 KBDB\uFF08HTTP ${e.status}\uFF09\u3002`) + "\u{1F534} **\u9019\u662F\u300C\u8B80\u4E0D\u5230\u300D\uFF0C\u4E0D\u662F\u300C\u4E0D\u5B58\u5728\u300D**\u2014\u2014\u5167\u5BB9\u9084\u5728\u5EAB\u88E1\uFF0C\u53EA\u662F\u9019\u689D\u8DEF\u88AB\u64CB\u4F4F\u4E86\u3002" + (portalNote ? ` ${portalNote}` : ""),
+      [
+        searchHint,
+        "kbdb_get_map() \u770B\u9019\u53F0\u5BE6\u4F8B\u6709\u54EA\u4E9B\u5EAB\uFF08\u90A3\u689D\u8D70\u5F97\u901A\u5C31\u66F4\u78BA\u5B9A\u662F\u9019\u6279\u5DE5\u5177\u7684\u8DEF\u58DE\u4E86\uFF0C\u4E0D\u662F\u5EAB\u7A7A\u4E86\uFF09",
+        "\u{1F534} \u4E0D\u51C6\u628A\u9019\u500B\u932F\u8AA4\u56DE\u5831\u6210\u300C\u627E\u4E0D\u5230\uFF0F\u6C92\u6709\u9019\u500B skill\u300D\u2014\u2014\u8ACB\u7167\u5BE6\u8AAA\u300CKBDB \u9019\u689D\u8DEF\u8B80\u4E0D\u5230\u300D",
+        "\u6301\u7E8C\u5931\u6557\uFF1A\u544A\u8A34 leo \u9019\u53F0\u5BE6\u4F8B\u7684 arcrun-mcp \u5C11\u4E86 secret KBDB_INTERNAL_TOKEN"
+      ],
+      e.detail
+    );
+  }
+  return errorResponse(
+    "kbdb_unreachable",
+    `\u8B80\u4E0D\u5230 KBDB\uFF1A${e instanceof Error ? e.message : String(e)}\u3002\u{1F534} **\u9019\u662F\u300C\u8B80\u4E0D\u5230\u300D\uFF0C\u4E0D\u662F\u300C\u4E0D\u5B58\u5728\u300D**\u3002` + (portalNote ? ` ${portalNote}` : ""),
+    [searchHint, "\u7A0D\u5F8C\u91CD\u8A66", "\u{1F534} \u4E0D\u51C6\u628A\u5B83\u56DE\u5831\u6210\u300C\u6C92\u6709\u9019\u500B skill\uFF0Fexample\u300D"]
+  );
+}
 async function kbdbList(env, entryType, limit = 100) {
   const resp = await kbdbFetch(env, `/entries?entry_type=${encodeURIComponent(entryType)}&limit=${limit}`);
-  if (!resp.ok) throw new Error(`KBDB list entry_type=${entryType} HTTP ${resp.status}`);
+  if (!resp.ok) {
+    throw new KbdbAccessError(resp.status, `list entry_type=${entryType}`, await resp.text().catch(() => ""));
+  }
   const data = await resp.json();
   return data.entries ?? [];
 }
 async function kbdbGetByPageName(env, pageName) {
   const resp = await kbdbFetch(env, `/entries?page_name=${encodeURIComponent(pageName)}&limit=1`);
-  if (!resp.ok) return null;
+  if (!resp.ok) {
+    throw new KbdbAccessError(resp.status, `get page_name=${pageName}`, await resp.text().catch(() => ""));
+  }
   const data = await resp.json();
   return data.entries?.[0] ?? null;
 }
@@ -31284,7 +31377,7 @@ function parseTags(tagsJson) {
     return [];
   }
 }
-function registerListSkills(server, env) {
+function registerListSkills(server, env, identity) {
   server.tool(
     toolName("list_skills"),
     "\u5217\u6240\u6709 agent-skill blocks\uFF08\u5F9E arcrun/registry/skills/ \u540C\u6B65\u9032 KBDB\uFF09\u3002\u6BCF\u500B skill \u662F\u500B markdown playbook\uFF0C\u63CF\u8FF0 AI \u9762\u5C0D X \u554F\u984C\u8A72\u600E\u9EBC\u60F3 + \u8A72\u7528\u54EA\u500B example\u3002\u56DE [{slug, title, tags}]\u3002call get_skill(slug) \u62FF\u5B8C\u6574\u5167\u6587\u3002",
@@ -31292,6 +31385,7 @@ function registerListSkills(server, env) {
       tag: external_exports.string().optional().describe("optional \u6A19\u7C64\u904E\u6FFE\u3002\u5982 'rag' / 'watcher' / 'debug'")
     },
     async ({ tag }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
         const blocks = await kbdbList(env, "agent-skill", 100);
         const skills = blocks.map((b) => {
@@ -31313,20 +31407,19 @@ function registerListSkills(server, env) {
         return successResponse(
           { count: skills.length, skills },
           [
-            skills.length === 0 ? "\u6C92\u6709 skill \u547D\u4E2D\u3002\u8A66 list_skills() \u4E0D\u5E36 tag \u770B\u5168\u90E8" : "call arcrun_get_skill(slug) \u62FF\u55AE\u500B skill \u5B8C\u6574 markdown"
+            skills.length === 0 ? "\u6C92\u6709 skill \u547D\u4E2D\u3002\u8A66 list_skills() \u4E0D\u5E36 tag \u770B\u5168\u90E8" : "call arcrun_get_skill(slug) \u62FF\u55AE\u500B skill \u5B8C\u6574 markdown",
+            // 誠實：這裡回的是**這台實例被 seed 進去的那幾支**，不是「全世界的 skill 目錄」。
+            // 上面清單沒有的名字（例如 'INDEX'）就是這台沒有——別照舊教材去猜一個 slug。
+            "\u{1F534} \u53EA\u7528\u4E0A\u9762\u6E05\u55AE\u88E1\u771F\u7684\u6709\u7684 slug\uFF1B\u6E05\u55AE\u6C92\u6709\uFF1D\u9019\u53F0\u5BE6\u4F8B\u6C92 seed \u9032\u53BB\uFF0C\u4E0D\u8981\u786C\u731C\u540D\u5B57"
           ]
         );
       } catch (e) {
-        return errorResponse(
-          "fetch_failed",
-          e instanceof Error ? e.message : String(e),
-          ["\u7A0D\u5F8C\u91CD\u8A66", "\u82E5\u6301\u7E8C\u5931\u6557\uFF0C\u544A\u8A34 leo"]
-        );
+        return kbdbFailure(e, "\u6539\u7528 kbdb_search({ q: 'skill' }) \u76F4\u63A5\u5728\u77E5\u8B58\u5EAB\u88E1\u627E skill \u5361\u7247\uFF08\u90A3\u689D\u8DEF\u8D70\u7684\u662F\u53E6\u4E00\u7D44\u6191\u64DA\uFF09", identity);
       }
     }
   );
 }
-function registerGetSkill(server, env) {
+function registerGetSkill(server, env, identity) {
   server.tool(
     toolName("get_skill"),
     "\u62FF\u55AE\u4E00 agent-skill \u5B8C\u6574 markdown playbook\u3002slug \u5F9E list_skills \u53D6\u5F97\u3002",
@@ -31334,15 +31427,17 @@ function registerGetSkill(server, env) {
       slug: external_exports.string().describe("skill slug\uFF0C\u4F8B\u5982 'build_watcher_workflow' / 'rag_with_arcrun'")
     },
     async ({ slug }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
         const pageName = slug.startsWith("skill-") ? slug : `skill-${slug}`;
         const block = await kbdbGetByPageName(env, pageName);
         if (!block) {
           return errorResponse(
             "not_found",
-            `skill "${slug}" \u4E0D\u5B58\u5728`,
+            `KBDB \u6B63\u5E38\u56DE\u61C9\uFF0C\u4F46\u6C92\u6709 page_name="${pageName}" \u9019\u5F35\u5361\u2014\u2014\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709 seed \u9019\u652F skill\u3002\uFF08\u4E0D\u540C\u5BE6\u4F8B seed \u7684 skill \u4E0D\u4E00\u6A23\uFF0C\u5225\u7167\u820A\u6559\u6750\u5047\u8A2D\u67D0\u500B\u540D\u5B57\u4E00\u5B9A\u5728\u3002\uFF09`,
             [
-              "call arcrun_list_skills() \u770B\u53EF\u7528 slug",
+              "call arcrun_list_skills() \u770B**\u9019\u53F0\u5BE6\u4F8B\u771F\u7684\u6709**\u54EA\u5E7E\u652F",
+              `kbdb_search({ q: '${slug}' }) \u770B\u5167\u5BB9\u662F\u4E0D\u662F\u88AB\u5B58\u6210\u5225\u7684\u540D\u5B57`,
               "\u78BA\u8A8D\u62FC\u5B57\u6B63\u78BA\uFF08\u4E0D\u9700\u8981 'skill-' prefix\uFF09"
             ]
           );
@@ -31354,16 +31449,16 @@ function registerGetSkill(server, env) {
           tags: parseTags(block.tags_json)
         });
       } catch (e) {
-        return errorResponse(
-          "fetch_failed",
-          e instanceof Error ? e.message : String(e),
-          ["\u7A0D\u5F8C\u91CD\u8A66"]
+        return kbdbFailure(
+          e,
+          `\u6539\u7528 kbdb_search({ q: 'skill-${slug}' }) \u6488\u540C\u4E00\u5F35\u5361\u7247\uFF08skill \u5C31\u4F4F\u5728\u77E5\u8B58\u5EAB\u7684 entries \u88E1\uFF0C\u90A3\u689D\u8DEF\u8D70\u53E6\u4E00\u7D44\u6191\u64DA\uFF09`,
+          identity
         );
       }
     }
   );
 }
-function registerListExamples(server, env) {
+function registerListExamples(server, env, identity) {
   server.tool(
     toolName("list_examples"),
     "\u5217\u6240\u6709 workflow-example blocks\uFF08\u5F9E arcrun/registry/examples/ \u540C\u6B65\u9032 KBDB\uFF09\u3002\u6BCF\u500B example \u662F\u53EF\u76F4\u63A5 push \u7684 workflow YAML \u7BC4\u672C + description\u3002\u56DE [{slug, tags}]\u3002call get_example / search_examples \u62FF\u7D30\u7BC0\u3002",
@@ -31371,6 +31466,7 @@ function registerListExamples(server, env) {
       tag: external_exports.string().optional().describe("optional \u6A19\u7C64\u904E\u6FFE\u3002\u5982 'rag' / 'cron' / 'llm' / 'webhook'")
     },
     async ({ tag }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
         const blocks = await kbdbList(env, "workflow-example", 200);
         const examples = blocks.map((b) => {
@@ -31389,16 +31485,12 @@ function registerListExamples(server, env) {
           ]
         );
       } catch (e) {
-        return errorResponse(
-          "fetch_failed",
-          e instanceof Error ? e.message : String(e),
-          ["\u7A0D\u5F8C\u91CD\u8A66"]
-        );
+        return kbdbFailure(e, "\u6539\u7528 kbdb_search({ q: 'example' }) \u76F4\u63A5\u5728\u77E5\u8B58\u5EAB\u88E1\u627E example \u5361\u7247\uFF08\u90A3\u689D\u8DEF\u8D70\u53E6\u4E00\u7D44\u6191\u64DA\uFF09", identity);
       }
     }
   );
 }
-function registerGetExample(server, env) {
+function registerGetExample(server, env, identity) {
   server.tool(
     toolName("get_example"),
     "\u62FF\u55AE\u4E00 workflow-example \u5B8C\u6574 YAML + description\u3002slug \u5F9E list_examples / search_examples \u53D6\u5F97\u3002\u53EF\u76F4\u63A5\u62FF YAML \u6539\u6210\u4F60\u81EA\u5DF1\u7684 \u2192 push\u3002",
@@ -31406,16 +31498,18 @@ function registerGetExample(server, env) {
       slug: external_exports.string().describe("example slug\uFF0C\u4F8B\u5982 'rag-search-answer' / 'cron-watcher'")
     },
     async ({ slug }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
         const pageName = slug.startsWith("example-") ? slug : `example-${slug}`;
         const block = await kbdbGetByPageName(env, pageName);
         if (!block) {
           return errorResponse(
             "not_found",
-            `example "${slug}" \u4E0D\u5B58\u5728`,
+            `KBDB \u6B63\u5E38\u56DE\u61C9\uFF0C\u4F46\u6C92\u6709 page_name="${pageName}" \u9019\u5F35\u5361\u2014\u2014\u9019\u53F0\u5BE6\u4F8B\u6C92 seed \u9019\u500B example\u3002`,
             [
-              "call arcrun_list_examples() \u770B\u53EF\u7528 slug",
-              "\u6216 arcrun_search_examples(use_case) \u7528\u81EA\u7136\u8A9E\u8A00\u627E"
+              "call arcrun_list_examples() \u770B**\u9019\u53F0\u5BE6\u4F8B\u771F\u7684\u6709**\u54EA\u4E9B slug",
+              "\u6216 arcrun_search_examples(use_case) \u7528\u95DC\u9375\u5B57\u627E",
+              `kbdb_search({ q: '${slug}' }) \u770B\u5167\u5BB9\u662F\u4E0D\u662F\u88AB\u5B58\u6210\u5225\u7684\u540D\u5B57`
             ]
           );
         }
@@ -31436,16 +31530,16 @@ function registerGetExample(server, env) {
           "\u770B description_md \u4E86\u89E3\u8A2D\u8A08\u610F\u5716 / \u6539\u9020\u65B9\u5411"
         ]);
       } catch (e) {
-        return errorResponse(
-          "fetch_failed",
-          e instanceof Error ? e.message : String(e),
-          ["\u7A0D\u5F8C\u91CD\u8A66"]
+        return kbdbFailure(
+          e,
+          `\u6539\u7528 kbdb_search({ q: 'example-${slug}' }) \u6488\u540C\u4E00\u5F35\u5361\u7247\uFF08example \u5C31\u4F4F\u5728\u77E5\u8B58\u5EAB\u7684 entries \u88E1\uFF09`,
+          identity
         );
       }
     }
   );
 }
-function registerSearchExamples(server, env) {
+function registerSearchExamples(server, env, identity) {
   server.tool(
     toolName("search_examples"),
     "\u7528 use case \u95DC\u9375\u5B57\u641C workflow examples\uFF0C\u56DE\u6700\u76F8\u95DC N \u500B\u3002\u6CE8\u610F\uFF1A\u57FA\u672C\u76E4\u76EE\u524D\u662F D1 LIKE \u95DC\u9375\u5B57\u641C\u5C0B\uFF08\u975E\u8A9E\u7FA9 embedding\uFF1B\u8A9E\u7FA9\u662F kbdb-base Phase 1 \u7684 embed \u6A21\u7D44\uFF0C\u5C1A\u672A\u4E0A\uFF09\u3002\u2192 \u7528\u5177\u9AD4\u8A5E\uFF08'email'\u3001'cron'\u3001'rag'\uFF09\u6BD4\u6574\u53E5\u81EA\u7136\u8A9E\u8A00\u547D\u4E2D\u7387\u9AD8\u3002\u4E5F\u6703\u6BD4\u5C0D slug/tag\u3002",
@@ -31454,6 +31548,7 @@ function registerSearchExamples(server, env) {
       top_k: external_exports.number().int().min(1).max(20).optional().describe("\u56DE\u5E7E\u500B\u7D50\u679C\uFF08\u9810\u8A2D 5\uFF09")
     },
     async ({ query, top_k }) => {
+      if (identity.kind === "stale") return staleIdentityError();
       try {
         const k = top_k ?? 5;
         const q = query.trim();
@@ -31498,21 +31593,17 @@ function registerSearchExamples(server, env) {
           ]
         );
       } catch (e) {
-        return errorResponse(
-          "internal_error",
-          e instanceof Error ? e.message : String(e),
-          ["\u91CD\u8A66\u4E00\u6B21"]
-        );
+        return kbdbFailure(e, `\u6539\u7528 kbdb_search({ q: '${query.trim()}' }) \u76F4\u63A5\u67E5\u77E5\u8B58\u5EAB\uFF08\u90A3\u689D\u8DEF\u8D70\u53E6\u4E00\u7D44\u6191\u64DA\uFF09`, identity);
       }
     }
   );
 }
-function registerAllSkillExampleTools(server, env) {
-  registerListSkills(server, env);
-  registerGetSkill(server, env);
-  registerListExamples(server, env);
-  registerGetExample(server, env);
-  registerSearchExamples(server, env);
+function registerAllSkillExampleTools(server, env, identity) {
+  registerListSkills(server, env, identity);
+  registerGetSkill(server, env, identity);
+  registerListExamples(server, env, identity);
+  registerGetExample(server, env, identity);
+  registerSearchExamples(server, env, identity);
 }
 
 // mcp/src/tools/arcrun_recipe.ts
@@ -31711,62 +31802,6 @@ function registerRecipeDelete(server, env) {
       }
     }
   );
-}
-
-// mcp/src/lib/portal-client.ts
-async function portalFetch(env, session, path, opts = {}) {
-  if (!env.CYPHER_EXECUTOR) {
-    throw new Error("CYPHER_EXECUTOR service binding not configured");
-  }
-  const url = new URL(`https://cypher${path}`);
-  for (const [k, v] of Object.entries(opts.query ?? {})) {
-    if (v !== void 0 && v !== "") url.searchParams.set(k, String(v));
-  }
-  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
-    method: opts.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session}`
-    },
-    body: opts.body !== void 0 ? JSON.stringify(opts.body) : void 0
-  });
-}
-function resolveKnowledgeIdentity(authPath, portal) {
-  if (authPath !== "oauth") return { kind: "service" };
-  return portal?.session ? { kind: "portal", portal } : { kind: "stale" };
-}
-function staleIdentityError() {
-  return errorResponse(
-    "identity_missing",
-    "\u9019\u689D MCP \u9023\u7DDA\u662F\u820A\u7248\u7C3D\u767C\u7684 token\uFF0C\u88E1\u9762\u6C92\u6709\u767B\u5165\u8005\u8EAB\u5206\uFF0C\u56E0\u6B64\u67E5\u4E0D\u5230\u4EFB\u4F55\u77E5\u8B58\u5167\u5BB9\u3002\u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u5728 claude.ai \u7684 connector \u8A2D\u5B9A\u88E1\u91CD\u65B0\u6388\u6B0A\u3001\u8F38\u5165\u4F60\u7684 Portal \u5E33\u5BC6\uFF09\u5373\u53EF\u2014\u2014\u4E0D\u9700\u8981\u53E6\u5916\u627E\u4EFB\u4F55 credential \u6216\u91D1\u9470\u3002",
-    [
-      "\u5230 claude.ai \u2192 Settings \u2192 Connectors\uFF0C\u628A\u9019\u500B connector \u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u6703\u8DF3\u51FA\u8F38\u5165 Portal \u5E33\u5BC6\u7684\u9801\u9762\uFF09",
-      "\u91CD\u9023\u5F8C kbdb_* \u5168\u90E8\u5DE5\u5177\u90FD\u6703\u7528\u4F60\u9019\u500B\u5E33\u865F\u7684\u6B0A\u9650\u67E5\u8A62"
-    ]
-  );
-}
-async function portalError(res, what) {
-  const detail = await res.text().catch(() => "");
-  if (res.status === 401) {
-    return errorResponse(
-      "session_expired",
-      `${what}\u5931\u6557\uFF1A\u767B\u5165\u968E\u6BB5\u5DF2\u904E\u671F\uFF08portal session \u5230\u671F\u6216\u5DF2\u767B\u51FA\uFF09\u3002`,
-      [
-        "\u5230 claude.ai \u2192 Settings \u2192 Connectors \u91CD\u65B0\u9023\u7DDA\u9019\u500B connector\uFF08\u91CD\u65B0\u8F38\u5165 Portal \u5E33\u5BC6\uFF09",
-        "\u91CD\u9023\u5F8C\u6B0A\u9650\u8207\u4F60\u5728 portal \u7DB2\u9801\u4E0A\u770B\u5230\u7684\u4E00\u81F4"
-      ],
-      detail
-    );
-  }
-  if (res.status === 403) {
-    return errorResponse(
-      "forbidden",
-      `${what}\u5931\u6557\uFF1A\u9019\u500B\u5E33\u865F\u6C92\u6709\u9019\u9805\u6B0A\u9650\uFF08\u5E33\u865F\u53EF\u80FD\u5DF2\u505C\u7528\uFF0C\u6216\u6C92\u6709\u88AB\u6388\u6B0A\u8A72\u77E5\u8B58\u5EAB\uFF09\u3002`,
-      ["\u8ACB\u77E5\u8B58\u5EAB\u7BA1\u7406\u54E1\u5728 portal \u7684\u5E33\u865F\u7BA1\u7406\u88E1\u78BA\u8A8D\u4F60\u7684\u72C0\u614B\u8207\u53EF\u7528\u77E5\u8B58\u5EAB"],
-      detail
-    );
-  }
-  return errorResponse(`portal_${res.status}`, `${what}\u5931\u6557\uFF08HTTP ${res.status}\uFF09`, ["\u7A0D\u5F8C\u91CD\u8A66"], detail);
 }
 
 // mcp/src/tools/kbdb_data.ts
@@ -32142,8 +32177,10 @@ function renderLibraryMapLines(libraries) {
     const narrative = (l.narrative ?? "").trim() || "\uFF08narrative \u5F85\u88DC\uFF09";
     const clipped = narrative.length > MAX_NARRATIVE_CHARS ? `${narrative.slice(0, MAX_NARRATIVE_CHARS)}\u2026` : narrative;
     const core = entityNames(l.top_entities, 3);
-    const count = Number(l.triplet_count ?? 0) || 0;
-    return `- ${l.library}\uFF1A${clipped}\uFF5C\u6838\u5FC3\uFF1A${core.length ? core.join("\u3001") : "\uFF08\u5C1A\u7121\uFF09"}\uFF5C${count} triplets`;
+    const tripletCount = Number(l.triplet_count ?? 0) || 0;
+    const entryCount = Number(l.entry_count ?? 0) || 0;
+    const countPart = tripletCount > 0 ? `${tripletCount} triplets` : entryCount > 0 ? `0 triplets\uFF0F${entryCount} \u7B46\u539F\u59CB\u5167\u5BB9\uFF08\u5C1A\u672A\u8403\u53D6\u95DC\u4FC2\uFF0Ckbdb_search \u67E5\u5F97\u5230\uFF09` : `0 triplets\uFF0F0 \u5167\u5BB9`;
+    return `- ${l.library}\uFF1A${clipped}\uFF5C\u6838\u5FC3\uFF1A${core.length ? core.join("\u3001") : "\uFF08\u5C1A\u7121\uFF09"}\uFF5C${countPart}`;
   });
   const omitted = rows.length > MAX_LIBRARY_LINES ? `
 \uFF08\u5176\u9918 ${rows.length - MAX_LIBRARY_LINES} \u5EAB\u7565\uFF0Ckbdb_get_map \u53EF\u770B\u5168\u90E8\uFF09` : "";
@@ -32195,6 +32232,13 @@ var RECOMPUTE_HINTS = [
 function registerAllKbdbMapTools(server, env, identity) {
   registerGetMap(server, env, identity);
 }
+function entryOnlyHint(tripletCount, entryCount, library) {
+  if (tripletCount > 0 || entryCount <= 0) return [];
+  const lib = library ? `\u300C${library}\u300D` : "\u9019\u500B\u5EAB";
+  return [
+    `${lib} triplet_count\uFF1D0\uFF0C\u4F46\u6709 ${entryCount} \u7B46\u539F\u59CB\u5167\u5BB9\uFF08entries\uFF09\u2014\u2014\u4E09\u5143\u7D44\u8403\u53D6\u9084\u6C92\u5C0D\u5B83\u8DD1\u904E\uFF0C\u4E0D\u4EE3\u8868\u6C92\u6709\u77E5\u8B58\u3002\u7528 kbdb_search\uFF08\u95DC\u9375\u5B57\u6216\u8A9E\u7FA9\uFF09\u76F4\u63A5\u67E5\u5F97\u5230\u5167\u5BB9\u3002`
+  ];
+}
 function registerGetMap(server, env, identity) {
   server.tool(
     "kbdb_get_map",
@@ -32229,7 +32273,8 @@ function registerGetMap(server, env, identity) {
             ...l,
             // 防禦：top_entities 若是 JSON 字串形就 parse 成名字清單（失敗當空，誠實不 crash）。
             top_entities: entityNames(l.top_entities, 3),
-            triplet_count: Number(l.triplet_count ?? 0) || 0
+            triplet_count: Number(l.triplet_count ?? 0) || 0,
+            entry_count: Number(l.entry_count ?? 0) || 0
           }));
           if (libraries.length === 0) {
             return successResponse({ libraries: [], count: 0 }, [
@@ -32238,9 +32283,15 @@ function registerGetMap(server, env, identity) {
               ...RECOMPUTE_HINTS
             ]);
           }
+          const entryOnlyLibs = libraries.filter(
+            (l) => (l.triplet_count ?? 0) === 0 && (l.entry_count ?? 0) > 0
+          );
           return successResponse({ libraries, count: libraries.length }, [
             "\u8981\u770B\u67D0\u5EAB\u7D30\u7BC0\uFF1Akbdb_get_map(library='\u5EAB\u540D')",
-            "\u9032\u5EAB\u67E5\u5167\u5BB9\uFF1Akbdb_search\uFF08\u95DC\u9375\u5B57/\u8A9E\u7FA9\uFF09\uFF1B\u67E5\u95DC\u4FC2\uFF1Akbdb_graph_neighbors"
+            "\u9032\u5EAB\u67E5\u5167\u5BB9\uFF1Akbdb_search\uFF08\u95DC\u9375\u5B57/\u8A9E\u7FA9\uFF09\uFF1B\u67E5\u95DC\u4FC2\uFF1Akbdb_graph_neighbors",
+            ...entryOnlyLibs.length > 0 ? [
+              `${entryOnlyLibs.map((l) => l.library).join("\u3001")} \u9019\u5E7E\u5EAB triplet_count\uFF1D0 \u4F46 entry_count\uFF1E0\uFF1A\u6709\u539F\u59CB\u5167\u5BB9\uFF0C\u53EA\u662F\u9084\u6C92\u8403\u53D6\u51FA\u4E09\u5143\u7D44\u95DC\u4FC2\u2014\u2014\u5225\u628A 0 triplets \u8B80\u6210\u300C\u6C92\u6709\u77E5\u8B58\u300D\uFF0C\u76F4\u63A5 kbdb_search \u9032\u53BB\u67E5\u3002`
+            ] : []
           ]);
         }
         const res = await mapFetch(`/map/${encodeURIComponent(library)}${qs}`);
@@ -32268,11 +32319,13 @@ function registerGetMap(server, env, identity) {
           top_entities: parseSlotArray(raw2.top_entities),
           relation_profile: parseSlotArray(raw2.relation_profile),
           bridges: parseSlotArray(raw2.bridges),
-          triplet_count: Number(raw2.triplet_count ?? 0) || 0
+          triplet_count: Number(raw2.triplet_count ?? 0) || 0,
+          entry_count: Number(raw2.entry_count ?? 0) || 0
         };
         return successResponse({ map: map2 }, [
           "bridges\uFF1D\u6B64\u5EAB entity \u540C\u6642\u51FA\u73FE\u5728\u54EA\u4E9B\u5176\u4ED6\u5EAB\uFF08\u53EA\u6709\u5169\u5074\u4E09\u5143\u7D44\u90FD\u6A19\u4E86 library \u503C\u624D\u6293\u5F97\u5230\uFF0C\u820A\u8CC7\u6599\u82E5\u6C92\u6A19\u6703\u504F\u7A00\u758F\uFF0C\u662F\u8AA0\u5BE6\u73FE\u6CC1\u4E0D\u662F bug\uFF09",
-          "\u6CBF\u6838\u5FC3 entity \u6316\u95DC\u4FC2\uFF1Akbdb_graph_neighbors(subject=entity \u540D)"
+          "\u6CBF\u6838\u5FC3 entity \u6316\u95DC\u4FC2\uFF1Akbdb_graph_neighbors(subject=entity \u540D)",
+          ...entryOnlyHint(map2.triplet_count, map2.entry_count, library)
         ]);
       } catch (e) {
         return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
@@ -32340,7 +32393,7 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
   registerReportFeedback(server, env, orgNamespace);
   registerAllIntrospectionTools(server, env);
   registerAllWorkflowCrudTools(server, env);
-  registerAllSkillExampleTools(server, env);
+  registerAllSkillExampleTools(server, env, identity);
   registerAllRecipeTools(server, env);
   registerAllKbdbDataTools(server, env, identity);
   registerAllKbdbGraphTools(server, env, orgNamespace, identity);
@@ -32349,7 +32402,47 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
 }
 
 // mcp/src/mcp-handler.ts
-async function handleMcpRequest(request, env, orgNamespace, partnerToken, identity) {
+var KNOWLEDGE_FIRST = [
+  "\u3010\u9019\u689D\u9023\u7DDA\u4E0A\u6709\u4E3B\u4EBA\u7684\u77E5\u8B58\u5EAB\u2014\u2014\u5148\u67E5\u5B83\uFF0C\u518D\u67E5\u5225\u7684\u3011",
+  "",
+  "\u9019\u689D MCP \u9023\u7DDA\u5F8C\u9762\u63A5\u8457\u4E00\u500B **KBDB \u77E5\u8B58\u5EAB**\uFF1A\u9019\u53F0\u5BE6\u4F8B\u7684\u4E3B\u4EBA\u9577\u671F\u7D2F\u7A4D\u7684\u7B46\u8A18\u3001\u6C7A\u7B56\u3001",
+  "\u8E29\u904E\u7684\u5751\u3001\u5C08\u6848\u73FE\u6CC1\u3001skill \u8207\u5DE5\u4F5C\u6D41\u7D00\u9304\uFF0C\u90FD\u5728\u88E1\u9762\u3002**\u4F60\u4E0D\u662F\u5F9E\u96F6\u958B\u59CB\u7684**\u2014\u2014",
+  "\u4F60\u5C0D\u9019\u4E9B\u5C08\u6848\u7684\u5167\u5EFA\u5370\u8C61\u591A\u534A\u662F\u932F\u7684\u6216\u904E\u6642\u7684\uFF0C\u5EAB\u88E1\u90A3\u4EFD\u624D\u662F\u4E3B\u4EBA\u8A8D\u7684\u7248\u672C\u3002",
+  "",
+  "\u{1F534} **\u6709\u4EBA\u554F\u4F60\u300CX \u662F\u4EC0\u9EBC\uFF0F\u70BA\u4EC0\u9EBC\u9019\u6A23\u505A\uFF0F\u4E4B\u524D\u600E\u9EBC\u6C7A\u5B9A\u7684\uFF0F\u73FE\u5728\u505A\u5230\u54EA\u300D\u2014\u2014",
+  "\u4F60\u7684\u7B2C\u4E00\u500B\u52D5\u4F5C\u662F `kbdb_search`\uFF0C\u4E0D\u662F grep \u539F\u59CB\u78BC\u3001\u4E0D\u662F\u4E0A\u7DB2\u641C\u3001\u4E0D\u662F\u56DE\u7B54\u300C\u6211\u4E0D\u77E5\u9053\u300D\u3002**",
+  "",
+  "- `kbdb_search({ q: \"Arcrun \u662F\u4EC0\u9EBC\" })` \u2014 \u95DC\u9375\u5B57\u67E5\uFF08\u9810\u8A2D `mode:'keyword'`\uFF0C\u57FA\u672C\u76E4\u6C38\u9060\u53EF\u7528\uFF09\u3002",
+  "  \u63DB\u5E7E\u7D44\u8B1B\u6CD5\u518D\u653E\u68C4\uFF1B\u60F3\u8981\u8A9E\u7FA9\u76F8\u4F3C\u5EA6\u7528 `mode:'semantic'`\u3002**\u9019\u4E00\u652F\u662F\u4F60\u7684\u7B2C\u4E00\u7AD9\u3002**",
+  "- `kbdb_get_map()` \u2014 \u4E0D\u77E5\u9053\u8A72\u9032\u54EA\u500B\u5EAB\u6642\u5148\u770B\u85CF\u66F8\u5730\u5716\uFF08\u4E0B\u9762\u82E5\u6709\u3010\u85CF\u66F8\u5730\u5716\u3011\u5C31\u662F\u5B83\u7684\u5FEB\u7167\uFF09\u3002",
+  '- `kbdb_graph_neighbors({ subject: "Arcrun" })` \u2014 \u67E5\u67D0\u500B\u6771\u897F\u8DDF\u8AB0\u6709\u95DC\u4FC2\uFF08\u4E09\u5143\u7D44\u904D\u6B77\uFF09\u3002',
+  "- `kbdb_list_templates` / `kbdb_query` \u2014 \u6309 template \u53D6\u6574\u6279\u7D50\u69CB\u5316\u8CC7\u6599\u3002",
+  "",
+  "\u{1F534} **\u9019\u4E09\u4EF6\u4E8B\u4E0D\u53EF\u4EE5\u8B1B\u6210\u540C\u4E00\u53E5**\uFF08\u8B1B\u6210\u540C\u4E00\u53E5\u5C31\u662F\u5728\u9A19\u4EBA\uFF09\uFF1A",
+  "\u2460 \u300C\u77E5\u8B58\u5EAB\u88E1\u6C92\u6709\u300D\u3000\u2461 \u300C\u6211\u6C92\u67E5\u300D\u3000\u2462 \u300C\u5730\u5716\u6C92\u53D6\u5230\uFF0F\u67D0\u5EAB\u986F\u793A 0\u300D\u3002",
+  "\u67E5\u904E\u771F\u7684\u6C92\u6709 \u2192 \u660E\u8AAA\u300C\u77E5\u8B58\u5EAB\u88E1\u67E5\u4E0D\u5230\uFF0C\u4EE5\u4E0B\u662F\u6211\u5F9E\u539F\u59CB\u78BC\uFF0F\u7DB2\u8DEF\u63A8\u7684\u300D\uFF0C\u518D\u53BB\u8B80 code \u6216\u4E0A\u7DB2\u3002",
+  "**\u6C92\u67E5\u5C31\u56DE\u7B54\uFF1D\u62FF\u4F60\u7684\u731C\u6E2C\u5192\u5145\u4E3B\u4EBA\u7684\u77E5\u8B58\uFF0C\u90A3\u662F\u9019\u689D\u9023\u7DDA\u4E0A\u6700\u56B4\u91CD\u7684\u932F\u3002**",
+  "",
+  "\u{1F534} **\u5730\u5716\u662F\u7D22\u5F15\uFF0C\u4E0D\u662F\u5EAB\u5B58\u6E05\u55AE**\uFF1A\u67D0\u5EAB\u986F\u793A `0 triplets`\u3001\u6216\u4E0B\u9762\u6574\u6BB5\u3010\u85CF\u66F8\u5730\u5716\u3011\u6C92\u51FA\u73FE\uFF0C",
+  "\u90FD**\u4E0D\u4EE3\u8868**\u6C92\u6709\u77E5\u8B58\uFF08\u53EF\u80FD\u53EA\u662F\u9084\u6C92\u91CD\u7B97\u3001\u6216\u9019\u6B21\u6C92\u6293\u5230\uFF09\u3002\u8981\u77E5\u9053\u6709\u6C92\u6709\uFF0C\u53EA\u6709\u4E00\u500B\u65B9\u6CD5\uFF1A`kbdb_search` \u67E5\u904E\u3002",
+  "\u540C\u7406\uFF0C\u4EFB\u4F55\u5DE5\u5177\u56DE 401\uFF0F\u9023\u4E0D\u4E0A\uFF0F\u6C92\u6B0A\u9650\uFF0C\u90A3\u662F**\u8B80\u4E0D\u5230**\uFF0C\u4E0D\u662F**\u4E0D\u5B58\u5728**\u2014\u2014\u7167\u5B83\u7D66\u7684 next_actions \u4FEE\uFF0C",
+  "\u5225\u628A\u5B83\u6539\u53E3\u8B1B\u6210\u300C\u9019\u88E1\u6C92\u6709\u300D\uFF08`arcrun_get_skill` \u66FE\u628A KBDB \u7684 401 \u8B1B\u6210\u300Cskill \u4E0D\u5B58\u5728\u300D\uFF0C\u5C31\u662F\u9019\u500B\u75C5\uFF09\u3002"
+].join("\n");
+var MAP_UNAVAILABLE_NOTE = [
+  "\u3010\u85CF\u66F8\u5730\u5716\uFF1A\u9019\u6B21\u6C92\u53D6\u5230\u3011",
+  "\u5730\u5716\u6293\u53D6\u903E\u6642\uFF0F\u56DE\u932F\uFF0F\u6216\u5B83\u56DE\u5831\u7684\u6E05\u55AE\u662F\u7A7A\u7684\uFF08\u4E5F\u53EF\u80FD\u53EA\u662F\u9084\u6C92\u91CD\u7B97\u904E\uFF09\u3002",
+  "\u{1F534} **\u9019\u662F\u300C\u5730\u5716\u6C92\u62FF\u5230\u300D\uFF0C\u4E0D\u662F\u300C\u9019\u88E1\u6C92\u6709\u77E5\u8B58\u300D\u3002** \u4E0A\u9762\u90A3\u689D\u898F\u5247\u7167\u820A\uFF1A",
+  "\u8981\u77E5\u9053\u5EAB\u88E1\u6709\u4EC0\u9EBC\uFF0C\u76F4\u63A5 `kbdb_search`\uFF1B\u60F3\u518D\u6293\u4E00\u6B21\u5730\u5716\u547C\u53EB `kbdb_get_map()`\uFF08\u5B83\u6703\u56DE\u5831\u771F\u6B63\u7684\u539F\u56E0\uFF09\u3002"
+].join("\n");
+var MAP_STALE_NOTE = [
+  "\u3010\u85CF\u66F8\u5730\u5716\uFF1A\u62FF\u4E0D\u5230\uFF0C\u56E0\u70BA\u9019\u689D\u9023\u7DDA\u662F\u820A\u7248\u7C3D\u767C\u7684 token\u3011",
+  "\u9019\u689D\u9023\u7DDA\u7684 token \u6C92\u5E36\u767B\u5165\u8005\u8EAB\u5206\uFF0C`kbdb_*` \u6703\u56DE `identity_missing`\u3002",
+  "\u{1F534} **\u9019\u4E0D\u4EE3\u8868\u77E5\u8B58\u5EAB\u662F\u7A7A\u7684**\u2014\u2014\u662F\u9019\u689D\u9023\u7DDA\u9084\u6C92\u8A8D\u5F97\u4F60\u3002",
+  "\u4ECD\u7136\u5148\u547C\u53EB\u4E00\u6B21 `kbdb_search` \u78BA\u8A8D\u932F\u8AA4\u78BC\uFF1B\u82E5\u771F\u7684\u662F `identity_missing`\uFF0C",
+  "\u8ACB\u4F7F\u7528\u8005\u5230 claude.ai \u2192 Settings \u2192 Connectors \u628A\u9019\u500B connector \u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u91CD\u65B0\u8F38\u5165 Portal \u5E33\u5BC6\uFF09\uFF0C",
+  "**\u4E0D\u8981\u6539\u53E3\u8AAA\u300C\u67E5\u4E0D\u5230\u8CC7\u6599\u300D\u6216\u81EA\u5DF1\u53BB\u731C\u7B54\u6848\u3002**"
+].join("\n");
+async function buildServerInstructions(env, identity) {
   const mapInstructions = await buildLibraryMapInstructions(env, identity);
   const startHere = [
     "# Arcrun \u2014 \u4F60\u5DF2\u7D93\u914D\u5099\u4E86\u9019\u5957\u5DE5\u5177\uFF0C\u5225\u4E0A\u7DB2\u627E",
@@ -32363,9 +32456,13 @@ async function handleMcpRequest(request, env, orgNamespace, partnerToken, identi
     "",
     "1. `arcrun_get_skill('write_intent_workflow')` \u2014 **\u5FC5\u8B80\u7B2C\u4E00\u652F**\u3002",
     "   \u6559\u4F60\u7528 `>>` \u5BEB\u300C\u610F\u5716\u5DE5\u4F5C\u6D41\u300D\u3002\u4F60**\u4E0D\u9700\u8981\u5148\u77E5\u9053\u6709\u54EA\u4E9B\u96F6\u4EF6**\uFF0C\u5148\u5BEB\u610F\u5716\u3002",
+    "   \u26A0\uFE0F \u9019\u652F\u82E5\u56DE\u932F\uFF08401\uFF0F\u9023\u4E0D\u4E0A\uFF0F`kbdb_unreachable`\uFF09\uFF0C\u90A3\u662F**\u9019\u689D\u9023\u7DDA\u8B80\u4E0D\u5230 KBDB**\uFF0C",
+    "   **\u4E0D\u662F skill \u4E0D\u5B58\u5728**\u2014\u2014\u540C\u4E00\u4EFD\u5167\u5BB9\u7528 `kbdb_search({ q: 'skill-write_intent_workflow' })` \u6488\u5F97\u5230\u3002",
     "2. `arcrun_whoami()` \u2014 \u78BA\u8A8D\u9023\u5230\u54EA\u500B\u5E33\u865F\uFF08\u52FF\u81EA\u884C curl \u731C\u5E33\u865F URL\uFF09\u3002",
     "3. \u628A\u610F\u5716\u4E1F `POST /cypher/search` \u6216 `arcrun_validate_yaml` \u2014 \u7CFB\u7D71\u544A\u8A34\u4F60\u54EA\u4E9B\u96F6\u4EF6\u5B58\u5728\u3002",
-    "4. \u5361\u4F4F\uFF0F\u4E0D\u77E5\u9053\u8A72\u67E5\u4EC0\u9EBC \u2192 `arcrun_get_skill('INDEX')`\uFF08\u5168\u9928\u5C0E\u822A\uFF1A\u4EC0\u9EBC\u554F\u984C\u67E5\u54EA\u88E1\uFF0B\u5DF2\u77E5\u7684\u5751\uFF09\u3002",
+    "4. \u5361\u4F4F\uFF0F\u4E0D\u77E5\u9053\u8A72\u67E5\u4EC0\u9EBC \u2192 \u5148 `arcrun_list_skills()` **\u770B\u9019\u53F0\u5BE6\u4F8B\u771F\u7684\u6709\u54EA\u5E7E\u652F**\uFF0C\u518D\u6311\u4E00\u652F\u8B80\u3002",
+    "   \uFF082026-08-13 \u5BE6\u6E2C\uFF1A\u4E0D\u540C\u5BE6\u4F8B seed \u7684 skill \u4E0D\u4E00\u6A23\uFF0C\u6709\u7684\u5BE6\u4F8B\u53EA\u6709\u5169\u652F\u3001\u9023 `INDEX` \u90FD\u6C92\u6709\u3002",
+    "   **\u4E0D\u8981\u7167\u6559\u6750\u76F4\u63A5\u6307\u540D\u4E00\u500B slug** \u2014\u2014\u5148\u5217\u6E05\u55AE\uFF0C\u6216 `kbdb_search({ q: 'skill' })` \u76F4\u63A5\u5728\u5EAB\u88E1\u627E\u3002\uFF09",
     "5. \u7F3A\u96F6\u4EF6\u6642\uFF1A\u7F3A API \u2192 \u5BEB recipe\uFF08`arcrun_recipe_push`\uFF09\uFF1B\u7F3A\u80FD\u529B \u2192 \u6295\u7A3F\u96F6\u4EF6 PR\u3002",
     "   \u{1F534} **\u4E0D\u8981\u56E0\u70BA\u67E5\u4E0D\u5230\u96F6\u4EF6\u5C31\u6539\u5BEB\u6210 `code` \u7BC0\u9EDE**\u2014\u2014\u90A3\u53EB\u300C\u8179\u8A9E\u8853\u300D\uFF08\u8868\u9762\u7528 Arcrun\u3001",
     "   \u5BE6\u969B\u5168\u5BEB JS\uFF09\u3002`code` \u53EA\u7528\u65BC\u5C40\u90E8\u6574\u5F62\uFF08\u4F8B\uFF1A\u525D\u6389 LLM \u56DE\u61C9\u7684\u96DC\u8A0A\uFF09\u3002",
@@ -32381,11 +32478,11 @@ async function handleMcpRequest(request, env, orgNamespace, partnerToken, identi
     "\u4E0D\u662F\u5931\u6557\u2014\u2014\u5225\u56E0\u70BA\u300C\u53EA\u6709\u4E00\u689D\u8DEF\u6709\u8F38\u51FA\u300D\u5C31\u4EE5\u70BA\u58DE\u6389\u800C\u6539\u5BEB\u6210 code\uFF082026-08-01 \u5BE6\u649E\uFF09\u3002",
     "\u7B2C\u4E00\u500B\u7BC0\u9EDE\u56FA\u5B9A\u662F `input`\u3002"
   ].join("\n");
-  const instructions = mapInstructions ? `${startHere}
-
----
-
-${mapInstructions}` : startHere;
+  const mapSection = mapInstructions ?? (identity.kind === "stale" ? MAP_STALE_NOTE : MAP_UNAVAILABLE_NOTE);
+  return [KNOWLEDGE_FIRST, startHere, mapSection].join("\n\n---\n\n");
+}
+async function handleMcpRequest(request, env, orgNamespace, partnerToken, identity) {
+  const instructions = await buildServerInstructions(env, identity);
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: void 0 });
   const server = new McpServer(
     { name: "arcrun-mcp-server", version: "1.0.0" },
