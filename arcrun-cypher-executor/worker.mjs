@@ -3400,8 +3400,9 @@ function validateName(name) {
 function validSensitivity(s) {
   return s === "standard" || s === "high";
 }
-async function putWorkerSecret(env, secretRef, value) {
-  if (!env.CF_SECRETS_API_TOKEN || !env.CF_ACCOUNT_ID) {
+async function putWorkerSecret(env, secretRef, value, tokenOverride) {
+  const token = tokenOverride || env.CF_SECRETS_API_TOKEN;
+  if (!token || !env.CF_ACCOUNT_ID) {
     throw new Error(
       "\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u5BEB\u5165\u8DEF\u5F91\u672A\u5C31\u7DD2\uFF08\u898B credential-store-migration.md T3\uFF1Aacr init/update \u61C9\u78BA\u4FDD\u9019\u5169\u9805\u5C31\u7DD2\uFF09"
     );
@@ -3410,7 +3411,7 @@ async function putWorkerSecret(env, secretRef, value) {
   const res = await fetch(url, {
     method: "PUT",
     headers: {
-      Authorization: `Bearer ${env.CF_SECRETS_API_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ name: secretRef, text: value, type: "secret_text" })
@@ -3421,14 +3422,15 @@ async function putWorkerSecret(env, secretRef, value) {
     throw new Error(`CF Workers Secrets \u5BEB\u5165\u5931\u6557\uFF1A${detail}`);
   }
 }
-async function deleteWorkerSecret(env, secretRef) {
-  if (!env.CF_SECRETS_API_TOKEN || !env.CF_ACCOUNT_ID) {
+async function deleteWorkerSecret(env, secretRef, tokenOverride) {
+  const token = tokenOverride || env.CF_SECRETS_API_TOKEN;
+  if (!token || !env.CF_ACCOUNT_ID) {
     throw new Error("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
   }
   const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
   const res = await fetch(url, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${env.CF_SECRETS_API_TOKEN}` }
+    headers: { Authorization: `Bearer ${token}` }
   });
   if (res.status === 404) return;
   const body = await res.json().catch(() => null);
@@ -9198,11 +9200,8 @@ function shardIndex(name) {
 function shardNameOf(index) {
   return index === 0 ? AUTH_STORE_PREFIX : `${AUTH_STORE_PREFIX}_${index}`;
 }
-function authStorePresent(env) {
-  return shardNames(env).length > 0 || overlay !== null && Date.now() - overlayAt < AUTH_OVERLAY_TTL_MS;
-}
-function authStoreWritable(env) {
-  return Boolean(env.CF_SECRETS_API_TOKEN && env.CF_ACCOUNT_ID);
+function authStoreWritable(env, tokenOverride) {
+  return Boolean((tokenOverride || env.CF_SECRETS_API_TOKEN) && env.CF_ACCOUNT_ID);
 }
 function readAuthStore(env) {
   if (overlay && Date.now() - overlayAt < AUTH_OVERLAY_TTL_MS) return overlay;
@@ -9238,15 +9237,10 @@ function findAuthUserById(env, id) {
 function isAuthStoreId(recordId) {
   return recordId.startsWith(AUTH_ID_PREFIX);
 }
-function newAuthUserId() {
-  const arr = new Uint8Array(12);
-  crypto.getRandomValues(arr);
-  return AUTH_ID_PREFIX + Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function writeAuthStore(env, data) {
-  if (!authStoreWritable(env)) {
+async function writeAuthStore(env, data, tokenOverride) {
+  if (!authStoreWritable(env, tokenOverride)) {
     throw new AuthStoreWriteError(
-      "\u9019\u53F0\u5BE6\u4F8B\u9084\u4E0D\u80FD\u5BEB\u5165\u8A8D\u8B49\u5132\u5B58\uFF08\u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID\uFF09\u3002\u8A8D\u8B49\u5206\u96E2\u9700\u8981\u9019\u5169\u9805\u624D\u5BEB\u5F97\u9032 Workers Secrets\u2014\u2014\u8ACB\u91CD\u65B0\u57F7\u884C\u5B89\u88DD\uFF0F\u66F4\u65B0\u8B93\u5B83\u5C31\u7DD2\u3002"
+      "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u5BEB\u4E0D\u9032\u8A8D\u8B49\u5132\u5B58\uFF08\u7F3A\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF1ACF_SECRETS_API_TOKEN\uFF09\u3002\u9019\u662F\u5E73\u53F0\u7AEF\u7684\u5DF2\u77E5\u9650\u5236\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u2014\u2014\u76EE\u524D\u6C92\u6709\u4F60\u81EA\u5DF1\u5728\u756B\u9762\u4E0A\u80FD\u505A\u7684\u4E0B\u4E00\u6B65\uFF0C\u8ACB\u628A\u9019\u5247\u8A0A\u606F\u5B8C\u6574\u622A\u5716\uFF0F\u8907\u88FD\u7D66\u652F\u63F4\uFF0C\u4E26\u8A3B\u660E\u4F60\u525B\u624D\u5728\u505A\u4EC0\u9EBC\uFF08\u4F8B\u5982\uFF1A\u5B89\u88DD\u7CBE\u9748\u88E1\u5EFA\u7ACB\u7B2C\u4E00\u500B\u5E33\u865F\u3001\u4E8B\u5F8C\u65B0\u589E\u4F7F\u7528\u8005\u3001\u6216\u4FEE\u6539\u5BC6\u78BC\uFF09\uFF0C\u6703\u9700\u8981\u4EBA\u5DE5\u5354\u52A9\u6392\u9664\u3002"
     );
   }
   const shards = [];
@@ -9269,10 +9263,10 @@ async function writeAuthStore(env, data) {
   }
   const existing = shardNames(env);
   for (let i = 0; i < shards.length; i++) {
-    await putWorkerSecret(env, shardNameOf(i), shards[i]);
+    await putWorkerSecret(env, shardNameOf(i), shards[i], tokenOverride);
   }
   for (const name of existing) {
-    if (shardIndex(name) >= shards.length) await deleteWorkerSecret(env, name);
+    if (shardIndex(name) >= shards.length) await deleteWorkerSecret(env, name, tokenOverride);
   }
   overlay = { version: 1, console: data.console ?? null, users: [...data.users] };
   overlayAt = Date.now();
@@ -9319,26 +9313,23 @@ function unionStores(a, b) {
   }
   return { version: 1, console: a.console ?? b.console ?? null, users: [...byId.values()] };
 }
-async function mutateAuthStore(env, fn) {
+async function mutateAuthStore(env, fn, tokenOverride) {
   await hydrateFromAccelerator(env);
   const next = unionStores(readAuthStore(env), readAuthStoreFromEnv(env));
   await fn(next);
-  await writeAuthStore(env, next);
+  await writeAuthStore(env, next, tokenOverride);
   return next;
-}
-function authStoreStatus(env) {
-  const data = readAuthStore(env);
-  return {
-    present: authStorePresent(env),
-    writable: authStoreWritable(env),
-    users: data.users.length,
-    console_configured: Boolean(data.console),
-    shards: shardNames(env).length
-  };
 }
 
 // cypher-executor/src/routes/health.ts
 var healthRouter = new Hono2();
+function authStoreStatus(env) {
+  const legacy = readAuthStore(env);
+  return {
+    console: { home: "sessions-kv", writable: true, legacy_secrets_present: legacy.console !== null },
+    portal_users: { home: "kbdb", writable: true, legacy_secrets_present: legacy.users.length > 0 }
+  };
+}
 healthRouter.get("/health", (c) => {
   const bundleVersion = c.env.ARCRUN_BUNDLE_VERSION;
   const bundleCommit = c.env.ARCRUN_BUNDLE_COMMIT;
@@ -12625,35 +12616,35 @@ function tenantOf(c) {
   return knowledgeOwner(c.env);
 }
 async function loadCredentials(env) {
-  let fromStore = readAuthStore(env).console;
-  if (!fromStore && await hydrateFromAccelerator(env)) {
-    fromStore = readAuthStore(env).console;
-  }
-  if (fromStore) return { creds: fromStore, source: "secrets" };
   const raw2 = await env.SESSIONS_KV.get(CREDS_KEY);
-  if (!raw2) return { creds: null, source: "none" };
-  let legacy = null;
-  try {
-    legacy = JSON.parse(raw2);
-  } catch {
-    return { creds: null, source: "none" };
+  if (raw2) {
+    try {
+      return { creds: JSON.parse(raw2), source: "kv" };
+    } catch {
+    }
   }
+  const legacy = readAuthStore(env).console;
+  if (!legacy) return { creds: null, source: "none" };
   try {
-    await mutateAuthStore(env, (data) => {
-      if (!data.console) data.console = legacy;
-    });
+    await env.SESSIONS_KV.put(CREDS_KEY, JSON.stringify(legacy));
   } catch {
   }
-  return { creds: legacy, source: "legacy-kv" };
+  return { creds: legacy, source: "legacy-secrets" };
 }
 async function saveCredentials(env, record) {
-  await mutateAuthStore(env, (data) => {
-    data.console = record;
-  });
+  await env.SESSIONS_KV.put(CREDS_KEY, JSON.stringify(record));
+}
+function consoleAuthStoreStatus(env) {
+  return {
+    home: "sessions-kv",
+    writable: true,
+    // binding-based，只要 wrangler.toml 有這個 binding 就一定寫得進去
+    legacy_secrets_present: readAuthStore(env).console !== null
+  };
 }
 consoleAuthRouter.get("/console/auth-status", async (c) => {
   const { creds, source } = await loadCredentials(c.env);
-  return c.json({ configured: !!creds, credentials_source: source, auth_store: authStoreStatus(c.env) });
+  return c.json({ configured: !!creds, credentials_source: source, auth_store: consoleAuthStoreStatus(c.env) });
 });
 consoleAuthRouter.post("/console/setup", async (c) => {
   const { creds: existing } = await loadCredentials(c.env);
@@ -12679,8 +12670,7 @@ consoleAuthRouter.post("/console/setup", async (c) => {
   try {
     await saveCredentials(c.env, record);
   } catch (e) {
-    const msg = e instanceof AuthStoreWriteError ? e.message : String(e);
-    return c.json({ error: `\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${msg}`, code: "auth_store_not_writable" }, 502);
+    return c.json({ error: `\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
   }
   const token = randomHex(32);
   await c.env.SESSIONS_KV.put(`${SESSION_PREFIX}${token}`, JSON.stringify({ created_at: Date.now() }), {
@@ -12705,8 +12695,7 @@ consoleAuthRouter.post("/console/setup/reset", async (c) => {
   try {
     await saveCredentials(c.env, record);
   } catch (e) {
-    const msg = e instanceof AuthStoreWriteError ? e.message : String(e);
-    return c.json({ error: `\u65B0\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${msg}`, code: "auth_store_not_writable" }, 502);
+    return c.json({ error: `\u65B0\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
   }
   return c.json({ success: true });
 });
@@ -12717,7 +12706,7 @@ consoleAuthRouter.post("/console/login", async (c) => {
       {
         error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\uFF08\u6216\u8B80\u4E0D\u5230\uFF09\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8ACB\u5148\u5B8C\u6210\u9996\u6B21\u8A2D\u5B9A\u3002",
         code: "auth_store_empty",
-        auth_store: authStoreStatus(c.env)
+        auth_store: consoleAuthStoreStatus(c.env)
       },
       400
     );
@@ -12726,18 +12715,8 @@ consoleAuthRouter.post("/console/login", async (c) => {
   const email = (body?.email ?? "").trim().toLowerCase();
   const password = body?.password ?? "";
   if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-  let creds = existing;
-  let hash = await hashPassword(password, creds.salt);
-  if (email !== creds.email || hash !== creds.hash) {
-    if (await hydrateFromAccelerator(c.env)) {
-      const again = (await loadCredentials(c.env)).creds;
-      if (again) {
-        creds = again;
-        hash = await hashPassword(password, creds.salt);
-      }
-    }
-  }
-  if (email !== creds.email || hash !== creds.hash) {
+  const hash = await hashPassword(password, existing.salt);
+  if (email !== existing.email || hash !== existing.hash) {
     return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
   }
   const token = randomHex(32);
@@ -13008,24 +12987,31 @@ function recordValuesToAuthUser(id, v) {
     updated_at: v.updated_at ?? (/* @__PURE__ */ new Date()).toISOString()
   };
 }
-async function promoteLegacyUser(env, rec) {
+async function promoteToKbdb(env, rec) {
   try {
     const email = (rec.values.email ?? "").toLowerCase();
-    if (!email) return;
-    if (findAuthUserByEmail(env, email)) return;
-    await mutateAuthStore(env, (data) => {
-      if (data.users.some((u) => u.email === email)) return;
-      data.users.push(recordValuesToAuthUser(newAuthUserId(), rec.values));
+    if (!email) return null;
+    const already = await findKbdbUserRecordId(env, email);
+    if (already) return already;
+    return await createKbdbUserRecord(env, email, {
+      display_name: rec.values.display_name ?? "",
+      status: rec.values.status ?? "active",
+      role: rec.values.role ?? "user",
+      password_hash: rec.values.password_hash ?? "",
+      libraries: rec.values.libraries ?? "[]",
+      created_at: rec.values.created_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+      updated_at: rec.values.updated_at ?? (/* @__PURE__ */ new Date()).toISOString()
     });
   } catch {
+    return null;
   }
 }
 async function findUserRecordId(env, email) {
-  const inStore = findAuthUserByEmail(env, email);
-  if (inStore) return inStore.id;
-  return findLegacyUserRecordId(env, email);
+  const inKbdb = await findKbdbUserRecordId(env, email);
+  if (inKbdb) return inKbdb;
+  return findAuthUserByEmail(env, email)?.id ?? null;
 }
-async function findLegacyUserRecordId(env, email) {
+async function findKbdbUserRecordId(env, email) {
   const ns = portalNamespace(env);
   const params = new URLSearchParams({
     page_name: email,
@@ -13094,42 +13080,53 @@ function daemonActiveKey(env) {
 }
 async function listRecordsByTemplate(env, template) {
   if (template === USER_TEMPLATE) {
-    const fromStore = readAuthStore(env).users.map(authUserToRecord);
-    const seen = new Set(fromStore.map((r) => (r.values.email ?? "").toLowerCase()));
-    let legacy = [];
+    let fromKbdb = [];
     try {
-      legacy = await listLegacyRecordsByTemplate(env, template);
+      fromKbdb = await listKbdbRecordsByTemplate(env, template);
     } catch {
-      legacy = [];
+      fromKbdb = [];
     }
-    return [...fromStore, ...legacy.filter((r) => !seen.has((r.values.email ?? "").toLowerCase()))];
+    const seen = new Set(fromKbdb.map((r) => (r.values.email ?? "").toLowerCase()));
+    const fromLegacy = readAuthStore(env).users.map(authUserToRecord).filter((r) => !seen.has((r.values.email ?? "").toLowerCase()));
+    return [...fromKbdb, ...fromLegacy];
   }
-  return listLegacyRecordsByTemplate(env, template);
+  return listKbdbRecordsByTemplate(env, template);
 }
-async function listLegacyRecordsByTemplate(env, template) {
+async function listKbdbRecordsByTemplate(env, template) {
   const ns = portalNamespace(env);
   const res = await kbdbFetch(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
   if (!res.ok) throw new KbdbError(`GET /records/by-template/${template} \u2192 ${res.status}`);
   const body = await res.json();
   return body.records ?? [];
 }
+async function createKbdbUserRecord(env, email, values) {
+  const ns = portalNamespace(env);
+  const res = await kbdbFetch(env, "/records", {
+    method: "POST",
+    body: JSON.stringify({ template: USER_TEMPLATE, owner_id: ns, values: { ...values, email } })
+  });
+  if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_user\uFF09\u2192 ${res.status}`);
+  const body = await res.json();
+  const recordId = body.record?.record_id;
+  if (!recordId) throw new KbdbError("POST /records \u56DE\u61C9\u7F3A record_id");
+  const head = await kbdbFetch(env, "/entries", {
+    method: "POST",
+    body: JSON.stringify({ entry_type: USER_TEMPLATE, page_name: email, content: recordId, owner_id: ns })
+  });
+  if (!head.ok) throw new KbdbError(`head entry \u5EFA\u7ACB\u5931\u6557\uFF08record ${recordId} \u5DF2\u5EFA\uFF0C\u9700\u4EBA\u5DE5\u6536\u62FE\uFF09\u2192 ${head.status}`);
+  return recordId;
+}
 async function createPortalUser(env, input) {
   const now2 = (/* @__PURE__ */ new Date()).toISOString();
-  const id = newAuthUserId();
-  await mutateAuthStore(env, (data) => {
-    data.users.push({
-      id,
-      email: input.email.toLowerCase(),
-      display_name: input.display_name,
-      status: "active",
-      role: input.role,
-      libraries: input.libraries,
-      password_hash: input.password_hash,
-      created_at: now2,
-      updated_at: now2
-    });
+  return createKbdbUserRecord(env, input.email.toLowerCase(), {
+    display_name: input.display_name,
+    status: "active",
+    role: input.role,
+    password_hash: input.password_hash,
+    libraries: JSON.stringify(input.libraries),
+    created_at: now2,
+    updated_at: now2
   });
-  return id;
 }
 function parseLibraries(raw2) {
   if (!raw2) return [];
@@ -13266,7 +13263,7 @@ async function clearLoginFail(env, email) {
 async function instanceHasNoAuthData(env) {
   if (readAuthStore(env).users.length > 0) return false;
   try {
-    return (await listLegacyRecordsByTemplate(env, USER_TEMPLATE)).length === 0;
+    return (await listKbdbRecordsByTemplate(env, USER_TEMPLATE)).length === 0;
   } catch {
     return true;
   }
@@ -13303,7 +13300,7 @@ portalRouter.post(
           {
             error: "\u9019\u53F0\u5BE6\u4F8B\u8B80\u4E0D\u5230\u4EFB\u4F55\u767B\u5165\u8CC7\u6599\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8A8D\u8B49\u5132\u5B58\u662F\u7A7A\u7684\uFF0C\u8ACB\u91CD\u65B0\u57F7\u884C\u5B89\u88DD\uFF0F\u66F4\u65B0\u4EE5\u91CD\u65B0\u5EFA\u7ACB\u7BA1\u7406\u54E1\u5E33\u865F\u3002",
             code: "auth_store_empty",
-            auth_store: authStoreStatus(c.env)
+            auth_store: { home: "kbdb", writable: true, users: 0 }
           },
           503
         );
@@ -13318,10 +13315,14 @@ portalRouter.post(
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
-    if (!isAuthStoreId(recordId)) await promoteLegacyUser(c.env, rec);
+    let sessionRecordId = recordId;
+    if (isAuthStoreId(recordId)) {
+      const migrated = await promoteToKbdb(c.env, rec);
+      if (migrated) sessionRecordId = migrated;
+    }
     await clearLoginFail(c.env, email);
     const token = randomHex2(32);
-    await c.env.SESSIONS_KV.put(`${SESSION_PREFIX2}${token}`, JSON.stringify({ record_id: recordId }), {
+    await c.env.SESSIONS_KV.put(`${SESSION_PREFIX2}${token}`, JSON.stringify({ record_id: sessionRecordId }), {
       expirationTtl: sessionTtl(c.env)
     });
     return c.json({
