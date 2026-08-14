@@ -3791,6 +3791,9 @@ async function resolveCredentialRefs(data, env, apiKey) {
   if (names.size === 0) return data;
   const nameList = [...names];
   const resolvedSecrets = await resolveSecretsFromNewHome(env, apiKey, nameList);
+  if (nameList.every((n) => Object.prototype.hasOwnProperty.call(resolvedSecrets, n))) {
+    return replaceCredentialRefs(data, resolvedSecrets);
+  }
   const url = wasmWorkerUrl("auth_static_key", env.WORKER_SUBDOMAIN);
   const res = await fetch(url, {
     method: "POST",
