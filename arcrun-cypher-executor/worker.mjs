@@ -3243,15 +3243,20 @@ var init_kbdb_proxy = __esm({
       const owner = tenant(c);
       if (!owner) return c.json(NEED_KEY, 401);
       const body = await c.req.json().catch(() => null);
-      if (!body || !body.template || !body.values) {
-        return c.json({ error: "template \u8207 values \u5FC5\u586B" }, 400);
+      if (!body || !body.template || !body.values && !body.entry_ids) {
+        return c.json({ error: "template \u5FC5\u586B\uFF0Cvalues \u8207 entry_ids \u81F3\u5C11\u8981\u6709\u4E00\u500B" }, 400);
       }
       const { base, headers } = kbdbBase(c.env);
       const res = await fetch(`${base}/records`, {
         method: "POST",
         headers,
         // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
-        body: JSON.stringify({ template: body.template, values: body.values, owner_id: owner })
+        body: JSON.stringify({
+          template: body.template,
+          ...body.values ? { values: body.values } : {},
+          ...body.entry_ids ? { entry_ids: body.entry_ids } : {},
+          owner_id: owner
+        })
       });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
@@ -13708,12 +13713,14 @@ portalRouter.post(
     const body = await c.req.json().catch(() => null);
     const pageName = String(body?.page_name ?? "").trim();
     const srcText = String(body?.text ?? "");
-    if (!pageName || !srcText.trim()) return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
+    const daemonPrompt = String(body?.prompt ?? "").trim();
+    if (!daemonPrompt && (!pageName || !srcText.trim()))
+      return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
     if (!c.env.AI) {
       return c.json({ error: "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A Workers AI\uFF08wrangler.toml \u9700\u6709 [ai] binding\uFF09\uFF0C\u8ACB\u66F4\u65B0\u77E5\u8B58\u5EAB\u7248\u672C" }, 501);
     }
     const REL = ">".repeat(2);
-    const prompt = `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
+    const prompt = daemonPrompt || `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
 # ${pageName}
 ## \u4E00\u53E5\u8A71\u5B9A\u7FA9
 \uFF08\u4E00\u884C\uFF09
@@ -13729,14 +13736,17 @@ ${srcText}`;
     try {
       const out = await c.env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 2048,
+        max_tokens: daemonPrompt ? 8192 : 2048,
         temperature: 0.2
       });
-      const card = String(out?.response ?? "").trim();
-      if (!card) return c.json({ error: "Workers AI \u6C92\u6709\u56DE\u50B3\u5167\u5BB9" }, 502);
+      const raw2 = String(out?.response ?? "").trim();
+      if (!raw2) return c.json({ error: "Workers AI \u6C92\u6709\u56DE\u50B3\u5167\u5BB9" }, 502);
+      if (daemonPrompt) {
+        return c.json({ success: true, output: raw2 });
+      }
       const marker = `# ${pageName}`;
-      const idx = card.lastIndexOf(marker);
-      return c.json({ success: true, card: (idx >= 0 ? card.slice(idx) : card).trim() + "\n" });
+      const idx = raw2.lastIndexOf(marker);
+      return c.json({ success: true, card: (idx >= 0 ? raw2.slice(idx) : raw2).trim() + "\n" });
     } catch (e) {
       return c.json({ error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
     }

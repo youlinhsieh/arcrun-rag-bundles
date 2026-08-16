@@ -1,3 +1,51 @@
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// kbdb/src/actions/relation-orphans.ts
+var relation_orphans_exports = {};
+__export(relation_orphans_exports, {
+  scanRelationOrphans: () => scanRelationOrphans
+});
+async function scanRelationOrphans(db, limit = 200) {
+  const cap = Math.min(Math.max(limit, 1), 1e3);
+  const res = await db.prepare(
+    `SELECT relation_id, role, missing_id FROM (
+         SELECT r.id AS relation_id, 'src' AS role, r.src_id AS missing_id
+           FROM entries r LEFT JOIN entries t ON t.id = r.src_id
+          WHERE r.src_id IS NOT NULL AND t.id IS NULL
+         UNION ALL
+         SELECT r.id, 'rel', r.rel_id
+           FROM entries r LEFT JOIN entries t ON t.id = r.rel_id
+          WHERE r.rel_id IS NOT NULL AND t.id IS NULL
+         UNION ALL
+         SELECT r.id, 'dst', r.dst_id
+           FROM entries r LEFT JOIN entries t ON t.id = r.dst_id
+          WHERE r.dst_id IS NOT NULL AND t.id IS NULL
+       ) LIMIT ?`
+  ).bind(cap + 1).all();
+  const rows = res.results ?? [];
+  const truncated = rows.length > cap;
+  const orphans = truncated ? rows.slice(0, cap) : rows;
+  return { orphans, count: orphans.length, truncated };
+}
+var init_relation_orphans = __esm({
+  "kbdb/src/actions/relation-orphans.ts"() {
+    "use strict";
+  }
+});
+
 // kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
@@ -2101,12 +2149,15 @@ async function getEntry(db, id) {
   const row = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
   return row ?? null;
 }
+var NOT_MACHINERY_PREDICATE = "(src_id IS NULL AND entry_type NOT IN ('record', 'sheet', 'field', 'system'))";
 async function listEntries(db, f = {}) {
   const conds = [];
   const params = [];
   if (f.entry_type) {
     conds.push("entry_type = ?");
     params.push(f.entry_type);
+  } else {
+    conds.push(NOT_MACHINERY_PREDICATE);
   }
   if (f.owner_id) {
     conds.push("owner_id = ?");
@@ -2158,7 +2209,10 @@ async function updateEntry(db, id, patch) {
   return getEntry(db, id);
 }
 async function deleteEntry(db, id) {
+  const ref = await db.prepare("SELECT id FROM entries WHERE dst_id = ? LIMIT 1").bind(id).first();
+  if (ref) throw new Error(`entry ${id} is still referenced by record relation ${ref.id} \u2014 delete the record (or its slot) first`);
   await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
+  await db.prepare("DELETE FROM entries WHERE src_id = ?").bind(id).run();
 }
 async function embeddedIdsByLibrary(db, ownerId, library) {
   const rows = await db.prepare(
@@ -2392,6 +2446,8 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   if (entry_type) {
     conds.push("entry_type = ?");
     params.push(entry_type);
+  } else {
+    conds.push(NOT_MACHINERY_PREDICATE);
   }
   if (source) {
     conds.push("json_extract(metadata_json, '$.source') = ?");
@@ -3236,9 +3292,38 @@ entryRoutes.delete("/:id", async (c) => {
 function uid2(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
+var SYS_ROOT = "sys_root";
+var SYS_BELONGS = "sys_belongs";
+var SYS_FIELD_OF = "sys_field_of";
+function fieldEntryId(templateId, slot) {
+  return `fld_${templateId}_${slot}`;
+}
+async function ensureAnchors(db) {
+  await db.prepare(
+    `INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES
+       ('${SYS_ROOT}', 'root', 'system', NULL),
+       ('${SYS_BELONGS}', 'belongs', 'system', NULL),
+       ('${SYS_FIELD_OF}', 'field_of', 'system', NULL)`
+  ).run();
+}
+async function ensureFieldEntries(db, templateId, slots) {
+  for (const slot of slots) {
+    const fid = fieldEntryId(templateId, slot);
+    await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'field')`).bind(fid, slot).run();
+    await db.prepare(
+      `INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_FIELD_OF}', ?)`
+    ).bind(`relf_${templateId}_${slot}`, fid, templateId).run();
+  }
+}
 async function createTemplate(db, input) {
   const id = input.id ?? uid2("tpl");
   await db.prepare(`INSERT INTO templates (id, name, description, slots_json, created_by) VALUES (?, ?, ?, ?, ?)`).bind(id, input.name, input.description ?? null, JSON.stringify(input.slots), input.created_by ?? null).run();
+  await ensureAnchors(db);
+  await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'sheet')`).bind(id, input.name).run();
+  await db.prepare(
+    `INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_BELONGS}', '${SYS_ROOT}')`
+  ).bind(`relb_${id}`, id).run();
+  await ensureFieldEntries(db, id, input.slots);
   const row = await getTemplate(db, id);
   if (!row) throw new Error("createTemplate: row not found after insert");
   return row;
@@ -3265,104 +3350,187 @@ async function updateTemplate(db, id, patch) {
   if (cols.length === 0) return getTemplate(db, id);
   cols.push("updated_at = unixepoch()");
   await db.prepare(`UPDATE templates SET ${cols.join(", ")} WHERE id = ?`).bind(...params, id).run();
+  if (patch.slots !== void 0) await ensureFieldEntries(db, id, patch.slots);
   return getTemplate(db, id);
+}
+async function loadReferencedEntries(db, entryIds, recordOwnerId) {
+  const ids = [...new Set(Object.values(entryIds))];
+  if (ids.length === 0) return /* @__PURE__ */ new Map();
+  const rows = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const res = await db.prepare(`SELECT id, content, owner_id FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
+    rows.push(...res.results ?? []);
+  }
+  const found = new Map(rows.map((r) => [r.id, r]));
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length > 0) throw new Error(`entry not found: ${missing.join(", ")}`);
+  if (recordOwnerId != null) {
+    const foreign = rows.filter((r) => r.owner_id != null && r.owner_id !== recordOwnerId);
+    if (foreign.length > 0) {
+      throw new Error(
+        `entry owner mismatch: ${foreign.map((r) => `${r.id}(${r.owner_id})`).join(", ")} != ${recordOwnerId}`
+      );
+    }
+  }
+  return new Map(rows.map((r) => [r.id, r.content]));
+}
+async function recordBelongs(db, recordId) {
+  const row = await db.prepare(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}' LIMIT 1`).bind(recordId).first();
+  return row ?? null;
+}
+async function insertCellRelation(db, recordId, templateId, slot, dstEntryId, ownerId) {
+  await db.prepare(
+    `INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`
+  ).bind(uid2("relv"), ownerId, recordId, fieldEntryId(templateId, slot), dstEntryId).run();
 }
 async function createRecord(db, input) {
   const tpl = await getTemplate(db, input.template);
   if (!tpl) throw new Error(`template not found: ${input.template}`);
   const slots = JSON.parse(tpl.slots_json);
   const recordId = input.record_id ?? uid2("rec");
-  for (const slot of slots) {
-    if (!(slot in input.values)) continue;
+  const values = input.values ?? {};
+  const entryIds = input.entry_ids ?? {};
+  const refSlots = Object.keys(entryIds);
+  const ownerId = input.owner_id ?? null;
+  const both = refSlots.filter((s) => s in values);
+  if (both.length > 0) throw new Error(`slot given both value and entry_id: ${both.join(", ")}`);
+  const unknown = refSlots.filter((s) => !slots.includes(s));
+  if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
+  const referenced = await loadReferencedEntries(db, entryIds, ownerId);
+  await db.prepare(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id) VALUES (?, 'record', ?)`).bind(recordId, ownerId).run();
+  await db.prepare(
+    `INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, '${SYS_BELONGS}', ?)`
+  ).bind(`relb_${recordId}_${tpl.id}`, ownerId, recordId, tpl.id).run();
+  const writtenSlots = slots.filter((s) => s in entryIds || s in values);
+  await ensureFieldEntries(db, tpl.id, writtenSlots);
+  for (const slot of writtenSlots) {
+    if (slot in entryIds) {
+      await insertCellRelation(db, recordId, tpl.id, slot, entryIds[slot], ownerId);
+      continue;
+    }
     const entry = await createEntry(db, {
-      content: input.values[slot],
+      content: values[slot],
       entry_type: "value",
-      owner_id: input.owner_id ?? null
+      owner_id: ownerId
     });
-    await db.prepare(`INSERT INTO entry_values (id, record_id, template_id, slot_name, entry_id) VALUES (?, ?, ?, ?, ?)`).bind(uid2("ev"), recordId, tpl.id, slot, entry.id).run();
+    await insertCellRelation(db, recordId, tpl.id, slot, entry.id, ownerId);
   }
-  return { record_id: recordId, template_id: tpl.id, values: input.values, owner_id: input.owner_id ?? null };
+  const out = { ...values };
+  for (const [slot, entryId] of Object.entries(entryIds)) out[slot] = referenced.get(entryId) ?? "";
+  return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
 }
 async function updateRecord(db, recordId, values) {
-  const evRes = await db.prepare(
-    `SELECT ev.slot_name AS slot_name, ev.entry_id AS entry_id, ev.template_id AS template_id, e.owner_id AS owner_id
-       FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
-       WHERE ev.record_id = ?`
+  const belongs = await recordBelongs(db, recordId);
+  if (!belongs) return null;
+  const templateId = belongs.dst_id;
+  const cellRes = await db.prepare(
+    `SELECT f.content AS slot_name, r.dst_id AS entry_id
+       FROM entries r JOIN entries f ON r.rel_id = f.id
+       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`
   ).bind(recordId).all();
-  const evRows = evRes.results ?? [];
-  if (evRows.length === 0) return null;
-  const templateId = evRows[0].template_id;
-  const recordOwnerId = evRows.find((r) => r.owner_id != null)?.owner_id ?? null;
-  const slotToEntry = new Map(evRows.map((r) => [r.slot_name, r.entry_id]));
+  const cells = cellRes.results ?? [];
+  const slotToEntries = /* @__PURE__ */ new Map();
+  for (const c of cells) {
+    const list = slotToEntries.get(c.slot_name) ?? [];
+    list.push(c.entry_id);
+    slotToEntries.set(c.slot_name, list);
+  }
+  const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
+  const recordOwnerId = identity?.owner_id ?? null;
   const tpl = await getTemplate(db, templateId);
-  const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntry.keys()];
+  const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntries.keys()];
   for (const [slot, content] of Object.entries(values)) {
     if (!allowed.includes(slot)) {
       throw new Error(`slot not in template: ${slot}`);
     }
-    const entryId = slotToEntry.get(slot);
-    if (entryId) {
-      await db.prepare(`UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`).bind(content, entryId).run();
+    const entryIds = slotToEntries.get(slot);
+    if (entryIds && entryIds.length > 0) {
+      for (const entryId of entryIds) {
+        await db.prepare(`UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`).bind(content, entryId).run();
+      }
     } else {
+      await ensureFieldEntries(db, templateId, [slot]);
       const entry = await createEntry(db, { content, entry_type: "value", owner_id: recordOwnerId });
-      await db.prepare(`INSERT INTO entry_values (id, record_id, template_id, slot_name, entry_id) VALUES (?, ?, ?, ?, ?)`).bind(uid2("ev"), recordId, templateId, slot, entry.id).run();
+      await insertCellRelation(db, recordId, templateId, slot, entry.id, recordOwnerId);
     }
   }
   return getRecord(db, recordId);
 }
 async function getRecord(db, recordId) {
+  const belongs = await recordBelongs(db, recordId);
+  if (!belongs) return null;
   const res = await db.prepare(
-    `SELECT ev.slot_name as slot, e.content as content, ev.template_id as template_id, e.owner_id as owner_id
-       FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
-       WHERE ev.record_id = ?`
+    `SELECT f.content AS slot, v.content AS content
+       FROM entries r
+       JOIN entries f ON r.rel_id = f.id
+       JOIN entries v ON r.dst_id = v.id
+       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`
   ).bind(recordId).all();
-  const rows = res.results ?? [];
-  if (rows.length === 0) return null;
   const values = {};
-  for (const r of rows) values[r.slot] = r.content;
-  const owner_id = rows.find((r) => r.owner_id != null)?.owner_id ?? null;
-  return { record_id: recordId, template_id: rows[0].template_id, values, owner_id };
+  for (const r of res.results ?? []) values[r.slot] = r.content;
+  const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
+  return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
 }
 async function searchByTemplate(db, template, owner_id, limit = 100) {
   const tpl = await getTemplate(db, template);
   if (!tpl) return [];
   const cap = Math.min(limit, 500);
   const res = owner_id ? await db.prepare(
-    `SELECT DISTINCT ev.record_id as record_id FROM entry_values ev
-           JOIN entries e ON ev.entry_id = e.id
-           WHERE ev.template_id = ? AND e.owner_id = ?
-           ORDER BY ev.created_at DESC LIMIT ?`
-  ).bind(tpl.id, owner_id, cap).all() : await db.prepare(`SELECT DISTINCT record_id FROM entry_values WHERE template_id = ? ORDER BY created_at DESC LIMIT ?`).bind(tpl.id, cap).all();
+    `SELECT src_id AS record_id FROM entries
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND owner_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT ?`
+  ).bind(tpl.id, owner_id, cap).all() : await db.prepare(
+    `SELECT src_id AS record_id FROM entries
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT ?`
+  ).bind(tpl.id, cap).all();
   const ids = (res.results ?? []).map((r) => r.record_id);
   if (ids.length === 0) return [];
   const byId = /* @__PURE__ */ new Map();
+  for (const id of ids) byId.set(id, { record_id: id, template_id: tpl.id, values: {}, owner_id: null });
   for (let i = 0; i < ids.length; i += 90) {
     const chunk = ids.slice(i, i + 90);
     const placeholders = chunk.map(() => "?").join(",");
-    const evRes = await db.prepare(
-      `SELECT ev.record_id as record_id, ev.slot_name as slot, e.content as content, ev.template_id as template_id, e.owner_id as owner_id
-         FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
-         WHERE ev.record_id IN (${placeholders})`
-    ).bind(...chunk).all();
-    for (const r of evRes.results ?? []) {
-      let rec = byId.get(r.record_id);
-      if (!rec) {
-        rec = { record_id: r.record_id, template_id: r.template_id, values: {}, owner_id: null };
-        byId.set(r.record_id, rec);
-      }
-      rec.values[r.slot] = r.content;
-      if (rec.owner_id == null && r.owner_id != null) rec.owner_id = r.owner_id;
+    const [cellRes, identRes] = await Promise.all([
+      db.prepare(
+        `SELECT r.src_id AS record_id, f.content AS slot, v.content AS content
+           FROM entries r
+           JOIN entries f ON r.rel_id = f.id
+           JOIN entries v ON r.dst_id = v.id
+           WHERE r.src_id IN (${placeholders}) AND r.rel_id != '${SYS_BELONGS}'`
+      ).bind(...chunk).all(),
+      db.prepare(`SELECT id, owner_id FROM entries WHERE id IN (${placeholders})`).bind(...chunk).all()
+    ]);
+    for (const r of cellRes.results ?? []) {
+      const rec = byId.get(r.record_id);
+      if (rec) rec.values[r.slot] = r.content;
+    }
+    for (const r of identRes.results ?? []) {
+      const rec = byId.get(r.id);
+      if (rec) rec.owner_id = r.owner_id;
     }
   }
   return ids.map((id) => byId.get(id)).filter((r) => !!r);
 }
 async function deleteRecord(db, recordId) {
-  const evRes = await db.prepare("SELECT entry_id FROM entry_values WHERE record_id = ?").bind(recordId).all();
-  const rows = evRes.results ?? [];
-  if (rows.length === 0) return false;
-  await db.prepare("DELETE FROM entry_values WHERE record_id = ?").bind(recordId).run();
-  for (const { entry_id } of rows) {
-    await db.prepare("DELETE FROM entries WHERE id = ?").bind(entry_id).run();
+  const belongs = await recordBelongs(db, recordId);
+  if (!belongs) return false;
+  const cellRes = await db.prepare(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id != '${SYS_BELONGS}'`).bind(recordId).all();
+  const dsts = (cellRes.results ?? []).map((r) => r.dst_id);
+  await db.prepare(`DELETE FROM entries WHERE src_id = ?`).bind(recordId).run();
+  await db.prepare(
+    `DELETE FROM entries WHERE id = ?1 AND entry_type = 'record'
+        AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)`
+  ).bind(recordId).run();
+  for (const dst of dsts) {
+    await db.prepare(
+      `DELETE FROM entries WHERE id = ?1
+          AND entry_type NOT IN ('sheet', 'field', 'system')
+          AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
+          AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)
+          AND NOT EXISTS (SELECT 1 FROM entries WHERE rel_id = ?1)`
+    ).bind(dst).run();
   }
   return true;
 }
@@ -3395,10 +3563,17 @@ templateRoutes.patch("/:id", async (c) => {
 
 // kbdb/src/routes/records.ts
 var recordRoutes = new Hono2();
+var isStringMap = (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
 recordRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body || !body.template || !body.values) {
-    return c.json({ success: false, error: "template and values required" }, 400);
+  if (!body || !body.template || !body.values && !body.entry_ids) {
+    return c.json({ success: false, error: "template and values (or entry_ids) required" }, 400);
+  }
+  if (body.values !== void 0 && !isStringMap(body.values)) {
+    return c.json({ success: false, error: "values must be an object of {slot: string}" }, 400);
+  }
+  if (body.entry_ids !== void 0 && !isStringMap(body.entry_ids)) {
+    return c.json({ success: false, error: "entry_ids must be an object of {slot: entry_id}" }, 400);
   }
   try {
     const rec = await createRecord(c.env.DB, body);
@@ -3411,20 +3586,14 @@ recordRoutes.get("/triplet-stats", async (c) => {
   const owner = c.req.query("owner_id") || "";
   const rows = await c.env.DB.prepare(
     `SELECT
-       COALESCE(NULLIF(lib_e.content, ''), 'general') AS library,
+       COALESCE(NULLIF(lib_v.content, ''), 'general') AS library,
        COUNT(*) AS triplet_count
-     FROM (
-       SELECT DISTINCT ev.record_id
-       FROM entry_values ev
-       JOIN templates t ON ev.template_id = t.id
-       JOIN entries e ON ev.entry_id = e.id
-       WHERE t.name = 'triplet'
-         AND (?1 = '' OR e.owner_id = ?1)
-     ) AS tr
-     LEFT JOIN entry_values lev
-       ON lev.record_id = tr.record_id AND lev.slot_name = 'library'
-     LEFT JOIN entries lib_e ON lib_e.id = lev.entry_id
-     GROUP BY COALESCE(NULLIF(lib_e.content, ''), 'general')
+     FROM entries b
+     JOIN templates t ON b.dst_id = t.id AND t.name = 'triplet'
+     LEFT JOIN entries lr ON lr.src_id = b.src_id AND lr.rel_id = ('fld_' || b.dst_id || '_library')
+     LEFT JOIN entries lib_v ON lib_v.id = lr.dst_id
+     WHERE b.rel_id = 'sys_belongs' AND (?1 = '' OR b.owner_id = ?1)
+     GROUP BY COALESCE(NULLIF(lib_v.content, ''), 'general')
      ORDER BY library`
   ).bind(owner).all();
   const stats = (rows.results ?? []).map((r) => ({ library: r.library, triplet_count: r.triplet_count }));
@@ -3604,31 +3773,35 @@ async function ensureTripletLibrarySlot(db, tripletTemplate) {
   return true;
 }
 function tripletPivotSql(ownerFiltered) {
-  return `SELECT ev.record_id AS rid,
-       MAX(CASE WHEN ev.slot_name = 'subject' THEN e.content END) AS subject,
-       MAX(CASE WHEN ev.slot_name = 'object' THEN e.content END) AS object,
-       MAX(CASE WHEN ev.slot_name = 'predicate' THEN e.content END) AS predicate,
-       MAX(CASE WHEN ev.slot_name = 'status' THEN e.content END) AS status,
-       MAX(CASE WHEN ev.slot_name = 'library' THEN e.content END) AS library,
-       MAX(CASE WHEN ev.slot_name = 'source_uri' THEN e.content END) AS source_uri
-     FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
-     WHERE ev.template_id = ?${ownerFiltered ? " AND e.owner_id = ?" : ""}
-     GROUP BY ev.record_id`;
+  return `SELECT b.src_id AS rid,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_subject' THEN v.content END) AS subject,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_object' THEN v.content END) AS object,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_predicate' THEN v.content END) AS predicate,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_source_uri' THEN v.content END) AS source_uri
+     FROM entries b
+     LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+     LEFT JOIN entries v ON v.id = r.dst_id
+     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND b.owner_id = ?" : ""}
+     GROUP BY b.src_id`;
 }
 function mapPivotSql(ownerFiltered) {
-  return `SELECT ev.record_id AS rid,
-       MAX(CASE WHEN ev.slot_name = 'library' THEN e.content END) AS library,
-       MAX(CASE WHEN ev.slot_name = 'narrative' THEN e.content END) AS narrative,
-       MAX(CASE WHEN ev.slot_name = 'top_entities' THEN e.content END) AS top_entities,
-       MAX(CASE WHEN ev.slot_name = 'relation_profile' THEN e.content END) AS relation_profile,
-       MAX(CASE WHEN ev.slot_name = 'bridges' THEN e.content END) AS bridges,
-       MAX(CASE WHEN ev.slot_name = 'triplet_count' THEN e.content END) AS triplet_count,
-       MAX(CASE WHEN ev.slot_name = 'commit_hash' THEN e.content END) AS commit_hash,
-       MAX(CASE WHEN ev.slot_name = 'status' THEN e.content END) AS status,
-       MAX(ev.created_at) AS ts
-     FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
-     WHERE ev.template_id = ?${ownerFiltered ? " AND e.owner_id = ?" : ""}
-     GROUP BY ev.record_id`;
+  return `SELECT b.src_id AS rid,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_narrative' THEN v.content END) AS narrative,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_top_entities' THEN v.content END) AS top_entities,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_relation_profile' THEN v.content END) AS relation_profile,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_bridges' THEN v.content END) AS bridges,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_triplet_count' THEN v.content END) AS triplet_count,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_commit_hash' THEN v.content END) AS commit_hash,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+       MAX(r.created_at) AS ts
+     FROM entries b
+     LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+     LEFT JOIN entries v ON v.id = r.dst_id
+     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND b.owner_id = ?" : ""}
+     GROUP BY b.src_id`;
 }
 function parseJsonArray(raw2) {
   if (!raw2) return [];
@@ -3761,18 +3934,19 @@ async function liveTripletCountsByLibrary(db, tripletTemplateId, owner_id) {
   const params = owner_id ? [tripletTemplateId, owner_id] : [tripletTemplateId];
   const res = await db.prepare(
     // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在巢狀 worktree matrix/arcrun/.worktree-fix-87/（避免打斷另一 session 佔用中的 matrix/arcrun 主 checkout），hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到中間多出的 worktree 目錄層，非繞牆
-    `SELECT COALESCE(NULLIF(lib_e.content, ''), 'general') AS library, COUNT(*) AS n
+    `SELECT COALESCE(NULLIF(tr.library, ''), 'general') AS library, COUNT(*) AS n
        FROM (
-         SELECT ev.record_id AS rid,
-              MAX(CASE WHEN ev.slot_name = 'status' THEN e.content END) AS status
-         FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
-         WHERE ev.template_id = ?${owner_id ? " AND e.owner_id = ?" : ""}
-         GROUP BY ev.record_id
+         SELECT b.src_id AS rid,
+              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+         LEFT JOIN entries v ON v.id = r.dst_id
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND b.owner_id = ?" : ""}
+         GROUP BY b.src_id
        ) AS tr
-       LEFT JOIN entry_values lev ON lev.record_id = tr.rid AND lev.slot_name = 'library'
-       LEFT JOIN entries lib_e ON lib_e.id = lev.entry_id
        WHERE COALESCE(tr.status, 'active') = 'active'
-       GROUP BY COALESCE(NULLIF(lib_e.content, ''), 'general')`
+       GROUP BY COALESCE(NULLIF(tr.library, ''), 'general')`
   ).bind(...params).all();
   const m = /* @__PURE__ */ new Map();
   for (const r of res.results ?? []) m.set(r.library, r.n);
@@ -3786,6 +3960,8 @@ async function liveEntryCountsByLibrary(db, owner_id) {
               COUNT(*) AS n
        FROM entries
        WHERE ${owner_id ? "owner_id = ? AND " : ""}entry_type != 'value'
+         AND src_id IS NULL
+         AND entry_type NOT IN ('record', 'sheet', 'field', 'system')
          AND NOT (entry_type = 'block' AND COALESCE(json_extract(metadata_json, '$.kind'), '') = 'library_map')
        GROUP BY COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general')`
   ).bind(...params).all();
@@ -3805,10 +3981,12 @@ async function knownLibraryNames(db, owner_id) {
   if (libTpl) {
     const libParams = owner_id ? [libTpl.id, owner_id] : [libTpl.id];
     const libRows = await db.prepare(
-      `SELECT MAX(CASE WHEN ev.slot_name = 'name' THEN e.content END) AS name
-         FROM entry_values ev JOIN entries e ON ev.entry_id = e.id
-         WHERE ev.template_id = ?${owner_id ? " AND e.owner_id = ?" : ""}
-         GROUP BY ev.record_id`
+      `SELECT MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_name' THEN v.content END) AS name
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+         LEFT JOIN entries v ON v.id = r.dst_id
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND b.owner_id = ?" : ""}
+         GROUP BY b.src_id`
     ).bind(...libParams).all();
     for (const r of libRows.results ?? []) if (r.name) names.add(r.name);
   }
@@ -4176,6 +4354,12 @@ app.use("*", async (c, next) => {
 });
 app.get("/", (c) => c.json({ service: "arcrun-kbdb", tier: "base", status: "ok" }));
 app.get("/health", (c) => c.json({ ok: true }));
+app.get("/maintenance/relation-orphans", async (c) => {
+  const { scanRelationOrphans: scanRelationOrphans2 } = await Promise.resolve().then(() => (init_relation_orphans(), relation_orphans_exports));
+  const limit = Number(c.req.query("limit") ?? "200");
+  const report = await scanRelationOrphans2(c.env.DB, Number.isFinite(limit) ? limit : 200);
+  return c.json({ success: true, ...report });
+});
 app.route("/entries", entryRoutes);
 app.route("/templates", templateRoutes);
 app.route("/records", recordRoutes);
