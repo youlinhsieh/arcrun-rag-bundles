@@ -2119,6 +2119,15 @@ var Hono2 = class extends Hono {
   }
 };
 
+// kbdb/src/actions/library-predicate.ts
+var UNLABELLED_LIBRARY = "general";
+function libraryOf(expr) {
+  return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
+}
+var ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
+var ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
+var ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
+
 // kbdb/src/actions/entry-crud.ts
 function uid(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
@@ -2179,6 +2188,11 @@ async function listEntries(db, f = {}) {
     conds.push(libraryPredicate(f.library));
     params.push(...f.library);
   }
+  if (f.exclude_kind && f.exclude_kind.length > 0) {
+    const ph = f.exclude_kind.map(() => "?").join(",");
+    conds.push(`COALESCE(json_extract(metadata_json, '$.kind'), '') NOT IN (${ph})`);
+    params.push(...f.exclude_kind);
+  }
   if (f.q) {
     const m = buildContentLike(f.q);
     conds.push(...m.conds);
@@ -2218,7 +2232,7 @@ async function embeddedIdsByLibrary(db, ownerId, library) {
   const rows = await db.prepare(
     `SELECT id FROM entries
         WHERE owner_id = ?
-          AND COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') = ?
+          AND ${ENTRY_LIBRARY} = ?
           AND is_embedded = 1`
   ).bind(ownerId, library).all();
   return (rows.results ?? []).map((r) => r.id);
@@ -2230,11 +2244,12 @@ async function markUnembedded(db, ids) {
 }
 async function deprecateEntriesByLibrary(db, ownerId, library) {
   const result = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在 worktree ⇒ hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，同 887463c／962d863／5919c6b 已記載的假警報，非繞牆
     `UPDATE entries
          SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
              updated_at = unixepoch()
        WHERE owner_id = ?
-         AND COALESCE(json_extract(metadata_json, '$.library'), 'general') = ?
+         AND ${ENTRY_LIBRARY} = ?
          AND (json_extract(metadata_json, '$.status') IS NULL
               OR json_extract(metadata_json, '$.status') != 'deprecated')`
   ).bind(ownerId, library).run();
@@ -2423,7 +2438,7 @@ function applyRelativeCut(rows) {
 }
 function libraryPredicate(libraries) {
   const placeholders = libraries.map(() => "?").join(",");
-  return `COALESCE(json_extract(metadata_json, '$.library'), 'general') IN (${placeholders})`;
+  return `${ENTRY_LIBRARY} IN (${placeholders})`;
 }
 var NOT_DEPRECATED_PREDICATE = "(json_extract(metadata_json, '$.status') IS NULL OR json_extract(metadata_json, '$.status') != 'deprecated')";
 function isDeprecatedEntry(entry) {
@@ -2641,7 +2656,7 @@ function selectionCriteriaPredicate(opts) {
     params.push(opts.source);
   }
   if (opts.library) {
-    conds.push("COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') = ?");
+    conds.push(`${ENTRY_LIBRARY} = ?`);
     params.push(opts.library);
   }
   if (typeof opts.since === "number") {
@@ -2924,9 +2939,7 @@ async function migrateLegacyCredentialsForOwner(db, ownerId) {
 var MAX_PAGE_NAMES = 300;
 var HARD_LIMIT_CAP = 500;
 function criteriaPredicate(c) {
-  const conds = [
-    "(json_extract(metadata_json, '$.library') IS NULL OR json_extract(metadata_json, '$.library') = '')"
-  ];
+  const conds = [ENTRY_UNLABELLED];
   const params = [];
   if (c.owner_id) {
     conds.push("owner_id = ?");
@@ -3034,7 +3047,7 @@ entryRoutes.post("/", async (c) => {
 entryRoutes.get("/libraries", async (c) => {
   const owner = c.req.query("owner_id") || "";
   const rows = await c.env.DB.prepare(
-    `SELECT DISTINCT COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') AS library
+    `SELECT DISTINCT ${ENTRY_LIBRARY} AS library
        FROM entries
       WHERE (?1 = '' OR owner_id = ?1)
         AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
@@ -3047,7 +3060,7 @@ entryRoutes.get("/library-stats", async (c) => {
   const owner = c.req.query("owner_id") || "";
   const rows = await c.env.DB.prepare(
     `SELECT
-       COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') AS library,
+       ${ENTRY_LIBRARY} AS library,
        COUNT(DISTINCT page_name) AS card_count
      FROM entries
      WHERE (?1 = '' OR owner_id = ?1)
@@ -3075,6 +3088,12 @@ entryRoutes.get("/", async (c) => {
     source: c.req.query("source") || void 0,
     library: parseLibraryParam(c.req.query("library")),
     q: c.req.query("q") || c.req.query("search") || void 0,
+    // e.g. 只要使用者的原文、不要地圖自己產的摘要: ?exclude_kind=library_map（Arcrun#44）
+    // 與軟刪（metadata.status=deprecated）互補、不重疊：軟刪只標「非現役」的舊地圖，
+    // 而且 listEntries 這條路**根本沒有 deprecated 謂詞**（只有 searchEntries 有）
+    // ⇒ 對本端點軟刪救不到。這個 filter 連現役那顆一起排除——對「找原文」的呼叫端來說，
+    // 地圖摘要不管新舊都不是使用者寫的內容。
+    exclude_kind: parseLibraryParam(c.req.query("exclude_kind")),
     limit: c.req.query("limit") ? Number(c.req.query("limit")) : void 0,
     offset: c.req.query("offset") ? Number(c.req.query("offset")) : void 0
   });
@@ -3472,21 +3491,32 @@ async function getRecord(db, recordId) {
   const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
   return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
 }
-async function searchByTemplate(db, template, owner_id, limit = 100) {
+async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0) {
   const tpl = await getTemplate(db, template);
-  if (!tpl) return [];
-  const cap = Math.min(limit, 500);
+  if (!tpl) return { records: [], total: 0 };
+  const cap = Math.min(Math.max(limit, 1), 500);
+  const skip = Math.max(offset, 0);
+  const totalRow = owner_id ? await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）
+    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND owner_id = ?`
+  ).bind(tpl.id, owner_id).first() : await db.prepare(
+    // kbdb-sql-ok：同上
+    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`
+  ).bind(tpl.id).first();
+  const total = totalRow?.total ?? 0;
   const res = owner_id ? await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；本次 checkout 開在 worktree /private/tmp/wt-graph-first-44/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，與 962d863／5919c6b 記載的是同一個假警報
     `SELECT src_id AS record_id FROM entries
            WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND owner_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ?`
-  ).bind(tpl.id, owner_id, cap).all() : await db.prepare(
+           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
+  ).bind(tpl.id, owner_id, cap, skip).all() : await db.prepare(
+    // kbdb-sql-ok：同上（worktree 路徑假警報）
     `SELECT src_id AS record_id FROM entries
            WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ?`
-  ).bind(tpl.id, cap).all();
+           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
+  ).bind(tpl.id, cap, skip).all();
   const ids = (res.results ?? []).map((r) => r.record_id);
-  if (ids.length === 0) return [];
+  if (ids.length === 0) return { records: [], total };
   const byId = /* @__PURE__ */ new Map();
   for (const id of ids) byId.set(id, { record_id: id, template_id: tpl.id, values: {}, owner_id: null });
   for (let i = 0; i < ids.length; i += 90) {
@@ -3511,7 +3541,7 @@ async function searchByTemplate(db, template, owner_id, limit = 100) {
       if (rec) rec.owner_id = r.owner_id;
     }
   }
-  return ids.map((id) => byId.get(id)).filter((r) => !!r);
+  return { records: ids.map((id) => byId.get(id)).filter((r) => !!r), total };
 }
 async function deleteRecord(db, recordId) {
   const belongs = await recordBelongs(db, recordId);
@@ -3561,6 +3591,500 @@ templateRoutes.patch("/:id", async (c) => {
   return c.json({ success: true, template: tpl });
 });
 
+// kbdb/src/actions/library-map.ts
+var LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
+var LIBRARY_MAP_TEMPLATE_NAME = "library_map";
+var LIBRARY_MAP_SLOTS = [
+  "library",
+  "narrative",
+  "top_entities",
+  "relation_profile",
+  "bridges",
+  "triplet_count",
+  "commit_hash",
+  "status"
+];
+var DEFAULT_TRIPLET_TEMPLATE = "triplet";
+function mapContent(library, narrative, coreNames) {
+  const core = coreNames.length ? coreNames.join("\u3001") : "\uFF08\u5C1A\u7121 entities\uFF09";
+  const text = narrative?.trim();
+  if (!text) return `${library}\u3002\u6838\u5FC3\uFF1A${core}`;
+  const sep = /[。．.！!？?；;]$/.test(text) ? "" : "\u3002";
+  return `${library}\uFF1A${text}${sep}\u6838\u5FC3\uFF1A${core}`;
+}
+var LIBRARY_MAP_TEMPLATE_DESCRIPTION = "per-library map block\uFF08\u85CF\u66F8\u5730\u5716\uFF1Atop_entities\uFF0Frelation_profile\uFF0Fbridges\uFF0Ftriplet_count \u7531 graph \u6A5F\u68B0\u5C0E\u51FA\uFF1Bnarrative \u7531 LLM \u8457\u4F5C\uFF0C\u7B97\u4E0D\u51FA\u4F86\u3001\u4E1F\u4E86\u56DE\u4E0D\u4F86\uFF1BArcrun#39\uFF0F#44\uFF09";
+async function ensureLibraryMapTemplate(db) {
+  const existing = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (existing) {
+    if (existing.description !== LIBRARY_MAP_TEMPLATE_DESCRIPTION) {
+      await updateTemplate(db, existing.id, { description: LIBRARY_MAP_TEMPLATE_DESCRIPTION });
+    }
+    return;
+  }
+  try {
+    await createTemplate(db, {
+      id: LIBRARY_MAP_TEMPLATE_ID,
+      name: LIBRARY_MAP_TEMPLATE_NAME,
+      description: LIBRARY_MAP_TEMPLATE_DESCRIPTION,
+      slots: LIBRARY_MAP_SLOTS,
+      created_by: "system"
+    });
+  } catch {
+    if (!await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME)) throw new Error("ensureLibraryMapTemplate failed");
+  }
+}
+async function ensureTripletLibrarySlot(db, tripletTemplate) {
+  const tpl = await getTemplate(db, tripletTemplate);
+  if (!tpl) throw new Error(`triplet template not found: ${tripletTemplate}`);
+  const slots = JSON.parse(tpl.slots_json);
+  if (slots.includes("library")) return false;
+  await updateTemplate(db, tpl.id, { slots: [...slots, "library"] });
+  return true;
+}
+function tripletPivotSql(ownerFiltered) {
+  return `SELECT b.src_id AS rid,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_subject' THEN v.content END) AS subject,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_object' THEN v.content END) AS object,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_predicate' THEN v.content END) AS predicate,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_source_uri' THEN v.content END) AS source_uri
+     FROM entries b
+     LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+     LEFT JOIN entries v ON v.id = r.dst_id
+     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND b.owner_id = ?" : ""}
+     GROUP BY b.src_id`;
+}
+function mapPivotSql(ownerFiltered) {
+  return `SELECT b.src_id AS rid,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_narrative' THEN v.content END) AS narrative,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_top_entities' THEN v.content END) AS top_entities,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_relation_profile' THEN v.content END) AS relation_profile,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_bridges' THEN v.content END) AS bridges,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_triplet_count' THEN v.content END) AS triplet_count,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_commit_hash' THEN v.content END) AS commit_hash,
+       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+       MAX(r.created_at) AS ts
+     FROM entries b
+     LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+     LEFT JOIN entries v ON v.id = r.dst_id
+     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND b.owner_id = ?" : ""}
+     GROUP BY b.src_id`;
+}
+function parseJsonArray(raw2) {
+  if (!raw2) return [];
+  try {
+    const v = JSON.parse(raw2);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+async function deprecateStaleMapBlocks(db, library, keepId, owner_id) {
+  const params = [library, keepId];
+  if (owner_id) params.push(owner_id);
+  const res = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑造成的假警報同本檔既有註解
+    `UPDATE entries
+          SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
+              updated_at = unixepoch()
+        WHERE entry_type = 'block'
+          AND json_extract(metadata_json, '$.kind') = 'library_map'
+          AND json_extract(metadata_json, '$.library') = ?
+          AND id != ?
+          ${owner_id ? "AND owner_id = ?" : ""}
+          AND (json_extract(metadata_json, '$.status') IS NULL
+               OR json_extract(metadata_json, '$.status') != 'deprecated')`
+  ).bind(...params).run();
+  return res.meta?.changes ?? 0;
+}
+async function recomputeLibraryMap(db, input) {
+  const library = input.library.trim();
+  if (!library) throw new Error("library required");
+  const tripletTemplateName = input.triplet_template ?? DEFAULT_TRIPLET_TEMPLATE;
+  const topN = Math.min(Math.max(Math.floor(input.top_n ?? 10), 1), 50);
+  await ensureLibraryMapTemplate(db);
+  const librarySlotAdded = await ensureTripletLibrarySlot(db, tripletTemplateName);
+  const tripletTpl = await getTemplate(db, tripletTemplateName);
+  if (!tripletTpl) throw new Error(`triplet template not found: ${tripletTemplateName}`);
+  const owner = input.owner_id || void 0;
+  const pivot = tripletPivotSql(!!owner);
+  const pivotParams = owner ? [tripletTpl.id, owner] : [tripletTpl.id];
+  const libCond = input.source_prefix ? `(${libraryOf("t.library")} = ? OR (t.library IS NULL AND t.source_uri LIKE ? || '%'))` : `${libraryOf("t.library")} = ?`;
+  const libParams = input.source_prefix ? [library, input.source_prefix] : [library];
+  const withLib = `WITH t AS (${pivot}), lib AS (
+     SELECT * FROM t WHERE COALESCE(t.status, 'active') = 'active' AND ${libCond})`;
+  const baseParams = [...pivotParams, ...libParams];
+  const [countRow, topRes, relRes, bridgeRes] = await Promise.all([
+    db.prepare(`${withLib} SELECT COUNT(*) AS n FROM lib`).bind(...baseParams).first(),
+    // degree＝entity 在該庫 active triplet 的出現次數（subject＋object 兩側都算；同名並列取名字序穩定輸出）
+    db.prepare(
+      `${withLib} SELECT name, COUNT(*) AS degree FROM (
+           SELECT subject AS name FROM lib UNION ALL SELECT object AS name FROM lib)
+         WHERE name IS NOT NULL GROUP BY name ORDER BY degree DESC, name ASC LIMIT ?`
+    ).bind(...baseParams, topN).all(),
+    // predicate 分布＝庫的「性格」（spec §3 relation_profile）
+    db.prepare(
+      `${withLib} SELECT predicate, COUNT(*) AS n FROM lib
+         WHERE predicate IS NOT NULL GROUP BY predicate ORDER BY n DESC, predicate ASC LIMIT 100`
+    ).bind(...baseParams).all(),
+    // bridges＝本庫 entity 同時出現在其他庫（跨庫 join）。對面那側只能靠 library slot 標記值
+    //（source_prefix 只描述本庫的前綴，無法反推他庫）→ M3 backfill 前 bridges 會偏稀疏，誠實現況。
+    db.prepare(
+      `${withLib}, labeled AS (
+           SELECT DISTINCT name, library FROM (
+             SELECT subject AS name, ${libraryOf("library")} AS library FROM t WHERE COALESCE(status,'active') = 'active'
+             UNION SELECT object AS name, ${libraryOf("library")} AS library FROM t WHERE COALESCE(status,'active') = 'active')
+           WHERE name IS NOT NULL AND library != ?),
+         mine AS (
+           SELECT DISTINCT subject AS name FROM lib WHERE subject IS NOT NULL
+           UNION SELECT DISTINCT object AS name FROM lib WHERE object IS NOT NULL)
+         SELECT l.name AS entity, l.library AS library FROM labeled l
+         JOIN mine m ON m.name = l.name ORDER BY l.name ASC, l.library ASC`
+    ).bind(...baseParams, library).all()
+  ]);
+  const tripletCount = countRow?.n ?? 0;
+  const topEntities = (topRes.results ?? []).map((r) => ({ name: r.name, degree: r.degree }));
+  const relationProfile = (relRes.results ?? []).map((r) => ({ predicate: r.predicate, count: r.n }));
+  const bridgeMap = /* @__PURE__ */ new Map();
+  for (const r of bridgeRes.results ?? []) {
+    if (!bridgeMap.has(r.entity) && bridgeMap.size >= 50) continue;
+    const libs = bridgeMap.get(r.entity) ?? [];
+    if (!libs.includes(r.library)) libs.push(r.library);
+    bridgeMap.set(r.entity, libs);
+  }
+  const bridges = [...bridgeMap.entries()].map(([entity, libraries]) => ({ entity, libraries }));
+  let narrative = input.narrative?.trim();
+  if (!narrative) {
+    const prev = await getLibraryMapDetail(db, library, owner);
+    narrative = prev?.narrative?.trim() || "";
+  }
+  const coreNames = topEntities.slice(0, 3).map((t) => t.name);
+  const content = mapContent(library, narrative, coreNames);
+  const blockEntry = await createEntry(db, {
+    content,
+    entry_type: "block",
+    owner_id: owner ?? null,
+    page_name: `library-map:${library}`,
+    metadata_json: JSON.stringify({ kind: "library_map", library })
+  });
+  const values = {
+    library,
+    narrative,
+    top_entities: JSON.stringify(topEntities),
+    relation_profile: JSON.stringify(relationProfile),
+    bridges: JSON.stringify(bridges),
+    triplet_count: String(tripletCount),
+    status: "active"
+  };
+  if (input.commit_hash) values.commit_hash = input.commit_hash;
+  await createRecord(db, {
+    template: LIBRARY_MAP_TEMPLATE_NAME,
+    record_id: blockEntry.id,
+    values,
+    owner_id: owner ?? null
+  });
+  const mapTpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  const oldParams = owner ? [mapTpl.id, owner, library, blockEntry.id] : [mapTpl.id, library, blockEntry.id];
+  const oldRes = await db.prepare(
+    `WITH m AS (${mapPivotSql(!!owner)})
+       SELECT rid FROM m WHERE m.library = ? AND COALESCE(m.status, 'active') = 'active' AND m.rid != ?`
+  ).bind(...oldParams).all();
+  const superseded = [];
+  for (const row of oldRes.results ?? []) {
+    await updateRecord(db, row.rid, { status: "superseded" });
+    superseded.push(row.rid);
+  }
+  const deprecatedStaleMaps = await deprecateStaleMapBlocks(db, library, blockEntry.id, owner);
+  const entryCount = (await liveEntryCountsByLibrary(db, owner)).get(library) ?? 0;
+  return {
+    map: {
+      record_id: blockEntry.id,
+      library,
+      narrative: narrative || null,
+      content,
+      top_entities: topEntities,
+      relation_profile: relationProfile,
+      bridges,
+      triplet_count: tripletCount,
+      entry_count: entryCount,
+      commit_hash: input.commit_hash ?? null,
+      status: "active",
+      updated_at: blockEntry.created_at
+    },
+    superseded,
+    deprecated_stale_maps: deprecatedStaleMaps,
+    triplet_template: tripletTemplateName,
+    triplet_library_slot_added: librarySlotAdded
+  };
+}
+async function liveTripletCountsByLibrary(db, tripletTemplateId, owner_id) {
+  const params = owner_id ? [tripletTemplateId, owner_id] : [tripletTemplateId];
+  const res = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在巢狀 worktree matrix/arcrun/.worktree-fix-87/（避免打斷另一 session 佔用中的 matrix/arcrun 主 checkout），hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到中間多出的 worktree 目錄層，非繞牆
+    `SELECT ${libraryOf("tr.library")} AS library, COUNT(*) AS n
+       FROM (
+         SELECT b.src_id AS rid,
+              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+         LEFT JOIN entries v ON v.id = r.dst_id
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND b.owner_id = ?" : ""}
+         GROUP BY b.src_id
+       ) AS tr
+       WHERE COALESCE(tr.status, 'active') = 'active'
+       GROUP BY ${libraryOf("tr.library")}`
+  ).bind(...params).all();
+  const m = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) m.set(r.library, r.n);
+  return m;
+}
+async function tripletCountsByLibrary(db, owner_id, tripletTemplateName = DEFAULT_TRIPLET_TEMPLATE) {
+  const tpl = await getTemplate(db, tripletTemplateName);
+  if (!tpl) return /* @__PURE__ */ new Map();
+  return liveTripletCountsByLibrary(db, tpl.id, owner_id);
+}
+async function liveEntryCountsByLibrary(db, owner_id) {
+  const params = owner_id ? [owner_id] : [];
+  const res = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在巢狀 worktree /private/tmp/wt-arcrun-library-map-honesty-87/（同 962d863/5919c6b 已記載的假警報成因：hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到中間多出的 worktree 目錄層，非繞牆）
+    `SELECT ${ENTRY_LIBRARY} AS library,
+              COUNT(*) AS n
+       FROM entries
+       WHERE ${owner_id ? "owner_id = ? AND " : ""}entry_type != 'value'
+         AND src_id IS NULL
+         AND entry_type NOT IN ('record', 'sheet', 'field', 'system')
+         AND NOT (entry_type = 'block' AND COALESCE(json_extract(metadata_json, '$.kind'), '') = 'library_map')
+       GROUP BY ${ENTRY_LIBRARY}`
+  ).bind(...params).all();
+  const m = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) m.set(r.library, r.n);
+  return m;
+}
+async function knownLibraryNames(db, owner_id) {
+  const names = /* @__PURE__ */ new Set();
+  const entryParams = owner_id ? [owner_id] : [];
+  const entryRows = await db.prepare(
+    // 🔴 Arcrun#44（2026-08-17）：這裡原本直接回**原始值**，沒有套歸庫規則
+    //   ⇒ library 是空字串的 entry：SQL 的 IS NOT NULL 放它過、下面那行 `if (r.library)`
+    //     又把 '' 當 falsy 丟掉 ⇒ 它**兩邊都不算**，一個庫都沒進。
+    //     而同一顆 DB 上 entry_count 把它算進 general、`?library=general` 也撈得到它
+    //     ⇒ 「general 這個庫存不存在」會出現第三個答案（GET /map/general 回 404）。
+    //   套上 ENTRY_LIBRARY 之後，'' 跟其他地方一樣正規化成 general。
+    // ⚠️ WHERE 的 `IS NOT NULL` 是**刻意保留**的，不是漏掉：本函式問的是「有沒有被蓋過章」
+    //   （見上面註解的 t52 慣例），從來沒有 library 這個 key 的舊資料不該憑空生出一個庫名。
+    //   「標了但標成空的」則是蓋過章，歸 general——這才是本次要對齊的那一格。
+    `SELECT DISTINCT ${ENTRY_LIBRARY} AS library FROM entries
+       WHERE ${owner_id ? "owner_id = ?" : "1=1"} AND ${ENTRY_LIBRARY_EXPR} IS NOT NULL`
+  ).bind(...entryParams).all();
+  for (const r of entryRows.results ?? []) if (r.library) names.add(r.library);
+  const libTpl = await getTemplate(db, "portal_library");
+  if (libTpl) {
+    const libParams = owner_id ? [libTpl.id, owner_id] : [libTpl.id];
+    const libRows = await db.prepare(
+      `SELECT MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_name' THEN v.content END) AS name
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+         LEFT JOIN entries v ON v.id = r.dst_id
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND b.owner_id = ?" : ""}
+         GROUP BY b.src_id`
+    ).bind(...libParams).all();
+    for (const r of libRows.results ?? []) if (r.name) names.add(r.name);
+  }
+  return names;
+}
+async function ensureFreshLibraryMaps(db, owner_id, tripletTemplateName = DEFAULT_TRIPLET_TEMPLATE) {
+  const tripletTpl = await getTemplate(db, tripletTemplateName);
+  if (!tripletTpl) return;
+  const [liveCounts, cached, known] = await Promise.all([
+    liveTripletCountsByLibrary(db, tripletTpl.id, owner_id),
+    listLibraryMaps(db, owner_id),
+    knownLibraryNames(db, owner_id)
+  ]);
+  const cachedByLib = new Map(cached.map((m) => [m.library, m]));
+  const stale = /* @__PURE__ */ new Set();
+  for (const [library, count] of liveCounts) {
+    const c = cachedByLib.get(library);
+    if (!c || c.triplet_count !== count) stale.add(library);
+  }
+  for (const name of known) {
+    if (!liveCounts.has(name) && !cachedByLib.has(name)) stale.add(name);
+  }
+  for (const c of cached) {
+    if (!liveCounts.has(c.library) && c.triplet_count !== 0) stale.add(c.library);
+  }
+  await Promise.all(
+    [...stale].map(
+      (library) => recomputeLibraryMap(db, { library, owner_id, triplet_template: tripletTemplateName }).catch(() => {
+      })
+    )
+  );
+}
+async function listLibraryMaps(db, owner_id) {
+  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (!tpl) return [];
+  const params = owner_id ? [tpl.id, owner_id] : [tpl.id];
+  const [res, entryCounts] = await Promise.all([
+    db.prepare(
+      // kbdb-sql-ok：牆內本體（kbdb/src/actions/），既有查詢（listLibraryMaps 原本就有）此次改包進 Promise.all 才重新觸發掃描，非新增違規；worktree 路徑假警報同上方 liveEntryCountsByLibrary 註解
+      `WITH m AS (${mapPivotSql(!!owner_id)})
+         SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
+         ORDER BY m.ts DESC`
+    ).bind(...params).all(),
+    liveEntryCountsByLibrary(db, owner_id)
+  ]);
+  const byLib = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) {
+    if (!r.library || byLib.has(r.library)) continue;
+    byLib.set(r.library, {
+      library: r.library,
+      narrative: r.narrative || null,
+      top_entities: parseJsonArray(r.top_entities).slice(0, 3).map((t) => t.name),
+      triplet_count: Number(r.triplet_count ?? 0) || 0,
+      entry_count: entryCounts.get(r.library) ?? 0,
+      updated_at: r.ts
+    });
+  }
+  return [...byLib.values()].sort((a, b) => a.library.localeCompare(b.library));
+}
+async function getLibraryMapDetail(db, library, owner_id) {
+  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (!tpl) return null;
+  const params = owner_id ? [tpl.id, owner_id, library] : [tpl.id, library];
+  const row = await db.prepare(
+    `WITH m AS (${mapPivotSql(!!owner_id)})
+       SELECT * FROM m WHERE m.library = ? AND COALESCE(m.status, 'active') = 'active'
+       ORDER BY m.ts DESC LIMIT 1`
+  ).bind(...params).first();
+  if (!row) return null;
+  const [blockEntry, entryCounts] = await Promise.all([
+    getEntry(db, row.rid),
+    liveEntryCountsByLibrary(db, owner_id)
+  ]);
+  return {
+    record_id: row.rid,
+    library,
+    narrative: row.narrative || null,
+    content: blockEntry?.content ?? null,
+    top_entities: parseJsonArray(row.top_entities),
+    relation_profile: parseJsonArray(row.relation_profile),
+    bridges: parseJsonArray(row.bridges),
+    triplet_count: Number(row.triplet_count ?? 0) || 0,
+    entry_count: entryCounts.get(library) ?? 0,
+    commit_hash: row.commit_hash || null,
+    status: row.status ?? "active",
+    updated_at: row.ts
+  };
+}
+async function setLibraryNarrative(db, library, narrative, owner_id) {
+  const lib = library.trim();
+  if (!lib) throw new Error("library required");
+  const text = narrative.trim();
+  if (!text) throw new Error("narrative required");
+  const current = await getLibraryMapDetail(db, lib, owner_id);
+  if (!current) {
+    const created = await recomputeLibraryMap(db, { library: lib, narrative: text, owner_id });
+    return created.map;
+  }
+  await updateRecord(db, current.record_id, { narrative: text });
+  await updateEntry(db, current.record_id, {
+    content: mapContent(lib, text, current.top_entities.slice(0, 3).map((t) => t.name))
+  });
+  const after = await getLibraryMapDetail(db, lib, owner_id);
+  if (!after) throw new Error("narrative written but map not readable back");
+  return after;
+}
+function questionTokens(question) {
+  const t = question.normalize("NFKC").toLowerCase();
+  const out = /* @__PURE__ */ new Set();
+  for (const w of t.match(/[a-z0-9]{2,}/g) ?? []) out.add(w);
+  for (const seg of t.replace(/[^一-鿿]/g, " ").split(/\s+/)) {
+    for (let i = 0; i + 1 < seg.length; i++) out.add(seg.slice(i, i + 2));
+  }
+  return out;
+}
+async function selectLibrariesForQuestion(db, question, opts = {}) {
+  const q = question.trim();
+  if (!q) throw new Error("question required");
+  const owner = opts.owner_id || void 0;
+  const maxLibs = Math.min(Math.max(Math.floor(opts.limit ?? 3), 1), 10);
+  const qNorm = q.normalize("NFKC").toLowerCase();
+  const allMaps = await listLibraryMaps(db, owner);
+  const considered = allMaps.length;
+  const tpl = await getTemplate(db, opts.triplet_template ?? DEFAULT_TRIPLET_TEMPLATE);
+  const hits = /* @__PURE__ */ new Map();
+  if (tpl) {
+    const pivot = tripletPivotSql(!!owner);
+    const params = owner ? [tpl.id, owner] : [tpl.id];
+    const res = await db.prepare(
+      // kbdb-sql-ok：牆內本體（kbdb/src/actions/）。worktree 開在 /private/tmp/…/wt-gfr44/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到多出的目錄層——與 962d863／5919c6b／887463c 記載的是同一個假警報，非繞牆。
+      `WITH t AS (${pivot}),
+              act AS (SELECT * FROM t WHERE COALESCE(t.status, 'active') = 'active'),
+              ent AS (
+                SELECT subject AS name, ${libraryOf("library")} AS library FROM act WHERE subject IS NOT NULL
+                UNION ALL
+                SELECT object AS name, ${libraryOf("library")} AS library FROM act WHERE object IS NOT NULL)
+         SELECT name, library, COUNT(*) AS degree
+           FROM ent
+          WHERE LENGTH(name) >= 2 AND instr(?, lower(name)) > 0
+          GROUP BY name, library
+          ORDER BY degree DESC, name ASC
+          LIMIT 200`
+    ).bind(...params, qNorm).all();
+    for (const r of res.results ?? []) {
+      const cur = hits.get(r.library) ?? { entities: /* @__PURE__ */ new Set(), score: 0 };
+      cur.entities.add(r.name);
+      cur.score += 1 + Math.log(1 + r.degree);
+      hits.set(r.library, cur);
+    }
+  }
+  let libraries = [...hits.entries()].map(([library, v]) => ({
+    library,
+    score: Math.round(v.score * 100) / 100,
+    matched_entities: [...v.entities].slice(0, 8),
+    via: "graph"
+  })).sort((a, b) => b.score - a.score || a.library.localeCompare(b.library)).slice(0, maxLibs);
+  let route = libraries.length ? "graph" : "all";
+  if (!libraries.length && considered) {
+    const qToks = questionTokens(q);
+    const scored = allMaps.map((m) => {
+      const matched = [];
+      let score = 0;
+      for (const name of [m.library, ...m.top_entities]) {
+        const n = name.normalize("NFKC").toLowerCase();
+        if (n.length >= 2 && qNorm.includes(n)) {
+          matched.push(name);
+          score += 2;
+        }
+      }
+      if (m.narrative) {
+        const nToks = questionTokens(m.narrative);
+        let overlap = 0;
+        for (const t of qToks) if (nToks.has(t)) overlap += 1;
+        score += Math.min(overlap, 6) * 0.25;
+      }
+      return { library: m.library, score: Math.round(score * 100) / 100, matched_entities: matched, via: "index" };
+    }).filter((r) => r.score > 0).sort((a, b) => b.score - a.score || a.library.localeCompare(b.library)).slice(0, maxLibs);
+    if (scored.length) {
+      libraries = scored;
+      route = "index";
+    }
+  }
+  const selected = new Set(libraries.map((l) => l.library));
+  return {
+    route,
+    vector_used: false,
+    // 檢索路徑上沒有向量——這個欄位是給前端徽章的證據，不是宣傳詞
+    libraries_considered: considered,
+    libraries,
+    // 索引整份回傳（不只選中的那幾個）：它就是「館藏目錄」，
+    // 「知識庫裡有哪些子庫、各自談什麼」這類問題的答案在這裡，不在任何一頁原文裡。
+    indexes: allMaps.map((m) => ({ ...m, selected: selected.has(m.library) }))
+  };
+}
+
 // kbdb/src/routes/records.ts
 var recordRoutes = new Hono2();
 var isStringMap = (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
@@ -3583,25 +4107,28 @@ recordRoutes.post("/", async (c) => {
   }
 });
 recordRoutes.get("/triplet-stats", async (c) => {
-  const owner = c.req.query("owner_id") || "";
-  const rows = await c.env.DB.prepare(
-    `SELECT
-       COALESCE(NULLIF(lib_v.content, ''), 'general') AS library,
-       COUNT(*) AS triplet_count
-     FROM entries b
-     JOIN templates t ON b.dst_id = t.id AND t.name = 'triplet'
-     LEFT JOIN entries lr ON lr.src_id = b.src_id AND lr.rel_id = ('fld_' || b.dst_id || '_library')
-     LEFT JOIN entries lib_v ON lib_v.id = lr.dst_id
-     WHERE b.rel_id = 'sys_belongs' AND (?1 = '' OR b.owner_id = ?1)
-     GROUP BY COALESCE(NULLIF(lib_v.content, ''), 'general')
-     ORDER BY library`
-  ).bind(owner).all();
-  const stats = (rows.results ?? []).map((r) => ({ library: r.library, triplet_count: r.triplet_count }));
+  const owner = c.req.query("owner_id") || void 0;
+  const counts = await tripletCountsByLibrary(c.env.DB, owner);
+  const stats = [...counts.entries()].map(([library, triplet_count]) => ({ library, triplet_count })).sort((a, b) => a.library.localeCompare(b.library));
   return c.json({ success: true, stats });
 });
+var intParam = (raw2, fallback, min, max) => {
+  const n = Number(raw2);
+  if (raw2 === void 0 || raw2 === "" || !Number.isFinite(n)) return fallback;
+  const v = Math.floor(n);
+  return v < min ? fallback : Math.min(v, max);
+};
 recordRoutes.get("/by-template/:template", async (c) => {
-  const records = await searchByTemplate(c.env.DB, c.req.param("template"), c.req.query("owner_id") || void 0);
-  return c.json({ success: true, records, count: records.length });
+  const limit = intParam(c.req.query("limit"), 100, 1, 500);
+  const offset = intParam(c.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
+  const { records, total } = await searchByTemplatePage(
+    c.env.DB,
+    c.req.param("template"),
+    c.req.query("owner_id") || void 0,
+    limit,
+    offset
+  );
+  return c.json({ success: true, records, count: records.length, limit, offset, total });
 });
 recordRoutes.get("/:recordId", async (c) => {
   const rec = await getRecord(c.env.DB, c.req.param("recordId"));
@@ -3735,346 +4262,27 @@ embedRoutes.get("/selftest", async (c) => {
   return c.json({ success: true, ...result });
 });
 
-// kbdb/src/actions/library-map.ts
-var LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
-var LIBRARY_MAP_TEMPLATE_NAME = "library_map";
-var LIBRARY_MAP_SLOTS = [
-  "library",
-  "narrative",
-  "top_entities",
-  "relation_profile",
-  "bridges",
-  "triplet_count",
-  "commit_hash",
-  "status"
-];
-var DEFAULT_TRIPLET_TEMPLATE = "triplet";
-async function ensureLibraryMapTemplate(db) {
-  const existing = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
-  if (existing) return;
-  try {
-    await createTemplate(db, {
-      id: LIBRARY_MAP_TEMPLATE_ID,
-      name: LIBRARY_MAP_TEMPLATE_NAME,
-      description: "per-library map block\uFF08\u85CF\u66F8\u5730\u5716\uFF1Agraph \u6A5F\u68B0\u5C0E\u51FA\uFF0C\u96F6 LLM \u751F\u6210\uFF1BArcrun#39\uFF09",
-      slots: LIBRARY_MAP_SLOTS,
-      created_by: "system"
-    });
-  } catch {
-    if (!await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME)) throw new Error("ensureLibraryMapTemplate failed");
-  }
-}
-async function ensureTripletLibrarySlot(db, tripletTemplate) {
-  const tpl = await getTemplate(db, tripletTemplate);
-  if (!tpl) throw new Error(`triplet template not found: ${tripletTemplate}`);
-  const slots = JSON.parse(tpl.slots_json);
-  if (slots.includes("library")) return false;
-  await updateTemplate(db, tpl.id, { slots: [...slots, "library"] });
-  return true;
-}
-function tripletPivotSql(ownerFiltered) {
-  return `SELECT b.src_id AS rid,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_subject' THEN v.content END) AS subject,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_object' THEN v.content END) AS object,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_predicate' THEN v.content END) AS predicate,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_source_uri' THEN v.content END) AS source_uri
-     FROM entries b
-     LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-     LEFT JOIN entries v ON v.id = r.dst_id
-     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND b.owner_id = ?" : ""}
-     GROUP BY b.src_id`;
-}
-function mapPivotSql(ownerFiltered) {
-  return `SELECT b.src_id AS rid,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_narrative' THEN v.content END) AS narrative,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_top_entities' THEN v.content END) AS top_entities,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_relation_profile' THEN v.content END) AS relation_profile,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_bridges' THEN v.content END) AS bridges,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_triplet_count' THEN v.content END) AS triplet_count,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_commit_hash' THEN v.content END) AS commit_hash,
-       MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
-       MAX(r.created_at) AS ts
-     FROM entries b
-     LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-     LEFT JOIN entries v ON v.id = r.dst_id
-     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND b.owner_id = ?" : ""}
-     GROUP BY b.src_id`;
-}
-function parseJsonArray(raw2) {
-  if (!raw2) return [];
-  try {
-    const v = JSON.parse(raw2);
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-}
-async function recomputeLibraryMap(db, input) {
-  const library = input.library.trim();
-  if (!library) throw new Error("library required");
-  const tripletTemplateName = input.triplet_template ?? DEFAULT_TRIPLET_TEMPLATE;
-  const topN = Math.min(Math.max(Math.floor(input.top_n ?? 10), 1), 50);
-  await ensureLibraryMapTemplate(db);
-  const librarySlotAdded = await ensureTripletLibrarySlot(db, tripletTemplateName);
-  const tripletTpl = await getTemplate(db, tripletTemplateName);
-  if (!tripletTpl) throw new Error(`triplet template not found: ${tripletTemplateName}`);
-  const owner = input.owner_id || void 0;
-  const pivot = tripletPivotSql(!!owner);
-  const pivotParams = owner ? [tripletTpl.id, owner] : [tripletTpl.id];
-  const libCond = input.source_prefix ? `(t.library = ? OR (t.library IS NULL AND t.source_uri LIKE ? || '%'))` : `t.library = ?`;
-  const libParams = input.source_prefix ? [library, input.source_prefix] : [library];
-  const withLib = `WITH t AS (${pivot}), lib AS (
-     SELECT * FROM t WHERE COALESCE(t.status, 'active') = 'active' AND ${libCond})`;
-  const baseParams = [...pivotParams, ...libParams];
-  const [countRow, topRes, relRes, bridgeRes] = await Promise.all([
-    db.prepare(`${withLib} SELECT COUNT(*) AS n FROM lib`).bind(...baseParams).first(),
-    // degree＝entity 在該庫 active triplet 的出現次數（subject＋object 兩側都算；同名並列取名字序穩定輸出）
-    db.prepare(
-      `${withLib} SELECT name, COUNT(*) AS degree FROM (
-           SELECT subject AS name FROM lib UNION ALL SELECT object AS name FROM lib)
-         WHERE name IS NOT NULL GROUP BY name ORDER BY degree DESC, name ASC LIMIT ?`
-    ).bind(...baseParams, topN).all(),
-    // predicate 分布＝庫的「性格」（spec §3 relation_profile）
-    db.prepare(
-      `${withLib} SELECT predicate, COUNT(*) AS n FROM lib
-         WHERE predicate IS NOT NULL GROUP BY predicate ORDER BY n DESC, predicate ASC LIMIT 100`
-    ).bind(...baseParams).all(),
-    // bridges＝本庫 entity 同時出現在其他庫（跨庫 join）。對面那側只能靠 library slot 標記值
-    //（source_prefix 只描述本庫的前綴，無法反推他庫）→ M3 backfill 前 bridges 會偏稀疏，誠實現況。
-    db.prepare(
-      `${withLib}, labeled AS (
-           SELECT DISTINCT name, library FROM (
-             SELECT subject AS name, library FROM t WHERE COALESCE(status,'active') = 'active'
-             UNION SELECT object AS name, library FROM t WHERE COALESCE(status,'active') = 'active')
-           WHERE name IS NOT NULL AND library IS NOT NULL AND library != ?),
-         mine AS (
-           SELECT DISTINCT subject AS name FROM lib WHERE subject IS NOT NULL
-           UNION SELECT DISTINCT object AS name FROM lib WHERE object IS NOT NULL)
-         SELECT l.name AS entity, l.library AS library FROM labeled l
-         JOIN mine m ON m.name = l.name ORDER BY l.name ASC, l.library ASC`
-    ).bind(...baseParams, library).all()
-  ]);
-  const tripletCount = countRow?.n ?? 0;
-  const topEntities = (topRes.results ?? []).map((r) => ({ name: r.name, degree: r.degree }));
-  const relationProfile = (relRes.results ?? []).map((r) => ({ predicate: r.predicate, count: r.n }));
-  const bridgeMap = /* @__PURE__ */ new Map();
-  for (const r of bridgeRes.results ?? []) {
-    if (!bridgeMap.has(r.entity) && bridgeMap.size >= 50) continue;
-    const libs = bridgeMap.get(r.entity) ?? [];
-    if (!libs.includes(r.library)) libs.push(r.library);
-    bridgeMap.set(r.entity, libs);
-  }
-  const bridges = [...bridgeMap.entries()].map(([entity, libraries]) => ({ entity, libraries }));
-  let narrative = input.narrative?.trim();
-  if (!narrative) {
-    const prev = await getLibraryMapDetail(db, library, owner);
-    narrative = prev?.narrative?.trim() || "";
-  }
-  const coreNames = topEntities.slice(0, 3).map((t) => t.name);
-  const content = `${library}\uFF1A${narrative || "\uFF08narrative \u5F85 ingest \u88DC\u5BEB\uFF09"}\u3002\u6838\u5FC3\uFF1A${coreNames.length ? coreNames.join("\u3001") : "\uFF08\u5C1A\u7121 entities\uFF09"}`;
-  const blockEntry = await createEntry(db, {
-    content,
-    entry_type: "block",
-    owner_id: owner ?? null,
-    page_name: `library-map:${library}`,
-    metadata_json: JSON.stringify({ kind: "library_map", library })
-  });
-  const values = {
-    library,
-    narrative,
-    top_entities: JSON.stringify(topEntities),
-    relation_profile: JSON.stringify(relationProfile),
-    bridges: JSON.stringify(bridges),
-    triplet_count: String(tripletCount),
-    status: "active"
-  };
-  if (input.commit_hash) values.commit_hash = input.commit_hash;
-  await createRecord(db, {
-    template: LIBRARY_MAP_TEMPLATE_NAME,
-    record_id: blockEntry.id,
-    values,
-    owner_id: owner ?? null
-  });
-  const mapTpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
-  const oldParams = owner ? [mapTpl.id, owner, library, blockEntry.id] : [mapTpl.id, library, blockEntry.id];
-  const oldRes = await db.prepare(
-    `WITH m AS (${mapPivotSql(!!owner)})
-       SELECT rid FROM m WHERE m.library = ? AND COALESCE(m.status, 'active') = 'active' AND m.rid != ?`
-  ).bind(...oldParams).all();
-  const superseded = [];
-  for (const row of oldRes.results ?? []) {
-    await updateRecord(db, row.rid, { status: "superseded" });
-    superseded.push(row.rid);
-  }
-  const entryCount = (await liveEntryCountsByLibrary(db, owner)).get(library) ?? 0;
-  return {
-    map: {
-      record_id: blockEntry.id,
-      library,
-      narrative: narrative || null,
-      content,
-      top_entities: topEntities,
-      relation_profile: relationProfile,
-      bridges,
-      triplet_count: tripletCount,
-      entry_count: entryCount,
-      commit_hash: input.commit_hash ?? null,
-      status: "active",
-      updated_at: blockEntry.created_at
-    },
-    superseded,
-    triplet_template: tripletTemplateName,
-    triplet_library_slot_added: librarySlotAdded
-  };
-}
-async function liveTripletCountsByLibrary(db, tripletTemplateId, owner_id) {
-  const params = owner_id ? [tripletTemplateId, owner_id] : [tripletTemplateId];
-  const res = await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在巢狀 worktree matrix/arcrun/.worktree-fix-87/（避免打斷另一 session 佔用中的 matrix/arcrun 主 checkout），hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到中間多出的 worktree 目錄層，非繞牆
-    `SELECT COALESCE(NULLIF(tr.library, ''), 'general') AS library, COUNT(*) AS n
-       FROM (
-         SELECT b.src_id AS rid,
-              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
-              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library
-         FROM entries b
-         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-         LEFT JOIN entries v ON v.id = r.dst_id
-         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND b.owner_id = ?" : ""}
-         GROUP BY b.src_id
-       ) AS tr
-       WHERE COALESCE(tr.status, 'active') = 'active'
-       GROUP BY COALESCE(NULLIF(tr.library, ''), 'general')`
-  ).bind(...params).all();
-  const m = /* @__PURE__ */ new Map();
-  for (const r of res.results ?? []) m.set(r.library, r.n);
-  return m;
-}
-async function liveEntryCountsByLibrary(db, owner_id) {
-  const params = owner_id ? [owner_id] : [];
-  const res = await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在巢狀 worktree /private/tmp/wt-arcrun-library-map-honesty-87/（同 962d863/5919c6b 已記載的假警報成因：hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到中間多出的 worktree 目錄層，非繞牆）
-    `SELECT COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general') AS library,
-              COUNT(*) AS n
-       FROM entries
-       WHERE ${owner_id ? "owner_id = ? AND " : ""}entry_type != 'value'
-         AND src_id IS NULL
-         AND entry_type NOT IN ('record', 'sheet', 'field', 'system')
-         AND NOT (entry_type = 'block' AND COALESCE(json_extract(metadata_json, '$.kind'), '') = 'library_map')
-       GROUP BY COALESCE(NULLIF(json_extract(metadata_json, '$.library'), ''), 'general')`
-  ).bind(...params).all();
-  const m = /* @__PURE__ */ new Map();
-  for (const r of res.results ?? []) m.set(r.library, r.n);
-  return m;
-}
-async function knownLibraryNames(db, owner_id) {
-  const names = /* @__PURE__ */ new Set();
-  const entryParams = owner_id ? [owner_id] : [];
-  const entryRows = await db.prepare(
-    `SELECT DISTINCT json_extract(metadata_json, '$.library') AS library FROM entries
-       WHERE ${owner_id ? "owner_id = ?" : "1=1"} AND json_extract(metadata_json, '$.library') IS NOT NULL`
-  ).bind(...entryParams).all();
-  for (const r of entryRows.results ?? []) if (r.library) names.add(r.library);
-  const libTpl = await getTemplate(db, "portal_library");
-  if (libTpl) {
-    const libParams = owner_id ? [libTpl.id, owner_id] : [libTpl.id];
-    const libRows = await db.prepare(
-      `SELECT MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_name' THEN v.content END) AS name
-         FROM entries b
-         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-         LEFT JOIN entries v ON v.id = r.dst_id
-         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND b.owner_id = ?" : ""}
-         GROUP BY b.src_id`
-    ).bind(...libParams).all();
-    for (const r of libRows.results ?? []) if (r.name) names.add(r.name);
-  }
-  return names;
-}
-async function ensureFreshLibraryMaps(db, owner_id, tripletTemplateName = DEFAULT_TRIPLET_TEMPLATE) {
-  const tripletTpl = await getTemplate(db, tripletTemplateName);
-  if (!tripletTpl) return;
-  const [liveCounts, cached, known] = await Promise.all([
-    liveTripletCountsByLibrary(db, tripletTpl.id, owner_id),
-    listLibraryMaps(db, owner_id),
-    knownLibraryNames(db, owner_id)
-  ]);
-  const cachedByLib = new Map(cached.map((m) => [m.library, m]));
-  const stale = /* @__PURE__ */ new Set();
-  for (const [library, count] of liveCounts) {
-    const c = cachedByLib.get(library);
-    if (!c || c.triplet_count !== count) stale.add(library);
-  }
-  for (const name of known) {
-    if (!liveCounts.has(name) && !cachedByLib.has(name)) stale.add(name);
-  }
-  await Promise.all(
-    [...stale].map(
-      (library) => recomputeLibraryMap(db, { library, owner_id, triplet_template: tripletTemplateName }).catch(() => {
-      })
-    )
-  );
-}
-async function listLibraryMaps(db, owner_id) {
-  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
-  if (!tpl) return [];
-  const params = owner_id ? [tpl.id, owner_id] : [tpl.id];
-  const [res, entryCounts] = await Promise.all([
-    db.prepare(
-      // kbdb-sql-ok：牆內本體（kbdb/src/actions/），既有查詢（listLibraryMaps 原本就有）此次改包進 Promise.all 才重新觸發掃描，非新增違規；worktree 路徑假警報同上方 liveEntryCountsByLibrary 註解
-      `WITH m AS (${mapPivotSql(!!owner_id)})
-         SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
-         ORDER BY m.ts DESC`
-    ).bind(...params).all(),
-    liveEntryCountsByLibrary(db, owner_id)
-  ]);
-  const byLib = /* @__PURE__ */ new Map();
-  for (const r of res.results ?? []) {
-    if (!r.library || byLib.has(r.library)) continue;
-    byLib.set(r.library, {
-      library: r.library,
-      narrative: r.narrative || null,
-      top_entities: parseJsonArray(r.top_entities).slice(0, 3).map((t) => t.name),
-      triplet_count: Number(r.triplet_count ?? 0) || 0,
-      entry_count: entryCounts.get(r.library) ?? 0,
-      updated_at: r.ts
-    });
-  }
-  return [...byLib.values()].sort((a, b) => a.library.localeCompare(b.library));
-}
-async function getLibraryMapDetail(db, library, owner_id) {
-  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
-  if (!tpl) return null;
-  const params = owner_id ? [tpl.id, owner_id, library] : [tpl.id, library];
-  const row = await db.prepare(
-    `WITH m AS (${mapPivotSql(!!owner_id)})
-       SELECT * FROM m WHERE m.library = ? AND COALESCE(m.status, 'active') = 'active'
-       ORDER BY m.ts DESC LIMIT 1`
-  ).bind(...params).first();
-  if (!row) return null;
-  const [blockEntry, entryCounts] = await Promise.all([
-    getEntry(db, row.rid),
-    liveEntryCountsByLibrary(db, owner_id)
-  ]);
-  return {
-    record_id: row.rid,
-    library,
-    narrative: row.narrative || null,
-    content: blockEntry?.content ?? null,
-    top_entities: parseJsonArray(row.top_entities),
-    relation_profile: parseJsonArray(row.relation_profile),
-    bridges: parseJsonArray(row.bridges),
-    triplet_count: Number(row.triplet_count ?? 0) || 0,
-    entry_count: entryCounts.get(library) ?? 0,
-    commit_hash: row.commit_hash || null,
-    status: row.status ?? "active",
-    updated_at: row.ts
-  };
-}
-
 // kbdb/src/routes/map.ts
 var mapRoutes = new Hono2();
+mapRoutes.get("/select", async (c) => {
+  const q = c.req.query("q") || c.req.query("question") || "";
+  if (!q.trim()) return c.json({ success: false, error: "q required" }, 400);
+  const owner = c.req.query("owner_id") || void 0;
+  const limitNum = Number(c.req.query("limit"));
+  const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.floor(limitNum) : void 0;
+  await ensureFreshLibraryMaps(c.env.DB, owner).catch(() => {
+  });
+  try {
+    const selection = await selectLibrariesForQuestion(c.env.DB, q, {
+      owner_id: owner,
+      limit,
+      triplet_template: c.req.query("triplet_template") || void 0
+    });
+    return c.json({ success: true, ...selection });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
 mapRoutes.post("/recompute", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const library = c.req.query("library") || (typeof body.library === "string" ? body.library : "");
@@ -4090,6 +4298,19 @@ mapRoutes.post("/recompute", async (c) => {
       top_n: typeof body.top_n === "number" ? body.top_n : void 0
     });
     return c.json({ success: true, ...result });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+mapRoutes.put("/:library/narrative", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const library = c.req.param("library");
+  const narrative = typeof body.narrative === "string" ? body.narrative : "";
+  if (!narrative.trim()) return c.json({ success: false, error: "narrative required" }, 400);
+  const owner = (typeof body.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
+  try {
+    const map = await setLibraryNarrative(c.env.DB, library, narrative, owner);
+    return c.json({ success: true, map });
   } catch (e) {
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }

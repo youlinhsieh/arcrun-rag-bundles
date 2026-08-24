@@ -24512,22 +24512,20 @@ function successResponse(data, hints) {
 }
 
 // mcp/src/tools/arcrun_introspection.ts
-var apiKeyDesc = "\u4F60 (\u7528\u6236) \u7684 arcrun api_key (ak_xxx)\u3002\u5F9E https://arcrun.dev/me \u53D6\u5F97\u3002\u6CE8\u610F\uFF1A\u8DDF MCP \u9023\u7DDA\u7528\u7684 pk_live token \u662F\u4E0D\u540C\u5C64 auth \u2014 pk_live \u7D66 MCP \u7528\uFF0Cak_xxx \u7D66 workflow \u64CD\u4F5C\u7528";
-function registerValidateYaml(server, env) {
+function registerValidateYaml(server, env, partnerToken) {
   server.tool(
     toolName("validate_yaml"),
     "Dry-run YAML \u6821\u9A57\u3002\u4E0D\u90E8\u7F72\u3001\u7121 side effect\u3002\u56DE {valid, errors?, nodeCount, edgeCount}\u3002**\u6C38\u9060\u5148 call \u6B64 tool \u518D push_workflow**\uFF0C\u907F\u514D\u53CD\u8986 deploy \u5931\u6557\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc),
       graph: external_exports.object({
         nodes: external_exports.array(external_exports.unknown()).describe("workflow \u7BC0\u9EDE\u9663\u5217"),
         edges: external_exports.array(external_exports.unknown()).describe("workflow \u908A\u9663\u5217 (cypher binding \u4E09\u5143\u7D44)")
       }).passthrough().describe("workflow graph object\uFF08\u5DF2 parse \u904E YAML \u7684\u7D50\u69CB\uFF0C\u975E raw YAML string\uFF09")
     },
-    async ({ api_key, graph }) => {
+    async ({ graph }) => {
       try {
         const res = await cypherFetch(env, "/validate", {
-          apiKey: api_key,
+          apiKey: partnerToken,
           method: "POST",
           body: graph
         });
@@ -24558,18 +24556,17 @@ function registerValidateYaml(server, env) {
     }
   );
 }
-function registerListPausedExecutions(server, env) {
+function registerListPausedExecutions(server, env, partnerToken) {
   server.tool(
     toolName("list_paused_executions"),
-    "\u5217\u7576\u524D api_key \u4E0B\u6240\u6709 paused workflow\uFF08\u7B49 daemon callback resume \u7684\uFF09\u3002\u7D66 debug \u7528\uFF1Aclaude_api \u7B49 async \u96F6\u4EF6\u6703\u628A workflow \u66AB\u505C\uFF0C\u6B64 tool \u544A\u8A34\u4F60\u54EA\u4E9B\u9084\u6C92\u56DE\u4F86\u3002",
+    "\u5217\u7576\u524D\u5E33\u865F\u4E0B\u6240\u6709 paused workflow\uFF08\u7B49 daemon callback resume \u7684\uFF09\u3002\u7D66 debug \u7528\uFF1Aclaude_api \u7B49 async \u96F6\u4EF6\u6703\u628A workflow \u66AB\u505C\uFF0C\u6B64 tool \u544A\u8A34\u4F60\u54EA\u4E9B\u9084\u6C92\u56DE\u4F86\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc),
       limit: external_exports.number().int().min(1).max(100).optional().describe("\u6700\u591A\u56DE\u5E7E\u500B\uFF08\u9810\u8A2D 20\uFF0C\u6700\u591A 100\uFF09")
     },
-    async ({ api_key, limit }) => {
+    async ({ limit }) => {
       try {
         const res = await cypherFetch(env, "/executions/paused", {
-          apiKey: api_key,
+          apiKey: partnerToken,
           query: limit ? { limit } : void 0
         });
         const body = await res.json().catch(() => null);
@@ -24577,7 +24574,7 @@ function registerListPausedExecutions(server, env) {
           return errorResponse(
             "fetch_failed",
             `\u6488 paused \u5217\u8868\u5931\u6557 HTTP ${res.status}`,
-            ["\u6AA2\u67E5 api_key \u662F\u5426\u6B63\u78BA", "\u7A0D\u5F8C\u91CD\u8A66"],
+            ["\u7A0D\u5F8C\u91CD\u8A66", "\u82E5\u6301\u7E8C\u5931\u6557\uFF0C\u544A\u8A34 leo \u4E26\u8CBC\u932F\u8AA4\u8A0A\u606F"],
             JSON.stringify(body)
           );
         }
@@ -24592,20 +24589,19 @@ function registerListPausedExecutions(server, env) {
     }
   );
 }
-function registerGetExecutionTrace(server, env) {
+function registerGetExecutionTrace(server, env, partnerToken) {
   server.tool(
     toolName("get_execution_trace"),
     "\u770B\u55AE\u4E00 paused workflow \u7684 state \u7D30\u7BC0\uFF08trace\u3001graph\u3001context\u3001pending_result\uFF09\u3002task_id \u5F9E paused \u932F\u8AA4\u8A0A\u606F\u6216 list_paused_executions \u53D6\u5F97\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc),
       task_id: external_exports.string().describe(
         "Paused workflow \u7684 task_id\u3002\u4F86\u6E90\uFF1Aworkflow \u89F8\u767C\u5F8C\u82E5 paused\uFF0Cerror \u8A0A\u606F\u542B 'waiting for task task_XXX'\uFF1B\u6216 list_paused_executions \u56DE\u7684 task_id \u6B04\u4F4D"
       )
     },
-    async ({ api_key, task_id }) => {
+    async ({ task_id }) => {
       try {
         const res = await cypherFetch(env, `/executions/${encodeURIComponent(task_id)}`, {
-          apiKey: api_key
+          apiKey: partnerToken
         });
         const body = await res.json().catch(() => null);
         if (res.status === 404) {
@@ -24637,22 +24633,21 @@ function registerGetExecutionTrace(server, env) {
     }
   );
 }
-function registerListRecentExecutions(server, env) {
+function registerListRecentExecutions(server, env, partnerToken) {
   server.tool(
     toolName("list_recent_executions"),
     "\u5217\u67D0 workflow \u6700\u8FD1 N \u6B21\u57F7\u884C verdict\uFF08\u6210\u529F / \u5931\u6557 / duration\uFF09\u3002\u8CC7\u6599\u4F86\u6E90\u662F D1 \u57F7\u884C\u7D00\u9304\u8868\uFF0C\u7A3D\u6838\u8CC7\u6599\u2014\u2014\u9810\u8A2D\u4FDD\u7559 90 \u5929\uFF083 \u500B\u6708\uFF09\u904E\u671F\u5373\u6E05\uFF0C\u7BA1\u7406\u8005\u53EF\u5728 portal \u6539\u4FDD\u7559\u5929\u6578\u6216\u8A2D\u70BA\u4E0D\u522A\u9664\uFF1B\u7528\u91CF\u904E\u5927\u6642\u7CFB\u7D71\u6703\u81EA\u52D5\u964D\u6210\u53EA\u8A18\u5931\u6557\u3001\u751A\u81F3\u66AB\u505C\u8A18\u9304\u2014\u2014\u5DE5\u4F5C\u6D41\u672C\u8EAB\u57F7\u884C\u4E0D\u53D7\u5F71\u97FF\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc),
       workflow_name: external_exports.string().describe("workflow \u540D\u7A31\uFF08acr push \u6642\u7684 name \u6B04\uFF09"),
       limit: external_exports.number().int().min(1).max(100).optional().describe("\u6700\u591A\u56DE\u5E7E\u7B46\uFF08\u9810\u8A2D 10\uFF0C\u6700\u591A 100\uFF09")
     },
-    async ({ api_key, workflow_name, limit }) => {
+    async ({ workflow_name, limit }) => {
       try {
         const res = await cypherFetch(
           env,
           `/workflows/${encodeURIComponent(workflow_name)}/executions`,
           {
-            apiKey: api_key,
+            apiKey: partnerToken,
             query: limit ? { limit } : void 0
           }
         );
@@ -24686,11 +24681,11 @@ function registerListRecentExecutions(server, env) {
     }
   );
 }
-function registerAllIntrospectionTools(server, env) {
-  registerValidateYaml(server, env);
-  registerListPausedExecutions(server, env);
-  registerGetExecutionTrace(server, env);
-  registerListRecentExecutions(server, env);
+function registerAllIntrospectionTools(server, env, partnerToken) {
+  registerValidateYaml(server, env, partnerToken);
+  registerListPausedExecutions(server, env, partnerToken);
+  registerGetExecutionTrace(server, env, partnerToken);
+  registerListRecentExecutions(server, env, partnerToken);
 }
 
 // mcp/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/nodes/identity.js
@@ -30961,13 +30956,11 @@ function parse3(src, reviver, options) {
 }
 
 // mcp/src/tools/arcrun_workflow_crud.ts
-var apiKeyDesc2 = "\u4F60\uFF08\u7528\u6236\uFF09\u7684 arcrun api_key (ak_xxx)\u3002\u5F9E https://arcrun.dev/me \u53D6\u5F97";
-function registerPushWorkflow(server, env) {
+function registerPushWorkflow(server, env, partnerToken) {
   server.tool(
     toolName("push_workflow"),
     "\u90E8\u7F72 workflow \u5230 arcrun\u3002\u8F38\u5165\u53EF\u4EE5\u662F YAML \u5B57\u4E32\u6216 graph \u7269\u4EF6\u3002**\u5EFA\u8B70\u5148 call arcrun_validate_yaml \u78BA\u8A8D schema**\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc2),
       yaml_content: external_exports.string().optional().describe(
         "YAML \u5B57\u4E32\u3002\u5167\u90E8\u6703 parse \u6210 {name, flow, config}\u3002\u512A\u5148\u65BC graph \u53C3\u6578"
       ),
@@ -30979,7 +30972,7 @@ function registerPushWorkflow(server, env) {
       ),
       description: external_exports.string().optional().describe("workflow \u63CF\u8FF0\uFF08\u9078\u586B\uFF09")
     },
-    async ({ api_key, yaml_content, graph, name, description }) => {
+    async ({ yaml_content, graph, name, description }) => {
       let workflowName = name;
       let workflowGraph = graph;
       let workflowConfig = void 0;
@@ -31018,7 +31011,7 @@ function registerPushWorkflow(server, env) {
       }
       try {
         const res = await cypherFetch(env, "/webhooks/named", {
-          apiKey: api_key,
+          apiKey: partnerToken,
           method: "POST",
           body: {
             name: workflowName,
@@ -31034,8 +31027,7 @@ function registerPushWorkflow(server, env) {
             `\u90E8\u7F72\u5931\u6557 HTTP ${res.status}: ${body.error ?? "unknown"}`,
             [
               "\u5148 call arcrun_validate_yaml \u78BA\u8A8D graph schema \u6B63\u78BA",
-              "\u78BA\u8A8D workflow name \u7B26\u5408 [a-zA-Z0-9_-] \u683C\u5F0F",
-              "\u78BA\u8A8D api_key \u662F ak_xxx \u683C\u5F0F\u4E14\u6709\u6548"
+              "\u78BA\u8A8D workflow name \u7B26\u5408 [a-zA-Z0-9_-] \u683C\u5F0F"
             ],
             JSON.stringify(body)
           );
@@ -31056,24 +31048,22 @@ function registerPushWorkflow(server, env) {
     }
   );
 }
-function registerListWorkflows(server, env) {
+function registerListWorkflows(server, env, partnerToken) {
   server.tool(
     toolName("list_workflows"),
-    "\u5217\u51FA\u4F60 (api_key \u5C0D\u61C9 namespace) \u5DF2\u90E8\u7F72\u7684\u6240\u6709 workflow\u3002\u56DE [{name}]\u3002",
-    {
-      api_key: external_exports.string().describe(apiKeyDesc2)
-    },
-    async ({ api_key }) => {
+    "\u5217\u51FA\u4F60\u76EE\u524D\u5E33\u865F\u4E0B\u5DF2\u90E8\u7F72\u7684\u6240\u6709 workflow\u3002\u56DE [{name}]\u3002",
+    {},
+    async () => {
       try {
         const res = await cypherFetch(env, "/webhooks/named", {
-          apiKey: api_key
+          apiKey: partnerToken
         });
         const body = await res.json().catch(() => null);
         if (!res.ok) {
           return errorResponse(
             "fetch_failed",
             `\u6488 workflow \u5217\u8868\u5931\u6557 HTTP ${res.status}`,
-            ["\u78BA\u8A8D api_key \u6B63\u78BA", "\u7A0D\u5F8C\u91CD\u8A66"],
+            ["\u7A0D\u5F8C\u91CD\u8A66", "\u82E5\u6301\u7E8C\u5931\u6557\uFF0C\u544A\u8A34 leo \u4E26\u8CBC\u932F\u8AA4\u8A0A\u606F"],
             JSON.stringify(body)
           );
         }
@@ -31093,25 +31083,24 @@ function registerListWorkflows(server, env) {
     }
   );
 }
-function registerGetWorkflow(server, env) {
+function registerGetWorkflow(server, env, partnerToken) {
   server.tool(
     toolName("get_workflow"),
     "\u770B\u55AE\u4E00 workflow \u7684\u5B8C\u6574\u5B9A\u7FA9\uFF08graph + config\uFF09\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc2),
       name: external_exports.string().describe("workflow \u540D\u7A31")
     },
-    async ({ api_key, name }) => {
+    async ({ name }) => {
       try {
         const res = await cypherFetch(env, "/webhooks/named", {
-          apiKey: api_key
+          apiKey: partnerToken
         });
         const body = await res.json().catch(() => null);
         if (!res.ok || !body?.workflows) {
           return errorResponse(
             "fetch_failed",
             `\u6488 workflow \u5217\u8868\u5931\u6557`,
-            ["\u78BA\u8A8D api_key \u6B63\u78BA"],
+            ["\u7A0D\u5F8C\u91CD\u8A66"],
             JSON.stringify(body)
           );
         }
@@ -31147,19 +31136,18 @@ function registerGetWorkflow(server, env) {
     }
   );
 }
-function registerDeleteWorkflow(server, env) {
+function registerDeleteWorkflow(server, env, partnerToken) {
   server.tool(
     toolName("delete_workflow"),
     "\u522A\u9664 workflow\u3002**\u4E0D\u53EF\u9006\uFF0C\u78BA\u8A8D\u5F8C\u518D\u505A**\u3002\u6703\u6E05\u6389\u5C0D\u61C9 cron index \u8207 webhook URL\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc2),
       name: external_exports.string().describe("\u8981\u522A\u7684 workflow \u540D\u7A31"),
       confirm: external_exports.literal(true).describe("\u5FC5\u9808\u50B3 true \u78BA\u8A8D")
     },
-    async ({ api_key, name, confirm: _confirm }) => {
+    async ({ name, confirm: _confirm }) => {
       try {
         const res = await cypherFetch(env, `/webhooks/named/${encodeURIComponent(name)}`, {
-          apiKey: api_key,
+          apiKey: partnerToken,
           method: "DELETE"
         });
         const body = await res.json().catch(() => ({}));
@@ -31188,25 +31176,24 @@ function registerDeleteWorkflow(server, env) {
     }
   );
 }
-function registerRunWorkflow(server, env) {
+function registerRunWorkflow(server, env, partnerToken) {
   server.tool(
     toolName("run_workflow"),
     "\u89F8\u767C workflow \u57F7\u884C\u3002input \u7269\u4EF6\u5E36\u9032 trigger context\u3002\u56DE {success, data, trace?, duration_ms}\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc2),
       name: external_exports.string().describe("workflow \u540D\u7A31"),
       input: external_exports.record(external_exports.unknown()).optional().describe(
-        "trigger context\uFF08\u6703\u585E\u9032 workflow \u7B2C\u4E00\u500B\u7BC0\u9EDE\u7684\u8F38\u5165\uFF09\u3002\u8A18\u5F97\u5E36 api_key \u7D66\u5167\u90E8\u9700\u8981\u7684\u7BC0\u9EDE\u7528"
+        "trigger context\uFF08\u6703\u585E\u9032 workflow \u7B2C\u4E00\u500B\u7BC0\u9EDE\u7684\u8F38\u5165\uFF09"
       )
     },
-    async ({ api_key, name, input }) => {
+    async ({ name, input }) => {
       try {
         const triggerBody = input ?? {};
         if (!("api_key" in triggerBody)) {
-          triggerBody.api_key = api_key;
+          triggerBody.api_key = partnerToken;
         }
         const res = await cypherFetch(env, `/webhooks/named/${encodeURIComponent(name)}/trigger`, {
-          apiKey: api_key,
+          apiKey: partnerToken,
           method: "POST",
           body: triggerBody
         });
@@ -31254,12 +31241,12 @@ function registerRunWorkflow(server, env) {
     }
   );
 }
-function registerAllWorkflowCrudTools(server, env) {
-  registerPushWorkflow(server, env);
-  registerListWorkflows(server, env);
-  registerGetWorkflow(server, env);
-  registerDeleteWorkflow(server, env);
-  registerRunWorkflow(server, env);
+function registerAllWorkflowCrudTools(server, env, partnerToken) {
+  registerPushWorkflow(server, env, partnerToken);
+  registerListWorkflows(server, env, partnerToken);
+  registerGetWorkflow(server, env, partnerToken);
+  registerDeleteWorkflow(server, env, partnerToken);
+  registerRunWorkflow(server, env, partnerToken);
 }
 
 // mcp/src/lib/portal-client.ts
@@ -31607,27 +31594,25 @@ function registerAllSkillExampleTools(server, env, identity) {
 }
 
 // mcp/src/tools/arcrun_recipe.ts
-var apiKeyDesc3 = "\u4F60\uFF08\u7528\u6236\uFF09\u7684 arcrun api_key (ak_xxx)\u3002\u5F9E https://arcrun.dev/me \u53D6\u5F97";
-function registerAllRecipeTools(server, env) {
-  registerRecipeSearch(server, env);
-  registerRecipePull(server, env);
-  registerRecipeSubmitP(server, env);
-  registerRecipePush(server, env);
-  registerRecipeList(server, env);
-  registerRecipeDelete(server, env);
+function registerAllRecipeTools(server, env, partnerToken) {
+  registerRecipeSearch(server, env, partnerToken);
+  registerRecipePull(server, env, partnerToken);
+  registerRecipeSubmitP(server, env, partnerToken);
+  registerRecipePush(server, env, partnerToken);
+  registerRecipeList(server, env, partnerToken);
+  registerRecipeDelete(server, env, partnerToken);
 }
-function registerRecipeSearch(server, env) {
+function registerRecipeSearch(server, env, partnerToken) {
   server.tool(
     toolName("recipe_search"),
     "\u641C\u5C0B\u516C\u5EAB recipe\uFF08API \u6574\u5408\u914D\u65B9\uFF09\u3002\u540C canonical_id \u53EF\u6709\u591A\u4F5C\u8005\u7248\u672C\uFF0C\u5404\u9644\u5E02\u5834\u6578\u64DA\uFF08\u6210\u529F/\u5931\u6557\u6B21\u6578\uFF09\uFF0C\u4F9D\u6578\u64DA\u9078\u6700\u4F73\u3002\u627E\u4E0D\u5230\u6642\u6703\u63D0\u793A\u53EF\u81EA\u5DF1\u505A\u4E00\u500B recipe \u6295\u7A3F\u6210\u70BA\u4F5C\u8005\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc3),
       query: external_exports.string().describe("\u641C\u5C0B\u8A5E\uFF0C\u5982\u300Cgsheets append\u300D\u300Ctelegram send\u300D")
     },
-    async ({ api_key, query }) => {
+    async ({ query }) => {
       try {
         const res = await cypherFetch(env, "/public-recipes", {
-          apiKey: api_key,
+          apiKey: partnerToken,
           query: { q: query }
         });
         if (!res.ok) return errorResponse("search_failed", `\u641C\u5C0B\u516C\u5EAB\u5931\u6557`, ["\u7A0D\u5F8C\u518D\u8A66"], await res.text());
@@ -31642,19 +31627,18 @@ function registerRecipeSearch(server, env) {
     }
   );
 }
-function registerRecipePull(server, env) {
+function registerRecipePull(server, env, partnerToken) {
   server.tool(
     toolName("recipe_pull"),
     "\u5F9E\u516C\u5EAB\u53D6\u4E00\u4EFD recipe \u5BEB\u9032\u81EA\u5DF1\u79C1\u5EAB\uFF08\u6309\u9700\u53D6\u7528\uFF0C\u975E\u5168\u91CF\u540C\u6B65\uFF09\u3002\u4E0D\u6307\u5B9A author \u53D6\u5E02\u5834\u6700\u4F73\u7248\u672C\u3002\u53D6\u56DE\u5F8C\u53EF\u5728 workflow \u7528 component: <canonical_id>\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc3),
       canonical_id: external_exports.string().describe("\u8981\u53D6\u7684 recipe canonical_id\uFF0C\u5982 gsheets_append"),
       author: external_exports.string().optional().describe("\u6307\u5B9A\u4F5C\u8005\u7248\u672C\uFF08\u4E0D\u6307\u5B9A\u53D6\u5E02\u5834\u6700\u4F73\uFF09")
     },
-    async ({ api_key, canonical_id, author }) => {
+    async ({ canonical_id, author }) => {
       try {
         const pubRes = await cypherFetch(env, `/public-recipes/${encodeURIComponent(canonical_id)}`, {
-          apiKey: api_key,
+          apiKey: partnerToken,
           query: author ? { author } : void 0
         });
         if (!pubRes.ok) return errorResponse("pull_failed", `\u516C\u5EAB\u53D6 recipe \u5931\u6557`, [], await pubRes.text());
@@ -31665,7 +31649,7 @@ function registerRecipePull(server, env) {
           ]);
         }
         const installRes = await cypherFetch(env, "/recipes", {
-          apiKey: api_key,
+          apiKey: partnerToken,
           method: "POST",
           body: {
             ...pub.recipe,
@@ -31686,26 +31670,25 @@ function registerRecipePull(server, env) {
     }
   );
 }
-function registerRecipeSubmitP(server, env) {
+function registerRecipeSubmitP(server, env, partnerToken) {
   server.tool(
     toolName("recipe_submit_p"),
     "\u628A\u79C1\u5EAB\u67D0 recipe \u6295\u7A3F\u5230\u516C\u5EAB\uFF08app-store \u6A21\u578B\uFF1A\u65B0\u589E\u4E00\u500B\u4F5C\u8005\u7248\u672C\uFF0C\u4E0D\u8986\u84CB\u5225\u4EBA\u7684\uFF09\u3002\u6295\u7A3F = \u628A recipe \u66B4\u9732\u7D66\u5168\u7DB2\uFF0C\u9700\u5E36 exposure_consent \u660E\u793A\u540C\u610F\u3002\u5225\u4EBA\u80FD\u641C\u5230\u4E26 pull\uFF0C\u5E02\u5834\u6578\u64DA\u6C7A\u5B9A\u5B83\u88AB\u4E0D\u88AB\u9078\u7528\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc3),
       canonical_id: external_exports.string().describe("\u8981\u6295\u7A3F\u7684\u79C1\u5EAB recipe canonical_id"),
       author: external_exports.string().optional().describe("\u7F72\u540D\u4F5C\u8005\uFF08\u9810\u8A2D\u7528 recipe \u65E2\u6709 author\uFF09"),
       exposure_consent: external_exports.boolean().describe(
         "\u660E\u793A\u540C\u610F\u628A\u6B64 recipe \u66B4\u9732\u7D66\u516C\u5EAB\u5168\u7DB2\uFF08\u6295\u7A3F\u662F\u66B4\u9732\u9762\uFF0C\u9700\u4EBA\u985E\u540C\u610F\uFF09"
       )
     },
-    async ({ api_key, canonical_id, author, exposure_consent }) => {
+    async ({ canonical_id, author, exposure_consent }) => {
       try {
         if (!exposure_consent) {
           return errorResponse("consent_required", "\u6295\u7A3F\u5230\u516C\u5EAB\u662F\u66B4\u9732\u9762\uFF0C\u9700 exposure_consent=true \u660E\u793A\u540C\u610F", [
             "\u78BA\u8A8D\u8981\u628A recipe \u516C\u958B\u7D66\u5168\u7DB2\u5F8C\uFF0C\u5E36 exposure_consent: true \u518D\u547C\u53EB"
           ]);
         }
-        const myRes = await cypherFetch(env, `/recipes/${encodeURIComponent(canonical_id)}`, { apiKey: api_key });
+        const myRes = await cypherFetch(env, `/recipes/${encodeURIComponent(canonical_id)}`, { apiKey: partnerToken });
         if (!myRes.ok) return errorResponse("not_found", `\u79C1\u5EAB\u627E\u4E0D\u5230 recipe\u300C${canonical_id}\u300D`, ["\u5148 arcrun_recipe_push \u6216 arcrun_recipe_pull"], await myRes.text());
         const my = await myRes.json();
         if (!my.success || !my.recipe) return errorResponse("not_found", `\u79C1\u5EAB\u7121\u6B64 recipe`, []);
@@ -31715,13 +31698,13 @@ function registerRecipeSubmitP(server, env) {
           confirmed_at: (/* @__PURE__ */ new Date()).toISOString()
         };
         const subRes = await cypherFetch(env, "/recipes/submit", {
-          apiKey: api_key,
+          apiKey: partnerToken,
           method: "POST",
           body: {
             ...my.recipe,
             author: author ?? my.recipe.author,
             derived_from: my.recipe.derived_from ?? my.recipe.uuid,
-            submitter: author ?? api_key,
+            submitter: author ?? partnerToken,
             exposure_consent: consent
           }
         });
@@ -31734,12 +31717,11 @@ function registerRecipeSubmitP(server, env) {
     }
   );
 }
-function registerRecipePush(server, env) {
+function registerRecipePush(server, env, partnerToken) {
   server.tool(
     toolName("recipe_push"),
     "\u4E0A\u50B3\u4E00\u4EFD recipe \u5230\u81EA\u5DF1\u79C1\u5EAB\uFF08\u6216\u5C31\u5730\u66F4\u65B0\u81EA\u5DF1\u65E2\u6709\u7248\u672C\uFF09\u3002recipe = \u300Chttp_request + \u53C3\u6578\u6A21\u677F\u300D\u7684\u5177\u540D\u5C01\u88DD\uFF0C\u4E0D\u9700 deploy Worker\u3002\u8981\u6295\u7A3F\u5230\u516C\u5EAB\u7528 arcrun_recipe_submit_p\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc3),
       recipe: external_exports.object({
         canonical_id: external_exports.string(),
         display_name: external_exports.string().optional(),
@@ -31752,9 +31734,9 @@ function registerRecipePush(server, env) {
         author: external_exports.string().optional()
       }).describe("recipe \u5B9A\u7FA9\uFF08canonical_id + endpoint \u5FC5\u586B\uFF09")
     },
-    async ({ api_key, recipe }) => {
+    async ({ recipe }) => {
       try {
-        const res = await cypherFetch(env, "/recipes", { apiKey: api_key, method: "POST", body: recipe });
+        const res = await cypherFetch(env, "/recipes", { apiKey: partnerToken, method: "POST", body: recipe });
         if (!res.ok) return errorResponse("push_failed", `\u4E0A\u50B3 recipe \u5931\u6557`, [], await res.text());
         const data = await res.json();
         return successResponse(data, [`workflow \u7528 component: ${recipe.canonical_id}`, "\u8981\u516C\u958B\u7D66\u5168\u7DB2 \u2192 arcrun_recipe_submit_p"]);
@@ -31764,16 +31746,14 @@ function registerRecipePush(server, env) {
     }
   );
 }
-function registerRecipeList(server, env) {
+function registerRecipeList(server, env, partnerToken) {
   server.tool(
     toolName("recipe_list"),
     "\u5217\u51FA\u81EA\u5DF1\u79C1\u5EAB\uFF08\u672C\u90E8\u7F72\uFF09\u7684 recipe\u3002\u8981\u627E\u516C\u5EAB\u7684\u7528 arcrun_recipe_search\u3002",
-    {
-      api_key: external_exports.string().describe(apiKeyDesc3)
-    },
-    async ({ api_key }) => {
+    {},
+    async () => {
       try {
-        const res = await cypherFetch(env, "/recipes", { apiKey: api_key });
+        const res = await cypherFetch(env, "/recipes", { apiKey: partnerToken });
         if (!res.ok) return errorResponse("list_failed", `\u5217\u51FA recipe \u5931\u6557`, [], await res.text());
         const data = await res.json();
         return successResponse(data);
@@ -31783,17 +31763,16 @@ function registerRecipeList(server, env) {
     }
   );
 }
-function registerRecipeDelete(server, env) {
+function registerRecipeDelete(server, env, partnerToken) {
   server.tool(
     toolName("recipe_delete"),
     "\u522A\u9664\u81EA\u5DF1\u79C1\u5EAB\u67D0 recipe\uFF08canonical_id / rec_hash / uuid\uFF09\u3002\u4E0D\u5F71\u97FF\u516C\u5EAB\u5225\u4EBA\u7684\u7248\u672C\u3002",
     {
-      api_key: external_exports.string().describe(apiKeyDesc3),
       id: external_exports.string().describe("canonical_id \u6216 rec_hash \u6216 uuid")
     },
-    async ({ api_key, id }) => {
+    async ({ id }) => {
       try {
-        const res = await cypherFetch(env, `/recipes/${encodeURIComponent(id)}`, { apiKey: api_key, method: "DELETE" });
+        const res = await cypherFetch(env, `/recipes/${encodeURIComponent(id)}`, { apiKey: partnerToken, method: "DELETE" });
         if (!res.ok) return errorResponse("delete_failed", `\u522A\u9664 recipe \u5931\u6557`, [], await res.text());
         const data = await res.json();
         return successResponse(data);
@@ -31944,28 +31923,44 @@ function registerGetRecord(server, env, identity) {
 function registerQuery(server, env, identity) {
   server.tool(
     "kbdb_query",
-    "\u5217\u51FA\u67D0 template \u5E95\u4E0B\u7684\u6240\u6709 record\uFF08\u7D50\u69CB\u5316\u67E5\u8A62\uFF0C\u6309 template \u53D6\u6574\u6279\u8CC7\u6599\uFF09\u3002\u8981\u6309\u95DC\u9375\u5B57\u627E\u5167\u5BB9\u7528 kbdb_search\u3002",
+    "\u5217\u51FA\u67D0 template \u5E95\u4E0B\u7684 record\uFF08\u7D50\u69CB\u5316\u67E5\u8A62\uFF0C\u6309 template \u53D6\u6574\u6279\u8CC7\u6599\uFF09\u3002**\u6703\u5206\u9801**\uFF1A\u56DE\u61C9\u7684 total \u662F\u7B26\u5408\u689D\u4EF6\u7684\u5168\u90E8\u7B46\u6578\u3001count \u662F\u9019\u4E00\u9801\u62FF\u5230\u5E7E\u7B46\u2014\u2014total \u6BD4\u5DF2\u53D6\u5F97\u7684\u591A\u5C31\u5E36 offset \u518D\u53EB\u4E00\u6B21\uFF0C\u4E0D\u8981\u628A\u7B2C\u4E00\u9801\u7576\u6210\u5168\u90E8\u3002\u8981\u6309\u95DC\u9375\u5B57\u627E\u5167\u5BB9\u7528 kbdb_search\u3002",
     {
       template: external_exports.string().min(1).describe("template \u7684 name \u6216 id"),
-      owner_id: external_exports.string().optional().describe("\u53EA\u53D6\u67D0\u6B78\u5C6C\u7684 record\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09")
+      owner_id: external_exports.string().optional().describe("\u53EA\u53D6\u67D0\u6B78\u5C6C\u7684 record\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09"),
+      limit: external_exports.number().int().positive().optional().describe("\u9019\u4E00\u9801\u8981\u5E7E\u7B46\uFF08\u9810\u8A2D 100\uFF0C\u55AE\u6B21\u4E0A\u9650 500\uFF09"),
+      offset: external_exports.number().int().min(0).optional().describe("\u5F9E\u7B2C\u5E7E\u7B46\u958B\u59CB\uFF08\u5206\u9801\u7528\uFF0C\u9810\u8A2D 0\uFF09")
     },
-    async ({ template, owner_id }) => {
+    async ({ template, owner_id, limit, offset }) => {
       if (identity.kind === "stale") return staleIdentityError();
       try {
-        const res = identity.kind === "portal" ? await portalFetch(
-          env,
-          identity.portal.session,
-          `/portal/data/records/by-template/${encodeURIComponent(template)}`
-        ) : await kbdbFetch(
-          env,
-          `/records/by-template/${encodeURIComponent(template)}` + (owner_id ? `?owner_id=${encodeURIComponent(owner_id)}` : "")
-        );
+        const paging = new URLSearchParams();
+        if (limit !== void 0) paging.set("limit", String(limit));
+        if (offset !== void 0) paging.set("offset", String(offset));
+        let res;
+        if (identity.kind === "portal") {
+          const qs = paging.toString();
+          res = await portalFetch(
+            env,
+            identity.portal.session,
+            `/portal/data/records/by-template/${encodeURIComponent(template)}` + (qs ? `?${qs}` : "")
+          );
+        } else {
+          const q = new URLSearchParams(paging);
+          if (owner_id) q.set("owner_id", owner_id);
+          const qs = q.toString();
+          res = await kbdbFetch(env, `/records/by-template/${encodeURIComponent(template)}` + (qs ? `?${qs}` : ""));
+        }
         if (!res.ok) {
           if (identity.kind === "portal") return portalError(res, `\u67E5\u8A62 template\u300C${template}\u300D\u7684 record`);
           return errorResponse("query_failed", `\u67E5\u8A62 record \u5931\u6557`, [`\u78BA\u8A8D template\u300C${template}\u300D\u5B58\u5728`], await res.text().catch(() => ""));
         }
         const data = await res.json();
+        const taken = (data.offset ?? 0) + (data.count ?? 0);
+        const remaining = typeof data.total === "number" ? data.total - taken : 0;
         return successResponse(data, [
+          ...remaining > 0 ? [
+            `\u26A0\uFE0F \u9019\u4E0D\u662F\u5168\u90E8\uFF1A\u7E3D\u5171 ${data.total} \u7B46\uFF0C\u4F60\u76EE\u524D\u62FF\u5230\u7B2C ${(data.offset ?? 0) + 1}\u2013${taken} \u7B46\uFF0C\u9084\u6709 ${remaining} \u7B46\u6C92\u53D6\u3002\u8981\u770B\u5168\u5C40\u5C31\u5E36 offset=${taken} \u518D\u53EB\u4E00\u6B21\uFF08\u53EF\u642D limit\uFF0C\u55AE\u6B21\u4E0A\u9650 500\uFF09\u3002`
+          ] : [],
           "\u7528 kbdb_get_record(record_id) \u53D6\u55AE\u7B46\u5168\u6587",
           "\u6309\u95DC\u9375\u5B57\u627E\u5167\u5BB9\u6539\u7528 kbdb_search",
           ...identity.kind === "portal" ? [OWNER_IGNORED_HINT] : []
@@ -32391,10 +32386,10 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
   registerUntagResource(server, env, orgNamespace);
   registerGetGuiContext(server, env, orgNamespace);
   registerReportFeedback(server, env, orgNamespace);
-  registerAllIntrospectionTools(server, env);
-  registerAllWorkflowCrudTools(server, env);
+  registerAllIntrospectionTools(server, env, partnerToken);
+  registerAllWorkflowCrudTools(server, env, partnerToken);
   registerAllSkillExampleTools(server, env, identity);
-  registerAllRecipeTools(server, env);
+  registerAllRecipeTools(server, env, partnerToken);
   registerAllKbdbDataTools(server, env, identity);
   registerAllKbdbGraphTools(server, env, orgNamespace, identity);
   registerAllKbdbMapTools(server, env, identity);

@@ -3264,8 +3264,14 @@ var init_kbdb_proxy = __esm({
       const owner = tenant(c);
       if (!owner) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
+      const params = new URLSearchParams();
+      params.set("owner_id", owner);
+      for (const k of ["limit", "offset"]) {
+        const v = c.req.query(k);
+        if (v) params.set(k, v);
+      }
       const res = await fetch(
-        `${base}/records/by-template/${encodeURIComponent(c.req.param("template"))}?owner_id=${encodeURIComponent(owner)}`,
+        `${base}/records/by-template/${encodeURIComponent(c.req.param("template"))}?${params.toString()}`,
         { headers }
       );
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
@@ -3324,7 +3330,7 @@ var init_kbdb_proxy = __esm({
       const { base, headers } = kbdbBase(c.env);
       const params = new URLSearchParams();
       params.set("owner_id", owner);
-      for (const k of ["entry_type", "parent_id", "page_name", "source", "library", "limit", "offset"]) {
+      for (const k of ["entry_type", "parent_id", "page_name", "source", "library", "exclude_kind", "limit", "offset"]) {
         const v = c.req.query(k);
         if (v) params.set(k, v);
       }
@@ -3369,6 +3375,42 @@ var init_kbdb_proxy = __esm({
       const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
       try {
         const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}${qs}`, { headers });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.put("/kbdb/map/:library/narrative", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      const narrative = typeof body?.narrative === "string" ? body.narrative : "";
+      if (!narrative.trim()) return c.json({ error: "narrative \u5FC5\u586B\uFF08\u4E0D\u5F97\u7A7A\u767D\uFF09" }, 400);
+      const owner = (typeof body?.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
+      const { base, headers } = kbdbBase(c.env);
+      try {
+        const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}/narrative`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ narrative, ...owner ? { owner_id: owner } : {} })
+        });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.post("/kbdb/map/recompute", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => ({}));
+      const library = (typeof body.library === "string" ? body.library : c.req.query("library")) || "";
+      if (!library.trim()) return c.json({ error: "library \u5FC5\u586B" }, 400);
+      const owner = (typeof body.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
+      const { base, headers } = kbdbBase(c.env);
+      try {
+        const res = await fetch(`${base}/map/recompute`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ ...body, library, ...owner ? { owner_id: owner } : {} })
+        });
         return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
       } catch (e) {
         return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
@@ -12845,6 +12887,14 @@ var PORTAL_TEMPLATE_SEEDS = [
     // 新實例若無此 template 回 400「template not found: triplet」→ 三元組全滅。
     // slots 來源：kbdb_list_templates 核實（2026-07-19，library-map.test.ts PROD_TRIPLET_SLOTS）
     // + library（library-map.ts M1 預案：recompute 歸庫用，ensurePortalTemplates 若缺則 PATCH 補入）。
+    // + machine（`inkstone/mira#6`，leo 2026-08-18 拍板「掛上資料夾至少先給一個 ID，
+    //   例如 youlinhsieh@Leo-MBA」）：這則知識的原稿**在哪一台機器上**。
+    //   為什麼三元組也要有這一格（而不是只放在 block 的 metadata）：`source_uri` 只到
+    //   「相對於被監看資料夾的路徑」為止，兩台機器上的 `RFP/design.md` 完全同名 ⇒
+    //   rag_ingest_card 的 upsert（先照鍵刪光再寫）會把另一台的三元組無聲刪掉。
+    //   machine 是唯一分得開它們的那一維，而 KBDB 會**靜默丟掉** template 沒宣告的 slot
+    //   （record-crud.ts createRecord），所以少了這一列，daemon 送上來的值等於沒送。
+    //   走的就是 library 當初那條路：加在這裡，ensurePortalTemplates 對既有實例 PATCH 補聯集。
     name: "triplet",
     description: "KBDB \u77E5\u8B58\u5716\u8B5C\u4E09\u5143\u7D44\uFF08kbdb-graph-plugin \u5BEB\u5165\uFF1Bportal \u8B80\u6B64 template \u5EFA\u9130\u63A5\u5716\uFF09",
     slots: [
@@ -12863,7 +12913,8 @@ var PORTAL_TEMPLATE_SEEDS = [
       "content_hash",
       "source_anchor",
       "predicate_embed",
-      "library"
+      "library",
+      "machine"
     ],
     created_by: "system"
   }
@@ -14993,6 +15044,270 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
 init_dist();
 init_kbdb_proxy();
 init_webhook_handlers();
+
+// cypher-executor/src/lib/app-system.ts
+init_kbdb_proxy();
+init_webhook_handlers();
+var APP_UI_STYLES = ["inherit", "own"];
+var DEFAULT_APP_UI_STYLE = "inherit";
+var ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
+function validateAppDeclaration(raw2) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) {
+    return { ok: false, errors: ["\u5BA3\u544A\u5FC5\u9808\u662F\u4E00\u500B JSON \u7269\u4EF6"] };
+  }
+  const d = raw2;
+  if (typeof d.id !== "string" || !ID_RE.test(d.id)) {
+    errors.push("id \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09");
+  }
+  if (typeof d.name !== "string" || d.name.trim() === "") {
+    errors.push("name \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32");
+  }
+  const hasWorkflows = Array.isArray(d.workflows) && d.workflows.length > 0;
+  const hasUi = d.ui && typeof d.ui === "object" && typeof d.ui.html === "string" && d.ui.html.trim() !== "";
+  if (!hasWorkflows && !hasUi) {
+    errors.push("workflows \u6216 ui \u81F3\u5C11\u8981\u6709\u4E00\u500B\uFF08\u6C92\u6709\u756B\u9762\u4E5F\u6C92\u6709\u5DE5\u4F5C\u6D41\u7684 App \u4E0D\u6210\u7ACB\uFF0Cdesign \xA7\u4E8C\uFF09");
+  }
+  if (d.workflows !== void 0) {
+    if (!Array.isArray(d.workflows)) {
+      errors.push("workflows \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      d.workflows.forEach((w, i) => {
+        if (!w || typeof w !== "object") {
+          errors.push(`workflows[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const wf = w;
+        if (typeof wf.name !== "string" || wf.name.trim() === "") errors.push(`workflows[${i}].name \u5FC5\u586B`);
+        if (!wf.graph || typeof wf.graph !== "object") {
+          errors.push(`workflows[${i}].graph \u5FC5\u586B\uFF08\u57F7\u884C\u5716\uFF09`);
+        } else {
+          const g = wf.graph;
+          if (typeof g.id !== "string" || g.id.trim() === "") errors.push(`workflows[${i}].graph.id \u5FC5\u586B`);
+          if (typeof g.name !== "string" || g.name.trim() === "") errors.push(`workflows[${i}].graph.name \u5FC5\u586B`);
+          if (!Array.isArray(g.nodes)) errors.push(`workflows[${i}].graph.nodes \u5FC5\u9808\u662F\u9663\u5217`);
+          if (!Array.isArray(g.edges)) errors.push(`workflows[${i}].graph.edges \u5FC5\u9808\u662F\u9663\u5217`);
+        }
+      });
+    }
+  }
+  if (d.ui !== void 0 && !hasUi) {
+    errors.push("ui.html \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
+  }
+  if (d.ui && typeof d.ui === "object") {
+    const s = d.ui.style;
+    if (s !== void 0 && (typeof s !== "string" || !APP_UI_STYLES.includes(s))) {
+      errors.push(`ui.style \u53EA\u80FD\u662F ${APP_UI_STYLES.join(" \u6216 ")}\uFF08\u7701\u7565\uFF1D${DEFAULT_APP_UI_STYLE}\uFF0C\u8DDF\u96A8\u5168\u5C40\uFF09`);
+    }
+  }
+  if (d.data !== void 0) {
+    if (!Array.isArray(d.data)) {
+      errors.push("data \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      d.data.forEach((dt, i) => {
+        if (!dt || typeof dt !== "object") {
+          errors.push(`data[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const decl = dt;
+        if (typeof decl.name !== "string" || decl.name.trim() === "") errors.push(`data[${i}].name \u5FC5\u586B`);
+        if (!Array.isArray(decl.slots) || decl.slots.some((s) => typeof s !== "string")) {
+          errors.push(`data[${i}].slots \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
+        }
+      });
+    }
+  }
+  if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
+    errors.push("actions \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217");
+  }
+  return { ok: errors.length === 0, errors };
+}
+var ICON_SET = ["\u{1F4C4}", "\u{1F5D2}\uFE0F", "\u{1F9E9}", "\u{1F4CC}", "\u{1F527}", "\u{1F4E6}", "\u{1F5C2}\uFE0F", "\u2705", "\u{1F4A1}", "\u{1F514}", "\u{1F4CA}", "\u{1F9ED}"];
+function generateIcon(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
+  return ICON_SET[h % ICON_SET.length];
+}
+function applyDeclarationDefaults(raw2) {
+  const workflows = raw2.workflows ?? [];
+  const actions = raw2.actions ?? workflows.map((w) => w.name);
+  return {
+    ...raw2,
+    id: raw2.id,
+    name: raw2.name,
+    icon: raw2.icon ?? generateIcon(raw2.name),
+    version: raw2.version ?? "0.0.0",
+    workflows,
+    data: raw2.data ?? [],
+    actions,
+    keeps_data: raw2.remove?.keeps_data ?? true
+  };
+}
+async function computeContentHash(raw2) {
+  const canonical = canonicalize(raw2);
+  const data = new TextEncoder().encode(canonical);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(value[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function appKey(tenant2, id) {
+  return `${tenant2}:app:${id}`;
+}
+function workflowKvKey(tenant2, wfKey) {
+  return `${tenant2}:wf:${wfKey}`;
+}
+async function getInstalledApp(env, tenant2, id) {
+  const raw2 = await env.WEBHOOKS.get(appKey(tenant2, id), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function listInstalledApps(env, tenant2) {
+  const prefix = `${tenant2}:app:`;
+  const list = await env.WEBHOOKS.list({ prefix });
+  const apps = await Promise.all(
+    list.keys.map(async (k) => {
+      const raw2 = await env.WEBHOOKS.get(k.name, "text");
+      if (!raw2) return null;
+      try {
+        return JSON.parse(raw2);
+      } catch {
+        return null;
+      }
+    })
+  );
+  return apps.filter((a) => a !== null);
+}
+async function ensureTemplate(env, name, slots, description) {
+  const { base, headers } = kbdbBase(env);
+  const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
+  if (getRes.ok) {
+    const data = await getRes.json().catch(() => null);
+    if (data?.success && data.template) return;
+  }
+  await fetch(`${base}/templates`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name, slots, description })
+  });
+}
+async function installApp(env, tenant2, rawDecl) {
+  const validation = validateAppDeclaration(rawDecl);
+  if (!validation.ok) return { ok: false, errors: validation.errors };
+  const decl = applyDeclarationDefaults(rawDecl);
+  const contentHash = await computeContentHash(rawDecl);
+  const existing = await getInstalledApp(env, tenant2, decl.id);
+  if (existing && existing.content_hash === contentHash && existing.status === "active") {
+    return { ok: true, changed: false, app: existing };
+  }
+  for (const dt of decl.data) {
+    await ensureTemplate(env, dt.name, dt.slots, dt.description);
+  }
+  const workflowRefs = [];
+  for (const wf of decl.workflows) {
+    const wfKey = `${decl.id}__${wf.name}`;
+    await env.WEBHOOKS.put(
+      workflowKvKey(tenant2, wfKey),
+      JSON.stringify({
+        graph: wf.graph,
+        description: wf.description || `${decl.name}: ${wf.name}`,
+        created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString()
+      })
+    );
+    workflowRefs.push({ name: wf.name, wf_key: wfKey, description: wf.description || "" });
+  }
+  if (existing) {
+    const keepKeys = new Set(workflowRefs.map((w) => w.wf_key));
+    for (const prev of existing.workflows) {
+      if (!keepKeys.has(prev.wf_key)) {
+        await env.WEBHOOKS.delete(workflowKvKey(tenant2, prev.wf_key));
+      }
+    }
+  }
+  const uiHtml = decl.ui?.html;
+  const record = {
+    id: decl.id,
+    name: decl.name,
+    icon: decl.icon,
+    version: decl.version,
+    content_hash: contentHash,
+    workflows: workflowRefs,
+    actions: decl.actions,
+    data_templates: decl.data.map((d) => d.name),
+    has_ui: Boolean(uiHtml),
+    ui_html: uiHtml,
+    ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
+    keeps_data: decl.keeps_data,
+    installed_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+    updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+    status: "active"
+  };
+  await env.WEBHOOKS.put(appKey(tenant2, decl.id), JSON.stringify(record));
+  return { ok: true, changed: true, app: record };
+}
+async function uninstallApp(env, tenant2, id) {
+  const existing = await getInstalledApp(env, tenant2, id);
+  if (!existing) return { ok: false, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD\u7D00\u9304" };
+  for (const wf of existing.workflows) {
+    await env.WEBHOOKS.delete(workflowKvKey(tenant2, wf.wf_key));
+  }
+  await env.WEBHOOKS.delete(appKey(tenant2, id));
+  return { ok: true };
+}
+async function runAppAction(env, tenant2, appId, action, payload, ctx) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
+  if (!app2.actions.includes(action)) {
+    return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
+  }
+  const wfRef = app2.workflows.find((w) => w.name === action);
+  if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
+  const raw2 = await env.WEBHOOKS.get(workflowKvKey(tenant2, wfRef.wf_key), "text");
+  if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
+  let graph;
+  try {
+    const parsed = JSON.parse(raw2);
+    if (!parsed.graph) throw new Error("no graph");
+    graph = parsed.graph;
+  } catch {
+    return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
+  }
+  const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
+  if (!result.success) {
+    return { ok: false, status: 502, error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` };
+  }
+  return { ok: true, status: 200, result: result.data };
+}
+function summarizeApp(app2) {
+  return { id: app2.id, name: app2.name, icon: app2.icon, has_ui: app2.has_ui, version: app2.version };
+}
+function detailApp(app2) {
+  return {
+    id: app2.id,
+    name: app2.name,
+    icon: app2.icon,
+    version: app2.version,
+    has_ui: app2.has_ui,
+    ui_html: app2.ui_html,
+    // 舊安裝態（v0.1 裝的 App）沒有這一欄——一律當「跟隨全局」，不是「維持原樣」。
+    // 那正是 leo 抱怨的那個狀態，預設值要把它修好，不是把它保留下來。
+    ui_style: app2.ui_style ?? DEFAULT_APP_UI_STYLE,
+    workflows: app2.workflows.map((w) => ({ name: w.name, description: w.description })),
+    actions: app2.actions
+  };
+}
+
+// cypher-executor/src/routes/portal-data.ts
 var portalDataRouter = new Hono2();
 async function getTenantWorkflowGraph(env, name) {
   const raw2 = await env.WEBHOOKS.get(`${knowledgeOwner(env)}:wf:${name}`, "text");
@@ -15025,11 +15340,13 @@ function dedupeSourcesByPage(sources) {
     if (!s || typeof s !== "object") continue;
     const item = s;
     const page = typeof item.page_name === "string" ? item.page_name : typeof item.page === "string" ? item.page : "";
-    const existing = seen.get(page);
+    const machine = typeof item.machine === "string" ? item.machine : "";
+    const key = `${page}\0${machine}`;
+    const existing = seen.get(key);
     if (existing) {
       existing.count += 1;
     } else {
-      seen.set(page, { item, count: 1 });
+      seen.set(key, { item, count: 1 });
     }
   }
   return [...seen.values()].map(
@@ -15323,10 +15640,12 @@ portalDataRouter.get(
     }
     const inner = unwrapWorkflowData(result.data, "answer");
     const rawSources = Array.isArray(inner.sources) ? inner.sources : [];
+    const retrieval = inner.retrieval;
     return c.json({
       answer: typeof inner.answer === "string" ? inner.answer : "",
       sources: dedupeSourcesByPage(rawSources),
-      graph_facts: inner.graph_facts ?? null
+      graph_facts: inner.graph_facts ?? null,
+      retrieval: retrieval && typeof retrieval === "object" ? retrieval : null
     });
   })
 );
@@ -15423,6 +15742,57 @@ portalDataRouter.get(
       })
     );
     return c.json({ success: true, workflows, total: workflows.length, read_only: true });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/apps",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const apps = await listInstalledApps(c.env, tenant2);
+    return c.json({ apps: apps.map(summarizeApp), count: apps.length });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/apps/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const app2 = await getInstalledApp(c.env, tenant2, c.req.param("id"));
+    if (!app2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B App" }, 404);
+    return c.json(detailApp(app2));
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/:id/action",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const appId = c.req.param("id");
+    const body = await c.req.json().catch(() => null);
+    const action = typeof body?.action === "string" ? body.action : "";
+    if (!action) return c.json({ error: "action \u5FC5\u586B" }, 400);
+    const payload = body?.payload && typeof body.payload === "object" ? body.payload : {};
+    const result = await runAppAction(c.env, tenant2, appId, action, payload, c.executionCtx);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ ok: true, result: result.result });
+  })
+);
+portalDataRouter.delete(
+  "/portal/data/apps/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") {
+      return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
+    }
+    const tenant2 = knowledgeOwner(c.env);
+    const result = await uninstallApp(c.env, tenant2, c.req.param("id"));
+    if (!result.ok) return c.json({ error: result.error ?? "\u5378\u8F09\u5931\u6557" }, 404);
+    return c.json({ removed: true });
   })
 );
 function recordLibrary(values) {
@@ -15562,11 +15932,16 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
-    if (libraries.length === 0) return c.json({ success: true, records: [], count: 0 });
+    if (libraries.length === 0) return c.json({ success: true, records: [], count: 0, total: 0 });
     const tenant2 = knowledgeOwner(c.env);
+    const params = new URLSearchParams(ownerQuery(tenant2));
+    for (const k of ["limit", "offset"]) {
+      const v = c.req.query(k);
+      if (v) params.set(k, v);
+    }
     const res = await kbdbFetch(
       c.env,
-      `/records/by-template/${encodeURIComponent(c.req.param("template"))}?${ownerQuery(tenant2)}`
+      `/records/by-template/${encodeURIComponent(c.req.param("template"))}?${params.toString()}`
     );
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json().catch(() => null);
@@ -15574,7 +15949,17 @@ portalDataRouter.get(
       return c.json({ error: "record \u8B80\u53D6\u5931\u6557\uFF1AKBDB \u56DE\u61C9\u4E0D\u662F\u9810\u671F\u7684 records \u6E05\u55AE" }, 502);
     }
     const records = body.records.filter((r) => canReadRecord(r, tenant2, libraries));
-    return c.json({ success: true, records, count: records.length });
+    return c.json({
+      success: true,
+      records,
+      count: records.length,
+      // 上游這一頁給了幾筆、被這層的庫權限濾掉幾筆——分得出「沒有下一頁」與「這一頁你看不到」。
+      page_size: body.records.length,
+      filtered_out: body.records.length - records.length,
+      limit: body.limit,
+      offset: body.offset,
+      total: body.total
+    });
   })
 );
 portalDataRouter.get(
@@ -15636,6 +16021,36 @@ portalDataRouter.get(
   })
 );
 
+// cypher-executor/src/routes/apps.ts
+init_dist();
+var appsRouter = new Hono2();
+function requireApiKey(c) {
+  return c.req.header("X-Arcrun-API-Key") ?? null;
+}
+appsRouter.post("/apps/install", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: "\u7121\u6548\u7684 JSON body" }, 400);
+  const result = await installApp(c.env, apiKey, body);
+  if (!result.ok) return c.json({ error: "\u5BA3\u544A\u672A\u901A\u904E\u9A57\u8B49", details: result.errors }, 400);
+  return c.json({ installed: true, changed: result.changed, app: result.app ? summarizeApp(result.app) : void 0 });
+});
+appsRouter.delete("/apps/:id", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const id = c.req.param("id");
+  const result = await uninstallApp(c.env, apiKey, id);
+  if (!result.ok) return c.json({ error: result.error ?? "\u5378\u8F09\u5931\u6557" }, 404);
+  return c.json({ removed: true });
+});
+appsRouter.get("/apps", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const apps = await listInstalledApps(c.env, apiKey);
+  return c.json({ apps: apps.map(summarizeApp), count: apps.length });
+});
+
 // cypher-executor/src/index.ts
 var app = new Hono2();
 var STATIC_ORIGINS = ["https://arcrun.dev", "https://www.arcrun.dev"];
@@ -15675,6 +16090,7 @@ app.route("/", consoleAuthRouter);
 app.route("/", consoleDashboardRouter);
 app.route("/", portalRouter);
 app.route("/", portalDataRouter);
+app.route("/", appsRouter);
 var index_default = {
   fetch: app.fetch,
   scheduled: handleScheduled
