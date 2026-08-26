@@ -2436,7 +2436,7 @@ var init_recipes = __esm({
         updated_at: now2
       };
       await installRecipeRecord(c.env.RECIPES, recipe);
-      const kbdbBase2 = (c.env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
+      const kbdbBase3 = (c.env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
       const evidence = {
         content: canonicalId,
         entry_type: "recipe_submission",
@@ -2449,12 +2449,12 @@ var init_recipes = __esm({
           submitted_at: now2
         })
       };
-      const kbdbHeaders = { "Content-Type": "application/json" };
-      if (c.env.KBDB_INTERNAL_TOKEN) kbdbHeaders["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
+      const kbdbHeaders2 = { "Content-Type": "application/json" };
+      if (c.env.KBDB_INTERNAL_TOKEN) kbdbHeaders2["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
       c.executionCtx.waitUntil(
-        fetch(`${kbdbBase2}/entries`, {
+        fetch(`${kbdbBase3}/entries`, {
           method: "POST",
-          headers: kbdbHeaders,
+          headers: kbdbHeaders2,
           body: JSON.stringify(evidence)
         }).catch(() => void 0)
       );
@@ -9372,7 +9372,35 @@ async function mutateAuthStore(env, fn, tokenOverride) {
 }
 
 // cypher-executor/src/routes/health.ts
+init_kbdb_proxy();
 var healthRouter = new Hono2();
+var DATA_LAYER_CACHE_MS = 1e4;
+var dataLayerCache = null;
+async function dataLayerStatus(env) {
+  const now2 = Date.now();
+  if (dataLayerCache && now2 - dataLayerCache.at < DATA_LAYER_CACHE_MS) return dataLayerCache.block;
+  let block;
+  try {
+    const { base, headers } = kbdbBase(env);
+    const res = await fetch(`${base}/health`, { headers, signal: AbortSignal.timeout(5e3) });
+    const body = await res.json().catch(() => null);
+    block = body?.data_layer ?? {
+      ok: false,
+      reason: "kbdb_health_unreadable",
+      detail: `HTTP ${res.status}`,
+      summary: "\u9019\u53F0\u7684 kbdb \u9084\u6C92\u6709\u8CC7\u6599\u5C64\u4E16\u4EE3\u63A2\u91DD\uFF08\u6BD4 Arcrun#159 \u7684\u4FEE\u6CD5\u820A\uFF09\u2014\u2014\u72C0\u614B\u672A\u77E5\u3002"
+    };
+  } catch (e) {
+    block = {
+      ok: false,
+      reason: "kbdb_unreachable",
+      detail: e instanceof Error ? e.message : String(e),
+      summary: "\u6253\u4E0D\u5230 kbdb\u2014\u2014\u8CC7\u6599\u5C64\u72C0\u614B\u672A\u77E5\uFF08\u672A\u77E5\u4E0D\u7B49\u65BC\u5065\u5EB7\uFF09\u3002"
+    };
+  }
+  dataLayerCache = { at: now2, block };
+  return block;
+}
 function authStoreStatus(env) {
   const legacy = readAuthStore(env);
   return {
@@ -9380,11 +9408,14 @@ function authStoreStatus(env) {
     portal_users: { home: "kbdb", writable: true, legacy_secrets_present: legacy.users.length > 0 }
   };
 }
-healthRouter.get("/health", (c) => {
+healthRouter.get("/health", async (c) => {
   const bundleVersion = c.env.ARCRUN_BUNDLE_VERSION;
   const bundleCommit = c.env.ARCRUN_BUNDLE_COMMIT;
+  const dataLayer = await dataLayerStatus(c.env);
   return c.json({
     ok: true,
+    status: dataLayer.ok ? "ok" : "degraded",
+    data_layer: dataLayer,
     ...bundleVersion ? { bundle_version: bundleVersion } : {},
     ...bundleCommit ? { bundle_commit: bundleCommit } : {},
     auth_store: authStoreStatus(c.env),
@@ -14818,7 +14849,7 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
 consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
   const tenant2 = knowledgeOwner(c.env);
   const now2 = Date.now();
-  const { base: kbdbUrl, headers: kbdbHeaders } = kbdbBase(c.env);
+  const { base: kbdbUrl, headers: kbdbHeaders2 } = kbdbBase(c.env);
   const graphUrl = graphBase(c.env);
   const [
     beatEntries,
@@ -14839,8 +14870,8 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
     fetchEntries(c.env, tenant2, "dash_wait", 100),
     fetchEntries(c.env, tenant2, "inbox", 200),
     cachedGiteaSprint(c.env, now2, (p) => c.executionCtx.waitUntil(p)),
-    fetchJson(`${kbdbUrl}/health`, kbdbHeaders),
-    fetchJson(`${kbdbUrl}/embed/backfill/status`, kbdbHeaders),
+    fetchJson(`${kbdbUrl}/health`, kbdbHeaders2),
+    fetchJson(`${kbdbUrl}/embed/backfill/status`, kbdbHeaders2),
     // graph-plugin 只拿來判「圖服務活著沒」（燈號）——數字不從這裡拿，見 fetchTripletTotal。
     // headers 一定要帶：plugin 的 /triplets 前綴掛 Bearer 閘，漏帶＝永遠 401＝永遠假紅燈（#100）。
     fetchJson(
@@ -15048,6 +15079,464 @@ init_webhook_handlers();
 // cypher-executor/src/lib/app-system.ts
 init_kbdb_proxy();
 init_webhook_handlers();
+
+// cypher-executor/src/lib/asset-keys.ts
+var ID_PREFIX = "arcrun";
+function classifyAssetKey(key) {
+  if (key.startsWith("idx:") || key.startsWith("cron-idx:")) return null;
+  if (key.startsWith("auth_recipe:")) {
+    const service = key.slice("auth_recipe:".length);
+    if (!service) return null;
+    return {
+      entry_type: "auth_recipe",
+      entry_id: `${ID_PREFIX}:auth_recipe:${service}`,
+      owner_id: null,
+      page_name: service,
+      kv_key: key
+    };
+  }
+  if (key.startsWith("prompt_recipe:")) {
+    const name = key.slice("prompt_recipe:".length);
+    if (!name) return null;
+    return {
+      entry_type: "prompt_recipe",
+      entry_id: `${ID_PREFIX}:prompt_recipe:${name}`,
+      owner_id: null,
+      page_name: name,
+      kv_key: key
+    };
+  }
+  if (key.startsWith("recipe:")) {
+    const id = key.slice("recipe:".length);
+    if (!id) return null;
+    return {
+      entry_type: "api_recipe",
+      entry_id: `${ID_PREFIX}:recipe:${id}`,
+      owner_id: null,
+      page_name: id,
+      kv_key: key
+    };
+  }
+  const appAt = key.indexOf(":app:");
+  if (appAt > 0) {
+    const owner = key.slice(0, appAt);
+    const id = key.slice(appAt + ":app:".length);
+    if (!owner || !id) return null;
+    return {
+      entry_type: "app_install",
+      entry_id: `${ID_PREFIX}:app:${owner}:${id}`,
+      owner_id: owner,
+      page_name: id,
+      kv_key: key
+    };
+  }
+  const wfAt = key.indexOf(":wf:");
+  if (wfAt > 0) {
+    const owner = key.slice(0, wfAt);
+    const name = key.slice(wfAt + ":wf:".length);
+    if (!owner || !name) return null;
+    return {
+      entry_type: "workflow_def",
+      entry_id: `${ID_PREFIX}:wf:${owner}:${name}`,
+      owner_id: owner,
+      page_name: name,
+      kv_key: key
+    };
+  }
+  return null;
+}
+function assetKvKey(entryType, ownerId, pageName) {
+  switch (entryType) {
+    case "workflow_def":
+      return `${ownerId ?? ""}:wf:${pageName}`;
+    case "app_install":
+      return `${ownerId ?? ""}:app:${pageName}`;
+    case "api_recipe":
+      return `recipe:${pageName}`;
+    case "auth_recipe":
+      return `auth_recipe:${pageName}`;
+    case "prompt_recipe":
+      return `prompt_recipe:${pageName}`;
+  }
+}
+function classifyListPrefix(prefix) {
+  if (!prefix) return null;
+  if (prefix.startsWith("idx:") || prefix.startsWith("cron-idx:")) return null;
+  if (prefix === "auth_recipe:") return { entry_type: "auth_recipe" };
+  if (prefix === "prompt_recipe:") return { entry_type: "prompt_recipe" };
+  if (prefix === "recipe:") return { entry_type: "api_recipe" };
+  if (prefix.endsWith(":wf:")) {
+    const owner = prefix.slice(0, -":wf:".length);
+    if (owner) return { entry_type: "workflow_def", owner_id: owner };
+  }
+  if (prefix.endsWith(":app:")) {
+    const owner = prefix.slice(0, -":app:".length);
+    if (owner) return { entry_type: "app_install", owner_id: owner };
+  }
+  return null;
+}
+
+// cypher-executor/src/lib/durable-store.ts
+function kbdbBase2(env) {
+  return (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+}
+function kbdbHeaders(env) {
+  const h = { "Content-Type": "application/json" };
+  if (env.KBDB_INTERNAL_TOKEN) h["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  return h;
+}
+var KbdbUnavailableError = class extends Error {
+  constructor(op, detail) {
+    super(
+      `\u8CC7\u7522\u7121\u6CD5\u5BEB\u5165 KBDB\uFF08${op}\uFF09\uFF1A${detail}\u3002\u672C\u6B21\u64CD\u4F5C\u5DF2\u4E2D\u6B62\u4E14\u672A\u5BEB\u5165\u4EFB\u4F55\u4E00\u908A\u2014\u2014\u9019\u662F\u523B\u610F\u7684\uFF1A\u5BE7\u53EF\u8B93\u4F60\u73FE\u5728\u770B\u5230\u5931\u6557\uFF0C\u4E5F\u4E0D\u8981\u5BEB\u9032\u53EA\u6703\u88AB\u4E0B\u6B21\u66F4\u65B0\u63DB\u6389\u7684 KV\u3001\u4E8B\u5F8C\u624D\u767C\u73FE\u6771\u897F\u4E0D\u898B\u4E86\uFF08Leo/Arcrun#16\u3001#17\uFF09\u3002`
+    );
+    this.name = "KbdbUnavailableError";
+  }
+};
+function assetContent(type, def, pageName) {
+  const d = def ?? {};
+  const pick = (...keys) => {
+    for (const k of keys) {
+      const v = d[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  };
+  switch (type) {
+    case "workflow_def":
+      return pick("description") || pageName;
+    case "api_recipe":
+      return pick("description", "display_name", "canonical_id") || pageName;
+    case "auth_recipe":
+      return pick("description", "display_name", "service") || pageName;
+    case "prompt_recipe":
+      return pick("description", "name") || pageName;
+    case "app_install":
+      return pick("name") || pageName;
+  }
+}
+function entryToKvValue(entry) {
+  if (!entry?.metadata_json) return null;
+  try {
+    const env = JSON.parse(entry.metadata_json);
+    if (!env || env.arcrun_asset !== true) return null;
+    if (typeof env.definition_raw === "string") return env.definition_raw;
+    if (env.definition === void 0) return null;
+    return JSON.stringify(env.definition);
+  } catch {
+    return null;
+  }
+}
+var DurableKv = class {
+  constructor(kv, env) {
+    this.kv = kv;
+    this.env = env;
+  }
+  kv;
+  env;
+  rehydratedRecipeIdx = false;
+  rehydratedCronIdx = false;
+  /**
+   * 拿回底層那顆真正的 KV。**只有遷移／盤點會用到**（routes/storage.ts）：
+   * 那兩支的工作正是「比較 KV 那邊有什麼、KBDB 這邊有什麼」，
+   * 若透過包裝去問，list 會被導去 KBDB，就永遠比不出差異、也搬不動舊資料。
+   * 一般業務程式碼不該碰這支——碰了就等於繞過本卷的全部保護。
+   */
+  get rawKv() {
+    return this.kv;
+  }
+  // ── KBDB 存取原語 ──────────────────────────────────────────────────────
+  async kbdbGetEntry(entryId) {
+    const res = await fetch(`${kbdbBase2(this.env)}/entries/${encodeURIComponent(entryId)}`, {
+      headers: kbdbHeaders(this.env)
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => null);
+    return json?.entry ?? null;
+  }
+  async kbdbListEntries(entryType, ownerId) {
+    const params = new URLSearchParams({ entry_type: entryType, limit: "1000" });
+    if (ownerId) params.set("owner_id", ownerId);
+    const res = await fetch(`${kbdbBase2(this.env)}/entries?${params.toString()}`, {
+      headers: kbdbHeaders(this.env)
+    });
+    if (!res.ok) throw new KbdbUnavailableError("list", `HTTP ${res.status}`);
+    const json = await res.json().catch(() => null);
+    return json?.entries ?? [];
+  }
+  async kbdbPutEntry(ref, envelope) {
+    const content = assetContent(ref.entry_type, envelope.definition, ref.page_name);
+    const res = await fetch(`${kbdbBase2(this.env)}/entries/${encodeURIComponent(ref.entry_id)}`, {
+      method: "PUT",
+      headers: kbdbHeaders(this.env),
+      body: JSON.stringify({
+        entry_type: ref.entry_type,
+        owner_id: ref.owner_id,
+        page_name: ref.page_name,
+        content,
+        // 刻意**不**標 embed:true：工作流的語意搜尋走既有的 entry_type='workflow' 那一列
+        //（workflow-discovery 方案 C 的雙寫），這裡標了會變成同一支工作流嵌兩份向量。
+        metadata_json: JSON.stringify(envelope)
+      })
+    });
+    if (!res.ok) throw new KbdbUnavailableError("put", `HTTP ${res.status} @ ${ref.entry_id}`);
+  }
+  async kbdbDeleteEntry(entryId) {
+    const res = await fetch(`${kbdbBase2(this.env)}/entries/${encodeURIComponent(entryId)}`, {
+      method: "DELETE",
+      headers: kbdbHeaders(this.env)
+    });
+    if (!res.ok && res.status !== 404) throw new KbdbUnavailableError("delete", `HTTP ${res.status} @ ${entryId}`);
+  }
+  // ── 衍生索引重建（讀不到就重算，不進 KBDB）────────────────────────────
+  /**
+   * 從 KBDB 的 api_recipe 列重建 recipe 反查索引：
+   *   idx:{hash_id}              → canonical_id
+   *   idx:canonical:{canonical}  → [uuid, ...]
+   *   idx:installed:{canonical}  → uuid
+   *
+   * installed 的還原順序：先看資產自己標的 installed 旗標（正常路徑，寫入時就記下了，
+   * 見 put() 對 `idx:installed:` 的處理）；同一個 canonical 沒有任何一版標記時
+   *（＝遷移之前就存在的舊資料），退而取 updated_at 最新的那一版——因為
+   * installRecipeRecord 的語意本來就是「最後寫入的那版即為安裝版」。
+   * 這是還原不是猜測，但仍是**退路**，故在此寫明白。
+   */
+  async rehydrateRecipeIndices() {
+    if (this.rehydratedRecipeIdx) return;
+    this.rehydratedRecipeIdx = true;
+    const entries = await this.kbdbListEntries("api_recipe");
+    const byCanonical = /* @__PURE__ */ new Map();
+    const writes = [];
+    for (const e of entries) {
+      const raw2 = entryToKvValue(e);
+      if (!raw2) continue;
+      let def;
+      try {
+        def = JSON.parse(raw2);
+      } catch {
+        continue;
+      }
+      if (!def.canonical_id) continue;
+      if (def.hash_id) writes.push(this.kv.put(`idx:${def.hash_id}`, def.canonical_id));
+      if (!def.uuid) continue;
+      let installed = false;
+      try {
+        installed = JSON.parse(e.metadata_json ?? "{}").installed === true;
+      } catch {
+      }
+      const list = byCanonical.get(def.canonical_id) ?? [];
+      list.push({ uuid: def.uuid, installed, updated_at: e.updated_at ?? 0 });
+      byCanonical.set(def.canonical_id, list);
+    }
+    for (const [canonical, versions] of byCanonical) {
+      writes.push(this.kv.put(`idx:canonical:${canonical}`, JSON.stringify(versions.map((v) => v.uuid))));
+      const chosen = versions.find((v) => v.installed) ?? versions.reduce((a, b) => b.updated_at > a.updated_at ? b : a);
+      writes.push(this.kv.put(`idx:installed:${canonical}`, chosen.uuid));
+    }
+    await Promise.all(writes);
+  }
+  /** 從 KBDB 的 workflow_def 列重建 cron 索引（單一 key，見 lib/cron-index.ts）。 */
+  async rehydrateCronIndex() {
+    if (this.rehydratedCronIdx) return;
+    this.rehydratedCronIdx = true;
+    const entries = await this.kbdbListEntries("workflow_def");
+    const index = {};
+    for (const e of entries) {
+      const raw2 = entryToKvValue(e);
+      if (!raw2) continue;
+      let def;
+      try {
+        def = JSON.parse(raw2);
+      } catch {
+        continue;
+      }
+      if (!def.cron_expr || !e.owner_id || !e.page_name) continue;
+      index[cronEntryKey(e.owner_id, e.page_name)] = def.cron_expr;
+    }
+    await this.kv.put(CRON_INDEX_KEY, JSON.stringify(index));
+  }
+  // ── KVNamespace 介面 ───────────────────────────────────────────────────
+  async get(key, type) {
+    const t0 = typeof type === "string" ? type : type?.type;
+    if (t0 === "arrayBuffer" || t0 === "stream") return this.kv.get(key, t0);
+    const asText = (raw2) => {
+      if (raw2 === null) return null;
+      const t = typeof type === "string" ? type : type?.type;
+      if (t === "json") {
+        try {
+          return JSON.parse(raw2);
+        } catch {
+          return null;
+        }
+      }
+      return raw2;
+    };
+    const ref = classifyAssetKey(key);
+    if (!ref) {
+      const raw2 = await this.kv.get(key, "text");
+      if (raw2 !== null) return asText(raw2);
+      if (key.startsWith("idx:")) {
+        await this.rehydrateRecipeIndices().catch(() => {
+        });
+        return asText(await this.kv.get(key, "text"));
+      }
+      if (key === CRON_INDEX_KEY) {
+        await this.rehydrateCronIndex().catch(() => {
+        });
+        return asText(await this.kv.get(key, "text"));
+      }
+      return asText(raw2);
+    }
+    const cached = await this.kv.get(key, "text");
+    if (cached !== null) return asText(cached);
+    const fromKbdb = entryToKvValue(await this.kbdbGetEntry(ref.entry_id));
+    if (fromKbdb === null) return asText(null);
+    await this.kv.put(key, fromKbdb).catch(() => {
+    });
+    return asText(fromKbdb);
+  }
+  async put(key, value, options) {
+    if (options?.expirationTtl || options?.expiration || typeof value !== "string") {
+      return this.kv.put(key, value, options);
+    }
+    if (key.startsWith("idx:installed:")) {
+      await this.kv.put(key, value, options);
+      await this.markInstalledVersion(key.slice("idx:installed:".length), value).catch(() => {
+      });
+      return;
+    }
+    const ref = classifyAssetKey(key);
+    if (!ref) return this.kv.put(key, value, options);
+    let definition;
+    let definitionRaw;
+    try {
+      definition = JSON.parse(value);
+    } catch {
+      definitionRaw = value;
+    }
+    const previous = ref.entry_type === "api_recipe" ? await this.readEnvelope(ref) : null;
+    await this.kbdbPutEntry(ref, {
+      arcrun_asset: true,
+      kv_key: key,
+      ...definitionRaw !== void 0 ? { definition_raw: definitionRaw } : { definition },
+      ...previous?.installed ? { installed: true } : {}
+    });
+    await this.kv.put(key, value, options);
+  }
+  async delete(key) {
+    const ref = classifyAssetKey(key);
+    if (ref) await this.kbdbDeleteEntry(ref.entry_id);
+    await this.kv.delete(key);
+  }
+  async list(options) {
+    const target = classifyListPrefix(options?.prefix ?? void 0);
+    if (!target) return this.kv.list(options);
+    const entries = await this.kbdbListEntries(target.entry_type, target.owner_id);
+    const keys = [];
+    const warm = [];
+    for (const e of entries) {
+      if (!e.page_name) continue;
+      if (target.entry_type === "workflow_def" && !e.owner_id) continue;
+      const name = assetKvKey(target.entry_type, e.owner_id ?? null, e.page_name);
+      keys.push({ name });
+      const raw2 = entryToKvValue(e);
+      if (raw2 !== null) warm.push(this.kv.put(name, raw2).catch(() => {
+      }));
+    }
+    await Promise.all(warm);
+    if (target.entry_type === "app_install") {
+      const seen = new Set(keys.map((k) => k.name));
+      const fromKv = await this.kv.list({ prefix: options?.prefix ?? void 0 });
+      const heal = [];
+      for (const k of fromKv.keys) {
+        if (seen.has(k.name)) continue;
+        keys.push({ name: k.name });
+        heal.push(
+          (async () => {
+            const raw2 = await this.kv.get(k.name, "text");
+            if (raw2 === null) return;
+            const ref = classifyAssetKey(k.name);
+            if (!ref) return;
+            let definition;
+            let definitionRaw;
+            try {
+              definition = JSON.parse(raw2);
+            } catch {
+              definitionRaw = raw2;
+            }
+            await this.kbdbPutEntry(ref, {
+              arcrun_asset: true,
+              kv_key: k.name,
+              ...definitionRaw !== void 0 ? { definition_raw: definitionRaw } : { definition }
+            });
+          })().catch(() => {
+          })
+        );
+      }
+      await Promise.all(heal);
+    }
+    return { keys, list_complete: true, cacheStatus: null };
+  }
+  /** KVNamespace 介面補齊（本 worker 沒有呼叫端在用，原樣轉發，不做資產處理）。 */
+  getWithMetadata(key, type) {
+    return this.kv.getWithMetadata(key, type);
+  }
+  // ── 內部小工具 ─────────────────────────────────────────────────────────
+  async readEnvelope(ref) {
+    const entry = await this.kbdbGetEntry(ref.entry_id);
+    if (!entry?.metadata_json) return null;
+    try {
+      const env = JSON.parse(entry.metadata_json);
+      return env?.arcrun_asset === true ? env : null;
+    } catch {
+      return null;
+    }
+  }
+  /** 把「這個 canonical 目前裝的是哪一版」記進該版 recipe 的信封（同 canonical 的其他版清掉旗標）。 */
+  async markInstalledVersion(canonicalId, uuid) {
+    const entries = await this.kbdbListEntries("api_recipe");
+    const jobs = [];
+    for (const e of entries) {
+      const raw2 = entryToKvValue(e);
+      if (!raw2) continue;
+      let def;
+      try {
+        def = JSON.parse(raw2);
+      } catch {
+        continue;
+      }
+      if (def.canonical_id !== canonicalId || !def.uuid) continue;
+      const shouldBeInstalled = def.uuid === uuid;
+      let envelope;
+      try {
+        envelope = JSON.parse(e.metadata_json ?? "{}");
+      } catch {
+        continue;
+      }
+      if (envelope.installed === true === shouldBeInstalled) continue;
+      envelope.installed = shouldBeInstalled;
+      jobs.push(
+        fetch(`${kbdbBase2(this.env)}/entries/${encodeURIComponent(e.id)}`, {
+          method: "PATCH",
+          headers: kbdbHeaders(this.env),
+          body: JSON.stringify({ metadata_json: JSON.stringify(envelope) })
+        })
+      );
+    }
+    await Promise.all(jobs);
+  }
+};
+
+// cypher-executor/src/lib/app-system.ts
+function appStore(env) {
+  return new DurableKv(env.WEBHOOKS, env);
+}
+function kbdbBehindHint(e) {
+  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  if (!msg.includes("KbdbUnavailable")) return null;
+  return "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u6C92\u6709\u56DE\u61C9\uFF0C\u6216\u5B83\u7684\u7248\u672C\u6BD4\u76EE\u524D\u7684\u7A0B\u5F0F\u78BC\u820A\u2014\u2014\u5B89\u88DD\u9700\u8981\u77E5\u8B58\u5EAB\u63D0\u4F9B\u300C\u540C\u4E00\u4EFD\u8CC7\u7522\u6C38\u9060\u540C\u4E00\u5217\u300D\u7684\u5BEB\u5165\u80FD\u529B\u3002\u8ACB\u7BA1\u7406\u8005\u628A\u77E5\u8B58\u5EAB\u4E00\u8D77\u66F4\u65B0\u5230\u540C\u4E00\u7248\uFF1B\u5728\u90A3\u4E4B\u524D**\u5DF2\u7D93\u88DD\u597D\u7684 App \u4E0D\u53D7\u5F71\u97FF**\uFF0C\u7167\u5E38\u53EF\u7528\u3002";
+}
 var APP_UI_STYLES = ["inherit", "own"];
 var DEFAULT_APP_UI_STYLE = "inherit";
 var ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
@@ -15119,6 +15608,17 @@ function validateAppDeclaration(raw2) {
   }
   if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
     errors.push("actions \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217");
+  } else if (Array.isArray(d.actions) && Array.isArray(d.workflows)) {
+    const wfNames = new Set(
+      d.workflows.map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
+    );
+    for (const a of d.actions) {
+      if (!wfNames.has(a)) {
+        errors.push(
+          `actions \u88E1\u7684\u300C${a}\u300D\u627E\u4E0D\u5230\u540C\u540D\u7684 workflow\uFF08\u52D5\u4F5C\u540D\u5C31\u662F\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\uFF09\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
+        );
+      }
+    }
   }
   return { ok: errors.length === 0, errors };
 }
@@ -15143,6 +15643,26 @@ function applyDeclarationDefaults(raw2) {
     keeps_data: raw2.remove?.keeps_data ?? true
   };
 }
+var APP_PLACEHOLDERS = ["__NAMESPACE__", "__CYPHER_BASE__"];
+function resolveDeclarationPlaceholders(value, coords) {
+  const base = coords.cypherBase.replace(/\/+$/, "");
+  const swap = (s) => s.split("__NAMESPACE__").join(coords.namespace).split("__CYPHER_BASE__").join(base);
+  const walk = (v) => {
+    if (typeof v === "string") return swap(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out = {};
+      for (const [k, val] of Object.entries(v)) out[swap(k)] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  return walk(value);
+}
+function remainingPlaceholders(value) {
+  const text = JSON.stringify(value) ?? "";
+  return APP_PLACEHOLDERS.filter((p) => text.includes(p));
+}
 async function computeContentHash(raw2) {
   const canonical = canonicalize(raw2);
   const data = new TextEncoder().encode(canonical);
@@ -15164,7 +15684,7 @@ function workflowKvKey(tenant2, wfKey) {
   return `${tenant2}:wf:${wfKey}`;
 }
 async function getInstalledApp(env, tenant2, id) {
-  const raw2 = await env.WEBHOOKS.get(appKey(tenant2, id), "text");
+  const raw2 = await appStore(env).get(appKey(tenant2, id), "text");
   if (!raw2) return null;
   try {
     return JSON.parse(raw2);
@@ -15174,10 +15694,10 @@ async function getInstalledApp(env, tenant2, id) {
 }
 async function listInstalledApps(env, tenant2) {
   const prefix = `${tenant2}:app:`;
-  const list = await env.WEBHOOKS.list({ prefix });
+  const list = await appStore(env).list({ prefix });
   const apps = await Promise.all(
     list.keys.map(async (k) => {
-      const raw2 = await env.WEBHOOKS.get(k.name, "text");
+      const raw2 = await appStore(env).get(k.name, "text");
       if (!raw2) return null;
       try {
         return JSON.parse(raw2);
@@ -15201,36 +15721,83 @@ async function ensureTemplate(env, name, slots, description) {
     body: JSON.stringify({ name, slots, description })
   });
 }
-async function installApp(env, tenant2, rawDecl) {
-  const validation = validateAppDeclaration(rawDecl);
-  if (!validation.ok) return { ok: false, errors: validation.errors };
-  const decl = applyDeclarationDefaults(rawDecl);
-  const contentHash = await computeContentHash(rawDecl);
+async function installApp(env, tenant2, rawDecl, opts = {}) {
+  let decl0 = rawDecl;
+  if (opts.coords) {
+    try {
+      decl0 = resolveDeclarationPlaceholders(rawDecl, opts.coords);
+    } catch (e) {
+      return {
+        ok: false,
+        step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
+        errors: [e instanceof Error ? e.message : String(e)],
+        hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u505A\u932F\u4E86\u3002\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u5373\u53EF\u3002"
+      };
+    }
+  }
+  const left = remainingPlaceholders(decl0);
+  if (left.length > 0) {
+    return {
+      ok: false,
+      step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
+      errors: [`\u9019\u4EFD\u5BA3\u544A\u88E1\u9084\u6709\u6C92\u586B\u7684\u4F4D\u7F6E\uFF1A${left.join("\u3001")}`],
+      hint: "\u9019\u500B App \u7684\u4F5C\u8005\u7559\u4E86\u8981\u7531\u5BE6\u4F8B\u586B\u7684\u6B04\u4F4D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u586B\u5F97\u8D77\u4F86\u3002\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+    };
+  }
+  const validation = validateAppDeclaration(decl0);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      step: "\u6AA2\u67E5\u9019\u500B App \u7684\u5BA3\u544A",
+      errors: validation.errors,
+      hint: "\u9019\u662F App \u4F5C\u8005\u90A3\u908A\u8981\u4FEE\u7684\uFF0C\u91CD\u8A66\u4E0D\u6703\u8B8A\u597D\u3002\u628A\u4E0A\u9762\u9019\u5E7E\u884C\u539F\u6587\u56DE\u5831\u7D66\u9019\u500B App \u7684\u4F5C\u8005\u3002"
+    };
+  }
+  const decl = applyDeclarationDefaults(decl0);
+  const contentHash = await computeContentHash(decl0);
   const existing = await getInstalledApp(env, tenant2, decl.id);
   if (existing && existing.content_hash === contentHash && existing.status === "active") {
     return { ok: true, changed: false, app: existing };
   }
-  for (const dt of decl.data) {
-    await ensureTemplate(env, dt.name, dt.slots, dt.description);
+  try {
+    for (const dt of decl.data) {
+      await ensureTemplate(env, dt.name, dt.slots, dt.description);
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
+      errors: [e instanceof Error ? e.message : String(e)],
+      hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\u670D\u52D9\u6C92\u6709\u56DE\u61C9\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+    };
   }
   const workflowRefs = [];
-  for (const wf of decl.workflows) {
-    const wfKey = `${decl.id}__${wf.name}`;
-    await env.WEBHOOKS.put(
-      workflowKvKey(tenant2, wfKey),
-      JSON.stringify({
-        graph: wf.graph,
-        description: wf.description || `${decl.name}: ${wf.name}`,
-        created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString()
-      })
-    );
-    workflowRefs.push({ name: wf.name, wf_key: wfKey, description: wf.description || "" });
+  try {
+    for (const wf of decl.workflows) {
+      const wfKey = `${decl.id}__${wf.name}`;
+      await appStore(env).put(
+        workflowKvKey(tenant2, wfKey),
+        JSON.stringify({
+          graph: wf.graph,
+          description: wf.description || `${decl.name}: ${wf.name}`,
+          created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString()
+        })
+      );
+      workflowRefs.push({ name: wf.name, wf_key: wfKey, description: wf.description || "" });
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
+      errors: [e instanceof Error ? e.message : String(e)],
+      hint: kbdbBehindHint(e) ?? `\u5DF2\u7D93\u88DD\u4E0A ${workflowRefs.length}\uFF0F${decl.workflows.length} \u689D\u3002\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u6703\u5F9E\u982D\u8986\u5BEB\u4E00\u904D\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002`
+    };
   }
   if (existing) {
     const keepKeys = new Set(workflowRefs.map((w) => w.wf_key));
     for (const prev of existing.workflows) {
       if (!keepKeys.has(prev.wf_key)) {
-        await env.WEBHOOKS.delete(workflowKvKey(tenant2, prev.wf_key));
+        await appStore(env).delete(workflowKvKey(tenant2, prev.wf_key));
       }
     }
   }
@@ -15252,16 +15819,32 @@ async function installApp(env, tenant2, rawDecl) {
     updated_at: (/* @__PURE__ */ new Date()).toISOString(),
     status: "active"
   };
-  await env.WEBHOOKS.put(appKey(tenant2, decl.id), JSON.stringify(record));
+  try {
+    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
+  } catch (e) {
+    return {
+      ok: false,
+      step: "\u5BEB\u5165\u5B89\u88DD\u7D00\u9304",
+      errors: [e instanceof Error ? e.message : String(e)],
+      hint: kbdbBehindHint(e) ?? "\u5DE5\u4F5C\u6D41\u5DF2\u7D93\u88DD\u597D\u4E86\uFF0C\u53EA\u5DEE\u6700\u5F8C\u9019\u4E00\u7B46\u7D00\u9304\u2014\u2014\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u5C31\u6703\u88DC\u4E0A\u3002"
+    };
+  }
   return { ok: true, changed: true, app: record };
 }
 async function uninstallApp(env, tenant2, id) {
   const existing = await getInstalledApp(env, tenant2, id);
   if (!existing) return { ok: false, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD\u7D00\u9304" };
-  for (const wf of existing.workflows) {
-    await env.WEBHOOKS.delete(workflowKvKey(tenant2, wf.wf_key));
+  try {
+    for (const wf of existing.workflows) {
+      await appStore(env).delete(workflowKvKey(tenant2, wf.wf_key));
+    }
+    await appStore(env).delete(appKey(tenant2, id));
+  } catch (e) {
+    return {
+      ok: false,
+      error: kbdbBehindHint(e) ?? `\u79FB\u9664\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
+    };
   }
-  await env.WEBHOOKS.delete(appKey(tenant2, id));
   return { ok: true };
 }
 async function runAppAction(env, tenant2, appId, action, payload, ctx) {
@@ -15272,7 +15855,7 @@ async function runAppAction(env, tenant2, appId, action, payload, ctx) {
   }
   const wfRef = app2.workflows.find((w) => w.name === action);
   if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
-  const raw2 = await env.WEBHOOKS.get(workflowKvKey(tenant2, wfRef.wf_key), "text");
+  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
   if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
   let graph;
   try {
@@ -15305,6 +15888,899 @@ function detailApp(app2) {
     workflows: app2.workflows.map((w) => ({ name: w.name, description: w.description })),
     actions: app2.actions
   };
+}
+
+// cypher-executor/src/lib/app-catalog/notes.json
+var notes_default = {
+  id: "notes",
+  name: "\u7B46\u8A18",
+  icon: "\u{1F4DD}",
+  workflows: [
+    {
+      name: "create_note",
+      description: "\u6536\u4E00\u6BB5 markdown \u5167\u5BB9\uFF08\u53EF\u9078\u65E5\u671F\uFF09\uFF0C\u5BEB\u5165\u4E00\u7B46 note record\uFF0C\u56DE\u50B3\u6574\u7406\u904E\u7684\u4E7E\u6DE8\u6B04\u4F4D \uFF08\u4E0D\u662F KBDB \u539F\u59CB\u56DE\u61C9\u2014\u2014\u90A3\u500B\u8981\u547C\u53EB\u7AEF\u81EA\u5DF1\u525D body \u5B57\u4E32\uFF0C\u4E0D\u8A72\u8B93\u524D\u7AEF\u505A\u9019\u4EF6\u4E8B\uFF09\u3002\n",
+      graph: {
+        id: "notes_create",
+        name: "notes_create",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: `// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\uFF0C\u4E0D\u662F\u731C\u7684\uFF09\uFF1A
+// {{input.xxx}} \u5728 xxx \u9019\u500B key \u771F\u7684\u4E0D\u5B58\u5728\u6642\uFF0CGraphExecutor \u7684 interpolateString
+// \u6703\u56DE\u300C\u539F\u6A23\u4FDD\u7559\u9019\u500B {{...}} \u5B57\u9762\u5B57\u4E32\u300D\uFF0C\u4E0D\u662F undefined\u3001\u4E5F\u4E0D\u662F\u7A7A\u5B57\u4E32
+// \uFF08matrix/arcrun/cypher-executor/src/graph-executor.ts interpolateString \u7684\u65E2\u6709\u8A2D\u8A08\uFF1A
+//  \u300C\u627E\u4E0D\u5230\u5C31\u4FDD\u7559\u5B57\u9762\u5B57\u4E32\u300D\uFF0C\u662F\u5F15\u64CE\u6545\u610F\u7684\u884C\u70BA\uFF0C\u4E0D\u662F bug\uFF09\u3002
+// \u21D2 \u547C\u53EB\u7AEF\u6F0F\u5E36 date \u6642\uFF0C\u9019\u88E1\u6536\u5230\u7684 input.date \u4E0D\u662F undefined\uFF0C\u662F\u5B57\u4E32 "{{input.date}}"
+//   \u2014\u2014\u82E5\u53EA\u5224\u65B7 == null || === ''\uFF0C\u9019\u500B\u5B57\u9762\u5B57\u4E32\u6703\u88AB\u8AA4\u5224\u6210\u300C\u6709\u7D66\u503C\u300D\uFF0C
+//   \u7136\u5F8C\u5728 YYYY-MM-DD \u683C\u5F0F\u6AA2\u67E5\u90A3\u95DC\u5931\u6557\uFF0C\u8B93\u300C\u4E0D\u5E36 date \u5C31\u7528\u4ECA\u5929\u300D\u6574\u500B\u5931\u6548\u3002
+// \u4FEE\u6CD5\uFF1A\u591A\u5224\u4E00\u7A2E\u300C\u770B\u8D77\u4F86\u50CF\u6C92\u89E3\u958B\u7684\u6A21\u677F\u300D\u7684\u5F62\u72C0\uFF0C\u8996\u540C\u6C92\u7D66\u3002
+function provided(v) {
+  if (typeof v !== 'string') return false;
+  var t = v.trim();
+  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);
+}
+const content = provided(input.content) ? String(input.content).trim() : '';
+if (!content) return { success: false, error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u7B46\u8A18\u81F3\u5C11\u8981\u6709\u5167\u5BB9\uFF09' };
+const now = new Date();
+const rawDate = provided(input.date) ? String(input.date).trim() : now.toISOString().slice(0, 10);
+if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate)) {
+  return { success: false, error: 'date \u5FC5\u9808\u662F YYYY-MM-DD \u683C\u5F0F\uFF08\u6536\u5230\uFF1A' + rawDate + '\uFF09' };
+}
+return { success: true, content: content, date: rawDate, created_at: now.toISOString() };
+`,
+              input: {
+                content: "{{input.content}}",
+                date: "{{input.date}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "write_note",
+            type: "Component",
+            label: "write_note",
+            componentId: "http_request",
+            data: {
+              method: "POST",
+              url: "__CYPHER_BASE__/kbdb/records",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                template: "note",
+                values: {
+                  date: "{{prep.data.date}}",
+                  content: "{{prep.data.content}}",
+                  created_at: "{{prep.data.created_at}}"
+                }
+              }
+            }
+          },
+          {
+            id: "extract_note",
+            type: "Component",
+            label: "extract_note",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u5BEB\u5165\u6C92\u6709\u56DE\u53EF\u7528\u7684 record' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n};\n",
+              input: {
+                body: "{{write_note.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "write_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "write_note",
+            to: "extract_note",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "list_notes",
+      description: "\u53D6\u56DE\u6CB3\u9053\uFF1A\u9810\u8A2D\u5168\u90E8\uFF08\u4F9D created_at \u65B0\u5230\u820A\uFF09\uFF0C\u5E36 date \u53EA\u56DE\u90A3\u4E00\u5929\u7684\u7B46\u8A18\u3002\n",
+      graph: {
+        id: "notes_list",
+        name: "notes_list",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "fetch_notes",
+            type: "Component",
+            label: "fetch_notes",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/by-template/note?limit=500",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "filter_sort",
+            type: "Component",
+            label: "filter_sort",
+            componentId: "code",
+            data: {
+              code: "// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\u2014\u2014\n// \u4E0D\u52A0\u9019\u6BB5\u9632\u8B77\u6642\uFF0C\u300C\u4E0D\u5E36 date\uFF1D\u67E5\u5168\u90E8\u300D\u9019\u500B\u6700\u5E38\u7528\u7684\u9810\u8A2D\u8DEF\u5F91\u6703\u975C\u9ED8\u56DE\u50B3 0 \u7B46\uFF0C\n// \u8A73\u7D30\u6210\u56E0\u898B notes-create.yaml \u7684 prep \u7BC0\u9EDE\u540C\u6B3E\u8A3B\u89E3\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u8CBC\u4E00\u6B21\uFF09\u3002\nfunction provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst records = Array.isArray(body.records) ? body.records : [];\nconst wantDate = provided(input.date) ? String(input.date).trim() : '';\nlet notes = records.map(function (r) {\n  const v = r.values || {};\n  return {\n    record_id: r.record_id,\n    date: v.date || '',\n    content: v.content || '',\n    created_at: v.created_at || ''\n  };\n});\nif (wantDate) notes = notes.filter(function (n) { return n.date === wantDate; });\nnotes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });\nreturn { success: true, notes: notes, count: notes.length, date: wantDate || null };\n",
+              input: {
+                body: "{{fetch_notes.data.body}}",
+                date: "{{input.date}}"
+              },
+              limits: {
+                timeout_ms: 3e3,
+                max_output_bytes: 4194304
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "fetch_notes",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "fetch_notes",
+            to: "filter_sort",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    }
+  ],
+  ui: {
+    html: `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>\u7B46\u8A18</title>
+<!--
+  ui/index.html \u2014 \u7B46\u8A18 App \u524D\u7AEF\uFF08inkstone/InkStoneCo#2\uFF1B\u57F7\u884C\u7968 inkstone/arcrun-app-note#1\uFF09
+
+  \u624B\u6A5F\u512A\u5148\u3001\u55AE\u4E00 HTML \u6A94\uFF08\u5916\u52A0 notes-core.js \u4E00\u4EFD\u7D14\u908F\u8F2F\uFF09\uFF0C\u96F6\u5916\u90E8\u4F9D\u8CF4\u3001\u96F6 CDN\uFF0C
+  \u7167 design.md \u5C0D\u300C\u756B\u9762\u8CC7\u7522\u8981\u80FD\u843D\u5730\u5230\u5BE6\u4F8B\u300D\u7684\u8981\u6C42\uFF1A\u9019\u500B\u6A94\u6848\u672C\u8EAB\u5C31\u662F\u5168\u90E8\uFF0C
+  \u4E0D\u9700\u8981 build pipeline\uFF0C\u8907\u88FD\u9019\u5169\u500B\u6A94\u6848\u5230\u4EFB\u4F55\u5730\u65B9\u90FD\u80FD\u958B\u3002
+
+  \u{1F534} \u9019\u4E00\u9801\u9810\u8A2D\u8DD1\u5728 MOCK \u6A21\u5F0F\uFF08localStorage \u5047\u8CC7\u6599\uFF09\u2014\u2014\u56E0\u70BA inkstone/Arcrun#82
+  \u7684\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u9084\u6C92\u505A\u51FA\u4F86\uFF0C\u6C92\u6709\u771F\u5F8C\u7AEF\u53EF\u4EE5\u6253\u3002MOCK \u6A6B\u5E45\u6C38\u9060\u986F\u793A\u5728\u756B\u9762\u4E0A\uFF0C
+  \u4E0D\u5141\u8A31\u4F7F\u7528\u8005\u8AA4\u4EE5\u70BA\u9019\u662F\u771F\u8CC7\u6599\u3002\u7B49\u771F\u7AEF\u9EDE\u505A\u51FA\u4F86\uFF0C\u53EA\u8981\u5728\u9801\u9762\u8F09\u5165\u524D\u8A2D\u5B9A\uFF1A
+      window.ARCRUN_APP_ACTION_ENDPOINT = 'https://.../portal/apps/actions';
+  \u9019\u4E00\u9801\u5C31\u6703\u6539\u6253\u771F\u5F8C\u7AEF\uFF0C\u524D\u7AEF\u7A0B\u5F0F\u78BC\u4E00\u884C\u4E0D\u7528\u6539\uFF08\u547C\u53EB\u4ECB\u9762\u898B\u4E0B\u9762 callAction()\uFF09\u3002
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0e0f12;
+    --panel: #17191d;
+    --panel-2: #1f2229;
+    --text: #eceef1;
+    --text-dim: #9aa1ad;
+    --accent: #6ea8fe;
+    --accent-weak: rgba(110, 168, 254, 0.18);
+    --danger: #ff8a8a;
+    --border: #2a2d34;
+    --mock-banner: #4a3300;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  }
+  #app { max-width: 640px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+
+  .mock-banner {
+    background: var(--mock-banner); color: #ffd479;
+    font-size: 12px; text-align: center; padding: 6px 10px;
+    border-bottom: 1px solid #6b4a00;
+  }
+
+  header { padding: 12px 14px 8px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 18px; margin: 0 0 8px; }
+
+  .composer { display: flex; flex-direction: column; gap: 8px; }
+  .composer textarea {
+    width: 100%; min-height: 72px; resize: vertical;
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; font-size: 15px; font-family: inherit;
+  }
+  .composer-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+  .composer-row .hint { font-size: 12px; color: var(--text-dim); }
+  .composer-row button {
+    background: var(--accent); color: #0b1220; border: none; border-radius: 999px;
+    padding: 8px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .composer-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .error-line { color: var(--danger); font-size: 13px; min-height: 16px; }
+
+  .calendar-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px; font-size: 13px; color: var(--text-dim); cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+  }
+  .calendar-toggle .filter-chip {
+    background: var(--accent-weak); color: var(--accent); border-radius: 999px;
+    padding: 3px 10px; font-size: 12px; margin-left: 8px;
+  }
+
+  .calendar { padding: 8px 14px 12px; border-bottom: 1px solid var(--border); }
+  .calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .calendar-header button {
+    background: none; border: none; color: var(--text); font-size: 16px; padding: 4px 10px; cursor: pointer;
+  }
+  .calendar-header .label { font-size: 14px; font-weight: 600; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+  .cal-dow { font-size: 11px; color: var(--text-dim); padding: 2px 0; }
+  .cal-cell {
+    position: relative; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--text);
+  }
+  .cal-cell.empty { cursor: default; visibility: hidden; }
+  .cal-cell.today { border: 1px solid var(--accent); }
+  .cal-cell.selected { background: var(--accent); color: #0b1220; font-weight: 700; }
+  .cal-cell .dot {
+    position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .cal-cell.selected .dot { background: #0b1220; }
+
+  .river { flex: 1; overflow-y: auto; padding: 8px 14px 24px; }
+  .river-empty { color: var(--text-dim); font-size: 14px; text-align: center; padding: 40px 10px; }
+  .note-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 10px;
+  }
+  .note-card .meta { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .note-card .content { font-size: 15px; line-height: 1.55; word-break: break-word; }
+  .note-card .content p { margin: 0 0 8px; }
+  .note-card .content p:last-child { margin-bottom: 0; }
+  .note-card .content h1, .note-card .content h2, .note-card .content h3 { margin: 0 0 8px; }
+  .note-card .content ul { margin: 0 0 8px; padding-left: 20px; }
+  .note-card .content code {
+    background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="mock-banner" id="mockBanner" hidden>
+    \u26A0\uFE0F MOCK \u6A21\u5F0F\uFF1A\u8CC7\u6599\u53EA\u5B58\u5728\u9019\u500B\u700F\u89BD\u5668\u7684 localStorage\uFF0C\u4E0D\u662F\u771F\u7684 KBDB\uFF0FArcrun \u5F8C\u7AEF\u3002
+  </div>
+
+  <header>
+    <h1>\u7B46\u8A18</h1>
+    <div class="composer">
+      <textarea id="composerInput" placeholder="\u5BEB\u9EDE\u4EC0\u9EBC\u2026\u2026\u652F\u63F4 Markdown\uFF08# \u6A19\u984C\u3001**\u7C97\u9AD4**\u3001*\u659C\u9AD4*\u3001- \u6E05\u55AE\u3001[\u9023\u7D50](\u7DB2\u5740)\uFF09"></textarea>
+      <div class="composer-row">
+        <span class="hint" id="composerHint"></span>
+        <button id="submitBtn" type="button">\u9001\u51FA</button>
+      </div>
+      <div class="error-line" id="composerError"></div>
+    </div>
+  </header>
+
+  <div class="calendar-toggle" id="calendarToggle">
+    <span>
+      <span id="calendarToggleLabel">\u5C0F\u65E5\u66C6</span>
+      <span class="filter-chip" id="filterChip" hidden></span>
+    </span>
+    <span id="calendarChevron">\u25BE</span>
+  </div>
+  <div class="calendar" id="calendarPanel" hidden>
+    <div class="calendar-header">
+      <button type="button" id="calPrev" aria-label="\u4E0A\u500B\u6708">\u2039</button>
+      <span class="label" id="calLabel"></span>
+      <button type="button" id="calNext" aria-label="\u4E0B\u500B\u6708">\u203A</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <main class="river" id="river">
+    <div class="river-empty">\u8F09\u5165\u4E2D\u2026</div>
+  </main>
+</div>
+
+<script>
+/*
+ * notes-core.js \u2014 \u7D14\u908F\u8F2F\u5C64\uFF08inkstone/InkStoneCo#2\uFF1B\u57F7\u884C\u7968 inkstone/arcrun-app-note#1 \u7B46\u8A18 App\uFF09
+ *
+ * \u523B\u610F\u8DDF DOM \u5206\u958B\u653E\u4E00\u500B\u6A94\u6848\u7684\u7406\u7531\uFF1A\u9019\u6A23 test/test-notes-core.mjs \u624D\u80FD\u5728 Node \u88E1
+ * \u76F4\u63A5 require \u9019\u4EFD\u908F\u8F2F\u505A\u55AE\u5143\u6E2C\u8A66\uFF0C\u4E0D\u9700\u8981\u4E00\u9846\u771F\u700F\u89BD\u5668\uFF08headless Chrome \u9019\u985E\u91CD\u4F9D\u8CF4
+ * \u5728\u9019\u53F0\u6A5F\u5668\u4E0A\u4E0D\u4E00\u5B9A\u88DD\u5F97\u4E86\uFF1B\u7D14\u51FD\u5F0F\u908F\u8F2F\u7528 node \u5C31\u6E2C\u5F97\u5230\uFF0C\u9019\u662F\u53EF\u4EE5\u505A\u5230\u300C\u6E2C\u904E\u300D\u800C\u4E0D\u662F
+ * \u300C\u61C9\u8A72\u53EF\u4EE5\u300D\u7684\u6700\u52D9\u5BE6\u4F5C\u6CD5\uFF09\u3002
+ *
+ * \u9019\u500B\u6A94\u6848\u4E0D import \u4EFB\u4F55\u6771\u897F\u3001\u4E0D\u78B0 window/document\u2014\u2014\u5728 <script> \u6A19\u7C64\u6216 Node \u90FD\u80FD\u8DD1\u3002
+ * \u5C0D\u5916\u7528\u4E00\u500B\u547D\u540D\u7A7A\u9593\u7269\u4EF6 NotesCore \u639B\u4F4F\u6240\u6709\u51FD\u5F0F\uFF0C\u540C\u6642\u5728 Node \u74B0\u5883\uFF08module !== undefined\uFF09
+ * \u639B module.exports\uFF0C\u5169\u908A\u5171\u7528\u540C\u4E00\u4EFD\u5BE6\u4F5C\uFF0C\u4E0D\u6703\u51FA\u73FE\u300C\u700F\u89BD\u5668\u7248\u300D\u8DDF\u300C\u6E2C\u8A66\u7248\u300D\u6F02\u79FB\u3002
+ */
+(function (root) {
+  'use strict';
+
+  // \u2500\u2500 \u65E5\u671F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  var DATE_RE = /^\\d{4}-\\d{2}-\\d{2}$/;
+
+  function isValidDateStr(s) {
+    return typeof s === 'string' && DATE_RE.test(s);
+  }
+
+  /** \u4F7F\u7528\u8005\u672C\u5730\u6642\u5340\u7684\u300C\u4ECA\u5929\u300D\uFF0CYYYY-MM-DD\u3002\u523B\u610F\u4E0D\u7528 toISOString()\uFF08\u90A3\u662F UTC\uFF0C\u665A\u4E0A\u5BEB\u7B46\u8A18
+   *  \u5BB9\u6613\u8DE8\u65E5\u7B97\u932F\u2014\u2014\u9019\u662F\u820A Mira \u6CB3\u9053\u9801\u8E29\u904E\u7684\u75C5\u4E4B\u4E00\uFF0C\u9019\u88E1\u4E0D\u91CD\u72AF\uFF09\u3002 */
+  function todayISO(d) {
+    d = d || new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  // \u2500\u2500 \u7B46\u8A18\u6392\u5E8F\uFF0F\u904E\u6FFE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  /** \u4F9D created_at \u65B0\u5230\u820A\u6392\u5E8F\uFF0C\u56DE\u50B3\u65B0\u9663\u5217\uFF08\u4E0D\u6539\u539F\u9663\u5217\uFF09\u3002created_at \u7F3A\u503C\u6392\u6700\u5F8C\u3002 */
+  function sortNotesDesc(notes) {
+    return notes.slice().sort(function (a, b) {
+      var ca = a && a.created_at ? a.created_at : '';
+      var cb = b && b.created_at ? b.created_at : '';
+      if (ca === cb) return 0;
+      return ca < cb ? 1 : -1; // \u65B0\uFF08\u5B57\u4E32\u8F03\u5927\uFF09\u5728\u524D
+    });
+  }
+
+  function filterByDate(notes, dateStr) {
+    if (!dateStr) return notes.slice();
+    return notes.filter(function (n) { return n && n.date === dateStr; });
+  }
+
+  /** \u56DE\u50B3\u300C\u6709\u7B46\u8A18\u7684\u65E5\u671F\u300D\u96C6\u5408\uFF08\u7D66\u5C0F\u65E5\u66C6\u756B\u9EDE\u7528\uFF09\u3002 */
+  function datesWithNotes(notes) {
+    var set = {};
+    for (var i = 0; i < notes.length; i++) {
+      if (notes[i] && notes[i].date) set[notes[i].date] = true;
+    }
+    return set;
+  }
+
+  // \u2500\u2500 \u5C0F\u65E5\u66C6 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  /**
+   * \u7522\u751F\u4E00\u500B\u6708\u7684\u65E5\u66C6\u683C\u5B50\u3002year/month \u70BA 0-based month\uFF08\u540C Date \u6163\u4F8B\uFF0C0=\u4E00\u6708\uFF09\u3002
+   * \u56DE\u50B3 { year, month, weeks: [[cell,...], ...] }\uFF0Ccell \u70BA null\uFF08\u6708\u9996/\u6708\u5C3E\u88DC\u7A7A\u683C\uFF09
+   * \u6216 { day, dateStr, isToday, hasNotes, isSelected }\u3002
+   */
+  function buildCalendarMonth(year, month, notesByDate, todayStr, selectedStr) {
+    notesByDate = notesByDate || {};
+    var firstOfMonth = new Date(year, month, 1);
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var startWeekday = firstOfMonth.getDay(); // 0=Sun
+
+    var cells = [];
+    for (var i = 0; i < startWeekday; i++) cells.push(null);
+    for (var day = 1; day <= daysInMonth; day++) {
+      var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+      cells.push({
+        day: day,
+        dateStr: dateStr,
+        isToday: dateStr === todayStr,
+        hasNotes: !!notesByDate[dateStr],
+        isSelected: !!selectedStr && dateStr === selectedStr,
+      });
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    var weeks = [];
+    for (var w = 0; w < cells.length; w += 7) weeks.push(cells.slice(w, w + 7));
+    return { year: year, month: month, weeks: weeks };
+  }
+
+  // \u2500\u2500 Markdown\uFF08\u6975\u7C21\u5B50\u96C6\uFF0C\u96F6\u4F9D\u8CF4\u2014\u2014design.md \u8981\u6C42\u55AE\u6A94\uFF0F\u5C11\u6A94\uFF0C\u4E0D\u63A5 CDN\uFF09 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  //
+  // \u652F\u63F4\uFF1A\u8DF3\u812B HTML \u2192 \u6A19\u984C #~###### \u2192 **\u7C97\u9AD4** \u2192 *\u659C\u9AD4* \u2192 \`code\` \u2192 [text](url)
+  // \u2192 \u4E00\u822C\u6BB5\u843D\u63DB\u884C \u2192 \u958B\u982D \`- \` \u6216 \`* \` \u7684\u6E05\u55AE\u884C\u3002
+  // \u4E0D\u652F\u63F4\uFF1A\u8868\u683C\u3001\u5DE2\u72C0\u6E05\u55AE\u3001\u5716\u7247\u3001fenced code block\u2014\u2014\u7B46\u8A18 App v0.1 \u4E0D\u9700\u8981\uFF0C
+  // \u52A0\u4E86\u53EA\u6703\u8B93\u300C\u55AE\u4E00 HTML/JS \u6A94\u300D\u7684\u76EE\u6A19\u8B8A\u91CD\uFF0C\u4E14\u6C92\u6709 leo \u63D0\u51FA\u7684\u9700\u6C42\u6490\u9019\u500B\u8907\u96DC\u5EA6\u3002
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderInline(s) {
+    s = s.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+    s = s.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+    s = s.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
+    s = s.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return s;
+  }
+
+  function renderMarkdown(md) {
+    var lines = escapeHtml(md == null ? '' : md).split(/\\r?\\n/);
+    var html = [];
+    var listOpen = false;
+
+    function closeList() {
+      if (listOpen) { html.push('</ul>'); listOpen = false; }
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var heading = /^(#{1,6})\\s+(.*)$/.exec(line);
+      var listItem = /^[-*]\\s+(.*)$/.exec(line);
+
+      if (heading) {
+        closeList();
+        var level = heading[1].length;
+        html.push('<h' + level + '>' + renderInline(heading[2]) + '</h' + level + '>');
+      } else if (listItem) {
+        if (!listOpen) { html.push('<ul>'); listOpen = true; }
+        html.push('<li>' + renderInline(listItem[1]) + '</li>');
+      } else if (line.trim() === '') {
+        closeList();
+      } else {
+        closeList();
+        html.push('<p>' + renderInline(line) + '</p>');
+      }
+    }
+    closeList();
+    return html.join('\\n');
+  }
+
+  // \u2500\u2500 Mock \u5F8C\u7AEF\uFF08design.md K6 \u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u7684\u5047\u5F62\u72C0\uFF1B\u771F\u7AEF\u9EDE\u898B README\u300C\u9084\u7F3A\u4EC0\u9EBC\u300D\uFF09\u2500\u2500\u2500
+  //
+  // \u5951\u7D04\u523B\u610F\u8DDF\u300C\u771F\u7684\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u300D\u9577\u4E00\u6A23\uFF1Acall(action, params) -> Promise<{success, data|error}>\u3002
+  // \u4E4B\u5F8C\u63A5\u4E0A\u771F\u5F8C\u7AEF\uFF0C\u53EA\u8981\u628A\u547C\u53EB\u7AEF\u7684 dispatcher \u63DB\u6210\u771F\u7684 fetch\uFF0C\u9019\u500B\u6A94\u6848\u4E00\u884C\u4E0D\u7528\u6539
+  // \u2014\u2014\u9019\u6B63\u662F K6\u300C\u524D\u7AEF\u4E0D\u77E5\u9053 apiBase / \u4E0D\u81EA\u5DF1 fetch\u300D\u7CBE\u795E\u5728 mock \u5C64\u7684\u9AD4\u73FE\uFF1A
+  // UI \u6C38\u9060\u53EA\u8A8D\u5F97\u5230 call(action, params)\uFF0C\u4E0D\u7BA1\u80CC\u5F8C\u662F mock \u9084\u662F\u771F\u5F15\u64CE\u3002
+  //
+  // storage \u53C3\u6578\u662F\u6CE8\u5165\u7684\u6301\u4E45\u5316\u4ECB\u9762\uFF08{ load(): Note[], save(notes: Note[]): void }\uFF09\uFF0C
+  // \u9810\u8A2D\u7528\u8A18\u61B6\u9AD4\u9663\u5217\uFF08\u7D66 Node \u6E2C\u8A66\u8207\u300C\u6C92\u6709 localStorage\u300D\u7684\u74B0\u5883\u7528\uFF09\uFF1B
+  // \u700F\u89BD\u5668\u7248\u7531 ui/index.html \u6CE8\u5165\u4E00\u4EFD\u5305 localStorage \u7684 storage\u3002
+
+  function createMemoryStorage() {
+    var notes = [];
+    return {
+      load: function () { return notes.slice(); },
+      save: function (next) { notes = next.slice(); },
+    };
+  }
+
+  // \u2500\u2500 \u56DE\u61C9\u4FE1\u5C01\uFF08\u7167\u771F\u5951\u7D04\u7684\u5F62\u72C0\uFF0C\u898B\u4E0B\u65B9 unwrapActionResult \u7684\u9577\u8A3B\u89E3\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  function createMockBackend(storage, idGen) {
+    storage = storage || createMemoryStorage();
+    var seq = 0;
+    idGen = idGen || function () { seq += 1; return 'mock_rec_' + Date.now() + '_' + seq; };
+
+    // \u56DE\u50B3 d \u672C\u8EAB\uFF08\u771F\u5951\u7D04\u88E1 window.arcrunApp.action() resolve \u51FA\u4F86\u7684 {ok,status,d} \u7684 d \u90A3\u5C64\uFF09\uFF1A
+    //   \u6210\u529F \u2192 { ok: true, result: { success: true, data: {...} } }
+    //   \u5931\u6557 \u2192 { error: "..." }\uFF08\u6C92\u6709 ok \u6B04\u4F4D\u2014\u2014\u7167\u771F\u7AEF\u9EDE\u7684\u5931\u6557\u56DE\u61C9\u5F62\u72C0\uFF09
+    function createNote(params) {
+      var content = (params && params.content != null) ? String(params.content).trim() : '';
+      if (!content) return { error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u7B46\u8A18\u81F3\u5C11\u8981\u6709\u5167\u5BB9\uFF09' };
+      var date = (params && params.date) ? String(params.date).trim() : todayISO();
+      if (!isValidDateStr(date)) return { error: 'date \u5FC5\u9808\u662F YYYY-MM-DD \u683C\u5F0F\uFF08\u6536\u5230\uFF1A' + date + '\uFF09' };
+      var note = {
+        record_id: idGen(),
+        date: date,
+        content: content,
+        created_at: new Date().toISOString(),
+      };
+      var notes = storage.load();
+      notes.push(note);
+      storage.save(notes);
+      return { ok: true, result: { success: true, data: note } };
+    }
+
+    function listNotes(params) {
+      var wantDate = (params && params.date) ? String(params.date).trim() : '';
+      var notes = storage.load();
+      var filtered = sortNotesDesc(filterByDate(notes, wantDate));
+      return {
+        ok: true,
+        result: { success: true, data: { notes: filtered, count: filtered.length, date: wantDate || null } },
+      };
+    }
+
+    return {
+      // call() \u56DE\u50B3\u5916\u5C64 {ok,status,d}\u2014\u2014\u8DDF window.arcrunApp.action() \u7684 resolve \u5F62\u72C0\u4E00\u81F4\uFF0C
+      // \u8B93 ui/index.html \u7684 callAction() \u4E0D\u5FC5\u5206\u5169\u5957\u908F\u8F2F\u8655\u7406 mock \u8207\u771F\u5F8C\u7AEF\u3002
+      call: function (action, params) {
+        var d;
+        if (action === 'create_note') d = createNote(params);
+        else if (action === 'list_notes') d = listNotes(params);
+        else d = { error: '\u672A\u77E5\u52D5\u4F5C\uFF08\u4E0D\u5728\u767D\u540D\u55AE\uFF09\uFF1A' + action };
+        var ok = !!(d && d.ok === true);
+        return Promise.resolve({ ok: ok, status: ok ? 200 : 400, d: d });
+      },
+      _storage: storage, // \u6E2C\u8A66\u7528\uFF1A\u76F4\u63A5\u6AA2\u67E5\u5E95\u5C64\u5132\u5B58
+    };
+  }
+
+  /**
+   * unwrapActionResult(resp) \u2014 \u628A window.arcrunApp.action()\uFF0Fmock \u7684\u56DE\u61C9\u7D71\u4E00\u525D\u6210
+   * { success, data } \u6216 { success:false, error }\uFF0CUI \u5C64\u53EA\u8A8D\u9019\u4E00\u7A2E\u5F62\u72C0\u3002
+   *
+   * resp \u7684\u5F62\u72C0\u662F { ok, status, d }\uFF1A
+   *   - resp.ok           \u2190 HTTP \u5C64\u662F\u5426 2xx\uFF08\u771F\u5F8C\u7AEF\uFF1Dfetch \u7684 res.ok\uFF1Bmock \u81EA\u5DF1\u6A21\u64EC\u540C\u6B3E\uFF09
+   *   - resp.d             \u2190 body JSON
+   *       \u6210\u529F\uFF1A{ ok: true, result: { success, data } }
+   *              \u2500 \u5916\u5C64 ok\uFF1A\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u672C\u8EAB\u7684\u4FE1\u5C01\uFF08design.md K6\uFF0C
+   *                matrix/arcrun cypher-executor/src/routes/portal-data.ts
+   *                \`POST /portal/data/apps/:id/action\` \u7684\u65E2\u6709\u56DE\u61C9\u683C\u5F0F\uFF09
+   *              \u2500 \u5167\u5C64 success/data\uFF1A\u672C App \u5DE5\u4F5C\u6D41\u7D42\u9EDE code \u7BC0\u9EDE\u7684\u8F38\u51FA\u2014\u2014
+   *                WASM component \u57F7\u884C\u7D50\u679C\u7D71\u4E00\u5305\u6210 {success,data:{...}}
+   *                \uFF08\u898B\u5404\u96F6\u4EF6\u7684 component.contract.yaml\uFF09\uFF0C
+   *                \u672C\u5377\u5DF2\u7528 matrix/arcrun \u7684\u771F GraphExecutor \u5BE6\u969B\u8DD1\u904E
+   *                create_note\uFF0Flist_notes \u5169\u689D\uFF0C\u5169\u5C64\u4FE1\u5C01\u90FD\u662F\u7167\u5BE6\u6E2C\u7D50\u679C\u5BEB\u7684\uFF0C
+   *                \u4E0D\u662F\u6191\u7A7A\u731C\u7684\u5F62\u72C0\uFF08\u904E\u7A0B\u8207\u8E29\u904E\u7684\u5751\u898B README\u300C\u5DF2\u9A57\u8B49\u7684\u57F7\u884C\u671F\u884C\u70BA\u300D\uFF09\u3002
+   *       \u5931\u6557\uFF1A{ error: "..." }\uFF08\u6C92\u6709 ok \u6B04\u4F4D\uFF09
+   */
+  function unwrapActionResult(resp) {
+    if (!resp || !resp.ok) {
+      var httpErr = (resp && resp.d && resp.d.error) || ('HTTP ' + (resp && resp.status));
+      return { success: false, error: httpErr };
+    }
+    var d = resp.d;
+    if (!d || d.ok !== true) {
+      return { success: false, error: (d && d.error) || '\u56DE\u61C9\u6C92\u6709 ok:true\uFF08\u672A\u77E5\u932F\u8AA4\uFF09' };
+    }
+    var r = d.result;
+    if (!r || r.success !== true) {
+      return { success: false, error: (r && r.error) || '\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF08\u6C92\u6709\u56DE\u53EF\u7528\u7D50\u679C\uFF09' };
+    }
+    return { success: true, data: r.data };
+  }
+
+  var NotesCore = {
+    isValidDateStr: isValidDateStr,
+    todayISO: todayISO,
+    sortNotesDesc: sortNotesDesc,
+    filterByDate: filterByDate,
+    datesWithNotes: datesWithNotes,
+    buildCalendarMonth: buildCalendarMonth,
+    renderMarkdown: renderMarkdown,
+    escapeHtml: escapeHtml,
+    createMemoryStorage: createMemoryStorage,
+    createMockBackend: createMockBackend,
+    unwrapActionResult: unwrapActionResult,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = NotesCore;
+  } else {
+    root.NotesCore = NotesCore;
+  }
+})(typeof window !== 'undefined' ? window : this);
+
+<\/script>
+<script>
+(function () {
+  'use strict';
+
+  // \u2500\u2500 \u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u7684\u547C\u53EB\u4ECB\u9762\uFF08design.md K6\uFF0C\u771F\u5951\u7D04\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  //
+  // \u771F\u6B63\u8DD1\u5728 Arcrun Portal \u88E1\u6642\uFF0CPortal \u7684\u6CDB\u7528 loader \u6703\u628A\u9019\u4E00\u9801\u7684 HTML mount \u9032\u53BB\u3001
+  // \u91CD\u65B0\u57F7\u884C\u5167\u5D4C <script>\uFF0C\u7136\u5F8C\u624D\u8A2D\u5B9A window.arcrunApp.action\u2014\u2014\u9019\u662F\u8B80
+  // matrix/arcrun \u5206\u652F feat/app-system-v0 \u7684 console-ui/public/portal/index.html
+  // renderAppView() \u5C0D\u51FA\u4F86\u7684\u771F\u6D41\u7A0B\uFF0C\u4E0D\u662F\u672C\u5377\u767C\u660E\u7684\u4ECB\u9762\uFF1A
+  //   window.arcrunApp.action(actionName, payload)
+  //     \u2192 fetch POST /portal/data/apps/notes/action { action, payload }
+  //     \u2192 resolve { ok, status, d }\uFF08d = { ok:true, result:{success,data} } \u6216 { error }\uFF09
+  // \u9019\u689D\u8DEF\u53EA\u7528\u300C\u50B3 action \u540D\u5B57 + payload\u300D\uFF0C\u524D\u7AEF**\u62FF\u4E0D\u5230**\u4EFB\u4F55\u91D1\u9470\uFF0F\u79DF\u6236\u5B57\u4E32\uFF08K6\uFF09\u3002
+  //
+  // \u{1F534} \u6642\u5E8F\u9677\u9631\uFF08\u8B80 Portal \u539F\u59CB\u78BC\u624D\u767C\u73FE\uFF0C\u4E0D\u662F\u731C\u7684\uFF09\uFF1APortal \u628A\u9019\u9801\u7684 HTML mount \u9032\u53BB\u3001
+  // \u91CD\u65B0\u57F7\u884C <script> \u4E4B\u5F8C\uFF0C**\u624D**\u8A2D\u5B9A window.arcrunApp.action\u2014\u2014\u9806\u5E8F\u53CD\u904E\u4F86\u3002
+  // \u82E5\u9019\u652F script \u5728\u9802\u5C64\u540C\u6B65\u547C\u53EB window.arcrunApp.action\uFF0C\u90A3\u500B\u7576\u4E0B\u5B83\u9084\u4E0D\u5B58\u5728\uFF0C
+  // \u6703\u76F4\u63A5\u70B8\u6389\u3002\u5C0D\u7B56\uFF1A\u6240\u6709\u521D\u6B21\u8F09\u5165\u547C\u53EB\u4E00\u5F8B\u7528 setTimeout(fn, 0) \u5EF6\u5F8C\u5230\u4E0B\u4E00\u8F2A\u4E8B\u4EF6\u5708\uFF0C
+  // \u4F7F\u7528\u8005\u89F8\u767C\u7684\u52D5\u4F5C\uFF08\u6309\u9215\u9EDE\u64CA\uFF09\u672C\u4F86\u5C31\u5728 mount \u5B8C\u6210\u4E4B\u5F8C\u624D\u6703\u767C\u751F\uFF0C\u4E0D\u53D7\u5F71\u97FF\u3002
+  // \u898B\u6A94\u6848\u6700\u4E0B\u65B9 \`loadNotes()\` \u7684\u547C\u53EB\u65B9\u5F0F\u3002
+  //
+  // \u6C92\u6709 window.arcrunApp\uFF08\u672C\u6A5F\u76F4\u63A5\u958B\u9019\u500B\u6A94\u6848\u3001\u6216\u9084\u6C92\u88DD\u9032\u771F Portal\uFF09\u2192 \u9000\u56DE MOCK\uFF1A
+  // \u8CC7\u6599\u5B58\u9019\u500B\u700F\u89BD\u5668\u7684 localStorage\uFF0C\u540C\u4E00\u7D44 { ok, status, d } \u4FE1\u5C01\u683C\u5F0F
+  // \uFF08NotesCore.createMockBackend \u7522\u751F\uFF09\uFF0CUI \u5C64\u5B8C\u5168\u4E0D\u7528\u5206\u5169\u5957\u908F\u8F2F\u3002
+  var APP_ID = 'notes';
+
+  // \u{1F534} \u9019\u689D**\u5FC5\u9808**\u662F\u5373\u6642\u67E5\u3001\u4E0D\u80FD\u5728 script \u9802\u5C64\u7B97\u4E00\u6B21\u5FEB\u53D6\u8D77\u4F86\uFF08\u66FE\u7D93\u9019\u6A23\u5BEB\u904E\uFF0C
+  // \u88AB test/browser-e2e.mjs \u7684\u300C\u7B2C\u4E8C\u6BB5\uFF1A\u6A21\u64EC\u771F Portal\u300D\u6293\u5230\uFF09\uFF1APortal \u628A\u9019\u9801\u7684
+  // <script> \u57F7\u884C\u5B8C\u4E4B\u5F8C\u624D\u8CE6\u503C window.arcrunApp.action\uFF08\u540C\u4E0A\u65B9\u6642\u5E8F\u9677\u9631\uFF09\u2014\u2014
+  // \u82E5\u5728\u9802\u5C64\u540C\u6B65\u7B97\u4E00\u6B21 USING_MOCK\uFF0C\u90A3\u4E00\u523B window.arcrunApp \u5FC5\u5B9A\u9084\u4E0D\u5B58\u5728\uFF0C
+  // \u65BC\u662F\u300C\u662F\u4E0D\u662F MOCK\u300D\u9019\u500B\u5224\u65B7\u5728\u771F Portal \u88E1\u6C38\u9060\u5F97\u5230\u932F\u7684\u7B54\u6848\uFF08\u4E00\u5F8B\u8AA4\u5224\u6210 MOCK\uFF0C
+  // \u6CB3\u9053\u9EC3\u8272\u6A6B\u5E45\u6C38\u9060show\u3001\u9001\u51FA\u7684\u7B46\u8A18\u6C38\u9060\u5BEB\u9032 localStorage \u800C\u4E0D\u662F\u771F\u7684 KBDB\uFF09\u3002
+  // \u6539\u6210\u6BCF\u6B21\u547C\u53EB\u90FD\u91CD\u65B0\u5224\u65B7\uFF0C\u5C31\u4E0D\u6703\u53D7\u5B83\u8CE6\u503C\u7684\u6642\u9593\u9EDE\u5F71\u97FF\u3002
+  function usingMock() {
+    return !(window.arcrunApp && typeof window.arcrunApp.action === 'function');
+  }
+
+  var mockStorage = (function () {
+    var KEY = 'arcrun-notes-app:mock-notes:v1';
+    function safeParse(raw) { try { return JSON.parse(raw) || []; } catch (e) { return []; } }
+    var hasLocalStorage = (function () {
+      try { window.localStorage.setItem('__t', '1'); window.localStorage.removeItem('__t'); return true; }
+      catch (e) { return false; } // \u79C1\u5BC6\u700F\u89BD\u6A21\u5F0F\u7B49\u74B0\u5883\u53EF\u80FD\u4E1F\u4F8B\u5916\uFF0C\u9000\u56DE\u8A18\u61B6\u9AD4
+    })();
+    if (!hasLocalStorage) return NotesCore.createMemoryStorage();
+    return {
+      load: function () { return safeParse(window.localStorage.getItem(KEY)); },
+      save: function (notes) { window.localStorage.setItem(KEY, JSON.stringify(notes)); },
+    };
+  })();
+
+  var mockBackend = NotesCore.createMockBackend(mockStorage);
+
+  // callAction() \u4E00\u5F8B resolve \u6210 { ok, status, d }\uFF0C\u4E0D\u7BA1\u8D70\u771F\u5F8C\u7AEF\u9084\u662F mock\u2014\u2014
+  // \u547C\u53EB\u7AEF\u4E00\u5F8B\u7528 NotesCore.unwrapActionResult() \u525D\u6BBC\uFF0C\u4E0D\u5FC5\u77E5\u9053\u80CC\u5F8C\u662F\u54EA\u4E00\u500B\u3002
+  function callAction(action, params) {
+    if (!usingMock()) return window.arcrunApp.action(action, params || {});
+    return mockBackend.call(action, params);
+  }
+
+  // \u2500\u2500 \u72C0\u614B \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  var state = {
+    notes: [],          // \u76EE\u524D\u62FF\u5230\u7684\u5168\u90E8\u7B46\u8A18\uFF08\u672A\u904E\u6FFE\uFF09
+    selectedDate: null, // \u5C0F\u65E5\u66C6\u9078\u4E2D\u7684\u65E5\u671F\uFF1Bnull = \u986F\u793A\u5168\u90E8
+    calYear: new Date().getFullYear(),
+    calMonth: new Date().getMonth(),
+    calendarOpen: false,
+  };
+
+  // \u2500\u2500 DOM \u53C3\u7167 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  var $ = function (id) { return document.getElementById(id); };
+  var composerInput = $('composerInput');
+  var composerError = $('composerError');
+  var composerHint = $('composerHint');
+  var submitBtn = $('submitBtn');
+  var river = $('river');
+  var calendarToggle = $('calendarToggle');
+  var calendarPanel = $('calendarPanel');
+  var calendarChevron = $('calendarChevron');
+  var filterChip = $('filterChip');
+  var calLabel = $('calLabel');
+  var calGrid = $('calGrid');
+
+  // \u540C\u300C\u6642\u5E8F\u9677\u9631\u300D\u7406\u7531\uFF1A\u9019\u88E1\u4E5F\u4E0D\u80FD\u540C\u6B65\u5224\u65B7\u2014\u2014\u5EF6\u5230 setTimeout(0) \u4E4B\u5F8C\uFF08loadNotes \u90A3\u500B
+  // \u56DE\u547C\u88E1\uFF09\u624D\u6C7A\u5B9A\u6A6B\u5E45\u8981\u4E0D\u8981\u986F\u793A\uFF0C\u6B64\u6642 window.arcrunApp \u624D\u78BA\u5B9A\u5DF2\u7D93\u88AB Portal \u8CE6\u503C\u904E\u3002
+
+  // \u2500\u2500 \u6CB3\u9053\u6E32\u67D3 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  function renderRiver() {
+    var list = state.selectedDate ? NotesCore.filterByDate(state.notes, state.selectedDate) : state.notes.slice();
+    list = NotesCore.sortNotesDesc(list);
+
+    if (list.length === 0) {
+      river.innerHTML = '<div class="river-empty">' +
+        (state.selectedDate ? '\u9019\u4E00\u5929\u6C92\u6709\u7B46\u8A18\u3002' : '\u9084\u6C92\u6709\u7B46\u8A18\uFF0C\u5BEB\u4E0B\u7B2C\u4E00\u5247\u5427\u3002') +
+        '</div>';
+      return;
+    }
+
+    var html = list.map(function (n) {
+      var meta = n.date + '\u3000' + formatTime(n.created_at);
+      return '<div class="note-card">' +
+        '<div class="meta">' + NotesCore.escapeHtml(meta) + '</div>' +
+        '<div class="content">' + NotesCore.renderMarkdown(n.content) + '</div>' +
+        '</div>';
+    }).join('');
+    river.innerHTML = html;
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  // \u2500\u2500 \u5C0F\u65E5\u66C6\u6E32\u67D3 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  var DOW = ['\u65E5', '\u4E00', '\u4E8C', '\u4E09', '\u56DB', '\u4E94', '\u516D'];
+
+  function renderCalendar() {
+    var notesByDate = NotesCore.datesWithNotes(state.notes);
+    var todayStr = NotesCore.todayISO();
+    var cal = NotesCore.buildCalendarMonth(state.calYear, state.calMonth, notesByDate, todayStr, state.selectedDate);
+
+    calLabel.textContent = state.calYear + ' \u5E74 ' + (state.calMonth + 1) + ' \u6708';
+
+    var html = DOW.map(function (d) { return '<div class="cal-dow">' + d + '</div>'; }).join('');
+    cal.weeks.forEach(function (week) {
+      week.forEach(function (cell) {
+        if (!cell) { html += '<div class="cal-cell empty"></div>'; return; }
+        var cls = 'cal-cell';
+        if (cell.isToday) cls += ' today';
+        if (cell.isSelected) cls += ' selected';
+        html += '<div class="' + cls + '" data-date="' + cell.dateStr + '">' +
+          cell.day + (cell.hasNotes ? '<span class="dot"></span>' : '') +
+          '</div>';
+      });
+    });
+    calGrid.innerHTML = html;
+
+    Array.prototype.forEach.call(calGrid.querySelectorAll('.cal-cell[data-date]'), function (el) {
+      el.addEventListener('click', function () {
+        var d = el.getAttribute('data-date');
+        selectDate(state.selectedDate === d ? null : d); // \u518D\u9EDE\u4E00\u6B21\u540C\u4E00\u5929\uFF1D\u53D6\u6D88\u7BE9\u9078
+      });
+    });
+
+    filterChip.hidden = !state.selectedDate;
+    if (state.selectedDate) filterChip.textContent = state.selectedDate;
+  }
+
+  function selectDate(dateStr) {
+    state.selectedDate = dateStr;
+    if (dateStr) {
+      var parts = dateStr.split('-');
+      state.calYear = Number(parts[0]);
+      state.calMonth = Number(parts[1]) - 1;
+    }
+    renderCalendar();
+    renderRiver();
+  }
+
+  calendarToggle.addEventListener('click', function () {
+    state.calendarOpen = !state.calendarOpen;
+    calendarPanel.hidden = !state.calendarOpen;
+    calendarChevron.textContent = state.calendarOpen ? '\u25B4' : '\u25BE';
+    if (state.calendarOpen) renderCalendar();
+  });
+
+  $('calPrev').addEventListener('click', function () {
+    state.calMonth -= 1;
+    if (state.calMonth < 0) { state.calMonth = 11; state.calYear -= 1; }
+    renderCalendar();
+  });
+  $('calNext').addEventListener('click', function () {
+    state.calMonth += 1;
+    if (state.calMonth > 11) { state.calMonth = 0; state.calYear += 1; }
+    renderCalendar();
+  });
+
+  // \u2500\u2500 \u9001\u51FA\u4E00\u5247\u7B46\u8A18 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  function submitNote() {
+    var content = composerInput.value;
+    composerError.textContent = '';
+    if (!content.trim()) { composerError.textContent = '\u7B46\u8A18\u4E0D\u80FD\u662F\u7A7A\u7684\u3002'; return; }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = '\u9001\u51FA\u4E2D\u2026';
+
+    // \u5BEB\u5165\u7684\u65E5\u671F\uFF1A\u82E5\u76EE\u524D\u6B63\u7BE9\u9078\u8457\u67D0\u4E00\u5929\uFF0C\u5C31\u5BEB\u9032\u90A3\u4E00\u5929\uFF08\u65B9\u4FBF\u88DC\u8A18\uFF09\uFF1B\u5426\u5247\u7528\u4ECA\u5929\u3002
+    var targetDate = state.selectedDate || NotesCore.todayISO();
+
+    callAction('create_note', { content: content, date: targetDate }).then(function (resp) {
+      var res = NotesCore.unwrapActionResult(resp);
+      submitBtn.disabled = false;
+      submitBtn.textContent = '\u9001\u51FA';
+      if (!res || !res.success) {
+        composerError.textContent = '\u9001\u51FA\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
+        return;
+      }
+      composerInput.value = '';
+      loadNotes();
+    });
+  }
+
+  submitBtn.addEventListener('click', submitNote);
+  composerInput.addEventListener('keydown', function (e) {
+    // Cmd/Ctrl+Enter \u9001\u51FA\uFF0C\u4E00\u822C Enter \u4FDD\u7559\u7D66\u63DB\u884C\uFF08\u7B46\u8A18\u5E38\u5E38\u662F\u591A\u884C\uFF09\u3002
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitNote();
+  });
+  composerHint.textContent = '\u2318/Ctrl + Enter \u9001\u51FA';
+
+  // \u2500\u2500 \u8F09\u5165\u6CB3\u9053 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  function loadNotes() {
+    callAction('list_notes', {}).then(function (resp) {
+      var res = NotesCore.unwrapActionResult(resp);
+      if (!res || !res.success) {
+        river.innerHTML = '<div class="river-empty">\u8F09\u5165\u5931\u6557\uFF1A' + NotesCore.escapeHtml((res && res.error) || '\u672A\u77E5\u932F\u8AA4') + '</div>';
+        return;
+      }
+      state.notes = (res.data && res.data.notes) || [];
+      renderRiver();
+      if (state.calendarOpen) renderCalendar();
+    });
+  }
+
+  // \u{1F534} \u5EF6\u5F8C\u5230\u4E0B\u4E00\u8F2A\u4E8B\u4EF6\u5708\u624D\u7B2C\u4E00\u6B21\u547C\u53EB callAction\u3001\u624D\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A MOCK \u6A6B\u5E45\uFF1A
+  // \u771F Portal \u88E1 window.arcrunApp.action \u662F\u5728\u9019\u652F script \u57F7\u884C\u5B8C\u4E4B\u5F8C\u624D\u88AB\u8CE6\u503C\u7684
+  // \uFF08\u898B\u4E0A\u9762\u300C\u6642\u5E8F\u9677\u9631\u300D\u8AAA\u660E\uFF09\u3002\u540C\u6B65\u547C\u53EB\uFF0F\u540C\u6B65\u5224\u65B7\u90FD\u6703\u62FF\u5230\u932F\u7684\u7B54\u6848\uFF08\u6C38\u9060\u8AA4\u5224\u6210 MOCK\uFF09\u3002
+  // setTimeout(fn, 0) \u4FDD\u8B49\u665A\u65BC\u90A3\u6B21\u8CE6\u503C\u2014\u2014\u9019\u88E1\u9023\u6A6B\u5E45\u7684\u986F\u793A\u8207\u5426\u90FD\u653E\u9032\u540C\u4E00\u500B\u56DE\u547C\uFF0C
+  // \u78BA\u4FDD\u5169\u8005\u7528\u7684\u662F\u540C\u4E00\u6B21\u3001\u540C\u4E00\u500B\u6642\u9593\u9EDE\u5224\u65B7\u51FA\u4F86\u7684\u7D50\u679C\uFF0C\u4E0D\u6703\u4E0D\u4E00\u81F4\u3002
+  setTimeout(function () {
+    $('mockBanner').hidden = !usingMock();
+    loadNotes();
+  }, 0);
+})();
+<\/script>
+</body>
+</html>
+`
+  },
+  data: [
+    {
+      name: "note",
+      description: "Arcrun \u7B46\u8A18 App \u7684\u4E00\u5247\u7B46\u8A18\u2014\u2014\u6CB3\u9053\u5F0F\uFF1A\u65B0\u7684\u5728\u6700\u4E0A\u9762\uFF0C\u5C0F\u65E5\u66C6\u4F9D date \u7BE9\u9078\u904E\u53BB\u7684\u8A18\u9304\u3002\n",
+      slots: [
+        "date",
+        "content",
+        "created_at"
+      ]
+    }
+  ],
+  actions: [
+    "create_note",
+    "list_notes"
+  ],
+  version: "1.0.0"
+};
+
+// cypher-executor/src/lib/app-catalog.ts
+var APP_CATALOG = [
+  {
+    id: "notes",
+    name: "\u7B46\u8A18",
+    icon: "\u{1F4DD}",
+    summary: "\u96A8\u624B\u5BEB\u4E00\u5247\u7B46\u8A18\uFF0C\u4F9D\u65E5\u671F\u6392\u6210\u6CB3\u9053\uFF1B\u5BEB\u4E0B\u53BB\u7684\u5167\u5BB9\u9032\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u3002",
+    version: "1.0.0",
+    author: "Arcrun \u5167\u5EFA",
+    declaration: notes_default
+  }
+];
+function findCatalogEntry(id) {
+  return APP_CATALOG.find((e) => e.id === id);
+}
+function catalogListing(installedIds) {
+  return APP_CATALOG.map((e) => ({
+    id: e.id,
+    name: e.name,
+    icon: e.icon,
+    summary: e.summary,
+    version: e.version,
+    author: e.author,
+    installed: installedIds.has(e.id)
+  }));
 }
 
 // cypher-executor/src/routes/portal-data.ts
@@ -15755,6 +17231,67 @@ portalDataRouter.get(
   })
 );
 portalDataRouter.get(
+  "/portal/data/apps/catalog",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const installed = new Set((await listInstalledApps(c.env, tenant2)).map((a) => a.id));
+    return c.json({
+      apps: catalogListing(installed),
+      // 前端拿它決定按鈕長什麼樣：不能裝的人看到的是「要管理員才能裝」，不是一顆按了才失敗的按鈕。
+      can_install: (auth.user.values.role ?? "user") === "admin"
+    });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/catalog/:id/install",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") {
+      return c.json(
+        {
+          error: "\u53EA\u6709\u7BA1\u7406\u54E1\u53EF\u4EE5\u5B89\u88DD App",
+          step: "\u6AA2\u67E5\u6B0A\u9650",
+          hint: "\u9019\u53F0\u5BE6\u4F8B\u7684 App \u6E05\u55AE\u662F\u5168\u7AD9\u5171\u7528\u7684\uFF0C\u6240\u4EE5\u8981\u7BA1\u7406\u54E1\u4F86\u88DD\u3002\u8ACB\u4F60\u7684\u7BA1\u7406\u54E1\u5230\u300CApp \u5E02\u96C6\u300D\u6309\u5B89\u88DD\u3002"
+        },
+        403
+      );
+    }
+    const id = c.req.param("id");
+    const entry = findCatalogEntry(id);
+    if (!entry) {
+      return c.json(
+        {
+          error: `\u5E02\u96C6\u88E1\u6C92\u6709\u300C${id}\u300D\u9019\u500B App`,
+          step: "\u5728\u5E02\u96C6\u88E1\u627E\u9019\u500B App",
+          hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u5E02\u96C6\u5167\u5BB9\u8DDF\u8457\u7248\u672C\u8D70\u2014\u2014\u91CD\u65B0\u6574\u7406\u9801\u9762\u770B\u770B\uFF1B\u9084\u662F\u6C92\u6709\u5C31\u662F\u9019\u7248\u6C92\u6536\u9304\u5B83\u3002"
+        },
+        404
+      );
+    }
+    const tenant2 = knowledgeOwner(c.env);
+    const coords = { namespace: String(tenant2), cypherBase: new URL(c.req.url).origin };
+    const result = await installApp(c.env, tenant2, entry.declaration, { coords });
+    if (!result.ok) {
+      return c.json(
+        {
+          error: (result.errors ?? ["\u5B89\u88DD\u5931\u6557"]).join("\uFF1B"),
+          step: result.step ?? "\u5B89\u88DD",
+          hint: result.hint ?? "\u518D\u8A66\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u6BB5\u8A0A\u606F\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+        },
+        502
+      );
+    }
+    return c.json({
+      installed: true,
+      changed: result.changed,
+      app: result.app ? summarizeApp(result.app) : void 0
+    });
+  })
+);
+portalDataRouter.get(
   "/portal/data/apps/:id",
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
@@ -16032,8 +17569,12 @@ appsRouter.post("/apps/install", async (c) => {
   if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "\u7121\u6548\u7684 JSON body" }, 400);
-  const result = await installApp(c.env, apiKey, body);
-  if (!result.ok) return c.json({ error: "\u5BA3\u544A\u672A\u901A\u904E\u9A57\u8B49", details: result.errors }, 400);
+  const result = await installApp(c.env, apiKey, body, {
+    coords: { namespace: apiKey, cypherBase: new URL(c.req.url).origin }
+  });
+  if (!result.ok) {
+    return c.json({ error: "\u5BA3\u544A\u672A\u901A\u904E\u9A57\u8B49", step: result.step, hint: result.hint, details: result.errors }, 400);
+  }
   return c.json({ installed: true, changed: result.changed, app: result.app ? summarizeApp(result.app) : void 0 });
 });
 appsRouter.delete("/apps/:id", async (c) => {

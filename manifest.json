@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.53",
- "fingerprint": "8346e3dbc12f769cb2fecade3d29e3f764e6645503d3e0d987af1c2b71dfee1e",
- "built": "2026-08-24",
- "source": "Arcrun@db33cbe907dd",
+ "release": "1.4.54",
+ "fingerprint": "0e3e502c6386ffd1acabae1c1af4fce42bdbbe2bcd86ab35730bad9bda22390c",
+ "built": "2026-08-26",
+ "source": "Arcrun@d3019a52cb18",
  "daemon": {
   "version": "0.18.36",
   "built": "20260824-2104",
@@ -217,7 +217,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 609136,
+   "js_bytes": 683598,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -258,10 +258,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "db33cbe907ddf401104ec8f24da12252266955dd",
-   "source_content_sha256": "2ee42f88a986afc6e9b0dd43df754c824ac532897665c1136885c2e6f0c52cac",
-   "sha256": "2ee42f88a986afc6e9b0dd43df754c824ac532897665c1136885c2e6f0c52cac",
-   "bytes": 609136
+   "source_commit": "72a18e30b06c2318fb71872ac9dcbbb6b47fab66",
+   "source_content_sha256": "d4ad7f488c673dfb886ee2bc02c909b62acecba6ffaf19aeedd6a9199fe9a1d4",
+   "sha256": "d4ad7f488c673dfb886ee2bc02c909b62acecba6ffaf19aeedd6a9199fe9a1d4",
+   "bytes": 683598
   },
   {
    "name": "arcrun-date-ops",
@@ -415,7 +415,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 171380,
+   "js_bytes": 181728,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -435,10 +435,10 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "c3efed7d1a01fc171df6eefb67d0bd380781be73",
-   "source_content_sha256": "64cc54878b6dcc2e0581ed8d97d5d20a0d1441963a3a8ddc704c85f953f786b4",
-   "sha256": "64cc54878b6dcc2e0581ed8d97d5d20a0d1441963a3a8ddc704c85f953f786b4",
-   "bytes": 171380
+   "source_commit": "72a18e30b06c2318fb71872ac9dcbbb6b47fab66",
+   "source_content_sha256": "4fbf25c066c382758234379b81a2065fa88051d76013e1ab60b4f132209f8c34",
+   "sha256": "4fbf25c066c382758234379b81a2065fa88051d76013e1ab60b4f132209f8c34",
+   "bytes": 181728
   },
   {
    "name": "arcrun-mcp",
@@ -526,7 +526,7 @@
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 711186,
+   "js_bytes": 723179,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -537,10 +537,10 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "db33cbe907ddf401104ec8f24da12252266955dd",
-   "source_content_sha256": "4604ec012c6d3435c8d94f184bfdfbe4163de271ba3a41436d0be0ebb718c949",
-   "sha256": "4604ec012c6d3435c8d94f184bfdfbe4163de271ba3a41436d0be0ebb718c949",
-   "bytes": 711186
+   "source_commit": "15c5cedff39fe6567fc7d586254acb411fb7ad6d",
+   "source_content_sha256": "594637e14cd18c45b380ce118845ad58a549f3227cff284ea31efd25c005787f",
+   "sha256": "594637e14cd18c45b380ce118845ad58a549f3227cff284ea31efd25c005787f",
+   "bytes": 723179
   },
   {
    "name": "arcrun-set",
@@ -911,7 +911,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 609136,
+   "js_bytes": 683598,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -952,8 +952,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "db33cbe907ddf401104ec8f24da12252266955dd",
-   "source_content_sha256": "2ee42f88a986afc6e9b0dd43df754c824ac532897665c1136885c2e6f0c52cac",
+   "source_commit": "72a18e30b06c2318fb71872ac9dcbbb6b47fab66",
+   "source_content_sha256": "d4ad7f488c673dfb886ee2bc02c909b62acecba6ffaf19aeedd6a9199fe9a1d4",
    "first_install": true
   },
   {
@@ -1098,7 +1098,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 171380,
+   "js_bytes": 181728,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1118,8 +1118,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "c3efed7d1a01fc171df6eefb67d0bd380781be73",
-   "source_content_sha256": "64cc54878b6dcc2e0581ed8d97d5d20a0d1441963a3a8ddc704c85f953f786b4",
+   "source_commit": "72a18e30b06c2318fb71872ac9dcbbb6b47fab66",
+   "source_content_sha256": "4fbf25c066c382758234379b81a2065fa88051d76013e1ab60b4f132209f8c34",
    "first_install": true
   },
   {
@@ -1203,7 +1203,7 @@
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 711186,
+   "js_bytes": 723179,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -1214,8 +1214,8 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "db33cbe907ddf401104ec8f24da12252266955dd",
-   "source_content_sha256": "4604ec012c6d3435c8d94f184bfdfbe4163de271ba3a41436d0be0ebb718c949",
+   "source_commit": "15c5cedff39fe6567fc7d586254acb411fb7ad6d",
+   "source_content_sha256": "594637e14cd18c45b380ce118845ad58a549f3227cff284ea31efd25c005787f",
    "first_install": true
   },
   {

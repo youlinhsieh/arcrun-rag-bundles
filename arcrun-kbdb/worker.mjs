@@ -2228,6 +2228,32 @@ async function deleteEntry(db, id) {
   await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
   await db.prepare("DELETE FROM entries WHERE src_id = ?").bind(id).run();
 }
+async function upsertEntry(db, id, input) {
+  const existing = await getEntry(db, id);
+  if (!existing) return createEntry(db, { ...input, id });
+  await db.prepare(
+    `UPDATE entries
+          SET content = ?, entry_type = ?, owner_id = ?, parent_id = ?, page_name = ?,
+              refs_json = ?, tags_json = ?, task_status = ?, confidence = ?, metadata_json = ?,
+              updated_at = unixepoch()
+        WHERE id = ?`
+  ).bind(
+    input.content ?? null,
+    input.entry_type,
+    input.owner_id ?? null,
+    input.parent_id ?? null,
+    input.page_name ?? null,
+    input.refs_json ?? "[]",
+    input.tags_json ?? "[]",
+    input.task_status ?? null,
+    input.confidence ?? null,
+    input.metadata_json ?? null,
+    id
+  ).run();
+  const row = await getEntry(db, id);
+  if (!row) throw new Error("upsertEntry: update succeeded but row not found");
+  return row;
+}
 async function embeddedIdsByLibrary(db, ownerId, library) {
   const rows = await db.prepare(
     `SELECT id FROM entries
@@ -3281,6 +3307,14 @@ entryRoutes.get("/backfill-library/status", async (c) => {
     until: c.req.query("until") ? Number(c.req.query("until")) : void 0
   });
   return c.json({ success: true, ...status });
+});
+entryRoutes.put("/:id", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.entry_type) return c.json({ success: false, error: "entry_type required" }, 400);
+  const entry = await upsertEntry(c.env.DB, c.req.param("id"), body);
+  if (embedEnabled(c.env)) c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
+  }));
+  return c.json({ success: true, entry });
 });
 entryRoutes.patch("/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -4557,6 +4591,183 @@ executionLogRoutes.post("/cleanup", async (c) => {
   return c.json({ success: true, ...result });
 });
 
+// kbdb/src/actions/schema-generation.ts
+var GENERATIONS = [
+  {
+    n: 1,
+    file: "0001_base.sql",
+    what: "\u6838\u5FC3\u5169\u5F35\u8868\uFF08entries\uFF0Ftemplates\uFF09\u8207\u57FA\u672C\u7D22\u5F15",
+    checks: [
+      { kind: "table", name: "entries" },
+      { kind: "table", name: "templates" },
+      { kind: "index", name: "idx_entries_owner" },
+      { kind: "index", name: "idx_entries_type" },
+      { kind: "template", name: "recipe_stat" }
+    ]
+  },
+  {
+    n: 2,
+    file: "0002_credentials.sql",
+    what: "\uFF08\u5DF2\u9000\u5F79\uFF09\u7368\u7ACB credentials \u8868",
+    checks: [],
+    unprobeable: "0006 \u6703\u628A\u9019\u5F35\u8868\u62C6\u6389 \u21D2\u300C\u5957\u904E\u53C8\u62C6\u4E86\u300D\u8207\u300C\u5F9E\u4F86\u6C92\u5957\u904E\u300D\u4E8B\u5F8C\u9577\u5F97\u4E00\u6A21\u4E00\u6A23\uFF0Cschema \u5206\u4E0D\u51FA\u4F86\u3002\u5B83\u4E5F\u4E0D\u5F71\u97FF\u4EFB\u4F55\u73FE\u884C\u67E5\u8A62\uFF0C\u6545\u4E00\u5F8B\u8996\u70BA\u5DF2\u6EFF\u8DB3\uFF08\u5224\u6E96\u662F\u300C\u73FE\u5728\u80FD\u4E0D\u80FD\u7528\u300D\uFF0C\u4E0D\u662F\u300C\u6B77\u53F2\u8D70\u904E\u54EA\u4E9B\u6B65\u300D\uFF09\u3002"
+  },
+  {
+    n: 3,
+    file: "0003_library_map.sql",
+    what: "\u85CF\u66F8\u5730\u5716\uFF08library_map\uFF09\u7684 sheet \u5B9A\u7FA9",
+    checks: [{ kind: "template", name: "library_map" }]
+  },
+  {
+    n: 4,
+    file: "0004_execution_log_template.sql",
+    what: "\u57F7\u884C\u7D00\u9304\uFF08execution_log\uFF09\u7684 sheet \u5B9A\u7FA9",
+    checks: [{ kind: "template", name: "execution_log" }]
+  },
+  {
+    n: 5,
+    file: "0005_credential_template.sql",
+    what: "\u6191\u8B49\u76EE\u9304\uFF08credential\uFF09\u7684 sheet \u5B9A\u7FA9",
+    checks: [{ kind: "template", name: "credential" }]
+  },
+  {
+    n: 6,
+    file: "0006_drop_credentials_table.sql",
+    what: "\u820A credentials \u8868\u9000\u5834\uFF08D38 \u570D\u7246\u4FEE\u5FA9\uFF09",
+    checks: [{ kind: "no_table", name: "credentials" }]
+  },
+  {
+    n: 7,
+    file: "0007_tree_record_model.sql",
+    what: "\u6A39\u72C0 record \u6A21\u578B\uFF1A\u95DC\u4FC2\u4F4F\u5728 entries \u7684 src_id\uFF0Frel_id\uFF0Fdst_id \u4E09\u500B\u6307\u6A19\u6B04",
+    checks: [
+      { kind: "entries_column", name: "src_id" },
+      { kind: "entries_column", name: "rel_id" },
+      { kind: "entries_column", name: "dst_id" },
+      { kind: "index", name: "idx_entries_rel_src" },
+      { kind: "index", name: "idx_entries_rel_dst" },
+      { kind: "entry", id: "sys_root" },
+      { kind: "entry", id: "sys_belongs" },
+      { kind: "entry", id: "sys_field_of" },
+      // 舊表還在＝0007 的資料搬遷沒跑完（它的最後一句就是拆掉它）。
+      // 🪦 entry_values 2026-08-15 廢除；「看到它＝那台沒跟上，不是它還合法」。
+      { kind: "no_table", name: "entry_values" }
+    ]
+  }
+];
+var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
+var LEDGER_FILES = GENERATIONS.map((g) => g.file);
+var LEDGER_NUMBERS = GENERATIONS.map((g) => g.n);
+var RETIRED_TABLES = ["entry_values", "credentials"];
+async function readEntriesColumns(db, ddl) {
+  const cols = /* @__PURE__ */ new Set();
+  try {
+    const r = await db.prepare("PRAGMA table_info(entries)").all();
+    for (const row of r.results ?? []) if (row?.name) cols.add(String(row.name));
+  } catch {
+  }
+  if (cols.size > 0) return cols;
+  if (!ddl) return cols;
+  const open = ddl.indexOf("(");
+  const body = open >= 0 ? ddl.slice(open + 1) : ddl;
+  for (const line of body.split(/[\n,]/)) {
+    const m = /^\s*"?([A-Za-z_][A-Za-z0-9_]*)"?\s+(TEXT|INTEGER|REAL|BLOB|NUMERIC)/i.exec(line);
+    if (m) cols.add(m[1]);
+  }
+  return cols;
+}
+async function probeDataLayer(db) {
+  let facts;
+  try {
+    const [tableRows, indexRows] = await Promise.all([
+      db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table'").all(),
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all()
+    ]);
+    const tables = new Set((tableRows.results ?? []).map((r) => r.name));
+    const indexes = new Set((indexRows.results ?? []).map((r) => r.name));
+    const entriesDdl = (tableRows.results ?? []).find((r) => r.name === "entries")?.sql ?? null;
+    const entriesColumns = tables.has("entries") ? await readEntriesColumns(db, entriesDdl) : /* @__PURE__ */ new Set();
+    const wantedTemplates = uniq(
+      GENERATIONS.flatMap(
+        (g) => g.checks.filter((c) => c.kind === "template").map((c) => c.name)
+      )
+    );
+    const wantedEntries = uniq(
+      GENERATIONS.flatMap(
+        (g) => g.checks.filter((c) => c.kind === "entry").map((c) => c.id)
+      )
+    );
+    const templates = tables.has("templates") ? await pluck(db, `SELECT name FROM templates WHERE name IN (${qs(wantedTemplates)})`, wantedTemplates, "name") : /* @__PURE__ */ new Set();
+    const entries = tables.has("entries") ? await pluck(db, `SELECT id FROM entries WHERE id IN (${qs(wantedEntries)})`, wantedEntries, "id") : /* @__PURE__ */ new Set();
+    facts = { tables, indexes, entriesColumns, templates, entries };
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      summary: `\u8CC7\u6599\u5C64\u63A2\u6E2C\u5931\u6557\u2014\u2014\u9023 schema \u90FD\u8B80\u4E0D\u5230\uFF08${detail}\uFF09\u3002\u9019\u53F0\u7684\u77E5\u8B58\u5EAB\u73FE\u5728\u4E0D\u53EF\u7528\u3002`,
+      expected_generation: EXPECTED_GENERATION,
+      actual_generation: -1,
+      behind_by: -1,
+      missing: [],
+      legacy_tables: [],
+      remedy: "\u78BA\u8A8D D1 binding\uFF08DB\uFF09\u6307\u5411\u6B63\u78BA\u7684 arcrun-kbdb\uFF0C\u4E26\u91CD\u8DD1\u5B89\u88DD\u5668\u6216 `acr update`\u3002",
+      probe_error: detail
+    };
+  }
+  const missing = [];
+  for (const g of GENERATIONS) {
+    if (g.unprobeable) continue;
+    const evidence = g.checks.map((c) => explain(c, facts)).filter((e) => e !== null);
+    if (evidence.length > 0) missing.push({ generation: g.n, migration: g.file, what: g.what, evidence });
+  }
+  let actual = 0;
+  for (const g of GENERATIONS) {
+    if (missing.some((m) => m.generation === g.n)) break;
+    actual = g.n;
+  }
+  const legacy = RETIRED_TABLES.filter((t) => facts.tables.has(t));
+  const ok = missing.length === 0;
+  const behind = EXPECTED_GENERATION - actual;
+  return {
+    ok,
+    summary: ok ? `\u8CC7\u6599\u5C64\u8207\u7A0B\u5F0F\u78BC\u540C\u4EE3\uFF08\u7B2C ${actual} \u4EE3\uFF09\u3002` : `\u{1F534} \u8CC7\u6599\u5C64\u843D\u5F8C ${behind} \u4EE3\uFF1A\u9019\u53F0\u505C\u5728\u7B2C ${actual} \u4EE3\uFF0C\u9019\u4EFD\u7A0B\u5F0F\u78BC\u9700\u8981\u7B2C ${EXPECTED_GENERATION} \u4EE3\u3002\u7F3A ${missing.map((m) => m.migration).join("\u3001")}\u3002` + (legacy.length > 0 ? `\u820A\u8868\u9084\u5728\uFF1A${legacy.join("\u3001")}\u3002` : "") + "\u5728\u88DC\u9F4A\u4E4B\u524D\uFF0C\u51E1\u662F\u78B0\u5230\u9019\u5E7E\u4EE3\u65B0\u589E\u7D50\u69CB\u7684\u67E5\u8A62\u90FD\u6703\u5931\u6557\uFF08\u73FE\u8C61\uFF1D\u4E00\u5806 500\uFF09\u3002",
+    expected_generation: EXPECTED_GENERATION,
+    actual_generation: actual,
+    behind_by: behind,
+    missing,
+    legacy_tables: legacy,
+    remedy: ok ? "\u7121\u9700\u52D5\u4F5C\u3002" : "\u91CD\u8DD1\u5B89\u88DD\u5668\uFF0C\u6216\u5728\u88DD\u4E86 CLI \u7684\u6A5F\u5668\u4E0A\u8DD1 `acr update`\u2014\u2014\u5169\u689D\u8DEF\u90FD\u6703\u628A kbdb/migrations \u5E95\u4E0B\u7684\u6BCF\u4E00\u652F\u4F9D\u5E8F\u88DC\u8DD1\uFF08\u51AA\u7B49\uFF0C\u53EF\u91CD\u8DD1\uFF09\u3002"
+  };
+}
+function explain(c, f) {
+  switch (c.kind) {
+    case "table":
+      return f.tables.has(c.name) ? null : `\u7F3A\u8CC7\u6599\u8868 ${c.name}`;
+    case "no_table":
+      return f.tables.has(c.name) ? `\u820A\u8CC7\u6599\u8868 ${c.name} \u9084\u5728\uFF08\u8A72\u4EE3\u7684\u6700\u5F8C\u4E00\u6B65\u662F\u62C6\u6389\u5B83\uFF09` : null;
+    case "entries_column":
+      if (!f.tables.has("entries")) return "\u8B80\u4E0D\u5230 entries \u7684\u6B04\u4F4D\uFF08\u8868\u4E0D\u5B58\u5728\uFF09";
+      return f.entriesColumns.has(c.name) ? null : `entries \u7F3A\u6B04\u4F4D ${c.name}`;
+    case "index":
+      return f.indexes.has(c.name) ? null : `\u7F3A\u7D22\u5F15 ${c.name}`;
+    case "template":
+      return f.templates.has(c.name) ? null : `templates \u7F3A ${c.name}`;
+    case "entry":
+      return f.entries.has(c.id) ? null : `\u7F3A\u7CFB\u7D71\u4FDD\u7559\u5217 ${c.id}`;
+  }
+}
+function uniq(xs) {
+  return [...new Set(xs)];
+}
+function qs(xs) {
+  return xs.map(() => "?").join(", ");
+}
+async function pluck(db, sql, binds, field) {
+  if (binds.length === 0) return /* @__PURE__ */ new Set();
+  const r = await db.prepare(sql).bind(...binds).all();
+  return new Set((r.results ?? []).map((row) => row[field]));
+}
+
 // kbdb/src/index.ts
 var app = new Hono2();
 app.use("*", async (c, next) => {
@@ -4574,7 +4785,19 @@ app.use("*", async (c, next) => {
   return next();
 });
 app.get("/", (c) => c.json({ service: "arcrun-kbdb", tier: "base", status: "ok" }));
-app.get("/health", (c) => c.json({ ok: true }));
+var HEALTH_CACHE_MS = 1e4;
+var healthCache = null;
+app.get("/health", async (c) => {
+  const now = Date.now();
+  if (!healthCache || now - healthCache.at > HEALTH_CACHE_MS) {
+    healthCache = { at: now, report: await probeDataLayer(c.env.DB) };
+  }
+  const dataLayer = healthCache.report;
+  return c.json(
+    { ok: dataLayer.ok, status: dataLayer.ok ? "ok" : "degraded", data_layer: dataLayer },
+    dataLayer.ok ? 200 : 503
+  );
+});
 app.get("/maintenance/relation-orphans", async (c) => {
   const { scanRelationOrphans: scanRelationOrphans2 } = await Promise.resolve().then(() => (init_relation_orphans(), relation_orphans_exports));
   const limit = Number(c.req.query("limit") ?? "200");
