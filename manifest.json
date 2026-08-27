@@ -1,24 +1,24 @@
 {
  "schema": 2,
- "release": "1.4.54",
- "fingerprint": "0e3e502c6386ffd1acabae1c1af4fce42bdbbe2bcd86ab35730bad9bda22390c",
+ "release": "1.4.56",
+ "fingerprint": "a4051e876cc06cad3523c47d263882da17855abfc660eec9d8ecd29e9455ff8a",
  "built": "2026-08-26",
- "source": "Arcrun@d3019a52cb18",
+ "source": "Arcrun@6521914df572",
  "daemon": {
-  "version": "0.18.36",
-  "built": "20260824-2104",
-  "notes": "移除資料夾時，可以順便把我們放進去的隱藏檔案一起清掉・只刪我們自己建的，你的檔案一個都不會碰・這幾種情況我們刻意不刪・不勾這個框的話，行為跟以前一模一樣：硬碟上一個檔都不會少",
+  "version": "0.18.38",
+  "built": "20260827-0918",
+  "notes": "每一層子資料夾都看得到，不是只有第一層・小幫手看得到，不必等雲端、也不必連線・每一層都告訴你「幾份、上去了幾份」・整個沒走進去的資料夾，不會假裝成 0 / 0",
   "mac": {
-   "file": "daemon/Arcrun-0.18.36.dmg",
-   "sha256": "49ca6f32afff2cff3adb23ad83b3528558655a39ad9e437cae7b52a979975cd7"
+   "file": "daemon/Arcrun-0.18.38.dmg",
+   "sha256": "0b91b70295823f343166e31f53bd170ec315b5a4d84c4858424547bdafaf4aa5"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.36.exe",
-   "sha256": "7b55648142338b6cdb99022c95c94e12e518846e04999acdc0a382cdd6471913"
+   "file": "daemon/Arcrun-win-0.18.38.exe",
+   "sha256": "92927b0f8b7f3063d569628deec72b2b95c124060612741ef1aa6d6734656f56"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.36.msix",
-   "sha256": "ee59349c1996d47fc5af65ca458bb3b4218ddc15c5739086c3bf50a6fac8e307"
+   "file": "daemon/Arcrun-0.18.38.msix",
+   "sha256": "9f0527b60fba0bd27316b86cf606178bc221a3ef3265880490467a76b2d4ed98"
   }
  },
  "core": [
@@ -217,7 +217,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 683598,
+   "js_bytes": 691420,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -258,10 +258,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "72a18e30b06c2318fb71872ac9dcbbb6b47fab66",
-   "source_content_sha256": "d4ad7f488c673dfb886ee2bc02c909b62acecba6ffaf19aeedd6a9199fe9a1d4",
-   "sha256": "d4ad7f488c673dfb886ee2bc02c909b62acecba6ffaf19aeedd6a9199fe9a1d4",
-   "bytes": 683598
+   "source_commit": "8257fd90a9a172a160a77980b0f10c1bc5a2eabb",
+   "source_content_sha256": "1750e8a938ae467a7091b9faa6c0549fac64fc7d35cd9067bf4c43f4b2db49d3",
+   "sha256": "1750e8a938ae467a7091b9faa6c0549fac64fc7d35cd9067bf4c43f4b2db49d3",
+   "bytes": 691420
   },
   {
    "name": "arcrun-date-ops",
@@ -415,7 +415,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 181728,
+   "js_bytes": 185704,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -435,10 +435,10 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "72a18e30b06c2318fb71872ac9dcbbb6b47fab66",
-   "source_content_sha256": "4fbf25c066c382758234379b81a2065fa88051d76013e1ab60b4f132209f8c34",
-   "sha256": "4fbf25c066c382758234379b81a2065fa88051d76013e1ab60b4f132209f8c34",
-   "bytes": 181728
+   "source_commit": "a1f45aef73de264236ff044e5b5fd5eb4d1cadc1",
+   "source_content_sha256": "68efc2b8958d1047c8d17f63325949af738379f8f1a2d509b9fa8bcf09440855",
+   "sha256": "68efc2b8958d1047c8d17f63325949af738379f8f1a2d509b9fa8bcf09440855",
+   "bytes": 185704
   },
   {
    "name": "arcrun-mcp",
@@ -526,7 +526,7 @@
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 723179,
+   "js_bytes": 660202,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -537,10 +537,10 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "15c5cedff39fe6567fc7d586254acb411fb7ad6d",
-   "source_content_sha256": "594637e14cd18c45b380ce118845ad58a549f3227cff284ea31efd25c005787f",
-   "sha256": "594637e14cd18c45b380ce118845ad58a549f3227cff284ea31efd25c005787f",
-   "bytes": 723179
+   "source_commit": "b35c820be7264ab30295cfb35a6674bf11cc24e8",
+   "source_content_sha256": "a4d920dfef53171f0e62f174dddae79d125f6fecf60c0c5781debc81f3ae0c53",
+   "sha256": "a4d920dfef53171f0e62f174dddae79d125f6fecf60c0c5781debc81f3ae0c53",
+   "bytes": 660202
   },
   {
    "name": "arcrun-set",
@@ -911,7 +911,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 683598,
+   "js_bytes": 691420,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -952,8 +952,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "72a18e30b06c2318fb71872ac9dcbbb6b47fab66",
-   "source_content_sha256": "d4ad7f488c673dfb886ee2bc02c909b62acecba6ffaf19aeedd6a9199fe9a1d4",
+   "source_commit": "8257fd90a9a172a160a77980b0f10c1bc5a2eabb",
+   "source_content_sha256": "1750e8a938ae467a7091b9faa6c0549fac64fc7d35cd9067bf4c43f4b2db49d3",
    "first_install": true
   },
   {
@@ -1098,7 +1098,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 181728,
+   "js_bytes": 185704,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1118,8 +1118,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "72a18e30b06c2318fb71872ac9dcbbb6b47fab66",
-   "source_content_sha256": "4fbf25c066c382758234379b81a2065fa88051d76013e1ab60b4f132209f8c34",
+   "source_commit": "a1f45aef73de264236ff044e5b5fd5eb4d1cadc1",
+   "source_content_sha256": "68efc2b8958d1047c8d17f63325949af738379f8f1a2d509b9fa8bcf09440855",
    "first_install": true
   },
   {
@@ -1203,7 +1203,7 @@
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 723179,
+   "js_bytes": 660202,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -1214,8 +1214,8 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "15c5cedff39fe6567fc7d586254acb411fb7ad6d",
-   "source_content_sha256": "594637e14cd18c45b380ce118845ad58a549f3227cff284ea31efd25c005787f",
+   "source_commit": "b35c820be7264ab30295cfb35a6674bf11cc24e8",
+   "source_content_sha256": "a4d920dfef53171f0e62f174dddae79d125f6fecf60c0c5781debc81f3ae0c53",
    "first_install": true
   },
   {

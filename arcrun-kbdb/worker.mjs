@@ -2207,6 +2207,25 @@ async function listEntries(db, f = {}) {
   ]);
   return { entries: rowsRes.results ?? [], total: countRow?.total ?? 0 };
 }
+async function blocksOfPages(db, pages, perPageLimit = 8) {
+  if (pages.length === 0) return [];
+  const params = [];
+  const pairs = pages.map((p) => {
+    params.push(p.page_name);
+    if (p.owner_id === null) return "(page_name = ? AND owner_id IS NULL)";
+    params.push(p.owner_id);
+    return "(page_name = ? AND owner_id = ?)";
+  });
+  const rows = await db.prepare(
+    `SELECT * FROM entries
+        WHERE (${pairs.join(" OR ")})
+          AND ${NOT_MACHINERY_PREDICATE}
+          AND ${NOT_DEPRECATED_PREDICATE}
+        ORDER BY created_at ASC, rowid ASC
+        LIMIT ?`
+  ).bind(...params, pages.length * perPageLimit).all();
+  return rows.results ?? [];
+}
 async function updateEntry(db, id, patch) {
   const cols = [];
   const params = [];
@@ -2510,6 +2529,65 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
        LIMIT ?`
   ).bind(...params, Math.min(limit, 200)).all();
   return applyRelativeCut(res.results ?? []);
+}
+
+// kbdb/src/search-rank.ts
+var MACHINE_SECTIONS = /* @__PURE__ */ new Set([
+  "\u51FA\u8655",
+  "\u5361\u7247\u95DC\u4FC2",
+  "\u5167\u6587\u77E5\u8B58\u95DC\u4FC2",
+  "\u95DC\u806F",
+  "\u4F86\u6E90",
+  "\u53CD\u5411\u9023\u7D50",
+  "source",
+  "sources",
+  "relations",
+  "related",
+  "links",
+  "references",
+  "backlinks"
+]);
+var ATX_HEADING = /^\s{0,3}#{1,6}\s+(.*)$/;
+var LIST_MARKER = /^\s*(?:[-*+]|\d{1,3}[.)])\s+/;
+var BREADCRUMB_ARROW = /^\s*(?:←|→|⇐|⇒)\s*/;
+var TRIPLE_SEP = ">".repeat(2);
+var WORD_CHAR = /[A-Za-z0-9぀-ヿ㐀-䶿一-鿿豈-﫿]/;
+function isMachineLine(raw2) {
+  const line = raw2.trim();
+  if (!line) return true;
+  if (ATX_HEADING.test(line)) return true;
+  if (line.includes(TRIPLE_SEP)) return true;
+  if (/^-{3,}$|^\*{3,}$|^={3,}$/.test(line)) return true;
+  let rest = line.replace(LIST_MARKER, "").replace(BREADCRUMB_ARROW, "");
+  rest = rest.replace(/\[\[[^\]]*\]\]/g, " ").replace(/!?\[[^\]]*\]\([^)]*\)/g, " ").replace(/`[^`]*`/g, " ").replace(/[*_~]/g, " ");
+  return !WORD_CHAR.test(rest);
+}
+function classifyBlock(content) {
+  const text = (content ?? "").trim();
+  if (!text) return 1 /* Structural */;
+  const lines = text.split("\n");
+  const head = lines.find((l) => ATX_HEADING.test(l.trim()));
+  if (head) {
+    const name = (head.trim().match(ATX_HEADING)?.[1] ?? "").trim().toLowerCase();
+    if (MACHINE_SECTIONS.has(name)) return 1 /* Structural */;
+  }
+  return lines.every(isMachineLine) ? 1 /* Structural */ : 0 /* Fact */;
+}
+function rankByTier(entries) {
+  return entries.map((e, i) => ({ e, i, tier: classifyBlock(e.content) })).sort((a, b) => a.tier - b.tier || b.e.score - a.e.score || a.i - b.i).map((x) => x.e);
+}
+function topPages(entries, limit) {
+  const best = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const page = (e.page_name ?? "").trim();
+    if (!page) continue;
+    const key = `${e.owner_id ?? ""}\0${page}`;
+    const cur = best.get(key);
+    if (!cur || e.score > cur.score) {
+      best.set(key, { page_name: page, owner_id: e.owner_id, score: e.score, matched_block_id: e.id });
+    }
+  }
+  return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
 // kbdb/src/actions/maintenance-quota.ts
@@ -3045,6 +3123,8 @@ async function libraryBackfillStatus(db, opts = {}) {
 
 // kbdb/src/routes/entries.ts
 var entryRoutes = new Hono2();
+var PAGE_EXPANSION_MAX_PAGES = 5;
+var PAGE_EXPANSION_PER_PAGE = 4;
 function fireAndForget(c, p) {
   let ctx;
   try {
@@ -3210,6 +3290,31 @@ entryRoutes.get("/search", async (c) => {
       const cut = relativeMinScore(entries2[0].score);
       entries2 = entries2.filter((e) => e.score >= cut);
     }
+    if (!include_deprecated && entries2.length > 0) {
+      const pages = topPages(entries2, PAGE_EXPANSION_MAX_PAGES);
+      if (pages.length > 0) {
+        const seen = new Set(entries2.map((e) => e.id));
+        const scoreOf = new Map(pages.map((p) => [`${p.owner_id ?? ""} ${p.page_name}`, p]));
+        const added = /* @__PURE__ */ new Map();
+        for (const b of await blocksOfPages(c.env.DB, pages, PAGE_EXPANSION_PER_PAGE)) {
+          if (seen.has(b.id)) continue;
+          if (classifyBlock(b.content) !== 0 /* Fact */) continue;
+          const key = `${b.owner_id ?? ""} ${(b.page_name ?? "").trim()}`;
+          const hit = scoreOf.get(key);
+          if (!hit) continue;
+          const n = added.get(key) ?? 0;
+          if (n >= PAGE_EXPANSION_PER_PAGE) continue;
+          added.set(key, n + 1);
+          entries2.push({
+            ...b,
+            score: hit.score,
+            retrieved_via: "page_expansion",
+            matched_block_id: hit.matched_block_id
+          });
+        }
+      }
+    }
+    entries2 = rankByTier(entries2);
     entries2 = entries2.slice(0, requestedTopK);
     if (entries2.length === 0) {
       let empty_reason;

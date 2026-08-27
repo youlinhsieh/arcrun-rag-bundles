@@ -12908,9 +12908,21 @@ var PORTAL_TEMPLATE_SEEDS = [
     // 這裡只是「有哪些庫」的登記簿。
     // graph_source（design D-4，P3）：'true'＝此庫是知識圖譜的萃取來源——graph 粗閘按
     // 「用戶是否擁有 graph 來源庫權限」放行。**沒有任何庫標記時預設視同 general**（D-4 定案）。
+    // root / mode / reason（InkStoneCo#44，2026-08-17）：**一個庫＝地端的一個資料夾**，
+    // 而在此之前雲端只記得住它的名字，於是「資料夾」在雲端不是一個持久物件——
+    // 它是「有卡片才有庫」的副作用（arcrun-rag#106 實測：空資料夾指定了，雲端什麼都不出現）。
+    // leo：「**不能因為地端資料夾內沒東西就當作不存在，如果那是他打算放東西的資料夾呢？**」
+    // ⇒ 小幫手一報上來就登記，不必等到有卡片。
+    //   root＝地端絕對路徑（使用者認得回去的那條路）
+    //   mode＝收檔策略（all／curated-wiki／docs-only，地端 IngestPlan 決定）
+    //   reason＝那句人話（「為什麼只收這些」）
+    // 🔴 這三個是**欄位、不是 JSON 團**（D91）：它們是「資料夾」這個物件本身的屬性。
+    //    每輪會變的計數（同步數／總數／整棵樹）**不住在這裡**——那是投影，
+    //    見 portal.ts 的 folderTreeKey() 與那段「為什麼樹不進 KBDB」的說明。
+    // 既有實例靠 ensurePortalTemplates 的「補 slots」路徑自動補上（同 P3 加 graph_source 那次）。
     name: "portal_library",
-    description: "RAG Portal \u5EAB\u76EE\u9304\u767B\u8A18\uFF08portal-auth \xA73.2\uFF1B\u5EAB\uFF1Dmetadata_json.$.library \u6A19\u8A18\uFF09",
-    slots: ["name", "display_name", "description", "status", "graph_source"],
+    description: "RAG Portal \u5EAB\u76EE\u9304\u767B\u8A18\uFF08portal-auth \xA73.2\uFF1B\u4E00\u500B\u5EAB\uFF1D\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u4E00\u500B\u8CC7\u6599\u593E\uFF09",
+    slots: ["name", "display_name", "description", "status", "graph_source", "root", "mode", "reason"],
     created_by: "system"
   },
   {
@@ -13784,9 +13796,171 @@ function toPublicLibrary(rec) {
     description: v.description ?? "",
     status: v.status ?? "",
     // D-4：此庫是否為知識圖譜萃取來源（graph 粗閘按這個判定；全都沒標 → 預設 general）
-    graph_source: (v.graph_source ?? "") === "true"
+    graph_source: (v.graph_source ?? "") === "true",
+    // InkStoneCo#44：一個庫＝地端的一個資料夾。這三個是「資料夾」這個物件本身的屬性
+    // （小幫手回報時登記，見 POST /portal/daemon/folder-tree），空字串＝這台小幫手還沒報過。
+    root: v.root ?? "",
+    mode: v.mode ?? "",
+    reason: v.reason ?? ""
   };
 }
+function folderTreeKey(env, library) {
+  return `${portalTenant(env)}:portal:folder_tree:${library}`;
+}
+function normalizeFolderNode(raw2) {
+  if (!raw2 || typeof raw2 !== "object") return null;
+  const r = raw2;
+  const path = typeof r.path === "string" ? r.path : "";
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  };
+  const node = {
+    path,
+    name: typeof r.name === "string" && r.name ? r.name : path.split("/").pop() || "",
+    parent: typeof r.parent === "string" ? r.parent : "-",
+    depth: num(r.depth),
+    total_files: num(r.total_files),
+    synced_files: num(r.synced_files),
+    pending_files: num(r.pending_files),
+    unsupported_files: num(r.unsupported_files),
+    excluded_files: num(r.excluded_files)
+  };
+  if (r.skipped === true) {
+    node.skipped = true;
+    node.skip_reason = typeof r.skip_reason === "string" ? r.skip_reason : "";
+  }
+  return node;
+}
+async function readFolderTree(env, library) {
+  let raw2 = null;
+  try {
+    raw2 = await env.WEBHOOKS.get(folderTreeKey(env, library), "text");
+  } catch {
+    return null;
+  }
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+function summarizeFolderTree(tree) {
+  let total = 0;
+  let synced = 0;
+  let pending = 0;
+  let unsupported = 0;
+  let excluded = 0;
+  let skippedDirs = 0;
+  for (const n of tree.nodes ?? []) {
+    if (n.skipped) {
+      skippedDirs++;
+      continue;
+    }
+    total += n.total_files;
+    synced += n.synced_files;
+    pending += n.pending_files;
+    unsupported += n.unsupported_files;
+    excluded += n.excluded_files;
+  }
+  return {
+    root: tree.root,
+    mode: tree.mode,
+    reason: tree.reason,
+    node_count: (tree.nodes ?? []).length,
+    total_nodes: tree.total_nodes,
+    truncated: !!tree.truncated,
+    total_files: total,
+    synced_files: synced,
+    pending_files: pending,
+    unsupported_files: unsupported,
+    excluded_files: excluded,
+    skipped_dirs: skippedDirs,
+    generated_at: tree.generated_at,
+    received_at: tree.received_at
+  };
+}
+portalRouter.post(
+  "/portal/daemon/folder-tree",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
+    const library = String(body.library ?? "").trim();
+    if (!isValidLibraryName(library) || library === "*") {
+      return c.json({ error: "library \u9808\u70BA\u5408\u6CD5\u5EAB\u540D\uFF08A-Za-z0-9_-\uFF0C1-64 \u5B57\uFF09" }, 400);
+    }
+    const rawNodes = Array.isArray(body.nodes) ? body.nodes : [];
+    const nodes = rawNodes.map(normalizeFolderNode).filter((n) => n !== null);
+    const displayName = String(body.display_name ?? "").trim() || library;
+    const root = String(body.root ?? "").trim();
+    const mode = String(body.mode ?? "").trim();
+    const reason = String(body.reason ?? "").trim();
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const mine = existing.find((l) => (l.values.name ?? "") === library);
+    let registered = false;
+    if (!mine) {
+      const res = await kbdbFetch(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({
+          template: LIBRARY_TEMPLATE,
+          owner_id: portalNamespace(c.env),
+          values: { name: library, display_name: displayName, description: "", status: "active", root, mode, reason }
+        })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF0C\u8CC7\u6599\u593E\u6A39\u767B\u8A18\uFF09\u2192 ${res.status}`);
+      registered = true;
+    } else {
+      const patch = {};
+      if ((mine.values.root ?? "") !== root) patch.root = root;
+      if ((mine.values.mode ?? "") !== mode) patch.mode = mode;
+      if ((mine.values.reason ?? "") !== reason) patch.reason = reason;
+      if (Object.keys(patch).length > 0) await patchRecordValues(c.env, mine.record_id, patch);
+    }
+    const stored = {
+      library,
+      display_name: displayName,
+      root,
+      mode,
+      reason,
+      truncated: body.truncated === true,
+      total_nodes: Number.isFinite(Number(body.total_nodes)) ? Number(body.total_nodes) : nodes.length,
+      sync_token: String(body.sync_token ?? ""),
+      generated_at: Number.isFinite(Number(body.generated_at)) ? Number(body.generated_at) : 0,
+      received_at: Math.floor(Date.now() / 1e3),
+      nodes
+    };
+    await c.env.WEBHOOKS.put(folderTreeKey(c.env, library), JSON.stringify(stored));
+    return c.json({ success: true, library, registered, nodes: nodes.length, truncated: stored.truncated });
+  })
+);
+portalRouter.get(
+  "/portal/admin/folder-tree",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const library = (c.req.query("library") ?? "").trim();
+    if (!isValidLibraryName(library) || library === "*") {
+      return c.json({ error: "library \u53C3\u6578\u5FC5\u586B\u4E14\u9808\u70BA\u5408\u6CD5\u5EAB\u540D" }, 400);
+    }
+    const tree = await readFolderTree(c.env, library);
+    if (!tree) {
+      return c.json({
+        success: true,
+        library,
+        tree: null,
+        note: "\u540C\u6B65\u5C0F\u5E6B\u624B\u9084\u6C92\u56DE\u5831\u904E\u9019\u500B\u8CC7\u6599\u593E\u7684\u7D50\u69CB\uFF08\u820A\u7248\u5C0F\u5E6B\u624B\u4E0D\u6703\u56DE\u5831\uFF0C\u66F4\u65B0\u5F8C\u624D\u6703\u51FA\u73FE\uFF09\u3002"
+      });
+    }
+    return c.json({ success: true, library, tree });
+  })
+);
 portalRouter.post(
   "/portal/daemon/extract",
   (c) => run(c, async () => {
@@ -14020,6 +14194,12 @@ portalRouter.get(
       }
     } catch {
     }
+    await Promise.all(out.map(async (lib) => {
+      const name = String(lib.name ?? "");
+      if (!name) return;
+      const tree = await readFolderTree(c.env, name);
+      if (tree) lib.folder_tree = summarizeFolderTree(tree);
+    }));
     return c.json({ success: true, libraries: out, count: out.length });
   })
 );
@@ -14210,6 +14390,10 @@ portalRouter.delete(
     if (!target) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
     const found = await deleteKbdbRecord(c.env, recordId);
     if (!found) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
+    try {
+      await c.env.WEBHOOKS.delete(folderTreeKey(c.env, target.values.name ?? ""));
+    } catch {
+    }
     return c.json({
       success: true,
       name: target.values.name ?? "",
