@@ -3339,6 +3339,19 @@ var init_kbdb_proxy = __esm({
       const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
+    kbdbProxyRouter.get("/kbdb/entries/library-cards", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = new URLSearchParams();
+      params.set("owner_id", owner);
+      for (const k of ["library", "limit"]) {
+        const v = c.req.query(k);
+        if (v) params.set(k, v);
+      }
+      const res = await fetch(`${base}/entries/library-cards?${params.toString()}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
     kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
@@ -17525,6 +17538,50 @@ function canReadRecord(rec, tenant2, libraries) {
   const lib = recordLibrary(rec.values);
   return lib === null || canReadLibrary(libraries, lib);
 }
+portalDataRouter.get(
+  "/portal/data/library-cards",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const library = c.req.query("library") || "";
+    if (!library.trim()) return c.json({ error: "\u7F3A\u5C11 library \u53C3\u6578\uFF08\u76EE\u9304\u5929\u751F\u5C6C\u65BC\u67D0\u4E00\u500B\u5EAB\uFF09" }, 400);
+    if (!canReadLibrary(libraries, library)) return notFound(c);
+    const params = new URLSearchParams({ library });
+    params.set("owner_id", String(knowledgeOwner(c.env)));
+    const limit = c.req.query("limit");
+    if (limit && /^\d{1,3}$/.test(limit)) params.set("limit", limit);
+    const res = await kbdbFetch(c.env, `/entries/library-cards?${params.toString()}`);
+    if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
+    return new Response(res.body, { status: 200, headers: { "Content-Type": "application/json" } });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/card",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const library = c.req.query("library") || "";
+    const pageName = c.req.query("page_name") || "";
+    if (!library.trim() || !pageName.trim()) {
+      return c.json({ error: "\u7F3A\u5C11 library \u6216 page_name\uFF08\u4E00\u5F35\u5361\u7531\u300C\u54EA\u500B\u5EAB\u7684\u54EA\u500B\u5361\u540D\u300D\u5B9A\u4F4D\uFF09" }, 400);
+    }
+    if (!canReadLibrary(libraries, library)) return notFound(c);
+    const params = new URLSearchParams({ library, page_name: pageName });
+    params.set("owner_id", String(knowledgeOwner(c.env)));
+    params.set("limit", "200");
+    const res = await kbdbFetch(c.env, `/entries?${params.toString()}`);
+    if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.entries)) {
+      return c.json({ error: "KBDB \u56DE\u61C9\u4E0D\u662F\u9810\u671F\u7684 entries \u6E05\u55AE" }, 502);
+    }
+    const entries = filterDeprecatedEntries(body.entries);
+    if (entries.length === 0) return notFound(c);
+    return c.json({ success: true, library, page_name: pageName, entries, count: entries.length });
+  })
+);
 portalDataRouter.get(
   "/portal/data/map",
   (c) => run(c, async () => {

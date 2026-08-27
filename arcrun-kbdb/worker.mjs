@@ -2590,6 +2590,67 @@ function topPages(entries, limit) {
   return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
+// kbdb/src/actions/library-index.ts
+var DEFAULT_CARD_LIMIT = 200;
+var MAX_CARD_LIMIT = 500;
+var GLOSS_HEADINGS = ["## \u6458\u8981", "## \u4E00\u53E5\u8A71\u5B9A\u7FA9"];
+var INDEX_CARD_NAME = "00-INDEX";
+function glossOf(block) {
+  if (!block) return null;
+  const lines = String(block).split("\n");
+  const body = lines.filter((l) => !GLOSS_HEADINGS.some((h) => l.trim().startsWith(h))).map((l) => l.trim()).filter(Boolean);
+  if (body.length === 0) return null;
+  const text = body.join(" ").replace(/\s+/g, " ").trim();
+  return text || null;
+}
+async function listLibraryCards(db, f) {
+  const library = f.library;
+  const owner = f.owner_id ?? "";
+  const limit = Math.min(Math.max(f.limit ?? DEFAULT_CARD_LIMIT, 1), MAX_CARD_LIMIT);
+  const glossLike = GLOSS_HEADINGS.map(() => "content LIKE ?").join(" OR ");
+  const glossParams = GLOSS_HEADINGS.map((h) => `${h}%`);
+  const where = `WHERE entry_type = 'block'
+       AND page_name IS NOT NULL AND page_name != ''
+       AND (? = '' OR owner_id = ?)
+       AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
+       AND ${ENTRY_LIBRARY} = ?`;
+  const whereParams = [owner, owner, library];
+  const [rowsRes, countRow, indexRow] = await Promise.all([
+    db.prepare(
+      `SELECT
+           page_name,
+           COUNT(*) AS block_count,
+           MAX(CASE WHEN ${glossLike} THEN content END) AS gloss_block,
+           MAX(json_extract(metadata_json, '$.source_path')) AS source_path,
+           MAX(updated_at) AS updated_at
+         FROM entries
+         ${where}
+         GROUP BY page_name
+         ORDER BY MAX(updated_at) DESC, page_name ASC
+         LIMIT ?`
+    ).bind(...glossParams, ...whereParams, limit).all(),
+    db.prepare(`SELECT COUNT(DISTINCT page_name) AS total FROM entries ${where}`).bind(...whereParams).first(),
+    // 🔴 目錄卡在不在，**不能靠掃上面那一頁**——它照 updated_at 排序，
+    //    目錄卡很可能不在前 limit 名內 ⇒ 那樣會回報「沒有目錄」而其實有，
+    //    而這個欄位正是呼叫端用來決定「要不要退回導出清單」的開關。
+    //    它只有一張、名字固定，所以用卡名直接問一次（EXISTS，成本可忽略）。
+    db.prepare(`SELECT 1 AS hit FROM entries ${where} AND page_name = ? LIMIT 1`).bind(...whereParams, INDEX_CARD_NAME).first()
+  ]);
+  const cards = (rowsRes.results ?? []).map((r) => ({
+    page_name: r.page_name,
+    block_count: Number(r.block_count) || 0,
+    gloss: glossOf(r.gloss_block),
+    source_path: r.source_path ?? null,
+    updated_at: Number(r.updated_at) || 0
+  }));
+  return {
+    library,
+    cards,
+    total: countRow?.total ?? cards.length,
+    has_index_card: !!indexRow
+  };
+}
+
 // kbdb/src/actions/maintenance-quota.ts
 var DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT = 2e4;
 function maintenanceDailyLimit(env) {
@@ -3161,6 +3222,19 @@ entryRoutes.get("/libraries", async (c) => {
   ).bind(owner).all();
   const libraries = (rows.results ?? []).map((r) => r.library).filter(Boolean);
   return c.json({ success: true, libraries, count: libraries.length });
+});
+entryRoutes.get("/library-cards", async (c) => {
+  const library = c.req.query("library") || "";
+  if (!library.trim()) return c.json({ success: false, error: "library required" }, 400);
+  const limitRaw = Number(c.req.query("limit"));
+  const result = await listLibraryCards(c.env.DB, {
+    library,
+    owner_id: c.req.query("owner_id") || void 0,
+    // 壞值當沒帶（回預設），不 clamp 成 1——clamp 會回一筆長得像「這個庫只有一張卡」
+    // 的結果（#100 教訓：把「讀不到」演成「你沒有」）。
+    limit: Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : void 0
+  });
+  return c.json({ success: true, ...result, count: result.cards.length });
 });
 entryRoutes.get("/library-stats", async (c) => {
   const owner = c.req.query("owner_id") || "";

@@ -32203,7 +32203,7 @@ async function buildLibraryMapInstructions(env, identity) {
       const data = await res.json();
       const body = renderLibraryMapLines(Array.isArray(data.libraries) ? data.libraries : []);
       if (body) {
-        text = "\u3010\u85CF\u66F8\u5730\u5716\u3011KBDB \u5168\u9928\u73FE\u6CC1\uFF08\u6BCF\u5EAB\u4E00\u884C\uFF09\u3002\u67E5\u8CC7\u6599\u524D\u5148\u770B\u9019\u88E1\u5B9A\u4F4D\u8A72\u9032\u54EA\u500B\u5EAB\uFF1B\u9700\u8981\u67D0\u5EAB\u7D30\u7BC0\u547C\u53EB kbdb_get_map(library)\uFF0C\u4E0D\u78BA\u5B9A\u8A72\u67E5\u4EC0\u9EBC\u6642\u5148\u547C\u53EB kbdb_get_map\u3002\n" + body;
+        text = "\u3010\u85CF\u66F8\u5730\u5716\u3011KBDB \u5168\u9928\u73FE\u6CC1\uFF08\u6BCF\u5EAB\u4E00\u884C\uFF09\uFF1D\u6AA2\u7D22\u4E09\u6B65\u7684**\u7B2C 1 \u6B65**\uFF1A\u5148\u5728\u9019\u88E1\u5B9A\u4F4D\u8A72\u9032\u54EA\u500B\u5EAB\u3002\n\u5B9A\u4F4D\u597D\u4E4B\u5F8C\uFF1A`kbdb_get_index(library)` \u8B80\u90A3\u500B\u5EAB\u7684\u76EE\u9304\u6311\u51FA\u8A72\u8B80\u7684\u5361\uFF08\u7B2C 2 \u6B65\uFF09\u2192 `kbdb_get_card(library, page_name)` \u8B80\u6574\u5F35\u5361\uFF08\u7B2C 3 \u6B65\uFF09\u3002\n\u9700\u8981\u67D0\u5EAB\u7684\u7D30\u7BC0\u7D71\u8A08\uFF08\u6838\u5FC3 entities\uFF0F\u95DC\u4FC2\u5206\u5E03\uFF0F\u8DE8\u5EAB bridges\uFF09\u624D\u547C\u53EB `kbdb_get_map(library)`\u3002\n" + body;
       }
     }
   } catch {
@@ -32329,6 +32329,155 @@ function registerGetMap(server, env, identity) {
   );
 }
 
+// mcp/src/tools/kbdb_index.ts
+var INDEX_CARD_NAME = "00-INDEX";
+function anchorOf(block) {
+  try {
+    const meta = typeof block.metadata_json === "string" ? JSON.parse(block.metadata_json) : block.metadata_json ?? {};
+    const src = typeof meta?.source === "string" ? meta.source : "";
+    const m = src.match(/#(\d+)\s*$/);
+    if (!m) return Number.MAX_SAFE_INTEGER;
+    return Number(m[1]);
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+function assembleCard(blocks) {
+  return blocks.slice().sort((a, b) => anchorOf(a) - anchorOf(b)).map((b) => String(b.content ?? "").trim()).filter(Boolean).join("\n\n");
+}
+function registerAllKbdbIndexTools(server, env, identity) {
+  registerGetIndex(server, env, identity);
+  registerGetCard(server, env, identity);
+}
+function registerGetIndex(server, env, identity) {
+  server.tool(
+    "kbdb_get_index",
+    "\u5EAB\u76EE\u9304\uFF1A\u67D0\u4E00\u500B\u77E5\u8B58\u5EAB\u88E1**\u6709\u54EA\u4E9B\u5361**\u3001\u6BCF\u5F35\u5361\u4E00\u53E5\u8A71\u5728\u8B1B\u4EC0\u9EBC\u3002\u9019\u662F\u6AA2\u7D22\u4E09\u6B65\u7684\u7B2C 2 \u6B65\u2014\u2014\u5148 kbdb_get_map \u5B9A\u4F4D\u8A72\u9032\u54EA\u500B\u5EAB\uFF0C\u518D\u7528\u672C\u5DE5\u5177\u8B80\u90A3\u500B\u5EAB\u7684\u76EE\u9304\u6311\u51FA\u8A72\u8B80\u7684\u5361\uFF0C\u6700\u5F8C\u7528 kbdb_get_card \u8B80\u6574\u5F35\u5361\u3002**\u8981\u56DE\u7B54\u95DC\u65BC\u67D0\u500B\u5EAB\u7684\u554F\u984C\u6642\u8D70\u9019\u689D\uFF0C\u4E0D\u8981\u4E00\u958B\u59CB\u5C31 kbdb_search**\uFF08\u90A3\u662F\u5E73\u9762\u641C\u5C0B\uFF0C\u56DE\u7684\u662F\u6563\u843D\u7684\u6BB5\u843D\uFF0C\u4E0D\u662F\u5361\uFF09\u3002",
+    {
+      library: external_exports.string().min(1).describe("\u5EAB\u540D\uFF08\u5F9E kbdb_get_map \u62FF\uFF1B\u4F8B 'youlinhsieh-test1'\u3001'kb'\uFF09"),
+      limit: external_exports.number().int().positive().optional().describe("\u6700\u591A\u5217\u5E7E\u5F35\u5361\uFF08\u9810\u8A2D 200\uFF0C\u4E0A\u9650 500\uFF1B\u622A\u65B7\u6642 total \u6703\u544A\u8A34\u4F60\u9019\u500B\u5EAB\u5BE6\u969B\u6709\u5E7E\u5F35\uFF09")
+    },
+    async ({ library, limit }) => {
+      if (identity.kind === "stale") return staleIdentityError();
+      try {
+        const isPortal = identity.kind === "portal";
+        const qs = new URLSearchParams({ library });
+        if (limit) qs.set("limit", String(limit));
+        const res = isPortal ? await portalFetch(env, identity.portal.session, `/portal/data/library-cards`, {
+          query: { library, ...limit ? { limit: String(limit) } : {} }
+        }) : await kbdbFetch(env, `/entries/library-cards?${qs.toString()}`);
+        if (res.status === 404) {
+          return errorResponse(
+            "library_not_found",
+            `\u67E5\u7121\u5EAB\u300C${library}\u300D\u2014\u2014\u9019\u500B\u540D\u5B57\u4E0D\u5B58\u5728\uFF0C\u6216\u4E0D\u5728\u4F60\u88AB\u6388\u6B0A\u7684\u77E5\u8B58\u5EAB\u7BC4\u570D\u5167`,
+            ["kbdb_get_map() \u770B\u5168\u9928\u6709\u54EA\u4E9B\u5EAB\uFF08\u78BA\u8A8D\u5EAB\u540D\uFF0F\u78BA\u8A8D\u4F60\u6709\u6B0A\u9650\u7684\u5EAB\uFF09"]
+          );
+        }
+        if (!res.ok && isPortal) return portalError(res, `\u53D6\u5EAB\u300C${library}\u300D\u7684\u76EE\u9304`);
+        if (!res.ok) {
+          return errorResponse(
+            "index_fetch_failed",
+            `\u53D6\u5EAB\u300C${library}\u300D\u7684\u76EE\u9304\u5931\u6557 HTTP ${res.status}`,
+            ["\u7A0D\u5F8C\u91CD\u8A66"],
+            await res.text().catch(() => "")
+          );
+        }
+        const body = await res.json();
+        const cards = Array.isArray(body.cards) ? body.cards : [];
+        const total = Number(body.total ?? cards.length) || 0;
+        if (cards.length === 0) {
+          return successResponse({ library, source: "derived", cards: [], total: 0 }, [
+            `\u5EAB\u300C${library}\u300D\u76EE\u524D\u4E00\u5F35\u5361\u90FD\u6C92\u6709\uFF08\u7AEF\u9EDE\u6B63\u5E38\uFF0C\u662F\u771F\u7684\u6C92\u6709\u5167\u5BB9\u2014\u2014\u4E0D\u662F\u76EE\u9304\u58DE\u4E86\uFF09`,
+            "kbdb_get_map() \u770B\u770B\u5225\u7684\u5EAB"
+          ]);
+        }
+        const hasIndexCard = !!body.has_index_card;
+        const truncated = total > cards.length;
+        const truncationHint = truncated ? [`\u9019\u500B\u5EAB\u5171 ${total} \u5F35\u5361\uFF0C\u76EE\u9304\u53EA\u5217\u4E86 ${cards.length} \u5F35\u2014\u2014\u8981\u770B\u5168\u90E8\u5C31\u5E36 limit\uFF08\u4E0A\u9650 500\uFF09`] : [];
+        if (hasIndexCard) {
+          return successResponse(
+            { library, source: "index_card", index_card: INDEX_CARD_NAME, cards, total },
+            [
+              `\u5EAB\u300C${library}\u300D\u6709\u76EE\u9304\u5361\u300C${INDEX_CARD_NAME}\u300D\u2014\u2014\u7528 kbdb_get_card(library='${library}', page_name='${INDEX_CARD_NAME}') \u8B80\u5B83\u7684\u539F\u6587\uFF08\u90A3\u662F ingest \u7AEF\u7522\u7684\u771F\u8EAB\uFF0C\u5206\u985E\u8207\u8AAA\u660E\u6BD4\u4E0B\u9762\u9019\u4EFD\u6A5F\u68B0\u6E05\u55AE\u7D30\uFF09`,
+              "\u6311\u597D\u8981\u8B80\u54EA\u5F35\u5361\u4E4B\u5F8C\uFF1Akbdb_get_card(library, page_name) \u8B80**\u6574\u5F35**\u5361",
+              ...truncationHint
+            ]
+          );
+        }
+        return successResponse(
+          { library, source: "derived", index_card: null, cards, total },
+          [
+            // 🔴 這句話是本工具最重要的輸出，不是客套：它讓「索引缺了」變成看得見的事實。
+            `\u26A0\uFE0F \u5EAB\u300C${library}\u300D**\u6C92\u6709\u76EE\u9304\u5361\uFF08${INDEX_CARD_NAME}\uFF09**\u2014\u2014\u4E0B\u9762\u9019\u4EFD\u662F\u7167\u5EAB\u88E1\u7684\u5361\u6A5F\u68B0\u5217\u51FA\u4F86\u7684\u66FF\u4EE3\u54C1\uFF0C\u4E0D\u662F ingest \u7AEF\u7522\u7684\u76EE\u9304\u3002\u5B83\u6C92\u6709\u5206\u985E\u3001\u6C92\u6709\u4EBA\u5BEB\u7684\u8AAA\u660E\u3002`,
+            "\u6311\u597D\u8981\u8B80\u54EA\u5F35\u5361\u4E4B\u5F8C\uFF1Akbdb_get_card(library, page_name) \u8B80**\u6574\u5F35**\u5361",
+            ...truncationHint
+          ]
+        );
+      } catch (e) {
+        return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
+      }
+    }
+  );
+}
+function registerGetCard(server, env, identity) {
+  server.tool(
+    "kbdb_get_card",
+    "\u8B80**\u6574\u5F35**\u77E5\u8B58\u5361\uFF08\u6458\u8981\uFF0B\u91CD\u9EDE\uFF0B\u5BE6\u9AD4\uFF0B\u95DC\u806F\u4E00\u6B21\u5230\u624B\uFF0C\u7167\u539F\u7A3F\u9806\u5E8F\u7D44\u597D\uFF09\u3002\u9019\u662F\u6AA2\u7D22\u4E09\u6B65\u7684\u7B2C 3 \u6B65\uFF1Akbdb_get_map \u5B9A\u4F4D\u5EAB \u2192 kbdb_get_index \u5F9E\u76EE\u9304\u6311\u5361 \u2192 \u672C\u5DE5\u5177\u8B80\u6574\u5F35\u5361\u3002**\u8981\u5F15\u7528\u67D0\u5F35\u5361\u7684\u5167\u5BB9\u6642\u7528\u9019\u500B\uFF0C\u4E0D\u8981\u7528 kbdb_search \u7684\u7247\u6BB5**\uFF08\u90A3\u53EA\u6703\u56DE\u547D\u4E2D\u7684\u6BB5\u843D\uFF0C\u4F60\u4E0D\u6703\u77E5\u9053\u81EA\u5DF1\u6F0F\u4E86\u54EA\u5E7E\u6BB5\uFF09\u3002",
+    {
+      library: external_exports.string().min(1).describe("\u5EAB\u540D\uFF08kbdb_get_map\uFF0Fkbdb_get_index \u7D66\u7684\u90A3\u500B\uFF09"),
+      page_name: external_exports.string().min(1).describe("\u5361\u540D\uFF0C\uFF1D kbdb_get_index \u5217\u51FA\u7684 page_name\uFF0C\u4E5F\u662F\u5361\u7247\u88E1 [[\u96D9\u62EC\u865F]] \u6307\u7684\u90A3\u500B\u540D\u5B57")
+    },
+    async ({ library, page_name }) => {
+      if (identity.kind === "stale") return staleIdentityError();
+      try {
+        const isPortal = identity.kind === "portal";
+        const qs = new URLSearchParams({ library, page_name, limit: "200" });
+        const res = isPortal ? await portalFetch(env, identity.portal.session, `/portal/data/card`, {
+          query: { library, page_name }
+        }) : await kbdbFetch(env, `/entries?${qs.toString()}`);
+        if (res.status === 404) {
+          return errorResponse(
+            "card_not_found",
+            `\u5EAB\u300C${library}\u300D\u88E1\u67E5\u7121\u5361\u7247\u300C${page_name}\u300D`,
+            [
+              `kbdb_get_index(library='${library}') \u770B\u9019\u500B\u5EAB\u5BE6\u969B\u6709\u54EA\u4E9B\u5361\uFF08\u5361\u540D\u8981\u4E00\u5B57\u4E0D\u5DEE\uFF09`,
+              "\u78BA\u8A8D\u5EAB\u540D\u6C92\u6253\u932F\uFF1Akbdb_get_map()"
+            ]
+          );
+        }
+        if (!res.ok && isPortal) return portalError(res, `\u8B80\u5361\u7247\u300C${page_name}\u300D`);
+        if (!res.ok) {
+          return errorResponse(
+            "card_fetch_failed",
+            `\u8B80\u5361\u7247\u300C${page_name}\u300D\u5931\u6557 HTTP ${res.status}`,
+            ["\u7A0D\u5F8C\u91CD\u8A66"],
+            await res.text().catch(() => "")
+          );
+        }
+        const body = await res.json();
+        const blocks = Array.isArray(body.entries) ? body.entries : [];
+        if (blocks.length === 0) {
+          return errorResponse(
+            "card_not_found",
+            `\u5EAB\u300C${library}\u300D\u88E1\u67E5\u7121\u5361\u7247\u300C${page_name}\u300D`,
+            [`kbdb_get_index(library='${library}') \u770B\u9019\u500B\u5EAB\u5BE6\u969B\u6709\u54EA\u4E9B\u5361\uFF08\u5361\u540D\u8981\u4E00\u5B57\u4E0D\u5DEE\uFF09`]
+          );
+        }
+        const content = assembleCard(blocks);
+        return successResponse(
+          { library, page_name, content, block_count: blocks.length },
+          [
+            `\u9019\u662F\u300C${page_name}\u300D\u7684\u5B8C\u6574\u5167\u5BB9\uFF08${blocks.length} \u6BB5\uFF0C\u5DF2\u7167\u539F\u7A3F\u9806\u5E8F\u7D44\u597D\uFF09`,
+            "\u8981\u770B\u5B83\u9023\u5230\u54EA\u4E9B\u5361\uFF1Akbdb_graph_neighbors(name)"
+          ]
+        );
+      } catch (e) {
+        return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
+      }
+    }
+  );
+}
+
 // mcp/src/tools/arcrun_whoami.ts
 function registerWhoami(server, env, orgNamespace, identity) {
   server.tool(
@@ -32393,6 +32542,7 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
   registerAllKbdbDataTools(server, env, identity);
   registerAllKbdbGraphTools(server, env, orgNamespace, identity);
   registerAllKbdbMapTools(server, env, identity);
+  registerAllKbdbIndexTools(server, env, identity);
   registerWhoami(server, env, orgNamespace, identity);
 }
 
@@ -32405,12 +32555,27 @@ var KNOWLEDGE_FIRST = [
   "\u4F60\u5C0D\u9019\u4E9B\u5C08\u6848\u7684\u5167\u5EFA\u5370\u8C61\u591A\u534A\u662F\u932F\u7684\u6216\u904E\u6642\u7684\uFF0C\u5EAB\u88E1\u90A3\u4EFD\u624D\u662F\u4E3B\u4EBA\u8A8D\u7684\u7248\u672C\u3002",
   "",
   "\u{1F534} **\u6709\u4EBA\u554F\u4F60\u300CX \u662F\u4EC0\u9EBC\uFF0F\u70BA\u4EC0\u9EBC\u9019\u6A23\u505A\uFF0F\u4E4B\u524D\u600E\u9EBC\u6C7A\u5B9A\u7684\uFF0F\u73FE\u5728\u505A\u5230\u54EA\u300D\u2014\u2014",
-  "\u4F60\u7684\u7B2C\u4E00\u500B\u52D5\u4F5C\u662F `kbdb_search`\uFF0C\u4E0D\u662F grep \u539F\u59CB\u78BC\u3001\u4E0D\u662F\u4E0A\u7DB2\u641C\u3001\u4E0D\u662F\u56DE\u7B54\u300C\u6211\u4E0D\u77E5\u9053\u300D\u3002**",
+  "\u4F60\u7684\u7B2C\u4E00\u500B\u52D5\u4F5C\u662F\u67E5\u9019\u500B\u77E5\u8B58\u5EAB\uFF0C\u4E0D\u662F grep \u539F\u59CB\u78BC\u3001\u4E0D\u662F\u4E0A\u7DB2\u641C\u3001\u4E0D\u662F\u56DE\u7B54\u300C\u6211\u4E0D\u77E5\u9053\u300D\u3002**",
   "",
-  "- `kbdb_search({ q: \"Arcrun \u662F\u4EC0\u9EBC\" })` \u2014 \u95DC\u9375\u5B57\u67E5\uFF08\u9810\u8A2D `mode:'keyword'`\uFF0C\u57FA\u672C\u76E4\u6C38\u9060\u53EF\u7528\uFF09\u3002",
-  "  \u63DB\u5E7E\u7D44\u8B1B\u6CD5\u518D\u653E\u68C4\uFF1B\u60F3\u8981\u8A9E\u7FA9\u76F8\u4F3C\u5EA6\u7528 `mode:'semantic'`\u3002**\u9019\u4E00\u652F\u662F\u4F60\u7684\u7B2C\u4E00\u7AD9\u3002**",
-  "- `kbdb_get_map()` \u2014 \u4E0D\u77E5\u9053\u8A72\u9032\u54EA\u500B\u5EAB\u6642\u5148\u770B\u85CF\u66F8\u5730\u5716\uFF08\u4E0B\u9762\u82E5\u6709\u3010\u85CF\u66F8\u5730\u5716\u3011\u5C31\u662F\u5B83\u7684\u5FEB\u7167\uFF09\u3002",
-  '- `kbdb_graph_neighbors({ subject: "Arcrun" })` \u2014 \u67E5\u67D0\u500B\u6771\u897F\u8DDF\u8AB0\u6709\u95DC\u4FC2\uFF08\u4E09\u5143\u7D44\u904D\u6B77\uFF09\u3002',
+  "\u{1F534} **\u600E\u9EBC\u67E5\uFF1A\u7167\u9019\u4E09\u6B65\u8D70\uFF0C\u4E00\u6B65\u90FD\u4E0D\u8981\u8DF3**\uFF08leo 2026-08-26 \u5B9A\u6848\uFF0C\uFF1DD81\uFF09\u3002",
+  "\u9019\u500B\u5EAB\u662F\u300C\u4E00\u5EA7**\u6709\u76EE\u9304**\u7684\u5716\u66F8\u9928\u300D\uFF0C\u4E0D\u662F\u4E00\u5806\u53EF\u4EE5\u5168\u6587\u641C\u7684\u6563\u9801\uFF1A",
+  "",
+  "1. **\u9019\u4EF6\u4E8B\u5728\u54EA\u5E7E\u500B\u5EAB** \u2192 `kbdb_get_map()`",
+  "   \u56DE\u6BCF\u500B\u5EAB\u4E00\u884C\uFF08\u5EAB\u540D\uFF0B\u9019\u500B\u5EAB\u5728\u8AC7\u4EC0\u9EBC\uFF0B\u6838\u5FC3\u6982\u5FF5\uFF0B\u898F\u6A21\uFF09\u3002\u4E0B\u9762\u82E5\u6709\u3010\u85CF\u66F8\u5730\u5716\u3011\u5C31\u662F\u5B83\u7684\u5FEB\u7167\u3002",
+  "2. **\u90A3\u500B\u5EAB\u88E1\u8A72\u8B80\u54EA\u5F35\u5361** \u2192 `kbdb_get_index({ library })`",
+  "   \u56DE\u90A3\u500B\u5EAB\u7684**\u76EE\u9304**\uFF1A\u6709\u54EA\u4E9B\u5361\u3001\u6BCF\u5F35\u5361\u4E00\u53E5\u8A71\u5728\u8B1B\u4EC0\u9EBC\u3002**\u5F9E\u76EE\u9304\u6311\uFF0C\u4E0D\u8981\u7528\u731C\u7684\u3002**",
+  "3. **\u628A\u90A3\u5F35\u5361\u6574\u5F35\u8B80\u5B8C** \u2192 `kbdb_get_card({ library, page_name })`",
+  "   \u6458\u8981\uFF0B\u91CD\u9EDE\uFF0B\u5BE6\u9AD4\uFF0B\u95DC\u806F\u4E00\u6B21\u5230\u624B\uFF0C\u7167\u539F\u7A3F\u9806\u5E8F\u7D44\u597D\u3002**\u5F15\u7528\u5167\u5BB9\u6642\u4E00\u5F8B\u7528\u9019\u4E00\u652F\u3002**",
+  "",
+  "\u70BA\u4EC0\u9EBC\u662F\u9019\u4E09\u6B65\u3001\u800C\u4E0D\u662F\u76F4\u63A5\u5168\u6587\u641C\uFF1A\u4E00\u500B\u554F\u984C\u7684\u7B54\u6848\u901A\u5E38**\u6574\u5F35\u5361**\u624D\u8AAA\u5F97\u5B8C\u6574\uFF0C",
+  "\u800C\u641C\u5C0B\u53EA\u6703\u56DE**\u547D\u4E2D\u95DC\u9375\u5B57\u7684\u90A3\u5E7E\u6BB5**\u2014\u2014\u4F60\u53EF\u80FD\u62FF\u5230\u6458\u8981\u537B\u6C92\u62FF\u5230\u6578\u5B57\u3001\u62FF\u5230\u95DC\u806F\u537B\u6C92\u62FF\u5230\u5BE6\u9AD4\uFF0C",
+  "\u800C\u4E14**\u4F60\u4E0D\u6703\u77E5\u9053\u81EA\u5DF1\u6F0F\u4E86\u54EA\u5E7E\u6BB5**\u3002\u76EE\u9304\u7684\u5B58\u5728\u5C31\u662F\u70BA\u4E86\u8B93\u4F60\u5148\u770B\u5230\u300C\u6709\u4EC0\u9EBC\u300D\u518D\u6C7A\u5B9A\u8B80\u4EC0\u9EBC\u3002",
+  "",
+  "\u5176\u9918\u5DE5\u5177\uFF08\u8F14\u52A9\uFF0C\u4E0D\u662F\u4E3B\u8DEF\u5F91\uFF09\uFF1A",
+  "- `kbdb_search({ q: \"...\" })` \u2014 \u5E73\u9762\u641C\u5C0B\uFF08\u95DC\u9375\u5B57\uFF0C\u6216 `mode:'semantic'`\uFF09\u3002**\u4E09\u6B65\u8D70\u4E0D\u901A\u6642\u624D\u7528**\uFF1A",
+  "  \u4F8B\u5982\u9023\u8A72\u9032\u54EA\u500B\u5EAB\u90FD\u554F\u4E0D\u51FA\u4F86\u3001\u6216\u8981\u5728\u5168\u9928\u6488\u4E00\u500B\u5F88\u7279\u5225\u7684\u5B57\u3002\u5B83\u56DE\u7684\u662F**\u584A**\u4E0D\u662F\u5361 \u21D2",
+  "  \u6488\u5230\u4E4B\u5F8C\u8ACB\u62FF\u5B83\u7684 `page_name` \u56DE\u5230\u7B2C 3 \u6B65\u628A\u6574\u5F35\u5361\u8B80\u5B8C\uFF0C**\u4E0D\u8981\u53EA\u6191\u4E00\u500B\u7247\u6BB5\u56DE\u7B54**\u3002",
+  '- `kbdb_graph_neighbors({ name: "..." })` \u2014 \u67E5\u67D0\u500B\u6771\u897F\u8DDF\u8AB0\u6709\u95DC\u4FC2\uFF08\u4E09\u5143\u7D44\u904D\u6B77\uFF09\u3002',
   "- `kbdb_list_templates` / `kbdb_query` \u2014 \u6309 template \u53D6\u6574\u6279\u7D50\u69CB\u5316\u8CC7\u6599\u3002",
   "",
   "\u{1F534} **\u9019\u4E09\u4EF6\u4E8B\u4E0D\u53EF\u4EE5\u8B1B\u6210\u540C\u4E00\u53E5**\uFF08\u8B1B\u6210\u540C\u4E00\u53E5\u5C31\u662F\u5728\u9A19\u4EBA\uFF09\uFF1A",
