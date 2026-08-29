@@ -1,24 +1,24 @@
 {
  "schema": 2,
- "release": "1.4.58",
- "fingerprint": "0216b2185da93feb5878b09abb05c72eb25978a9eeeef0e2c06639b377d67be9",
- "built": "2026-08-27",
- "source": "Arcrun@ad60863a8017",
+ "release": "1.4.62",
+ "fingerprint": "d872f8d632f6aec9789f7215ccd1f97413b73b03dc86fd11e9eeaf87dcf4f8cd",
+ "built": "2026-08-29",
+ "source": "Arcrun@a4880fa7d081",
  "daemon": {
-  "version": "0.18.40",
-  "built": "20260827-1512",
-  "notes": "卡住的檔案不再擋住後面所有人",
+  "version": "0.18.49",
+  "built": "20260829-1242",
+  "notes": "雲端的知識庫清單看得出每一個資料夾是從哪一台電腦同步上去的・改名之後不會多出一台電腦，也不必等下一次改檔才生效：名字一換，下一輪就會把新名字送上去（細節見說明文件）",
   "mac": {
-   "file": "daemon/Arcrun-0.18.40.dmg",
-   "sha256": "5434b22742c9d1b449d22ab18fe48f2bb9f57c6ac4690e824e391135e7df0ab3"
+   "file": "daemon/Arcrun-0.18.49.dmg",
+   "sha256": "7ff5a6154314292e1e56137d106185515c01bab9762fbadf2ed03c5b07cd195c"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.40.exe",
-   "sha256": "d84c3159379fd3a415bcab5192a376ae3753f9e12dd8624c5ffced59406b5139"
+   "file": "daemon/Arcrun-win-0.18.49.exe",
+   "sha256": "ec3da2ec1f6236c7c8937a1ea88e0dc728070819174304e1e7c0d3fb72d6169b"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.40.msix",
-   "sha256": "809b0da36d43ce0b75780f91e34f9f4f0138ea075f3ac92c95155a4f0df8d804"
+   "file": "daemon/Arcrun-0.18.49.msix",
+   "sha256": "a24fc99db714f6f7eac8205b27381710d9814a9558b9734dd2cada7379903f56"
   }
  },
  "core": [
@@ -217,7 +217,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 694462,
+   "js_bytes": 703085,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -258,10 +258,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "af6f244b44b28a16a3578cf554d1e199a170a05e",
-   "source_content_sha256": "531937c2ebade75fe67676071ca5f658775c11aa855359330ae19117db1d1807",
-   "sha256": "531937c2ebade75fe67676071ca5f658775c11aa855359330ae19117db1d1807",
-   "bytes": 694462
+   "source_commit": "f08274db7874d3c9ba6dba927cf58b272390daa4",
+   "source_content_sha256": "be1d58410009b640bf800e13b07db6a95ab0deff991315ec436ff6f1147771be",
+   "sha256": "be1d58410009b640bf800e13b07db6a95ab0deff991315ec436ff6f1147771be",
+   "bytes": 703085
   },
   {
    "name": "arcrun-date-ops",
@@ -415,7 +415,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 189149,
+   "js_bytes": 195715,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -435,16 +435,16 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "af6f244b44b28a16a3578cf554d1e199a170a05e",
-   "source_content_sha256": "80d647b70a89f3d42398be621001ebfcdd08371b68ba523b6fa1f2048c06b64b",
-   "sha256": "80d647b70a89f3d42398be621001ebfcdd08371b68ba523b6fa1f2048c06b64b",
-   "bytes": 189149
+   "source_commit": "98b45409740bdb4976f8744f09255c98be8fc10c",
+   "source_content_sha256": "fc1b12b56c7b3f8d68021349c72b5301afbb93333bf25887595b0fedc0e2232d",
+   "sha256": "fc1b12b56c7b3f8d68021349c72b5301afbb93333bf25887595b0fedc0e2232d",
+   "bytes": 195715
   },
   {
    "name": "arcrun-mcp",
    "main_module": "worker.mjs",
    "main_file": "arcrun-mcp/worker.mjs",
-   "js_bytes": 1205568,
+   "js_bytes": 1208080,
    "modules": [],
    "compat_date": "2024-11-27",
    "compat_flags": [
@@ -459,10 +459,10 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "af6f244b44b28a16a3578cf554d1e199a170a05e",
-   "source_content_sha256": "03d2022d9d3134988fddfd52bd9aa6d1c7734f9d14870fbe1cbb39d9aa27a2f4",
-   "sha256": "03d2022d9d3134988fddfd52bd9aa6d1c7734f9d14870fbe1cbb39d9aa27a2f4",
-   "bytes": 1205568
+   "source_commit": "f87260b1234f0c108c378caf474d7af78cdd6cb9",
+   "source_content_sha256": "fad73a5128b50f8f42317ea1c4844ea39eee3c32846ab061282e77b731d810d0",
+   "sha256": "fad73a5128b50f8f42317ea1c4844ea39eee3c32846ab061282e77b731d810d0",
+   "bytes": 1208080
   },
   {
    "name": "arcrun-merge",
@@ -526,7 +526,7 @@
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 673028,
+   "js_bytes": 712908,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -537,10 +537,10 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "790b41d10d48f8d6d117797c4b81f9884f909209",
-   "source_content_sha256": "8a6048f8ffe7125d0077688043a787849e8332d9613d6b693494583aef9de927",
-   "sha256": "8a6048f8ffe7125d0077688043a787849e8332d9613d6b693494583aef9de927",
-   "bytes": 673028
+   "source_commit": "f08274db7874d3c9ba6dba927cf58b272390daa4",
+   "source_content_sha256": "4dc3b7ba7afcf5c64770b276b87b8f14fd538f832b0096915a55bda8fbe1419b",
+   "sha256": "4dc3b7ba7afcf5c64770b276b87b8f14fd538f832b0096915a55bda8fbe1419b",
+   "bytes": 712908
   },
   {
    "name": "arcrun-set",
@@ -911,7 +911,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 694462,
+   "js_bytes": 703085,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -952,8 +952,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "af6f244b44b28a16a3578cf554d1e199a170a05e",
-   "source_content_sha256": "531937c2ebade75fe67676071ca5f658775c11aa855359330ae19117db1d1807",
+   "source_commit": "f08274db7874d3c9ba6dba927cf58b272390daa4",
+   "source_content_sha256": "be1d58410009b640bf800e13b07db6a95ab0deff991315ec436ff6f1147771be",
    "first_install": true
   },
   {
@@ -1098,7 +1098,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 189149,
+   "js_bytes": 195715,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1118,15 +1118,15 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "af6f244b44b28a16a3578cf554d1e199a170a05e",
-   "source_content_sha256": "80d647b70a89f3d42398be621001ebfcdd08371b68ba523b6fa1f2048c06b64b",
+   "source_commit": "98b45409740bdb4976f8744f09255c98be8fc10c",
+   "source_content_sha256": "fc1b12b56c7b3f8d68021349c72b5301afbb93333bf25887595b0fedc0e2232d",
    "first_install": true
   },
   {
    "name": "arcrun-mcp",
    "main_module": "worker.mjs",
    "main_file": "arcrun-mcp/worker.mjs",
-   "js_bytes": 1205568,
+   "js_bytes": 1208080,
    "modules": [],
    "compat_date": "2024-11-27",
    "compat_flags": [
@@ -1141,8 +1141,8 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "af6f244b44b28a16a3578cf554d1e199a170a05e",
-   "source_content_sha256": "03d2022d9d3134988fddfd52bd9aa6d1c7734f9d14870fbe1cbb39d9aa27a2f4",
+   "source_commit": "f87260b1234f0c108c378caf474d7af78cdd6cb9",
+   "source_content_sha256": "fad73a5128b50f8f42317ea1c4844ea39eee3c32846ab061282e77b731d810d0",
    "first_install": true
   },
   {
@@ -1203,7 +1203,7 @@
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 673028,
+   "js_bytes": 712908,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -1214,8 +1214,8 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "790b41d10d48f8d6d117797c4b81f9884f909209",
-   "source_content_sha256": "8a6048f8ffe7125d0077688043a787849e8332d9613d6b693494583aef9de927",
+   "source_commit": "f08274db7874d3c9ba6dba927cf58b272390daa4",
+   "source_content_sha256": "4dc3b7ba7afcf5c64770b276b87b8f14fd538f832b0096915a55bda8fbe1419b",
    "first_install": true
   },
   {
@@ -1399,12 +1399,16 @@
    "why": "leo 2026-08-10：「今天只要清單含有 MCP 即可」。產品承諾是「把自己的 AI 接上自己的知識庫」，MCP 就是那條線；缺它的話那句承諾從第一步就不成立（prod 1.4.30 曾整包沒有它）。"
   },
   {
+   "worker": "arcrun-code",
+   "why": "graph_neighbors／prep 用 __CODE_URL__"
+  },
+  {
    "worker": "arcrun-http-request",
-   "why": "graph_neighbors／fetch_triplets 用 __HTTP_REQ_URL__"
+   "why": "graph_neighbors／fetch_neighbors 用 __HTTP_REQ_URL__"
   },
   {
    "worker": "arcrun-code",
-   "why": "graph_neighbors／bfs_neighbors 用 __CODE_URL__"
+   "why": "graph_neighbors／parse_neighbors 用 __CODE_URL__"
   },
   {
    "worker": "arcrun-auth-static-key",

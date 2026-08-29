@@ -2127,6 +2127,11 @@ function libraryOf(expr) {
 var ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
 var ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
 var ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
+function parseLibraryList(raw2) {
+  if (!raw2) return void 0;
+  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
+  return libs.length > 0 ? libs : void 0;
+}
 
 // kbdb/src/actions/entry-crud.ts
 function uid(prefix) {
@@ -3198,11 +3203,7 @@ function fireAndForget(c, p) {
   else void p.catch(() => {
   });
 }
-function parseLibraryParam(raw2) {
-  if (!raw2) return void 0;
-  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
-  return libs.length > 0 ? libs : void 0;
-}
+var parseLibraryParam = parseLibraryList;
 entryRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body || !body.entry_type) return c.json({ success: false, error: "entry_type required" }, 400);
@@ -4241,11 +4242,15 @@ async function selectLibrariesForQuestion(db, question, opts = {}) {
                 SELECT object AS name, ${libraryOf("library")} AS library FROM act WHERE object IS NOT NULL)
          SELECT name, library, COUNT(*) AS degree
            FROM ent
-          WHERE LENGTH(name) >= 2 AND instr(?, lower(name)) > 0
+          WHERE LENGTH(name) >= 2
+            AND (
+              instr(?, lower(name)) > 0
+              OR (LENGTH(?) >= 2 AND instr(lower(name), ?) > 0)
+            )
           GROUP BY name, library
           ORDER BY degree DESC, name ASC
           LIMIT 200`
-    ).bind(...params, qNorm).all();
+    ).bind(...params, qNorm, qNorm, qNorm).all();
     for (const r of res.results ?? []) {
       const cur = hits.get(r.library) ?? { entities: /* @__PURE__ */ new Set(), score: 0 };
       cur.entities.add(r.name);
@@ -4545,6 +4550,134 @@ mapRoutes.get("/:library", async (c) => {
   return c.json({ success: true, map });
 });
 
+// kbdb/src/actions/graph-query.ts
+var D1_MAX_BOUND_PARAMS = 90;
+function chunkForD1(items, fixedParams) {
+  const size = Math.max(1, D1_MAX_BOUND_PARAMS - fixedParams);
+  if (items.length <= size) return [items];
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, owner_id, libraries) {
+  if (!nodeValue || fields.length === 0) return [];
+  const tpl = await getTemplate(db, templateIdOrName);
+  if (!tpl) return [];
+  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND entry_type = 'value' AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ? AND entry_type = 'value'`;
+  const valueParams = owner_id ? [nodeValue, owner_id] : [nodeValue];
+  const valueRows = await db.prepare(valueSql).bind(...valueParams).all();
+  const valueIds = (valueRows.results ?? []).map((r) => r.id);
+  if (valueIds.length === 0) return [];
+  const fieldIds = fields.map((f) => fieldEntryId(tpl.id, f));
+  const relPh = fieldIds.map(() => "?").join(",");
+  const recordIdSet = /* @__PURE__ */ new Set();
+  for (const idsChunk of chunkForD1(valueIds, fieldIds.length + (owner_id ? 1 : 0))) {
+    const dstPh = idsChunk.map(() => "?").join(",");
+    const relSql = owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
+    const relParams = owner_id ? [...idsChunk, ...fieldIds, owner_id] : [...idsChunk, ...fieldIds];
+    const relRows = await db.prepare(relSql).bind(...relParams).all();
+    for (const r of relRows.results ?? []) recordIdSet.add(r.record_id);
+  }
+  const recordIds = [...recordIdSet];
+  if (recordIds.length === 0) return [];
+  const libFilter = libraries && libraries.length > 0 ? libraries : null;
+  const libAgg = "MAX(CASE WHEN r.rel_id = ? THEN v.content END)";
+  const pivotFixed = 5 + (libFilter ? 1 + libFilter.length : 0);
+  const rows = [];
+  for (const recChunk of chunkForD1(recordIds, pivotFixed)) {
+    const recPh = recChunk.map(() => "?").join(",");
+    const pivotSql = `
+      SELECT b.src_id AS record_id,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS subject,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS predicate,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS object,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS status,
+             ${libAgg} AS library
+        FROM entries b
+        LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+        LEFT JOIN entries v ON v.id = r.dst_id
+       WHERE b.rel_id = 'sys_belongs' AND b.src_id IN (${recPh})
+       GROUP BY b.src_id${libFilter ? `
+      HAVING ${libraryOf(libAgg)} IN (${libFilter.map(() => "?").join(",")})` : ""}`;
+    const pivotParams = [
+      fieldEntryId(tpl.id, "subject"),
+      fieldEntryId(tpl.id, "predicate"),
+      fieldEntryId(tpl.id, "object"),
+      fieldEntryId(tpl.id, "status"),
+      fieldEntryId(tpl.id, "library"),
+      ...recChunk,
+      ...libFilter ? [fieldEntryId(tpl.id, "library"), ...libFilter] : []
+    ];
+    const pivotRows = await db.prepare(pivotSql).bind(...pivotParams).all();
+    rows.push(...pivotRows.results ?? []);
+  }
+  return rows;
+}
+async function graphNeighbors(db, start, opts = {}) {
+  const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
+  const template = opts.template ?? "triplet";
+  const directed = !!opts.directed;
+  const owner_id = opts.owner_id;
+  const libraries = opts.library && opts.library.length > 0 ? opts.library : void 0;
+  const visited = /* @__PURE__ */ new Set([start]);
+  let frontier = [start];
+  const neighbors = [];
+  for (let d = 1; d <= depth; d++) {
+    if (frontier.length === 0) break;
+    const next = [];
+    for (const cur of frontier) {
+      const outgoing = await findTripletEdgesByNode(db, template, ["subject"], cur, owner_id, libraries);
+      for (const e of outgoing) {
+        if (e.status === "deprecated") continue;
+        const nb = e.object;
+        if (!nb || visited.has(nb)) continue;
+        visited.add(nb);
+        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d });
+        next.push(nb);
+      }
+      if (!directed) {
+        const incoming = await findTripletEdgesByNode(db, template, ["object"], cur, owner_id, libraries);
+        for (const e of incoming) {
+          if (e.status === "deprecated") continue;
+          const nb = e.subject;
+          if (!nb || visited.has(nb)) continue;
+          visited.add(nb);
+          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d });
+          next.push(nb);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return { success: true, start, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
+}
+
+// kbdb/src/routes/graph.ts
+var graphRoutes = new Hono2();
+graphRoutes.get("/neighbors/:node", async (c) => {
+  const node = c.req.param("node");
+  if (!node) return c.json({ success: false, error: "node required" }, 400);
+  const depthRaw = Number(c.req.query("depth"));
+  const depth = Number.isFinite(depthRaw) && depthRaw > 0 ? Math.floor(depthRaw) : void 0;
+  const directed = c.req.query("directed") === "true";
+  const template = c.req.query("template") || void 0;
+  const owner_id = c.req.query("owner_id") || void 0;
+  const library = parseLibraryList(c.req.query("library"));
+  try {
+    const result = await graphNeighbors(c.env.DB, node, { depth, template, directed, owner_id, library });
+    const edges = result.neighbors.map((n) => ({
+      subject: n.from,
+      predicate: n.predicate,
+      object: n.node
+    }));
+    return c.json({ ...result, edges });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
 // kbdb/src/actions/execution-log.ts
 var SUCCESS_MESSAGE_MAX = 200;
 var FAILED_MESSAGE_MAX = 2e3;
@@ -4832,6 +4965,12 @@ var GENERATIONS = [
       // 🪦 entry_values 2026-08-15 廢除；「看到它＝那台沒跟上，不是它還合法」。
       { kind: "no_table", name: "entry_values" }
     ]
+  },
+  {
+    n: 8,
+    file: "0008_entries_content_index.sql",
+    what: "entries.content \u7D22\u5F15\u2014\u2014graph \u9130\u5C45\u67E5\u8A62\u5F9E\u7BC0\u9EDE\u540D\u76F4\u63A5\u67E5\uFF08\u4E0D\u6488\u5168\u8868\uFF09\uFF0CArcrun#168 \u6839\u56E0\u4FEE\u5FA9\u7684\u5730\u57FA",
+    checks: [{ kind: "index", name: "idx_entries_content" }]
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
@@ -4990,6 +5129,7 @@ app.route("/recipe-stats", recipeStatRoutes);
 app.route("/execution-log", executionLogRoutes);
 app.route("/embed", embedRoutes);
 app.route("/map", mapRoutes);
+app.route("/graph", graphRoutes);
 var index_default = app;
 export {
   index_default as default

@@ -3195,15 +3195,6 @@ function kbdbBase(env) {
 function tenant(c) {
   return c.req.header("X-Arcrun-API-Key") ?? null;
 }
-function graphBase(env) {
-  if (env.KBDB_GRAPH_URL) return env.KBDB_GRAPH_URL.replace(/\/$/, "");
-  return `https://kbdb-graph-plugin.${env.WORKER_SUBDOMAIN}.workers.dev`;
-}
-function graphHeaders(env) {
-  const headers = {};
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-  return headers;
-}
 var kbdbProxyRouter, NEED_KEY;
 var init_kbdb_proxy = __esm({
   "cypher-executor/src/routes/kbdb-proxy.ts"() {
@@ -3359,14 +3350,23 @@ var init_kbdb_proxy = __esm({
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
     kbdbProxyRouter.get("/kbdb/graph/neighbors/:name", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const base = graphBase(c.env);
-      const headers = graphHeaders(c.env);
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = new URLSearchParams();
+      params.set("owner_id", owner);
+      for (const k of ["depth", "template", "directed"]) {
+        const v = c.req.query(k);
+        if (v) params.set(k, v);
+      }
       try {
-        const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}`, { headers });
+        const res = await fetch(
+          `${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}?${params.toString()}`,
+          { headers }
+        );
         return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
       } catch (e) {
-        return c.json({ error: `kbdb-graph-plugin \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+        return c.json({ error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
     });
     kbdbProxyRouter.get("/kbdb/map", async (c) => {
@@ -12978,7 +12978,87 @@ var PORTAL_TEMPLATE_SEEDS = [
 
 // cypher-executor/src/routes/portal.ts
 init_credentials();
+
+// cypher-executor/src/lib/ai-response.ts
+function pickChatContent(o) {
+  const choices = o.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return void 0;
+  const first = choices[0];
+  if (!first || typeof first !== "object") return void 0;
+  const msg = first.message;
+  if (!msg || typeof msg !== "object") return void 0;
+  const content = msg.content;
+  return typeof content === "string" && content.length > 0 ? content : void 0;
+}
+function pickResponseValue(out) {
+  if (out === null || out === void 0) return void 0;
+  if (typeof out === "string") return out;
+  if (typeof out !== "object") return out;
+  const o = out;
+  const chat = pickChatContent(o);
+  if (chat !== void 0) return chat;
+  if ("response" in o) return o.response;
+  const result = o.result;
+  if (result && typeof result === "object") {
+    const r = result;
+    const rc = pickChatContent(r);
+    if (rc !== void 0) return rc;
+    if ("response" in r) return r.response;
+  }
+  return void 0;
+}
+function normalizeAiText(out) {
+  const v = pickResponseValue(out);
+  if (v === null || v === void 0) return { text: "", kind: "empty" };
+  if (typeof v === "string") return { text: v.trim(), kind: v.trim() ? "string" : "empty" };
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
+    return { text: String(v), kind: "scalar" };
+  }
+  if (typeof v === "object") {
+    try {
+      const s = JSON.stringify(v);
+      if (typeof s !== "string") {
+        return { text: "", kind: "unrenderable", reason: "JSON.stringify \u56DE undefined" };
+      }
+      return { text: s, kind: "json" };
+    } catch (e) {
+      return {
+        text: "",
+        kind: "unrenderable",
+        reason: e instanceof Error ? e.message : "\u7121\u6CD5\u5E8F\u5217\u5316"
+      };
+    }
+  }
+  return { text: "", kind: "unrenderable", reason: `\u672A\u9810\u671F\u7684\u578B\u5225 ${typeof v}` };
+}
+function parseExpectShape(raw2, hasPrompt) {
+  const s = String(raw2 ?? "").trim();
+  if (s === "json_object" || s === "text") return s;
+  return hasPrompt ? "json_object" : "text";
+}
+function hasJsonObject(text) {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return { ok: false, reason: "\u6574\u6BB5\u56DE\u61C9\u88E1\u627E\u4E0D\u5230 JSON \u7269\u4EF6\uFF08\u6C92\u6709\u6210\u5C0D\u7684\u5927\u62EC\u865F\uFF09" };
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, reason: "\u5927\u62EC\u865F\u88E1\u7684\u5167\u5BB9\u4E0D\u662F JSON \u7269\u4EF6" };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: `JSON \u89E3\u6790\u5931\u6557\uFF1A${e instanceof Error ? e.message : "\u672A\u77E5\u932F\u8AA4"}` };
+  }
+}
+function snippetForError(text, max = 120) {
+  const one = text.replace(/\s+/g, " ").trim();
+  if (!one) return "\uFF08\u7A7A\u7684\uFF09";
+  return one.length <= max ? one : one.slice(0, max) + "\u2026";
+}
+
+// cypher-executor/src/routes/portal.ts
 var portalRouter = new Hono2();
+var EXTRACT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
 var SESSION_PREFIX2 = "portal_sess:";
 var LOCKFAIL_PREFIX = "portal_lockfail:";
 var LOCK_LIMIT = 5;
@@ -13867,10 +13947,7 @@ function summarizeFolderTree(tree) {
   let excluded = 0;
   let skippedDirs = 0;
   for (const n of tree.nodes ?? []) {
-    if (n.skipped) {
-      skippedDirs++;
-      continue;
-    }
+    if (n.skipped) skippedDirs++;
     total += n.total_files;
     synced += n.synced_files;
     pending += n.pending_files;
@@ -13881,6 +13958,11 @@ function summarizeFolderTree(tree) {
     root: tree.root,
     mode: tree.mode,
     reason: tree.reason,
+    // inkstone/Arcrun#180：庫目錄那張列表就是靠這兩格把庫掛到正確的機器底下。
+    // 摘要吐它們（而不是只放在整棵樹裡）的理由：分組要在**畫第一層之前**就成立，
+    // 而整棵樹是使用者展開那一列才去抓的 ⇒ 只放樹裡的話第一眼永遠是「未知來源」。
+    machine: tree.machine ?? "",
+    machine_label: tree.machine_label ?? "",
     node_count: (tree.nodes ?? []).length,
     total_nodes: tree.total_nodes,
     truncated: !!tree.truncated,
@@ -13942,6 +14024,10 @@ portalRouter.post(
       root,
       mode,
       reason,
+      // 🔴 缺 → 空字串，**不猜也不 backfill**（同卡片那條路：D97）。
+      //    舊版小幫手不送這兩格，而「不知道是哪一台」本身就是要顯示出來的事實。
+      machine: String(body.machine ?? "").trim(),
+      machine_label: String(body.machine_label ?? "").trim(),
       truncated: body.truncated === true,
       total_nodes: Number.isFinite(Number(body.total_nodes)) ? Number(body.total_nodes) : nodes.length,
       sync_token: String(body.sync_token ?? ""),
@@ -13983,6 +14069,7 @@ portalRouter.post(
     const pageName = String(body?.page_name ?? "").trim();
     const srcText = String(body?.text ?? "");
     const daemonPrompt = String(body?.prompt ?? "").trim();
+    const expectShape = parseExpectShape(body?.expect, Boolean(daemonPrompt));
     if (!daemonPrompt && (!pageName || !srcText.trim()))
       return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
     if (!c.env.AI) {
@@ -14003,15 +14090,44 @@ portalRouter.post(
 \u539F\u7A3F\uFF1A
 ${srcText}`;
     try {
-      const out = await c.env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
+      const out = await c.env.AI.run(EXTRACT_MODEL, {
         messages: [{ role: "user", content: prompt }],
         max_tokens: daemonPrompt ? 8192 : 2048,
-        temperature: 0.2
+        temperature: 0.2,
+        // 🔴 Arcrun#134（2026-08-27）：呼叫端說它要一個 JSON 物件 ⇒ **就用模型保證得了的方式去要**。
+        //	不加這個的實測（youlin 真檔《火星座標_短片劇本_v1》打 6 次）：**3 次壞在
+        //	模型把字串的收尾引號打成全形 `”`** ⇒ 字串沒收掉 ⇒ 後面那個換行變成 JSON 裡的
+        //	裸控制字元 ⇒ daemon 與雲端都解析不了。那是第二顆骰子，和 `[object Object]`
+        //	不同源但同一種傷害：**同一份檔、同一個請求，成敗看運氣**。
+        //	`response_format: json_object` 走的是受限解碼，語法由平台保證 ⇒ 骰子拿掉。
+        //	只在呼叫端宣告要 JSON 時才加：legacy（要 markdown 卡）那條路一個字都沒動。
+        ...expectShape === "json_object" ? { response_format: { type: "json_object" } } : {}
+        // 🔴 **不准把回傳值宣告成 `{ response?: string }`**。
+        //	那個型別斷言正是本票的病根——binding 把純 JSON 回應解析成 JS 物件交回來，
+        //	而斷言讓編譯器相信它是字串 ⇒ `String(物件)` ＝ '[object Object]' ⇒ 整張卡沒了。
+        //	一律 `unknown`，由 normalizeAiText 認形狀（見 lib/ai-response.ts 檔頭實測）。
       });
-      const raw2 = String(out?.response ?? "").trim();
+      const norm = normalizeAiText(out);
+      if (norm.kind === "unrenderable") {
+        return c.json({ error: `\u96F2\u7AEF\u8403\u53D6\uFF1AWorkers AI \u7684\u56DE\u61C9\u9084\u539F\u4E0D\u56DE\u6587\u5B57\uFF08${norm.reason ?? "\u672A\u77E5\u539F\u56E0"}\uFF09` }, 502);
+      }
+      const raw2 = norm.text;
       if (!raw2) return c.json({ error: "Workers AI \u6C92\u6709\u56DE\u50B3\u5167\u5BB9" }, 502);
       if (daemonPrompt) {
-        return c.json({ success: true, output: raw2 });
+        if (expectShape === "json_object") {
+          const check = hasJsonObject(raw2);
+          if (!check.ok) {
+            return c.json(
+              {
+                error: `\u96F2\u7AEF\u8403\u53D6\uFF1A\u6A21\u578B\u6C92\u6709\u7167\u5951\u7D04\u56DE JSON \u7269\u4EF6\uFF08${check.reason}\uFF09\u3002\u9019\u4E00\u6BB5\u662F\u5728\u4F60\u7684\u77E5\u8B58\u5EAB\u96F2\u7AEF\u8DD1\u7684\uFF08Workers AI ${EXTRACT_MODEL}\uFF09\uFF0C\u4E0D\u662F\u5728\u4F60\u7684\u96FB\u8166\u4E0A\u3002\u6A21\u578B\u5BE6\u969B\u56DE\u7684\u524D 120 \u5B57\uFF1A${snippetForError(raw2)}`,
+                code: "ai_output_not_json_object",
+                output_kind: norm.kind
+              },
+              502
+            );
+          }
+        }
+        return c.json({ success: true, output: raw2, output_kind: norm.kind });
       }
       const marker = `# ${pageName}`;
       const idx = raw2.lastIndexOf(marker);
@@ -15047,7 +15163,6 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
   const tenant2 = knowledgeOwner(c.env);
   const now2 = Date.now();
   const { base: kbdbUrl, headers: kbdbHeaders2 } = kbdbBase(c.env);
-  const graphUrl = graphBase(c.env);
   const [
     beatEntries,
     taskEntries,
@@ -15056,7 +15171,7 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
     giteaSprint,
     kbdbHealth,
     embedStatus,
-    graphStats,
+    graphProbe,
     tripletTotal,
     entriesTotal,
     wikiCardTotal,
@@ -15069,11 +15184,15 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
     cachedGiteaSprint(c.env, now2, (p) => c.executionCtx.waitUntil(p)),
     fetchJson(`${kbdbUrl}/health`, kbdbHeaders2),
     fetchJson(`${kbdbUrl}/embed/backfill/status`, kbdbHeaders2),
-    // graph-plugin 只拿來判「圖服務活著沒」（燈號）——數字不從這裡拿，見 fetchTripletTotal。
-    // headers 一定要帶：plugin 的 /triplets 前綴掛 Bearer 閘，漏帶＝永遠 401＝永遠假紅燈（#100）。
+    // 圖服務活著沒（燈號）——數字不從這裡拿，見 fetchTripletTotal。
+    // 🔴 inkstone/Arcrun#168 收斂：原本探的是 kbdb-graph-plugin 的 /triplets/stats，
+    // 但圖能力已收斂回 KBDB（GET /graph/neighbors/:node）⇒ 探那顆 plugin 等於在量一個
+    // 沒有人走的服務：它沒裝就永遠紅燈、裝了也只證明一個不再被使用的東西活著。
+    // 改探 KBDB 那支端點本身——用一個不存在的節點名，它會誠實回 count:0 的 200
+    //（graph-query.ts：查不到就是空結果，不是錯誤），正好當「這條路通不通」的探針。
     fetchJson(
-      `${graphUrl}/triplets/stats`,
-      graphHeaders(c.env)
+      `${kbdbUrl}/graph/neighbors/${encodeURIComponent("__arcrun_graph_probe__")}?depth=1`,
+      kbdbHeaders2
     ),
     fetchTripletTotal(c.env, tenant2),
     // owner_id 一律鎖本租戶：原本不帶 owner 會混到別租戶（實測 459,137 vs leo 的 458,732）
@@ -15183,8 +15302,8 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
     system: {
       kbdb_ok: kbdbHealth ? kbdbHealth.ok === true : false,
       embed: embedStatus ? { enabled: embedStatus.enabled === true, embedded: embedStatus.embedded ?? null, pending: embedStatus.pending ?? null } : null,
-      // ok = plugin 通不通（graphStats 讀得到就是通）；triplets = KBDB 真 COUNT（與 plugin 分頁長度無關）
-      graph: { ok: graphStats !== null, triplets: tripletTotal },
+      // ok = 圖查詢通不通（探針讀得到就是通）；triplets = KBDB 真 COUNT（兩件事，不互相吞）
+      graph: { ok: graphProbe !== null, triplets: tripletTotal },
       workflow_total: workflowTotal
     },
     kb: {
@@ -15270,7 +15389,6 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
 
 // cypher-executor/src/routes/portal-data.ts
 init_dist();
-init_kbdb_proxy();
 init_webhook_handlers();
 
 // cypher-executor/src/lib/app-system.ts
@@ -17001,7 +17119,7 @@ function unwrapWorkflowData(data, key) {
   }
   return outer;
 }
-function mapGraphWorkflowOutput(data) {
+function mapGraphNeighborsResponse(data) {
   const layer = unwrapWorkflowData(data, "neighbors");
   const neighbors = Array.isArray(layer.neighbors) ? layer.neighbors : [];
   const edges = Array.isArray(layer.edges) ? layer.edges : [];
@@ -17097,7 +17215,7 @@ async function tripletCensus(env, tenant2) {
   if (owned !== 0) return { owned, any: null };
   return { owned, any: await tripletCount(env, null) };
 }
-async function fuzzyFindNode(env, tenant2, searchTerm) {
+async function fuzzyFindNode(env, tenant2, searchTerm, libraries) {
   try {
     const res = await kbdbFetch(env, `/records/by-template/triplet?${ownerQuery(tenant2)}`);
     if (!res.ok) return null;
@@ -17107,6 +17225,8 @@ async function fuzzyFindNode(env, tenant2, searchTerm) {
     for (const r of body.records) {
       const v = r?.values;
       if (!v || typeof v !== "object") continue;
+      const lib = recordLibrary(v);
+      if (lib !== null && !canReadLibrary(libraries, lib)) continue;
       if (typeof v.subject === "string" && v.subject.trim()) nodeNames.add(v.subject.trim());
       if (typeof v.object === "string" && v.object.trim()) nodeNames.add(v.object.trim());
     }
@@ -17168,6 +17288,15 @@ portalDataRouter.get(
     return c.json({ success: true, entry });
   })
 );
+async function fetchNeighborsFromKbdb(env, tenant2, node, depth, libraries) {
+  const qs = new URLSearchParams();
+  qs.set("depth", String(depth));
+  qs.set("template", "triplet");
+  if (!libraries.includes("*")) qs.set("library", libraries.join(","));
+  const res = await kbdbFetch(env, `/graph/neighbors/${encodeURIComponent(node)}?${qs.toString()}&${ownerQuery(tenant2)}`);
+  const body = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, body };
+}
 portalDataRouter.get(
   "/portal/data/graph/neighbors/:name",
   (c) => run(c, async () => {
@@ -17177,50 +17306,41 @@ portalDataRouter.get(
     if (!await hasGraphAccess(c.env, libraries)) {
       return c.json({ error: "\u7121\u77E5\u8B58\u5716\u8B5C\u6AA2\u8996\u6B0A\u9650" }, 403);
     }
-    const nodeName = normalizeCjkQuery(c.req.param("name"));
     const tenant2 = knowledgeOwner(c.env);
-    const wfGraph = await getTenantWorkflowGraph(c.env, "graph_neighbors");
-    if (wfGraph) {
-      const depthRaw = c.req.query("depth") ?? "";
-      const depth = /^\d{1,2}$/.test(depthRaw) ? Number(depthRaw) : 2;
-      const result = await executeWebhookGraph(
-        c.env,
-        wfGraph,
-        // t116: 補傳 kbdb_base；t128: 補傳 template（workflow fetch_triplets.url 用 {{input.template}}）
-        { node: nodeName, depth, namespace: tenant2, owner: tenant2, kbdb_base: c.env.KBDB_BASE_URL ?? "", template: "triplet" },
-        "graph_neighbors",
-        tenant2,
-        c.executionCtx
-      );
-      if (!result.success) {
-        return c.json({ error: `graph_neighbors workflow \u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` }, 502);
-      }
-      return c.json(mapGraphWorkflowOutput(result.data));
-    }
-    const base = graphBase(c.env);
-    const headers = graphHeaders(c.env);
+    const rawName = c.req.param("name");
+    const depthRaw = c.req.query("depth") ?? "";
+    const depth = /^\d{1,2}$/.test(depthRaw) ? Number(depthRaw) : 2;
+    const tryNames = [rawName];
+    const normalized = normalizeCjkQuery(rawName);
+    if (normalized !== rawName) tryNames.push(normalized);
+    let first = null;
     try {
-      const res = await fetch(`${base}/graph/neighbors/${encodeURIComponent(nodeName)}`, { headers });
-      if (!res.ok) {
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      for (const name of tryNames) {
+        const r = await fetchNeighborsFromKbdb(c.env, tenant2, name, depth, libraries);
+        if (!first) first = r;
+        if (!r.ok) break;
+        const mapped = mapGraphNeighborsResponse(r.body);
+        if (mapped.count > 0) return c.json(mapped);
       }
-      const resText = await res.text().catch(() => "");
-      let data = null;
-      try {
-        data = JSON.parse(resText);
-      } catch {
-      }
-      if (data && Array.isArray(data.neighbors) && data.neighbors.length === 0 && Array.isArray(data.edges) && data.edges.length === 0) {
-        const fallbackName = await fuzzyFindNode(c.env, tenant2, nodeName);
-        if (fallbackName && fallbackName !== nodeName) {
-          const res2 = await fetch(`${base}/graph/neighbors/${encodeURIComponent(fallbackName)}`, { headers });
-          return new Response(res2.body, { status: res2.status, headers: { "Content-Type": "application/json" } });
+      if (first?.ok) {
+        const fallbackName = await fuzzyFindNode(c.env, tenant2, rawName, libraries);
+        if (fallbackName && !tryNames.includes(fallbackName)) {
+          const r = await fetchNeighborsFromKbdb(c.env, tenant2, fallbackName, depth, libraries);
+          if (r.ok) {
+            const mapped = mapGraphNeighborsResponse(r.body);
+            if (mapped.count > 0) return c.json(mapped);
+          }
         }
       }
-      return new Response(resText, { status: res.status, headers: { "Content-Type": "application/json" } });
     } catch (e) {
-      return c.json({ error: `kbdb-graph-plugin \u4E0D\u53EF\u9054\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      return c.json({ error: `KBDB \u5716\u8B5C\u67E5\u8A62\u4E0D\u53EF\u9054\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
     }
+    if (!first) return c.json({ error: "KBDB \u5716\u8B5C\u67E5\u8A62\u6C92\u6709\u56DE\u61C9" }, 502);
+    if (!first.ok) {
+      const err = first.body && typeof first.body === "object" ? first.body : { error: `KBDB \u5716\u8B5C\u67E5\u8A62\u5931\u6557\uFF08HTTP ${first.status}\uFF09` };
+      return c.json(err, first.status);
+    }
+    return c.json(mapGraphNeighborsResponse(first.body));
   })
 );
 portalDataRouter.get(
@@ -17538,6 +17658,29 @@ function canReadRecord(rec, tenant2, libraries) {
   const lib = recordLibrary(rec.values);
   return lib === null || canReadLibrary(libraries, lib);
 }
+function cardOriginalLocation(entries, library, libraryRoot) {
+  for (const e of entries) {
+    if (typeof e.metadata_json !== "string" || !e.metadata_json) continue;
+    let meta;
+    try {
+      meta = JSON.parse(e.metadata_json);
+    } catch {
+      continue;
+    }
+    const sourcePath = typeof meta.source_path === "string" && meta.source_path.trim() ? meta.source_path.trim() : null;
+    const machine = typeof meta.machine_label === "string" && meta.machine_label.trim() ? meta.machine_label.trim() : typeof meta.machine === "string" && meta.machine.trim() ? meta.machine.trim() : null;
+    if (!sourcePath && !machine) continue;
+    const root = libraryRoot && libraryRoot.trim() ? libraryRoot.trim() : null;
+    return {
+      machine,
+      library,
+      library_root: root,
+      source_path: sourcePath,
+      full_path: root && sourcePath ? `${root.replace(/\/+$/, "")}/${sourcePath.replace(/^\/+/, "")}` : null
+    };
+  }
+  return null;
+}
 portalDataRouter.get(
   "/portal/data/library-cards",
   (c) => run(c, async () => {
@@ -17579,7 +17722,19 @@ portalDataRouter.get(
     }
     const entries = filterDeprecatedEntries(body.entries);
     if (entries.length === 0) return notFound(c);
-    return c.json({ success: true, library, page_name: pageName, entries, count: entries.length });
+    const libRecords = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE).catch(() => []);
+    const libRootRaw = libRecords.find((r) => String(r.values.name ?? "") === library)?.values.root;
+    const libraryRoot = typeof libRootRaw === "string" ? libRootRaw : null;
+    const location = cardOriginalLocation(entries, library, libraryRoot);
+    return c.json({
+      success: true,
+      library,
+      page_name: pageName,
+      entries,
+      count: entries.length,
+      location,
+      ...location ? {} : { location_hint: "\u9019\u5F35\u5361\u7684\u6BB5\u843D\u6C92\u6709 machine/source_path \u4E2D\u7E7C\u8CC7\u6599\uFF0C\u7B54\u4E0D\u51FA\u539F\u6587\u7684\u5BE6\u9AD4\u4F4D\u7F6E" }
+    });
   })
 );
 portalDataRouter.get(
@@ -17711,6 +17866,19 @@ portalDataRouter.get(
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) return c.json({ success: true, records: [], count: 0, total: 0 });
+    const template = c.req.param("template");
+    if (template === LIBRARY_TEMPLATE) {
+      const all = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+      const records2 = libraries.includes("*") ? all : all.filter((r) => libraries.includes(String(r.values.name ?? "")));
+      return c.json({
+        success: true,
+        records: records2,
+        count: records2.length,
+        page_size: all.length,
+        filtered_out: all.length - records2.length,
+        total: records2.length
+      });
+    }
     const tenant2 = knowledgeOwner(c.env);
     const params = new URLSearchParams(ownerQuery(tenant2));
     for (const k of ["limit", "offset"]) {
