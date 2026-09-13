@@ -46,7 +46,7 @@ var init_relation_orphans = __esm({
   }
 });
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
+// kbdb/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
     let index = -1;
@@ -90,10 +90,10 @@ var compose = (middleware, onError, onNotFound) => {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
+// kbdb/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
+// kbdb/node_modules/hono/dist/utils/body.js
 var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -165,7 +165,7 @@ var handleParsingNestedValues = (form, key, value) => {
   });
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
+// kbdb/node_modules/hono/dist/utils/url.js
 var splitPath = (path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -369,7 +369,7 @@ var getQueryParams = (url, key) => {
 };
 var decodeURIComponent_ = decodeURIComponent;
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
+// kbdb/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
 var HonoRequest = class {
   /**
@@ -652,7 +652,7 @@ var HonoRequest = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
+// kbdb/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -694,7 +694,7 @@ var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => 
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
+// kbdb/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = (contentType, headers) => {
   return {
@@ -1101,7 +1101,7 @@ var Context = class {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
+// kbdb/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1109,10 +1109,10 @@ var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is
 var UnsupportedPathError = class extends Error {
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
+// kbdb/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
+// kbdb/node_modules/hono/dist/hono-base.js
 var notFoundHandler = (c) => {
   return c.text("404 Not Found", 404);
 };
@@ -1488,7 +1488,7 @@ var Hono = class _Hono {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// kbdb/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
@@ -1509,7 +1509,7 @@ function match(method, path) {
   return match2(method, path);
 }
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
+// kbdb/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1617,7 +1617,7 @@ var Node = class _Node {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
+// kbdb/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   #context = { varIndex: 0 };
   #root = new Node();
@@ -1673,7 +1673,7 @@ var Trie = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
+// kbdb/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -1852,7 +1852,7 @@ var RegExpRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
+// kbdb/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   name = "SmartRouter";
   #routers = [];
@@ -1907,7 +1907,7 @@ var SmartRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
+// kbdb/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = (children) => {
   for (const _ in children) {
@@ -2082,7 +2082,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
+// kbdb/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   name = "TrieRouter";
   #node;
@@ -2104,7 +2104,7 @@ var TrieRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
+// kbdb/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   /**
    * Creates an instance of the Hono class.
@@ -3772,19 +3772,22 @@ async function getRecord(db, recordId) {
   const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
   return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
 }
+async function countSheetMembers(db, sheetId, owner_id, offset, limit, got) {
+  if (offset === 0 && got < limit) return got;
+  const row = owner_id ? await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）
+    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?`
+  ).bind(sheetId, owner_id).first() : await db.prepare(
+    // kbdb-sql-ok：同上
+    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`
+  ).bind(sheetId).first();
+  return row?.total ?? 0;
+}
 async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0) {
   const tpl = await getTemplate(db, template);
   if (!tpl) return { records: [], total: 0 };
   const cap = Math.min(Math.max(limit, 1), 500);
   const skip = Math.max(offset, 0);
-  const totalRow = owner_id ? await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）
-    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND owner_id = ?`
-  ).bind(tpl.id, owner_id).first() : await db.prepare(
-    // kbdb-sql-ok：同上
-    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`
-  ).bind(tpl.id).first();
-  const total = totalRow?.total ?? 0;
   const res = owner_id ? await db.prepare(
     // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；本次 checkout 開在 worktree /private/tmp/wt-graph-first-44/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，與 962d863／5919c6b 記載的是同一個假警報
     `SELECT src_id AS record_id FROM entries
@@ -3797,6 +3800,7 @@ async function searchByTemplatePage(db, template, owner_id, limit = 100, offset 
            ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
   ).bind(tpl.id, cap, skip).all();
   const ids = (res.results ?? []).map((r) => r.record_id);
+  const total = await countSheetMembers(db, tpl.id, owner_id, skip, cap, ids.length);
   if (ids.length === 0) return { records: [], total };
   const byId = /* @__PURE__ */ new Map();
   for (const id of ids) byId.set(id, { record_id: id, template_id: tpl.id, values: {}, owner_id: null });
@@ -3836,11 +3840,11 @@ async function deleteRecord(db, recordId) {
   ).bind(recordId).run();
   for (const dst of dsts) {
     await db.prepare(
+      // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；worktree 開在 matrix/arcrun-wt-218/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到——與本檔既有註解記載的同一個假警報
       `DELETE FROM entries WHERE id = ?1
           AND entry_type NOT IN ('sheet', 'field', 'system')
           AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
-          AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)
-          AND NOT EXISTS (SELECT 1 FROM entries WHERE rel_id = ?1)`
+          AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`
     ).bind(dst).run();
   }
   return true;
@@ -3943,7 +3947,7 @@ function tripletPivotSql(ownerFiltered) {
      FROM entries b
      LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
      LEFT JOIN entries v ON v.id = r.dst_id
-     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND b.owner_id = ?" : ""}
+     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND +b.owner_id = ?" : ""}
      GROUP BY b.src_id`;
 }
 function mapPivotSql(ownerFiltered) {
@@ -3960,7 +3964,7 @@ function mapPivotSql(ownerFiltered) {
      FROM entries b
      LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
      LEFT JOIN entries v ON v.id = r.dst_id
-     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND b.owner_id = ?" : ""}
+     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerFiltered ? " AND +b.owner_id = ?" : ""}
      GROUP BY b.src_id`;
 }
 function parseJsonArray(raw2) {
@@ -4120,9 +4124,12 @@ async function liveTripletCountsByLibrary(db, tripletTemplateId, owner_id) {
               MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
               MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library
          FROM entries b
-         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+         -- Arcrun#218\uFF1A\u9019\u652F\u53EA\u8B80 status\uFF0Flibrary \u5169\u683C \u21D2 join \u53EA\u63A5\u9019\u5169\u500B\u8B02\u8A5E\uFF0C\u5176\u9918\u683C\u5B50\u4E0D\u53BB v \u6488\u503C
+         -- \uFF08\u672C\u6A5F 35.7 \u842C\u5217 leo21c \u5F62\u72C0\u91CF\u6E2C\uFF1A500,400 \u2192 284,400 \u5217\uFF1B\u7B54\u6848\u4E0D\u8B8A\uFF0Ctests/ \u9010\u5EAB\u6BD4\u5C0D\uFF09
+         LEFT JOIN entries r ON r.src_id = b.src_id
+               AND r.rel_id IN ('fld_' || b.dst_id || '_status', 'fld_' || b.dst_id || '_library')
          LEFT JOIN entries v ON v.id = r.dst_id
-         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND b.owner_id = ?" : ""}
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND +b.owner_id = ?" : ""}
          GROUP BY b.src_id
        ) AS tr
        WHERE COALESCE(tr.status, 'active') = 'active'
@@ -4179,7 +4186,7 @@ async function knownLibraryNames(db, owner_id) {
          FROM entries b
          LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
          LEFT JOIN entries v ON v.id = r.dst_id
-         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND b.owner_id = ?" : ""}
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND +b.owner_id = ?" : ""}
          GROUP BY b.src_id`
     ).bind(...libParams).all();
     for (const r of libRows.results ?? []) if (r.name) names.add(r.name);

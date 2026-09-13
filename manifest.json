@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.64",
- "fingerprint": "a925c1bd35c86d5305d96b07bd9d43839de4f179fd94acc8cd24370f54952d7a",
+ "release": "1.4.65",
+ "fingerprint": "9cd6779e1c1576b0c70fb90859066334c12c6ce67c9b29584fb892c2afd62500",
  "built": "2026-09-13",
- "source": "Arcrun@1eb26c98a3af",
+ "source": "Arcrun@f8590c7252cc",
  "daemon": {
   "version": "0.18.52",
   "built": "20260913-2302",
@@ -415,7 +415,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 203823,
+   "js_bytes": 204046,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -435,10 +435,10 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "bed24fbbd5c3befed02c5690133d640f1d036e56",
-   "source_content_sha256": "8df57bc74d8f9c828db40207fd0079ae060374be27c0dc9cab835959aee091b0",
-   "sha256": "8df57bc74d8f9c828db40207fd0079ae060374be27c0dc9cab835959aee091b0",
-   "bytes": 203823
+   "source_commit": "f8590c7252cc51761ca17980cf57206612d51b65",
+   "source_content_sha256": "a9be3bdd9678f54cae355b94427525ddeb369fb53ed281a5700df0db6765096f",
+   "sha256": "a9be3bdd9678f54cae355b94427525ddeb369fb53ed281a5700df0db6765096f",
+   "bytes": 204046
   },
   {
    "name": "arcrun-mcp",
@@ -1098,7 +1098,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 203823,
+   "js_bytes": 204046,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1118,8 +1118,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "bed24fbbd5c3befed02c5690133d640f1d036e56",
-   "source_content_sha256": "8df57bc74d8f9c828db40207fd0079ae060374be27c0dc9cab835959aee091b0",
+   "source_commit": "f8590c7252cc51761ca17980cf57206612d51b65",
+   "source_content_sha256": "a9be3bdd9678f54cae355b94427525ddeb369fb53ed281a5700df0db6765096f",
    "first_install": true
   },
   {
