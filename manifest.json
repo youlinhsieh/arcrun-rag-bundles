@@ -1,24 +1,24 @@
 {
  "schema": 2,
- "release": "1.4.65",
- "fingerprint": "9cd6779e1c1576b0c70fb90859066334c12c6ce67c9b29584fb892c2afd62500",
+ "release": "1.4.67",
+ "fingerprint": "b37493ffb1e5fc570bb49edb4f0a545ce1b1c05a249854e4dc47c6ca591f09cf",
  "built": "2026-09-13",
- "source": "Arcrun@f8590c7252cc",
+ "source": "Arcrun@b08a8cee44cd",
  "daemon": {
-  "version": "0.18.52",
-  "built": "20260913-2302",
-  "notes": "雲端資料庫的免費額度用完時，小幫手會直接告訴你・額度用完期間不再重打雲端・急著用的話，卡片上也會告訴你：升級 Cloudflare Workers 付費方案（每月 5 美元起）就沒有每日上限",
+  "version": "0.18.53",
+  "built": "20260914-0746",
+  "notes": "資料夾上的數字會跟著真的送上雲端的份數走・「同步中」底下會說正在做什麼、卡在哪（細節見說明文件）",
   "mac": {
-   "file": "daemon/Arcrun-0.18.52.dmg",
-   "sha256": "a3bc29ef6dc00da982a2d7990fc1731d88fc1436df38d75499aafae0245a09ce"
+   "file": "daemon/Arcrun-0.18.53.dmg",
+   "sha256": "f7f696d70350d5af74932505767348278f21c38a4048bcc0dc0e3823fa767c9e"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.52.exe",
-   "sha256": "9e074685eb44e6a4729c819411221cc24018f7cdfcb732df15911741a5356f80"
+   "file": "daemon/Arcrun-win-0.18.53.exe",
+   "sha256": "6eb4d280e5c8632b33a43cb8f71bfc5ca495fabe0a6dbfec8dd32e86122b6fb7"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.52.msix",
-   "sha256": "6e1f022ce812fb7c92ca7a4fbc32c428ab483a666971d96bfb5acdef4b0fdca3"
+   "file": "daemon/Arcrun-0.18.53.msix",
+   "sha256": "149550f2ba2f8755b11ed883740591041633ddf7fb918e3892b699ff2ffc4625"
   }
  },
  "core": [
@@ -415,7 +415,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 204046,
+   "js_bytes": 221743,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -435,16 +435,16 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "f8590c7252cc51761ca17980cf57206612d51b65",
-   "source_content_sha256": "a9be3bdd9678f54cae355b94427525ddeb369fb53ed281a5700df0db6765096f",
-   "sha256": "a9be3bdd9678f54cae355b94427525ddeb369fb53ed281a5700df0db6765096f",
-   "bytes": 204046
+   "source_commit": "b08a8cee44cd0b8b65abd1fa027484d5e99b9a3e",
+   "source_content_sha256": "2650423d74a77ca878a8320686261497ccbd2f4e4d9b13d8f6e3636ce69a79a0",
+   "sha256": "2650423d74a77ca878a8320686261497ccbd2f4e4d9b13d8f6e3636ce69a79a0",
+   "bytes": 221743
   },
   {
    "name": "arcrun-mcp",
    "main_module": "worker.mjs",
    "main_file": "arcrun-mcp/worker.mjs",
-   "js_bytes": 1215339,
+   "js_bytes": 1215393,
    "modules": [],
    "compat_date": "2024-11-27",
    "compat_flags": [
@@ -459,10 +459,10 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "5dd01c41cc58d84bd0d854af083c48b657f77bc0",
-   "source_content_sha256": "e3190ad33e01abbe58de09a48d85af46129386bad1a52cf1eb9ce1aeb41b50af",
-   "sha256": "e3190ad33e01abbe58de09a48d85af46129386bad1a52cf1eb9ce1aeb41b50af",
-   "bytes": 1215339
+   "source_commit": "b08a8cee44cd0b8b65abd1fa027484d5e99b9a3e",
+   "source_content_sha256": "b8a27050c106631905092851a3dfdde8c4d5b6de90dc7e84fe616fd5b46291d0",
+   "sha256": "b8a27050c106631905092851a3dfdde8c4d5b6de90dc7e84fe616fd5b46291d0",
+   "bytes": 1215393
   },
   {
    "name": "arcrun-merge",
@@ -1098,7 +1098,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 204046,
+   "js_bytes": 221743,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1118,15 +1118,15 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "f8590c7252cc51761ca17980cf57206612d51b65",
-   "source_content_sha256": "a9be3bdd9678f54cae355b94427525ddeb369fb53ed281a5700df0db6765096f",
+   "source_commit": "b08a8cee44cd0b8b65abd1fa027484d5e99b9a3e",
+   "source_content_sha256": "2650423d74a77ca878a8320686261497ccbd2f4e4d9b13d8f6e3636ce69a79a0",
    "first_install": true
   },
   {
    "name": "arcrun-mcp",
    "main_module": "worker.mjs",
    "main_file": "arcrun-mcp/worker.mjs",
-   "js_bytes": 1215339,
+   "js_bytes": 1215393,
    "modules": [],
    "compat_date": "2024-11-27",
    "compat_flags": [
@@ -1141,8 +1141,8 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "5dd01c41cc58d84bd0d854af083c48b657f77bc0",
-   "source_content_sha256": "e3190ad33e01abbe58de09a48d85af46129386bad1a52cf1eb9ce1aeb41b50af",
+   "source_commit": "b08a8cee44cd0b8b65abd1fa027484d5e99b9a3e",
+   "source_content_sha256": "b8a27050c106631905092851a3dfdde8c4d5b6de90dc7e84fe616fd5b46291d0",
    "first_install": true
   },
   {
