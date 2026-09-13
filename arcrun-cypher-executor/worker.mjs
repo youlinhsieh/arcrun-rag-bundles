@@ -3525,11 +3525,11 @@ function invalidateCredentialCache(apiKey) {
 async function getCredentialDirectory(env, apiKey) {
   const now2 = Date.now();
   const cached = dirCache[apiKey];
-  if (cached && now2 - cached.fetchedAt < DIR_CACHE_TTL_MS) return cached.rows;
+  if (cached && now2 - cached.fetchedAt < DIR_CACHE_TTL_MS) return { rows: cached.rows, error: null };
   const qs = new URLSearchParams({ owner_id: apiKey, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
   const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
   if (!res.ok) {
-    return [];
+    return { rows: [], error: `KBDB \u56DE HTTP ${res.status}` };
   }
   const body = await res.json().catch(() => null);
   const rows = (body?.entries ?? []).filter((e) => !!e.page_name).map((e) => {
@@ -3544,15 +3544,15 @@ async function getCredentialDirectory(env, apiKey) {
     };
   });
   dirCache[apiKey] = { rows, fetchedAt: now2 };
-  return rows;
+  return { rows, error: null };
 }
-async function getCredentialSecretRefs(env, apiKey) {
-  const rows = await getCredentialDirectory(env, apiKey);
-  const out = {};
+async function getCredentialSecretRefsDetailed(env, apiKey) {
+  const { rows, error } = await getCredentialDirectory(env, apiKey);
+  const refs = {};
   for (const r of rows) {
-    if (r.secret_ref) out[r.name] = r.secret_ref;
+    if (r.secret_ref) refs[r.name] = r.secret_ref;
   }
-  return out;
+  return { refs, directoryError: error };
 }
 function touchLastUsed(env, apiKey, names) {
   const cached = dirCache[apiKey];
@@ -3560,6 +3560,7 @@ function touchLastUsed(env, apiKey, names) {
   const now2 = Math.floor(Date.now() / 1e3);
   for (const r of cached.rows) {
     if (!names.includes(r.name)) continue;
+    if (typeof r.last_used_at === "number" && now2 - r.last_used_at < LAST_USED_MIN_INTERVAL_S) continue;
     const meta = {
       service: r.service,
       sensitivity: r.sensitivity,
@@ -3639,7 +3640,7 @@ async function writeCredential(env, apiKey, name, value, service, sensitivityRaw
   await upsertCredentialEntry(env, apiKey, name, service ?? null, sensitivity, secretRef);
   return { secretRef, sensitivity };
 }
-var credentialsRouter, CYPHER_SCRIPT_NAME, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache;
+var credentialsRouter, CYPHER_SCRIPT_NAME, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
 var init_credentials = __esm({
   "cypher-executor/src/routes/credentials.ts"() {
     "use strict";
@@ -3651,6 +3652,43 @@ var init_credentials = __esm({
     CREDENTIAL_ENTRY_TYPE = "credential";
     DIR_CACHE_TTL_MS = 6e4;
     dirCache = {};
+    LAST_USED_MIN_INTERVAL_S = 300;
+    VALUE_LIKE_FIELDS = ["value", "secret", "token", "text", "plaintext"];
+    credentialsRouter.post("/credentials/directory", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const body = await c.req.json().catch(() => null);
+      const name = body?.name;
+      if (!validateName(name)) {
+        return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+      }
+      const offending = VALUE_LIKE_FIELDS.filter((f) => body?.[f] !== void 0);
+      if (offending.length > 0) {
+        return c.json({
+          error: `\u9019\u652F\u7AEF\u9EDE\u53EA\u5BEB\u76EE\u9304\uFF0C\u4E0D\u6536\u91D1\u9470\u503C\uFF08\u6536\u5230 ${offending.join("/")}\uFF09\u3002\u503C\u8ACB\u7531\u6301\u6709 Cloudflare \u5BEB\u5165\u6191\u8B49\u7684\u4E00\u65B9\u76F4\u63A5 PUT \u9032 Workers Secrets\uFF0Csecret \u540D\u7A31\u7528\u672C\u7AEF\u9EDE\u56DE\u7684 secret_ref\uFF08D36\uFF1A\u53EA\u6709\u4E00\u689D\u91D1\u9470\u50B3\u905E\u8DEF\u5F91\uFF09\u3002`
+        }, 400);
+      }
+      const service = typeof body?.service === "string" ? body.service : null;
+      const sensitivity = validSensitivity(body?.sensitivity) ? body.sensitivity : "standard";
+      try {
+        const secretRef = await deriveSecretRef(apiKey, name);
+        await upsertCredentialEntry(c.env, apiKey, name, service, sensitivity, secretRef);
+        return c.json({
+          success: true,
+          name,
+          service,
+          sensitivity,
+          // 呼叫端拿這兩個值去寫值那一半：PUT /accounts/:id/workers/scripts/{secret_script}/secrets
+          // body { name: secret_ref, text: <明文>, type: 'secret_text' }。
+          secret_ref: secretRef,
+          secret_script: CYPHER_SCRIPT_NAME
+        });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
     credentialsRouter.post("/credentials", async (c) => {
       const apiKey = c.req.header("X-Arcrun-API-Key");
       if (!apiKey) {
@@ -3754,13 +3792,13 @@ var init_credentials = __esm({
 });
 
 // cypher-executor/src/actions/auth-dispatcher.ts
-async function resolveSecretsFromNewHome(env, apiKey, names) {
+async function resolveSecretsFromNewHomeDetailed(env, apiKey, names) {
   const resolved = {};
-  if (names.length === 0) return resolved;
-  const refs = await getCredentialSecretRefs(env, apiKey);
-  if (Object.keys(refs).length === 0) return resolved;
+  if (names.length === 0) return { resolved, directoryError: null };
+  const { refs, directoryError } = await getCredentialSecretRefsDetailed(env, apiKey);
+  if (Object.keys(refs).length === 0) return { resolved, directoryError };
   const secretGet2 = createArcrunHostFunctions(env, apiKey).secret_get;
-  if (!secretGet2) return resolved;
+  if (!secretGet2) return { resolved, directoryError };
   const resolvedNames = [];
   for (const name of names) {
     const ref = refs[name];
@@ -3771,9 +3809,13 @@ async function resolveSecretsFromNewHome(env, apiKey, names) {
     resolvedNames.push(name);
   }
   if (resolvedNames.length > 0) touchLastUsed(env, apiKey, resolvedNames);
-  return resolved;
+  return { resolved, directoryError };
 }
-async function tryAuthDispatch(componentId, input, env, apiKey) {
+function explainCredentialFailure(message, directoryError, names) {
+  if (!directoryError) return message;
+  return `credential \u76EE\u9304\u8B80\u4E0D\u5230\uFF08${directoryError}\uFF09\uFF0C${names.join("\u3001")} \u7121\u6CD5\u5F9E\u4FDD\u7BA1\u8655\u53D6\u7528\u2014\u2014\u9019\u4E0D\u4EE3\u8868 credential \u4E0D\u5B58\u5728\uFF0C\u662F\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u9019\u4E00\u523B\u56DE\u932F\uFF0C\u8ACB\u5148\u78BA\u8A8D KBDB \u662F\u5426\u6B63\u5E38\u3002\u9000\u56DE\u820A\u8DEF\u5F91\u7684\u7D50\u679C\uFF1A${message}`;
+}
+async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
   if (AUTH_PRIMITIVE_IDS.has(componentId)) {
     return null;
   }
@@ -3786,7 +3828,8 @@ async function tryAuthDispatch(componentId, input, env, apiKey) {
   if (!recipe) return null;
   if (!SUPPORTED_PRIMITIVES.has(recipe.primitive)) return null;
   const secretNames = recipe.required_secrets.filter((s) => !s.optional).map((s) => s.key);
-  const resolvedSecrets = await resolveSecretsFromNewHome(env, apiKey, secretNames);
+  const { resolved: resolvedSecrets, directoryError } = await resolveSecretsFromNewHomeDetailed(env, apiKey, secretNames);
+  redactor?.addRecord(resolvedSecrets, (name) => `credential:${name}`);
   const primitiveUrl = wasmWorkerUrl(`auth_${recipe.primitive}`, env.WORKER_SUBDOMAIN);
   const res = await fetch(primitiveUrl, {
     method: "POST",
@@ -3802,15 +3845,23 @@ async function tryAuthDispatch(componentId, input, env, apiKey) {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `auth primitive "${recipe.primitive}" \u56DE\u50B3 ${res.status}: ${text.slice(0, 200)}`
+      explainCredentialFailure(
+        `auth primitive "${recipe.primitive}" \u56DE\u50B3 ${res.status}: ${text.slice(0, 200)}`,
+        directoryError,
+        secretNames
+      )
     );
   }
   const result = await res.json().catch(() => null);
   if (!result || result.success === false) {
     throw new Error(
-      `auth primitive \u5931\u6557: ${result?.error ?? "\u672A\u77E5\u932F\u8AA4"}`
+      explainCredentialFailure(`auth primitive \u5931\u6557: ${result?.error ?? "\u672A\u77E5\u932F\u8AA4"}`, directoryError, secretNames)
     );
   }
+  redactor?.addRecord(result.auth_headers, (k) => `auth_header:${k}`);
+  redactor?.addRecord(result.auth_query, (k) => `auth_query:${k}`);
+  redactor?.addRecord(result.auth_body, (k) => `auth_body:${k}`);
+  redactor?.addRecord(result.auth_path, (k) => `auth_path:${k}`);
   return {
     ...input,
     _auth_headers: result.auth_headers ?? {},
@@ -3845,12 +3896,13 @@ function replaceCredentialRefs(value, resolved) {
   }
   return value;
 }
-async function resolveCredentialRefs(data, env, apiKey) {
+async function resolveCredentialRefs(data, env, apiKey, redactor) {
   const names = /* @__PURE__ */ new Set();
   collectCredentialNames(data, names);
   if (names.size === 0) return data;
   const nameList = [...names];
-  const resolvedSecrets = await resolveSecretsFromNewHome(env, apiKey, nameList);
+  const { resolved: resolvedSecrets, directoryError } = await resolveSecretsFromNewHomeDetailed(env, apiKey, nameList);
+  redactor?.addRecord(resolvedSecrets, (name) => `credential:${name}`);
   if (nameList.every((n) => Object.prototype.hasOwnProperty.call(resolvedSecrets, n))) {
     return replaceCredentialRefs(data, resolvedSecrets);
   }
@@ -3867,12 +3919,17 @@ async function resolveCredentialRefs(data, env, apiKey) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`credential resolve \u56DE\u50B3 ${res.status}: ${text.slice(0, 200)}`);
+    throw new Error(
+      explainCredentialFailure(`credential resolve \u56DE\u50B3 ${res.status}: ${text.slice(0, 200)}`, directoryError, nameList)
+    );
   }
   const result = await res.json().catch(() => null);
   if (!result || result.success === false) {
-    throw new Error(`credential resolve \u5931\u6557: ${result?.error ?? "\u672A\u77E5\u932F\u8AA4"}`);
+    throw new Error(
+      explainCredentialFailure(`credential resolve \u5931\u6557: ${result?.error ?? "\u672A\u77E5\u932F\u8AA4"}`, directoryError, nameList)
+    );
   }
+  redactor?.addRecord(result.credentials, (name) => `credential:${name}`);
   return replaceCredentialRefs(data, result.credentials ?? {});
 }
 var SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
@@ -8204,6 +8261,17 @@ var init_magic_vars = __esm({
 });
 
 // cypher-executor/src/lib/telemetry.ts
+function recordNodeSteps(env, apiKey, workflowName, steps, ctx) {
+  if (steps.length === 0) return;
+  const failed = steps.filter((s) => !s.ok).length;
+  recordTelemetry(env, apiKey, {
+    event_type: "node_steps",
+    workflow_name: workflowName,
+    duration_ms: steps.reduce((sum, s) => sum + s.duration_ms, 0),
+    ...failed > 0 ? { error_code: "node_error" } : {},
+    steps
+  }, ctx);
+}
 async function hashApiKey(apiKey) {
   if (!apiKey) return "anon";
   const encoder = new TextEncoder();
@@ -8260,6 +8328,93 @@ function recordTelemetry(env, apiKey, record, ctx) {
 var init_telemetry = __esm({
   "cypher-executor/src/lib/telemetry.ts"() {
     "use strict";
+  }
+});
+
+// cypher-executor/src/lib/trace-redaction.ts
+function redactionMarker(label) {
+  return `[redacted:${label}]`;
+}
+var MIN_SUBSTRING_LEN, MAX_DEPTH, TraceRedactor;
+var init_trace_redaction = __esm({
+  "cypher-executor/src/lib/trace-redaction.ts"() {
+    "use strict";
+    MIN_SUBSTRING_LEN = 4;
+    MAX_DEPTH = 64;
+    TraceRedactor = class {
+      /** 真身 → 標記用的 label。用 Map 讓同一個值只登記一次。 */
+      labels = /* @__PURE__ */ new Map();
+      /** 依長度由長到短排序的真身清單（先換長的，避免長值被短值切碎）。 */
+      sortedCache = null;
+      /**
+       * 登記一個「不准出現在 trace 裡」的真身。
+       * 非字串、空字串、純空白一律忽略（那些不是秘密，拿去比對只會誤傷）。
+       */
+      add(value, label) {
+        if (typeof value !== "string") return;
+        if (value.trim().length === 0) return;
+        if (this.labels.has(value)) return;
+        this.labels.set(value, label);
+        this.sortedCache = null;
+      }
+      /** 登記一整個 `{ name: 真身 }` map；label 由 name 決定。 */
+      addRecord(record, label) {
+        if (!record || typeof record !== "object") return;
+        for (const [key, value] of Object.entries(record)) this.add(value, label(key));
+      }
+      /** 目前登記了幾個真身（0 = 這次執行沒用到任何 credential，redact 直接短路）。 */
+      get size() {
+        return this.labels.size;
+      }
+      /** 把一個字串裡所有登記過的真身換成標記。 */
+      redactString(input) {
+        if (this.labels.size === 0) return input;
+        let out = input;
+        for (const secret of this.sorted()) {
+          const marker = redactionMarker(this.labels.get(secret));
+          if (secret.length < MIN_SUBSTRING_LEN) {
+            if (out === secret) out = marker;
+            continue;
+          }
+          if (out.includes(secret)) out = out.split(secret).join(marker);
+        }
+        return out;
+      }
+      /**
+       * 深走一個值，回傳「同形狀但值被遮過」的副本。
+       * 沒登記任何真身時原樣回傳同一個 reference（零成本，不影響 99% 的執行）。
+       */
+      redact(value) {
+        if (this.labels.size === 0) return value;
+        return this.walk(value, /* @__PURE__ */ new WeakMap(), 0);
+      }
+      sorted() {
+        if (this.sortedCache === null) {
+          this.sortedCache = [...this.labels.keys()].sort((a, b) => b.length - a.length);
+        }
+        return this.sortedCache;
+      }
+      walk(value, seen, depth) {
+        if (typeof value === "string") return this.redactString(value);
+        if (value === null || typeof value !== "object") return value;
+        if (value instanceof Date) return value;
+        if (depth >= MAX_DEPTH) return redactionMarker("depth-limit");
+        const cached = seen.get(value);
+        if (cached !== void 0) return cached;
+        if (Array.isArray(value)) {
+          const out2 = [];
+          seen.set(value, out2);
+          for (const item of value) out2.push(this.walk(item, seen, depth + 1));
+          return out2;
+        }
+        const out = {};
+        seen.set(value, out);
+        for (const [key, child] of Object.entries(value)) {
+          out[this.redactString(key)] = this.walk(child, seen, depth + 1);
+        }
+        return out;
+      }
+    };
   }
 });
 
@@ -8383,6 +8538,7 @@ var init_graph_executor = __esm({
     init_paused_runs();
     init_magic_vars();
     init_telemetry();
+    init_trace_redaction();
     GraphExecutor = class _GraphExecutor {
       loader;
       workflowLoader;
@@ -8397,6 +8553,18 @@ var init_graph_executor = __esm({
       // 暫停時持久化 state 用，需在 execute 進入時設定
       currentGraph;
       currentRunId;
+      // inkstone/Arcrun#197：本次執行解出來的 credential 真身名單。
+      // 唯一用途＝把值寫進「除錯面」（trace / failed_input / 錯誤訊息 / 回傳的 data）之前
+      // 換成標記。每次 execute / resumeFromPaused 進入時重建，不跨執行殘留。
+      //
+      // 🔴 為什麼遮在這裡而不是在各個 route：trace 只有這一個產地，
+      // 而它的消費端有五個（POST /execute、cypher-handlers、webhook-handlers、
+      // GET /executions/:task_id、POST /workflows/resume）＋ 一個持久化端（paused KV）。
+      // 遮在產地＝六個出口一次補齊；遮在出口＝下一個新出口又會漏。
+      redactor = new TraceRedactor();
+      // inkstone/arcrun-rag#196：本次執行的 step-level 遙測先收在這裡，執行結束寫成一筆。
+      // 原本每個 Component 節點各打一次 fetch，佔掉免費層每次呼叫 50 子請求的額度。
+      nodeSteps = [];
       constructor(loader, workflowLoader, env, apiKey) {
         this.loader = loader;
         this.workflowLoader = workflowLoader;
@@ -8405,6 +8573,7 @@ var init_graph_executor = __esm({
       }
       async execute(graph, initialContext, kvNamespace) {
         const trace = [];
+        this.redactor = new TraceRedactor();
         const kvStore = kvNamespace ? { runId: `${graph.id}-${Date.now()}`, kv: kvNamespace } : void 0;
         this.currentGraph = graph;
         this.currentRunId = kvStore?.runId ?? `${graph.id}-${Date.now()}`;
@@ -8424,11 +8593,17 @@ var init_graph_executor = __esm({
             fanIn.set(node.id, { ctx: { ...ctxWithMagic }, remaining: inDeg });
           }
         }
-        const results = await Promise.all(
-          startNodes.map(
-            (node) => this.executeNode(node, graph, ctxWithMagic, /* @__PURE__ */ new Set(), trace, fanIn, kvStore)
-          )
-        );
+        this.nodeSteps = [];
+        let results;
+        try {
+          results = await Promise.all(
+            startNodes.map(
+              (node) => this.executeNode(node, graph, ctxWithMagic, /* @__PURE__ */ new Set(), trace, fanIn, kvStore)
+            )
+          );
+        } finally {
+          this.flushNodeSteps(graph);
+        }
         let mergedResult;
         if (results.length === 1) {
           mergedResult = results[0];
@@ -8441,7 +8616,7 @@ var init_graph_executor = __esm({
             {}
           );
         }
-        return { data: mergedResult, trace };
+        return { data: this.redactor.redact(mergedResult), trace };
       }
       /**
        * 從 paused state 繼續執行 workflow
@@ -8455,6 +8630,7 @@ var init_graph_executor = __esm({
       async resumeFromPaused(args) {
         const { graph, paused_node_id, paused_context, prior_trace, kvNamespace } = args;
         let { callback_result } = args;
+        this.redactor = new TraceRedactor();
         callback_result = parseRecipeOutput(
           callback_result,
           args.recipe_output_format,
@@ -8478,7 +8654,7 @@ var init_graph_executor = __esm({
         }
         const downstreamEdges = graph.edges.filter((e) => e.from === paused_node_id);
         if (downstreamEdges.length === 0) {
-          return { data: callback_result, trace };
+          return { data: this.redactor.redact(callback_result), trace };
         }
         const fanIn = /* @__PURE__ */ new Map();
         for (const node of graph.nodes) {
@@ -8489,11 +8665,17 @@ var init_graph_executor = __esm({
         }
         const visited = /* @__PURE__ */ new Set([`${paused_node_id}:${JSON.stringify(paused_context).slice(0, 50)}`]);
         const downstreamNodes = downstreamEdges.map((e) => graph.nodes.find((n) => n.id === e.to)).filter((n) => !!n);
-        const results = await Promise.all(
-          downstreamNodes.map(
-            (node) => this.executeNode(node, graph, mergedContext, visited, trace, fanIn, kvStore)
-          )
-        );
+        this.nodeSteps = [];
+        let results;
+        try {
+          results = await Promise.all(
+            downstreamNodes.map(
+              (node) => this.executeNode(node, graph, mergedContext, visited, trace, fanIn, kvStore)
+            )
+          );
+        } finally {
+          this.flushNodeSteps(graph);
+        }
         let mergedResult;
         if (results.length === 1) {
           mergedResult = results[0];
@@ -8506,7 +8688,13 @@ var init_graph_executor = __esm({
             {}
           );
         }
-        return { data: mergedResult, trace };
+        return { data: this.redactor.redact(mergedResult), trace };
+      }
+      /** 把本次收集的 step-level 遙測寫成一筆（成功、失敗、暫停都寫）。 */
+      flushNodeSteps(graph) {
+        const steps = this.nodeSteps;
+        this.nodeSteps = [];
+        if (this.env && steps.length > 0) recordNodeSteps(this.env, this.apiKey, graph.name, steps);
       }
       async executeNode(node, graph, context, visited, trace, fanIn, kvStore) {
         const nodeKey = `${node.id}:${JSON.stringify(context).slice(0, 50)}`;
@@ -8525,14 +8713,13 @@ var init_graph_executor = __esm({
               if (!node.componentId) throw new Error(`\u7BC0\u9EDE ${node.id} \u7F3A\u5C11 componentId`);
               const runner = await this.loader(node.componentId);
               const ctx = context;
-              const resolvedData = interpolateData(node.data, ctx);
+              const authoredData = node.data ?? {};
+              const dataWithCredentials = this.env && this.apiKey ? await resolveCredentialRefs(authoredData, this.env, this.apiKey, this.redactor) : authoredData;
+              const resolvedData = interpolateData(dataWithCredentials, ctx);
               let mergedContext = {
                 ...ctx,
                 ...resolvedData
               };
-              if (this.env && this.apiKey) {
-                mergedContext = await resolveCredentialRefs(mergedContext, this.env, this.apiKey);
-              }
               if (node.componentId === "claude_api") {
                 const baseUrl = this.env?.PUBLIC_BASE_URL ?? "https://cypher.arcrun.dev";
                 mergedContext.callback_url = `${baseUrl.replace(/\/$/, "")}/workflows/resume`;
@@ -8557,7 +8744,7 @@ var init_graph_executor = __esm({
                 }
               }
               if (this.env && this.apiKey) {
-                const dispatched = await tryAuthDispatch(node.componentId, mergedContext, this.env, this.apiKey);
+                const dispatched = await tryAuthDispatch(node.componentId, mergedContext, this.env, this.apiKey, this.redactor);
                 if (dispatched) {
                   mergedContext = dispatched;
                 }
@@ -8576,8 +8763,8 @@ var init_graph_executor = __esm({
                 trace.push({
                   nodeId: node.id,
                   type: node.type,
-                  input: nodeInput,
-                  output: result,
+                  input: this.redactor.redact(nodeInput),
+                  output: this.redactor.redact(result),
                   duration_ms: Date.now() - start
                 });
                 await persistPausedRun(this.env.EXEC_CONTEXT, pending.task_id, {
@@ -8612,30 +8799,25 @@ var init_graph_executor = __esm({
           }
         } catch (e) {
           if (e instanceof WorkflowPaused) throw e;
-          const errMsg = e.message || String(e);
+          const errMsg = this.redactor.redactString(e.message || String(e));
           const duration_ms2 = Date.now() - start;
           trace.push({
             nodeId: node.id,
             type: node.type,
-            input: nodeInput,
+            input: this.redactor.redact(nodeInput),
             output: null,
             error: errMsg,
             duration_ms: duration_ms2
           });
-          if (this.env && node.type === "Component") {
-            recordTelemetry(this.env, this.apiKey, {
-              event_type: "node_failure",
-              workflow_name: graph.name,
-              component_id: node.componentId,
-              error_code: "node_error",
-              duration_ms: duration_ms2
-            });
+          if (node.type === "Component") {
+            this.nodeSteps.push({ component_id: node.componentId, duration_ms: duration_ms2, ok: false, error_code: "node_error" });
           }
           if (e instanceof ExecutionError) throw e;
           throw new ExecutionError(
             `Node ${node.id} failed: ${errMsg}`,
             node.id,
-            nodeInput,
+            // #197：`failed_input` 直接進 HTTP 回應（execute.ts / cypher-handlers.ts）
+            this.redactor.redact(nodeInput),
             trace
           );
         }
@@ -8643,17 +8825,12 @@ var init_graph_executor = __esm({
         trace.push({
           nodeId: node.id,
           type: node.type,
-          input: nodeInput,
-          output: result,
+          input: this.redactor.redact(nodeInput),
+          output: this.redactor.redact(result),
           duration_ms
         });
-        if (this.env && node.type === "Component") {
-          recordTelemetry(this.env, this.apiKey, {
-            event_type: "node_success",
-            workflow_name: graph.name,
-            component_id: node.componentId,
-            duration_ms
-          });
+        if (node.type === "Component") {
+          this.nodeSteps.push({ component_id: node.componentId, duration_ms, ok: true });
         }
         const outEdges = graph.edges.filter((e) => e.from === node.id);
         for (const edge of outEdges) {
@@ -8860,6 +9037,17 @@ function componentVerdictsFromTrace(nodes, trace) {
   }
   return verdicts;
 }
+function aggregateVerdicts(verdicts) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const v of verdicts) {
+    const a = byId.get(v.component_id) ?? { component_id: v.component_id, runs: 0, success_runs: 0, duration_ms: 0 };
+    a.runs += 1;
+    a.success_runs += v.success ? 1 : 0;
+    a.duration_ms += v.duration_ms;
+    byId.set(v.component_id, a);
+  }
+  return [...byId.values()];
+}
 async function recordComponentStats(env, nodes, trace) {
   try {
     const base = (env.REGISTRY_BASE_URL ?? (env.WORKER_SUBDOMAIN ? wasmWorkerUrl("registry", env.WORKER_SUBDOMAIN) : void 0))?.replace(/\/$/, "");
@@ -8867,14 +9055,17 @@ async function recordComponentStats(env, nodes, trace) {
     const verdicts = componentVerdictsFromTrace(nodes, trace);
     if (verdicts.length === 0) return;
     await Promise.all(
-      verdicts.map(
-        (v) => fetch(`${base}/analytics/record`, {
+      aggregateVerdicts(verdicts).map(
+        (a) => fetch(`${base}/analytics/record`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            canonical_id: v.component_id,
-            success: v.success,
-            duration_ms: v.duration_ms
+            canonical_id: a.component_id,
+            // 舊版 registry 不認 runs 時只會記 1 筆：給它「全部成功才算成功」的保守值
+            success: a.success_runs === a.runs,
+            duration_ms: a.duration_ms,
+            runs: a.runs,
+            success_runs: a.success_runs
           })
         }).catch(() => void 0)
         // 統計失敗不影響執行
@@ -12906,6 +13097,53 @@ function generatePassword(length = 16) {
   return out;
 }
 
+// cypher-executor/src/lib/mcp-redirect-hosts.ts
+var MCP_BUILTIN_REDIRECT_HOSTS = ["claude.ai", "claude.com", "anthropic.com"];
+var MCP_REDIRECT_HOST_TEMPLATE = "portal_mcp_redirect_host";
+function normalizeRedirectHost(input) {
+  const raw2 = String(input ?? "").trim();
+  if (!raw2) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
+  let host = raw2.toLowerCase();
+  if (host.includes("://")) {
+    let u;
+    try {
+      u = new URL(raw2);
+    } catch {
+      return { ok: false, error: `\u770B\u4E0D\u61C2\u9019\u500B\u7DB2\u5740\uFF1A${raw2}` };
+    }
+    if (u.protocol !== "https:" && u.protocol !== "http:") {
+      return { ok: false, error: "\u53EA\u6536 https:// \u958B\u982D\u7684\u7DB2\u5740\uFF08\u672C\u6A5F\u6E2C\u8A66\u53EF\u7528 localhost\uFF09" };
+    }
+    host = u.hostname.toLowerCase();
+  } else {
+    host = host.split("/")[0].split("?")[0];
+    if (host.includes("@")) return { ok: false, error: "\u8ACB\u4E0D\u8981\u5E36\u5E33\u865F\u5BC6\u78BC\uFF0C\u53EA\u8981\u7DB2\u57DF\u5C31\u597D" };
+    if (host.startsWith("[")) return { ok: false, error: "\u4E0D\u652F\u63F4 IPv6 \u4F4D\u5740\uFF0C\u672C\u6A5F\u6E2C\u8A66\u8ACB\u586B localhost" };
+    host = host.split(":")[0];
+  }
+  if (!host) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host)) {
+    return { ok: false, error: `\u300C${raw2}\u300D\u4E0D\u662F\u5408\u6CD5\u7684\u7DB2\u57DF\u3002\u4E0D\u63A5\u53D7\u842C\u7528\u5B57\u5143\uFF0C\u8ACB\u586B\u78BA\u5207\u7684\u7DB2\u57DF` };
+  }
+  const isLocal = host === "localhost" || host === "127.0.0.1";
+  if (!isLocal && !host.includes(".")) {
+    return { ok: false, error: `\u300C${host}\u300D\u770B\u8D77\u4F86\u4E0D\u662F\u5B8C\u6574\u7DB2\u57DF\uFF08\u5C11\u4E86 .com \u4E4B\u985E\u7684\u7D50\u5C3E\uFF09` };
+  }
+  if (host.length > 253) return { ok: false, error: "\u7DB2\u57DF\u592A\u9577" };
+  if (!isLocal && host.split(".").length < 2) {
+    return { ok: false, error: `\u300C${host}\u300D\u7BC4\u570D\u592A\u5927\uFF0C\u8ACB\u586B\u5B8C\u6574\u7DB2\u57DF` };
+  }
+  if (MCP_BUILTIN_REDIRECT_HOSTS.some((h) => host === h || host.endsWith("." + h))) {
+    return { ok: false, error: `\u300C${host}\u300D\u662F\u5167\u5EFA\u5C31\u5141\u8A31\u7684\u7DB2\u57DF\uFF08Claude \u5B98\u65B9\uFF09\uFF0C\u4E0D\u5FC5\u518D\u52A0\u4E00\u6B21` };
+  }
+  return { ok: true, host };
+}
+function mcpUrlFor(subdomain) {
+  const sub = String(subdomain ?? "").trim();
+  if (!sub) return "";
+  return `https://arcrun-mcp.${sub}.workers.dev/mcp`;
+}
+
 // cypher-executor/src/lib/portal-seeds.ts
 var PORTAL_TEMPLATE_SEEDS = [
   {
@@ -12936,6 +13174,20 @@ var PORTAL_TEMPLATE_SEEDS = [
     name: "portal_library",
     description: "RAG Portal \u5EAB\u76EE\u9304\u767B\u8A18\uFF08portal-auth \xA73.2\uFF1B\u4E00\u500B\u5EAB\uFF1D\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u4E00\u500B\u8CC7\u6599\u593E\uFF09",
     slots: ["name", "display_name", "description", "status", "graph_source", "root", "mode", "reason"],
+    created_by: "system"
+  },
+  {
+    // `inkstone/Arcrun#164`：「哪些網址可以接我的 MCP」——一個網域一筆 record。
+    // 為什麼是 record 而不是一個字串設定：加了誰要留得下痕跡（本票紅線第三條），
+    // 而「誰在什麼時候加的」是這個物件本身的屬性，不是一團 JSON（D91 同一條）。
+    //   host       ＝ 已正規化的小寫網域（lib/mcp-redirect-hosts.ts normalizeRedirectHost）
+    //   label      ＝ 使用者自己認得的名字（「我的 n8n」），純顯示用
+    //   created_at ＝ ISO 時間字串
+    //   created_by ＝ 加它的那個 portal 帳號 email
+    // 🔴 不寫 KV（leo 2026-08-25 已禁長效用途），也不加 D1 表——這是 KBDB 萬用表的 template。
+    name: "portal_mcp_redirect_host",
+    description: "MCP OAuth \u5141\u8A31\u7684 redirect \u7DB2\u57DF\uFF08Arcrun#164\uFF1B\u4E00\u500B\u7DB2\u57DF\u4E00\u7B46\uFF0C\u53EF\u52A0\u53EF\u6536\u56DE\uFF09",
+    slots: ["host", "label", "created_at", "created_by"],
     created_by: "system"
   },
   {
@@ -14460,6 +14712,106 @@ portalRouter.put(
     if (!res.ok) throw new KbdbError(`PUT /execution-log/retention \u2192 ${res.status}`);
     const data = await res.json();
     return c.json({ success: true, retention_days: data.retention_days ?? null });
+  })
+);
+async function listMcpRedirectHosts(env) {
+  const rows = await listRecordsByTemplate(env, MCP_REDIRECT_HOST_TEMPLATE);
+  return rows.filter((r) => (r.values.host ?? "").trim() !== "").sort((a, b) => (a.values.host ?? "").localeCompare(b.values.host ?? ""));
+}
+portalRouter.get(
+  "/portal/mcp-settings",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const isAdmin = (auth.user.values.role ?? "") === "admin";
+    const sub = String(c.env.WORKER_SUBDOMAIN ?? "").trim();
+    const mcpUrl = mcpUrlFor(sub);
+    const payload = {
+      success: true,
+      mcp_url: mcpUrl,
+      // 誠實講「為什麼沒有」：這台實例的部署設定裡沒有 WORKER_SUBDOMAIN ⇒ 多半是安裝
+      // 中途失敗（畫面卻說裝好了）。不要讓使用者以為是自己沒找到。
+      mcp_url_reason: mcpUrl ? "" : "\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u8A18\u9304\u81EA\u5DF1\u7684\u90E8\u7F72\u4F4D\u7F6E\uFF08\u5B89\u88DD\u53EF\u80FD\u6C92\u6709\u5B8C\u6210\uFF09\uFF0C\u6240\u4EE5\u7B97\u4E0D\u51FA MCP \u7DB2\u5740",
+      builtin_hosts: [...MCP_BUILTIN_REDIRECT_HOSTS],
+      can_edit: isAdmin
+    };
+    if (isAdmin) {
+      payload.hosts = (await listMcpRedirectHosts(c.env)).map((r) => ({
+        record_id: r.record_id,
+        host: r.values.host ?? "",
+        label: r.values.label ?? "",
+        created_at: r.values.created_at ?? "",
+        created_by: r.values.created_by ?? ""
+      }));
+    }
+    return c.json(payload);
+  })
+);
+portalRouter.post(
+  "/portal/admin/mcp-redirect-hosts",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const norm = normalizeRedirectHost(body?.host);
+    if (!norm.ok) return c.json({ error: norm.error }, 400);
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const existing = await listMcpRedirectHosts(c.env);
+    const dup = existing.find((r) => (r.values.host ?? "") === norm.host);
+    if (dup) {
+      return c.json({ success: true, already: true, host: norm.host, record_id: dup.record_id });
+    }
+    const ns = portalNamespace(c.env);
+    const res = await kbdbFetch(c.env, "/records", {
+      method: "POST",
+      body: JSON.stringify({
+        template: MCP_REDIRECT_HOST_TEMPLATE,
+        owner_id: ns,
+        values: {
+          host: norm.host,
+          label: String(body?.label ?? "").trim().slice(0, 80),
+          created_at: (/* @__PURE__ */ new Date()).toISOString(),
+          created_by: auth.user.values.email ?? ""
+        }
+      })
+    });
+    if (!res.ok) throw new KbdbError(`POST /records\uFF08${MCP_REDIRECT_HOST_TEMPLATE}\uFF09\u2192 ${res.status}`);
+    const created = await res.json().catch(() => null);
+    return c.json({
+      success: true,
+      host: norm.host,
+      record_id: created?.record_id ?? created?.record?.record_id ?? ""
+    });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/mcp-redirect-hosts/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recordId = c.req.param("id");
+    const rows = await listMcpRedirectHosts(c.env);
+    const target = rows.find((r) => r.record_id === recordId);
+    if (!target) return c.json({ error: "\u9019\u500B\u7DB2\u57DF\u4E0D\u5728\u540D\u55AE\u4E0A\uFF08\u53EF\u80FD\u5DF2\u7D93\u88AB\u79FB\u9664\u4E86\uFF09" }, 404);
+    const found = await deleteKbdbRecord(c.env, recordId);
+    if (!found) return c.json({ error: "\u9019\u500B\u7DB2\u57DF\u4E0D\u5728\u540D\u55AE\u4E0A\uFF08\u53EF\u80FD\u5DF2\u7D93\u88AB\u79FB\u9664\u4E86\uFF09" }, 404);
+    return c.json({ success: true, host: target.values.host ?? "" });
+  })
+);
+portalRouter.get(
+  "/portal/internal/mcp-redirect-hosts",
+  (c) => run(c, async () => {
+    const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+    if (!expected) {
+      return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09\uFF0C\u7121\u6CD5\u56DE\u7B54" }, 503);
+    }
+    const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+    if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
+    const rows = await listMcpRedirectHosts(c.env);
+    return c.json({ success: true, hosts: rows.map((r) => (r.values.host ?? "").trim()).filter(Boolean) });
   })
 );
 portalRouter.delete(
@@ -17288,11 +17640,12 @@ portalDataRouter.get(
     return c.json({ success: true, entry });
   })
 );
-async function fetchNeighborsFromKbdb(env, tenant2, node, depth, libraries) {
+async function fetchNeighborsFromKbdb(env, tenant2, node, depth, libraries, directed) {
   const qs = new URLSearchParams();
   qs.set("depth", String(depth));
   qs.set("template", "triplet");
   if (!libraries.includes("*")) qs.set("library", libraries.join(","));
+  if (directed) qs.set("directed", "true");
   const res = await kbdbFetch(env, `/graph/neighbors/${encodeURIComponent(node)}?${qs.toString()}&${ownerQuery(tenant2)}`);
   const body = await res.json().catch(() => null);
   return { ok: res.ok, status: res.status, body };
@@ -17310,13 +17663,14 @@ portalDataRouter.get(
     const rawName = c.req.param("name");
     const depthRaw = c.req.query("depth") ?? "";
     const depth = /^\d{1,2}$/.test(depthRaw) ? Number(depthRaw) : 2;
+    const directed = c.req.query("directed") === "true";
     const tryNames = [rawName];
     const normalized = normalizeCjkQuery(rawName);
     if (normalized !== rawName) tryNames.push(normalized);
     let first = null;
     try {
       for (const name of tryNames) {
-        const r = await fetchNeighborsFromKbdb(c.env, tenant2, name, depth, libraries);
+        const r = await fetchNeighborsFromKbdb(c.env, tenant2, name, depth, libraries, directed);
         if (!first) first = r;
         if (!r.ok) break;
         const mapped = mapGraphNeighborsResponse(r.body);
@@ -17325,7 +17679,7 @@ portalDataRouter.get(
       if (first?.ok) {
         const fallbackName = await fuzzyFindNode(c.env, tenant2, rawName, libraries);
         if (fallbackName && !tryNames.includes(fallbackName)) {
-          const r = await fetchNeighborsFromKbdb(c.env, tenant2, fallbackName, depth, libraries);
+          const r = await fetchNeighborsFromKbdb(c.env, tenant2, fallbackName, depth, libraries, directed);
           if (r.ok) {
             const mapped = mapGraphNeighborsResponse(r.body);
             if (mapped.count > 0) return c.json(mapped);

@@ -31796,11 +31796,11 @@ function registerAllKbdbDataTools(server, env, identity) {
 function registerCreateTemplate(server, env, identity) {
   server.tool(
     "kbdb_create_template",
-    "\u5EFA\u4E00\u500B KBDB template\uFF08\u842C\u7528\u8868\u88E1\u7684\u4E00\u7A2E\u8CC7\u6599\u5F62\u72C0\uFF0C\u985E Supabase \u7684\u865B\u64EC\u8868\uFF09\u3002KBDB \u4E0D\u80FD\u5EFA\u771F\u7684\u8CC7\u6599\u8868\u2014\u2014\u8981\u5B58\u300C\u65B0\u985E\u578B\u300D\u7684\u7D50\u69CB\u5316\u8CC7\u6599\u6642\uFF0C\u5C31\u5EFA\u4E00\u500B template \u4E26\u7528 slots \u5217\u51FA\u5B83\u7684\u6B04\u4F4D\u540D\uFF0C\u4E4B\u5F8C\u7528 kbdb_create_record \u586B\u503C\u3002\u4F8B\uFF1Aname='contact', slots=['name','email','phone']\u3002",
+    "\u5728 KBDB \u5EFA\u4E00\u5F35**\u865B\u64EC\u8868**\uFF08\u5BE6\u4F5C\u88E1\u53EB sheet\uFF09\u3002KBDB \u6C38\u9060\u4E0D\u52A0\u771F\u7684\u8CC7\u6599\u8868\uFF0C\u4E5F\u4E0D\u63A5\u53D7 SQL\u2014\u2014\u8981\u5B58\u300C\u65B0\u985E\u578B\u300D\u7684\u7D50\u69CB\u5316\u8CC7\u6599\u6642\uFF0C\u5C31\u5EFA\u4E00\u5F35\u865B\u64EC\u8868\uFF0C\u7528 slots \u5217\u51FA\u5B83\u7684**\u865B\u64EC\u6B04\u4F4D**\u540D\uFF0C\u4E4B\u5F8C\u7528 kbdb_create_record \u586B\u503C\u3002\u4F8B\uFF1Aname='contact', slots=['name','email','phone']\u3002\u{1F534} \u60F3\u5230 CREATE TABLE / ALTER TABLE \u5C31\u662F\u7528\u932F\u6A5F\u5236\u4E86\uFF1A\u6B63\u89E3\u6C38\u9060\u662F\u9019\u652F\u5DE5\u5177\u3002",
     {
-      name: external_exports.string().min(1).describe("template \u540D\u7A31\uFF08\u552F\u4E00\u8B58\u5225\uFF0C\u4E4B\u5F8C\u586B record \u7528\u9019\u500B\u540D\u5B57\uFF09\uFF0C\u5982 'contact' / 'note'"),
-      slots: external_exports.array(external_exports.string().min(1)).min(1).describe("\u6B04\u4F4D\u540D\u6E05\u55AE\uFF0C\u5982 ['name','email','phone']"),
-      description: external_exports.string().optional().describe("\u9019\u500B template \u7528\u9014\u7684\u7C21\u8FF0\uFF08\u9078\u586B\uFF09"),
+      name: external_exports.string().min(1).describe("\u865B\u64EC\u8868\u7684\u540D\u5B57\uFF08\u552F\u4E00\u8B58\u5225\uFF0C\u4E4B\u5F8C\u586B record \u7528\u9019\u500B\u540D\u5B57\uFF09\uFF0C\u5982 'contact' / 'note'"),
+      slots: external_exports.array(external_exports.string().min(1)).min(1).describe("**\u865B\u64EC\u6B04\u4F4D**\u540D\u6E05\u55AE\uFF0C\u5982 ['name','email','phone']\uFF08\u53C3\u6578\u540D slots \u662F\u6B77\u53F2\u6CBF\u7528\uFF0C\u4E0D\u662F\u90A3\u5F35\u4E0D\u5B58\u5728\u7684 slots \u8868\uFF09"),
+      description: external_exports.string().optional().describe("\u9019\u5F35\u865B\u64EC\u8868\u7528\u9014\u7684\u7C21\u8FF0\uFF08\u9078\u586B\uFF09"),
       created_by: external_exports.string().optional().describe("\u5EFA\u7ACB\u8005\u6A19\u8A18\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u7531 server \u8A18\u9304\uFF0C\u4E0D\u5403\u6B64\u503C\uFF09")
     },
     async ({ name, slots, description, created_by }) => {
@@ -31831,7 +31831,7 @@ function registerCreateTemplate(server, env, identity) {
 function registerListTemplates(server, env, identity) {
   server.tool(
     "kbdb_list_templates",
-    "\u5217\u51FA KBDB \u88E1\u6240\u6709 template\uFF08\u5DF2\u5B9A\u7FA9\u7684\u8CC7\u6599\u5F62\u72C0\uFF09\u3002\u8981\u5B58\u8CC7\u6599\u524D\u5148\u770B\u6709\u6C92\u6709\u73FE\u6210 template \u53EF\u7528\uFF0C\u6C92\u6709\u518D kbdb_create_template\u3002",
+    "\u5217\u51FA KBDB \u88E1\u6240\u6709**\u865B\u64EC\u8868**\uFF08\u5DF2\u5B9A\u7FA9\u7684\u8CC7\u6599\u5F62\u72C0\uFF09\u3002\u8981\u5B58\u8CC7\u6599\u524D\u5148\u770B\u6709\u6C92\u6709\u73FE\u6210\u7684\u53EF\u7528\uFF0C\u6C92\u6709\u518D kbdb_create_template\u3002\u56DE\u61C9\u88E1\u6BCF\u5F35\u8868\u7684 slots_json \u5C31\u662F\u5B83\u7684**\u865B\u64EC\u6B04\u4F4D**\u6E05\u55AE\u3002",
     {},
     async () => {
       if (identity.kind === "stale") return staleIdentityError();
@@ -31843,9 +31843,9 @@ function registerListTemplates(server, env, identity) {
         }
         const data = await res.json();
         return successResponse(data, [
-          "\u6BCF\u500B template \u7684 slots_json \u662F\u5B83\u7684\u6B04\u4F4D\u6E05\u55AE",
+          "\u6BCF\u5F35\u865B\u64EC\u8868\u7684 slots_json \u662F\u5B83\u7684\u865B\u64EC\u6B04\u4F4D\u6E05\u55AE",
           "\u586B\u8CC7\u6599\u7528 kbdb_create_record",
-          "template \u662F\u5168\u57DF\u5171\u4EAB\u7684\u300C\u8CC7\u6599\u5F62\u72C0\u300D\u5B9A\u7FA9\uFF08schema\uFF09\uFF0C\u4E0D\u542B\u4EFB\u4F55\u4EBA\u7684\u5167\u5BB9\u2014\u2014\u5167\u5BB9\u7684\u6B0A\u9650\u5728 record/entry \u90A3\u5C64"
+          "\u865B\u64EC\u8868\u662F\u5168\u57DF\u5171\u4EAB\u7684\u300C\u8CC7\u6599\u5F62\u72C0\u300D\u5B9A\u7FA9\uFF0C\u4E0D\u542B\u4EFB\u4F55\u4EBA\u7684\u5167\u5BB9\u2014\u2014\u5167\u5BB9\u7684\u6B0A\u9650\u5728 record/entry \u90A3\u5C64"
         ]);
       } catch (e) {
         return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
@@ -31856,10 +31856,10 @@ function registerListTemplates(server, env, identity) {
 function registerCreateRecord(server, env, identity) {
   server.tool(
     "kbdb_create_record",
-    "\u4F9D\u67D0 template \u586B\u4E00\u7B46 record\uFF08\u4E00\u5217\u8CC7\u6599\uFF09\u3002values \u662F {slot\u540D: \u5167\u5BB9}\uFF0Cslot \u540D\u8981\u5C0D\u5F97\u4E0A template \u7684 slots\u3002template \u4E0D\u5B58\u5728\u6703\u5931\u6557\u2014\u2014\u5148 kbdb_list_templates \u78BA\u8A8D\uFF0C\u6216 kbdb_create_template \u5EFA\u4E00\u500B\u3002",
+    "\u4F9D\u67D0\u5F35**\u865B\u64EC\u8868**\u586B\u4E00\u5217\u8CC7\u6599\uFF08record\uFF09\u3002values \u662F {\u865B\u64EC\u6B04\u4F4D\u540D: \u5167\u5BB9}\uFF0C\u6B04\u4F4D\u540D\u8981\u5C0D\u5F97\u4E0A\u90A3\u5F35\u8868\u5BA3\u544A\u7684\u6B04\u4F4D\u3002\u865B\u64EC\u8868\u4E0D\u5B58\u5728\u6703\u5931\u6557\u2014\u2014\u5148 kbdb_list_templates \u78BA\u8A8D\uFF0C\u6216 kbdb_create_template \u5EFA\u4E00\u5F35\u3002\u26A0\uFE0F values \u88E1**\u6C92\u5BA3\u544A\u904E\u7684\u6B04\u4F4D\u540D\u6703\u88AB\u975C\u9ED8\u4E1F\u6389**\uFF08\u56DE 200 \u4F46\u90A3\u683C\u6C92\u5BEB\u9032\u53BB\uFF09\u21D2 \u5BEB\u5B8C\u7528 kbdb_get_record \u8B80\u56DE\u4F86\u6838\u5C0D\u3002",
     {
-      template: external_exports.string().min(1).describe("template \u7684 name \u6216 id"),
-      values: external_exports.record(external_exports.string()).describe("\u6B04\u4F4D\u5167\u5BB9 {slot\u540D: \u5B57\u4E32\u5167\u5BB9}\uFF0C\u5982 {name:'Leo', email:'leo@x.com'}"),
+      template: external_exports.string().min(1).describe("\u865B\u64EC\u8868\u7684 name \u6216 id"),
+      values: external_exports.record(external_exports.string()).describe("\u6B04\u4F4D\u5167\u5BB9 {\u865B\u64EC\u6B04\u4F4D\u540D: \u5B57\u4E32\u5167\u5BB9}\uFF0C\u5982 {name:'Leo', email:'leo@x.com'}"),
       owner_id: external_exports.string().optional().describe("\u8CC7\u6599\u6B78\u5C6C\u6A19\u8A18\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E00\u5F8B\u7531 server \u5B9A\u6210\u4F60\u7684\u6B78\u5C6C\uFF0C\u4E0D\u5403\u6B64\u503C\uFF09")
     },
     async ({ template, values, owner_id }) => {
@@ -31876,13 +31876,13 @@ function registerCreateRecord(server, env, identity) {
         if (!res.ok) {
           if (identity.kind === "portal") return portalError(res, `\u586B record\uFF08template\u300C${template}\u300D\uFF09`);
           return errorResponse("create_record_failed", `\u586B record \u5931\u6557`, [
-            `\u78BA\u8A8D template\u300C${template}\u300D\u5B58\u5728\uFF08kbdb_list_templates\uFF09`,
-            "values \u7684 slot \u540D\u8981\u5C0D\u5F97\u4E0A template \u7684 slots"
+            `\u78BA\u8A8D\u865B\u64EC\u8868\u300C${template}\u300D\u5B58\u5728\uFF08kbdb_list_templates\uFF09`,
+            "values \u7684\u6B04\u4F4D\u540D\u8981\u5C0D\u5F97\u4E0A\u90A3\u5F35\u865B\u64EC\u8868\u5BA3\u544A\u7684\u865B\u64EC\u6B04\u4F4D"
           ], await res.text().catch(() => ""));
         }
         const data = await res.json();
         return successResponse(data, [
-          `\u5DF2\u5B58\u5165\u3002\u7528 kbdb_query(template='${template}') \u5217\u51FA\u6B64 template \u7684\u6240\u6709 record`,
+          `\u5DF2\u5B58\u5165\u3002\u7528 kbdb_query(template='${template}') \u5217\u51FA\u9019\u5F35\u865B\u64EC\u8868\u7684\u6240\u6709 record\uFF1B\u7528 kbdb_get_record \u8B80\u56DE\u4F86\u6838\u5C0D`,
           ...identity.kind === "portal" ? [OWNER_IGNORED_HINT] : []
         ]);
       } catch (e) {
@@ -31905,7 +31905,7 @@ function registerGetRecord(server, env, identity) {
         if (res.status === 404) {
           return errorResponse("not_found", `\u67E5\u7121 record\u300C${record_id}\u300D\uFF08\u4E0D\u5B58\u5728\uFF0C\u6216\u4E0D\u5728\u4F60\u7684\u6B0A\u9650\u7BC4\u570D\u5167\uFF09`, [
             "\u78BA\u8A8D record_id \u6B63\u78BA",
-            "\u7528 kbdb_query \u5217\u51FA\u67D0 template \u7684 record \u53D6 id"
+            "\u7528 kbdb_query \u5217\u51FA\u67D0\u5F35\u865B\u64EC\u8868\u7684 record \u53D6 id"
           ]);
         }
         if (!res.ok) {
@@ -31923,9 +31923,9 @@ function registerGetRecord(server, env, identity) {
 function registerQuery(server, env, identity) {
   server.tool(
     "kbdb_query",
-    "\u5217\u51FA\u67D0 template \u5E95\u4E0B\u7684 record\uFF08\u7D50\u69CB\u5316\u67E5\u8A62\uFF0C\u6309 template \u53D6\u6574\u6279\u8CC7\u6599\uFF09\u3002**\u6703\u5206\u9801**\uFF1A\u56DE\u61C9\u7684 total \u662F\u7B26\u5408\u689D\u4EF6\u7684\u5168\u90E8\u7B46\u6578\u3001count \u662F\u9019\u4E00\u9801\u62FF\u5230\u5E7E\u7B46\u2014\u2014total \u6BD4\u5DF2\u53D6\u5F97\u7684\u591A\u5C31\u5E36 offset \u518D\u53EB\u4E00\u6B21\uFF0C\u4E0D\u8981\u628A\u7B2C\u4E00\u9801\u7576\u6210\u5168\u90E8\u3002\u8981\u6309\u95DC\u9375\u5B57\u627E\u5167\u5BB9\u7528 kbdb_search\u3002",
+    "\u5217\u51FA\u67D0\u5F35**\u865B\u64EC\u8868**\u5E95\u4E0B\u7684 record\uFF08\u7D50\u69CB\u5316\u67E5\u8A62\uFF0C\u6309\u865B\u64EC\u8868\u53D6\u6574\u6279\u8CC7\u6599\uFF09\u3002**\u6703\u5206\u9801**\uFF1A\u56DE\u61C9\u7684 total \u662F\u7B26\u5408\u689D\u4EF6\u7684\u5168\u90E8\u7B46\u6578\u3001count \u662F\u9019\u4E00\u9801\u62FF\u5230\u5E7E\u7B46\u2014\u2014total \u6BD4\u5DF2\u53D6\u5F97\u7684\u591A\u5C31\u5E36 offset \u518D\u53EB\u4E00\u6B21\uFF0C\u4E0D\u8981\u628A\u7B2C\u4E00\u9801\u7576\u6210\u5168\u90E8\u3002\u8981\u6309\u95DC\u9375\u5B57\u627E\u5167\u5BB9\u7528 kbdb_search\u3002",
     {
-      template: external_exports.string().min(1).describe("template \u7684 name \u6216 id"),
+      template: external_exports.string().min(1).describe("\u865B\u64EC\u8868\u7684 name \u6216 id"),
       owner_id: external_exports.string().optional().describe("\u53EA\u53D6\u67D0\u6B78\u5C6C\u7684 record\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09"),
       limit: external_exports.number().int().positive().optional().describe("\u9019\u4E00\u9801\u8981\u5E7E\u7B46\uFF08\u9810\u8A2D 100\uFF0C\u55AE\u6B21\u4E0A\u9650 500\uFF09"),
       offset: external_exports.number().int().min(0).optional().describe("\u5F9E\u7B2C\u5E7E\u7B46\u958B\u59CB\uFF08\u5206\u9801\u7528\uFF0C\u9810\u8A2D 0\uFF09")
@@ -32051,7 +32051,10 @@ function registerGraphNeighbors(server, env, orgNamespace, identity) {
             env,
             identity.portal.session,
             `/portal/data/graph/neighbors/${encodeURIComponent(subject)}`,
-            { query: { depth: depth ?? 1 } }
+            // 🔴 inkstone/Arcrun#175：portal 路徑原本只送 depth，directed 被丟掉 ⇒ 引擎永遠當
+            // 無向查詢，directed=true 也會回反向邊。這裡把它補上（服務級 token 路徑早就送了，
+            // 見下方 `if (directed) query.directed = "true"`）。未帶＝不送＝維持無向（criterion 4）。
+            { query: { depth: depth ?? 1, ...directed ? { directed: "true" } : {} } }
           );
           if (!res.ok) return portalError(res, `\u67E5\u300C${subject}\u300D\u7684\u9130\u5C45`);
           const out = await res.json().catch(() => null);
@@ -33396,10 +33399,125 @@ function consentPage(p, error2) {
 </body>
 </html>`;
 }
+function redirectBlockedPage(p) {
+  let host = "";
+  try {
+    host = p.redirectUri ? new URL(p.redirectUri).hostname : "";
+  } catch {
+    host = "";
+  }
+  const what = host ? `<p class="desc">\u4F60\u7684 AI \u5DE5\u5177\u8981\u6C42\u628A\u6388\u6B0A\u7D50\u679C\u9001\u56DE <code>${esc2(host)}</code>\uFF0C
+       \u4F46\u9019\u500B\u7DB2\u57DF<strong>\u4E0D\u5728\u9019\u500B\u77E5\u8B58\u5EAB\u5141\u8A31\u7684\u540D\u55AE\u4E0A</strong>\u3002</p>` : `<p class="desc">\u4F60\u7684 AI \u5DE5\u5177\u6C92\u6709\u5E36\u56DE\u9023\u7DDA\u7DB2\u5740\uFF08<code>redirect_uri</code>\uFF09\uFF0C
+       \u6216\u5E36\u7684\u683C\u5F0F\u4E0D\u6B63\u78BA\uFF0C\u6240\u4EE5\u7121\u6CD5\u78BA\u8A8D\u8981\u628A\u6388\u6B0A\u7D50\u679C\u9001\u56DE\u54EA\u88E1\u3002</p>`;
+  const list = p.allowed.length ? `<ul>${p.allowed.map((h) => `<li><code>${esc2(h)}</code></li>`).join("")}</ul>` : `<p class="desc">\uFF08\u76EE\u524D\u4E00\u500B\u90FD\u6C92\u6709\uFF09</p>`;
+  const portalLink = p.portalUrl ? `<p><a href="${esc2(p.portalUrl)}">\u6253\u958B\u8A2D\u5B9A\u9801 \u2192</a></p>` : "";
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arcrun MCP \u6388\u6B0A \u2014 \u9019\u500B\u7DB2\u57DF\u9084\u6C92\u88AB\u5141\u8A31</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 32rem;
+         margin: 4rem auto; padding: 0 1.25rem; line-height: 1.7; }
+  h1 { font-size: 1.25rem; }
+  h2 { font-size: 1rem; margin-top: 2rem; }
+  p.desc { color: #666; font-size: .95rem; }
+  code { background: rgba(127,127,127,.15); padding: .1rem .35rem; border-radius: .25rem;
+         font-size: .85rem; word-break: break-all; }
+  ul { padding-left: 1.2rem; }
+  ol { padding-left: 1.4rem; }
+  p.foot { color: #999; font-size: .8rem; margin-top: 2.5rem; }
+</style>
+</head>
+<body>
+  <h1>\u9019\u500B\u7DB2\u57DF\u9084\u6C92\u88AB\u5141\u8A31\u9023\u4E0A\u4F60\u7684\u77E5\u8B58\u5EAB</h1>
+  ${what}
+  <h2>\u600E\u9EBC\u89E3\u6C7A</h2>
+  <ol>
+    <li>\u7528\u700F\u89BD\u5668\u767B\u5165\u4F60\u7684\u77E5\u8B58\u5EAB <strong>Portal</strong>\uFF08\u7BA1\u7406\u54E1\u5E33\u865F\uFF09</li>
+    <li>\u5230 <strong>\u8A2D\u5B9A \u2192 \u63A5\u4E0A\u4F60\u7684 AI\uFF08MCP\uFF09</strong></li>
+    <li>\u5728<strong>\u300C\u5141\u8A31\u9023\u7DDA\u7684\u7DB2\u5740\u300D</strong>\u628A${host ? ` <code>${esc2(host)}</code> ` : "\u90A3\u500B\u5DE5\u5177\u7D66\u4F60\u7684 callback \u7DB2\u5740"}\u52A0\u9032\u53BB</li>
+    <li>\u56DE\u5230\u525B\u624D\u90A3\u500B\u5DE5\u5177\uFF0C\u91CD\u65B0\u6309\u4E00\u6B21\u6388\u6B0A</li>
+  </ol>
+  ${portalLink}
+  <h2>\u76EE\u524D\u5141\u8A31\u7684\u7DB2\u57DF</h2>
+  ${list}
+  <p class="foot">\u64CB\u4E0B\u9019\u6B21\u9023\u7DDA\u7684\u662F<strong>\u4F60\u81EA\u5DF1\u7684 Arcrun \u77E5\u8B58\u5EAB</strong>\uFF08\u4E0D\u662F Claude\u3001\u4E0D\u662F\u4F60\u7684 AI \u5DE5\u5177\uFF09\u3002
+     \u9019\u9053\u6AA2\u67E5\u662F\u70BA\u4E86\u9632\u6B62\u6709\u4EBA\u628A\u6388\u6B0A\u7D50\u679C\u5C0E\u53BB\u5225\u7684\u7DB2\u7AD9\uFF0C\u6240\u4EE5\u9810\u8A2D\u53EA\u653E\u884C Claude \u5B98\u65B9\u7DB2\u57DF\uFF1B
+     \u5176\u9918\u8981\u7531\u4F60\u81EA\u5DF1\u52A0\u3002<br>
+     \u6280\u8853\u8A0A\u606F\uFF08\u56DE\u5831\u6642\u9644\u4E0A\uFF09\uFF1A<code>invalid_request: redirect_uri missing or not allowed</code></p>
+</body>
+</html>`;
+}
+
+// mcp/src/oauth/allowed-hosts.ts
+var DEFAULT_REDIRECT_HOSTS = ["claude.ai", "claude.com", "anthropic.com"];
+var HOSTS_CACHE_TTL_MS = 15e3;
+var hostsCache = null;
+function parseHostList(raw2) {
+  return String(raw2 ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+function union2(...lists) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const list of lists) {
+    for (const h of list) {
+      const k = h.trim().toLowerCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push(k);
+    }
+  }
+  return out;
+}
+async function fetchPortalHosts(env) {
+  if (!env.CYPHER_EXECUTOR || !env.KBDB_INTERNAL_TOKEN) return null;
+  try {
+    const res = await env.CYPHER_EXECUTOR.fetch(
+      new Request("https://cypher/portal/internal/mcp-redirect-hosts", {
+        headers: { Authorization: `Bearer ${env.KBDB_INTERNAL_TOKEN}` }
+      })
+    );
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (!Array.isArray(body.hosts)) return null;
+    return body.hosts.filter((h) => typeof h === "string");
+  } catch {
+    return null;
+  }
+}
+async function allowedRedirectHosts(env) {
+  const now = Date.now();
+  if (hostsCache && now - hostsCache.at < HOSTS_CACHE_TTL_MS) return hostsCache.hosts;
+  const fromEnv = parseHostList(env.MCP_ALLOWED_REDIRECT_HOSTS);
+  const fromPortal = await fetchPortalHosts(env) ?? [];
+  const hosts = union2(DEFAULT_REDIRECT_HOSTS, fromEnv, fromPortal);
+  hostsCache = { at: now, hosts };
+  return hosts;
+}
+function hostMatches(host, hosts) {
+  const h = host.toLowerCase();
+  return hosts.some((allowed) => h === allowed || h.endsWith("." + allowed));
+}
+function isAllowedRedirect(uri, hosts) {
+  let u;
+  try {
+    u = new URL(uri);
+  } catch {
+    return false;
+  }
+  const host = u.hostname.toLowerCase();
+  const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (u.protocol === "http:") return isLocal;
+  if (u.protocol !== "https:") return false;
+  if (isLocal) return true;
+  return hostMatches(host, hosts);
+}
 
 // mcp/src/oauth/routes.ts
 var DEFAULT_TOKEN_TTL = 2592e3;
-var DEFAULT_REDIRECT_HOSTS = ["claude.ai", "claude.com", "anthropic.com"];
 var CORS_JSON = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -33414,21 +33532,15 @@ function tokenTtl(env) {
   const n = parseInt(env.MCP_TOKEN_TTL ?? "", 10);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_TOKEN_TTL;
 }
-function isAllowedRedirect(uri, env) {
-  let u;
+function portalUrlFromOrigin(origin) {
   try {
-    u = new URL(uri);
+    const u = new URL(origin);
+    if (!u.hostname.startsWith("arcrun-mcp.")) return "";
+    u.hostname = u.hostname.replace("arcrun-mcp.", "arcrun-rag-ui.");
+    return u.origin + "/portal/";
   } catch {
-    return false;
+    return "";
   }
-  const host = u.hostname.toLowerCase();
-  const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1";
-  if (u.protocol === "http:") return isLocal;
-  if (u.protocol !== "https:") return false;
-  if (isLocal) return true;
-  const configured = (env.MCP_ALLOWED_REDIRECT_HOSTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const list = configured.length ? configured : DEFAULT_REDIRECT_HOSTS;
-  return list.some((h) => host === h || host.endsWith("." + h));
 }
 async function readParams(req) {
   const ct = req.headers.get("content-type") ?? "";
@@ -33471,10 +33583,14 @@ function registerOAuthRoutes(app2) {
     }
     const redirectUris = Array.isArray(raw2.redirect_uris) ? raw2.redirect_uris.filter((x) => typeof x === "string") : [];
     const clientName = typeof raw2.client_name === "string" ? raw2.client_name : "MCP Client";
+    const hosts = await allowedRedirectHosts(c.env);
     for (const uri of redirectUris) {
-      if (!isAllowedRedirect(uri, c.env)) {
+      if (!isAllowedRedirect(uri, hosts)) {
         return c.json(
-          { error: "invalid_redirect_uri", error_description: `redirect_uri not allowed: ${uri}` },
+          {
+            error: "invalid_redirect_uri",
+            error_description: `redirect_uri not allowed: ${uri}\u3002\u9019\u500B\u7DB2\u57DF\u4E0D\u5728\u4F60\u7684\u77E5\u8B58\u5EAB\u5141\u8A31\u7684\u540D\u55AE\u4E0A\uFF0C\u8ACB\u767B\u5165 Portal \u7684\u300C\u8A2D\u5B9A \u2192 \u63A5\u4E0A\u4F60\u7684 AI\uFF08MCP\uFF09\u300D\u628A\u5B83\u52A0\u9032\u53BB\u3002\u76EE\u524D\u5141\u8A31\uFF1A${hosts.join(", ")}`
+          },
           400,
           CORS_JSON
         );
@@ -33495,7 +33611,7 @@ function registerOAuthRoutes(app2) {
       CORS_JSON
     );
   });
-  app2.get("/authorize", (c) => {
+  app2.get("/authorize", async (c) => {
     const q = c.req.query();
     if (q.response_type !== "code") {
       return c.text("unsupported_response_type: only 'code' is supported", 400);
@@ -33503,8 +33619,16 @@ function registerOAuthRoutes(app2) {
     if (q.code_challenge_method !== "S256" || !q.code_challenge) {
       return c.text("invalid_request: PKCE S256 code_challenge required", 400);
     }
-    if (!q.redirect_uri || !isAllowedRedirect(q.redirect_uri, c.env)) {
-      return c.text("invalid_request: redirect_uri missing or not allowed", 400);
+    const hosts = await allowedRedirectHosts(c.env);
+    if (!q.redirect_uri || !isAllowedRedirect(q.redirect_uri, hosts)) {
+      return c.html(
+        redirectBlockedPage({
+          redirectUri: q.redirect_uri ?? "",
+          allowed: hosts,
+          portalUrl: portalUrlFromOrigin(originOf(c.req.url))
+        }),
+        400
+      );
     }
     const canonicalResource = resourceUri(originOf(c.req.url));
     if (q.resource && !resourceMatches(q.resource, originOf(c.req.url))) {
@@ -33532,8 +33656,16 @@ function registerOAuthRoutes(app2) {
   app2.post("/authorize", async (c) => {
     const p = await readParams(c.req.raw);
     const redirectUri = p.redirect_uri ?? "";
-    if (!redirectUri || !isAllowedRedirect(redirectUri, c.env)) {
-      return c.text("invalid_request: redirect_uri not allowed", 400);
+    const hosts = await allowedRedirectHosts(c.env);
+    if (!redirectUri || !isAllowedRedirect(redirectUri, hosts)) {
+      return c.html(
+        redirectBlockedPage({
+          redirectUri,
+          allowed: hosts,
+          portalUrl: portalUrlFromOrigin(originOf(c.req.url))
+        }),
+        400
+      );
     }
     if (p.code_challenge_method !== "S256" || !p.code_challenge) {
       return c.text("invalid_request: PKCE S256 required", 400);

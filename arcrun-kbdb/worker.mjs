@@ -2124,6 +2124,10 @@ var UNLABELLED_LIBRARY = "general";
 function libraryOf(expr) {
   return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
 }
+function libraryOfValue(value) {
+  const v = (value ?? "").trim();
+  return v === "" ? UNLABELLED_LIBRARY : v;
+}
 var ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
 var ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
 var ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
@@ -2164,21 +2168,25 @@ async function getEntry(db, id) {
   return row ?? null;
 }
 var NOT_MACHINERY_PREDICATE = "(src_id IS NULL AND entry_type NOT IN ('record', 'sheet', 'field', 'system'))";
+function eqTerm(column, exactKeyPresent) {
+  return exactKeyPresent ? `+${column} = ?` : `${column} = ?`;
+}
 async function listEntries(db, f = {}) {
   const conds = [];
   const params = [];
+  const exact = Boolean(f.page_name || f.source);
   if (f.entry_type) {
-    conds.push("entry_type = ?");
+    conds.push(eqTerm("entry_type", exact));
     params.push(f.entry_type);
   } else {
     conds.push(NOT_MACHINERY_PREDICATE);
   }
   if (f.owner_id) {
-    conds.push("owner_id = ?");
+    conds.push(eqTerm("owner_id", exact));
     params.push(f.owner_id);
   }
   if (f.parent_id) {
-    conds.push("parent_id = ?");
+    conds.push(eqTerm("parent_id", exact));
     params.push(f.parent_id);
   }
   if (f.page_name) {
@@ -2206,11 +2214,17 @@ async function listEntries(db, f = {}) {
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const limit = Math.min(f.limit ?? 100, 1e3);
   const offset = f.offset ?? 0;
-  const [rowsRes, countRow] = await Promise.all([
-    db.prepare(`SELECT * FROM entries ${where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
-    db.prepare(`SELECT COUNT(*) as total FROM entries ${where}`).bind(...params).first()
-  ]);
-  return { entries: rowsRes.results ?? [], total: countRow?.total ?? 0 };
+  const pageSizeKnown = Number.isFinite(limit) && limit > 0;
+  const rowsRes = await db.prepare(`SELECT * FROM entries ${where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all();
+  const entries = rowsRes.results ?? [];
+  let total;
+  if (pageSizeKnown && entries.length > 0 && entries.length < limit) total = offset + entries.length;
+  else if (pageSizeKnown && entries.length === 0 && offset === 0) total = 0;
+  else {
+    const countRow = await db.prepare(`SELECT COUNT(*) as total FROM entries ${where}`).bind(...params).first();
+    total = countRow?.total ?? 0;
+  }
+  return { entries, total };
 }
 async function blocksOfPages(db, pages, perPageLimit = 8) {
   if (pages.length === 0) return [];
@@ -3521,6 +3535,58 @@ entryRoutes.delete("/:id", async (c) => {
   return c.json({ success: true, vector_deleted });
 });
 
+// kbdb/src/actions/entity-canon.ts
+var NOTE_EXT = /\.(md|markdown|mdx|txt|org)$/i;
+function unwrapWhole(t) {
+  const code = /^(`+)([\s\S]*?)(`+)$/.exec(t);
+  if (code) {
+    const inner = code[2].trim();
+    if (inner && !inner.includes("`")) return inner;
+  }
+  if (t.startsWith("[[") && t.endsWith("]]") && t.length > 4) {
+    const inner = t.slice(2, -2).trim();
+    if (inner && !inner.includes("[[") && !inner.includes("]]")) return inner;
+  }
+  return t;
+}
+function canonicalEntity(raw2) {
+  if (typeof raw2 !== "string") return raw2;
+  const fallback = raw2.trim();
+  let t = raw2.normalize("NFC").trim();
+  if (!t) return fallback;
+  for (let i = 0; i < 4; i++) {
+    const before = t;
+    t = unwrapWhole(t);
+    if (t === before) break;
+  }
+  if (NOTE_EXT.test(t)) {
+    t = t.replace(NOTE_EXT, "");
+    const cut = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"));
+    if (cut >= 0) t = t.slice(cut + 1);
+  }
+  t = t.replace(/\s+/g, " ").trim();
+  return t || fallback;
+}
+var ENTITY_SLOTS = ["subject", "object"];
+function isTripletShaped(slots) {
+  return slots.includes("subject") && slots.includes("predicate") && slots.includes("object");
+}
+function canonicalizeEntityValues(slots, values) {
+  if (!isTripletShaped(slots)) return values;
+  let touched = false;
+  const out = { ...values };
+  for (const slot of ENTITY_SLOTS) {
+    const v = out[slot];
+    if (typeof v !== "string") continue;
+    const c = canonicalEntity(v);
+    if (c !== v) {
+      out[slot] = c;
+      touched = true;
+    }
+  }
+  return touched ? out : values;
+}
+
 // kbdb/src/actions/record-crud.ts
 function uid2(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
@@ -3622,7 +3688,7 @@ async function createRecord(db, input) {
   if (!tpl) throw new Error(`template not found: ${input.template}`);
   const slots = JSON.parse(tpl.slots_json);
   const recordId = input.record_id ?? uid2("rec");
-  const values = input.values ?? {};
+  const values = canonicalizeEntityValues(slots, input.values ?? {});
   const entryIds = input.entry_ids ?? {};
   const refSlots = Object.keys(entryIds);
   const ownerId = input.owner_id ?? null;
@@ -3673,7 +3739,8 @@ async function updateRecord(db, recordId, values) {
   const recordOwnerId = identity?.owner_id ?? null;
   const tpl = await getTemplate(db, templateId);
   const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntries.keys()];
-  for (const [slot, content] of Object.entries(values)) {
+  const canon = canonicalizeEntityValues(allowed, values);
+  for (const [slot, content] of Object.entries(canon)) {
     if (!allowed.includes(slot)) {
       throw new Error(`slot not in template: ${slot}`);
     }
@@ -3780,13 +3847,19 @@ async function deleteRecord(db, recordId) {
 }
 
 // kbdb/src/routes/templates.ts
+function readFields(body) {
+  if (!body) return void 0;
+  const raw2 = Array.isArray(body.slots) ? body.slots : Array.isArray(body.fields) ? body.fields : void 0;
+  return raw2;
+}
 var templateRoutes = new Hono2();
 templateRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body || !body.name || !Array.isArray(body.slots)) {
-    return c.json({ success: false, error: "name and slots[] required" }, 400);
+  const fields = readFields(body);
+  if (!body || !body.name || !Array.isArray(fields)) {
+    return c.json({ success: false, error: "name and slots[] (alias: fields[]) required" }, 400);
   }
-  const tpl = await createTemplate(c.env.DB, body);
+  const tpl = await createTemplate(c.env.DB, { ...body, slots: fields });
   return c.json({ success: true, template: tpl });
 });
 templateRoutes.get("/", async (c) => {
@@ -3800,7 +3873,11 @@ templateRoutes.get("/:idOrName", async (c) => {
 });
 templateRoutes.patch("/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const tpl = await updateTemplate(c.env.DB, c.req.param("id"), body);
+  const fields = readFields(body);
+  const tpl = await updateTemplate(c.env.DB, c.req.param("id"), {
+    ...body,
+    ...fields === void 0 ? {} : { slots: fields }
+  });
   if (!tpl) return c.json({ success: false, error: "not found" }, 404);
   return c.json({ success: true, template: tpl });
 });
@@ -4615,14 +4692,18 @@ async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, o
   }
   return rows;
 }
+function neighborToEdge(n) {
+  return n.direction === "in" ? { subject: n.node, predicate: n.predicate, object: n.from } : { subject: n.from, predicate: n.predicate, object: n.node };
+}
 async function graphNeighbors(db, start, opts = {}) {
   const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
   const template = opts.template ?? "triplet";
   const directed = !!opts.directed;
   const owner_id = opts.owner_id;
   const libraries = opts.library && opts.library.length > 0 ? opts.library : void 0;
-  const visited = /* @__PURE__ */ new Set([start]);
-  let frontier = [start];
+  const startNode = canonicalEntity(start);
+  const visited = /* @__PURE__ */ new Set([startNode]);
+  let frontier = [startNode];
   const neighbors = [];
   for (let d = 1; d <= depth; d++) {
     if (frontier.length === 0) break;
@@ -4634,7 +4715,7 @@ async function graphNeighbors(db, start, opts = {}) {
         const nb = e.object;
         if (!nb || visited.has(nb)) continue;
         visited.add(nb);
-        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d });
+        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "out" });
         next.push(nb);
       }
       if (!directed) {
@@ -4644,18 +4725,125 @@ async function graphNeighbors(db, start, opts = {}) {
           const nb = e.subject;
           if (!nb || visited.has(nb)) continue;
           visited.add(nb);
-          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d });
+          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "in" });
           next.push(nb);
         }
       }
     }
     frontier = next;
   }
-  return { success: true, start, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
+  return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
+}
+
+// kbdb/src/actions/entity-canon-backfill.ts
+var HARD_LIMIT_CAP2 = 2e3;
+var DEFAULT_LIMIT = 500;
+async function canonicalizeTripletEntities(db, env, opts = {}) {
+  const templateName = opts.template ?? "triplet";
+  const dryRun = opts.dry_run !== false;
+  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT_CAP2);
+  const offset = Math.max(opts.offset ?? 0, 0);
+  const ownerId = opts.owner_id?.trim() || void 0;
+  const tpl = await getTemplate(db, templateName);
+  if (!tpl) throw new Error(`triplet template not found: ${templateName}`);
+  const slots = JSON.parse(tpl.slots_json);
+  if (!isTripletShaped(slots)) {
+    throw new Error(`template is not triplet-shaped (need subject/predicate/object): ${templateName}`);
+  }
+  const sql = `SELECT b.src_id AS rid,
+       MAX(CASE WHEN r.rel_id = ? THEN r.dst_id END) AS subject_eid,
+       MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS subject,
+       MAX(CASE WHEN r.rel_id = ? THEN r.dst_id END) AS object_eid,
+       MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS object,
+       MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS library
+     FROM entries b
+     LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+     LEFT JOIN entries v ON v.id = r.dst_id
+     WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerId ? " AND b.owner_id = ?" : ""}
+     GROUP BY b.src_id
+     ORDER BY b.src_id
+     LIMIT ? OFFSET ?`;
+  const sField = fieldEntryId(tpl.id, "subject");
+  const oField = fieldEntryId(tpl.id, "object");
+  const lField = fieldEntryId(tpl.id, "library");
+  const params = [sField, sField, oField, oField, lField, tpl.id];
+  if (ownerId) params.push(ownerId);
+  params.push(limit, offset);
+  const res = await db.prepare(sql).bind(...params).all();
+  const rows = res.results ?? [];
+  const rewrites = /* @__PURE__ */ new Map();
+  const groups = /* @__PURE__ */ new Map();
+  let scannedCells = 0;
+  for (const row of rows) {
+    const lib = libraryOfValue(row.library);
+    for (const slot of ENTITY_SLOTS) {
+      const raw2 = slot === "subject" ? row.subject : row.object;
+      const eid = slot === "subject" ? row.subject_eid : row.object_eid;
+      if (typeof raw2 !== "string" || !raw2 || !eid) continue;
+      scannedCells++;
+      const canon = canonicalEntity(raw2);
+      const key = `${lib}\0${canon}`;
+      const g = groups.get(key) ?? { library: lib, canonical: canon, from: /* @__PURE__ */ new Set(), cells: 0 };
+      g.from.add(raw2);
+      g.cells++;
+      groups.set(key, g);
+      if (canon !== raw2) rewrites.set(eid, canon);
+    }
+  }
+  const changedCells = rewrites.size;
+  const merges = [...groups.values()].filter((g) => g.from.size > 1).map((g) => ({ library: g.library, canonical: g.canonical, from: [...g.from].sort(), cells: g.cells })).sort((a, b) => b.from.length - a.from.length || a.canonical.localeCompare(b.canonical));
+  const budget = await maintenanceBudgetToday(env, db);
+  let applied = 0;
+  let quotaExceeded = false;
+  if (!dryRun && changedCells > 0) {
+    const entries = [...rewrites.entries()].slice(0, budget.remaining);
+    quotaExceeded = entries.length < changedCells;
+    if (entries.length > 0) {
+      await db.batch(
+        entries.map(
+          ([eid, content]) => db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?").bind(content, eid)
+        )
+      );
+      applied = entries.length;
+    }
+    try {
+      await addMaintenanceUsage(db, applied);
+    } catch {
+    }
+  }
+  return {
+    dry_run: dryRun,
+    triplet_template: templateName,
+    scanned_records: rows.length,
+    scanned_cells: scannedCells,
+    changed_cells: changedCells,
+    applied_cells: applied,
+    merges,
+    quota_limit: budget.limit,
+    quota_used_today: budget.used + applied,
+    quota_exceeded: quotaExceeded,
+    // 這一批滿了就還有下一批；沒滿就是掃到底了（誠實回 null，不要讓呼叫端自己猜）
+    next_offset: rows.length === limit ? offset + limit : null
+  };
 }
 
 // kbdb/src/routes/graph.ts
 var graphRoutes = new Hono2();
+graphRoutes.post("/canonicalize-entities", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const result = await canonicalizeTripletEntities(c.env.DB, c.env, {
+      template: typeof body.template === "string" ? body.template : void 0,
+      owner_id: typeof body.owner_id === "string" ? body.owner_id : void 0,
+      dry_run: body.dry_run === false ? false : true,
+      limit: typeof body.limit === "number" ? body.limit : void 0,
+      offset: typeof body.offset === "number" ? body.offset : void 0
+    });
+    return c.json({ success: true, ...result });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
 graphRoutes.get("/neighbors/:node", async (c) => {
   const node = c.req.param("node");
   if (!node) return c.json({ success: false, error: "node required" }, 400);
@@ -4667,11 +4855,7 @@ graphRoutes.get("/neighbors/:node", async (c) => {
   const library = parseLibraryList(c.req.query("library"));
   try {
     const result = await graphNeighbors(c.env.DB, node, { depth, template, directed, owner_id, library });
-    const edges = result.neighbors.map((n) => ({
-      subject: n.from,
-      predicate: n.predicate,
-      object: n.node
-    }));
+    const edges = result.neighbors.map(neighborToEdge);
     return c.json({ ...result, edges });
   } catch (e) {
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
@@ -4971,6 +5155,16 @@ var GENERATIONS = [
     file: "0008_entries_content_index.sql",
     what: "entries.content \u7D22\u5F15\u2014\u2014graph \u9130\u5C45\u67E5\u8A62\u5F9E\u7BC0\u9EDE\u540D\u76F4\u63A5\u67E5\uFF08\u4E0D\u6488\u5168\u8868\uFF09\uFF0CArcrun#168 \u6839\u56E0\u4FEE\u5FA9\u7684\u5730\u57FA",
     checks: [{ kind: "index", name: "idx_entries_content" }]
+  },
+  {
+    n: 9,
+    file: "0009_entries_list_indexes.sql",
+    what: "entries \u5217\u8868\uFF0F\u5B58\u5728\u6027\u7D22\u5F15\u2014\u2014list \u7AEF\u9EDE\u4E0D\u518D\u6392\u5E8F\u6574\u500B owner\u3001\u300C\u9019\u5F35\u5361\u5728\u4E0D\u5728\u300D\u53EA\u8B80\u547D\u4E2D\u5217\uFF08Arcrun#210 D1 \u514D\u8CBB\u5C64\u4E09\u5929\u9023\u71D2\u7684\u6839\u56E0\u4FEE\u5FA9\uFF09",
+    checks: [
+      { kind: "index", name: "idx_entries_owner_type_created" },
+      { kind: "index", name: "idx_entries_owner_created" },
+      { kind: "index", name: "idx_entries_source" }
+    ]
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
@@ -5124,6 +5318,7 @@ app.get("/maintenance/relation-orphans", async (c) => {
 });
 app.route("/entries", entryRoutes);
 app.route("/templates", templateRoutes);
+app.route("/sheets", templateRoutes);
 app.route("/records", recordRoutes);
 app.route("/recipe-stats", recipeStatRoutes);
 app.route("/execution-log", executionLogRoutes);
