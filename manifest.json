@@ -5,20 +5,20 @@
  "built": "2026-09-13",
  "source": "Arcrun@b08a8cee44cd",
  "daemon": {
-  "version": "0.18.53",
-  "built": "20260914-0746",
-  "notes": "資料夾上的數字會跟著真的送上雲端的份數走・「同步中」底下會說正在做什麼、卡在哪（細節見說明文件）",
+  "version": "0.18.55",
+  "built": "20260917-1944",
+  "notes": "以前被記成「連續失敗 8 次、已暫停」的空白筆記，更新後會自己消掉警告・當時雲端還沒有 AI 功能而暫停的檔，雲端更新後會自己再試",
   "mac": {
-   "file": "daemon/Arcrun-0.18.53.dmg",
-   "sha256": "f7f696d70350d5af74932505767348278f21c38a4048bcc0dc0e3823fa767c9e"
+   "file": "daemon/Arcrun-0.18.55.dmg",
+   "sha256": "d7a3124d64e760ad6ce79d04ca65d6e072924cd94abf4904bfa4083cea6af6a1"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.53.exe",
-   "sha256": "6eb4d280e5c8632b33a43cb8f71bfc5ca495fabe0a6dbfec8dd32e86122b6fb7"
+   "file": "daemon/Arcrun-win-0.18.55.exe",
+   "sha256": "e0f0314db68497c050572bbdfea6263e46c9cdebfe100dd7b576288d98fec6dd"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.53.msix",
-   "sha256": "149550f2ba2f8755b11ed883740591041633ddf7fb918e3892b699ff2ffc4625"
+   "file": "daemon/Arcrun-0.18.55.msix",
+   "sha256": "edaa47308b0ef9430f8ecfaabfd14edf3245601686a3876993d26596eb7800cd"
   }
  },
  "core": [
