@@ -5,20 +5,20 @@
  "built": "2026-09-13",
  "source": "Arcrun@b08a8cee44cd",
  "daemon": {
-  "version": "0.18.55",
-  "built": "20260917-1944",
-  "notes": "以前被記成「連續失敗 8 次、已暫停」的空白筆記，更新後會自己消掉警告・當時雲端還沒有 AI 功能而暫停的檔，雲端更新後會自己再試",
+  "version": "0.18.56",
+  "built": "20260918-1327",
+  "notes": "被「雲端一次處理太多」擋下、已暫停的筆記，雲端更新後會自己送上去・雲端還沒更新的話，照舊暫停、不會一直重撞",
   "mac": {
-   "file": "daemon/Arcrun-0.18.55.dmg",
-   "sha256": "d7a3124d64e760ad6ce79d04ca65d6e072924cd94abf4904bfa4083cea6af6a1"
+   "file": "daemon/Arcrun-0.18.56.dmg",
+   "sha256": "a8c09ee373a3bb2013fb1352d5b34cd98d83710afc5a488e180c1b8ffe043f59"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.55.exe",
-   "sha256": "e0f0314db68497c050572bbdfea6263e46c9cdebfe100dd7b576288d98fec6dd"
+   "file": "daemon/Arcrun-win-0.18.56.exe",
+   "sha256": "85a1da982e0854efa1798f56c3e0ff4029c75cb357d28c749c019c832764290b"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.55.msix",
-   "sha256": "edaa47308b0ef9430f8ecfaabfd14edf3245601686a3876993d26596eb7800cd"
+   "file": "daemon/Arcrun-0.18.56.msix",
+   "sha256": "f8bfba3d28b9fa181420b710e22094d076bb114aef207587fbb211984f617ef2"
   }
  },
  "core": [
