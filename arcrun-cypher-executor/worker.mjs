@@ -15428,7 +15428,7 @@ async function fetchGiteaSprint(env, nowMs) {
   const base = (env.GITEA_BASE_URL ?? "").replace(/\/$/, "");
   const token = env.GITEA_TOKEN;
   if (!base || !token) return null;
-  const repo = env.GITEA_SPRINT_REPO ?? "Leo/InkStoneCo";
+  const repo = env.GITEA_SPRINT_REPO ?? "inkstone/InkStoneCo";
   const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
   const headers = { Authorization: `token ${token}` };
   try {
@@ -15474,7 +15474,7 @@ async function fetchGiteaSprint(env, nowMs) {
 }
 async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSprint) {
   if (!env.GITEA_BASE_URL || !env.GITEA_TOKEN) return null;
-  const repo = env.GITEA_SPRINT_REPO ?? "Leo/InkStoneCo";
+  const repo = env.GITEA_SPRINT_REPO ?? "inkstone/InkStoneCo";
   const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
   const cacheKey = new Request(
     `https://console-dashboard.arcrun.internal/gitea-waiting?${new URLSearchParams({ base: env.GITEA_BASE_URL, repo, dir }).toString()}`

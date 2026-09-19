@@ -2412,7 +2412,7 @@ async function searchByTemplatePage(db, template, owner_id, limit = 100, offset 
   const res = owner_id ? await db.prepare(
     // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；本次 checkout 開在 worktree /private/tmp/wt-graph-first-44/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，與 962d863／5919c6b 記載的是同一個假警報
     `SELECT src_id AS record_id FROM entries
-           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND owner_id = ?
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?
            ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
   ).bind(tpl.id, owner_id, cap, skip).all() : await db.prepare(
     // kbdb-sql-ok：同上（worktree 路徑假警報）
@@ -3206,7 +3206,8 @@ function eqTerm(column, exactKeyPresent) {
 async function listEntries(db, f = {}) {
   const conds = [];
   const params = [];
-  const exact = Boolean(f.page_name || f.source);
+  const exactKey = Boolean(f.page_name || f.source);
+  const exact = exactKey || Boolean(f.parent_id);
   if (f.entry_type) {
     conds.push(eqTerm("entry_type", exact));
     params.push(f.entry_type);
@@ -3218,7 +3219,7 @@ async function listEntries(db, f = {}) {
     params.push(f.owner_id);
   }
   if (f.parent_id) {
-    conds.push(eqTerm("parent_id", exact));
+    conds.push(eqTerm("parent_id", exactKey));
     params.push(f.parent_id);
   }
   if (f.page_name) {
@@ -3263,9 +3264,9 @@ async function blocksOfPages(db, pages, perPageLimit = 8) {
   const params = [];
   const pairs = pages.map((p) => {
     params.push(p.page_name);
-    if (p.owner_id === null) return "(page_name = ? AND owner_id IS NULL)";
+    if (p.owner_id === null) return "(page_name = ? AND +owner_id IS NULL)";
     params.push(p.owner_id);
-    return "(page_name = ? AND owner_id = ?)";
+    return "(page_name = ? AND +owner_id = ?)";
   });
   const rows = await db.prepare(
     `SELECT * FROM entries
@@ -5116,7 +5117,7 @@ async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, o
   for (const idsChunk of chunkForD1(valueIds, fieldIds.length + (owner_id ? 1 : 0))) {
     const dstPh = idsChunk.map(() => "?").join(",");
     const relSql = owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries
-         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
          WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
     const relParams = owner_id ? [...idsChunk, ...fieldIds, owner_id] : [...idsChunk, ...fieldIds];
     const relRows = await db.prepare(relSql).bind(...relParams).all();

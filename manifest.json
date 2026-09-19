@@ -1,24 +1,24 @@
 {
  "schema": 2,
- "release": "1.4.67",
- "fingerprint": "b37493ffb1e5fc570bb49edb4f0a545ce1b1c05a249854e4dc47c6ca591f09cf",
- "built": "2026-09-13",
- "source": "Arcrun@b08a8cee44cd",
+ "release": "1.4.68",
+ "fingerprint": "eb6906e4b9b829cb4b16e5cd77a500f49080c062ee592aea9148a8ad320d9092",
+ "built": "2026-09-19",
+ "source": "Arcrun@12edd1c90caf",
  "daemon": {
-  "version": "0.18.56",
-  "built": "20260918-1327",
-  "notes": "被「雲端一次處理太多」擋下、已暫停的筆記，雲端更新後會自己送上去・雲端還沒更新的話，照舊暫停、不會一直重撞",
+  "version": "0.18.57",
+  "built": "20260919-1843",
+  "notes": "上傳失敗時，小幫手不再叫你去修一個沒壞的東西・錯誤的技術細節仍然留給我們看得到",
   "mac": {
-   "file": "daemon/Arcrun-0.18.56.dmg",
-   "sha256": "a8c09ee373a3bb2013fb1352d5b34cd98d83710afc5a488e180c1b8ffe043f59"
+   "file": "daemon/Arcrun-0.18.57.dmg",
+   "sha256": "325ae41d9b3131865cc46590d694e8f91aea13cc27b81c33d0320d30f82608f4"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.56.exe",
-   "sha256": "85a1da982e0854efa1798f56c3e0ff4029c75cb357d28c749c019c832764290b"
+   "file": "daemon/Arcrun-win-0.18.57.exe",
+   "sha256": "320c43ccbca380b5a48819455546b27092027ae741fce6a095d59f80826c4547"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.56.msix",
-   "sha256": "f8bfba3d28b9fa181420b710e22094d076bb114aef207587fbb211984f617ef2"
+   "file": "daemon/Arcrun-0.18.57.msix",
+   "sha256": "c51aa1e6c7e8aaec01dcc2641110b56ebb582f292b6710dc82b7a81617aba460"
   }
  },
  "core": [
@@ -217,7 +217,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 721657,
+   "js_bytes": 721667,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -251,17 +251,17 @@
      "PORTAL_SESSION_TTL": "604800",
      "PORTAL_SHOW_WORKFLOWS": "admin",
      "GITEA_BASE_URL": "https://git.uncle6.me",
-     "GITEA_SPRINT_REPO": "Leo/InkStoneCo",
+     "GITEA_SPRINT_REPO": "inkstone/InkStoneCo",
      "GITEA_SPRINT_DIR": "system-dev/docs/3-specs/autonomy-dispatch"
     }
    },
    "stripped": {
     "services": 13
    },
-   "source_commit": "1eb26c98a3af2067303e7544ae9bca1a77867c32",
-   "source_content_sha256": "2e61c3ebc75761463e79e1740da65971a9111aa1675442d8742a372816551591",
-   "sha256": "2e61c3ebc75761463e79e1740da65971a9111aa1675442d8742a372816551591",
-   "bytes": 721657
+   "source_commit": "fc682d1bc6c8db73fdf8b1e91b91029389bb4fbc",
+   "source_content_sha256": "bc7eaa16231607cf094cab366179aa70d10668eb4d23f3263ef40ede4e4f772f",
+   "sha256": "bc7eaa16231607cf094cab366179aa70d10668eb4d23f3263ef40ede4e4f772f",
+   "bytes": 721667
   },
   {
    "name": "arcrun-date-ops",
@@ -415,7 +415,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 221743,
+   "js_bytes": 221803,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -435,10 +435,10 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "b08a8cee44cd0b8b65abd1fa027484d5e99b9a3e",
-   "source_content_sha256": "2650423d74a77ca878a8320686261497ccbd2f4e4d9b13d8f6e3636ce69a79a0",
-   "sha256": "2650423d74a77ca878a8320686261497ccbd2f4e4d9b13d8f6e3636ce69a79a0",
-   "bytes": 221743
+   "source_commit": "12edd1c90cafc6369196c6e5bfebca662224626e",
+   "source_content_sha256": "2f5a76a8b3331a8682dc01a96f60d6a0bcb3ab341575333d77939f49103de554",
+   "sha256": "2f5a76a8b3331a8682dc01a96f60d6a0bcb3ab341575333d77939f49103de554",
+   "bytes": 221803
   },
   {
    "name": "arcrun-mcp",
@@ -459,7 +459,7 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "b08a8cee44cd0b8b65abd1fa027484d5e99b9a3e",
+   "source_commit": "fc682d1bc6c8db73fdf8b1e91b91029389bb4fbc",
    "source_content_sha256": "b8a27050c106631905092851a3dfdde8c4d5b6de90dc7e84fe616fd5b46291d0",
    "sha256": "b8a27050c106631905092851a3dfdde8c4d5b6de90dc7e84fe616fd5b46291d0",
    "bytes": 1215393
@@ -911,7 +911,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 721657,
+   "js_bytes": 721667,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -945,15 +945,15 @@
      "PORTAL_SESSION_TTL": "604800",
      "PORTAL_SHOW_WORKFLOWS": "admin",
      "GITEA_BASE_URL": "https://git.uncle6.me",
-     "GITEA_SPRINT_REPO": "Leo/InkStoneCo",
+     "GITEA_SPRINT_REPO": "inkstone/InkStoneCo",
      "GITEA_SPRINT_DIR": "system-dev/docs/3-specs/autonomy-dispatch"
     }
    },
    "stripped": {
     "services": 13
    },
-   "source_commit": "1eb26c98a3af2067303e7544ae9bca1a77867c32",
-   "source_content_sha256": "2e61c3ebc75761463e79e1740da65971a9111aa1675442d8742a372816551591",
+   "source_commit": "fc682d1bc6c8db73fdf8b1e91b91029389bb4fbc",
+   "source_content_sha256": "bc7eaa16231607cf094cab366179aa70d10668eb4d23f3263ef40ede4e4f772f",
    "first_install": true
   },
   {
@@ -1098,7 +1098,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 221743,
+   "js_bytes": 221803,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1118,8 +1118,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "b08a8cee44cd0b8b65abd1fa027484d5e99b9a3e",
-   "source_content_sha256": "2650423d74a77ca878a8320686261497ccbd2f4e4d9b13d8f6e3636ce69a79a0",
+   "source_commit": "12edd1c90cafc6369196c6e5bfebca662224626e",
+   "source_content_sha256": "2f5a76a8b3331a8682dc01a96f60d6a0bcb3ab341575333d77939f49103de554",
    "first_install": true
   },
   {
@@ -1141,7 +1141,7 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "b08a8cee44cd0b8b65abd1fa027484d5e99b9a3e",
+   "source_commit": "fc682d1bc6c8db73fdf8b1e91b91029389bb4fbc",
    "source_content_sha256": "b8a27050c106631905092851a3dfdde8c4d5b6de90dc7e84fe616fd5b46291d0",
    "first_install": true
   },
