@@ -3540,6 +3540,50 @@ function applyRelativeCut(rows) {
   const cut = rows[0].match_score * KEYWORD_RELATIVE_CUT;
   return rows.filter((r) => r.match_score >= cut);
 }
+var FTS_WINDOW = 3;
+var MAX_FTS_WINDOWS = 48;
+var FTS_CANDIDATE_LIMIT = 5e3;
+var FTS_MIGRATION_CUTOFF_ID = "kbdb-fts-migration-cutoff";
+async function readFtsMigrationState(db) {
+  try {
+    const row = await db.prepare(`SELECT metadata_json FROM entries WHERE id = ?`).bind(FTS_MIGRATION_CUTOFF_ID).first();
+    if (!row?.metadata_json) return { cutoffRowid: Number.MAX_SAFE_INTEGER, backfillCursor: 0 };
+    const parsed = JSON.parse(row.metadata_json);
+    const cutoff = Number(parsed.cutoff_rowid);
+    const cursor = Number(parsed.backfill_cursor);
+    return {
+      cutoffRowid: Number.isFinite(cutoff) ? cutoff : Number.MAX_SAFE_INTEGER,
+      backfillCursor: Number.isFinite(cursor) && cursor >= 0 ? cursor : 0
+    };
+  } catch {
+    return { cutoffRowid: Number.MAX_SAFE_INTEGER, backfillCursor: 0 };
+  }
+}
+async function ftsCutoffRowid(db) {
+  return (await readFtsMigrationState(db)).cutoffRowid;
+}
+function escapeFtsPhrase(s) {
+  return s.replace(/"/g, '""');
+}
+function windowsForRun(run) {
+  const chars = [...run];
+  const out = [];
+  for (let i = 0; i + FTS_WINDOW <= chars.length; i++) out.push(chars.slice(i, i + FTS_WINDOW).join(""));
+  return out;
+}
+function buildFtsCandidateMatch(q) {
+  const trimmed = q.trim();
+  if (!trimmed) return null;
+  const seen = /* @__PURE__ */ new Set();
+  outer: for (const run of splitRuns(trimmed)) {
+    for (const w of windowsForRun(run.text)) {
+      if (seen.size >= MAX_FTS_WINDOWS) break outer;
+      seen.add(w);
+    }
+  }
+  if (seen.size === 0) return null;
+  return [...seen].map((w) => `"${escapeFtsPhrase(w)}"`).join(" OR ");
+}
 function libraryPredicate(libraries) {
   const placeholders = libraries.map(() => "?").join(",");
   return `${ENTRY_LIBRARY} IN (${placeholders})`;
@@ -3558,6 +3602,16 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   const plan = buildSearchScore(q);
   const conds = [];
   const params = [...plan.scoreParams];
+  const ftsMatch = buildFtsCandidateMatch(q);
+  if (ftsMatch) {
+    const cutoff = await ftsCutoffRowid(db);
+    if (cutoff > 0) {
+      conds.push(`(rowid IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?) OR rowid <= ${cutoff})`);
+    } else {
+      conds.push("rowid IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?)");
+    }
+    params.push(ftsMatch, FTS_CANDIDATE_LIMIT);
+  }
   if (owner_id) {
     conds.push("owner_id = ?");
     params.push(owner_id);
@@ -4256,6 +4310,92 @@ async function libraryBackfillStatus(db, opts = {}) {
   return { pending: row?.c ?? 0 };
 }
 
+// kbdb/src/actions/fts-backfill.ts
+var HARD_LIMIT_CAP2 = 2e3;
+var DEFAULT_LIMIT = 500;
+async function backfillEntriesFts(db, env, opts = {}) {
+  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT_CAP2);
+  const explicitCursor = opts.cursor !== void 0;
+  const state = explicitCursor ? null : await readFtsMigrationState(db);
+  if (state && state.cutoffRowid === 0) {
+    const budget2 = await maintenanceBudgetToday(env, db);
+    return {
+      scanned: 0,
+      indexed: 0,
+      next_cursor: null,
+      quota_limit: budget2.limit,
+      quota_used_today: budget2.used,
+      quota_exceeded: false,
+      done: true
+    };
+  }
+  const cursor = explicitCursor ? Math.max(opts.cursor ?? 0, 0) : Math.max(state?.backfillCursor ?? 0, 0);
+  const budget = await maintenanceBudgetToday(env, db);
+  if (budget.remaining <= 0) {
+    return {
+      scanned: 0,
+      indexed: 0,
+      next_cursor: cursor,
+      quota_limit: budget.limit,
+      quota_used_today: budget.used,
+      quota_exceeded: true,
+      done: false
+    };
+  }
+  const candidates = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑假警報
+    `SELECT rowid as rid FROM entries WHERE rowid > ? AND content IS NOT NULL ORDER BY rowid ASC LIMIT ?`
+  ).bind(cursor, limit).all();
+  const rows = candidates.results ?? [];
+  const scanned = rows.length;
+  const toIndex = rows.slice(0, budget.remaining).map((r) => r.rid);
+  const quotaExceeded = scanned > toIndex.length;
+  let indexed = 0;
+  if (toIndex.length > 0) {
+    const rangeStart = cursor;
+    const rangeEnd = toIndex[toIndex.length - 1];
+    await db.prepare(`INSERT OR IGNORE INTO entries_fts(rowid, content) SELECT rowid, content FROM entries WHERE rowid > ? AND rowid <= ? AND content IS NOT NULL`).bind(rangeStart, rangeEnd).run();
+    indexed = toIndex.length;
+  }
+  try {
+    await addMaintenanceUsage(db, indexed);
+  } catch {
+  }
+  const lastIndexed = toIndex.length > 0 ? toIndex[toIndex.length - 1] : null;
+  const nextCursor = rows.length === 0 ? null : toIndex.length === rows.length ? scanned < limit ? null : rows[rows.length - 1].rid : lastIndexed ?? cursor;
+  if (nextCursor === null) {
+    try {
+      await db.prepare(`UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.cutoff_rowid', 0) WHERE id = ?`).bind(FTS_MIGRATION_CUTOFF_ID).run();
+    } catch {
+    }
+  } else if (!explicitCursor) {
+    try {
+      await db.prepare(`UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.backfill_cursor', ?) WHERE id = ?`).bind(nextCursor, FTS_MIGRATION_CUTOFF_ID).run();
+    } catch {
+    }
+  }
+  return {
+    scanned,
+    indexed,
+    next_cursor: nextCursor,
+    quota_limit: budget.limit,
+    quota_used_today: budget.used + indexed,
+    quota_exceeded: quotaExceeded,
+    done: nextCursor === null
+  };
+}
+async function ftsBackfillStatus(db, cursor) {
+  const explicitCursor = cursor !== void 0;
+  const state = explicitCursor ? null : await readFtsMigrationState(db);
+  const done = state?.cutoffRowid === 0;
+  const effectiveCursor = explicitCursor ? Math.max(cursor ?? 0, 0) : Math.max(state?.backfillCursor ?? 0, 0);
+  if (done) {
+    return { pending: 0, cursor: effectiveCursor, done: true };
+  }
+  const row = await db.prepare(`SELECT COUNT(*) as c FROM entries WHERE rowid > ? AND content IS NOT NULL`).bind(effectiveCursor).first();
+  return { pending: row?.c ?? 0, cursor: effectiveCursor, done: false };
+}
+
 // kbdb/src/routes/entries.ts
 var entryRoutes = new Hono2();
 var PAGE_EXPANSION_MAX_PAGES = 5;
@@ -4555,6 +4695,20 @@ entryRoutes.get("/backfill-library/status", async (c) => {
     since: c.req.query("since") ? Number(c.req.query("since")) : void 0,
     until: c.req.query("until") ? Number(c.req.query("until")) : void 0
   });
+  return c.json({ success: true, ...status });
+});
+entryRoutes.post("/fts-backfill", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const result = await backfillEntriesFts(c.env.DB, c.env, {
+    cursor: body.cursor !== void 0 ? Number(body.cursor) : void 0,
+    limit: body.limit !== void 0 ? Number(body.limit) : void 0
+  });
+  return c.json({ success: true, ...result });
+});
+entryRoutes.get("/fts-backfill/status", async (c) => {
+  const cursorParam = c.req.query("cursor");
+  const cursor = cursorParam !== void 0 ? Number(cursorParam) : void 0;
+  const status = await ftsBackfillStatus(c.env.DB, cursor);
   return c.json({ success: true, ...status });
 });
 entryRoutes.put("/:id", async (c) => {
@@ -5219,12 +5373,12 @@ mapRoutes.get("/:library", async (c) => {
 });
 
 // kbdb/src/actions/entity-canon-backfill.ts
-var HARD_LIMIT_CAP2 = 2e3;
-var DEFAULT_LIMIT = 500;
+var HARD_LIMIT_CAP3 = 2e3;
+var DEFAULT_LIMIT2 = 500;
 async function canonicalizeTripletEntities(db, env, opts = {}) {
   const templateName = opts.template ?? "triplet";
   const dryRun = opts.dry_run !== false;
-  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT_CAP2);
+  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT2, 1), HARD_LIMIT_CAP3);
   const offset = Math.max(opts.offset ?? 0, 0);
   const ownerId = opts.owner_id?.trim() || void 0;
   const tpl = await getTemplate(db, templateName);
@@ -5648,6 +5802,12 @@ var GENERATIONS = [
       { kind: "index", name: "idx_entries_owner_created" },
       { kind: "index", name: "idx_entries_source" }
     ]
+  },
+  {
+    n: 10,
+    file: "0010_entries_fts_trigram.sql",
+    what: "entries.content \u5168\u6587\u641C\u5C0B\u7D22\u5F15\uFF08FTS5 trigram\uFF09\u2014\u2014keyword \u641C\u5C0B\u8B80\u53D6\u91CF\u8207 owner \u7E3D\u5217\u6578\u812B\u9264\uFF08Arcrun#223 c9985 \u6839\u56E0\u2462\u4FEE\u5FA9\uFF09",
+    checks: [{ kind: "table", name: "entries_fts" }]
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;

@@ -9375,6 +9375,46 @@ async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
 // cypher-executor/src/scheduled.ts
 init_webhook_handlers();
 init_kbdb_proxy();
+
+// cypher-executor/src/lib/fts-backfill-tick.ts
+init_kbdb_proxy();
+var MAX_TICK_CALLS = 15;
+var CALL_LIMIT = 2e3;
+async function runFtsBackfillTick(env, log = console.log, logError = console.error) {
+  const { base, headers } = kbdbBase(env);
+  let totalScanned = 0;
+  for (let i = 0; i < MAX_TICK_CALLS; i++) {
+    let body = null;
+    try {
+      const res = await fetch(`${base}/entries/fts-backfill`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ limit: CALL_LIMIT })
+      });
+      body = await res.json().catch(() => null);
+      log("[scheduled] fts-backfill tick", i, res.status, JSON.stringify(body));
+    } catch (e) {
+      logError("[scheduled] fts-backfill tick failed", i, e);
+      return { calls: i, totalScanned, stoppedBecause: "error" };
+    }
+    if (!body?.success) {
+      return { calls: i + 1, totalScanned, stoppedBecause: "error" };
+    }
+    totalScanned += body.scanned ?? 0;
+    if (body.done || body.next_cursor === null) {
+      return { calls: i + 1, totalScanned, stoppedBecause: "done" };
+    }
+    if (body.quota_exceeded) {
+      return { calls: i + 1, totalScanned, stoppedBecause: "quota_exceeded" };
+    }
+    if (!body.scanned) {
+      return { calls: i + 1, totalScanned, stoppedBecause: "no_progress" };
+    }
+  }
+  return { calls: MAX_TICK_CALLS, totalScanned, stoppedBecause: "max_calls" };
+}
+
+// cypher-executor/src/scheduled.ts
 async function handleScheduled(controller, env, ctx) {
   const now2 = new Date(controller.scheduledTime);
   console.log("[scheduled] tick", now2.toISOString(), "controller.cron=", controller.cron);
@@ -9421,6 +9461,14 @@ async function handleScheduled(controller, env, ctx) {
         const body = await r.json().catch(() => null);
         console.log("[scheduled] execution-log cleanup", r.status, JSON.stringify(body));
       }).catch((e) => console.error("[scheduled] execution-log cleanup failed", e))
+    );
+  }
+  if (now2.getUTCHours() === 3 && now2.getUTCMinutes() === 15) {
+    ctx.waitUntil(
+      runFtsBackfillTick(env).then(
+        (summary) => console.log("[scheduled] fts-backfill tick summary", JSON.stringify(summary)),
+        (e) => console.error("[scheduled] fts-backfill tick summary failed", e)
+      )
     );
   }
 }
@@ -14969,12 +15017,25 @@ portalRouter.get(
 
 // cypher-executor/src/routes/init-seed.ts
 var initSeedRouter = new Hono2();
+function sameContent(a, b, omit) {
+  const strip = (obj) => {
+    const rec = obj;
+    const out = {};
+    for (const k of Object.keys(rec).sort()) {
+      if (!omit.includes(k)) out[k] = rec[k];
+    }
+    return JSON.stringify(out);
+  };
+  return strip(a) === strip(b);
+}
+var TIMESTAMP_FIELDS = ["created_at", "updated_at"];
 initSeedRouter.post("/init/seed", async (c) => {
   const now2 = Date.now();
   let apiOk = 0;
+  let apiWritten = 0;
   let apiFail = 0;
   const apiErrors = [];
-  for (const seed of API_RECIPE_SEEDS) {
+  await Promise.all(API_RECIPE_SEEDS.map(async (seed) => {
     try {
       const canonicalId = seed.canonical_id.trim().toLowerCase();
       const hashId = await deriveRecipeHash(canonicalId);
@@ -14999,17 +15060,21 @@ initSeedRouter.post("/init/seed", async (c) => {
         created_at: existing?.created_at ?? now2,
         updated_at: now2
       };
-      await installRecipeRecord(c.env.RECIPES, recipe);
+      if (!existing || !sameContent(recipe, existing, TIMESTAMP_FIELDS)) {
+        await installRecipeRecord(c.env.RECIPES, recipe);
+        apiWritten++;
+      }
       apiOk++;
     } catch (e) {
       apiFail++;
       apiErrors.push(`${seed.canonical_id}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }
+  }));
   let authOk = 0;
+  let authWritten = 0;
   let authFail = 0;
   const authErrors = [];
-  for (const seed of AUTH_RECIPE_SEEDS) {
+  await Promise.all(AUTH_RECIPE_SEEDS.map(async (seed) => {
     try {
       const service = seed.service.trim().toLowerCase();
       const existing = await c.env.RECIPES.get(`auth_recipe:${service}`, "json");
@@ -15019,22 +15084,39 @@ initSeedRouter.post("/init/seed", async (c) => {
         created_at: existing?.created_at ?? now2,
         updated_at: now2
       };
-      await c.env.RECIPES.put(`auth_recipe:${service}`, JSON.stringify(recipe));
+      if (!existing || !sameContent(recipe, existing, TIMESTAMP_FIELDS)) {
+        await c.env.RECIPES.put(`auth_recipe:${service}`, JSON.stringify(recipe));
+        authWritten++;
+      }
       authOk++;
     } catch (e) {
       authFail++;
       authErrors.push(`${seed.service}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }
+  }));
   const portalTemplates = await ensurePortalTemplates(c.env);
   const allOk = apiFail === 0 && authFail === 0 && portalTemplates.errors.length === 0;
+  const durationMs = Date.now() - now2;
   return c.json(
     {
       success: allOk,
-      api_recipes: { seeded: apiOk, failed: apiFail, errors: apiErrors },
-      auth_recipes: { seeded: authOk, failed: authFail, errors: authErrors },
+      duration_ms: durationMs,
+      api_recipes: {
+        seeded: apiOk,
+        written: apiWritten,
+        unchanged: apiOk - apiWritten,
+        failed: apiFail,
+        errors: apiErrors
+      },
+      auth_recipes: {
+        seeded: authOk,
+        written: authWritten,
+        unchanged: authOk - authWritten,
+        failed: authFail,
+        errors: authErrors
+      },
       portal_templates: portalTemplates,
-      message: allOk ? `seed \u5B8C\u6210\uFF1A${apiOk} \u500B API recipe + ${authOk} \u500B auth recipe + portal templates\uFF08\u65B0\u5EFA ${portalTemplates.created.length}\uFF0F\u5DF2\u5B58\u5728 ${portalTemplates.existing.length}\uFF09` : `seed \u90E8\u5206\u5931\u6557\uFF08\u8AA0\u5BE6\u56DE\u5831\uFF0C\u672A\u5047\u7DA0\uFF09\uFF1AAPI ${apiOk}\u2713/${apiFail}\u2717\uFF0Cauth ${authOk}\u2713/${authFail}\u2717\uFF0Cportal templates \u932F\u8AA4 ${portalTemplates.errors.length}`
+      message: allOk ? `seed \u5B8C\u6210\uFF08${durationMs}ms\uFF09\uFF1A${apiOk} \u500B API recipe\uFF08\u5BEB\u5165 ${apiWritten}\uFF0F\u6CBF\u7528 ${apiOk - apiWritten}\uFF09+ ${authOk} \u500B auth recipe\uFF08\u5BEB\u5165 ${authWritten}\uFF0F\u6CBF\u7528 ${authOk - authWritten}\uFF09+ portal templates\uFF08\u65B0\u5EFA ${portalTemplates.created.length}\uFF0F\u5DF2\u5B58\u5728 ${portalTemplates.existing.length}\uFF09` : `seed \u90E8\u5206\u5931\u6557\uFF08\u8AA0\u5BE6\u56DE\u5831\uFF0C\u672A\u5047\u7DA0\uFF09\uFF1AAPI ${apiOk}\u2713/${apiFail}\u2717\uFF0Cauth ${authOk}\u2713/${authFail}\u2717\uFF0Cportal templates \u932F\u8AA4 ${portalTemplates.errors.length}`
     },
     allOk ? 200 : 207
   );
