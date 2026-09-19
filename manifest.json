@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.68",
- "fingerprint": "eb6906e4b9b829cb4b16e5cd77a500f49080c062ee592aea9148a8ad320d9092",
+ "release": "1.4.69",
+ "fingerprint": "70043735c8538d1dd65ea32a5a10b402e272529e5de5b97316a10f233793bcd4",
  "built": "2026-09-19",
- "source": "Arcrun@12edd1c90caf",
+ "source": "Arcrun@3d8d8c199e14",
  "daemon": {
   "version": "0.18.57",
   "built": "20260919-1843",
@@ -415,7 +415,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 221803,
+   "js_bytes": 222824,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -435,10 +435,10 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "12edd1c90cafc6369196c6e5bfebca662224626e",
-   "source_content_sha256": "2f5a76a8b3331a8682dc01a96f60d6a0bcb3ab341575333d77939f49103de554",
-   "sha256": "2f5a76a8b3331a8682dc01a96f60d6a0bcb3ab341575333d77939f49103de554",
-   "bytes": 221803
+   "source_commit": "3d8d8c199e1475a6f51a57b4c6b5bbc3cb92ec0b",
+   "source_content_sha256": "716eb58b2dcf4799865123546ce61b44a959ee7dcd3cbf243fea4f508aed0d78",
+   "sha256": "716eb58b2dcf4799865123546ce61b44a959ee7dcd3cbf243fea4f508aed0d78",
+   "bytes": 222824
   },
   {
    "name": "arcrun-mcp",
@@ -1098,7 +1098,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 221803,
+   "js_bytes": 222824,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1118,8 +1118,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "12edd1c90cafc6369196c6e5bfebca662224626e",
-   "source_content_sha256": "2f5a76a8b3331a8682dc01a96f60d6a0bcb3ab341575333d77939f49103de554",
+   "source_commit": "3d8d8c199e1475a6f51a57b4c6b5bbc3cb92ec0b",
+   "source_content_sha256": "716eb58b2dcf4799865123546ce61b44a959ee7dcd3cbf243fea4f508aed0d78",
    "first_install": true
   },
   {
@@ -1443,6 +1443,10 @@
    "why": "rag_chat 用 {{credential.kbdb_internal_token}}，解憑證要打這顆"
   },
   {
+   "worker": "arcrun-code",
+   "why": "rag_ingest_card／prep 用 __CODE_URL__"
+  },
+  {
    "worker": "arcrun-http-request",
    "why": "rag_ingest_card／list_old_blocks 用 __HTTP_REQ_URL__"
   },
@@ -1512,6 +1516,6 @@
   }
  ],
  "installer": {
-  "version": "1.0.10"
+  "version": "1.0.11"
  }
 }

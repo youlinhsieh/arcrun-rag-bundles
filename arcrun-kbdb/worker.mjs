@@ -4852,6 +4852,118 @@ async function selectLibrariesForQuestion(db, question, opts = {}) {
   };
 }
 
+// kbdb/src/actions/graph-query.ts
+var D1_MAX_BOUND_PARAMS = 90;
+function chunkForD1(items, fixedParams) {
+  const size = Math.max(1, D1_MAX_BOUND_PARAMS - fixedParams);
+  if (items.length <= size) return [items];
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+async function recordIdsByFieldValue(db, tplId, fields, value, owner_id) {
+  if (!value || fields.length === 0) return [];
+  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND entry_type = 'value' AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ? AND entry_type = 'value'`;
+  const valueParams = owner_id ? [value, owner_id] : [value];
+  const valueRows = await db.prepare(valueSql).bind(...valueParams).all();
+  const valueIds = (valueRows.results ?? []).map((r) => r.id);
+  if (valueIds.length === 0) return [];
+  const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
+  const relPh = fieldIds.map(() => "?").join(",");
+  const recordIdSet = /* @__PURE__ */ new Set();
+  for (const idsChunk of chunkForD1(valueIds, fieldIds.length + (owner_id ? 1 : 0))) {
+    const dstPh = idsChunk.map(() => "?").join(",");
+    const relSql = owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
+    const relParams = owner_id ? [...idsChunk, ...fieldIds, owner_id] : [...idsChunk, ...fieldIds];
+    const relRows = await db.prepare(relSql).bind(...relParams).all();
+    for (const r of relRows.results ?? []) recordIdSet.add(r.record_id);
+  }
+  return [...recordIdSet];
+}
+async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, owner_id, libraries) {
+  if (!nodeValue || fields.length === 0) return [];
+  const tpl = await getTemplate(db, templateIdOrName);
+  if (!tpl) return [];
+  const recordIds = await recordIdsByFieldValue(db, tpl.id, fields, nodeValue, owner_id);
+  if (recordIds.length === 0) return [];
+  const libFilter = libraries && libraries.length > 0 ? libraries : null;
+  const libAgg = "MAX(CASE WHEN r.rel_id = ? THEN v.content END)";
+  const pivotFixed = 5 + (libFilter ? 1 + libFilter.length : 0);
+  const rows = [];
+  for (const recChunk of chunkForD1(recordIds, pivotFixed)) {
+    const recPh = recChunk.map(() => "?").join(",");
+    const pivotSql = `
+      SELECT b.src_id AS record_id,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS subject,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS predicate,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS object,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS status,
+             ${libAgg} AS library
+        FROM entries b
+        LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+        LEFT JOIN entries v ON v.id = r.dst_id
+       WHERE b.rel_id = 'sys_belongs' AND b.src_id IN (${recPh})
+       GROUP BY b.src_id${libFilter ? `
+      HAVING ${libraryOf(libAgg)} IN (${libFilter.map(() => "?").join(",")})` : ""}`;
+    const pivotParams = [
+      fieldEntryId(tpl.id, "subject"),
+      fieldEntryId(tpl.id, "predicate"),
+      fieldEntryId(tpl.id, "object"),
+      fieldEntryId(tpl.id, "status"),
+      fieldEntryId(tpl.id, "library"),
+      ...recChunk,
+      ...libFilter ? [fieldEntryId(tpl.id, "library"), ...libFilter] : []
+    ];
+    const pivotRows = await db.prepare(pivotSql).bind(...pivotParams).all();
+    rows.push(...pivotRows.results ?? []);
+  }
+  return rows;
+}
+function neighborToEdge(n) {
+  return n.direction === "in" ? { subject: n.node, predicate: n.predicate, object: n.from } : { subject: n.from, predicate: n.predicate, object: n.node };
+}
+async function graphNeighbors(db, start, opts = {}) {
+  const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
+  const template = opts.template ?? "triplet";
+  const directed = !!opts.directed;
+  const owner_id = opts.owner_id;
+  const libraries = opts.library && opts.library.length > 0 ? opts.library : void 0;
+  const startNode = canonicalEntity(start);
+  const visited = /* @__PURE__ */ new Set([startNode]);
+  let frontier = [startNode];
+  const neighbors = [];
+  for (let d = 1; d <= depth; d++) {
+    if (frontier.length === 0) break;
+    const next = [];
+    for (const cur of frontier) {
+      const outgoing = await findTripletEdgesByNode(db, template, ["subject"], cur, owner_id, libraries);
+      for (const e of outgoing) {
+        if (e.status === "deprecated") continue;
+        const nb = e.object;
+        if (!nb || visited.has(nb)) continue;
+        visited.add(nb);
+        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "out" });
+        next.push(nb);
+      }
+      if (!directed) {
+        const incoming = await findTripletEdgesByNode(db, template, ["object"], cur, owner_id, libraries);
+        for (const e of incoming) {
+          if (e.status === "deprecated") continue;
+          const nb = e.subject;
+          if (!nb || visited.has(nb)) continue;
+          visited.add(nb);
+          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "in" });
+          next.push(nb);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
+}
+
 // kbdb/src/routes/records.ts
 var recordRoutes = new Hono2();
 var isStringMap = (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
@@ -4896,6 +5008,19 @@ recordRoutes.get("/by-template/:template", async (c) => {
     offset
   );
   return c.json({ success: true, records, count: records.length, limit, offset, total });
+});
+recordRoutes.get("/by-source/:template", async (c) => {
+  const field = c.req.query("field");
+  const value = c.req.query("value");
+  if (!field || !value) return c.json({ success: false, error: "field and value required" }, 400);
+  const limit = intParam(c.req.query("limit"), 1e3, 1, 1e3);
+  const offset = intParam(c.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
+  const tpl = await getTemplate(c.env.DB, c.req.param("template"));
+  if (!tpl) return c.json({ success: true, record_ids: [], count: 0, total: 0, limit, offset });
+  const all = await recordIdsByFieldValue(c.env.DB, tpl.id, [field], value, c.req.query("owner_id") || void 0);
+  all.sort();
+  const page = all.slice(offset, offset + limit);
+  return c.json({ success: true, record_ids: page, count: page.length, total: all.length, limit, offset });
 });
 recordRoutes.get("/:recordId", async (c) => {
   const rec = await getRecord(c.env.DB, c.req.param("recordId"));
@@ -5092,114 +5217,6 @@ mapRoutes.get("/:library", async (c) => {
   if (!map) return c.json({ success: false, error: "not found" }, 404);
   return c.json({ success: true, map });
 });
-
-// kbdb/src/actions/graph-query.ts
-var D1_MAX_BOUND_PARAMS = 90;
-function chunkForD1(items, fixedParams) {
-  const size = Math.max(1, D1_MAX_BOUND_PARAMS - fixedParams);
-  if (items.length <= size) return [items];
-  const out = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, owner_id, libraries) {
-  if (!nodeValue || fields.length === 0) return [];
-  const tpl = await getTemplate(db, templateIdOrName);
-  if (!tpl) return [];
-  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND entry_type = 'value' AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ? AND entry_type = 'value'`;
-  const valueParams = owner_id ? [nodeValue, owner_id] : [nodeValue];
-  const valueRows = await db.prepare(valueSql).bind(...valueParams).all();
-  const valueIds = (valueRows.results ?? []).map((r) => r.id);
-  if (valueIds.length === 0) return [];
-  const fieldIds = fields.map((f) => fieldEntryId(tpl.id, f));
-  const relPh = fieldIds.map(() => "?").join(",");
-  const recordIdSet = /* @__PURE__ */ new Set();
-  for (const idsChunk of chunkForD1(valueIds, fieldIds.length + (owner_id ? 1 : 0))) {
-    const dstPh = idsChunk.map(() => "?").join(",");
-    const relSql = owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries
-         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
-         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
-    const relParams = owner_id ? [...idsChunk, ...fieldIds, owner_id] : [...idsChunk, ...fieldIds];
-    const relRows = await db.prepare(relSql).bind(...relParams).all();
-    for (const r of relRows.results ?? []) recordIdSet.add(r.record_id);
-  }
-  const recordIds = [...recordIdSet];
-  if (recordIds.length === 0) return [];
-  const libFilter = libraries && libraries.length > 0 ? libraries : null;
-  const libAgg = "MAX(CASE WHEN r.rel_id = ? THEN v.content END)";
-  const pivotFixed = 5 + (libFilter ? 1 + libFilter.length : 0);
-  const rows = [];
-  for (const recChunk of chunkForD1(recordIds, pivotFixed)) {
-    const recPh = recChunk.map(() => "?").join(",");
-    const pivotSql = `
-      SELECT b.src_id AS record_id,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS subject,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS predicate,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS object,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS status,
-             ${libAgg} AS library
-        FROM entries b
-        LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-        LEFT JOIN entries v ON v.id = r.dst_id
-       WHERE b.rel_id = 'sys_belongs' AND b.src_id IN (${recPh})
-       GROUP BY b.src_id${libFilter ? `
-      HAVING ${libraryOf(libAgg)} IN (${libFilter.map(() => "?").join(",")})` : ""}`;
-    const pivotParams = [
-      fieldEntryId(tpl.id, "subject"),
-      fieldEntryId(tpl.id, "predicate"),
-      fieldEntryId(tpl.id, "object"),
-      fieldEntryId(tpl.id, "status"),
-      fieldEntryId(tpl.id, "library"),
-      ...recChunk,
-      ...libFilter ? [fieldEntryId(tpl.id, "library"), ...libFilter] : []
-    ];
-    const pivotRows = await db.prepare(pivotSql).bind(...pivotParams).all();
-    rows.push(...pivotRows.results ?? []);
-  }
-  return rows;
-}
-function neighborToEdge(n) {
-  return n.direction === "in" ? { subject: n.node, predicate: n.predicate, object: n.from } : { subject: n.from, predicate: n.predicate, object: n.node };
-}
-async function graphNeighbors(db, start, opts = {}) {
-  const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
-  const template = opts.template ?? "triplet";
-  const directed = !!opts.directed;
-  const owner_id = opts.owner_id;
-  const libraries = opts.library && opts.library.length > 0 ? opts.library : void 0;
-  const startNode = canonicalEntity(start);
-  const visited = /* @__PURE__ */ new Set([startNode]);
-  let frontier = [startNode];
-  const neighbors = [];
-  for (let d = 1; d <= depth; d++) {
-    if (frontier.length === 0) break;
-    const next = [];
-    for (const cur of frontier) {
-      const outgoing = await findTripletEdgesByNode(db, template, ["subject"], cur, owner_id, libraries);
-      for (const e of outgoing) {
-        if (e.status === "deprecated") continue;
-        const nb = e.object;
-        if (!nb || visited.has(nb)) continue;
-        visited.add(nb);
-        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "out" });
-        next.push(nb);
-      }
-      if (!directed) {
-        const incoming = await findTripletEdgesByNode(db, template, ["object"], cur, owner_id, libraries);
-        for (const e of incoming) {
-          if (e.status === "deprecated") continue;
-          const nb = e.subject;
-          if (!nb || visited.has(nb)) continue;
-          visited.add(nb);
-          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "in" });
-          next.push(nb);
-        }
-      }
-    }
-    frontier = next;
-  }
-  return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
-}
 
 // kbdb/src/actions/entity-canon-backfill.ts
 var HARD_LIMIT_CAP2 = 2e3;
