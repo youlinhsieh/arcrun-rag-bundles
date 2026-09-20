@@ -9379,7 +9379,7 @@ init_kbdb_proxy();
 // cypher-executor/src/lib/fts-backfill-tick.ts
 init_kbdb_proxy();
 var MAX_TICK_CALLS = 15;
-var CALL_LIMIT = 2e3;
+var CALL_LIMIT = 1e4;
 async function runFtsBackfillTick(env, log = console.log, logError = console.error) {
   const { base, headers } = kbdbBase(env);
   let totalScanned = 0;
@@ -9463,7 +9463,7 @@ async function handleScheduled(controller, env, ctx) {
       }).catch((e) => console.error("[scheduled] execution-log cleanup failed", e))
     );
   }
-  if (now2.getUTCHours() === 3 && now2.getUTCMinutes() === 15) {
+  if (now2.getUTCMinutes() === 15) {
     ctx.waitUntil(
       runFtsBackfillTick(env).then(
         (summary) => console.log("[scheduled] fts-backfill tick summary", JSON.stringify(summary)),

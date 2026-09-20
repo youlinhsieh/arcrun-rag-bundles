@@ -2393,8 +2393,9 @@ async function getRecord(db, recordId) {
   const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
   return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
 }
-async function countSheetMembers(db, sheetId, owner_id, offset, limit, got) {
-  if (offset === 0 && got < limit) return got;
+async function resolveTotal(db, sheetId, owner_id, offset, limit, got, exactTotal) {
+  if (offset === 0 && got < limit) return { total: got, totalExact: true };
+  if (!exactTotal) return { total: offset + got + 1, totalExact: false };
   const row = owner_id ? await db.prepare(
     // kbdb-sql-ok：牆內本體（kbdb/src/actions/）
     `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?`
@@ -2402,11 +2403,11 @@ async function countSheetMembers(db, sheetId, owner_id, offset, limit, got) {
     // kbdb-sql-ok：同上
     `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`
   ).bind(sheetId).first();
-  return row?.total ?? 0;
+  return { total: row?.total ?? 0, totalExact: true };
 }
-async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0) {
+async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false) {
   const tpl = await getTemplate(db, template);
-  if (!tpl) return { records: [], total: 0 };
+  if (!tpl) return { records: [], total: 0, totalExact: true };
   const cap = Math.min(Math.max(limit, 1), 500);
   const skip = Math.max(offset, 0);
   const res = owner_id ? await db.prepare(
@@ -2421,8 +2422,8 @@ async function searchByTemplatePage(db, template, owner_id, limit = 100, offset 
            ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
   ).bind(tpl.id, cap, skip).all();
   const ids = (res.results ?? []).map((r) => r.record_id);
-  const total = await countSheetMembers(db, tpl.id, owner_id, skip, cap, ids.length);
-  if (ids.length === 0) return { records: [], total };
+  const { total, totalExact } = await resolveTotal(db, tpl.id, owner_id, skip, cap, ids.length, exactTotal);
+  if (ids.length === 0) return { records: [], total, totalExact };
   const byId = /* @__PURE__ */ new Map();
   for (const id of ids) byId.set(id, { record_id: id, template_id: tpl.id, values: {}, owner_id: null });
   for (let i = 0; i < ids.length; i += 90) {
@@ -2447,7 +2448,7 @@ async function searchByTemplatePage(db, template, owner_id, limit = 100, offset 
       if (rec) rec.owner_id = r.owner_id;
     }
   }
-  return { records: ids.map((id) => byId.get(id)).filter((r) => !!r), total };
+  return { records: ids.map((id) => byId.get(id)).filter((r) => !!r), total, totalExact };
 }
 async function deleteRecord(db, recordId) {
   const belongs = await recordBelongs(db, recordId);
@@ -3199,7 +3200,7 @@ async function getEntry(db, id) {
   const row = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
   return row ?? null;
 }
-var NOT_MACHINERY_PREDICATE = "(src_id IS NULL AND entry_type NOT IN ('record', 'sheet', 'field', 'system'))";
+var NOT_MACHINERY_PREDICATE = "(src_id IS NULL AND entry_type <> 'record' AND entry_type <> 'sheet' AND entry_type <> 'field' AND entry_type <> 'system')";
 function eqTerm(column, exactKeyPresent) {
   return exactKeyPresent ? `+${column} = ?` : `${column} = ?`;
 }
@@ -3559,9 +3560,6 @@ async function readFtsMigrationState(db) {
     return { cutoffRowid: Number.MAX_SAFE_INTEGER, backfillCursor: 0 };
   }
 }
-async function ftsCutoffRowid(db) {
-  return (await readFtsMigrationState(db)).cutoffRowid;
-}
 function escapeFtsPhrase(s) {
   return s.replace(/"/g, '""');
 }
@@ -3600,49 +3598,69 @@ function isDeprecatedEntry(entry) {
 }
 async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false) {
   const plan = buildSearchScore(q);
-  const conds = [];
-  const params = [...plan.scoreParams];
-  const ftsMatch = buildFtsCandidateMatch(q);
-  if (ftsMatch) {
-    const cutoff = await ftsCutoffRowid(db);
-    if (cutoff > 0) {
-      conds.push(`(rowid IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?) OR rowid <= ${cutoff})`);
-    } else {
-      conds.push("rowid IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?)");
+  const buildConds = (demoteOwnerIndex) => {
+    const conds = [];
+    const params = [];
+    if (owner_id) {
+      conds.push(demoteOwnerIndex ? "+owner_id = ?" : "owner_id = ?");
+      params.push(owner_id);
     }
-    params.push(ftsMatch, FTS_CANDIDATE_LIMIT);
+    if (entry_type) {
+      conds.push("entry_type = ?");
+      params.push(entry_type);
+    } else {
+      conds.push(NOT_MACHINERY_PREDICATE);
+    }
+    if (source) {
+      conds.push("json_extract(metadata_json, '$.source') = ?");
+      params.push(source);
+    }
+    if (library && library.length > 0) {
+      conds.push(libraryPredicate(library));
+      params.push(...library);
+    }
+    if (!includeDeprecated) {
+      conds.push(NOT_DEPRECATED_PREDICATE);
+    }
+    conds.push(NOT_LIBRARY_MAP_CELL);
+    return { conds, params };
+  };
+  const capped = Math.min(limit, 200);
+  const stmt = (rangeCond, rangeParams, demoteOwnerIndex = false) => {
+    const { conds, params } = buildConds(demoteOwnerIndex);
+    const all = rangeCond ? [rangeCond, ...conds] : conds;
+    const inner = all.length > 0 ? `WHERE ${all.join(" AND ")}` : "";
+    return db.prepare(
+      // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑假警報
+      `SELECT * FROM (
+           SELECT *, (${plan.scoreExpr}) AS match_score FROM entries ${inner}
+         ) WHERE match_score > 0
+         ORDER BY match_score DESC, updated_at DESC
+         LIMIT ?`
+    ).bind(...plan.scoreParams, ...rangeParams, ...params, capped);
+  };
+  const ftsMatch = buildFtsCandidateMatch(q);
+  if (!ftsMatch) {
+    const res = await stmt("", []).all();
+    return applyRelativeCut(res.results ?? []);
   }
-  if (owner_id) {
-    conds.push("owner_id = ?");
-    params.push(owner_id);
+  const { cutoffRowid, backfillCursor } = await readFtsMigrationState(db);
+  const candidateRes = await stmt(
+    "rowid IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?)",
+    [ftsMatch, FTS_CANDIDATE_LIMIT],
+    true
+  ).all();
+  const hits = candidateRes.results ?? [];
+  if (cutoffRowid > backfillCursor) {
+    const legacyRes = await stmt(`(rowid > ${Math.trunc(backfillCursor)} AND rowid <= ${Math.trunc(cutoffRowid)})`, [], true).all();
+    const seen = new Set(hits.map((e) => e.id));
+    for (const row of legacyRes.results ?? []) if (!seen.has(row.id)) {
+      seen.add(row.id);
+      hits.push(row);
+    }
+    hits.sort((a, b) => b.match_score - a.match_score || (b.updated_at ?? 0) - (a.updated_at ?? 0));
   }
-  if (entry_type) {
-    conds.push("entry_type = ?");
-    params.push(entry_type);
-  } else {
-    conds.push(NOT_MACHINERY_PREDICATE);
-  }
-  if (source) {
-    conds.push("json_extract(metadata_json, '$.source') = ?");
-    params.push(source);
-  }
-  if (library && library.length > 0) {
-    conds.push(libraryPredicate(library));
-    params.push(...library);
-  }
-  if (!includeDeprecated) {
-    conds.push(NOT_DEPRECATED_PREDICATE);
-  }
-  conds.push(NOT_LIBRARY_MAP_CELL);
-  const inner = conds.length > 0 ? `WHERE ${conds.join(" AND ")}` : "";
-  const res = await db.prepare(
-    `SELECT * FROM (
-         SELECT *, (${plan.scoreExpr}) AS match_score FROM entries ${inner}
-       ) WHERE match_score > 0
-       ORDER BY match_score DESC, updated_at DESC
-       LIMIT ?`
-  ).bind(...params, Math.min(limit, 200)).all();
-  return applyRelativeCut(res.results ?? []);
+  return applyRelativeCut(hits.slice(0, capped));
 }
 
 // kbdb/src/search-rank.ts
@@ -3773,6 +3791,12 @@ function maintenanceDailyLimit(env) {
   const n = raw2 ? parseInt(raw2, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT;
 }
+var DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT = 1e5;
+function ftsBuildDailyLimit(env) {
+  const raw2 = env.KBDB_FTS_BUILD_DAILY_WRITE_LIMIT;
+  const n = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT;
+}
 function utcDay() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
@@ -3807,7 +3831,12 @@ async function addMaintenanceUsage(db, by) {
   }
 }
 async function maintenanceBudgetToday(env, db) {
-  const limit = maintenanceDailyLimit(env);
+  return budgetAgainst(maintenanceDailyLimit(env), db);
+}
+async function ftsBuildBudgetToday(env, db) {
+  return budgetAgainst(ftsBuildDailyLimit(env), db);
+}
+async function budgetAgainst(limit, db) {
   let used = 0;
   try {
     used = await getMaintenanceUsageToday(db);
@@ -4311,14 +4340,14 @@ async function libraryBackfillStatus(db, opts = {}) {
 }
 
 // kbdb/src/actions/fts-backfill.ts
-var HARD_LIMIT_CAP2 = 2e3;
+var HARD_LIMIT_CAP2 = 1e4;
 var DEFAULT_LIMIT = 500;
 async function backfillEntriesFts(db, env, opts = {}) {
   const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT_CAP2);
   const explicitCursor = opts.cursor !== void 0;
   const state = explicitCursor ? null : await readFtsMigrationState(db);
   if (state && state.cutoffRowid === 0) {
-    const budget2 = await maintenanceBudgetToday(env, db);
+    const budget2 = await ftsBuildBudgetToday(env, db);
     return {
       scanned: 0,
       indexed: 0,
@@ -4330,7 +4359,7 @@ async function backfillEntriesFts(db, env, opts = {}) {
     };
   }
   const cursor = explicitCursor ? Math.max(opts.cursor ?? 0, 0) : Math.max(state?.backfillCursor ?? 0, 0);
-  const budget = await maintenanceBudgetToday(env, db);
+  const budget = await ftsBuildBudgetToday(env, db);
   if (budget.remaining <= 0) {
     return {
       scanned: 0,
@@ -5154,14 +5183,16 @@ var intParam = (raw2, fallback, min, max) => {
 recordRoutes.get("/by-template/:template", async (c) => {
   const limit = intParam(c.req.query("limit"), 100, 1, 500);
   const offset = intParam(c.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
-  const { records, total } = await searchByTemplatePage(
+  const exactTotal = c.req.query("total") === "exact";
+  const { records, total, totalExact } = await searchByTemplatePage(
     c.env.DB,
     c.req.param("template"),
     c.req.query("owner_id") || void 0,
     limit,
-    offset
+    offset,
+    exactTotal
   );
-  return c.json({ success: true, records, count: records.length, limit, offset, total });
+  return c.json({ success: true, records, count: records.length, limit, offset, total, total_exact: totalExact });
 });
 recordRoutes.get("/by-source/:template", async (c) => {
   const field = c.req.query("field");
@@ -5733,7 +5764,12 @@ var GENERATIONS = [
     checks: [
       { kind: "table", name: "entries" },
       { kind: "table", name: "templates" },
-      { kind: "index", name: "idx_entries_owner" },
+      // 🔴 這裡原本還探 `idx_entries_owner`，0012 把那支拿掉了（它是 0009
+      // idx_entries_owner_created 的重複前綴）⇒ 繼續探它的話，**套過 0012 的實例
+      // 會被判成「連第 1 代都沒套」**，而 actual_generation 在第一個缺口就停
+      // ⇒ /health 會把一台最新的實例報成落後十幾代。探針探的是「現在還在不在」，
+      // 不是「歷史上曾經建過」——同 0002／0006 那段「套過又拆了與從沒套過分不出來」
+      // 的判準（判的是現在能不能用）。idx_entries_type 沒被 0012 動到，留著。
       { kind: "index", name: "idx_entries_type" },
       { kind: "template", name: "recipe_stat" }
     ]
@@ -5808,6 +5844,24 @@ var GENERATIONS = [
     file: "0010_entries_fts_trigram.sql",
     what: "entries.content \u5168\u6587\u641C\u5C0B\u7D22\u5F15\uFF08FTS5 trigram\uFF09\u2014\u2014keyword \u641C\u5C0B\u8B80\u53D6\u91CF\u8207 owner \u7E3D\u5217\u6578\u812B\u9264\uFF08Arcrun#223 c9985 \u6839\u56E0\u2462\u4FEE\u5FA9\uFF09",
     checks: [{ kind: "table", name: "entries_fts" }]
+  },
+  {
+    n: 11,
+    file: "0011_records_list_index.sql",
+    what: "sheet \u6210\u54E1\u6E05\u55AE\u7D22\u5F15\u2014\u2014by-template \u6E05\u55AE\u53EA\u8B80 offset+limit \u5217\u3001\u4E0D\u518D\u6392\u5E8F\u6574\u5F35 sheet\uFF08Arcrun#218 \u6B98\u7559\uFF1A\u8B80\u53D6\u5217\u6578\u4E0D\u96A8\u5EAB\u5927\u5C0F\u9577\uFF09",
+    checks: [{ kind: "index", name: "idx_entries_dst_rel_created" }]
+  },
+  {
+    n: 12,
+    file: "0012_entries_write_amplification.sql",
+    what: "entries \u7D22\u5F15\u7A05\u7626\u8EAB\u2014\u2014\u9001\u4E00\u5F35\u5361\u7684 rows_written \u6E1B\u5C11 38%\uFF0C\u7B2C\u4E00\u6B21\u62D6\u8CC7\u6599\u593E\u9032\u4F86\u4E0D\u6703\u7576\u5929\u649E\u5230\u514D\u8CBB\u5C64\u5BEB\u5165\u4E0A\u9650\uFF08InkStoneCo#140\uFF09",
+    // 三支條件索引的名字帶 `_present` 後綴就是這一代的指紋：同名重建在事後看起來
+    // 與「從沒套過」一模一樣，改名才分得出來（見該 migration 檔頭③）。
+    checks: [
+      { kind: "index", name: "idx_entries_parent_present" },
+      { kind: "index", name: "idx_entries_page_present" },
+      { kind: "index", name: "idx_entries_hash_present" }
+    ]
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
