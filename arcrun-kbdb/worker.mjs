@@ -3544,6 +3544,25 @@ function applyRelativeCut(rows) {
 var FTS_WINDOW = 3;
 var MAX_FTS_WINDOWS = 48;
 var FTS_CANDIDATE_LIMIT = 5e3;
+var RESIDUAL_SCAN_CAP = 1e4;
+var RESIDUAL_SWEEP_ROTATION_PERIOD_MS = 1e3;
+function planResidualWindow(backfillCursor, cutoffRowid, cap, nowMs) {
+  const nearLower = Math.max(backfillCursor, cutoffRowid - cap);
+  const near = { lower: nearLower, upper: cutoffRowid };
+  const sweepRangeSize = nearLower - backfillCursor;
+  if (sweepRangeSize <= 0) return { near, sweep: null, totalSweepSlices: 0 };
+  const numSlices = Math.ceil(sweepRangeSize / cap);
+  const slot = Math.floor(nowMs / RESIDUAL_SWEEP_ROTATION_PERIOD_MS) % numSlices;
+  const sweepLower = backfillCursor + slot * cap;
+  const sweepUpper = Math.min(nearLower, sweepLower + cap);
+  return { near, sweep: { lower: sweepLower, upper: sweepUpper }, totalSweepSlices: numSlices };
+}
+function isSearchCoverageComplete(q, backfillCursor, cutoffRowid, cap = RESIDUAL_SCAN_CAP, nowMs = Date.now()) {
+  if (cutoffRowid <= backfillCursor) return true;
+  if (!buildFtsCandidateMatch(q)) return true;
+  const plan = planResidualWindow(backfillCursor, cutoffRowid, cap, nowMs);
+  return plan.totalSweepSlices <= 1;
+}
 var FTS_MIGRATION_CUTOFF_ID = "kbdb-fts-migration-cutoff";
 async function readFtsMigrationState(db) {
   try {
@@ -3596,7 +3615,7 @@ function isDeprecatedEntry(entry) {
     return false;
   }
 }
-async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false) {
+async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false, nowMs = Date.now()) {
   const plan = buildSearchScore(q);
   const buildConds = (demoteOwnerIndex) => {
     const conds = [];
@@ -3652,11 +3671,19 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   ).all();
   const hits = candidateRes.results ?? [];
   if (cutoffRowid > backfillCursor) {
-    const legacyRes = await stmt(`(rowid > ${Math.trunc(backfillCursor)} AND rowid <= ${Math.trunc(cutoffRowid)})`, [], true).all();
     const seen = new Set(hits.map((e) => e.id));
-    for (const row of legacyRes.results ?? []) if (!seen.has(row.id)) {
-      seen.add(row.id);
-      hits.push(row);
+    const mergeIn = (rows) => {
+      for (const row of rows) if (!seen.has(row.id)) {
+        seen.add(row.id);
+        hits.push(row);
+      }
+    };
+    const { near, sweep } = planResidualWindow(backfillCursor, cutoffRowid, RESIDUAL_SCAN_CAP, nowMs);
+    const nearRes = await stmt(`(rowid > ${Math.trunc(near.lower)} AND rowid <= ${Math.trunc(near.upper)})`, [], true).all();
+    mergeIn(nearRes.results ?? []);
+    if (sweep) {
+      const sweepRes = await stmt(`(rowid > ${Math.trunc(sweep.lower)} AND rowid <= ${Math.trunc(sweep.upper)})`, [], true).all();
+      mergeIn(sweepRes.results ?? []);
     }
     hits.sort((a, b) => b.match_score - a.match_score || (b.updated_at ?? 0) - (a.updated_at ?? 0));
   }
@@ -3844,6 +3871,93 @@ async function budgetAgainst(limit, db) {
     used = 0;
   }
   return { limit, used, remaining: Math.max(0, limit - used) };
+}
+var DEFAULT_INSTANCE_DAILY_WRITE_LIMIT = 1e5;
+var DEFAULT_FTS_BACKFILL_RESERVE = 10500;
+function instanceDailyWriteLimit(env) {
+  const raw2 = env.KBDB_INSTANCE_DAILY_WRITE_LIMIT;
+  const n = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_INSTANCE_DAILY_WRITE_LIMIT;
+}
+function ftsBackfillReserve(env) {
+  const raw2 = env.KBDB_FTS_BACKFILL_RESERVE;
+  const n = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_FTS_BACKFILL_RESERVE;
+}
+function entryWriteUsageId() {
+  return `kbdb-entry-write-usage:${utcDay()}`;
+}
+async function getEntryWriteUsageToday(db) {
+  const row = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(entryWriteUsageId()).first();
+  if (!row) return 0;
+  try {
+    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    return Number(parsed.writes) || 0;
+  } catch {
+    return 0;
+  }
+}
+async function addEntryWriteUsage(db, by) {
+  if (by <= 0) return;
+  const id = entryWriteUsageId();
+  const existing = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(id).first();
+  let prev = 0;
+  if (existing) {
+    try {
+      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
+      prev = Number(parsed.writes) || 0;
+    } catch {
+      prev = 0;
+    }
+    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify({ day: utcDay(), writes: prev + by }), id).run();
+  } else {
+    await db.prepare(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'kbdb_entry_write_usage', ?)`).bind(id, JSON.stringify({ day: utcDay(), writes: by })).run();
+  }
+}
+async function entryWriteBudgetToday(env, db) {
+  const limit = Math.max(0, instanceDailyWriteLimit(env) - ftsBackfillReserve(env));
+  let used = 0;
+  try {
+    used = await getEntryWriteUsageToday(db);
+  } catch {
+    used = 0;
+  }
+  return { limit, used, remaining: Math.max(0, limit - used) };
+}
+var WRITE_BUDGET_QUOTA_MARKER = "KBDB has reserved part of today's D1 free tier daily row write limit for search-index maintenance; normal writes are capped early so indexing keeps making real progress. This is not a transient error \u2014 please wait for tomorrow's reset (00:00 UTC) before retrying normal writes.";
+function writeBudgetExhaustedBody(budget) {
+  return {
+    success: false,
+    error: "daily_write_budget_reserved_for_indexing",
+    message: WRITE_BUDGET_QUOTA_MARKER,
+    capability_hint: "\u4ECA\u5929\u7684\u5BEB\u5165\u984D\u5EA6\u5DF2\u7D93\u7528\u5B8C\uFF08\u5176\u4E2D\u4E00\u90E8\u5206\u56FA\u5B9A\u7559\u7D66\u77E5\u8B58\u5EAB\u7684\u7D22\u5F15\u7DAD\u8B77\uFF0C\u78BA\u4FDD\u641C\u5C0B\u7D50\u679C\u4E0D\u6703\u56E0\u70BA\u7D22\u5F15\u8DDF\u4E0D\u4E0A\u800C\u6F0F\u6389\u6771\u897F\uFF09\u3002\u8ACB\u7A0D\u5F8C\u518D\u8A66\uFF0C\u984D\u5EA6\u6703\u5728 UTC \u5348\u591C\u91CD\u7F6E\uFF1B\u525B\u525B\u7684\u5167\u5BB9\u9084\u6C92\u9001\u51FA\uFF0C\u91CD\u8A66\u524D\u4E0D\u6703\u91CD\u8907\u9001\u51FA\u5169\u6B21\u3002",
+    admin_hint: `instance entry-write budget exhausted\uFF08today's normal-write usage ${budget.used}/${budget.limit}\uFF0Creserved for FTS backfill\uFF1A\u898B KBDB_FTS_BACKFILL_RESERVE\uFF09\u3002\u7B49 UTC \u65E5\u5207\u91CD\u7F6E\uFF0C\u6216\u8ABF\u9AD8 KBDB_INSTANCE_DAILY_WRITE_LIMIT\uFF0F\u8ABF\u4F4E KBDB_FTS_BACKFILL_RESERVE\uFF08\u82E5\u5224\u65B7\u9019\u500B\u5BE6\u4F8B\u771F\u7684\u9700\u8981\u66F4\u5BEC\u9B06\uFF09\u3002`
+  };
+}
+function withWriteTally(db, tally) {
+  const wrap = (stmt) => ({
+    bind: (...args) => wrap(stmt.bind(...args)),
+    all: async () => {
+      const r = await stmt.all();
+      tally.rowsWritten += Number(r.meta?.rows_written ?? 0);
+      return r;
+    },
+    first: (async (colName) => stmt.first(colName)),
+    run: async () => {
+      const r = await stmt.run();
+      tally.rowsWritten += Number(r.meta?.rows_written ?? 0);
+      return r;
+    },
+    raw: stmt.raw?.bind(stmt)
+  });
+  return {
+    prepare: (sql) => wrap(db.prepare(sql)),
+    batch: (stmts) => db.batch(stmts),
+    // 目前呼叫端（POST /entries、/records）不用 batch；保留原樣轉發，不假裝算過
+    exec: db.exec?.bind(db),
+    dump: db.dump?.bind(db),
+    withSession: db.withSession?.bind(db)
+  };
 }
 
 // kbdb/src/embed.ts
@@ -4342,6 +4456,10 @@ async function libraryBackfillStatus(db, opts = {}) {
 // kbdb/src/actions/fts-backfill.ts
 var HARD_LIMIT_CAP2 = 1e4;
 var DEFAULT_LIMIT = 500;
+function classifyD1WriteError(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /exceeded/i.test(msg) && /daily/i.test(msg) && /limit/i.test(msg) ? "platform_quota_exceeded" : "other";
+}
 async function backfillEntriesFts(db, env, opts = {}) {
   const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT_CAP2);
   const explicitCursor = opts.cursor !== void 0;
@@ -4355,6 +4473,7 @@ async function backfillEntriesFts(db, env, opts = {}) {
       quota_limit: budget2.limit,
       quota_used_today: budget2.used,
       quota_exceeded: false,
+      write_error: null,
       done: true
     };
   }
@@ -4368,6 +4487,7 @@ async function backfillEntriesFts(db, env, opts = {}) {
       quota_limit: budget.limit,
       quota_used_today: budget.used,
       quota_exceeded: true,
+      write_error: null,
       done: false
     };
   }
@@ -4380,18 +4500,23 @@ async function backfillEntriesFts(db, env, opts = {}) {
   const toIndex = rows.slice(0, budget.remaining).map((r) => r.rid);
   const quotaExceeded = scanned > toIndex.length;
   let indexed = 0;
+  let writeError = null;
   if (toIndex.length > 0) {
     const rangeStart = cursor;
     const rangeEnd = toIndex[toIndex.length - 1];
-    await db.prepare(`INSERT OR IGNORE INTO entries_fts(rowid, content) SELECT rowid, content FROM entries WHERE rowid > ? AND rowid <= ? AND content IS NOT NULL`).bind(rangeStart, rangeEnd).run();
-    indexed = toIndex.length;
+    try {
+      await db.prepare(`INSERT OR IGNORE INTO entries_fts(rowid, content) SELECT rowid, content FROM entries WHERE rowid > ? AND rowid <= ? AND content IS NOT NULL`).bind(rangeStart, rangeEnd).run();
+      indexed = toIndex.length;
+    } catch (err) {
+      writeError = classifyD1WriteError(err);
+    }
   }
   try {
     await addMaintenanceUsage(db, indexed);
   } catch {
   }
-  const lastIndexed = toIndex.length > 0 ? toIndex[toIndex.length - 1] : null;
-  const nextCursor = rows.length === 0 ? null : toIndex.length === rows.length ? scanned < limit ? null : rows[rows.length - 1].rid : lastIndexed ?? cursor;
+  const lastIndexed = toIndex.length > 0 && !writeError ? toIndex[toIndex.length - 1] : null;
+  const nextCursor = writeError ? cursor : rows.length === 0 ? null : toIndex.length === rows.length ? scanned < limit ? null : rows[rows.length - 1].rid : lastIndexed ?? cursor;
   if (nextCursor === null) {
     try {
       await db.prepare(`UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.cutoff_rowid', 0) WHERE id = ?`).bind(FTS_MIGRATION_CUTOFF_ID).run();
@@ -4410,6 +4535,7 @@ async function backfillEntriesFts(db, env, opts = {}) {
     quota_limit: budget.limit,
     quota_used_today: budget.used + indexed,
     quota_exceeded: quotaExceeded,
+    write_error: writeError,
     done: nextCursor === null
   };
 }
@@ -4445,7 +4571,16 @@ var parseLibraryParam = parseLibraryList;
 entryRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body || !body.entry_type) return c.json({ success: false, error: "entry_type required" }, 400);
-  const entry = await createEntry(c.env.DB, body);
+  const budget = await entryWriteBudgetToday(c.env, c.env.DB);
+  if (budget.remaining <= 0) {
+    return c.json(writeBudgetExhaustedBody(budget), 429);
+  }
+  const tally = { rowsWritten: 0 };
+  const entry = await createEntry(withWriteTally(c.env.DB, tally), body);
+  try {
+    await addEntryWriteUsage(c.env.DB, tally.rowsWritten);
+  } catch {
+  }
   if (embedEnabled(c.env)) c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
   }));
   return c.json({ success: true, entry });
@@ -4668,6 +4803,19 @@ entryRoutes.get("/search", async (c) => {
     return c.json({ success: true, entries: entries2, count: entries2.length, mode: "semantic" });
   }
   const entries = await searchEntries(c.env.DB, q, owner_id, entry_type, void 0, library, source, include_deprecated);
+  const { cutoffRowid, backfillCursor } = await readFtsMigrationState(c.env.DB);
+  const complete = isSearchCoverageComplete(q, backfillCursor, cutoffRowid);
+  if (!complete) {
+    return c.json({
+      success: true,
+      entries,
+      count: entries.length,
+      mode: "keyword",
+      index_coverage: "partial",
+      capability_hint: "\u9019\u6B21\u641C\u5C0B\u7684\u7D50\u679C\u53EF\u80FD\u4E0D\u5B8C\u6574\uFF1A\u90E8\u5206\u8F03\u820A\u7684\u8CC7\u6599\u9084\u5728\u5EFA\u7D22\u5F15\u4E2D\uFF0C\u9019\u4E00\u8F2A\u525B\u597D\u6C92\u88AB\u641C\u5230\u3002\u5982\u679C\u627E\u7684\u6771\u897F\u6C92\u51FA\u73FE\uFF0C\u904E\u4E00\u6703\u5152\u518D\u641C\u4E00\u6B21\u901A\u5E38\u5C31\u6703\u627E\u5230\uFF08\u7D22\u5F15\u6703\u81EA\u5DF1\u88DC\u5B8C\uFF0C\u4E0D\u9700\u8981\u4F60\u505A\u4EFB\u4F55\u4E8B\uFF09\u3002",
+      admin_hint: `\u6B98\u9918\u7A97\u8F2A\u8F49\u5C1A\u672A\u8986\u84CB\u9019\u6B21\u7684\u5B8C\u6574 backlog\uFF08\u898B entry-crud.ts planResidualWindow\uFF09\uFF1BbackfillCursor=${backfillCursor}, cutoffRowid=${cutoffRowid}\u3002\u9019\u4E0D\u662F\u300C\u9019\u6B21\u7B54\u6848\u662F\u5047\u7684\u300D\uFF0C\u662F\u300C\u9019\u6B21\u7B54\u6848\u4E0D\u4FDD\u8B49\u662F\u5168\u90E8\u300D\u3002`
+    });
+  }
   return c.json({ success: true, entries, count: entries.length, mode: "keyword" });
 });
 entryRoutes.get("/:id", async (c) => {
@@ -5161,8 +5309,17 @@ recordRoutes.post("/", async (c) => {
   if (body.entry_ids !== void 0 && !isStringMap(body.entry_ids)) {
     return c.json({ success: false, error: "entry_ids must be an object of {slot: entry_id}" }, 400);
   }
+  const budget = await entryWriteBudgetToday(c.env, c.env.DB);
+  if (budget.remaining <= 0) {
+    return c.json(writeBudgetExhaustedBody(budget), 429);
+  }
   try {
-    const rec = await createRecord(c.env.DB, body);
+    const tally = { rowsWritten: 0 };
+    const rec = await createRecord(withWriteTally(c.env.DB, tally), body);
+    try {
+      await addEntryWriteUsage(c.env.DB, tally.rowsWritten);
+    } catch {
+    }
     return c.json({ success: true, record: rec });
   } catch (e) {
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);

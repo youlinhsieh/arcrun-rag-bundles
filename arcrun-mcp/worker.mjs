@@ -32001,7 +32001,7 @@ function registerSearch(server, env, identity) {
           return errorResponse("search_failed", `\u641C\u5C0B\u5931\u6557`, ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
         }
         const data = await res.json();
-        const hints = data.capability_hint ? [data.capability_hint, "\u8981\u958B\uFF1A\u8DDF\u7528\u6236\u78BA\u8A8D\u5F8C\uFF0CCC \u53EF\u4EE3\u958B\uFF08\u5BEB config kbdb_embed:true + acr update\uFF09"] : data.mode === "semantic" ? ["mode:semantic = AI \u5411\u91CF\u8A9E\u7FA9\u641C\u5C0B"] : ["mode:keyword = D1 LIKE\uFF08\u57FA\u672C\u76E4\uFF09", "\u60F3\u8981\u8A9E\u7FA9\u641C\u5C0B\uFF1Amode='semantic'\uFF08\u9700\u5148\u958B vectorize\uFF09"];
+        const hints = data.index_coverage === "partial" ? ["\u90E8\u5206\u8F03\u820A\u8CC7\u6599\u53EF\u80FD\u9084\u6C92\u8F2A\u5230\u7D22\u5F15\uFF0C\u9019\u6B21\u7D50\u679C\u4E0D\u4FDD\u8B49\u5B8C\u6574\u2014\u2014\u904E\u4E00\u6703\u5152\u518D\u641C\u4E00\u6B21\u901A\u5E38\u5C31\u6703\u88DC\u4E0A"] : data.capability_hint ? [data.capability_hint, "\u8981\u958B\uFF1A\u8DDF\u7528\u6236\u78BA\u8A8D\u5F8C\uFF0CCC \u53EF\u4EE3\u958B\uFF08\u5BEB config kbdb_embed:true + acr update\uFF09"] : data.mode === "semantic" ? ["mode:semantic = AI \u5411\u91CF\u8A9E\u7FA9\u641C\u5C0B"] : ["mode:keyword = D1 LIKE\uFF08\u57FA\u672C\u76E4\uFF09", "\u60F3\u8981\u8A9E\u7FA9\u641C\u5C0B\uFF1Amode='semantic'\uFF08\u9700\u5148\u958B vectorize\uFF09"];
         if (identity.kind === "portal") hints.push(OWNER_IGNORED_HINT);
         if (data.note) hints.push(data.note);
         return successResponse(data, hints);

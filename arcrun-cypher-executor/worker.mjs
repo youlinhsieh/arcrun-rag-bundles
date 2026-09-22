@@ -9404,6 +9404,12 @@ async function runFtsBackfillTick(env, log = console.log, logError = console.err
     if (body.done || body.next_cursor === null) {
       return { calls: i + 1, totalScanned, stoppedBecause: "done" };
     }
+    if (body.write_error === "platform_quota_exceeded") {
+      return { calls: i + 1, totalScanned, stoppedBecause: "platform_quota_exceeded" };
+    }
+    if (body.write_error === "other") {
+      return { calls: i + 1, totalScanned, stoppedBecause: "error" };
+    }
     if (body.quota_exceeded) {
       return { calls: i + 1, totalScanned, stoppedBecause: "quota_exceeded" };
     }
