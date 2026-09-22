@@ -31142,7 +31142,12 @@ function registerDeleteWorkflow(server, env, partnerToken) {
     "\u522A\u9664 workflow\u3002**\u4E0D\u53EF\u9006\uFF0C\u78BA\u8A8D\u5F8C\u518D\u505A**\u3002\u6703\u6E05\u6389\u5C0D\u61C9 cron index \u8207 webhook URL\u3002",
     {
       name: external_exports.string().describe("\u8981\u522A\u7684 workflow \u540D\u7A31"),
-      confirm: external_exports.literal(true).describe("\u5FC5\u9808\u50B3 true \u78BA\u8A8D")
+      // Arcrun#238：不用 z.literal(true)——zod-to-json-schema 轉成 `{type:"boolean", const:true}`，
+      // Gemini function-calling schema 不支援 `const` 關鍵字，驗證階段直接 400（連工具都還沒被呼叫）。
+      // 改用 z.boolean().refine()：advertise 出去只剩 `{type:"boolean"}`（Gemini 認得），
+      // 但 MCP SDK 的 CallTool 仍會用同一個 zod schema 做 safeParseAsync——refine 沒過一樣被擋在
+      // handler 之前，confirm:false／缺 confirm 依然是 InvalidParams，不是放寬過的驗證。
+      confirm: external_exports.boolean().refine((v) => v === true, { message: "\u5FC5\u9808\u50B3 true \u78BA\u8A8D" }).describe("\u5FC5\u9808\u50B3 true \u78BA\u8A8D")
     },
     async ({ name, confirm: _confirm }) => {
       try {
@@ -31927,7 +31932,10 @@ function registerQuery(server, env, identity) {
     {
       template: external_exports.string().min(1).describe("\u865B\u64EC\u8868\u7684 name \u6216 id"),
       owner_id: external_exports.string().optional().describe("\u53EA\u53D6\u67D0\u6B78\u5C6C\u7684 record\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09"),
-      limit: external_exports.number().int().positive().optional().describe("\u9019\u4E00\u9801\u8981\u5E7E\u7B46\uFF08\u9810\u8A2D 100\uFF0C\u55AE\u6B21\u4E0A\u9650 500\uFF09"),
+      // Arcrun#238：不用 .positive()——zod-to-json-schema 轉成 `exclusiveMinimum: 0`，
+      // Gemini function-calling schema 不支援這個關鍵字，驗證階段直接 400。
+      // `.min(1)` 對整數語意等價（最小合法值同樣是 1），產出 Gemini 認得的 `minimum: 1`。
+      limit: external_exports.number().int().min(1).optional().describe("\u9019\u4E00\u9801\u8981\u5E7E\u7B46\uFF08\u9810\u8A2D 100\uFF0C\u55AE\u6B21\u4E0A\u9650 500\uFF09"),
       offset: external_exports.number().int().min(0).optional().describe("\u5F9E\u7B2C\u5E7E\u7B46\u958B\u59CB\uFF08\u5206\u9801\u7528\uFF0C\u9810\u8A2D 0\uFF09")
     },
     async ({ template, owner_id, limit, offset }) => {
@@ -32372,7 +32380,7 @@ function registerGetIndex(server, env, identity) {
     "\u5EAB\u76EE\u9304\uFF1A\u67D0\u4E00\u500B\u77E5\u8B58\u5EAB\u88E1**\u6709\u54EA\u4E9B\u5361**\u3001\u6BCF\u5F35\u5361\u4E00\u53E5\u8A71\u5728\u8B1B\u4EC0\u9EBC\u3002\u9019\u662F\u6AA2\u7D22\u4E09\u6B65\u7684\u7B2C 2 \u6B65\u2014\u2014\u5148 kbdb_get_map \u5B9A\u4F4D\u8A72\u9032\u54EA\u500B\u5EAB\uFF0C\u518D\u7528\u672C\u5DE5\u5177\u8B80\u90A3\u500B\u5EAB\u7684\u76EE\u9304\u6311\u51FA\u8A72\u8B80\u7684\u5361\uFF0C\u6700\u5F8C\u7528 kbdb_get_card \u8B80\u6574\u5F35\u5361\u3002**\u8981\u56DE\u7B54\u95DC\u65BC\u67D0\u500B\u5EAB\u7684\u554F\u984C\u6642\u8D70\u9019\u689D\uFF0C\u4E0D\u8981\u4E00\u958B\u59CB\u5C31 kbdb_search**\uFF08\u90A3\u662F\u5E73\u9762\u641C\u5C0B\uFF0C\u56DE\u7684\u662F\u6563\u843D\u7684\u6BB5\u843D\uFF0C\u4E0D\u662F\u5361\uFF09\u3002",
     {
       library: external_exports.string().min(1).describe("\u5EAB\u540D\uFF08\u5F9E kbdb_get_map \u62FF\uFF1B\u4F8B 'youlinhsieh-test1'\u3001'kb'\uFF09"),
-      limit: external_exports.number().int().positive().optional().describe("\u6700\u591A\u5217\u5E7E\u5F35\u5361\uFF08\u9810\u8A2D 200\uFF0C\u4E0A\u9650 500\uFF1B\u622A\u65B7\u6642 total \u6703\u544A\u8A34\u4F60\u9019\u500B\u5EAB\u5BE6\u969B\u6709\u5E7E\u5F35\uFF09")
+      limit: external_exports.number().int().min(1).optional().describe("\u6700\u591A\u5217\u5E7E\u5F35\u5361\uFF08\u9810\u8A2D 200\uFF0C\u4E0A\u9650 500\uFF1B\u622A\u65B7\u6642 total \u6703\u544A\u8A34\u4F60\u9019\u500B\u5EAB\u5BE6\u969B\u6709\u5E7E\u5F35\uFF09")
     },
     async ({ library, limit }) => {
       if (identity.kind === "stale") return staleIdentityError();

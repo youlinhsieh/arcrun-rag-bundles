@@ -6019,6 +6019,15 @@ var GENERATIONS = [
       { kind: "index", name: "idx_entries_page_present" },
       { kind: "index", name: "idx_entries_hash_present" }
     ]
+  },
+  {
+    n: 13,
+    file: "0013_embed_pending_index.sql",
+    what: "embed \u56DE\u586B\uFF0F\u4E16\u4EE3\u6838\u5C0D\u7D22\u5F15\u2014\u2014/embed/backfill\u3001/embed/reconcile \u7684\u8B80\u53D6\u91CF\u8207\u5F85\u88DC\u5D4C\uFF0F\u5DF2\u5D4C\u5165\u7B46\u6578\u6210\u6B63\u6BD4\uFF0C\u8207 owner \u7E3D\u5217\u6578\u812B\u9264\uFF08Arcrun#240\uFF09",
+    checks: [
+      { kind: "index", name: "idx_entries_pending_embed" },
+      { kind: "index", name: "idx_entries_embedded_current" }
+    ]
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
