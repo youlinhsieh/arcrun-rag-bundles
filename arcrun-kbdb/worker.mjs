@@ -4010,6 +4010,10 @@ function ftsBackfillReserve(env) {
   const n2 = raw2 ? parseInt(raw2, 10) : NaN;
   return Number.isFinite(n2) && n2 >= 0 ? n2 : DEFAULT_FTS_BACKFILL_RESERVE;
 }
+function isSystemAssetOwner(ownerId) {
+  if (ownerId === null || ownerId === void 0 || ownerId === "") return true;
+  return ownerId.endsWith("::assets") || ownerId.endsWith("::runs") || ownerId.endsWith("::portal");
+}
 function entryWriteUsageId() {
   return `kbdb-entry-write-usage:${utcDay()}`;
 }
@@ -5543,6 +5547,549 @@ async function identityMeta(db, ids) {
   return out;
 }
 
+// kbdb/src/actions/speedometer.ts
+init_record_crud();
+var FREE_TIER_DAILY_ROWS_WRITTEN = 1e5;
+var FREE_TIER_DAILY_ROWS_READ = 5e6;
+var OP_CEILING_FRACTION = 0.05;
+var OP_GLOBAL_WRITE_CEILING = FREE_TIER_DAILY_ROWS_WRITTEN * OP_CEILING_FRACTION;
+var OP_GLOBAL_READ_CEILING = FREE_TIER_DAILY_ROWS_READ * OP_CEILING_FRACTION;
+var SAFETY_FACTOR = 3;
+var CARD_WRITE_BUDGET = 800;
+var DEFAULT_CEILING = {
+  write: OP_GLOBAL_WRITE_CEILING,
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: OP_GLOBAL_WRITE_CEILING,
+  basis: "\u5168\u57DF\u4E0A\u9650\uFF1A\u514D\u8CBB\u65B9\u6848\u55AE\u65E5\u984D\u5EA6\u7684 5%"
+};
+var SINGLE_WRITE = {
+  write: CARD_WRITE_BUDGET * SAFETY_FACTOR,
+  // 2,400
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: CARD_WRITE_BUDGET,
+  basis: `\u4E00\u6B21\u5BEB\u5165\uFF1A\u4E00\u6574\u5F35\u5361\u7684\u91CF\uFF08${CARD_WRITE_BUDGET} \u5217\uFF0Ccard-rows-written-gate\uFF09\xD7 ${SAFETY_FACTOR}`
+};
+var DECLARED_MAINTENANCE = {
+  write: DEFAULT_FTS_BACKFILL_RESERVE,
+  // 10,500
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: DEFAULT_FTS_BACKFILL_RESERVE,
+  basis: `\u80CC\u666F\u7DAD\u8B77\uFF1A\u55AE\u6B21\u6279\u91CF\u4E0A\u9650\uFF08FTS \u88DC\u7D22\u5F15\u4E00\u6279\uFF0Bbookkeeping\uFF1D${DEFAULT_FTS_BACKFILL_RESERVE} \u5217\uFF0Cmaintenance-quota.ts\uFF09`
+};
+var OP_CEILINGS = {
+  "POST /entries": SINGLE_WRITE,
+  "PUT /entries/:id": SINGLE_WRITE,
+  "PATCH /entries/:id": SINGLE_WRITE,
+  "POST /records": SINGLE_WRITE,
+  "PATCH /records/:id": SINGLE_WRITE,
+  "POST /entries/fts-backfill": DECLARED_MAINTENANCE,
+  "POST /entries/backfill-library": DECLARED_MAINTENANCE,
+  "POST /embed/backfill": DECLARED_MAINTENANCE,
+  "POST /embed/reconcile": DECLARED_MAINTENANCE
+};
+function ceilingFor(op) {
+  return OP_CEILINGS[op] ?? DEFAULT_CEILING;
+}
+var OP_LABELS = {
+  "POST /entries": "\u5BEB\u5165\u4E00\u6BB5\u77E5\u8B58",
+  "PUT /entries/:id": "\u8986\u5BEB\u4E00\u7B46\u8CC7\u6599",
+  "PATCH /entries/:id": "\u4FEE\u6539\u4E00\u7B46\u8CC7\u6599",
+  "POST /records": "\u5BEB\u5165\u4E00\u7B46\u8A18\u9304\uFF08\u4F8B\u5982\u95DC\u4FC2\uFF09",
+  "PATCH /records/:id": "\u4FEE\u6539\u4E00\u7B46\u8A18\u9304",
+  "GET /entries/search": "\u641C\u5C0B",
+  "PATCH /entries/deprecate-by-library": "\u4E0B\u67B6\u4E00\u6574\u500B\u5EAB",
+  "POST /entries/fts-backfill": "\u88DC\u641C\u5C0B\u7D22\u5F15",
+  "POST /entries/backfill-library": "\u88DC\u6A19\u5EAB",
+  "POST /embed/backfill": "\u88DC\u5411\u91CF",
+  "POST /embed/reconcile": "\u5411\u91CF\u4E16\u4EE3\u6838\u5C0D",
+  "POST /map/recompute": "\u91CD\u7B97\u85CF\u66F8\u5730\u5716",
+  "POST /graph/canonicalize-entities": "\u6574\u4F75\u5716\u4E0A\u7684\u540C\u540D\u7BC0\u9EDE",
+  "POST /execution-log/cleanup": "\u6E05\u7406\u904E\u671F\u57F7\u884C\u7D00\u9304",
+  [`DAILY writes`]: "\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165",
+  [`DAILY reads`]: "\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6"
+};
+function opLabel(op) {
+  return OP_LABELS[op] ?? op;
+}
+var LITERAL_SEGMENTS = /* @__PURE__ */ new Set([
+  "entries",
+  "templates",
+  "sheets",
+  "records",
+  "recipe-stats",
+  "execution-log",
+  "embed",
+  "map",
+  "graph",
+  "maintenance",
+  "usage-brakes",
+  "usage",
+  "health",
+  "notified",
+  "libraries",
+  "library-cards",
+  "library-stats",
+  "search",
+  "deprecate-by-library",
+  "backfill-library",
+  "status",
+  "fts-backfill",
+  "record",
+  "latest",
+  "retention",
+  "cleanup",
+  "backfill",
+  "reconcile",
+  "selftest",
+  "canonicalize-entities",
+  "neighbors",
+  "select",
+  "recompute",
+  "narrative",
+  "triplet-stats",
+  "by-template",
+  "by-source",
+  "relation-orphans",
+  "release"
+]);
+function opKey(method, path) {
+  const segs = path.split("/").filter(Boolean).map((s) => LITERAL_SEGMENTS.has(s) ? s : ":id");
+  return `${method.toUpperCase()} /${segs.join("/")}`;
+}
+function isWriteSql(sql) {
+  return /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test(sql);
+}
+var DAILY_WARN_PERCENTS = [20, 50, 80];
+function utcDay3(now = Date.now()) {
+  return new Date(now).toISOString().slice(0, 10);
+}
+var odo = { day: utcDay3(), written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
+var odoEnsuredDay = null;
+function rollDay(now = Date.now()) {
+  const d = utcDay3(now);
+  if (odo.day !== d) odo = { day: d, written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
+}
+function todayUsage(now = Date.now()) {
+  rollDay(now);
+  return { day: odo.day, written: odo.written + odo.pendingWritten, read: odo.read + odo.pendingRead };
+}
+function newTally(op) {
+  return {
+    op,
+    ceiling: ceilingFor(op),
+    rowsRead: 0,
+    rowsWritten: 0,
+    statements: 0,
+    top: null,
+    over: false,
+    blocked: false,
+    dailyBlocked: null,
+    dailyReleased: { writes: false, reads: false }
+  };
+}
+var UsageBrakeError = class extends Error {
+  constructor(tally) {
+    super(`usage brake: ${tally.op} \u5DF2\u5BEB ${tally.rowsWritten} \u5217\uFF0F\u8B80 ${tally.rowsRead} \u5217`);
+    this.tally = tally;
+    this.name = "UsageBrakeError";
+  }
+  tally;
+};
+function isOver(t) {
+  return t.rowsWritten >= t.ceiling.write || t.rowsRead >= t.ceiling.read;
+}
+function add(t, sql, meta) {
+  const w = Number(meta?.rows_written ?? 0);
+  const r = Number(meta?.rows_read ?? 0);
+  t.rowsWritten += w;
+  t.rowsRead += r;
+  t.statements += 1;
+  rollDay();
+  odo.pendingWritten += w;
+  odo.pendingRead += r;
+  if (!t.top || w > t.top.rowsWritten || w === t.top.rowsWritten && r > t.top.rowsRead) {
+    t.top = { sql: sql.replace(/\s+/g, " ").trim().slice(0, 200), rowsWritten: w, rowsRead: r };
+  }
+  if (isOver(t)) t.over = true;
+}
+function guard(t, sqls) {
+  if (isOver(t)) {
+    t.over = true;
+    t.blocked = true;
+    throw new UsageBrakeError(t);
+  }
+  const today = todayUsage();
+  if (today.read >= FREE_TIER_DAILY_ROWS_READ && !t.dailyReleased.reads) {
+    t.dailyBlocked = "reads";
+    throw new UsageBrakeError(t);
+  }
+  if (today.written >= FREE_TIER_DAILY_ROWS_WRITTEN && !t.dailyReleased.writes && sqls.some(isWriteSql)) {
+    t.dailyBlocked = "writes";
+    throw new UsageBrakeError(t);
+  }
+}
+function releaseDailyWriteBrakeIfSystemOwner(env, ownerId) {
+  if (!isSystemAssetOwner(ownerId)) return;
+  const t = env.__kbdbTally;
+  if (t) t.dailyReleased.writes = true;
+}
+function meterDb(db, t) {
+  const real = /* @__PURE__ */ new WeakMap();
+  const wrap = (sql, stmt) => {
+    const w = {
+      bind: (...args) => wrap(sql, stmt.bind(...args)),
+      all: async () => {
+        guard(t, [sql]);
+        const r = await stmt.all();
+        add(t, sql, r.meta);
+        return r;
+      },
+      run: async () => {
+        guard(t, [sql]);
+        const r = await stmt.run();
+        add(t, sql, r.meta);
+        return r;
+      },
+      first: async (col) => {
+        guard(t, [sql]);
+        const r = await stmt.all();
+        add(t, sql, r.meta);
+        const row = r.results?.[0] ?? null;
+        if (!col) return row;
+        if (row === null) return null;
+        if (!(col in row)) throw new Error(`D1_COLUMN_NOTFOUND: Column not found (${col})`);
+        return row[col];
+      },
+      raw: stmt.raw?.bind(stmt)
+    };
+    real.set(w, { sql, stmt });
+    return w;
+  };
+  return {
+    prepare: (sql) => wrap(sql, db.prepare(sql)),
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；worktree 路徑讓 guard 誤判牆外
+    batch: async (stmts) => {
+      const pairs = stmts.map((s) => real.get(s) ?? { sql: "(batch)", stmt: s });
+      guard(t, pairs.map((p) => p.sql));
+      const results = await db.batch(pairs.map((p) => p.stmt));
+      results.forEach((r, i) => add(t, pairs[i].sql, r.meta));
+      return results;
+    },
+    exec: db.exec?.bind(db),
+    dump: db.dump?.bind(db),
+    withSession: db.withSession?.bind(db)
+  };
+}
+var USAGE_DAY_TEMPLATE_ID = "tpl-usage-day";
+var USAGE_DAY_SLOTS = ["day", "rows_written", "rows_read", "warned_percent"];
+function usageDayRecordId(day) {
+  return `usage_day_${day}`;
+}
+async function ensureTemplate(db, id, name, description, slots) {
+  const tpl = await getTemplate(db, id);
+  if (tpl) {
+    const have = JSON.parse(tpl.slots_json);
+    if (slots.every((s) => have.includes(s))) return;
+    await updateTemplate(db, id, { slots: [.../* @__PURE__ */ new Set([...have, ...slots])] });
+    return;
+  }
+  await createTemplate(db, { id, name, description, slots, created_by: "kbdb-speedometer" });
+}
+async function ensureUsageDay(db, day) {
+  if (odoEnsuredDay === day) return;
+  await ensureTemplate(
+    db,
+    USAGE_DAY_TEMPLATE_ID,
+    "usage_day",
+    "\u6BCF\u65E5\u7528\u91CF\u91CC\u7A0B\u8868\uFF08inkstone/InkStoneCo#147\uFF09\uFF1AKBDB \u9598\u53E3\u81EA\u5DF1\u7B97\u7684\u4ECA\u5929\u8B80\u5BEB\u5217\u6578\uFF0C\u5C0D\u7167\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u3002",
+    USAGE_DAY_SLOTS
+  );
+  await createRecord(db, {
+    template: USAGE_DAY_TEMPLATE_ID,
+    record_id: usageDayRecordId(day),
+    derived_cell_ids: true,
+    owner_id: null,
+    values: { day, rows_written: "0", rows_read: "0", warned_percent: "0" }
+  });
+  odoEnsuredDay = day;
+}
+async function flushOdometer(db, now = Date.now()) {
+  rollDay(now);
+  odo.lastFlushAt = now;
+  const day = odo.day;
+  const w = odo.pendingWritten;
+  const r = odo.pendingRead;
+  if (w === 0 && r === 0) return null;
+  odo.pendingWritten = 0;
+  odo.pendingRead = 0;
+  try {
+    await ensureUsageDay(db, day);
+    const rid = usageDayRecordId(day);
+    const wId = derivedCellIds(rid, "rows_written").value;
+    const rId = derivedCellIds(rid, "rows_read").value;
+    const res = await db.batch([
+      // kbdb-sql-ok：牆內本體；里程表原子加法
+      db.prepare(`UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`).bind(w, wId),
+      // kbdb-sql-ok
+      db.prepare(`UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`).bind(r, rId)
+      // kbdb-sql-ok
+    ]);
+    let selfW = 0;
+    let selfR = 0;
+    for (const x of res) {
+      selfW += Number(x.meta?.rows_written ?? 0);
+      selfR += Number(x.meta?.rows_read ?? 0);
+    }
+    odo.pendingWritten += selfW;
+    odo.pendingRead += selfR;
+    odo.written = Number(res[0].results?.[0]?.content ?? odo.written + w);
+    odo.read = Number(res[1].results?.[0]?.content ?? odo.read + r);
+    const pct = Math.floor(Math.max(odo.written / FREE_TIER_DAILY_ROWS_WRITTEN, odo.read / FREE_TIER_DAILY_ROWS_READ) * 100);
+    const level = [...DAILY_WARN_PERCENTS, 100].filter((p) => pct >= p).pop() ?? null;
+    let crossed = null;
+    if (level !== null) {
+      const warnId = derivedCellIds(rid, "warned_percent").value;
+      const u = await db.prepare(`UPDATE entries SET content = ? WHERE id = ? AND CAST(content AS INTEGER) < ?`).bind(String(level), warnId, level).run();
+      odo.pendingWritten += Number(u.meta?.rows_written ?? 0);
+      odo.pendingRead += Number(u.meta?.rows_read ?? 0);
+      if (Number(u.meta?.changes ?? 0) > 0) crossed = level;
+    }
+    return { day, written: odo.written, read: odo.read, crossedPercent: crossed, selfWritten: selfW, selfRead: selfR };
+  } catch (e) {
+    odo.pendingWritten += w;
+    odo.pendingRead += r;
+    console.warn("[kbdb speedometer] odometer flush failed", e);
+    return null;
+  }
+}
+var ODOMETER_FLUSH_DELAY_MS = 72e5;
+var ODOMETER_MAX_PENDING_WRITTEN = 2e3;
+var ODOMETER_MAX_PENDING_READ = 1e5;
+function odometerDueForFlush(now = Date.now()) {
+  if (odo.pendingWritten <= 0 && odo.pendingRead <= 0) return false;
+  if (odo.pendingWritten >= ODOMETER_MAX_PENDING_WRITTEN) return true;
+  if (odo.pendingRead >= ODOMETER_MAX_PENDING_READ) return true;
+  return now - odo.lastFlushAt >= ODOMETER_FLUSH_DELAY_MS;
+}
+function projectExhaustion(used, limit, now = Date.now()) {
+  const dayStart = Date.parse(`${utcDay3(now)}T00:00:00Z`);
+  const elapsed = Math.max(6e4, now - dayStart);
+  if (used <= 0) return null;
+  if (used >= limit) return new Date(now).toISOString();
+  const eta = dayStart + limit / used * elapsed;
+  return eta < nextQuotaReset(now).getTime() ? new Date(eta).toISOString() : null;
+}
+var BRAKE_TEMPLATE_ID = "tpl-usage-brake";
+var BRAKE_SLOTS = [
+  "kind",
+  // brake（剎住了）／warning（今天用量過門檻，只提醒）
+  "op",
+  // 操作代號，例如 POST /entries；每日那種是 DAILY writes／DAILY reads
+  "op_label",
+  // 人話
+  "caller",
+  // 誰打的（X-Arcrun-Caller；執行器帶 workflow:<名字>）
+  "rows_written",
+  "rows_read",
+  "statements",
+  "ceiling_write",
+  "ceiling_read",
+  "basis",
+  // 上限的依據
+  "top_sql",
+  // 寫最多的那一句（只有 SQL 樣式，不含綁定值）
+  "blocked",
+  // 'true'＝有語句被擋下沒送出；'false'＝越線的那一句已經做完
+  "tripped_at",
+  // ISO
+  "release_at",
+  // ISO：自動放行（下一次 00:00 UTC＝台北 08:00）
+  "released_at",
+  // ISO：手動放行
+  "released_by",
+  "notified_at",
+  // ISO：通知已送出（執行器 tick 填）
+  "message"
+  // 給人看的整句話
+];
+function toBrake(r, now) {
+  const v = r.values;
+  const releasedAt = v.released_at || null;
+  const releaseAt = v.release_at || "";
+  const kind = v.kind === "warning" ? "warning" : "brake";
+  const active = kind === "brake" && !releasedAt && (!releaseAt || Date.parse(releaseAt) > now);
+  return {
+    id: r.record_id,
+    kind,
+    op: v.op ?? "",
+    op_label: v.op_label ?? "",
+    caller: v.caller ?? "",
+    rows_written: Number(v.rows_written ?? 0),
+    rows_read: Number(v.rows_read ?? 0),
+    ceiling_write: Number(v.ceiling_write ?? 0),
+    ceiling_read: Number(v.ceiling_read ?? 0),
+    basis: v.basis ?? "",
+    top_sql: v.top_sql ?? "",
+    blocked: v.blocked === "true",
+    tripped_at: v.tripped_at ?? "",
+    release_at: releaseAt,
+    released_at: releasedAt,
+    released_by: v.released_by || null,
+    notified_at: v.notified_at || null,
+    message: v.message ?? "",
+    active
+  };
+}
+function nextQuotaReset(now) {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
+}
+function taipeiClock(iso) {
+  const d = new Date(Date.parse(iso) + 8 * 36e5);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${mm}/${dd} ${hh}:${mi}\uFF08\u53F0\u5317\uFF09`;
+}
+var n = (x) => x.toLocaleString("en-US");
+function brakeMessage(t, caller, releaseAt, id) {
+  const release = `\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\uFF0C\u6216\u547C\u53EB POST /usage-brakes/${id}/release`;
+  if (t.dailyBlocked) {
+    const what2 = t.dailyBlocked === "writes" ? `\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09` : `\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_READ)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09`;
+    return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A${what2}\u3002\u9019\u500B\u5E33\u865F\u5C31\u7B97\u662F\u4ED8\u8CBB\u65B9\u6848\uFF0C\u4E5F\u7167\u514D\u8CBB\u7528\u6236\u7684\u984D\u5EA6\u505C\u4E0B\u4F86\uFF0C${t.dailyBlocked === "writes" ? "\u5BEB\u5165\u5148\u505C\u3001\u8B80\u53D6\u7167\u5E38" : "\u8B80\u5BEB\u90FD\u5148\u505C"}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF0C${release}\u3002`;
+  }
+  const what = t.rowsWritten >= t.ceiling.write ? t.ceiling.normalWrite < t.ceiling.write ? `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u9019\u985E\u64CD\u4F5C\u6B63\u5E38\u4E0D\u8D85\u904E ${n(t.ceiling.normalWrite)} \u5217\uFF0C\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.write)}\uFF09` : `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u4EFB\u4F55\u55AE\u4E00\u64CD\u4F5C\u7684\u4E0A\u9650\u662F ${n(t.ceiling.write)} \u5217\uFF1D\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684 5%\uFF09` : `\u9019\u4E00\u6B21\u8B80\u4E86 ${n(t.rowsRead)} \u5217\uFF08\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.read)}\uFF09`;
+  const stopped = t.blocked ? "\u5F8C\u9762\u7684\u6B65\u9A5F\u5DF2\u7D93\u505C\u4E0B\u6C92\u6709\u9001\u51FA" : "\u9019\u4E00\u6B21\u5DF2\u7D93\u505A\u5B8C\uFF0C\u4F46\u540C\u6A23\u7684\u64CD\u4F5C\u5148\u505C\u4F4F";
+  return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u300C${opLabel(t.op)}\u300D${what}\u3002${stopped}\uFF0C\u514D\u5F97\u628A\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6\uFF08\u5BEB\u5165 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF0F\u5929\uFF09\u71D2\u5149\u3002\u4F86\u6E90\u300C${caller}\u300D\u7684\u9019\u500B\u64CD\u4F5C\u6703\u505C\u5230 ${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u653E\u884C\uFF1B\u8981\u63D0\u65E9\u653E\u884C\uFF0C${release}\u3002`;
+}
+function warningMessage(percent, written, read, now = Date.now()) {
+  const wEta = projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now);
+  const rEta = projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now);
+  const eta = wEta ?? rEta;
+  const speed = eta ? `\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C${taipeiClock(eta)} \u6703\u7528\u5B8C` : "\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C\u4ECA\u5929\u7528\u4E0D\u5B8C";
+  return `\u7528\u91CF\u63D0\u9192\uFF1A\u4ECA\u5929\u5DF2\u7528\u6389\u514D\u8CBB\u984D\u5EA6\u7684 ${percent}%\uFF08\u5BEB\u5165 ${n(written)}/${n(FREE_TIER_DAILY_ROWS_WRITTEN)}\u3001\u8B80\u53D6 ${n(read)}/${n(FREE_TIER_DAILY_ROWS_READ)}\uFF09\u3002${speed}\uFF1B\u5230 100% \u6703\u81EA\u52D5\u524E\u4F4F\u5BEB\u5165\uFF0C${taipeiClock(nextQuotaReset(now).toISOString())} \u91CD\u7F6E\u3002`;
+}
+var ACTIVE_CACHE_MS = 3e4;
+var activeCache = null;
+async function listBrakes(db, limit = 100) {
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  if (!tpl) return [];
+  const now = Date.now();
+  const recs = await searchByTemplate(db, BRAKE_TEMPLATE_ID, void 0, limit, 0);
+  return recs.map((r) => toBrake(r, now));
+}
+async function recentBrakes(db) {
+  const now = Date.now();
+  if (!activeCache || now - activeCache.at > ACTIVE_CACHE_MS) {
+    const all = await listBrakes(db, 100);
+    const today = utcDay3(now);
+    activeCache = { at: now, brakes: all.filter((b) => b.active || b.op.startsWith("DAILY") && b.tripped_at.startsWith(today)) };
+  }
+  return activeCache.brakes;
+}
+async function findActiveBrake(db, op, caller) {
+  const now = Date.now();
+  const list = await recentBrakes(db);
+  return list.find((b) => b.kind === "brake" && b.op === op && b.caller === caller && !b.released_at && Date.parse(b.release_at) > now) ?? null;
+}
+async function dailyReleased(db) {
+  const today = utcDay3();
+  const list = await recentBrakes(db);
+  const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
+  const disabled = !await brakeEnabled(db);
+  return { writes: rel("DAILY writes") || disabled, reads: rel("DAILY reads") || disabled };
+}
+async function ensureBrakeTemplate(db) {
+  await ensureTemplate(
+    db,
+    BRAKE_TEMPLATE_ID,
+    "usage_brake",
+    "\u7528\u91CF\u524E\u8ECA\u7D00\u9304\uFF08inkstone/InkStoneCo#147\uFF09\uFF1A\u67D0\u500B\u64CD\u4F5C\u55AE\u6B21\u82B1\u8CBB\u8D85\u904E\u4E0A\u9650\u3001\u6216\u4ECA\u5929\u7528\u91CF\u904E\u9580\u6ABB\u6642\uFF0C\u9598\u53E3\u81EA\u52D5\u8A18\u5728\u9019\u88E1\u3002",
+    BRAKE_SLOTS
+  );
+}
+async function recordBrake(db, t, caller, now = Date.now()) {
+  await ensureBrakeTemplate(db);
+  const trippedAt = new Date(now).toISOString();
+  const releaseAt = nextQuotaReset(now).toISOString();
+  const op = t.dailyBlocked ? `DAILY ${t.dailyBlocked}` : t.op;
+  const who = t.dailyBlocked ? "*" : caller;
+  const recordId = t.dailyBlocked ? `brake_daily_${t.dailyBlocked}_${utcDay3(now)}` : `brake_${crypto.randomUUID()}`;
+  const today = todayUsage(now);
+  const values = {
+    kind: "brake",
+    op,
+    op_label: opLabel(op),
+    caller: who,
+    rows_written: String(t.dailyBlocked ? today.written : t.rowsWritten),
+    rows_read: String(t.dailyBlocked ? today.read : t.rowsRead),
+    statements: String(t.statements),
+    ceiling_write: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_WRITTEN : t.ceiling.write),
+    ceiling_read: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_READ : t.ceiling.read),
+    basis: t.dailyBlocked ? "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u5BEB\u5165 10 \u842C\u5217\uFF0F\u8B80\u53D6 500 \u842C\u5217\uFF09" : t.ceiling.basis,
+    top_sql: t.top?.sql ?? "",
+    blocked: t.blocked || t.dailyBlocked ? "true" : "false",
+    tripped_at: trippedAt,
+    release_at: releaseAt,
+    message: brakeMessage(t, caller, releaseAt, recordId)
+  };
+  const rec = await createRecord(db, {
+    template: BRAKE_TEMPLATE_ID,
+    record_id: recordId,
+    values,
+    owner_id: null,
+    derived_cell_ids: Boolean(t.dailyBlocked)
+  });
+  const trueRec = t.dailyBlocked ? await getRecord(db, recordId) : null;
+  const brake = trueRec ? toBrake(trueRec, now) : toBrake(rec, now);
+  if (activeCache) activeCache.brakes = [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)];
+  return brake;
+}
+async function recordWarning(db, percent, written, read, now = Date.now()) {
+  await ensureBrakeTemplate(db);
+  const day = utcDay3(now);
+  const recordId = `warn_${day}_${percent}`;
+  const values = {
+    kind: "warning",
+    op: "DAILY usage",
+    op_label: "\u4ECA\u5929\u7684\u7528\u91CF",
+    caller: "*",
+    rows_written: String(written),
+    rows_read: String(read),
+    ceiling_write: String(FREE_TIER_DAILY_ROWS_WRITTEN),
+    ceiling_read: String(FREE_TIER_DAILY_ROWS_READ),
+    basis: `\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u7684 ${percent}%`,
+    tripped_at: new Date(now).toISOString(),
+    release_at: nextQuotaReset(now).toISOString(),
+    message: warningMessage(percent, written, read, now)
+  };
+  const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
+  return toBrake(rec, now);
+}
+async function getBrake(db, id) {
+  const { getRecord: getRecord2 } = await Promise.resolve().then(() => (init_record_crud(), record_crud_exports));
+  const rec = await getRecord2(db, id);
+  if (!rec || rec.template_id !== BRAKE_TEMPLATE_ID) return null;
+  return toBrake(rec, Date.now());
+}
+async function releaseBrake(db, id, by) {
+  const existing = await getBrake(db, id);
+  if (!existing) return null;
+  const updated = await updateRecord(db, id, { released_at: (/* @__PURE__ */ new Date()).toISOString(), released_by: by || "manual" });
+  activeCache = null;
+  return updated ? toBrake(updated, Date.now()) : null;
+}
+async function markBrakeNotified(db, id) {
+  const existing = await getBrake(db, id);
+  if (!existing) return null;
+  const updated = await updateRecord(db, id, { notified_at: (/* @__PURE__ */ new Date()).toISOString() });
+  return updated ? toBrake(updated, Date.now()) : null;
+}
+function brakeBody(b) {
+  return { success: false, error: "usage_brake", message: b.message, brake: b };
+}
+
 // kbdb/src/routes/records.ts
 var recordRoutes = new Hono2();
 var isStringMap = (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
@@ -5557,16 +6104,21 @@ recordRoutes.post("/", async (c) => {
   if (body.entry_ids !== void 0 && !isStringMap(body.entry_ids)) {
     return c.json({ success: false, error: "entry_ids must be an object of {slot: entry_id}" }, 400);
   }
-  const budget = await entryWriteBudgetToday(c.env, c.env.DB);
-  if (budget.remaining <= 0) {
-    return c.json(writeBudgetExhaustedBody(budget), 429);
+  if (!isSystemAssetOwner(body.owner_id)) {
+    const budget = await entryWriteBudgetToday(c.env, c.env.DB);
+    if (budget.remaining <= 0) {
+      return c.json(writeBudgetExhaustedBody(budget), 429);
+    }
   }
+  releaseDailyWriteBrakeIfSystemOwner(c.env, body.owner_id);
   try {
     const tally = { rowsWritten: 0 };
     const rec = await createRecord(withWriteTally(c.env.DB, tally), body);
-    try {
-      await addEntryWriteUsage(c.env.DB, tally.rowsWritten);
-    } catch {
+    if (!isSystemAssetOwner(body.owner_id)) {
+      try {
+        await addEntryWriteUsage(c.env.DB, tally.rowsWritten);
+      } catch {
+      }
     }
     return c.json({ success: true, record: rec });
   } catch (e) {
@@ -5668,8 +6220,11 @@ recordRoutes.patch("/:recordId", async (c) => {
   if (!body || !body.values || typeof body.values !== "object") {
     return c.json({ success: false, error: "values required" }, 400);
   }
+  const recordId = c.req.param("recordId");
+  const existing = await getRecord(c.env.DB, recordId);
+  if (existing) releaseDailyWriteBrakeIfSystemOwner(c.env, existing.owner_id);
   try {
-    const rec = await updateRecord(c.env.DB, c.req.param("recordId"), body.values);
+    const rec = await updateRecord(c.env.DB, recordId, body.values);
     if (!rec) return c.json({ success: false, error: "not found" }, 404);
     return c.json({ success: true, record: rec });
   } catch (e) {
@@ -5677,7 +6232,10 @@ recordRoutes.patch("/:recordId", async (c) => {
   }
 });
 recordRoutes.delete("/:recordId", async (c) => {
-  const found = await deleteRecord(c.env.DB, c.req.param("recordId"));
+  const recordId = c.req.param("recordId");
+  const existing = await getRecord(c.env.DB, recordId);
+  if (existing) releaseDailyWriteBrakeIfSystemOwner(c.env, existing.owner_id);
+  const found = await deleteRecord(c.env.DB, recordId);
   if (!found) return c.json({ success: false, error: "not found" }, 404);
   return c.json({ success: true });
 });
@@ -6117,7 +6675,7 @@ function dailyLimit(env) {
   const n2 = raw2 ? parseInt(raw2, 10) : NaN;
   return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_DAILY_LIMIT;
 }
-function utcDay3() {
+function utcDay4() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 function truncate(s, max) {
@@ -6125,7 +6683,7 @@ function truncate(s, max) {
   return s.slice(0, Math.max(0, max - 1)) + "\u2026";
 }
 async function checkUsage(db, limit) {
-  const id = `exlog-usage:${utcDay3()}`;
+  const id = `exlog-usage:${utcDay4()}`;
   const existing = await db.prepare("SELECT metadata_json FROM entries WHERE id = ?").bind(id).first();
   let count;
   if (existing) {
@@ -6137,10 +6695,10 @@ async function checkUsage(db, limit) {
       prevWrites = 0;
     }
     count = prevWrites + 1;
-    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify({ day: utcDay3(), writes: count }), id).run();
+    await db.prepare("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?").bind(JSON.stringify({ day: utcDay4(), writes: count }), id).run();
   } else {
     count = 1;
-    await db.prepare(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'execution_log_usage', ?)`).bind(id, JSON.stringify({ day: utcDay3(), writes: count })).run();
+    await db.prepare(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'execution_log_usage', ?)`).bind(id, JSON.stringify({ day: utcDay4(), writes: count })).run();
   }
   if (count > limit) return "skip";
   if (count > limit * DEGRADE_RATIO) return "log_failure_only";
@@ -6594,546 +7152,6 @@ async function pluck(db, sql, binds, field) {
 
 // kbdb/src/routes/usage-brakes.ts
 init_record_crud();
-
-// kbdb/src/actions/speedometer.ts
-init_record_crud();
-var FREE_TIER_DAILY_ROWS_WRITTEN = 1e5;
-var FREE_TIER_DAILY_ROWS_READ = 5e6;
-var OP_CEILING_FRACTION = 0.05;
-var OP_GLOBAL_WRITE_CEILING = FREE_TIER_DAILY_ROWS_WRITTEN * OP_CEILING_FRACTION;
-var OP_GLOBAL_READ_CEILING = FREE_TIER_DAILY_ROWS_READ * OP_CEILING_FRACTION;
-var SAFETY_FACTOR = 3;
-var CARD_WRITE_BUDGET = 800;
-var DEFAULT_CEILING = {
-  write: OP_GLOBAL_WRITE_CEILING,
-  read: OP_GLOBAL_READ_CEILING,
-  normalWrite: OP_GLOBAL_WRITE_CEILING,
-  basis: "\u5168\u57DF\u4E0A\u9650\uFF1A\u514D\u8CBB\u65B9\u6848\u55AE\u65E5\u984D\u5EA6\u7684 5%"
-};
-var SINGLE_WRITE = {
-  write: CARD_WRITE_BUDGET * SAFETY_FACTOR,
-  // 2,400
-  read: OP_GLOBAL_READ_CEILING,
-  normalWrite: CARD_WRITE_BUDGET,
-  basis: `\u4E00\u6B21\u5BEB\u5165\uFF1A\u4E00\u6574\u5F35\u5361\u7684\u91CF\uFF08${CARD_WRITE_BUDGET} \u5217\uFF0Ccard-rows-written-gate\uFF09\xD7 ${SAFETY_FACTOR}`
-};
-var DECLARED_MAINTENANCE = {
-  write: DEFAULT_FTS_BACKFILL_RESERVE,
-  // 10,500
-  read: OP_GLOBAL_READ_CEILING,
-  normalWrite: DEFAULT_FTS_BACKFILL_RESERVE,
-  basis: `\u80CC\u666F\u7DAD\u8B77\uFF1A\u55AE\u6B21\u6279\u91CF\u4E0A\u9650\uFF08FTS \u88DC\u7D22\u5F15\u4E00\u6279\uFF0Bbookkeeping\uFF1D${DEFAULT_FTS_BACKFILL_RESERVE} \u5217\uFF0Cmaintenance-quota.ts\uFF09`
-};
-var OP_CEILINGS = {
-  "POST /entries": SINGLE_WRITE,
-  "PUT /entries/:id": SINGLE_WRITE,
-  "PATCH /entries/:id": SINGLE_WRITE,
-  "POST /records": SINGLE_WRITE,
-  "PATCH /records/:id": SINGLE_WRITE,
-  "POST /entries/fts-backfill": DECLARED_MAINTENANCE,
-  "POST /entries/backfill-library": DECLARED_MAINTENANCE,
-  "POST /embed/backfill": DECLARED_MAINTENANCE,
-  "POST /embed/reconcile": DECLARED_MAINTENANCE
-};
-function ceilingFor(op) {
-  return OP_CEILINGS[op] ?? DEFAULT_CEILING;
-}
-var OP_LABELS = {
-  "POST /entries": "\u5BEB\u5165\u4E00\u6BB5\u77E5\u8B58",
-  "PUT /entries/:id": "\u8986\u5BEB\u4E00\u7B46\u8CC7\u6599",
-  "PATCH /entries/:id": "\u4FEE\u6539\u4E00\u7B46\u8CC7\u6599",
-  "POST /records": "\u5BEB\u5165\u4E00\u7B46\u8A18\u9304\uFF08\u4F8B\u5982\u95DC\u4FC2\uFF09",
-  "PATCH /records/:id": "\u4FEE\u6539\u4E00\u7B46\u8A18\u9304",
-  "GET /entries/search": "\u641C\u5C0B",
-  "PATCH /entries/deprecate-by-library": "\u4E0B\u67B6\u4E00\u6574\u500B\u5EAB",
-  "POST /entries/fts-backfill": "\u88DC\u641C\u5C0B\u7D22\u5F15",
-  "POST /entries/backfill-library": "\u88DC\u6A19\u5EAB",
-  "POST /embed/backfill": "\u88DC\u5411\u91CF",
-  "POST /embed/reconcile": "\u5411\u91CF\u4E16\u4EE3\u6838\u5C0D",
-  "POST /map/recompute": "\u91CD\u7B97\u85CF\u66F8\u5730\u5716",
-  "POST /graph/canonicalize-entities": "\u6574\u4F75\u5716\u4E0A\u7684\u540C\u540D\u7BC0\u9EDE",
-  "POST /execution-log/cleanup": "\u6E05\u7406\u904E\u671F\u57F7\u884C\u7D00\u9304",
-  [`DAILY writes`]: "\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165",
-  [`DAILY reads`]: "\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6"
-};
-function opLabel(op) {
-  return OP_LABELS[op] ?? op;
-}
-var LITERAL_SEGMENTS = /* @__PURE__ */ new Set([
-  "entries",
-  "templates",
-  "sheets",
-  "records",
-  "recipe-stats",
-  "execution-log",
-  "embed",
-  "map",
-  "graph",
-  "maintenance",
-  "usage-brakes",
-  "usage",
-  "health",
-  "notified",
-  "libraries",
-  "library-cards",
-  "library-stats",
-  "search",
-  "deprecate-by-library",
-  "backfill-library",
-  "status",
-  "fts-backfill",
-  "record",
-  "latest",
-  "retention",
-  "cleanup",
-  "backfill",
-  "reconcile",
-  "selftest",
-  "canonicalize-entities",
-  "neighbors",
-  "select",
-  "recompute",
-  "narrative",
-  "triplet-stats",
-  "by-template",
-  "by-source",
-  "relation-orphans",
-  "release"
-]);
-function opKey(method, path) {
-  const segs = path.split("/").filter(Boolean).map((s) => LITERAL_SEGMENTS.has(s) ? s : ":id");
-  return `${method.toUpperCase()} /${segs.join("/")}`;
-}
-function isWriteSql(sql) {
-  return /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test(sql);
-}
-var DAILY_WARN_PERCENTS = [20, 50, 80];
-function utcDay4(now = Date.now()) {
-  return new Date(now).toISOString().slice(0, 10);
-}
-var odo = { day: utcDay4(), written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
-var odoEnsuredDay = null;
-function rollDay(now = Date.now()) {
-  const d = utcDay4(now);
-  if (odo.day !== d) odo = { day: d, written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
-}
-function todayUsage(now = Date.now()) {
-  rollDay(now);
-  return { day: odo.day, written: odo.written + odo.pendingWritten, read: odo.read + odo.pendingRead };
-}
-function newTally(op) {
-  return {
-    op,
-    ceiling: ceilingFor(op),
-    rowsRead: 0,
-    rowsWritten: 0,
-    statements: 0,
-    top: null,
-    over: false,
-    blocked: false,
-    dailyBlocked: null,
-    dailyReleased: { writes: false, reads: false }
-  };
-}
-var UsageBrakeError = class extends Error {
-  constructor(tally) {
-    super(`usage brake: ${tally.op} \u5DF2\u5BEB ${tally.rowsWritten} \u5217\uFF0F\u8B80 ${tally.rowsRead} \u5217`);
-    this.tally = tally;
-    this.name = "UsageBrakeError";
-  }
-  tally;
-};
-function isOver(t) {
-  return t.rowsWritten >= t.ceiling.write || t.rowsRead >= t.ceiling.read;
-}
-function add(t, sql, meta) {
-  const w = Number(meta?.rows_written ?? 0);
-  const r = Number(meta?.rows_read ?? 0);
-  t.rowsWritten += w;
-  t.rowsRead += r;
-  t.statements += 1;
-  rollDay();
-  odo.pendingWritten += w;
-  odo.pendingRead += r;
-  if (!t.top || w > t.top.rowsWritten || w === t.top.rowsWritten && r > t.top.rowsRead) {
-    t.top = { sql: sql.replace(/\s+/g, " ").trim().slice(0, 200), rowsWritten: w, rowsRead: r };
-  }
-  if (isOver(t)) t.over = true;
-}
-function guard(t, sqls) {
-  if (isOver(t)) {
-    t.over = true;
-    t.blocked = true;
-    throw new UsageBrakeError(t);
-  }
-  const today = todayUsage();
-  if (today.read >= FREE_TIER_DAILY_ROWS_READ && !t.dailyReleased.reads) {
-    t.dailyBlocked = "reads";
-    throw new UsageBrakeError(t);
-  }
-  if (today.written >= FREE_TIER_DAILY_ROWS_WRITTEN && !t.dailyReleased.writes && sqls.some(isWriteSql)) {
-    t.dailyBlocked = "writes";
-    throw new UsageBrakeError(t);
-  }
-}
-function meterDb(db, t) {
-  const real = /* @__PURE__ */ new WeakMap();
-  const wrap = (sql, stmt) => {
-    const w = {
-      bind: (...args) => wrap(sql, stmt.bind(...args)),
-      all: async () => {
-        guard(t, [sql]);
-        const r = await stmt.all();
-        add(t, sql, r.meta);
-        return r;
-      },
-      run: async () => {
-        guard(t, [sql]);
-        const r = await stmt.run();
-        add(t, sql, r.meta);
-        return r;
-      },
-      first: async (col) => {
-        guard(t, [sql]);
-        const r = await stmt.all();
-        add(t, sql, r.meta);
-        const row = r.results?.[0] ?? null;
-        if (!col) return row;
-        if (row === null) return null;
-        if (!(col in row)) throw new Error(`D1_COLUMN_NOTFOUND: Column not found (${col})`);
-        return row[col];
-      },
-      raw: stmt.raw?.bind(stmt)
-    };
-    real.set(w, { sql, stmt });
-    return w;
-  };
-  return {
-    prepare: (sql) => wrap(sql, db.prepare(sql)),
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；worktree 路徑讓 guard 誤判牆外
-    batch: async (stmts) => {
-      const pairs = stmts.map((s) => real.get(s) ?? { sql: "(batch)", stmt: s });
-      guard(t, pairs.map((p) => p.sql));
-      const results = await db.batch(pairs.map((p) => p.stmt));
-      results.forEach((r, i) => add(t, pairs[i].sql, r.meta));
-      return results;
-    },
-    exec: db.exec?.bind(db),
-    dump: db.dump?.bind(db),
-    withSession: db.withSession?.bind(db)
-  };
-}
-var USAGE_DAY_TEMPLATE_ID = "tpl-usage-day";
-var USAGE_DAY_SLOTS = ["day", "rows_written", "rows_read", "warned_percent"];
-function usageDayRecordId(day) {
-  return `usage_day_${day}`;
-}
-async function ensureTemplate(db, id, name, description, slots) {
-  const tpl = await getTemplate(db, id);
-  if (tpl) {
-    const have = JSON.parse(tpl.slots_json);
-    if (slots.every((s) => have.includes(s))) return;
-    await updateTemplate(db, id, { slots: [.../* @__PURE__ */ new Set([...have, ...slots])] });
-    return;
-  }
-  await createTemplate(db, { id, name, description, slots, created_by: "kbdb-speedometer" });
-}
-async function ensureUsageDay(db, day) {
-  if (odoEnsuredDay === day) return;
-  await ensureTemplate(
-    db,
-    USAGE_DAY_TEMPLATE_ID,
-    "usage_day",
-    "\u6BCF\u65E5\u7528\u91CF\u91CC\u7A0B\u8868\uFF08inkstone/InkStoneCo#147\uFF09\uFF1AKBDB \u9598\u53E3\u81EA\u5DF1\u7B97\u7684\u4ECA\u5929\u8B80\u5BEB\u5217\u6578\uFF0C\u5C0D\u7167\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u3002",
-    USAGE_DAY_SLOTS
-  );
-  await createRecord(db, {
-    template: USAGE_DAY_TEMPLATE_ID,
-    record_id: usageDayRecordId(day),
-    derived_cell_ids: true,
-    owner_id: null,
-    values: { day, rows_written: "0", rows_read: "0", warned_percent: "0" }
-  });
-  odoEnsuredDay = day;
-}
-async function flushOdometer(db, now = Date.now()) {
-  rollDay(now);
-  odo.lastFlushAt = now;
-  const day = odo.day;
-  const w = odo.pendingWritten;
-  const r = odo.pendingRead;
-  if (w === 0 && r === 0) return null;
-  odo.pendingWritten = 0;
-  odo.pendingRead = 0;
-  try {
-    await ensureUsageDay(db, day);
-    const rid = usageDayRecordId(day);
-    const wId = derivedCellIds(rid, "rows_written").value;
-    const rId = derivedCellIds(rid, "rows_read").value;
-    const res = await db.batch([
-      // kbdb-sql-ok：牆內本體；里程表原子加法
-      db.prepare(`UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`).bind(w, wId),
-      // kbdb-sql-ok
-      db.prepare(`UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`).bind(r, rId)
-      // kbdb-sql-ok
-    ]);
-    let selfW = 0;
-    let selfR = 0;
-    for (const x of res) {
-      selfW += Number(x.meta?.rows_written ?? 0);
-      selfR += Number(x.meta?.rows_read ?? 0);
-    }
-    odo.pendingWritten += selfW;
-    odo.pendingRead += selfR;
-    odo.written = Number(res[0].results?.[0]?.content ?? odo.written + w);
-    odo.read = Number(res[1].results?.[0]?.content ?? odo.read + r);
-    const pct = Math.floor(Math.max(odo.written / FREE_TIER_DAILY_ROWS_WRITTEN, odo.read / FREE_TIER_DAILY_ROWS_READ) * 100);
-    const level = [...DAILY_WARN_PERCENTS, 100].filter((p) => pct >= p).pop() ?? null;
-    let crossed = null;
-    if (level !== null) {
-      const warnId = derivedCellIds(rid, "warned_percent").value;
-      const u = await db.prepare(`UPDATE entries SET content = ? WHERE id = ? AND CAST(content AS INTEGER) < ?`).bind(String(level), warnId, level).run();
-      odo.pendingWritten += Number(u.meta?.rows_written ?? 0);
-      odo.pendingRead += Number(u.meta?.rows_read ?? 0);
-      if (Number(u.meta?.changes ?? 0) > 0) crossed = level;
-    }
-    return { day, written: odo.written, read: odo.read, crossedPercent: crossed, selfWritten: selfW, selfRead: selfR };
-  } catch (e) {
-    odo.pendingWritten += w;
-    odo.pendingRead += r;
-    console.warn("[kbdb speedometer] odometer flush failed", e);
-    return null;
-  }
-}
-var ODOMETER_FLUSH_DELAY_MS = 72e5;
-var ODOMETER_MAX_PENDING_WRITTEN = 2e3;
-var ODOMETER_MAX_PENDING_READ = 1e5;
-function odometerDueForFlush(now = Date.now()) {
-  if (odo.pendingWritten <= 0 && odo.pendingRead <= 0) return false;
-  if (odo.pendingWritten >= ODOMETER_MAX_PENDING_WRITTEN) return true;
-  if (odo.pendingRead >= ODOMETER_MAX_PENDING_READ) return true;
-  return now - odo.lastFlushAt >= ODOMETER_FLUSH_DELAY_MS;
-}
-function projectExhaustion(used, limit, now = Date.now()) {
-  const dayStart = Date.parse(`${utcDay4(now)}T00:00:00Z`);
-  const elapsed = Math.max(6e4, now - dayStart);
-  if (used <= 0) return null;
-  if (used >= limit) return new Date(now).toISOString();
-  const eta = dayStart + limit / used * elapsed;
-  return eta < nextQuotaReset(now).getTime() ? new Date(eta).toISOString() : null;
-}
-var BRAKE_TEMPLATE_ID = "tpl-usage-brake";
-var BRAKE_SLOTS = [
-  "kind",
-  // brake（剎住了）／warning（今天用量過門檻，只提醒）
-  "op",
-  // 操作代號，例如 POST /entries；每日那種是 DAILY writes／DAILY reads
-  "op_label",
-  // 人話
-  "caller",
-  // 誰打的（X-Arcrun-Caller；執行器帶 workflow:<名字>）
-  "rows_written",
-  "rows_read",
-  "statements",
-  "ceiling_write",
-  "ceiling_read",
-  "basis",
-  // 上限的依據
-  "top_sql",
-  // 寫最多的那一句（只有 SQL 樣式，不含綁定值）
-  "blocked",
-  // 'true'＝有語句被擋下沒送出；'false'＝越線的那一句已經做完
-  "tripped_at",
-  // ISO
-  "release_at",
-  // ISO：自動放行（下一次 00:00 UTC＝台北 08:00）
-  "released_at",
-  // ISO：手動放行
-  "released_by",
-  "notified_at",
-  // ISO：通知已送出（執行器 tick 填）
-  "message"
-  // 給人看的整句話
-];
-function toBrake(r, now) {
-  const v = r.values;
-  const releasedAt = v.released_at || null;
-  const releaseAt = v.release_at || "";
-  const kind = v.kind === "warning" ? "warning" : "brake";
-  const active = kind === "brake" && !releasedAt && (!releaseAt || Date.parse(releaseAt) > now);
-  return {
-    id: r.record_id,
-    kind,
-    op: v.op ?? "",
-    op_label: v.op_label ?? "",
-    caller: v.caller ?? "",
-    rows_written: Number(v.rows_written ?? 0),
-    rows_read: Number(v.rows_read ?? 0),
-    ceiling_write: Number(v.ceiling_write ?? 0),
-    ceiling_read: Number(v.ceiling_read ?? 0),
-    basis: v.basis ?? "",
-    top_sql: v.top_sql ?? "",
-    blocked: v.blocked === "true",
-    tripped_at: v.tripped_at ?? "",
-    release_at: releaseAt,
-    released_at: releasedAt,
-    released_by: v.released_by || null,
-    notified_at: v.notified_at || null,
-    message: v.message ?? "",
-    active
-  };
-}
-function nextQuotaReset(now) {
-  const d = new Date(now);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
-}
-function taipeiClock(iso) {
-  const d = new Date(Date.parse(iso) + 8 * 36e5);
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mi = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${mm}/${dd} ${hh}:${mi}\uFF08\u53F0\u5317\uFF09`;
-}
-var n = (x) => x.toLocaleString("en-US");
-function brakeMessage(t, caller, releaseAt, id) {
-  const release = `\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\uFF0C\u6216\u547C\u53EB POST /usage-brakes/${id}/release`;
-  if (t.dailyBlocked) {
-    const what2 = t.dailyBlocked === "writes" ? `\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09` : `\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_READ)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09`;
-    return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A${what2}\u3002\u9019\u500B\u5E33\u865F\u5C31\u7B97\u662F\u4ED8\u8CBB\u65B9\u6848\uFF0C\u4E5F\u7167\u514D\u8CBB\u7528\u6236\u7684\u984D\u5EA6\u505C\u4E0B\u4F86\uFF0C${t.dailyBlocked === "writes" ? "\u5BEB\u5165\u5148\u505C\u3001\u8B80\u53D6\u7167\u5E38" : "\u8B80\u5BEB\u90FD\u5148\u505C"}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF0C${release}\u3002`;
-  }
-  const what = t.rowsWritten >= t.ceiling.write ? t.ceiling.normalWrite < t.ceiling.write ? `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u9019\u985E\u64CD\u4F5C\u6B63\u5E38\u4E0D\u8D85\u904E ${n(t.ceiling.normalWrite)} \u5217\uFF0C\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.write)}\uFF09` : `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u4EFB\u4F55\u55AE\u4E00\u64CD\u4F5C\u7684\u4E0A\u9650\u662F ${n(t.ceiling.write)} \u5217\uFF1D\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684 5%\uFF09` : `\u9019\u4E00\u6B21\u8B80\u4E86 ${n(t.rowsRead)} \u5217\uFF08\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.read)}\uFF09`;
-  const stopped = t.blocked ? "\u5F8C\u9762\u7684\u6B65\u9A5F\u5DF2\u7D93\u505C\u4E0B\u6C92\u6709\u9001\u51FA" : "\u9019\u4E00\u6B21\u5DF2\u7D93\u505A\u5B8C\uFF0C\u4F46\u540C\u6A23\u7684\u64CD\u4F5C\u5148\u505C\u4F4F";
-  return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u300C${opLabel(t.op)}\u300D${what}\u3002${stopped}\uFF0C\u514D\u5F97\u628A\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6\uFF08\u5BEB\u5165 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF0F\u5929\uFF09\u71D2\u5149\u3002\u4F86\u6E90\u300C${caller}\u300D\u7684\u9019\u500B\u64CD\u4F5C\u6703\u505C\u5230 ${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u653E\u884C\uFF1B\u8981\u63D0\u65E9\u653E\u884C\uFF0C${release}\u3002`;
-}
-function warningMessage(percent, written, read, now = Date.now()) {
-  const wEta = projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now);
-  const rEta = projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now);
-  const eta = wEta ?? rEta;
-  const speed = eta ? `\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C${taipeiClock(eta)} \u6703\u7528\u5B8C` : "\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C\u4ECA\u5929\u7528\u4E0D\u5B8C";
-  return `\u7528\u91CF\u63D0\u9192\uFF1A\u4ECA\u5929\u5DF2\u7528\u6389\u514D\u8CBB\u984D\u5EA6\u7684 ${percent}%\uFF08\u5BEB\u5165 ${n(written)}/${n(FREE_TIER_DAILY_ROWS_WRITTEN)}\u3001\u8B80\u53D6 ${n(read)}/${n(FREE_TIER_DAILY_ROWS_READ)}\uFF09\u3002${speed}\uFF1B\u5230 100% \u6703\u81EA\u52D5\u524E\u4F4F\u5BEB\u5165\uFF0C${taipeiClock(nextQuotaReset(now).toISOString())} \u91CD\u7F6E\u3002`;
-}
-var ACTIVE_CACHE_MS = 3e4;
-var activeCache = null;
-async function listBrakes(db, limit = 100) {
-  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
-  if (!tpl) return [];
-  const now = Date.now();
-  const recs = await searchByTemplate(db, BRAKE_TEMPLATE_ID, void 0, limit, 0);
-  return recs.map((r) => toBrake(r, now));
-}
-async function recentBrakes(db) {
-  const now = Date.now();
-  if (!activeCache || now - activeCache.at > ACTIVE_CACHE_MS) {
-    const all = await listBrakes(db, 100);
-    const today = utcDay4(now);
-    activeCache = { at: now, brakes: all.filter((b) => b.active || b.op.startsWith("DAILY") && b.tripped_at.startsWith(today)) };
-  }
-  return activeCache.brakes;
-}
-async function findActiveBrake(db, op, caller) {
-  const now = Date.now();
-  const list = await recentBrakes(db);
-  return list.find((b) => b.kind === "brake" && b.op === op && b.caller === caller && !b.released_at && Date.parse(b.release_at) > now) ?? null;
-}
-async function dailyReleased(db) {
-  const today = utcDay4();
-  const list = await recentBrakes(db);
-  const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
-  const disabled = !await brakeEnabled(db);
-  return { writes: rel("DAILY writes") || disabled, reads: rel("DAILY reads") || disabled };
-}
-async function ensureBrakeTemplate(db) {
-  await ensureTemplate(
-    db,
-    BRAKE_TEMPLATE_ID,
-    "usage_brake",
-    "\u7528\u91CF\u524E\u8ECA\u7D00\u9304\uFF08inkstone/InkStoneCo#147\uFF09\uFF1A\u67D0\u500B\u64CD\u4F5C\u55AE\u6B21\u82B1\u8CBB\u8D85\u904E\u4E0A\u9650\u3001\u6216\u4ECA\u5929\u7528\u91CF\u904E\u9580\u6ABB\u6642\uFF0C\u9598\u53E3\u81EA\u52D5\u8A18\u5728\u9019\u88E1\u3002",
-    BRAKE_SLOTS
-  );
-}
-async function recordBrake(db, t, caller, now = Date.now()) {
-  await ensureBrakeTemplate(db);
-  const trippedAt = new Date(now).toISOString();
-  const releaseAt = nextQuotaReset(now).toISOString();
-  const op = t.dailyBlocked ? `DAILY ${t.dailyBlocked}` : t.op;
-  const who = t.dailyBlocked ? "*" : caller;
-  const recordId = t.dailyBlocked ? `brake_daily_${t.dailyBlocked}_${utcDay4(now)}` : `brake_${crypto.randomUUID()}`;
-  const today = todayUsage(now);
-  const values = {
-    kind: "brake",
-    op,
-    op_label: opLabel(op),
-    caller: who,
-    rows_written: String(t.dailyBlocked ? today.written : t.rowsWritten),
-    rows_read: String(t.dailyBlocked ? today.read : t.rowsRead),
-    statements: String(t.statements),
-    ceiling_write: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_WRITTEN : t.ceiling.write),
-    ceiling_read: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_READ : t.ceiling.read),
-    basis: t.dailyBlocked ? "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u5BEB\u5165 10 \u842C\u5217\uFF0F\u8B80\u53D6 500 \u842C\u5217\uFF09" : t.ceiling.basis,
-    top_sql: t.top?.sql ?? "",
-    blocked: t.blocked || t.dailyBlocked ? "true" : "false",
-    tripped_at: trippedAt,
-    release_at: releaseAt,
-    message: brakeMessage(t, caller, releaseAt, recordId)
-  };
-  const rec = await createRecord(db, {
-    template: BRAKE_TEMPLATE_ID,
-    record_id: recordId,
-    values,
-    owner_id: null,
-    derived_cell_ids: Boolean(t.dailyBlocked)
-  });
-  const trueRec = t.dailyBlocked ? await getRecord(db, recordId) : null;
-  const brake = trueRec ? toBrake(trueRec, now) : toBrake(rec, now);
-  if (activeCache) activeCache.brakes = [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)];
-  return brake;
-}
-async function recordWarning(db, percent, written, read, now = Date.now()) {
-  await ensureBrakeTemplate(db);
-  const day = utcDay4(now);
-  const recordId = `warn_${day}_${percent}`;
-  const values = {
-    kind: "warning",
-    op: "DAILY usage",
-    op_label: "\u4ECA\u5929\u7684\u7528\u91CF",
-    caller: "*",
-    rows_written: String(written),
-    rows_read: String(read),
-    ceiling_write: String(FREE_TIER_DAILY_ROWS_WRITTEN),
-    ceiling_read: String(FREE_TIER_DAILY_ROWS_READ),
-    basis: `\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u7684 ${percent}%`,
-    tripped_at: new Date(now).toISOString(),
-    release_at: nextQuotaReset(now).toISOString(),
-    message: warningMessage(percent, written, read, now)
-  };
-  const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
-  return toBrake(rec, now);
-}
-async function getBrake(db, id) {
-  const { getRecord: getRecord2 } = await Promise.resolve().then(() => (init_record_crud(), record_crud_exports));
-  const rec = await getRecord2(db, id);
-  if (!rec || rec.template_id !== BRAKE_TEMPLATE_ID) return null;
-  return toBrake(rec, Date.now());
-}
-async function releaseBrake(db, id, by) {
-  const existing = await getBrake(db, id);
-  if (!existing) return null;
-  const updated = await updateRecord(db, id, { released_at: (/* @__PURE__ */ new Date()).toISOString(), released_by: by || "manual" });
-  activeCache = null;
-  return updated ? toBrake(updated, Date.now()) : null;
-}
-async function markBrakeNotified(db, id) {
-  const existing = await getBrake(db, id);
-  if (!existing) return null;
-  const updated = await updateRecord(db, id, { notified_at: (/* @__PURE__ */ new Date()).toISOString() });
-  return updated ? toBrake(updated, Date.now()) : null;
-}
-function brakeBody(b) {
-  return { success: false, error: "usage_brake", message: b.message, brake: b };
-}
-
-// kbdb/src/routes/usage-brakes.ts
 function exempt(path) {
   return path === "/" || path === "/health" || path.startsWith("/usage-brakes");
 }
@@ -7203,7 +7221,7 @@ var speedometer = async (c, next) => {
       console.warn("[kbdb speedometer] brake lookup failed", e);
     }
   }
-  c.env = { ...c.env, DB: meterDb(rawDb, t) };
+  c.env = { ...c.env, DB: meterDb(rawDb, t), __kbdbTally: t };
   await next();
   if (!isExempt && (t.over || t.dailyBlocked)) {
     let brake = null;
@@ -7233,7 +7251,7 @@ usageBrakeRoutes.get("/", async (c) => {
   return c.json({ success: true, brakes });
 });
 usageBrakeRoutes.get("/usage", async (c) => {
-  const day = utcDay4();
+  const day = utcDay3();
   const rec = await getRecord(c.env.DB, usageDayRecordId(day));
   const mine = todayUsage();
   const written = Math.max(Number(rec?.values.rows_written ?? 0), mine.written);
