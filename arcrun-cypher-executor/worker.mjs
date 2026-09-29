@@ -2870,13 +2870,13 @@ function createComponentLoader(env) {
     }
     const logicRunner = makeLogicRunner(componentId, env);
     if (logicRunner) return logicRunner;
+    if (WASM_HTTP_RUNNER_IDS.has(componentId)) {
+      return makeHttpRunner(wasmWorkerUrl(componentId, env.WORKER_SUBDOMAIN));
+    }
     const authRecipe = await resolveAuthRecipe(componentId, env.RECIPES);
     if (authRecipe) return makeAuthRecipeRunner(authRecipe);
     const kvRecipe = await resolveRecipe(componentId, env.RECIPES);
     if (kvRecipe) return pickRecipeRunner(kvRecipe, env);
-    if (WASM_HTTP_RUNNER_IDS.has(componentId)) {
-      return makeHttpRunner(wasmWorkerUrl(componentId, env.WORKER_SUBDOMAIN));
-    }
     throw new Error(
       `\u627E\u4E0D\u5230\u96F6\u4EF6 "${componentId}"\u3002
 \u908F\u8F2F\u96F6\u4EF6\uFF1A${Object.keys(LOGIC_BINDING_MAP).join(", ")}
@@ -2928,13 +2928,14 @@ function makeHttpRunner(url) {
       body: JSON.stringify(ctx)
     });
     if (!res.ok) {
-      const text = await res.text();
-      return { success: false, status: res.status, error: text.slice(0, 200) };
+      const text2 = await res.text();
+      return { success: false, status: res.status, error: text2.slice(0, 200) };
     }
+    const text = await res.text();
     try {
-      return await res.json();
+      return JSON.parse(text);
     } catch {
-      return { success: true, data: await res.text() };
+      return { success: true, data: text };
     }
   };
 }
@@ -3087,6 +3088,9 @@ var init_component_loader = __esm({
     WASM_HTTP_RUNNER_IDS = /* @__PURE__ */ new Set([
       // 通用 HTTP 零件
       "http_request",
+      // 串流轉發零件（Arcrun#242）：source_url 回應 body 直接轉送成 dest_url 請求 body，
+      // 大型內容不進 stdin/stdout JSON 通道，用於部署整包 Worker bundle 等場景。
+      "fetch_relay",
       // 通用 code 零件（sandbox inline JS，Arcrun#10 / 07-thin-shell §3.5 code-node）：獨立 Worker，
       // URL 走 wasmWorkerUrl 通用推導（arcrun-code.{WORKER_SUBDOMAIN}.workers.dev，
       // self-hosted 由 WORKER_SUBDOMAIN var 注入自己的 subdomain，無寫死官方域名）。
@@ -3100,7 +3104,12 @@ var init_component_loader = __esm({
       "auth_static_key",
       "auth_service_account",
       "auth_oauth2",
-      "auth_mtls"
+      "auth_mtls",
+      // hash（Arcrun#91，2026-08-13）：純計算零件（sha256/sha1/md5，hex/base64），
+      // 出貨線版本號機制與成品指紋核對用它。no_network_syscall，故不走 LOGIC_BINDING_MAP
+      // 的 Service Binding 路（rule 3.1 禁新增 binding），走這裡的通用 wasmWorkerUrl 推導，
+      // 與 code/cron 同一形狀（獨立 Worker，白名單只是「知道這個 canonical_id 存在」）。
+      "hash"
     ]);
     LOGIC_BINDING_MAP = {
       if_control: "SVC_IF_CONTROL",
@@ -3134,27 +3143,6 @@ var init_component_loader = __esm({
 });
 
 // cypher-executor/src/lib/wasi-shim.ts
-async function routedKvGet(env, apiKey, key) {
-  if (key.startsWith("auth_recipe:")) {
-    return env.RECIPES.get(key);
-  }
-  const credMatch = key.match(/^([^:]+):cred:.+$/);
-  if (credMatch) {
-    if (credMatch[1] !== apiKey) {
-      return null;
-    }
-    return env.CREDENTIALS_KV.get(key);
-  }
-  return null;
-}
-async function routedKvPut(env, apiKey, key, value, ttlSeconds) {
-  const oauth2Match = key.match(/^([^:]+):oauth2:.+$/);
-  if (oauth2Match && oauth2Match[1] === apiKey) {
-    const opts = ttlSeconds > 0 ? { expirationTtl: ttlSeconds } : void 0;
-    await env.CREDENTIALS_KV.put(key, value, opts);
-    return;
-  }
-}
 async function rsaPkcs1Sha256Sign(data, pkcs8) {
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
@@ -3171,10 +3159,8 @@ function secretGet(env, ref) {
   const value = env[ref];
   return typeof value === "string" ? value : null;
 }
-function createArcrunHostFunctions(env, apiKey) {
+function createArcrunHostFunctions(env, _apiKey) {
   return {
-    kv_get: (key) => routedKvGet(env, apiKey, key),
-    kv_put: (key, value, ttlSeconds) => routedKvPut(env, apiKey, key, value, ttlSeconds),
     crypto_sign_rs256: (data, pkcs8) => rsaPkcs1Sha256Sign(data, pkcs8),
     secret_get: async (ref) => secretGet(env, ref)
   };
@@ -3185,21 +3171,55 @@ var init_wasi_shim = __esm({
   }
 });
 
+// cypher-executor/src/lib/kbdb-caller.ts
+function withCaller(headers, caller) {
+  return { ...headers, [KBDB_CALLER_HEADER]: caller.slice(0, 120) };
+}
+var KBDB_CALLER_HEADER, KBDB_CALLERS;
+var init_kbdb_caller = __esm({
+  "cypher-executor/src/lib/kbdb-caller.ts"() {
+    "use strict";
+    KBDB_CALLER_HEADER = "X-Arcrun-Caller";
+    KBDB_CALLERS = {
+      /** kbdb-proxy.ts：CLI（acr kbdb *）透過 cypher 轉發打 KBDB 基本盤。 */
+      proxy: "cypher-kbdb-proxy",
+      /** kbdb-asset-store.ts：WEBHOOKS／RECIPES／EXEC_CONTEXT 三個名字唯一的讀寫入口（Arcrun#98）。 */
+      assetStore: "cypher-asset-store",
+      /** recipe-expander.ts 的 kbdb_block fragment：某個 workflow 執行中展開 recipe 時讀的知識片段。 */
+      recipeFragment: (workflowId) => workflowId ? `workflow:${workflowId}` : "cypher-recipe-fragment",
+      /** webhook-handlers.ts 的 recordRecipeStats：執行結束後回寫 recipe 市場星數（fire-and-forget）。 */
+      recipeStats: "cypher-recipe-stats",
+      /** execution-logger.ts 的 writeExecutionVerdict：執行結束後寫入 KBDB 執行紀錄（fire-and-forget）。 */
+      executionLog: "cypher-execution-log"
+    };
+  }
+});
+
 // cypher-executor/src/routes/kbdb-proxy.ts
 function kbdbBase(env) {
   const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
-  const headers = { "Content-Type": "application/json" };
+  let headers = { "Content-Type": "application/json" };
   if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  headers = withCaller(headers, KBDB_CALLERS.proxy);
   return { base, headers };
 }
 function tenant(c) {
   return c.req.header("X-Arcrun-API-Key") ?? null;
+}
+function forwardQuery(c) {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(c.req.query())) {
+    if (k === "owner_id" || v === void 0 || v === "") continue;
+    params.set(k, v);
+  }
+  return params;
 }
 var kbdbProxyRouter, NEED_KEY;
 var init_kbdb_proxy = __esm({
   "cypher-executor/src/routes/kbdb-proxy.ts"() {
     "use strict";
     init_dist();
+    init_kbdb_caller();
     kbdbProxyRouter = new Hono2();
     NEED_KEY = { error: "\u7F3A\u5C11 X-Arcrun-API-Key header" };
     kbdbProxyRouter.post("/kbdb/templates", async (c) => {
@@ -3255,16 +3275,43 @@ var init_kbdb_proxy = __esm({
       const owner = tenant(c);
       if (!owner) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
-      const params = new URLSearchParams();
+      const params = forwardQuery(c);
       params.set("owner_id", owner);
-      for (const k of ["limit", "offset"]) {
-        const v = c.req.query(k);
-        if (v) params.set(k, v);
-      }
       const res = await fetch(
         `${base}/records/by-template/${encodeURIComponent(c.req.param("template"))}?${params.toString()}`,
         { headers }
       );
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.post("/kbdb/records/backfill-library", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !body.library) return c.json({ error: "library \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records/backfill-library`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          library: body.library,
+          owner_id: owner,
+          triplet_template: body.triplet_template,
+          source_prefix: body.source_prefix,
+          limit: body.limit
+        })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/records/backfill-library/status", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = new URLSearchParams({ owner_id: owner });
+      for (const k of ["triplet_template", "source_prefix"]) {
+        const v = c.req.query(k);
+        if (v) params.set(k, v);
+      }
+      const res = await fetch(`${base}/records/backfill-library/status?${params.toString()}`, { headers });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
     kbdbProxyRouter.get("/kbdb/records/:recordId", async (c) => {
@@ -3293,13 +3340,27 @@ var init_kbdb_proxy = __esm({
       const q = c.req.query("q");
       if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
       const { base, headers } = kbdbBase(c.env);
-      const params = new URLSearchParams({ q, owner_id: owner });
-      for (const k of ["entry_type", "source", "library", "mode"]) {
-        const v = c.req.query(k);
-        if (v) params.set(k, v);
-      }
+      const params = forwardQuery(c);
+      params.set("owner_id", owner);
       const res = await fetch(`${base}/entries/search?${params.toString()}`, { headers });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/retrieve", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const q = c.req.query("q") || c.req.query("question");
+      if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const params = forwardQuery(c);
+      params.set("q", q);
+      params.delete("question");
+      params.set("owner_id", owner);
+      try {
+        const res = await fetch(`${base}/retrieve?${params.toString()}`, { headers });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
     });
     kbdbProxyRouter.post("/kbdb/entries", async (c) => {
       const owner = tenant(c);
@@ -3319,14 +3380,11 @@ var init_kbdb_proxy = __esm({
       const owner = tenant(c);
       if (!owner) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
-      const params = new URLSearchParams();
+      const params = forwardQuery(c);
+      const search = params.get("search");
+      if (search && !params.get("q")) params.set("q", search);
+      params.delete("search");
       params.set("owner_id", owner);
-      for (const k of ["entry_type", "parent_id", "page_name", "source", "library", "exclude_kind", "limit", "offset"]) {
-        const v = c.req.query(k);
-        if (v) params.set(k, v);
-      }
-      const q = c.req.query("q") || c.req.query("search");
-      if (q) params.set("q", q);
       const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
@@ -3334,12 +3392,8 @@ var init_kbdb_proxy = __esm({
       const owner = tenant(c);
       if (!owner) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
-      const params = new URLSearchParams();
+      const params = forwardQuery(c);
       params.set("owner_id", owner);
-      for (const k of ["library", "limit"]) {
-        const v = c.req.query(k);
-        if (v) params.set(k, v);
-      }
       const res = await fetch(`${base}/entries/library-cards?${params.toString()}`, { headers });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
@@ -3353,12 +3407,8 @@ var init_kbdb_proxy = __esm({
       const owner = tenant(c);
       if (!owner) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
-      const params = new URLSearchParams();
+      const params = forwardQuery(c);
       params.set("owner_id", owner);
-      for (const k of ["depth", "template", "directed"]) {
-        const v = c.req.query(k);
-        if (v) params.set(k, v);
-      }
       try {
         const res = await fetch(
           `${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}?${params.toString()}`,
@@ -3461,7 +3511,7 @@ function validSensitivity(s) {
   return s === "standard" || s === "high";
 }
 async function putWorkerSecret(env, secretRef, value, tokenOverride) {
-  const token = tokenOverride || env.CF_SECRETS_API_TOKEN;
+  const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
   if (!token || !env.CF_ACCOUNT_ID) {
     throw new Error(
       "\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u5BEB\u5165\u8DEF\u5F91\u672A\u5C31\u7DD2\uFF08\u898B credential-store-migration.md T3\uFF1Aacr init/update \u61C9\u78BA\u4FDD\u9019\u5169\u9805\u5C31\u7DD2\uFF09"
@@ -3483,7 +3533,7 @@ async function putWorkerSecret(env, secretRef, value, tokenOverride) {
   }
 }
 async function deleteWorkerSecret(env, secretRef, tokenOverride) {
-  const token = tokenOverride || env.CF_SECRETS_API_TOKEN;
+  const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
   if (!token || !env.CF_ACCOUNT_ID) {
     throw new Error("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
   }
@@ -3633,12 +3683,69 @@ async function hasCredential(env, apiKey, name) {
   const entry = await findCredentialEntry(env, apiKey, name);
   return entry !== null;
 }
+async function findEntryBySecretRef(env, apiKey, secretRef) {
+  const { rows } = await getCredentialDirectory(env, apiKey);
+  const hit = rows.find((r) => r.secret_ref === secretRef);
+  return hit ? { name: hit.name } : null;
+}
 async function writeCredential(env, apiKey, name, value, service, sensitivityRaw) {
   const sensitivity = validSensitivity(sensitivityRaw) ? sensitivityRaw : "standard";
   const secretRef = await deriveSecretRef(apiKey, name);
+  const clash = await findEntryBySecretRef(env, apiKey, secretRef);
+  if (clash && clash.name !== name) {
+    throw new Error(
+      `\u540D\u7A31\u300C${name}\u300D\u884D\u751F\u51FA\u7684\u5132\u5B58\u4F4D\u7F6E\u5DF2\u88AB\u300C${clash.name}\u300D\u4F54\u7528\uFF08\u5B83\u5148\u524D\u5F9E\u300C${name}\u300D\u6539\u540D\u96E2\u958B\uFF09\uFF0C\u63DB\u4E00\u500B\u540D\u5B57\u518D\u5EFA\u7ACB\u3002`
+    );
+  }
   await putWorkerSecret(env, secretRef, value);
   await upsertCredentialEntry(env, apiKey, name, service ?? null, sensitivity, secretRef);
   return { secretRef, sensitivity };
+}
+async function deleteCredentialByName(env, apiKey, name) {
+  try {
+    const entry = await findCredentialEntry(env, apiKey, name);
+    if (entry) {
+      const meta = parseMeta(entry);
+      if (meta.secret_ref) await deleteWorkerSecret(env, meta.secret_ref);
+      const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(entry.id)}`, { method: "DELETE" });
+      if (!res.ok) return { ok: false, status: 502, error: `credential \u76EE\u9304\u522A\u9664\u5931\u6557\uFF1AHTTP ${res.status}` };
+      invalidateCredentialCache(apiKey);
+      return { ok: true };
+    }
+    return { ok: false, status: 404, error: `\u627E\u4E0D\u5230 credential\u300C${name}\u300D` };
+  } catch (e) {
+    return { ok: false, status: 502, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+async function editCredential(env, apiKey, currentName, updates) {
+  const entry = await findCredentialEntry(env, apiKey, currentName);
+  if (!entry) throw new Error(`\u627E\u4E0D\u5230 credential\u300C${currentName}\u300D`);
+  const meta = parseMeta(entry);
+  if (!meta.secret_ref) throw new Error(`credential\u300C${currentName}\u300D\u7F3A secret_ref\uFF0C\u8CC7\u6599\u7570\u5E38\uFF0C\u7121\u6CD5\u4FEE\u6539`);
+  const newName = updates.newName && updates.newName !== currentName ? updates.newName : currentName;
+  if (!validateName(newName)) throw new Error("\u540D\u7A31\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA");
+  if (newName !== currentName) {
+    const clash = await findCredentialEntry(env, apiKey, newName);
+    if (clash) throw new Error(`\u540D\u7A31\u300C${newName}\u300D\u5DF2\u88AB\u4F7F\u7528`);
+  }
+  const service = updates.service !== void 0 ? updates.service || null : meta.service;
+  if (updates.value) {
+    await putWorkerSecret(env, meta.secret_ref, updates.value);
+  }
+  const newMeta = {
+    service,
+    sensitivity: meta.sensitivity,
+    secret_ref: meta.secret_ref,
+    last_used_at: meta.last_used_at
+  };
+  const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(entry.id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ page_name: newName, metadata_json: JSON.stringify(newMeta) })
+  });
+  if (!res.ok) throw new Error(`credential \u4FEE\u6539\u5931\u6557\uFF1AHTTP ${res.status}`);
+  invalidateCredentialCache(apiKey);
+  return { name: newName, service, sensitivity: meta.sensitivity };
 }
 var credentialsRouter, CYPHER_SCRIPT_NAME, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
 var init_credentials = __esm({
@@ -3712,7 +3819,8 @@ var init_credentials = __esm({
         );
         return c.json({ success: true, name: body.name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
       } catch (e) {
-        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+        const msg = e instanceof Error ? e.message : String(e);
+        return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
       }
     });
     credentialsRouter.put("/credentials/:name", async (c) => {
@@ -3739,7 +3847,8 @@ var init_credentials = __esm({
         );
         return c.json({ success: true, name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
       } catch (e) {
-        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+        const msg = e instanceof Error ? e.message : String(e);
+        return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
       }
     });
     credentialsRouter.delete("/credentials/:name", async (c) => {
@@ -3748,20 +3857,27 @@ var init_credentials = __esm({
         return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
       }
       const name = c.req.param("name");
+      const result = await deleteCredentialByName(c.env, apiKey, name);
+      if (!result.ok) return c.json({ success: false, error: result.error }, result.status);
+      return c.json({ success: true, name, source: "workers-secrets" });
+    });
+    credentialsRouter.patch("/credentials/:name", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const name = c.req.param("name");
+      const body = await c.req.json().catch(() => null);
+      const newName = typeof body?.new_name === "string" ? body.new_name : void 0;
+      const service = typeof body?.service === "string" ? body.service : void 0;
+      const value = typeof body?.value === "string" ? body.value : void 0;
       try {
-        const entry = await findCredentialEntry(c.env, apiKey, name);
-        if (entry) {
-          const meta = parseMeta(entry);
-          if (meta.secret_ref) await deleteWorkerSecret(c.env, meta.secret_ref);
-          const res = await kbdbCredFetch(c.env, `/entries/${encodeURIComponent(entry.id)}`, { method: "DELETE" });
-          if (!res.ok) throw new Error(`credential \u76EE\u9304\u522A\u9664\u5931\u6557\uFF1AHTTP ${res.status}`);
-          invalidateCredentialCache(apiKey);
-          return c.json({ success: true, name, source: "workers-secrets" });
-        }
-        await c.env.CREDENTIALS_KV.delete(`${apiKey}:cred:${name}`);
-        return c.json({ success: true, name, source: "legacy-kv" });
+        const result = await editCredential(c.env, apiKey, name, { newName, service, value });
+        return c.json({ success: true, ...result });
       } catch (e) {
-        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+        const msg = e instanceof Error ? e.message : String(e);
+        const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
+        return c.json({ success: false, error: msg }, status);
       }
     });
     credentialsRouter.get("/credentials/catalog", async (c) => {
@@ -3815,6 +3931,25 @@ function explainCredentialFailure(message, directoryError, names) {
   if (!directoryError) return message;
   return `credential \u76EE\u9304\u8B80\u4E0D\u5230\uFF08${directoryError}\uFF09\uFF0C${names.join("\u3001")} \u7121\u6CD5\u5F9E\u4FDD\u7BA1\u8655\u53D6\u7528\u2014\u2014\u9019\u4E0D\u4EE3\u8868 credential \u4E0D\u5B58\u5728\uFF0C\u662F\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u9019\u4E00\u523B\u56DE\u932F\uFF0C\u8ACB\u5148\u78BA\u8A8D KBDB \u662F\u5426\u6B63\u5E38\u3002\u9000\u56DE\u820A\u8DEF\u5F91\u7684\u7D50\u679C\uFF1A${message}`;
 }
+function oauth2CacheKey(apiKey, service) {
+  return `${apiKey}\0${service}`;
+}
+async function readOAuth2Cache(_env, apiKey, service) {
+  const slot = oauth2Cache.get(oauth2CacheKey(apiKey, service));
+  if (!slot) return null;
+  if (slot.expiresAt - 60 <= Math.floor(Date.now() / 1e3)) {
+    oauth2Cache.delete(oauth2CacheKey(apiKey, service));
+    return null;
+  }
+  return { accessToken: slot.accessToken, expiresAt: slot.expiresAt };
+}
+async function writeOAuth2Cache(_env, apiKey, service, accessToken, expiresAt) {
+  if (oauth2Cache.size >= OAUTH2_CACHE_MAX) {
+    const oldest = oauth2Cache.keys().next().value;
+    if (oldest !== void 0) oauth2Cache.delete(oldest);
+  }
+  oauth2Cache.set(oauth2CacheKey(apiKey, service), { accessToken, expiresAt });
+}
 async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
   if (AUTH_PRIMITIVE_IDS.has(componentId)) {
     return null;
@@ -3830,6 +3965,7 @@ async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
   const secretNames = recipe.required_secrets.filter((s) => !s.optional).map((s) => s.key);
   const { resolved: resolvedSecrets, directoryError } = await resolveSecretsFromNewHomeDetailed(env, apiKey, secretNames);
   redactor?.addRecord(resolvedSecrets, (name) => `credential:${name}`);
+  const oauth2Cache2 = recipe.primitive === "oauth2" ? await readOAuth2Cache(env, apiKey, service) : null;
   const primitiveUrl = wasmWorkerUrl(`auth_${recipe.primitive}`, env.WORKER_SUBDOMAIN);
   const res = await fetch(primitiveUrl, {
     method: "POST",
@@ -3838,8 +3974,10 @@ async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
       action: "authenticate",
       api_key: apiKey,
       service,
-      // 只在有取到值時帶上（空物件也無妨，WASM 對 nil/空 map 同樣 fallback）
-      resolved_secrets: resolvedSecrets
+      // 只在有取到值時帶上（空物件也無妨，WASM 對 nil/空 map 同樣視為缺席）
+      resolved_secrets: resolvedSecrets,
+      recipe,
+      ...oauth2Cache2 ? { cached_access_token: oauth2Cache2.accessToken, cached_expires_at: oauth2Cache2.expiresAt } : {}
     })
   });
   if (!res.ok) {
@@ -3857,6 +3995,10 @@ async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
     throw new Error(
       explainCredentialFailure(`auth primitive \u5931\u6557: ${result?.error ?? "\u672A\u77E5\u932F\u8AA4"}`, directoryError, secretNames)
     );
+  }
+  if (result.cache?.access_token && typeof result.cache.expires_at === "number") {
+    void writeOAuth2Cache(env, apiKey, service, result.cache.access_token, result.cache.expires_at).catch(() => {
+    });
   }
   redactor?.addRecord(result.auth_headers, (k) => `auth_header:${k}`);
   redactor?.addRecord(result.auth_query, (k) => `auth_query:${k}`);
@@ -3932,7 +4074,7 @@ async function resolveCredentialRefs(data, env, apiKey, redactor) {
   redactor?.addRecord(result.credentials, (name) => `credential:${name}`);
   return replaceCredentialRefs(data, result.credentials ?? {});
 }
-var SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
+var oauth2Cache, OAUTH2_CACHE_MAX, SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
 var init_auth_dispatcher = __esm({
   "cypher-executor/src/actions/auth-dispatcher.ts"() {
     "use strict";
@@ -3940,6 +4082,8 @@ var init_auth_dispatcher = __esm({
     init_component_loader();
     init_wasi_shim();
     init_credentials();
+    oauth2Cache = /* @__PURE__ */ new Map();
+    OAUTH2_CACHE_MAX = 200;
     SUPPORTED_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
     AUTH_PRIMITIVE_IDS = /* @__PURE__ */ new Set([
       "auth_static_key",
@@ -6138,9 +6282,9 @@ var init_lib = __esm({
       _getCached() {
         if (this._cached !== null)
           return this._cached;
-        const shape = this._def.shape();
-        const keys = util.objectKeys(shape);
-        return this._cached = { shape, keys };
+        const shape2 = this._def.shape();
+        const keys = util.objectKeys(shape2);
+        return this._cached = { shape: shape2, keys };
       }
       _parse(input) {
         const parsedType = this._getType(input);
@@ -6154,7 +6298,7 @@ var init_lib = __esm({
           return INVALID;
         }
         const { status, ctx } = this._processInputParams(input);
-        const { shape, keys: shapeKeys } = this._getCached();
+        const { shape: shape2, keys: shapeKeys } = this._getCached();
         const extraKeys = [];
         if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
           for (const key in ctx.data) {
@@ -6165,7 +6309,7 @@ var init_lib = __esm({
         }
         const pairs = [];
         for (const key of shapeKeys) {
-          const keyValidator = shape[key];
+          const keyValidator = shape2[key];
           const value = ctx.data[key];
           pairs.push({
             key: { status: "valid", value: key },
@@ -6372,27 +6516,27 @@ var init_lib = __esm({
         });
       }
       pick(mask) {
-        const shape = {};
+        const shape2 = {};
         util.objectKeys(mask).forEach((key) => {
           if (mask[key] && this.shape[key]) {
-            shape[key] = this.shape[key];
+            shape2[key] = this.shape[key];
           }
         });
         return new _ZodObject({
           ...this._def,
-          shape: () => shape
+          shape: () => shape2
         });
       }
       omit(mask) {
-        const shape = {};
+        const shape2 = {};
         util.objectKeys(this.shape).forEach((key) => {
           if (!mask[key]) {
-            shape[key] = this.shape[key];
+            shape2[key] = this.shape[key];
           }
         });
         return new _ZodObject({
           ...this._def,
-          shape: () => shape
+          shape: () => shape2
         });
       }
       /**
@@ -6439,27 +6583,27 @@ var init_lib = __esm({
         return createZodEnum(util.objectKeys(this.shape));
       }
     };
-    ZodObject.create = (shape, params) => {
+    ZodObject.create = (shape2, params) => {
       return new ZodObject({
-        shape: () => shape,
+        shape: () => shape2,
         unknownKeys: "strip",
         catchall: ZodNever.create(),
         typeName: ZodFirstPartyTypeKind.ZodObject,
         ...processCreateParams(params)
       });
     };
-    ZodObject.strictCreate = (shape, params) => {
+    ZodObject.strictCreate = (shape2, params) => {
       return new ZodObject({
-        shape: () => shape,
+        shape: () => shape2,
         unknownKeys: "strict",
         catchall: ZodNever.create(),
         typeName: ZodFirstPartyTypeKind.ZodObject,
         ...processCreateParams(params)
       });
     };
-    ZodObject.lazycreate = (shape, params) => {
+    ZodObject.lazycreate = (shape2, params) => {
       return new ZodObject({
-        shape,
+        shape: shape2,
         unknownKeys: "strip",
         catchall: ZodNever.create(),
         typeName: ZodFirstPartyTypeKind.ZodObject,
@@ -8012,6 +8156,25 @@ var init_recipe_transforms = __esm({
   }
 });
 
+// cypher-executor/src/lib/kbdb-tally.ts
+function newKbdbTally() {
+  return { rowsRead: 0, rowsWritten: 0, statements: 0 };
+}
+function addKbdbResponse(tally, res) {
+  if (!tally) return;
+  const r = Number(res.headers.get("X-KBDB-Rows-Read") ?? "0");
+  const w = Number(res.headers.get("X-KBDB-Rows-Written") ?? "0");
+  const s = Number(res.headers.get("X-KBDB-Statements") ?? "0");
+  if (Number.isFinite(r)) tally.rowsRead += r;
+  if (Number.isFinite(w)) tally.rowsWritten += w;
+  if (Number.isFinite(s)) tally.statements += s;
+}
+var init_kbdb_tally = __esm({
+  "cypher-executor/src/lib/kbdb-tally.ts"() {
+    "use strict";
+  }
+});
+
 // cypher-executor/src/lib/recipe-expander.ts
 function getByPath(ctx, path) {
   const parts = path.split(".");
@@ -8034,7 +8197,10 @@ async function fetchKbdbBlock(env, apiKey, fragment) {
   } else {
     url = `${base}/blocks?page_name=${encodeURIComponent(fragment.block_page_name)}&limit=1`;
   }
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+  const res = await fetch(url, {
+    headers: withCaller({ Authorization: `Bearer ${apiKey}` }, KBDB_CALLERS.recipeFragment())
+  });
+  addKbdbResponse(env.__kbdbTally, res);
   if (!res.ok) throw new Error(`KBDB fragment \u6293\u53D6\u5931\u6557 (${res.status}): ${url}`);
   const data = await res.json();
   const block = fragment.block_id ? data : data.blocks?.[0] ?? {};
@@ -8093,6 +8259,8 @@ var init_recipe_expander = __esm({
     "use strict";
     init_recipe_loader();
     init_recipe_transforms();
+    init_kbdb_caller();
+    init_kbdb_tally();
   }
 });
 
@@ -8482,6 +8650,23 @@ function isFailure(result) {
   const r = result;
   return r["success"] === false || "error" in r;
 }
+function deriveExecutionVerdict(graph, trace) {
+  const onFailFrom = new Set(
+    graph.edges.filter((e) => e.type === "ON_FAIL").map((e) => e.from)
+  );
+  for (const step of trace) {
+    if (onFailFrom.has(step.nodeId)) continue;
+    if (step.error) {
+      return { success: false, failedNode: step.nodeId, error: step.error };
+    }
+    if (isFailure(step.output)) {
+      const out = step.output;
+      const err = typeof out.error === "string" ? out.error : `\u7BC0\u9EDE ${step.nodeId} \u56DE\u50B3 success:false`;
+      return { success: false, failedNode: step.nodeId, error: err };
+    }
+  }
+  return { success: true };
+}
 function evaluateCondition(condition, context) {
   if (!context || typeof context !== "object") return false;
   const ctx = context;
@@ -8579,7 +8764,8 @@ var init_graph_executor = __esm({
         this.currentRunId = kvStore?.runId ?? `${graph.id}-${Date.now()}`;
         const ctxWithMagic = {
           ...initialContext,
-          ...buildMagicVars()
+          ...buildMagicVars(),
+          ...this.apiKey !== void 0 ? { _tenant: this.apiKey } : {}
         };
         const hasIncoming = new Set(graph.edges.map((e) => e.to));
         const startNodes = graph.nodes.filter((n) => !hasIncoming.has(n.id));
@@ -8771,8 +8957,8 @@ var init_graph_executor = __esm({
                   run_id: this.currentRunId,
                   graph: this.currentGraph,
                   paused_node_id: node.id,
-                  paused_context: context,
-                  paused_pending_result: result,
+                  paused_context: this.redactor.redact(context),
+                  paused_pending_result: this.redactor.redact(result),
                   trace_so_far: trace,
                   api_key: this.apiKey,
                   expires_at: Date.now() + 24 * 60 * 60 * 1e3,
@@ -8832,13 +9018,15 @@ var init_graph_executor = __esm({
         if (node.type === "Component") {
           this.nodeSteps.push({ component_id: node.componentId, duration_ms, ok: true });
         }
+        const ownResult = result;
+        let returnValue = ownResult;
         const outEdges = graph.edges.filter((e) => e.from === node.id);
         for (const edge of outEdges) {
           const nextNode = graph.nodes.find((n) => n.id === edge.to);
           if (!nextNode) continue;
           switch (edge.type) {
             case "PIPE": {
-              const pipeContext = propagateCtx(context, result, node.id);
+              const pipeContext = propagateCtx(context, ownResult, node.id);
               if (kvStore) {
                 const kvOutput = await kvGetNodeOutput(kvStore, node.id);
                 if (kvOutput !== void 0) {
@@ -8851,32 +9039,32 @@ var init_graph_executor = __esm({
                 Object.assign(fanInState.ctx, pipeContext);
                 fanInState.remaining--;
                 if (fanInState.remaining === 0) {
-                  result = await this.executeNode(nextNode, graph, fanInState.ctx, visited, trace, fanIn, kvStore);
+                  returnValue = await this.executeNode(nextNode, graph, fanInState.ctx, visited, trace, fanIn, kvStore);
                 }
               } else {
-                result = await this.executeNode(nextNode, graph, pipeContext, visited, trace, fanIn, kvStore);
+                returnValue = await this.executeNode(nextNode, graph, pipeContext, visited, trace, fanIn, kvStore);
               }
               break;
             }
             case "ON_SUCCESS": {
-              if (!isFailure(result)) {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+              if (!isFailure(ownResult)) {
+                const mergedCtx = propagateCtx(context, ownResult, node.id);
+                returnValue = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
               }
               break;
             }
             case "ON_FAIL": {
-              if (isFailure(result)) {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+              if (isFailure(ownResult)) {
+                const mergedCtx = propagateCtx(context, ownResult, node.id);
+                returnValue = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
               }
               break;
             }
             case "IF": {
-              const passes = evaluateCondition(edge.condition ?? "true", result);
+              const passes = evaluateCondition(edge.condition ?? "true", ownResult);
               if (passes) {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+                const mergedCtx = propagateCtx(context, ownResult, node.id);
+                returnValue = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
               }
               break;
             }
@@ -8886,35 +9074,35 @@ var init_graph_executor = __esm({
             // 讀法對齊零件 output_schema：優先 data.branch（if_control/switch 的正式形狀），
             // 相容 top-level branch / result 布林。讀不出分支＝不走（誠實，不亂挑一條）。
             case "ON_TRUE": {
-              if (readBranch(result) === "true") {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+              if (readBranch(ownResult) === "true") {
+                const mergedCtx = propagateCtx(context, ownResult, node.id);
+                returnValue = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
               }
               break;
             }
             case "ON_FALSE": {
-              if (readBranch(result) === "false") {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+              if (readBranch(ownResult) === "false") {
+                const mergedCtx = propagateCtx(context, ownResult, node.id);
+                returnValue = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
               }
               break;
             }
             case "ON_BRANCH": {
-              const actual = readBranch(result);
+              const actual = readBranch(ownResult);
               if (edge.branch !== void 0 && actual !== void 0 && actual === edge.branch) {
-                const mergedCtx = propagateCtx(context, result, node.id);
-                result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+                const mergedCtx = propagateCtx(context, ownResult, node.id);
+                returnValue = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
               }
               break;
             }
             case "FOREACH": {
               const iteratorKey = edge.iterator ?? "item";
-              let items = getIterableFromContext(result, iteratorKey);
+              let items = getIterableFromContext(ownResult, iteratorKey);
               if (items.length === 0) {
                 items = getIterableFromContext(context, iteratorKey);
               }
               const iterResults = [];
-              const baseForeachCtx = propagateCtx(context, result, node.id);
+              const baseForeachCtx = propagateCtx(context, ownResult, node.id);
               for (const item of items) {
                 const itemContext = {
                   ...baseForeachCtx,
@@ -8941,7 +9129,7 @@ var init_graph_executor = __esm({
                   );
                 }
               }
-              result = { ...result, results: iterResults };
+              returnValue = { ...ownResult, results: iterResults };
               break;
             }
             case "CALLS_SUBFLOW": {
@@ -8951,19 +9139,19 @@ var init_graph_executor = __esm({
                 const subExecutor = new _GraphExecutor(this.loader, this.workflowLoader);
                 const subResult = await subExecutor.execute(
                   subGraph,
-                  result,
+                  ownResult,
                   kvStore?.kv
                 );
-                result = {
-                  ...result,
+                returnValue = {
+                  ...ownResult,
                   ...subResult.data
                 };
               }
               break;
             }
             case "ON_CLICK": {
-              const mergedCtx = propagateCtx(context, result, node.id);
-              result = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
+              const mergedCtx = propagateCtx(context, ownResult, node.id);
+              returnValue = await this.executeNode(nextNode, graph, mergedCtx, visited, trace, fanIn, kvStore);
               break;
             }
             case "IS_A": {
@@ -8978,7 +9166,7 @@ var init_graph_executor = __esm({
               break;
           }
         }
-        return result;
+        return returnValue;
       }
     };
   }
@@ -9081,6 +9269,42 @@ var init_execution_evaluator = __esm({
   }
 });
 
+// cypher-executor/src/lib/run-scratch.ts
+function createRunScratch() {
+  const m = /* @__PURE__ */ new Map();
+  const scratch = {
+    async get(key, type) {
+      const raw2 = m.get(key);
+      if (raw2 === void 0) return null;
+      const t = typeof type === "string" ? type : type?.type;
+      if (t === "json") {
+        try {
+          return JSON.parse(raw2);
+        } catch {
+          return null;
+        }
+      }
+      return raw2;
+    },
+    async put(key, value) {
+      m.set(key, String(value));
+    },
+    async delete(key) {
+      m.delete(key);
+    },
+    async list(options) {
+      const p = options?.prefix ?? "";
+      return { keys: [...m.keys()].filter((k) => k.startsWith(p)).sort().map((name) => ({ name })), list_complete: true, cacheStatus: null };
+    }
+  };
+  return scratch;
+}
+var init_run_scratch = __esm({
+  "cypher-executor/src/lib/run-scratch.ts"() {
+    "use strict";
+  }
+});
+
 // cypher-executor/src/actions/webhook-handlers.ts
 var webhook_handlers_exports = {};
 __export(webhook_handlers_exports, {
@@ -9091,8 +9315,9 @@ __export(webhook_handlers_exports, {
 function recordRecipeStats(env, recipeKeys, ok, at, ctx) {
   if (recipeKeys.size === 0) return;
   const base = (env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
-  const headers = { "Content-Type": "application/json" };
+  let headers = { "Content-Type": "application/json" };
   if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  headers = withCaller(headers, KBDB_CALLERS.recipeStats);
   const promise = Promise.all(
     [...recipeKeys].map(
       (key) => fetch(`${base}/recipe-stats/record`, {
@@ -9128,16 +9353,19 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
     const result = await executor.execute(
       parsed.data,
       { ...triggerContext, _webhook_token: token },
-      env.EXEC_CONTEXT
+      createRunScratch()
+      // #98：節點 output 只活在這次執行的記憶體（暫停執行另走 env.EXEC_CONTEXT → KBDB）
     );
     const duration_ms = Date.now() - start;
+    const verdict = deriveExecutionVerdict(parsed.data, result.trace);
     recordTelemetry(env, apiKey, {
-      event_type: "run_success",
+      event_type: verdict.success ? "run_success" : "run_fail",
       workflow_name: token,
+      error_code: verdict.success ? void 0 : "node_failed_unhandled",
       duration_ms,
       agent_user_agent: userAgent
     }, ctx);
-    recordRecipeStats(env, executor.usedRecipeKeys, true, Date.now(), ctx);
+    recordRecipeStats(env, executor.usedRecipeKeys, verdict.success, Date.now(), ctx);
     {
       const statsPromise = recordComponentStats(
         env,
@@ -9147,7 +9375,16 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
       if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
       else void statsPromise;
     }
-    return { success: true, data: result.data, duration_ms };
+    if (!verdict.success) {
+      return {
+        success: false,
+        data: result.data,
+        error: verdict.error,
+        trace: result.trace,
+        duration_ms
+      };
+    }
+    return { success: true, data: result.data, trace: result.trace, duration_ms };
   } catch (err) {
     const duration_ms = Date.now() - start;
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -9196,6 +9433,8 @@ var init_webhook_handlers = __esm({
     init_component_loader();
     init_telemetry();
     init_execution_evaluator();
+    init_run_scratch();
+    init_kbdb_caller();
   }
 });
 
@@ -9218,16 +9457,16 @@ var cors = (options) => {
     if (typeof optsOrigin === "string") {
       if (optsOrigin === "*") {
         if (opts.credentials) {
-          return (origin) => origin || null;
+          return (origin2) => origin2 || null;
         }
         return () => optsOrigin;
       } else {
-        return (origin) => optsOrigin === origin ? origin : null;
+        return (origin2) => optsOrigin === origin2 ? origin2 : null;
       }
     } else if (typeof optsOrigin === "function") {
       return optsOrigin;
     } else {
-      return (origin) => optsOrigin.includes(origin) ? origin : null;
+      return (origin2) => optsOrigin.includes(origin2) ? origin2 : null;
     }
   })(opts.origin);
   const findAllowMethods = ((optsAllowMethods) => {
@@ -9374,6 +9613,40 @@ async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
 
 // cypher-executor/src/scheduled.ts
 init_webhook_handlers();
+
+// cypher-executor/src/actions/execution-logger.ts
+init_kbdb_proxy();
+init_kbdb_caller();
+function extractTarget(input) {
+  if (!input) return void 0;
+  const raw2 = input.page_name ?? input.path;
+  if (raw2 === void 0 || raw2 === null) return void 0;
+  return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
+}
+async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message, input, apiKey, kbdbUsage) {
+  void nodes;
+  try {
+    const { base, headers } = kbdbBase(env);
+    await fetch(`${base}/execution-log/record`, {
+      method: "POST",
+      // 這支自己也是一次 KBDB 呼叫——蓋掉 kbdbBase() 預設的 'cypher-kbdb-proxy'，
+      // 剎車紀錄點名時才不會誤指成 CLI 那條 proxy。
+      headers: withCaller(headers, KBDB_CALLERS.executionLog),
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        owner_id: apiKey ?? null,
+        verdict,
+        duration_ms: Math.max(0, Math.round(durationMs)),
+        message: message ?? "",
+        target: extractTarget(input) ?? null,
+        ...kbdbUsage ? { kbdb_rows_written: kbdbUsage.rowsWritten, kbdb_rows_read: kbdbUsage.rowsRead } : {}
+      })
+    });
+  } catch {
+  }
+}
+
+// cypher-executor/src/scheduled.ts
 init_kbdb_proxy();
 
 // cypher-executor/src/lib/fts-backfill-tick.ts
@@ -9420,6 +9693,52 @@ async function runFtsBackfillTick(env, log = console.log, logError = console.err
   return { calls: MAX_TICK_CALLS, totalScanned, stoppedBecause: "max_calls" };
 }
 
+// cypher-executor/src/lib/usage-brake-notify-tick.ts
+init_kbdb_proxy();
+var SKIPPED = { skipped: true, checked: 0, notified: 0, errors: 0 };
+async function runUsageBrakeNotifyTick(env, log = console.log, logError = console.error) {
+  const webhookUrl = env.NOTIFY_LEO_WEBHOOK_URL;
+  if (!webhookUrl) return SKIPPED;
+  const { base, headers } = kbdbBase(env);
+  let list = [];
+  try {
+    const res = await fetch(`${base}/usage-brakes?pending_notify=1`, { headers });
+    const body = await res.json().catch(() => null);
+    if (!body?.success) {
+      logError("[scheduled] usage-brake-notify: GET /usage-brakes \u56DE\u61C9\u4E0D\u5B8C\u6574", res.status, JSON.stringify(body));
+      return { skipped: false, checked: 0, notified: 0, errors: 1 };
+    }
+    list = body.brakes ?? [];
+  } catch (e) {
+    logError("[scheduled] usage-brake-notify: GET /usage-brakes \u5931\u6557", e);
+    return { skipped: false, checked: 0, notified: 0, errors: 1 };
+  }
+  let notified = 0;
+  let errors = 0;
+  for (const b of list) {
+    try {
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // notify-leo.yaml 只吃 {{input.text}}；署名鐵律（agent-memory.md）：開頭標身份。
+        body: JSON.stringify({ text: `[KBDB${b.kind === "warning" ? "\u7528\u91CF\u63D0\u9192" : "\u524E\u8ECA"}] ${b.message ?? ""}` })
+      });
+      if (!res.ok) {
+        errors++;
+        logError("[scheduled] usage-brake-notify: \u9001\u901A\u77E5\u5931\u6557", b.id, res.status);
+        continue;
+      }
+      notified++;
+      log("[scheduled] usage-brake-notify: \u5DF2\u901A\u77E5", b.id);
+      await fetch(`${base}/usage-brakes/${encodeURIComponent(b.id)}/notified`, { method: "POST", headers }).catch((e) => logError("[scheduled] usage-brake-notify: \u6A19\u8A18 notified \u5931\u6557\uFF08\u4E0B\u4E00\u8F2A\u6703\u91CD\u901A\u77E5\u4E00\u6B21\uFF09", b.id, e));
+    } catch (e) {
+      errors++;
+      logError("[scheduled] usage-brake-notify: \u9001\u901A\u77E5\u4F8B\u5916", b.id, e);
+    }
+  }
+  return { skipped: false, checked: list.length, notified, errors };
+}
+
 // cypher-executor/src/scheduled.ts
 async function handleScheduled(controller, env, ctx) {
   const now2 = new Date(controller.scheduledTime);
@@ -9452,9 +9771,24 @@ async function handleScheduled(controller, env, ctx) {
       _triggered_by: "cron",
       _scheduled_at: now2.toISOString()
     };
+    const graphForVerdict = record.graph;
+    const workflowId = graphForVerdict.id ?? name;
+    const nodesForVerdict = Array.isArray(graphForVerdict.nodes) ? graphForVerdict.nodes : [];
     ctx.waitUntil(
       executeWebhookGraph(env, record.graph, triggerContext, name, apiKey).then(
-        (r) => console.log("[scheduled] done", name, r.success, r.duration_ms + "ms"),
+        (r) => {
+          console.log("[scheduled] done", name, r.success, r.duration_ms + "ms");
+          return writeExecutionVerdict(
+            env,
+            workflowId,
+            nodesForVerdict,
+            r.success ? "success" : "failed",
+            r.duration_ms,
+            r.error ?? "",
+            triggerContext,
+            apiKey
+          );
+        },
         (e) => console.error("[scheduled] fail", name, e)
       )
     );
@@ -9477,25 +9811,740 @@ async function handleScheduled(controller, env, ctx) {
       )
     );
   }
+  ctx.waitUntil(
+    runUsageBrakeNotifyTick(env).then(
+      (summary) => {
+        if (!summary.skipped) console.log("[scheduled] usage-brake-notify tick summary", JSON.stringify(summary));
+      },
+      (e) => console.error("[scheduled] usage-brake-notify tick failed", e)
+    )
+  );
 }
+
+// cypher-executor/src/lib/kbdb-asset-store.ts
+init_kbdb_caller();
+init_kbdb_tally();
+function kbdbBase2(env) {
+  return (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+}
+function kbdbHeaders(env) {
+  let h = { "Content-Type": "application/json" };
+  if (env.KBDB_INTERNAL_TOKEN) h["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  h = withCaller(h, KBDB_CALLERS.assetStore);
+  return h;
+}
+var AssetStoreUnavailableError = class extends Error {
+  constructor(op, detail, status) {
+    super(`\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u66AB\u6642\u8B80\u5BEB\u4E0D\u5230\uFF08${op}\uFF09\uFF1A${detail}\u3002\u9019\u4E0D\u662F\u300C\u4F60\u6C92\u6709\u9019\u7B46\u8CC7\u6599\u300D\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u3002`);
+    this.status = status;
+    this.name = "AssetStoreUnavailableError";
+  }
+  status;
+};
+var UnsupportedAssetKeyError = class extends Error {
+  constructor(store, key) {
+    super(`${store} \u4E0D\u8A8D\u5F97\u9019\u7A2E key\uFF1A\u300C${key}\u300D\u3002\u8CC7\u6599\u7684\u5BB6\u5DF2\u6539\u70BA KBDB record\uFF0C\u6BCF\u4E00\u578B\u90FD\u8981\u5728 kbdb-asset-store.ts \u767B\u8A18\u3002`);
+    this.name = "UnsupportedAssetKeyError";
+  }
+};
+var ASSET_TEMPLATES = {
+  workflow: {
+    name: "arcrun_workflow",
+    slots: ["name", "description", "cron_expr", "definition", "updated_at"],
+    description: "Arcrun \u5177\u540D\u5DE5\u4F5C\u6D41\uFF08acr push\uFF0F\u5B89\u88DD\u5668\u5BEB\u5165\uFF09\u3002definition\uFF1D\u4F7F\u7528\u8005\u5BEB\u7684\u90A3\u4EFD\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u539F\u6587\u3002"
+  },
+  app: {
+    name: "arcrun_app_install",
+    slots: ["app_id", "name", "version", "definition", "updated_at"],
+    description: "Arcrun App \u7684\u5B89\u88DD\u614B\uFF08\u5E02\u96C6\u6309\u4E0B\u5B89\u88DD\u4E4B\u5F8C\u7559\u4E0B\u7684\u90A3\u7B46\uFF09\u3002"
+  },
+  webhook: {
+    name: "arcrun_webhook",
+    slots: ["token", "description", "definition", "updated_at"],
+    description: "Arcrun \u533F\u540D webhook\uFF08POST /webhooks \u5EFA\u7ACB\uFF09\u3002"
+  },
+  folderTree: {
+    name: "arcrun_folder_tree",
+    slots: ["library", "sync_token", "definition", "updated_at"],
+    description: "\u540C\u6B65\u5C0F\u5E6B\u624B\u56DE\u5831\u7684\u5730\u7AEF\u8CC7\u6599\u593E\u6A39\uFF08portal \u986F\u793A\u7528\u7684\u6295\u5F71\uFF09\u3002"
+  },
+  daemonHint: {
+    name: "arcrun_daemon_hint",
+    slots: ["names", "expires_at", "updated_at"],
+    description: "\u540C\u6B65\u5C0F\u5E6B\u624B\u6700\u8FD1\u56DE\u5831\u5728\u770B\u5B88\u7684\u5EAB\u540D\uFF08\u6709\u6548\u671F 48 \u5C0F\u6642\uFF09\u3002"
+  },
+  cronIndex: {
+    name: "arcrun_cron_index",
+    slots: ["index", "updated_at"],
+    description: "\u6709\u6392\u7A0B\u7684\u5DE5\u4F5C\u6D41\u4E00\u89BD\uFF08scheduled() \u6BCF\u5206\u9418\u53EA\u8B80\u9019\u4E00\u7B46\uFF0C\u4E0D\u6383\u5168\u90E8\u5DE5\u4F5C\u6D41\uFF09\u3002"
+  },
+  apiRecipe: {
+    name: "arcrun_api_recipe",
+    slots: ["recipe_key", "canonical_id", "hash_id", "uuid", "definition", "updated_at"],
+    description: "Arcrun API recipe\uFF08\u6253\u67D0\u500B\u5916\u90E8 API \u7684\u8A2D\u5B9A\uFF09\u3002"
+  },
+  recipeInstalled: {
+    name: "arcrun_recipe_installed",
+    slots: ["canonical_id", "uuid", "updated_at"],
+    description: "\u9019\u53F0\u5BE6\u4F8B\u5C0D\u67D0\u500B canonical_id \u76EE\u524D\u5B89\u88DD\u7684\u662F\u54EA\u4E00\u7248 recipe\uFF08\u4F7F\u7528\u8005\u7684\u9078\u64C7\uFF09\u3002"
+  },
+  authRecipe: {
+    name: "arcrun_auth_recipe",
+    slots: ["service", "definition", "updated_at"],
+    description: "Arcrun auth recipe\uFF08\u600E\u9EBC\u8A8D\u8B49\uFF1B\u53EA\u6709\u5B9A\u7FA9\uFF0C\u6C92\u6709\u4EFB\u4F55\u5BC6\u6587\uFF09\u3002"
+  },
+  promptRecipe: {
+    name: "arcrun_prompt_recipe",
+    slots: ["name", "definition", "updated_at"],
+    description: "Arcrun prompt recipe\u3002"
+  },
+  pausedRun: {
+    name: "arcrun_paused_run",
+    slots: ["task_id", "api_key", "run_id", "workflow_name", "paused_node_id", "expires_at", "persisted_at", "state", "updated_at"],
+    description: "\u7B49\u56DE\u547C\u7684\u66AB\u505C\u57F7\u884C\uFF0824 \u5C0F\u6642\u5167\u6709\u6548\uFF1Bstate\uFF1D\u6062\u5FA9\u6642\u8981\u7528\u7684\u7E8C\u884C\u8CC7\u6599\uFF0Ctrace \u5DF2\u906E\u853D\uFF09\u3002"
+  }
+};
+var INSTANCE_ASSET_OWNER = "arcrun::assets";
+function tenantAssetOwner(tenant2) {
+  return `${tenant2}::assets`;
+}
+var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
+function jsonField(value, ...keys) {
+  try {
+    const obj = JSON.parse(value);
+    for (const k of keys) {
+      const v = obj?.[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (typeof v === "number") return String(v);
+    }
+  } catch {
+  }
+  return "";
+}
+var ANON_WEBHOOK_RE = /^[0-9a-f]{32}$/;
+function pausedRunOwner(apiKey) {
+  return `${apiKey || "arcrun"}::runs`;
+}
+function classify(store, key) {
+  if (store === "EXEC_CONTEXT") {
+    if (key.startsWith("paused_run:")) {
+      const taskId = key.slice("paused_run:".length);
+      if (!taskId) return null;
+      return {
+        kind: "record",
+        tpl: "pausedRun",
+        recordId: `asset:paused_run:${taskId}`,
+        owner: pausedRunOwner(""),
+        valueSlot: "state",
+        expires: true,
+        ownerFromValue: (v) => pausedRunOwner(jsonField(v, "api_key")),
+        lift: (v) => ({
+          task_id: taskId,
+          api_key: jsonField(v, "api_key"),
+          run_id: jsonField(v, "run_id"),
+          workflow_name: (() => {
+            try {
+              return String(JSON.parse(v).graph?.name ?? "");
+            } catch {
+              return "";
+            }
+          })(),
+          paused_node_id: jsonField(v, "paused_node_id"),
+          expires_at: jsonField(v, "expires_at"),
+          persisted_at: String(Date.now())
+        })
+      };
+    }
+    if (key.startsWith("paused_idx:")) {
+      return { kind: "derived", derive: "paused_index", arg: key.slice("paused_idx:".length) };
+    }
+    return null;
+  }
+  if (store === "RECIPES") {
+    if (key.startsWith("idx:installed:")) {
+      const canonical = key.slice("idx:installed:".length);
+      if (!canonical) return null;
+      return {
+        kind: "record",
+        tpl: "recipeInstalled",
+        recordId: `asset:recipe_installed:${canonical}`,
+        owner: INSTANCE_ASSET_OWNER,
+        valueSlot: "uuid",
+        lift: () => ({ canonical_id: canonical })
+      };
+    }
+    if (key.startsWith("idx:canonical:")) {
+      return { kind: "derived", derive: "recipe_canonical_list", arg: key.slice("idx:canonical:".length) };
+    }
+    if (key.startsWith("idx:")) {
+      return { kind: "derived", derive: "recipe_hash", arg: key.slice("idx:".length) };
+    }
+    if (key.startsWith("recipe:")) {
+      const id = key.slice("recipe:".length);
+      if (!id) return null;
+      return {
+        kind: "record",
+        tpl: "apiRecipe",
+        recordId: `asset:recipe:${id}`,
+        owner: INSTANCE_ASSET_OWNER,
+        valueSlot: "definition",
+        lift: (v) => ({
+          recipe_key: id,
+          canonical_id: jsonField(v, "canonical_id"),
+          hash_id: jsonField(v, "hash_id"),
+          uuid: jsonField(v, "uuid")
+        })
+      };
+    }
+    if (key.startsWith("auth_recipe:")) {
+      const service = key.slice("auth_recipe:".length);
+      if (!service) return null;
+      return {
+        kind: "record",
+        tpl: "authRecipe",
+        recordId: `asset:auth_recipe:${service}`,
+        owner: INSTANCE_ASSET_OWNER,
+        valueSlot: "definition",
+        lift: () => ({ service })
+      };
+    }
+    if (key.startsWith("prompt_recipe:")) {
+      const name = key.slice("prompt_recipe:".length);
+      if (!name) return null;
+      return {
+        kind: "record",
+        tpl: "promptRecipe",
+        recordId: `asset:prompt_recipe:${name}`,
+        owner: INSTANCE_ASSET_OWNER,
+        valueSlot: "definition",
+        lift: () => ({ name })
+      };
+    }
+    return null;
+  }
+  if (key === "cron-idx:_all") {
+    return {
+      kind: "record",
+      tpl: "cronIndex",
+      recordId: "asset:cron_index",
+      owner: INSTANCE_ASSET_OWNER,
+      valueSlot: "index",
+      lift: () => ({})
+    };
+  }
+  if (key.startsWith("cron-idx:") || key.startsWith("idx:")) {
+    return { kind: "derived", derive: "none", arg: key };
+  }
+  const portalAt = key.indexOf(":portal:");
+  if (portalAt > 0) {
+    const tenant2 = key.slice(0, portalAt);
+    const rest = key.slice(portalAt + ":portal:".length);
+    if (rest.startsWith("folder_tree:")) {
+      const library = rest.slice("folder_tree:".length);
+      if (!library) return null;
+      return {
+        kind: "record",
+        tpl: "folderTree",
+        recordId: `asset:folder_tree:${tenant2}:${library}`,
+        owner: tenantAssetOwner(tenant2),
+        valueSlot: "definition",
+        lift: (v) => ({ library, sync_token: jsonField(v, "sync_token") })
+      };
+    }
+    if (rest === "daemon_active_libs") {
+      return {
+        kind: "record",
+        tpl: "daemonHint",
+        recordId: `asset:daemon_hint:${tenant2}`,
+        owner: tenantAssetOwner(tenant2),
+        valueSlot: "names",
+        lift: () => ({})
+      };
+    }
+    return null;
+  }
+  const appAt = key.indexOf(":app:");
+  if (appAt > 0) {
+    const tenant2 = key.slice(0, appAt);
+    const id = key.slice(appAt + ":app:".length);
+    if (!tenant2 || !id) return null;
+    return {
+      kind: "record",
+      tpl: "app",
+      recordId: `asset:app:${tenant2}:${id}`,
+      owner: tenantAssetOwner(tenant2),
+      valueSlot: "definition",
+      lift: (v) => ({ app_id: id, name: jsonField(v, "name"), version: jsonField(v, "version") }),
+      legacyEntryId: `arcrun:app:${tenant2}:${id}`
+    };
+  }
+  const wfAt = key.indexOf(":wf:");
+  if (wfAt > 0) {
+    const tenant2 = key.slice(0, wfAt);
+    const name = key.slice(wfAt + ":wf:".length);
+    if (!tenant2 || !name) return null;
+    return {
+      kind: "record",
+      tpl: "workflow",
+      recordId: `asset:wf:${tenant2}:${name}`,
+      owner: tenantAssetOwner(tenant2),
+      valueSlot: "definition",
+      lift: (v) => ({ name, description: jsonField(v, "description"), cron_expr: jsonField(v, "cron_expr") })
+    };
+  }
+  if (ANON_WEBHOOK_RE.test(key)) {
+    return {
+      kind: "record",
+      tpl: "webhook",
+      recordId: `asset:webhook:${key}`,
+      owner: INSTANCE_ASSET_OWNER,
+      valueSlot: "definition",
+      lift: (v) => ({ token: key, description: jsonField(v, "description") })
+    };
+  }
+  return null;
+}
+function listTarget(store, prefix) {
+  const p = prefix ?? "";
+  if (store === "RECIPES") {
+    if (p === "recipe:") {
+      return { tpl: "apiRecipe", owner: INSTANCE_ASSET_OWNER, toKey: (v, id) => `recipe:${v.recipe_key || id.slice("asset:recipe:".length)}` };
+    }
+    if (p === "auth_recipe:") {
+      return { tpl: "authRecipe", owner: INSTANCE_ASSET_OWNER, toKey: (v, id) => `auth_recipe:${v.service || id.slice("asset:auth_recipe:".length)}` };
+    }
+    if (p === "prompt_recipe:") {
+      return { tpl: "promptRecipe", owner: INSTANCE_ASSET_OWNER, toKey: (v, id) => `prompt_recipe:${v.name || id.slice("asset:prompt_recipe:".length)}` };
+    }
+    return null;
+  }
+  if (p === "") {
+    return { tpl: "webhook", owner: INSTANCE_ASSET_OWNER, toKey: (v, id) => v.token || id.slice("asset:webhook:".length) };
+  }
+  const wf = p.match(/^(.+):wf:$/);
+  if (wf) {
+    const tenant2 = wf[1];
+    return { tpl: "workflow", owner: tenantAssetOwner(tenant2), toKey: (v, id) => `${tenant2}:wf:${v.name || id.slice(`asset:wf:${tenant2}:`.length)}` };
+  }
+  const app2 = p.match(/^(.+):app:$/);
+  if (app2) {
+    const tenant2 = app2[1];
+    return {
+      tpl: "app",
+      owner: tenantAssetOwner(tenant2),
+      toKey: (v, id) => `${tenant2}:app:${v.app_id || id.slice(`asset:app:${tenant2}:`.length)}`,
+      legacy: { entryType: "app_install", owner: tenant2, toKey: (page) => `${tenant2}:app:${page}` }
+    };
+  }
+  return null;
+}
+var ensuredTemplates = /* @__PURE__ */ new Set();
+async function kbdbFetch(env, path, init, op) {
+  const extra = init?.headers ?? {};
+  try {
+    const res = await fetch(`${kbdbBase2(env)}${path}`, { ...init, headers: { ...kbdbHeaders(env), ...extra } });
+    addKbdbResponse(env.__kbdbTally, res);
+    return res;
+  } catch (e) {
+    throw new AssetStoreUnavailableError(op, e instanceof Error ? e.message : String(e));
+  }
+}
+async function ensureTemplate(env, spec) {
+  if (ensuredTemplates.has(spec.name)) return;
+  const got = await kbdbFetch(env, `/templates/${encodeURIComponent(spec.name)}`, void 0, "template");
+  if (got.ok) {
+    const body = await got.json().catch(() => null);
+    const tpl = body?.template;
+    if (tpl?.id) {
+      let current = [];
+      try {
+        const parsed = JSON.parse(tpl.slots_json ?? "[]");
+        if (Array.isArray(parsed)) current = parsed.filter((s) => typeof s === "string");
+      } catch {
+      }
+      const missing = spec.slots.filter((s) => !current.includes(s));
+      if (missing.length > 0) {
+        const patched = await kbdbFetch(env, `/templates/${encodeURIComponent(tpl.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ slots: [...current, ...missing] })
+        }, "template");
+        if (!patched.ok) throw new AssetStoreUnavailableError("template", `\u88DC\u6B04\u4F4D ${spec.name} \u2192 HTTP ${patched.status}`, patched.status);
+      }
+      ensuredTemplates.add(spec.name);
+      return;
+    }
+  } else if (got.status !== 404) {
+    throw new AssetStoreUnavailableError("template", `GET /templates/${spec.name} \u2192 HTTP ${got.status}`, got.status);
+  }
+  const res = await kbdbFetch(env, "/templates", {
+    method: "POST",
+    body: JSON.stringify({ name: spec.name, slots: spec.slots, description: spec.description, created_by: "arcrun" })
+  }, "template");
+  if (!res.ok) {
+    const again = await kbdbFetch(env, `/templates/${encodeURIComponent(spec.name)}`, void 0, "template");
+    if (!again.ok) throw new AssetStoreUnavailableError("template", `POST /templates ${spec.name} \u2192 HTTP ${res.status}`, res.status);
+  }
+  ensuredTemplates.add(spec.name);
+}
+async function getRecord(env, recordId) {
+  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, void 0, "get");
+  if (res.status === 404) return null;
+  if (!res.ok) throw new AssetStoreUnavailableError("get", `GET /records/${recordId} \u2192 HTTP ${res.status}`, res.status);
+  const body = await res.json().catch(() => null);
+  return body?.record ?? null;
+}
+async function upsertRecord(env, tpl, recordId, owner, values) {
+  const path = `/records/${encodeURIComponent(recordId)}`;
+  const patchInit = { method: "PATCH", body: JSON.stringify({ values }) };
+  const patch = await kbdbFetch(env, path, patchInit, "put");
+  if (patch.ok) return;
+  if (patch.status === 400) {
+    ensuredTemplates.delete(tpl.name);
+    await ensureTemplate(env, tpl);
+    const retry = await kbdbFetch(env, path, patchInit, "put");
+    if (retry.ok) return;
+    if (retry.status !== 404) throw new AssetStoreUnavailableError("put", `PATCH ${path} \u2192 HTTP ${retry.status}`, retry.status);
+  } else if (patch.status !== 404) {
+    throw new AssetStoreUnavailableError("put", `PATCH ${path} \u2192 HTTP ${patch.status}`, patch.status);
+  }
+  await ensureTemplate(env, tpl);
+  const created = await kbdbFetch(env, "/records", {
+    method: "POST",
+    body: JSON.stringify({ template: tpl.name, record_id: recordId, owner_id: owner, values, derived_cell_ids: true })
+  }, "put");
+  if (!created.ok) {
+    const detail = await created.text().catch(() => "");
+    throw new AssetStoreUnavailableError("put", `POST /records\uFF08${tpl.name}\uFF09\u2192 HTTP ${created.status} ${detail.slice(0, 200)}`, created.status);
+  }
+}
+async function deleteRecord(env, recordId) {
+  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }, "delete");
+  if (!res.ok && res.status !== 404) throw new AssetStoreUnavailableError("delete", `DELETE /records/${recordId} \u2192 HTTP ${res.status}`, res.status);
+}
+async function listRecords(env, tpl, owner) {
+  const out = [];
+  const limit = 500;
+  for (let offset = 0; ; offset += limit) {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (owner) params.set("owner_id", owner);
+    const res = await kbdbFetch(env, `/records/by-template/${encodeURIComponent(tpl.name)}?${params}`, void 0, "list");
+    if (!res.ok) throw new AssetStoreUnavailableError("list", `GET /records/by-template/${tpl.name} \u2192 HTTP ${res.status}`, res.status);
+    const body = await res.json().catch(() => null);
+    const page = body?.records ?? [];
+    out.push(...page);
+    if (page.length < limit) break;
+  }
+  return out;
+}
+async function recordIdsBySource(env, tpl, field, value, owner) {
+  const params = new URLSearchParams({ field, value, owner_id: owner });
+  const res = await kbdbFetch(env, `/records/by-source/${encodeURIComponent(tpl.name)}?${params}`, void 0, "lookup");
+  if (!res.ok) throw new AssetStoreUnavailableError("lookup", `GET /records/by-source/${tpl.name} \u2192 HTTP ${res.status}`, res.status);
+  const body = await res.json().catch(() => null);
+  return body?.record_ids ?? [];
+}
+function envelopeValue(metadataJson) {
+  if (!metadataJson) return null;
+  try {
+    const envl = JSON.parse(metadataJson);
+    if (envl?.arcrun_asset !== true) return null;
+    if (typeof envl.definition_raw === "string") return envl.definition_raw;
+    return envl.definition === void 0 ? null : JSON.stringify(envl.definition);
+  } catch {
+    return null;
+  }
+}
+async function getLegacyEnvelope(env, entryId) {
+  const res = await kbdbFetch(env, `/entries/${encodeURIComponent(entryId)}`, void 0, "get");
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => null);
+  return envelopeValue(body?.entry?.metadata_json);
+}
+async function listLegacyEnvelopes(env, entryType, owner) {
+  const params = new URLSearchParams({ entry_type: entryType, owner_id: owner, limit: "1000" });
+  const res = await kbdbFetch(env, `/entries?${params}`, void 0, "list");
+  if (!res.ok) return [];
+  const body = await res.json().catch(() => null);
+  const out = [];
+  for (const e of body?.entries ?? []) {
+    const v = envelopeValue(e.metadata_json);
+    if (v !== null && e.page_name) out.push({ page_name: e.page_name, value: v });
+  }
+  return out;
+}
+var RECIPE_CACHE_MS = 3e4;
+var recipeCache = /* @__PURE__ */ new Map();
+var recipeCacheGen = 0;
+function clearRecipeCache() {
+  recipeCacheGen++;
+  recipeCache.clear();
+}
+function shape(raw2, type) {
+  if (raw2 === null) return null;
+  const t = typeof type === "string" ? type : type?.type;
+  if (t === "json") {
+    try {
+      return JSON.parse(raw2);
+    } catch {
+      return null;
+    }
+  }
+  if (t === "arrayBuffer" || t === "stream") {
+    throw new Error("\u8CC7\u7522\u5132\u5B58\u53EA\u5B58\u6587\u5B57\u6587\u4EF6\uFF0C\u4E0D\u652F\u63F4 arrayBuffer\uFF0Fstream \u8B80\u6CD5");
+  }
+  return raw2;
+}
+var KbdbAssetStore = class {
+  constructor(store, env) {
+    this.store = store;
+    this.env = env;
+  }
+  store;
+  env;
+  /**
+   * 本請求內的讀取備忘：list() 回來的 record 本來就帶完整內容，呼叫端接著逐筆 get()
+   * 時直接命中，不再每筆打一次 KBDB（否則「列出 N 支工作流」＝N+1 個 subrequest，
+   * 免費方案 50 個的上限很快就撞到）。實例是 per-request 的（withAssetStores），
+   * 所以這份備忘不會跨請求變舊。
+   */
+  memo = /* @__PURE__ */ new Map();
+  async readRaw(key) {
+    const ref = classify(this.store, key);
+    if (!ref) return null;
+    if (ref.kind === "derived") return this.derive(ref);
+    const rec = await getRecord(this.env, ref.recordId);
+    if (rec) {
+      const v = rec.values?.[ref.valueSlot];
+      if (v === void 0 || v === "") return null;
+      if (ref.tpl === "daemonHint" || ref.expires) {
+        const exp = Number(rec.values.expires_at ?? 0);
+        if (exp && Date.now() > exp) return null;
+      }
+      return v;
+    }
+    if (ref.legacyEntryId) return getLegacyEnvelope(this.env, ref.legacyEntryId);
+    return null;
+  }
+  async derive(ref) {
+    if (ref.derive === "none") return null;
+    if (ref.derive === "paused_index") {
+      const now2 = Date.now();
+      const recs = await listRecords(this.env, ASSET_TEMPLATES.pausedRun, pausedRunOwner(ref.arg));
+      const rows = recs.map((r) => ({
+        task_id: r.values.task_id ?? "",
+        run_id: r.values.run_id ?? "",
+        paused_node_id: r.values.paused_node_id ?? "",
+        workflow_name: r.values.workflow_name || void 0,
+        expires_at: Number(r.values.expires_at ?? 0),
+        persisted_at: Number(r.values.persisted_at ?? 0)
+      })).filter((e) => e.task_id && e.expires_at > now2).sort((a, b) => b.persisted_at - a.persisted_at);
+      return JSON.stringify(rows);
+    }
+    const tpl = ASSET_TEMPLATES.apiRecipe;
+    if (ref.derive === "recipe_canonical_list") {
+      const ids2 = await recordIdsBySource(this.env, tpl, "canonical_id", ref.arg, INSTANCE_ASSET_OWNER);
+      const uuids = ids2.map((id) => id.slice("asset:recipe:".length)).filter((k) => k && k !== ref.arg);
+      return uuids.length > 0 ? JSON.stringify(uuids) : null;
+    }
+    const ids = await recordIdsBySource(this.env, tpl, "hash_id", ref.arg, INSTANCE_ASSET_OWNER);
+    for (const id of ids) {
+      const rec = await getRecord(this.env, id);
+      const canonical = rec?.values?.canonical_id;
+      if (canonical) return canonical;
+    }
+    return null;
+  }
+  async get(key, type) {
+    if (this.memo.has(key)) return shape(this.memo.get(key) ?? null, type);
+    if (this.store === "RECIPES") {
+      const hit = recipeCache.get(key);
+      if (hit && Date.now() - hit.at < RECIPE_CACHE_MS) return shape(hit.value, type);
+      const gen = recipeCacheGen;
+      const raw2 = await this.readRaw(key);
+      if (gen === recipeCacheGen) recipeCache.set(key, { at: Date.now(), value: raw2 });
+      return shape(raw2, type);
+    }
+    return shape(await this.readRaw(key), type);
+  }
+  async getWithMetadata(key, type) {
+    return { value: await this.get(key, type), metadata: null, cacheStatus: null };
+  }
+  async put(key, value, options) {
+    if (typeof value !== "string") throw new Error("\u8CC7\u7522\u5132\u5B58\u53EA\u5B58\u6587\u5B57\u6587\u4EF6");
+    const ref = classify(this.store, key);
+    if (!ref) throw new UnsupportedAssetKeyError(this.store, key);
+    if (ref.kind === "derived") return;
+    if (this.store === "RECIPES") clearRecipeCache();
+    this.memo.delete(key);
+    const values = { ...ref.lift(value), [ref.valueSlot]: value, updated_at: nowIso() };
+    if (ref.tpl === "daemonHint") {
+      const ttl = options?.expirationTtl ?? 172800;
+      values.expires_at = String(options?.expiration ? options.expiration * 1e3 : Date.now() + ttl * 1e3);
+    }
+    const owner = ref.ownerFromValue ? ref.ownerFromValue(value) : ref.owner;
+    await upsertRecord(this.env, ASSET_TEMPLATES[ref.tpl], ref.recordId, owner, values);
+  }
+  async delete(key) {
+    const ref = classify(this.store, key);
+    if (!ref || ref.kind === "derived") return;
+    if (this.store === "RECIPES") clearRecipeCache();
+    this.memo.delete(key);
+    await deleteRecord(this.env, ref.recordId);
+    if (ref.legacyEntryId) {
+      await kbdbFetch(this.env, `/entries/${encodeURIComponent(ref.legacyEntryId)}`, { method: "DELETE" }, "delete").catch(() => null);
+    }
+  }
+  async list(options) {
+    const target = listTarget(this.store, options?.prefix ?? void 0);
+    if (!target) {
+      return { keys: [], list_complete: true, cacheStatus: null };
+    }
+    const records = await listRecords(this.env, ASSET_TEMPLATES[target.tpl], target.owner);
+    const names = /* @__PURE__ */ new Set();
+    for (const r of records) {
+      const k = target.toKey(r.values ?? {}, r.record_id);
+      if (!k) continue;
+      names.add(k);
+      const ref = classify(this.store, k);
+      if (ref?.kind === "record") {
+        const v = r.values?.[ref.valueSlot];
+        this.memo.set(k, v === void 0 || v === "" ? null : v);
+      }
+    }
+    if (target.legacy) {
+      for (const e of await listLegacyEnvelopes(this.env, target.legacy.entryType, target.legacy.owner)) {
+        const k = target.legacy.toKey(e.page_name);
+        if (names.has(k)) continue;
+        names.add(k);
+        this.memo.set(k, e.value);
+      }
+    }
+    return { keys: [...names].sort().map((name) => ({ name })), list_complete: true, cacheStatus: null };
+  }
+};
+function withAssetStores(env, tally) {
+  const withTally = tally ? { ...env, __kbdbTally: tally } : env;
+  return {
+    ...withTally,
+    WEBHOOKS: new KbdbAssetStore("WEBHOOKS", withTally),
+    RECIPES: new KbdbAssetStore("RECIPES", withTally),
+    EXEC_CONTEXT: new KbdbAssetStore("EXEC_CONTEXT", withTally)
+  };
+}
+
+// cypher-executor/src/index.ts
+init_kbdb_tally();
 
 // cypher-executor/src/routes/health.ts
 init_dist();
 
 // cypher-executor/src/lib/portal-auth-store.ts
 init_credentials();
+
+// cypher-executor/src/lib/ephemeral-store.ts
+init_kbdb_proxy();
+var EphemeralStoreError = class extends Error {
+};
+async function kFetch(env, path, init) {
+  const { base, headers } = kbdbBase(env);
+  try {
+    return await fetch(`${base}${path}`, {
+      ...init,
+      headers: { ...headers, ...init?.headers }
+    });
+  } catch (e) {
+    throw new EphemeralStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+async function sha256Hex(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var ensuredTemplates2 = /* @__PURE__ */ new Set();
+async function ensureTemplate2(env, name, slots) {
+  if (ensuredTemplates2.has(name)) return;
+  const got = await kFetch(env, `/templates/${encodeURIComponent(name)}`);
+  if (!got.ok) {
+    await kFetch(env, "/templates", {
+      method: "POST",
+      body: JSON.stringify({ name, slots })
+    }).catch(() => void 0);
+  }
+  ensuredTemplates2.add(name);
+}
+async function findByHash(env, template, hashField, hash) {
+  const res = await kFetch(
+    env,
+    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(hashField)}&value=${encodeURIComponent(hash)}`
+  );
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => null);
+  const id = body?.record_ids?.[0];
+  if (!id) return null;
+  const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
+  if (!rec.ok) return null;
+  const recBody = await rec.json().catch(() => null);
+  return recBody?.record ?? null;
+}
+async function deleteRecordById(env, recordId) {
+  await kFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }).catch(() => void 0);
+}
+async function ephemeralPut(env, opts) {
+  await ensureTemplate2(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
+  const hash = await sha256Hex(opts.rawKey);
+  const exp = Date.now() + opts.ttlSeconds * 1e3;
+  const values = { ...opts.values, [opts.hashField]: hash, exp: String(exp) };
+  const existing = opts.fresh ? null : await findByHash(env, opts.template, opts.hashField, hash);
+  if (existing) {
+    const res2 = await kFetch(env, `/records/${encodeURIComponent(existing.record_id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ values })
+    });
+    if (!res2.ok) throw new EphemeralStoreError(`PATCH /records(${opts.template}) \u2192 ${res2.status}`);
+    return;
+  }
+  const res = await kFetch(env, "/records", {
+    method: "POST",
+    body: JSON.stringify({ template: opts.template, values })
+  });
+  if (!res.ok) throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 ${res.status}`);
+}
+async function ephemeralGet(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const found = await findByHash(env, opts.template, opts.hashField, hash);
+  if (!found) return null;
+  const exp = Number(found.values.exp);
+  const expired = Number.isFinite(exp) && exp < Date.now();
+  if (opts.consume || expired) await deleteRecordById(env, found.record_id);
+  if (expired) return null;
+  return found.values;
+}
+async function ephemeralDelete(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const found = await findByHash(env, opts.template, opts.hashField, hash);
+  if (found) await deleteRecordById(env, found.record_id);
+}
+
+// cypher-executor/src/lib/portal-auth-store.ts
 var AUTH_STORE_PREFIX = "ARCRUN_AUTH_STORE";
 var SHARD_MAX_BYTES = 4600;
 var AUTH_OVERLAY_TTL_MS = 18e4;
 var ACCEL_KEY = "auth_store_recent";
 var ACCEL_TTL_SECONDS = 600;
+var ACCEL_TEMPLATE = "auth_store_written_marker";
 var AUTH_ID_PREFIX = "auth:";
 var AuthStoreWriteError = class extends Error {
+};
+var AuthStorePropagatingError = class extends AuthStoreWriteError {
+  constructor() {
+    super("\u8A8D\u8B49\u8CC7\u6599\u6B63\u5728\u66F4\u65B0\u4E2D\uFF08Cloudflare \u6B63\u5728\u92EA\u958B\u65B0\u7248\u672C\uFF09\uFF0C\u8ACB\u7B49\u5E7E\u79D2\u518D\u8A66\u4E00\u6B21\u2014\u2014\u525B\u624D\u7684\u8B8A\u66F4\u6C92\u6709\u907A\u5931\u3002");
+    this.name = "AuthStorePropagatingError";
+  }
 };
 var overlay = null;
 var overlayAt = 0;
 function emptyStore() {
-  return { version: 1, console: null, users: [] };
+  return { version: 1, console: null, users: [], passwords: {} };
 }
 function shardNames(env) {
   const bag = env;
@@ -9509,7 +10558,7 @@ function shardNameOf(index) {
   return index === 0 ? AUTH_STORE_PREFIX : `${AUTH_STORE_PREFIX}_${index}`;
 }
 function authStoreWritable(env, tokenOverride) {
-  return Boolean((tokenOverride || env.CF_SECRETS_API_TOKEN) && env.CF_ACCOUNT_ID);
+  return Boolean((tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN) && env.CF_ACCOUNT_ID);
 }
 function readAuthStore(env) {
   if (overlay && Date.now() - overlayAt < AUTH_OVERLAY_TTL_MS) return overlay;
@@ -9532,6 +10581,11 @@ function readAuthStoreFromEnv(env) {
         if (u && typeof u.email === "string" && typeof u.id === "string") out.users.push(u);
       }
     }
+    if (parsed.passwords && typeof parsed.passwords === "object") {
+      for (const [id, hash] of Object.entries(parsed.passwords)) {
+        if (typeof hash === "string" && !(id in out.passwords)) out.passwords[id] = hash;
+      }
+    }
   }
   return out;
 }
@@ -9552,7 +10606,8 @@ async function writeAuthStore(env, data, tokenOverride) {
     );
   }
   const shards = [];
-  let current = { v: 1, console: data.console ?? null, users: [] };
+  const writtenAt = Date.now();
+  let current = { v: 1, w: writtenAt, console: data.console ?? null, users: [], passwords: data.passwords };
   for (const u of data.users) {
     const trial = { ...current, users: [...current.users ?? [], u] };
     const size = new TextEncoder().encode(JSON.stringify(trial)).length;
@@ -9576,42 +10631,52 @@ async function writeAuthStore(env, data, tokenOverride) {
   for (const name of existing) {
     if (shardIndex(name) >= shards.length) await deleteWorkerSecret(env, name, tokenOverride);
   }
-  overlay = { version: 1, console: data.console ?? null, users: [...data.users] };
+  overlay = { version: 1, console: data.console ?? null, users: [...data.users], passwords: { ...data.passwords } };
   overlayAt = Date.now();
   try {
-    await env.SESSIONS_KV.put(
-      ACCEL_KEY,
-      JSON.stringify({ written_at: Date.now(), data: overlay }),
-      { expirationTtl: ACCEL_TTL_SECONDS }
-    );
+    await ephemeralPut(env, {
+      template: ACCEL_TEMPLATE,
+      slots: ["written_at"],
+      hashField: "key_hash",
+      rawKey: ACCEL_KEY,
+      values: { written_at: String(writtenAt) },
+      ttlSeconds: ACCEL_TTL_SECONDS
+    });
   } catch {
   }
 }
-async function hydrateFromAccelerator(env) {
-  let raw2 = null;
-  try {
-    raw2 = await env.SESSIONS_KV.get(ACCEL_KEY);
-  } catch {
-    return false;
+function envWrittenAt(env) {
+  const bag = env;
+  let w = 0;
+  for (const name of shardNames(env)) {
+    try {
+      const parsed = JSON.parse(bag[name]);
+      if (typeof parsed?.w === "number" && parsed.w > w) w = parsed.w;
+    } catch {
+    }
   }
-  if (!raw2) return false;
+  return w;
+}
+async function lastWrittenAt(env) {
   try {
-    const parsed = JSON.parse(raw2);
-    if (!parsed?.data || !Array.isArray(parsed.data.users)) return false;
-    if (overlay && overlayAt >= (parsed.written_at ?? 0)) return false;
-    overlay = { version: 1, console: parsed.data.console ?? null, users: parsed.data.users };
-    overlayAt = parsed.written_at ?? Date.now();
-    return true;
+    const rec = await ephemeralGet(env, { template: ACCEL_TEMPLATE, hashField: "key_hash", rawKey: ACCEL_KEY });
+    const n = Number(rec?.written_at ?? 0);
+    return Number.isFinite(n) ? n : 0;
   } catch {
-    return false;
+    return 0;
   }
+}
+async function authStoreStaleHere(env) {
+  const last = await lastWrittenAt(env);
+  if (!last) return false;
+  if (overlay && overlayAt >= last) return false;
+  return envWrittenAt(env) < last;
+}
+async function hydrateFromAccelerator(_env) {
+  return false;
 }
 async function authStoreRecentlyWritten(env) {
-  try {
-    return Boolean(await env.SESSIONS_KV.get(ACCEL_KEY));
-  } catch {
-    return false;
-  }
+  return authStoreStaleHere(env);
 }
 function unionStores(a, b) {
   const byId = /* @__PURE__ */ new Map();
@@ -9619,14 +10684,41 @@ function unionStores(a, b) {
     const prev = byId.get(u.id);
     if (!prev || (u.updated_at ?? "") >= (prev.updated_at ?? "")) byId.set(u.id, u);
   }
-  return { version: 1, console: a.console ?? b.console ?? null, users: [...byId.values()] };
+  return {
+    version: 1,
+    console: a.console ?? b.console ?? null,
+    users: [...byId.values()],
+    passwords: { ...a.passwords, ...b.passwords }
+  };
 }
 async function mutateAuthStore(env, fn, tokenOverride) {
-  await hydrateFromAccelerator(env);
+  if (await authStoreStaleHere(env)) throw new AuthStorePropagatingError();
   const next = unionStores(readAuthStore(env), readAuthStoreFromEnv(env));
   await fn(next);
   await writeAuthStore(env, next, tokenOverride);
   return next;
+}
+function findPortalPasswordHash(env, recordId) {
+  return readAuthStore(env).passwords[recordId] ?? null;
+}
+async function setPortalPasswordHash(env, recordId, passwordHash, tokenOverride) {
+  await mutateAuthStore(env, (data) => {
+    data.passwords[recordId] = passwordHash;
+  }, tokenOverride);
+}
+async function migrateConsoleCredentials(env, record, tokenOverride) {
+  if (readAuthStore(env).console) return { migrated: false };
+  let migrated = false;
+  await mutateAuthStore(
+    env,
+    (data) => {
+      if (data.console) return;
+      data.console = record;
+      migrated = true;
+    },
+    tokenOverride
+  );
+  return { migrated };
 }
 
 // cypher-executor/src/routes/health.ts
@@ -9660,10 +10752,11 @@ async function dataLayerStatus(env) {
   return block;
 }
 function authStoreStatus(env) {
-  const legacy = readAuthStore(env);
+  const store = readAuthStore(env);
+  const writable = authStoreWritable(env);
   return {
-    console: { home: "sessions-kv", writable: true, legacy_secrets_present: legacy.console !== null },
-    portal_users: { home: "kbdb", writable: true, legacy_secrets_present: legacy.users.length > 0 }
+    console: { home: "workers-secrets", writable, configured: store.console !== null },
+    portal_users: { password_home: "workers-secrets", writable, passwords_migrated: Object.keys(store.passwords).length }
   };
 }
 healthRouter.get("/health", async (c) => {
@@ -9682,7 +10775,13 @@ healthRouter.get("/health", async (c) => {
     // 版本無關（同一個 cypher 版本，有的實例有這個 var、有的沒有）。純比版本號的話，
     // 已經在最新版的實例（如 leo 自己那台）永遠不會因為「按更新」而重推，這個 var
     // 就永遠補不進去。只回布林（有沒有設，不回值本身）——不洩漏郵差網址。
-    mail_relay_configured: Boolean(String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim())
+    mail_relay_configured: Boolean(String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim()),
+    // Arcrun#98 c11358（leo：「一台實例的 portal 永遠指向實際安裝它的那台安裝器」）：
+    // 有設就吐出去（非機密，只是一個 URL），portal 前端拿它取代寫死的 install.arcrun.dev，
+    // 這樣版本檢查／「前往安裝精靈」兩處才會跟著這台實例真正的安裝來源走，而不是恆指 prod。
+    // 未注入（尚未走過會設這個 var 的部署）→ 省略該欄，前端退回原本寫死的 prod 網址
+    // （同 bundle_version 的既有行為：省略欄位 ≠ 回傳假值）。
+    ...c.env.INSTALLER_ORIGIN ? { installer_origin: c.env.INSTALLER_ORIGIN } : {}
   });
 });
 healthRouter.get(
@@ -9700,36 +10799,7 @@ init_types();
 init_graph_executor();
 init_schemas();
 init_component_loader();
-
-// cypher-executor/src/actions/execution-logger.ts
-init_kbdb_proxy();
-function extractTarget(input) {
-  if (!input) return void 0;
-  const raw2 = input.page_name ?? input.path;
-  if (raw2 === void 0 || raw2 === null) return void 0;
-  return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
-}
-async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message, input, apiKey) {
-  void nodes;
-  try {
-    const { base, headers } = kbdbBase(env);
-    await fetch(`${base}/execution-log/record`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        workflow_id: workflowId,
-        owner_id: apiKey ?? null,
-        verdict,
-        duration_ms: Math.max(0, Math.round(durationMs)),
-        message: message ?? "",
-        target: extractTarget(input) ?? null
-      })
-    });
-  } catch {
-  }
-}
-
-// cypher-executor/src/routes/execute.ts
+init_run_scratch();
 var executeRouter = new Hono2();
 executeRouter.post("/execute", async (c) => {
   const body = await c.req.json();
@@ -9743,17 +10813,38 @@ executeRouter.post("/execute", async (c) => {
   const executor = new GraphExecutor(loader, void 0, c.env, apiKey);
   const start = Date.now();
   try {
-    const result = await executor.execute(graph, context, c.env.EXEC_CONTEXT);
+    const result = await executor.execute(graph, context, createRunScratch());
     const duration_ms = Date.now() - start;
+    const verdict = deriveExecutionVerdict(graph, result.trace);
     c.executionCtx.waitUntil(
-      writeExecutionVerdict(c.env, graph.id, graph.nodes, "success", duration_ms, "\u57F7\u884C\u5B8C\u6210", context, apiKey)
+      writeExecutionVerdict(
+        c.env,
+        graph.id,
+        graph.nodes,
+        verdict.success ? "success" : "failed",
+        duration_ms,
+        verdict.success ? "\u57F7\u884C\u5B8C\u6210" : (verdict.error ?? "\u7BC0\u9EDE\u5931\u6557").slice(0, 100),
+        context,
+        apiKey,
+        c.env.__kbdbTally
+      )
     );
+    if (!verdict.success) {
+      return c.json({
+        success: false,
+        error: verdict.error,
+        failed_node: verdict.failedNode ?? null,
+        data: result.data,
+        trace: result.trace,
+        duration_ms
+      }, 500);
+    }
     return c.json({ success: true, data: result.data, trace: result.trace, duration_ms });
   } catch (err) {
     const duration_ms = Date.now() - start;
     const errMsg = err instanceof Error ? err.message : String(err);
     c.executionCtx.waitUntil(
-      writeExecutionVerdict(c.env, graph.id, graph.nodes, "failed", duration_ms, errMsg.slice(0, 100), context, apiKey)
+      writeExecutionVerdict(c.env, graph.id, graph.nodes, "failed", duration_ms, errMsg.slice(0, 100), context, apiKey, c.env.__kbdbTally)
     );
     if (err instanceof ExecutionError) {
       const traceFormatted = err.trace.map((s) => ({
@@ -10339,6 +11430,7 @@ function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
 }
 
 // cypher-executor/src/actions/cypher-handlers.ts
+init_run_scratch();
 async function handleCypherSearch(triplets, env, mode = "discover", target) {
   const parsed = parseTriplets(triplets);
   if (!parsed) {
@@ -10347,6 +11439,14 @@ async function handleCypherSearch(triplets, env, mode = "discover", target) {
   const { nodeResults, missingNodes } = await searchNodes(parsed, void 0, env, mode, target);
   const graph = buildExecutionGraph(parsed, nodeResults, "cypher-search-result", "Cypher Search Result");
   return { nodes: nodeResults, cypher: { nodes: graph.nodes, edges: graph.edges }, missing: missingNodes };
+}
+async function compileCypherBinding(flow, config, graphId, graphName, env) {
+  const parsed = parseTriplets(flow);
+  if (!parsed) {
+    throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE\uFF08flow \u4E09\u5143\u7D44\u683C\u5F0F\u932F\u8AA4\uFF09");
+  }
+  const { nodeResults } = await searchNodes(parsed, config, env, "compile");
+  return buildExecutionGraph(parsed, nodeResults, graphId, graphName, config);
 }
 async function handleCypherExecute(triplets, context, graphId, graphName, config, env, waitUntil, apiKey) {
   const parsed = parseTriplets(triplets);
@@ -10363,9 +11463,20 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
   const executor = new GraphExecutor(loader, void 0, env, apiKey);
   const start = Date.now();
   try {
-    const result = await executor.execute(parseResult.data, context ?? {}, env.EXEC_CONTEXT);
+    const result = await executor.execute(parseResult.data, context ?? {}, createRunScratch());
     const duration_ms = Date.now() - start;
     waitUntil(recordComponentStats(env, graph.nodes, result.trace));
+    const verdict = deriveExecutionVerdict(parseResult.data, result.trace);
+    if (!verdict.success) {
+      return {
+        success: false,
+        error: verdict.error,
+        data: result.data,
+        trace: result.trace,
+        duration_ms,
+        graph
+      };
+    }
     return { success: true, data: result.data, trace: result.trace, duration_ms, graph };
   } catch (err) {
     const duration_ms = Date.now() - start;
@@ -11070,7 +12181,7 @@ webhooksRouter.post("/webhooks/:token/trigger", async (c) => {
   const workflowId = graph.id ?? token;
   const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
   );
   return c.json(result, result.success ? 200 : 500);
 });
@@ -11166,6 +12277,7 @@ init_credentials();
 // cypher-executor/src/routes/webhooks-named.ts
 init_dist();
 init_webhook_handlers();
+init_schemas();
 init_telemetry();
 var webhooksNamedRouter = new Hono2();
 function kvKey(apiKey, name) {
@@ -11214,10 +12326,29 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
   if (!/^[\w-]+$/.test(name)) {
     return c.json({ error: "workflow name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u3001\u5E95\u7DDA\u548C\u9023\u5B57\u865F" }, 400);
   }
-  const cronExpr = extractCronExpr(body.graph);
+  let graph = body.graph;
+  if (Array.isArray(body.graph.flow) && !Array.isArray(body.graph.nodes)) {
+    const rawConfig = body.config ?? body.graph.config;
+    try {
+      graph = await compileCypherBinding(
+        body.graph.flow,
+        rawConfig,
+        name,
+        name,
+        c.env
+      );
+    } catch (e) {
+      return c.json({ error: `flow \u7DE8\u8B6F\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 400);
+    }
+    const compiled = graphSchema.safeParse(graph);
+    if (!compiled.success) {
+      return c.json({ error: "\u5716\u5B9A\u7FA9\u7DE8\u8B6F\u5F8C\u4ECD\u7121\u6548\uFF0C\u8ACB\u6AA2\u67E5 flow \u4E09\u5143\u7D44\u8207 config", details: compiled.error.issues }, 400);
+    }
+  }
+  const cronExpr = extractCronExpr(graph);
   const record = {
     name,
-    graph: body.graph,
+    graph,
     config: body.config,
     description: body.description.trim(),
     // R1：已驗非空（見上），存 trim 後的值
@@ -11359,7 +12490,7 @@ async function triggerNamed(c, apiKey, name) {
   if (c.req.query("async") === "1") {
     c.executionCtx.waitUntil(
       executeWebhookGraph(c.env, record.graph, triggerContext, name, apiKey, c.executionCtx, userAgent).then(
-        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "", triggerContext, apiKey)
+        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
       )
     );
     return c.json({ accepted: true }, 202);
@@ -11374,7 +12505,7 @@ async function triggerNamed(c, apiKey, name) {
     userAgent
   );
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
   );
   return c.json(result, result.success ? 200 : 500);
 }
@@ -11411,7 +12542,7 @@ async function queryNamed(c, apiKey, name, triggerContext) {
     userAgent
   );
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
   );
   if (!result.success) {
     const paused = typeof result.error === "string" && /workflow paused/i.test(result.error);
@@ -11518,11 +12649,129 @@ webhooksNamedRouter.delete("/webhooks/named/:name", async (c) => {
 // cypher-executor/src/routes/auth.ts
 init_dist();
 init_credentials();
+
+// cypher-executor/src/lib/platform-oauth-users.ts
+init_kbdb_proxy();
+var PlatformUserStoreError = class extends Error {
+};
+async function kFetch2(env, path, init) {
+  const { base, headers } = kbdbBase(env);
+  try {
+    return await fetch(`${base}${path}`, {
+      ...init,
+      headers: { ...headers, ...init?.headers }
+    });
+  } catch (e) {
+    throw new PlatformUserStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+async function sha256Hex2(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var TEMPLATE = "platform_oauth_user";
+var SLOTS = [
+  "provider_key_hash",
+  "api_key_hash",
+  "email",
+  "display_name",
+  "avatar_url",
+  "api_key",
+  "provider",
+  "provider_id",
+  "created_at",
+  "revoked"
+];
+var templateEnsured = false;
+async function ensureTemplate3(env) {
+  if (templateEnsured) return;
+  const got = await kFetch2(env, `/templates/${TEMPLATE}`);
+  if (!got.ok) {
+    await kFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name: TEMPLATE, slots: SLOTS }) }).catch(
+      () => void 0
+    );
+  }
+  templateEnsured = true;
+}
+function toUser(recordId, v) {
+  return {
+    record_id: recordId,
+    email: v.email ?? "",
+    display_name: v.display_name ?? "",
+    avatar_url: v.avatar_url || void 0,
+    api_key: v.api_key ?? "",
+    provider: v.provider ?? "google",
+    provider_id: v.provider_id ?? "",
+    created_at: v.created_at ?? "",
+    revoked: v.revoked === "true"
+  };
+}
+async function findByHash2(env, field, hash) {
+  const res = await kFetch2(env, `/records/by-source/${TEMPLATE}?field=${encodeURIComponent(field)}&value=${encodeURIComponent(hash)}`);
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => null);
+  const id = body?.record_ids?.[0];
+  if (!id) return null;
+  const rec = await kFetch2(env, `/records/${encodeURIComponent(id)}`);
+  if (!rec.ok) return null;
+  const recBody = await rec.json().catch(() => null);
+  return recBody?.record ?? null;
+}
+async function findPlatformUserByProvider(env, provider, providerId) {
+  const hash = await sha256Hex2(`${provider}:${providerId}`);
+  const found = await findByHash2(env, "provider_key_hash", hash);
+  return found ? toUser(found.record_id, found.values) : null;
+}
+async function findPlatformUserByApiKey(env, apiKey) {
+  const hash = await sha256Hex2(apiKey);
+  const found = await findByHash2(env, "api_key_hash", hash);
+  return found ? toUser(found.record_id, found.values) : null;
+}
+async function createPlatformUser(env, input) {
+  await ensureTemplate3(env);
+  const values = {
+    provider_key_hash: await sha256Hex2(`${input.provider}:${input.provider_id}`),
+    api_key_hash: await sha256Hex2(input.api_key),
+    email: input.email,
+    display_name: input.display_name,
+    avatar_url: input.avatar_url ?? "",
+    api_key: input.api_key,
+    provider: input.provider,
+    provider_id: input.provider_id,
+    created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    revoked: "false"
+  };
+  const res = await kFetch2(env, "/records", { method: "POST", body: JSON.stringify({ template: TEMPLATE, values }) });
+  if (!res.ok) throw new PlatformUserStoreError(`POST /records(${TEMPLATE}) \u2192 ${res.status}`);
+  const body = await res.json().catch(() => null);
+  const recordId = body?.record?.record_id;
+  if (!recordId) throw new PlatformUserStoreError("POST /records \u56DE\u61C9\u7F3A record_id");
+  return { ...input, record_id: recordId, created_at: values.created_at, revoked: false };
+}
+async function updatePlatformUser(env, recordId, patch) {
+  const values = {};
+  if (patch.display_name !== void 0) values.display_name = patch.display_name;
+  if (patch.avatar_url !== void 0) values.avatar_url = patch.avatar_url ?? "";
+  if (patch.api_key !== void 0) {
+    values.api_key = patch.api_key;
+    values.api_key_hash = await sha256Hex2(patch.api_key);
+  }
+  if (patch.revoked !== void 0) values.revoked = String(patch.revoked);
+  if (Object.keys(values).length === 0) return;
+  const res = await kFetch2(env, `/records/${encodeURIComponent(recordId)}`, { method: "PATCH", body: JSON.stringify({ values }) });
+  if (!res.ok) throw new PlatformUserStoreError(`PATCH /records/${recordId} \u2192 ${res.status}`);
+}
+
+// cypher-executor/src/routes/auth.ts
 var authRouter = new Hono2();
+var STATE_TEMPLATE = "platform_oauth_state";
+var STATE_TTL_SECONDS = 600;
+var SESSION_TEMPLATE = "platform_oauth_session";
+var SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 function getLandingOrigin(c) {
-  const origin = c.req.raw.headers.get("origin");
+  const origin2 = c.req.raw.headers.get("origin");
   const allowed = ["https://arcrun.dev", "https://www.arcrun.dev"];
-  if (origin && allowed.includes(origin)) return origin;
+  if (origin2 && allowed.includes(origin2)) return origin2;
   return "https://arcrun.dev";
 }
 function generateApiKey() {
@@ -11554,19 +12803,16 @@ function getApiKeyFromRequest(req) {
 async function resolveSession(c) {
   const sessId = getSessionId(c.req.raw);
   if (sessId) {
-    const sess = await c.env.SESSIONS_KV.get(`sess:${sessId}`, "json");
-    if (sess && sess.expires_at > Date.now()) {
-      const user = await c.env.USERS_KV.get(sess.user_key, "json");
-      if (user && !user.revoked) return user;
+    const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
+    if (sess?.record_id) {
+      const user = await findPlatformUserByApiKey(c.env, sess.api_key ?? "");
+      if (user && !user.revoked && user.record_id === sess.record_id) return user;
     }
   }
   const apiKey = getApiKeyFromRequest(c.req.raw);
   if (apiKey) {
-    const userKey = await c.env.USERS_KV.get(`apikey:${apiKey}`);
-    if (userKey) {
-      const user = await c.env.USERS_KV.get(userKey, "json");
-      if (user && !user.revoked && user.api_key === apiKey) return user;
-    }
+    const user = await findPlatformUserByApiKey(c.env, apiKey);
+    if (user && !user.revoked && user.api_key === apiKey) return user;
   }
   return null;
 }
@@ -11579,7 +12825,18 @@ authRouter.get("/auth/google/start", async (c) => {
     redirect_back: c.req.query("redirect") ?? "/dashboard",
     created_at: Date.now()
   };
-  await c.env.SESSIONS_KV.put(`state:${state}`, JSON.stringify(stateRecord), { expirationTtl: 600 });
+  await ephemeralPut(c.env, {
+    template: STATE_TEMPLATE,
+    slots: ["provider", "redirect_back", "created_at"],
+    hashField: "state_hash",
+    rawKey: state,
+    values: {
+      provider: stateRecord.provider,
+      redirect_back: stateRecord.redirect_back,
+      created_at: String(stateRecord.created_at)
+    },
+    ttlSeconds: STATE_TTL_SECONDS
+  });
   const redirectUri = "https://cypher.arcrun.dev/auth/callback";
   const params = new URLSearchParams({
     client_id: clientId,
@@ -11601,7 +12858,18 @@ authRouter.get("/auth/github/start", async (c) => {
     redirect_back: c.req.query("redirect") ?? "/dashboard",
     created_at: Date.now()
   };
-  await c.env.SESSIONS_KV.put(`state:${state}`, JSON.stringify(stateRecord), { expirationTtl: 600 });
+  await ephemeralPut(c.env, {
+    template: STATE_TEMPLATE,
+    slots: ["provider", "redirect_back", "created_at"],
+    hashField: "state_hash",
+    rawKey: state,
+    values: {
+      provider: stateRecord.provider,
+      redirect_back: stateRecord.redirect_back,
+      created_at: String(stateRecord.created_at)
+    },
+    ttlSeconds: STATE_TTL_SECONDS
+  });
   const redirectUri = "https://cypher.arcrun.dev/auth/callback";
   const params = new URLSearchParams({
     client_id: clientId,
@@ -11619,11 +12887,15 @@ authRouter.get("/auth/callback", async (c) => {
   if (error || !code || !state) {
     return Response.redirect(`${landingOrigin}/login?error=${encodeURIComponent(error ?? "cancelled")}`, 302);
   }
-  const stateRecord = await c.env.SESSIONS_KV.get(`state:${state}`, "json");
-  if (!stateRecord) {
+  const stateVals = await ephemeralGet(c.env, { template: STATE_TEMPLATE, hashField: "state_hash", rawKey: state, consume: true });
+  if (!stateVals) {
     return Response.redirect(`${landingOrigin}/login?error=invalid_state`, 302);
   }
-  await c.env.SESSIONS_KV.delete(`state:${state}`);
+  const stateRecord = {
+    provider: stateVals.provider ?? "google",
+    redirect_back: stateVals.redirect_back ?? "/dashboard",
+    created_at: Number(stateVals.created_at) || Date.now()
+  };
   try {
     let email;
     let displayName;
@@ -11733,26 +13005,28 @@ authRouter.get("/auth/callback", async (c) => {
         });
       }
     }
-    const userKey = `user:${provider}:${providerId}`;
-    const existing = await c.env.USERS_KV.get(userKey, "json");
+    const existing = await findPlatformUserByProvider(c.env, provider, providerId);
     let apiKey;
+    let recordId;
     if (existing && !existing.revoked) {
       apiKey = existing.api_key;
-      const updated = { ...existing, display_name: displayName, avatar_url: avatarUrl };
-      await c.env.USERS_KV.put(userKey, JSON.stringify(updated));
+      recordId = existing.record_id;
+      await updatePlatformUser(c.env, recordId, { display_name: displayName, avatar_url: avatarUrl });
+    } else if (existing) {
+      apiKey = generateApiKey();
+      recordId = existing.record_id;
+      await updatePlatformUser(c.env, recordId, { display_name: displayName, avatar_url: avatarUrl, api_key: apiKey, revoked: false });
     } else {
       apiKey = generateApiKey();
-      const newUser = {
+      const created = await createPlatformUser(c.env, {
         email,
         display_name: displayName,
         avatar_url: avatarUrl,
         api_key: apiKey,
         provider,
-        provider_id: providerId,
-        created_at: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      await c.env.USERS_KV.put(userKey, JSON.stringify(newUser));
-      await c.env.USERS_KV.put(`apikey:${apiKey}`, userKey);
+        provider_id: providerId
+      });
+      recordId = created.record_id;
     }
     if (pendingCredential) {
       try {
@@ -11762,14 +13036,13 @@ authRouter.get("/auth/callback", async (c) => {
       }
     }
     const sessionId = randomToken(32);
-    const session = {
-      user_key: userKey,
-      api_key: apiKey,
-      email,
-      expires_at: Date.now() + 7 * 24 * 60 * 60 * 1e3
-    };
-    await c.env.SESSIONS_KV.put(`sess:${sessionId}`, JSON.stringify(session), {
-      expirationTtl: 7 * 24 * 60 * 60
+    await ephemeralPut(c.env, {
+      template: SESSION_TEMPLATE,
+      slots: ["record_id", "api_key", "email"],
+      hashField: "session_hash",
+      rawKey: sessionId,
+      values: { record_id: recordId, api_key: apiKey, email },
+      ttlSeconds: SESSION_TTL_SECONDS
     });
     const redirectBack = stateRecord.redirect_back.startsWith("/") ? stateRecord.redirect_back : "/dashboard";
     return new Response(null, {
@@ -11787,7 +13060,7 @@ authRouter.get("/auth/callback", async (c) => {
 authRouter.post("/auth/logout", async (c) => {
   const sessId = getSessionId(c.req.raw);
   if (sessId) {
-    await c.env.SESSIONS_KV.delete(`sess:${sessId}`);
+    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
   }
   const landingOrigin = getLandingOrigin(c);
   return new Response(null, {
@@ -11815,12 +13088,7 @@ authRouter.put("/me/api-key/rotate", async (c) => {
   if (!user) return c.json({ error: "not authenticated" }, 401);
   const newRaw = randomToken(24);
   const newKey = "ak_" + newRaw;
-  const oldKey = user.api_key;
-  const userKey = `user:${user.provider}:${user.provider_id}`;
-  const updated = { ...user, api_key: newKey };
-  await c.env.USERS_KV.put(userKey, JSON.stringify(updated));
-  await c.env.USERS_KV.delete(`apikey:${oldKey}`);
-  await c.env.USERS_KV.put(`apikey:${newKey}`, userKey);
+  await updatePlatformUser(c.env, user.record_id, { api_key: newKey });
   return c.json({
     success: true,
     api_key: newKey,
@@ -11830,12 +13098,9 @@ authRouter.put("/me/api-key/rotate", async (c) => {
 authRouter.delete("/me/api-key", async (c) => {
   const user = await resolveSession(c);
   if (!user) return c.json({ error: "not authenticated" }, 401);
-  const userKey = `user:${user.provider}:${user.provider_id}`;
-  const revoked = { ...user, revoked: true };
-  await c.env.USERS_KV.put(userKey, JSON.stringify(revoked));
-  await c.env.USERS_KV.delete(`apikey:${user.api_key}`);
+  await updatePlatformUser(c.env, user.record_id, { revoked: true });
   const sessId = getSessionId(c.req.raw);
-  if (sessId) await c.env.SESSIONS_KV.delete(`sess:${sessId}`);
+  if (sessId) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
   return new Response(JSON.stringify({ success: true, message: "API Key revoked." }), {
     status: 200,
     headers: {
@@ -11851,6 +13116,7 @@ init_types();
 init_graph_executor();
 init_component_loader();
 init_paused_runs();
+init_run_scratch();
 var resumeRouter = new Hono2();
 resumeRouter.post("/workflows/resume", async (c) => {
   let body;
@@ -11886,11 +13152,26 @@ resumeRouter.post("/workflows/resume", async (c) => {
       paused_context: state.paused_context,
       callback_result: callbackResult,
       prior_trace: state.trace_so_far,
-      kvNamespace: c.env.EXEC_CONTEXT,
+      kvNamespace: createRunScratch(),
+      // #98：恢復是新的一趟執行（新 run_id），節點 output 住記憶體
       recipe_output_format: state.recipe_output_format,
       recipe_output_required_fields: state.recipe_output_required_fields
     });
     const duration_ms = Date.now() - start;
+    const verdict = deriveExecutionVerdict(state.graph, result.trace);
+    if (!verdict.success) {
+      return c.json({
+        success: false,
+        resumed: true,
+        error: verdict.error,
+        failed_node: verdict.failedNode ?? null,
+        task_id: taskId,
+        run_id: state.run_id,
+        data: result.data,
+        trace: result.trace,
+        duration_ms
+      }, 500);
+    }
     return c.json({
       success: true,
       resumed: true,
@@ -12180,6 +13461,20 @@ var API_RECIPE_SEEDS = [
 
 // cypher-executor/src/lib/auth-recipe-seeds.ts
 var now = Date.now();
+var GOOGLE_SA_SECRETS = [
+  {
+    key: "client_email",
+    label: "Service Account Email\uFF08client_email\uFF09",
+    help: "Service Account \u7684\u4FE1\u7BB1\uFF0C\u5F62\u5982 xxx@yyy.iam.gserviceaccount.com\uFF08\u5C31\u662F\u4E0B\u8F09\u7684 SA JSON \u88E1 client_email \u90A3\u4E00\u884C\u7684\u503C\uFF09",
+    help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
+  },
+  {
+    key: "private_key",
+    label: "Service Account Private Key\uFF08private_key\uFF09",
+    help: "SA JSON \u88E1 private_key \u90A3\u4E00\u6BB5\uFF08-----BEGIN PRIVATE KEY----- \u2026 -----END PRIVATE KEY-----\uFF09\uFF0C\u6574\u6BB5\u8CBC\u4E0A\u5373\u53EF\uFF0C\u542B\u771F\u5BE6\u63DB\u884C\u6216 \\n \u90FD\u80FD\u8A8D",
+    help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
+  }
+];
 var AUTH_RECIPE_SEEDS = [
   // ── Static Key 類 ──────────────────────────────────────────────────────────
   {
@@ -12802,15 +14097,7 @@ var AUTH_RECIPE_SEEDS = [
       endpoint: "https://oauth2.googleapis.com/token",
       scopes: ["https://www.googleapis.com/auth/spreadsheets"]
     },
-    required_secrets: [
-      {
-        key: "google_service_account",
-        label: "Service Account JSON\uFF08\u6574\u4EFD\u8CBC\u4E0A\uFF09",
-        type: "json_blob",
-        help: "\u81F3 GCP Console \u2192 IAM \u2192 Service Accounts \u2192 Keys \u2192 Add Key \u2192 JSON\uFF0C\u4E0B\u8F09\u5F8C\u6574\u4EFD\u8CBC\u5165",
-        help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
-      }
-    ],
+    required_secrets: GOOGLE_SA_SECRETS,
     inject: {
       header: {
         Authorization: "Bearer {{runtime.access_token}}"
@@ -12832,15 +14119,7 @@ var AUTH_RECIPE_SEEDS = [
       endpoint: "https://oauth2.googleapis.com/token",
       scopes: ["https://www.googleapis.com/auth/gmail.send"]
     },
-    required_secrets: [
-      {
-        key: "google_service_account",
-        label: "Service Account JSON\uFF08\u6574\u4EFD\u8CBC\u4E0A\uFF09",
-        type: "json_blob",
-        help: "\u9700\u8981 Domain-Wide Delegation\uFF0C\u81F3 GCP Console \u2192 IAM \u2192 Service Accounts \u8A2D\u5B9A",
-        help_url: "https://developers.google.com/workspace/guides/create-credentials#service-account"
-      }
-    ],
+    required_secrets: GOOGLE_SA_SECRETS,
     inject: {
       header: {
         Authorization: "Bearer {{runtime.access_token}}"
@@ -12862,15 +14141,7 @@ var AUTH_RECIPE_SEEDS = [
       endpoint: "https://oauth2.googleapis.com/token",
       scopes: ["https://www.googleapis.com/auth/drive"]
     },
-    required_secrets: [
-      {
-        key: "google_service_account",
-        label: "Service Account JSON\uFF08\u6574\u4EFD\u8CBC\u4E0A\uFF09",
-        type: "json_blob",
-        help: "\u81F3 GCP Console \u2192 IAM \u2192 Service Accounts \u2192 Keys \u2192 Add Key \u2192 JSON",
-        help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
-      }
-    ],
+    required_secrets: GOOGLE_SA_SECRETS,
     inject: {
       header: {
         Authorization: "Bearer {{runtime.access_token}}"
@@ -12890,9 +14161,11 @@ init_dist();
 
 // cypher-executor/src/lib/tenant.ts
 var TenantUnresolvedError = class extends Error {
-  constructor(message) {
+  code;
+  constructor(message, code = "tenant_unresolved") {
     super(message);
     this.name = "TenantUnresolvedError";
+    this.code = code;
   }
 };
 function knowledgeOwner(env) {
@@ -12901,12 +14174,13 @@ function knowledgeOwner(env) {
   const legacy = (env.CONSOLE_TENANT ?? "").trim();
   if (legacy) return legacy;
   throw new TenantUnresolvedError(
-    "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08ARCRUN_NAMESPACE / CONSOLE_TENANT \u90FD\u6C92\u8A2D\uFF09\u2014\u2014\u4E0D\u77E5\u9053\u8981\u53BB\u54EA\u4E00\u683C\u627E\u8CC7\u6599\u3002\u8ACB\u8DD1 `acr update` \u8B93\u5B83\u5F9E\u4F60\u7684 ~/.arcrun/config.yaml \u6CE8\u5165\u3002"
+    "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08\u74B0\u5883\u8B8A\u6578 ARCRUN_NAMESPACE / CONSOLE_TENANT \u90FD\u6C92\u8A2D\uFF09\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u8981\u7528\u54EA\u500B owner_id \u53D6\u8CC7\u6599\u3002",
+    "tenant_unresolved"
   );
 }
 function tenantFromApiKey(apiKey) {
   const key = (apiKey ?? "").trim();
-  if (!key) throw new TenantUnresolvedError("\u7F3A\u5C11 X-Arcrun-API-Key\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u67E5\u8A62\u7BC4\u570D");
+  if (!key) throw new TenantUnresolvedError("\u7F3A\u5C11 X-Arcrun-API-Key\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u67E5\u8A62\u7BC4\u570D", "missing_api_key");
   return key;
 }
 function accountTenant(env) {
@@ -12927,13 +14201,12 @@ function isOwnedBy(value, tenant2) {
 
 // cypher-executor/src/routes/console-auth.ts
 var consoleAuthRouter = new Hono2();
-var CREDS_KEY = "console:credentials";
-var SESSION_PREFIX = "console_sess:";
-var SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+var SESSION_TEMPLATE2 = "console_session";
+var SESSION_TTL_SECONDS2 = 30 * 24 * 60 * 60;
 async function validateConsoleSession(env, authHeader) {
   const token = (authHeader ?? "").match(/^Bearer\s+(\S+)/i)?.[1];
   if (!token) return false;
-  const sess = await env.SESSIONS_KV.get(`${SESSION_PREFIX}${token}`);
+  const sess = await ephemeralGet(env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
   return !!sess;
 }
 function randomHex(bytes) {
@@ -12941,44 +14214,35 @@ function randomHex(bytes) {
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-async function sha256Hex(input) {
+async function sha256Hex3(input) {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function hashPassword(password, salt) {
   let h = `${salt}:${password}`;
-  for (let i = 0; i < 3; i++) h = await sha256Hex(h);
+  for (let i = 0; i < 3; i++) h = await sha256Hex3(h);
   return h;
 }
 function tenantOf(c) {
   return knowledgeOwner(c.env);
 }
 async function loadCredentials(env) {
-  const raw2 = await env.SESSIONS_KV.get(CREDS_KEY);
-  if (raw2) {
-    try {
-      return { creds: JSON.parse(raw2), source: "kv" };
-    } catch {
-    }
-  }
-  const legacy = readAuthStore(env).console;
-  if (!legacy) return { creds: null, source: "none" };
-  try {
-    await env.SESSIONS_KV.put(CREDS_KEY, JSON.stringify(legacy));
-  } catch {
-  }
-  return { creds: legacy, source: "legacy-secrets" };
+  const creds = readAuthStore(env).console;
+  return creds ? { creds, source: "secrets" } : { creds: null, source: "none" };
 }
-async function saveCredentials(env, record) {
-  await env.SESSIONS_KV.put(CREDS_KEY, JSON.stringify(record));
+async function saveCredentials(env, record, tokenOverride) {
+  await mutateAuthStore(env, (data) => {
+    data.console = record;
+  }, tokenOverride);
+}
+function callerCfToken(c) {
+  return c.req.header("x-cf-secrets-token") || void 0;
 }
 function consoleAuthStoreStatus(env) {
   return {
-    home: "sessions-kv",
-    writable: true,
-    // binding-based，只要 wrangler.toml 有這個 binding 就一定寫得進去
-    legacy_secrets_present: readAuthStore(env).console !== null
+    home: "workers-secrets",
+    writable: authStoreWritable(env)
   };
 }
 consoleAuthRouter.get("/console/auth-status", async (c) => {
@@ -13007,13 +14271,18 @@ consoleAuthRouter.post("/console/setup", async (c) => {
   const hash = await hashPassword(password, salt);
   const record = { email: email.toLowerCase(), salt, hash, created_at: (/* @__PURE__ */ new Date()).toISOString() };
   try {
-    await saveCredentials(c.env, record);
+    await saveCredentials(c.env, record, callerCfToken(c));
   } catch (e) {
     return c.json({ error: `\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
   }
   const token = randomHex(32);
-  await c.env.SESSIONS_KV.put(`${SESSION_PREFIX}${token}`, JSON.stringify({ created_at: Date.now() }), {
-    expirationTtl: SESSION_TTL_SECONDS
+  await ephemeralPut(c.env, {
+    template: SESSION_TEMPLATE2,
+    slots: ["created_at"],
+    hashField: "token_hash",
+    rawKey: token,
+    values: { created_at: String(Date.now()) },
+    ttlSeconds: SESSION_TTL_SECONDS2
   });
   return c.json({ success: true, session_token: token, tenant: tenantOf(c) });
 });
@@ -13032,7 +14301,7 @@ consoleAuthRouter.post("/console/setup/reset", async (c) => {
   const hash = await hashPassword(password, salt);
   const record = { email: email.toLowerCase(), salt, hash, created_at: existing.created_at };
   try {
-    await saveCredentials(c.env, record);
+    await saveCredentials(c.env, record, callerCfToken(c));
   } catch (e) {
     return c.json({ error: `\u65B0\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
   }
@@ -13059,8 +14328,13 @@ consoleAuthRouter.post("/console/login", async (c) => {
     return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
   }
   const token = randomHex(32);
-  await c.env.SESSIONS_KV.put(`${SESSION_PREFIX}${token}`, JSON.stringify({ created_at: Date.now() }), {
-    expirationTtl: SESSION_TTL_SECONDS
+  await ephemeralPut(c.env, {
+    template: SESSION_TEMPLATE2,
+    slots: ["created_at"],
+    hashField: "token_hash",
+    rawKey: token,
+    values: { created_at: String(Date.now()) },
+    ttlSeconds: SESSION_TTL_SECONDS2
   });
   return c.json({ success: true, session_token: token, tenant: tenantOf(c) });
 });
@@ -13068,14 +14342,14 @@ consoleAuthRouter.get("/console/session", async (c) => {
   const auth = c.req.header("authorization") ?? "";
   const token = auth.match(/^Bearer\s+(\S+)/i)?.[1];
   if (!token) return c.json({ valid: false }, 401);
-  const sess = await c.env.SESSIONS_KV.get(`${SESSION_PREFIX}${token}`);
+  const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
   if (!sess) return c.json({ valid: false }, 401);
   return c.json({ valid: true, tenant: tenantOf(c) });
 });
 consoleAuthRouter.post("/console/logout", async (c) => {
   const auth = c.req.header("authorization") ?? "";
   const token = auth.match(/^Bearer\s+(\S+)/i)?.[1];
-  if (token) await c.env.SESSIONS_KV.delete(`${SESSION_PREFIX}${token}`);
+  if (token) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
   return c.json({ success: true });
 });
 
@@ -13138,7 +14412,7 @@ function randomHex2(bytes) {
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-async function sha256Hex2(input) {
+async function sha256Hex4(input) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -13198,6 +14472,28 @@ function mcpUrlFor(subdomain) {
   return `https://arcrun-mcp.${sub}.workers.dev/mcp`;
 }
 
+// cypher-executor/src/lib/mcp-token-ttl.ts
+var DEFAULT_TOKEN_TTL_SECONDS = 2592e3;
+var MIN_TOKEN_TTL_SECONDS = 3600;
+var MAX_TOKEN_TTL_SECONDS = 2592e3;
+var MCP_TOKEN_TTL_TEMPLATE = "portal_mcp_token_ttl";
+function normalizeTokenTtl(input) {
+  let n;
+  if (typeof input === "number") {
+    n = input;
+  } else if (typeof input === "string" && input.trim() !== "") {
+    n = Number(input.trim());
+  } else {
+    return { ok: false, error: "\u8ACB\u586B\u5165 token \u6709\u6548\u79D2\u6578\uFF08\u6B63\u6574\u6578\uFF09" };
+  }
+  if (!Number.isFinite(n)) return { ok: false, error: `\u300C${String(input)}\u300D\u4E0D\u662F\u6709\u6548\u7684\u79D2\u6578` };
+  n = Math.floor(n);
+  if (n <= 0) return { ok: false, error: "token \u6709\u6548\u79D2\u6578\u5FC5\u9808\u5927\u65BC 0" };
+  const clamped = n < MIN_TOKEN_TTL_SECONDS || n > MAX_TOKEN_TTL_SECONDS;
+  const seconds = Math.min(Math.max(n, MIN_TOKEN_TTL_SECONDS), MAX_TOKEN_TTL_SECONDS);
+  return { ok: true, seconds, clamped };
+}
+
 // cypher-executor/src/lib/portal-seeds.ts
 var PORTAL_TEMPLATE_SEEDS = [
   {
@@ -13242,6 +14538,20 @@ var PORTAL_TEMPLATE_SEEDS = [
     name: "portal_mcp_redirect_host",
     description: "MCP OAuth \u5141\u8A31\u7684 redirect \u7DB2\u57DF\uFF08Arcrun#164\uFF1B\u4E00\u500B\u7DB2\u57DF\u4E00\u7B46\uFF0C\u53EF\u52A0\u53EF\u6536\u56DE\uFF09",
     slots: ["host", "label", "created_at", "created_by"],
+    created_by: "system"
+  },
+  {
+    // `inkstone/Arcrun#19`：MCP access_token 的 TTL 交由用戶決定（風險偏好，非技術常數）。
+    // 一台實例一筆設定（純量，不是清單）——**鏡像上面 portal_mcp_redirect_host 那條路**
+    // （KBDB template ＋ 給 mcp 讀的內部端點），不自創第二套機制（D36）。
+    //   ttl_seconds ＝ 已正規化並夾進 [1h, 30d] 的秒數（lib/mcp-token-ttl.ts）
+    //   updated_at  ＝ ISO 時間字串
+    //   updated_by  ＝ 改它的那個 portal admin email（改了誰要留得下痕跡，D91 同一條）
+    // 讀不到／沒設過 → mcp 回退 env MCP_TOKEN_TTL 預設（誠實回退，不假綠）。
+    // 🔴 不寫 KV（長效設定，leo 2026-08-25 已禁 KV 長效用途），也不加 D1 表——KBDB 萬用表 template。
+    name: "portal_mcp_token_ttl",
+    description: "MCP OAuth access_token \u6709\u6548\u79D2\u6578\uFF08Arcrun#19\uFF1B\u4E00\u53F0\u5BE6\u4F8B\u4E00\u7B46\uFF0C\u8B80\u4E0D\u5230\u56DE\u9000 env \u9810\u8A2D\uFF09",
+    slots: ["ttl_seconds", "updated_at", "updated_by"],
     created_by: "system"
   },
   {
@@ -13362,11 +14672,141 @@ function snippetForError(text, max = 120) {
   return one.length <= max ? one : one.slice(0, max) + "\u2026";
 }
 
+// cypher-executor/src/lib/portal-error-catalog.ts
+var PORTAL_ERRORS = {
+  config_not_loaded: {
+    http_status: 500,
+    title: "\u9019\u500B\u9801\u9762\u8F09\u5165\u4E0D\u5230\u5B83\u7684\u8A2D\u5B9A",
+    message: "\u9019\u500B\u9801\u9762\u6C92\u6709\u8F09\u5165\u5230\u9023\u7DDA\u8A2D\u5B9A\uFF0C\u6240\u4EE5\u9023\u4E0D\u5230\u4F60\u7684\u670D\u52D9\u3002\u8ACB\u5148\u91CD\u65B0\u6574\u7406\u4E00\u6B21\uFF1B\u5982\u679C\u9084\u662F\u4E00\u6A23\uFF0C\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "\u524D\u7AEF\u8F09\u5165\u4E0D\u5230 config.js \u7684 apiBase\uFF08window.ARCRUN_CONFIG.apiBase \u7A7A\u503C\uFF09\u2014\u2014\u901A\u5E38\u662F UI worker \u7F3A WORKER_SUBDOMAIN\uFF0FapiBase \u6C92\u88AB\u6CE8\u5165\u3002",
+    why: "Portal \u7DB2\u9801\u9700\u8981\u4E00\u4EFD\u8A2D\u5B9A\u6A94\uFF08config.js\uFF09\u624D\u77E5\u9053\u8981\u9023\u5230\u54EA\u4E00\u53F0 cypher \u670D\u52D9\u3002\u9019\u4EFD\u8A2D\u5B9A\u662F\u5B89\u88DD\uFF0F\u90E8\u7F72 UI \u6642\u7522\u751F\u7684\uFF1B\u5982\u679C\u5B83\u7F3A\u4E86\uFF0C\u7DB2\u9801\u5C31\u6703\u9023\u4E0D\u5230\u5F8C\u7AEF\u2014\u2014\u9019\u6642\u5B83\u6703\u660E\u767D\u5730\u8AAA\u51FA\u4F86\uFF0C\u800C\u4E0D\u662F\u975C\u9ED8\u5730\u7576\u6389\u3002",
+    operator: "\u78BA\u8A8D UI worker \u6709\u8A2D WORKER_SUBDOMAIN\u3001\u4E14 config.js \u7684 apiBase \u6307\u5230\u6B63\u78BA\u7684 cypher-executor \u4F4D\u5740\uFF0C\u91CD\u65B0\u90E8\u7F72 UI \u5F8C\u91CD\u65B0\u6574\u7406\u3002"
+  },
+  tenant_unresolved: {
+    http_status: 500,
+    title: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u8A2D\u5B9A\u597D\u77E5\u8B58\u7684\u5B58\u653E\u4F4D\u7F6E",
+    message: "\u9019\u53F0 Arcrun \u5BE6\u4F8B\u9084\u4E0D\u77E5\u9053\u8981\u53BB\u54EA\u88E1\u627E\u4F60\u7684\u77E5\u8B58\u8CC7\u6599\uFF0C\u6240\u4EE5\u66AB\u6642\u6253\u4E0D\u958B\u3002\u9019\u901A\u5E38\u662F\u5B89\u88DD\u6216\u66F4\u65B0\u6C92\u6709\u5B8C\u5168\u8DD1\u5B8C\u9020\u6210\u7684\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u3002\u8ACB\u628A\u4E0B\u9762\u7684\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\uFF0C\u4F9D\u8AAA\u660E\u9801\u8655\u7406\u5373\u53EF\u3002",
+    advanced: "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08\u74B0\u5883\u8B8A\u6578 ARCRUN_NAMESPACE / CONSOLE_TENANT \u90FD\u6C92\u8A2D\uFF09\uFF0C\u56E0\u6B64\u7121\u6CD5\u6C7A\u5B9A\u8981\u7528\u54EA\u500B owner_id \u53BB KBDB \u53D6\u8CC7\u6599\u3002",
+    why: "Arcrun \u7528\u4E00\u500B\u300C\u547D\u540D\u7A7A\u9593\u300D\u628A\u4F60\u7684\u77E5\u8B58\u8CC7\u6599\u5708\u5728\u4E00\u8D77\u3002\u5B89\u88DD\uFF0F\u66F4\u65B0\u6642\uFF0C\u9019\u500B\u503C\u6703\u5F9E\u4F60\u7684 ~/.arcrun/config.yaml \u81EA\u52D5\u6CE8\u5165\u5230\u5BE6\u4F8B\u4E0A\u3002\u5982\u679C\u5B89\u88DD\u6216\u66F4\u65B0\u6C92\u8DD1\u5B8C\uFF0C\u9019\u500B\u503C\u5C31\u6703\u7F3A\uFF0C\u5BE6\u4F8B\u5C31\u4E0D\u77E5\u9053\u8A72\u53BB\u54EA\u4E00\u683C\u627E\u8CC7\u6599\u2014\u2014\u9019\u6642\u5B83\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u6253\u4E0D\u958B\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u4F60\u6C92\u6709\u8CC7\u6599\u3002",
+    operator: "\u5728\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u6A5F\u5668\u4E0A\u91CD\u8DD1\u4E00\u6B21 `acr update`\uFF0C\u5B83\u6703\u5F9E ~/.arcrun/config.yaml \u7684 api_key \u628A ARCRUN_NAMESPACE \u91CD\u65B0\u6CE8\u5165\u5230 cypher-executor\u3002\u8DD1\u5B8C\u5F8C\u91CD\u65B0\u6574\u7406\u9801\u9762\u5373\u53EF\u3002"
+  },
+  missing_api_key: {
+    http_status: 400,
+    title: "\u9019\u500B\u8ACB\u6C42\u6C92\u6709\u5E36\u8EAB\u5206",
+    message: "\u9019\u500B\u8ACB\u6C42\u6C92\u6709\u5E36\u4E0A\u53EF\u4EE5\u6C7A\u5B9A\u67E5\u8A62\u7BC4\u570D\u7684\u8EAB\u5206\u8CC7\u8A0A\uFF0C\u6240\u4EE5\u7121\u6CD5\u8655\u7406\u3002\u5982\u679C\u4F60\u662F\u900F\u904E App \u6216\u5DE5\u5177\u9023\u9032\u4F86\u7684\uFF0C\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u8005\u6216\u4F60\u7684 AI \u52A9\u624B\u3002",
+    advanced: "\u8ACB\u6C42\u7F3A\u5C11 X-Arcrun-API-Key \u6A19\u982D\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u67E5\u8A62\u7684 owner_id \u7BC4\u570D\u3002",
+    why: "\u900F\u904E API\uFF0FMCP \u76F4\u63A5\u547C\u53EB\u9019\u53F0\u5BE6\u4F8B\u6642\uFF0C\u9700\u8981\u7528 X-Arcrun-API-Key \u6A19\u982D\u8868\u660E\u300C\u6211\u662F\u8AB0\u300D\uFF0C\u5BE6\u4F8B\u624D\u77E5\u9053\u8A72\u56DE\u54EA\u500B\u7BC4\u570D\u7684\u8CC7\u6599\u3002\u5F9E Portal \u7DB2\u9801\u767B\u5165\u7684\u4E00\u822C\u7528\u6236\u4E0D\u6703\u9047\u5230\u9019\u500B\u3002",
+    operator: "\u547C\u53EB\u7AEF\u8981\u5728\u8ACB\u6C42\u6A19\u982D\u5E36\u4E0A X-Arcrun-API-Key\uFF08\uFF1D\u4F60 ~/.arcrun/config.yaml \u7684 api_key\uFF09\u3002\u82E5\u8D70\u7684\u662F\u5B98\u65B9 App\uFF0FMCP\uFF0C\u78BA\u8A8D\u5B83\u5DF2\u7528 `acr` \u8A2D\u5B9A\u904E\u5E33\u865F\u3002"
+  },
+  auth_store_not_writable: {
+    http_status: 502,
+    title: "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u7121\u6CD5\u5132\u5B58\u5E33\u865F\u8CC7\u6599",
+    message: "\u9019\u53F0 Arcrun \u5BE6\u4F8B\u73FE\u5728\u5BEB\u4E0D\u9032\u5E33\u865F\uFF0F\u5BC6\u78BC\u8CC7\u6599\uFF0C\u6240\u4EE5\u6C92\u8FA6\u6CD5\u5EFA\u7ACB\u6216\u4FEE\u6539\u5E33\u865F\u3002\u9019\u662F\u5E73\u53F0\u7AEF\u7684\u8A2D\u5B9A\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u2014\u2014\u76EE\u524D\u756B\u9762\u4E0A\u6C92\u6709\u4F60\u81EA\u5DF1\u80FD\u505A\u7684\u4E0B\u4E00\u6B65\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u3001\u4EE5\u53CA\u4F60\u525B\u624D\u5728\u505A\u7684\u4E8B\uFF08\u4F8B\u5982\uFF1A\u5EFA\u7ACB\u7B2C\u4E00\u500B\u5E33\u865F\u3001\u65B0\u589E\u4F7F\u7528\u8005\u3001\u4FEE\u6539\u5BC6\u78BC\uFF09\uFF0C\u4E00\u8D77\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "\u7F3A\u5C11\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF08CF_SECRETS_API_TOKEN\uFF09\u3002\u8A8D\u8B49\u5132\u5B58\u8D70 Workers per-script Secrets\uFF08D61 \u8A8D\u8B49\u8207\u8CC7\u6599\u5206\u96E2\uFF09\uFF0C\u5BEB\u5165\u9700\u8981\u9019\u628A token\uFF1B\u8B80\u53D6\u4E0D\u9700\u8981\uFF0C\u6240\u4EE5\u65E2\u6709\u5E33\u865F\u4ECD\u767B\u5F97\u9032\u53BB\uFF0C\u53EA\u662F\u4E0D\u80FD\u65B0\u589E\uFF0F\u4FEE\u6539\u3002",
+    why: "\u70BA\u4E86\u8B93\u300C\u91CD\u88DD\uFF0F\u63DB\u8CC7\u6599\u5EAB\u90FD\u4E0D\u6703\u628A\u4F60\u9396\u5728\u9580\u5916\u300D\uFF0C\u5E33\u865F\u5BC6\u78BC\u5B58\u5728 Cloudflare \u7684 Workers Secrets \uFF08\u8DDF\u77E5\u8B58\u8CC7\u6599\u5EAB\u5206\u958B\u7684\u5730\u65B9\uFF09\u3002\u5BEB\u9032\u90A3\u88E1\u9700\u8981\u4E00\u628A Cloudflare \u5BEB\u5165 token\uFF1B\u9019\u628A token \u4E0D\u6703\u88AB\u5B89\u88DD\uFF0F\u66F4\u65B0\u81EA\u52D5\u7A2E\u6210\u5E38\u99D0\u503C\uFF0C\u6240\u4EE5\u5728\u67D0\u4E9B\u5BE6\u4F8B\u4E0A\u6703\u7F3A\u2014\u2014\u7F3A\u7684\u6642\u5019\u5C31\u5BEB\u4E0D\u9032\u53BB\u3002",
+    operator: "\u9019\u9700\u8981\u4EBA\u5DE5\u5728\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684 Cloudflare \u5E33\u865F\u4E0A\u8655\u7406\uFF1A\u628A\u6709\u6548\u7684 CF_SECRETS_API_TOKEN \u8A2D\u9032 cypher-executor\uFF08wrangler secret put\uFF09\uFF0C\u6216\u7528\u5B89\u88DD\u7CBE\u9748\u7576\u4E0B\u624B\u4E0A\u4ECD\u6709\u6548\u7684 OAuth token \u5E36\u5165\u3002\u55AE\u7D14\u91CD\u8DD1\u5B89\u88DD\uFF0F\u66F4\u65B0**\u4E0D\u4FDD\u8B49**\u7A2E\u597D\u9019\u628A token\uFF0C\u6240\u4EE5\u8ACB\u4E0D\u8981\u53EA\u53EB\u7528\u6236\u91CD\u88DD\u3002"
+  },
+  ai_binding_missing: {
+    http_status: 501,
+    title: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u555F\u7528\u5167\u5EFA AI",
+    message: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u555F\u7528\u5167\u5EFA AI\uFF0C\u6240\u4EE5\u7121\u6CD5\u8655\u7406\u9019\u500B AI \u76F8\u95DC\u7684\u8ACB\u6C42\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "wrangler.toml \u7F3A [ai] binding\uFF08Workers AI \u672A\u7D81\u5B9A\u5230 cypher-executor\uFF09\u3002",
+    why: "\u6709\u4E9B\u529F\u80FD\uFF08\u4F8B\u5982\u628A\u539F\u7A3F\u6574\u7406\u6210\u77E5\u8B58\u5361\uFF09\u7528\u7684\u662F Cloudflare \u5167\u5EFA\u7684 Workers AI\u3002\u5982\u679C\u9019\u53F0\u5BE6\u4F8B\u90E8\u7F72\u7684\u7248\u672C\u6C92\u6709\u7D81\u5B9A\u5B83\uFF0C\u9019\u985E\u529F\u80FD\u5C31\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u6C92\u555F\u7528\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u6210\u529F\u3002",
+    operator: "\u66F4\u65B0\u5230\u542B Workers AI binding \u7684\u77E5\u8B58\u5EAB\u7248\u672C\u5F8C\u91CD\u65B0\u90E8\u7F72 cypher-executor\uFF08wrangler.toml \u9700\u6709 [ai] binding\uFF09\u3002"
+  },
+  ai_workflow_missing: {
+    http_status: 404,
+    title: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u5B89\u88DD AI \u554F\u7B54\u529F\u80FD",
+    message: "\u4F60\u60F3\u8A2D\u5B9A\u7684 AI \u554F\u7B54\u529F\u80FD\u9084\u6C92\u6709\u5B89\u88DD\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "\u627E\u4E0D\u5230 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\uFF08WEBHOOKS KV \u6C92\u6709\u9019\u53F0\u5BE6\u4F8B\u7684 rag_chat \u8A18\u9304\uFF09\u3002",
+    why: "AI \u554F\u7B54\u662F\u4E00\u689D\u53EF\u5B89\u88DD\u7684\u5DE5\u4F5C\u6D41\u3002\u8981\u5148\u628A\u5B83\u88DD\u5230\u5BE6\u4F8B\u4E0A\uFF0C\u624D\u80FD\u66FF\u5B83\u8A2D\u5B9A\u91D1\u9470\u6216\u4F7F\u7528\u5B83\u3002",
+    operator: "\u5728\u67B6\u8A2D\u8005\u7684\u6A5F\u5668\u4E0A\u5B89\u88DD\uFF0F\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\uFF08\u900F\u904E\u5B89\u88DD\u7CBE\u9748\u6216 `acr push`\uFF09\u5F8C\u518D\u8A66\u3002"
+  },
+  ai_workflow_corrupt: {
+    http_status: 500,
+    title: "AI \u554F\u7B54\u8A2D\u5B9A\u8CC7\u6599\u640D\u58DE",
+    message: "\u9019\u53F0\u5BE6\u4F8B\u7684 AI \u554F\u7B54\u8A2D\u5B9A\u8CC7\u6599\u8B80\u4E0D\u51FA\u4F86\uFF08\u683C\u5F0F\u58DE\u4E86\uFF09\uFF0C\u6240\u4EE5\u91D1\u9470\u6C92\u8FA6\u6CD5\u5B58\u9032\u53BB\u3002\u9019\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "rag_chat \u5DE5\u4F5C\u6D41\u8A18\u9304\u7684 JSON \u89E3\u6790\u5931\u6557\uFF08WEBHOOKS KV \u5167\u5BB9\u6BC0\u640D\uFF09\u3002",
+    why: "\u91D1\u9470\u662F\u5BEB\u9032\u300CAI \u554F\u7B54\u5DE5\u4F5C\u6D41\u300D\u9019\u7B46\u8A2D\u5B9A\u88E1\u7684\u3002\u5982\u679C\u90A3\u7B46\u8A2D\u5B9A\u7684\u5167\u5BB9\u58DE\u6389\u4E86\uFF0C\u5C31\u6C92\u6709\u4E00\u500B\u5B8C\u6574\u7684\u5730\u65B9\u53EF\u4EE5\u653E\u91D1\u9470\uFF0C\u6240\u4EE5\u6703\u8AA0\u5BE6\u5730\u64CB\u4E0B\u4F86\uFF0C\u800C\u4E0D\u662F\u628A\u91D1\u9470\u5BEB\u9032\u4E00\u7B46\u58DE\u8CC7\u6599\u3002",
+    operator: "\u91CD\u65B0\u5B89\u88DD\uFF0F\u91CD\u65B0\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\u4EE5\u9084\u539F\u4E00\u4EFD\u4E7E\u6DE8\u7684\u8A18\u9304\uFF0C\u7136\u5F8C\u518D\u8A2D\u5B9A\u91D1\u9470\u3002"
+  },
+  ai_workflow_no_key_field: {
+    http_status: 500,
+    title: "AI \u554F\u7B54\u8A2D\u5B9A\u627E\u4E0D\u5230\u53EF\u586B\u91D1\u9470\u7684\u4F4D\u7F6E",
+    message: "\u9019\u53F0\u5BE6\u4F8B\u7684 AI \u554F\u7B54\u8A2D\u5B9A\u88E1\u6C92\u6709\u53EF\u4EE5\u653E\u91D1\u9470\u7684\u6B04\u4F4D\uFF0C\u6240\u4EE5\u91D1\u9470\u6C92\u6709\u5B58\u9032\u53BB\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "rag_chat \u5DE5\u4F5C\u6D41\u7684 graph/config \u88E1\u627E\u4E0D\u5230 x-goog-api-key \u6B04\u4F4D\u53EF\u4F9B\u8986\u5BEB\u3002",
+    why: "\u8A2D\u5B9A\u91D1\u9470\u7684\u505A\u6CD5\uFF0C\u662F\u628A\u91D1\u9470\u503C\u586B\u9032 AI \u554F\u7B54\u5DE5\u4F5C\u6D41\u88E1\u653E\u91D1\u9470\u7684\u90A3\u500B\u6B04\u4F4D\u3002\u5982\u679C\u9019\u7B46\u8A2D\u5B9A\u7684\u7248\u672C\u8F03\u820A\u3001\u6C92\u6709\u90A3\u500B\u6B04\u4F4D\uFF0C\u5C31\u7121\u8655\u53EF\u586B\u2014\u2014\u9019\u6642\u5B83\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u627E\u4E0D\u5230\u4F4D\u7F6E\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u5B58\u597D\u4E86\u3002",
+    operator: "\u66F4\u65B0\uFF0F\u91CD\u65B0\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\u5230\u542B\u91D1\u9470\u6B04\u4F4D\u7684\u7248\u672C\u5F8C\u518D\u8A2D\u5B9A\u91D1\u9470\u3002"
+  }
+};
+var HELP_BASE_PATH = "/e";
+function normalizeOrigin(origin2) {
+  return origin2.replace(/\/+$/, "");
+}
+function helpUrl(origin2, code) {
+  return `${normalizeOrigin(origin2)}${HELP_BASE_PATH}/${code}`;
+}
+var UNKNOWN = {
+  http_status: 500,
+  title: "\u767C\u751F\u672A\u9810\u671F\u7684\u554F\u984C",
+  message: "\u9019\u53F0\u5BE6\u4F8B\u9047\u5230\u4E00\u500B\u672A\u9810\u671F\u7684\u554F\u984C\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+  why: "\u9019\u662F\u4E00\u500B\u76EE\u524D\u6C92\u6709\u5C08\u5C6C\u8AAA\u660E\u7684\u932F\u8AA4\u78BC\u3002",
+  operator: "\u628A\u932F\u8AA4\u78BC\u8207\u91CD\u73FE\u6B65\u9A5F\u63D0\u4F9B\u7D66\u67B6\u8A2D\u8005\uFF0C\u4E26\u6AA2\u67E5 cypher-executor \u7684\u57F7\u884C\u7D00\u9304\u3002"
+};
+function specFor(code) {
+  return PORTAL_ERRORS[code] ?? UNKNOWN;
+}
+function portalErrorBody(origin2, code, opts) {
+  const spec = specFor(code);
+  const parts = [spec.advanced, opts?.advanced].filter((s) => Boolean(s && s.trim()));
+  const body = {
+    error: spec.message,
+    code,
+    help_url: helpUrl(origin2, code)
+  };
+  if (parts.length > 0) body.advanced = parts.join("\n");
+  return { body, status: spec.http_status };
+}
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+var PAGE_HEAD = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arcrun \u932F\u8AA4\u78BC\u8AAA\u660E</title>
+<style>
+:root{color-scheme:light dark}
+body{margin:0;padding:32px 20px;font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.75;background:#faf9f6;color:#1e1b16}
+@media(prefers-color-scheme:dark){body{background:#16130e;color:#ece7dd}}
+main{max-width:680px;margin:0 auto}
+.code{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;padding:3px 10px;border-radius:6px;background:rgba(194,73,46,.12);color:#c2492e;margin-bottom:14px}
+h1{font-size:24px;margin:.2em 0 .6em}
+h2{font-size:16px;margin:1.8em 0 .4em;opacity:.75}
+.msg{font-size:17px}
+.op{border:1px dashed rgba(127,127,127,.4);border-radius:10px;padding:14px 16px;background:rgba(127,127,127,.06)}
+.op .tag{font-size:13px;opacity:.7;margin-bottom:6px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(127,127,127,.15);padding:1px 5px;border-radius:4px}
+a{color:#c2492e}
+ul{padding-left:1.2em}
+.foot{margin-top:2.5em;font-size:13px;opacity:.6}
+</style></head><body><main>`;
+var PAGE_FOOT = `</main></body></html>`;
+function renderFaqHtml(origin2, code) {
+  const known = code && PORTAL_ERRORS[code] ? code : null;
+  if (!known) {
+    const items = Object.entries(PORTAL_ERRORS).map(
+      ([c, s2]) => `<li><a href="${esc(helpUrl(origin2, c))}"><code>${esc(c)}</code></a> \u2014 ${esc(s2.title)}</li>`
+    ).join("");
+    return PAGE_HEAD + `<h1>Arcrun \u932F\u8AA4\u78BC\u8AAA\u660E</h1><p class="msg">\u4E0B\u9762\u662F\u9019\u53F0\u5BE6\u4F8B\u53EF\u80FD\u986F\u793A\u7684\u932F\u8AA4\u78BC\u3002\u9EDE\u9032\u53BB\u770B\u5B83\u7684\u610F\u601D\u3001\u70BA\u4EC0\u9EBC\u6703\u767C\u751F\u3001\u4EE5\u53CA\u600E\u9EBC\u89E3\u6C7A\u3002\u4F60\u4E5F\u53EF\u4EE5\u628A\u8A72\u9801\u7DB2\u5740\u76F4\u63A5\u8CBC\u7D66\u4F60\u7684 AI \u52A9\u624B\u3002</p><ul>${items}</ul>` + PAGE_FOOT;
+  }
+  const s = PORTAL_ERRORS[known];
+  return PAGE_HEAD + `<div class="code">${esc(known)}</div><h1>${esc(s.title)}</h1><p class="msg">${esc(s.message)}</p><h2>\u70BA\u4EC0\u9EBC\u6703\u9019\u6A23</h2><p>${esc(s.why)}</p>` + (s.advanced ? `<h2>\u6280\u8853\u7D30\u7BC0</h2><p>${esc(s.advanced)}</p>` : "") + `<h2>\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA</h2><div class="op"><div class="tag">\u9019\u4E00\u6BB5\u662F\u7D66\u67B6\u8A2D\u8005\uFF0F\u5DE5\u7A0B\u5E2B\u770B\u7684\uFF0C\u4E0D\u662F\u7D66\u4E00\u822C\u7528\u6236\u7684\u64CD\u4F5C\u6B65\u9A5F</div>${esc(s.operator)}</div><p class="foot">\u932F\u8AA4\u78BC <code>${esc(known)}</code> \xB7 <a href="${esc(helpUrl(origin2, ""))}">\u770B\u5168\u90E8\u932F\u8AA4\u78BC</a></p>` + PAGE_FOOT;
+}
+
 // cypher-executor/src/routes/portal.ts
 var portalRouter = new Hono2();
 var EXTRACT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
-var SESSION_PREFIX2 = "portal_sess:";
-var LOCKFAIL_PREFIX = "portal_lockfail:";
+var SESSION_TEMPLATE3 = "portal_session";
+var LOCKFAIL_TEMPLATE = "portal_lockfail";
 var LOCK_LIMIT = 5;
 var LOCK_TTL_SECONDS = 15 * 60;
 var DEFAULT_SESSION_TTL = 604800;
@@ -13388,7 +14828,7 @@ function bearerToken(c) {
 }
 var KbdbError = class extends Error {
 };
-async function kbdbFetch(env, path, init) {
+async function kbdbFetch2(env, path, init) {
   const { base, headers } = kbdbBase(env);
   let res;
   try {
@@ -13402,15 +14842,25 @@ async function run(c, fn) {
   try {
     return await fn();
   } catch (e) {
+    if (e instanceof AuthStorePropagatingError) {
+      return c.json({ error: e.message, code: "auth_store_propagating" }, 503);
+    }
+    const origin2 = new URL(c.req.url).origin;
     if (e instanceof AuthStoreWriteError) {
-      return c.json({ error: `\u8A8D\u8B49\u5132\u5B58\u5BEB\u5165\u5931\u6557\uFF1A${e.message}`, code: "auth_store_not_writable" }, 502);
+      const { body, status } = portalErrorBody(origin2, "auth_store_not_writable", { advanced: e.message });
+      return c.json(body, status);
     }
     if (e instanceof TenantUnresolvedError) {
-      return c.json({ error: e.message, code: "tenant_unresolved" }, 500);
+      const { body, status } = portalErrorBody(origin2, e.code, { advanced: e.message });
+      return c.json(body, status);
     }
     if (e instanceof KbdbError) return c.json({ error: `KBDB \u4E0D\u53EF\u9054\u6216\u56DE\u932F\uFF1A${e.message}` }, 502);
     throw e;
   }
+}
+function honestStop(c, code, advanced) {
+  const { body, status } = portalErrorBody(new URL(c.req.url).origin, code, advanced ? { advanced } : void 0);
+  return c.json(body, status);
 }
 async function ensurePortalTemplates(env) {
   const created = [];
@@ -13418,7 +14868,7 @@ async function ensurePortalTemplates(env) {
   const errors = [];
   for (const seed of PORTAL_TEMPLATE_SEEDS) {
     try {
-      const got = await kbdbFetch(env, `/templates/${encodeURIComponent(seed.name)}`);
+      const got = await kbdbFetch2(env, `/templates/${encodeURIComponent(seed.name)}`);
       if (got.ok) {
         const body = await got.json().catch(() => null);
         const tpl = body?.template;
@@ -13431,7 +14881,7 @@ async function ensurePortalTemplates(env) {
           }
           const missing = seed.slots.filter((s) => !currentSlots.includes(s));
           if (missing.length > 0) {
-            const patched = await kbdbFetch(env, `/templates/${encodeURIComponent(tpl.id)}`, {
+            const patched = await kbdbFetch2(env, `/templates/${encodeURIComponent(tpl.id)}`, {
               method: "PATCH",
               body: JSON.stringify({ slots: [...currentSlots, ...missing] })
             });
@@ -13442,7 +14892,7 @@ async function ensurePortalTemplates(env) {
         continue;
       }
       if (got.status !== 404) throw new KbdbError(`GET /templates/${seed.name} \u2192 ${got.status}`);
-      const res = await kbdbFetch(env, "/templates", {
+      const res = await kbdbFetch2(env, "/templates", {
         method: "POST",
         body: JSON.stringify({
           name: seed.name,
@@ -13494,15 +14944,16 @@ async function promoteToKbdb(env, rec) {
     if (!email) return null;
     const already = await findKbdbUserRecordId(env, email);
     if (already) return already;
-    return await createKbdbUserRecord(env, email, {
+    const recordId = await createKbdbUserRecord(env, email, {
       display_name: rec.values.display_name ?? "",
       status: rec.values.status ?? "active",
       role: rec.values.role ?? "user",
-      password_hash: rec.values.password_hash ?? "",
       libraries: rec.values.libraries ?? "[]",
       created_at: rec.values.created_at ?? (/* @__PURE__ */ new Date()).toISOString(),
       updated_at: rec.values.updated_at ?? (/* @__PURE__ */ new Date()).toISOString()
     });
+    if (rec.values.password_hash) await setPortalPasswordHash(env, recordId, rec.values.password_hash);
+    return recordId;
   } catch {
     return null;
   }
@@ -13520,7 +14971,7 @@ async function findKbdbUserRecordId(env, email) {
     owner_id: ns,
     limit: "1"
   });
-  const res = await kbdbFetch(env, `/entries?${params.toString()}`);
+  const res = await kbdbFetch2(env, `/entries?${params.toString()}`);
   if (!res.ok) throw new KbdbError(`head entry \u67E5\u627E \u2192 ${res.status}`);
   const body = await res.json();
   const content = body.entries?.[0]?.content;
@@ -13531,7 +14982,7 @@ async function getRecordById(env, recordId) {
     const u = findAuthUserById(env, recordId);
     return u ? authUserToRecord(u) : null;
   }
-  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`);
+  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new KbdbError(`GET /records/${recordId} \u2192 ${res.status}`);
   const body = await res.json();
@@ -13550,7 +15001,7 @@ async function patchRecordValues(env, recordId, values) {
     if (!updated) throw new KbdbError(`\u8A8D\u8B49\u5132\u5B58\u66F4\u65B0\u5931\u6557 ${recordId}`);
     return authUserToRecord(updated);
   }
-  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, {
+  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`, {
     method: "PATCH",
     body: JSON.stringify({ values })
   });
@@ -13571,13 +15022,28 @@ async function deleteKbdbRecord(env, recordId) {
     });
     return found;
   }
-  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
+  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
   if (res.status === 404) return false;
   if (!res.ok) throw new KbdbError(`DELETE /records/${recordId} \u2192 ${res.status}`);
   return true;
 }
 function daemonActiveKey(env) {
   return `${portalTenant(env)}:portal:daemon_active_libs`;
+}
+async function markDaemonLibraryActive(env, library) {
+  try {
+    const names = /* @__PURE__ */ new Set();
+    const raw2 = await env.WEBHOOKS.get(daemonActiveKey(env), "text");
+    if (raw2) {
+      for (const n of JSON.parse(raw2)) {
+        const s = String(n ?? "").trim();
+        if (s) names.add(s);
+      }
+    }
+    names.add(library);
+    await env.WEBHOOKS.put(daemonActiveKey(env), JSON.stringify([...names]), { expirationTtl: 172800 });
+  } catch {
+  }
 }
 async function listRecordsByTemplate(env, template) {
   if (template === USER_TEMPLATE) {
@@ -13595,14 +15061,14 @@ async function listRecordsByTemplate(env, template) {
 }
 async function listKbdbRecordsByTemplate(env, template) {
   const ns = portalNamespace(env);
-  const res = await kbdbFetch(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
+  const res = await kbdbFetch2(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
   if (!res.ok) throw new KbdbError(`GET /records/by-template/${template} \u2192 ${res.status}`);
   const body = await res.json();
   return body.records ?? [];
 }
 async function createKbdbUserRecord(env, email, values) {
   const ns = portalNamespace(env);
-  const res = await kbdbFetch(env, "/records", {
+  const res = await kbdbFetch2(env, "/records", {
     method: "POST",
     body: JSON.stringify({ template: USER_TEMPLATE, owner_id: ns, values: { ...values, email } })
   });
@@ -13610,24 +15076,36 @@ async function createKbdbUserRecord(env, email, values) {
   const body = await res.json();
   const recordId = body.record?.record_id;
   if (!recordId) throw new KbdbError("POST /records \u56DE\u61C9\u7F3A record_id");
-  const head = await kbdbFetch(env, "/entries", {
+  const head = await kbdbFetch2(env, "/entries", {
     method: "POST",
     body: JSON.stringify({ entry_type: USER_TEMPLATE, page_name: email, content: recordId, owner_id: ns })
   });
   if (!head.ok) throw new KbdbError(`head entry \u5EFA\u7ACB\u5931\u6557\uFF08record ${recordId} \u5DF2\u5EFA\uFF0C\u9700\u4EBA\u5DE5\u6536\u62FE\uFF09\u2192 ${head.status}`);
   return recordId;
 }
-async function createPortalUser(env, input) {
+async function createPortalUser(env, input, tokenOverride) {
+  if (!authStoreWritable(env, tokenOverride)) {
+    throw new AuthStoreWriteError(
+      "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u5BEB\u4E0D\u9032\u8A8D\u8B49\u5132\u5B58\uFF08\u7F3A\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF09\u3002\u5B89\u88DD\u7CBE\u9748\u5EFA\u7ACB\u5E33\u865F\u6642\u6703\u81EA\u52D5\u5E36\u4E0A\uFF1B\u5B89\u88DD\u5B8C\u4E4B\u5F8C\u8981\u65B0\u589E\u5E33\u865F\uFF0C\u9700\u8981\u5BE6\u4F8B\u8A2D\u5B9A CF_SECRETS_API_TOKEN\uFF08\u8ACB\u56DE\u5831\u652F\u63F4\uFF09\u3002"
+    );
+  }
   const now2 = (/* @__PURE__ */ new Date()).toISOString();
-  return createKbdbUserRecord(env, input.email.toLowerCase(), {
+  const recordId = await createKbdbUserRecord(env, input.email.toLowerCase(), {
     display_name: input.display_name,
     status: "active",
     role: input.role,
-    password_hash: input.password_hash,
     libraries: JSON.stringify(input.libraries),
     created_at: now2,
     updated_at: now2
   });
+  try {
+    await setPortalPasswordHash(env, recordId, input.password_hash, tokenOverride);
+  } catch (e) {
+    await deleteKbdbRecord(env, recordId).catch(() => {
+    });
+    throw e;
+  }
+  return recordId;
 }
 function parseLibraries(raw2) {
   if (!raw2) return [];
@@ -13663,15 +15141,11 @@ function toPublicUser(rec) {
 async function requirePortalUser(c) {
   const token = bearerToken(c);
   if (!token) return { ok: false, res: c.json({ error: "\u672A\u767B\u5165" }, 401) };
-  const sess = await c.env.SESSIONS_KV.get(`${SESSION_PREFIX2}${token}`);
+  const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
   if (!sess) return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
-  let recordId;
-  try {
-    recordId = JSON.parse(sess).record_id;
-  } catch {
-  }
+  const recordId = sess.record_id;
   if (!recordId) {
-    await c.env.SESSIONS_KV.delete(`${SESSION_PREFIX2}${token}`);
+    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
     return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
   }
   let rec = await getRecordById(c.env, recordId);
@@ -13694,7 +15168,7 @@ async function requirePortalUser(c) {
     return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
   }
   if ((rec.values.status ?? "") !== "active") {
-    await c.env.SESSIONS_KV.delete(`${SESSION_PREFIX2}${token}`);
+    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
     return { ok: false, res: c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403) };
   }
   return { ok: true, user: { token, recordId, values: rec.values } };
@@ -13737,29 +15211,27 @@ async function assertPortalUserRecord(env, recordId) {
   return rec;
 }
 async function isLocked(env, email) {
-  const raw2 = await env.SESSIONS_KV.get(`${LOCKFAIL_PREFIX}${email}`);
-  if (!raw2) return false;
-  try {
-    return (JSON.parse(raw2).count ?? 0) >= LOCK_LIMIT;
-  } catch {
-    return false;
-  }
+  return (await lockState(env, email)).locked;
+}
+async function lockState(env, email) {
+  const rec = await ephemeralGet(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
+  if (!rec) return { locked: false, hasFailures: false };
+  return { locked: (Number(rec.count) || 0) >= LOCK_LIMIT, hasFailures: true };
 }
 async function recordLoginFail(env, email) {
-  const key = `${LOCKFAIL_PREFIX}${email}`;
-  const raw2 = await env.SESSIONS_KV.get(key);
-  let count = 0;
-  if (raw2) {
-    try {
-      count = JSON.parse(raw2).count ?? 0;
-    } catch {
-      count = 0;
-    }
-  }
-  await env.SESSIONS_KV.put(key, JSON.stringify({ count: count + 1 }), { expirationTtl: LOCK_TTL_SECONDS });
+  const rec = await ephemeralGet(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
+  const count = rec ? Number(rec.count) || 0 : 0;
+  await ephemeralPut(env, {
+    template: LOCKFAIL_TEMPLATE,
+    slots: ["count"],
+    hashField: "email_hash",
+    rawKey: email,
+    values: { count: String(count + 1) },
+    ttlSeconds: LOCK_TTL_SECONDS
+  });
 }
 async function clearLoginFail(env, email) {
-  await env.SESSIONS_KV.delete(`${LOCKFAIL_PREFIX}${email}`);
+  await ephemeralDelete(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
 }
 async function instanceHasNoAuthData(env) {
   if (readAuthStore(env).users.length > 0) return false;
@@ -13773,7 +15245,8 @@ async function findAndVerifyUser(env, email, password) {
   const attempt = async () => {
     const recordId = await findUserRecordId(env, email);
     const rec = recordId ? await getRecordById(env, recordId) : null;
-    const ok = rec ? await verifyPassword(password, rec.values.password_hash ?? "") : false;
+    const hash = recordId ? findPortalPasswordHash(env, recordId) ?? rec?.values.password_hash ?? "" : "";
+    const ok = rec ? await verifyPassword(password, hash) : false;
     return { recordId, rec, ok };
   };
   const first = await attempt();
@@ -13784,6 +15257,15 @@ async function findAndVerifyUser(env, email, password) {
   }
   return first;
 }
+function propagatingLogin(c) {
+  return c.json(
+    {
+      error: "\u5E33\u865F\u8CC7\u6599\u525B\u525B\u66F4\u65B0\u904E\uFF0C\u9019\u53F0\u4F3A\u670D\u5668\u9084\u5728\u540C\u6B65\u4E2D\u2014\u2014\u8ACB\u7B49 10\uFF5E30 \u79D2\u518D\u767B\u5165\u4E00\u6B21\uFF08\u9019\u6B21\u4E0D\u7B97\u5931\u6557\uFF09\u3002",
+      code: "auth_store_propagating"
+    },
+    503
+  );
+}
 portalRouter.post(
   "/portal/login",
   (c) => run(c, async () => {
@@ -13791,10 +15273,13 @@ portalRouter.post(
     const email = String(body?.email ?? "").trim().toLowerCase();
     const password = String(body?.password ?? "");
     if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-    if (await isLocked(c.env, email)) {
+    const lock = await lockState(c.env, email);
+    if (lock.locked) {
       return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
     }
+    const t0 = Date.now();
     const { recordId, rec, ok } = await findAndVerifyUser(c.env, email, password);
+    const tVerify = Date.now() - t0;
     if (!recordId || !rec) {
       if (await instanceHasNoAuthData(c.env)) {
         return c.json(
@@ -13806,6 +15291,7 @@ portalRouter.post(
           503
         );
       }
+      if (await authStoreStaleHere(c.env)) return propagatingLogin(c);
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
@@ -13813,6 +15299,7 @@ portalRouter.post(
       return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
     }
     if (!ok) {
+      if (await authStoreStaleHere(c.env)) return propagatingLogin(c);
       await recordLoginFail(c.env, email);
       return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
     }
@@ -13821,11 +15308,21 @@ portalRouter.post(
       const migrated = await promoteToKbdb(c.env, rec);
       if (migrated) sessionRecordId = migrated;
     }
-    await clearLoginFail(c.env, email);
+    const t1 = Date.now();
     const token = randomHex2(32);
-    await c.env.SESSIONS_KV.put(`${SESSION_PREFIX2}${token}`, JSON.stringify({ record_id: sessionRecordId }), {
-      expirationTtl: sessionTtl(c.env)
-    });
+    await Promise.all([
+      lock.hasFailures ? clearLoginFail(c.env, email) : Promise.resolve(),
+      ephemeralPut(c.env, {
+        template: SESSION_TEMPLATE3,
+        slots: ["record_id"],
+        hashField: "token_hash",
+        rawKey: token,
+        values: { record_id: sessionRecordId },
+        ttlSeconds: sessionTtl(c.env),
+        fresh: true
+      })
+    ]);
+    c.header("Server-Timing", `verify;dur=${tVerify}, session;dur=${Date.now() - t1}`);
     return c.json({
       success: true,
       session_token: token,
@@ -13843,7 +15340,7 @@ portalRouter.post(
 );
 portalRouter.post("/portal/logout", async (c) => {
   const token = bearerToken(c);
-  if (token) await c.env.SESSIONS_KV.delete(`${SESSION_PREFIX2}${token}`);
+  if (token) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
   return c.json({ success: true });
 });
 portalRouter.get(
@@ -13868,11 +15365,11 @@ portalRouter.get(
     });
   })
 );
-var PWRESET_PREFIX = "portal_pwreset:";
+var PWRESET_TEMPLATE = "portal_pwreset";
 var PWRESET_TTL_SECONDS = 30 * 60;
-var PWRESET_THROTTLE_PREFIX = "portal_pwreset_req:";
+var PWRESET_THROTTLE_TEMPLATE = "portal_pwreset_throttle";
 var PWRESET_THROTTLE_SECONDS = 120;
-var RELAY_TICKET_PREFIX = "portal_relay_ticket:";
+var RELAY_TICKET_TEMPLATE = "portal_relay_ticket";
 var RELAY_TICKET_TTL_SECONDS = 120;
 function portalUiOrigin(env) {
   const declared = String(env.UI_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -13882,32 +15379,32 @@ function portalUiOrigin(env) {
 }
 async function issueResetToken(env, recordId, email) {
   const token = randomHex2(32);
-  const payload = { record_id: recordId, email, created_at: (/* @__PURE__ */ new Date()).toISOString() };
-  await env.SESSIONS_KV.put(`${PWRESET_PREFIX}${await sha256Hex2(token)}`, JSON.stringify(payload), {
-    expirationTtl: PWRESET_TTL_SECONDS
+  await ephemeralPut(env, {
+    template: PWRESET_TEMPLATE,
+    slots: ["record_id", "email", "created_at"],
+    hashField: "token_hash",
+    rawKey: token,
+    values: { record_id: recordId, email, created_at: (/* @__PURE__ */ new Date()).toISOString() },
+    ttlSeconds: PWRESET_TTL_SECONDS
   });
   return token;
 }
 async function peekResetToken(env, token) {
   if (!token || !/^[0-9a-f]{16,128}$/i.test(token)) return null;
-  const raw2 = await env.SESSIONS_KV.get(`${PWRESET_PREFIX}${await sha256Hex2(token)}`);
-  if (!raw2) return null;
-  try {
-    return JSON.parse(raw2);
-  } catch {
-    return null;
-  }
+  const rec = await ephemeralGet(env, { template: PWRESET_TEMPLATE, hashField: "token_hash", rawKey: token });
+  if (!rec) return null;
+  return { record_id: rec.record_id ?? "", email: rec.email ?? "", created_at: rec.created_at ?? "" };
 }
 async function consumeResetToken(env, token) {
-  const payload = await peekResetToken(env, token);
-  if (!payload) return null;
-  await env.SESSIONS_KV.delete(`${PWRESET_PREFIX}${await sha256Hex2(token)}`);
-  return payload;
+  if (!token || !/^[0-9a-f]{16,128}$/i.test(token)) return null;
+  const rec = await ephemeralGet(env, { template: PWRESET_TEMPLATE, hashField: "token_hash", rawKey: token, consume: true });
+  if (!rec) return null;
+  return { record_id: rec.record_id ?? "", email: rec.email ?? "", created_at: rec.created_at ?? "" };
 }
 async function writeNewPassword(env, recordId, newPassword) {
   const newHash = await hashPassword2(newPassword);
+  await setPortalPasswordHash(env, recordId, newHash);
   await patchRecordValues(env, recordId, {
-    password_hash: newHash,
     updated_at: (/* @__PURE__ */ new Date()).toISOString()
   });
 }
@@ -13933,17 +15430,12 @@ portalRouter.post(
     const body = await c.req.json().catch(() => null);
     const ticket = String(body?.ticket ?? "").trim();
     if (!ticket || !/^[0-9a-f]{8,64}$/i.test(ticket)) return c.json({ ok: false }, 400);
-    const key = `${RELAY_TICKET_PREFIX}${ticket}`;
-    const raw2 = await c.env.SESSIONS_KV.get(key);
-    if (!raw2) return c.json({ ok: false }, 404);
-    await c.env.SESSIONS_KV.delete(key);
-    let parsed;
-    try {
-      parsed = JSON.parse(raw2);
-    } catch {
-      return c.json({ ok: false }, 404);
-    }
-    return c.json({ ok: true, email_sha256: await sha256Hex2(parsed.email), link: parsed.link });
+    const rec = await ephemeralGet(c.env, { template: RELAY_TICKET_TEMPLATE, hashField: "ticket_hash", rawKey: ticket, consume: true });
+    if (!rec) return c.json({ ok: false }, 404);
+    if (!rec.record_id || !rec.api_origin) return c.json({ ok: false }, 404);
+    const token = await issueResetToken(c.env, rec.record_id, rec.email ?? "");
+    const link = `${rec.api_origin}/portal/password/reset-link?token=${encodeURIComponent(token)}`;
+    return c.json({ ok: true, email_sha256: await sha256Hex4(rec.email ?? ""), link });
   })
 );
 portalRouter.get("/portal/password/reset-link", (c) => {
@@ -13971,17 +15463,27 @@ portalRouter.post(
       success: true,
       message: "\u5982\u679C\u9019\u500B email \u6709\u5E33\u865F\uFF0C\u6211\u5011\u5DF2\u7D93\u628A\u300C\u4FEE\u6539\u5BC6\u78BC\u300D\u7684\u9023\u7D50\u5BC4\u904E\u53BB\u4E86\uFF08\u9023\u7D50 30 \u5206\u9418\u5167\u6709\u6548\u3001\u53EA\u80FD\u7528\u4E00\u6B21\uFF09\u3002"
     };
-    const throttleKey = `${PWRESET_THROTTLE_PREFIX}${email}`;
-    if (await c.env.SESSIONS_KV.get(throttleKey)) return c.json(generic);
-    await c.env.SESSIONS_KV.put(throttleKey, "1", { expirationTtl: PWRESET_THROTTLE_SECONDS });
+    const throttled = await ephemeralGet(c.env, { template: PWRESET_THROTTLE_TEMPLATE, hashField: "email_hash", rawKey: email });
+    if (throttled) return c.json(generic);
+    await ephemeralPut(c.env, {
+      template: PWRESET_THROTTLE_TEMPLATE,
+      slots: ["marker"],
+      hashField: "email_hash",
+      rawKey: email,
+      values: { marker: "1" },
+      ttlSeconds: PWRESET_THROTTLE_SECONDS
+    });
     const recordId = await findUserRecordId(c.env, email).catch(() => null);
     if (!recordId) return c.json(generic);
-    const token = await issueResetToken(c.env, recordId, email);
     const apiOrigin = new URL(c.req.url).origin;
-    const link = `${apiOrigin}/portal/password/reset-link?token=${encodeURIComponent(token)}`;
     const ticket = randomHex2(16);
-    await c.env.SESSIONS_KV.put(`${RELAY_TICKET_PREFIX}${ticket}`, JSON.stringify({ email, link }), {
-      expirationTtl: RELAY_TICKET_TTL_SECONDS
+    await ephemeralPut(c.env, {
+      template: RELAY_TICKET_TEMPLATE,
+      slots: ["email", "record_id", "api_origin"],
+      hashField: "ticket_hash",
+      rawKey: ticket,
+      values: { email, record_id: recordId, api_origin: apiOrigin },
+      ttlSeconds: RELAY_TICKET_TTL_SECONDS
     });
     await relayResetLink(c.env, apiOrigin, email, ticket);
     return c.json(generic);
@@ -14055,7 +15557,7 @@ portalRouter.post(
       libraries: ["*"],
       // bootstrap admin 預設全庫（design §3.3：["*"]＝不注 library filter）
       password_hash: await hashPassword2(password)
-    });
+    }, c.req.header("x-cf-secrets-token") || void 0);
     return c.json({ success: true, record_id: recordId, email, role: "admin" });
   })
 );
@@ -14071,10 +15573,7 @@ portalRouter.post(
     const rec = recordId ? await getRecordById(c.env, recordId) : null;
     if (!recordId || !rec) return c.json({ error: `\u627E\u4E0D\u5230 email\uFF1D${email} \u7684 portal \u5E33\u865F` }, 404);
     const password = generatePassword();
-    await patchRecordValues(c.env, recordId, {
-      password_hash: await hashPassword2(password),
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
-    });
+    await writeNewPassword(c.env, recordId, password);
     return c.json({ success: true, email, password });
   })
 );
@@ -14179,10 +15678,7 @@ portalRouter.post(
     const rec = await assertPortalUserRecord(c.env, recordId);
     if (!rec) return c.json({ error: "\u7528\u6236\u4E0D\u5B58\u5728" }, 404);
     const password = generatePassword();
-    await patchRecordValues(c.env, recordId, {
-      password_hash: await hashPassword2(password),
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
-    });
+    await writeNewPassword(c.env, recordId, password);
     return c.json({ success: true, password });
   })
 );
@@ -14307,7 +15803,7 @@ portalRouter.post(
     const mine = existing.find((l) => (l.values.name ?? "") === library);
     let registered = false;
     if (!mine) {
-      const res = await kbdbFetch(c.env, "/records", {
+      const res = await kbdbFetch2(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({
           template: LIBRARY_TEMPLATE,
@@ -14342,6 +15838,7 @@ portalRouter.post(
       nodes
     };
     await c.env.WEBHOOKS.put(folderTreeKey(c.env, library), JSON.stringify(stored));
+    await markDaemonLibraryActive(c.env, library);
     return c.json({ success: true, library, registered, nodes: nodes.length, truncated: stored.truncated });
   })
 );
@@ -14379,7 +15876,7 @@ portalRouter.post(
     if (!daemonPrompt && (!pageName || !srcText.trim()))
       return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
     if (!c.env.AI) {
-      return c.json({ error: "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A Workers AI\uFF08wrangler.toml \u9700\u6709 [ai] binding\uFF09\uFF0C\u8ACB\u66F4\u65B0\u77E5\u8B58\u5EAB\u7248\u672C" }, 501);
+      return honestStop(c, "ai_binding_missing");
     }
     const REL = ">".repeat(2);
     const prompt = daemonPrompt || `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
@@ -14469,7 +15966,7 @@ portalRouter.post(
     for (const item of wanted) {
       const name = String(item?.name ?? "").trim();
       if (!isValidLibraryName(name) || name === "*" || have.has(name)) continue;
-      const res = await kbdbFetch(c.env, "/records", {
+      const res = await kbdbFetch2(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({
           template: LIBRARY_TEMPLATE,
@@ -14536,12 +16033,12 @@ portalRouter.post(
     const tenant2 = knowledgeOwner(c.env);
     const kvKey2 = `${tenant2}:wf:rag_chat`;
     const raw2 = await c.env.WEBHOOKS.get(kvKey2, "text");
-    if (!raw2) return c.json({ error: "\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u5B89\u88DD AI \u554F\u7B54\u5DE5\u4F5C\u6D41" }, 404);
+    if (!raw2) return honestStop(c, "ai_workflow_missing");
     let record;
     try {
       record = JSON.parse(raw2);
     } catch {
-      return c.json({ error: "AI \u554F\u7B54\u5DE5\u4F5C\u6D41\u8A18\u9304\u640D\u58DE\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD" }, 500);
+      return honestStop(c, "ai_workflow_corrupt");
     }
     let replaced = 0;
     const visit = (o) => {
@@ -14561,7 +16058,7 @@ portalRouter.post(
     };
     visit(record["graph"]);
     visit(record["config"]);
-    if (replaced === 0) return c.json({ error: "\u5DE5\u4F5C\u6D41\u88E1\u627E\u4E0D\u5230\u91D1\u9470\u6B04\u4F4D\uFF0C\u8ACB\u91CD\u65B0\u5B89\u88DD\u5F8C\u518D\u8A66" }, 500);
+    if (replaced === 0) return honestStop(c, "ai_workflow_no_key_field");
     await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
     return c.json({ success: true, replaced });
   })
@@ -14588,9 +16085,9 @@ portalRouter.get(
       const tenant2 = knowledgeOwner(c.env);
       const ownerParam = ownerQuery(tenant2);
       const [autoRes, cardRes, tripletRes] = await Promise.all([
-        kbdbFetch(c.env, `/entries/libraries?${ownerParam}`).catch(() => null),
-        kbdbFetch(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
-        kbdbFetch(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
+        kbdbFetch2(c.env, `/entries/libraries?${ownerParam}`).catch(() => null),
+        kbdbFetch2(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
+        kbdbFetch2(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
       ]);
       const cardMap = /* @__PURE__ */ new Map();
       if (cardRes?.ok) {
@@ -14674,7 +16171,7 @@ portalRouter.post(
         skipped.push(name);
         continue;
       }
-      const res = await kbdbFetch(c.env, "/records", {
+      const res = await kbdbFetch2(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({
           template: LIBRARY_TEMPLATE,
@@ -14742,7 +16239,7 @@ portalRouter.get(
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch(c.env, `/execution-log/retention?${ownerQuery(ownerId)}`);
+    const res = await kbdbFetch2(c.env, `/execution-log/retention?${ownerQuery(ownerId)}`);
     if (!res.ok) throw new KbdbError(`GET /execution-log/retention \u2192 ${res.status}`);
     const data = await res.json();
     return c.json({ success: true, retention_days: data.retention_days ?? null, default_days: data.default_days ?? 90 });
@@ -14759,13 +16256,82 @@ portalRouter.put(
       return c.json({ error: "retention_days \u5FC5\u9808\u662F\u6B63\u6574\u6578\uFF0C\u6216 null\uFF08\u4EE3\u8868\u4E0D\u522A\u9664\uFF09" }, 400);
     }
     const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch(c.env, "/execution-log/retention", {
+    const res = await kbdbFetch2(c.env, "/execution-log/retention", {
       method: "PUT",
       body: JSON.stringify({ owner_id: ownerField(ownerId), retention_days: days === void 0 ? null : days })
     });
     if (!res.ok) throw new KbdbError(`PUT /execution-log/retention \u2192 ${res.status}`);
     const data = await res.json();
     return c.json({ success: true, retention_days: data.retention_days ?? null });
+  })
+);
+portalRouter.get(
+  "/portal/admin/usage-brakes",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const [settingsRes, brakesRes, usageRes] = await Promise.all([
+      kbdbFetch2(c.env, "/usage-brakes/settings"),
+      kbdbFetch2(c.env, "/usage-brakes?limit=20"),
+      kbdbFetch2(c.env, "/usage-brakes/usage")
+    ]);
+    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
+    if (!brakesRes.ok) throw new KbdbError(`GET /usage-brakes \u2192 ${brakesRes.status}`);
+    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
+    const settings = await settingsRes.json();
+    const brakesBody = await brakesRes.json();
+    const usage = await usageRes.json();
+    const active = (brakesBody.brakes ?? []).filter((b) => b.active === true);
+    return c.json({
+      success: true,
+      brake_enabled: settings.brake_enabled !== false,
+      updated_at: settings.updated_at ?? null,
+      updated_by: settings.updated_by ?? null,
+      active_brakes: active,
+      usage: {
+        rows_written: usage.rows_written,
+        rows_read: usage.rows_read,
+        limit_rows_written: usage.limit_rows_written,
+        limit_rows_read: usage.limit_rows_read,
+        percent_written: usage.percent_written,
+        percent_read: usage.percent_read,
+        reset_at: usage.reset_at
+      }
+    });
+  })
+);
+portalRouter.post(
+  "/portal/admin/usage-brakes/settings",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    if (typeof body?.brake_enabled !== "boolean") {
+      return c.json({ error: "brake_enabled \u5FC5\u9808\u662F boolean" }, 400);
+    }
+    const res = await kbdbFetch2(c.env, "/usage-brakes/settings", {
+      method: "POST",
+      body: JSON.stringify({ brake_enabled: body.brake_enabled, by: auth.user.values.email ?? "portal" })
+    });
+    if (!res.ok) throw new KbdbError(`POST /usage-brakes/settings \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({ success: true, brake_enabled: data.brake_enabled !== false });
+  })
+);
+portalRouter.post(
+  "/portal/admin/usage-brakes/:id/release",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const id = c.req.param("id");
+    const res = await kbdbFetch2(c.env, `/usage-brakes/${encodeURIComponent(id)}/release`, {
+      method: "POST",
+      body: JSON.stringify({ by: auth.user.values.email ?? "portal" })
+    });
+    if (res.status === 404) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u524E\u8ECA\u7D00\u9304\uFF08\u53EF\u80FD\u5DF2\u7D93\u653E\u884C\u904E\u4E86\uFF09" }, 404);
+    if (!res.ok) throw new KbdbError(`POST /usage-brakes/:id/release \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({ success: true, brake: data.brake ?? null });
   })
 );
 async function listMcpRedirectHosts(env) {
@@ -14789,6 +16355,13 @@ portalRouter.get(
       builtin_hosts: [...MCP_BUILTIN_REDIRECT_HOSTS],
       can_edit: isAdmin
     };
+    const ttl = await readMcpTokenTtl(c.env).catch(() => null);
+    payload.token_ttl_seconds = ttl?.seconds ?? null;
+    payload.token_ttl_default_seconds = DEFAULT_TOKEN_TTL_SECONDS;
+    if (isAdmin && ttl) {
+      payload.token_ttl_updated_at = ttl.updated_at;
+      payload.token_ttl_updated_by = ttl.updated_by;
+    }
     if (isAdmin) {
       payload.hosts = (await listMcpRedirectHosts(c.env)).map((r) => ({
         record_id: r.record_id,
@@ -14819,7 +16392,7 @@ portalRouter.post(
       return c.json({ success: true, already: true, host: norm.host, record_id: dup.record_id });
     }
     const ns = portalNamespace(c.env);
-    const res = await kbdbFetch(c.env, "/records", {
+    const res = await kbdbFetch2(c.env, "/records", {
       method: "POST",
       body: JSON.stringify({
         template: MCP_REDIRECT_HOST_TEMPLATE,
@@ -14868,6 +16441,77 @@ portalRouter.get(
     return c.json({ success: true, hosts: rows.map((r) => (r.values.host ?? "").trim()).filter(Boolean) });
   })
 );
+async function readMcpTokenTtl(env) {
+  const rows = await listRecordsByTemplate(env, MCP_TOKEN_TTL_TEMPLATE);
+  for (const r of rows) {
+    const n = Number.parseInt(r.values.ttl_seconds ?? "", 10);
+    if (Number.isFinite(n) && n > 0) {
+      return {
+        record_id: r.record_id,
+        seconds: n,
+        updated_at: r.values.updated_at ?? "",
+        updated_by: r.values.updated_by ?? ""
+      };
+    }
+  }
+  return null;
+}
+portalRouter.post(
+  "/portal/admin/mcp-token-ttl",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const raw2 = body?.ttl_seconds !== void 0 ? body.ttl_seconds : body?.ttl_days !== void 0 && body.ttl_days !== null ? Number(body.ttl_days) * 86400 : void 0;
+    const norm = normalizeTokenTtl(raw2);
+    if (!norm.ok) return c.json({ error: norm.error }, 400);
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const values = {
+      ttl_seconds: String(norm.seconds),
+      updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      updated_by: auth.user.values.email ?? ""
+    };
+    const existing = await readMcpTokenTtl(c.env);
+    if (existing) {
+      await patchRecordValues(c.env, existing.record_id, values);
+    } else {
+      const ns = portalNamespace(c.env);
+      const res = await kbdbFetch2(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({ template: MCP_TOKEN_TTL_TEMPLATE, owner_id: ns, values })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08${MCP_TOKEN_TTL_TEMPLATE}\uFF09\u2192 ${res.status}`);
+    }
+    return c.json({ success: true, ttl_seconds: norm.seconds, clamped: norm.clamped });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/mcp-token-ttl",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const existing = await readMcpTokenTtl(c.env);
+    if (!existing) return c.json({ success: true, already: true });
+    const found = await deleteKbdbRecord(c.env, existing.record_id);
+    return c.json({ success: true, removed: found });
+  })
+);
+portalRouter.get(
+  "/portal/internal/mcp-token-ttl",
+  (c) => run(c, async () => {
+    const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+    if (!expected) {
+      return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09\uFF0C\u7121\u6CD5\u56DE\u7B54" }, 503);
+    }
+    const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+    if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
+    const ttl = await readMcpTokenTtl(c.env);
+    return c.json({ success: true, ttl_seconds: ttl?.seconds ?? null });
+  })
+);
 portalRouter.delete(
   "/portal/admin/libraries/by-name/:name",
   (c) => run(c, async () => {
@@ -14879,7 +16523,7 @@ portalRouter.delete(
     if (!confirm) return c.json({ error: 'body \u9808\u5E36 { confirm: "<\u5EAB\u540D>" } \u624D\u57F7\u884C\uFF08\u79FB\u9664\u6703\u5F71\u97FF\u8CC7\u6599\u53EF\u641C\u6027\uFF09' }, 400);
     if (confirm !== name) return c.json({ error: `confirm \u503C\u300C${confirm}\u300D\u8207\u5EAB\u540D\u300C${name}\u300D\u4E0D\u7B26` }, 400);
     const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch(c.env, "/entries/deprecate-by-library", {
+    const res = await kbdbFetch2(c.env, "/entries/deprecate-by-library", {
       method: "PATCH",
       body: JSON.stringify({ owner_id: ownerField(ownerId), library: name })
     });
@@ -14914,6 +16558,105 @@ portalRouter.post(
     return c.json({ success: true, has_key: true });
   })
 );
+portalRouter.get(
+  "/portal/admin/credentials",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenantSlug = portalTenant(c.env);
+    try {
+      const rows = await listCredentialRows(c.env, tenantSlug);
+      return c.json({ success: true, credentials: rows, total: rows.length });
+    } catch (e) {
+      return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  })
+);
+portalRouter.post(
+  "/portal/admin/credentials",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    if (!validateName(body?.name)) {
+      return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+    }
+    if (!body?.value || typeof body.value !== "string") {
+      return c.json({ error: "value \u5FC5\u586B\uFF08\u91D1\u9470\u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF0C\u4E0D\u843D\u5730\u3001\u4E0D\u8A18 log\uFF09" }, 400);
+    }
+    const service = typeof body.service === "string" ? body.service : void 0;
+    const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
+    const tenantSlug = portalTenant(c.env);
+    try {
+      await writeCredential(c.env, tenantSlug, body.name, body.value, service, sensitivity);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${msg}` }, msg.includes("\u4F54\u7528") ? 409 : 502);
+    }
+    return c.json({ success: true, name: body.name, service: service ?? null });
+  })
+);
+portalRouter.put(
+  "/portal/admin/credentials/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = c.req.param("name");
+    if (!validateName(name)) {
+      return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+    }
+    const body = await c.req.json().catch(() => null);
+    if (!body?.value || typeof body.value !== "string") {
+      return c.json({ error: "value \u5FC5\u586B\uFF08\u91D1\u9470\u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF0C\u4E0D\u843D\u5730\u3001\u4E0D\u8A18 log\uFF09" }, 400);
+    }
+    const service = typeof body.service === "string" ? body.service : void 0;
+    const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
+    const tenantSlug = portalTenant(c.env);
+    try {
+      await writeCredential(c.env, tenantSlug, name, body.value, service, sensitivity);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return c.json({ error: `\u91D1\u9470\u8986\u5BEB\u5931\u6557\uFF1A${msg}` }, msg.includes("\u4F54\u7528") ? 409 : 502);
+    }
+    return c.json({ success: true, name, service: service ?? null });
+  })
+);
+portalRouter.patch(
+  "/portal/admin/credentials/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = c.req.param("name");
+    if (!validateName(name)) {
+      return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+    }
+    const body = await c.req.json().catch(() => null);
+    const newName = typeof body?.new_name === "string" ? body.new_name : void 0;
+    const service = typeof body?.service === "string" ? body.service : void 0;
+    const value = typeof body?.value === "string" ? body.value : void 0;
+    const tenantSlug = portalTenant(c.env);
+    try {
+      const result = await editCredential(c.env, tenantSlug, name, { newName, service, value });
+      return c.json({ success: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
+      return c.json({ error: `\u91D1\u9470\u4FEE\u6539\u5931\u6557\uFF1A${msg}` }, status);
+    }
+  })
+);
+portalRouter.delete(
+  "/portal/admin/credentials/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = c.req.param("name");
+    const tenantSlug = portalTenant(c.env);
+    const result = await deleteCredentialByName(c.env, tenantSlug, name);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ success: true, name });
+  })
+);
 portalRouter.delete(
   "/portal/admin/libraries/:id",
   (c) => run(c, async () => {
@@ -14941,8 +16684,8 @@ async function buildDiagnostics(env, tenant2) {
   let embedding = { checked: false };
   try {
     const [statusRes, selftestRes] = await Promise.all([
-      kbdbFetch(env, `/embed/backfill/status?${ownerQuery(tenant2)}`),
-      kbdbFetch(env, `/embed/selftest?${ownerQuery(tenant2)}`)
+      kbdbFetch2(env, `/embed/backfill/status?${ownerQuery(tenant2)}`),
+      kbdbFetch2(env, `/embed/selftest?${ownerQuery(tenant2)}`)
     ]);
     const statusBody = await statusRes.json().catch(() => null);
     const selftestBody = await selftestRes.json().catch(() => null);
@@ -14968,8 +16711,8 @@ async function buildDiagnostics(env, tenant2) {
   try {
     const [registeredLibs, autoRes, tripletRes] = await Promise.all([
       listRecordsByTemplate(env, LIBRARY_TEMPLATE).catch(() => []),
-      kbdbFetch(env, `/entries/libraries?${ownerParam}`),
-      kbdbFetch(env, `/records/triplet-stats?${ownerParam}`)
+      kbdbFetch2(env, `/entries/libraries?${ownerParam}`),
+      kbdbFetch2(env, `/records/triplet-stats?${ownerParam}`)
     ]);
     const knownLibs = new Set(
       registeredLibs.map((r) => (r.values.name ?? "").trim()).filter((n) => !!n)
@@ -14988,7 +16731,7 @@ async function buildDiagnostics(env, tenant2) {
   let library_scope_check = { ran: false };
   if (library_count === 0 && triplet_count === 0) {
     try {
-      const probeRes = await kbdbFetch(env, `/entries?${new URLSearchParams({ owner_id: ownerField(tenant2), limit: "1" }).toString()}`);
+      const probeRes = await kbdbFetch2(env, `/entries?${new URLSearchParams({ owner_id: ownerField(tenant2), limit: "1" }).toString()}`);
       const probeBody = await probeRes.json().catch(() => null);
       const total = probeBody?.total ?? 0;
       library_scope_check = {
@@ -15020,6 +16763,34 @@ portalRouter.get(
     });
   })
 );
+async function movePortalPasswordsToAuthStore(env, tokenOverride) {
+  const users = (await listRecordsByTemplate(env, USER_TEMPLATE)).filter(
+    (r) => !isAuthStoreId(r.record_id) && (r.values.password_hash ?? "") !== ""
+  );
+  if (users.length === 0) return { moved: 0, already: 0, cleared: 0 };
+  let moved = 0;
+  let already = 0;
+  await mutateAuthStore(
+    env,
+    (data) => {
+      for (const u of users) {
+        if (data.passwords[u.record_id]) {
+          already++;
+          continue;
+        }
+        data.passwords[u.record_id] = u.values.password_hash;
+        moved++;
+      }
+    },
+    tokenOverride
+  );
+  let cleared = 0;
+  for (const u of users) {
+    await patchRecordValues(env, u.record_id, { password_hash: "" });
+    cleared++;
+  }
+  return { moved, already, cleared };
+}
 
 // cypher-executor/src/routes/init-seed.ts
 var initSeedRouter = new Hono2();
@@ -15433,7 +17204,7 @@ function inboxToTriageItem(e) {
     at_ms: parseCreatedAtMs(e.created_at)
   };
 }
-function applyTriageCheck(content, action, nowIso) {
+function applyTriageCheck(content, action, nowIso2) {
   let obj;
   try {
     const v = JSON.parse(content ?? "");
@@ -15445,7 +17216,7 @@ function applyTriageCheck(content, action, nowIso) {
     const { checked_via: _via, checked_at: _at, ...rest } = obj;
     return JSON.stringify({ ...rest, status: "new" });
   }
-  return JSON.stringify({ ...obj, status: "done", checked_via: "console", checked_at: nowIso });
+  return JSON.stringify({ ...obj, status: "done", checked_via: "console", checked_at: nowIso2 });
 }
 function buildTriageModel(todoEntries, inboxEntries) {
   const items = [
@@ -15834,458 +17605,8 @@ init_webhook_handlers();
 // cypher-executor/src/lib/app-system.ts
 init_kbdb_proxy();
 init_webhook_handlers();
-
-// cypher-executor/src/lib/asset-keys.ts
-var ID_PREFIX = "arcrun";
-function classifyAssetKey(key) {
-  if (key.startsWith("idx:") || key.startsWith("cron-idx:")) return null;
-  if (key.startsWith("auth_recipe:")) {
-    const service = key.slice("auth_recipe:".length);
-    if (!service) return null;
-    return {
-      entry_type: "auth_recipe",
-      entry_id: `${ID_PREFIX}:auth_recipe:${service}`,
-      owner_id: null,
-      page_name: service,
-      kv_key: key
-    };
-  }
-  if (key.startsWith("prompt_recipe:")) {
-    const name = key.slice("prompt_recipe:".length);
-    if (!name) return null;
-    return {
-      entry_type: "prompt_recipe",
-      entry_id: `${ID_PREFIX}:prompt_recipe:${name}`,
-      owner_id: null,
-      page_name: name,
-      kv_key: key
-    };
-  }
-  if (key.startsWith("recipe:")) {
-    const id = key.slice("recipe:".length);
-    if (!id) return null;
-    return {
-      entry_type: "api_recipe",
-      entry_id: `${ID_PREFIX}:recipe:${id}`,
-      owner_id: null,
-      page_name: id,
-      kv_key: key
-    };
-  }
-  const appAt = key.indexOf(":app:");
-  if (appAt > 0) {
-    const owner = key.slice(0, appAt);
-    const id = key.slice(appAt + ":app:".length);
-    if (!owner || !id) return null;
-    return {
-      entry_type: "app_install",
-      entry_id: `${ID_PREFIX}:app:${owner}:${id}`,
-      owner_id: owner,
-      page_name: id,
-      kv_key: key
-    };
-  }
-  const wfAt = key.indexOf(":wf:");
-  if (wfAt > 0) {
-    const owner = key.slice(0, wfAt);
-    const name = key.slice(wfAt + ":wf:".length);
-    if (!owner || !name) return null;
-    return {
-      entry_type: "workflow_def",
-      entry_id: `${ID_PREFIX}:wf:${owner}:${name}`,
-      owner_id: owner,
-      page_name: name,
-      kv_key: key
-    };
-  }
-  return null;
-}
-function assetKvKey(entryType, ownerId, pageName) {
-  switch (entryType) {
-    case "workflow_def":
-      return `${ownerId ?? ""}:wf:${pageName}`;
-    case "app_install":
-      return `${ownerId ?? ""}:app:${pageName}`;
-    case "api_recipe":
-      return `recipe:${pageName}`;
-    case "auth_recipe":
-      return `auth_recipe:${pageName}`;
-    case "prompt_recipe":
-      return `prompt_recipe:${pageName}`;
-  }
-}
-function classifyListPrefix(prefix) {
-  if (!prefix) return null;
-  if (prefix.startsWith("idx:") || prefix.startsWith("cron-idx:")) return null;
-  if (prefix === "auth_recipe:") return { entry_type: "auth_recipe" };
-  if (prefix === "prompt_recipe:") return { entry_type: "prompt_recipe" };
-  if (prefix === "recipe:") return { entry_type: "api_recipe" };
-  if (prefix.endsWith(":wf:")) {
-    const owner = prefix.slice(0, -":wf:".length);
-    if (owner) return { entry_type: "workflow_def", owner_id: owner };
-  }
-  if (prefix.endsWith(":app:")) {
-    const owner = prefix.slice(0, -":app:".length);
-    if (owner) return { entry_type: "app_install", owner_id: owner };
-  }
-  return null;
-}
-
-// cypher-executor/src/lib/durable-store.ts
-function kbdbBase2(env) {
-  return (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
-}
-function kbdbHeaders(env) {
-  const h = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) h["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-  return h;
-}
-var KbdbUnavailableError = class extends Error {
-  constructor(op, detail) {
-    super(
-      `\u8CC7\u7522\u7121\u6CD5\u5BEB\u5165 KBDB\uFF08${op}\uFF09\uFF1A${detail}\u3002\u672C\u6B21\u64CD\u4F5C\u5DF2\u4E2D\u6B62\u4E14\u672A\u5BEB\u5165\u4EFB\u4F55\u4E00\u908A\u2014\u2014\u9019\u662F\u523B\u610F\u7684\uFF1A\u5BE7\u53EF\u8B93\u4F60\u73FE\u5728\u770B\u5230\u5931\u6557\uFF0C\u4E5F\u4E0D\u8981\u5BEB\u9032\u53EA\u6703\u88AB\u4E0B\u6B21\u66F4\u65B0\u63DB\u6389\u7684 KV\u3001\u4E8B\u5F8C\u624D\u767C\u73FE\u6771\u897F\u4E0D\u898B\u4E86\uFF08Leo/Arcrun#16\u3001#17\uFF09\u3002`
-    );
-    this.name = "KbdbUnavailableError";
-  }
-};
-function assetContent(type, def, pageName) {
-  const d = def ?? {};
-  const pick = (...keys) => {
-    for (const k of keys) {
-      const v = d[k];
-      if (typeof v === "string" && v.trim()) return v.trim();
-    }
-    return "";
-  };
-  switch (type) {
-    case "workflow_def":
-      return pick("description") || pageName;
-    case "api_recipe":
-      return pick("description", "display_name", "canonical_id") || pageName;
-    case "auth_recipe":
-      return pick("description", "display_name", "service") || pageName;
-    case "prompt_recipe":
-      return pick("description", "name") || pageName;
-    case "app_install":
-      return pick("name") || pageName;
-  }
-}
-function entryToKvValue(entry) {
-  if (!entry?.metadata_json) return null;
-  try {
-    const env = JSON.parse(entry.metadata_json);
-    if (!env || env.arcrun_asset !== true) return null;
-    if (typeof env.definition_raw === "string") return env.definition_raw;
-    if (env.definition === void 0) return null;
-    return JSON.stringify(env.definition);
-  } catch {
-    return null;
-  }
-}
-var DurableKv = class {
-  constructor(kv, env) {
-    this.kv = kv;
-    this.env = env;
-  }
-  kv;
-  env;
-  rehydratedRecipeIdx = false;
-  rehydratedCronIdx = false;
-  /**
-   * 拿回底層那顆真正的 KV。**只有遷移／盤點會用到**（routes/storage.ts）：
-   * 那兩支的工作正是「比較 KV 那邊有什麼、KBDB 這邊有什麼」，
-   * 若透過包裝去問，list 會被導去 KBDB，就永遠比不出差異、也搬不動舊資料。
-   * 一般業務程式碼不該碰這支——碰了就等於繞過本卷的全部保護。
-   */
-  get rawKv() {
-    return this.kv;
-  }
-  // ── KBDB 存取原語 ──────────────────────────────────────────────────────
-  async kbdbGetEntry(entryId) {
-    const res = await fetch(`${kbdbBase2(this.env)}/entries/${encodeURIComponent(entryId)}`, {
-      headers: kbdbHeaders(this.env)
-    });
-    if (res.status === 404) return null;
-    if (!res.ok) return null;
-    const json = await res.json().catch(() => null);
-    return json?.entry ?? null;
-  }
-  async kbdbListEntries(entryType, ownerId) {
-    const params = new URLSearchParams({ entry_type: entryType, limit: "1000" });
-    if (ownerId) params.set("owner_id", ownerId);
-    const res = await fetch(`${kbdbBase2(this.env)}/entries?${params.toString()}`, {
-      headers: kbdbHeaders(this.env)
-    });
-    if (!res.ok) throw new KbdbUnavailableError("list", `HTTP ${res.status}`);
-    const json = await res.json().catch(() => null);
-    return json?.entries ?? [];
-  }
-  async kbdbPutEntry(ref, envelope) {
-    const content = assetContent(ref.entry_type, envelope.definition, ref.page_name);
-    const res = await fetch(`${kbdbBase2(this.env)}/entries/${encodeURIComponent(ref.entry_id)}`, {
-      method: "PUT",
-      headers: kbdbHeaders(this.env),
-      body: JSON.stringify({
-        entry_type: ref.entry_type,
-        owner_id: ref.owner_id,
-        page_name: ref.page_name,
-        content,
-        // 刻意**不**標 embed:true：工作流的語意搜尋走既有的 entry_type='workflow' 那一列
-        //（workflow-discovery 方案 C 的雙寫），這裡標了會變成同一支工作流嵌兩份向量。
-        metadata_json: JSON.stringify(envelope)
-      })
-    });
-    if (!res.ok) throw new KbdbUnavailableError("put", `HTTP ${res.status} @ ${ref.entry_id}`);
-  }
-  async kbdbDeleteEntry(entryId) {
-    const res = await fetch(`${kbdbBase2(this.env)}/entries/${encodeURIComponent(entryId)}`, {
-      method: "DELETE",
-      headers: kbdbHeaders(this.env)
-    });
-    if (!res.ok && res.status !== 404) throw new KbdbUnavailableError("delete", `HTTP ${res.status} @ ${entryId}`);
-  }
-  // ── 衍生索引重建（讀不到就重算，不進 KBDB）────────────────────────────
-  /**
-   * 從 KBDB 的 api_recipe 列重建 recipe 反查索引：
-   *   idx:{hash_id}              → canonical_id
-   *   idx:canonical:{canonical}  → [uuid, ...]
-   *   idx:installed:{canonical}  → uuid
-   *
-   * installed 的還原順序：先看資產自己標的 installed 旗標（正常路徑，寫入時就記下了，
-   * 見 put() 對 `idx:installed:` 的處理）；同一個 canonical 沒有任何一版標記時
-   *（＝遷移之前就存在的舊資料），退而取 updated_at 最新的那一版——因為
-   * installRecipeRecord 的語意本來就是「最後寫入的那版即為安裝版」。
-   * 這是還原不是猜測，但仍是**退路**，故在此寫明白。
-   */
-  async rehydrateRecipeIndices() {
-    if (this.rehydratedRecipeIdx) return;
-    this.rehydratedRecipeIdx = true;
-    const entries = await this.kbdbListEntries("api_recipe");
-    const byCanonical = /* @__PURE__ */ new Map();
-    const writes = [];
-    for (const e of entries) {
-      const raw2 = entryToKvValue(e);
-      if (!raw2) continue;
-      let def;
-      try {
-        def = JSON.parse(raw2);
-      } catch {
-        continue;
-      }
-      if (!def.canonical_id) continue;
-      if (def.hash_id) writes.push(this.kv.put(`idx:${def.hash_id}`, def.canonical_id));
-      if (!def.uuid) continue;
-      let installed = false;
-      try {
-        installed = JSON.parse(e.metadata_json ?? "{}").installed === true;
-      } catch {
-      }
-      const list = byCanonical.get(def.canonical_id) ?? [];
-      list.push({ uuid: def.uuid, installed, updated_at: e.updated_at ?? 0 });
-      byCanonical.set(def.canonical_id, list);
-    }
-    for (const [canonical, versions] of byCanonical) {
-      writes.push(this.kv.put(`idx:canonical:${canonical}`, JSON.stringify(versions.map((v) => v.uuid))));
-      const chosen = versions.find((v) => v.installed) ?? versions.reduce((a, b) => b.updated_at > a.updated_at ? b : a);
-      writes.push(this.kv.put(`idx:installed:${canonical}`, chosen.uuid));
-    }
-    await Promise.all(writes);
-  }
-  /** 從 KBDB 的 workflow_def 列重建 cron 索引（單一 key，見 lib/cron-index.ts）。 */
-  async rehydrateCronIndex() {
-    if (this.rehydratedCronIdx) return;
-    this.rehydratedCronIdx = true;
-    const entries = await this.kbdbListEntries("workflow_def");
-    const index = {};
-    for (const e of entries) {
-      const raw2 = entryToKvValue(e);
-      if (!raw2) continue;
-      let def;
-      try {
-        def = JSON.parse(raw2);
-      } catch {
-        continue;
-      }
-      if (!def.cron_expr || !e.owner_id || !e.page_name) continue;
-      index[cronEntryKey(e.owner_id, e.page_name)] = def.cron_expr;
-    }
-    await this.kv.put(CRON_INDEX_KEY, JSON.stringify(index));
-  }
-  // ── KVNamespace 介面 ───────────────────────────────────────────────────
-  async get(key, type) {
-    const t0 = typeof type === "string" ? type : type?.type;
-    if (t0 === "arrayBuffer" || t0 === "stream") return this.kv.get(key, t0);
-    const asText = (raw2) => {
-      if (raw2 === null) return null;
-      const t = typeof type === "string" ? type : type?.type;
-      if (t === "json") {
-        try {
-          return JSON.parse(raw2);
-        } catch {
-          return null;
-        }
-      }
-      return raw2;
-    };
-    const ref = classifyAssetKey(key);
-    if (!ref) {
-      const raw2 = await this.kv.get(key, "text");
-      if (raw2 !== null) return asText(raw2);
-      if (key.startsWith("idx:")) {
-        await this.rehydrateRecipeIndices().catch(() => {
-        });
-        return asText(await this.kv.get(key, "text"));
-      }
-      if (key === CRON_INDEX_KEY) {
-        await this.rehydrateCronIndex().catch(() => {
-        });
-        return asText(await this.kv.get(key, "text"));
-      }
-      return asText(raw2);
-    }
-    const cached = await this.kv.get(key, "text");
-    if (cached !== null) return asText(cached);
-    const fromKbdb = entryToKvValue(await this.kbdbGetEntry(ref.entry_id));
-    if (fromKbdb === null) return asText(null);
-    await this.kv.put(key, fromKbdb).catch(() => {
-    });
-    return asText(fromKbdb);
-  }
-  async put(key, value, options) {
-    if (options?.expirationTtl || options?.expiration || typeof value !== "string") {
-      return this.kv.put(key, value, options);
-    }
-    if (key.startsWith("idx:installed:")) {
-      await this.kv.put(key, value, options);
-      await this.markInstalledVersion(key.slice("idx:installed:".length), value).catch(() => {
-      });
-      return;
-    }
-    const ref = classifyAssetKey(key);
-    if (!ref) return this.kv.put(key, value, options);
-    let definition;
-    let definitionRaw;
-    try {
-      definition = JSON.parse(value);
-    } catch {
-      definitionRaw = value;
-    }
-    const previous = ref.entry_type === "api_recipe" ? await this.readEnvelope(ref) : null;
-    await this.kbdbPutEntry(ref, {
-      arcrun_asset: true,
-      kv_key: key,
-      ...definitionRaw !== void 0 ? { definition_raw: definitionRaw } : { definition },
-      ...previous?.installed ? { installed: true } : {}
-    });
-    await this.kv.put(key, value, options);
-  }
-  async delete(key) {
-    const ref = classifyAssetKey(key);
-    if (ref) await this.kbdbDeleteEntry(ref.entry_id);
-    await this.kv.delete(key);
-  }
-  async list(options) {
-    const target = classifyListPrefix(options?.prefix ?? void 0);
-    if (!target) return this.kv.list(options);
-    const entries = await this.kbdbListEntries(target.entry_type, target.owner_id);
-    const keys = [];
-    const warm = [];
-    for (const e of entries) {
-      if (!e.page_name) continue;
-      if (target.entry_type === "workflow_def" && !e.owner_id) continue;
-      const name = assetKvKey(target.entry_type, e.owner_id ?? null, e.page_name);
-      keys.push({ name });
-      const raw2 = entryToKvValue(e);
-      if (raw2 !== null) warm.push(this.kv.put(name, raw2).catch(() => {
-      }));
-    }
-    await Promise.all(warm);
-    if (target.entry_type === "app_install") {
-      const seen = new Set(keys.map((k) => k.name));
-      const fromKv = await this.kv.list({ prefix: options?.prefix ?? void 0 });
-      const heal = [];
-      for (const k of fromKv.keys) {
-        if (seen.has(k.name)) continue;
-        keys.push({ name: k.name });
-        heal.push(
-          (async () => {
-            const raw2 = await this.kv.get(k.name, "text");
-            if (raw2 === null) return;
-            const ref = classifyAssetKey(k.name);
-            if (!ref) return;
-            let definition;
-            let definitionRaw;
-            try {
-              definition = JSON.parse(raw2);
-            } catch {
-              definitionRaw = raw2;
-            }
-            await this.kbdbPutEntry(ref, {
-              arcrun_asset: true,
-              kv_key: k.name,
-              ...definitionRaw !== void 0 ? { definition_raw: definitionRaw } : { definition }
-            });
-          })().catch(() => {
-          })
-        );
-      }
-      await Promise.all(heal);
-    }
-    return { keys, list_complete: true, cacheStatus: null };
-  }
-  /** KVNamespace 介面補齊（本 worker 沒有呼叫端在用，原樣轉發，不做資產處理）。 */
-  getWithMetadata(key, type) {
-    return this.kv.getWithMetadata(key, type);
-  }
-  // ── 內部小工具 ─────────────────────────────────────────────────────────
-  async readEnvelope(ref) {
-    const entry = await this.kbdbGetEntry(ref.entry_id);
-    if (!entry?.metadata_json) return null;
-    try {
-      const env = JSON.parse(entry.metadata_json);
-      return env?.arcrun_asset === true ? env : null;
-    } catch {
-      return null;
-    }
-  }
-  /** 把「這個 canonical 目前裝的是哪一版」記進該版 recipe 的信封（同 canonical 的其他版清掉旗標）。 */
-  async markInstalledVersion(canonicalId, uuid) {
-    const entries = await this.kbdbListEntries("api_recipe");
-    const jobs = [];
-    for (const e of entries) {
-      const raw2 = entryToKvValue(e);
-      if (!raw2) continue;
-      let def;
-      try {
-        def = JSON.parse(raw2);
-      } catch {
-        continue;
-      }
-      if (def.canonical_id !== canonicalId || !def.uuid) continue;
-      const shouldBeInstalled = def.uuid === uuid;
-      let envelope;
-      try {
-        envelope = JSON.parse(e.metadata_json ?? "{}");
-      } catch {
-        continue;
-      }
-      if (envelope.installed === true === shouldBeInstalled) continue;
-      envelope.installed = shouldBeInstalled;
-      jobs.push(
-        fetch(`${kbdbBase2(this.env)}/entries/${encodeURIComponent(e.id)}`, {
-          method: "PATCH",
-          headers: kbdbHeaders(this.env),
-          body: JSON.stringify({ metadata_json: JSON.stringify(envelope) })
-        })
-      );
-    }
-    await Promise.all(jobs);
-  }
-};
-
-// cypher-executor/src/lib/app-system.ts
 function appStore(env) {
-  return new DurableKv(env.WEBHOOKS, env);
+  return env.WEBHOOKS;
 }
 function kbdbBehindHint(e) {
   const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
@@ -16463,7 +17784,7 @@ async function listInstalledApps(env, tenant2) {
   );
   return apps.filter((a) => a !== null);
 }
-async function ensureTemplate(env, name, slots, description) {
+async function ensureTemplate4(env, name, slots, description) {
   const { base, headers } = kbdbBase(env);
   const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
   if (getRes.ok) {
@@ -16516,7 +17837,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   }
   try {
     for (const dt of decl.data) {
-      await ensureTemplate(env, dt.name, dt.slots, dt.description);
+      await ensureTemplate4(env, dt.name, dt.slots, dt.description);
     }
   } catch (e) {
     return {
@@ -16650,13 +17971,14 @@ var notes_default = {
   id: "notes",
   name: "\u7B46\u8A18",
   icon: "\u{1F4DD}",
+  version: "0.2.0",
   workflows: [
     {
       name: "create_note",
       description: "\u6536\u4E00\u6BB5 markdown \u5167\u5BB9\uFF08\u53EF\u9078\u65E5\u671F\uFF09\uFF0C\u5BEB\u5165\u4E00\u7B46 note record\uFF0C\u56DE\u50B3\u6574\u7406\u904E\u7684\u4E7E\u6DE8\u6B04\u4F4D \uFF08\u4E0D\u662F KBDB \u539F\u59CB\u56DE\u61C9\u2014\u2014\u90A3\u500B\u8981\u547C\u53EB\u7AEF\u81EA\u5DF1\u525D body \u5B57\u4E32\uFF0C\u4E0D\u8A72\u8B93\u524D\u7AEF\u505A\u9019\u4EF6\u4E8B\uFF09\u3002\n",
       graph: {
-        id: "notes_create",
-        name: "notes_create",
+        id: "create_note",
+        name: "create_note",
         nodes: [
           {
             id: "input",
@@ -16690,11 +18012,16 @@ const rawDate = provided(input.date) ? String(input.date).trim() : now.toISOStri
 if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate)) {
   return { success: false, error: 'date \u5FC5\u9808\u662F YYYY-MM-DD \u683C\u5F0F\uFF08\u6536\u5230\uFF1A' + rawDate + '\uFF09' };
 }
-return { success: true, content: content, date: rawDate, created_at: now.toISOString() };
+// parent_id\uFF1A\u7701\u7565\uFF0F\u7A7A\u5B57\u4E32\uFF1D\u4E00\u5247\u7368\u7ACB\u7B46\u8A18\uFF1B\u975E\u7A7A\uFF1D\u9019\u662F\u67D0\u5247\u7B46\u8A18\u7684\u56DE\u8986\uFF08\u503C\uFF1D\u90A3\u5247\u7684 record_id\uFF09\u3002
+// \u6C92\u6709\u683C\u5F0F\u9650\u5236\uFF08record_id \u7684\u5F62\u72C0\u7531 KBDB \u6C7A\u5B9A\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u9A57\u8B49\u5B83\u7684\u9577\u76F8\uFF09\u2014\u2014
+// \u9019\u6A23\u524D\u7AEF\u4E0D\u7528\u5148\u77E5\u9053 record_id \u7684\u683C\u5F0F\u898F\u5247\uFF0C\u53EA\u8981\u300C\u539F\u6A23\u628A\u4E0A\u4E00\u6B65\u62FF\u5230\u7684 id \u50B3\u56DE\u4F86\u300D\u5C31\u5C0D\u3002
+const parentId = provided(input.parent_id) ? String(input.parent_id).trim() : '';
+return { success: true, content: content, date: rawDate, created_at: now.toISOString(), parent_id: parentId };
 `,
               input: {
                 content: "{{input.content}}",
-                date: "{{input.date}}"
+                date: "{{input.date}}",
+                parent_id: "{{input.parent_id}}"
               },
               limits: {
                 timeout_ms: 1e3,
@@ -16719,7 +18046,8 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
                 values: {
                   date: "{{prep.data.date}}",
                   content: "{{prep.data.content}}",
-                  created_at: "{{prep.data.created_at}}"
+                  created_at: "{{prep.data.created_at}}",
+                  parent_id: "{{prep.data.parent_id}}"
                 }
               }
             }
@@ -16730,7 +18058,7 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
             label: "extract_note",
             componentId: "code",
             data: {
-              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u5BEB\u5165\u6C92\u6709\u56DE\u53EF\u7528\u7684 record' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n};\n",
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u5BEB\u5165\u6C92\u6709\u56DE\u53EF\u7528\u7684 record' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n  parent_id: v.parent_id || '',\n};\n",
               input: {
                 body: "{{write_note.data.body}}"
               },
@@ -16762,10 +18090,10 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
     },
     {
       name: "list_notes",
-      description: "\u53D6\u56DE\u6CB3\u9053\uFF1A\u9810\u8A2D\u5168\u90E8\uFF08\u4F9D created_at \u65B0\u5230\u820A\uFF09\uFF0C\u5E36 date \u53EA\u56DE\u90A3\u4E00\u5929\u7684\u7B46\u8A18\u3002\n",
+      description: "\u53D6\u56DE\u6CB3\u9053\uFF1A\u9810\u8A2D\u5168\u90E8\uFF08\u4F9D created_at \u65B0\u5230\u820A\uFF0C\u53EA\u7B97\u7368\u7ACB\u7B46\u8A18\uFF09\uFF0C\u5E36 date \u53EA\u56DE\u90A3\u4E00\u5929\u7684\u7B46\u8A18\uFF1B \u6BCF\u5247\u7B46\u8A18\u9644\u4E0A\u5B83\u7684\u56DE\u8986\u6E05\u55AE\uFF08replies[]\uFF0C\u4F9D created_at \u7531\u820A\u5230\u65B0\uFF09\u3002\n",
       graph: {
-        id: "notes_list",
-        name: "notes_list",
+        id: "list_notes",
+        name: "list_notes",
         nodes: [
           {
             id: "input",
@@ -16792,7 +18120,7 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
             label: "filter_sort",
             componentId: "code",
             data: {
-              code: "// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\u2014\u2014\n// \u4E0D\u52A0\u9019\u6BB5\u9632\u8B77\u6642\uFF0C\u300C\u4E0D\u5E36 date\uFF1D\u67E5\u5168\u90E8\u300D\u9019\u500B\u6700\u5E38\u7528\u7684\u9810\u8A2D\u8DEF\u5F91\u6703\u975C\u9ED8\u56DE\u50B3 0 \u7B46\uFF0C\n// \u8A73\u7D30\u6210\u56E0\u898B notes-create.yaml \u7684 prep \u7BC0\u9EDE\u540C\u6B3E\u8A3B\u89E3\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u8CBC\u4E00\u6B21\uFF09\u3002\nfunction provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst records = Array.isArray(body.records) ? body.records : [];\nconst wantDate = provided(input.date) ? String(input.date).trim() : '';\nlet notes = records.map(function (r) {\n  const v = r.values || {};\n  return {\n    record_id: r.record_id,\n    date: v.date || '',\n    content: v.content || '',\n    created_at: v.created_at || ''\n  };\n});\nif (wantDate) notes = notes.filter(function (n) { return n.date === wantDate; });\nnotes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });\nreturn { success: true, notes: notes, count: notes.length, date: wantDate || null };\n",
+              code: "// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\u2014\u2014\n// \u4E0D\u52A0\u9019\u6BB5\u9632\u8B77\u6642\uFF0C\u300C\u4E0D\u5E36 date\uFF1D\u67E5\u5168\u90E8\u300D\u9019\u500B\u6700\u5E38\u7528\u7684\u9810\u8A2D\u8DEF\u5F91\u6703\u975C\u9ED8\u56DE\u50B3 0 \u7B46\uFF0C\n// \u8A73\u7D30\u6210\u56E0\u898B notes-create.yaml \u7684 prep \u7BC0\u9EDE\u540C\u6B3E\u8A3B\u89E3\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u8CBC\u4E00\u6B21\uFF09\u3002\nfunction provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst records = Array.isArray(body.records) ? body.records : [];\nconst wantDate = provided(input.date) ? String(input.date).trim() : '';\nconst all = records.map(function (r) {\n  const v = r.values || {};\n  return {\n    record_id: r.record_id,\n    date: v.date || '',\n    content: v.content || '',\n    created_at: v.created_at || '',\n    parent_id: v.parent_id || ''\n  };\n});\n// \u5206\u6210\u300C\u7368\u7ACB\u7B46\u8A18\u300D\uFF08parent_id \u7A7A\uFF09\u8207\u300C\u56DE\u8986\u300D\uFF08parent_id \u6307\u56DE\u67D0\u5247\uFF09\uFF0C\n// \u56DE\u8986\u6309 parent_id \u5206\u6876\uFF0C\u639B\u5230\u5C0D\u61C9\u90A3\u5247\u7684 replies[]\uFF08\u6CB3\u9053\u4E0D\u76F4\u63A5\u5217\u56DE\u8986\uFF09\u3002\nconst repliesByParent = {};\nall.forEach(function (n) {\n  if (!n.parent_id) return;\n  (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);\n});\nObject.keys(repliesByParent).forEach(function (pid) {\n  repliesByParent[pid].sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });\n});\nlet notes = all.filter(function (n) { return !n.parent_id; });\nif (wantDate) notes = notes.filter(function (n) { return n.date === wantDate; });\nnotes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });\nnotes = notes.map(function (n) {\n  return Object.assign({}, n, { replies: repliesByParent[n.record_id] || [] });\n});\nreturn { success: true, notes: notes, count: notes.length, date: wantDate || null };\n",
               input: {
                 body: "{{fetch_notes.data.body}}",
                 date: "{{input.date}}"
@@ -16840,98 +18168,174 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   \u9019\u4E00\u9801\u5C31\u6703\u6539\u6253\u771F\u5F8C\u7AEF\uFF0C\u524D\u7AEF\u7A0B\u5F0F\u78BC\u4E00\u884C\u4E0D\u7528\u6539\uFF08\u547C\u53EB\u4ECB\u9762\u898B\u4E0B\u9762 callAction()\uFF09\u3002
 -->
 <style>
-  :root {
-    color-scheme: light dark;
-    --bg: #0e0f12;
-    --panel: #17191d;
-    --panel-2: #1f2229;
-    --text: #eceef1;
-    --text-dim: #9aa1ad;
-    --accent: #6ea8fe;
-    --accent-weak: rgba(110, 168, 254, 0.18);
-    --danger: #ff8a8a;
-    --border: #2a2d34;
-    --mock-banner: #4a3300;
-  }
+  /*
+   * \u639B\u8F09\u5354\u5B9A v0.2\uFF08inkstone/Arcrun#82\uFF0Cleo 2026-08-24 \u62CD\u677F\uFF09\uFF1A\u9019\u500B App \u7528 \`ui.style: inherit\`
+   * \uFF08app.yaml \u7701\u7565\u8A72\u6B04\uFF1D\u9810\u8A2D\u503C\uFF09\uFF0CPortal \u6703\u628A\u4E0B\u9762\u6240\u6709 \`:root\`\uFF0F\`html\`\uFF0F\`body\` \u9078\u64C7\u5668\u6574\u689D\u4E1F\u6389\uFF0C
+   * \u63DB\u6210\u7956\u5148 \`:host\` \u4E0A\u639B\u7684\u5168\u5C40\u8272\u7968\uFF0F\u5B57\u9AD4\uFF08CSS custom property \u7A7F\u904E shadow \u908A\u754C\u6B63\u5E38\u7E7C\u627F\uFF09\u3002
+   * \u21D2 **\u9019\u88E1\u4E0D\u518D\u81EA\u8A02\u4E00\u5957 --bg/--panel/--accent**\uFF08v0.1 \u90A3\u5957\u5728\u771F Portal \u88E1\u6703\u88AB\u780D\u6389\u3001
+   *   \u7B49\u65BC\u6574\u9801\u6C92\u6709\u984F\u8272\uFF0C\u9019\u6B63\u662F leo 08-24 \u5BE6\u6E2C\u300C\u5B83\u70BA\u4EC0\u9EBC\u4E0D\u5403\u5168\u5C40\u7684 style\uFF1F\u300D\u90A3\u53E5\u8A71\u7684\u75C5\u6839\uFF09\u3002
+   *   \u4E00\u5F8B\u76F4\u63A5\u5F15\u7528 Portal \u7684 CIS token\uFF08\u898B matrix/arcrun console-ui/public/portal/index.html
+   *   \`APP_INHERIT_CSS\`\uFF0F\`:root\` \u5B9A\u7FA9\uFF09\uFF1A
+   *     --ink / --ink-rgb     \u6587\u5B57\u8272\uFF08\u6DFA\u8272\u4E3B\u984C\u6DF1\u3001\u6DF1\u8272\u4E3B\u984C\u6DFA\uFF0C\u96A8\u4E3B\u984C\u81EA\u52D5\u5207\uFF09
+   *     --amber / --amber-rgb \u54C1\u724C\u8272\uFF08\u539F\u672C\u7B46\u8A18\u6309\u9215\u662F\u81EA\u5DF1\u7684\u85CD\u8272\uFF0C\u73FE\u5728\u8DDF\u7CFB\u7D71\u7D71\u4E00\u7528\u5B83\uFF09
+   *     --paper-a / --paper-b \u5E95\u8272\uFF08\u7D19\u7D0B\u96D9\u8272\uFF09
+   *     --bar-bg              \u5DE5\u5177\u5217\uFF0F\u56FA\u5B9A\u689D\u80CC\u666F
+   *   \u672C\u6A5F\u76F4\u63A5\u958B\u9019\u500B\u6A94\u6848\uFF08\u4E0D\u7D93 Portal\uFF09\u6642\u9019\u4E9B\u8B8A\u6578\u4E0D\u5B58\u5728 \u2192 \u700F\u89BD\u5668\u9810\u8A2D\u503C\uFF08\u9ED1\u5B57\u767D\u5E95\uFF09\uFF0C
+   *   \u756B\u9762\u4ECD\u53EF\u8B80\uFF0C\u53EA\u662F\u6C92\u6709\u4E3B\u984C\u8272\u2014\u2014\u9019\u662F\u300C\u8DDF\u96A8\u5168\u5C40\u300D\u8A2D\u8A08\u672C\u8EAB\u7684\u8AA0\u5BE6\u4EE3\u50F9\uFF0C\u4E0D\u662F bug\u3002
+   */
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; height: 100%;
-    background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
   }
   #app { max-width: 640px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
 
   .mock-banner {
-    background: var(--mock-banner); color: #ffd479;
+    background: rgba(var(--amber-rgb, 217, 120, 79), 0.15); color: var(--amber, #b04a2f);
     font-size: 12px; text-align: center; padding: 6px 10px;
-    border-bottom: 1px solid #6b4a00;
+    border-bottom: 1px solid rgba(var(--amber-rgb, 217, 120, 79), 0.4);
   }
 
-  header { padding: 12px 14px 8px; border-bottom: 1px solid var(--border); }
+  header { padding: 12px 14px 8px; border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12); }
   header h1 { font-size: 18px; margin: 0 0 8px; }
 
   .composer { display: flex; flex-direction: column; gap: 8px; }
-  .composer textarea {
+  .composer-textbox { position: relative; }
+  .composer textarea, .fs-textarea {
     width: 100%; min-height: 72px; resize: vertical;
-    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 10px; padding: 10px 12px; font-size: 15px; font-family: inherit;
+    background: rgba(var(--ink-rgb, 23, 24, 26), 0.05); color: var(--ink, inherit);
+    border: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.2);
+    border-radius: 10px; padding: 10px 40px 10px 12px; font-size: 15px; font-family: inherit;
   }
+  .expand-btn {
+    position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: none; border-radius: 6px; cursor: pointer;
+    color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); font-size: 14px;
+  }
+  .expand-btn:hover { background: rgba(var(--ink-rgb, 23, 24, 26), 0.08); }
   .composer-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
-  .composer-row .hint { font-size: 12px; color: var(--text-dim); }
-  .composer-row button {
-    background: var(--accent); color: #0b1220; border: none; border-radius: 999px;
+  .composer-row .hint { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); }
+  .composer-row button, .fs-submit {
+    background: var(--amber, #333); color: #fff; border: none; border-radius: 999px;
     padding: 8px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
   }
-  .composer-row button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .error-line { color: var(--danger); font-size: 13px; min-height: 16px; }
+  .composer-row button:disabled, .fs-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+  .error-line { color: #c0392b; font-size: 13px; min-height: 16px; }
+
+  /* \u2500\u2500 \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo 2026-08-24\uFF1A\u300C\u539F\u672C\u7B46\u8A18\u8F38\u5165\u754C\u9762\u53EF\u4EE5\u5168\u87A2\u5E55\uFF0C\u4F46\u4E5F\u6C92\u6709\u6309\u9215\u300D\uFF0C
+     Mira \u6CB3\u9053\u539F\u7A3F\u7684 Esc \u6536\u8D77\uFF0F\u2318+Enter \u9001\u51FA\u6A21\u5F0F\uFF0C\u898B landing/app/mira/feed/page.tsx
+     EditingArea \u7684 popup \u90A3\u6BB5\u2014\u2014\u9019\u88E1\u7167\u5B83\u7684\u9375\u76E4\u884C\u70BA\u505A\uFF0C\u4E0D\u662F\u65B0\u8A2D\u8A08\uFF09 \u2500\u2500 */
+  .fs-backdrop {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
+    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px;
+  }
+  /* \`[hidden]\` \u7684 UA \u9810\u8A2D\u6A23\u5F0F\uFF08display:none\uFF09specificity \u592A\u4F4E\uFF0C\u84CB\u4E0D\u6389\u4E0A\u9762 .fs-backdrop
+     \u81EA\u5DF1\u90A3\u689D display:flex\uFF08author style \u4E00\u5F8B\u8D0F\u904E UA style\uFF0C\u8DDF\u5BA3\u544A\u9806\u5E8F\u7121\u95DC\uFF09\u2014\u2014
+     \u6C92\u6709\u9019\u689D\uFF0Chidden \u5C6C\u6027\u8A2D\u4E86\u4E5F\u6C92\u7528\uFF0C\u9019\u9846\u80CC\u666F\u6703\u4E00\u76F4\u84CB\u5728\u756B\u9762\u4E0A\u5403\u6389\u6240\u6709\u9EDE\u64CA
+     \uFF08browser-e2e.mjs \u7B2C\u4E00\u6B21\u8DD1\u5C31\u649E\u5230\uFF1A#submitBtn \u9EDE\u4E0D\u5230\uFF0C\u56E0\u70BA #fsBackdrop \u6514\u5728\u6700\u4E0A\u5C64\uFF09\u3002 */
+  .fs-backdrop[hidden] { display: none; }
+  .fs-panel {
+    background: var(--paper-a, #fff); color: var(--ink, inherit); width: 100%; max-width: 560px;
+    max-height: 80vh; border-radius: 14px; display: flex; flex-direction: column;
+    padding: 14px; gap: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+  .fs-header { display: flex; align-items: center; justify-content: space-between; }
+  .fs-header .title { font-size: 15px; font-weight: 600; }
+  .fs-close {
+    background: transparent; border: none; font-size: 16px; cursor: pointer; padding: 4px 8px;
+    color: rgba(var(--ink-rgb, 23, 24, 26), 0.6);
+  }
+  .fs-textarea { flex: 1; min-height: 240px; resize: none; padding: 12px; }
+  .fs-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+  .fs-kbd { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.45); margin-right: auto; }
 
   .calendar-toggle {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 14px; font-size: 13px; color: var(--text-dim); cursor: pointer;
-    border-bottom: 1px solid var(--border);
+    padding: 8px 14px; font-size: 13px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.55); cursor: pointer;
+    border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12);
     user-select: none;
   }
   .calendar-toggle .filter-chip {
-    background: var(--accent-weak); color: var(--accent); border-radius: 999px;
+    background: rgba(var(--amber-rgb, 217, 120, 79), 0.15); color: var(--amber, #b04a2f); border-radius: 999px;
     padding: 3px 10px; font-size: 12px; margin-left: 8px;
   }
 
-  .calendar { padding: 8px 14px 12px; border-bottom: 1px solid var(--border); }
+  .calendar { padding: 8px 14px 12px; border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12); }
   .calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
   .calendar-header button {
-    background: none; border: none; color: var(--text); font-size: 16px; padding: 4px 10px; cursor: pointer;
+    background: none; border: none; color: var(--ink, inherit); font-size: 16px; padding: 4px 10px; cursor: pointer;
   }
   .calendar-header .label { font-size: 14px; font-weight: 600; }
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
-  .cal-dow { font-size: 11px; color: var(--text-dim); padding: 2px 0; }
+  .cal-dow { font-size: 11px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); padding: 2px 0; }
   .cal-cell {
     position: relative; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
-    border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--text);
+    border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--ink, inherit);
   }
   .cal-cell.empty { cursor: default; visibility: hidden; }
-  .cal-cell.today { border: 1px solid var(--accent); }
-  .cal-cell.selected { background: var(--accent); color: #0b1220; font-weight: 700; }
+  .cal-cell.today { border: 1px solid var(--amber, #b04a2f); }
+  .cal-cell.selected { background: var(--amber, #b04a2f); color: #fff; font-weight: 700; }
   .cal-cell .dot {
     position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 50%;
-    background: var(--accent);
+    background: var(--amber, #b04a2f);
   }
-  .cal-cell.selected .dot { background: #0b1220; }
+  .cal-cell.selected .dot { background: #fff; }
 
   .river { flex: 1; overflow-y: auto; padding: 8px 14px 24px; }
-  .river-empty { color: var(--text-dim); font-size: 14px; text-align: center; padding: 40px 10px; }
+  .river-empty { color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); font-size: 14px; text-align: center; padding: 40px 10px; }
+
+  /*
+   * \u2500\u2500 \u5361\u7247\uFF08leo 2026-08-24\uFF1A\u300C\u6BCF\u4E00\u5247\u7B46\u8A18\u662F\u4E00\u5F35\u5361\u7247\uFF0C\u5361\u7247\u7684\u5916\u6846\u6C92\u986F\u793A\u300D\uFF09\u2500\u2500
+   * \u908A\u754C\u4E00\u5F8B\u7528 Portal \u8272\u7968\uFF08--ink-rgb \u7684\u4F4E\u900F\u660E\u5EA6\uFF09\uFF0C\u4E0D\u5BEB\u6B7B\u984F\u8272\u2014\u2014\u9019\u6A23\u6DFA\u8272\uFF0F\u6DF1\u8272\u4E3B\u984C
+   * \u5207\u63DB\u6642\u908A\u754C\u81EA\u52D5\u8DDF\u8457\u63DB\uFF0C\u4E0D\u6703\u6D88\u5931\uFF08\u540C\u4E0A\u65B9\u6A94\u982D\u8AAA\u660E\u7684\u90A3\u500B\u75C5\uFF0C\u4E0D\u91CD\u72AF\u7B2C\u4E8C\u6B21\uFF09\u3002
+   */
   .note-card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    border: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.18); border-radius: 12px;
     padding: 12px 14px; margin-bottom: 10px;
   }
-  .note-card .meta { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .note-card .meta { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); margin-bottom: 6px; }
   .note-card .content { font-size: 15px; line-height: 1.55; word-break: break-word; }
   .note-card .content p { margin: 0 0 8px; }
   .note-card .content p:last-child { margin-bottom: 0; }
   .note-card .content h1, .note-card .content h2, .note-card .content h3 { margin: 0 0 8px; }
   .note-card .content ul { margin: 0 0 8px; padding-left: 20px; }
   .note-card .content code {
-    background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 13px;
+    background: rgba(var(--ink-rgb, 23, 24, 26), 0.08); padding: 1px 5px; border-radius: 4px; font-size: 13px;
   }
+
+  /*
+   * \u2500\u2500 \u56DE\u8986\uFF08leo 2026-08-24\uFF1A\u300C\u539F\u672C\u6BCF\u4E00\u5247\u7B46\u8A18\u90FD\u53EF\u4EE5\u56DE\u8986\u2026\u53EF\u4EE5\u81EA\u5DF1\u8A55\u8AD6\u5C31\u662F\u500B indented \u5167\u5BB9\u300D\uFF09\u2500\u2500
+   * \u540C Mira \u6CB3\u9053\u539F\u7A3F\u7684 .mira-reply-line\uFF0F.mira-reply-nested\uFF08landing/app/mira/mira.css\uFF09\uFF1A
+   * \u6BCF\u4E00\u5247\u56DE\u8986\u662F\u4E00\u9846\u6DE1\u5E95\u7684\u5713\u89D2\u6CE1\u6CE1\uFF0C\u6574\u7D44\u5F80\u53F3\u7E2E\u6392\u3001\u5DE6\u908A\u4E00\u689D\u7D30\u7DDA\u2014\u2014\u4E0D\u662F\u53E6\u4E00\u5F35\u5361\uFF0C
+   * \u9019\u6A23\u8996\u89BA\u4E0A\u4E00\u773C\u770B\u5F97\u51FA\u300C\u9019\u662F\u639B\u5728\u4E0A\u9762\u90A3\u5247\u5E95\u4E0B\u7684\u300D\uFF0C\u4E0D\u662F\u5E73\u884C\u7684\u7368\u7ACB\u7B46\u8A18\u3002
+   */
+  .note-footer { display: flex; align-items: center; gap: 10px; padding-top: 6px; margin-top: 4px; }
+  .reply-toggle {
+    background: transparent; border: none; cursor: pointer; padding: 2px 0;
+    font-size: 13px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.55);
+  }
+  .reply-toggle:hover { color: var(--amber, #b04a2f); }
+  .replies { margin-top: 8px; margin-left: 16px; padding-left: 10px; border-left: 2px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12); }
+  .reply-line {
+    background: rgba(var(--ink-rgb, 23, 24, 26), 0.05); border-radius: 14px;
+    padding: 7px 12px; margin-bottom: 6px; font-size: 13.5px; line-height: 1.5;
+  }
+  .reply-line .meta { font-size: 11px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.45); margin-bottom: 2px; }
+  .reply-composer { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+  .reply-composer textarea {
+    width: 100%; min-height: 44px; resize: vertical;
+    background: rgba(var(--ink-rgb, 23, 24, 26), 0.05); color: var(--ink, inherit);
+    border: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.2);
+    border-radius: 10px; padding: 8px 10px; font-size: 14px; font-family: inherit;
+  }
+  .reply-composer-row { display: flex; gap: 8px; justify-content: flex-end; }
+  .reply-composer-row button {
+    background: transparent; color: rgba(var(--ink-rgb, 23, 24, 26), 0.6); border: none;
+    border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+  }
+  .reply-composer-row button.primary { background: var(--amber, #b04a2f); color: #fff; }
+  .reply-composer-row button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -16943,7 +18347,10 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   <header>
     <h1>\u7B46\u8A18</h1>
     <div class="composer">
-      <textarea id="composerInput" placeholder="\u5BEB\u9EDE\u4EC0\u9EBC\u2026\u2026\u652F\u63F4 Markdown\uFF08# \u6A19\u984C\u3001**\u7C97\u9AD4**\u3001*\u659C\u9AD4*\u3001- \u6E05\u55AE\u3001[\u9023\u7D50](\u7DB2\u5740)\uFF09"></textarea>
+      <div class="composer-textbox">
+        <textarea id="composerInput" placeholder="\u5BEB\u9EDE\u4EC0\u9EBC\u2026\u2026\u652F\u63F4 Markdown\uFF08# \u6A19\u984C\u3001**\u7C97\u9AD4**\u3001*\u659C\u9AD4*\u3001- \u6E05\u55AE\u3001[\u9023\u7D50](\u7DB2\u5740)\uFF09\uFF08Esc \u6536\u8D77\u3001\u2318+Enter \u9001\u51FA\uFF09"></textarea>
+        <button type="button" class="expand-btn" id="composerExpandBtn" title="\u5168\u87A2\u5E55\u7DE8\u8F2F" aria-label="\u5168\u87A2\u5E55\u7DE8\u8F2F">\u26F6</button>
+      </div>
       <div class="composer-row">
         <span class="hint" id="composerHint"></span>
         <button id="submitBtn" type="button">\u9001\u51FA</button>
@@ -16951,6 +18358,21 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       <div class="error-line" id="composerError"></div>
     </div>
   </header>
+
+  <!-- \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo \u53CD\u994B\u300C\u539F\u672C\u53EF\u4EE5\u5168\u87A2\u5E55\u300D\uFF09\uFF1AEsc \u6536\u8D77\uFF0C\u6536\u8D77\u6642\u628A\u5167\u5BB9\u540C\u6B65\u56DE\u4E3B\u8F38\u5165\u6846\uFF0C\u4E0D\u662F\u53E6\u4E00\u4EFD\u8349\u7A3F\u3002 -->
+  <div class="fs-backdrop" id="fsBackdrop" hidden>
+    <div class="fs-panel">
+      <div class="fs-header">
+        <span class="title">\u5BEB\u7B46\u8A18</span>
+        <button type="button" class="fs-close" id="fsCloseBtn" title="\u6536\u8D77\uFF08Esc\uFF09" aria-label="\u6536\u8D77">\u2715</button>
+      </div>
+      <textarea class="fs-textarea" id="fsTextarea"></textarea>
+      <div class="fs-footer">
+        <span class="fs-kbd">Esc \u6536\u8D77 \xB7 \u2318+Enter \u9001\u51FA</span>
+        <button type="button" class="fs-submit" id="fsSubmitBtn">\u9001\u51FA</button>
+      </div>
+    </div>
+  </div>
 
   <div class="calendar-toggle" id="calendarToggle">
     <span>
@@ -17154,11 +18576,15 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       if (!content) return { error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u7B46\u8A18\u81F3\u5C11\u8981\u6709\u5167\u5BB9\uFF09' };
       var date = (params && params.date) ? String(params.date).trim() : todayISO();
       if (!isValidDateStr(date)) return { error: 'date \u5FC5\u9808\u662F YYYY-MM-DD \u683C\u5F0F\uFF08\u6536\u5230\uFF1A' + date + '\uFF09' };
+      // parent_id\uFF1A\u7701\u7565\uFF0F\u7A7A\u5B57\u4E32\uFF1D\u7368\u7ACB\u7B46\u8A18\uFF1B\u975E\u7A7A\uFF1D\u9019\u662F\u67D0\u5247\u7B46\u8A18\u7684\u56DE\u8986\uFF08\u540C\u771F\u5F8C\u7AEF notes-create.yaml
+      // \u7684 prep \u7BC0\u9EDE\u5951\u7D04\u2014\u2014mock \u8DDF\u771F\u5F8C\u7AEF\u5FC5\u9808\u662F\u540C\u4E00\u4EFD\u5951\u7D04\uFF0C\u4E0D\u80FD\u5404\u81EA\u8868\u8FF0\uFF09\u3002
+      var parentId = (params && params.parent_id != null) ? String(params.parent_id).trim() : '';
       var note = {
         record_id: idGen(),
         date: date,
         content: content,
         created_at: new Date().toISOString(),
+        parent_id: parentId,
       };
       var notes = storage.load();
       notes.push(note);
@@ -17168,8 +18594,27 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
 
     function listNotes(params) {
       var wantDate = (params && params.date) ? String(params.date).trim() : '';
-      var notes = storage.load();
-      var filtered = sortNotesDesc(filterByDate(notes, wantDate));
+      var all = storage.load();
+      // \u540C\u771F\u5F8C\u7AEF notes-list.yaml \u7684 filter_sort\uFF1A\u5206\u7368\u7ACB\u7B46\u8A18\uFF0F\u56DE\u8986\uFF0C\u56DE\u8986\u639B\u5728\u5C0D\u61C9\u90A3\u5247\u7684
+      // replies[]\uFF08\u4F9D created_at \u7531\u820A\u5230\u65B0\uFF09\uFF0C\u6CB3\u9053\u53EA\u5217\u7368\u7ACB\u7B46\u8A18\u3002
+      var repliesByParent = {};
+      all.forEach(function (n) {
+        if (!n || !n.parent_id) return;
+        (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);
+      });
+      Object.keys(repliesByParent).forEach(function (pid) {
+        repliesByParent[pid].sort(function (a, b) {
+          var ca = (a && a.created_at) || ''; var cb = (b && b.created_at) || '';
+          return ca < cb ? -1 : (ca > cb ? 1 : 0);
+        });
+      });
+      var top = all.filter(function (n) { return n && !n.parent_id; });
+      var filtered = sortNotesDesc(filterByDate(top, wantDate)).map(function (n) {
+        var copy = {};
+        for (var k in n) if (Object.prototype.hasOwnProperty.call(n, k)) copy[k] = n[k];
+        copy.replies = repliesByParent[n.record_id] || [];
+        return copy;
+      });
       return {
         ok: true,
         result: { success: true, data: { notes: filtered, count: filtered.length, date: wantDate || null } },
@@ -17311,11 +18756,13 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
 
   // \u2500\u2500 \u72C0\u614B \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   var state = {
-    notes: [],          // \u76EE\u524D\u62FF\u5230\u7684\u5168\u90E8\u7B46\u8A18\uFF08\u672A\u904E\u6FFE\uFF09
+    notes: [],          // \u76EE\u524D\u62FF\u5230\u7684\u5168\u90E8\u7B46\u8A18\uFF08\u672A\u904E\u6FFE\uFF0C\u6BCF\u5247\u5E36 replies[]\uFF0C\u898B notes-list.yaml\uFF09
     selectedDate: null, // \u5C0F\u65E5\u66C6\u9078\u4E2D\u7684\u65E5\u671F\uFF1Bnull = \u986F\u793A\u5168\u90E8
     calYear: new Date().getFullYear(),
     calMonth: new Date().getMonth(),
     calendarOpen: false,
+    openReplyFor: null,   // \u76EE\u524D\u6253\u958B\u56DE\u8986\u8F38\u5165\u6846\u7684\u90A3\u5247 record_id\uFF1Bnull = \u90FD\u6C92\u958B
+    replySubmitting: false,
   };
 
   // \u2500\u2500 DOM \u53C3\u7167 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -17331,12 +18778,19 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   var filterChip = $('filterChip');
   var calLabel = $('calLabel');
   var calGrid = $('calGrid');
+  var composerExpandBtn = $('composerExpandBtn');
+  var fsBackdrop = $('fsBackdrop');
+  var fsTextarea = $('fsTextarea');
+  var fsCloseBtn = $('fsCloseBtn');
+  var fsSubmitBtn = $('fsSubmitBtn');
 
   // \u540C\u300C\u6642\u5E8F\u9677\u9631\u300D\u7406\u7531\uFF1A\u9019\u88E1\u4E5F\u4E0D\u80FD\u540C\u6B65\u5224\u65B7\u2014\u2014\u5EF6\u5230 setTimeout(0) \u4E4B\u5F8C\uFF08loadNotes \u90A3\u500B
   // \u56DE\u547C\u88E1\uFF09\u624D\u6C7A\u5B9A\u6A6B\u5E45\u8981\u4E0D\u8981\u986F\u793A\uFF0C\u6B64\u6642 window.arcrunApp \u624D\u78BA\u5B9A\u5DF2\u7D93\u88AB Portal \u8CE6\u503C\u904E\u3002
 
   // \u2500\u2500 \u6CB3\u9053\u6E32\u67D3 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
+  // \u6CB3\u9053\u662F Facebook \u6CB3\u9053\u5F0F\uFF08leo 2026-08-24 \u53CD\u994B\uFF09\uFF1A\u6BCF\u4E00\u5247\u7B46\u8A18\u662F\u4E00\u5F35\u5361\u7247\uFF08\u898B\u4E0A\u65B9 CSS
+  // .note-card \u7684\u908A\u6846\uFF09\uFF0C\u56DE\u8986\u662F indented \u639B\u5728\u8A72\u5247\u5E95\u4E0B\uFF0C\u4E0D\u662F\u5E73\u884C\u7684\u7368\u7ACB\u5361\u7247\u3002
   function renderRiver() {
     var list = state.selectedDate ? NotesCore.filterByDate(state.notes, state.selectedDate) : state.notes.slice();
     list = NotesCore.sortNotesDesc(list);
@@ -17348,14 +18802,107 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       return;
     }
 
-    var html = list.map(function (n) {
-      var meta = n.date + '\u3000' + formatTime(n.created_at);
-      return '<div class="note-card">' +
-        '<div class="meta">' + NotesCore.escapeHtml(meta) + '</div>' +
-        '<div class="content">' + NotesCore.renderMarkdown(n.content) + '</div>' +
-        '</div>';
-    }).join('');
+    var html = list.map(renderNoteCard).join('');
     river.innerHTML = html;
+
+    // \u56DE\u8986\u8F38\u5165\u6846\u6253\u958B\u6642\uFF0C\u5E36\u8457\u5B83\u4E00\u8D77\u91CD\u7E6A\uFF08renderRiver \u662F\u6BCF\u6B21 loadNotes/selectDate \u90FD\u6703\u547C\u53EB\u7684
+    // \u5168\u91CF\u91CD\u7E6A\uFF0C\u82E5\u4E0D\u5728\u9019\u88E1\u628A\u6E38\u6A19\u653E\u56DE\u53BB\uFF0C\u4F7F\u7528\u8005\u9EDE\u958B\u56DE\u8986\u6846\u5F8C\u6BCF\u6B21\u5217\u8868\u66F4\u65B0\u90FD\u6703\u5931\u7126\uFF09\u3002
+    if (state.openReplyFor) {
+      var box = river.querySelector('.reply-composer textarea[data-parent="' + state.openReplyFor + '"]');
+      if (box) box.focus();
+    }
+  }
+
+  function renderNoteCard(n) {
+    var meta = n.date + '\u3000' + formatTime(n.created_at);
+    var replies = n.replies || [];
+    var repliesHtml = replies.length ? (
+      '<div class="replies">' + replies.map(renderReplyLine).join('') + '</div>'
+    ) : '';
+    var isOpen = state.openReplyFor === n.record_id;
+    var replyComposerHtml = isOpen ? renderReplyComposer(n.record_id) : '';
+    return '<div class="note-card" data-note-id="' + attr(n.record_id) + '">' +
+      '<div class="meta">' + NotesCore.escapeHtml(meta) + '</div>' +
+      '<div class="content">' + NotesCore.renderMarkdown(n.content) + '</div>' +
+      '<div class="note-footer">' +
+        '<button type="button" class="reply-toggle" data-reply-toggle="' + attr(n.record_id) + '">' +
+          (replies.length ? '\u56DE\u8986\uFF08' + replies.length + '\uFF09' : '\u56DE\u8986') +
+        '</button>' +
+      '</div>' +
+      repliesHtml +
+      replyComposerHtml +
+      '</div>';
+  }
+
+  function renderReplyLine(r) {
+    return '<div class="reply-line">' +
+      '<div class="meta">' + NotesCore.escapeHtml(formatTime(r.created_at)) + '</div>' +
+      '<div class="content">' + NotesCore.renderMarkdown(r.content) + '</div>' +
+      '</div>';
+  }
+
+  function renderReplyComposer(parentId) {
+    return '<div class="reply-composer">' +
+      '<textarea data-parent="' + attr(parentId) + '" placeholder="\u5BEB\u56DE\u8986\u2026\u2026\uFF08\u2318+Enter \u9001\u51FA\u3001Esc \u6536\u8D77\uFF09"></textarea>' +
+      '<div class="reply-composer-row">' +
+        '<button type="button" data-reply-cancel="' + attr(parentId) + '">\u53D6\u6D88</button>' +
+        '<button type="button" class="primary" data-reply-submit="' + attr(parentId) + '"' +
+          (state.replySubmitting ? ' disabled' : '') + '>' +
+          (state.replySubmitting ? '\u9001\u51FA\u4E2D\u2026' : '\u9001\u51FA') +
+        '</button>' +
+      '</div>' +
+      '</div>';
+  }
+
+  function attr(s) { return NotesCore.escapeHtml(String(s == null ? '' : s)); }
+
+  river.addEventListener('click', function (e) {
+    var toggleBtn = e.target.closest('[data-reply-toggle]');
+    if (toggleBtn) {
+      var id = toggleBtn.getAttribute('data-reply-toggle');
+      state.openReplyFor = state.openReplyFor === id ? null : id;
+      renderRiver();
+      return;
+    }
+    var cancelBtn = e.target.closest('[data-reply-cancel]');
+    if (cancelBtn) {
+      state.openReplyFor = null;
+      renderRiver();
+      return;
+    }
+    var submitBtnEl = e.target.closest('[data-reply-submit]');
+    if (submitBtnEl) {
+      submitReply(submitBtnEl.getAttribute('data-reply-submit'));
+    }
+  });
+
+  river.addEventListener('keydown', function (e) {
+    var ta = e.target.closest('.reply-composer textarea');
+    if (!ta) return;
+    var parentId = ta.getAttribute('data-parent');
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); submitReply(parentId); return; }
+    if (e.key === 'Escape') { e.preventDefault(); state.openReplyFor = null; renderRiver(); }
+  });
+
+  function submitReply(parentId) {
+    var ta = river.querySelector('.reply-composer textarea[data-parent="' + parentId + '"]');
+    var content = ta ? ta.value : '';
+    if (!content.trim()) return; // \u7A7A\u767D\u56DE\u8986\u4E0D\u9001\uFF0C\u975C\u9ED8\u64CB\u6389\uFF08\u540C\u4E3B composer \u7684\u300C\u4E0D\u80FD\u662F\u7A7A\u7684\u300D\u898F\u5247\uFF09
+    var parentNote = state.notes.filter(function (n) { return n.record_id === parentId; })[0];
+    var targetDate = (parentNote && parentNote.date) || NotesCore.todayISO();
+    state.replySubmitting = true;
+    renderRiver();
+    callAction('create_note', { content: content, date: targetDate, parent_id: parentId }).then(function (resp) {
+      state.replySubmitting = false;
+      var res = NotesCore.unwrapActionResult(resp);
+      if (!res || !res.success) {
+        renderRiver();
+        window.alert('\u56DE\u8986\u9001\u51FA\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4'));
+        return;
+      }
+      state.openReplyFor = null;
+      loadNotes();
+    });
   }
 
   function formatTime(iso) {
@@ -17463,6 +19010,41 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   });
   composerHint.textContent = '\u2318/Ctrl + Enter \u9001\u51FA';
 
+  // \u2500\u2500 \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo 2026-08-24\uFF1A\u300C\u539F\u672C\u7B46\u8A18\u8F38\u5165\u754C\u9762\u53EF\u4EE5\u5168\u87A2\u5E55\uFF0C\u4F46\u4E5F\u6C92\u6709\u6309\u9215\u300D\uFF09\u2500\u2500\u2500
+  //
+  // \u540C\u4E00\u4EFD\u8349\u7A3F\uFF0C\u4E0D\u662F\u5169\u4EFD\uFF1A\u5C55\u958B\u6642\u628A\u4E3B\u8F38\u5165\u6846\u7684\u503C\u5E36\u904E\u53BB\uFF0C\u6536\u8D77\uFF08Esc \u6216 \u2715\uFF09\u6642\u628A\u5168\u87A2\u5E55\u6846
+  // \u7684\u503C\u5E36\u56DE\u4E3B\u8F38\u5165\u6846\u2014\u2014\u4F7F\u7528\u8005\u4E2D\u9014\u5207\u63DB\u4E0D\u6703\u767C\u73FE\u5167\u5BB9\u8B8A\u4E86\uFF0C\u53EA\u662F\u63DB\u4E86\u500B\u66F4\u5927\u7684\u6846\u7DE8\u8F2F\u3002
+  // \u9001\u51FA\u53EF\u4EE5\u76F4\u63A5\u5728\u5168\u87A2\u5E55\u6846\u88E1\u6309 \u2318+Enter\uFF0C\u4E0D\u5FC5\u5148\u6536\u8D77\u518D\u6309\u4E3B\u9001\u51FA\u9375\u3002
+
+  function openFullscreen() {
+    fsTextarea.value = composerInput.value;
+    fsBackdrop.hidden = false;
+    setTimeout(function () { fsTextarea.focus(); }, 0);
+  }
+  function closeFullscreen(syncBack) {
+    if (syncBack !== false) composerInput.value = fsTextarea.value;
+    fsBackdrop.hidden = true;
+  }
+  composerExpandBtn.addEventListener('click', openFullscreen);
+  fsCloseBtn.addEventListener('click', function () { closeFullscreen(true); });
+  fsBackdrop.addEventListener('click', function (e) {
+    if (e.target === fsBackdrop) closeFullscreen(true); // \u9EDE\u80CC\u666F\uFF1D\u8DDF Esc \u4E00\u6A23\u6536\u8D77\uFF0C\u4E0D\u662F\u53D6\u6D88
+  });
+  fsTextarea.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.preventDefault(); closeFullscreen(true); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      composerInput.value = fsTextarea.value;
+      closeFullscreen(false); // \u503C\u5DF2\u7D93\u540C\u6B65\u904E\u4E86\uFF0C\u6536\u8D77\u6642\u4E0D\u8981\u7528\uFF08\u53EF\u80FD\u5DF2\u88AB\u6E05\u7A7A\u7684\uFF09fsTextarea \u518D\u84CB\u4E00\u6B21
+      submitNote();
+    }
+  });
+  fsSubmitBtn.addEventListener('click', function () {
+    composerInput.value = fsTextarea.value;
+    closeFullscreen(false);
+    submitNote();
+  });
+
   // \u2500\u2500 \u8F09\u5165\u6CB3\u9053 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
   function loadNotes() {
@@ -17496,19 +19078,187 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   data: [
     {
       name: "note",
-      description: "Arcrun \u7B46\u8A18 App \u7684\u4E00\u5247\u7B46\u8A18\u2014\u2014\u6CB3\u9053\u5F0F\uFF1A\u65B0\u7684\u5728\u6700\u4E0A\u9762\uFF0C\u5C0F\u65E5\u66C6\u4F9D date \u7BE9\u9078\u904E\u53BB\u7684\u8A18\u9304\u3002\n",
+      description: "Arcrun \u7B46\u8A18 App \u7684\u4E00\u5247\u7B46\u8A18\u2014\u2014\u6CB3\u9053\u5F0F\uFF1A\u65B0\u7684\u5728\u6700\u4E0A\u9762\uFF0C\u5C0F\u65E5\u66C6\u4F9D date \u7BE9\u9078\u904E\u53BB\u7684\u8A18\u9304\u3002 \u4E00\u5247\u7B46\u8A18\u53EF\u4EE5\u6709\u56DE\u8986\uFF08parent_id \u6307\u56DE\u5B83\uFF09\uFF0C\u56DE\u8986\u662F indented \u639B\u5728\u8A72\u5247\u5E95\u4E0B\uFF0C\u4E0D\u662F\u7368\u7ACB\u7684\u6CB3\u9053\u9805\u76EE\u3002\n",
       slots: [
         "date",
         "content",
-        "created_at"
+        "created_at",
+        "parent_id"
       ]
     }
   ],
   actions: [
     "create_note",
     "list_notes"
-  ],
-  version: "1.0.0"
+  ]
+};
+
+// workflows/global_index.app.json
+var global_index_app_default = {
+  id: "global_index",
+  name: "\u958B\u5834\u5168\u5C40\u7E3D\u5716",
+  version: "0.1.1",
+  icon: "\u{1F9ED}",
+  workflows: [
+    {
+      name: "global_index",
+      graph: {
+        id: "global_index",
+        name: "global_index",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "// \u{1F534} 2026-09-26\uFF08InkStoneCo#17 comment 11577\uFF09\uFF1A\u4E0D\u5E36\u53C3\u6578\u89F8\u767C\u6642 Gitea 404 \u7684\u6839\u56E0\u3002\n// graph-executor.ts interpolateString() \u5C0D\u300C\u6574\u6BB5\u5C31\u662F\u55AE\u4E00 {{x}} \u5F15\u7528\u300D\u4E14 x \u89E3\u4E0D\u51FA\u4F86\n// \uFF08trigger body \u6C92\u5E36\u9019\u500B key\uFF09\u6642\uFF0C\u56DE\u7684\u662F**\u5B57\u9762\u5B57\u4E32** \"{{input.org}}\"\uFF0C\u4E0D\u662F undefined\n// \u4E5F\u4E0D\u662F\u7A7A\u5B57\u4E32\uFF08`return val === undefined ? s : val` \u90A3\u500B s \u5C31\u662F\u539F\u6A23\u6A21\u677F\u6587\u5B57\uFF09\u3002\n// \u820A\u5BEB\u6CD5 `input.org == null ? '' : input.org` \u628A\u9019\u500B\u975E null \u7684\u5B57\u9762\u5B57\u4E32\u7576\u6210\u300C\u4F7F\u7528\u8005\u586B\u4E86\u503C\u300D\uFF0C\n// trim() \u5F8C\u4ECD\u662F\u975E\u7A7A\u5B57\u4E32 \u21D2 `|| 'inkstone'` \u7684\u9810\u8A2D\u503C\u6C38\u9060\u4E0D\u6703\u751F\u6548 \u21D2 org \u8B8A\u6210\n// \u5B57\u9762 \"{{input.org}}\" \u9019\u4E32\u5783\u573E\uFF0C\u88AB\u585E\u9032\u4E0B\u9762\u7684 `/orgs/{{prep.data.org}}/repos` \u8DEF\u5F91\uFF0C\n// Gitea \u5C0D\u4E0D\u4E0A\u4EFB\u4F55 route \u56DE 404\uFF08\u6307\u5411 /api/swagger \u7684\u90A3\u500B\u6CDB\u7528 404\uFF09\u3002\n// \u4FEE\u6CD5\uFF1A\u5148\u904E\u6FFE\u6389\u300C\u6574\u6BB5\u9084\u662F\u6C92\u89E3\u958B\u7684\u6A21\u677F\u4F54\u4F4D\u7B26\u300D\u9019\u500B\u72C0\u614B\uFF0C\u518D\u5957\u9810\u8A2D\u503C\u3002\nfunction unresolved(v) { return typeof v === 'string' && /^\\{\\{.*\\}\\}$/.test(v); }\nvar orgRaw = (input.org == null || unresolved(input.org)) ? '' : input.org;\nvar org = String(orgRaw).trim() || 'inkstone';\nvar fullRaw = (input.full == null || unresolved(input.full)) ? '0' : input.full;\nvar full = String(fullRaw) === '1';\nreturn { success: true, org: org, full: full ? 1 : 0 };\n",
+              input: {
+                org: "{{input.org}}",
+                full: "{{input.full}}"
+              },
+              limits: {
+                timeout_ms: 2e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "fetch_repos",
+            type: "Component",
+            componentId: "gitea_read",
+            label: "fetch_repos",
+            data: {
+              _path: "/orgs/{{prep.data.org}}/repos?limit=50",
+              gitea_token: "{{credential.gitea_token}}"
+            }
+          },
+          {
+            id: "plan",
+            type: "Component",
+            componentId: "code",
+            label: "plan",
+            data: {
+              code: "var raw = input.repos_raw;\nif (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }\nif (!Array.isArray(raw)) { return { success: false, error: 'Gitea /orgs/' + input.org + '/repos \u6C92\u6709\u56DE\u4E00\u500B repo \u9663\u5217\uFF08\u62FF\u5230 ' + (typeof input.repos_raw) + '\uFF09' }; }\nvar repos = raw.map(function (r) {\n  return { name: String(r.name || ''), open: Number(r.open_issues_count) || 0, archived: !!r.archived };\n}).filter(function (r) { return r.name; });\nvar total = 0;\nrepos.forEach(function (r) { total += r.open; });\nvar PER = 50;\nvar n = Math.ceil(total / PER);\nif (n < 1) n = 1;\nif (n > 40) n = 40;\nvar pages = [];\nfor (var i = 1; i <= n; i++) pages.push({ n: i });\nreturn { success: true, org: input.org, repos: repos, repo_count: repos.length, expected_open: total, page_count: n, pages: pages };\n",
+              input: {
+                org: "{{prep.data.org}}",
+                repos_raw: "{{fetch_repos.data}}"
+              },
+              limits: {
+                timeout_ms: 3e3,
+                max_output_bytes: 262144
+              }
+            }
+          },
+          {
+            id: "fetch_page",
+            type: "Component",
+            componentId: "gitea_read",
+            label: "fetch_page",
+            data: {
+              _path: "/repos/issues/search?state=open&owner={{prep.data.org}}&type=issues&limit=50&page={{page.n}}",
+              gitea_token: "{{credential.gitea_token}}"
+            }
+          },
+          {
+            id: "fetch_map",
+            type: "Component",
+            componentId: "http_request",
+            label: "fetch_map",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/map",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "fetch_ticket_lib",
+            type: "Component",
+            componentId: "http_request",
+            label: "fetch_ticket_lib",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/entries/library-cards?library=tickets&limit=1",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "assemble",
+            type: "Component",
+            componentId: "code",
+            label: "assemble",
+            data: {
+              code: "function one(s) { return String(s == null ? '' : s).replace(/\\s+/g, ' ').trim(); }\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nvar org = String(input.org || 'inkstone');\nvar full = String(input.full) === '1';\nvar repos = Array.isArray(input.repos) ? input.repos : [];\nvar expected = Number(input.expected_open) || 0;\n\n// \u7968\uFF1A\u628A\u6BCF\u4E00\u9801\u7684\u7D50\u679C\u6524\u5E73\uFF1B\u4E00\u9801\u58DE\u6389\u5C31\u8A18\u4E0B\u4F86\uFF0C\u4E0D\u5047\u88DD\u90A3\u9801\u662F\u7A7A\u7684\nvar pageResults = Array.isArray(input.pages) ? input.pages : [];\nvar rows = [];\nvar badPages = 0;\npageResults.forEach(function (r) {\n  var arr = r && r.success !== false ? parse(r.data) : null;\n  if (!Array.isArray(arr)) { badPages++; return; }\n  arr.forEach(function (i) {\n    if (!i || i.pull_request) return;\n    var repo = (i.repository && i.repository.name) || '?';\n    var labs = (i.labels || []).map(function (l) { return l.name; });\n    rows.push({ repo: repo, n: i.number, t: i.title, l: labs, m: i.milestone ? i.milestone.title : '', c: i.created_at, u: i.updated_at });\n  });\n});\nif (rows.length === 0) { return { success: false, error: '\u7968 index \u4E00\u5F35\u7968\u90FD\u7B97\u4E0D\u51FA\u4F86\uFF08' + pageResults.length + ' \u9801\u3001' + badPages + ' \u9801\u58DE\uFF09\u2192 \u4E0D\u6CE8\u5165\uFF08\u5BE7\u53EF\u51B7\u555F\u52D5\uFF0C\u4E0D\u8981\u6CE8\u5165\u5783\u573E\uFF09' }; }\n\n// \u77E5\u8B58\uFF1A\u85CF\u66F8\u5730\u5716\nvar libs = null;\ntry { var m = parse(input.map_body); if (m && Array.isArray(m.libraries)) libs = m.libraries; } catch (e) { libs = null; }\n// \u7968\u5EAB\u76EE\u9304\nvar tl = parse(input.ticket_lib_body);\nvar ticketTotal = tl && tl.success !== false && typeof tl.total === 'number' ? tl.total : null;\nvar ticketLatest = tl && Array.isArray(tl.cards) && tl.cards[0] ? tl.cards[0] : null;\n\nvar ACT = { 's/doing': 1, 's/stage': 1, 's/triage': 1 };\nvar NEXT = { 's/todo': 1 };\nfunction stateOf(r) {\n  var s = r.l.filter(function (x) { return x.indexOf('s/') === 0; });\n  if (s.length === 0) return 'unlabeled';\n  for (var i = 0; i < s.length; i++) { if (ACT[s[i]]) return 'active'; }\n  for (var j = 0; j < s.length; j++) { if (NEXT[s[j]]) return 'next'; }\n  return 'later';\n}\nfunction rank(r) {\n  var a = r.l.indexOf('s/doing') >= 0 ? 0 : (r.l.indexOf('s/stage') >= 0 ? 1 : 2);\n  var b = r.l.indexOf('p/high') >= 0 ? 0 : 1;\n  return a * 10 + b;\n}\nfunction byRepo(list) {\n  var g = {};\n  list.forEach(function (r) { (g[r.repo] = g[r.repo] || []).push(r); });\n  return g;\n}\nvar act = [], next = [], later = [], unl = [];\nrows.forEach(function (r) {\n  var st = stateOf(r);\n  if (st === 'active') act.push(r); else if (st === 'next') next.push(r); else if (st === 'unlabeled') unl.push(r); else later.push(r);\n});\nact.sort(function (x, y) { return (rank(x) - rank(y)) || (x.repo < y.repo ? -1 : x.repo > y.repo ? 1 : 0) || (x.n - y.n); });\n\nvar NOW = Date.now();\nvar DAY = 24 * 60 * 60 * 1000;\nfunction ms(s) { var t = Date.parse(s || ''); return isNaN(t) ? 0 : t; }\nvar fresh = rows.filter(function (r) { return ms(r.c) > NOW - DAY || ms(r.u) > NOW - DAY; });\nfresh.sort(function (x, y) { return (ms(y.u) || ms(y.c)) - (ms(x.u) || ms(x.c)); });\n\nvar L = [];\nL.push('# \u5168\u5C40\u7E3D\u5716\uFF1A\u73FE\u5728\u6709\u54EA\u4E9B\u7968\u3001\u5EAB\u88E1\u6709\u54EA\u4E9B\u77E5\u8B58');\nL.push('\uFF08\u96F2\u7AEF\u73FE\u7B97 ' + new Date().toISOString() + '\u3000\xB7\u3000\u771F\u76F8\u6E90\uFF1DGitea `' + org + '/*`\uFF0C\u9019\u4EFD\u662F\u6295\u5F71\uFF0C\u6539\u5B83\u6C92\u7528\uFF0C\u4E0B\u6B21\u958B\u5834\u6703\u91CD\u7B97\uFF09');\nL.push('');\nif (fresh.length) {\n  L.push('## \u{1F195} \u904E\u53BB 24 \u5C0F\u6642\u6709 ' + fresh.length + ' \u5F35\u7968\u52D5\u904E\u2014\u2014**\u898F\u5283\u524D\u5148\u770B\u9019\u6BB5**');\n  fresh.slice(0, 12).forEach(function (r) {\n    var isNew = ms(r.c) > NOW - DAY;\n    L.push('- ' + (isNew ? '**\u65B0\u958B** ' : '\u8B8A\u52D5 ') + '`' + org + '/' + r.repo + '#' + r.n + '` \u2014 ' + one(r.t));\n  });\n  if (fresh.length > 12) { L.push('- \u2026\u9084\u6709 ' + (fresh.length - 12) + ' \u5F35\uFF08\u6309\u6700\u5F8C\u8B8A\u52D5\u6642\u9593\u6392\uFF0C\u4E0A\u9762\u662F\u6700\u8FD1\u7684\uFF09'); }\n  L.push('');\n}\n\n// \u4E00\u3001\u7968\uFF1A\u5148\u8B1B\u6BCF\u500B repo \u6709\u5E7E\u5F35\uFF08leo\uFF1A\u300C\u4F60\u4E0D\u77E5\u9053\u54EA\u500B repo \u6709\u54EA\u4E9B\u7968\u300D\u2014\u2014\u9019\u4E00\u884C\u5C31\u662F\u89E3\u90A3\u53E5\u7684\uFF09\nvar withIssues = repos.filter(function (r) { return r.open > 0; }).sort(function (a, b) { return b.open - a.open || (a.name < b.name ? -1 : 1); });\nvar zero = repos.filter(function (r) { return r.open === 0; }).map(function (r) { return r.name; });\nL.push('## \u4E00\u3001\u7968 \u2014 Gitea `' + org + '` ' + repos.length + ' \u500B repo\uFF0C' + withIssues.length + ' \u500B\u6709\u7968\uFF0C\u958B\u8457 ' + rows.length + ' \u5F35');\nL.push('');\nL.push('### \u6BCF\u500B repo \u7684 open \u7968\u6578');\nwithIssues.forEach(function (r) { L.push('- `' + org + '/' + r.name + '` ' + r.open + ' \u5F35'); });\nif (zero.length) L.push('- 0 \u5F35\uFF1A' + zero.map(function (n) { return '`' + n + '`'; }).join(' '));\nif (expected && expected !== rows.length) {\n  L.push('');\n  L.push('> \u26A0\uFE0F repo \u7D71\u8A08\u8AAA\u6709 ' + expected + ' \u5F35\uFF0C\u4F46\u53EA\u6293\u5230 ' + rows.length + ' \u5F35\uFF08' + badPages + ' \u9801\u6C92\u6293\u6210\uFF09\u2014\u2014\u4E0A\u9762\u7684\u6E05\u55AE**\u4E0D\u5B8C\u6574**\uFF0C\u7F3A\u7684\u90A3\u4E9B\u53BB Gitea \u88DC\u67E5\u3002');\n}\nL.push('');\nL.push('### \u5728\u505A\u7684\uFF08' + act.length + ' \u5F35\uFF1Bs/doing \xB7 s/stage \xB7 s/triage\uFF09');\nact.forEach(function (r) {\n  L.push('- `' + org + '/' + r.repo + '#' + r.n + '` ' + r.l.join(' ') + ' \u2014 ' + one(r.t) + (r.m ? '\u3000\u3014' + one(r.m) + '\u3015' : ''));\n});\nL.push('');\nfunction numbersLine(title, list) {\n  var g = byRepo(list);\n  L.push('### ' + title + '\uFF08' + list.length + ' \u5F35' + (full ? '' : '\uFF1B\u53EA\u7D66\u7DE8\u865F\uFF0C\u8981\u770B\u5167\u5BB9\u81EA\u5DF1\u53BB Gitea\uFF0C\u6216 `full=1` \u91CD\u8DD1') + '\uFF09');\n  Object.keys(g).sort().forEach(function (k) {\n    if (full) { g[k].forEach(function (r) { L.push('- `' + org + '/' + k + '#' + r.n + '` ' + r.l.join(' ') + ' \u2014 ' + one(r.t)); }); }\n    else { L.push('- **' + k + '**\uFF1A' + g[k].map(function (r) { return '#' + r.n; }).join(' ')); }\n  });\n  L.push('');\n}\nnumbersLine('\u6392\u597D\u7B49\u958B\u5DE5\u7684\uFF08s/todo\uFF09', next);\nif (unl.length) numbersLine('\u6C92\u6A19\u72C0\u614B\u7684\uFF08\u6C92\u6709 s/* \u6A19\u7C64\u2014\u2014\u5148\u9A57\u50B7\u518D\u6C7A\u5B9A\uFF09', unl);\nnumbersLine('\u73FE\u5728\u4E0D\u8A72\u6311\u4F86\u505A\u7684\uFF08s/backlog \xB7 s/review \xB7 s/pending \u7B49\uFF09', later);\nL.push('> \u4E0A\u9762\u6C92\u6709\u300C\u8AB0\u64CB\u8AB0\u300D\uFF1AGitea \u7684\u64CB\u8DEF\u95DC\u4FC2\u53EA\u80FD\u4E00\u5F35\u4E00\u5F35\u554F\uFF0C\u6703\u628A\u6BCF\u6B21\u57F7\u884C 50 \u500B\u5916\u90E8\u8ACB\u6C42\u7684\u984D\u5EA6\u5403\u5149\u3002');\nL.push('> \u21D2 **\u6311\u7968\u958B\u5DE5\u524D\uFF0C\u81EA\u5DF1\u6253\u4E00\u6B21\u90A3\u5F35\u7968\u7684 `/dependencies` \u78BA\u8A8D\u524D\u7F6E\u505A\u5B8C\u4E86\u6C92\u3002**');\nL.push('');\n\n// \u4E8C\u3001\u77E5\u8B58\nL.push('## \u4E8C\u3001\u77E5\u8B58 \u2014 KBDB \u85CF\u66F8\u5730\u5716');\nif (libs === null) {\n  L.push('\u26A0\uFE0F \u9019\u6B21\u53D6\u4E0D\u5230\u85CF\u66F8\u5730\u5716\uFF0C\u9019\u4E00\u534A**\u4E0D\u6CE8\u5165**\uFF08\u5BE7\u53EF\u51B7\u555F\u52D5\uFF0C\u4E0D\u8981\u6CE8\u5165\u5783\u573E\uFF09\u3002\u8981\u67E5\u8ACB\u76F4\u63A5\u6253 `kbdb_get_map()`\u3002');\n} else {\n  L.push('\u4E00\u5EAB\u4E00\u884C\uFF0C\u53EA\u8AAA\u300C\u6709\u54EA\u4E9B\u5EAB\u3001\u5404\u88DD\u4E86\u4EC0\u9EBC\u300D\u3002\u4E09\u6B65\u8D70\uFF1A`kbdb_get_map` \u2192 `kbdb_get_index(library)` \u2192 `kbdb_get_card`\u3002');\n  libs.forEach(function (x) {\n    var top = (x.top_entities || []).slice(0, 3).join(' / ');\n    var ec = typeof x.entry_count === 'number' ? x.entry_count + ' \u7B46\u5167\u5BB9' : '';\n    if (x.triplet_count > 0 || x.entry_count > 0) {\n      L.push('- `' + x.library + '` \u2014 ' + [ec, (x.triplet_count || 0) + ' \u689D\u4E09\u5143\u7D44'].filter(Boolean).join('\u3001') + (top ? '\uFF1B\u6838\u5FC3\uFF1A' + top : '') + (x.narrative ? '\uFF1B' + one(x.narrative).slice(0, 80) : ''));\n    } else {\n      L.push('- `' + x.library + '` \u2014 **\u7A7A\u7684**');\n    }\n  });\n}\nL.push('');\nL.push('### \u7968\u5EAB\uFF08`tickets`\uFF09\u2014 \u7968\u7684\u7D30\u7BC0\u5728\u5EAB\u88E1\u67E5\u5F97\u5230\u55CE');\nif (ticketTotal === null) {\n  L.push('\u26A0\uFE0F \u9019\u6B21\u8B80\u4E0D\u5230\u7968\u5EAB\u76EE\u9304\uFF08cypher /kbdb/entries/library-cards \u6C92\u56DE\uFF09\uFF0C\u4E0D\u77E5\u9053\u7968\u6709\u6C92\u6709\u9032\u5EAB\u3002');\n} else if (ticketTotal === 0) {\n  L.push('**\u9084\u6C92\u6709\u4EFB\u4F55\u7968\u9032\u5EAB\u3002** \u554F\u300C\u67D0\u5F35\u7968\u7684\u4F86\u9F8D\u53BB\u8108\u300D\u53EA\u80FD\u76F4\u63A5\u8B80 Gitea\u3002\u8981\u704C\uFF1A\u5C0D\u6BCF\u500B repo \u8DD1 `gitea_issues_ingest`\uFF08\u4EBA\u767C\u8D77\uFF0C\u4E0D\u6392\u7A0B\uFF09\u3002');\n} else {\n  var latestAt = ticketLatest && ticketLatest.updated_at ? new Date(ticketLatest.updated_at * 1000).toISOString().slice(0, 16) + 'Z' : '?';\n  L.push('\u5EAB\u88E1\u6709 **' + ticketTotal + ' \u5F35\u7968**\uFF08\u5361\u540D\uFF1D`owner/repo#N`\uFF09\uFF0C\u6700\u8FD1\u4E00\u6B21\u5BEB\u5165 ' + latestAt + (ticketLatest ? '\uFF08`' + ticketLatest.page_name + '`\uFF09' : '') + '\u3002');\n  L.push('\u554F\u67D0\u5F35\u7968\u7684\u4F86\u9F8D\u53BB\u8108\uFF1A`kbdb_get_card(library=\"tickets\", page_name=\"' + org + '/<repo>#<N>\")`\uFF1B\u627E\u76F8\u95DC\u7684\u7968\uFF1A`kbdb_search(q=\u2026)` \u547D\u4E2D page_name \u5E36 `#` \u7684\u5C31\u662F\u7968\u3002');\n  if (ticketTotal < rows.length) L.push('> \u958B\u8457\u7684\u7968\u6709 ' + rows.length + ' \u5F35\u3001\u5EAB\u88E1\u53EA\u6709 ' + ticketTotal + ' \u5F35 \u21D2 \u6C92\u9032\u5EAB\u7684\u90A3\u4E9B\u4ECD\u8981\u53BB Gitea \u8B80\uFF1B\u88DC\u704C\u8DD1 `gitea_issues_ingest`\u3002');\n}\nL.push('');\nL.push('---');\nL.push('- **\u7968\u4E0D\u53EF\u4EE5\u7528\u820A\u7684**\uFF1A\u4EE5\u4E0A\u662F\u9019\u4E00\u523B\u7684\u72C0\u614B\u3002\u8981\u52D5\u67D0\u4E00\u5F35\u4E4B\u524D\u5148\u55AE\u7368\u91CD\u67E5\u90A3\u4E00\u5F35\u2014\u2014\u4F60\u5403\u500B\u98EF\u56DE\u4F86\u5B83\u5C31\u53EF\u80FD\u88AB\u6539\u4E86\u3002');\nL.push('- **\u77E5\u8B58\u53EF\u4EE5\u7A0D\u820A**\uFF1A\u5EAB\u88E1\u7684\u5167\u5BB9\u6628\u5929\u5BEB\u7684\u4ECA\u5929\u8B80\u9084\u662F\u5C0D\u7684\u3002');\nL.push('- **\u9019\u662F index \u4E0D\u662F\u5167\u5BB9**\uFF1A\u5B83\u53EA\u8B93\u4F60\u77E5\u9053\u300C\u6709\u9019\u4EF6\u4E8B\u3001\u53BB\u54EA\u88E1\u627E\u300D\uFF0C\u7D30\u7BC0\u5728\u7968\u4E0A\u8207\u5EAB\u88E1\u3002');\n\nvar md = L.join('\\n');\nreturn { success: true, md: md, bytes: md.length, org: org, repo_count: repos.length, repos_with_issues: withIssues.length, open_issues: rows.length, expected_open: expected, pages: pageResults.length, bad_pages: badPages, active: act.length, libraries: libs === null ? 0 : libs.length, ticket_cards: ticketTotal };\n",
+              input: {
+                org: "{{prep.data.org}}",
+                full: "{{prep.data.full}}",
+                repos: "{{plan.data.repos}}",
+                expected_open: "{{plan.data.expected_open}}",
+                pages: "{{plan.results}}",
+                map_body: "{{fetch_map.data.body}}",
+                ticket_lib_body: "{{fetch_ticket_lib.data.body}}"
+              },
+              limits: {
+                timeout_ms: 8e3,
+                max_output_bytes: 524288
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "fetch_repos",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "fetch_repos",
+            to: "plan",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "plan",
+            to: "fetch_page",
+            type: "FOREACH",
+            iterator: "page"
+          },
+          {
+            from: "plan",
+            to: "fetch_map",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "fetch_map",
+            to: "fetch_ticket_lib",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "fetch_ticket_lib",
+            to: "assemble",
+            type: "ON_SUCCESS"
+          }
+        ]
+      },
+      description: "\u958B\u5834\u5168\u5C40\u7E3D\u5716\uFF1A\u4E00\u6B21\u7B97\u51FA\u300C\u73FE\u5728\u6709\u54EA\u4E9B\u7968\u3001\u5EAB\u88E1\u6709\u54EA\u4E9B\u77E5\u8B58\u300D\u7684 index\uFF08md\uFF09\u3002 \u7968\u8D70 Gitea \u6574\u500B\u7D44\u7E54\u7684 open issues \u73FE\u7B97\uFF08\u6BCF\u500B repo \u7684\u7968\u6578\uFF0B\u8DE8 repo \u5206\u9801\u6293\u5168\u90E8\uFF0C\u7121\u5FEB\u53D6\uFF0C \u56E0\u70BA\u72C0\u614B\u672C\u8EAB\u5C31\u662F\u5167\u5BB9\uFF09\uFF1B\u77E5\u8B58\u8D70 KBDB \u85CF\u66F8\u5730\u5716\uFF0B\u7968\u5EAB\uFF08tickets\uFF09\u76EE\u9304\u3002 \u4F9B session \u958B\u5834\u6CE8\u5165\uFF0C\u8B93 AI \u4E0D\u5FC5\u88AB\u4EBA\u63D0\u9192\u300C\u9019\u500B\u6709\u7968\u300D\u300Cwiki \u6709\u8A18\u904E\u300D\u3002"
+    }
+  ]
 };
 
 // cypher-executor/src/lib/app-catalog.ts
@@ -17517,10 +19267,23 @@ var APP_CATALOG = [
     id: "notes",
     name: "\u7B46\u8A18",
     icon: "\u{1F4DD}",
-    summary: "\u96A8\u624B\u5BEB\u4E00\u5247\u7B46\u8A18\uFF0C\u4F9D\u65E5\u671F\u6392\u6210\u6CB3\u9053\uFF1B\u5BEB\u4E0B\u53BB\u7684\u5167\u5BB9\u9032\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u3002",
-    version: "1.0.0",
+    // 2026-09-26（arcrun-app-note#1 → c11600）：v0.2 加了 Facebook 河道式設計——
+    // 卡片外框、回覆（indented）、全螢幕輸入，跟著 declaration 一起升版。
+    summary: "\u96A8\u624B\u5BEB\u4E00\u5247\u7B46\u8A18\uFF0C\u53EF\u4EE5\u56DE\u8986\uFF1B\u4F9D\u65E5\u671F\u6392\u6210\u6CB3\u9053\uFF0C\u5BEB\u4E0B\u53BB\u7684\u5167\u5BB9\u9032\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u3002",
+    version: "0.2.0",
     author: "Arcrun \u5167\u5EFA",
     declaration: notes_default
+  },
+  {
+    id: "global_index",
+    name: "\u958B\u5834\u5168\u5C40\u7E3D\u5716",
+    icon: "\u{1F9ED}",
+    // inkstone/InkStoneCo#17：一次算出「現在有哪些票、庫裡有哪些知識」的 index。
+    // 這個 App 只有工作流、沒有畫面（has_ui=false）——觸發它拿到的是一份 md 總覽。
+    summary: "\u4E00\u6B21\u5370\u51FA\u73FE\u5728\u6709\u54EA\u4E9B\u7968\u5728\u52D5\u3001\u77E5\u8B58\u5EAB\u88E1\u6709\u4EC0\u9EBC\uFF0C\u958B\u5834\u5148\u770B\u9019\u4EFD\u4E0D\u5FC5\u88AB\u4EBA\u63D0\u9192\u3002",
+    version: "0.1.1",
+    author: "Arcrun \u5167\u5EFA",
+    declaration: global_index_app_default
   }
 ];
 function findCatalogEntry(id) {
@@ -17636,7 +19399,7 @@ function findBestNodeMatch(searchTerm, nodeNames) {
 }
 async function tripletCount(env, owner) {
   try {
-    const res = await kbdbFetch(env, `/records/triplet-stats?${owner === null ? censusQueryAllTenants() : ownerQuery(owner)}`);
+    const res = await kbdbFetch2(env, `/records/triplet-stats?${owner === null ? censusQueryAllTenants() : ownerQuery(owner)}`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.stats)) return null;
@@ -17657,7 +19420,7 @@ async function tripletCensus(env, tenant2) {
 }
 async function fuzzyFindNode(env, tenant2, searchTerm, libraries) {
   try {
-    const res = await kbdbFetch(env, `/records/by-template/triplet?${ownerQuery(tenant2)}`);
+    const res = await kbdbFetch2(env, `/records/by-template/triplet?${ownerQuery(tenant2)}`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.records)) return null;
@@ -17698,7 +19461,7 @@ portalDataRouter.get(
     if (entryType) params.set("entry_type", entryType);
     const limit = c.req.query("limit");
     if (limit && /^\d{1,3}$/.test(limit)) params.set("limit", limit);
-    const res = await kbdbFetch(c.env, `/entries/search?${params.toString()}`);
+    const res = await kbdbFetch2(c.env, `/entries/search?${params.toString()}`);
     if (!res.ok) {
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     }
@@ -17711,13 +19474,57 @@ portalDataRouter.get(
   })
 );
 portalDataRouter.get(
+  "/portal/data/retrieve",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const qRaw = c.req.query("q") || c.req.query("question");
+    if (!qRaw) return c.json({ error: "q \u5FC5\u586B" }, 400);
+    const q = normalizeCjkQuery(qRaw);
+    const libraries = parseLibraries(auth.user.values.libraries);
+    if (libraries.length === 0) {
+      return c.json({
+        success: true,
+        route: "all",
+        vector_used: false,
+        libraries_considered: 0,
+        libraries: [],
+        indexes: [],
+        graph_facts: [],
+        pages: [],
+        pages_count: 0,
+        pages_truncated: false,
+        note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002"
+      });
+    }
+    const params = new URLSearchParams({ q, owner_id: ownerField(knowledgeOwner(c.env)) });
+    if (!libraries.includes("*")) params.set("library", libraries.join(","));
+    const limit = c.req.query("limit");
+    if (limit && /^\d{1,3}$/.test(limit)) params.set("limit", limit);
+    const pagesLimit = c.req.query("pages_limit");
+    if (pagesLimit && /^\d{1,3}$/.test(pagesLimit)) params.set("pages_limit", pagesLimit);
+    const graphDepth = c.req.query("graph_depth");
+    if (graphDepth && /^\d{1,2}$/.test(graphDepth)) params.set("graph_depth", graphDepth);
+    const res = await kbdbFetch2(c.env, `/retrieve?${params.toString()}`);
+    if (!res.ok) {
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    }
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.pages)) {
+      return c.json(body ?? { error: "KBDB \u56DE\u61C9\u4E0D\u662F JSON" }, body ? 200 : 502);
+    }
+    const pages = filterDeprecatedEntries(body.pages);
+    return c.json({ ...body, pages, pages_count: pages.length });
+  })
+);
+portalDataRouter.get(
   "/portal/data/entries/:id",
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) return notFound(c);
-    const res = await kbdbFetch(c.env, `/entries/${encodeURIComponent(c.req.param("id"))}`);
+    const res = await kbdbFetch2(c.env, `/entries/${encodeURIComponent(c.req.param("id"))}`);
     if (res.status === 404) return notFound(c);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json();
@@ -17734,7 +19541,7 @@ async function fetchNeighborsFromKbdb(env, tenant2, node, depth, libraries, dire
   qs.set("template", "triplet");
   if (!libraries.includes("*")) qs.set("library", libraries.join(","));
   if (directed) qs.set("directed", "true");
-  const res = await kbdbFetch(env, `/graph/neighbors/${encodeURIComponent(node)}?${qs.toString()}&${ownerQuery(tenant2)}`);
+  const res = await kbdbFetch2(env, `/graph/neighbors/${encodeURIComponent(node)}?${qs.toString()}&${ownerQuery(tenant2)}`);
   const body = await res.json().catch(() => null);
   return { ok: res.ok, status: res.status, body };
 }
@@ -17796,7 +19603,7 @@ portalDataRouter.get(
     }
     const tenant2 = knowledgeOwner(c.env);
     const [res, census] = await Promise.all([
-      kbdbFetch(c.env, `/records/by-template/triplet?${ownerQuery(tenant2)}&limit=500`),
+      kbdbFetch2(c.env, `/records/by-template/triplet?${ownerQuery(tenant2)}&limit=500`),
       tripletCensus(c.env, tenant2)
     ]);
     const tripletsTotal = census.owned;
@@ -17884,6 +19691,71 @@ portalDataRouter.get(
     });
   })
 );
+var FEEDBACK_MAX_CHARS = 5e3;
+portalDataRouter.post(
+  "/portal/data/feedback",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const text = typeof body?.text === "string" ? body.text.trim() : "";
+    if (!text) return c.json({ error: "\u8ACB\u5148\u5BEB\u4E0B\u4F60\u9047\u5230\u7684\u72C0\u6CC1\u518D\u9001\u51FA" }, 400);
+    if (text.length > FEEDBACK_MAX_CHARS) {
+      return c.json({ error: `\u56DE\u5831\u5167\u5BB9\u592A\u9577\u4E86\uFF08\u4E0A\u9650 ${FEEDBACK_MAX_CHARS} \u5B57\uFF09\uFF0C\u8ACB\u7559\u4E0B\u6700\u95DC\u9375\u7684\u90A3\u5E7E\u53E5` }, 400);
+    }
+    const wfGraph = await getTenantWorkflowGraph(c.env, "feedback_report");
+    if (!wfGraph) return c.json({ error: "\u9019\u500B\u77E5\u8B58\u5EAB\u9084\u6C92\u5B89\u88DD\u300C\u56DE\u5831\u300D\u5DE5\u4F5C\u6D41\uFF0C\u66AB\u6642\u9001\u4E0D\u51FA\u53BB" }, 404);
+    const tenant2 = knowledgeOwner(c.env);
+    const v = auth.user.values;
+    let diagnostics;
+    if (body?.attach_diagnostics === true) {
+      try {
+        diagnostics = await buildDiagnostics(c.env, tenant2);
+      } catch (e) {
+        diagnostics = { error: `\u96F2\u7AEF\u8A3A\u65B7\u8B80\u53D6\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` };
+      }
+    }
+    const result = await executeWebhookGraph(
+      c.env,
+      wfGraph,
+      {
+        text,
+        version: c.env.ARCRUN_BUNDLE_VERSION ?? "unknown",
+        instance: tenant2,
+        // workflow 的「作業系統」欄在 Portal 這端＝「他是在哪個畫面、用什麼瀏覽器送的」。
+        // 分診的人要的是這個，不是 server 的 runtime。長度夾住，避免 UA 把標題頁面撐爛。
+        os: portalReporterEnv(body?.user_agent, body?.page),
+        diagnostics,
+        // 回報者是誰要寫在票上（票上紅線：不能看起來像機器自己開的）。
+        reporter: `${v.display_name ?? ""}${v.email ? `\uFF08${v.email}\uFF09` : ""}`.trim() || "\uFF08\u672A\u5177\u540D\u7684 Portal \u4F7F\u7528\u8005\uFF09"
+      },
+      "feedback_report",
+      tenant2,
+      c.executionCtx
+    );
+    if (!result.success) {
+      return c.json({ error: `\u6C92\u9001\u51FA\u53BB\uFF0C\u8ACB\u518D\u8A66\u4E00\u6B21\uFF08${result.error ?? "\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557"}\uFF09` }, 502);
+    }
+    const inner = unwrapWorkflowData(result.data, "number");
+    const number = typeof inner.number === "number" ? inner.number : null;
+    if (number === null) {
+      return c.json({ error: "\u6C92\u9001\u51FA\u53BB\uFF0C\u8ACB\u518D\u8A66\u4E00\u6B21\uFF08\u5DE5\u4F5C\u6D41\u6C92\u6709\u56DE\u5831\u7968\u865F\uFF09" }, 502);
+    }
+    return c.json({
+      ok: true,
+      number,
+      url: typeof inner.url === "string" ? inner.url : "",
+      // Telegram 那步失敗不影響票已經開成（票上紅線②），只如實回報給前端當附註。
+      notify_ok: inner.notify_ok === true
+    });
+  })
+);
+function portalReporterEnv(userAgent, pageRaw) {
+  const clean = (x, cap) => typeof x === "string" ? x.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, cap) : "";
+  const ua = clean(userAgent, 200);
+  const page = clean(pageRaw, 60);
+  return `Portal${page ? `\uFF08\u9801\u9762\uFF1A${page}\uFF09` : ""}${ua ? ` ${ua}` : ""}`;
+}
 function sanitizeUploadFilename(raw2) {
   if (typeof raw2 !== "string") return null;
   let name = (raw2.split(/[/\\]/).pop() ?? "").trim();
@@ -17965,7 +19837,7 @@ portalDataRouter.get(
           }
         }
         let last_execution = null;
-        const execRes = await kbdbFetch(
+        const execRes = await kbdbFetch2(
           c.env,
           `/execution-log/latest?${new URLSearchParams({ workflow_id: name, owner_id: ownerField(tenant2) }).toString()}`
         );
@@ -18136,7 +20008,7 @@ portalDataRouter.get(
     params.set("owner_id", String(knowledgeOwner(c.env)));
     const limit = c.req.query("limit");
     if (limit && /^\d{1,3}$/.test(limit)) params.set("limit", limit);
-    const res = await kbdbFetch(c.env, `/entries/library-cards?${params.toString()}`);
+    const res = await kbdbFetch2(c.env, `/entries/library-cards?${params.toString()}`);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     return new Response(res.body, { status: 200, headers: { "Content-Type": "application/json" } });
   })
@@ -18156,7 +20028,7 @@ portalDataRouter.get(
     const params = new URLSearchParams({ library, page_name: pageName });
     params.set("owner_id", String(knowledgeOwner(c.env)));
     params.set("limit", "200");
-    const res = await kbdbFetch(c.env, `/entries?${params.toString()}`);
+    const res = await kbdbFetch2(c.env, `/entries?${params.toString()}`);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.entries)) {
@@ -18196,7 +20068,7 @@ portalDataRouter.get(
       });
     }
     const tenant2 = knowledgeOwner(c.env);
-    const res = await kbdbFetch(c.env, `/map?${ownerQuery(tenant2)}`);
+    const res = await kbdbFetch2(c.env, `/map?${ownerQuery(tenant2)}`);
     if (!res.ok) {
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     }
@@ -18260,7 +20132,7 @@ portalDataRouter.get(
     const libraries = parseLibraries(auth.user.values.libraries);
     const library = c.req.param("library");
     if (!canReadLibrary(libraries, library)) return notFound(c);
-    const res = await kbdbFetch(
+    const res = await kbdbFetch2(
       c.env,
       `/map/${encodeURIComponent(library)}?${ownerQuery(knowledgeOwner(c.env))}`
     );
@@ -18274,7 +20146,7 @@ portalDataRouter.get(
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
-    const res = await kbdbFetch(c.env, "/templates");
+    const res = await kbdbFetch2(c.env, "/templates");
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     return new Response(res.body, { status: 200, headers: { "Content-Type": "application/json" } });
   })
@@ -18288,7 +20160,7 @@ portalDataRouter.post(
     if (!body || typeof body.name !== "string" || !body.name.trim() || !Array.isArray(body.slots)) {
       return c.json({ error: "name \u8207 slots[] \u5FC5\u586B" }, 400);
     }
-    const res = await kbdbFetch(c.env, "/templates", {
+    const res = await kbdbFetch2(c.env, "/templates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -18327,7 +20199,7 @@ portalDataRouter.get(
       const v = c.req.query(k);
       if (v) params.set(k, v);
     }
-    const res = await kbdbFetch(
+    const res = await kbdbFetch2(
       c.env,
       `/records/by-template/${encodeURIComponent(c.req.param("template"))}?${params.toString()}`
     );
@@ -18357,7 +20229,7 @@ portalDataRouter.get(
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) return notFound(c);
-    const res = await kbdbFetch(c.env, `/records/${encodeURIComponent(c.req.param("recordId"))}`);
+    const res = await kbdbFetch2(c.env, `/records/${encodeURIComponent(c.req.param("recordId"))}`);
     if (res.status === 404) return notFound(c);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json().catch(() => null);
@@ -18385,7 +20257,7 @@ portalDataRouter.post(
     if (targetLib !== null && !canReadLibrary(libraries, targetLib)) {
       return c.json({ error: `\u7121\u300C${targetLib}\u300D\u5EAB\u7684\u6B0A\u9650\uFF0C\u4E0D\u80FD\u5BEB\u5165\u8A72\u5EAB` }, 403);
     }
-    const res = await kbdbFetch(c.env, "/records", {
+    const res = await kbdbFetch2(c.env, "/records", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ template: body.template, values, owner_id: ownerField(knowledgeOwner(c.env)) })
@@ -18443,12 +20315,143 @@ appsRouter.get("/apps", async (c) => {
   return c.json({ apps: apps.map(summarizeApp), count: apps.length });
 });
 
+// cypher-executor/src/routes/storage.ts
+init_dist();
+var storageRouter = new Hono2();
+var IMPORT_BATCH_MAX = 8;
+var TRANSIENT_NAMESPACES = {
+  EXEC_CONTEXT: "\u57F7\u884C\u4E2D\u66AB\u5B58\uFF08\u7BC0\u9EDE output\u300124 \u5C0F\u6642\u5167\u7B49\u5F85\u56DE\u547C\u7684\u66AB\u505C\u57F7\u884C\uFF09\uFF1B\u66F4\u65B0\u5F8C\u91CD\u8DD1\u5373\u53EF",
+  ANALYTICS_KV: "\u820A\u7D71\u8A08\uFF0C\u7A0B\u5F0F\u78BC\u5DF2\u4E0D\u8B80\uFF08\u57F7\u884C\u7D00\u9304\u5728 KBDB execution-log\uFF09",
+  OAUTH_KV: "MCP OAuth \u7684\u6388\u6B0A\u78BC\u8207 access token\uFF1B\u66F4\u65B0\u5F8C\u5728 client \u91CD\u9023\u4E00\u6B21\u5373\u53EF",
+  USERS_KV: "\u5B98\u65B9 SaaS\uFF08arcrun.dev\uFF09GitHub\uFF0FGoogle \u767B\u5165\u7684\u7528\u6236\u8CC7\u6599\uFF1B\u81EA\u67B6\u5BE6\u4F8B\u7684\u767B\u5165\u662F console\uFF0Fportal\uFF0C\u4E0D\u8B80\u9019\u4E00\u4EFD"
+};
+function sessionsKeyOutcome(key) {
+  if (key === "console:credentials") return "console";
+  return { key, outcome: "skipped", reason: "\u767B\u5165 session\uFF0FOAuth state\uFF0F\u7BC0\u6D41\u8A08\u6578\uFF0F\u91CD\u8A2D\u7968\u7B49\u66AB\u5B58\uFF1B\u66F4\u65B0\u5F8C\u91CD\u65B0\u767B\u5165\u5373\u53EF" };
+}
+function credentialsKeyOutcome(key) {
+  if (/^[^:]+:oauth2:/.test(key)) {
+    return { key, outcome: "skipped", reason: "OAuth2 access_token \u5FEB\u53D6\uFF1B\u4E0B\u6B21\u547C\u53EB\u6703\u91CD\u65B0\u63DB\u767C" };
+  }
+  return {
+    key,
+    outcome: "skipped",
+    reason: "\u820A\u7684\u81EA\u7BA1\u52A0\u5BC6 credential \u5BC6\u6587\uFF08\u89E3\u5BC6\u6A5F\u5236\u5DF2\u65BC 20c7610 \u79FB\u9664\uFF0C\u5E36\u904E\u4F86\u4E5F\u89E3\u4E0D\u958B\uFF09\uFF1B\u73FE\u884C credential \u5728 Workers Secrets"
+  };
+}
+async function importAsset(env, store, entry) {
+  const ref = classify(store, entry.key);
+  if (!ref) return { key: entry.key, outcome: "skipped", reason: "\u6C92\u6709\u5C0D\u61C9\u7684\u8CC7\u6599\u578B\u5225\uFF08\u4E0D\u662F\u8CC7\u7522\uFF0C\u4E5F\u4E0D\u662F\u7B97\u5F97\u51FA\u4F86\u7684\u7D22\u5F15\uFF09" };
+  if (ref.kind === "derived") return { key: entry.key, outcome: "skipped", reason: "\u884D\u751F\u7D22\u5F15\uFF0C\u7531\u8CC7\u7522\u672C\u8EAB\u91CD\u7B97" };
+  const kv = store === "WEBHOOKS" ? env.WEBHOOKS : env.RECIPES;
+  await kv.put(entry.key, entry.value);
+  if (store === "WEBHOOKS" && ref.tpl === "workflow") {
+    let cron = "";
+    try {
+      cron = String(JSON.parse(entry.value).cron_expr ?? "");
+    } catch {
+    }
+    if (cron) {
+      const wfAt = entry.key.indexOf(":wf:");
+      await updateCronIndexEntry(env.WEBHOOKS, entry.key.slice(0, wfAt), entry.key.slice(wfAt + 4), cron);
+    }
+  }
+  return { key: entry.key, outcome: "imported" };
+}
+async function importConsoleCredentials(env, raw2, cfToken) {
+  const key = "console:credentials";
+  let rec;
+  try {
+    const parsed = JSON.parse(raw2);
+    if (!parsed.email || !parsed.salt || !parsed.hash) throw new Error("\u7F3A email\uFF0Fsalt\uFF0Fhash");
+    rec = { email: parsed.email, salt: parsed.salt, hash: parsed.hash, created_at: parsed.created_at ?? (/* @__PURE__ */ new Date()).toISOString() };
+  } catch (e) {
+    return { key, outcome: "failed", reason: `\u820A\u5E33\u5BC6\u5167\u5BB9\u8B80\u4E0D\u61C2\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+  let wrote = false;
+  try {
+    wrote = (await migrateConsoleCredentials(env, rec, cfToken)).migrated;
+  } catch (e) {
+    return { key, outcome: "failed", reason: `\u5BEB\u4E0D\u9032\u8A8D\u8B49\u5132\u5B58\uFF08Workers Secrets\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+  return wrote ? { key, outcome: "imported" } : { key, outcome: "skipped", reason: "\u65B0\u5BB6\u5DF2\u7D93\u6709\u4E00\u7D44\u7BA1\u7406\u54E1\u5E33\u5BC6\uFF08\u6BD4\u820A KV \u90A3\u4EFD\u65B0\uFF09\uFF0C\u4E0D\u8986\u84CB" };
+}
+storageRouter.post("/storage/import-kv", async (c) => {
+  const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+  if (!expected) return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09\uFF0C\u7121\u6CD5\u9A57\u8B49\u642C\u9077\u8ACB\u6C42" }, 503);
+  const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+  if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
+  const body = await c.req.json().catch(() => null);
+  const ns = String(body?.namespace ?? "");
+  const entries = Array.isArray(body?.entries) ? body.entries : null;
+  if (!ns || !entries) return c.json({ error: "body \u9700\u8981 {namespace, entries:[{key,value}]}" }, 400);
+  if (entries.some((e) => typeof e?.key !== "string" || typeof e?.value !== "string")) {
+    return c.json({ error: "entries \u6BCF\u4E00\u7B46\u90FD\u8981\u6709\u5B57\u4E32 key \u8207\u5B57\u4E32 value" }, 400);
+  }
+  if (entries.length > IMPORT_BATCH_MAX) {
+    return c.json({ error: `\u4E00\u6B21\u6700\u591A ${IMPORT_BATCH_MAX} \u7B46\uFF08\u5206\u6279\u9001\uFF0C\u907F\u514D\u649E Cloudflare \u6BCF\u8ACB\u6C42 subrequest \u4E0A\u9650\uFF09`, batch_max: IMPORT_BATCH_MAX }, 413);
+  }
+  const cfToken = c.req.header("x-cf-secrets-token") || void 0;
+  const results = [];
+  for (const entry of entries) {
+    try {
+      if (ns === "WEBHOOKS" || ns === "RECIPES") {
+        results.push(await importAsset(c.env, ns, entry));
+      } else if (ns === "SESSIONS_KV") {
+        const o = sessionsKeyOutcome(entry.key);
+        results.push(o === "console" ? await importConsoleCredentials(c.env, entry.value, cfToken) : o);
+      } else if (ns === "CREDENTIALS_KV") {
+        results.push(credentialsKeyOutcome(entry.key));
+      } else if (TRANSIENT_NAMESPACES[ns]) {
+        results.push({ key: entry.key, outcome: "skipped", reason: TRANSIENT_NAMESPACES[ns] });
+      } else {
+        results.push({ key: entry.key, outcome: "skipped", reason: `\u4E0D\u8A8D\u5F97\u7684 namespace\u300C${ns}\u300D` });
+      }
+    } catch (e) {
+      results.push({ key: entry.key, outcome: "failed", reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  const count = (o) => results.filter((r) => r.outcome === o).length;
+  const failed = count("failed");
+  return c.json(
+    { success: failed === 0, namespace: ns, imported: count("imported"), skipped: count("skipped"), failed, results },
+    failed === 0 ? 200 : 207
+  );
+});
+storageRouter.post("/storage/move-portal-passwords", async (c) => {
+  const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+  if (!expected) return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09" }, 503);
+  const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+  if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
+  try {
+    const r = await movePortalPasswordsToAuthStore(c.env, c.req.header("x-cf-secrets-token") || void 0);
+    return c.json({ success: true, ...r });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+  }
+});
+
+// cypher-executor/src/routes/help.ts
+init_dist();
+var helpRouter = new Hono2();
+function origin(reqUrl) {
+  return new URL(reqUrl).origin;
+}
+helpRouter.get(
+  "/e",
+  (c) => c.html(renderFaqHtml(origin(c.req.url)))
+);
+helpRouter.get(
+  "/e/:code",
+  (c) => c.html(renderFaqHtml(origin(c.req.url), c.req.param("code")))
+);
+
 // cypher-executor/src/index.ts
 var app = new Hono2();
 var STATIC_ORIGINS = ["https://arcrun.dev", "https://www.arcrun.dev"];
 app.use("*", cors({
-  origin: (origin, c) => {
-    if (!origin) return origin;
+  origin: (origin2, c) => {
+    if (!origin2) return origin2;
     let extra = [];
     try {
       extra = String(c.env.UI_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -18456,12 +20459,24 @@ app.use("*", cors({
     }
     const sub = String(c.env.WORKER_SUBDOMAIN || "").trim();
     const sibling = sub ? [`https://arcrun-rag-ui.${sub}.workers.dev`] : [];
-    return [...STATIC_ORIGINS, ...sibling, ...extra].includes(origin) ? origin : null;
+    return [...STATIC_ORIGINS, ...sibling, ...extra].includes(origin2) ? origin2 : null;
   },
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization", "X-Arcrun-API-Key"],
   credentials: true
 }));
+app.onError((err, c) => {
+  if (err instanceof AssetStoreUnavailableError) {
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 503;
+    return c.json({ success: false, error: "kbdb_unavailable", message: err.message }, status);
+  }
+  console.error("[cypher-executor] unhandled error", err);
+  return c.json(
+    { success: false, error: "internal_error", message: err instanceof Error ? err.message : String(err) },
+    500
+  );
+});
+app.route("/", helpRouter);
 app.route("/", docsRouter);
 app.route("/", healthRouter);
 app.route("/", executeRouter);
@@ -18482,10 +20497,16 @@ app.route("/", consoleAuthRouter);
 app.route("/", consoleDashboardRouter);
 app.route("/", portalRouter);
 app.route("/", portalDataRouter);
+app.route("/", storageRouter);
 app.route("/", appsRouter);
 var index_default = {
-  fetch: app.fetch,
-  scheduled: handleScheduled
+  fetch: (req, env, ctx) => {
+    const perRequest = withAssetStores(env, newKbdbTally());
+    const cfToken = req.headers.get("x-cf-secrets-token");
+    if (cfToken) perRequest.CF_SECRETS_TOKEN_FROM_REQUEST = cfToken;
+    return app.fetch(req, perRequest, ctx);
+  },
+  scheduled: (controller, env, ctx) => handleScheduled(controller, withAssetStores(env), ctx)
 };
 export {
   index_default as default

@@ -3,7 +3,7 @@
 Prebuilt worker/service bundles for the **Arcrun RAG** one-click installer.
 Served via jsDelivr; fetched automatically during install — you never need to read this repo.
 
-- `manifest.json` — 索引：`core`＝安裝時就部署的 23 顆、`library`＝這一版公庫的 23 顆（其餘用到才下載）
+- `manifest.json` — 索引：`core`＝安裝時就部署的 25 顆、`library`＝這一版公庫的 25 顆（其餘用到才下載）
 - `arcrun-array-ops/` — **arcrun-array-ops**（首裝）
 - `arcrun-auth-oauth2/` — **arcrun-auth-oauth2**（首裝）
 - `arcrun-auth-service-account/` — **arcrun-auth-service-account**（首裝）
@@ -12,8 +12,10 @@ Served via jsDelivr; fetched automatically during install — you never need to 
 - `arcrun-cron/` — **arcrun-cron**（首裝）
 - `arcrun-cypher-executor/` — **arcrun-cypher-executor**（首裝）
 - `arcrun-date-ops/` — **arcrun-date-ops**（首裝）
+- `arcrun-fetch-relay/` — **arcrun-fetch-relay**（首裝）
 - `arcrun-filter/` — **arcrun-filter**（首裝）
 - `arcrun-foreach-control/` — **arcrun-foreach-control**（首裝）
+- `arcrun-hash/` — **arcrun-hash**（首裝）
 - `arcrun-http-request/` — **arcrun-http-request**（首裝）
 - `arcrun-if-control/` — **arcrun-if-control**（首裝）
 - `arcrun-kbdb/` — **arcrun-kbdb**（首裝）
@@ -29,7 +31,7 @@ Served via jsDelivr; fetched automatically during install — you never need to 
 - `arcrun-wait/` — **arcrun-wait**（首裝）
 - `daemon/` — 桌面 App（Mac／Windows）安裝檔
 
-Built from `Arcrun@d036a206bdf1` by `installer/scripts/ship.mjs`（arcrun-rag repo，release 1.4.74，built 2026-09-22）。
+Built from `Arcrun@5ed868321df2` by `installer/scripts/ship.mjs`（arcrun-rag repo，release 1.4.79，built 2026-09-29）。
 
 ⚠️ 這份檔案由出貨管線每次自動重寫（`installer/scripts/render-bundles-readme.mjs`）——
 不要手動改這裡列的零件清單——它是算出來的：公庫＝Arcrun 這一版編了什麼，

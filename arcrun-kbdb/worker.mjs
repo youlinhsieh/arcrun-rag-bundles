@@ -13,6 +13,1640 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// kbdb/src/actions/library-predicate.ts
+function libraryOf(expr) {
+  return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
+}
+function libraryOfValue(value) {
+  const v = (value ?? "").trim();
+  return v === "" ? UNLABELLED_LIBRARY : v;
+}
+function parseLibraryList(raw2) {
+  if (!raw2) return void 0;
+  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
+  return libs.length > 0 ? libs : void 0;
+}
+var UNLABELLED_LIBRARY, ENTRY_LIBRARY_EXPR, ENTRY_LIBRARY, ENTRY_UNLABELLED;
+var init_library_predicate = __esm({
+  "kbdb/src/actions/library-predicate.ts"() {
+    "use strict";
+    UNLABELLED_LIBRARY = "general";
+    ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
+    ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
+    ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
+  }
+});
+
+// kbdb/src/actions/entity-canon.ts
+function unwrapWhole(t) {
+  const code = /^(`+)([\s\S]*?)(`+)$/.exec(t);
+  if (code) {
+    const inner = code[2].trim();
+    if (inner && !inner.includes("`")) return inner;
+  }
+  if (t.startsWith("[[") && t.endsWith("]]") && t.length > 4) {
+    const inner = t.slice(2, -2).trim();
+    if (inner && !inner.includes("[[") && !inner.includes("]]")) return inner;
+  }
+  return t;
+}
+function canonicalEntity(raw2) {
+  if (typeof raw2 !== "string") return raw2;
+  const fallback = raw2.trim();
+  let t = raw2.normalize("NFC").trim();
+  if (!t) return fallback;
+  for (let i = 0; i < 4; i++) {
+    const before = t;
+    t = unwrapWhole(t);
+    if (t === before) break;
+  }
+  if (NOTE_EXT.test(t)) {
+    t = t.replace(NOTE_EXT, "");
+    const cut = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"));
+    if (cut >= 0) t = t.slice(cut + 1);
+  }
+  t = t.replace(/\s+/g, " ").trim();
+  return t || fallback;
+}
+function isTripletShaped(slots) {
+  return slots.includes("subject") && slots.includes("predicate") && slots.includes("object");
+}
+function canonicalizeEntityValues(slots, values) {
+  if (!isTripletShaped(slots)) return values;
+  let touched = false;
+  const out = { ...values };
+  for (const slot of ENTITY_SLOTS) {
+    const v = out[slot];
+    if (typeof v !== "string") continue;
+    const c = canonicalEntity(v);
+    if (c !== v) {
+      out[slot] = c;
+      touched = true;
+    }
+  }
+  return touched ? out : values;
+}
+var NOTE_EXT, ENTITY_SLOTS;
+var init_entity_canon = __esm({
+  "kbdb/src/actions/entity-canon.ts"() {
+    "use strict";
+    NOTE_EXT = /\.(md|markdown|mdx|txt|org)$/i;
+    ENTITY_SLOTS = ["subject", "object"];
+  }
+});
+
+// kbdb/src/actions/record-crud.ts
+var record_crud_exports = {};
+__export(record_crud_exports, {
+  SYS_BELONGS: () => SYS_BELONGS,
+  SYS_FIELD_OF: () => SYS_FIELD_OF,
+  SYS_ROOT: () => SYS_ROOT,
+  createRecord: () => createRecord,
+  createTemplate: () => createTemplate,
+  deleteRecord: () => deleteRecord,
+  derivedCellIds: () => derivedCellIds,
+  fieldEntryId: () => fieldEntryId,
+  getRecord: () => getRecord,
+  getTemplate: () => getTemplate,
+  hydrateRecordValues: () => hydrateRecordValues,
+  listTemplates: () => listTemplates,
+  searchByTemplate: () => searchByTemplate,
+  searchByTemplatePage: () => searchByTemplatePage,
+  updateRecord: () => updateRecord,
+  updateTemplate: () => updateTemplate
+});
+function uid(prefix) {
+  return `${prefix}_${crypto.randomUUID()}`;
+}
+function fieldEntryId(templateId, slot) {
+  return `fld_${templateId}_${slot}`;
+}
+async function ensureAnchors(db) {
+  await db.prepare(
+    `INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES
+       ('${SYS_ROOT}', 'root', 'system', NULL),
+       ('${SYS_BELONGS}', 'belongs', 'system', NULL),
+       ('${SYS_FIELD_OF}', 'field_of', 'system', NULL)`
+  ).run();
+}
+async function ensureFieldEntries(db, templateId, slots) {
+  for (const slot of slots) {
+    const fid = fieldEntryId(templateId, slot);
+    await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'field')`).bind(fid, slot).run();
+    await db.prepare(
+      `INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_FIELD_OF}', ?)`
+    ).bind(`relf_${templateId}_${slot}`, fid, templateId).run();
+  }
+}
+async function createTemplate(db, input) {
+  const id = input.id ?? uid("tpl");
+  await db.prepare(`INSERT INTO templates (id, name, description, slots_json, created_by) VALUES (?, ?, ?, ?, ?)`).bind(id, input.name, input.description ?? null, JSON.stringify(input.slots), input.created_by ?? null).run();
+  await ensureAnchors(db);
+  await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'sheet')`).bind(id, input.name).run();
+  await db.prepare(
+    `INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_BELONGS}', '${SYS_ROOT}')`
+  ).bind(`relb_${id}`, id).run();
+  await ensureFieldEntries(db, id, input.slots);
+  const row = await getTemplate(db, id);
+  if (!row) throw new Error("createTemplate: row not found after insert");
+  return row;
+}
+async function getTemplate(db, idOrName) {
+  const row = await db.prepare("SELECT * FROM templates WHERE id = ? OR name = ? LIMIT 1").bind(idOrName, idOrName).first();
+  return row ?? null;
+}
+async function listTemplates(db) {
+  const res = await db.prepare("SELECT * FROM templates ORDER BY created_at DESC").all();
+  return res.results ?? [];
+}
+async function updateTemplate(db, id, patch) {
+  const cols = [];
+  const params = [];
+  if (patch.description !== void 0) {
+    cols.push("description = ?");
+    params.push(patch.description);
+  }
+  if (patch.slots !== void 0) {
+    cols.push("slots_json = ?");
+    params.push(JSON.stringify(patch.slots));
+  }
+  if (cols.length === 0) return getTemplate(db, id);
+  cols.push("updated_at = unixepoch()");
+  await db.prepare(`UPDATE templates SET ${cols.join(", ")} WHERE id = ?`).bind(...params, id).run();
+  if (patch.slots !== void 0) await ensureFieldEntries(db, id, patch.slots);
+  return getTemplate(db, id);
+}
+function derivedCellIds(recordId, slot) {
+  return { value: `${recordId}~v~${slot}`, relation: `${recordId}~r~${slot}` };
+}
+async function loadReferencedEntries(db, entryIds, recordOwnerId) {
+  const ids = [...new Set(Object.values(entryIds))];
+  if (ids.length === 0) return /* @__PURE__ */ new Map();
+  const rows = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const res = await db.prepare(`SELECT id, content, owner_id FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
+    rows.push(...res.results ?? []);
+  }
+  const found = new Map(rows.map((r) => [r.id, r]));
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length > 0) throw new Error(`entry not found: ${missing.join(", ")}`);
+  if (recordOwnerId != null) {
+    const foreign = rows.filter((r) => r.owner_id != null && r.owner_id !== recordOwnerId);
+    if (foreign.length > 0) {
+      throw new Error(
+        `entry owner mismatch: ${foreign.map((r) => `${r.id}(${r.owner_id})`).join(", ")} != ${recordOwnerId}`
+      );
+    }
+  }
+  return new Map(rows.map((r) => [r.id, r.content]));
+}
+async function recordBelongs(db, recordId) {
+  const row = await db.prepare(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}' LIMIT 1`).bind(recordId).first();
+  return row ?? null;
+}
+async function insertCellRelation(db, recordId, templateId, slot, dstEntryId, ownerId) {
+  await db.prepare(
+    `INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`
+  ).bind(uid("relv"), ownerId, recordId, fieldEntryId(templateId, slot), dstEntryId).run();
+}
+async function createRecord(db, input) {
+  const tpl = await getTemplate(db, input.template);
+  if (!tpl) throw new Error(`template not found: ${input.template}`);
+  const slots = JSON.parse(tpl.slots_json);
+  const recordId = input.record_id ?? uid("rec");
+  const values = canonicalizeEntityValues(slots, input.values ?? {});
+  const entryIds = input.entry_ids ?? {};
+  const refSlots = Object.keys(entryIds);
+  const ownerId = input.owner_id ?? null;
+  const both = refSlots.filter((s) => s in values);
+  if (both.length > 0) throw new Error(`slot given both value and entry_id: ${both.join(", ")}`);
+  const unknown = refSlots.filter((s) => !slots.includes(s));
+  if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
+  const referenced = await loadReferencedEntries(db, entryIds, ownerId);
+  const mapTracked = isMapTrackedTemplate(tpl.name);
+  const mapBefore = mapTracked && input.record_id ? (await getRecord(db, input.record_id))?.values ?? null : null;
+  await db.prepare(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id) VALUES (?, 'record', ?)`).bind(recordId, ownerId).run();
+  await db.prepare(
+    `INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, '${SYS_BELONGS}', ?)`
+  ).bind(`relb_${recordId}_${tpl.id}`, ownerId, recordId, tpl.id).run();
+  const writtenSlots = slots.filter((s) => s in entryIds || s in values);
+  await ensureFieldEntries(db, tpl.id, writtenSlots);
+  for (const slot of writtenSlots) {
+    if (slot in entryIds) {
+      await insertCellRelation(db, recordId, tpl.id, slot, entryIds[slot], ownerId);
+      continue;
+    }
+    if (input.derived_cell_ids) {
+      const ids = derivedCellIds(recordId, slot);
+      await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES (?, ?, 'value', ?)`).bind(ids.value, values[slot], ownerId).run();
+      await db.prepare(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`).bind(ids.relation, ownerId, recordId, fieldEntryId(tpl.id, slot), ids.value).run();
+      continue;
+    }
+    const entry = await createEntry(db, {
+      content: values[slot],
+      entry_type: "value",
+      owner_id: ownerId
+    });
+    await insertCellRelation(db, recordId, tpl.id, slot, entry.id, ownerId);
+  }
+  const out = { ...values };
+  for (const [slot, entryId] of Object.entries(entryIds)) out[slot] = referenced.get(entryId) ?? "";
+  if (mapTracked) {
+    const stored = Object.fromEntries(Object.entries(out).filter(([slot]) => slots.includes(slot)));
+    const mapAfter = input.record_id ? (await getRecord(db, recordId))?.values ?? stored : stored;
+    await noteRecordWrite(db, tpl.name, ownerId, mapBefore, mapAfter);
+  }
+  return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
+}
+async function updateRecord(db, recordId, values) {
+  const belongs = await recordBelongs(db, recordId);
+  if (!belongs) return null;
+  const templateId = belongs.dst_id;
+  const tpl = await getTemplate(db, templateId);
+  const mapBefore = tpl && isMapTrackedTemplate(tpl.name) ? await getRecord(db, recordId) : null;
+  const cellRes = await db.prepare(
+    `SELECT f.content AS slot_name, r.dst_id AS entry_id
+       FROM entries r JOIN entries f ON r.rel_id = f.id
+       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`
+  ).bind(recordId).all();
+  const cells = cellRes.results ?? [];
+  const slotToEntries = /* @__PURE__ */ new Map();
+  for (const c of cells) {
+    const list = slotToEntries.get(c.slot_name) ?? [];
+    list.push(c.entry_id);
+    slotToEntries.set(c.slot_name, list);
+  }
+  const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
+  const recordOwnerId = identity?.owner_id ?? null;
+  const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntries.keys()];
+  const canon = canonicalizeEntityValues(allowed, values);
+  for (const [slot, content] of Object.entries(canon)) {
+    if (!allowed.includes(slot)) {
+      throw new Error(`slot not in template: ${slot}`);
+    }
+    const entryIds = slotToEntries.get(slot);
+    if (entryIds && entryIds.length > 0) {
+      for (const entryId of entryIds) {
+        await db.prepare(`UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`).bind(content, entryId).run();
+      }
+    } else {
+      await ensureFieldEntries(db, templateId, [slot]);
+      const entry = await createEntry(db, { content, entry_type: "value", owner_id: recordOwnerId });
+      await insertCellRelation(db, recordId, templateId, slot, entry.id, recordOwnerId);
+    }
+  }
+  const after = await getRecord(db, recordId);
+  if (tpl && mapBefore) await noteRecordWrite(db, tpl.name, recordOwnerId, mapBefore.values, after?.values ?? null);
+  return after;
+}
+async function getRecord(db, recordId) {
+  const belongs = await recordBelongs(db, recordId);
+  if (!belongs) return null;
+  const res = await db.prepare(
+    `SELECT f.content AS slot, v.content AS content
+       FROM entries r
+       JOIN entries f ON r.rel_id = f.id
+       JOIN entries v ON r.dst_id = v.id
+       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`
+  ).bind(recordId).all();
+  const values = {};
+  for (const r of res.results ?? []) values[r.slot] = r.content;
+  const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
+  return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
+}
+async function searchByTemplate(db, template, owner_id, limit = 100, offset = 0) {
+  return (await searchByTemplatePage(db, template, owner_id, limit, offset)).records;
+}
+async function resolveTotal(db, sheetId, owner_id, offset, limit, got, exactTotal) {
+  if (offset === 0 && got < limit) return { total: got, totalExact: true };
+  if (!exactTotal) return { total: offset + got + 1, totalExact: false };
+  const row = owner_id ? await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）
+    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?`
+  ).bind(sheetId, owner_id).first() : await db.prepare(
+    // kbdb-sql-ok：同上
+    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`
+  ).bind(sheetId).first();
+  return { total: row?.total ?? 0, totalExact: true };
+}
+async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false) {
+  const tpl = await getTemplate(db, template);
+  if (!tpl) return { records: [], total: 0, totalExact: true };
+  const cap = Math.min(Math.max(limit, 1), 500);
+  const skip = Math.max(offset, 0);
+  const res = owner_id ? await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；本次 checkout 開在 worktree /private/tmp/wt-graph-first-44/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，與 962d863／5919c6b 記載的是同一個假警報
+    `SELECT src_id AS record_id FROM entries
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
+  ).bind(tpl.id, owner_id, cap, skip).all() : await db.prepare(
+    // kbdb-sql-ok：同上（worktree 路徑假警報）
+    `SELECT src_id AS record_id FROM entries
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
+  ).bind(tpl.id, cap, skip).all();
+  const ids = (res.results ?? []).map((r) => r.record_id);
+  const { total, totalExact } = await resolveTotal(db, tpl.id, owner_id, skip, cap, ids.length, exactTotal);
+  if (ids.length === 0) return { records: [], total, totalExact };
+  return { records: await hydrateRecordValues(db, tpl.id, ids), total, totalExact };
+}
+async function hydrateRecordValues(db, tplId, ids) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const id of ids) byId.set(id, { record_id: id, template_id: tplId, values: {}, owner_id: null });
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const placeholders = chunk.map(() => "?").join(",");
+    const [cellRes, identRes] = await Promise.all([
+      db.prepare(
+        // kbdb-sql-ok：牆內本體（kbdb/src/actions/，從 searchByTemplatePage 原樣抽出，非新違規）；本次 checkout 開在 worktree，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，與本檔既有 962d863／5919c6b 假警報同款
+        `SELECT r.src_id AS record_id, f.content AS slot, v.content AS content
+           FROM entries r
+           JOIN entries f ON r.rel_id = f.id
+           JOIN entries v ON r.dst_id = v.id
+           WHERE r.src_id IN (${placeholders}) AND r.rel_id != '${SYS_BELONGS}'`
+      ).bind(...chunk).all(),
+      db.prepare(`SELECT id, owner_id FROM entries WHERE id IN (${placeholders})`).bind(...chunk).all()
+    ]);
+    for (const r of cellRes.results ?? []) {
+      const rec = byId.get(r.record_id);
+      if (rec) rec.values[r.slot] = r.content;
+    }
+    for (const r of identRes.results ?? []) {
+      const rec = byId.get(r.id);
+      if (rec) rec.owner_id = r.owner_id;
+    }
+  }
+  return ids.map((id) => byId.get(id)).filter((r) => !!r);
+}
+async function deleteRecord(db, recordId) {
+  const belongs = await recordBelongs(db, recordId);
+  if (!belongs) return false;
+  const mapTpl = await getTemplate(db, belongs.dst_id);
+  const mapBefore = mapTpl && isMapTrackedTemplate(mapTpl.name) ? await getRecord(db, recordId) : null;
+  const cellRes = await db.prepare(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id != '${SYS_BELONGS}'`).bind(recordId).all();
+  const dsts = (cellRes.results ?? []).map((r) => r.dst_id);
+  await db.prepare(`DELETE FROM entries WHERE src_id = ?`).bind(recordId).run();
+  await db.prepare(
+    `DELETE FROM entries WHERE id = ?1 AND entry_type = 'record'
+        AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)`
+  ).bind(recordId).run();
+  for (const dst of dsts) {
+    await db.prepare(
+      // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；worktree 開在 matrix/arcrun-wt-218/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到——與本檔既有註解記載的同一個假警報
+      `DELETE FROM entries WHERE id = ?1
+          AND entry_type NOT IN ('sheet', 'field', 'system')
+          AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
+          AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`
+    ).bind(dst).run();
+  }
+  if (mapTpl && mapBefore) await noteRecordWrite(db, mapTpl.name, mapBefore.owner_id, mapBefore.values, null);
+  return true;
+}
+var SYS_ROOT, SYS_BELONGS, SYS_FIELD_OF;
+var init_record_crud = __esm({
+  "kbdb/src/actions/record-crud.ts"() {
+    "use strict";
+    init_entry_crud();
+    init_entity_canon();
+    init_library_map_store();
+    SYS_ROOT = "sys_root";
+    SYS_BELONGS = "sys_belongs";
+    SYS_FIELD_OF = "sys_field_of";
+  }
+});
+
+// kbdb/src/actions/library-map-store.ts
+function mapContent(library, narrative, coreNames) {
+  const core = coreNames.length ? coreNames.join("\u3001") : "\uFF08\u5C1A\u7121 entities\uFF09";
+  const text = narrative?.trim();
+  if (!text) return `${library}\u3002\u6838\u5FC3\uFF1A${core}`;
+  const sep = /[。．.！!？?；;]$/.test(text) ? "" : "\u3002";
+  return `${library}\uFF1A${text}${sep}\u6838\u5FC3\uFF1A${core}`;
+}
+async function ensureLibraryMapTemplate(db) {
+  const existing = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (existing) {
+    const slots = JSON.parse(existing.slots_json);
+    const missing = LIBRARY_MAP_SLOTS.filter((s) => !slots.includes(s));
+    const patch = {};
+    if (existing.description !== LIBRARY_MAP_TEMPLATE_DESCRIPTION) patch.description = LIBRARY_MAP_TEMPLATE_DESCRIPTION;
+    if (missing.length) patch.slots = [...slots, ...missing];
+    if (patch.description !== void 0 || patch.slots !== void 0) await updateTemplate(db, existing.id, patch);
+    return;
+  }
+  try {
+    await createTemplate(db, {
+      id: LIBRARY_MAP_TEMPLATE_ID,
+      name: LIBRARY_MAP_TEMPLATE_NAME,
+      description: LIBRARY_MAP_TEMPLATE_DESCRIPTION,
+      slots: LIBRARY_MAP_SLOTS,
+      created_by: "system"
+    });
+  } catch {
+    if (!await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME)) throw new Error("ensureLibraryMapTemplate failed");
+  }
+}
+async function ensureTripletLibrarySlot(db, tripletTemplate) {
+  const tpl = await getTemplate(db, tripletTemplate);
+  if (!tpl) throw new Error(`triplet template not found: ${tripletTemplate}`);
+  const slots = JSON.parse(tpl.slots_json);
+  if (slots.includes("library")) return false;
+  await updateTemplate(db, tpl.id, { slots: [...slots, "library"] });
+  return true;
+}
+function setFor(store, db) {
+  let s = store.get(db);
+  if (!s) {
+    s = /* @__PURE__ */ new Set();
+    store.set(db, s);
+  }
+  return s;
+}
+function ensureTemplateOnce(db) {
+  let p = templateReady.get(db);
+  if (!p) {
+    p = ensureLibraryMapTemplate(db).catch((e) => {
+      templateReady.delete(db);
+      throw e;
+    });
+    templateReady.set(db, p);
+  }
+  return p;
+}
+function nextWriteSeq() {
+  writeSeqCounter += 1;
+  return writeSeqCounter;
+}
+async function hexDigest(input, chars) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, chars);
+}
+function ownerKey(owner) {
+  return owner || "";
+}
+async function ownerHash(owner) {
+  return hexDigest(`owner ${ownerKey(owner)}`, 16);
+}
+async function mapIdentity(owner, library) {
+  const oh = await ownerHash(owner);
+  const mh = await hexDigest(`map ${ownerKey(owner)} ${library}`, 32);
+  return { id: `lmap_${mh}`, pageName: `${MAP_PAGE_PREFIX}${oh}:${library}` };
+}
+async function adoptionMarkerId(owner) {
+  return `lmapo_${await hexDigest(`adopted ${ownerKey(owner)}`, 32)}`;
+}
+function parseMeta(raw2) {
+  if (!raw2) return null;
+  try {
+    const v = JSON.parse(raw2);
+    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+function countedLibraryOf(e) {
+  if (!e) return null;
+  if (e.src_id != null) return null;
+  if (NOT_KNOWLEDGE_ENTRY_TYPES.includes(e.entry_type)) return null;
+  const meta = parseMeta(e.metadata_json);
+  if (e.entry_type === "block" && meta?.kind === "library_map") return null;
+  const lib = meta?.library;
+  return libraryOfValue(lib === void 0 || lib === null ? null : String(lib));
+}
+function countedEntrySql() {
+  const types = NOT_KNOWLEDGE_ENTRY_TYPES.map((t) => `'${t}'`).join(", ");
+  return `src_id IS NULL
+         AND entry_type NOT IN (${types})
+         AND NOT (entry_type = 'block' AND COALESCE(json_extract(metadata_json, '$.kind'), '') = 'library_map')`;
+}
+function tripletContribution(values) {
+  if (!values) return null;
+  const status = values.status;
+  if (status !== void 0 && status !== null && status !== "active") return null;
+  return {
+    library: libraryOfValue(values.library),
+    subject: values.subject ?? null,
+    object: values.object ?? null,
+    predicate: values.predicate ?? null
+  };
+}
+function sameContribution(a, b) {
+  return a.library === b.library && a.subject === b.subject && a.object === b.object && a.predicate === b.predicate;
+}
+function parseArray(raw2) {
+  if (!raw2) return [];
+  try {
+    const v = JSON.parse(raw2);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+function entitiesToPairs(raw2) {
+  const out = [];
+  for (const e of parseArray(raw2)) {
+    const r = e;
+    if (typeof r?.name === "string" && typeof r.degree === "number") out.push([r.name, r.degree]);
+  }
+  return out;
+}
+function relationsToPairs(raw2) {
+  const out = [];
+  for (const e of parseArray(raw2)) {
+    const r = e;
+    if (typeof r?.predicate === "string" && typeof r.count === "number") out.push([r.predicate, r.count]);
+  }
+  return out;
+}
+function sortPairs(pairs) {
+  pairs.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+function bump(pairs, key, delta, capacity) {
+  const i = pairs.findIndex((p) => p[0] === key);
+  if (i >= 0) {
+    pairs[i][1] += delta;
+    if (pairs[i][1] <= 0) pairs.splice(i, 1);
+    return;
+  }
+  if (delta <= 0) return;
+  if (pairs.length < capacity) {
+    pairs.push([key, delta]);
+    return;
+  }
+  let min = 0;
+  for (let j = 1; j < pairs.length; j++) {
+    if (pairs[j][1] < pairs[min][1] || pairs[j][1] === pairs[min][1] && pairs[j][0] > pairs[min][0]) min = j;
+  }
+  pairs[min] = [key, pairs[min][1] + delta];
+}
+function top3Key(raw2) {
+  return entitiesToPairs(raw2).slice(0, 3).map((p) => p[0]).join(" ");
+}
+async function bumpCounter(db, id, delta) {
+  await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；worktree 路徑造成的假警報同 library-map.ts 既有註解
+    `UPDATE entries
+          SET content = CAST(MAX(0, CAST(COALESCE(NULLIF(content, ''), '0') AS INTEGER) + ?) AS TEXT),
+              updated_at = unixepoch()
+        WHERE id = ?`
+  ).bind(delta, id).run();
+}
+async function compareAndSetCell(db, id, mutate) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const row = await db.prepare("SELECT content FROM entries WHERE id = ?").bind(id).first();
+    if (!row) return null;
+    const next = mutate(row.content);
+    if (next === row.content) return { before: row.content, after: next };
+    const res = await db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS ?").bind(next, id, row.content).run();
+    const changes = res?.meta?.changes;
+    if (changes === void 0 || changes > 0) return { before: row.content, after: next };
+  }
+  throw new Error(`library map cell stayed contended after 5 attempts: ${id}`);
+}
+async function readCellsById(db, ids) {
+  const out = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const res = await db.prepare(`SELECT id, content, updated_at FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
+    for (const r of res.results ?? []) out.set(r.id, { content: r.content, updated_at: r.updated_at });
+  }
+  return out;
+}
+async function refreshMapSentence(db, mapId, library) {
+  const cells = await readCellsById(db, [cellId(mapId, "narrative"), cellId(mapId, "top_entities")]);
+  const narrative = cells.get(cellId(mapId, "narrative"))?.content ?? "";
+  const top = entitiesToPairs(cells.get(cellId(mapId, "top_entities"))?.content ?? null).slice(0, 3).map((p) => p[0]);
+  const content = mapContent(library, narrative, top);
+  await db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?").bind(content, mapId, content).run();
+}
+function defaultMapValues(library) {
+  return {
+    library,
+    narrative: "",
+    top_entities: "[]",
+    relation_profile: "[]",
+    bridges: "[]",
+    triplet_count: "0",
+    commit_hash: "",
+    status: "active",
+    entry_count: "0"
+  };
+}
+async function createMapRecord(db, owner, library, seed) {
+  await ensureTemplateOnce(db);
+  const ident = await mapIdentity(owner, library);
+  const values = { ...defaultMapValues(library), ...seed };
+  const top = entitiesToPairs(values.top_entities).slice(0, 3).map((p) => p[0]);
+  await db.prepare(
+    // kbdb-sql-ok：同上
+    `INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id, page_name, metadata_json)
+       VALUES (?, ?, 'block', ?, ?, ?)`
+  ).bind(ident.id, mapContent(library, values.narrative, top), owner, ident.pageName, JSON.stringify({ kind: "library_map", library })).run();
+  await createRecord(db, {
+    template: LIBRARY_MAP_TEMPLATE_NAME,
+    record_id: ident.id,
+    values,
+    owner_id: owner,
+    derived_cell_ids: true
+  });
+  return ident.id;
+}
+async function ensureMapRecord(db, owner, library) {
+  const ident = await mapIdentity(owner, library);
+  const known = setFor(knownMaps, db);
+  if (known.has(ident.id)) return ident.id;
+  const lastSlot = LIBRARY_MAP_SLOTS[LIBRARY_MAP_SLOTS.length - 1];
+  const hit = await db.prepare("SELECT id FROM entries WHERE id = ?").bind(cellId(ident.id, lastSlot)).first();
+  if (!hit) await createMapRecord(db, owner, library, {});
+  known.add(ident.id);
+  return ident.id;
+}
+async function putStoredMap(db, owner, library, values) {
+  const mapId = await createMapRecord(db, owner, library, values);
+  for (const [slot, content] of Object.entries(values)) {
+    await db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?").bind(content, cellId(mapId, slot), content).run();
+  }
+  await refreshMapSentence(db, mapId, library);
+  setFor(knownMaps, db).add(mapId);
+  return mapId;
+}
+async function putNarrative(db, owner, library, narrative) {
+  await ensureOwnerAdopted(db, owner, nextWriteSeq());
+  const mapId = await ensureMapRecord(db, owner, library);
+  await db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?").bind(narrative, cellId(mapId, "narrative")).run();
+  await refreshMapSentence(db, mapId, library);
+}
+function ownerClause(column, owner) {
+  if (owner === void 0) return { sql: "", params: [] };
+  if (owner === null) return { sql: ` AND +${column} IS NULL`, params: [] };
+  return { sql: ` AND +${column} = ?`, params: [owner] };
+}
+function tripletCellsSql(ownerSql) {
+  const cols = TRIPLET_SUMMARY_SLOTS.map((s) => `MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_${s}' THEN v.content END) AS ${s}`).join(",\n            ");
+  const rels = TRIPLET_SUMMARY_SLOTS.map((s) => `'fld_' || b.dst_id || '_${s}'`).join(", ");
+  return `SELECT b.src_id AS rid,
+            ${cols}
+          FROM entries b
+          LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id IN (${rels})
+          LEFT JOIN entries v ON v.id = r.dst_id
+          WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerSql}
+          GROUP BY b.src_id`;
+}
+async function aggregateTripletSummaries(db, tripletTemplateId, owner, opts = {}) {
+  const oc = ownerClause("b.owner_id", owner);
+  const withPrefix = !!(opts.sourcePrefix && opts.library);
+  const labelled = withPrefix ? `CASE WHEN t.library IS NULL AND t.source_uri LIKE ? || '%' THEN ? ELSE ${libraryOf("t.library")} END` : libraryOf("t.library");
+  const labelParams = withPrefix ? [opts.sourcePrefix, opts.library] : [];
+  const filter = opts.library ? "WHERE library = ?" : "";
+  const filterParams = opts.library ? [opts.library] : [];
+  const head = `WITH t AS (${tripletCellsSql(oc.sql)}),
+      act AS (SELECT subject, object, predicate, ${labelled} AS library FROM t WHERE COALESCE(t.status, 'active') = 'active'),
+      lib AS (SELECT * FROM act ${filter})`;
+  const params = [tripletTemplateId, ...oc.params, ...labelParams, ...filterParams];
+  const [countRes, entRes, relRes] = await Promise.all([
+    db.prepare(`${head} SELECT library, COUNT(*) AS n FROM lib GROUP BY library`).bind(...params).all(),
+    db.prepare(
+      // kbdb-sql-ok：同上
+      `${head},
+         ent AS (SELECT subject AS name, library FROM lib WHERE subject IS NOT NULL
+                 UNION ALL SELECT object AS name, library FROM lib WHERE object IS NOT NULL),
+         deg AS (SELECT library, name, COUNT(*) AS n FROM ent GROUP BY library, name),
+         ranked AS (SELECT library, name, n, ROW_NUMBER() OVER (PARTITION BY library ORDER BY n DESC, name ASC) AS rn FROM deg)
+         SELECT library, name, n FROM ranked WHERE rn <= ? ORDER BY library, rn`
+    ).bind(...params, ENTITY_SKETCH_SIZE).all(),
+    db.prepare(
+      // kbdb-sql-ok：同上
+      `${head},
+         deg AS (SELECT library, predicate AS name, COUNT(*) AS n FROM lib WHERE predicate IS NOT NULL GROUP BY library, predicate),
+         ranked AS (SELECT library, name, n, ROW_NUMBER() OVER (PARTITION BY library ORDER BY n DESC, name ASC) AS rn FROM deg)
+         SELECT library, name, n FROM ranked WHERE rn <= ? ORDER BY library, rn`
+    ).bind(...params, PREDICATE_SKETCH_SIZE).all()
+  ]);
+  const out = /* @__PURE__ */ new Map();
+  const get = (library) => {
+    const key = String(library);
+    let s = out.get(key);
+    if (!s) {
+      s = { count: 0, entities: [], relations: [] };
+      out.set(key, s);
+    }
+    return s;
+  };
+  for (const r of countRes.results ?? []) get(r.library).count = r.n;
+  for (const r of entRes.results ?? []) get(r.library).entities.push({ name: r.name, degree: r.n });
+  for (const r of relRes.results ?? []) get(r.library).relations.push({ predicate: r.name, count: r.n });
+  return out;
+}
+async function aggregateEntryCounts(db, owner, library) {
+  const params = owner === null ? [] : [owner];
+  if (library) params.push(library);
+  const res = await db.prepare(
+    // kbdb-sql-ok：同上
+    `SELECT ${ENTRY_LIBRARY} AS library, COUNT(*) AS n
+         FROM entries
+        WHERE ${owner === null ? "owner_id IS NULL" : "owner_id = ?"}
+          AND ${countedEntrySql()}
+          ${library ? `AND ${ENTRY_LIBRARY} = ?` : ""}
+        GROUP BY ${ENTRY_LIBRARY}`
+  ).bind(...params).all();
+  const out = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) out.set(String(r.library), r.n);
+  return out;
+}
+async function portalLibraryNames(db, owner) {
+  const tpl = await getTemplate(db, PORTAL_LIBRARY_TEMPLATE);
+  if (!tpl) return [];
+  const oc = ownerClause("b.owner_id", owner);
+  const res = await db.prepare(
+    // kbdb-sql-ok：同上
+    `SELECT MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_name' THEN v.content END) AS name
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id = 'fld_' || b.dst_id || '_name'
+         LEFT JOIN entries v ON v.id = r.dst_id
+        WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${oc.sql}
+        GROUP BY b.src_id`
+  ).bind(tpl.id, ...oc.params).all();
+  return (res.results ?? []).map((r) => r.name?.trim() ?? "").filter(Boolean);
+}
+async function readLegacyMaps(db, owner) {
+  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (!tpl) return { byLibrary: /* @__PURE__ */ new Map(), activeIds: [] };
+  const oc = ownerClause("b.owner_id", owner);
+  const res = await db.prepare(
+    // kbdb-sql-ok：同上
+    `WITH m AS (
+         SELECT b.src_id AS rid,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_narrative' THEN v.content END) AS narrative,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_top_entities' THEN v.content END) AS top_entities,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_relation_profile' THEN v.content END) AS relation_profile,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_triplet_count' THEN v.content END) AS triplet_count,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_commit_hash' THEN v.content END) AS commit_hash,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+           MAX(r.created_at) AS ts
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+         LEFT JOIN entries v ON v.id = r.dst_id
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${oc.sql}
+           AND substr(b.src_id, 1, 5) != 'lmap_'
+         GROUP BY b.src_id)
+       SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
+       ORDER BY m.ts DESC`
+  ).bind(tpl.id, ...oc.params).all();
+  const byLibrary = /* @__PURE__ */ new Map();
+  const activeIds = [];
+  for (const r of res.results ?? []) {
+    activeIds.push(r.rid);
+    if (!byLibrary.has(r.library)) byLibrary.set(r.library, r);
+  }
+  return { byLibrary, activeIds };
+}
+async function isOwnerAdopted(db, owner) {
+  const key = ownerKey(owner);
+  const adopted = setFor(adoptedOwners, db);
+  if (adopted.has(key)) return true;
+  const hit = await db.prepare("SELECT id FROM entries WHERE id = ?").bind(await adoptionMarkerId(owner)).first();
+  if (hit) adopted.add(key);
+  return !!hit;
+}
+async function ensureOwnerAdopted(db, owner, writeSeq) {
+  if (await isOwnerAdopted(db, owner)) return { baselineIncludesWrite: false };
+  const key = ownerKey(owner);
+  let registry = adoptionJobs.get(db);
+  if (!registry) {
+    registry = /* @__PURE__ */ new Map();
+    adoptionJobs.set(db, registry);
+  }
+  const jobs = registry;
+  let job = jobs.get(key);
+  if (!job) {
+    const seq = nextWriteSeq();
+    const done = adoptOwner(db, owner).finally(() => jobs.delete(key));
+    job = { seq, done };
+    jobs.set(key, job);
+  }
+  await job.done;
+  setFor(adoptedOwners, db).add(key);
+  return { baselineIncludesWrite: job.seq > writeSeq };
+}
+async function adoptOwner(db, owner) {
+  await ensureTemplateOnce(db);
+  const tpl = await getTemplate(db, DEFAULT_TRIPLET_TEMPLATE);
+  const summaries = tpl ? await aggregateTripletSummaries(db, tpl.id, owner) : /* @__PURE__ */ new Map();
+  const entryCounts = await aggregateEntryCounts(db, owner);
+  const legacyOwn = await readLegacyMaps(db, owner);
+  const emptyLegacy = /* @__PURE__ */ new Map();
+  const legacyShared = owner !== null ? (await readLegacyMaps(db, null)).byLibrary : emptyLegacy;
+  const portalNames = await portalLibraryNames(db, owner);
+  const libraries = /* @__PURE__ */ new Set([
+    ...summaries.keys(),
+    ...entryCounts.keys(),
+    ...legacyOwn.byLibrary.keys(),
+    ...portalNames
+  ]);
+  for (const library of libraries) {
+    const s = summaries.get(library);
+    const values = {
+      triplet_count: String(s?.count ?? 0),
+      top_entities: JSON.stringify(s?.entities ?? []),
+      relation_profile: JSON.stringify(s?.relations ?? []),
+      entry_count: String(entryCounts.get(library) ?? 0)
+    };
+    const own = legacyOwn.byLibrary.get(library);
+    const shared = legacyShared.get(library);
+    const narrative = own?.narrative?.trim() || shared?.narrative?.trim();
+    if (narrative) values.narrative = narrative;
+    const commit = own?.commit_hash || shared?.commit_hash;
+    if (commit) values.commit_hash = commit;
+    await putStoredMap(db, owner, library, values);
+  }
+  for (const rid of legacyOwn.activeIds) {
+    await updateRecord(db, rid, { status: "superseded" });
+    await db.prepare(
+      // kbdb-sql-ok：同上
+      `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'), updated_at = unixepoch()
+          WHERE id = ? AND entry_type = 'block'`
+    ).bind(rid).run();
+  }
+  await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES (?, 'library-map adopted', 'system', ?)`).bind(await adoptionMarkerId(owner), owner).run();
+}
+function logMapFailure(what, e) {
+  console.error(`[library-map] ${what}\u6C92\u80FD\u8A18\u9032\u5730\u5716\uFF08\u5730\u5716\u6578\u5B57\u53EF\u80FD\u843D\u5F8C\uFF1BPOST /map/recompute?library= \u53EF\u6821\u6B63\uFF09`, e);
+}
+function isMapTrackedTemplate(templateName) {
+  return templateName === DEFAULT_TRIPLET_TEMPLATE || templateName === PORTAL_LIBRARY_TEMPLATE;
+}
+async function applyTripletContribution(db, owner, c, sign) {
+  const mapId = await ensureMapRecord(db, owner, c.library);
+  await bumpCounter(db, cellId(mapId, "triplet_count"), sign);
+  let sentenceStale = false;
+  const names = [c.subject, c.object].filter((n2) => n2 !== null);
+  if (names.length) {
+    const r = await compareAndSetCell(db, cellId(mapId, "top_entities"), (raw2) => {
+      const pairs = entitiesToPairs(raw2);
+      for (const n2 of names) bump(pairs, n2, sign, ENTITY_SKETCH_SIZE);
+      sortPairs(pairs);
+      return JSON.stringify(pairs.map(([name, degree]) => ({ name, degree })));
+    });
+    if (r && top3Key(r.before) !== top3Key(r.after)) sentenceStale = true;
+  }
+  if (c.predicate !== null) {
+    const predicate = c.predicate;
+    await compareAndSetCell(db, cellId(mapId, "relation_profile"), (raw2) => {
+      const pairs = relationsToPairs(raw2);
+      bump(pairs, predicate, sign, PREDICATE_SKETCH_SIZE);
+      sortPairs(pairs);
+      return JSON.stringify(pairs.map(([p, count]) => ({ predicate: p, count })));
+    });
+  }
+  if (sentenceStale) await refreshMapSentence(db, mapId, c.library);
+}
+async function noteRecordWrite(db, templateName, ownerId, before, after) {
+  if (!isMapTrackedTemplate(templateName)) return;
+  const owner = ownerId || null;
+  const writeSeq = nextWriteSeq();
+  try {
+    if (templateName === PORTAL_LIBRARY_TEMPLATE) {
+      const name = after?.name?.trim();
+      if (!name) return;
+      await ensureOwnerAdopted(db, owner, writeSeq);
+      await ensureMapRecord(db, owner, name);
+      return;
+    }
+    const b = tripletContribution(before);
+    const a = tripletContribution(after);
+    if (!b && !a) return;
+    if (b && a && sameContribution(b, a)) return;
+    const { baselineIncludesWrite } = await ensureOwnerAdopted(db, owner, writeSeq);
+    if (baselineIncludesWrite) return;
+    if (b) await applyTripletContribution(db, owner, b, -1);
+    if (a) await applyTripletContribution(db, owner, a, 1);
+  } catch (e) {
+    logMapFailure("\u4E09\u5143\u7D44\u7570\u52D5", e);
+  }
+}
+async function noteEntriesChanged(db, changes) {
+  const deltas = /* @__PURE__ */ new Map();
+  const add2 = (owner, library, delta) => {
+    const k = `${ownerKey(owner)} ${library}`;
+    const cur = deltas.get(k) ?? { owner, library, delta: 0 };
+    cur.delta += delta;
+    deltas.set(k, cur);
+  };
+  for (const { before, after } of changes) {
+    const bl = countedLibraryOf(before);
+    const al = countedLibraryOf(after);
+    const bo = before?.owner_id || null;
+    const ao = after?.owner_id || null;
+    if (bl !== null && al !== null && bl === al && bo === ao) continue;
+    if (bl !== null) add2(bo, bl, -1);
+    if (al !== null) add2(ao, al, 1);
+  }
+  const pending = [...deltas.values()].filter((d) => d.delta !== 0);
+  if (!pending.length) return;
+  const writeSeq = nextWriteSeq();
+  try {
+    const byOwner = /* @__PURE__ */ new Map();
+    for (const d of pending) {
+      const k = ownerKey(d.owner);
+      const g = byOwner.get(k) ?? { owner: d.owner, items: [] };
+      g.items.push(d);
+      byOwner.set(k, g);
+    }
+    for (const { owner, items } of byOwner.values()) {
+      const { baselineIncludesWrite } = await ensureOwnerAdopted(db, owner, writeSeq);
+      if (baselineIncludesWrite) continue;
+      for (const d of items) {
+        const mapId = await ensureMapRecord(db, owner, d.library);
+        await bumpCounter(db, cellId(mapId, "entry_count"), d.delta);
+      }
+    }
+  } catch (e) {
+    logMapFailure("\u5361\u7247\u7570\u52D5", e);
+  }
+}
+function toInt(raw2) {
+  const n2 = Number(raw2 ?? 0);
+  return Number.isFinite(n2) ? Math.max(0, Math.floor(n2)) : 0;
+}
+function entitiesOf(raw2) {
+  return entitiesToPairs(raw2 ?? null).map(([name, degree]) => ({ name, degree }));
+}
+function relationsOf(raw2) {
+  return relationsToPairs(raw2 ?? null).map(([predicate, count]) => ({ predicate, count }));
+}
+async function readStoredRows(db, owner) {
+  const oh = owner === void 0 ? "" : await ownerHash(owner);
+  const lo = owner === void 0 ? MAP_PAGE_PREFIX : `${MAP_PAGE_PREFIX}${oh}:`;
+  const hi = owner === void 0 ? MAP_PAGE_UPPER_ALL : `${MAP_PAGE_PREFIX}${oh};`;
+  const res = await db.prepare("SELECT id, owner_id FROM entries WHERE page_name >= ? AND page_name < ? AND +entry_type = 'block'").bind(lo, hi).all();
+  const heads = (res.results ?? []).filter((r) => owner === void 0 || (r.owner_id ?? "") === owner);
+  if (!heads.length) return [];
+  const cells = await readCellsById(db, heads.flatMap((h) => LIBRARY_MAP_SLOTS.map((s) => cellId(h.id, s))));
+  const out = [];
+  for (const h of heads) {
+    const get = (slot) => cells.get(cellId(h.id, slot));
+    const library = get("library")?.content;
+    if (!library) continue;
+    let updated = 0;
+    for (const s of LIBRARY_MAP_SLOTS) updated = Math.max(updated, get(s)?.updated_at ?? 0);
+    out.push({
+      record_id: h.id,
+      owner_id: h.owner_id,
+      library,
+      narrative: get("narrative")?.content?.trim() || null,
+      entities: entitiesOf(get("top_entities")?.content),
+      relations: relationsOf(get("relation_profile")?.content),
+      triplet_count: toInt(get("triplet_count")?.content),
+      entry_count: toInt(get("entry_count")?.content),
+      commit_hash: get("commit_hash")?.content || null,
+      updated_at: updated
+    });
+  }
+  return out;
+}
+function legacyToStored(rows, ownerId) {
+  return [...rows].map((r) => ({
+    record_id: r.rid,
+    owner_id: ownerId,
+    library: r.library,
+    narrative: r.narrative?.trim() || null,
+    entities: entitiesOf(r.top_entities),
+    relations: relationsOf(r.relation_profile),
+    triplet_count: toInt(r.triplet_count),
+    entry_count: null,
+    commit_hash: r.commit_hash || null,
+    updated_at: r.ts ?? 0
+  }));
+}
+function mergeByLibrary(maps) {
+  const byLib = /* @__PURE__ */ new Map();
+  for (const m of maps) {
+    const cur = byLib.get(m.library);
+    if (!cur) {
+      byLib.set(m.library, { ...m, entities: [...m.entities], relations: [...m.relations] });
+      continue;
+    }
+    cur.triplet_count += m.triplet_count;
+    cur.entry_count = cur.entry_count === null || m.entry_count === null ? null : cur.entry_count + m.entry_count;
+    cur.narrative = cur.narrative || m.narrative;
+    cur.commit_hash = cur.commit_hash || m.commit_hash;
+    cur.updated_at = Math.max(cur.updated_at, m.updated_at);
+    const ents = cur.entities.map((e) => [e.name, e.degree]);
+    for (const e of m.entities) {
+      const i = ents.findIndex((p) => p[0] === e.name);
+      if (i >= 0) ents[i][1] += e.degree;
+      else ents.push([e.name, e.degree]);
+    }
+    sortPairs(ents);
+    cur.entities = ents.slice(0, ENTITY_SKETCH_SIZE).map(([name, degree]) => ({ name, degree }));
+    const rels = cur.relations.map((r) => [r.predicate, r.count]);
+    for (const r of m.relations) {
+      const i = rels.findIndex((p) => p[0] === r.predicate);
+      if (i >= 0) rels[i][1] += r.count;
+      else rels.push([r.predicate, r.count]);
+    }
+    sortPairs(rels);
+    cur.relations = rels.slice(0, PREDICATE_SKETCH_SIZE).map(([predicate, count]) => ({ predicate, count }));
+  }
+  return [...byLib.values()];
+}
+async function readStoredMaps(db, owner) {
+  const scope = owner || void 0;
+  if (scope !== void 0) {
+    if (await isOwnerAdopted(db, scope)) return readStoredRows(db, scope);
+    const legacy2 = await readLegacyMaps(db, scope);
+    return legacyToStored(legacy2.byLibrary.values(), scope);
+  }
+  const all = await readStoredRows(db, void 0);
+  if (all.length) return mergeByLibrary(all);
+  const legacy = await readLegacyMaps(db, void 0);
+  return legacyToStored(legacy.byLibrary.values(), null);
+}
+var LIBRARY_MAP_TEMPLATE_ID, LIBRARY_MAP_TEMPLATE_NAME, LIBRARY_MAP_SLOTS, DEFAULT_TRIPLET_TEMPLATE, PORTAL_LIBRARY_TEMPLATE, ENTITY_SKETCH_SIZE, PREDICATE_SKETCH_SIZE, LIBRARY_MAP_TEMPLATE_DESCRIPTION, NOT_KNOWLEDGE_ENTRY_TYPES, templateReady, adoptedOwners, knownMaps, adoptionJobs, writeSeqCounter, MAP_PAGE_PREFIX, MAP_PAGE_UPPER_ALL, LIBRARY_MAP_ID_PREFIX, NOT_LIBRARY_MAP_ROW, NOT_LIBRARY_MAP_CELL, cellId, TRIPLET_SUMMARY_SLOTS;
+var init_library_map_store = __esm({
+  "kbdb/src/actions/library-map-store.ts"() {
+    "use strict";
+    init_record_crud();
+    init_library_predicate();
+    LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
+    LIBRARY_MAP_TEMPLATE_NAME = "library_map";
+    LIBRARY_MAP_SLOTS = [
+      "library",
+      "narrative",
+      "top_entities",
+      "relation_profile",
+      "bridges",
+      "triplet_count",
+      "commit_hash",
+      "status",
+      "entry_count"
+    ];
+    DEFAULT_TRIPLET_TEMPLATE = "triplet";
+    PORTAL_LIBRARY_TEMPLATE = "portal_library";
+    ENTITY_SKETCH_SIZE = 128;
+    PREDICATE_SKETCH_SIZE = 100;
+    LIBRARY_MAP_TEMPLATE_DESCRIPTION = "per-library map block\uFF08\u85CF\u66F8\u5730\u5716\uFF1Atop_entities\uFF0Frelation_profile\uFF0Fbridges\uFF0Ftriplet_count \u7531 graph \u6A5F\u68B0\u5C0E\u51FA\uFF1Bnarrative \u7531 LLM \u8457\u4F5C\uFF0C\u7B97\u4E0D\u51FA\u4F86\u3001\u4E1F\u4E86\u56DE\u4E0D\u4F86\uFF1BArcrun#39\uFF0F#44\uFF09";
+    NOT_KNOWLEDGE_ENTRY_TYPES = [
+      "value",
+      "record",
+      "sheet",
+      "field",
+      "system",
+      "relation",
+      "execution_log",
+      "execution_log_usage",
+      "execution_log_retention_config",
+      "credential",
+      "embed_backfill_usage",
+      "kbdb_maintenance_usage",
+      "recipe_stat"
+    ];
+    templateReady = /* @__PURE__ */ new WeakMap();
+    adoptedOwners = /* @__PURE__ */ new WeakMap();
+    knownMaps = /* @__PURE__ */ new WeakMap();
+    adoptionJobs = /* @__PURE__ */ new WeakMap();
+    writeSeqCounter = 0;
+    MAP_PAGE_PREFIX = "library-map@";
+    MAP_PAGE_UPPER_ALL = "library-mapA";
+    LIBRARY_MAP_ID_PREFIX = "lmap";
+    NOT_LIBRARY_MAP_ROW = `(substr(id, 1, 4) != '${LIBRARY_MAP_ID_PREFIX}' AND substr(id, 1, 9) != 'relb_${LIBRARY_MAP_ID_PREFIX}')`;
+    NOT_LIBRARY_MAP_CELL = `(substr(id, 1, 4) != '${LIBRARY_MAP_ID_PREFIX}' OR instr(id, '~') = 0)`;
+    cellId = (mapId, slot) => derivedCellIds(mapId, slot).value;
+    TRIPLET_SUMMARY_SLOTS = ["subject", "object", "predicate", "status", "library", "source_uri"];
+  }
+});
+
+// kbdb/src/actions/entry-crud.ts
+function uid2(prefix) {
+  return `${prefix}_${crypto.randomUUID()}`;
+}
+async function createEntry(db, input) {
+  const id = input.id ?? uid2("e");
+  await db.prepare(
+    `INSERT INTO entries (id, content, entry_type, owner_id, parent_id, page_name, refs_json, tags_json, task_status, confidence, metadata_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    id,
+    input.content ?? null,
+    input.entry_type,
+    input.owner_id ?? null,
+    input.parent_id ?? null,
+    input.page_name ?? null,
+    input.refs_json ?? "[]",
+    input.tags_json ?? "[]",
+    input.task_status ?? null,
+    input.confidence ?? null,
+    input.metadata_json ?? null
+  ).run();
+  const row = await getEntry(db, id);
+  if (!row) throw new Error("createEntry: insert succeeded but row not found");
+  await noteEntriesChanged(db, [{ before: null, after: row }]);
+  return row;
+}
+async function getEntry(db, id) {
+  const row = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
+  return row ?? null;
+}
+function eqTerm(column, exactKeyPresent) {
+  return exactKeyPresent ? `+${column} = ?` : `${column} = ?`;
+}
+async function listEntries(db, f = {}) {
+  const conds = [];
+  const params = [];
+  const exactKey = Boolean(f.page_name || f.source);
+  const exact = exactKey || Boolean(f.parent_id);
+  if (f.entry_type) {
+    conds.push(eqTerm("entry_type", exact));
+    params.push(f.entry_type);
+  } else {
+    conds.push(NOT_MACHINERY_PREDICATE);
+  }
+  if (f.owner_id) {
+    conds.push(eqTerm("owner_id", exact));
+    params.push(f.owner_id);
+  }
+  if (f.parent_id) {
+    conds.push(eqTerm("parent_id", exactKey));
+    params.push(f.parent_id);
+  }
+  if (f.page_name) {
+    conds.push("page_name = ?");
+    params.push(f.page_name);
+  }
+  if (f.source) {
+    conds.push("json_extract(metadata_json, '$.source') = ?");
+    params.push(f.source);
+  }
+  if (f.library && f.library.length > 0) {
+    conds.push(libraryPredicate(f.library));
+    params.push(...f.library);
+  }
+  if (f.exclude_kind && f.exclude_kind.length > 0) {
+    const ph = f.exclude_kind.map(() => "?").join(",");
+    conds.push(`COALESCE(json_extract(metadata_json, '$.kind'), '') NOT IN (${ph})`);
+    params.push(...f.exclude_kind);
+  }
+  if (f.q) {
+    const m = buildContentLike(f.q);
+    conds.push(...m.conds);
+    params.push(...m.params);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const limit = Math.min(f.limit ?? 100, 1e3);
+  const offset = f.offset ?? 0;
+  const pageSizeKnown = Number.isFinite(limit) && limit > 0;
+  const rowsRes = await db.prepare(`SELECT * FROM entries ${where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all();
+  const entries = rowsRes.results ?? [];
+  let total;
+  if (pageSizeKnown && entries.length > 0 && entries.length < limit) total = offset + entries.length;
+  else if (pageSizeKnown && entries.length === 0 && offset === 0) total = 0;
+  else {
+    const countRow = await db.prepare(`SELECT COUNT(*) as total FROM entries ${where}`).bind(...params).first();
+    total = countRow?.total ?? 0;
+  }
+  return { entries, total };
+}
+async function blocksOfPages(db, pages, perPageLimit = 8) {
+  if (pages.length === 0) return [];
+  const params = [];
+  const pairs = pages.map((p) => {
+    params.push(p.page_name);
+    if (p.owner_id === null) return "(page_name = ? AND +owner_id IS NULL)";
+    params.push(p.owner_id);
+    return "(page_name = ? AND +owner_id = ?)";
+  });
+  const rows = await db.prepare(
+    `SELECT * FROM entries
+        WHERE (${pairs.join(" OR ")})
+          AND ${NOT_MACHINERY_PREDICATE}
+          AND ${NOT_DEPRECATED_PREDICATE}
+        ORDER BY created_at ASC, rowid ASC
+        LIMIT ?`
+  ).bind(...params, pages.length * perPageLimit).all();
+  return rows.results ?? [];
+}
+async function updateEntry(db, id, patch) {
+  const cols = [];
+  const params = [];
+  const map = patch;
+  for (const k of ["content", "parent_id", "page_name", "refs_json", "tags_json", "task_status", "confidence", "metadata_json"]) {
+    if (k in map && map[k] !== void 0) {
+      cols.push(`${k} = ?`);
+      params.push(map[k]);
+    }
+  }
+  if (cols.length === 0) return getEntry(db, id);
+  const before = map.metadata_json !== void 0 ? await getEntry(db, id) : null;
+  cols.push("updated_at = unixepoch()");
+  await db.prepare(`UPDATE entries SET ${cols.join(", ")} WHERE id = ?`).bind(...params, id).run();
+  const row = await getEntry(db, id);
+  if (before) await noteEntriesChanged(db, [{ before, after: row }]);
+  return row;
+}
+async function deleteEntry(db, id) {
+  const ref = await db.prepare("SELECT id FROM entries WHERE dst_id = ? LIMIT 1").bind(id).first();
+  if (ref) throw new Error(`entry ${id} is still referenced by record relation ${ref.id} \u2014 delete the record (or its slot) first`);
+  const before = await getEntry(db, id);
+  await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
+  await db.prepare("DELETE FROM entries WHERE src_id = ?").bind(id).run();
+  if (before) await noteEntriesChanged(db, [{ before, after: null }]);
+}
+async function upsertEntry(db, id, input) {
+  const existing = await getEntry(db, id);
+  if (!existing) return createEntry(db, { ...input, id });
+  await db.prepare(
+    `UPDATE entries
+          SET content = ?, entry_type = ?, owner_id = ?, parent_id = ?, page_name = ?,
+              refs_json = ?, tags_json = ?, task_status = ?, confidence = ?, metadata_json = ?,
+              updated_at = unixepoch()
+        WHERE id = ?`
+  ).bind(
+    input.content ?? null,
+    input.entry_type,
+    input.owner_id ?? null,
+    input.parent_id ?? null,
+    input.page_name ?? null,
+    input.refs_json ?? "[]",
+    input.tags_json ?? "[]",
+    input.task_status ?? null,
+    input.confidence ?? null,
+    input.metadata_json ?? null,
+    id
+  ).run();
+  const row = await getEntry(db, id);
+  if (!row) throw new Error("upsertEntry: update succeeded but row not found");
+  await noteEntriesChanged(db, [{ before: existing, after: row }]);
+  return row;
+}
+async function embeddedIdsByLibrary(db, ownerId, library) {
+  const rows = await db.prepare(
+    `SELECT id FROM entries
+        WHERE owner_id = ?
+          AND ${ENTRY_LIBRARY} = ?
+          AND is_embedded = 1`
+  ).bind(ownerId, library).all();
+  return (rows.results ?? []).map((r) => r.id);
+}
+async function markUnembedded(db, ids) {
+  if (ids.length === 0) return;
+  const holes = ids.map(() => "?").join(",");
+  await db.prepare(`UPDATE entries SET is_embedded = 0 WHERE id IN (${holes})`).bind(...ids).run();
+}
+async function deprecateEntriesByLibrary(db, ownerId, library) {
+  const result = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在 worktree ⇒ hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，同 887463c／962d863／5919c6b 已記載的假警報，非繞牆
+    `UPDATE entries
+         SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
+             updated_at = unixepoch()
+       WHERE owner_id = ?
+         AND ${ENTRY_LIBRARY} = ?
+         AND ${NOT_LIBRARY_MAP_ROW}
+         AND (json_extract(metadata_json, '$.status') IS NULL
+              OR json_extract(metadata_json, '$.status') != 'deprecated')`
+  ).bind(ownerId, library).run();
+  return result.meta?.changes ?? 0;
+}
+function escapeLikeLiteral(s) {
+  return s.replace(/[\\%_]/g, (ch) => LIKE_ESCAPE + ch);
+}
+function chunkByBytes(s, maxBytes) {
+  const out = [];
+  let cur = "";
+  for (const ch of s) {
+    if (likeBytes(cur + ch) > maxBytes) {
+      if (cur) out.push(cur);
+      cur = ch;
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+function buildContentLike(q) {
+  if (likeBytes(q) <= MAX_LIKE_Q_BYTES) {
+    return { conds: [CONTENT_LIKE], params: [likePattern(q)], split: false };
+  }
+  const terms = [];
+  for (const word of q.split(/\s+/).filter(Boolean)) {
+    for (const piece of chunkByBytes(word, MAX_LIKE_Q_BYTES)) {
+      terms.push(piece);
+      if (terms.length >= MAX_LIKE_TERMS) break;
+    }
+    if (terms.length >= MAX_LIKE_TERMS) break;
+  }
+  if (terms.length === 0) terms.push(chunkByBytes(q, MAX_LIKE_Q_BYTES)[0] ?? "");
+  return {
+    conds: terms.map(() => CONTENT_LIKE),
+    params: terms.map(likePattern),
+    split: true
+  };
+}
+function splitRuns(q) {
+  const runs = [];
+  let cur = "";
+  let curCjk = false;
+  const flush = () => {
+    if (cur) runs.push({ text: cur, cjk: curCjk });
+    cur = "";
+  };
+  for (const ch of q) {
+    const cjk = isCjkChar(ch);
+    if (!cjk && !isWordChar(ch)) {
+      flush();
+      continue;
+    }
+    if (cur && cjk !== curCjk) flush();
+    cur += ch;
+    curCjk = cjk;
+  }
+  flush();
+  return runs;
+}
+function contentBigrams(run) {
+  const chars = [...run];
+  const out = [];
+  for (let i = 0; i + 1 < chars.length; i++) {
+    if (CJK_STOP_CHARS.has(chars[i]) || CJK_STOP_CHARS.has(chars[i + 1])) continue;
+    out.push(chars[i] + chars[i + 1]);
+  }
+  return out;
+}
+function tokenizeQuery(q) {
+  const found = /* @__PURE__ */ new Map();
+  const add2 = (t, w) => {
+    for (const piece of chunkByBytes(t, MAX_LIKE_Q_BYTES)) {
+      if (!piece) continue;
+      found.set(piece, Math.max(found.get(piece) ?? 0, Math.min(w, MAX_TERM_WEIGHT)));
+    }
+  };
+  const runs = splitRuns(q);
+  const isQuestion = runs.length > 1;
+  for (const run of runs) {
+    if (!run.cjk) {
+      const w = run.text.toLowerCase();
+      if (w.length >= 2 && !ASCII_STOP_WORDS.has(w)) add2(run.text, run.text.length);
+      continue;
+    }
+    const chars = [...run.text];
+    if (chars.length >= 2 && chars.length <= 4) add2(run.text, chars.length);
+    if (isQuestion || chars.length > 4) for (const bg of contentBigrams(run.text)) add2(bg, 2);
+  }
+  return [...found.entries()].map(([term, weight]) => ({ term, weight })).sort((a, b) => b.weight - a.weight || a.term.localeCompare(b.term)).slice(0, MAX_SEARCH_TERMS);
+}
+function buildSearchScore(q) {
+  const trimmed = q.trim();
+  const terms = tokenizeQuery(trimmed);
+  if (terms.length === 0) {
+    const m = buildContentLike(trimmed);
+    return {
+      scoreExpr: m.conds.map(() => `CASE WHEN ${CONTENT_LIKE} THEN 1 ELSE 0 END`).join(" + "),
+      scoreParams: m.params,
+      terms: [],
+      legacyShape: true
+    };
+  }
+  const parts = [];
+  const params = [];
+  for (const { term, weight } of terms) {
+    parts.push(`CASE WHEN ${CONTENT_LIKE} THEN ${weight} ELSE 0 END`);
+    params.push(likePattern(term));
+  }
+  const single = terms.length === 1 && terms[0].term === trimmed;
+  if (!single && likeBytes(trimmed) <= MAX_LIKE_Q_BYTES) {
+    const bonus = terms.reduce((s, t) => s + t.weight, 0);
+    parts.push(`CASE WHEN ${CONTENT_LIKE} THEN ${bonus} ELSE 0 END`);
+    params.push(likePattern(trimmed));
+  }
+  return { scoreExpr: parts.join(" + "), scoreParams: params, terms, legacyShape: single };
+}
+function applyRelativeCut(rows) {
+  if (rows.length <= 1) return rows;
+  const cut = rows[0].match_score * KEYWORD_RELATIVE_CUT;
+  return rows.filter((r) => r.match_score >= cut);
+}
+function planResidualWindow(backfillCursor, cutoffRowid, cap, nowMs) {
+  const nearLower = Math.max(backfillCursor, cutoffRowid - cap);
+  const near = { lower: nearLower, upper: cutoffRowid };
+  const sweepRangeSize = nearLower - backfillCursor;
+  if (sweepRangeSize <= 0) return { near, sweep: null, totalSweepSlices: 0 };
+  const numSlices = Math.ceil(sweepRangeSize / cap);
+  const slot = Math.floor(nowMs / RESIDUAL_SWEEP_ROTATION_PERIOD_MS) % numSlices;
+  const sweepLower = backfillCursor + slot * cap;
+  const sweepUpper = Math.min(nearLower, sweepLower + cap);
+  return { near, sweep: { lower: sweepLower, upper: sweepUpper }, totalSweepSlices: numSlices };
+}
+function isSearchCoverageComplete(q, backfillCursor, cutoffRowid, cap = RESIDUAL_SCAN_CAP, nowMs = Date.now()) {
+  if (cutoffRowid <= backfillCursor) return true;
+  if (!buildFtsCandidateMatch(q)) return true;
+  const plan = planResidualWindow(backfillCursor, cutoffRowid, cap, nowMs);
+  return plan.totalSweepSlices <= 1;
+}
+async function readFtsMigrationState(db) {
+  try {
+    const row = await db.prepare(`SELECT metadata_json FROM entries WHERE id = ?`).bind(FTS_MIGRATION_CUTOFF_ID).first();
+    if (!row?.metadata_json) return { cutoffRowid: Number.MAX_SAFE_INTEGER, backfillCursor: 0 };
+    const parsed = JSON.parse(row.metadata_json);
+    const cutoff = Number(parsed.cutoff_rowid);
+    const cursor = Number(parsed.backfill_cursor);
+    return {
+      cutoffRowid: Number.isFinite(cutoff) ? cutoff : Number.MAX_SAFE_INTEGER,
+      backfillCursor: Number.isFinite(cursor) && cursor >= 0 ? cursor : 0
+    };
+  } catch {
+    return { cutoffRowid: Number.MAX_SAFE_INTEGER, backfillCursor: 0 };
+  }
+}
+function escapeFtsPhrase(s) {
+  return s.replace(/"/g, '""');
+}
+function windowsForRun(run) {
+  const chars = [...run];
+  const out = [];
+  for (let i = 0; i + FTS_WINDOW <= chars.length; i++) out.push(chars.slice(i, i + FTS_WINDOW).join(""));
+  return out;
+}
+function buildFtsCandidateMatch(q) {
+  const trimmed = q.trim();
+  if (!trimmed) return null;
+  const seen = /* @__PURE__ */ new Set();
+  outer: for (const run of splitRuns(trimmed)) {
+    for (const w of windowsForRun(run.text)) {
+      if (seen.size >= MAX_FTS_WINDOWS) break outer;
+      seen.add(w);
+    }
+  }
+  if (seen.size === 0) return null;
+  return [...seen].map((w) => `"${escapeFtsPhrase(w)}"`).join(" OR ");
+}
+function libraryPredicate(libraries) {
+  const placeholders = libraries.map(() => "?").join(",");
+  return `${ENTRY_LIBRARY} IN (${placeholders})`;
+}
+function isDeprecatedEntry(entry) {
+  if (!entry.metadata_json) return false;
+  try {
+    const meta = JSON.parse(entry.metadata_json);
+    return !!meta && meta.status === "deprecated";
+  } catch {
+    return false;
+  }
+}
+async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false, nowMs = Date.now()) {
+  const plan = buildSearchScore(q);
+  const buildConds = (demoteOwnerIndex) => {
+    const conds = [];
+    const params = [];
+    if (owner_id) {
+      conds.push(demoteOwnerIndex ? "+owner_id = ?" : "owner_id = ?");
+      params.push(owner_id);
+    }
+    if (entry_type) {
+      conds.push("entry_type = ?");
+      params.push(entry_type);
+    } else {
+      conds.push(NOT_MACHINERY_PREDICATE);
+    }
+    if (source) {
+      conds.push("json_extract(metadata_json, '$.source') = ?");
+      params.push(source);
+    }
+    if (library && library.length > 0) {
+      conds.push(libraryPredicate(library));
+      params.push(...library);
+    }
+    if (!includeDeprecated) {
+      conds.push(NOT_DEPRECATED_PREDICATE);
+    }
+    conds.push(NOT_LIBRARY_MAP_CELL);
+    return { conds, params };
+  };
+  const capped = Math.min(limit, 200);
+  const stmt = (rangeCond, rangeParams, demoteOwnerIndex = false) => {
+    const { conds, params } = buildConds(demoteOwnerIndex);
+    const all = rangeCond ? [rangeCond, ...conds] : conds;
+    const inner = all.length > 0 ? `WHERE ${all.join(" AND ")}` : "";
+    return db.prepare(
+      // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑假警報
+      `SELECT * FROM (
+           SELECT *, (${plan.scoreExpr}) AS match_score FROM entries ${inner}
+         ) WHERE match_score > 0
+         ORDER BY match_score DESC, updated_at DESC
+         LIMIT ?`
+    ).bind(...plan.scoreParams, ...rangeParams, ...params, capped);
+  };
+  const ftsMatch = buildFtsCandidateMatch(q);
+  if (!ftsMatch) {
+    const res = await stmt("", []).all();
+    return applyRelativeCut(res.results ?? []);
+  }
+  const { cutoffRowid, backfillCursor } = await readFtsMigrationState(db);
+  const candidateRes = await stmt(
+    "rowid IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?)",
+    [ftsMatch, FTS_CANDIDATE_LIMIT],
+    true
+  ).all();
+  const hits = candidateRes.results ?? [];
+  if (cutoffRowid > backfillCursor) {
+    const seen = new Set(hits.map((e) => e.id));
+    const mergeIn = (rows) => {
+      for (const row of rows) if (!seen.has(row.id)) {
+        seen.add(row.id);
+        hits.push(row);
+      }
+    };
+    const { near, sweep } = planResidualWindow(backfillCursor, cutoffRowid, RESIDUAL_SCAN_CAP, nowMs);
+    const nearRes = await stmt(`(rowid > ${Math.trunc(near.lower)} AND rowid <= ${Math.trunc(near.upper)})`, [], true).all();
+    mergeIn(nearRes.results ?? []);
+    if (sweep) {
+      const sweepRes = await stmt(`(rowid > ${Math.trunc(sweep.lower)} AND rowid <= ${Math.trunc(sweep.upper)})`, [], true).all();
+      mergeIn(sweepRes.results ?? []);
+    }
+    hits.sort((a, b) => b.match_score - a.match_score || (b.updated_at ?? 0) - (a.updated_at ?? 0));
+  }
+  return applyRelativeCut(hits.slice(0, capped));
+}
+var NOT_MACHINERY_PREDICATE, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
+var init_entry_crud = __esm({
+  "kbdb/src/actions/entry-crud.ts"() {
+    "use strict";
+    init_library_predicate();
+    init_library_map_store();
+    NOT_MACHINERY_PREDICATE = "(src_id IS NULL AND entry_type <> 'record' AND entry_type <> 'sheet' AND entry_type <> 'field' AND entry_type <> 'system')";
+    MAX_LIKE_Q_BYTES = 48;
+    MAX_LIKE_TERMS = 6;
+    utf8Len = (s) => new TextEncoder().encode(s).length;
+    LIKE_ESCAPE = "\\";
+    CONTENT_LIKE = `content LIKE ? ESCAPE '${LIKE_ESCAPE}'`;
+    likeBytes = (s) => utf8Len(escapeLikeLiteral(s));
+    likePattern = (s) => `%${escapeLikeLiteral(s)}%`;
+    MAX_SEARCH_TERMS = 6;
+    MAX_TERM_WEIGHT = 8;
+    KEYWORD_RELATIVE_CUT = 0.6;
+    CJK_STOP_CHARS = new Set(
+      "\u7684\u4E86\u662F\u5728\u6211\u4F60\u4ED6\u5979\u5B83\u5011\u9019\u90A3\u54EA\u8AB0\u55CE\u5462\u5427\u554A\u5440\u561B\u5594\u54E6\u4EC0\u9EBC\u600E\u4E4B\u4E4E\u800C\u4F46\u4E26\u537B\u5C31\u90FD\u4E5F\u5F88\u592A\u53EA\u9084\u53C8\u518D\u6BCF\u4E9B\u628A\u88AB\u8DDF\u8B93\u82E5".split("")
+    );
+    ASCII_STOP_WORDS = /* @__PURE__ */ new Set([
+      "the",
+      "a",
+      "an",
+      "and",
+      "or",
+      "of",
+      "to",
+      "in",
+      "on",
+      "at",
+      "is",
+      "are",
+      "was",
+      "were",
+      "be",
+      "do",
+      "does",
+      "did",
+      "for",
+      "it",
+      "its",
+      "this",
+      "that",
+      "these",
+      "those",
+      "with",
+      "what",
+      "how",
+      "why",
+      "when",
+      "where",
+      "who",
+      "which",
+      "can",
+      "could",
+      "should",
+      "would",
+      "my",
+      "our",
+      "your",
+      "their",
+      "me",
+      "we",
+      "you",
+      "they"
+    ]);
+    isCjkChar = (ch) => /[぀-ヿ㐀-䶿一-鿿豈-﫿]/.test(ch);
+    isWordChar = (ch) => /[A-Za-z0-9_.-]/.test(ch);
+    FTS_WINDOW = 3;
+    MAX_FTS_WINDOWS = 48;
+    FTS_CANDIDATE_LIMIT = 5e3;
+    RESIDUAL_SCAN_CAP = 1e4;
+    RESIDUAL_SWEEP_ROTATION_PERIOD_MS = 1e3;
+    FTS_MIGRATION_CUTOFF_ID = "kbdb-fts-migration-cutoff";
+    NOT_DEPRECATED_PREDICATE = "(json_extract(metadata_json, '$.status') IS NULL OR json_extract(metadata_json, '$.status') != 'deprecated')";
+  }
+});
+
 // kbdb/src/actions/relation-orphans.ts
 var relation_orphans_exports = {};
 __export(relation_orphans_exports, {
@@ -2119,1576 +3753,8 @@ var Hono2 = class extends Hono {
   }
 };
 
-// kbdb/src/actions/library-predicate.ts
-var UNLABELLED_LIBRARY = "general";
-function libraryOf(expr) {
-  return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
-}
-function libraryOfValue(value) {
-  const v = (value ?? "").trim();
-  return v === "" ? UNLABELLED_LIBRARY : v;
-}
-var ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
-var ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
-var ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
-function parseLibraryList(raw2) {
-  if (!raw2) return void 0;
-  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
-  return libs.length > 0 ? libs : void 0;
-}
-
-// kbdb/src/actions/entity-canon.ts
-var NOTE_EXT = /\.(md|markdown|mdx|txt|org)$/i;
-function unwrapWhole(t) {
-  const code = /^(`+)([\s\S]*?)(`+)$/.exec(t);
-  if (code) {
-    const inner = code[2].trim();
-    if (inner && !inner.includes("`")) return inner;
-  }
-  if (t.startsWith("[[") && t.endsWith("]]") && t.length > 4) {
-    const inner = t.slice(2, -2).trim();
-    if (inner && !inner.includes("[[") && !inner.includes("]]")) return inner;
-  }
-  return t;
-}
-function canonicalEntity(raw2) {
-  if (typeof raw2 !== "string") return raw2;
-  const fallback = raw2.trim();
-  let t = raw2.normalize("NFC").trim();
-  if (!t) return fallback;
-  for (let i = 0; i < 4; i++) {
-    const before = t;
-    t = unwrapWhole(t);
-    if (t === before) break;
-  }
-  if (NOTE_EXT.test(t)) {
-    t = t.replace(NOTE_EXT, "");
-    const cut = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"));
-    if (cut >= 0) t = t.slice(cut + 1);
-  }
-  t = t.replace(/\s+/g, " ").trim();
-  return t || fallback;
-}
-var ENTITY_SLOTS = ["subject", "object"];
-function isTripletShaped(slots) {
-  return slots.includes("subject") && slots.includes("predicate") && slots.includes("object");
-}
-function canonicalizeEntityValues(slots, values) {
-  if (!isTripletShaped(slots)) return values;
-  let touched = false;
-  const out = { ...values };
-  for (const slot of ENTITY_SLOTS) {
-    const v = out[slot];
-    if (typeof v !== "string") continue;
-    const c = canonicalEntity(v);
-    if (c !== v) {
-      out[slot] = c;
-      touched = true;
-    }
-  }
-  return touched ? out : values;
-}
-
-// kbdb/src/actions/record-crud.ts
-function uid(prefix) {
-  return `${prefix}_${crypto.randomUUID()}`;
-}
-var SYS_ROOT = "sys_root";
-var SYS_BELONGS = "sys_belongs";
-var SYS_FIELD_OF = "sys_field_of";
-function fieldEntryId(templateId, slot) {
-  return `fld_${templateId}_${slot}`;
-}
-async function ensureAnchors(db) {
-  await db.prepare(
-    `INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES
-       ('${SYS_ROOT}', 'root', 'system', NULL),
-       ('${SYS_BELONGS}', 'belongs', 'system', NULL),
-       ('${SYS_FIELD_OF}', 'field_of', 'system', NULL)`
-  ).run();
-}
-async function ensureFieldEntries(db, templateId, slots) {
-  for (const slot of slots) {
-    const fid = fieldEntryId(templateId, slot);
-    await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'field')`).bind(fid, slot).run();
-    await db.prepare(
-      `INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_FIELD_OF}', ?)`
-    ).bind(`relf_${templateId}_${slot}`, fid, templateId).run();
-  }
-}
-async function createTemplate(db, input) {
-  const id = input.id ?? uid("tpl");
-  await db.prepare(`INSERT INTO templates (id, name, description, slots_json, created_by) VALUES (?, ?, ?, ?, ?)`).bind(id, input.name, input.description ?? null, JSON.stringify(input.slots), input.created_by ?? null).run();
-  await ensureAnchors(db);
-  await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'sheet')`).bind(id, input.name).run();
-  await db.prepare(
-    `INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_BELONGS}', '${SYS_ROOT}')`
-  ).bind(`relb_${id}`, id).run();
-  await ensureFieldEntries(db, id, input.slots);
-  const row = await getTemplate(db, id);
-  if (!row) throw new Error("createTemplate: row not found after insert");
-  return row;
-}
-async function getTemplate(db, idOrName) {
-  const row = await db.prepare("SELECT * FROM templates WHERE id = ? OR name = ? LIMIT 1").bind(idOrName, idOrName).first();
-  return row ?? null;
-}
-async function listTemplates(db) {
-  const res = await db.prepare("SELECT * FROM templates ORDER BY created_at DESC").all();
-  return res.results ?? [];
-}
-async function updateTemplate(db, id, patch) {
-  const cols = [];
-  const params = [];
-  if (patch.description !== void 0) {
-    cols.push("description = ?");
-    params.push(patch.description);
-  }
-  if (patch.slots !== void 0) {
-    cols.push("slots_json = ?");
-    params.push(JSON.stringify(patch.slots));
-  }
-  if (cols.length === 0) return getTemplate(db, id);
-  cols.push("updated_at = unixepoch()");
-  await db.prepare(`UPDATE templates SET ${cols.join(", ")} WHERE id = ?`).bind(...params, id).run();
-  if (patch.slots !== void 0) await ensureFieldEntries(db, id, patch.slots);
-  return getTemplate(db, id);
-}
-function derivedCellIds(recordId, slot) {
-  return { value: `${recordId}~v~${slot}`, relation: `${recordId}~r~${slot}` };
-}
-async function loadReferencedEntries(db, entryIds, recordOwnerId) {
-  const ids = [...new Set(Object.values(entryIds))];
-  if (ids.length === 0) return /* @__PURE__ */ new Map();
-  const rows = [];
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
-    const res = await db.prepare(`SELECT id, content, owner_id FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
-    rows.push(...res.results ?? []);
-  }
-  const found = new Map(rows.map((r) => [r.id, r]));
-  const missing = ids.filter((id) => !found.has(id));
-  if (missing.length > 0) throw new Error(`entry not found: ${missing.join(", ")}`);
-  if (recordOwnerId != null) {
-    const foreign = rows.filter((r) => r.owner_id != null && r.owner_id !== recordOwnerId);
-    if (foreign.length > 0) {
-      throw new Error(
-        `entry owner mismatch: ${foreign.map((r) => `${r.id}(${r.owner_id})`).join(", ")} != ${recordOwnerId}`
-      );
-    }
-  }
-  return new Map(rows.map((r) => [r.id, r.content]));
-}
-async function recordBelongs(db, recordId) {
-  const row = await db.prepare(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}' LIMIT 1`).bind(recordId).first();
-  return row ?? null;
-}
-async function insertCellRelation(db, recordId, templateId, slot, dstEntryId, ownerId) {
-  await db.prepare(
-    `INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`
-  ).bind(uid("relv"), ownerId, recordId, fieldEntryId(templateId, slot), dstEntryId).run();
-}
-async function createRecord(db, input) {
-  const tpl = await getTemplate(db, input.template);
-  if (!tpl) throw new Error(`template not found: ${input.template}`);
-  const slots = JSON.parse(tpl.slots_json);
-  const recordId = input.record_id ?? uid("rec");
-  const values = canonicalizeEntityValues(slots, input.values ?? {});
-  const entryIds = input.entry_ids ?? {};
-  const refSlots = Object.keys(entryIds);
-  const ownerId = input.owner_id ?? null;
-  const both = refSlots.filter((s) => s in values);
-  if (both.length > 0) throw new Error(`slot given both value and entry_id: ${both.join(", ")}`);
-  const unknown = refSlots.filter((s) => !slots.includes(s));
-  if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
-  const referenced = await loadReferencedEntries(db, entryIds, ownerId);
-  const mapTracked = isMapTrackedTemplate(tpl.name);
-  const mapBefore = mapTracked && input.record_id ? (await getRecord(db, input.record_id))?.values ?? null : null;
-  await db.prepare(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id) VALUES (?, 'record', ?)`).bind(recordId, ownerId).run();
-  await db.prepare(
-    `INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, '${SYS_BELONGS}', ?)`
-  ).bind(`relb_${recordId}_${tpl.id}`, ownerId, recordId, tpl.id).run();
-  const writtenSlots = slots.filter((s) => s in entryIds || s in values);
-  await ensureFieldEntries(db, tpl.id, writtenSlots);
-  for (const slot of writtenSlots) {
-    if (slot in entryIds) {
-      await insertCellRelation(db, recordId, tpl.id, slot, entryIds[slot], ownerId);
-      continue;
-    }
-    if (input.derived_cell_ids) {
-      const ids = derivedCellIds(recordId, slot);
-      await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES (?, ?, 'value', ?)`).bind(ids.value, values[slot], ownerId).run();
-      await db.prepare(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`).bind(ids.relation, ownerId, recordId, fieldEntryId(tpl.id, slot), ids.value).run();
-      continue;
-    }
-    const entry = await createEntry(db, {
-      content: values[slot],
-      entry_type: "value",
-      owner_id: ownerId
-    });
-    await insertCellRelation(db, recordId, tpl.id, slot, entry.id, ownerId);
-  }
-  const out = { ...values };
-  for (const [slot, entryId] of Object.entries(entryIds)) out[slot] = referenced.get(entryId) ?? "";
-  if (mapTracked) {
-    const stored = Object.fromEntries(Object.entries(out).filter(([slot]) => slots.includes(slot)));
-    const mapAfter = input.record_id ? (await getRecord(db, recordId))?.values ?? stored : stored;
-    await noteRecordWrite(db, tpl.name, ownerId, mapBefore, mapAfter);
-  }
-  return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
-}
-async function updateRecord(db, recordId, values) {
-  const belongs = await recordBelongs(db, recordId);
-  if (!belongs) return null;
-  const templateId = belongs.dst_id;
-  const tpl = await getTemplate(db, templateId);
-  const mapBefore = tpl && isMapTrackedTemplate(tpl.name) ? await getRecord(db, recordId) : null;
-  const cellRes = await db.prepare(
-    `SELECT f.content AS slot_name, r.dst_id AS entry_id
-       FROM entries r JOIN entries f ON r.rel_id = f.id
-       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`
-  ).bind(recordId).all();
-  const cells = cellRes.results ?? [];
-  const slotToEntries = /* @__PURE__ */ new Map();
-  for (const c of cells) {
-    const list = slotToEntries.get(c.slot_name) ?? [];
-    list.push(c.entry_id);
-    slotToEntries.set(c.slot_name, list);
-  }
-  const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
-  const recordOwnerId = identity?.owner_id ?? null;
-  const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntries.keys()];
-  const canon = canonicalizeEntityValues(allowed, values);
-  for (const [slot, content] of Object.entries(canon)) {
-    if (!allowed.includes(slot)) {
-      throw new Error(`slot not in template: ${slot}`);
-    }
-    const entryIds = slotToEntries.get(slot);
-    if (entryIds && entryIds.length > 0) {
-      for (const entryId of entryIds) {
-        await db.prepare(`UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`).bind(content, entryId).run();
-      }
-    } else {
-      await ensureFieldEntries(db, templateId, [slot]);
-      const entry = await createEntry(db, { content, entry_type: "value", owner_id: recordOwnerId });
-      await insertCellRelation(db, recordId, templateId, slot, entry.id, recordOwnerId);
-    }
-  }
-  const after = await getRecord(db, recordId);
-  if (tpl && mapBefore) await noteRecordWrite(db, tpl.name, recordOwnerId, mapBefore.values, after?.values ?? null);
-  return after;
-}
-async function getRecord(db, recordId) {
-  const belongs = await recordBelongs(db, recordId);
-  if (!belongs) return null;
-  const res = await db.prepare(
-    `SELECT f.content AS slot, v.content AS content
-       FROM entries r
-       JOIN entries f ON r.rel_id = f.id
-       JOIN entries v ON r.dst_id = v.id
-       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`
-  ).bind(recordId).all();
-  const values = {};
-  for (const r of res.results ?? []) values[r.slot] = r.content;
-  const identity = await db.prepare("SELECT owner_id FROM entries WHERE id = ?").bind(recordId).first();
-  return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
-}
-async function resolveTotal(db, sheetId, owner_id, offset, limit, got, exactTotal) {
-  if (offset === 0 && got < limit) return { total: got, totalExact: true };
-  if (!exactTotal) return { total: offset + got + 1, totalExact: false };
-  const row = owner_id ? await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）
-    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?`
-  ).bind(sheetId, owner_id).first() : await db.prepare(
-    // kbdb-sql-ok：同上
-    `SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`
-  ).bind(sheetId).first();
-  return { total: row?.total ?? 0, totalExact: true };
-}
-async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false) {
-  const tpl = await getTemplate(db, template);
-  if (!tpl) return { records: [], total: 0, totalExact: true };
-  const cap = Math.min(Math.max(limit, 1), 500);
-  const skip = Math.max(offset, 0);
-  const res = owner_id ? await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；本次 checkout 開在 worktree /private/tmp/wt-graph-first-44/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，與 962d863／5919c6b 記載的是同一個假警報
-    `SELECT src_id AS record_id FROM entries
-           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
-  ).bind(tpl.id, owner_id, cap, skip).all() : await db.prepare(
-    // kbdb-sql-ok：同上（worktree 路徑假警報）
-    `SELECT src_id AS record_id FROM entries
-           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`
-  ).bind(tpl.id, cap, skip).all();
-  const ids = (res.results ?? []).map((r) => r.record_id);
-  const { total, totalExact } = await resolveTotal(db, tpl.id, owner_id, skip, cap, ids.length, exactTotal);
-  if (ids.length === 0) return { records: [], total, totalExact };
-  const byId = /* @__PURE__ */ new Map();
-  for (const id of ids) byId.set(id, { record_id: id, template_id: tpl.id, values: {}, owner_id: null });
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
-    const placeholders = chunk.map(() => "?").join(",");
-    const [cellRes, identRes] = await Promise.all([
-      db.prepare(
-        `SELECT r.src_id AS record_id, f.content AS slot, v.content AS content
-           FROM entries r
-           JOIN entries f ON r.rel_id = f.id
-           JOIN entries v ON r.dst_id = v.id
-           WHERE r.src_id IN (${placeholders}) AND r.rel_id != '${SYS_BELONGS}'`
-      ).bind(...chunk).all(),
-      db.prepare(`SELECT id, owner_id FROM entries WHERE id IN (${placeholders})`).bind(...chunk).all()
-    ]);
-    for (const r of cellRes.results ?? []) {
-      const rec = byId.get(r.record_id);
-      if (rec) rec.values[r.slot] = r.content;
-    }
-    for (const r of identRes.results ?? []) {
-      const rec = byId.get(r.id);
-      if (rec) rec.owner_id = r.owner_id;
-    }
-  }
-  return { records: ids.map((id) => byId.get(id)).filter((r) => !!r), total, totalExact };
-}
-async function deleteRecord(db, recordId) {
-  const belongs = await recordBelongs(db, recordId);
-  if (!belongs) return false;
-  const mapTpl = await getTemplate(db, belongs.dst_id);
-  const mapBefore = mapTpl && isMapTrackedTemplate(mapTpl.name) ? await getRecord(db, recordId) : null;
-  const cellRes = await db.prepare(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id != '${SYS_BELONGS}'`).bind(recordId).all();
-  const dsts = (cellRes.results ?? []).map((r) => r.dst_id);
-  await db.prepare(`DELETE FROM entries WHERE src_id = ?`).bind(recordId).run();
-  await db.prepare(
-    `DELETE FROM entries WHERE id = ?1 AND entry_type = 'record'
-        AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)`
-  ).bind(recordId).run();
-  for (const dst of dsts) {
-    await db.prepare(
-      // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；worktree 開在 matrix/arcrun-wt-218/，hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到——與本檔既有註解記載的同一個假警報
-      `DELETE FROM entries WHERE id = ?1
-          AND entry_type NOT IN ('sheet', 'field', 'system')
-          AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
-          AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`
-    ).bind(dst).run();
-  }
-  if (mapTpl && mapBefore) await noteRecordWrite(db, mapTpl.name, mapBefore.owner_id, mapBefore.values, null);
-  return true;
-}
-
-// kbdb/src/actions/library-map-store.ts
-var LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
-var LIBRARY_MAP_TEMPLATE_NAME = "library_map";
-var LIBRARY_MAP_SLOTS = [
-  "library",
-  "narrative",
-  "top_entities",
-  "relation_profile",
-  "bridges",
-  "triplet_count",
-  "commit_hash",
-  "status",
-  "entry_count"
-];
-var DEFAULT_TRIPLET_TEMPLATE = "triplet";
-var PORTAL_LIBRARY_TEMPLATE = "portal_library";
-var ENTITY_SKETCH_SIZE = 128;
-var PREDICATE_SKETCH_SIZE = 100;
-var LIBRARY_MAP_TEMPLATE_DESCRIPTION = "per-library map block\uFF08\u85CF\u66F8\u5730\u5716\uFF1Atop_entities\uFF0Frelation_profile\uFF0Fbridges\uFF0Ftriplet_count \u7531 graph \u6A5F\u68B0\u5C0E\u51FA\uFF1Bnarrative \u7531 LLM \u8457\u4F5C\uFF0C\u7B97\u4E0D\u51FA\u4F86\u3001\u4E1F\u4E86\u56DE\u4E0D\u4F86\uFF1BArcrun#39\uFF0F#44\uFF09";
-var NOT_KNOWLEDGE_ENTRY_TYPES = [
-  "value",
-  "record",
-  "sheet",
-  "field",
-  "system",
-  "relation",
-  "execution_log",
-  "execution_log_usage",
-  "execution_log_retention_config",
-  "credential",
-  "embed_backfill_usage",
-  "kbdb_maintenance_usage",
-  "recipe_stat"
-];
-function mapContent(library, narrative, coreNames) {
-  const core = coreNames.length ? coreNames.join("\u3001") : "\uFF08\u5C1A\u7121 entities\uFF09";
-  const text = narrative?.trim();
-  if (!text) return `${library}\u3002\u6838\u5FC3\uFF1A${core}`;
-  const sep = /[。．.！!？?；;]$/.test(text) ? "" : "\u3002";
-  return `${library}\uFF1A${text}${sep}\u6838\u5FC3\uFF1A${core}`;
-}
-async function ensureLibraryMapTemplate(db) {
-  const existing = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
-  if (existing) {
-    const slots = JSON.parse(existing.slots_json);
-    const missing = LIBRARY_MAP_SLOTS.filter((s) => !slots.includes(s));
-    const patch = {};
-    if (existing.description !== LIBRARY_MAP_TEMPLATE_DESCRIPTION) patch.description = LIBRARY_MAP_TEMPLATE_DESCRIPTION;
-    if (missing.length) patch.slots = [...slots, ...missing];
-    if (patch.description !== void 0 || patch.slots !== void 0) await updateTemplate(db, existing.id, patch);
-    return;
-  }
-  try {
-    await createTemplate(db, {
-      id: LIBRARY_MAP_TEMPLATE_ID,
-      name: LIBRARY_MAP_TEMPLATE_NAME,
-      description: LIBRARY_MAP_TEMPLATE_DESCRIPTION,
-      slots: LIBRARY_MAP_SLOTS,
-      created_by: "system"
-    });
-  } catch {
-    if (!await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME)) throw new Error("ensureLibraryMapTemplate failed");
-  }
-}
-async function ensureTripletLibrarySlot(db, tripletTemplate) {
-  const tpl = await getTemplate(db, tripletTemplate);
-  if (!tpl) throw new Error(`triplet template not found: ${tripletTemplate}`);
-  const slots = JSON.parse(tpl.slots_json);
-  if (slots.includes("library")) return false;
-  await updateTemplate(db, tpl.id, { slots: [...slots, "library"] });
-  return true;
-}
-var templateReady = /* @__PURE__ */ new WeakMap();
-var adoptedOwners = /* @__PURE__ */ new WeakMap();
-var knownMaps = /* @__PURE__ */ new WeakMap();
-var adoptionJobs = /* @__PURE__ */ new WeakMap();
-function setFor(store, db) {
-  let s = store.get(db);
-  if (!s) {
-    s = /* @__PURE__ */ new Set();
-    store.set(db, s);
-  }
-  return s;
-}
-function ensureTemplateOnce(db) {
-  let p = templateReady.get(db);
-  if (!p) {
-    p = ensureLibraryMapTemplate(db).catch((e) => {
-      templateReady.delete(db);
-      throw e;
-    });
-    templateReady.set(db, p);
-  }
-  return p;
-}
-var writeSeqCounter = 0;
-function nextWriteSeq() {
-  writeSeqCounter += 1;
-  return writeSeqCounter;
-}
-var MAP_PAGE_PREFIX = "library-map@";
-var MAP_PAGE_UPPER_ALL = "library-mapA";
-var LIBRARY_MAP_ID_PREFIX = "lmap";
-var NOT_LIBRARY_MAP_ROW = `(substr(id, 1, 4) != '${LIBRARY_MAP_ID_PREFIX}' AND substr(id, 1, 9) != 'relb_${LIBRARY_MAP_ID_PREFIX}')`;
-var NOT_LIBRARY_MAP_CELL = `(substr(id, 1, 4) != '${LIBRARY_MAP_ID_PREFIX}' OR instr(id, '~') = 0)`;
-async function hexDigest(input, chars) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, chars);
-}
-function ownerKey(owner) {
-  return owner || "";
-}
-async function ownerHash(owner) {
-  return hexDigest(`owner ${ownerKey(owner)}`, 16);
-}
-async function mapIdentity(owner, library) {
-  const oh = await ownerHash(owner);
-  const mh = await hexDigest(`map ${ownerKey(owner)} ${library}`, 32);
-  return { id: `lmap_${mh}`, pageName: `${MAP_PAGE_PREFIX}${oh}:${library}` };
-}
-async function adoptionMarkerId(owner) {
-  return `lmapo_${await hexDigest(`adopted ${ownerKey(owner)}`, 32)}`;
-}
-var cellId = (mapId, slot) => derivedCellIds(mapId, slot).value;
-function parseMeta(raw2) {
-  if (!raw2) return null;
-  try {
-    const v = JSON.parse(raw2);
-    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
-function countedLibraryOf(e) {
-  if (!e) return null;
-  if (e.src_id != null) return null;
-  if (NOT_KNOWLEDGE_ENTRY_TYPES.includes(e.entry_type)) return null;
-  const meta = parseMeta(e.metadata_json);
-  if (e.entry_type === "block" && meta?.kind === "library_map") return null;
-  const lib = meta?.library;
-  return libraryOfValue(lib === void 0 || lib === null ? null : String(lib));
-}
-function countedEntrySql() {
-  const types = NOT_KNOWLEDGE_ENTRY_TYPES.map((t) => `'${t}'`).join(", ");
-  return `src_id IS NULL
-         AND entry_type NOT IN (${types})
-         AND NOT (entry_type = 'block' AND COALESCE(json_extract(metadata_json, '$.kind'), '') = 'library_map')`;
-}
-function tripletContribution(values) {
-  if (!values) return null;
-  const status = values.status;
-  if (status !== void 0 && status !== null && status !== "active") return null;
-  return {
-    library: libraryOfValue(values.library),
-    subject: values.subject ?? null,
-    object: values.object ?? null,
-    predicate: values.predicate ?? null
-  };
-}
-function sameContribution(a, b) {
-  return a.library === b.library && a.subject === b.subject && a.object === b.object && a.predicate === b.predicate;
-}
-function parseArray(raw2) {
-  if (!raw2) return [];
-  try {
-    const v = JSON.parse(raw2);
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-}
-function entitiesToPairs(raw2) {
-  const out = [];
-  for (const e of parseArray(raw2)) {
-    const r = e;
-    if (typeof r?.name === "string" && typeof r.degree === "number") out.push([r.name, r.degree]);
-  }
-  return out;
-}
-function relationsToPairs(raw2) {
-  const out = [];
-  for (const e of parseArray(raw2)) {
-    const r = e;
-    if (typeof r?.predicate === "string" && typeof r.count === "number") out.push([r.predicate, r.count]);
-  }
-  return out;
-}
-function sortPairs(pairs) {
-  pairs.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-}
-function bump(pairs, key, delta, capacity) {
-  const i = pairs.findIndex((p) => p[0] === key);
-  if (i >= 0) {
-    pairs[i][1] += delta;
-    if (pairs[i][1] <= 0) pairs.splice(i, 1);
-    return;
-  }
-  if (delta <= 0) return;
-  if (pairs.length < capacity) {
-    pairs.push([key, delta]);
-    return;
-  }
-  let min = 0;
-  for (let j = 1; j < pairs.length; j++) {
-    if (pairs[j][1] < pairs[min][1] || pairs[j][1] === pairs[min][1] && pairs[j][0] > pairs[min][0]) min = j;
-  }
-  pairs[min] = [key, pairs[min][1] + delta];
-}
-function top3Key(raw2) {
-  return entitiesToPairs(raw2).slice(0, 3).map((p) => p[0]).join(" ");
-}
-async function bumpCounter(db, id, delta) {
-  await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；worktree 路徑造成的假警報同 library-map.ts 既有註解
-    `UPDATE entries
-          SET content = CAST(MAX(0, CAST(COALESCE(NULLIF(content, ''), '0') AS INTEGER) + ?) AS TEXT),
-              updated_at = unixepoch()
-        WHERE id = ?`
-  ).bind(delta, id).run();
-}
-async function compareAndSetCell(db, id, mutate) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const row = await db.prepare("SELECT content FROM entries WHERE id = ?").bind(id).first();
-    if (!row) return null;
-    const next = mutate(row.content);
-    if (next === row.content) return { before: row.content, after: next };
-    const res = await db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS ?").bind(next, id, row.content).run();
-    const changes = res?.meta?.changes;
-    if (changes === void 0 || changes > 0) return { before: row.content, after: next };
-  }
-  throw new Error(`library map cell stayed contended after 5 attempts: ${id}`);
-}
-async function readCellsById(db, ids) {
-  const out = /* @__PURE__ */ new Map();
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
-    const res = await db.prepare(`SELECT id, content, updated_at FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
-    for (const r of res.results ?? []) out.set(r.id, { content: r.content, updated_at: r.updated_at });
-  }
-  return out;
-}
-async function refreshMapSentence(db, mapId, library) {
-  const cells = await readCellsById(db, [cellId(mapId, "narrative"), cellId(mapId, "top_entities")]);
-  const narrative = cells.get(cellId(mapId, "narrative"))?.content ?? "";
-  const top = entitiesToPairs(cells.get(cellId(mapId, "top_entities"))?.content ?? null).slice(0, 3).map((p) => p[0]);
-  const content = mapContent(library, narrative, top);
-  await db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?").bind(content, mapId, content).run();
-}
-function defaultMapValues(library) {
-  return {
-    library,
-    narrative: "",
-    top_entities: "[]",
-    relation_profile: "[]",
-    bridges: "[]",
-    triplet_count: "0",
-    commit_hash: "",
-    status: "active",
-    entry_count: "0"
-  };
-}
-async function createMapRecord(db, owner, library, seed) {
-  await ensureTemplateOnce(db);
-  const ident = await mapIdentity(owner, library);
-  const values = { ...defaultMapValues(library), ...seed };
-  const top = entitiesToPairs(values.top_entities).slice(0, 3).map((p) => p[0]);
-  await db.prepare(
-    // kbdb-sql-ok：同上
-    `INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id, page_name, metadata_json)
-       VALUES (?, ?, 'block', ?, ?, ?)`
-  ).bind(ident.id, mapContent(library, values.narrative, top), owner, ident.pageName, JSON.stringify({ kind: "library_map", library })).run();
-  await createRecord(db, {
-    template: LIBRARY_MAP_TEMPLATE_NAME,
-    record_id: ident.id,
-    values,
-    owner_id: owner,
-    derived_cell_ids: true
-  });
-  return ident.id;
-}
-async function ensureMapRecord(db, owner, library) {
-  const ident = await mapIdentity(owner, library);
-  const known = setFor(knownMaps, db);
-  if (known.has(ident.id)) return ident.id;
-  const lastSlot = LIBRARY_MAP_SLOTS[LIBRARY_MAP_SLOTS.length - 1];
-  const hit = await db.prepare("SELECT id FROM entries WHERE id = ?").bind(cellId(ident.id, lastSlot)).first();
-  if (!hit) await createMapRecord(db, owner, library, {});
-  known.add(ident.id);
-  return ident.id;
-}
-async function putStoredMap(db, owner, library, values) {
-  const mapId = await createMapRecord(db, owner, library, values);
-  for (const [slot, content] of Object.entries(values)) {
-    await db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?").bind(content, cellId(mapId, slot), content).run();
-  }
-  await refreshMapSentence(db, mapId, library);
-  setFor(knownMaps, db).add(mapId);
-  return mapId;
-}
-async function putNarrative(db, owner, library, narrative) {
-  await ensureOwnerAdopted(db, owner, nextWriteSeq());
-  const mapId = await ensureMapRecord(db, owner, library);
-  await db.prepare("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?").bind(narrative, cellId(mapId, "narrative")).run();
-  await refreshMapSentence(db, mapId, library);
-}
-function ownerClause(column, owner) {
-  if (owner === void 0) return { sql: "", params: [] };
-  if (owner === null) return { sql: ` AND +${column} IS NULL`, params: [] };
-  return { sql: ` AND +${column} = ?`, params: [owner] };
-}
-var TRIPLET_SUMMARY_SLOTS = ["subject", "object", "predicate", "status", "library", "source_uri"];
-function tripletCellsSql(ownerSql) {
-  const cols = TRIPLET_SUMMARY_SLOTS.map((s) => `MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_${s}' THEN v.content END) AS ${s}`).join(",\n            ");
-  const rels = TRIPLET_SUMMARY_SLOTS.map((s) => `'fld_' || b.dst_id || '_${s}'`).join(", ");
-  return `SELECT b.src_id AS rid,
-            ${cols}
-          FROM entries b
-          LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id IN (${rels})
-          LEFT JOIN entries v ON v.id = r.dst_id
-          WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerSql}
-          GROUP BY b.src_id`;
-}
-async function aggregateTripletSummaries(db, tripletTemplateId, owner, opts = {}) {
-  const oc = ownerClause("b.owner_id", owner);
-  const withPrefix = !!(opts.sourcePrefix && opts.library);
-  const labelled = withPrefix ? `CASE WHEN t.library IS NULL AND t.source_uri LIKE ? || '%' THEN ? ELSE ${libraryOf("t.library")} END` : libraryOf("t.library");
-  const labelParams = withPrefix ? [opts.sourcePrefix, opts.library] : [];
-  const filter = opts.library ? "WHERE library = ?" : "";
-  const filterParams = opts.library ? [opts.library] : [];
-  const head = `WITH t AS (${tripletCellsSql(oc.sql)}),
-      act AS (SELECT subject, object, predicate, ${labelled} AS library FROM t WHERE COALESCE(t.status, 'active') = 'active'),
-      lib AS (SELECT * FROM act ${filter})`;
-  const params = [tripletTemplateId, ...oc.params, ...labelParams, ...filterParams];
-  const [countRes, entRes, relRes] = await Promise.all([
-    db.prepare(`${head} SELECT library, COUNT(*) AS n FROM lib GROUP BY library`).bind(...params).all(),
-    db.prepare(
-      // kbdb-sql-ok：同上
-      `${head},
-         ent AS (SELECT subject AS name, library FROM lib WHERE subject IS NOT NULL
-                 UNION ALL SELECT object AS name, library FROM lib WHERE object IS NOT NULL),
-         deg AS (SELECT library, name, COUNT(*) AS n FROM ent GROUP BY library, name),
-         ranked AS (SELECT library, name, n, ROW_NUMBER() OVER (PARTITION BY library ORDER BY n DESC, name ASC) AS rn FROM deg)
-         SELECT library, name, n FROM ranked WHERE rn <= ? ORDER BY library, rn`
-    ).bind(...params, ENTITY_SKETCH_SIZE).all(),
-    db.prepare(
-      // kbdb-sql-ok：同上
-      `${head},
-         deg AS (SELECT library, predicate AS name, COUNT(*) AS n FROM lib WHERE predicate IS NOT NULL GROUP BY library, predicate),
-         ranked AS (SELECT library, name, n, ROW_NUMBER() OVER (PARTITION BY library ORDER BY n DESC, name ASC) AS rn FROM deg)
-         SELECT library, name, n FROM ranked WHERE rn <= ? ORDER BY library, rn`
-    ).bind(...params, PREDICATE_SKETCH_SIZE).all()
-  ]);
-  const out = /* @__PURE__ */ new Map();
-  const get = (library) => {
-    const key = String(library);
-    let s = out.get(key);
-    if (!s) {
-      s = { count: 0, entities: [], relations: [] };
-      out.set(key, s);
-    }
-    return s;
-  };
-  for (const r of countRes.results ?? []) get(r.library).count = r.n;
-  for (const r of entRes.results ?? []) get(r.library).entities.push({ name: r.name, degree: r.n });
-  for (const r of relRes.results ?? []) get(r.library).relations.push({ predicate: r.name, count: r.n });
-  return out;
-}
-async function aggregateEntryCounts(db, owner, library) {
-  const params = owner === null ? [] : [owner];
-  if (library) params.push(library);
-  const res = await db.prepare(
-    // kbdb-sql-ok：同上
-    `SELECT ${ENTRY_LIBRARY} AS library, COUNT(*) AS n
-         FROM entries
-        WHERE ${owner === null ? "owner_id IS NULL" : "owner_id = ?"}
-          AND ${countedEntrySql()}
-          ${library ? `AND ${ENTRY_LIBRARY} = ?` : ""}
-        GROUP BY ${ENTRY_LIBRARY}`
-  ).bind(...params).all();
-  const out = /* @__PURE__ */ new Map();
-  for (const r of res.results ?? []) out.set(String(r.library), r.n);
-  return out;
-}
-async function portalLibraryNames(db, owner) {
-  const tpl = await getTemplate(db, PORTAL_LIBRARY_TEMPLATE);
-  if (!tpl) return [];
-  const oc = ownerClause("b.owner_id", owner);
-  const res = await db.prepare(
-    // kbdb-sql-ok：同上
-    `SELECT MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_name' THEN v.content END) AS name
-         FROM entries b
-         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id = 'fld_' || b.dst_id || '_name'
-         LEFT JOIN entries v ON v.id = r.dst_id
-        WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${oc.sql}
-        GROUP BY b.src_id`
-  ).bind(tpl.id, ...oc.params).all();
-  return (res.results ?? []).map((r) => r.name?.trim() ?? "").filter(Boolean);
-}
-async function readLegacyMaps(db, owner) {
-  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
-  if (!tpl) return { byLibrary: /* @__PURE__ */ new Map(), activeIds: [] };
-  const oc = ownerClause("b.owner_id", owner);
-  const res = await db.prepare(
-    // kbdb-sql-ok：同上
-    `WITH m AS (
-         SELECT b.src_id AS rid,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_narrative' THEN v.content END) AS narrative,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_top_entities' THEN v.content END) AS top_entities,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_relation_profile' THEN v.content END) AS relation_profile,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_triplet_count' THEN v.content END) AS triplet_count,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_commit_hash' THEN v.content END) AS commit_hash,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
-           MAX(r.created_at) AS ts
-         FROM entries b
-         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-         LEFT JOIN entries v ON v.id = r.dst_id
-         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${oc.sql}
-           AND substr(b.src_id, 1, 5) != 'lmap_'
-         GROUP BY b.src_id)
-       SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
-       ORDER BY m.ts DESC`
-  ).bind(tpl.id, ...oc.params).all();
-  const byLibrary = /* @__PURE__ */ new Map();
-  const activeIds = [];
-  for (const r of res.results ?? []) {
-    activeIds.push(r.rid);
-    if (!byLibrary.has(r.library)) byLibrary.set(r.library, r);
-  }
-  return { byLibrary, activeIds };
-}
-async function isOwnerAdopted(db, owner) {
-  const key = ownerKey(owner);
-  const adopted = setFor(adoptedOwners, db);
-  if (adopted.has(key)) return true;
-  const hit = await db.prepare("SELECT id FROM entries WHERE id = ?").bind(await adoptionMarkerId(owner)).first();
-  if (hit) adopted.add(key);
-  return !!hit;
-}
-async function ensureOwnerAdopted(db, owner, writeSeq) {
-  if (await isOwnerAdopted(db, owner)) return { baselineIncludesWrite: false };
-  const key = ownerKey(owner);
-  let registry = adoptionJobs.get(db);
-  if (!registry) {
-    registry = /* @__PURE__ */ new Map();
-    adoptionJobs.set(db, registry);
-  }
-  const jobs = registry;
-  let job = jobs.get(key);
-  if (!job) {
-    const seq = nextWriteSeq();
-    const done = adoptOwner(db, owner).finally(() => jobs.delete(key));
-    job = { seq, done };
-    jobs.set(key, job);
-  }
-  await job.done;
-  setFor(adoptedOwners, db).add(key);
-  return { baselineIncludesWrite: job.seq > writeSeq };
-}
-async function adoptOwner(db, owner) {
-  await ensureTemplateOnce(db);
-  const tpl = await getTemplate(db, DEFAULT_TRIPLET_TEMPLATE);
-  const summaries = tpl ? await aggregateTripletSummaries(db, tpl.id, owner) : /* @__PURE__ */ new Map();
-  const entryCounts = await aggregateEntryCounts(db, owner);
-  const legacyOwn = await readLegacyMaps(db, owner);
-  const emptyLegacy = /* @__PURE__ */ new Map();
-  const legacyShared = owner !== null ? (await readLegacyMaps(db, null)).byLibrary : emptyLegacy;
-  const portalNames = await portalLibraryNames(db, owner);
-  const libraries = /* @__PURE__ */ new Set([
-    ...summaries.keys(),
-    ...entryCounts.keys(),
-    ...legacyOwn.byLibrary.keys(),
-    ...portalNames
-  ]);
-  for (const library of libraries) {
-    const s = summaries.get(library);
-    const values = {
-      triplet_count: String(s?.count ?? 0),
-      top_entities: JSON.stringify(s?.entities ?? []),
-      relation_profile: JSON.stringify(s?.relations ?? []),
-      entry_count: String(entryCounts.get(library) ?? 0)
-    };
-    const own = legacyOwn.byLibrary.get(library);
-    const shared = legacyShared.get(library);
-    const narrative = own?.narrative?.trim() || shared?.narrative?.trim();
-    if (narrative) values.narrative = narrative;
-    const commit = own?.commit_hash || shared?.commit_hash;
-    if (commit) values.commit_hash = commit;
-    await putStoredMap(db, owner, library, values);
-  }
-  for (const rid of legacyOwn.activeIds) {
-    await updateRecord(db, rid, { status: "superseded" });
-    await db.prepare(
-      // kbdb-sql-ok：同上
-      `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'), updated_at = unixepoch()
-          WHERE id = ? AND entry_type = 'block'`
-    ).bind(rid).run();
-  }
-  await db.prepare(`INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES (?, 'library-map adopted', 'system', ?)`).bind(await adoptionMarkerId(owner), owner).run();
-}
-function logMapFailure(what, e) {
-  console.error(`[library-map] ${what}\u6C92\u80FD\u8A18\u9032\u5730\u5716\uFF08\u5730\u5716\u6578\u5B57\u53EF\u80FD\u843D\u5F8C\uFF1BPOST /map/recompute?library= \u53EF\u6821\u6B63\uFF09`, e);
-}
-function isMapTrackedTemplate(templateName) {
-  return templateName === DEFAULT_TRIPLET_TEMPLATE || templateName === PORTAL_LIBRARY_TEMPLATE;
-}
-async function applyTripletContribution(db, owner, c, sign) {
-  const mapId = await ensureMapRecord(db, owner, c.library);
-  await bumpCounter(db, cellId(mapId, "triplet_count"), sign);
-  let sentenceStale = false;
-  const names = [c.subject, c.object].filter((n) => n !== null);
-  if (names.length) {
-    const r = await compareAndSetCell(db, cellId(mapId, "top_entities"), (raw2) => {
-      const pairs = entitiesToPairs(raw2);
-      for (const n of names) bump(pairs, n, sign, ENTITY_SKETCH_SIZE);
-      sortPairs(pairs);
-      return JSON.stringify(pairs.map(([name, degree]) => ({ name, degree })));
-    });
-    if (r && top3Key(r.before) !== top3Key(r.after)) sentenceStale = true;
-  }
-  if (c.predicate !== null) {
-    const predicate = c.predicate;
-    await compareAndSetCell(db, cellId(mapId, "relation_profile"), (raw2) => {
-      const pairs = relationsToPairs(raw2);
-      bump(pairs, predicate, sign, PREDICATE_SKETCH_SIZE);
-      sortPairs(pairs);
-      return JSON.stringify(pairs.map(([p, count]) => ({ predicate: p, count })));
-    });
-  }
-  if (sentenceStale) await refreshMapSentence(db, mapId, c.library);
-}
-async function noteRecordWrite(db, templateName, ownerId, before, after) {
-  if (!isMapTrackedTemplate(templateName)) return;
-  const owner = ownerId || null;
-  const writeSeq = nextWriteSeq();
-  try {
-    if (templateName === PORTAL_LIBRARY_TEMPLATE) {
-      const name = after?.name?.trim();
-      if (!name) return;
-      await ensureOwnerAdopted(db, owner, writeSeq);
-      await ensureMapRecord(db, owner, name);
-      return;
-    }
-    const b = tripletContribution(before);
-    const a = tripletContribution(after);
-    if (!b && !a) return;
-    if (b && a && sameContribution(b, a)) return;
-    const { baselineIncludesWrite } = await ensureOwnerAdopted(db, owner, writeSeq);
-    if (baselineIncludesWrite) return;
-    if (b) await applyTripletContribution(db, owner, b, -1);
-    if (a) await applyTripletContribution(db, owner, a, 1);
-  } catch (e) {
-    logMapFailure("\u4E09\u5143\u7D44\u7570\u52D5", e);
-  }
-}
-async function noteEntriesChanged(db, changes) {
-  const deltas = /* @__PURE__ */ new Map();
-  const add = (owner, library, delta) => {
-    const k = `${ownerKey(owner)} ${library}`;
-    const cur = deltas.get(k) ?? { owner, library, delta: 0 };
-    cur.delta += delta;
-    deltas.set(k, cur);
-  };
-  for (const { before, after } of changes) {
-    const bl = countedLibraryOf(before);
-    const al = countedLibraryOf(after);
-    const bo = before?.owner_id || null;
-    const ao = after?.owner_id || null;
-    if (bl !== null && al !== null && bl === al && bo === ao) continue;
-    if (bl !== null) add(bo, bl, -1);
-    if (al !== null) add(ao, al, 1);
-  }
-  const pending = [...deltas.values()].filter((d) => d.delta !== 0);
-  if (!pending.length) return;
-  const writeSeq = nextWriteSeq();
-  try {
-    const byOwner = /* @__PURE__ */ new Map();
-    for (const d of pending) {
-      const k = ownerKey(d.owner);
-      const g = byOwner.get(k) ?? { owner: d.owner, items: [] };
-      g.items.push(d);
-      byOwner.set(k, g);
-    }
-    for (const { owner, items } of byOwner.values()) {
-      const { baselineIncludesWrite } = await ensureOwnerAdopted(db, owner, writeSeq);
-      if (baselineIncludesWrite) continue;
-      for (const d of items) {
-        const mapId = await ensureMapRecord(db, owner, d.library);
-        await bumpCounter(db, cellId(mapId, "entry_count"), d.delta);
-      }
-    }
-  } catch (e) {
-    logMapFailure("\u5361\u7247\u7570\u52D5", e);
-  }
-}
-function toInt(raw2) {
-  const n = Number(raw2 ?? 0);
-  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-}
-function entitiesOf(raw2) {
-  return entitiesToPairs(raw2 ?? null).map(([name, degree]) => ({ name, degree }));
-}
-function relationsOf(raw2) {
-  return relationsToPairs(raw2 ?? null).map(([predicate, count]) => ({ predicate, count }));
-}
-async function readStoredRows(db, owner) {
-  const oh = owner === void 0 ? "" : await ownerHash(owner);
-  const lo = owner === void 0 ? MAP_PAGE_PREFIX : `${MAP_PAGE_PREFIX}${oh}:`;
-  const hi = owner === void 0 ? MAP_PAGE_UPPER_ALL : `${MAP_PAGE_PREFIX}${oh};`;
-  const res = await db.prepare("SELECT id, owner_id FROM entries WHERE page_name >= ? AND page_name < ? AND +entry_type = 'block'").bind(lo, hi).all();
-  const heads = (res.results ?? []).filter((r) => owner === void 0 || (r.owner_id ?? "") === owner);
-  if (!heads.length) return [];
-  const cells = await readCellsById(db, heads.flatMap((h) => LIBRARY_MAP_SLOTS.map((s) => cellId(h.id, s))));
-  const out = [];
-  for (const h of heads) {
-    const get = (slot) => cells.get(cellId(h.id, slot));
-    const library = get("library")?.content;
-    if (!library) continue;
-    let updated = 0;
-    for (const s of LIBRARY_MAP_SLOTS) updated = Math.max(updated, get(s)?.updated_at ?? 0);
-    out.push({
-      record_id: h.id,
-      owner_id: h.owner_id,
-      library,
-      narrative: get("narrative")?.content?.trim() || null,
-      entities: entitiesOf(get("top_entities")?.content),
-      relations: relationsOf(get("relation_profile")?.content),
-      triplet_count: toInt(get("triplet_count")?.content),
-      entry_count: toInt(get("entry_count")?.content),
-      commit_hash: get("commit_hash")?.content || null,
-      updated_at: updated
-    });
-  }
-  return out;
-}
-function legacyToStored(rows, ownerId) {
-  return [...rows].map((r) => ({
-    record_id: r.rid,
-    owner_id: ownerId,
-    library: r.library,
-    narrative: r.narrative?.trim() || null,
-    entities: entitiesOf(r.top_entities),
-    relations: relationsOf(r.relation_profile),
-    triplet_count: toInt(r.triplet_count),
-    entry_count: null,
-    commit_hash: r.commit_hash || null,
-    updated_at: r.ts ?? 0
-  }));
-}
-function mergeByLibrary(maps) {
-  const byLib = /* @__PURE__ */ new Map();
-  for (const m of maps) {
-    const cur = byLib.get(m.library);
-    if (!cur) {
-      byLib.set(m.library, { ...m, entities: [...m.entities], relations: [...m.relations] });
-      continue;
-    }
-    cur.triplet_count += m.triplet_count;
-    cur.entry_count = cur.entry_count === null || m.entry_count === null ? null : cur.entry_count + m.entry_count;
-    cur.narrative = cur.narrative || m.narrative;
-    cur.commit_hash = cur.commit_hash || m.commit_hash;
-    cur.updated_at = Math.max(cur.updated_at, m.updated_at);
-    const ents = cur.entities.map((e) => [e.name, e.degree]);
-    for (const e of m.entities) {
-      const i = ents.findIndex((p) => p[0] === e.name);
-      if (i >= 0) ents[i][1] += e.degree;
-      else ents.push([e.name, e.degree]);
-    }
-    sortPairs(ents);
-    cur.entities = ents.slice(0, ENTITY_SKETCH_SIZE).map(([name, degree]) => ({ name, degree }));
-    const rels = cur.relations.map((r) => [r.predicate, r.count]);
-    for (const r of m.relations) {
-      const i = rels.findIndex((p) => p[0] === r.predicate);
-      if (i >= 0) rels[i][1] += r.count;
-      else rels.push([r.predicate, r.count]);
-    }
-    sortPairs(rels);
-    cur.relations = rels.slice(0, PREDICATE_SKETCH_SIZE).map(([predicate, count]) => ({ predicate, count }));
-  }
-  return [...byLib.values()];
-}
-async function readStoredMaps(db, owner) {
-  const scope = owner || void 0;
-  if (scope !== void 0) {
-    if (await isOwnerAdopted(db, scope)) return readStoredRows(db, scope);
-    const legacy2 = await readLegacyMaps(db, scope);
-    return legacyToStored(legacy2.byLibrary.values(), scope);
-  }
-  const all = await readStoredRows(db, void 0);
-  if (all.length) return mergeByLibrary(all);
-  const legacy = await readLegacyMaps(db, void 0);
-  return legacyToStored(legacy.byLibrary.values(), null);
-}
-
-// kbdb/src/actions/entry-crud.ts
-function uid2(prefix) {
-  return `${prefix}_${crypto.randomUUID()}`;
-}
-async function createEntry(db, input) {
-  const id = input.id ?? uid2("e");
-  await db.prepare(
-    `INSERT INTO entries (id, content, entry_type, owner_id, parent_id, page_name, refs_json, tags_json, task_status, confidence, metadata_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    id,
-    input.content ?? null,
-    input.entry_type,
-    input.owner_id ?? null,
-    input.parent_id ?? null,
-    input.page_name ?? null,
-    input.refs_json ?? "[]",
-    input.tags_json ?? "[]",
-    input.task_status ?? null,
-    input.confidence ?? null,
-    input.metadata_json ?? null
-  ).run();
-  const row = await getEntry(db, id);
-  if (!row) throw new Error("createEntry: insert succeeded but row not found");
-  await noteEntriesChanged(db, [{ before: null, after: row }]);
-  return row;
-}
-async function getEntry(db, id) {
-  const row = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
-  return row ?? null;
-}
-var NOT_MACHINERY_PREDICATE = "(src_id IS NULL AND entry_type <> 'record' AND entry_type <> 'sheet' AND entry_type <> 'field' AND entry_type <> 'system')";
-function eqTerm(column, exactKeyPresent) {
-  return exactKeyPresent ? `+${column} = ?` : `${column} = ?`;
-}
-async function listEntries(db, f = {}) {
-  const conds = [];
-  const params = [];
-  const exactKey = Boolean(f.page_name || f.source);
-  const exact = exactKey || Boolean(f.parent_id);
-  if (f.entry_type) {
-    conds.push(eqTerm("entry_type", exact));
-    params.push(f.entry_type);
-  } else {
-    conds.push(NOT_MACHINERY_PREDICATE);
-  }
-  if (f.owner_id) {
-    conds.push(eqTerm("owner_id", exact));
-    params.push(f.owner_id);
-  }
-  if (f.parent_id) {
-    conds.push(eqTerm("parent_id", exactKey));
-    params.push(f.parent_id);
-  }
-  if (f.page_name) {
-    conds.push("page_name = ?");
-    params.push(f.page_name);
-  }
-  if (f.source) {
-    conds.push("json_extract(metadata_json, '$.source') = ?");
-    params.push(f.source);
-  }
-  if (f.library && f.library.length > 0) {
-    conds.push(libraryPredicate(f.library));
-    params.push(...f.library);
-  }
-  if (f.exclude_kind && f.exclude_kind.length > 0) {
-    const ph = f.exclude_kind.map(() => "?").join(",");
-    conds.push(`COALESCE(json_extract(metadata_json, '$.kind'), '') NOT IN (${ph})`);
-    params.push(...f.exclude_kind);
-  }
-  if (f.q) {
-    const m = buildContentLike(f.q);
-    conds.push(...m.conds);
-    params.push(...m.params);
-  }
-  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const limit = Math.min(f.limit ?? 100, 1e3);
-  const offset = f.offset ?? 0;
-  const pageSizeKnown = Number.isFinite(limit) && limit > 0;
-  const rowsRes = await db.prepare(`SELECT * FROM entries ${where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all();
-  const entries = rowsRes.results ?? [];
-  let total;
-  if (pageSizeKnown && entries.length > 0 && entries.length < limit) total = offset + entries.length;
-  else if (pageSizeKnown && entries.length === 0 && offset === 0) total = 0;
-  else {
-    const countRow = await db.prepare(`SELECT COUNT(*) as total FROM entries ${where}`).bind(...params).first();
-    total = countRow?.total ?? 0;
-  }
-  return { entries, total };
-}
-async function blocksOfPages(db, pages, perPageLimit = 8) {
-  if (pages.length === 0) return [];
-  const params = [];
-  const pairs = pages.map((p) => {
-    params.push(p.page_name);
-    if (p.owner_id === null) return "(page_name = ? AND +owner_id IS NULL)";
-    params.push(p.owner_id);
-    return "(page_name = ? AND +owner_id = ?)";
-  });
-  const rows = await db.prepare(
-    `SELECT * FROM entries
-        WHERE (${pairs.join(" OR ")})
-          AND ${NOT_MACHINERY_PREDICATE}
-          AND ${NOT_DEPRECATED_PREDICATE}
-        ORDER BY created_at ASC, rowid ASC
-        LIMIT ?`
-  ).bind(...params, pages.length * perPageLimit).all();
-  return rows.results ?? [];
-}
-async function updateEntry(db, id, patch) {
-  const cols = [];
-  const params = [];
-  const map = patch;
-  for (const k of ["content", "parent_id", "page_name", "refs_json", "tags_json", "task_status", "confidence", "metadata_json"]) {
-    if (k in map && map[k] !== void 0) {
-      cols.push(`${k} = ?`);
-      params.push(map[k]);
-    }
-  }
-  if (cols.length === 0) return getEntry(db, id);
-  const before = map.metadata_json !== void 0 ? await getEntry(db, id) : null;
-  cols.push("updated_at = unixepoch()");
-  await db.prepare(`UPDATE entries SET ${cols.join(", ")} WHERE id = ?`).bind(...params, id).run();
-  const row = await getEntry(db, id);
-  if (before) await noteEntriesChanged(db, [{ before, after: row }]);
-  return row;
-}
-async function deleteEntry(db, id) {
-  const ref = await db.prepare("SELECT id FROM entries WHERE dst_id = ? LIMIT 1").bind(id).first();
-  if (ref) throw new Error(`entry ${id} is still referenced by record relation ${ref.id} \u2014 delete the record (or its slot) first`);
-  const before = await getEntry(db, id);
-  await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
-  await db.prepare("DELETE FROM entries WHERE src_id = ?").bind(id).run();
-  if (before) await noteEntriesChanged(db, [{ before, after: null }]);
-}
-async function upsertEntry(db, id, input) {
-  const existing = await getEntry(db, id);
-  if (!existing) return createEntry(db, { ...input, id });
-  await db.prepare(
-    `UPDATE entries
-          SET content = ?, entry_type = ?, owner_id = ?, parent_id = ?, page_name = ?,
-              refs_json = ?, tags_json = ?, task_status = ?, confidence = ?, metadata_json = ?,
-              updated_at = unixepoch()
-        WHERE id = ?`
-  ).bind(
-    input.content ?? null,
-    input.entry_type,
-    input.owner_id ?? null,
-    input.parent_id ?? null,
-    input.page_name ?? null,
-    input.refs_json ?? "[]",
-    input.tags_json ?? "[]",
-    input.task_status ?? null,
-    input.confidence ?? null,
-    input.metadata_json ?? null,
-    id
-  ).run();
-  const row = await getEntry(db, id);
-  if (!row) throw new Error("upsertEntry: update succeeded but row not found");
-  await noteEntriesChanged(db, [{ before: existing, after: row }]);
-  return row;
-}
-async function embeddedIdsByLibrary(db, ownerId, library) {
-  const rows = await db.prepare(
-    `SELECT id FROM entries
-        WHERE owner_id = ?
-          AND ${ENTRY_LIBRARY} = ?
-          AND is_embedded = 1`
-  ).bind(ownerId, library).all();
-  return (rows.results ?? []).map((r) => r.id);
-}
-async function markUnembedded(db, ids) {
-  if (ids.length === 0) return;
-  const holes = ids.map(() => "?").join(",");
-  await db.prepare(`UPDATE entries SET is_embedded = 0 WHERE id IN (${holes})`).bind(...ids).run();
-}
-async function deprecateEntriesByLibrary(db, ownerId, library) {
-  const result = await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），checkout 開在 worktree ⇒ hook 逐字比對 matrix/arcrun/kbdb/src/ 吃不到，同 887463c／962d863／5919c6b 已記載的假警報，非繞牆
-    `UPDATE entries
-         SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
-             updated_at = unixepoch()
-       WHERE owner_id = ?
-         AND ${ENTRY_LIBRARY} = ?
-         AND ${NOT_LIBRARY_MAP_ROW}
-         AND (json_extract(metadata_json, '$.status') IS NULL
-              OR json_extract(metadata_json, '$.status') != 'deprecated')`
-  ).bind(ownerId, library).run();
-  return result.meta?.changes ?? 0;
-}
-var MAX_LIKE_Q_BYTES = 48;
-var MAX_LIKE_TERMS = 6;
-var utf8Len = (s) => new TextEncoder().encode(s).length;
-var LIKE_ESCAPE = "\\";
-var CONTENT_LIKE = `content LIKE ? ESCAPE '${LIKE_ESCAPE}'`;
-function escapeLikeLiteral(s) {
-  return s.replace(/[\\%_]/g, (ch) => LIKE_ESCAPE + ch);
-}
-var likeBytes = (s) => utf8Len(escapeLikeLiteral(s));
-var likePattern = (s) => `%${escapeLikeLiteral(s)}%`;
-function chunkByBytes(s, maxBytes) {
-  const out = [];
-  let cur = "";
-  for (const ch of s) {
-    if (likeBytes(cur + ch) > maxBytes) {
-      if (cur) out.push(cur);
-      cur = ch;
-    } else {
-      cur += ch;
-    }
-  }
-  if (cur) out.push(cur);
-  return out;
-}
-function buildContentLike(q) {
-  if (likeBytes(q) <= MAX_LIKE_Q_BYTES) {
-    return { conds: [CONTENT_LIKE], params: [likePattern(q)], split: false };
-  }
-  const terms = [];
-  for (const word of q.split(/\s+/).filter(Boolean)) {
-    for (const piece of chunkByBytes(word, MAX_LIKE_Q_BYTES)) {
-      terms.push(piece);
-      if (terms.length >= MAX_LIKE_TERMS) break;
-    }
-    if (terms.length >= MAX_LIKE_TERMS) break;
-  }
-  if (terms.length === 0) terms.push(chunkByBytes(q, MAX_LIKE_Q_BYTES)[0] ?? "");
-  return {
-    conds: terms.map(() => CONTENT_LIKE),
-    params: terms.map(likePattern),
-    split: true
-  };
-}
-var MAX_SEARCH_TERMS = 6;
-var MAX_TERM_WEIGHT = 8;
-var KEYWORD_RELATIVE_CUT = 0.6;
-var CJK_STOP_CHARS = new Set(
-  "\u7684\u4E86\u662F\u5728\u6211\u4F60\u4ED6\u5979\u5B83\u5011\u9019\u90A3\u54EA\u8AB0\u55CE\u5462\u5427\u554A\u5440\u561B\u5594\u54E6\u4EC0\u9EBC\u600E\u4E4B\u4E4E\u800C\u4F46\u4E26\u537B\u5C31\u90FD\u4E5F\u5F88\u592A\u53EA\u9084\u53C8\u518D\u6BCF\u4E9B\u628A\u88AB\u8DDF\u8B93\u82E5".split("")
-);
-var ASCII_STOP_WORDS = /* @__PURE__ */ new Set([
-  "the",
-  "a",
-  "an",
-  "and",
-  "or",
-  "of",
-  "to",
-  "in",
-  "on",
-  "at",
-  "is",
-  "are",
-  "was",
-  "were",
-  "be",
-  "do",
-  "does",
-  "did",
-  "for",
-  "it",
-  "its",
-  "this",
-  "that",
-  "these",
-  "those",
-  "with",
-  "what",
-  "how",
-  "why",
-  "when",
-  "where",
-  "who",
-  "which",
-  "can",
-  "could",
-  "should",
-  "would",
-  "my",
-  "our",
-  "your",
-  "their",
-  "me",
-  "we",
-  "you",
-  "they"
-]);
-var isCjkChar = (ch) => /[぀-ヿ㐀-䶿一-鿿豈-﫿]/.test(ch);
-var isWordChar = (ch) => /[A-Za-z0-9_.-]/.test(ch);
-function splitRuns(q) {
-  const runs = [];
-  let cur = "";
-  let curCjk = false;
-  const flush = () => {
-    if (cur) runs.push({ text: cur, cjk: curCjk });
-    cur = "";
-  };
-  for (const ch of q) {
-    const cjk = isCjkChar(ch);
-    if (!cjk && !isWordChar(ch)) {
-      flush();
-      continue;
-    }
-    if (cur && cjk !== curCjk) flush();
-    cur += ch;
-    curCjk = cjk;
-  }
-  flush();
-  return runs;
-}
-function contentBigrams(run) {
-  const chars = [...run];
-  const out = [];
-  for (let i = 0; i + 1 < chars.length; i++) {
-    if (CJK_STOP_CHARS.has(chars[i]) || CJK_STOP_CHARS.has(chars[i + 1])) continue;
-    out.push(chars[i] + chars[i + 1]);
-  }
-  return out;
-}
-function tokenizeQuery(q) {
-  const found = /* @__PURE__ */ new Map();
-  const add = (t, w) => {
-    for (const piece of chunkByBytes(t, MAX_LIKE_Q_BYTES)) {
-      if (!piece) continue;
-      found.set(piece, Math.max(found.get(piece) ?? 0, Math.min(w, MAX_TERM_WEIGHT)));
-    }
-  };
-  const runs = splitRuns(q);
-  const isQuestion = runs.length > 1;
-  for (const run of runs) {
-    if (!run.cjk) {
-      const w = run.text.toLowerCase();
-      if (w.length >= 2 && !ASCII_STOP_WORDS.has(w)) add(run.text, run.text.length);
-      continue;
-    }
-    const chars = [...run.text];
-    if (chars.length >= 2 && chars.length <= 4) add(run.text, chars.length);
-    if (isQuestion || chars.length > 4) for (const bg of contentBigrams(run.text)) add(bg, 2);
-  }
-  return [...found.entries()].map(([term, weight]) => ({ term, weight })).sort((a, b) => b.weight - a.weight || a.term.localeCompare(b.term)).slice(0, MAX_SEARCH_TERMS);
-}
-function buildSearchScore(q) {
-  const trimmed = q.trim();
-  const terms = tokenizeQuery(trimmed);
-  if (terms.length === 0) {
-    const m = buildContentLike(trimmed);
-    return {
-      scoreExpr: m.conds.map(() => `CASE WHEN ${CONTENT_LIKE} THEN 1 ELSE 0 END`).join(" + "),
-      scoreParams: m.params,
-      terms: [],
-      legacyShape: true
-    };
-  }
-  const parts = [];
-  const params = [];
-  for (const { term, weight } of terms) {
-    parts.push(`CASE WHEN ${CONTENT_LIKE} THEN ${weight} ELSE 0 END`);
-    params.push(likePattern(term));
-  }
-  const single = terms.length === 1 && terms[0].term === trimmed;
-  if (!single && likeBytes(trimmed) <= MAX_LIKE_Q_BYTES) {
-    const bonus = terms.reduce((s, t) => s + t.weight, 0);
-    parts.push(`CASE WHEN ${CONTENT_LIKE} THEN ${bonus} ELSE 0 END`);
-    params.push(likePattern(trimmed));
-  }
-  return { scoreExpr: parts.join(" + "), scoreParams: params, terms, legacyShape: single };
-}
-function applyRelativeCut(rows) {
-  if (rows.length <= 1) return rows;
-  const cut = rows[0].match_score * KEYWORD_RELATIVE_CUT;
-  return rows.filter((r) => r.match_score >= cut);
-}
-var FTS_WINDOW = 3;
-var MAX_FTS_WINDOWS = 48;
-var FTS_CANDIDATE_LIMIT = 5e3;
-var RESIDUAL_SCAN_CAP = 1e4;
-var RESIDUAL_SWEEP_ROTATION_PERIOD_MS = 1e3;
-function planResidualWindow(backfillCursor, cutoffRowid, cap, nowMs) {
-  const nearLower = Math.max(backfillCursor, cutoffRowid - cap);
-  const near = { lower: nearLower, upper: cutoffRowid };
-  const sweepRangeSize = nearLower - backfillCursor;
-  if (sweepRangeSize <= 0) return { near, sweep: null, totalSweepSlices: 0 };
-  const numSlices = Math.ceil(sweepRangeSize / cap);
-  const slot = Math.floor(nowMs / RESIDUAL_SWEEP_ROTATION_PERIOD_MS) % numSlices;
-  const sweepLower = backfillCursor + slot * cap;
-  const sweepUpper = Math.min(nearLower, sweepLower + cap);
-  return { near, sweep: { lower: sweepLower, upper: sweepUpper }, totalSweepSlices: numSlices };
-}
-function isSearchCoverageComplete(q, backfillCursor, cutoffRowid, cap = RESIDUAL_SCAN_CAP, nowMs = Date.now()) {
-  if (cutoffRowid <= backfillCursor) return true;
-  if (!buildFtsCandidateMatch(q)) return true;
-  const plan = planResidualWindow(backfillCursor, cutoffRowid, cap, nowMs);
-  return plan.totalSweepSlices <= 1;
-}
-var FTS_MIGRATION_CUTOFF_ID = "kbdb-fts-migration-cutoff";
-async function readFtsMigrationState(db) {
-  try {
-    const row = await db.prepare(`SELECT metadata_json FROM entries WHERE id = ?`).bind(FTS_MIGRATION_CUTOFF_ID).first();
-    if (!row?.metadata_json) return { cutoffRowid: Number.MAX_SAFE_INTEGER, backfillCursor: 0 };
-    const parsed = JSON.parse(row.metadata_json);
-    const cutoff = Number(parsed.cutoff_rowid);
-    const cursor = Number(parsed.backfill_cursor);
-    return {
-      cutoffRowid: Number.isFinite(cutoff) ? cutoff : Number.MAX_SAFE_INTEGER,
-      backfillCursor: Number.isFinite(cursor) && cursor >= 0 ? cursor : 0
-    };
-  } catch {
-    return { cutoffRowid: Number.MAX_SAFE_INTEGER, backfillCursor: 0 };
-  }
-}
-function escapeFtsPhrase(s) {
-  return s.replace(/"/g, '""');
-}
-function windowsForRun(run) {
-  const chars = [...run];
-  const out = [];
-  for (let i = 0; i + FTS_WINDOW <= chars.length; i++) out.push(chars.slice(i, i + FTS_WINDOW).join(""));
-  return out;
-}
-function buildFtsCandidateMatch(q) {
-  const trimmed = q.trim();
-  if (!trimmed) return null;
-  const seen = /* @__PURE__ */ new Set();
-  outer: for (const run of splitRuns(trimmed)) {
-    for (const w of windowsForRun(run.text)) {
-      if (seen.size >= MAX_FTS_WINDOWS) break outer;
-      seen.add(w);
-    }
-  }
-  if (seen.size === 0) return null;
-  return [...seen].map((w) => `"${escapeFtsPhrase(w)}"`).join(" OR ");
-}
-function libraryPredicate(libraries) {
-  const placeholders = libraries.map(() => "?").join(",");
-  return `${ENTRY_LIBRARY} IN (${placeholders})`;
-}
-var NOT_DEPRECATED_PREDICATE = "(json_extract(metadata_json, '$.status') IS NULL OR json_extract(metadata_json, '$.status') != 'deprecated')";
-function isDeprecatedEntry(entry) {
-  if (!entry.metadata_json) return false;
-  try {
-    const meta = JSON.parse(entry.metadata_json);
-    return !!meta && meta.status === "deprecated";
-  } catch {
-    return false;
-  }
-}
-async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false, nowMs = Date.now()) {
-  const plan = buildSearchScore(q);
-  const buildConds = (demoteOwnerIndex) => {
-    const conds = [];
-    const params = [];
-    if (owner_id) {
-      conds.push(demoteOwnerIndex ? "+owner_id = ?" : "owner_id = ?");
-      params.push(owner_id);
-    }
-    if (entry_type) {
-      conds.push("entry_type = ?");
-      params.push(entry_type);
-    } else {
-      conds.push(NOT_MACHINERY_PREDICATE);
-    }
-    if (source) {
-      conds.push("json_extract(metadata_json, '$.source') = ?");
-      params.push(source);
-    }
-    if (library && library.length > 0) {
-      conds.push(libraryPredicate(library));
-      params.push(...library);
-    }
-    if (!includeDeprecated) {
-      conds.push(NOT_DEPRECATED_PREDICATE);
-    }
-    conds.push(NOT_LIBRARY_MAP_CELL);
-    return { conds, params };
-  };
-  const capped = Math.min(limit, 200);
-  const stmt = (rangeCond, rangeParams, demoteOwnerIndex = false) => {
-    const { conds, params } = buildConds(demoteOwnerIndex);
-    const all = rangeCond ? [rangeCond, ...conds] : conds;
-    const inner = all.length > 0 ? `WHERE ${all.join(" AND ")}` : "";
-    return db.prepare(
-      // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑假警報
-      `SELECT * FROM (
-           SELECT *, (${plan.scoreExpr}) AS match_score FROM entries ${inner}
-         ) WHERE match_score > 0
-         ORDER BY match_score DESC, updated_at DESC
-         LIMIT ?`
-    ).bind(...plan.scoreParams, ...rangeParams, ...params, capped);
-  };
-  const ftsMatch = buildFtsCandidateMatch(q);
-  if (!ftsMatch) {
-    const res = await stmt("", []).all();
-    return applyRelativeCut(res.results ?? []);
-  }
-  const { cutoffRowid, backfillCursor } = await readFtsMigrationState(db);
-  const candidateRes = await stmt(
-    "rowid IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?)",
-    [ftsMatch, FTS_CANDIDATE_LIMIT],
-    true
-  ).all();
-  const hits = candidateRes.results ?? [];
-  if (cutoffRowid > backfillCursor) {
-    const seen = new Set(hits.map((e) => e.id));
-    const mergeIn = (rows) => {
-      for (const row of rows) if (!seen.has(row.id)) {
-        seen.add(row.id);
-        hits.push(row);
-      }
-    };
-    const { near, sweep } = planResidualWindow(backfillCursor, cutoffRowid, RESIDUAL_SCAN_CAP, nowMs);
-    const nearRes = await stmt(`(rowid > ${Math.trunc(near.lower)} AND rowid <= ${Math.trunc(near.upper)})`, [], true).all();
-    mergeIn(nearRes.results ?? []);
-    if (sweep) {
-      const sweepRes = await stmt(`(rowid > ${Math.trunc(sweep.lower)} AND rowid <= ${Math.trunc(sweep.upper)})`, [], true).all();
-      mergeIn(sweepRes.results ?? []);
-    }
-    hits.sort((a, b) => b.match_score - a.match_score || (b.updated_at ?? 0) - (a.updated_at ?? 0));
-  }
-  return applyRelativeCut(hits.slice(0, capped));
-}
+// kbdb/src/routes/entries.ts
+init_entry_crud();
 
 // kbdb/src/search-rank.ts
 var MACHINE_SECTIONS = /* @__PURE__ */ new Set([
@@ -3749,7 +3815,11 @@ function topPages(entries, limit) {
   return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
+// kbdb/src/routes/entries.ts
+init_library_predicate();
+
 // kbdb/src/actions/library-index.ts
+init_library_predicate();
 var DEFAULT_CARD_LIMIT = 200;
 var MAX_CARD_LIMIT = 500;
 var GLOSS_HEADINGS = ["## \u6458\u8981", "## \u4E00\u53E5\u8A71\u5B9A\u7FA9"];
@@ -3811,18 +3881,74 @@ async function listLibraryCards(db, f) {
   };
 }
 
+// kbdb/src/actions/brake-settings.ts
+init_record_crud();
+var SETTINGS_TEMPLATE_ID = "tpl-kbdb-settings";
+var SETTINGS_SLOTS = ["brake_enabled", "updated_at", "updated_by"];
+var SETTINGS_RECORD_ID = "kbdb_settings";
+async function ensureSettingsTemplate(db) {
+  const tpl = await getTemplate(db, SETTINGS_TEMPLATE_ID);
+  if (tpl) {
+    const have = JSON.parse(tpl.slots_json);
+    if (SETTINGS_SLOTS.every((s) => have.includes(s))) return;
+    await updateTemplate(db, SETTINGS_TEMPLATE_ID, { slots: [.../* @__PURE__ */ new Set([...have, ...SETTINGS_SLOTS])] });
+    return;
+  }
+  await createTemplate(db, {
+    id: SETTINGS_TEMPLATE_ID,
+    name: "kbdb_settings",
+    description: "\u9019\u53F0 KBDB \u7684\u71DF\u904B\u8A2D\u5B9A\uFF08inkstone/arcrun-rag#207\uFF09\uFF1A\u76EE\u524D\u53EA\u6709 brake_enabled \u4E00\u683C\u2014\u2014\u5E33\u865F\u4E3B\u4EBA\u81EA\u5DF1\u80FD\u4E0D\u80FD\u95DC\u6389\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u3002\u4E00\u500B\u5BE6\u4F8B\u4E00\u7B46\uFF0C\u4E0D\u639B owner\u3002",
+    slots: SETTINGS_SLOTS,
+    created_by: "kbdb-speedometer"
+  });
+}
+function toSettings(rec) {
+  const v = rec?.values ?? {};
+  return {
+    brake_enabled: v.brake_enabled !== "false",
+    updated_at: v.updated_at || null,
+    updated_by: v.updated_by || null
+  };
+}
+var SETTINGS_CACHE_MS = 3e4;
+var settingsCache = null;
+async function getBrakeSettings(db) {
+  const now = Date.now();
+  if (settingsCache && now - settingsCache.at <= SETTINGS_CACHE_MS) return settingsCache.settings;
+  await ensureSettingsTemplate(db);
+  const rec = await getRecord(db, SETTINGS_RECORD_ID);
+  const settings = toSettings(rec);
+  settingsCache = { at: now, settings };
+  return settings;
+}
+async function brakeEnabled(db) {
+  return (await getBrakeSettings(db)).brake_enabled;
+}
+async function setBrakeEnabled(db, enabled, by, now = Date.now()) {
+  await ensureSettingsTemplate(db);
+  const values = {
+    brake_enabled: String(enabled),
+    updated_at: new Date(now).toISOString(),
+    updated_by: (by || "manual").slice(0, 120)
+  };
+  const existing = await getRecord(db, SETTINGS_RECORD_ID);
+  const rec = existing ? await updateRecord(db, SETTINGS_RECORD_ID, values) : await createRecord(db, { template: SETTINGS_TEMPLATE_ID, record_id: SETTINGS_RECORD_ID, values, owner_id: null, derived_cell_ids: true });
+  settingsCache = null;
+  return toSettings(rec);
+}
+
 // kbdb/src/actions/maintenance-quota.ts
 var DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT = 2e4;
 function maintenanceDailyLimit(env) {
   const raw2 = env.KBDB_MAINTENANCE_DAILY_WRITE_LIMIT;
-  const n = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT;
 }
 var DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT = 1e5;
 function ftsBuildDailyLimit(env) {
   const raw2 = env.KBDB_FTS_BUILD_DAILY_WRITE_LIMIT;
-  const n = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT;
 }
 function utcDay() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -3876,13 +4002,13 @@ var DEFAULT_INSTANCE_DAILY_WRITE_LIMIT = 1e5;
 var DEFAULT_FTS_BACKFILL_RESERVE = 10500;
 function instanceDailyWriteLimit(env) {
   const raw2 = env.KBDB_INSTANCE_DAILY_WRITE_LIMIT;
-  const n = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_INSTANCE_DAILY_WRITE_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_INSTANCE_DAILY_WRITE_LIMIT;
 }
 function ftsBackfillReserve(env) {
   const raw2 = env.KBDB_FTS_BACKFILL_RESERVE;
-  const n = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_FTS_BACKFILL_RESERVE;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 >= 0 ? n2 : DEFAULT_FTS_BACKFILL_RESERVE;
 }
 function entryWriteUsageId() {
   return `kbdb-entry-write-usage:${utcDay()}`;
@@ -3915,6 +4041,22 @@ async function addEntryWriteUsage(db, by) {
   }
 }
 async function entryWriteBudgetToday(env, db) {
+  let disabled = false;
+  try {
+    disabled = !await brakeEnabled(db);
+  } catch {
+    disabled = false;
+  }
+  if (disabled) {
+    const limit2 = instanceDailyWriteLimit(env);
+    let used2 = 0;
+    try {
+      used2 = await getEntryWriteUsageToday(db);
+    } catch {
+      used2 = 0;
+    }
+    return { limit: limit2, used: used2, remaining: Number.MAX_SAFE_INTEGER };
+  }
   const limit = Math.max(0, instanceDailyWriteLimit(env) - ftsBackfillReserve(env));
   let used = 0;
   try {
@@ -3961,6 +4103,7 @@ function withWriteTally(db, tally) {
 }
 
 // kbdb/src/embed.ts
+init_library_predicate();
 var DEFAULT_EMBED_MODEL = "@cf/baai/bge-m3";
 var MIN_SCORE_ABS_FLOOR = 0.45;
 var MIN_SCORE_TOP_RATIO = 0.8;
@@ -4031,8 +4174,8 @@ var BACKFILL_PREDICATE = "is_embedded = 0 AND content IS NOT NULL AND content <>
 var DEFAULT_BACKFILL_DAILY_LIMIT = 1800;
 function backfillDailyLimit(env) {
   const raw2 = env.EMBED_BACKFILL_DAILY_LIMIT;
-  const n = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_BACKFILL_DAILY_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_BACKFILL_DAILY_LIMIT;
 }
 function utcDay2() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -4359,6 +4502,240 @@ async function migrateLegacyCredentialsForOwner(db, ownerId) {
 }
 
 // kbdb/src/actions/library-backfill.ts
+init_library_predicate();
+init_library_map_store();
+init_record_crud();
+
+// kbdb/src/actions/library-map.ts
+init_record_crud();
+init_library_predicate();
+init_library_map_store();
+var DETAIL_TOP_ENTITIES = 10;
+async function deprecateStaleMapBlocks(db, library, keepId, owner_id) {
+  const params = [library, keepId];
+  if (owner_id) params.push(owner_id);
+  const res = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑造成的假警報同本檔既有註解
+    `UPDATE entries
+          SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
+              updated_at = unixepoch()
+        WHERE entry_type = 'block'
+          AND json_extract(metadata_json, '$.kind') = 'library_map'
+          AND json_extract(metadata_json, '$.library') = ?
+          AND id != ?
+          ${owner_id ? "AND owner_id = ?" : ""}
+          AND (json_extract(metadata_json, '$.status') IS NULL
+               OR json_extract(metadata_json, '$.status') != 'deprecated')`
+  ).bind(...params).run();
+  return res.meta?.changes ?? 0;
+}
+function toRow(m) {
+  return {
+    library: m.library,
+    narrative: m.narrative,
+    top_entities: m.entities.slice(0, 3).map((e) => e.name),
+    triplet_count: m.triplet_count,
+    entry_count: m.entry_count,
+    updated_at: m.updated_at
+  };
+}
+function bridgesFor(target, all) {
+  const mine = new Set(target.entities.map((e) => e.name));
+  const pairs = [];
+  for (const m of all) {
+    if (m.library === target.library) continue;
+    for (const e of m.entities) if (mine.has(e.name)) pairs.push({ entity: e.name, library: m.library });
+  }
+  pairs.sort((a, b) => a.entity < b.entity ? -1 : a.entity > b.entity ? 1 : a.library < b.library ? -1 : a.library > b.library ? 1 : 0);
+  const grouped = /* @__PURE__ */ new Map();
+  for (const p of pairs) {
+    if (!grouped.has(p.entity) && grouped.size >= 50) continue;
+    const libs = grouped.get(p.entity) ?? [];
+    if (!libs.includes(p.library)) libs.push(p.library);
+    grouped.set(p.entity, libs);
+  }
+  return [...grouped.entries()].map(([entity, libraries]) => ({ entity, libraries }));
+}
+function toDetail(m, all) {
+  const top = m.entities.slice(0, DETAIL_TOP_ENTITIES);
+  return {
+    record_id: m.record_id,
+    library: m.library,
+    narrative: m.narrative,
+    content: mapContent(m.library, m.narrative, top.slice(0, 3).map((e) => e.name)),
+    top_entities: top,
+    relation_profile: m.relations,
+    bridges: bridgesFor(m, all),
+    triplet_count: m.triplet_count,
+    entry_count: m.entry_count,
+    commit_hash: m.commit_hash,
+    status: "active",
+    updated_at: m.updated_at
+  };
+}
+async function listLibraryMaps(db, owner_id) {
+  const maps = await readStoredMaps(db, owner_id);
+  return maps.map(toRow).sort((a, b) => a.library.localeCompare(b.library));
+}
+async function getLibraryMapDetail(db, library, owner_id) {
+  const maps = await readStoredMaps(db, owner_id);
+  const m = maps.find((x) => x.library === library);
+  return m ? toDetail(m, maps) : null;
+}
+async function storedTripletCountsByLibrary(db, owner_id) {
+  const out = /* @__PURE__ */ new Map();
+  for (const m of await readStoredMaps(db, owner_id)) if (m.triplet_count > 0) out.set(m.library, m.triplet_count);
+  return out;
+}
+async function recomputeLibraryMap(db, input) {
+  const library = input.library.trim();
+  if (!library) throw new Error("library required");
+  const tripletTemplateName = input.triplet_template ?? DEFAULT_TRIPLET_TEMPLATE;
+  await ensureLibraryMapTemplate(db);
+  const librarySlotAdded = await ensureTripletLibrarySlot(db, tripletTemplateName);
+  const tripletTpl = await getTemplate(db, tripletTemplateName);
+  if (!tripletTpl) throw new Error(`triplet template not found: ${tripletTemplateName}`);
+  const ownerParam = input.owner_id || void 0;
+  const owner = ownerParam ?? null;
+  await noteRecordWrite(db, "portal_library", owner, null, { name: library });
+  const summaries = await aggregateTripletSummaries(db, tripletTpl.id, owner, {
+    library,
+    sourcePrefix: input.source_prefix
+  });
+  const s = summaries.get(library);
+  const entryCount = (await aggregateEntryCounts(db, owner, library)).get(library) ?? 0;
+  const values = {
+    triplet_count: String(s?.count ?? 0),
+    top_entities: JSON.stringify(s?.entities ?? []),
+    relation_profile: JSON.stringify(s?.relations ?? []),
+    entry_count: String(entryCount)
+  };
+  if (input.narrative?.trim()) values.narrative = input.narrative.trim();
+  if (input.commit_hash) values.commit_hash = input.commit_hash;
+  const mapId = await putStoredMap(db, owner, library, values);
+  const deprecatedStaleMaps = await deprecateStaleMapBlocks(db, library, mapId, ownerParam);
+  const map = await getLibraryMapDetail(db, library, ownerParam);
+  if (!map) throw new Error("recompute wrote the map but it is not readable back");
+  return {
+    map: ownerParam ? map : { ...map, record_id: mapId },
+    superseded: [],
+    deprecated_stale_maps: deprecatedStaleMaps,
+    triplet_template: tripletTemplateName,
+    triplet_library_slot_added: librarySlotAdded
+  };
+}
+async function tripletCountsByLibrary(db, owner_id, tripletTemplateName = DEFAULT_TRIPLET_TEMPLATE) {
+  const tpl = await getTemplate(db, tripletTemplateName);
+  if (!tpl) return /* @__PURE__ */ new Map();
+  const params = owner_id ? [tpl.id, owner_id] : [tpl.id];
+  const res = await db.prepare(
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑假警報同上
+    `SELECT ${libraryOf("tr.library")} AS library, COUNT(*) AS n
+       FROM (
+         SELECT b.src_id AS rid,
+              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id
+               AND r.rel_id IN ('fld_' || b.dst_id || '_status', 'fld_' || b.dst_id || '_library')
+         LEFT JOIN entries v ON v.id = r.dst_id
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND +b.owner_id = ?" : ""}
+         GROUP BY b.src_id
+       ) AS tr
+       WHERE COALESCE(tr.status, 'active') = 'active'
+       GROUP BY ${libraryOf("tr.library")}`
+  ).bind(...params).all();
+  const m = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) m.set(r.library, r.n);
+  return m;
+}
+async function setLibraryNarrative(db, library, narrative, owner_id) {
+  const lib = library.trim();
+  if (!lib) throw new Error("library required");
+  const text = narrative.trim();
+  if (!text) throw new Error("narrative required");
+  await putNarrative(db, owner_id || null, lib, text);
+  const after = await getLibraryMapDetail(db, lib, owner_id);
+  if (!after) throw new Error("narrative written but map not readable back");
+  if (!owner_id) {
+    return { ...after, record_id: (await mapIdentity(null, lib)).id };
+  }
+  return after;
+}
+function questionTokens(question) {
+  const t = question.normalize("NFKC").toLowerCase();
+  const out = /* @__PURE__ */ new Set();
+  for (const w of t.match(/[a-z0-9]{2,}/g) ?? []) out.add(w);
+  for (const seg of t.replace(/[^一-鿿]/g, " ").split(/\s+/)) {
+    for (let i = 0; i + 1 < seg.length; i++) out.add(seg.slice(i, i + 2));
+  }
+  return out;
+}
+async function selectLibrariesForQuestion(db, question, opts = {}) {
+  const q = question.trim();
+  if (!q) throw new Error("question required");
+  const owner = opts.owner_id || void 0;
+  const maxLibs = Math.min(Math.max(Math.floor(opts.limit ?? 3), 1), 10);
+  const qNorm = q.normalize("NFKC").toLowerCase();
+  const qLen = [...qNorm].length;
+  const maps = await readStoredMaps(db, owner);
+  const allMaps = maps.map(toRow).sort((a, b) => a.library.localeCompare(b.library));
+  const considered = allMaps.length;
+  const hits = /* @__PURE__ */ new Map();
+  for (const m of maps) {
+    for (const e of m.entities) {
+      if ([...e.name].length < 2) continue;
+      const n2 = e.name.normalize("NFKC").toLowerCase();
+      if (!(qNorm.includes(n2) || qLen >= 2 && n2.includes(qNorm))) continue;
+      const cur = hits.get(m.library) ?? { entities: /* @__PURE__ */ new Set(), score: 0 };
+      cur.entities.add(e.name);
+      cur.score += 1 + Math.log(1 + e.degree);
+      hits.set(m.library, cur);
+    }
+  }
+  let libraries = [...hits.entries()].map(([library, v]) => ({
+    library,
+    score: Math.round(v.score * 100) / 100,
+    matched_entities: [...v.entities].slice(0, 8),
+    via: "graph"
+  })).sort((a, b) => b.score - a.score || a.library.localeCompare(b.library)).slice(0, maxLibs);
+  let route = libraries.length ? "graph" : "all";
+  if (!libraries.length && considered) {
+    const qToks = questionTokens(q);
+    const scored = allMaps.map((m) => {
+      const matched = [];
+      let score = 0;
+      for (const name of [m.library, ...m.top_entities]) {
+        const n2 = name.normalize("NFKC").toLowerCase();
+        if (n2.length >= 2 && qNorm.includes(n2)) {
+          matched.push(name);
+          score += 2;
+        }
+      }
+      if (m.narrative) {
+        const nToks = questionTokens(m.narrative);
+        let overlap = 0;
+        for (const t of qToks) if (nToks.has(t)) overlap += 1;
+        score += Math.min(overlap, 6) * 0.25;
+      }
+      return { library: m.library, score: Math.round(score * 100) / 100, matched_entities: matched, via: "index" };
+    }).filter((r) => r.score > 0).sort((a, b) => b.score - a.score || a.library.localeCompare(b.library)).slice(0, maxLibs);
+    if (scored.length) {
+      libraries = scored;
+      route = "index";
+    }
+  }
+  const selected = new Set(libraries.map((l) => l.library));
+  return {
+    route,
+    vector_used: false,
+    libraries_considered: considered,
+    libraries,
+    indexes: allMaps.map((m) => ({ ...m, selected: selected.has(m.library) }))
+  };
+}
+
+// kbdb/src/actions/library-backfill.ts
 async function rowsForLibraryMap(db, ids) {
   const out = /* @__PURE__ */ new Map();
   for (let i = 0; i < ids.length; i += 90) {
@@ -4452,8 +4829,71 @@ async function libraryBackfillStatus(db, opts = {}) {
   const row = await db.prepare(`SELECT COUNT(*) as c FROM entries WHERE ${where}`).bind(...sel.params).first();
   return { pending: row?.c ?? 0 };
 }
+function tripletCriteriaSql(templateId, c) {
+  const conds = [
+    "r.rel_id = ?",
+    "r.owner_id = ?",
+    "v.content LIKE ? || '%'",
+    `NOT EXISTS (SELECT 1 FROM entries lr WHERE lr.src_id = r.src_id AND lr.rel_id = ?)`
+  ];
+  const params = [fieldEntryId(templateId, "source_uri"), c.owner_id, c.source_prefix ?? "", fieldEntryId(templateId, "library")];
+  return { where: conds.join(" AND "), params };
+}
+async function backfillTripletLibraryTags(db, env, opts) {
+  const library = (opts.library ?? "").trim();
+  if (!library) throw new Error("library required");
+  const ownerId = (opts.owner_id ?? "").trim();
+  if (!ownerId) throw new Error("owner_id required\uFF08\u6A19\u5EAB\u662F\u8DE8\u5927\u91CF\u65E2\u6709\u8CC7\u6599\u7684\u6279\u6B21\u5BEB\u5165\uFF0C\u4E0D\u51C6\u7121\u79DF\u6236\u7BC4\u570D\u5730\u6383\u5168\u5EAB\u2014\u20142026-08-11 leo \u76F4\u4EE4\uFF09");
+  const limit = Math.min(Math.max(opts.limit ?? 100, 1), HARD_LIMIT_CAP);
+  const tripletTemplateName = opts.triplet_template ?? DEFAULT_TRIPLET_TEMPLATE;
+  await ensureTripletLibrarySlot(db, tripletTemplateName);
+  const tpl = await db.prepare(`SELECT id FROM templates WHERE name = ?`).bind(tripletTemplateName).first();
+  if (!tpl) throw new Error(`triplet template not found: ${tripletTemplateName}`);
+  const sel = tripletCriteriaSql(tpl.id, { ...opts, owner_id: ownerId });
+  const res = await db.prepare(
+    `SELECT r.src_id AS id FROM entries r JOIN entries v ON r.dst_id = v.id
+       WHERE ${sel.where} ORDER BY r.src_id ASC LIMIT ?`
+  ).bind(...sel.params, limit).all();
+  const scannedIds = (res.results ?? []).map((r) => r.id);
+  const scanned = scannedIds.length;
+  const budget = await maintenanceBudgetToday(env, db);
+  const ids = scannedIds.slice(0, budget.remaining);
+  const quotaExceeded = scanned > ids.length;
+  let tagged = 0;
+  for (const id of ids) {
+    const updated = await updateRecord(db, id, { library });
+    if (updated) tagged += 1;
+  }
+  try {
+    await addMaintenanceUsage(db, tagged);
+  } catch {
+  }
+  const remRow = await db.prepare(
+    `SELECT COUNT(*) as c FROM entries r JOIN entries v ON r.dst_id = v.id WHERE ${sel.where}`
+  ).bind(...sel.params).first();
+  return {
+    library,
+    scanned,
+    tagged,
+    remaining: remRow?.c ?? 0,
+    quota_limit: budget.limit,
+    quota_used_today: budget.used + tagged,
+    quota_exceeded: quotaExceeded
+  };
+}
+async function tripletLibraryBackfillStatus(db, opts) {
+  const tripletTemplateName = opts.triplet_template ?? DEFAULT_TRIPLET_TEMPLATE;
+  const tpl = await db.prepare(`SELECT id FROM templates WHERE name = ?`).bind(tripletTemplateName).first();
+  if (!tpl) return { pending: 0 };
+  const sel = tripletCriteriaSql(tpl.id, opts);
+  const row = await db.prepare(
+    `SELECT COUNT(*) as c FROM entries r JOIN entries v ON r.dst_id = v.id WHERE ${sel.where}`
+  ).bind(...sel.params).first();
+  return { pending: row?.c ?? 0 };
+}
 
 // kbdb/src/actions/fts-backfill.ts
+init_entry_crud();
 var HARD_LIMIT_CAP2 = 1e4;
 var DEFAULT_LIMIT = 500;
 function classifyD1WriteError(err) {
@@ -4750,9 +5190,9 @@ entryRoutes.get("/search", async (c) => {
           const key = `${b.owner_id ?? ""} ${(b.page_name ?? "").trim()}`;
           const hit = scoreOf.get(key);
           if (!hit) continue;
-          const n = added.get(key) ?? 0;
-          if (n >= PAGE_EXPANSION_PER_PAGE) continue;
-          added.set(key, n + 1);
+          const n2 = added.get(key) ?? 0;
+          if (n2 >= PAGE_EXPANSION_PER_PAGE) continue;
+          added.set(key, n2 + 1);
           entries2.push({
             ...b,
             score: hit.score,
@@ -4922,6 +5362,7 @@ entryRoutes.delete("/:id", async (c) => {
 });
 
 // kbdb/src/routes/templates.ts
+init_record_crud();
 function readFields(body) {
   if (!body) return void 0;
   const raw2 = Array.isArray(body.slots) ? body.slots : Array.isArray(body.fields) ? body.fields : void 0;
@@ -4957,233 +5398,13 @@ templateRoutes.patch("/:id", async (c) => {
   return c.json({ success: true, template: tpl });
 });
 
-// kbdb/src/actions/library-map.ts
-var DETAIL_TOP_ENTITIES = 10;
-async function deprecateStaleMapBlocks(db, library, keepId, owner_id) {
-  const params = [library, keepId];
-  if (owner_id) params.push(owner_id);
-  const res = await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑造成的假警報同本檔既有註解
-    `UPDATE entries
-          SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
-              updated_at = unixepoch()
-        WHERE entry_type = 'block'
-          AND json_extract(metadata_json, '$.kind') = 'library_map'
-          AND json_extract(metadata_json, '$.library') = ?
-          AND id != ?
-          ${owner_id ? "AND owner_id = ?" : ""}
-          AND (json_extract(metadata_json, '$.status') IS NULL
-               OR json_extract(metadata_json, '$.status') != 'deprecated')`
-  ).bind(...params).run();
-  return res.meta?.changes ?? 0;
-}
-function toRow(m) {
-  return {
-    library: m.library,
-    narrative: m.narrative,
-    top_entities: m.entities.slice(0, 3).map((e) => e.name),
-    triplet_count: m.triplet_count,
-    entry_count: m.entry_count,
-    updated_at: m.updated_at
-  };
-}
-function bridgesFor(target, all) {
-  const mine = new Set(target.entities.map((e) => e.name));
-  const pairs = [];
-  for (const m of all) {
-    if (m.library === target.library) continue;
-    for (const e of m.entities) if (mine.has(e.name)) pairs.push({ entity: e.name, library: m.library });
-  }
-  pairs.sort((a, b) => a.entity < b.entity ? -1 : a.entity > b.entity ? 1 : a.library < b.library ? -1 : a.library > b.library ? 1 : 0);
-  const grouped = /* @__PURE__ */ new Map();
-  for (const p of pairs) {
-    if (!grouped.has(p.entity) && grouped.size >= 50) continue;
-    const libs = grouped.get(p.entity) ?? [];
-    if (!libs.includes(p.library)) libs.push(p.library);
-    grouped.set(p.entity, libs);
-  }
-  return [...grouped.entries()].map(([entity, libraries]) => ({ entity, libraries }));
-}
-function toDetail(m, all) {
-  const top = m.entities.slice(0, DETAIL_TOP_ENTITIES);
-  return {
-    record_id: m.record_id,
-    library: m.library,
-    narrative: m.narrative,
-    content: mapContent(m.library, m.narrative, top.slice(0, 3).map((e) => e.name)),
-    top_entities: top,
-    relation_profile: m.relations,
-    bridges: bridgesFor(m, all),
-    triplet_count: m.triplet_count,
-    entry_count: m.entry_count,
-    commit_hash: m.commit_hash,
-    status: "active",
-    updated_at: m.updated_at
-  };
-}
-async function listLibraryMaps(db, owner_id) {
-  const maps = await readStoredMaps(db, owner_id);
-  return maps.map(toRow).sort((a, b) => a.library.localeCompare(b.library));
-}
-async function getLibraryMapDetail(db, library, owner_id) {
-  const maps = await readStoredMaps(db, owner_id);
-  const m = maps.find((x) => x.library === library);
-  return m ? toDetail(m, maps) : null;
-}
-async function storedTripletCountsByLibrary(db, owner_id) {
-  const out = /* @__PURE__ */ new Map();
-  for (const m of await readStoredMaps(db, owner_id)) if (m.triplet_count > 0) out.set(m.library, m.triplet_count);
-  return out;
-}
-async function recomputeLibraryMap(db, input) {
-  const library = input.library.trim();
-  if (!library) throw new Error("library required");
-  const tripletTemplateName = input.triplet_template ?? DEFAULT_TRIPLET_TEMPLATE;
-  await ensureLibraryMapTemplate(db);
-  const librarySlotAdded = await ensureTripletLibrarySlot(db, tripletTemplateName);
-  const tripletTpl = await getTemplate(db, tripletTemplateName);
-  if (!tripletTpl) throw new Error(`triplet template not found: ${tripletTemplateName}`);
-  const ownerParam = input.owner_id || void 0;
-  const owner = ownerParam ?? null;
-  await noteRecordWrite(db, "portal_library", owner, null, { name: library });
-  const summaries = await aggregateTripletSummaries(db, tripletTpl.id, owner, {
-    library,
-    sourcePrefix: input.source_prefix
-  });
-  const s = summaries.get(library);
-  const entryCount = (await aggregateEntryCounts(db, owner, library)).get(library) ?? 0;
-  const values = {
-    triplet_count: String(s?.count ?? 0),
-    top_entities: JSON.stringify(s?.entities ?? []),
-    relation_profile: JSON.stringify(s?.relations ?? []),
-    entry_count: String(entryCount)
-  };
-  if (input.narrative?.trim()) values.narrative = input.narrative.trim();
-  if (input.commit_hash) values.commit_hash = input.commit_hash;
-  const mapId = await putStoredMap(db, owner, library, values);
-  const deprecatedStaleMaps = await deprecateStaleMapBlocks(db, library, mapId, ownerParam);
-  const map = await getLibraryMapDetail(db, library, ownerParam);
-  if (!map) throw new Error("recompute wrote the map but it is not readable back");
-  return {
-    map: ownerParam ? map : { ...map, record_id: mapId },
-    superseded: [],
-    deprecated_stale_maps: deprecatedStaleMaps,
-    triplet_template: tripletTemplateName,
-    triplet_library_slot_added: librarySlotAdded
-  };
-}
-async function tripletCountsByLibrary(db, owner_id, tripletTemplateName = DEFAULT_TRIPLET_TEMPLATE) {
-  const tpl = await getTemplate(db, tripletTemplateName);
-  if (!tpl) return /* @__PURE__ */ new Map();
-  const params = owner_id ? [tpl.id, owner_id] : [tpl.id];
-  const res = await db.prepare(
-    // kbdb-sql-ok：牆內本體（kbdb/src/actions/），worktree 路徑假警報同上
-    `SELECT ${libraryOf("tr.library")} AS library, COUNT(*) AS n
-       FROM (
-         SELECT b.src_id AS rid,
-              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
-              MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library
-         FROM entries b
-         LEFT JOIN entries r ON r.src_id = b.src_id
-               AND r.rel_id IN ('fld_' || b.dst_id || '_status', 'fld_' || b.dst_id || '_library')
-         LEFT JOIN entries v ON v.id = r.dst_id
-         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${owner_id ? " AND +b.owner_id = ?" : ""}
-         GROUP BY b.src_id
-       ) AS tr
-       WHERE COALESCE(tr.status, 'active') = 'active'
-       GROUP BY ${libraryOf("tr.library")}`
-  ).bind(...params).all();
-  const m = /* @__PURE__ */ new Map();
-  for (const r of res.results ?? []) m.set(r.library, r.n);
-  return m;
-}
-async function setLibraryNarrative(db, library, narrative, owner_id) {
-  const lib = library.trim();
-  if (!lib) throw new Error("library required");
-  const text = narrative.trim();
-  if (!text) throw new Error("narrative required");
-  await putNarrative(db, owner_id || null, lib, text);
-  const after = await getLibraryMapDetail(db, lib, owner_id);
-  if (!after) throw new Error("narrative written but map not readable back");
-  if (!owner_id) {
-    return { ...after, record_id: (await mapIdentity(null, lib)).id };
-  }
-  return after;
-}
-function questionTokens(question) {
-  const t = question.normalize("NFKC").toLowerCase();
-  const out = /* @__PURE__ */ new Set();
-  for (const w of t.match(/[a-z0-9]{2,}/g) ?? []) out.add(w);
-  for (const seg of t.replace(/[^一-鿿]/g, " ").split(/\s+/)) {
-    for (let i = 0; i + 1 < seg.length; i++) out.add(seg.slice(i, i + 2));
-  }
-  return out;
-}
-async function selectLibrariesForQuestion(db, question, opts = {}) {
-  const q = question.trim();
-  if (!q) throw new Error("question required");
-  const owner = opts.owner_id || void 0;
-  const maxLibs = Math.min(Math.max(Math.floor(opts.limit ?? 3), 1), 10);
-  const qNorm = q.normalize("NFKC").toLowerCase();
-  const qLen = [...qNorm].length;
-  const maps = await readStoredMaps(db, owner);
-  const allMaps = maps.map(toRow).sort((a, b) => a.library.localeCompare(b.library));
-  const considered = allMaps.length;
-  const hits = /* @__PURE__ */ new Map();
-  for (const m of maps) {
-    for (const e of m.entities) {
-      if ([...e.name].length < 2) continue;
-      const n = e.name.normalize("NFKC").toLowerCase();
-      if (!(qNorm.includes(n) || qLen >= 2 && n.includes(qNorm))) continue;
-      const cur = hits.get(m.library) ?? { entities: /* @__PURE__ */ new Set(), score: 0 };
-      cur.entities.add(e.name);
-      cur.score += 1 + Math.log(1 + e.degree);
-      hits.set(m.library, cur);
-    }
-  }
-  let libraries = [...hits.entries()].map(([library, v]) => ({
-    library,
-    score: Math.round(v.score * 100) / 100,
-    matched_entities: [...v.entities].slice(0, 8),
-    via: "graph"
-  })).sort((a, b) => b.score - a.score || a.library.localeCompare(b.library)).slice(0, maxLibs);
-  let route = libraries.length ? "graph" : "all";
-  if (!libraries.length && considered) {
-    const qToks = questionTokens(q);
-    const scored = allMaps.map((m) => {
-      const matched = [];
-      let score = 0;
-      for (const name of [m.library, ...m.top_entities]) {
-        const n = name.normalize("NFKC").toLowerCase();
-        if (n.length >= 2 && qNorm.includes(n)) {
-          matched.push(name);
-          score += 2;
-        }
-      }
-      if (m.narrative) {
-        const nToks = questionTokens(m.narrative);
-        let overlap = 0;
-        for (const t of qToks) if (nToks.has(t)) overlap += 1;
-        score += Math.min(overlap, 6) * 0.25;
-      }
-      return { library: m.library, score: Math.round(score * 100) / 100, matched_entities: matched, via: "index" };
-    }).filter((r) => r.score > 0).sort((a, b) => b.score - a.score || a.library.localeCompare(b.library)).slice(0, maxLibs);
-    if (scored.length) {
-      libraries = scored;
-      route = "index";
-    }
-  }
-  const selected = new Set(libraries.map((l) => l.library));
-  return {
-    route,
-    vector_used: false,
-    libraries_considered: considered,
-    libraries,
-    indexes: allMaps.map((m) => ({ ...m, selected: selected.has(m.library) }))
-  };
-}
+// kbdb/src/routes/records.ts
+init_record_crud();
 
 // kbdb/src/actions/graph-query.ts
+init_record_crud();
+init_library_predicate();
+init_entity_canon();
 var D1_MAX_BOUND_PARAMS = 90;
 function chunkForD1(items, fixedParams) {
   const size = Math.max(1, D1_MAX_BOUND_PARAMS - fixedParams);
@@ -5252,8 +5473,8 @@ async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, o
   }
   return rows;
 }
-function neighborToEdge(n) {
-  return n.direction === "in" ? { subject: n.node, predicate: n.predicate, object: n.from } : { subject: n.from, predicate: n.predicate, object: n.node };
+function neighborToEdge(n2) {
+  return n2.direction === "in" ? { subject: n2.node, predicate: n2.predicate, object: n2.from } : { subject: n2.from, predicate: n2.predicate, object: n2.node };
 }
 async function graphNeighbors(db, start, opts = {}) {
   const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
@@ -5294,6 +5515,33 @@ async function graphNeighbors(db, start, opts = {}) {
   }
   return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
 }
+async function recordsByFieldValuePage(db, template, field, value, owner_id, limit, offset) {
+  const tpl = await getTemplate(db, template);
+  if (!tpl) return null;
+  const allIds = await recordIdsByFieldValue(db, tpl.id, [field], value, owner_id);
+  if (allIds.length === 0) return { records: [], total: 0, totalExact: true };
+  const meta = await identityMeta(db, allIds);
+  const ordered = [...allIds].sort((a, b) => {
+    const ma = meta.get(a);
+    const mb = meta.get(b);
+    const ca = ma?.createdAt ?? 0;
+    const cb = mb?.createdAt ?? 0;
+    if (ca !== cb) return cb - ca;
+    return (mb?.rowid ?? 0) - (ma?.rowid ?? 0);
+  });
+  const page = ordered.slice(Math.max(offset, 0), Math.max(offset, 0) + Math.max(limit, 0));
+  const records = await hydrateRecordValues(db, tpl.id, page);
+  return { records, total: ordered.length, totalExact: true };
+}
+async function identityMeta(db, ids) {
+  const out = /* @__PURE__ */ new Map();
+  for (const chunk of chunkForD1(ids, 0)) {
+    const ph = chunk.map(() => "?").join(",");
+    const rows = await db.prepare(`SELECT id, created_at, rowid FROM entries WHERE id IN (${ph})`).bind(...chunk).all();
+    for (const r of rows.results ?? []) out.set(r.id, { createdAt: r.created_at, rowid: r.rowid });
+  }
+  return out;
+}
 
 // kbdb/src/routes/records.ts
 var recordRoutes = new Hono2();
@@ -5332,15 +5580,33 @@ recordRoutes.get("/triplet-stats", async (c) => {
   return c.json({ success: true, stats });
 });
 var intParam = (raw2, fallback, min, max) => {
-  const n = Number(raw2);
-  if (raw2 === void 0 || raw2 === "" || !Number.isFinite(n)) return fallback;
-  const v = Math.floor(n);
+  const n2 = Number(raw2);
+  if (raw2 === void 0 || raw2 === "" || !Number.isFinite(n2)) return fallback;
+  const v = Math.floor(n2);
   return v < min ? fallback : Math.min(v, max);
 };
 recordRoutes.get("/by-template/:template", async (c) => {
   const limit = intParam(c.req.query("limit"), 100, 1, 500);
   const offset = intParam(c.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
   const exactTotal = c.req.query("total") === "exact";
+  const field = c.req.query("field");
+  const value = c.req.query("value");
+  if (field && !value || !field && value) {
+    return c.json({ success: false, error: "field and value must be given together" }, 400);
+  }
+  if (field && value) {
+    const filtered = await recordsByFieldValuePage(
+      c.env.DB,
+      c.req.param("template"),
+      field,
+      value,
+      c.req.query("owner_id") || void 0,
+      limit,
+      offset
+    );
+    const { records: records2, total: total2, totalExact: totalExact2 } = filtered ?? { records: [], total: 0, totalExact: true };
+    return c.json({ success: true, records: records2, count: records2.length, limit, offset, total: total2, total_exact: totalExact2 });
+  }
   const { records, total, totalExact } = await searchByTemplatePage(
     c.env.DB,
     c.req.param("template"),
@@ -5363,6 +5629,34 @@ recordRoutes.get("/by-source/:template", async (c) => {
   all.sort();
   const page = all.slice(offset, offset + limit);
   return c.json({ success: true, record_ids: page, count: page.length, total: all.length, limit, offset });
+});
+recordRoutes.post("/backfill-library", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const library = String(body.library ?? "").trim();
+  const ownerId = String(body.owner_id ?? "").trim();
+  if (!library || !ownerId) return c.json({ success: false, error: "library \u8207 owner_id \u5FC5\u586B" }, 400);
+  try {
+    const result = await backfillTripletLibraryTags(c.env.DB, c.env, {
+      library,
+      owner_id: ownerId,
+      triplet_template: body.triplet_template || void 0,
+      source_prefix: body.source_prefix || void 0,
+      limit: body.limit !== void 0 ? Number(body.limit) : void 0
+    });
+    return c.json({ success: true, ...result });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+recordRoutes.get("/backfill-library/status", async (c) => {
+  const ownerId = c.req.query("owner_id") || "";
+  if (!ownerId) return c.json({ success: false, error: "owner_id \u5FC5\u586B" }, 400);
+  const status = await tripletLibraryBackfillStatus(c.env.DB, {
+    owner_id: ownerId,
+    triplet_template: c.req.query("triplet_template") || void 0,
+    source_prefix: c.req.query("source_prefix") || void 0
+  });
+  return c.json({ success: true, ...status });
 });
 recordRoutes.get("/:recordId", async (c) => {
   const rec = await getRecord(c.env.DB, c.req.param("recordId"));
@@ -5561,6 +5855,9 @@ mapRoutes.get("/:library", async (c) => {
 });
 
 // kbdb/src/actions/entity-canon-backfill.ts
+init_record_crud();
+init_entity_canon();
+init_library_predicate();
 var HARD_LIMIT_CAP3 = 2e3;
 var DEFAULT_LIMIT2 = 500;
 async function canonicalizeTripletEntities(db, env, opts = {}) {
@@ -5653,6 +5950,7 @@ async function canonicalizeTripletEntities(db, env, opts = {}) {
 }
 
 // kbdb/src/routes/graph.ts
+init_library_predicate();
 var graphRoutes = new Hono2();
 graphRoutes.post("/canonicalize-entities", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -5687,7 +5985,128 @@ graphRoutes.get("/neighbors/:node", async (c) => {
   }
 });
 
+// kbdb/src/actions/retrieve.ts
+init_entry_crud();
+var MAX_PAGES = 200;
+var DEFAULT_PAGES = 50;
+var MAX_GRAPH_ENTITIES = 20;
+var MAX_GRAPH_FACTS = 100;
+function clampInt(raw2, fallback, max) {
+  return Number.isFinite(raw2) && raw2 > 0 ? Math.min(Math.floor(raw2), max) : fallback;
+}
+async function retrieveForQuestion(db, question, opts = {}) {
+  const q = question.trim();
+  if (!q) throw new Error("question required");
+  const selection = await selectLibrariesForQuestion(db, q, {
+    owner_id: opts.owner_id,
+    limit: opts.limit,
+    triplet_template: opts.triplet_template
+  });
+  const allowed = opts.library && opts.library.length > 0 ? new Set(opts.library) : null;
+  const scopedLibraries = allowed ? selection.libraries.filter((l) => allowed.has(l.library)) : selection.libraries;
+  const scopedIndexSet = new Set(scopedLibraries.map((l) => l.library));
+  const scopedIndexes = allowed ? selection.indexes.filter((i) => allowed.has(i.library)).map((i) => ({ ...i, selected: scopedIndexSet.has(i.library) })) : selection.indexes;
+  const route = allowed && selection.route !== "all" && scopedLibraries.length === 0 ? "all" : selection.route;
+  const pagesLimit = clampInt(Number(opts.pages_limit), DEFAULT_PAGES, MAX_PAGES);
+  const targetLibraries = route === "all" ? allowed ? [...allowed] : void 0 : scopedLibraries.map((l) => l.library);
+  let pages;
+  let pagesTruncated;
+  if (route === "all") {
+    const hits = await searchEntries(db, q, opts.owner_id, void 0, pagesLimit + 1, targetLibraries);
+    pagesTruncated = hits.length > pagesLimit;
+    pages = hits.slice(0, pagesLimit);
+  } else {
+    const listed = await listEntries(db, {
+      owner_id: opts.owner_id,
+      library: targetLibraries,
+      exclude_kind: ["library_map"],
+      limit: pagesLimit
+    });
+    pagesTruncated = listed.total > listed.entries.length;
+    pages = listed.entries;
+  }
+  const entityNames = [];
+  {
+    const seen = /* @__PURE__ */ new Set();
+    for (const lib of scopedLibraries) {
+      for (const name of lib.matched_entities) {
+        if (seen.has(name)) continue;
+        seen.add(name);
+        entityNames.push(name);
+        if (entityNames.length >= MAX_GRAPH_ENTITIES) break;
+      }
+      if (entityNames.length >= MAX_GRAPH_ENTITIES) break;
+    }
+  }
+  const graphFacts = [];
+  if (entityNames.length > 0) {
+    const seenEdge = /* @__PURE__ */ new Set();
+    for (const entity of entityNames) {
+      if (graphFacts.length >= MAX_GRAPH_FACTS) break;
+      let result;
+      try {
+        result = await graphNeighbors(db, entity, {
+          depth: opts.graph_depth,
+          owner_id: opts.owner_id,
+          library: targetLibraries
+        });
+      } catch {
+        continue;
+      }
+      for (const n2 of result.neighbors) {
+        const edge = neighborToEdge(n2);
+        const key = `${edge.subject}\0${edge.predicate}\0${edge.object}`;
+        if (seenEdge.has(key)) continue;
+        seenEdge.add(key);
+        graphFacts.push(edge);
+        if (graphFacts.length >= MAX_GRAPH_FACTS) break;
+      }
+    }
+  }
+  return {
+    route,
+    vector_used: false,
+    libraries_considered: selection.libraries_considered,
+    libraries: scopedLibraries,
+    indexes: scopedIndexes,
+    graph_facts: graphFacts,
+    pages,
+    pages_count: pages.length,
+    pages_truncated: pagesTruncated
+  };
+}
+
+// kbdb/src/routes/retrieve.ts
+init_library_predicate();
+var retrieveRoutes = new Hono2();
+retrieveRoutes.get("/", async (c) => {
+  const q = c.req.query("q") || c.req.query("question") || "";
+  if (!q.trim()) return c.json({ success: false, error: "q required" }, 400);
+  const owner_id = c.req.query("owner_id") || void 0;
+  const library = parseLibraryList(c.req.query("library"));
+  const limitNum = Number(c.req.query("limit"));
+  const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.floor(limitNum) : void 0;
+  const pagesLimitNum = Number(c.req.query("pages_limit"));
+  const pages_limit = Number.isFinite(pagesLimitNum) && pagesLimitNum > 0 ? Math.floor(pagesLimitNum) : void 0;
+  const graphDepthNum = Number(c.req.query("graph_depth"));
+  const graph_depth = Number.isFinite(graphDepthNum) && graphDepthNum > 0 ? Math.floor(graphDepthNum) : void 0;
+  try {
+    const result = await retrieveForQuestion(c.env.DB, q, {
+      owner_id,
+      library,
+      limit,
+      pages_limit,
+      graph_depth,
+      triplet_template: c.req.query("triplet_template") || void 0
+    });
+    return c.json({ success: true, ...result });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
 // kbdb/src/actions/execution-log.ts
+init_entry_crud();
 var SUCCESS_MESSAGE_MAX = 200;
 var FAILED_MESSAGE_MAX = 2e3;
 var TARGET_MAX = 300;
@@ -5695,8 +6114,8 @@ var DEFAULT_DAILY_LIMIT = 2e4;
 var DEGRADE_RATIO = 0.8;
 function dailyLimit(env) {
   const raw2 = env.EXECUTION_LOG_DAILY_WRITE_LIMIT;
-  const n = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_DAILY_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_DAILY_LIMIT;
 }
 function utcDay3() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -5748,7 +6167,10 @@ async function recordExecutionLog(db, env, input) {
     metadata_json: JSON.stringify({
       verdict: input.verdict,
       duration_ms: Math.max(0, Math.round(input.duration_ms)),
-      target
+      target,
+      // inkstone/InkStoneCo#147 ②：只在有帶的時候才存（undefined 就整格不出現，不假裝算過）。
+      ...typeof input.kbdb_rows_written === "number" ? { kbdb_rows_written: Math.max(0, Math.round(input.kbdb_rows_written)) } : {},
+      ...typeof input.kbdb_rows_read === "number" ? { kbdb_rows_read: Math.max(0, Math.round(input.kbdb_rows_read)) } : {}
     })
   });
   return { written: true, mode };
@@ -5772,6 +6194,9 @@ async function listExecutionLog(db, workflowId, ownerId, limit) {
       duration_ms: meta.duration_ms ?? 0,
       message: e.content ?? "",
       ...meta.target ? { target: meta.target } : {},
+      // inkstone/InkStoneCo#147 ②：舊資料沒有這兩格，維持不出現（不假裝有算過）。
+      ...typeof meta.kbdb_rows_written === "number" ? { kbdb_rows_written: meta.kbdb_rows_written } : {},
+      ...typeof meta.kbdb_rows_read === "number" ? { kbdb_rows_read: meta.kbdb_rows_read } : {},
       recorded_at: e.created_at
     };
   });
@@ -5792,8 +6217,8 @@ async function getRetentionDays(db, ownerId) {
   try {
     const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
     if (parsed.retention_days === null) return null;
-    const n = Number(parsed.retention_days);
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_RETENTION_DAYS;
+    const n2 = Number(parsed.retention_days);
+    return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_RETENTION_DAYS;
   } catch {
     return DEFAULT_RETENTION_DAYS;
   }
@@ -5827,8 +6252,8 @@ async function cleanupExpiredLogs(db) {
     if (parsed.retention_days === null) {
       neverDeleteOwners.push(row.owner_id);
     } else {
-      const n = Number(parsed.retention_days);
-      if (Number.isFinite(n) && n > 0) customOwners.push({ owner_id: row.owner_id, days: n });
+      const n2 = Number(parsed.retention_days);
+      if (Number.isFinite(n2) && n2 > 0) customOwners.push({ owner_id: row.owner_id, days: n2 });
     }
   }
   let deleted = 0;
@@ -5871,7 +6296,9 @@ executionLogRoutes.post("/record", async (c) => {
     verdict: body.verdict,
     duration_ms: typeof body.duration_ms === "number" ? body.duration_ms : 0,
     message: body.message ?? "",
-    target: body.target ?? null
+    target: body.target ?? null,
+    ...typeof body.kbdb_rows_written === "number" ? { kbdb_rows_written: body.kbdb_rows_written } : {},
+    ...typeof body.kbdb_rows_read === "number" ? { kbdb_rows_read: body.kbdb_rows_read } : {}
   });
   return c.json({ success: true, ...result });
 });
@@ -6006,7 +6433,10 @@ var GENERATIONS = [
     n: 11,
     file: "0011_records_list_index.sql",
     what: "sheet \u6210\u54E1\u6E05\u55AE\u7D22\u5F15\u2014\u2014by-template \u6E05\u55AE\u53EA\u8B80 offset+limit \u5217\u3001\u4E0D\u518D\u6392\u5E8F\u6574\u5F35 sheet\uFF08Arcrun#218 \u6B98\u7559\uFF1A\u8B80\u53D6\u5217\u6578\u4E0D\u96A8\u5EAB\u5927\u5C0F\u9577\uFF09",
-    checks: [{ kind: "index", name: "idx_entries_dst_rel_created" }]
+    checks: [{ kind: "index", name: "idx_entries_dst_rel_created" }],
+    // 這一代多加的那支無條件索引，讓每張卡多付 40 列（1,116 → 1,156）。
+    // 留著這個數字不是考古：落後一代的實例現在就該被告知它自己那一代的價錢。
+    rows_per_card: 1156
   },
   {
     n: 12,
@@ -6018,7 +6448,8 @@ var GENERATIONS = [
       { kind: "index", name: "idx_entries_parent_present" },
       { kind: "index", name: "idx_entries_page_present" },
       { kind: "index", name: "idx_entries_hash_present" }
-    ]
+    ],
+    rows_per_card: 732
   },
   {
     n: 13,
@@ -6033,6 +6464,7 @@ var GENERATIONS = [
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
 var LEDGER_FILES = GENERATIONS.map((g) => g.file);
 var LEDGER_NUMBERS = GENERATIONS.map((g) => g.n);
+var FREE_TIER_DAILY_WRITES = 1e5;
 var RETIRED_TABLES = ["entry_values", "credentials"];
 async function readEntriesColumns(db, ddl) {
   const cols = /* @__PURE__ */ new Set();
@@ -6105,13 +6537,30 @@ async function probeDataLayer(db) {
   const behind = EXPECTED_GENERATION - actual;
   return {
     ok,
+    write_cost: writeCostFor(actual),
     summary: ok ? `\u8CC7\u6599\u5C64\u8207\u7A0B\u5F0F\u78BC\u540C\u4EE3\uFF08\u7B2C ${actual} \u4EE3\uFF09\u3002` : `\u{1F534} \u8CC7\u6599\u5C64\u843D\u5F8C ${behind} \u4EE3\uFF1A\u9019\u53F0\u505C\u5728\u7B2C ${actual} \u4EE3\uFF0C\u9019\u4EFD\u7A0B\u5F0F\u78BC\u9700\u8981\u7B2C ${EXPECTED_GENERATION} \u4EE3\u3002\u7F3A ${missing.map((m) => m.migration).join("\u3001")}\u3002` + (legacy.length > 0 ? `\u820A\u8868\u9084\u5728\uFF1A${legacy.join("\u3001")}\u3002` : "") + "\u5728\u88DC\u9F4A\u4E4B\u524D\uFF0C\u51E1\u662F\u78B0\u5230\u9019\u5E7E\u4EE3\u65B0\u589E\u7D50\u69CB\u7684\u67E5\u8A62\u90FD\u6703\u5931\u6557\uFF08\u73FE\u8C61\uFF1D\u4E00\u5806 500\uFF09\u3002",
     expected_generation: EXPECTED_GENERATION,
     actual_generation: actual,
     behind_by: behind,
     missing,
     legacy_tables: legacy,
-    remedy: ok ? "\u7121\u9700\u52D5\u4F5C\u3002" : "\u91CD\u8DD1\u5B89\u88DD\u5668\uFF0C\u6216\u5728\u88DD\u4E86 CLI \u7684\u6A5F\u5668\u4E0A\u8DD1 `acr update`\u2014\u2014\u5169\u689D\u8DEF\u90FD\u6703\u628A kbdb/migrations \u5E95\u4E0B\u7684\u6BCF\u4E00\u652F\u4F9D\u5E8F\u88DC\u8DD1\uFF08\u51AA\u7B49\uFF0C\u53EF\u91CD\u8DD1\uFF09\u3002"
+    remedy: ok ? "\u7121\u9700\u52D5\u4F5C\u3002" : (
+      // 補救＝把 kbdb/migrations 每一支依序補跑（冪等）。用哪條路要看這台是怎麼裝的——
+      // 🔴 Arcrun#234：`acr update` 是從 **prod 發行頻道** 拉最新版重裝，對一台跑著比 prod 新的
+      // stage／直推版的實例，它會把你**降級回 prod 版**（而且 --allow-downgrade 那道閘看不出來，
+      // 因為直推不動 bundle_version）。所以刻意分兩種情況講，不要無條件叫人跑 `acr update`。
+      "\u628A kbdb/migrations \u5E95\u4E0B\u7684\u6BCF\u4E00\u652F\u4F9D\u5E8F\u88DC\u8DD1\uFF08\u51AA\u7B49\uFF0C\u53EF\u91CD\u8DD1\uFF09\u3002\u505A\u6CD5\u770B\u9019\u53F0\u662F\u600E\u9EBC\u88DD\u7684\uFF1A\u2460 \u4E00\u822C\u81EA\u67B6\u3001\u8981\u8DDF prod \u767C\u884C\u7248\u4E00\u81F4 \u2192 \u91CD\u8DD1\u5B89\u88DD\u5668\uFF0C\u6216\u5728\u88DD\u4E86 CLI \u7684\u6A5F\u5668\u4E0A\u8DD1 `acr update`\u3002\u2461 \u9019\u53F0\u8DD1\u7684\u662F stage\uFF0F\u76F4\u63A8\u7684\u6210\u54C1\uFF08\u7248\u672C\u6BD4 prod \u65B0\uFF09\u2192 **\u4E0D\u8981\u7528 `acr update`\uFF0C\u5B83\u6703\u628A\u4F60\u964D\u7D1A\u56DE prod \u7248**\uFF1B\u8ACB\u7BA1\u7406\u8005\u8DD1\u4E00\u6B21 stage \u5B89\u88DD\u5668\u628A\u8CC7\u6599\u5C64\u88DC\u4E0A\uFF08\u76F4\u63A8\u5DE5\u5177\u53EA\u63DB worker\u3001\u4E0D\u88DC\u8CC7\u6599\u5C64\uFF0C\u898B Arcrun#234\uFF09\u3002"
+    )
+  };
+}
+function writeCostFor(actual) {
+  const g = GENERATIONS.find((x) => x.n === actual);
+  if (!g || g.rows_per_card === void 0) return void 0;
+  return {
+    rows_per_card: g.rows_per_card,
+    free_daily_rows: FREE_TIER_DAILY_WRITES,
+    generation: actual,
+    measured_by: "kbdb/tests/card-rows-written-gate.test.ts"
   };
 }
 function explain(c, f) {
@@ -6143,6 +6592,693 @@ async function pluck(db, sql, binds, field) {
   return new Set((r.results ?? []).map((row) => row[field]));
 }
 
+// kbdb/src/routes/usage-brakes.ts
+init_record_crud();
+
+// kbdb/src/actions/speedometer.ts
+init_record_crud();
+var FREE_TIER_DAILY_ROWS_WRITTEN = 1e5;
+var FREE_TIER_DAILY_ROWS_READ = 5e6;
+var OP_CEILING_FRACTION = 0.05;
+var OP_GLOBAL_WRITE_CEILING = FREE_TIER_DAILY_ROWS_WRITTEN * OP_CEILING_FRACTION;
+var OP_GLOBAL_READ_CEILING = FREE_TIER_DAILY_ROWS_READ * OP_CEILING_FRACTION;
+var SAFETY_FACTOR = 3;
+var CARD_WRITE_BUDGET = 800;
+var DEFAULT_CEILING = {
+  write: OP_GLOBAL_WRITE_CEILING,
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: OP_GLOBAL_WRITE_CEILING,
+  basis: "\u5168\u57DF\u4E0A\u9650\uFF1A\u514D\u8CBB\u65B9\u6848\u55AE\u65E5\u984D\u5EA6\u7684 5%"
+};
+var SINGLE_WRITE = {
+  write: CARD_WRITE_BUDGET * SAFETY_FACTOR,
+  // 2,400
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: CARD_WRITE_BUDGET,
+  basis: `\u4E00\u6B21\u5BEB\u5165\uFF1A\u4E00\u6574\u5F35\u5361\u7684\u91CF\uFF08${CARD_WRITE_BUDGET} \u5217\uFF0Ccard-rows-written-gate\uFF09\xD7 ${SAFETY_FACTOR}`
+};
+var DECLARED_MAINTENANCE = {
+  write: DEFAULT_FTS_BACKFILL_RESERVE,
+  // 10,500
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: DEFAULT_FTS_BACKFILL_RESERVE,
+  basis: `\u80CC\u666F\u7DAD\u8B77\uFF1A\u55AE\u6B21\u6279\u91CF\u4E0A\u9650\uFF08FTS \u88DC\u7D22\u5F15\u4E00\u6279\uFF0Bbookkeeping\uFF1D${DEFAULT_FTS_BACKFILL_RESERVE} \u5217\uFF0Cmaintenance-quota.ts\uFF09`
+};
+var OP_CEILINGS = {
+  "POST /entries": SINGLE_WRITE,
+  "PUT /entries/:id": SINGLE_WRITE,
+  "PATCH /entries/:id": SINGLE_WRITE,
+  "POST /records": SINGLE_WRITE,
+  "PATCH /records/:id": SINGLE_WRITE,
+  "POST /entries/fts-backfill": DECLARED_MAINTENANCE,
+  "POST /entries/backfill-library": DECLARED_MAINTENANCE,
+  "POST /embed/backfill": DECLARED_MAINTENANCE,
+  "POST /embed/reconcile": DECLARED_MAINTENANCE
+};
+function ceilingFor(op) {
+  return OP_CEILINGS[op] ?? DEFAULT_CEILING;
+}
+var OP_LABELS = {
+  "POST /entries": "\u5BEB\u5165\u4E00\u6BB5\u77E5\u8B58",
+  "PUT /entries/:id": "\u8986\u5BEB\u4E00\u7B46\u8CC7\u6599",
+  "PATCH /entries/:id": "\u4FEE\u6539\u4E00\u7B46\u8CC7\u6599",
+  "POST /records": "\u5BEB\u5165\u4E00\u7B46\u8A18\u9304\uFF08\u4F8B\u5982\u95DC\u4FC2\uFF09",
+  "PATCH /records/:id": "\u4FEE\u6539\u4E00\u7B46\u8A18\u9304",
+  "GET /entries/search": "\u641C\u5C0B",
+  "PATCH /entries/deprecate-by-library": "\u4E0B\u67B6\u4E00\u6574\u500B\u5EAB",
+  "POST /entries/fts-backfill": "\u88DC\u641C\u5C0B\u7D22\u5F15",
+  "POST /entries/backfill-library": "\u88DC\u6A19\u5EAB",
+  "POST /embed/backfill": "\u88DC\u5411\u91CF",
+  "POST /embed/reconcile": "\u5411\u91CF\u4E16\u4EE3\u6838\u5C0D",
+  "POST /map/recompute": "\u91CD\u7B97\u85CF\u66F8\u5730\u5716",
+  "POST /graph/canonicalize-entities": "\u6574\u4F75\u5716\u4E0A\u7684\u540C\u540D\u7BC0\u9EDE",
+  "POST /execution-log/cleanup": "\u6E05\u7406\u904E\u671F\u57F7\u884C\u7D00\u9304",
+  [`DAILY writes`]: "\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165",
+  [`DAILY reads`]: "\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6"
+};
+function opLabel(op) {
+  return OP_LABELS[op] ?? op;
+}
+var LITERAL_SEGMENTS = /* @__PURE__ */ new Set([
+  "entries",
+  "templates",
+  "sheets",
+  "records",
+  "recipe-stats",
+  "execution-log",
+  "embed",
+  "map",
+  "graph",
+  "maintenance",
+  "usage-brakes",
+  "usage",
+  "health",
+  "notified",
+  "libraries",
+  "library-cards",
+  "library-stats",
+  "search",
+  "deprecate-by-library",
+  "backfill-library",
+  "status",
+  "fts-backfill",
+  "record",
+  "latest",
+  "retention",
+  "cleanup",
+  "backfill",
+  "reconcile",
+  "selftest",
+  "canonicalize-entities",
+  "neighbors",
+  "select",
+  "recompute",
+  "narrative",
+  "triplet-stats",
+  "by-template",
+  "by-source",
+  "relation-orphans",
+  "release"
+]);
+function opKey(method, path) {
+  const segs = path.split("/").filter(Boolean).map((s) => LITERAL_SEGMENTS.has(s) ? s : ":id");
+  return `${method.toUpperCase()} /${segs.join("/")}`;
+}
+function isWriteSql(sql) {
+  return /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test(sql);
+}
+var DAILY_WARN_PERCENTS = [20, 50, 80];
+function utcDay4(now = Date.now()) {
+  return new Date(now).toISOString().slice(0, 10);
+}
+var odo = { day: utcDay4(), written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
+var odoEnsuredDay = null;
+function rollDay(now = Date.now()) {
+  const d = utcDay4(now);
+  if (odo.day !== d) odo = { day: d, written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
+}
+function todayUsage(now = Date.now()) {
+  rollDay(now);
+  return { day: odo.day, written: odo.written + odo.pendingWritten, read: odo.read + odo.pendingRead };
+}
+function newTally(op) {
+  return {
+    op,
+    ceiling: ceilingFor(op),
+    rowsRead: 0,
+    rowsWritten: 0,
+    statements: 0,
+    top: null,
+    over: false,
+    blocked: false,
+    dailyBlocked: null,
+    dailyReleased: { writes: false, reads: false }
+  };
+}
+var UsageBrakeError = class extends Error {
+  constructor(tally) {
+    super(`usage brake: ${tally.op} \u5DF2\u5BEB ${tally.rowsWritten} \u5217\uFF0F\u8B80 ${tally.rowsRead} \u5217`);
+    this.tally = tally;
+    this.name = "UsageBrakeError";
+  }
+  tally;
+};
+function isOver(t) {
+  return t.rowsWritten >= t.ceiling.write || t.rowsRead >= t.ceiling.read;
+}
+function add(t, sql, meta) {
+  const w = Number(meta?.rows_written ?? 0);
+  const r = Number(meta?.rows_read ?? 0);
+  t.rowsWritten += w;
+  t.rowsRead += r;
+  t.statements += 1;
+  rollDay();
+  odo.pendingWritten += w;
+  odo.pendingRead += r;
+  if (!t.top || w > t.top.rowsWritten || w === t.top.rowsWritten && r > t.top.rowsRead) {
+    t.top = { sql: sql.replace(/\s+/g, " ").trim().slice(0, 200), rowsWritten: w, rowsRead: r };
+  }
+  if (isOver(t)) t.over = true;
+}
+function guard(t, sqls) {
+  if (isOver(t)) {
+    t.over = true;
+    t.blocked = true;
+    throw new UsageBrakeError(t);
+  }
+  const today = todayUsage();
+  if (today.read >= FREE_TIER_DAILY_ROWS_READ && !t.dailyReleased.reads) {
+    t.dailyBlocked = "reads";
+    throw new UsageBrakeError(t);
+  }
+  if (today.written >= FREE_TIER_DAILY_ROWS_WRITTEN && !t.dailyReleased.writes && sqls.some(isWriteSql)) {
+    t.dailyBlocked = "writes";
+    throw new UsageBrakeError(t);
+  }
+}
+function meterDb(db, t) {
+  const real = /* @__PURE__ */ new WeakMap();
+  const wrap = (sql, stmt) => {
+    const w = {
+      bind: (...args) => wrap(sql, stmt.bind(...args)),
+      all: async () => {
+        guard(t, [sql]);
+        const r = await stmt.all();
+        add(t, sql, r.meta);
+        return r;
+      },
+      run: async () => {
+        guard(t, [sql]);
+        const r = await stmt.run();
+        add(t, sql, r.meta);
+        return r;
+      },
+      first: async (col) => {
+        guard(t, [sql]);
+        const r = await stmt.all();
+        add(t, sql, r.meta);
+        const row = r.results?.[0] ?? null;
+        if (!col) return row;
+        if (row === null) return null;
+        if (!(col in row)) throw new Error(`D1_COLUMN_NOTFOUND: Column not found (${col})`);
+        return row[col];
+      },
+      raw: stmt.raw?.bind(stmt)
+    };
+    real.set(w, { sql, stmt });
+    return w;
+  };
+  return {
+    prepare: (sql) => wrap(sql, db.prepare(sql)),
+    // kbdb-sql-ok：牆內本體（kbdb/src/actions/）；worktree 路徑讓 guard 誤判牆外
+    batch: async (stmts) => {
+      const pairs = stmts.map((s) => real.get(s) ?? { sql: "(batch)", stmt: s });
+      guard(t, pairs.map((p) => p.sql));
+      const results = await db.batch(pairs.map((p) => p.stmt));
+      results.forEach((r, i) => add(t, pairs[i].sql, r.meta));
+      return results;
+    },
+    exec: db.exec?.bind(db),
+    dump: db.dump?.bind(db),
+    withSession: db.withSession?.bind(db)
+  };
+}
+var USAGE_DAY_TEMPLATE_ID = "tpl-usage-day";
+var USAGE_DAY_SLOTS = ["day", "rows_written", "rows_read", "warned_percent"];
+function usageDayRecordId(day) {
+  return `usage_day_${day}`;
+}
+async function ensureTemplate(db, id, name, description, slots) {
+  const tpl = await getTemplate(db, id);
+  if (tpl) {
+    const have = JSON.parse(tpl.slots_json);
+    if (slots.every((s) => have.includes(s))) return;
+    await updateTemplate(db, id, { slots: [.../* @__PURE__ */ new Set([...have, ...slots])] });
+    return;
+  }
+  await createTemplate(db, { id, name, description, slots, created_by: "kbdb-speedometer" });
+}
+async function ensureUsageDay(db, day) {
+  if (odoEnsuredDay === day) return;
+  await ensureTemplate(
+    db,
+    USAGE_DAY_TEMPLATE_ID,
+    "usage_day",
+    "\u6BCF\u65E5\u7528\u91CF\u91CC\u7A0B\u8868\uFF08inkstone/InkStoneCo#147\uFF09\uFF1AKBDB \u9598\u53E3\u81EA\u5DF1\u7B97\u7684\u4ECA\u5929\u8B80\u5BEB\u5217\u6578\uFF0C\u5C0D\u7167\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u3002",
+    USAGE_DAY_SLOTS
+  );
+  await createRecord(db, {
+    template: USAGE_DAY_TEMPLATE_ID,
+    record_id: usageDayRecordId(day),
+    derived_cell_ids: true,
+    owner_id: null,
+    values: { day, rows_written: "0", rows_read: "0", warned_percent: "0" }
+  });
+  odoEnsuredDay = day;
+}
+async function flushOdometer(db, now = Date.now()) {
+  rollDay(now);
+  odo.lastFlushAt = now;
+  const day = odo.day;
+  const w = odo.pendingWritten;
+  const r = odo.pendingRead;
+  if (w === 0 && r === 0) return null;
+  odo.pendingWritten = 0;
+  odo.pendingRead = 0;
+  try {
+    await ensureUsageDay(db, day);
+    const rid = usageDayRecordId(day);
+    const wId = derivedCellIds(rid, "rows_written").value;
+    const rId = derivedCellIds(rid, "rows_read").value;
+    const res = await db.batch([
+      // kbdb-sql-ok：牆內本體；里程表原子加法
+      db.prepare(`UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`).bind(w, wId),
+      // kbdb-sql-ok
+      db.prepare(`UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`).bind(r, rId)
+      // kbdb-sql-ok
+    ]);
+    let selfW = 0;
+    let selfR = 0;
+    for (const x of res) {
+      selfW += Number(x.meta?.rows_written ?? 0);
+      selfR += Number(x.meta?.rows_read ?? 0);
+    }
+    odo.pendingWritten += selfW;
+    odo.pendingRead += selfR;
+    odo.written = Number(res[0].results?.[0]?.content ?? odo.written + w);
+    odo.read = Number(res[1].results?.[0]?.content ?? odo.read + r);
+    const pct = Math.floor(Math.max(odo.written / FREE_TIER_DAILY_ROWS_WRITTEN, odo.read / FREE_TIER_DAILY_ROWS_READ) * 100);
+    const level = [...DAILY_WARN_PERCENTS, 100].filter((p) => pct >= p).pop() ?? null;
+    let crossed = null;
+    if (level !== null) {
+      const warnId = derivedCellIds(rid, "warned_percent").value;
+      const u = await db.prepare(`UPDATE entries SET content = ? WHERE id = ? AND CAST(content AS INTEGER) < ?`).bind(String(level), warnId, level).run();
+      odo.pendingWritten += Number(u.meta?.rows_written ?? 0);
+      odo.pendingRead += Number(u.meta?.rows_read ?? 0);
+      if (Number(u.meta?.changes ?? 0) > 0) crossed = level;
+    }
+    return { day, written: odo.written, read: odo.read, crossedPercent: crossed, selfWritten: selfW, selfRead: selfR };
+  } catch (e) {
+    odo.pendingWritten += w;
+    odo.pendingRead += r;
+    console.warn("[kbdb speedometer] odometer flush failed", e);
+    return null;
+  }
+}
+var ODOMETER_FLUSH_DELAY_MS = 72e5;
+var ODOMETER_MAX_PENDING_WRITTEN = 2e3;
+var ODOMETER_MAX_PENDING_READ = 1e5;
+function odometerDueForFlush(now = Date.now()) {
+  if (odo.pendingWritten <= 0 && odo.pendingRead <= 0) return false;
+  if (odo.pendingWritten >= ODOMETER_MAX_PENDING_WRITTEN) return true;
+  if (odo.pendingRead >= ODOMETER_MAX_PENDING_READ) return true;
+  return now - odo.lastFlushAt >= ODOMETER_FLUSH_DELAY_MS;
+}
+function projectExhaustion(used, limit, now = Date.now()) {
+  const dayStart = Date.parse(`${utcDay4(now)}T00:00:00Z`);
+  const elapsed = Math.max(6e4, now - dayStart);
+  if (used <= 0) return null;
+  if (used >= limit) return new Date(now).toISOString();
+  const eta = dayStart + limit / used * elapsed;
+  return eta < nextQuotaReset(now).getTime() ? new Date(eta).toISOString() : null;
+}
+var BRAKE_TEMPLATE_ID = "tpl-usage-brake";
+var BRAKE_SLOTS = [
+  "kind",
+  // brake（剎住了）／warning（今天用量過門檻，只提醒）
+  "op",
+  // 操作代號，例如 POST /entries；每日那種是 DAILY writes／DAILY reads
+  "op_label",
+  // 人話
+  "caller",
+  // 誰打的（X-Arcrun-Caller；執行器帶 workflow:<名字>）
+  "rows_written",
+  "rows_read",
+  "statements",
+  "ceiling_write",
+  "ceiling_read",
+  "basis",
+  // 上限的依據
+  "top_sql",
+  // 寫最多的那一句（只有 SQL 樣式，不含綁定值）
+  "blocked",
+  // 'true'＝有語句被擋下沒送出；'false'＝越線的那一句已經做完
+  "tripped_at",
+  // ISO
+  "release_at",
+  // ISO：自動放行（下一次 00:00 UTC＝台北 08:00）
+  "released_at",
+  // ISO：手動放行
+  "released_by",
+  "notified_at",
+  // ISO：通知已送出（執行器 tick 填）
+  "message"
+  // 給人看的整句話
+];
+function toBrake(r, now) {
+  const v = r.values;
+  const releasedAt = v.released_at || null;
+  const releaseAt = v.release_at || "";
+  const kind = v.kind === "warning" ? "warning" : "brake";
+  const active = kind === "brake" && !releasedAt && (!releaseAt || Date.parse(releaseAt) > now);
+  return {
+    id: r.record_id,
+    kind,
+    op: v.op ?? "",
+    op_label: v.op_label ?? "",
+    caller: v.caller ?? "",
+    rows_written: Number(v.rows_written ?? 0),
+    rows_read: Number(v.rows_read ?? 0),
+    ceiling_write: Number(v.ceiling_write ?? 0),
+    ceiling_read: Number(v.ceiling_read ?? 0),
+    basis: v.basis ?? "",
+    top_sql: v.top_sql ?? "",
+    blocked: v.blocked === "true",
+    tripped_at: v.tripped_at ?? "",
+    release_at: releaseAt,
+    released_at: releasedAt,
+    released_by: v.released_by || null,
+    notified_at: v.notified_at || null,
+    message: v.message ?? "",
+    active
+  };
+}
+function nextQuotaReset(now) {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
+}
+function taipeiClock(iso) {
+  const d = new Date(Date.parse(iso) + 8 * 36e5);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${mm}/${dd} ${hh}:${mi}\uFF08\u53F0\u5317\uFF09`;
+}
+var n = (x) => x.toLocaleString("en-US");
+function brakeMessage(t, caller, releaseAt, id) {
+  const release = `\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\uFF0C\u6216\u547C\u53EB POST /usage-brakes/${id}/release`;
+  if (t.dailyBlocked) {
+    const what2 = t.dailyBlocked === "writes" ? `\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09` : `\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_READ)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09`;
+    return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A${what2}\u3002\u9019\u500B\u5E33\u865F\u5C31\u7B97\u662F\u4ED8\u8CBB\u65B9\u6848\uFF0C\u4E5F\u7167\u514D\u8CBB\u7528\u6236\u7684\u984D\u5EA6\u505C\u4E0B\u4F86\uFF0C${t.dailyBlocked === "writes" ? "\u5BEB\u5165\u5148\u505C\u3001\u8B80\u53D6\u7167\u5E38" : "\u8B80\u5BEB\u90FD\u5148\u505C"}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF0C${release}\u3002`;
+  }
+  const what = t.rowsWritten >= t.ceiling.write ? t.ceiling.normalWrite < t.ceiling.write ? `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u9019\u985E\u64CD\u4F5C\u6B63\u5E38\u4E0D\u8D85\u904E ${n(t.ceiling.normalWrite)} \u5217\uFF0C\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.write)}\uFF09` : `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u4EFB\u4F55\u55AE\u4E00\u64CD\u4F5C\u7684\u4E0A\u9650\u662F ${n(t.ceiling.write)} \u5217\uFF1D\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684 5%\uFF09` : `\u9019\u4E00\u6B21\u8B80\u4E86 ${n(t.rowsRead)} \u5217\uFF08\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.read)}\uFF09`;
+  const stopped = t.blocked ? "\u5F8C\u9762\u7684\u6B65\u9A5F\u5DF2\u7D93\u505C\u4E0B\u6C92\u6709\u9001\u51FA" : "\u9019\u4E00\u6B21\u5DF2\u7D93\u505A\u5B8C\uFF0C\u4F46\u540C\u6A23\u7684\u64CD\u4F5C\u5148\u505C\u4F4F";
+  return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u300C${opLabel(t.op)}\u300D${what}\u3002${stopped}\uFF0C\u514D\u5F97\u628A\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6\uFF08\u5BEB\u5165 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF0F\u5929\uFF09\u71D2\u5149\u3002\u4F86\u6E90\u300C${caller}\u300D\u7684\u9019\u500B\u64CD\u4F5C\u6703\u505C\u5230 ${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u653E\u884C\uFF1B\u8981\u63D0\u65E9\u653E\u884C\uFF0C${release}\u3002`;
+}
+function warningMessage(percent, written, read, now = Date.now()) {
+  const wEta = projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now);
+  const rEta = projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now);
+  const eta = wEta ?? rEta;
+  const speed = eta ? `\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C${taipeiClock(eta)} \u6703\u7528\u5B8C` : "\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C\u4ECA\u5929\u7528\u4E0D\u5B8C";
+  return `\u7528\u91CF\u63D0\u9192\uFF1A\u4ECA\u5929\u5DF2\u7528\u6389\u514D\u8CBB\u984D\u5EA6\u7684 ${percent}%\uFF08\u5BEB\u5165 ${n(written)}/${n(FREE_TIER_DAILY_ROWS_WRITTEN)}\u3001\u8B80\u53D6 ${n(read)}/${n(FREE_TIER_DAILY_ROWS_READ)}\uFF09\u3002${speed}\uFF1B\u5230 100% \u6703\u81EA\u52D5\u524E\u4F4F\u5BEB\u5165\uFF0C${taipeiClock(nextQuotaReset(now).toISOString())} \u91CD\u7F6E\u3002`;
+}
+var ACTIVE_CACHE_MS = 3e4;
+var activeCache = null;
+async function listBrakes(db, limit = 100) {
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  if (!tpl) return [];
+  const now = Date.now();
+  const recs = await searchByTemplate(db, BRAKE_TEMPLATE_ID, void 0, limit, 0);
+  return recs.map((r) => toBrake(r, now));
+}
+async function recentBrakes(db) {
+  const now = Date.now();
+  if (!activeCache || now - activeCache.at > ACTIVE_CACHE_MS) {
+    const all = await listBrakes(db, 100);
+    const today = utcDay4(now);
+    activeCache = { at: now, brakes: all.filter((b) => b.active || b.op.startsWith("DAILY") && b.tripped_at.startsWith(today)) };
+  }
+  return activeCache.brakes;
+}
+async function findActiveBrake(db, op, caller) {
+  const now = Date.now();
+  const list = await recentBrakes(db);
+  return list.find((b) => b.kind === "brake" && b.op === op && b.caller === caller && !b.released_at && Date.parse(b.release_at) > now) ?? null;
+}
+async function dailyReleased(db) {
+  const today = utcDay4();
+  const list = await recentBrakes(db);
+  const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
+  const disabled = !await brakeEnabled(db);
+  return { writes: rel("DAILY writes") || disabled, reads: rel("DAILY reads") || disabled };
+}
+async function ensureBrakeTemplate(db) {
+  await ensureTemplate(
+    db,
+    BRAKE_TEMPLATE_ID,
+    "usage_brake",
+    "\u7528\u91CF\u524E\u8ECA\u7D00\u9304\uFF08inkstone/InkStoneCo#147\uFF09\uFF1A\u67D0\u500B\u64CD\u4F5C\u55AE\u6B21\u82B1\u8CBB\u8D85\u904E\u4E0A\u9650\u3001\u6216\u4ECA\u5929\u7528\u91CF\u904E\u9580\u6ABB\u6642\uFF0C\u9598\u53E3\u81EA\u52D5\u8A18\u5728\u9019\u88E1\u3002",
+    BRAKE_SLOTS
+  );
+}
+async function recordBrake(db, t, caller, now = Date.now()) {
+  await ensureBrakeTemplate(db);
+  const trippedAt = new Date(now).toISOString();
+  const releaseAt = nextQuotaReset(now).toISOString();
+  const op = t.dailyBlocked ? `DAILY ${t.dailyBlocked}` : t.op;
+  const who = t.dailyBlocked ? "*" : caller;
+  const recordId = t.dailyBlocked ? `brake_daily_${t.dailyBlocked}_${utcDay4(now)}` : `brake_${crypto.randomUUID()}`;
+  const today = todayUsage(now);
+  const values = {
+    kind: "brake",
+    op,
+    op_label: opLabel(op),
+    caller: who,
+    rows_written: String(t.dailyBlocked ? today.written : t.rowsWritten),
+    rows_read: String(t.dailyBlocked ? today.read : t.rowsRead),
+    statements: String(t.statements),
+    ceiling_write: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_WRITTEN : t.ceiling.write),
+    ceiling_read: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_READ : t.ceiling.read),
+    basis: t.dailyBlocked ? "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u5BEB\u5165 10 \u842C\u5217\uFF0F\u8B80\u53D6 500 \u842C\u5217\uFF09" : t.ceiling.basis,
+    top_sql: t.top?.sql ?? "",
+    blocked: t.blocked || t.dailyBlocked ? "true" : "false",
+    tripped_at: trippedAt,
+    release_at: releaseAt,
+    message: brakeMessage(t, caller, releaseAt, recordId)
+  };
+  const rec = await createRecord(db, {
+    template: BRAKE_TEMPLATE_ID,
+    record_id: recordId,
+    values,
+    owner_id: null,
+    derived_cell_ids: Boolean(t.dailyBlocked)
+  });
+  const trueRec = t.dailyBlocked ? await getRecord(db, recordId) : null;
+  const brake = trueRec ? toBrake(trueRec, now) : toBrake(rec, now);
+  if (activeCache) activeCache.brakes = [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)];
+  return brake;
+}
+async function recordWarning(db, percent, written, read, now = Date.now()) {
+  await ensureBrakeTemplate(db);
+  const day = utcDay4(now);
+  const recordId = `warn_${day}_${percent}`;
+  const values = {
+    kind: "warning",
+    op: "DAILY usage",
+    op_label: "\u4ECA\u5929\u7684\u7528\u91CF",
+    caller: "*",
+    rows_written: String(written),
+    rows_read: String(read),
+    ceiling_write: String(FREE_TIER_DAILY_ROWS_WRITTEN),
+    ceiling_read: String(FREE_TIER_DAILY_ROWS_READ),
+    basis: `\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u7684 ${percent}%`,
+    tripped_at: new Date(now).toISOString(),
+    release_at: nextQuotaReset(now).toISOString(),
+    message: warningMessage(percent, written, read, now)
+  };
+  const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
+  return toBrake(rec, now);
+}
+async function getBrake(db, id) {
+  const { getRecord: getRecord2 } = await Promise.resolve().then(() => (init_record_crud(), record_crud_exports));
+  const rec = await getRecord2(db, id);
+  if (!rec || rec.template_id !== BRAKE_TEMPLATE_ID) return null;
+  return toBrake(rec, Date.now());
+}
+async function releaseBrake(db, id, by) {
+  const existing = await getBrake(db, id);
+  if (!existing) return null;
+  const updated = await updateRecord(db, id, { released_at: (/* @__PURE__ */ new Date()).toISOString(), released_by: by || "manual" });
+  activeCache = null;
+  return updated ? toBrake(updated, Date.now()) : null;
+}
+async function markBrakeNotified(db, id) {
+  const existing = await getBrake(db, id);
+  if (!existing) return null;
+  const updated = await updateRecord(db, id, { notified_at: (/* @__PURE__ */ new Date()).toISOString() });
+  return updated ? toBrake(updated, Date.now()) : null;
+}
+function brakeBody(b) {
+  return { success: false, error: "usage_brake", message: b.message, brake: b };
+}
+
+// kbdb/src/routes/usage-brakes.ts
+function exempt(path) {
+  return path === "/" || path === "/health" || path.startsWith("/usage-brakes");
+}
+function setMeterHeaders(c, t) {
+  try {
+    const today = todayUsage();
+    c.header("X-KBDB-Op", t.op);
+    c.header("X-KBDB-Rows-Read", String(t.rowsRead));
+    c.header("X-KBDB-Rows-Written", String(t.rowsWritten));
+    c.header("X-KBDB-Statements", String(t.statements));
+    c.header("X-KBDB-Today-Rows-Written", `${today.written}/${FREE_TIER_DAILY_ROWS_WRITTEN}`);
+    c.header("X-KBDB-Today-Rows-Read", `${today.read}/${FREE_TIER_DAILY_ROWS_READ}`);
+  } catch {
+  }
+}
+async function flushAndWarn(db) {
+  const f = await flushOdometer(db);
+  if (f?.crossedPercent != null) {
+    try {
+      await recordWarning(selfDb(db), f.crossedPercent, f.written, f.read);
+    } catch (e) {
+      console.warn("[kbdb speedometer] warning record failed", e);
+    }
+  }
+}
+function scheduleFlush(c, db) {
+  if (!odometerDueForFlush()) return null;
+  let ctx;
+  try {
+    ctx = c.executionCtx;
+  } catch {
+    ctx = void 0;
+  }
+  const p = flushAndWarn(db);
+  if (!ctx) return p;
+  ctx.waitUntil(p.catch(() => {
+  }));
+  return null;
+}
+function selfDb(rawDb) {
+  const t = newTally("SELF speedometer");
+  t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
+  t.dailyReleased = { writes: true, reads: true };
+  return meterDb(rawDb, t);
+}
+var speedometer = async (c, next) => {
+  const rawDb = c.env.DB;
+  const self = selfDb(rawDb);
+  const path = new URL(c.req.url).pathname;
+  const op = opKey(c.req.method, path);
+  const caller = (c.req.header("X-Arcrun-Caller") || "unknown").slice(0, 120);
+  const t = newTally(op);
+  const isExempt = exempt(path);
+  if (isExempt) {
+    t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
+    t.dailyReleased = { writes: true, reads: true };
+  } else {
+    try {
+      const existing = await findActiveBrake(self, op, caller);
+      if (existing) {
+        const res = c.json(brakeBody(existing), 429);
+        c.header("X-KBDB-Brake", existing.id);
+        return res;
+      }
+      t.dailyReleased = await dailyReleased(self);
+    } catch (e) {
+      console.warn("[kbdb speedometer] brake lookup failed", e);
+    }
+  }
+  c.env = { ...c.env, DB: meterDb(rawDb, t) };
+  await next();
+  if (!isExempt && (t.over || t.dailyBlocked)) {
+    let brake = null;
+    try {
+      brake = await recordBrake(self, t, caller);
+    } catch (e) {
+      console.warn("[kbdb speedometer] brake record failed", e);
+    }
+    if (t.blocked || t.dailyBlocked) {
+      c.res = void 0;
+      c.res = c.json(
+        brake ? brakeBody(brake) : { success: false, error: "usage_brake", message: "\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF08\u524E\u8ECA\u7D00\u9304\u5BEB\u5165\u5931\u6557\uFF0C\u8A73\u898B worker log\uFF09" },
+        429
+      );
+    }
+    if (brake) c.header("X-KBDB-Brake", brake.id);
+  }
+  setMeterHeaders(c, t);
+  const p = scheduleFlush(c, rawDb);
+  if (p) await p;
+};
+var usageBrakeRoutes = new Hono2();
+usageBrakeRoutes.get("/", async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? "50") || 50, 1), 100);
+  let brakes = await listBrakes(c.env.DB, limit);
+  if (c.req.query("pending_notify") === "1") brakes = brakes.filter((b) => !b.notified_at);
+  return c.json({ success: true, brakes });
+});
+usageBrakeRoutes.get("/usage", async (c) => {
+  const day = utcDay4();
+  const rec = await getRecord(c.env.DB, usageDayRecordId(day));
+  const mine = todayUsage();
+  const written = Math.max(Number(rec?.values.rows_written ?? 0), mine.written);
+  const read = Math.max(Number(rec?.values.rows_read ?? 0), mine.read);
+  const now = Date.now();
+  return c.json({
+    success: true,
+    day,
+    rows_written: written,
+    rows_read: read,
+    limit_rows_written: FREE_TIER_DAILY_ROWS_WRITTEN,
+    limit_rows_read: FREE_TIER_DAILY_ROWS_READ,
+    percent_written: Math.round(written / FREE_TIER_DAILY_ROWS_WRITTEN * 1e3) / 10,
+    percent_read: Math.round(read / FREE_TIER_DAILY_ROWS_READ * 1e3) / 10,
+    projected_exhaustion_written: projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now),
+    projected_exhaustion_read: projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now),
+    reset_at: nextQuotaReset(now).toISOString(),
+    basis: "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u4E0D\u8AD6\u5E33\u865F\u5BE6\u969B\u65B9\u6848\uFF09\uFF1B\u6578\u5B57\u662F KBDB \u9598\u53E3\u81EA\u5DF1\u7D2F\u8A08\u7684 meta.rows_written\uFF0Frows_read"
+  });
+});
+usageBrakeRoutes.post("/:id/release", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const b = await releaseBrake(c.env.DB, c.req.param("id"), String(body.by ?? c.req.header("X-Arcrun-Caller") ?? "manual").slice(0, 120));
+  if (!b) return c.json({ success: false, error: "brake not found" }, 404);
+  return c.json({ success: true, brake: b });
+});
+usageBrakeRoutes.post("/:id/notified", async (c) => {
+  const b = await markBrakeNotified(c.env.DB, c.req.param("id"));
+  if (!b) return c.json({ success: false, error: "brake not found" }, 404);
+  return c.json({ success: true, brake: b });
+});
+usageBrakeRoutes.get("/settings", async (c) => {
+  const s = await getBrakeSettings(c.env.DB);
+  return c.json({ success: true, ...s });
+});
+usageBrakeRoutes.post("/settings", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  if (typeof body.brake_enabled !== "boolean") {
+    return c.json({ success: false, error: "brake_enabled \u5FC5\u9808\u662F boolean" }, 400);
+  }
+  const by = String(body.by ?? c.req.header("X-Arcrun-Caller") ?? "manual").slice(0, 120);
+  const s = await setBrakeEnabled(c.env.DB, body.brake_enabled, by);
+  return c.json({ success: true, ...s });
+});
+
 // kbdb/src/index.ts
 var app = new Hono2();
 app.use("*", async (c, next) => {
@@ -6159,6 +7295,7 @@ app.use("*", async (c, next) => {
   }
   return next();
 });
+app.use("*", speedometer);
 app.get("/", (c) => c.json({ service: "arcrun-kbdb", tier: "base", status: "ok" }));
 var HEALTH_CACHE_MS = 1e4;
 var healthCache = null;
@@ -6188,6 +7325,8 @@ app.route("/execution-log", executionLogRoutes);
 app.route("/embed", embedRoutes);
 app.route("/map", mapRoutes);
 app.route("/graph", graphRoutes);
+app.route("/retrieve", retrieveRoutes);
+app.route("/usage-brakes", usageBrakeRoutes);
 var index_default = app;
 export {
   index_default as default

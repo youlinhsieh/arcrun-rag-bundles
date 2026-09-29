@@ -2145,9 +2145,30 @@ var cors = (options) => {
 // cypher-executor/src/lib/wasi-shim.ts
 var WASI_ESUCCESS = 0;
 var WASI_ENOSYS = 76;
+var HOST_OK = 0;
+var HOST_ERROR = 1;
+var HOST_TOO_LARGE = 3;
 var FD_STDIN = 0;
 var FD_STDOUT = 1;
 var FD_STDERR = 2;
+function outFitsCapacity(declaredCapacity, dataLength) {
+  return declaredCapacity === 0 || dataLength <= declaredCapacity;
+}
+function formatBytes(n) {
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+  return `${n} bytes`;
+}
+function oversizeResponseEnvelope(actualBytes, limitBytes) {
+  return {
+    error: `\u56DE\u61C9\u592A\u5927\uFF0C\u88DD\u4E0D\u4E0B\uFF1A\u5C0D\u65B9\u56DE\u4E86 ${formatBytes(actualBytes)}\uFF0C\u8D85\u904E\u9019\u500B\u96F6\u4EF6\u55AE\u6B21\u80FD\u63A5\u6536\u7684 ${formatBytes(limitBytes)} \u4E0A\u9650\u3002\u9019\u4E0D\u662F\u9023\u7DDA\u5931\u6557\uFF0C\u8CC7\u6599\u4E5F\u6C92\u6709\u88AB\u622A\u6389\u4E00\u534A\u2014\u2014\u662F\u6574\u5305\u653E\u4E0D\u9032\u96F6\u4EF6\u3002\u505A\u6CD5\uFF1A\u7528\u4F86\u6E90 API \u7684\u5206\u9801\u6216\u7BE9\u9078\u53C3\u6578\uFF08\u4F8B\u5982 limit / page / per_page / fields\uFF09\u628A\u56DE\u61C9\u7E2E\u5C0F\u518D\u91CD\u8A66\uFF1B\u771F\u7684\u9700\u8981\u6574\u5305\u8CC7\u6599\u6642\uFF0C\u6539\u6210\u5206\u9801\u591A\u6293\u5E7E\u6B21\u3001\u6BCF\u6B21\u8655\u7406\u4E00\u6279\u3002`,
+    code: "response_too_large",
+    actual_bytes: actualBytes,
+    limit_bytes: limitBytes,
+    status: 0,
+    body: ""
+  };
+}
 function createWasiShim(stdinData, hostFunctions) {
   const stdinBytes = new TextEncoder().encode(stdinData);
   let stdinOffset = 0;
@@ -2160,11 +2181,21 @@ function createWasiShim(stdinData, hostFunctions) {
   }
   function writeOut(buf, outPtr, outLenPtr, data) {
     try {
+      const view = new DataView(buf);
+      const declaredCapacity = view.getUint32(outLenPtr, true);
+      if (!outFitsCapacity(declaredCapacity, data.length)) return HOST_TOO_LARGE;
       new Uint8Array(buf, outPtr, data.length).set(data);
-      new DataView(buf).setUint32(outLenPtr, data.length, true);
-      return 0;
+      view.setUint32(outLenPtr, data.length, true);
+      return HOST_OK;
     } catch {
-      return 1;
+      return HOST_ERROR;
+    }
+  }
+  function declaredCapacityOf(buf, outLenPtr) {
+    try {
+      return new DataView(buf).getUint32(outLenPtr, true);
+    } catch {
+      return 0;
     }
   }
   function fd_write(fd, iovs, iovs_len, nwritten_ptr) {
@@ -2318,34 +2349,21 @@ function createWasiShim(stdinData, hostFunctions) {
           const body = dec.decode(new Uint8Array(snapBuf, bodyPtr, bodyLen));
           try {
             const result = await hostFunctions.http_request(url, method, headers, body);
-            return writeOut(memory.buffer, outPtr, outLenPtr, new TextEncoder().encode(result));
+            const encoded = new TextEncoder().encode(result);
+            const status = writeOut(memory.buffer, outPtr, outLenPtr, encoded);
+            if (status !== HOST_TOO_LARGE) return status;
+            const capacity = declaredCapacityOf(memory.buffer, outLenPtr);
+            const envelope = new TextEncoder().encode(
+              JSON.stringify(oversizeResponseEnvelope(encoded.length, capacity))
+            );
+            const envStatus = writeOut(memory.buffer, outPtr, outLenPtr, envelope);
+            return envStatus === HOST_OK ? HOST_OK : HOST_TOO_LARGE;
           } catch (e) {
-            const errDetail = e instanceof Error ? e.message : String(e);
+            const errDetail = (e instanceof Error ? e.message : String(e)).slice(0, 200);
             const errEnv = new TextEncoder().encode(
               JSON.stringify({ error: `fetch failed: ${errDetail}`, status: 0, body: "" })
             );
             return writeOut(memory.buffer, outPtr, outLenPtr, errEnv);
-          }
-        }) : () => 1,
-        // kv_get(keyPtr, keyLen, outPtr, outLenPtr) → 0 成功；1 錯誤；2 找不到 key
-        kv_get: hostFunctions?.kv_get ? hostWrap(async (keyPtr, keyLen, outPtr, outLenPtr) => {
-          if (!memory) {
-            console.error("[kv_get] memory null");
-            return 1;
-          }
-          const key = new TextDecoder().decode(new Uint8Array(memory.buffer, keyPtr, keyLen));
-          console.error(`[kv_get] key="${key}" keyPtr=${keyPtr} keyLen=${keyLen} outPtr=${outPtr} outLenPtr=${outLenPtr}`);
-          try {
-            const result = await hostFunctions.kv_get(key);
-            console.error(`[kv_get] result=${result === null ? "null" : result.slice(0, 80)}`);
-            if (result === null) return 2;
-            const encoded = new TextEncoder().encode(result);
-            const status = writeOut(memory.buffer, outPtr, outLenPtr, encoded);
-            console.error(`[kv_get] writeOut status=${status} encodedLen=${encoded.length} memBufLen=${memory.buffer.byteLength}`);
-            return status;
-          } catch (e) {
-            console.error(`[kv_get] error: ${e}`);
-            return 1;
           }
         }) : () => 1,
         // secret_get(refPtr, refLen, outPtr, outLenPtr) → 0 成功；1 錯誤；2 找不到 ref
@@ -2362,26 +2380,6 @@ function createWasiShim(stdinData, hostFunctions) {
             return 1;
           }
         }) : () => 1,
-        // kv_put(keyPtr, keyLen, valPtr, valLen, ttlSeconds) → 0 成功；1 錯誤
-        kv_put: hostFunctions?.kv_put ? hostWrap(async (keyPtr, keyLen, valPtr, valLen, ttlSeconds) => {
-          if (!memory) return 1;
-          const dec = new TextDecoder();
-          const key = dec.decode(new Uint8Array(memory.buffer, keyPtr, keyLen));
-          const value = dec.decode(new Uint8Array(memory.buffer, valPtr, valLen));
-          try {
-            await hostFunctions.kv_put(key, value, ttlSeconds);
-            return 0;
-          } catch {
-            return 1;
-          }
-        }) : () => 1,
-        // crypto_decrypt — 已停用，永遠回 1（失敗）。
-        //
-        // ⚠️ 不能整條移除：現役 auth_static_key / auth_service_account / auth_oauth2 的
-        // .wasm 仍宣告 `//go:wasmimport u6u crypto_decrypt`，import 缺項會讓 WASM
-        // **instantiate 直接失敗**（不是呼叫才失敗）→ 所有認證零件全掛。故保留成 stub，
-        // 讓連結成立。待三個零件的 Go 原始碼移除該 wasmimport 並重編 wasm 後，才可刪掉這條。
-        crypto_decrypt: () => 1,
         // crypto_sign_rs256(dataPtr, dataLen, pkcs8Ptr, pkcs8Len, outPtr, outLenPtr) → 0 成功
         crypto_sign_rs256: hostFunctions?.crypto_sign_rs256 ? hostWrap(async (dataPtr, dataLen, pkcs8Ptr, pkcs8Len, outPtr, outLenPtr) => {
           if (!memory) return 1;
@@ -2392,6 +2390,31 @@ function createWasiShim(stdinData, hostFunctions) {
             return writeOut(memory.buffer, outPtr, outLenPtr, sig);
           } catch {
             return 1;
+          }
+        }) : () => 1,
+        // fetch_relay(sourceUrlPtr,Len, sourceHeadersPtr,Len, destUrlPtr,Len, destMethodPtr,Len,
+        //             destHeadersPtr,Len, optionsPtr,Len, outPtr, outLenPtr) → 0 成功
+        //             （out 帶 dest 回應精簡 JSON，或 size_exceeded/timeout 的結構化 error
+        //             envelope）；1 = memory 不可用
+        fetch_relay: hostFunctions?.fetch_relay ? hostWrap(async (sourceUrlPtr, sourceUrlLen, sourceHeadersPtr, sourceHeadersLen, destUrlPtr, destUrlLen, destMethodPtr, destMethodLen, destHeadersPtr, destHeadersLen, optionsPtr, optionsLen, outPtr, outLenPtr) => {
+          if (!memory) return 1;
+          const snapBuf = memory.buffer;
+          const dec = new TextDecoder();
+          const sourceUrl = dec.decode(new Uint8Array(snapBuf, sourceUrlPtr, sourceUrlLen));
+          const sourceHeaders = dec.decode(new Uint8Array(snapBuf, sourceHeadersPtr, sourceHeadersLen));
+          const destUrl = dec.decode(new Uint8Array(snapBuf, destUrlPtr, destUrlLen));
+          const destMethod = dec.decode(new Uint8Array(snapBuf, destMethodPtr, destMethodLen));
+          const destHeaders = dec.decode(new Uint8Array(snapBuf, destHeadersPtr, destHeadersLen));
+          const options = dec.decode(new Uint8Array(snapBuf, optionsPtr, optionsLen));
+          try {
+            const result = await hostFunctions.fetch_relay(sourceUrl, sourceHeaders, destUrl, destMethod, destHeaders, options);
+            return writeOut(memory.buffer, outPtr, outLenPtr, new TextEncoder().encode(result));
+          } catch (e) {
+            const errDetail = e instanceof Error ? e.message : String(e);
+            const errEnv = new TextEncoder().encode(
+              JSON.stringify({ error: `fetch_relay failed: ${errDetail}`, status: 0, body: "" })
+            );
+            return writeOut(memory.buffer, outPtr, outLenPtr, errEnv);
           }
         }) : () => 1
       }
@@ -2500,27 +2523,6 @@ function createWasiShim(stdinData, hostFunctions) {
   };
   return shim;
 }
-async function routedKvGet(env, apiKey, key) {
-  if (key.startsWith("auth_recipe:")) {
-    return env.RECIPES.get(key);
-  }
-  const credMatch = key.match(/^([^:]+):cred:.+$/);
-  if (credMatch) {
-    if (credMatch[1] !== apiKey) {
-      return null;
-    }
-    return env.CREDENTIALS_KV.get(key);
-  }
-  return null;
-}
-async function routedKvPut(env, apiKey, key, value, ttlSeconds) {
-  const oauth2Match = key.match(/^([^:]+):oauth2:.+$/);
-  if (oauth2Match && oauth2Match[1] === apiKey) {
-    const opts = ttlSeconds > 0 ? { expirationTtl: ttlSeconds } : void 0;
-    await env.CREDENTIALS_KV.put(key, value, opts);
-    return;
-  }
-}
 async function rsaPkcs1Sha256Sign(data, pkcs8) {
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
@@ -2537,10 +2539,8 @@ function secretGet(env, ref) {
   const value = env[ref];
   return typeof value === "string" ? value : null;
 }
-function createArcrunHostFunctions(env, apiKey) {
+function createArcrunHostFunctions(env, _apiKey) {
   return {
-    kv_get: (key) => routedKvGet(env, apiKey, key),
-    kv_put: (key, value, ttlSeconds) => routedKvPut(env, apiKey, key, value, ttlSeconds),
     crypto_sign_rs256: (data, pkcs8) => rsaPkcs1Sha256Sign(data, pkcs8),
     secret_get: async (ref) => secretGet(env, ref)
   };

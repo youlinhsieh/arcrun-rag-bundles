@@ -8980,40 +8980,157 @@ async function verifyPkceS256(codeVerifier, codeChallenge, method) {
   return constantTimeEqual(computed, codeChallenge);
 }
 
+// mcp/src/lib/kbdb-client.ts
+function kbdbFetch(env, path, init) {
+  const headers = new Headers(init?.headers || {});
+  if (env.KBDB_INTERNAL_TOKEN) {
+    headers.set("Authorization", `Bearer ${env.KBDB_INTERNAL_TOKEN}`);
+  }
+  return env.KBDB.fetch(`http://kbdb${path}`, { ...init, headers });
+}
+
 // mcp/src/oauth/store.ts
-var CODE_PREFIX = "oauth:code:";
-var TOKEN_PREFIX = "oauth:tok:";
 var AUTH_CODE_TTL_SECONDS = 600;
-async function putAuthCode(kv, code, data) {
-  const key = CODE_PREFIX + await sha256Hex(code);
-  await kv.put(key, JSON.stringify(data), { expirationTtl: AUTH_CODE_TTL_SECONDS });
+async function ensureTemplate(env, name, slots) {
+  const got = await kbdbFetch(env, `/templates/${encodeURIComponent(name)}`);
+  if (got.ok) return;
+  await kbdbFetch(env, `/templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, slots })
+  }).catch(() => void 0);
 }
-async function consumeAuthCode(kv, code) {
-  const key = CODE_PREFIX + await sha256Hex(code);
-  const raw2 = await kv.get(key);
-  if (!raw2) return null;
-  await kv.delete(key);
+var CODE_TEMPLATE_V2 = "mcp_oauth_code_v2";
+var CODE_FIELDS_V2 = [
+  "client_id",
+  "redirect_uri",
+  "code_challenge",
+  "code_challenge_method",
+  "scope",
+  "resource",
+  "namespace",
+  "portal_enc",
+  "portal_session_expires_in",
+  "exp"
+];
+var TOKEN_PREFIX = "at1.";
+var b64u = {
+  enc(bytes) {
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  },
+  dec(s) {
+    const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - s.length % 4);
+    const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + pad);
+    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  }
+};
+async function hkdfKey(secret, info) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode("arcrun-mcp-oauth"), info: new TextEncoder().encode(info) },
+    base,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+async function seal(key, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(obj))));
+  const out = new Uint8Array(iv.length + ct.length);
+  out.set(iv, 0);
+  out.set(ct, iv.length);
+  return b64u.enc(out);
+}
+async function open(key, sealed) {
   try {
-    return JSON.parse(raw2);
+    const raw2 = b64u.dec(sealed);
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw2.slice(0, 12) }, key, raw2.slice(12));
+    return JSON.parse(new TextDecoder().decode(pt));
   } catch {
     return null;
   }
 }
-async function putAccessToken(kv, token, data, ttlSeconds) {
-  const key = TOKEN_PREFIX + await sha256Hex(token);
-  await kv.put(key, JSON.stringify(data), { expirationTtl: ttlSeconds });
+function tokenKey(env) {
+  if (!env.KBDB_INTERNAL_TOKEN) throw new Error("arcrun-mcp \u7F3A KBDB_INTERNAL_TOKEN\uFF0C\u7121\u6CD5\u7C3D\u767C\uFF0F\u9A57\u8B49 access token");
+  return hkdfKey(env.KBDB_INTERNAL_TOKEN, "access-token/v1");
 }
-async function getAccessToken(kv, token) {
-  const key = TOKEN_PREFIX + await sha256Hex(token);
-  const raw2 = await kv.get(key);
-  if (!raw2) return null;
-  try {
-    const data = JSON.parse(raw2);
-    if (typeof data.exp === "number" && data.exp * 1e3 < Date.now()) return null;
-    return data;
-  } catch {
-    return null;
+var ensured = /* @__PURE__ */ new WeakMap();
+async function ensureTemplateOnce(env, name, slots) {
+  const k = env.KBDB;
+  const set2 = ensured.get(k) ?? /* @__PURE__ */ new Set();
+  if (set2.has(name)) return;
+  await ensureTemplate(env, name, slots);
+  set2.add(name);
+  ensured.set(k, set2);
+}
+function codeRecordId(codeHash) {
+  return `mcpcode_${codeHash}`;
+}
+async function putAuthCode(env, code, data) {
+  await ensureTemplateOnce(env, CODE_TEMPLATE_V2, CODE_FIELDS_V2);
+  const codeHash = await sha256Hex(code);
+  const exp = Math.floor(Date.now() / 1e3) + AUTH_CODE_TTL_SECONDS;
+  const values = {
+    client_id: data.client_id,
+    redirect_uri: data.redirect_uri,
+    code_challenge: data.code_challenge,
+    code_challenge_method: data.code_challenge_method,
+    scope: data.scope,
+    resource: data.resource,
+    namespace: data.namespace,
+    exp: String(exp)
+  };
+  if (data.portal) values.portal_enc = await seal(await hkdfKey(code, "auth-code/v1"), data.portal);
+  if (typeof data.portal_session_expires_in === "number") {
+    values.portal_session_expires_in = String(data.portal_session_expires_in);
   }
+  const res = await kbdbFetch(env, `/records`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ template: CODE_TEMPLATE_V2, record_id: codeRecordId(codeHash), values, derived_cell_ids: true })
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`KBDB POST /records\uFF08${CODE_TEMPLATE_V2}\uFF09\u2192 HTTP ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+async function consumeAuthCode(env, code) {
+  const codeHash = await sha256Hex(code);
+  const id = codeRecordId(codeHash);
+  const rec = await kbdbFetch(env, `/records/${encodeURIComponent(id)}`);
+  if (rec.status === 404) return null;
+  if (!rec.ok) throw new Error(`KBDB GET /records/${id} \u2192 HTTP ${rec.status}`);
+  const body = await rec.json().catch(() => null);
+  await kbdbFetch(env, `/records/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => void 0);
+  const v = body?.record?.values;
+  if (!v || !v.exp || !v.redirect_uri || !v.code_challenge) return null;
+  if (Number(v.exp) * 1e3 < Date.now()) return null;
+  const portal = v.portal_enc ? await open(await hkdfKey(code, "auth-code/v1"), v.portal_enc) : void 0;
+  return {
+    client_id: v.client_id,
+    redirect_uri: v.redirect_uri,
+    code_challenge: v.code_challenge,
+    code_challenge_method: v.code_challenge_method,
+    scope: v.scope,
+    resource: v.resource,
+    namespace: v.namespace,
+    portal: portal ?? void 0,
+    portal_session_expires_in: v.portal_session_expires_in ? Number(v.portal_session_expires_in) : void 0
+  };
+}
+async function issueAccessToken(env, data) {
+  return TOKEN_PREFIX + await seal(await tokenKey(env), data);
+}
+async function getAccessToken(env, token) {
+  if (token.startsWith(TOKEN_PREFIX)) {
+    const d = await open(await tokenKey(env), token.slice(TOKEN_PREFIX.length));
+    if (!d || !Number.isFinite(d.exp) || d.exp * 1e3 < Date.now()) return null;
+    return d;
+  }
+  return null;
 }
 
 // mcp/src/oauth/metadata.ts
@@ -9084,8 +9201,8 @@ async function partnerAuthMiddleware(c, next) {
   if (!token) {
     return unauthorized("Empty bearer token");
   }
-  if (c.env.OAUTH_KV) {
-    const at = await getAccessToken(c.env.OAUTH_KV, token);
+  try {
+    const at = await getAccessToken(c.env, token);
     if (at) {
       const expectedAud = resourceUri(origin);
       if (at.aud !== expectedAud) {
@@ -9098,6 +9215,7 @@ async function partnerAuthMiddleware(c, next) {
       await next();
       return;
     }
+  } catch {
   }
   if (c.env.MCP_STATIC_TOKEN && constantTimeEqual(token, c.env.MCP_STATIC_TOKEN)) {
     const ns = c.env.MCP_OWNER_NAMESPACE || "leo";
@@ -23994,15 +24112,6 @@ ${JSON.stringify(entries, null, 2)}${hintLine}`
   );
 }
 
-// mcp/src/lib/kbdb-client.ts
-function kbdbFetch(env, path, init) {
-  const headers = new Headers(init?.headers || {});
-  if (env.KBDB_INTERNAL_TOKEN) {
-    headers.set("Authorization", `Bearer ${env.KBDB_INTERNAL_TOKEN}`);
-  }
-  return env.KBDB.fetch(`http://kbdb${path}`, { ...init, headers });
-}
-
 // mcp/src/tools/arcrun_list_components.ts
 function registerListComponents(server, env, orgNamespace) {
   server.tool(
@@ -31735,9 +31844,31 @@ function registerRecipePush(server, env, partnerToken) {
         method: external_exports.string().optional(),
         headers: external_exports.record(external_exports.string()).optional(),
         body: external_exports.record(external_exports.unknown()).optional(),
+        // Arcrun#150 c10552：以下 6 個欄位 cypher-executor `POST /recipes`
+        // （recipes.ts:130-148）本來就收，MCP schema 沒列 ⇒ additionalProperties:false
+        // 把它們悄悄濾掉，帶多行內文的 recipe（如 gitea_put_file）用裸 body: 送出會被
+        // interpolate(JSON.stringify(...)) 弄壞成不合法 JSON，是靜默失敗，不是少一個欄位。
+        body_template: external_exports.record(external_exports.unknown()).optional().describe(
+          "\u2462 payload \u5C64\uFF1A\u5148\u7D44\u7269\u4EF6\u518D\u5E8F\u5217\u5316\uFF0C\u652F\u63F4\u5DE2\u72C0 {{var}} \u8207 dot path\uFF0C\u8207 body \u4E26\u5B58\u6642\u512A\u5148\u2014\u2014\u5E36\u591A\u884C\u5167\u6587\uFF0F\u9700\u8981 JSON escape \u7684 body \u8981\u7528\u9019\u500B\uFF0C\u4E0D\u8981\u7528\u88F8 body"
+        ),
+        response_map: external_exports.object({
+          text_path: external_exports.string().optional().describe("\u53D6\u503C\u8DEF\u5F91\uFF08dot path\uFF0C\u652F\u63F4\u9663\u5217\u7D22\u5F15\uFF09\uFF0C\u4F8B candidates.0.content.parts.0.text"),
+          thinking_model: external_exports.boolean().optional().describe("\u601D\u8003\u578B\u6A21\u578B\uFF1Aparts \u5167\u6DF7\u5165 thought:true \u8981\u5254\u9664\uFF0C\u53D6\u6700\u5F8C\u4E00\u500B\u975E thought part"),
+          strip_prefixes: external_exports.array(external_exports.string()).optional().describe("\u8981\u525D\u6389\u7684\u524D\u7DB4\uFF0C\u4F8B Draft:\uFF0F*\uFF0FAnswer:"),
+          answer_marker: external_exports.string().optional().describe("\u7B54\u6848\u6A19\u8A18\uFF0C\u51FA\u73FE\u6642\u53EA\u53D6\u5176\u5F8C\u5167\u5BB9")
+        }).optional().describe("\u56DE\u61C9\u6B63\u898F\u5316\u898F\u5247\uFF1A\u5404\u5BB6 API \u56DE\u61C9\u5F62\u72C0\u4E0D\u540C\uFF0C\u53D6\u503C\u8DEF\u5F91\u96A8 recipe \u8D70"),
+        auth: external_exports.enum(["static_key", "service_account", "oauth2", "binding"]).optional().describe(
+          "\u8A8D\u8B49\u578B\u5225\uFF0C\u672A\u8A2D\u6CBF\u7528\u65E2\u6709 auth_service \u5224\u65B7\uFF1Bbinding\uFF1D\u514D\u91D1\u9470\u7528\u5E73\u53F0\u5167\u5EFA\u80FD\u529B\uFF08\u5982 env.AI\uFF09"
+        ),
+        binding_name: external_exports.string().optional().describe("auth='binding' \u6642\u6307\u5B9A\u7528\u54EA\u500B binding\uFF08\u4F8B 'AI'\uFF0F'VECTORIZE'\uFF09"),
+        credentials_required: external_exports.array(external_exports.object({
+          key: external_exports.string(),
+          inject_as: external_exports.string()
+        })).optional().describe("\u6B64 recipe \u9700\u8981\u7684 credential \u6E05\u55AE\uFF08key\uFF0B\u8981\u6CE8\u5165\u6210\u7684\u6B04\u4F4D\u540D\uFF09"),
+        derived_from: external_exports.string().optional().describe("\u53EF\u9078\u6EAF\u6E90\uFF1Afork \u81EA\u54EA\u500B recipe \u7684 uuid"),
         auth_service: external_exports.string().optional(),
         author: external_exports.string().optional()
-      }).describe("recipe \u5B9A\u7FA9\uFF08canonical_id + endpoint \u5FC5\u586B\uFF09")
+      }).describe("recipe \u5B9A\u7FA9\uFF08canonical_id + endpoint \u5FC5\u586B\uFF09\u3002\u6B04\u4F4D\u5C0D\u9F4A cypher-executor POST /recipes \u7684\u5B8C\u6574\u80FD\u529B\uFF0C\u4E0D\u662F\u5B50\u96C6")
     },
     async ({ recipe }) => {
       try {
@@ -32505,6 +32636,67 @@ function registerGetCard(server, env, identity) {
   );
 }
 
+// mcp/src/tools/kbdb_retrieve.ts
+var OWNER_IGNORED_HINT2 = "owner_id/library \u5728\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF1A\u67E5\u8A62\u7BC4\u570D\u7531\u4F60\u7684\u5E33\u865F\u6B0A\u9650\u6C7A\u5B9A\uFF08\u8207\u4F60\u5728 portal\u300C\u554FAI\u300D\u770B\u5230\u7684\u4E00\u81F4\uFF09";
+function registerAllKbdbRetrieveTools(server, env, identity) {
+  registerRetrieve(server, env, identity);
+}
+function registerRetrieve(server, env, identity) {
+  server.tool(
+    "kbdb_retrieve",
+    "\u554F\u4E00\u53E5\u8A71\uFF0C\u4E00\u6B21\u62FF\u5230\u300C\u8A72\u8B80\u54EA\u4E9B\u5EAB\u3001\u54EA\u4E9B\u9801\u3001\u54EA\u4E9B\u5716\u8B5C\u4E09\u5143\u7D44\u300D\u2014\u2014\u8207 GUI\u300C\u554FAI\u300D\u540C\u4E00\u5957\u6AA2\u7D22\u7D44\u6210\uFF08\u5716\u8B5C\u9078\u5EAB \u2192 \u8B80\u9078\u4E2D\u5EAB\u7684\u9801\uFF09\uFF0C\u547D\u4E2D\u96C6\u5408\u5929\u751F\u4E00\u81F4\uFF0C\u4E0D\u662F\u5404\u81EA\u5BE6\u4F5C\u5230\u770B\u8D77\u4F86\u4E00\u6A23\u3002**\u4E0D\u542B LLM\u3001\u4E0D\u542B\u6392\u5E8F**\uFF1A\u56DE\u7D50\u69CB\u5316 JSON\uFF0C\u8B80\u61C2\u5167\u5BB9\u3001\u7D9C\u8FF0\u6210\u4EBA\u8A71\u662F\u4F60\uFF08\u547C\u53EB\u7AEF\uFF09\u7684\u4E8B\u3002route='graph'\uFF08\u547D\u4E2D\u5716\u8B5C\u5BE6\u9AD4\uFF0C\u4E3B\u8DEF\uFF09\uFF0F'index'\uFF08\u9000\u56DE\u5EAB\u540D/\u6558\u4E8B\u6BD4\u5C0D\uFF09\uFF0F'all'\uFF08\u90FD\u6C92\u547D\u4E2D\uFF0C\u8AA0\u5BE6\u9000\u56DE\u95DC\u9375\u5B57\u641C\u5C0B\uFF0C\u4E0D\u662F\u5410\u51FA\u6574\u500B\u5E33\u865F\uFF09\u3002\u53EA\u8981\u5E73\u9762\u95DC\u9375\u5B57/\u8A9E\u610F\u641C\u5C0B\uFF08\u4E0D\u9700\u8981\u5716\u8B5C\u9078\u5EAB\uFF09\u7528 kbdb_search \u5373\u53EF\uFF0C\u6210\u672C\u66F4\u4F4E\u3002",
+    {
+      q: external_exports.string().min(1).describe("\u554F\u53E5\uFF08\u4EBA\u8A71\u6216\u95DC\u9375\u5B57\u90FD\u53EF\uFF09"),
+      owner_id: external_exports.string().optional().describe("\u9650\u5B9A\u67D0\u6B78\u5C6C\u7BC4\u570D\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09"),
+      library: external_exports.string().optional().describe("\u9650\u5B9A\u5EAB\uFF08\u9017\u865F\u5206\u9694\u591A\u503C\uFF0C\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF09"),
+      limit: external_exports.number().int().min(1).optional().describe("\u6700\u591A\u9078\u5E7E\u500B\u5EAB\u6DF1\u8B80\uFF08\u9810\u8A2D 3\uFF0C\u5716\u8B5C/\u7D22\u5F15\u9078\u5EAB\u8A9E\u610F\uFF0C\u540C /map/select\uFF09"),
+      pages_limit: external_exports.number().int().min(1).optional().describe("\u6700\u591A\u56DE\u5E7E\u9801\u5167\u5BB9\uFF08\u9810\u8A2D 50\uFF0C\u55AE\u6B21\u4E0A\u9650 200\uFF09"),
+      graph_depth: external_exports.number().int().min(1).optional().describe("\u5716\u8B5C\u4E8B\u5BE6\u8981\u6316\u5E7E\u8DF3\uFF08\u9810\u8A2D 1\uFF09")
+    },
+    async ({ q, owner_id, library, limit, pages_limit, graph_depth }) => {
+      if (identity.kind === "stale") return staleIdentityError();
+      try {
+        let res;
+        if (identity.kind === "portal") {
+          res = await portalFetch(env, identity.portal.session, "/portal/data/retrieve", {
+            query: { q, limit, pages_limit, graph_depth }
+          });
+        } else {
+          const qs = new URLSearchParams({ q });
+          if (owner_id) qs.set("owner_id", owner_id);
+          if (library) qs.set("library", library);
+          if (limit !== void 0) qs.set("limit", String(limit));
+          if (pages_limit !== void 0) qs.set("pages_limit", String(pages_limit));
+          if (graph_depth !== void 0) qs.set("graph_depth", String(graph_depth));
+          res = await kbdbFetch(env, `/retrieve?${qs.toString()}`);
+        }
+        if (!res.ok) {
+          if (identity.kind === "portal") return portalError(res, "\u6AA2\u7D22");
+          return errorResponse("retrieve_failed", "\u6AA2\u7D22\u5931\u6557", ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
+        }
+        const data = await res.json();
+        const hints = [];
+        if (data.route === "all" && (data.pages_count ?? 0) === 0) {
+          hints.push("\u5716\u8B5C\u8207\u95DC\u9375\u5B57\u90FD\u6C92\u547D\u4E2D\uFF1A\u9019\u53E5\u8A71\u5728\u76EE\u524D\u7684\u77E5\u8B58\u5EAB\u88E1\u771F\u7684\u67E5\u4E0D\u5230\uFF0C\u4E0D\u662F\u67E5\u8A62\u5931\u6557");
+        } else if (data.route === "all") {
+          hints.push("route='all'\uFF1A\u6C92\u547D\u4E2D\u4EFB\u4F55\u5EAB\u7684\u5716\u8B5C\u5BE6\u9AD4\u6216\u7D22\u5F15\uFF0Cpages \u662F\u5168\u5EAB\uFF08\u6216\u6388\u6B0A\u7BC4\u570D\u5167\uFF09\u95DC\u9375\u5B57\u9000\u56DE\u7684\u7D50\u679C");
+        }
+        if (data.pages_truncated) {
+          hints.push(`pages \u88AB\u622A\u65B7\uFF08\u9084\u6709\u66F4\u591A\u7B26\u5408\u7684\u9801\uFF09\uFF1A\u5E36\u66F4\u5927\u7684 pages_limit \u518D\u554F\u4E00\u6B21\uFF08\u55AE\u6B21\u4E0A\u9650 200\uFF09`);
+        }
+        if ((data.graph_facts?.length ?? 0) === 0 && data.route === "graph") {
+          hints.push("\u9078\u4E2D\u7684\u5EAB\u6C92\u6709\u53EF\u56DE\u5831\u7684\u5716\u8B5C\u4E8B\u5BE6\uFF08\u547D\u4E2D\u7684\u5BE6\u9AD4\u76EE\u524D\u6C92\u6709\u5B58\u4E09\u5143\u7D44\u95DC\u4FC2\uFF09\uFF0Cpages \u88E1\u7684\u539F\u6587\u4ECD\u53EF\u8B80");
+        }
+        if (data.note) hints.push(data.note);
+        if (identity.kind === "portal") hints.push(OWNER_IGNORED_HINT2);
+        return successResponse(data, hints);
+      } catch (e) {
+        return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
+      }
+    }
+  );
+}
+
 // mcp/src/tools/arcrun_whoami.ts
 function registerWhoami(server, env, orgNamespace, identity) {
   server.tool(
@@ -32570,6 +32762,7 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
   registerAllKbdbGraphTools(server, env, orgNamespace, identity);
   registerAllKbdbMapTools(server, env, identity);
   registerAllKbdbIndexTools(server, env, identity);
+  registerAllKbdbRetrieveTools(server, env, identity);
   registerWhoami(server, env, orgNamespace, identity);
 }
 
@@ -33505,6 +33698,11 @@ async function allowedRedirectHosts(env) {
   hostsCache = { at: now, hosts };
   return hosts;
 }
+async function redirectHostsFor(env, uris) {
+  const local = union2(DEFAULT_REDIRECT_HOSTS, parseHostList(env.MCP_ALLOWED_REDIRECT_HOSTS));
+  if (uris.length > 0 && uris.every((u) => isAllowedRedirect(u, local))) return local;
+  return allowedRedirectHosts(env);
+}
 function hostMatches(host, hosts) {
   const h = host.toLowerCase();
   return hosts.some((allowed) => h === allowed || h.endsWith("." + allowed));
@@ -33522,6 +33720,24 @@ function isAllowedRedirect(uri, hosts) {
   if (u.protocol !== "https:") return false;
   if (isLocal) return true;
   return hostMatches(host, hosts);
+}
+
+// mcp/src/oauth/token-ttl.ts
+async function fetchOwnerTokenTtl(env) {
+  if (!env.CYPHER_EXECUTOR || !env.KBDB_INTERNAL_TOKEN) return null;
+  try {
+    const res = await env.CYPHER_EXECUTOR.fetch(
+      new Request("https://cypher/portal/internal/mcp-token-ttl", {
+        headers: { Authorization: `Bearer ${env.KBDB_INTERNAL_TOKEN}` }
+      })
+    );
+    if (!res.ok) return null;
+    const body = await res.json();
+    const n = typeof body.ttl_seconds === "number" ? body.ttl_seconds : NaN;
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  } catch {
+    return null;
+  }
 }
 
 // mcp/src/oauth/routes.ts
@@ -33591,7 +33807,7 @@ function registerOAuthRoutes(app2) {
     }
     const redirectUris = Array.isArray(raw2.redirect_uris) ? raw2.redirect_uris.filter((x) => typeof x === "string") : [];
     const clientName = typeof raw2.client_name === "string" ? raw2.client_name : "MCP Client";
-    const hosts = await allowedRedirectHosts(c.env);
+    const hosts = await redirectHostsFor(c.env, redirectUris);
     for (const uri of redirectUris) {
       if (!isAllowedRedirect(uri, hosts)) {
         return c.json(
@@ -33627,7 +33843,7 @@ function registerOAuthRoutes(app2) {
     if (q.code_challenge_method !== "S256" || !q.code_challenge) {
       return c.text("invalid_request: PKCE S256 code_challenge required", 400);
     }
-    const hosts = await allowedRedirectHosts(c.env);
+    const hosts = await redirectHostsFor(c.env, q.redirect_uri ? [q.redirect_uri] : []);
     if (!q.redirect_uri || !isAllowedRedirect(q.redirect_uri, hosts)) {
       return c.html(
         redirectBlockedPage({
@@ -33664,7 +33880,7 @@ function registerOAuthRoutes(app2) {
   app2.post("/authorize", async (c) => {
     const p = await readParams(c.req.raw);
     const redirectUri = p.redirect_uri ?? "";
-    const hosts = await allowedRedirectHosts(c.env);
+    const hosts = await redirectHostsFor(c.env, redirectUri ? [redirectUri] : []);
     if (!redirectUri || !isAllowedRedirect(redirectUri, hosts)) {
       return c.html(
         redirectBlockedPage({
@@ -33706,6 +33922,8 @@ function registerOAuthRoutes(app2) {
     }
     let portal = null;
     let portalTtl = FALLBACK_PORTAL_SESSION_TTL;
+    const tLogin0 = Date.now();
+    let cypherTiming = "";
     try {
       const res = await c.env.CYPHER_EXECUTOR.fetch(
         new Request("https://cypher/portal/login", {
@@ -33714,6 +33932,7 @@ function registerOAuthRoutes(app2) {
           body: JSON.stringify({ email: email2, password })
         })
       );
+      cypherTiming = (res.headers.get("server-timing") ?? "").split(",").map((x) => x.trim()).filter(Boolean).map((x) => `cypher-${x}`).join(", ");
       if (res.ok) {
         const body = await res.json().catch(() => null);
         const session = typeof body?.session_token === "string" ? body.session_token : "";
@@ -33734,25 +33953,32 @@ function registerOAuthRoutes(app2) {
     if (!portal) {
       return c.html(consentPage(consent, "\u5E33\u865F\u6216\u5BC6\u78BC\u4E0D\u6B63\u78BA\uFF0C\u8ACB\u91CD\u8A66\u3002"), 401);
     }
-    if (!c.env.OAUTH_KV) {
-      return c.text("server_error: OAUTH_KV not configured", 503);
-    }
+    const loginMs = Date.now() - tLogin0;
     const code = randomToken(32);
-    await putAuthCode(c.env.OAUTH_KV, code, {
-      client_id: consent.client_id,
-      redirect_uri: redirectUri,
-      code_challenge: consent.code_challenge,
-      code_challenge_method: "S256",
-      scope: consent.scope,
-      resource: consent.resource,
-      namespace: workflowTenant(c.env),
-      portal,
-      portal_session_expires_in: portalTtl
-    });
+    const tCode0 = Date.now();
+    try {
+      await putAuthCode(c.env, code, {
+        client_id: consent.client_id,
+        redirect_uri: redirectUri,
+        code_challenge: consent.code_challenge,
+        code_challenge_method: "S256",
+        scope: consent.scope,
+        resource: consent.resource,
+        namespace: workflowTenant(c.env),
+        portal,
+        portal_session_expires_in: portalTtl
+      });
+    } catch {
+      return c.text("server_error: KBDB unavailable", 503);
+    }
     const location = redirectWith(redirectUri, {
       code,
       ...consent.state ? { state: consent.state } : {}
     });
+    c.header(
+      "Server-Timing",
+      [`login;dur=${loginMs}`, cypherTiming, `code;dur=${Date.now() - tCode0}`].filter(Boolean).join(", ")
+    );
     return c.redirect(location, 302);
   });
   app2.post("/token", async (c) => {
@@ -33767,10 +33993,12 @@ function registerOAuthRoutes(app2) {
     if (p.resource && !resourceMatches(p.resource, originOf(c.req.url))) {
       return err("invalid_target", "resource does not match this MCP server");
     }
-    if (!c.env.OAUTH_KV) {
-      return err("server_error", "OAUTH_KV not configured", 503);
+    let data;
+    try {
+      data = await consumeAuthCode(c.env, p.code);
+    } catch {
+      return err("server_error", "KBDB unavailable", 503);
     }
-    const data = await consumeAuthCode(c.env.OAUTH_KV, p.code);
     if (!data) {
       return err("invalid_grant", "authorization code invalid or expired");
     }
@@ -33784,23 +34012,23 @@ function registerOAuthRoutes(app2) {
     if (!pkceOk) {
       return err("invalid_grant", "PKCE verification failed");
     }
-    const ttl = Math.min(tokenTtl(c.env), data.portal_session_expires_in || FALLBACK_PORTAL_SESSION_TTL);
-    const accessToken = randomToken(32);
-    await putAccessToken(
-      c.env.OAUTH_KV,
-      accessToken,
-      {
+    const ownerTtl = await fetchOwnerTokenTtl(c.env);
+    const baseTtl = ownerTtl ?? tokenTtl(c.env);
+    const ttl = Math.min(baseTtl, data.portal_session_expires_in || FALLBACK_PORTAL_SESSION_TTL);
+    let accessToken;
+    try {
+      accessToken = await issueAccessToken(c.env, {
         namespace: data.namespace,
         client_id: data.client_id,
         scope: data.scope,
         portal: data.portal,
         // RFC 8707：aud 一律用「本 server canonical resource URI」（非 client 原樣值）。
-        // authorize 已只存 canonical，這裡再以當前 origin 重算一次確保與 partner-auth 嚴格比對一致。
         aud: resourceUri(originOf(c.req.url)),
         exp: Math.floor(Date.now() / 1e3) + ttl
-      },
-      ttl
-    );
+      });
+    } catch {
+      return err("server_error", "token signing unavailable", 503);
+    }
     return c.json(
       {
         access_token: accessToken,
@@ -33822,7 +34050,10 @@ _app.get("/health", (c) => c.json({
   service: "arcrun-mcp",
   auth: "portal-login",
   build: c.env.MCP_BUILD ?? "unknown",
-  oauth_kv: c.env.OAUTH_KV ? "present" : "missing"
+  // 2026-09-25 起 OAuth 短效認證不再綁 KV（inkstone/Arcrun#98）——改走 KBDB records，
+  // 沒有獨立 binding 可查「有沒有接」，這裡誠實回報現在用的是哪個機制，不留一個永遠
+  // 回 true 的假欄位。
+  oauth_store: "kbdb"
 }));
 var app = _app.basePath("/mcp");
 app.use("*", cors({
