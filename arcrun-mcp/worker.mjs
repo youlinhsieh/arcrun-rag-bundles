@@ -9173,7 +9173,11 @@ function authorizationServerMetadata(origin) {
     token_endpoint: `${origin}/token`,
     registration_endpoint: `${origin}/register`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code"],
+    // 🔴 refresh_token 一定要列：n8n 2026-04-29 以前的版本（n8n-io/n8n#27283 之前）
+    // 要求 authorization_code 與 refresh_token「兩個都在」才肯走 PKCE，否則丟
+    // "No supported grant type and authentication method found"（learning.n8n.tw 實撞）。
+    // 我們不發 refresh token ⇒ client 永遠拿不到可換的東西；/token 收到 refresh_token 會明講要重連。
+    grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     // public client + PKCE
@@ -33984,6 +33988,9 @@ function registerOAuthRoutes(app2) {
   app2.post("/token", async (c) => {
     const p = await readParams(c.req.raw);
     const err = (code, desc, status = 400) => c.json({ error: code, error_description: desc }, status, CORS_JSON);
+    if (p.grant_type === "refresh_token") {
+      return err("invalid_grant", "refresh tokens are not issued by this server; reconnect to get a new access token");
+    }
     if (p.grant_type !== "authorization_code") {
       return err("unsupported_grant_type", "only authorization_code is supported");
     }
