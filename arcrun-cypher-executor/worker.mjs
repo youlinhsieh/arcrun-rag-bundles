@@ -2228,58 +2228,6 @@ var init_dist = __esm({
   }
 });
 
-// cypher-executor/src/types.ts
-async function kvGetNodeOutput(store, nodeId) {
-  try {
-    const val = await store.kv.get(`${store.runId}:node:${nodeId}`, "json");
-    return val;
-  } catch {
-    return void 0;
-  }
-}
-async function kvSetNodeOutput(store, nodeId, output) {
-  try {
-    await store.kv.put(
-      `${store.runId}:node:${nodeId}`,
-      JSON.stringify(output),
-      { expirationTtl: 3600 }
-    );
-  } catch {
-  }
-}
-var WorkflowPaused, ExecutionError;
-var init_types = __esm({
-  "cypher-executor/src/types.ts"() {
-    "use strict";
-    WorkflowPaused = class extends Error {
-      task_id;
-      run_id;
-      paused_node_id;
-      trace_so_far;
-      constructor(task_id, run_id, paused_node_id, trace_so_far) {
-        super(`workflow paused at node ${paused_node_id} waiting for task ${task_id}`);
-        this.name = "WorkflowPaused";
-        this.task_id = task_id;
-        this.run_id = run_id;
-        this.paused_node_id = paused_node_id;
-        this.trace_so_far = trace_so_far;
-      }
-    };
-    ExecutionError = class extends Error {
-      failed_node;
-      failed_input;
-      trace;
-      constructor(message, failed_node, failed_input, trace) {
-        super(message);
-        this.name = "ExecutionError";
-        this.failed_node = failed_node;
-        this.failed_input = failed_input;
-        this.trace = trace;
-      }
-    };
-  }
-});
-
 // cypher-executor/src/lib/hash.ts
 async function deriveRecipeHash(canonicalId) {
   return "rec_" + await sha256Prefix(canonicalId);
@@ -2301,7 +2249,176 @@ var init_hash = __esm({
   }
 });
 
+// cypher-executor/src/lib/kbdb-caller.ts
+function withCaller(headers, caller) {
+  return { ...headers, [KBDB_CALLER_HEADER]: caller.slice(0, 120) };
+}
+var KBDB_CALLER_HEADER, KBDB_CALLERS;
+var init_kbdb_caller = __esm({
+  "cypher-executor/src/lib/kbdb-caller.ts"() {
+    "use strict";
+    KBDB_CALLER_HEADER = "X-Arcrun-Caller";
+    KBDB_CALLERS = {
+      /** kbdb-proxy.ts：CLI（acr kbdb *）透過 cypher 轉發打 KBDB 基本盤。 */
+      proxy: "cypher-kbdb-proxy",
+      /** kbdb-asset-store.ts：WEBHOOKS／RECIPES／EXEC_CONTEXT 三個名字唯一的讀寫入口（Arcrun#98）。 */
+      assetStore: "cypher-asset-store",
+      /** recipe-expander.ts 的 kbdb_block fragment：某個 workflow 執行中展開 recipe 時讀的知識片段。 */
+      recipeFragment: (workflowId) => workflowId ? `workflow:${workflowId}` : "cypher-recipe-fragment",
+      /** webhook-handlers.ts 的 recordRecipeStats：執行結束後回寫 recipe 市場星數（fire-and-forget）。 */
+      recipeStats: "cypher-recipe-stats",
+      /** execution-logger.ts 的 writeExecutionVerdict：執行結束後寫入 KBDB 執行紀錄（fire-and-forget）。 */
+      executionLog: "cypher-execution-log",
+      /** lib/telemetry.ts 的 recordTelemetry：agent-telemetry entry（fire-and-forget，inkstone/Arcrun#268）。 */
+      telemetry: "cypher-telemetry"
+    };
+  }
+});
+
+// cypher-executor/src/lib/constants.ts
+var VALID_EDGE_TYPES, SEMANTIC_EDGE_MAP, WAIT_MAX_MS, BUILTIN_COMPONENTS;
+var init_constants3 = __esm({
+  "cypher-executor/src/lib/constants.ts"() {
+    "use strict";
+    VALID_EDGE_TYPES = /* @__PURE__ */ new Set([
+      // 現有
+      "PIPE",
+      "IF",
+      "FOREACH",
+      "CONTINUE",
+      // 新增：執行語意
+      "IS_A",
+      "ON_SUCCESS",
+      "ON_FAIL",
+      // 新增：條件語意（SDD workflow-discovery 3.11）—— 讀上游 if_control/switch 的 branch
+      "ON_TRUE",
+      "ON_FALSE",
+      "ON_BRANCH",
+      // 新增：觸發語意
+      "ON_CLICK",
+      "CALLS_SUBFLOW",
+      // 新增：結構語意（記錄圖結構，不執行）
+      "CONTAINS",
+      "HAS_STYLE",
+      "HAS_BEHAVIOR"
+    ]);
+    SEMANTIC_EDGE_MAP = {
+      // 中文語意詞
+      "\u5B8C\u6210\u5F8C": "PIPE",
+      "\u5931\u6557\u6642": "ON_FAIL",
+      "\u5C0D\u6BCF\u500B": "FOREACH",
+      "\u689D\u4EF6\u6EFF\u8DB3\u6642": "IF",
+      // 條件分支語意（SDD workflow-discovery 3.11）：讓意圖工作流寫得出兩條路
+      "\u6210\u7ACB\u6642": "ON_TRUE",
+      "\u70BA\u771F\u6642": "ON_TRUE",
+      "\u4E0D\u6210\u7ACB\u6642": "ON_FALSE",
+      "\u70BA\u5047\u6642": "ON_FALSE",
+      "\u5426\u5247": "ON_FALSE",
+      // 英文別名
+      "SUCCESS": "ON_SUCCESS",
+      "FAIL": "ON_FAIL",
+      "TRUE": "ON_TRUE",
+      "FALSE": "ON_FALSE",
+      "ELSE": "ON_FALSE",
+      "BRANCH": "ON_BRANCH",
+      "CLICK": "ON_CLICK",
+      "SUBFLOW": "CALLS_SUBFLOW"
+    };
+    WAIT_MAX_MS = 3e4;
+    BUILTIN_COMPONENTS = /* @__PURE__ */ new Map([
+      ["comp_passthrough", (ctx) => ctx],
+      ["comp_uppercase", (ctx) => {
+        const c = ctx;
+        return { ...c, text: String(c.text || "").toUpperCase() };
+      }],
+      ["comp_counter", (ctx) => {
+        const c = ctx;
+        return { ...c, count: (Number(c.count) || 0) + 1 };
+      }],
+      // ── wait：等待 N 毫秒後繼續（Arcrun#101，2026-08-12）────────────────────────
+      //
+      // 為什麼「等待」搬進引擎，而不是修那顆 WASM：
+      //
+      // 舊實作是 registry/components/wait/main.go（TinyGo → WASM），用 time.Sleep。
+      // TinyGo 的 sleep 走 WASI `poll_oneoff`；而每顆 component worker 的 WASI shim 把
+      // poll_oneoff 實作成 ENOSYS（`.component-builds/*/src/index.ts`：`poll_oneoff: () => 76`）
+      // ⇒ TinyGo 排程器拿不到「睡到某個時間」的手段，退化成迴圈重讀 `clock_time_get`
+      // 自旋等時間到（wasm 內可見 runtime.sleepTicks / sleepQueue / runtime.ticks 符號）。
+      //
+      // 🔴 到這裡為止是**查得到原始碼的事實**。再往下「所以那個自旋迴圈的結束條件永遠
+      //    不成立」曾被當成結論寫在這裡，但**寫了測試去證，反而被打臉**：在
+      //    vitest-pool-workers 的 workerd 裡，同步自旋 2553 圈之後 Date.now() 就前進了
+      //    ⇒ 時鐘並沒有全程凍結。
+      //    ⇒ 「為什麼三秒的等待會拖到 35 秒才死」的完整機制**目前仍是推測**，
+      //      證據只有下面 leo 的四次實測。別把它當定論往外傳。
+      //
+      // 所以症狀不是「等 N 秒花 N 秒 CPU」，而是「不管 ms 填多少都跑到 CPU 上限被砍」。
+      // leo 2026-08-12 在 youlin stage 實測（只有 input >> wait 兩個節點）：
+      //   ms=3000 → 38.9s 後 503 / ms=20000 → 34.0s / ms=30000 → 34.9s / 寫死 3000 → 34.8s
+      // 四個值同一個死法、與 ms 無關 —— 3 秒的等待撐到 35 秒才死，就是「迴圈根本沒結束」
+      // 的證據（若成本與時長成正比，ms=3000 只會花 3 秒 CPU，根本不該死）。
+      // 也就是說 wait 零件在 Workers 上從來沒有真的等待成功過，不只是貴。
+      //
+      // 純 WASI 沙箱（stdin→stdout、無 socket、同步呼叫）本來就沒有「不花 CPU 地等」這種
+      // 東西 —— 會等的只有宿主。故 wait 與 trigger_workflow 同類：**是 orchestrator 的
+      // 執行排程職責，不是業務邏輯**（rule 02 §2.3 明列「workflow 執行排程」屬 cypher-executor
+      // 合法職責；§2.2 禁的是解密／簽章／template 展開／具體 API 呼叫，等待都不是）。
+      // 搬進引擎不違反「業務邏輯走 WASM」鐵律。引擎這側 await 一個 timer 只花 wall-clock、
+      // 不記 CPU ⇒ 等 30 秒與等 3 秒同價（皆 ≈0）。
+      //
+      // I/O 契約沿用 component.contract.yaml，既有 workflow 的 wait 節點定義不必改：
+      //   吃 ms（必填 > 0）＋可選 context；ms > WAIT_MAX_MS 截斷；
+      //   回 { success: true, data: { ...context, waited_ms } }；ms <= 0 回 success:false。
+      // 唯一刻意的放寬：ms 允許數字字串（"3000"）。WASM 版 json.Unmarshal 進 int 會直接
+      // 失敗，但 node.data 走 interpolateData 後 `ms: "{{input.delay}}"` 必然是字串
+      // ⇒ 收字串只會把「本來就跑不動的」變成跑得動，不會改變任何既有成功案例的行為。
+      ["wait", async (ctx) => {
+        const c = ctx && typeof ctx === "object" ? ctx : {};
+        const requested = typeof c.ms === "number" ? c.ms : Number(c.ms);
+        if (!Number.isFinite(requested) || requested <= 0) {
+          return { success: false, error: "ms \u5FC5\u9808\u5927\u65BC 0" };
+        }
+        const ms = Math.min(Math.floor(requested), WAIT_MAX_MS);
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        const passthrough = c.context && typeof c.context === "object" && !Array.isArray(c.context) ? c.context : {};
+        return { success: true, data: { ...passthrough, waited_ms: ms } };
+      }]
+    ]);
+  }
+});
+
 // cypher-executor/src/routes/recipes.ts
+function recipeCredentialNames(r) {
+  const names = /* @__PURE__ */ new Set();
+  for (const c of r.credentials_required ?? []) if (c?.key) names.add(c.key);
+  const scan = (v) => {
+    if (typeof v === "string") {
+      for (const m of v.matchAll(/\{\{credential\.(\w+)\}\}/g)) names.add(m[1]);
+    } else if (Array.isArray(v)) {
+      v.forEach(scan);
+    } else if (v && typeof v === "object") {
+      Object.values(v).forEach(scan);
+    }
+  };
+  scan(r.endpoint);
+  scan(r.headers);
+  scan(r.body);
+  scan(r.body_template);
+  return [...names];
+}
+async function recipeAuthSecretNames(r, kv, cache) {
+  if (r.auth === "binding") return [];
+  const service = r.auth_service || r.canonical_id;
+  if (!service) return [];
+  let pending = cache?.get(service);
+  if (!pending) {
+    pending = resolveAuthRecipe(service, kv).catch(() => null);
+    cache?.set(service, pending);
+  }
+  const ar = await pending;
+  if (!ar || !DISPATCHABLE_AUTH_PRIMITIVES.has(ar.primitive)) return [];
+  return (ar.required_secrets ?? []).filter((s) => s?.key && !s.optional).map((s) => s.key);
+}
 async function installRecipeRecord(kv, recipe) {
   const uuid = recipe.uuid;
   const { canonical_id, hash_id } = recipe;
@@ -2315,9 +2432,41 @@ async function installRecipeRecord(kv, recipe) {
     kv.put(`idx:${hash_id}`, canonical_id)
   ]);
 }
+async function upsertPrivateRecipe(kv, body) {
+  const canonicalId = (body.canonical_id ?? "").trim().toLowerCase();
+  if (!canonicalId) return { ok: false, error: "canonical_id \u5FC5\u586B" };
+  if (!body.endpoint) return { ok: false, error: "endpoint \u5FC5\u586B" };
+  const hashId = await deriveRecipeHash(canonicalId);
+  const now2 = Date.now();
+  const existing = await resolveRecipe(canonicalId, kv);
+  const recipe = {
+    uuid: existing?.uuid ?? crypto.randomUUID(),
+    author: body.author ?? existing?.author ?? "local",
+    derived_from: body.derived_from ?? existing?.derived_from,
+    canonical_id: canonicalId,
+    hash_id: hashId,
+    display_name: body.display_name,
+    description: body.description,
+    endpoint: body.endpoint,
+    method: (body.method ?? "POST").toUpperCase(),
+    headers: body.headers,
+    body: body.body,
+    // ③ payload/回應/binding 三層（3.12）：全選填，沒給就是 undefined＝既有行為
+    body_template: body.body_template,
+    response_map: body.response_map,
+    auth: body.auth,
+    binding_name: body.binding_name,
+    auth_service: body.auth_service,
+    credentials_required: body.credentials_required,
+    created_at: existing?.created_at ?? now2,
+    updated_at: now2
+  };
+  await installRecipeRecord(kv, recipe);
+  return { ok: true, recipe };
+}
 async function fetchMarketStat(env, canonicalId) {
   try {
-    const base = (env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
+    const base = kbdbBaseUrl(env);
     const headers = {};
     if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
     const res = await fetch(`${base}/recipe-stats/${encodeURIComponent(canonicalId)}`, { headers });
@@ -2359,13 +2508,15 @@ async function resolveRecipe(id, kv) {
 async function resolveAuthRecipe(service, kv) {
   return kv.get(`auth_recipe:${service}`, "json");
 }
-var recipesRouter, kIdxCanonical, kIdxInstalled;
+var recipesRouter, DISPATCHABLE_AUTH_PRIMITIVES, kIdxCanonical, kIdxInstalled;
 var init_recipes = __esm({
   "cypher-executor/src/routes/recipes.ts"() {
     "use strict";
     init_dist();
     init_hash();
+    init_endpoints();
     recipesRouter = new Hono2();
+    DISPATCHABLE_AUTH_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
     kIdxCanonical = (canonicalId) => `idx:canonical:${canonicalId}`;
     kIdxInstalled = (canonicalId) => `idx:installed:${canonicalId}`;
     recipesRouter.post("/recipes", async (c) => {
@@ -2375,36 +2526,9 @@ var init_recipes = __esm({
       } catch {
         return c.json({ success: false, error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
       }
-      const canonicalId = (body.canonical_id ?? "").trim().toLowerCase();
-      if (!canonicalId) return c.json({ success: false, error: "canonical_id \u5FC5\u586B" }, 400);
-      if (!body.endpoint) return c.json({ success: false, error: "endpoint \u5FC5\u586B" }, 400);
-      const hashId = await deriveRecipeHash(canonicalId);
-      const now2 = Date.now();
-      const existing = await resolveRecipe(canonicalId, c.env.RECIPES);
-      const recipe = {
-        uuid: existing?.uuid ?? crypto.randomUUID(),
-        author: body.author ?? existing?.author ?? "local",
-        derived_from: body.derived_from ?? existing?.derived_from,
-        canonical_id: canonicalId,
-        hash_id: hashId,
-        display_name: body.display_name,
-        description: body.description,
-        endpoint: body.endpoint,
-        method: (body.method ?? "POST").toUpperCase(),
-        headers: body.headers,
-        body: body.body,
-        // ③ payload/回應/binding 三層（3.12）：全選填，沒給就是 undefined＝既有行為
-        body_template: body.body_template,
-        response_map: body.response_map,
-        auth: body.auth,
-        binding_name: body.binding_name,
-        auth_service: body.auth_service,
-        credentials_required: body.credentials_required,
-        created_at: existing?.created_at ?? now2,
-        updated_at: now2
-      };
-      await installRecipeRecord(c.env.RECIPES, recipe);
-      return c.json({ success: true, recipe });
+      const r = await upsertPrivateRecipe(c.env.RECIPES, body);
+      if (!r.ok) return c.json({ success: false, error: r.error }, 400);
+      return c.json({ success: true, recipe: r.recipe });
     });
     recipesRouter.post("/recipes/submit", async (c) => {
       let body;
@@ -2436,7 +2560,7 @@ var init_recipes = __esm({
         updated_at: now2
       };
       await installRecipeRecord(c.env.RECIPES, recipe);
-      const kbdbBase3 = (c.env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
+      const kbdbBase3 = kbdbBaseUrl(c.env);
       const evidence = {
         content: canonicalId,
         entry_type: "recipe_submission",
@@ -2649,118 +2773,6 @@ var init_recipes = __esm({
   }
 });
 
-// cypher-executor/src/lib/constants.ts
-var VALID_EDGE_TYPES, SEMANTIC_EDGE_MAP, WAIT_MAX_MS, BUILTIN_COMPONENTS;
-var init_constants3 = __esm({
-  "cypher-executor/src/lib/constants.ts"() {
-    "use strict";
-    VALID_EDGE_TYPES = /* @__PURE__ */ new Set([
-      // 現有
-      "PIPE",
-      "IF",
-      "FOREACH",
-      "CONTINUE",
-      // 新增：執行語意
-      "IS_A",
-      "ON_SUCCESS",
-      "ON_FAIL",
-      // 新增：條件語意（SDD workflow-discovery 3.11）—— 讀上游 if_control/switch 的 branch
-      "ON_TRUE",
-      "ON_FALSE",
-      "ON_BRANCH",
-      // 新增：觸發語意
-      "ON_CLICK",
-      "CALLS_SUBFLOW",
-      // 新增：結構語意（記錄圖結構，不執行）
-      "CONTAINS",
-      "HAS_STYLE",
-      "HAS_BEHAVIOR"
-    ]);
-    SEMANTIC_EDGE_MAP = {
-      // 中文語意詞
-      "\u5B8C\u6210\u5F8C": "PIPE",
-      "\u5931\u6557\u6642": "ON_FAIL",
-      "\u5C0D\u6BCF\u500B": "FOREACH",
-      "\u689D\u4EF6\u6EFF\u8DB3\u6642": "IF",
-      // 條件分支語意（SDD workflow-discovery 3.11）：讓意圖工作流寫得出兩條路
-      "\u6210\u7ACB\u6642": "ON_TRUE",
-      "\u70BA\u771F\u6642": "ON_TRUE",
-      "\u4E0D\u6210\u7ACB\u6642": "ON_FALSE",
-      "\u70BA\u5047\u6642": "ON_FALSE",
-      "\u5426\u5247": "ON_FALSE",
-      // 英文別名
-      "SUCCESS": "ON_SUCCESS",
-      "FAIL": "ON_FAIL",
-      "TRUE": "ON_TRUE",
-      "FALSE": "ON_FALSE",
-      "ELSE": "ON_FALSE",
-      "BRANCH": "ON_BRANCH",
-      "CLICK": "ON_CLICK",
-      "SUBFLOW": "CALLS_SUBFLOW"
-    };
-    WAIT_MAX_MS = 3e4;
-    BUILTIN_COMPONENTS = /* @__PURE__ */ new Map([
-      ["comp_passthrough", (ctx) => ctx],
-      ["comp_uppercase", (ctx) => {
-        const c = ctx;
-        return { ...c, text: String(c.text || "").toUpperCase() };
-      }],
-      ["comp_counter", (ctx) => {
-        const c = ctx;
-        return { ...c, count: (Number(c.count) || 0) + 1 };
-      }],
-      // ── wait：等待 N 毫秒後繼續（Arcrun#101，2026-08-12）────────────────────────
-      //
-      // 為什麼「等待」搬進引擎，而不是修那顆 WASM：
-      //
-      // 舊實作是 registry/components/wait/main.go（TinyGo → WASM），用 time.Sleep。
-      // TinyGo 的 sleep 走 WASI `poll_oneoff`；而每顆 component worker 的 WASI shim 把
-      // poll_oneoff 實作成 ENOSYS（`.component-builds/*/src/index.ts`：`poll_oneoff: () => 76`）
-      // ⇒ TinyGo 排程器拿不到「睡到某個時間」的手段，退化成迴圈重讀 `clock_time_get`
-      // 自旋等時間到（wasm 內可見 runtime.sleepTicks / sleepQueue / runtime.ticks 符號）。
-      //
-      // 🔴 到這裡為止是**查得到原始碼的事實**。再往下「所以那個自旋迴圈的結束條件永遠
-      //    不成立」曾被當成結論寫在這裡，但**寫了測試去證，反而被打臉**：在
-      //    vitest-pool-workers 的 workerd 裡，同步自旋 2553 圈之後 Date.now() 就前進了
-      //    ⇒ 時鐘並沒有全程凍結。
-      //    ⇒ 「為什麼三秒的等待會拖到 35 秒才死」的完整機制**目前仍是推測**，
-      //      證據只有下面 leo 的四次實測。別把它當定論往外傳。
-      //
-      // 所以症狀不是「等 N 秒花 N 秒 CPU」，而是「不管 ms 填多少都跑到 CPU 上限被砍」。
-      // leo 2026-08-12 在 youlin stage 實測（只有 input >> wait 兩個節點）：
-      //   ms=3000 → 38.9s 後 503 / ms=20000 → 34.0s / ms=30000 → 34.9s / 寫死 3000 → 34.8s
-      // 四個值同一個死法、與 ms 無關 —— 3 秒的等待撐到 35 秒才死，就是「迴圈根本沒結束」
-      // 的證據（若成本與時長成正比，ms=3000 只會花 3 秒 CPU，根本不該死）。
-      // 也就是說 wait 零件在 Workers 上從來沒有真的等待成功過，不只是貴。
-      //
-      // 純 WASI 沙箱（stdin→stdout、無 socket、同步呼叫）本來就沒有「不花 CPU 地等」這種
-      // 東西 —— 會等的只有宿主。故 wait 與 trigger_workflow 同類：**是 orchestrator 的
-      // 執行排程職責，不是業務邏輯**（rule 02 §2.3 明列「workflow 執行排程」屬 cypher-executor
-      // 合法職責；§2.2 禁的是解密／簽章／template 展開／具體 API 呼叫，等待都不是）。
-      // 搬進引擎不違反「業務邏輯走 WASM」鐵律。引擎這側 await 一個 timer 只花 wall-clock、
-      // 不記 CPU ⇒ 等 30 秒與等 3 秒同價（皆 ≈0）。
-      //
-      // I/O 契約沿用 component.contract.yaml，既有 workflow 的 wait 節點定義不必改：
-      //   吃 ms（必填 > 0）＋可選 context；ms > WAIT_MAX_MS 截斷；
-      //   回 { success: true, data: { ...context, waited_ms } }；ms <= 0 回 success:false。
-      // 唯一刻意的放寬：ms 允許數字字串（"3000"）。WASM 版 json.Unmarshal 進 int 會直接
-      // 失敗，但 node.data 走 interpolateData 後 `ms: "{{input.delay}}"` 必然是字串
-      // ⇒ 收字串只會把「本來就跑不動的」變成跑得動，不會改變任何既有成功案例的行為。
-      ["wait", async (ctx) => {
-        const c = ctx && typeof ctx === "object" ? ctx : {};
-        const requested = typeof c.ms === "number" ? c.ms : Number(c.ms);
-        if (!Number.isFinite(requested) || requested <= 0) {
-          return { success: false, error: "ms \u5FC5\u9808\u5927\u65BC 0" };
-        }
-        const ms = Math.min(Math.floor(requested), WAIT_MAX_MS);
-        await new Promise((resolve) => setTimeout(resolve, ms));
-        const passthrough = c.context && typeof c.context === "object" && !Array.isArray(c.context) ? c.context : {};
-        return { success: true, data: { ...passthrough, waited_ms: ms } };
-      }]
-    ]);
-  }
-});
-
 // cypher-executor/src/lib/recipe-payload.ts
 function getPath2(obj, path) {
   let cur = obj;
@@ -2840,305 +2852,55 @@ var init_recipe_payload = __esm({
   }
 });
 
-// cypher-executor/src/lib/component-loader.ts
-function wasmWorkerUrl(canonicalId, subdomain) {
-  const kebab = canonicalId.replace(/_/g, "-");
-  return `https://arcrun-${kebab}.${subdomain}.workers.dev`;
-}
-function createComponentLoader(env) {
-  return async (componentId) => {
-    if (componentId === "trigger_workflow") {
-      return makeTriggerWorkflowRunner(env);
-    }
-    const builtin = BUILTIN_COMPONENTS.get(componentId);
-    if (builtin) return builtin;
-    if (componentId.startsWith("http://") || componentId.startsWith("https://")) {
-      return makeHttpRunner(componentId);
-    }
-    if (isComponentHash(componentId)) {
-      const canonicalId = await env.WEBHOOKS.get(`idx:${componentId}`);
-      if (canonicalId) {
-        const runner = makeLogicRunner(canonicalId, env);
-        if (runner) return runner;
-      }
-      throw new Error(`\u627E\u4E0D\u5230\u96F6\u4EF6 hash "${componentId}"\uFF0C\u8ACB\u78BA\u8A8D\u5DF2\u900F\u904E acr push \u4E0A\u50B3`);
-    }
-    if (isRecipeHash(componentId)) {
-      const recipe = await resolveRecipe(componentId, env.RECIPES);
-      if (recipe) return pickRecipeRunner(recipe, env);
-      throw new Error(`\u627E\u4E0D\u5230 recipe hash "${componentId}"\uFF0C\u8ACB\u78BA\u8A8D\u5DF2\u900F\u904E acr push \u4E0A\u50B3`);
-    }
-    const logicRunner = makeLogicRunner(componentId, env);
-    if (logicRunner) return logicRunner;
-    if (WASM_HTTP_RUNNER_IDS.has(componentId)) {
-      return makeHttpRunner(wasmWorkerUrl(componentId, env.WORKER_SUBDOMAIN));
-    }
-    const authRecipe = await resolveAuthRecipe(componentId, env.RECIPES);
-    if (authRecipe) return makeAuthRecipeRunner(authRecipe);
-    const kvRecipe = await resolveRecipe(componentId, env.RECIPES);
-    if (kvRecipe) return pickRecipeRunner(kvRecipe, env);
-    throw new Error(
-      `\u627E\u4E0D\u5230\u96F6\u4EF6 "${componentId}"\u3002
-\u908F\u8F2F\u96F6\u4EF6\uFF1A${Object.keys(LOGIC_BINDING_MAP).join(", ")}
-\u6216\u50B3\u5165\u5916\u90E8 URL\uFF08https://...\uFF09\u3001recipe hash\uFF08rec_xxxxxxxx\uFF09\u3001\u96F6\u4EF6 hash\uFF08cmp_xxxxxxxx\uFF09`
-    );
-  };
-}
-function makeTriggerWorkflowRunner(env) {
-  return async (ctx) => {
-    const c = ctx && typeof ctx === "object" ? ctx : {};
-    const workflowName = String(c.workflow_name ?? "");
-    const apiKey = String(c.api_key ?? "");
-    const input = c.input && typeof c.input === "object" ? c.input : {};
-    const wait = c.wait !== false;
-    if (!workflowName) return { success: false, error: "trigger_workflow \u7F3A workflow_name" };
-    if (!apiKey) return { success: false, error: "trigger_workflow \u7F3A api_key" };
-    const wfKey = `${apiKey}:wf:${workflowName}`;
-    const wfRaw = await env.WEBHOOKS.get(wfKey, "text");
-    if (!wfRaw) return { success: false, error: `\u627E\u4E0D\u5230 workflow "${workflowName}" (key=${wfKey})` };
-    let record;
-    try {
-      record = JSON.parse(wfRaw);
-    } catch {
-      return { success: false, error: `workflow "${workflowName}" KV \u5167\u5BB9\u975E JSON` };
-    }
-    if (!record.graph) return { success: false, error: `workflow "${workflowName}" \u7F3A graph \u6B04\u4F4D` };
-    const { executeWebhookGraph: executeWebhookGraph2 } = await Promise.resolve().then(() => (init_webhook_handlers(), webhook_handlers_exports));
-    const triggerContext = { ...input, _triggered_by: "trigger_workflow" };
-    if (wait) {
-      const r = await executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey);
-      const isPaused = !r.success && typeof r.error === "string" && /workflow paused/i.test(r.error);
-      return {
-        success: r.success || isPaused,
-        triggered_workflow: workflowName,
-        status: r.success ? "completed" : isPaused ? "running_async" : "failed",
-        sub_result: r
-      };
-    } else {
-      void executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey).catch((e) => console.error("[trigger_workflow] fire-and-forget fail", workflowName, e));
-      return { success: true, triggered_workflow: workflowName, mode: "fire_and_forget" };
-    }
-  };
-}
-function makeHttpRunner(url) {
-  return async (ctx) => {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(ctx)
-    });
-    if (!res.ok) {
-      const text2 = await res.text();
-      return { success: false, status: res.status, error: text2.slice(0, 200) };
-    }
-    const text = await res.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { success: true, data: text };
-    }
-  };
-}
-function makeLogicRunner(canonicalId, env) {
-  const bindingKey = LOGIC_BINDING_MAP[canonicalId];
-  if (!bindingKey) return null;
-  const svc = env[bindingKey];
-  if (svc) {
-    return async (ctx) => {
-      const res = await svc.fetch(new Request("https://component/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ctx)
-      }));
-      if (!res.ok) {
-        const text = await res.text();
-        return { success: false, error: `${canonicalId} \u56DE\u50B3 ${res.status}: ${text.slice(0, 200)}` };
-      }
-      try {
-        return await res.json();
-      } catch {
-        return { success: false, error: `${canonicalId} \u56DE\u50B3\u975E JSON` };
-      }
-    };
-  }
-  return makeHttpRunner(wasmWorkerUrl(canonicalId, env.WORKER_SUBDOMAIN));
-}
-function pickRecipeRunner(recipe, env) {
-  return recipe.auth === "binding" ? makeBindingRecipeRunner(recipe, env) : makeRecipeRunner(recipe);
-}
-function makeBindingRecipeRunner(recipe, env) {
-  return async (ctx) => {
-    const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
-    const name = recipe.binding_name ?? "AI";
-    const binding = env[name];
-    if (!binding) {
-      return {
-        success: false,
-        error: `recipe "${recipe.canonical_id}" \u5BA3\u544A auth: binding\u3001binding_name: "${name}"\uFF0C\u4F46\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}\u3002\u8ACB\u5728 wrangler.toml \u88DC\u4E0A\u8A72 binding \u5F8C\u91CD\u65B0\u90E8\u7F72\u3002`
-      };
-    }
-    const target = recipe.endpoint;
-    const payload = renderBodyTemplate(recipe.body_template ?? recipe.body, ctxObj) ?? Object.fromEntries(Object.entries(ctxObj).filter(([k]) => !k.startsWith("_")));
-    try {
-      const runner = binding;
-      if (typeof runner.run !== "function") {
-        return {
-          success: false,
-          error: `binding "${name}" \u6C92\u6709 run() \u65B9\u6CD5\uFF0C\u76EE\u524D binding \u578B\u53EA\u652F\u63F4 run(model, input) \u5F62\u72C0\uFF08\u5982 env.AI\uFF09\u3002`
-        };
-      }
-      const data = await runner.run(target, payload);
-      if (recipe.response_map) {
-        const normalized = applyResponseMap(data, recipe.response_map);
-        return { success: true, data, text: normalized.text };
-      }
-      return { success: true, data };
-    } catch (e) {
-      return {
-        success: false,
-        error: `binding "${name}" \u547C\u53EB\u5931\u6557\uFF08${target}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}`
-      };
-    }
-  };
-}
-function makeRecipeRunner(recipe) {
-  return async (ctx) => {
-    const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
-    const authPath = ctxObj._auth_path ?? {};
-    const interpolate2 = (s) => s.replace(
-      /\{\{(auth\.)?(\w+)\}\}/g,
-      (_, authPrefix, k) => String(authPrefix ? authPath[k] ?? "" : ctxObj[k] ?? "")
-    );
-    const method = (recipe.method ?? "POST").toUpperCase();
-    const authHeaders = ctxObj._auth_headers ?? {};
-    const headers = {
-      "Content-Type": "application/json",
-      ...authHeaders
-    };
-    for (const [k, v] of Object.entries(recipe.headers ?? {})) {
-      headers[k] = interpolate2(v);
-    }
-    let bodyStr;
-    if (recipe.body_template) {
-      bodyStr = JSON.stringify(renderBodyTemplate(recipe.body_template, ctxObj));
-    } else if (recipe.body) {
-      bodyStr = interpolate2(JSON.stringify(recipe.body));
-    } else if (method !== "GET") {
-      const bodyObj = Object.fromEntries(
-        Object.entries(ctxObj).filter(([k]) => !k.startsWith("_"))
-      );
-      bodyStr = JSON.stringify(bodyObj);
-    }
-    const res = await fetch(interpolate2(recipe.endpoint), {
-      method,
-      headers,
-      body: bodyStr
-    });
-    const data = await readBodyOnce(res);
-    if (recipe.response_map) {
-      const normalized = applyResponseMap(data, recipe.response_map);
-      return { success: res.ok, status: res.status, data, text: normalized.text };
-    }
-    return { success: res.ok, status: res.status, data };
-  };
-}
-function makeAuthRecipeRunner(recipe) {
-  return async (ctx) => {
-    const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
-    const authHeaders = ctxObj._auth_headers ?? {};
-    const authQuery = ctxObj._auth_query ?? {};
-    const path = typeof ctxObj._path === "string" ? ctxObj._path : "";
-    const method = (ctxObj.method ?? "POST").toUpperCase();
-    const url = new URL(recipe.base_url.replace(/\/$/, "") + path);
-    for (const [k, v] of Object.entries(authQuery)) {
-      url.searchParams.set(k, v);
-    }
-    const headers = {
-      "Content-Type": "application/json",
-      ...authHeaders
-    };
-    const bodyObj = Object.fromEntries(
-      Object.entries(ctxObj).filter(([k]) => !k.startsWith("_") && k !== "method")
-    );
-    const res = await fetch(url.toString(), {
-      method,
-      headers,
-      body: method !== "GET" ? JSON.stringify(bodyObj) : void 0
-    });
-    const data = await readBodyOnce(res);
-    return { success: res.ok, status: res.status, data };
-  };
-}
-async function readBodyOnce(res) {
-  const text = await res.text();
+// cypher-executor/src/types.ts
+async function kvGetNodeOutput(store, nodeId) {
   try {
-    return JSON.parse(text);
+    const val = await store.kv.get(`${store.runId}:node:${nodeId}`, "json");
+    return val;
   } catch {
-    return text;
+    return void 0;
   }
 }
-var WASM_HTTP_RUNNER_IDS, LOGIC_BINDING_MAP, RUNTIME_NATIVE_COMPONENT_IDS;
-var init_component_loader = __esm({
-  "cypher-executor/src/lib/component-loader.ts"() {
+async function kvSetNodeOutput(store, nodeId, output) {
+  try {
+    await store.kv.put(
+      `${store.runId}:node:${nodeId}`,
+      JSON.stringify(output),
+      { expirationTtl: 3600 }
+    );
+  } catch {
+  }
+}
+var WorkflowPaused, ExecutionError;
+var init_types = __esm({
+  "cypher-executor/src/types.ts"() {
     "use strict";
-    init_constants3();
-    init_hash();
-    init_recipes();
-    init_recipe_payload();
-    WASM_HTTP_RUNNER_IDS = /* @__PURE__ */ new Set([
-      // 通用 HTTP 零件
-      "http_request",
-      // 串流轉發零件（Arcrun#242）：source_url 回應 body 直接轉送成 dest_url 請求 body，
-      // 大型內容不進 stdin/stdout JSON 通道，用於部署整包 Worker bundle 等場景。
-      "fetch_relay",
-      // 通用 code 零件（sandbox inline JS，Arcrun#10 / 07-thin-shell §3.5 code-node）：獨立 Worker，
-      // URL 走 wasmWorkerUrl 通用推導（arcrun-code.{WORKER_SUBDOMAIN}.workers.dev，
-      // self-hosted 由 WORKER_SUBDOMAIN var 注入自己的 subdomain，無寫死官方域名）。
-      // 漏這行 = workflow 寫 `component: code` 落到 step 8 直接「找不到零件」（#29 發現）。
-      "code",
-      // gmail / telegram / line_notify / google_sheets 已降級為 recipe（2026-05-29 Phase 2）：
-      //   recipe:gmail_send / telegram_send / line_notify_send / google_sheets_read|append
-      //   走 step 6 KV recipe 解析，不再是零件。零件目錄已刪。
-      "cron",
-      // Auth primitives
-      "auth_static_key",
-      "auth_service_account",
-      "auth_oauth2",
-      "auth_mtls",
-      // hash（Arcrun#91，2026-08-13）：純計算零件（sha256/sha1/md5，hex/base64），
-      // 出貨線版本號機制與成品指紋核對用它。no_network_syscall，故不走 LOGIC_BINDING_MAP
-      // 的 Service Binding 路（rule 3.1 禁新增 binding），走這裡的通用 wasmWorkerUrl 推導，
-      // 與 code/cron 同一形狀（獨立 Worker，白名單只是「知道這個 canonical_id 存在」）。
-      "hash"
-    ]);
-    LOGIC_BINDING_MAP = {
-      if_control: "SVC_IF_CONTROL",
-      switch: "SVC_SWITCH",
-      foreach_control: "SVC_FOREACH_CONTROL",
-      filter: "SVC_FILTER",
-      merge: "SVC_MERGE",
-      try_catch: "SVC_TRY_CATCH",
-      // wait 已於 Arcrun#101（2026-08-12）移進 BUILTIN_COMPONENTS（step 1）——
-      // 等待是 orchestrator 的排程職責，WASI 沙箱裡做不到「不花 CPU 地等」。理由全文見
-      // constants.ts 的 wait 註解。這裡刻意**移除**而非留著：step 1 本來就先於 step 5 命中，
-      // 留下這行只會讓讀者以為 wait 還走 SVC_WAIT（實際永遠走不到）＝誤導人的死路由。
-      // wrangler.toml 的 SVC_WAIT binding 不動（rule 3.1：13 個既有 binding 保留不新增），
-      // 拆綁定要重新部署、與本票無關。
-      set: "SVC_SET",
-      array_ops: "SVC_ARRAY_OPS",
-      string_ops: "SVC_STRING_OPS",
-      number_ops: "SVC_NUMBER_OPS",
-      date_ops: "SVC_DATE_OPS",
-      validate_json: "SVC_VALIDATE_JSON"
-      // ai_transform_compile / ai_transform_run 已刪除（2026-05-29）：
-      // Arcrun 是 AI 呼叫的工具，工作流不該內嵌 AI 節點回頭呼叫 AI（n8n 才需要，因它沒大腦）。
+    WorkflowPaused = class extends Error {
+      task_id;
+      run_id;
+      paused_node_id;
+      trace_so_far;
+      constructor(task_id, run_id, paused_node_id, trace_so_far) {
+        super(`workflow paused at node ${paused_node_id} waiting for task ${task_id}`);
+        this.name = "WorkflowPaused";
+        this.task_id = task_id;
+        this.run_id = run_id;
+        this.paused_node_id = paused_node_id;
+        this.trace_so_far = trace_so_far;
+      }
     };
-    RUNTIME_NATIVE_COMPONENT_IDS = /* @__PURE__ */ new Set([
-      "trigger_workflow",
-      ...BUILTIN_COMPONENTS.keys(),
-      ...Object.keys(LOGIC_BINDING_MAP),
-      ...WASM_HTTP_RUNNER_IDS
-    ]);
+    ExecutionError = class extends Error {
+      failed_node;
+      failed_input;
+      trace;
+      constructor(message, failed_node, failed_input, trace) {
+        super(message);
+        this.name = "ExecutionError";
+        this.failed_node = failed_node;
+        this.failed_input = failed_input;
+        this.trace = trace;
+      }
+    };
   }
 });
 
@@ -3171,749 +2933,205 @@ var init_wasi_shim = __esm({
   }
 });
 
-// cypher-executor/src/lib/kbdb-caller.ts
-function withCaller(headers, caller) {
-  return { ...headers, [KBDB_CALLER_HEADER]: caller.slice(0, 120) };
+// cypher-executor/src/lib/secret-backend.ts
+function secretBackendMode(env) {
+  const v = (env.SECRET_BACKEND ?? "").trim().toLowerCase();
+  if (v === "" || v === "cf") return "cf";
+  if (v === "local") return "local";
+  return "invalid";
 }
-var KBDB_CALLER_HEADER, KBDB_CALLERS;
-var init_kbdb_caller = __esm({
-  "cypher-executor/src/lib/kbdb-caller.ts"() {
-    "use strict";
-    KBDB_CALLER_HEADER = "X-Arcrun-Caller";
-    KBDB_CALLERS = {
-      /** kbdb-proxy.ts：CLI（acr kbdb *）透過 cypher 轉發打 KBDB 基本盤。 */
-      proxy: "cypher-kbdb-proxy",
-      /** kbdb-asset-store.ts：WEBHOOKS／RECIPES／EXEC_CONTEXT 三個名字唯一的讀寫入口（Arcrun#98）。 */
-      assetStore: "cypher-asset-store",
-      /** recipe-expander.ts 的 kbdb_block fragment：某個 workflow 執行中展開 recipe 時讀的知識片段。 */
-      recipeFragment: (workflowId) => workflowId ? `workflow:${workflowId}` : "cypher-recipe-fragment",
-      /** webhook-handlers.ts 的 recordRecipeStats：執行結束後回寫 recipe 市場星數（fire-and-forget）。 */
-      recipeStats: "cypher-recipe-stats",
-      /** execution-logger.ts 的 writeExecutionVerdict：執行結束後寫入 KBDB 執行紀錄（fire-and-forget）。 */
-      executionLog: "cypher-execution-log"
-    };
-  }
-});
-
-// cypher-executor/src/routes/kbdb-proxy.ts
-function kbdbBase(env) {
-  const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
-  let headers = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-  headers = withCaller(headers, KBDB_CALLERS.proxy);
-  return { base, headers };
+function localBackendReady(env) {
+  return typeof env.PRIVATE_SECRET_KEY === "string" && env.PRIVATE_SECRET_KEY.length >= MIN_KEY_LEN;
 }
-function tenant(c) {
-  return c.req.header("X-Arcrun-API-Key") ?? null;
+function b64(bytes) {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
 }
-function forwardQuery(c) {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(c.req.query())) {
-    if (k === "owner_id" || v === void 0 || v === "") continue;
-    params.set(k, v);
-  }
-  return params;
+function unb64(s) {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
-var kbdbProxyRouter, NEED_KEY;
-var init_kbdb_proxy = __esm({
-  "cypher-executor/src/routes/kbdb-proxy.ts"() {
-    "use strict";
-    init_dist();
-    init_kbdb_caller();
-    kbdbProxyRouter = new Hono2();
-    NEED_KEY = { error: "\u7F3A\u5C11 X-Arcrun-API-Key header" };
-    kbdbProxyRouter.post("/kbdb/templates", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => null);
-      if (!body || !body.name || !Array.isArray(body.slots)) {
-        return c.json({ error: "name \u8207 slots[] \u5FC5\u586B" }, 400);
-      }
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/templates`, {
-        method: "POST",
-        headers,
-        // created_by 帶上租戶當溯源，但 template 本身全域可見可用
-        body: JSON.stringify({ name: body.name, slots: body.slots, description: body.description, created_by: owner })
-      });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/templates", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/templates`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/templates/:idOrName", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/templates/${encodeURIComponent(c.req.param("idOrName"))}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.post("/kbdb/records", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => null);
-      if (!body || !body.template || !body.values && !body.entry_ids) {
-        return c.json({ error: "template \u5FC5\u586B\uFF0Cvalues \u8207 entry_ids \u81F3\u5C11\u8981\u6709\u4E00\u500B" }, 400);
-      }
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records`, {
-        method: "POST",
-        headers,
-        // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
-        body: JSON.stringify({
-          template: body.template,
-          ...body.values ? { values: body.values } : {},
-          ...body.entry_ids ? { entry_ids: body.entry_ids } : {},
-          owner_id: owner
-        })
-      });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/records/by-template/:template", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const params = forwardQuery(c);
-      params.set("owner_id", owner);
-      const res = await fetch(
-        `${base}/records/by-template/${encodeURIComponent(c.req.param("template"))}?${params.toString()}`,
-        { headers }
-      );
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.post("/kbdb/records/backfill-library", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => null);
-      if (!body || !body.library) return c.json({ error: "library \u5FC5\u586B" }, 400);
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records/backfill-library`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          library: body.library,
-          owner_id: owner,
-          triplet_template: body.triplet_template,
-          source_prefix: body.source_prefix,
-          limit: body.limit
-        })
-      });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/records/backfill-library/status", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const params = new URLSearchParams({ owner_id: owner });
-      for (const k of ["triplet_template", "source_prefix"]) {
-        const v = c.req.query(k);
-        if (v) params.set(k, v);
-      }
-      const res = await fetch(`${base}/records/backfill-library/status?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/records/:recordId", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.patch("/kbdb/records/:recordId", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => null);
-      if (!body || typeof body.values !== "object" || body.values === null) {
-        return c.json({ error: "values \u5FC5\u586B\uFF08{slot\u540D: \u5167\u5BB9}\uFF09" }, 400);
-      }
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ values: body.values })
-      });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/search", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const q = c.req.query("q");
-      if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
-      const { base, headers } = kbdbBase(c.env);
-      const params = forwardQuery(c);
-      params.set("owner_id", owner);
-      const res = await fetch(`${base}/entries/search?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/retrieve", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const q = c.req.query("q") || c.req.query("question");
-      if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
-      const { base, headers } = kbdbBase(c.env);
-      const params = forwardQuery(c);
-      params.set("q", q);
-      params.delete("question");
-      params.set("owner_id", owner);
-      try {
-        const res = await fetch(`${base}/retrieve?${params.toString()}`, { headers });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-      } catch (e) {
-        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-      }
-    });
-    kbdbProxyRouter.post("/kbdb/entries", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => null);
-      if (!body || !body.entry_type) return c.json({ error: "entry_type \u5FC5\u586B" }, 400);
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/entries`, {
-        method: "POST",
-        headers,
-        // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
-        body: JSON.stringify({ ...body, owner_id: owner })
-      });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/entries", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const params = forwardQuery(c);
-      const search = params.get("search");
-      if (search && !params.get("q")) params.set("q", search);
-      params.delete("search");
-      params.set("owner_id", owner);
-      const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/entries/library-cards", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const params = forwardQuery(c);
-      params.set("owner_id", owner);
-      const res = await fetch(`${base}/entries/library-cards?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.get("/kbdb/graph/neighbors/:name", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const params = forwardQuery(c);
-      params.set("owner_id", owner);
-      try {
-        const res = await fetch(
-          `${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}?${params.toString()}`,
-          { headers }
-        );
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-      } catch (e) {
-        return c.json({ error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-      }
-    });
-    kbdbProxyRouter.get("/kbdb/map", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const owner = c.req.query("owner_id");
-      const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
-      try {
-        const res = await fetch(`${base}/map${qs}`, { headers });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-      } catch (e) {
-        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-      }
-    });
-    kbdbProxyRouter.get("/kbdb/map/:library", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const { base, headers } = kbdbBase(c.env);
-      const owner = c.req.query("owner_id");
-      const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
-      try {
-        const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}${qs}`, { headers });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-      } catch (e) {
-        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-      }
-    });
-    kbdbProxyRouter.put("/kbdb/map/:library/narrative", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => null);
-      const narrative = typeof body?.narrative === "string" ? body.narrative : "";
-      if (!narrative.trim()) return c.json({ error: "narrative \u5FC5\u586B\uFF08\u4E0D\u5F97\u7A7A\u767D\uFF09" }, 400);
-      const owner = (typeof body?.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
-      const { base, headers } = kbdbBase(c.env);
-      try {
-        const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}/narrative`, {
-          method: "PUT",
-          headers,
-          body: JSON.stringify({ narrative, ...owner ? { owner_id: owner } : {} })
-        });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-      } catch (e) {
-        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-      }
-    });
-    kbdbProxyRouter.post("/kbdb/map/recompute", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => ({}));
-      const library = (typeof body.library === "string" ? body.library : c.req.query("library")) || "";
-      if (!library.trim()) return c.json({ error: "library \u5FC5\u586B" }, 400);
-      const owner = (typeof body.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
-      const { base, headers } = kbdbBase(c.env);
-      try {
-        const res = await fetch(`${base}/map/recompute`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ ...body, library, ...owner ? { owner_id: owner } : {} })
-        });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-      } catch (e) {
-        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-      }
-    });
-    kbdbProxyRouter.patch("/kbdb/entries/:id", async (c) => {
-      if (!tenant(c)) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => ({}));
-      const { owner_id: _drop, ...patch } = body ?? {};
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify(patch)
-      });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-  }
-});
-
-// cypher-executor/src/routes/credentials.ts
-async function deriveSecretRef(apiKey, name) {
-  const hash8 = await sha256Prefix(apiKey);
-  return `CRED_${name.toUpperCase()}_${hash8.toUpperCase()}`;
+async function deriveAesKey(masterKey) {
+  const ikm = await crypto.subtle.importKey("raw", enc.encode(masterKey), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: enc.encode(HKDF_SALT), info: new Uint8Array(0) },
+    ikm,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
 }
-async function storeCredential(env, apiKey, name, value, service) {
-  const secretRef = await deriveSecretRef(apiKey, name);
-  await putWorkerSecret(env, secretRef, value);
-  await upsertCredentialEntry(env, apiKey, name, service, "standard", secretRef);
+function aad(apiKey, ref) {
+  return enc.encode(`${apiKey}|${ref}`);
 }
-function validateName(name) {
-  return typeof name === "string" && /^\w+$/.test(name);
+async function sealSecret(masterKey, apiKey, ref, value) {
+  const key = await deriveAesKey(masterKey);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(apiKey, ref) }, key, enc.encode(value));
+  return { v: 1, iv: b64(iv), ct: b64(new Uint8Array(ct)) };
 }
-function validSensitivity(s) {
-  return s === "standard" || s === "high";
-}
-async function putWorkerSecret(env, secretRef, value, tokenOverride) {
-  const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
-  if (!token || !env.CF_ACCOUNT_ID) {
-    throw new Error(
-      "\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u5BEB\u5165\u8DEF\u5F91\u672A\u5C31\u7DD2\uFF08\u898B credential-store-migration.md T3\uFF1Aacr init/update \u61C9\u78BA\u4FDD\u9019\u5169\u9805\u5C31\u7DD2\uFF09"
-    );
-  }
-  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets`;
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ name: secretRef, text: value, type: "secret_text" })
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !body?.success) {
-    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
-    throw new Error(`CF Workers Secrets \u5BEB\u5165\u5931\u6557\uFF1A${detail}`);
-  }
-}
-async function deleteWorkerSecret(env, secretRef, tokenOverride) {
-  const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
-  if (!token || !env.CF_ACCOUNT_ID) {
-    throw new Error("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
-  }
-  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (res.status === 404) return;
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !body?.success) {
-    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
-    throw new Error(`CF Workers Secrets \u522A\u9664\u5931\u6557\uFF1A${detail}`);
-  }
-}
-function parseMeta(row) {
+async function openSecret(masterKey, apiKey, ref, sealed) {
+  if (!sealed || sealed.v !== 1) return null;
   try {
-    const m = row.metadata_json ? JSON.parse(row.metadata_json) : {};
-    return {
-      service: typeof m.service === "string" ? m.service : null,
-      sensitivity: m.sensitivity === "high" ? "high" : "standard",
-      secret_ref: typeof m.secret_ref === "string" ? m.secret_ref : "",
-      last_used_at: typeof m.last_used_at === "number" ? m.last_used_at : null
-    };
+    const key = await deriveAesKey(masterKey);
+    const pt = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: unb64(sealed.iv), additionalData: aad(apiKey, ref) },
+      key,
+      unb64(sealed.ct)
+    );
+    return dec.decode(pt);
   } catch {
-    return { service: null, sensitivity: "standard", secret_ref: "", last_used_at: null };
+    return null;
   }
 }
-async function kbdbCredFetch(env, path, init) {
+async function kbdbFetch(env, path, init) {
   const { base, headers } = kbdbBase(env);
-  return fetch(`${base}${path}`, {
-    ...init,
-    headers: { ...headers, ...init?.headers }
-  });
+  return fetch(`${base}${path}`, { ...init, headers: { ...headers, ...init?.headers } });
 }
-function invalidateCredentialCache(apiKey) {
-  delete dirCache[apiKey];
-}
-async function getCredentialDirectory(env, apiKey) {
-  const now2 = Date.now();
-  const cached = dirCache[apiKey];
-  if (cached && now2 - cached.fetchedAt < DIR_CACHE_TTL_MS) return { rows: cached.rows, error: null };
-  const qs = new URLSearchParams({ owner_id: apiKey, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
-  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
-  if (!res.ok) {
-    return { rows: [], error: `KBDB \u56DE HTTP ${res.status}` };
-  }
-  const body = await res.json().catch(() => null);
-  const rows = (body?.entries ?? []).filter((e) => !!e.page_name).map((e) => {
-    const meta = parseMeta(e);
-    return {
-      id: e.id,
-      name: e.page_name,
-      secret_ref: meta.secret_ref,
-      service: meta.service,
-      sensitivity: meta.sensitivity,
-      last_used_at: meta.last_used_at
-    };
-  });
-  dirCache[apiKey] = { rows, fetchedAt: now2 };
-  return { rows, error: null };
-}
-async function getCredentialSecretRefsDetailed(env, apiKey) {
-  const { rows, error } = await getCredentialDirectory(env, apiKey);
-  const refs = {};
-  for (const r of rows) {
-    if (r.secret_ref) refs[r.name] = r.secret_ref;
-  }
-  return { refs, directoryError: error };
-}
-function touchLastUsed(env, apiKey, names) {
-  const cached = dirCache[apiKey];
-  if (!cached || names.length === 0) return;
-  const now2 = Math.floor(Date.now() / 1e3);
-  for (const r of cached.rows) {
-    if (!names.includes(r.name)) continue;
-    if (typeof r.last_used_at === "number" && now2 - r.last_used_at < LAST_USED_MIN_INTERVAL_S) continue;
-    const meta = {
-      service: r.service,
-      sensitivity: r.sensitivity,
-      secret_ref: r.secret_ref,
-      last_used_at: now2
-    };
-    kbdbCredFetch(env, `/entries/${encodeURIComponent(r.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metadata_json: JSON.stringify(meta) })
-    }).catch(() => {
-    });
-    r.last_used_at = now2;
-  }
-}
-async function findCredentialEntry(env, apiKey, name) {
-  const qs = new URLSearchParams({
-    owner_id: apiKey,
-    entry_type: CREDENTIAL_ENTRY_TYPE,
-    page_name: name,
-    limit: "1"
-  });
-  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
+async function findSecretRow(env, apiKey, ref) {
+  const qs = new URLSearchParams({ owner_id: apiKey, entry_type: SECRET_ENTRY_TYPE, page_name: ref, limit: "1" });
+  const res = await kbdbFetch(env, `/entries?${qs.toString()}`);
   if (!res.ok) throw new Error(`KBDB /entries \u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
   const body = await res.json().catch(() => null);
   return body?.entries?.[0] ?? null;
 }
-async function upsertCredentialEntry(env, apiKey, name, service, sensitivity, secretRef) {
-  const existing = await findCredentialEntry(env, apiKey, name);
-  const meta = {
-    service,
-    sensitivity,
-    secret_ref: secretRef,
-    last_used_at: existing ? parseMeta(existing).last_used_at : null
-  };
-  if (existing) {
-    const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(existing.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metadata_json: JSON.stringify(meta) })
-    });
-    if (!res.ok) throw new Error(`credential \u76EE\u9304\u66F4\u65B0\u5931\u6557\uFF1AHTTP ${res.status}`);
-  } else {
-    const res = await kbdbCredFetch(env, `/entries`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        entry_type: CREDENTIAL_ENTRY_TYPE,
-        owner_id: apiKey,
-        page_name: name,
-        metadata_json: JSON.stringify(meta)
-      })
-    });
-    if (!res.ok) throw new Error(`credential \u76EE\u9304\u5EFA\u7ACB\u5931\u6557\uFF1AHTTP ${res.status}`);
-  }
-  invalidateCredentialCache(apiKey);
-}
-async function listCredentialRows(env, apiKey) {
-  const qs = new URLSearchParams({ owner_id: apiKey, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
-  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
-  if (!res.ok) throw new Error(`credential \u76EE\u9304\u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
-  const body = await res.json().catch(() => null);
-  const rows = (body?.entries ?? []).filter((e) => !!e.page_name).map((e) => {
-    const meta = parseMeta(e);
-    return { name: e.page_name, service: meta.service, sensitivity: meta.sensitivity, created_at: e.created_at, last_used_at: meta.last_used_at };
-  });
-  return rows;
-}
-async function hasCredential(env, apiKey, name) {
-  const entry = await findCredentialEntry(env, apiKey, name);
-  return entry !== null;
-}
-async function findEntryBySecretRef(env, apiKey, secretRef) {
-  const { rows } = await getCredentialDirectory(env, apiKey);
-  const hit = rows.find((r) => r.secret_ref === secretRef);
-  return hit ? { name: hit.name } : null;
-}
-async function writeCredential(env, apiKey, name, value, service, sensitivityRaw) {
-  const sensitivity = validSensitivity(sensitivityRaw) ? sensitivityRaw : "standard";
-  const secretRef = await deriveSecretRef(apiKey, name);
-  const clash = await findEntryBySecretRef(env, apiKey, secretRef);
-  if (clash && clash.name !== name) {
+function requireLocalReady(env) {
+  if (!localBackendReady(env)) {
     throw new Error(
-      `\u540D\u7A31\u300C${name}\u300D\u884D\u751F\u51FA\u7684\u5132\u5B58\u4F4D\u7F6E\u5DF2\u88AB\u300C${clash.name}\u300D\u4F54\u7528\uFF08\u5B83\u5148\u524D\u5F9E\u300C${name}\u300D\u6539\u540D\u96E2\u958B\uFF09\uFF0C\u63DB\u4E00\u500B\u540D\u5B57\u518D\u5EFA\u7ACB\u3002`
+      "\u4F01\u696D\u79C1\u6709\u96F2\u91D1\u9470\u4FDD\u7BA1\u672A\u5C31\u7DD2\uFF1ASECRET_BACKEND=local \u9700\u8981 PRIVATE_SECRET_KEY\uFF08\u81F3\u5C11 32 \u5B57\u5143\uFF0C\u7531\u9019\u53F0 server \u7684\u8A2D\u5B9A\u63D0\u4F9B\uFF09"
     );
   }
-  await putWorkerSecret(env, secretRef, value);
-  await upsertCredentialEntry(env, apiKey, name, service ?? null, sensitivity, secretRef);
-  return { secretRef, sensitivity };
+  return env.PRIVATE_SECRET_KEY;
 }
-async function deleteCredentialByName(env, apiKey, name) {
-  try {
-    const entry = await findCredentialEntry(env, apiKey, name);
-    if (entry) {
-      const meta = parseMeta(entry);
-      if (meta.secret_ref) await deleteWorkerSecret(env, meta.secret_ref);
-      const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(entry.id)}`, { method: "DELETE" });
-      if (!res.ok) return { ok: false, status: 502, error: `credential \u76EE\u9304\u522A\u9664\u5931\u6557\uFF1AHTTP ${res.status}` };
-      invalidateCredentialCache(apiKey);
-      return { ok: true };
-    }
-    return { ok: false, status: 404, error: `\u627E\u4E0D\u5230 credential\u300C${name}\u300D` };
-  } catch (e) {
-    return { ok: false, status: 502, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-async function editCredential(env, apiKey, currentName, updates) {
-  const entry = await findCredentialEntry(env, apiKey, currentName);
-  if (!entry) throw new Error(`\u627E\u4E0D\u5230 credential\u300C${currentName}\u300D`);
-  const meta = parseMeta(entry);
-  if (!meta.secret_ref) throw new Error(`credential\u300C${currentName}\u300D\u7F3A secret_ref\uFF0C\u8CC7\u6599\u7570\u5E38\uFF0C\u7121\u6CD5\u4FEE\u6539`);
-  const newName = updates.newName && updates.newName !== currentName ? updates.newName : currentName;
-  if (!validateName(newName)) throw new Error("\u540D\u7A31\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA");
-  if (newName !== currentName) {
-    const clash = await findCredentialEntry(env, apiKey, newName);
-    if (clash) throw new Error(`\u540D\u7A31\u300C${newName}\u300D\u5DF2\u88AB\u4F7F\u7528`);
-  }
-  const service = updates.service !== void 0 ? updates.service || null : meta.service;
-  if (updates.value) {
-    await putWorkerSecret(env, meta.secret_ref, updates.value);
-  }
-  const newMeta = {
-    service,
-    sensitivity: meta.sensitivity,
-    secret_ref: meta.secret_ref,
-    last_used_at: meta.last_used_at
-  };
-  const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(entry.id)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ page_name: newName, metadata_json: JSON.stringify(newMeta) })
+async function putLocalSecret(env, apiKey, ref, value) {
+  const master = requireLocalReady(env);
+  const sealed = await sealSecret(master, apiKey, ref, value);
+  const metadata_json = JSON.stringify(sealed);
+  const existing = await findSecretRow(env, apiKey, ref);
+  const res = existing ? await kbdbFetch(env, `/entries/${encodeURIComponent(existing.id)}`, { method: "PATCH", body: JSON.stringify({ metadata_json }) }) : await kbdbFetch(env, `/entries`, {
+    method: "POST",
+    body: JSON.stringify({ entry_type: SECRET_ENTRY_TYPE, owner_id: apiKey, page_name: ref, metadata_json })
   });
-  if (!res.ok) throw new Error(`credential \u4FEE\u6539\u5931\u6557\uFF1AHTTP ${res.status}`);
-  invalidateCredentialCache(apiKey);
-  return { name: newName, service, sensitivity: meta.sensitivity };
+  if (!res.ok) throw new Error(`\u91D1\u9470\u4FDD\u7BA1\u5BEB\u5165\u5931\u6557\uFF1AHTTP ${res.status}`);
 }
-var credentialsRouter, CYPHER_SCRIPT_NAME, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
-var init_credentials = __esm({
-  "cypher-executor/src/routes/credentials.ts"() {
+async function deleteLocalSecret(env, apiKey, ref) {
+  const existing = await findSecretRow(env, apiKey, ref);
+  if (!existing) return;
+  const res = await kbdbFetch(env, `/entries/${encodeURIComponent(existing.id)}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 404) throw new Error(`\u91D1\u9470\u4FDD\u7BA1\u522A\u9664\u5931\u6557\uFF1AHTTP ${res.status}`);
+}
+async function getLocalSecret(env, apiKey, ref) {
+  if (!localBackendReady(env)) return null;
+  let sealed;
+  try {
+    const row = await findSecretRow(env, apiKey, ref);
+    sealed = row?.metadata_json ? JSON.parse(row.metadata_json) : null;
+  } catch {
+    return null;
+  }
+  if (!sealed) return null;
+  return openSecret(env.PRIVATE_SECRET_KEY, apiKey, ref, sealed);
+}
+async function getLocalSecretStrict(env, apiKey, ref) {
+  const master = requireLocalReady(env);
+  const row = await findSecretRow(env, apiKey, ref);
+  if (!row) return null;
+  if (!row.metadata_json) throw new Error("\u91D1\u9470\u4FDD\u7BA1\u5167\u5BB9\u640D\u6BC0\uFF08\u7A7A\u5217\uFF09");
+  const sealed = JSON.parse(row.metadata_json);
+  const v = await openSecret(master, apiKey, ref, sealed);
+  if (v === null) throw new Error("\u91D1\u9470\u4FDD\u7BA1\u89E3\u4E0D\u958B\uFF08\u4E3B\u91D1\u9470\u4E0D\u7B26\u6216\u5BC6\u6587\u88AB\u6539\u52D5\uFF09");
+  return v;
+}
+var SECRET_ENTRY_TYPE, HKDF_SALT, MIN_KEY_LEN, enc, dec;
+var init_secret_backend = __esm({
+  "cypher-executor/src/lib/secret-backend.ts"() {
     "use strict";
-    init_dist();
-    init_hash();
     init_kbdb_proxy();
-    credentialsRouter = new Hono2();
-    CYPHER_SCRIPT_NAME = "arcrun-cypher-executor";
-    CREDENTIAL_ENTRY_TYPE = "credential";
-    DIR_CACHE_TTL_MS = 6e4;
-    dirCache = {};
-    LAST_USED_MIN_INTERVAL_S = 300;
-    VALUE_LIKE_FIELDS = ["value", "secret", "token", "text", "plaintext"];
-    credentialsRouter.post("/credentials/directory", async (c) => {
-      const apiKey = c.req.header("X-Arcrun-API-Key");
-      if (!apiKey) {
-        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    SECRET_ENTRY_TYPE = "credential_secret";
+    HKDF_SALT = "arcrun-private-secret-v1";
+    MIN_KEY_LEN = 32;
+    enc = new TextEncoder();
+    dec = new TextDecoder();
+  }
+});
+
+// cypher-executor/src/lib/tenant.ts
+function knowledgeOwner(env) {
+  const injected = (env.ARCRUN_NAMESPACE ?? "").trim();
+  if (injected) return injected;
+  const legacy = (env.CONSOLE_TENANT ?? "").trim();
+  if (legacy) return legacy;
+  throw new TenantUnresolvedError(
+    "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08\u74B0\u5883\u8B8A\u6578 ARCRUN_NAMESPACE / CONSOLE_TENANT \u90FD\u6C92\u8A2D\uFF09\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u8981\u7528\u54EA\u500B owner_id \u53D6\u8CC7\u6599\u3002",
+    "tenant_unresolved"
+  );
+}
+function tenantFromApiKey(apiKey) {
+  const key = (apiKey ?? "").trim();
+  if (!key) throw new TenantUnresolvedError("\u7F3A\u5C11 X-Arcrun-API-Key\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u67E5\u8A62\u7BC4\u570D", "missing_api_key");
+  return key;
+}
+function accountTenant(env) {
+  return env.CONSOLE_TENANT || "leo";
+}
+function credentialOwner(env) {
+  try {
+    return knowledgeOwner(env);
+  } catch {
+    return accountTenant(env);
+  }
+}
+function legacyCredentialOwner(env) {
+  const legacy = accountTenant(env);
+  return legacy && legacy !== credentialOwner(env) ? legacy : null;
+}
+function ownerQuery(tenant2) {
+  return `owner_id=${encodeURIComponent(tenant2)}`;
+}
+function ownerField(tenant2) {
+  return tenant2;
+}
+function censusQueryAllTenants() {
+  return "owner_id=";
+}
+function isOwnedBy(value, tenant2) {
+  return typeof value === "string" && value === tenant2;
+}
+var TenantUnresolvedError;
+var init_tenant = __esm({
+  "cypher-executor/src/lib/tenant.ts"() {
+    "use strict";
+    TenantUnresolvedError = class extends Error {
+      code;
+      constructor(message, code = "tenant_unresolved") {
+        super(message);
+        this.name = "TenantUnresolvedError";
+        this.code = code;
       }
-      const body = await c.req.json().catch(() => null);
-      const name = body?.name;
-      if (!validateName(name)) {
-        return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
-      }
-      const offending = VALUE_LIKE_FIELDS.filter((f) => body?.[f] !== void 0);
-      if (offending.length > 0) {
-        return c.json({
-          error: `\u9019\u652F\u7AEF\u9EDE\u53EA\u5BEB\u76EE\u9304\uFF0C\u4E0D\u6536\u91D1\u9470\u503C\uFF08\u6536\u5230 ${offending.join("/")}\uFF09\u3002\u503C\u8ACB\u7531\u6301\u6709 Cloudflare \u5BEB\u5165\u6191\u8B49\u7684\u4E00\u65B9\u76F4\u63A5 PUT \u9032 Workers Secrets\uFF0Csecret \u540D\u7A31\u7528\u672C\u7AEF\u9EDE\u56DE\u7684 secret_ref\uFF08D36\uFF1A\u53EA\u6709\u4E00\u689D\u91D1\u9470\u50B3\u905E\u8DEF\u5F91\uFF09\u3002`
-        }, 400);
-      }
-      const service = typeof body?.service === "string" ? body.service : null;
-      const sensitivity = validSensitivity(body?.sensitivity) ? body.sensitivity : "standard";
-      try {
-        const secretRef = await deriveSecretRef(apiKey, name);
-        await upsertCredentialEntry(c.env, apiKey, name, service, sensitivity, secretRef);
-        return c.json({
-          success: true,
-          name,
-          service,
-          sensitivity,
-          // 呼叫端拿這兩個值去寫值那一半：PUT /accounts/:id/workers/scripts/{secret_script}/secrets
-          // body { name: secret_ref, text: <明文>, type: 'secret_text' }。
-          secret_ref: secretRef,
-          secret_script: CYPHER_SCRIPT_NAME
-        });
-      } catch (e) {
-        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-      }
-    });
-    credentialsRouter.post("/credentials", async (c) => {
-      const apiKey = c.req.header("X-Arcrun-API-Key");
-      if (!apiKey) {
-        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-      }
-      const body = await c.req.json().catch(() => null);
-      if (!validateName(body?.name)) {
-        return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
-      }
-      if (!body?.value || typeof body.value !== "string") {
-        return c.json({ error: "value \u5FC5\u586B\uFF08credential \u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF09" }, 400);
-      }
-      try {
-        const { secretRef, sensitivity } = await writeCredential(
-          c.env,
-          apiKey,
-          body.name,
-          body.value,
-          body.service,
-          body.sensitivity
-        );
-        return c.json({ success: true, name: body.name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
-      }
-    });
-    credentialsRouter.put("/credentials/:name", async (c) => {
-      const apiKey = c.req.header("X-Arcrun-API-Key");
-      if (!apiKey) {
-        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-      }
-      const name = c.req.param("name");
-      if (!validateName(name)) {
-        return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
-      }
-      const body = await c.req.json().catch(() => null);
-      if (!body?.value || typeof body.value !== "string") {
-        return c.json({ error: "value \u5FC5\u586B\uFF08credential \u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF09" }, 400);
-      }
-      try {
-        const { secretRef, sensitivity } = await writeCredential(
-          c.env,
-          apiKey,
-          name,
-          body.value,
-          body.service,
-          body.sensitivity
-        );
-        return c.json({ success: true, name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
-      }
-    });
-    credentialsRouter.delete("/credentials/:name", async (c) => {
-      const apiKey = c.req.header("X-Arcrun-API-Key");
-      if (!apiKey) {
-        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-      }
-      const name = c.req.param("name");
-      const result = await deleteCredentialByName(c.env, apiKey, name);
-      if (!result.ok) return c.json({ success: false, error: result.error }, result.status);
-      return c.json({ success: true, name, source: "workers-secrets" });
-    });
-    credentialsRouter.patch("/credentials/:name", async (c) => {
-      const apiKey = c.req.header("X-Arcrun-API-Key");
-      if (!apiKey) {
-        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-      }
-      const name = c.req.param("name");
-      const body = await c.req.json().catch(() => null);
-      const newName = typeof body?.new_name === "string" ? body.new_name : void 0;
-      const service = typeof body?.service === "string" ? body.service : void 0;
-      const value = typeof body?.value === "string" ? body.value : void 0;
-      try {
-        const result = await editCredential(c.env, apiKey, name, { newName, service, value });
-        return c.json({ success: true, ...result });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
-        return c.json({ success: false, error: msg }, status);
-      }
-    });
-    credentialsRouter.get("/credentials/catalog", async (c) => {
-      const apiKey = c.req.header("X-Arcrun-API-Key");
-      if (!apiKey) {
-        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-      }
-      try {
-        const rows = await listCredentialRows(c.env, apiKey);
-        return c.json({ success: true, credentials: rows, total: rows.length });
-      } catch (e) {
-        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-      }
-    });
-    credentialsRouter.get("/credentials", async (c) => {
-      const apiKey = c.req.header("X-Arcrun-API-Key");
-      if (!apiKey) {
-        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-      }
-      try {
-        const rows = await listCredentialRows(c.env, apiKey);
-        return c.json({ success: true, credentials: rows, total: rows.length });
-      } catch (e) {
-        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-      }
-    });
+    };
   }
 });
 
 // cypher-executor/src/actions/auth-dispatcher.ts
+async function resolveSecretsFromNewHome(env, apiKey, names) {
+  return (await resolveSecretsFromNewHomeDetailed(env, apiKey, names)).resolved;
+}
 async function resolveSecretsFromNewHomeDetailed(env, apiKey, names) {
   const resolved = {};
   if (names.length === 0) return { resolved, directoryError: null };
   const { refs, directoryError } = await getCredentialSecretRefsDetailed(env, apiKey);
   if (Object.keys(refs).length === 0) return { resolved, directoryError };
-  const secretGet2 = createArcrunHostFunctions(env, apiKey).secret_get;
+  const mode = secretBackendMode(env);
+  const secretGet2 = mode === "local" ? async (ref) => {
+    if (!/^CRED_/.test(ref)) return null;
+    const v = await getLocalSecret(env, apiKey, ref);
+    if (v !== null) return v;
+    const legacy = apiKey === credentialOwner(env) ? legacyCredentialOwner(env) : null;
+    return legacy ? getLocalSecret(env, legacy, ref) : null;
+  } : mode === "invalid" ? async () => null : createArcrunHostFunctions(env, apiKey).secret_get;
   if (!secretGet2) return { resolved, directoryError };
   const resolvedNames = [];
   for (const name of names) {
@@ -3966,7 +3184,7 @@ async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
   const { resolved: resolvedSecrets, directoryError } = await resolveSecretsFromNewHomeDetailed(env, apiKey, secretNames);
   redactor?.addRecord(resolvedSecrets, (name) => `credential:${name}`);
   const oauth2Cache2 = recipe.primitive === "oauth2" ? await readOAuth2Cache(env, apiKey, service) : null;
-  const primitiveUrl = wasmWorkerUrl(`auth_${recipe.primitive}`, env.WORKER_SUBDOMAIN);
+  const primitiveUrl = componentUrl(`auth_${recipe.primitive}`, env);
   const res = await fetch(primitiveUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -4048,7 +3266,7 @@ async function resolveCredentialRefs(data, env, apiKey, redactor) {
   if (nameList.every((n) => Object.prototype.hasOwnProperty.call(resolvedSecrets, n))) {
     return replaceCredentialRefs(data, resolvedSecrets);
   }
-  const url = wasmWorkerUrl("auth_static_key", env.WORKER_SUBDOMAIN);
+  const url = componentUrl("auth_static_key", env);
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -4079,9 +3297,11 @@ var init_auth_dispatcher = __esm({
   "cypher-executor/src/actions/auth-dispatcher.ts"() {
     "use strict";
     init_recipes();
-    init_component_loader();
+    init_endpoints();
     init_wasi_shim();
+    init_secret_backend();
     init_credentials();
+    init_tenant();
     oauth2Cache = /* @__PURE__ */ new Map();
     OAUTH2_CACHE_MAX = 200;
     SUPPORTED_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
@@ -8190,7 +7410,7 @@ function interpolate(template, vars) {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] !== void 0 ? vars[key] : `{{${key}}}`);
 }
 async function fetchKbdbBlock(env, apiKey, fragment) {
-  const base = (env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
+  const base = kbdbBaseUrl(env);
   let url;
   if (fragment.block_id) {
     url = `${base}/blocks/${encodeURIComponent(fragment.block_id)}`;
@@ -8261,6 +7481,7 @@ var init_recipe_expander = __esm({
     init_recipe_transforms();
     init_kbdb_caller();
     init_kbdb_tally();
+    init_endpoints();
   }
 });
 
@@ -8440,58 +7661,7 @@ function recordNodeSteps(env, apiKey, workflowName, steps, ctx) {
     steps
   }, ctx);
 }
-async function hashApiKey(apiKey) {
-  if (!apiKey) return "anon";
-  const encoder = new TextEncoder();
-  const data = encoder.encode(apiKey);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function kbdbCreateBlockUrl(env) {
-  const subdomain = env.WORKER_SUBDOMAIN || "uncle6-me";
-  return `https://arcrun-kbdb-create-block.${subdomain}.workers.dev`;
-}
-function recordTelemetry(env, apiKey, record, ctx) {
-  const promise = (async () => {
-    try {
-      const api_key_hash = await hashApiKey(apiKey ?? "");
-      const platformKey = env.PLATFORM_API_KEY || apiKey || "";
-      if (!platformKey) {
-        console.warn("[telemetry] no api_key, skipping");
-        return;
-      }
-      const body = {
-        api_key: platformKey,
-        type: "agent-telemetry",
-        source: "cypher-executor",
-        user_id: "platform_telemetry",
-        content: JSON.stringify(record),
-        metadata_json: JSON.stringify({ ...record, api_key_hash }),
-        tags_json: JSON.stringify([
-          "agent-telemetry",
-          `event:${record.event_type}`
-        ])
-      };
-      const res = await fetch(kbdbCreateBlockUrl(env), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      if (!res.ok) {
-        console.warn(
-          "[telemetry] write failed",
-          res.status,
-          await res.text().catch(() => "no body")
-        );
-      }
-    } catch (e) {
-      console.warn("[telemetry] exception", e);
-    }
-  })();
-  if (ctx?.waitUntil) {
-    ctx.waitUntil(promise);
-  }
+function recordTelemetry(_env, _apiKey, _record, _ctx) {
 }
 var init_telemetry = __esm({
   "cypher-executor/src/lib/telemetry.ts"() {
@@ -8724,6 +7894,7 @@ var init_graph_executor = __esm({
     init_magic_vars();
     init_telemetry();
     init_trace_redaction();
+    init_endpoints();
     GraphExecutor = class _GraphExecutor {
       loader;
       workflowLoader;
@@ -8907,8 +8078,7 @@ var init_graph_executor = __esm({
                 ...resolvedData
               };
               if (node.componentId === "claude_api") {
-                const baseUrl = this.env?.PUBLIC_BASE_URL ?? "https://cypher.arcrun.dev";
-                mergedContext.callback_url = `${baseUrl.replace(/\/$/, "")}/workflows/resume`;
+                mergedContext.callback_url = `${publicBaseUrl(this.env ?? {})}/workflows/resume`;
               }
               if (typeof resolvedData.recipe === "string" && this.env?.RECIPES) {
                 try {
@@ -9238,7 +8408,7 @@ function aggregateVerdicts(verdicts) {
 }
 async function recordComponentStats(env, nodes, trace) {
   try {
-    const base = (env.REGISTRY_BASE_URL ?? (env.WORKER_SUBDOMAIN ? wasmWorkerUrl("registry", env.WORKER_SUBDOMAIN) : void 0))?.replace(/\/$/, "");
+    const base = registryBaseUrl(env);
     if (!base) return;
     const verdicts = componentVerdictsFromTrace(nodes, trace);
     if (verdicts.length === 0) return;
@@ -9265,7 +8435,7 @@ async function recordComponentStats(env, nodes, trace) {
 var init_execution_evaluator = __esm({
   "cypher-executor/src/actions/execution-evaluator.ts"() {
     "use strict";
-    init_component_loader();
+    init_endpoints();
   }
 });
 
@@ -9314,7 +8484,7 @@ __export(webhook_handlers_exports, {
 });
 function recordRecipeStats(env, recipeKeys, ok, at, ctx) {
   if (recipeKeys.size === 0) return;
-  const base = (env.KBDB_BASE_URL ?? "https://kbdb.finally.click").replace(/\/$/, "");
+  const base = kbdbBaseUrl(env);
   let headers = { "Content-Type": "application/json" };
   if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
   headers = withCaller(headers, KBDB_CALLERS.recipeStats);
@@ -9435,8 +8605,1511 @@ var init_webhook_handlers = __esm({
     init_execution_evaluator();
     init_run_scratch();
     init_kbdb_caller();
+    init_endpoints();
   }
 });
+
+// cypher-executor/src/lib/component-loader.ts
+function wasmWorkerUrl(canonicalId, subdomain) {
+  const kebab = canonicalId.replace(/_/g, "-");
+  return `https://arcrun-${kebab}.${subdomain}.workers.dev`;
+}
+function createComponentLoader(env) {
+  return async (componentId) => {
+    if (componentId === "trigger_workflow") {
+      return makeTriggerWorkflowRunner(env);
+    }
+    const builtin = BUILTIN_COMPONENTS.get(componentId);
+    if (builtin) return builtin;
+    if (componentId.startsWith("http://") || componentId.startsWith("https://")) {
+      return makeHttpRunner(componentId);
+    }
+    if (isComponentHash(componentId)) {
+      const canonicalId = await env.WEBHOOKS.get(`idx:${componentId}`);
+      if (canonicalId) {
+        const runner = makeLogicRunner(canonicalId, env);
+        if (runner) return runner;
+      }
+      throw new Error(`\u627E\u4E0D\u5230\u96F6\u4EF6 hash "${componentId}"\uFF0C\u8ACB\u78BA\u8A8D\u5DF2\u900F\u904E acr push \u4E0A\u50B3`);
+    }
+    if (isRecipeHash(componentId)) {
+      const recipe = await resolveRecipe(componentId, env.RECIPES);
+      if (recipe) return pickRecipeRunner(recipe, env);
+      throw new Error(`\u627E\u4E0D\u5230 recipe hash "${componentId}"\uFF0C\u8ACB\u78BA\u8A8D\u5DF2\u900F\u904E acr push \u4E0A\u50B3`);
+    }
+    const logicRunner = makeLogicRunner(componentId, env);
+    if (logicRunner) return logicRunner;
+    if (WASM_HTTP_RUNNER_IDS.has(componentId)) {
+      return makeHttpRunner(componentUrl(componentId, env));
+    }
+    const authRecipe = await resolveAuthRecipe(componentId, env.RECIPES);
+    if (authRecipe) return makeAuthRecipeRunner(authRecipe);
+    const kvRecipe = await resolveRecipe(componentId, env.RECIPES);
+    if (kvRecipe) return pickRecipeRunner(kvRecipe, env);
+    throw new Error(
+      `\u627E\u4E0D\u5230\u96F6\u4EF6 "${componentId}"\u3002
+\u908F\u8F2F\u96F6\u4EF6\uFF1A${Object.keys(LOGIC_BINDING_MAP).join(", ")}
+\u6216\u50B3\u5165\u5916\u90E8 URL\uFF08https://...\uFF09\u3001recipe hash\uFF08rec_xxxxxxxx\uFF09\u3001\u96F6\u4EF6 hash\uFF08cmp_xxxxxxxx\uFF09`
+    );
+  };
+}
+function makeTriggerWorkflowRunner(env) {
+  return async (ctx) => {
+    const c = ctx && typeof ctx === "object" ? ctx : {};
+    const workflowName = String(c.workflow_name ?? "");
+    const apiKey = String(c.api_key ?? "");
+    const input = c.input && typeof c.input === "object" ? c.input : {};
+    const wait = c.wait !== false;
+    if (!workflowName) return { success: false, error: "trigger_workflow \u7F3A workflow_name" };
+    if (!apiKey) return { success: false, error: "trigger_workflow \u7F3A api_key" };
+    const wfKey = `${apiKey}:wf:${workflowName}`;
+    const wfRaw = await env.WEBHOOKS.get(wfKey, "text");
+    if (!wfRaw) return { success: false, error: `\u627E\u4E0D\u5230 workflow "${workflowName}" (key=${wfKey})` };
+    let record;
+    try {
+      record = JSON.parse(wfRaw);
+    } catch {
+      return { success: false, error: `workflow "${workflowName}" KV \u5167\u5BB9\u975E JSON` };
+    }
+    if (!record.graph) return { success: false, error: `workflow "${workflowName}" \u7F3A graph \u6B04\u4F4D` };
+    const { executeWebhookGraph: executeWebhookGraph2 } = await Promise.resolve().then(() => (init_webhook_handlers(), webhook_handlers_exports));
+    const triggerContext = { ...input, _triggered_by: "trigger_workflow" };
+    if (wait) {
+      const r = await executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey);
+      const isPaused = !r.success && typeof r.error === "string" && /workflow paused/i.test(r.error);
+      return {
+        success: r.success || isPaused,
+        triggered_workflow: workflowName,
+        status: r.success ? "completed" : isPaused ? "running_async" : "failed",
+        sub_result: r
+      };
+    } else {
+      void executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey).catch((e) => console.error("[trigger_workflow] fire-and-forget fail", workflowName, e));
+      return { success: true, triggered_workflow: workflowName, mode: "fire_and_forget" };
+    }
+  };
+}
+function makeHttpRunner(url) {
+  return async (ctx) => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ctx)
+    });
+    if (!res.ok) {
+      const text2 = await res.text();
+      return { success: false, status: res.status, error: text2.slice(0, 200) };
+    }
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { success: true, data: text };
+    }
+  };
+}
+function makeLogicRunner(canonicalId, env) {
+  const bindingKey = LOGIC_BINDING_MAP[canonicalId];
+  if (!bindingKey) return null;
+  const svc = env[bindingKey];
+  if (svc) {
+    return async (ctx) => {
+      const res = await svc.fetch(new Request("https://component/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ctx)
+      }));
+      if (!res.ok) {
+        const text = await res.text();
+        return { success: false, error: `${canonicalId} \u56DE\u50B3 ${res.status}: ${text.slice(0, 200)}` };
+      }
+      try {
+        return await res.json();
+      } catch {
+        return { success: false, error: `${canonicalId} \u56DE\u50B3\u975E JSON` };
+      }
+    };
+  }
+  return makeHttpRunner(componentUrl(canonicalId, env));
+}
+function pickRecipeRunner(recipe, env) {
+  return recipe.auth === "binding" ? makeBindingRecipeRunner(recipe, env) : makeRecipeRunner(recipe);
+}
+function makeBindingRecipeRunner(recipe, env) {
+  return async (ctx) => {
+    const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
+    const name = recipe.binding_name ?? "AI";
+    const binding = env[name];
+    if (!binding) {
+      return {
+        success: false,
+        error: `recipe "${recipe.canonical_id}" \u5BA3\u544A auth: binding\u3001binding_name: "${name}"\uFF0C\u4F46\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}\u3002\u8ACB\u5728 wrangler.toml \u88DC\u4E0A\u8A72 binding \u5F8C\u91CD\u65B0\u90E8\u7F72\u3002`
+      };
+    }
+    const target = recipe.endpoint;
+    const payload = renderBodyTemplate(recipe.body_template ?? recipe.body, ctxObj) ?? Object.fromEntries(Object.entries(ctxObj).filter(([k]) => !k.startsWith("_")));
+    try {
+      const runner = binding;
+      if (typeof runner.run !== "function") {
+        return {
+          success: false,
+          error: `binding "${name}" \u6C92\u6709 run() \u65B9\u6CD5\uFF0C\u76EE\u524D binding \u578B\u53EA\u652F\u63F4 run(model, input) \u5F62\u72C0\uFF08\u5982 env.AI\uFF09\u3002`
+        };
+      }
+      const data = await runner.run(target, payload);
+      if (recipe.response_map) {
+        const normalized = applyResponseMap(data, recipe.response_map);
+        return { success: true, data, text: normalized.text };
+      }
+      return { success: true, data };
+    } catch (e) {
+      return {
+        success: false,
+        error: `binding "${name}" \u547C\u53EB\u5931\u6557\uFF08${target}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}`
+      };
+    }
+  };
+}
+function makeRecipeRunner(recipe) {
+  return async (ctx) => {
+    const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
+    const authPath = ctxObj._auth_path ?? {};
+    const interpolate2 = (s) => s.replace(
+      /\{\{(auth\.)?(\w+)\}\}/g,
+      (_, authPrefix, k) => String(authPrefix ? authPath[k] ?? "" : ctxObj[k] ?? "")
+    );
+    const method = (recipe.method ?? "POST").toUpperCase();
+    const authHeaders = ctxObj._auth_headers ?? {};
+    const headers = {
+      "Content-Type": "application/json",
+      ...authHeaders
+    };
+    for (const [k, v] of Object.entries(recipe.headers ?? {})) {
+      headers[k] = interpolate2(v);
+    }
+    let bodyStr;
+    if (recipe.body_template) {
+      bodyStr = JSON.stringify(renderBodyTemplate(recipe.body_template, ctxObj));
+    } else if (recipe.body) {
+      bodyStr = interpolate2(JSON.stringify(recipe.body));
+    } else if (method !== "GET") {
+      const bodyObj = Object.fromEntries(
+        Object.entries(ctxObj).filter(([k]) => !k.startsWith("_"))
+      );
+      bodyStr = JSON.stringify(bodyObj);
+    }
+    const res = await fetch(interpolate2(recipe.endpoint), {
+      method,
+      headers,
+      body: bodyStr
+    });
+    const data = await readBodyOnce(res);
+    if (recipe.response_map) {
+      const normalized = applyResponseMap(data, recipe.response_map);
+      return { success: res.ok, status: res.status, data, text: normalized.text };
+    }
+    return { success: res.ok, status: res.status, data };
+  };
+}
+function makeAuthRecipeRunner(recipe) {
+  return async (ctx) => {
+    const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
+    const authHeaders = ctxObj._auth_headers ?? {};
+    const authQuery = ctxObj._auth_query ?? {};
+    const path = typeof ctxObj._path === "string" ? ctxObj._path : "";
+    const method = (ctxObj.method ?? "POST").toUpperCase();
+    const url = new URL(recipe.base_url.replace(/\/$/, "") + path);
+    for (const [k, v] of Object.entries(authQuery)) {
+      url.searchParams.set(k, v);
+    }
+    const headers = {
+      "Content-Type": "application/json",
+      ...authHeaders
+    };
+    const bodyObj = Object.fromEntries(
+      Object.entries(ctxObj).filter(([k]) => !k.startsWith("_") && k !== "method")
+    );
+    const res = await fetch(url.toString(), {
+      method,
+      headers,
+      body: method !== "GET" ? JSON.stringify(bodyObj) : void 0
+    });
+    const data = await readBodyOnce(res);
+    return { success: res.ok, status: res.status, data };
+  };
+}
+async function readBodyOnce(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+var WASM_HTTP_RUNNER_IDS, LOGIC_BINDING_MAP, RUNTIME_NATIVE_COMPONENT_IDS;
+var init_component_loader = __esm({
+  "cypher-executor/src/lib/component-loader.ts"() {
+    "use strict";
+    init_constants3();
+    init_hash();
+    init_recipes();
+    init_recipe_payload();
+    init_endpoints();
+    WASM_HTTP_RUNNER_IDS = /* @__PURE__ */ new Set([
+      // 通用 HTTP 零件
+      "http_request",
+      // 串流轉發零件（Arcrun#242）：source_url 回應 body 直接轉送成 dest_url 請求 body，
+      // 大型內容不進 stdin/stdout JSON 通道，用於部署整包 Worker bundle 等場景。
+      "fetch_relay",
+      // 通用 code 零件（sandbox inline JS，Arcrun#10 / 07-thin-shell §3.5 code-node）：獨立 Worker，
+      // URL 走 wasmWorkerUrl 通用推導（arcrun-code.{WORKER_SUBDOMAIN}.workers.dev，
+      // self-hosted 由 WORKER_SUBDOMAIN var 注入自己的 subdomain，無寫死官方域名）。
+      // 漏這行 = workflow 寫 `component: code` 落到 step 8 直接「找不到零件」（#29 發現）。
+      "code",
+      // gmail / telegram / line_notify / google_sheets 已降級為 recipe（2026-05-29 Phase 2）：
+      //   recipe:gmail_send / telegram_send / line_notify_send / google_sheets_read|append
+      //   走 step 6 KV recipe 解析，不再是零件。零件目錄已刪。
+      "cron",
+      // Auth primitives
+      "auth_static_key",
+      "auth_service_account",
+      "auth_oauth2",
+      "auth_mtls",
+      // hash（Arcrun#91，2026-08-13）：純計算零件（sha256/sha1/md5，hex/base64），
+      // 出貨線版本號機制與成品指紋核對用它。no_network_syscall，故不走 LOGIC_BINDING_MAP
+      // 的 Service Binding 路（rule 3.1 禁新增 binding），走這裡的通用 wasmWorkerUrl 推導，
+      // 與 code/cron 同一形狀（獨立 Worker，白名單只是「知道這個 canonical_id 存在」）。
+      "hash"
+    ]);
+    LOGIC_BINDING_MAP = {
+      if_control: "SVC_IF_CONTROL",
+      switch: "SVC_SWITCH",
+      foreach_control: "SVC_FOREACH_CONTROL",
+      filter: "SVC_FILTER",
+      merge: "SVC_MERGE",
+      try_catch: "SVC_TRY_CATCH",
+      // wait 已於 Arcrun#101（2026-08-12）移進 BUILTIN_COMPONENTS（step 1）——
+      // 等待是 orchestrator 的排程職責，WASI 沙箱裡做不到「不花 CPU 地等」。理由全文見
+      // constants.ts 的 wait 註解。這裡刻意**移除**而非留著：step 1 本來就先於 step 5 命中，
+      // 留下這行只會讓讀者以為 wait 還走 SVC_WAIT（實際永遠走不到）＝誤導人的死路由。
+      // wrangler.toml 的 SVC_WAIT binding 不動（rule 3.1：13 個既有 binding 保留不新增），
+      // 拆綁定要重新部署、與本票無關。
+      set: "SVC_SET",
+      array_ops: "SVC_ARRAY_OPS",
+      string_ops: "SVC_STRING_OPS",
+      number_ops: "SVC_NUMBER_OPS",
+      date_ops: "SVC_DATE_OPS",
+      validate_json: "SVC_VALIDATE_JSON"
+      // ai_transform_compile / ai_transform_run 已刪除（2026-05-29）：
+      // Arcrun 是 AI 呼叫的工具，工作流不該內嵌 AI 節點回頭呼叫 AI（n8n 才需要，因它沒大腦）。
+    };
+    RUNTIME_NATIVE_COMPONENT_IDS = /* @__PURE__ */ new Set([
+      "trigger_workflow",
+      ...BUILTIN_COMPONENTS.keys(),
+      ...Object.keys(LOGIC_BINDING_MAP),
+      ...WASM_HTTP_RUNNER_IDS
+    ]);
+  }
+});
+
+// cypher-executor/src/lib/endpoints.ts
+function isPrivateCloud(env) {
+  return /^(1|true|yes|on)$/i.test(String(env.PRIVATE_CLOUD ?? "").trim());
+}
+function componentUrl(canonicalId, env) {
+  const kebab = canonicalId.replace(/_/g, "-");
+  const template = String(env.COMPONENT_URL_TEMPLATE ?? "").trim();
+  if (template) {
+    if (!template.includes("{name}") && !template.includes("{id}")) {
+      throw new EndpointConfigError(
+        "COMPONENT_URL_TEMPLATE",
+        "\u6A23\u677F\u88E1\u8981\u6709 {name}\uFF08\uFF1Darcrun-<\u96F6\u4EF6\u540D>\uFF09\u6216 {id}\uFF08\uFF1D<\u96F6\u4EF6\u540D>\uFF09\uFF0C\u5426\u5247\u6240\u6709\u96F6\u4EF6\u6703\u6307\u5230\u540C\u4E00\u500B\u4F4D\u5740"
+      );
+    }
+    return trimSlash(template.replaceAll("{name}", `arcrun-${kebab}`).replaceAll("{id}", kebab));
+  }
+  if (isPrivateCloud(env)) {
+    throw new EndpointConfigError("COMPONENT_URL_TEMPLATE", "\u79C1\u6709\u96F2\u6A21\u5F0F\uFF08PRIVATE_CLOUD\uFF09\u4E0D\u63A8\u5C0E workers.dev \u4F4D\u5740\uFF0C\u5FC5\u9808\u660E\u8A2D\u96F6\u4EF6\u4F4D\u5740\u6A23\u677F");
+  }
+  const sub = String(env.WORKER_SUBDOMAIN ?? "").trim();
+  if (!sub) {
+    throw new EndpointConfigError("WORKER_SUBDOMAIN", "\u4E5F\u6C92\u6709 COMPONENT_URL_TEMPLATE\uFF0C\u7121\u5F9E\u6C7A\u5B9A\u96F6\u4EF6\u5728\u54EA");
+  }
+  return wasmWorkerUrl(canonicalId, sub);
+}
+function kbdbBaseUrl(env) {
+  const v = String(env.KBDB_BASE_URL ?? "").trim();
+  if (!v) throw new EndpointConfigError("KBDB_BASE_URL", "KBDB \u4F4D\u5740\u6C92\u6709\u9810\u8A2D\u503C\uFF0C\u5FC5\u9808\u660E\u8A2D");
+  return trimSlash(v);
+}
+function registryBaseUrl(env) {
+  const v = String(env.REGISTRY_BASE_URL ?? "").trim();
+  if (v) return trimSlash(v);
+  try {
+    return componentUrl("registry", env);
+  } catch {
+    return void 0;
+  }
+}
+function publicBaseUrl(env) {
+  const v = String(env.PUBLIC_BASE_URL ?? "").trim();
+  if (v) return trimSlash(v);
+  if (isPrivateCloud(env)) {
+    throw new EndpointConfigError("PUBLIC_BASE_URL", "\u79C1\u6709\u96F2\u6A21\u5F0F\u4E0D\u9810\u8A2D\u70BA\u5B98\u65B9\u7DB2\u57DF\uFF0C\u5FC5\u9808\u660E\u8A2D\u672C\u5F15\u64CE\u7684\u5C0D\u5916\u4F4D\u5740");
+  }
+  return "https://cypher.arcrun.dev";
+}
+function mcpBaseUrl(env) {
+  const v = String(env.MCP_BASE_URL ?? "").trim();
+  if (v) return trimSlash(v);
+  if (isPrivateCloud(env)) return "";
+  try {
+    return componentUrl("mcp", env);
+  } catch {
+    return "";
+  }
+}
+var EndpointConfigError, trimSlash;
+var init_endpoints = __esm({
+  "cypher-executor/src/lib/endpoints.ts"() {
+    "use strict";
+    init_component_loader();
+    EndpointConfigError = class extends Error {
+      missing;
+      constructor(missing, detail) {
+        super(`[endpoint-config] ${missing} \u672A\u8A2D\u5B9A\uFF1A${detail}`);
+        this.name = "EndpointConfigError";
+        this.missing = missing;
+      }
+    };
+    trimSlash = (s) => s.replace(/\/+$/, "");
+  }
+});
+
+// cypher-executor/src/routes/kbdb-proxy.ts
+function kbdbBase(env) {
+  const base = kbdbBaseUrl(env);
+  let headers = { "Content-Type": "application/json" };
+  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  headers = withCaller(headers, KBDB_CALLERS.proxy);
+  return { base, headers };
+}
+function tenant(c) {
+  return c.req.header("X-Arcrun-API-Key") ?? null;
+}
+function forwardQuery(c) {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(c.req.query())) {
+    if (k === "owner_id" || v === void 0 || v === "") continue;
+    params.set(k, v);
+  }
+  return params;
+}
+var kbdbProxyRouter, NEED_KEY;
+var init_kbdb_proxy = __esm({
+  "cypher-executor/src/routes/kbdb-proxy.ts"() {
+    "use strict";
+    init_dist();
+    init_kbdb_caller();
+    init_endpoints();
+    kbdbProxyRouter = new Hono2();
+    NEED_KEY = { error: "\u7F3A\u5C11 X-Arcrun-API-Key header" };
+    kbdbProxyRouter.post("/kbdb/templates", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !body.name || !Array.isArray(body.slots)) {
+        return c.json({ error: "name \u8207 slots[] \u5FC5\u586B" }, 400);
+      }
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/templates`, {
+        method: "POST",
+        headers,
+        // created_by 帶上租戶當溯源，但 template 本身全域可見可用
+        body: JSON.stringify({ name: body.name, slots: body.slots, description: body.description, created_by: owner })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/templates", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/templates`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/templates/:idOrName", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/templates/${encodeURIComponent(c.req.param("idOrName"))}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.post("/kbdb/records", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !body.template || !body.values && !body.entry_ids) {
+        return c.json({ error: "template \u5FC5\u586B\uFF0Cvalues \u8207 entry_ids \u81F3\u5C11\u8981\u6709\u4E00\u500B" }, 400);
+      }
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records`, {
+        method: "POST",
+        headers,
+        // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
+        body: JSON.stringify({
+          template: body.template,
+          ...body.values ? { values: body.values } : {},
+          ...body.entry_ids ? { entry_ids: body.entry_ids } : {},
+          owner_id: owner
+        })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/records/by-template/:template", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = forwardQuery(c);
+      params.set("owner_id", owner);
+      const res = await fetch(
+        `${base}/records/by-template/${encodeURIComponent(c.req.param("template"))}?${params.toString()}`,
+        { headers }
+      );
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.post("/kbdb/records/backfill-library", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !body.library) return c.json({ error: "library \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records/backfill-library`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          library: body.library,
+          owner_id: owner,
+          triplet_template: body.triplet_template,
+          source_prefix: body.source_prefix,
+          limit: body.limit
+        })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/records/backfill-library/status", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = new URLSearchParams({ owner_id: owner });
+      for (const k of ["triplet_template", "source_prefix"]) {
+        const v = c.req.query(k);
+        if (v) params.set(k, v);
+      }
+      const res = await fetch(`${base}/records/backfill-library/status?${params.toString()}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/records/:recordId", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.patch("/kbdb/records/:recordId", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || typeof body.values !== "object" || body.values === null) {
+        return c.json({ error: "values \u5FC5\u586B\uFF08{slot\u540D: \u5167\u5BB9}\uFF09" }, 400);
+      }
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ values: body.values })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/search", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const q = c.req.query("q");
+      if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const params = forwardQuery(c);
+      params.set("owner_id", owner);
+      const res = await fetch(`${base}/entries/search?${params.toString()}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/retrieve", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const q = c.req.query("q") || c.req.query("question");
+      if (!q) return c.json({ error: "q \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const params = forwardQuery(c);
+      params.set("q", q);
+      params.delete("question");
+      params.set("owner_id", owner);
+      try {
+        const res = await fetch(`${base}/retrieve?${params.toString()}`, { headers });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.post("/kbdb/entries", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !body.entry_type) return c.json({ error: "entry_type \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/entries`, {
+        method: "POST",
+        headers,
+        // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
+        body: JSON.stringify({ ...body, owner_id: owner })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/entries", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = forwardQuery(c);
+      const search = params.get("search");
+      if (search && !params.get("q")) params.set("q", search);
+      params.delete("search");
+      params.set("owner_id", owner);
+      const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/entries/library-cards", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = forwardQuery(c);
+      params.set("owner_id", owner);
+      const res = await fetch(`${base}/entries/library-cards?${params.toString()}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.get("/kbdb/graph/neighbors/:name", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = forwardQuery(c);
+      params.set("owner_id", owner);
+      try {
+        const res = await fetch(
+          `${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}?${params.toString()}`,
+          { headers }
+        );
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.get("/kbdb/map", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const owner = c.req.query("owner_id");
+      const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
+      try {
+        const res = await fetch(`${base}/map${qs}`, { headers });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.get("/kbdb/map/:library", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const owner = c.req.query("owner_id");
+      const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
+      try {
+        const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}${qs}`, { headers });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.put("/kbdb/map/:library/narrative", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      const narrative = typeof body?.narrative === "string" ? body.narrative : "";
+      if (!narrative.trim()) return c.json({ error: "narrative \u5FC5\u586B\uFF08\u4E0D\u5F97\u7A7A\u767D\uFF09" }, 400);
+      const owner = (typeof body?.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
+      const { base, headers } = kbdbBase(c.env);
+      try {
+        const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}/narrative`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ narrative, ...owner ? { owner_id: owner } : {} })
+        });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.post("/kbdb/map/recompute", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => ({}));
+      const library = (typeof body.library === "string" ? body.library : c.req.query("library")) || "";
+      if (!library.trim()) return c.json({ error: "library \u5FC5\u586B" }, 400);
+      const owner = (typeof body.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
+      const { base, headers } = kbdbBase(c.env);
+      try {
+        const res = await fetch(`${base}/map/recompute`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ ...body, library, ...owner ? { owner_id: owner } : {} })
+        });
+        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    });
+    kbdbProxyRouter.patch("/kbdb/entries/:id", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => ({}));
+      const { owner_id: _drop, ...patch } = body ?? {};
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(patch)
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+  }
+});
+
+// cypher-executor/src/routes/credentials.ts
+function legacyOwnerFor(env, apiKey) {
+  return apiKey === credentialOwner(env) ? legacyCredentialOwner(env) : null;
+}
+async function deriveSecretRef(apiKey, name) {
+  const hash8 = await sha256Prefix(apiKey);
+  return `CRED_${name.toUpperCase()}_${hash8.toUpperCase()}`;
+}
+async function storeCredential(env, apiKey, name, value, service) {
+  const secretRef = await deriveSecretRef(apiKey, name);
+  await putCredentialSecret(env, apiKey, secretRef, value);
+  await upsertCredentialEntry(env, apiKey, name, service, "standard", secretRef);
+}
+function validateName(name) {
+  return typeof name === "string" && /^\w+$/.test(name);
+}
+function validSensitivity(s) {
+  return s === "standard" || s === "high";
+}
+async function putWorkerSecret(env, secretRef, value, tokenOverride) {
+  const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
+  if (!token || !env.CF_ACCOUNT_ID) {
+    throw new Error(
+      "\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u5BEB\u5165\u8DEF\u5F91\u672A\u5C31\u7DD2\uFF08\u898B credential-store-migration.md T3\uFF1Aacr init/update \u61C9\u78BA\u4FDD\u9019\u5169\u9805\u5C31\u7DD2\uFF09"
+    );
+  }
+  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ name: secretRef, text: value, type: "secret_text" })
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.success) {
+    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
+    throw new Error(`CF Workers Secrets \u5BEB\u5165\u5931\u6557\uFF1A${detail}`);
+  }
+}
+async function deleteWorkerSecret(env, secretRef, tokenOverride) {
+  const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
+  if (!token || !env.CF_ACCOUNT_ID) {
+    throw new Error("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
+  }
+  const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (res.status === 404) return;
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.success) {
+    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
+    throw new Error(`CF Workers Secrets \u522A\u9664\u5931\u6557\uFF1A${detail}`);
+  }
+}
+async function putCredentialSecret(env, apiKey, secretRef, value) {
+  const mode = secretBackendMode(env);
+  if (mode === "local") return putLocalSecret(env, apiKey, secretRef, value);
+  if (mode === "invalid") throw new Error(`SECRET_BACKEND \u8A2D\u5B9A\u503C\u7121\u6CD5\u8FA8\u8B58\uFF08\u53EA\u63A5\u53D7 cf \u6216 local\uFF09\uFF1A${env.SECRET_BACKEND}`);
+  return putWorkerSecret(env, secretRef, value);
+}
+async function deleteCredentialSecret(env, apiKey, secretRef) {
+  const mode = secretBackendMode(env);
+  if (mode === "local") return deleteLocalSecret(env, apiKey, secretRef);
+  if (mode === "invalid") throw new Error(`SECRET_BACKEND \u8A2D\u5B9A\u503C\u7121\u6CD5\u8FA8\u8B58\uFF08\u53EA\u63A5\u53D7 cf \u6216 local\uFF09\uFF1A${env.SECRET_BACKEND}`);
+  return deleteWorkerSecret(env, secretRef);
+}
+function parseMeta(row) {
+  try {
+    const m = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    return {
+      service: typeof m.service === "string" ? m.service : null,
+      sensitivity: m.sensitivity === "high" ? "high" : "standard",
+      secret_ref: typeof m.secret_ref === "string" ? m.secret_ref : "",
+      last_used_at: typeof m.last_used_at === "number" ? m.last_used_at : null
+    };
+  } catch {
+    return { service: null, sensitivity: "standard", secret_ref: "", last_used_at: null };
+  }
+}
+async function kbdbCredFetch(env, path, init) {
+  const { base, headers } = kbdbBase(env);
+  return fetch(`${base}${path}`, {
+    ...init,
+    headers: { ...headers, ...init?.headers }
+  });
+}
+function invalidateCredentialCache(apiKey) {
+  delete dirCache[apiKey];
+  for (const k of Object.keys(dirCache)) delete dirCache[k];
+}
+async function fetchDirectoryRows(env, owner) {
+  const qs = new URLSearchParams({ owner_id: owner, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
+  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
+  if (!res.ok) {
+    return { rows: [], error: `KBDB \u56DE HTTP ${res.status}` };
+  }
+  const body = await res.json().catch(() => null);
+  const rows = (body?.entries ?? []).filter((e) => !!e.page_name).map((e) => {
+    const meta = parseMeta(e);
+    return {
+      id: e.id,
+      name: e.page_name,
+      secret_ref: meta.secret_ref,
+      service: meta.service,
+      sensitivity: meta.sensitivity,
+      last_used_at: meta.last_used_at
+    };
+  });
+  return { rows, error: null };
+}
+async function getCredentialDirectory(env, apiKey) {
+  const now2 = Date.now();
+  const cached = dirCache[apiKey];
+  if (cached && now2 - cached.fetchedAt < DIR_CACHE_TTL_MS) return { rows: cached.rows, error: null };
+  const primary = await fetchDirectoryRows(env, apiKey);
+  if (primary.error) return primary;
+  let rows = primary.rows;
+  const legacy = legacyOwnerFor(env, apiKey);
+  if (legacy) {
+    const old = await fetchDirectoryRows(env, legacy);
+    if (!old.error) {
+      const have = new Set(rows.map((r) => r.name));
+      rows = [...rows, ...old.rows.filter((r) => !have.has(r.name))];
+    }
+  }
+  dirCache[apiKey] = { rows, fetchedAt: now2 };
+  return { rows, error: null };
+}
+async function getCredentialSecretRefsDetailed(env, apiKey) {
+  const { rows, error } = await getCredentialDirectory(env, apiKey);
+  const refs = {};
+  for (const r of rows) {
+    if (r.secret_ref) refs[r.name] = r.secret_ref;
+  }
+  return { refs, directoryError: error };
+}
+function touchLastUsed(env, apiKey, names) {
+  const cached = dirCache[apiKey];
+  if (!cached || names.length === 0) return;
+  const now2 = Math.floor(Date.now() / 1e3);
+  for (const r of cached.rows) {
+    if (!names.includes(r.name)) continue;
+    if (typeof r.last_used_at === "number" && now2 - r.last_used_at < LAST_USED_MIN_INTERVAL_S) continue;
+    const meta = {
+      service: r.service,
+      sensitivity: r.sensitivity,
+      secret_ref: r.secret_ref,
+      last_used_at: now2
+    };
+    kbdbCredFetch(env, `/entries/${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata_json: JSON.stringify(meta) })
+    }).catch(() => {
+    });
+    r.last_used_at = now2;
+  }
+}
+async function findCredentialEntry(env, apiKey, name) {
+  const qs = new URLSearchParams({
+    owner_id: apiKey,
+    entry_type: CREDENTIAL_ENTRY_TYPE,
+    page_name: name,
+    limit: "1"
+  });
+  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
+  if (!res.ok) throw new Error(`KBDB /entries \u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
+  const body = await res.json().catch(() => null);
+  return body?.entries?.[0] ?? null;
+}
+async function locateCredentialEntry(env, apiKey, name) {
+  const entry = await findCredentialEntry(env, apiKey, name);
+  if (entry) return { owner: apiKey, entry };
+  const legacy = legacyOwnerFor(env, apiKey);
+  if (legacy) {
+    const old = await findCredentialEntry(env, legacy, name);
+    if (old) return { owner: legacy, entry: old };
+  }
+  return null;
+}
+async function upsertCredentialEntry(env, apiKey, name, service, sensitivity, secretRef) {
+  const existing = await findCredentialEntry(env, apiKey, name);
+  const meta = {
+    service,
+    sensitivity,
+    secret_ref: secretRef,
+    last_used_at: existing ? parseMeta(existing).last_used_at : null
+  };
+  if (existing) {
+    const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(existing.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata_json: JSON.stringify(meta) })
+    });
+    if (!res.ok) throw new Error(`credential \u76EE\u9304\u66F4\u65B0\u5931\u6557\uFF1AHTTP ${res.status}`);
+  } else {
+    const res = await kbdbCredFetch(env, `/entries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_type: CREDENTIAL_ENTRY_TYPE,
+        owner_id: apiKey,
+        page_name: name,
+        metadata_json: JSON.stringify(meta)
+      })
+    });
+    if (!res.ok) throw new Error(`credential \u76EE\u9304\u5EFA\u7ACB\u5931\u6557\uFF1AHTTP ${res.status}`);
+  }
+  invalidateCredentialCache(apiKey);
+}
+async function listCredentialRows(env, apiKey) {
+  const fetchOwner = async (owner) => {
+    const qs = new URLSearchParams({ owner_id: owner, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
+    const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
+    if (!res.ok) throw new Error(`credential \u76EE\u9304\u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
+    const body = await res.json().catch(() => null);
+    return (body?.entries ?? []).filter((e) => !!e.page_name).map((e) => {
+      const meta = parseMeta(e);
+      return { name: e.page_name, service: meta.service, sensitivity: meta.sensitivity, created_at: e.created_at, last_used_at: meta.last_used_at };
+    });
+  };
+  const rows = await fetchOwner(apiKey);
+  const legacy = legacyOwnerFor(env, apiKey);
+  if (legacy) {
+    const old = await fetchOwner(legacy).catch(() => []);
+    const have = new Set(rows.map((r) => r.name));
+    rows.push(...old.filter((r) => !have.has(r.name)));
+  }
+  return rows;
+}
+async function hasCredential(env, apiKey, name) {
+  const hit = await locateCredentialEntry(env, apiKey, name);
+  return hit !== null;
+}
+async function findEntryBySecretRef(env, apiKey, secretRef) {
+  const { rows } = await getCredentialDirectory(env, apiKey);
+  const hit = rows.find((r) => r.secret_ref === secretRef);
+  return hit ? { name: hit.name } : null;
+}
+async function writeCredential(env, apiKey, name, value, service, sensitivityRaw) {
+  const sensitivity = validSensitivity(sensitivityRaw) ? sensitivityRaw : "standard";
+  const secretRef = await deriveSecretRef(apiKey, name);
+  const clash = await findEntryBySecretRef(env, apiKey, secretRef);
+  if (clash && clash.name !== name) {
+    throw new Error(
+      `\u540D\u7A31\u300C${name}\u300D\u884D\u751F\u51FA\u7684\u5132\u5B58\u4F4D\u7F6E\u5DF2\u88AB\u300C${clash.name}\u300D\u4F54\u7528\uFF08\u5B83\u5148\u524D\u5F9E\u300C${name}\u300D\u6539\u540D\u96E2\u958B\uFF09\uFF0C\u63DB\u4E00\u500B\u540D\u5B57\u518D\u5EFA\u7ACB\u3002`
+    );
+  }
+  await putCredentialSecret(env, apiKey, secretRef, value);
+  await upsertCredentialEntry(env, apiKey, name, service ?? null, sensitivity, secretRef);
+  return { secretRef, sensitivity };
+}
+async function deleteCredentialByName(env, apiKey, name) {
+  try {
+    const owners = [apiKey, legacyOwnerFor(env, apiKey)].filter((o) => !!o);
+    let deleted = false;
+    for (const owner of owners) {
+      const entry = await findCredentialEntry(env, owner, name);
+      if (!entry) continue;
+      const meta = parseMeta(entry);
+      if (meta.secret_ref) await deleteCredentialSecret(env, owner, meta.secret_ref);
+      const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(entry.id)}`, { method: "DELETE" });
+      if (!res.ok) return { ok: false, status: 502, error: `credential \u76EE\u9304\u522A\u9664\u5931\u6557\uFF1AHTTP ${res.status}` };
+      deleted = true;
+    }
+    if (deleted) {
+      invalidateCredentialCache(apiKey);
+      return { ok: true };
+    }
+    return { ok: false, status: 404, error: `\u627E\u4E0D\u5230 credential\u300C${name}\u300D` };
+  } catch (e) {
+    return { ok: false, status: 502, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+async function editCredential(env, apiKey, currentName, updates) {
+  const located = await locateCredentialEntry(env, apiKey, currentName);
+  if (!located) throw new Error(`\u627E\u4E0D\u5230 credential\u300C${currentName}\u300D`);
+  const { entry, owner } = located;
+  const meta = parseMeta(entry);
+  if (!meta.secret_ref) throw new Error(`credential\u300C${currentName}\u300D\u7F3A secret_ref\uFF0C\u8CC7\u6599\u7570\u5E38\uFF0C\u7121\u6CD5\u4FEE\u6539`);
+  const newName = updates.newName && updates.newName !== currentName ? updates.newName : currentName;
+  if (!validateName(newName)) throw new Error("\u540D\u7A31\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA");
+  if (newName !== currentName) {
+    const clash = await locateCredentialEntry(env, apiKey, newName);
+    if (clash) throw new Error(`\u540D\u7A31\u300C${newName}\u300D\u5DF2\u88AB\u4F7F\u7528`);
+  }
+  const service = updates.service !== void 0 ? updates.service || null : meta.service;
+  if (updates.value) {
+    await putCredentialSecret(env, owner, meta.secret_ref, updates.value);
+  }
+  const newMeta = {
+    service,
+    sensitivity: meta.sensitivity,
+    secret_ref: meta.secret_ref,
+    last_used_at: meta.last_used_at
+  };
+  const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(entry.id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ page_name: newName, metadata_json: JSON.stringify(newMeta) })
+  });
+  if (!res.ok) throw new Error(`credential \u4FEE\u6539\u5931\u6557\uFF1AHTTP ${res.status}`);
+  invalidateCredentialCache(apiKey);
+  return { name: newName, service, sensitivity: meta.sensitivity };
+}
+var credentialsRouter, CYPHER_SCRIPT_NAME, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
+var init_credentials = __esm({
+  "cypher-executor/src/routes/credentials.ts"() {
+    "use strict";
+    init_dist();
+    init_hash();
+    init_kbdb_proxy();
+    init_secret_backend();
+    init_tenant();
+    credentialsRouter = new Hono2();
+    CYPHER_SCRIPT_NAME = "arcrun-cypher-executor";
+    CREDENTIAL_ENTRY_TYPE = "credential";
+    DIR_CACHE_TTL_MS = 6e4;
+    dirCache = {};
+    LAST_USED_MIN_INTERVAL_S = 300;
+    VALUE_LIKE_FIELDS = ["value", "secret", "token", "text", "plaintext"];
+    credentialsRouter.post("/credentials/directory", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const body = await c.req.json().catch(() => null);
+      const name = body?.name;
+      if (!validateName(name)) {
+        return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+      }
+      const offending = VALUE_LIKE_FIELDS.filter((f) => body?.[f] !== void 0);
+      if (offending.length > 0) {
+        return c.json({
+          error: `\u9019\u652F\u7AEF\u9EDE\u53EA\u5BEB\u76EE\u9304\uFF0C\u4E0D\u6536\u91D1\u9470\u503C\uFF08\u6536\u5230 ${offending.join("/")}\uFF09\u3002\u503C\u8ACB\u7531\u6301\u6709 Cloudflare \u5BEB\u5165\u6191\u8B49\u7684\u4E00\u65B9\u76F4\u63A5 PUT \u9032 Workers Secrets\uFF0Csecret \u540D\u7A31\u7528\u672C\u7AEF\u9EDE\u56DE\u7684 secret_ref\uFF08D36\uFF1A\u53EA\u6709\u4E00\u689D\u91D1\u9470\u50B3\u905E\u8DEF\u5F91\uFF09\u3002`
+        }, 400);
+      }
+      const service = typeof body?.service === "string" ? body.service : null;
+      const sensitivity = validSensitivity(body?.sensitivity) ? body.sensitivity : "standard";
+      try {
+        const secretRef = await deriveSecretRef(apiKey, name);
+        await upsertCredentialEntry(c.env, apiKey, name, service, sensitivity, secretRef);
+        return c.json({
+          success: true,
+          name,
+          service,
+          sensitivity,
+          // 呼叫端拿這兩個值去寫值那一半：PUT /accounts/:id/workers/scripts/{secret_script}/secrets
+          // body { name: secret_ref, text: <明文>, type: 'secret_text' }。
+          secret_ref: secretRef,
+          secret_script: CYPHER_SCRIPT_NAME
+        });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+    credentialsRouter.post("/credentials", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const body = await c.req.json().catch(() => null);
+      if (!validateName(body?.name)) {
+        return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+      }
+      if (!body?.value || typeof body.value !== "string") {
+        return c.json({ error: "value \u5FC5\u586B\uFF08credential \u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF09" }, 400);
+      }
+      try {
+        const { secretRef, sensitivity } = await writeCredential(
+          c.env,
+          apiKey,
+          body.name,
+          body.value,
+          body.service,
+          body.sensitivity
+        );
+        return c.json({ success: true, name: body.name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
+      }
+    });
+    credentialsRouter.put("/credentials/:name", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const name = c.req.param("name");
+      if (!validateName(name)) {
+        return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+      }
+      const body = await c.req.json().catch(() => null);
+      if (!body?.value || typeof body.value !== "string") {
+        return c.json({ error: "value \u5FC5\u586B\uFF08credential \u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF09" }, 400);
+      }
+      try {
+        const { secretRef, sensitivity } = await writeCredential(
+          c.env,
+          apiKey,
+          name,
+          body.value,
+          body.service,
+          body.sensitivity
+        );
+        return c.json({ success: true, name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
+      }
+    });
+    credentialsRouter.delete("/credentials/:name", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const name = c.req.param("name");
+      const result = await deleteCredentialByName(c.env, apiKey, name);
+      if (!result.ok) return c.json({ success: false, error: result.error }, result.status);
+      return c.json({ success: true, name, source: "workers-secrets" });
+    });
+    credentialsRouter.patch("/credentials/:name", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      const name = c.req.param("name");
+      const body = await c.req.json().catch(() => null);
+      const newName = typeof body?.new_name === "string" ? body.new_name : void 0;
+      const service = typeof body?.service === "string" ? body.service : void 0;
+      const value = typeof body?.value === "string" ? body.value : void 0;
+      try {
+        const result = await editCredential(c.env, apiKey, name, { newName, service, value });
+        return c.json({ success: true, ...result });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
+        return c.json({ success: false, error: msg }, status);
+      }
+    });
+    credentialsRouter.get("/credentials/catalog", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      try {
+        const rows = await listCredentialRows(c.env, apiKey);
+        return c.json({ success: true, credentials: rows, total: rows.length });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+    credentialsRouter.get("/credentials", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) {
+        return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      }
+      try {
+        const rows = await listCredentialRows(c.env, apiKey);
+        return c.json({ success: true, credentials: rows, total: rows.length });
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+    });
+  }
+});
+
+// cypher-executor/src/lib/portal-auth-store.ts
+init_credentials();
+
+// cypher-executor/src/lib/ephemeral-store.ts
+init_kbdb_proxy();
+
+// cypher-executor/src/lib/release-body.ts
+function releaseBody(res) {
+  try {
+    if (res && res.body && !res.bodyUsed) void res.body.cancel().catch(() => void 0);
+  } catch {
+  }
+}
+
+// cypher-executor/src/lib/ephemeral-store.ts
+var EphemeralStoreError = class extends Error {
+};
+async function kFetch(env, path, init) {
+  const { base, headers } = kbdbBase(env);
+  try {
+    return await fetch(`${base}${path}`, {
+      ...init,
+      headers: { ...headers, ...init?.headers }
+    });
+  } catch (e) {
+    throw new EphemeralStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+async function sha256Hex(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var ensuredTemplates = /* @__PURE__ */ new Set();
+async function ensureTemplate(env, name, slots) {
+  if (ensuredTemplates.has(name)) return;
+  const got = await kFetch(env, `/templates/${encodeURIComponent(name)}`);
+  releaseBody(got);
+  if (!got.ok) {
+    releaseBody(await kFetch(env, "/templates", {
+      method: "POST",
+      body: JSON.stringify({ name, slots })
+    }).catch(() => void 0));
+  }
+  ensuredTemplates.add(name);
+}
+async function findByHash(env, template, hashField, hash) {
+  const res = await kFetch(
+    env,
+    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(hashField)}&value=${encodeURIComponent(hash)}`
+  );
+  if (!res.ok) {
+    releaseBody(res);
+    return null;
+  }
+  const body = await res.json().catch(() => null);
+  const id = body?.record_ids?.[0];
+  if (!id) return null;
+  const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
+  if (!rec.ok) {
+    releaseBody(rec);
+    return null;
+  }
+  const recBody = await rec.json().catch(() => null);
+  return recBody?.record ?? null;
+}
+async function deleteRecordById(env, recordId) {
+  releaseBody(await kFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }).catch(() => void 0));
+}
+async function ephemeralPut(env, opts) {
+  await ensureTemplate(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
+  const hash = await sha256Hex(opts.rawKey);
+  const exp = Date.now() + opts.ttlSeconds * 1e3;
+  const values = { ...opts.values, [opts.hashField]: hash, exp: String(exp) };
+  const existing = opts.fresh ? null : await findByHash(env, opts.template, opts.hashField, hash);
+  if (existing) {
+    const res2 = await kFetch(env, `/records/${encodeURIComponent(existing.record_id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ values })
+    });
+    releaseBody(res2);
+    if (!res2.ok) throw new EphemeralStoreError(`PATCH /records(${opts.template}) \u2192 ${res2.status}`);
+    return;
+  }
+  const res = await kFetch(env, "/records", {
+    method: "POST",
+    body: JSON.stringify({ template: opts.template, values })
+  });
+  releaseBody(res);
+  if (!res.ok) throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 ${res.status}`);
+}
+async function ephemeralGet(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const found = await findByHash(env, opts.template, opts.hashField, hash);
+  if (!found) return null;
+  const exp = Number(found.values.exp);
+  const expired = Number.isFinite(exp) && exp < Date.now();
+  if (opts.consume || expired) await deleteRecordById(env, found.record_id);
+  if (expired) return null;
+  return found.values;
+}
+async function ephemeralDelete(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const found = await findByHash(env, opts.template, opts.hashField, hash);
+  if (found) await deleteRecordById(env, found.record_id);
+}
+
+// cypher-executor/src/lib/portal-auth-store.ts
+init_secret_backend();
+var LOCAL_AUTH_OWNER = "__arcrun_auth_store__";
+var LOCAL_AUTH_REF = "ARCRUN_AUTH_STORE";
+function authStoreIsLocal(env) {
+  return secretBackendMode(env) === "local";
+}
+async function loadLocalStrict(env) {
+  const raw2 = await getLocalSecretStrict(env, LOCAL_AUTH_OWNER, LOCAL_AUTH_REF);
+  if (raw2 === null) return emptyStore();
+  const p = JSON.parse(raw2);
+  return {
+    version: 1,
+    console: p.console ?? null,
+    users: Array.isArray(p.users) ? p.users : [],
+    passwords: p.passwords && typeof p.passwords === "object" ? p.passwords : {}
+  };
+}
+async function hydrateAuthStore(env) {
+  if (!authStoreIsLocal(env) || !localBackendReady(env)) return;
+  try {
+    overlay = await loadLocalStrict(env);
+    overlayAt = Date.now();
+  } catch {
+  }
+}
+async function writeLocalStore(env, data) {
+  if (!localBackendReady(env)) {
+    throw new AuthStoreWriteError("\u4F01\u696D\u79C1\u6709\u96F2\u8A8D\u8B49\u4FDD\u7BA1\u672A\u5C31\u7DD2\uFF1A\u9700\u8981 PRIVATE_SECRET_KEY\uFF08\u81F3\u5C11 32 \u5B57\u5143\uFF0C\u7531\u9019\u53F0 server \u7684\u8A2D\u5B9A\u63D0\u4F9B\uFF09\u3002");
+  }
+  try {
+    await putLocalSecret(env, LOCAL_AUTH_OWNER, LOCAL_AUTH_REF, JSON.stringify({ ...data, version: 1 }));
+  } catch (e) {
+    throw new AuthStoreWriteError(`\u8A8D\u8B49\u8CC7\u6599\u5BEB\u5165\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+  overlay = { version: 1, console: data.console ?? null, users: [...data.users], passwords: { ...data.passwords } };
+  overlayAt = Date.now();
+}
+var AUTH_STORE_PREFIX = "ARCRUN_AUTH_STORE";
+var SHARD_MAX_BYTES = 4600;
+var AUTH_OVERLAY_TTL_MS = 18e4;
+var ACCEL_KEY = "auth_store_recent";
+var ACCEL_TTL_SECONDS = 600;
+var ACCEL_TEMPLATE = "auth_store_written_marker";
+var AUTH_ID_PREFIX = "auth:";
+var AuthStoreWriteError = class extends Error {
+};
+var AuthStorePropagatingError = class extends AuthStoreWriteError {
+  constructor() {
+    super("\u8A8D\u8B49\u8CC7\u6599\u6B63\u5728\u66F4\u65B0\u4E2D\uFF08Cloudflare \u6B63\u5728\u92EA\u958B\u65B0\u7248\u672C\uFF09\uFF0C\u8ACB\u7B49\u5E7E\u79D2\u518D\u8A66\u4E00\u6B21\u2014\u2014\u525B\u624D\u7684\u8B8A\u66F4\u6C92\u6709\u907A\u5931\u3002");
+    this.name = "AuthStorePropagatingError";
+  }
+};
+var overlay = null;
+var overlayAt = 0;
+function emptyStore() {
+  return { version: 1, console: null, users: [], passwords: {} };
+}
+function shardNames(env) {
+  const bag = env;
+  return Object.keys(bag).filter((k) => k === AUTH_STORE_PREFIX || /^ARCRUN_AUTH_STORE_\d+$/.test(k)).filter((k) => typeof bag[k] === "string" && bag[k].length > 0).sort((a, b) => shardIndex(a) - shardIndex(b));
+}
+function shardIndex(name) {
+  if (name === AUTH_STORE_PREFIX) return 0;
+  return Number.parseInt(name.slice(AUTH_STORE_PREFIX.length + 1), 10) || 0;
+}
+function shardNameOf(index) {
+  return index === 0 ? AUTH_STORE_PREFIX : `${AUTH_STORE_PREFIX}_${index}`;
+}
+function authStoreWritable(env, tokenOverride) {
+  if (authStoreIsLocal(env)) return localBackendReady(env);
+  return Boolean((tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN) && env.CF_ACCOUNT_ID);
+}
+function readAuthStore(env) {
+  if (authStoreIsLocal(env)) return overlay ?? emptyStore();
+  if (overlay && Date.now() - overlayAt < AUTH_OVERLAY_TTL_MS) return overlay;
+  return readAuthStoreFromEnv(env);
+}
+function readAuthStoreFromEnv(env) {
+  const bag = env;
+  const out = emptyStore();
+  for (const name of shardNames(env)) {
+    let parsed = null;
+    try {
+      parsed = JSON.parse(bag[name]);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+    if (parsed.console && !out.console) out.console = parsed.console;
+    if (Array.isArray(parsed.users)) {
+      for (const u of parsed.users) {
+        if (u && typeof u.email === "string" && typeof u.id === "string") out.users.push(u);
+      }
+    }
+    if (parsed.passwords && typeof parsed.passwords === "object") {
+      for (const [id, hash] of Object.entries(parsed.passwords)) {
+        if (typeof hash === "string" && !(id in out.passwords)) out.passwords[id] = hash;
+      }
+    }
+  }
+  return out;
+}
+function findAuthUserByEmail(env, email) {
+  const needle = email.trim().toLowerCase();
+  return readAuthStore(env).users.find((u) => u.email.toLowerCase() === needle) ?? null;
+}
+function findAuthUserById(env, id) {
+  return readAuthStore(env).users.find((u) => u.id === id) ?? null;
+}
+function isAuthStoreId(recordId) {
+  return recordId.startsWith(AUTH_ID_PREFIX);
+}
+async function writeAuthStore(env, data, tokenOverride) {
+  if (authStoreIsLocal(env)) return writeLocalStore(env, data);
+  if (!authStoreWritable(env, tokenOverride)) {
+    throw new AuthStoreWriteError(
+      "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u5BEB\u4E0D\u9032\u8A8D\u8B49\u5132\u5B58\uFF08\u7F3A\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF1ACF_SECRETS_API_TOKEN\uFF09\u3002\u9019\u662F\u5E73\u53F0\u7AEF\u7684\u5DF2\u77E5\u9650\u5236\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u2014\u2014\u76EE\u524D\u6C92\u6709\u4F60\u81EA\u5DF1\u5728\u756B\u9762\u4E0A\u80FD\u505A\u7684\u4E0B\u4E00\u6B65\uFF0C\u8ACB\u628A\u9019\u5247\u8A0A\u606F\u5B8C\u6574\u622A\u5716\uFF0F\u8907\u88FD\u7D66\u652F\u63F4\uFF0C\u4E26\u8A3B\u660E\u4F60\u525B\u624D\u5728\u505A\u4EC0\u9EBC\uFF08\u4F8B\u5982\uFF1A\u5B89\u88DD\u7CBE\u9748\u88E1\u5EFA\u7ACB\u7B2C\u4E00\u500B\u5E33\u865F\u3001\u4E8B\u5F8C\u65B0\u589E\u4F7F\u7528\u8005\u3001\u6216\u4FEE\u6539\u5BC6\u78BC\uFF09\uFF0C\u6703\u9700\u8981\u4EBA\u5DE5\u5354\u52A9\u6392\u9664\u3002"
+    );
+  }
+  const shards = [];
+  const writtenAt = Date.now();
+  let current = { v: 1, w: writtenAt, console: data.console ?? null, users: [], passwords: data.passwords };
+  for (const u of data.users) {
+    const trial = { ...current, users: [...current.users ?? [], u] };
+    const size = new TextEncoder().encode(JSON.stringify(trial)).length;
+    if (size > SHARD_MAX_BYTES && (current.users ?? []).length > 0) {
+      shards.push(JSON.stringify(current));
+      current = { v: 1, users: [u] };
+    } else {
+      current = trial;
+    }
+  }
+  shards.push(JSON.stringify(current));
+  for (const s of shards) {
+    if (new TextEncoder().encode(s).length > 5e3) {
+      throw new AuthStoreWriteError("\u55AE\u7B46\u8A8D\u8B49\u8CC7\u6599\u8D85\u904E Cloudflare \u8B8A\u6578 5 KB \u4E0A\u9650\uFF0C\u7121\u6CD5\u5BEB\u5165\u3002");
+    }
+  }
+  const existing = shardNames(env);
+  for (let i = 0; i < shards.length; i++) {
+    await putWorkerSecret(env, shardNameOf(i), shards[i], tokenOverride);
+  }
+  for (const name of existing) {
+    if (shardIndex(name) >= shards.length) await deleteWorkerSecret(env, name, tokenOverride);
+  }
+  overlay = { version: 1, console: data.console ?? null, users: [...data.users], passwords: { ...data.passwords } };
+  overlayAt = Date.now();
+  try {
+    await ephemeralPut(env, {
+      template: ACCEL_TEMPLATE,
+      slots: ["written_at"],
+      hashField: "key_hash",
+      rawKey: ACCEL_KEY,
+      values: { written_at: String(writtenAt) },
+      ttlSeconds: ACCEL_TTL_SECONDS
+    });
+  } catch {
+  }
+}
+function envWrittenAt(env) {
+  const bag = env;
+  let w = 0;
+  for (const name of shardNames(env)) {
+    try {
+      const parsed = JSON.parse(bag[name]);
+      if (typeof parsed?.w === "number" && parsed.w > w) w = parsed.w;
+    } catch {
+    }
+  }
+  return w;
+}
+async function lastWrittenAt(env) {
+  try {
+    const rec = await ephemeralGet(env, { template: ACCEL_TEMPLATE, hashField: "key_hash", rawKey: ACCEL_KEY });
+    const n = Number(rec?.written_at ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+async function authStoreStaleHere(env) {
+  if (authStoreIsLocal(env)) return false;
+  const last = await lastWrittenAt(env);
+  if (!last) return false;
+  if (overlay && overlayAt >= last) return false;
+  return envWrittenAt(env) < last;
+}
+async function hydrateFromAccelerator(_env) {
+  return false;
+}
+async function authStoreRecentlyWritten(env) {
+  return authStoreStaleHere(env);
+}
+function unionStores(a, b) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const u of [...a.users, ...b.users]) {
+    const prev = byId.get(u.id);
+    if (!prev || (u.updated_at ?? "") >= (prev.updated_at ?? "")) byId.set(u.id, u);
+  }
+  return {
+    version: 1,
+    console: a.console ?? b.console ?? null,
+    users: [...byId.values()],
+    passwords: { ...a.passwords, ...b.passwords }
+  };
+}
+async function mutateAuthStore(env, fn, tokenOverride) {
+  if (authStoreIsLocal(env)) {
+    let base;
+    try {
+      base = await loadLocalStrict(env);
+    } catch (e) {
+      throw new AuthStoreWriteError(`\u8A8D\u8B49\u8CC7\u6599\u8B80\u53D6\u5931\u6557\uFF0C\u70BA\u907F\u514D\u8986\u5BEB\u5DF2\u4E2D\u6B62\uFF1A${e instanceof Error ? e.message : String(e)}`);
+    }
+    await fn(base);
+    await writeLocalStore(env, base);
+    return base;
+  }
+  if (await authStoreStaleHere(env)) throw new AuthStorePropagatingError();
+  const next = unionStores(readAuthStore(env), readAuthStoreFromEnv(env));
+  await fn(next);
+  await writeAuthStore(env, next, tokenOverride);
+  return next;
+}
+function findPortalPasswordHash(env, recordId) {
+  return readAuthStore(env).passwords[recordId] ?? null;
+}
+async function setPortalPasswordHash(env, recordId, passwordHash, tokenOverride) {
+  await mutateAuthStore(env, (data) => {
+    data.passwords[recordId] = passwordHash;
+  }, tokenOverride);
+}
+async function migrateConsoleCredentials(env, record, tokenOverride) {
+  if (readAuthStore(env).console) return { migrated: false };
+  let migrated = false;
+  await mutateAuthStore(
+    env,
+    (data) => {
+      if (data.console) return;
+      data.console = record;
+      migrated = true;
+    },
+    tokenOverride
+  );
+  return { migrated };
+}
 
 // cypher-executor/src/index.ts
 init_dist();
@@ -9627,7 +10300,7 @@ async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs
   void nodes;
   try {
     const { base, headers } = kbdbBase(env);
-    await fetch(`${base}/execution-log/record`, {
+    const res = await fetch(`${base}/execution-log/record`, {
       method: "POST",
       // 這支自己也是一次 KBDB 呼叫——蓋掉 kbdbBase() 預設的 'cypher-kbdb-proxy'，
       // 剎車紀錄點名時才不會誤指成 CLI 那條 proxy。
@@ -9642,6 +10315,7 @@ async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs
         ...kbdbUsage ? { kbdb_rows_written: kbdbUsage.rowsWritten, kbdb_rows_read: kbdbUsage.rowsRead } : {}
       })
     });
+    releaseBody(res);
   } catch {
   }
 }
@@ -9824,8 +10498,9 @@ async function handleScheduled(controller, env, ctx) {
 // cypher-executor/src/lib/kbdb-asset-store.ts
 init_kbdb_caller();
 init_kbdb_tally();
+init_endpoints();
 function kbdbBase2(env) {
-  return (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+  return kbdbBaseUrl(env);
 }
 function kbdbHeaders(env) {
   let h = { "Content-Type": "application/json" };
@@ -10138,8 +10813,8 @@ function listTarget(store, prefix) {
   }
   return null;
 }
-var ensuredTemplates = /* @__PURE__ */ new Set();
-async function kbdbFetch(env, path, init, op) {
+var ensuredTemplates2 = /* @__PURE__ */ new Set();
+async function kbdbFetch2(env, path, init, op) {
   const extra = init?.headers ?? {};
   try {
     const res = await fetch(`${kbdbBase2(env)}${path}`, { ...init, headers: { ...kbdbHeaders(env), ...extra } });
@@ -10149,9 +10824,9 @@ async function kbdbFetch(env, path, init, op) {
     throw new AssetStoreUnavailableError(op, e instanceof Error ? e.message : String(e));
   }
 }
-async function ensureTemplate(env, spec) {
-  if (ensuredTemplates.has(spec.name)) return;
-  const got = await kbdbFetch(env, `/templates/${encodeURIComponent(spec.name)}`, void 0, "template");
+async function ensureTemplate2(env, spec) {
+  if (ensuredTemplates2.has(spec.name)) return;
+  const got = await kbdbFetch2(env, `/templates/${encodeURIComponent(spec.name)}`, void 0, "template");
   if (got.ok) {
     const body = await got.json().catch(() => null);
     const tpl = body?.template;
@@ -10164,30 +10839,30 @@ async function ensureTemplate(env, spec) {
       }
       const missing = spec.slots.filter((s) => !current.includes(s));
       if (missing.length > 0) {
-        const patched = await kbdbFetch(env, `/templates/${encodeURIComponent(tpl.id)}`, {
+        const patched = await kbdbFetch2(env, `/templates/${encodeURIComponent(tpl.id)}`, {
           method: "PATCH",
           body: JSON.stringify({ slots: [...current, ...missing] })
         }, "template");
         if (!patched.ok) throw new AssetStoreUnavailableError("template", `\u88DC\u6B04\u4F4D ${spec.name} \u2192 HTTP ${patched.status}`, patched.status);
       }
-      ensuredTemplates.add(spec.name);
+      ensuredTemplates2.add(spec.name);
       return;
     }
   } else if (got.status !== 404) {
     throw new AssetStoreUnavailableError("template", `GET /templates/${spec.name} \u2192 HTTP ${got.status}`, got.status);
   }
-  const res = await kbdbFetch(env, "/templates", {
+  const res = await kbdbFetch2(env, "/templates", {
     method: "POST",
     body: JSON.stringify({ name: spec.name, slots: spec.slots, description: spec.description, created_by: "arcrun" })
   }, "template");
   if (!res.ok) {
-    const again = await kbdbFetch(env, `/templates/${encodeURIComponent(spec.name)}`, void 0, "template");
+    const again = await kbdbFetch2(env, `/templates/${encodeURIComponent(spec.name)}`, void 0, "template");
     if (!again.ok) throw new AssetStoreUnavailableError("template", `POST /templates ${spec.name} \u2192 HTTP ${res.status}`, res.status);
   }
-  ensuredTemplates.add(spec.name);
+  ensuredTemplates2.add(spec.name);
 }
 async function getRecord(env, recordId) {
-  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, void 0, "get");
+  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`, void 0, "get");
   if (res.status === 404) return null;
   if (!res.ok) throw new AssetStoreUnavailableError("get", `GET /records/${recordId} \u2192 HTTP ${res.status}`, res.status);
   const body = await res.json().catch(() => null);
@@ -10196,19 +10871,19 @@ async function getRecord(env, recordId) {
 async function upsertRecord(env, tpl, recordId, owner, values) {
   const path = `/records/${encodeURIComponent(recordId)}`;
   const patchInit = { method: "PATCH", body: JSON.stringify({ values }) };
-  const patch = await kbdbFetch(env, path, patchInit, "put");
+  const patch = await kbdbFetch2(env, path, patchInit, "put");
   if (patch.ok) return;
   if (patch.status === 400) {
-    ensuredTemplates.delete(tpl.name);
-    await ensureTemplate(env, tpl);
-    const retry = await kbdbFetch(env, path, patchInit, "put");
+    ensuredTemplates2.delete(tpl.name);
+    await ensureTemplate2(env, tpl);
+    const retry = await kbdbFetch2(env, path, patchInit, "put");
     if (retry.ok) return;
     if (retry.status !== 404) throw new AssetStoreUnavailableError("put", `PATCH ${path} \u2192 HTTP ${retry.status}`, retry.status);
   } else if (patch.status !== 404) {
     throw new AssetStoreUnavailableError("put", `PATCH ${path} \u2192 HTTP ${patch.status}`, patch.status);
   }
-  await ensureTemplate(env, tpl);
-  const created = await kbdbFetch(env, "/records", {
+  await ensureTemplate2(env, tpl);
+  const created = await kbdbFetch2(env, "/records", {
     method: "POST",
     body: JSON.stringify({ template: tpl.name, record_id: recordId, owner_id: owner, values, derived_cell_ids: true })
   }, "put");
@@ -10218,7 +10893,7 @@ async function upsertRecord(env, tpl, recordId, owner, values) {
   }
 }
 async function deleteRecord(env, recordId) {
-  const res = await kbdbFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }, "delete");
+  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }, "delete");
   if (!res.ok && res.status !== 404) throw new AssetStoreUnavailableError("delete", `DELETE /records/${recordId} \u2192 HTTP ${res.status}`, res.status);
 }
 async function listRecords(env, tpl, owner) {
@@ -10227,7 +10902,7 @@ async function listRecords(env, tpl, owner) {
   for (let offset = 0; ; offset += limit) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (owner) params.set("owner_id", owner);
-    const res = await kbdbFetch(env, `/records/by-template/${encodeURIComponent(tpl.name)}?${params}`, void 0, "list");
+    const res = await kbdbFetch2(env, `/records/by-template/${encodeURIComponent(tpl.name)}?${params}`, void 0, "list");
     if (!res.ok) throw new AssetStoreUnavailableError("list", `GET /records/by-template/${tpl.name} \u2192 HTTP ${res.status}`, res.status);
     const body = await res.json().catch(() => null);
     const page = body?.records ?? [];
@@ -10238,7 +10913,7 @@ async function listRecords(env, tpl, owner) {
 }
 async function recordIdsBySource(env, tpl, field, value, owner) {
   const params = new URLSearchParams({ field, value, owner_id: owner });
-  const res = await kbdbFetch(env, `/records/by-source/${encodeURIComponent(tpl.name)}?${params}`, void 0, "lookup");
+  const res = await kbdbFetch2(env, `/records/by-source/${encodeURIComponent(tpl.name)}?${params}`, void 0, "lookup");
   if (!res.ok) throw new AssetStoreUnavailableError("lookup", `GET /records/by-source/${tpl.name} \u2192 HTTP ${res.status}`, res.status);
   const body = await res.json().catch(() => null);
   return body?.record_ids ?? [];
@@ -10255,14 +10930,14 @@ function envelopeValue(metadataJson) {
   }
 }
 async function getLegacyEnvelope(env, entryId) {
-  const res = await kbdbFetch(env, `/entries/${encodeURIComponent(entryId)}`, void 0, "get");
+  const res = await kbdbFetch2(env, `/entries/${encodeURIComponent(entryId)}`, void 0, "get");
   if (!res.ok) return null;
   const body = await res.json().catch(() => null);
   return envelopeValue(body?.entry?.metadata_json);
 }
 async function listLegacyEnvelopes(env, entryType, owner) {
   const params = new URLSearchParams({ entry_type: entryType, owner_id: owner, limit: "1000" });
-  const res = await kbdbFetch(env, `/entries?${params}`, void 0, "list");
+  const res = await kbdbFetch2(env, `/entries?${params}`, void 0, "list");
   if (!res.ok) return [];
   const body = await res.json().catch(() => null);
   const out = [];
@@ -10391,7 +11066,7 @@ var KbdbAssetStore = class {
     this.memo.delete(key);
     await deleteRecord(this.env, ref.recordId);
     if (ref.legacyEntryId) {
-      await kbdbFetch(this.env, `/entries/${encodeURIComponent(ref.legacyEntryId)}`, { method: "DELETE" }, "delete").catch(() => null);
+      await kbdbFetch2(this.env, `/entries/${encodeURIComponent(ref.legacyEntryId)}`, { method: "DELETE" }, "delete").catch(() => null);
     }
   }
   async list(options) {
@@ -10437,291 +11112,7 @@ init_kbdb_tally();
 
 // cypher-executor/src/routes/health.ts
 init_dist();
-
-// cypher-executor/src/lib/portal-auth-store.ts
-init_credentials();
-
-// cypher-executor/src/lib/ephemeral-store.ts
-init_kbdb_proxy();
-var EphemeralStoreError = class extends Error {
-};
-async function kFetch(env, path, init) {
-  const { base, headers } = kbdbBase(env);
-  try {
-    return await fetch(`${base}${path}`, {
-      ...init,
-      headers: { ...headers, ...init?.headers }
-    });
-  } catch (e) {
-    throw new EphemeralStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
-  }
-}
-async function sha256Hex(input) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-var ensuredTemplates2 = /* @__PURE__ */ new Set();
-async function ensureTemplate2(env, name, slots) {
-  if (ensuredTemplates2.has(name)) return;
-  const got = await kFetch(env, `/templates/${encodeURIComponent(name)}`);
-  if (!got.ok) {
-    await kFetch(env, "/templates", {
-      method: "POST",
-      body: JSON.stringify({ name, slots })
-    }).catch(() => void 0);
-  }
-  ensuredTemplates2.add(name);
-}
-async function findByHash(env, template, hashField, hash) {
-  const res = await kFetch(
-    env,
-    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(hashField)}&value=${encodeURIComponent(hash)}`
-  );
-  if (!res.ok) return null;
-  const body = await res.json().catch(() => null);
-  const id = body?.record_ids?.[0];
-  if (!id) return null;
-  const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
-  if (!rec.ok) return null;
-  const recBody = await rec.json().catch(() => null);
-  return recBody?.record ?? null;
-}
-async function deleteRecordById(env, recordId) {
-  await kFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }).catch(() => void 0);
-}
-async function ephemeralPut(env, opts) {
-  await ensureTemplate2(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
-  const hash = await sha256Hex(opts.rawKey);
-  const exp = Date.now() + opts.ttlSeconds * 1e3;
-  const values = { ...opts.values, [opts.hashField]: hash, exp: String(exp) };
-  const existing = opts.fresh ? null : await findByHash(env, opts.template, opts.hashField, hash);
-  if (existing) {
-    const res2 = await kFetch(env, `/records/${encodeURIComponent(existing.record_id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ values })
-    });
-    if (!res2.ok) throw new EphemeralStoreError(`PATCH /records(${opts.template}) \u2192 ${res2.status}`);
-    return;
-  }
-  const res = await kFetch(env, "/records", {
-    method: "POST",
-    body: JSON.stringify({ template: opts.template, values })
-  });
-  if (!res.ok) throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 ${res.status}`);
-}
-async function ephemeralGet(env, opts) {
-  const hash = await sha256Hex(opts.rawKey);
-  const found = await findByHash(env, opts.template, opts.hashField, hash);
-  if (!found) return null;
-  const exp = Number(found.values.exp);
-  const expired = Number.isFinite(exp) && exp < Date.now();
-  if (opts.consume || expired) await deleteRecordById(env, found.record_id);
-  if (expired) return null;
-  return found.values;
-}
-async function ephemeralDelete(env, opts) {
-  const hash = await sha256Hex(opts.rawKey);
-  const found = await findByHash(env, opts.template, opts.hashField, hash);
-  if (found) await deleteRecordById(env, found.record_id);
-}
-
-// cypher-executor/src/lib/portal-auth-store.ts
-var AUTH_STORE_PREFIX = "ARCRUN_AUTH_STORE";
-var SHARD_MAX_BYTES = 4600;
-var AUTH_OVERLAY_TTL_MS = 18e4;
-var ACCEL_KEY = "auth_store_recent";
-var ACCEL_TTL_SECONDS = 600;
-var ACCEL_TEMPLATE = "auth_store_written_marker";
-var AUTH_ID_PREFIX = "auth:";
-var AuthStoreWriteError = class extends Error {
-};
-var AuthStorePropagatingError = class extends AuthStoreWriteError {
-  constructor() {
-    super("\u8A8D\u8B49\u8CC7\u6599\u6B63\u5728\u66F4\u65B0\u4E2D\uFF08Cloudflare \u6B63\u5728\u92EA\u958B\u65B0\u7248\u672C\uFF09\uFF0C\u8ACB\u7B49\u5E7E\u79D2\u518D\u8A66\u4E00\u6B21\u2014\u2014\u525B\u624D\u7684\u8B8A\u66F4\u6C92\u6709\u907A\u5931\u3002");
-    this.name = "AuthStorePropagatingError";
-  }
-};
-var overlay = null;
-var overlayAt = 0;
-function emptyStore() {
-  return { version: 1, console: null, users: [], passwords: {} };
-}
-function shardNames(env) {
-  const bag = env;
-  return Object.keys(bag).filter((k) => k === AUTH_STORE_PREFIX || /^ARCRUN_AUTH_STORE_\d+$/.test(k)).filter((k) => typeof bag[k] === "string" && bag[k].length > 0).sort((a, b) => shardIndex(a) - shardIndex(b));
-}
-function shardIndex(name) {
-  if (name === AUTH_STORE_PREFIX) return 0;
-  return Number.parseInt(name.slice(AUTH_STORE_PREFIX.length + 1), 10) || 0;
-}
-function shardNameOf(index) {
-  return index === 0 ? AUTH_STORE_PREFIX : `${AUTH_STORE_PREFIX}_${index}`;
-}
-function authStoreWritable(env, tokenOverride) {
-  return Boolean((tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN) && env.CF_ACCOUNT_ID);
-}
-function readAuthStore(env) {
-  if (overlay && Date.now() - overlayAt < AUTH_OVERLAY_TTL_MS) return overlay;
-  return readAuthStoreFromEnv(env);
-}
-function readAuthStoreFromEnv(env) {
-  const bag = env;
-  const out = emptyStore();
-  for (const name of shardNames(env)) {
-    let parsed = null;
-    try {
-      parsed = JSON.parse(bag[name]);
-    } catch {
-      continue;
-    }
-    if (!parsed || typeof parsed !== "object") continue;
-    if (parsed.console && !out.console) out.console = parsed.console;
-    if (Array.isArray(parsed.users)) {
-      for (const u of parsed.users) {
-        if (u && typeof u.email === "string" && typeof u.id === "string") out.users.push(u);
-      }
-    }
-    if (parsed.passwords && typeof parsed.passwords === "object") {
-      for (const [id, hash] of Object.entries(parsed.passwords)) {
-        if (typeof hash === "string" && !(id in out.passwords)) out.passwords[id] = hash;
-      }
-    }
-  }
-  return out;
-}
-function findAuthUserByEmail(env, email) {
-  const needle = email.trim().toLowerCase();
-  return readAuthStore(env).users.find((u) => u.email.toLowerCase() === needle) ?? null;
-}
-function findAuthUserById(env, id) {
-  return readAuthStore(env).users.find((u) => u.id === id) ?? null;
-}
-function isAuthStoreId(recordId) {
-  return recordId.startsWith(AUTH_ID_PREFIX);
-}
-async function writeAuthStore(env, data, tokenOverride) {
-  if (!authStoreWritable(env, tokenOverride)) {
-    throw new AuthStoreWriteError(
-      "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u5BEB\u4E0D\u9032\u8A8D\u8B49\u5132\u5B58\uFF08\u7F3A\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF1ACF_SECRETS_API_TOKEN\uFF09\u3002\u9019\u662F\u5E73\u53F0\u7AEF\u7684\u5DF2\u77E5\u9650\u5236\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u2014\u2014\u76EE\u524D\u6C92\u6709\u4F60\u81EA\u5DF1\u5728\u756B\u9762\u4E0A\u80FD\u505A\u7684\u4E0B\u4E00\u6B65\uFF0C\u8ACB\u628A\u9019\u5247\u8A0A\u606F\u5B8C\u6574\u622A\u5716\uFF0F\u8907\u88FD\u7D66\u652F\u63F4\uFF0C\u4E26\u8A3B\u660E\u4F60\u525B\u624D\u5728\u505A\u4EC0\u9EBC\uFF08\u4F8B\u5982\uFF1A\u5B89\u88DD\u7CBE\u9748\u88E1\u5EFA\u7ACB\u7B2C\u4E00\u500B\u5E33\u865F\u3001\u4E8B\u5F8C\u65B0\u589E\u4F7F\u7528\u8005\u3001\u6216\u4FEE\u6539\u5BC6\u78BC\uFF09\uFF0C\u6703\u9700\u8981\u4EBA\u5DE5\u5354\u52A9\u6392\u9664\u3002"
-    );
-  }
-  const shards = [];
-  const writtenAt = Date.now();
-  let current = { v: 1, w: writtenAt, console: data.console ?? null, users: [], passwords: data.passwords };
-  for (const u of data.users) {
-    const trial = { ...current, users: [...current.users ?? [], u] };
-    const size = new TextEncoder().encode(JSON.stringify(trial)).length;
-    if (size > SHARD_MAX_BYTES && (current.users ?? []).length > 0) {
-      shards.push(JSON.stringify(current));
-      current = { v: 1, users: [u] };
-    } else {
-      current = trial;
-    }
-  }
-  shards.push(JSON.stringify(current));
-  for (const s of shards) {
-    if (new TextEncoder().encode(s).length > 5e3) {
-      throw new AuthStoreWriteError("\u55AE\u7B46\u8A8D\u8B49\u8CC7\u6599\u8D85\u904E Cloudflare \u8B8A\u6578 5 KB \u4E0A\u9650\uFF0C\u7121\u6CD5\u5BEB\u5165\u3002");
-    }
-  }
-  const existing = shardNames(env);
-  for (let i = 0; i < shards.length; i++) {
-    await putWorkerSecret(env, shardNameOf(i), shards[i], tokenOverride);
-  }
-  for (const name of existing) {
-    if (shardIndex(name) >= shards.length) await deleteWorkerSecret(env, name, tokenOverride);
-  }
-  overlay = { version: 1, console: data.console ?? null, users: [...data.users], passwords: { ...data.passwords } };
-  overlayAt = Date.now();
-  try {
-    await ephemeralPut(env, {
-      template: ACCEL_TEMPLATE,
-      slots: ["written_at"],
-      hashField: "key_hash",
-      rawKey: ACCEL_KEY,
-      values: { written_at: String(writtenAt) },
-      ttlSeconds: ACCEL_TTL_SECONDS
-    });
-  } catch {
-  }
-}
-function envWrittenAt(env) {
-  const bag = env;
-  let w = 0;
-  for (const name of shardNames(env)) {
-    try {
-      const parsed = JSON.parse(bag[name]);
-      if (typeof parsed?.w === "number" && parsed.w > w) w = parsed.w;
-    } catch {
-    }
-  }
-  return w;
-}
-async function lastWrittenAt(env) {
-  try {
-    const rec = await ephemeralGet(env, { template: ACCEL_TEMPLATE, hashField: "key_hash", rawKey: ACCEL_KEY });
-    const n = Number(rec?.written_at ?? 0);
-    return Number.isFinite(n) ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-async function authStoreStaleHere(env) {
-  const last = await lastWrittenAt(env);
-  if (!last) return false;
-  if (overlay && overlayAt >= last) return false;
-  return envWrittenAt(env) < last;
-}
-async function hydrateFromAccelerator(_env) {
-  return false;
-}
-async function authStoreRecentlyWritten(env) {
-  return authStoreStaleHere(env);
-}
-function unionStores(a, b) {
-  const byId = /* @__PURE__ */ new Map();
-  for (const u of [...a.users, ...b.users]) {
-    const prev = byId.get(u.id);
-    if (!prev || (u.updated_at ?? "") >= (prev.updated_at ?? "")) byId.set(u.id, u);
-  }
-  return {
-    version: 1,
-    console: a.console ?? b.console ?? null,
-    users: [...byId.values()],
-    passwords: { ...a.passwords, ...b.passwords }
-  };
-}
-async function mutateAuthStore(env, fn, tokenOverride) {
-  if (await authStoreStaleHere(env)) throw new AuthStorePropagatingError();
-  const next = unionStores(readAuthStore(env), readAuthStoreFromEnv(env));
-  await fn(next);
-  await writeAuthStore(env, next, tokenOverride);
-  return next;
-}
-function findPortalPasswordHash(env, recordId) {
-  return readAuthStore(env).passwords[recordId] ?? null;
-}
-async function setPortalPasswordHash(env, recordId, passwordHash, tokenOverride) {
-  await mutateAuthStore(env, (data) => {
-    data.passwords[recordId] = passwordHash;
-  }, tokenOverride);
-}
-async function migrateConsoleCredentials(env, record, tokenOverride) {
-  if (readAuthStore(env).console) return { migrated: false };
-  let migrated = false;
-  await mutateAuthStore(
-    env,
-    (data) => {
-      if (data.console) return;
-      data.console = record;
-      migrated = true;
-    },
-    tokenOverride
-  );
-  return { migrated };
-}
-
-// cypher-executor/src/routes/health.ts
+init_secret_backend();
 init_kbdb_proxy();
 var healthRouter = new Hono2();
 var DATA_LAYER_CACHE_MS = 1e4;
@@ -10770,6 +11161,12 @@ healthRouter.get("/health", async (c) => {
     ...bundleVersion ? { bundle_version: bundleVersion } : {},
     ...bundleCommit ? { bundle_commit: bundleCommit } : {},
     auth_store: authStoreStatus(c.env),
+    // inkstone/Arcrun#276：金鑰值放哪（cf＝Workers Secrets／local＝企業私有雲由這台 server 保存）。
+    // local 另報主金鑰有沒有設（只回布林，不回內容）。
+    credential_store: (() => {
+      const backend = secretBackendMode(c.env);
+      return backend === "local" ? { backend, ready: localBackendReady(c.env) } : { backend };
+    })(),
     // arcrun-rag#38/#69/#25（2026-08-11）：安裝器判斷「要不要重推」只比 bundle_version——
     // 但這次要修的洞是「installer 從沒注入過 PORTAL_MAIL_RELAY_BASE」，跟 bundle 內容
     // 版本無關（同一個 cypher 版本，有的實例有這個 var、有的沒有）。純比版本號的話，
@@ -10918,6 +11315,7 @@ function toEdgeType(label) {
 
 // cypher-executor/src/actions/search-nodes.ts
 init_component_loader();
+init_endpoints();
 init_recipes();
 
 // cypher-executor/src/lib/branch-hints.ts
@@ -10969,8 +11367,7 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
     }
     return { nodeResults, missingNodes };
   }
-  const sub = env?.WORKER_SUBDOMAIN;
-  const registryBase = env?.REGISTRY_BASE_URL ?? (sub ? wasmWorkerUrl("registry", sub) : void 0);
+  const registryBase = env ? registryBaseUrl(env) : void 0;
   const wantComponents = target !== "recipe";
   const wantRecipes = target !== "component";
   const catalog = !wantComponents ? { status: "ok", entries: [] } : registryBase ? await fetchCatalog(registryBase) : { status: "unreachable", entries: [] };
@@ -11514,11 +11911,12 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
 }
 
 // cypher-executor/src/actions/target-search.ts
-init_component_loader();
+init_endpoints();
 
 // cypher-executor/src/lib/workflow-search.ts
+init_endpoints();
 async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
-  const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+  const base = kbdbBaseUrl(env);
   const headers = { "Content-Type": "application/json" };
   if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
   const params = new URLSearchParams({
@@ -11535,9 +11933,8 @@ async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
 // cypher-executor/src/actions/target-search.ts
 async function searchByTarget(target, query, env, apiKey) {
   if (target === "component") {
-    const sub = env.WORKER_SUBDOMAIN;
-    const registryBase = env.REGISTRY_BASE_URL ?? (sub ? wasmWorkerUrl("registry", sub) : void 0);
-    if (!registryBase) return { ok: false, status: 502, error: "registry \u4F4D\u7F6E\u672A\u8A2D\u5B9A\uFF08WORKER_SUBDOMAIN\uFF0FREGISTRY_BASE_URL \u7686\u7F3A\uFF09" };
+    const registryBase = registryBaseUrl(env);
+    if (!registryBase) return { ok: false, status: 502, error: "registry \u4F4D\u7F6E\u672A\u8A2D\u5B9A\uFF08REGISTRY_BASE_URL\uFF0FCOMPONENT_URL_TEMPLATE\uFF0FWORKER_SUBDOMAIN \u7686\u7F3A\uFF09" };
     try {
       const res2 = await fetch(
         `${registryBase}/components/search?q=${encodeURIComponent(query)}`,
@@ -12279,12 +12676,13 @@ init_dist();
 init_webhook_handlers();
 init_schemas();
 init_telemetry();
+init_endpoints();
 var webhooksNamedRouter = new Hono2();
 function kvKey(apiKey, name) {
   return `${apiKey}:wf:${name}`;
 }
 async function writeWorkflowSearchEntry(env, apiKey, name, description, workflowId) {
-  const base = (env.KBDB_BASE_URL ?? "https://arcrun-kbdb.uncle6-me.workers.dev").replace(/\/$/, "");
+  const base = kbdbBaseUrl(env);
   const headers = { "Content-Type": "application/json" };
   if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
   await fetch(`${base}/entries`, {
@@ -13331,13 +13729,17 @@ init_hash();
 init_recipes();
 
 // cypher-executor/src/lib/api-recipe-seeds.ts
+var KBDB_BASE_TOKEN = "{{KBDB_BASE_URL}}";
+function resolveKbdbSeedBase(text, resolveBase) {
+  return text.includes(KBDB_BASE_TOKEN) ? text.replaceAll(KBDB_BASE_TOKEN, resolveBase()) : text;
+}
 var API_RECIPE_SEEDS = [
   // ── KBDB（Supabase 模式，auth_service=kbdb static_key）──
   {
     canonical_id: "kbdb_get",
     display_name: "KBDB Get",
     description: "GET \u8B80\u53D6 block / \u67E5\u8A62\u3002_path \u5E36\u67E5\u8A62\u8DEF\u5F91\u3002auth: kbdb static_key\u3002",
-    endpoint: "https://kbdb.finally.click{{_path}}",
+    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
     method: "GET",
     auth_service: "kbdb"
   },
@@ -13345,7 +13747,7 @@ var API_RECIPE_SEEDS = [
     canonical_id: "kbdb_create_block",
     display_name: "KBDB Create Block",
     description: "POST /blocks \u5EFA\u7ACB block\u3002body \u5E36 block \u6B04\u4F4D\uFF08content/type/page_name/source/user_id \u7B49\uFF09\u3002auth: kbdb static_key\u3002",
-    endpoint: "https://kbdb.finally.click/blocks",
+    endpoint: "{{KBDB_BASE_URL}}/blocks",
     method: "POST",
     auth_service: "kbdb"
   },
@@ -13353,7 +13755,7 @@ var API_RECIPE_SEEDS = [
     canonical_id: "kbdb_patch_block",
     display_name: "KBDB Patch Block",
     description: "PATCH /blocks/:id \u5C40\u90E8\u66F4\u65B0\u3002_path \u5E36 /blocks/{id}\uFF0Cbody \u5E36\u8981\u6539\u7684\u6B04\u4F4D\u3002auth: kbdb static_key\u3002",
-    endpoint: "https://kbdb.finally.click{{_path}}",
+    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
     method: "PATCH",
     auth_service: "kbdb"
   },
@@ -13361,7 +13763,7 @@ var API_RECIPE_SEEDS = [
     canonical_id: "kbdb_delete",
     display_name: "KBDB Delete",
     description: "DELETE /blocks/:id \u522A\u9664 block\u3002_path \u5E36 /blocks/{id}\u3002auth: kbdb static_key\u3002",
-    endpoint: "https://kbdb.finally.click{{_path}}",
+    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
     method: "DELETE",
     auth_service: "kbdb"
   },
@@ -13369,7 +13771,7 @@ var API_RECIPE_SEEDS = [
     canonical_id: "kbdb_ingest",
     display_name: "KBDB Ingest",
     description: "POST /blocks/ingest \u6279\u6B21\u5BEB\u5165\u3002body \u5E36 input\u3002auth: kbdb static_key\u3002",
-    endpoint: "https://kbdb.finally.click/blocks/ingest",
+    endpoint: "{{KBDB_BASE_URL}}/blocks/ingest",
     method: "POST",
     auth_service: "kbdb"
   },
@@ -13456,8 +13858,49 @@ var API_RECIPE_SEEDS = [
       // 前綴組合順序不定，循環剝殼（規則見 recipe-payload.ts sanitize）
       strip_prefixes: ["*", "-", "\u2022", ">", "#", '"', "\u300C", "\u3010\u7B54\u3011", "Answer:", "Draft:"]
     }
+  },
+  // ── 萃取 AI（inkstone/Arcrun#277）：小幫手送文字上雲，雲端用哪個 AI 由**這台雲端**的管理員選 ──
+  //
+  // 「每種 AI 一份 recipe」（leo 09-29）。執行器是 lib/extract-ai.ts（不認得任何一家 AI 的形狀，
+  // 只照 recipe 組請求）；要接新的 AI 供應商＝在這裡加一筆，不改執行器。
+  // 輸入 ctx：messages／max_tokens／temperature／response_format（要 JSON 時才有）／base_url／model。
+  // 選填欄位沒值時，lib 會把整個欄位剔除（不會把 `{{x}}` 字面送出去）。
+  {
+    canonical_id: "extract_ai_workers_ai",
+    display_name: "\u8403\u53D6 AI\uFF1ACloudflare Workers AI\uFF08\u514D\u91D1\u9470\uFF09",
+    description: "CF \u96F2\u9810\u8A2D\u3002\u8D70 env.AI binding\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\uFF1B\u6A21\u578B\u9078\u578B\u8207 workers_ai_chat \u540C\u4E00\u652F\uFF08llama-4-scout\uFF09\u3002\u4F01\u696D\u79C1\u6709\u96F2\u6C92\u6709\u9019\u500B binding \u21D2 \u8ACB\u6539\u9078 extract_ai_openai_compat\u3002",
+    endpoint: "@cf/meta/llama-4-scout-17b-16e-instruct",
+    method: "POST",
+    auth: "binding",
+    binding_name: "AI",
+    body_template: {
+      messages: "{{messages}}",
+      max_tokens: "{{max_tokens}}",
+      temperature: "{{temperature}}",
+      response_format: "{{response_format}}"
+    },
+    response_map: { text_path: "response" }
+  },
+  {
+    canonical_id: "extract_ai_openai_compat",
+    display_name: "\u8403\u53D6 AI\uFF1AOpenAI \u76F8\u5BB9\u7AEF\u9EDE\uFF08Ollama\uFF0FvLLM\uFF0FLM Studio\u2026\uFF09",
+    description: "\u4F01\u696D\u79C1\u6709\u96F2\u7528\u3002POST {{base_url}}/v1/chat/completions\uFF0Cbody \u70BA OpenAI chat \u683C\u5F0F\u3002\u91D1\u9470\u9078\u586B\uFF08\u5167\u7DB2 Ollama \u901A\u5E38\u4E0D\u9700\u8981\uFF09\uFF1A\u6709\u8A2D credential\u300Cextract_ai_api_key\u300D\u624D\u5E36 Authorization\u3002",
+    endpoint: "{{base_url}}/v1/chat/completions",
+    method: "POST",
+    headers: { Authorization: "Bearer {{credential.extract_ai_api_key}}" },
+    body_template: {
+      model: "{{model}}",
+      messages: "{{messages}}",
+      max_tokens: "{{max_tokens}}",
+      temperature: "{{temperature}}",
+      response_format: "{{response_format}}"
+    },
+    response_map: { text_path: "choices.0.message.content" }
   }
 ];
+
+// cypher-executor/src/routes/init-seed.ts
+init_endpoints();
 
 // cypher-executor/src/lib/auth-recipe-seeds.ts
 var now = Date.now();
@@ -14064,7 +14507,8 @@ var AUTH_RECIPE_SEEDS = [
     service: "kbdb",
     version: 1,
     primitive: "static_key",
-    base_url: "https://kbdb.finally.click",
+    base_url: KBDB_BASE_TOKEN,
+    // 灌種子時換成部署的 KBDB_BASE_URL（#275）
     display_name: "KBDB",
     description: "KBDB partner API \u2014 block \u8B80\u5BEB\uFF08static_key Bearer\uFF09\u3002kbdb_* recipe \u5171\u7528\u6B64\u628A auth\u3002",
     required_secrets: [
@@ -14158,48 +14602,7 @@ init_kbdb_proxy();
 
 // cypher-executor/src/routes/console-auth.ts
 init_dist();
-
-// cypher-executor/src/lib/tenant.ts
-var TenantUnresolvedError = class extends Error {
-  code;
-  constructor(message, code = "tenant_unresolved") {
-    super(message);
-    this.name = "TenantUnresolvedError";
-    this.code = code;
-  }
-};
-function knowledgeOwner(env) {
-  const injected = (env.ARCRUN_NAMESPACE ?? "").trim();
-  if (injected) return injected;
-  const legacy = (env.CONSOLE_TENANT ?? "").trim();
-  if (legacy) return legacy;
-  throw new TenantUnresolvedError(
-    "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08\u74B0\u5883\u8B8A\u6578 ARCRUN_NAMESPACE / CONSOLE_TENANT \u90FD\u6C92\u8A2D\uFF09\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u8981\u7528\u54EA\u500B owner_id \u53D6\u8CC7\u6599\u3002",
-    "tenant_unresolved"
-  );
-}
-function tenantFromApiKey(apiKey) {
-  const key = (apiKey ?? "").trim();
-  if (!key) throw new TenantUnresolvedError("\u7F3A\u5C11 X-Arcrun-API-Key\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u67E5\u8A62\u7BC4\u570D", "missing_api_key");
-  return key;
-}
-function accountTenant(env) {
-  return env.CONSOLE_TENANT || "leo";
-}
-function ownerQuery(tenant2) {
-  return `owner_id=${encodeURIComponent(tenant2)}`;
-}
-function ownerField(tenant2) {
-  return tenant2;
-}
-function censusQueryAllTenants() {
-  return "owner_id=";
-}
-function isOwnedBy(value, tenant2) {
-  return typeof value === "string" && value === tenant2;
-}
-
-// cypher-executor/src/routes/console-auth.ts
+init_tenant();
 var consoleAuthRouter = new Hono2();
 var SESSION_TEMPLATE2 = "console_session";
 var SESSION_TTL_SECONDS2 = 30 * 24 * 60 * 60;
@@ -14472,6 +14875,9 @@ function mcpUrlFor(subdomain) {
   return `https://arcrun-mcp.${sub}.workers.dev/mcp`;
 }
 
+// cypher-executor/src/routes/portal.ts
+init_endpoints();
+
 // cypher-executor/src/lib/mcp-token-ttl.ts
 var DEFAULT_TOKEN_TTL_SECONDS = 2592e3;
 var MIN_TOKEN_TTL_SECONDS = 3600;
@@ -14555,6 +14961,20 @@ var PORTAL_TEMPLATE_SEEDS = [
     created_by: "system"
   },
   {
+    // inkstone/Arcrun#277：這台雲端的萃取 AI 由管理員選（每種 AI 一份 recipe，見 api-recipe-seeds）。
+    // 一台雲端一筆設定（純量，鏡像 portal_mcp_token_ttl 那條路）；**每台雲端各一份，不跨租戶共用**。
+    //   recipe     ＝ extract_ai_workers_ai｜extract_ai_openai_compat
+    //   base_url   ＝ OpenAI 相容端點根網址（Workers AI 不用）
+    //   model      ＝ 模型名（Workers AI 不填＝recipe 預設）
+    //   updated_at／updated_by ＝ 誰在什麼時候改的
+    // 金鑰**不在這裡**：只存在 credential 中心（名字 extract_ai_api_key），這筆 record 永遠沒有值。
+    // 🔴 不寫 KV、不加 D1 表——KBDB 萬用表 template。
+    name: "portal_extract_ai",
+    description: "\u9019\u53F0\u96F2\u7AEF\u8403\u53D6\u7528\u7684 AI \u8A2D\u5B9A\uFF08Arcrun#277\uFF1B\u4E00\u53F0\u96F2\u7AEF\u4E00\u7B46\uFF0C\u8B80\u4E0D\u5230\uFF1DCF Workers AI \u9810\u8A2D\uFF09",
+    slots: ["recipe", "base_url", "model", "updated_at", "updated_by"],
+    created_by: "system"
+  },
+  {
     // t130：rag_ingest_card.post_triplet 寫 POST /records {template:'triplet'}。
     // 新實例若無此 template 回 400「template not found: triplet」→ 三元組全滅。
     // slots 來源：kbdb_list_templates 核實（2026-07-19，library-map.test.ts PROD_TRIPLET_SLOTS）
@@ -14592,7 +15012,127 @@ var PORTAL_TEMPLATE_SEEDS = [
   }
 ];
 
+// cypher-executor/src/lib/extract-ai.ts
+init_recipe_payload();
+init_auth_dispatcher();
+init_recipes();
+var EXTRACT_AI_TEMPLATE = "portal_extract_ai";
+var DEFAULT_EXTRACT_AI_RECIPE = "extract_ai_workers_ai";
+var EXTRACT_AI_RECIPE_IDS = ["extract_ai_workers_ai", "extract_ai_openai_compat"];
+var EXTRACT_AI_CREDENTIAL = "extract_ai_api_key";
+var DEFAULT_EXTRACT_AI_CONFIG = { recipe: DEFAULT_EXTRACT_AI_RECIPE };
+function validateExtractAiConfig(raw2) {
+  if (!raw2 || typeof raw2 !== "object") return { ok: false, error: "body \u5FC5\u9808\u662F JSON \u7269\u4EF6" };
+  const o = raw2;
+  const recipe = typeof o.recipe === "string" ? o.recipe.trim() : "";
+  if (!EXTRACT_AI_RECIPE_IDS.includes(recipe)) {
+    return { ok: false, error: `recipe \u5FC5\u9808\u662F ${EXTRACT_AI_RECIPE_IDS.join(" \u6216 ")}` };
+  }
+  const config = { recipe };
+  const model = typeof o.model === "string" ? o.model.trim() : "";
+  if (model) config.model = model;
+  if (recipe === "extract_ai_openai_compat") {
+    const baseUrl = typeof o.base_url === "string" ? o.base_url.trim().replace(/\/+$/, "") : "";
+    if (!baseUrl) return { ok: false, error: "OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u5FC5\u9808\u586B base_url\uFF08\u4F8B http://ollama.internal:11434\uFF09" };
+    let u;
+    try {
+      u = new URL(baseUrl);
+    } catch {
+      return { ok: false, error: "base_url \u4E0D\u662F\u5408\u6CD5\u7DB2\u5740" };
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return { ok: false, error: "base_url \u53EA\u63A5\u53D7 http\uFF0Fhttps" };
+    }
+    if (!model) return { ok: false, error: "OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u5FC5\u9808\u586B model\uFF08\u4F8B llama3.1:70b\uFF09" };
+    config.base_url = baseUrl;
+  }
+  return { ok: true, config };
+}
+async function loadRecipe(env, id) {
+  if (id !== DEFAULT_EXTRACT_AI_RECIPE && env.RECIPES) {
+    const installed = await resolveRecipe(id, env.RECIPES).catch(() => null);
+    if (installed) return installed;
+  }
+  return API_RECIPE_SEEDS.find((s) => s.canonical_id === id) ?? null;
+}
+function renderPayload(template, ctx) {
+  const rendered = renderBodyTemplate(template, ctx);
+  const out = {};
+  for (const [k, v] of Object.entries(rendered ?? {})) {
+    if (typeof v === "string" && /^\s*\{\{[\w.]+\}\}\s*$/.test(v)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+async function runExtractAi(env, tenant2, config, req) {
+  const recipe = await loadRecipe(env, config.recipe);
+  if (!recipe) {
+    return { ok: false, code: "ai_recipe_missing", error: `\u627E\u4E0D\u5230\u8403\u53D6 AI recipe\u300C${config.recipe}\u300D` };
+  }
+  const ctx = {
+    messages: [{ role: "user", content: req.prompt }],
+    max_tokens: req.maxTokens,
+    temperature: req.temperature ?? 0.2,
+    ...req.jsonObject ? { response_format: { type: "json_object" } } : {},
+    ...config.base_url ? { base_url: config.base_url } : {},
+    ...config.model ? { model: config.model } : {}
+  };
+  const payload = renderPayload(recipe.body_template ?? {}, ctx);
+  if (recipe.auth === "binding") {
+    const name = recipe.binding_name ?? "AI";
+    const binding = env[name];
+    if (!binding || typeof binding.run !== "function") {
+      return { ok: false, code: "ai_binding_missing", error: `\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}` };
+    }
+    const model2 = config.model || recipe.endpoint;
+    try {
+      return { ok: true, out: await binding.run(model2, payload), model: model2, provider: recipe.canonical_id };
+    } catch (e) {
+      return { ok: false, code: "ai_failed", error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+  const url = String(renderBodyTemplate(recipe.endpoint, ctx) ?? "");
+  if (!/^https?:\/\//.test(url)) {
+    return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u7DB2\u5740\u4E0D\u5B8C\u6574\uFF08${url}\uFF09\u2014\u2014\u7BA1\u7406\u54E1\u5C1A\u672A\u8A2D\u5B9A base_url\uFF1F` };
+  }
+  const headers = { "Content-Type": "application/json" };
+  const recipeHeaders = recipe.headers ?? {};
+  for (const [k, v] of Object.entries(recipeHeaders)) {
+    const names = [...v.matchAll(/\{\{credential\.([\w-]+)\}\}/g)].map((m) => m[1]);
+    if (names.length === 0) {
+      headers[k] = v;
+      continue;
+    }
+    const secrets = await resolveSecretsFromNewHome(env, tenant2, names);
+    if (names.every((n) => secrets[n])) {
+      headers[k] = v.replace(/\{\{credential\.([\w-]+)\}\}/g, (_m, n) => secrets[n]);
+    }
+  }
+  const model = String(payload.model ?? config.model ?? "");
+  try {
+    const res = await fetch(url, {
+      method: (recipe.method ?? "POST").toUpperCase(),
+      headers,
+      body: JSON.stringify(payload)
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u56DE ${res.status}\uFF1A${text.slice(0, 200)}` };
+    }
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u56DE\u7684\u4E0D\u662F JSON\uFF1A${text.slice(0, 120)}` };
+    }
+    return { ok: true, out: json, model, provider: recipe.canonical_id };
+  } catch (e) {
+    return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 // cypher-executor/src/routes/portal.ts
+init_tenant();
 init_credentials();
 
 // cypher-executor/src/lib/ai-response.ts
@@ -14802,9 +15342,63 @@ function renderFaqHtml(origin2, code) {
   return PAGE_HEAD + `<div class="code">${esc(known)}</div><h1>${esc(s.title)}</h1><p class="msg">${esc(s.message)}</p><h2>\u70BA\u4EC0\u9EBC\u6703\u9019\u6A23</h2><p>${esc(s.why)}</p>` + (s.advanced ? `<h2>\u6280\u8853\u7D30\u7BC0</h2><p>${esc(s.advanced)}</p>` : "") + `<h2>\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA</h2><div class="op"><div class="tag">\u9019\u4E00\u6BB5\u662F\u7D66\u67B6\u8A2D\u8005\uFF0F\u5DE5\u7A0B\u5E2B\u770B\u7684\uFF0C\u4E0D\u662F\u7D66\u4E00\u822C\u7528\u6236\u7684\u64CD\u4F5C\u6B65\u9A5F</div>${esc(s.operator)}</div><p class="foot">\u932F\u8AA4\u78BC <code>${esc(known)}</code> \xB7 <a href="${esc(helpUrl(origin2, ""))}">\u770B\u5168\u90E8\u932F\u8AA4\u78BC</a></p>` + PAGE_FOOT;
 }
 
+// cypher-executor/src/lib/instance-update.ts
+var DEFAULT_INSTALLER_ORIGIN = "https://install.arcrun.dev";
+async function requestInstanceUpdate(env, fetchImpl = fetch) {
+  const token = env.ARCRUN_UPDATE_TOKEN;
+  const accountId = env.CF_ACCOUNT_ID;
+  if (!token || !accountId) {
+    return {
+      status: 501,
+      body: {
+        ok: false,
+        state: "unavailable",
+        fallback_to_installer: true,
+        message: "\u9019\u53F0\u9084\u6C92\u6709\u4E00\u9375\u66F4\u65B0\u7684\u529F\u80FD\uFF0C\u9700\u8981\u5148\u7528\u5B89\u88DD\u9801\u66F4\u65B0\u4E00\u6B21\uFF0C\u4E4B\u5F8C\u5C31\u80FD\u76F4\u63A5\u5728\u9019\u88E1\u66F4\u65B0\u3002"
+      }
+    };
+  }
+  const origin2 = (env.INSTALLER_ORIGIN || DEFAULT_INSTALLER_ORIGIN).replace(/\/+$/, "");
+  let res;
+  try {
+    res = await fetchImpl(`${origin2}/api/instance/update`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      // body 只有 accountId——刻意沒有版本欄位。
+      body: JSON.stringify({ accountId })
+    });
+  } catch {
+    return {
+      status: 502,
+      body: { ok: false, state: "unavailable", message: "\u66AB\u6642\u9023\u4E0D\u4E0A\u66F4\u65B0\u670D\u52D9\uFF0C\u8ACB\u7A0D\u5F8C\u91CD\u65B0\u6574\u7406\u770B\u770B\u7248\u672C\u6709\u6C92\u6709\u8B8A\u3002" }
+    };
+  }
+  const j = await res.json().catch(() => null);
+  const message = typeof j?.message === "string" && j.message ? j.message : "";
+  if (!j || res.status >= 500) {
+    return {
+      status: 502,
+      body: { ok: false, state: "unavailable", message: message || "\u66F4\u65B0\u670D\u52D9\u66AB\u6642\u6C92\u6709\u56DE\u61C9\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u3002" }
+    };
+  }
+  if (res.status === 401 || res.status === 403) {
+    return { status: 200, body: { ok: false, state: "refused", message: message || "\u9019\u500B\u66F4\u65B0\u8981\u6C42\u6C92\u6709\u901A\u904E\u9A57\u8B49\u3002" } };
+  }
+  if (j.ok === true && j.state === "busy") {
+    return { status: 200, body: { ok: true, state: "busy", message: message || "\u6B63\u5728\u5E6B\u4F60\u66F4\u65B0\uFF0C\u8ACB\u7A0D\u5019\u518D\u91CD\u65B0\u6574\u7406\u3002" } };
+  }
+  if (j.ok === true) {
+    const deployed = typeof j.deployed === "number" ? j.deployed : 0;
+    return {
+      status: 200,
+      body: { ok: true, state: deployed > 0 ? "updated" : "up_to_date", deployed, message: message || "\u66F4\u65B0\u5B8C\u6210\u3002" }
+    };
+  }
+  return { status: 200, body: { ok: false, state: "refused", message: message || "\u9019\u6B21\u6C92\u8FA6\u6CD5\u5E6B\u4F60\u66F4\u65B0\u3002" } };
+}
+
 // cypher-executor/src/routes/portal.ts
 var portalRouter = new Hono2();
-var EXTRACT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
 var SESSION_TEMPLATE3 = "portal_session";
 var LOCKFAIL_TEMPLATE = "portal_lockfail";
 var LOCK_LIMIT = 5;
@@ -14828,7 +15422,7 @@ function bearerToken(c) {
 }
 var KbdbError = class extends Error {
 };
-async function kbdbFetch2(env, path, init) {
+async function kbdbFetch3(env, path, init) {
   const { base, headers } = kbdbBase(env);
   let res;
   try {
@@ -14868,7 +15462,7 @@ async function ensurePortalTemplates(env) {
   const errors = [];
   for (const seed of PORTAL_TEMPLATE_SEEDS) {
     try {
-      const got = await kbdbFetch2(env, `/templates/${encodeURIComponent(seed.name)}`);
+      const got = await kbdbFetch3(env, `/templates/${encodeURIComponent(seed.name)}`);
       if (got.ok) {
         const body = await got.json().catch(() => null);
         const tpl = body?.template;
@@ -14881,7 +15475,7 @@ async function ensurePortalTemplates(env) {
           }
           const missing = seed.slots.filter((s) => !currentSlots.includes(s));
           if (missing.length > 0) {
-            const patched = await kbdbFetch2(env, `/templates/${encodeURIComponent(tpl.id)}`, {
+            const patched = await kbdbFetch3(env, `/templates/${encodeURIComponent(tpl.id)}`, {
               method: "PATCH",
               body: JSON.stringify({ slots: [...currentSlots, ...missing] })
             });
@@ -14892,7 +15486,7 @@ async function ensurePortalTemplates(env) {
         continue;
       }
       if (got.status !== 404) throw new KbdbError(`GET /templates/${seed.name} \u2192 ${got.status}`);
-      const res = await kbdbFetch2(env, "/templates", {
+      const res = await kbdbFetch3(env, "/templates", {
         method: "POST",
         body: JSON.stringify({
           name: seed.name,
@@ -14971,7 +15565,7 @@ async function findKbdbUserRecordId(env, email) {
     owner_id: ns,
     limit: "1"
   });
-  const res = await kbdbFetch2(env, `/entries?${params.toString()}`);
+  const res = await kbdbFetch3(env, `/entries?${params.toString()}`);
   if (!res.ok) throw new KbdbError(`head entry \u67E5\u627E \u2192 ${res.status}`);
   const body = await res.json();
   const content = body.entries?.[0]?.content;
@@ -14982,9 +15576,15 @@ async function getRecordById(env, recordId) {
     const u = findAuthUserById(env, recordId);
     return u ? authUserToRecord(u) : null;
   }
-  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new KbdbError(`GET /records/${recordId} \u2192 ${res.status}`);
+  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`);
+  if (res.status === 404) {
+    releaseBody(res);
+    return null;
+  }
+  if (!res.ok) {
+    releaseBody(res);
+    throw new KbdbError(`GET /records/${recordId} \u2192 ${res.status}`);
+  }
   const body = await res.json();
   return body.record ?? null;
 }
@@ -15001,7 +15601,7 @@ async function patchRecordValues(env, recordId, values) {
     if (!updated) throw new KbdbError(`\u8A8D\u8B49\u5132\u5B58\u66F4\u65B0\u5931\u6557 ${recordId}`);
     return authUserToRecord(updated);
   }
-  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`, {
+  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, {
     method: "PATCH",
     body: JSON.stringify({ values })
   });
@@ -15022,7 +15622,7 @@ async function deleteKbdbRecord(env, recordId) {
     });
     return found;
   }
-  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
+  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
   if (res.status === 404) return false;
   if (!res.ok) throw new KbdbError(`DELETE /records/${recordId} \u2192 ${res.status}`);
   return true;
@@ -15061,14 +15661,17 @@ async function listRecordsByTemplate(env, template) {
 }
 async function listKbdbRecordsByTemplate(env, template) {
   const ns = portalNamespace(env);
-  const res = await kbdbFetch2(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
-  if (!res.ok) throw new KbdbError(`GET /records/by-template/${template} \u2192 ${res.status}`);
+  const res = await kbdbFetch3(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
+  if (!res.ok) {
+    releaseBody(res);
+    throw new KbdbError(`GET /records/by-template/${template} \u2192 ${res.status}`);
+  }
   const body = await res.json();
   return body.records ?? [];
 }
 async function createKbdbUserRecord(env, email, values) {
   const ns = portalNamespace(env);
-  const res = await kbdbFetch2(env, "/records", {
+  const res = await kbdbFetch3(env, "/records", {
     method: "POST",
     body: JSON.stringify({ template: USER_TEMPLATE, owner_id: ns, values: { ...values, email } })
   });
@@ -15076,7 +15679,7 @@ async function createKbdbUserRecord(env, email, values) {
   const body = await res.json();
   const recordId = body.record?.record_id;
   if (!recordId) throw new KbdbError("POST /records \u56DE\u61C9\u7F3A record_id");
-  const head = await kbdbFetch2(env, "/entries", {
+  const head = await kbdbFetch3(env, "/entries", {
     method: "POST",
     body: JSON.stringify({ entry_type: USER_TEMPLATE, page_name: email, content: recordId, owner_id: ns })
   });
@@ -15374,6 +15977,7 @@ var RELAY_TICKET_TTL_SECONDS = 120;
 function portalUiOrigin(env) {
   const declared = String(env.UI_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (declared.length > 0) return declared[0];
+  if (isPrivateCloud(env)) return null;
   const sub = String(env.WORKER_SUBDOMAIN ?? "").trim();
   return sub ? `https://arcrun-rag-ui.${sub}.workers.dev` : null;
 }
@@ -15394,6 +15998,22 @@ async function peekResetToken(env, token) {
   const rec = await ephemeralGet(env, { template: PWRESET_TEMPLATE, hashField: "token_hash", rawKey: token });
   if (!rec) return null;
   return { record_id: rec.record_id ?? "", email: rec.email ?? "", created_at: rec.created_at ?? "" };
+}
+async function restoreResetToken(env, token, payload) {
+  const age = Math.floor((Date.now() - new Date(payload.created_at).getTime()) / 1e3);
+  const remaining = PWRESET_TTL_SECONDS - (Number.isFinite(age) && age > 0 ? age : 0);
+  if (remaining <= 0) return;
+  try {
+    await ephemeralPut(env, {
+      template: PWRESET_TEMPLATE,
+      slots: ["record_id", "email", "created_at"],
+      hashField: "token_hash",
+      rawKey: token,
+      values: { record_id: payload.record_id, email: payload.email, created_at: payload.created_at },
+      ttlSeconds: remaining
+    });
+  } catch {
+  }
 }
 async function consumeResetToken(env, token) {
   if (!token || !/^[0-9a-f]{16,128}$/i.test(token)) return null;
@@ -15516,14 +16136,20 @@ async function handlePasswordChange(c) {
         400
       );
     }
-    await writeNewPassword(c.env, payload.record_id, next);
+    try {
+      await writeNewPassword(c.env, payload.record_id, next);
+    } catch (e) {
+      if (e instanceof AuthStoreWriteError) await restoreResetToken(c.env, resetToken, payload);
+      throw e;
+    }
     return c.json({ success: true, email: payload.email, via: "reset_link" });
   }
   const auth = await requirePortalUser(c);
   if (!auth.ok) return auth.res;
   const current = String(body?.current ?? "");
   if (!current) return c.json({ error: "current\uFF08\u73FE\u6709\u5BC6\u78BC\uFF09\u5FC5\u586B" }, 400);
-  const ok = await verifyPassword(current, auth.user.values.password_hash ?? "");
+  const currentHash = findPortalPasswordHash(c.env, auth.user.recordId) ?? auth.user.values.password_hash ?? "";
+  const ok = await verifyPassword(current, currentHash);
   if (!ok) return c.json({ error: "\u820A\u5BC6\u78BC\u4E0D\u6B63\u78BA" }, 401);
   await writeNewPassword(c.env, auth.user.recordId, next);
   return c.json({ success: true, via: "current_password" });
@@ -15741,6 +16367,22 @@ async function readFolderTree(env, library) {
     return null;
   }
 }
+async function listDaemonReports(env) {
+  let libs = [];
+  try {
+    libs = await listRecordsByTemplate(env, LIBRARY_TEMPLATE);
+  } catch {
+    return [];
+  }
+  const names = libs.map((l) => (l.values.name ?? "").trim()).filter(Boolean).slice(0, 25);
+  const trees = await Promise.all(names.map((n) => readFolderTree(env, n)));
+  return trees.filter((t) => t !== null).map((t) => ({
+    machine: t.machine ?? "",
+    machine_label: t.machine_label ?? "",
+    daemon_version: t.daemon_version ?? "",
+    received_at: t.received_at ?? 0
+  }));
+}
 function summarizeFolderTree(tree) {
   let total = 0;
   let synced = 0;
@@ -15803,7 +16445,7 @@ portalRouter.post(
     const mine = existing.find((l) => (l.values.name ?? "") === library);
     let registered = false;
     if (!mine) {
-      const res = await kbdbFetch2(c.env, "/records", {
+      const res = await kbdbFetch3(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({
           template: LIBRARY_TEMPLATE,
@@ -15830,6 +16472,8 @@ portalRouter.post(
       //    舊版小幫手不送這兩格，而「不知道是哪一台」本身就是要顯示出來的事實。
       machine: String(body.machine ?? "").trim(),
       machine_label: String(body.machine_label ?? "").trim(),
+      // arcrun-rag#122：版號只收短字串（防有人塞一大包進 KV）；不合理就當沒送。
+      daemon_version: ((v) => v.length <= 40 ? v : "")(String(body.daemon_version ?? "").trim()),
       truncated: body.truncated === true,
       total_nodes: Number.isFinite(Number(body.total_nodes)) ? Number(body.total_nodes) : nodes.length,
       sync_token: String(body.sync_token ?? ""),
@@ -15875,8 +16519,15 @@ portalRouter.post(
     const expectShape = parseExpectShape(body?.expect, Boolean(daemonPrompt));
     if (!daemonPrompt && (!pageName || !srcText.trim()))
       return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
-    if (!c.env.AI) {
-      return honestStop(c, "ai_binding_missing");
+    let aiConfig = DEFAULT_EXTRACT_AI_CONFIG;
+    let configReadError;
+    try {
+      aiConfig = await readExtractAiConfig(c.env);
+    } catch (e) {
+      configReadError = `\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u7684\u8403\u53D6 AI \u8A2D\u5B9A\uFF0C\u5DF2\u9000\u56DE\u9810\u8A2D\uFF1A${e instanceof Error ? e.message : String(e)}`;
+    }
+    if (aiConfig.recipe === DEFAULT_EXTRACT_AI_CONFIG.recipe && !c.env.AI) {
+      return honestStop(c, "ai_binding_missing", configReadError);
     }
     const REL = ">".repeat(2);
     const prompt = daemonPrompt || `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
@@ -15893,36 +16544,35 @@ portalRouter.post(
 \u539F\u7A3F\uFF1A
 ${srcText}`;
     try {
-      const out = await c.env.AI.run(EXTRACT_MODEL, {
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: daemonPrompt ? 8192 : 2048,
+      const ran = await runExtractAi(c.env, credentialOwner(c.env), aiConfig, {
+        prompt,
+        maxTokens: daemonPrompt ? 8192 : 2048,
         temperature: 0.2,
-        // 🔴 Arcrun#134（2026-08-27）：呼叫端說它要一個 JSON 物件 ⇒ **就用模型保證得了的方式去要**。
-        //	不加這個的實測（youlin 真檔《火星座標_短片劇本_v1》打 6 次）：**3 次壞在
-        //	模型把字串的收尾引號打成全形 `”`** ⇒ 字串沒收掉 ⇒ 後面那個換行變成 JSON 裡的
-        //	裸控制字元 ⇒ daemon 與雲端都解析不了。那是第二顆骰子，和 `[object Object]`
-        //	不同源但同一種傷害：**同一份檔、同一個請求，成敗看運氣**。
-        //	`response_format: json_object` 走的是受限解碼，語法由平台保證 ⇒ 骰子拿掉。
-        //	只在呼叫端宣告要 JSON 時才加：legacy（要 markdown 卡）那條路一個字都沒動。
-        ...expectShape === "json_object" ? { response_format: { type: "json_object" } } : {}
-        // 🔴 **不准把回傳值宣告成 `{ response?: string }`**。
-        //	那個型別斷言正是本票的病根——binding 把純 JSON 回應解析成 JS 物件交回來，
-        //	而斷言讓編譯器相信它是字串 ⇒ `String(物件)` ＝ '[object Object]' ⇒ 整張卡沒了。
-        //	一律 `unknown`，由 normalizeAiText 認形狀（見 lib/ai-response.ts 檔頭實測）。
+        // 🔴 Arcrun#134（2026-08-27）：呼叫端說它要一個 JSON 物件 ⇒ **就用模型保證得了的方式去要**
+        //	（`response_format: json_object` 走受限解碼，語法由平台保證 ⇒ 骰子拿掉）。
+        //	實測（youlin 真檔打 6 次）3 次壞在模型把字串收尾引號打成全形 `”`。
+        //	只在呼叫端宣告要 JSON 時才要：legacy（要 markdown 卡）那條路一個字都沒動。
+        //	#277：組請求的是 recipe（body_template），這裡只宣告「要不要 JSON」。
+        jsonObject: expectShape === "json_object"
       });
+      if (!ran.ok) {
+        if (ran.code === "ai_binding_missing") return honestStop(c, "ai_binding_missing");
+        return c.json({ error: `\u96F2\u7AEF\u8403\u53D6\uFF1A${ran.error}`, code: ran.code }, 502);
+      }
+      const out = ran.out;
       const norm = normalizeAiText(out);
       if (norm.kind === "unrenderable") {
-        return c.json({ error: `\u96F2\u7AEF\u8403\u53D6\uFF1AWorkers AI \u7684\u56DE\u61C9\u9084\u539F\u4E0D\u56DE\u6587\u5B57\uFF08${norm.reason ?? "\u672A\u77E5\u539F\u56E0"}\uFF09` }, 502);
+        return c.json({ error: `\u96F2\u7AEF\u8403\u53D6\uFF1A${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} \u7684\u56DE\u61C9\u9084\u539F\u4E0D\u56DE\u6587\u5B57\uFF08${norm.reason ?? "\u672A\u77E5\u539F\u56E0"}\uFF09` }, 502);
       }
       const raw2 = norm.text;
-      if (!raw2) return c.json({ error: "Workers AI \u6C92\u6709\u56DE\u50B3\u5167\u5BB9" }, 502);
+      if (!raw2) return c.json({ error: `${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} \u6C92\u6709\u56DE\u50B3\u5167\u5BB9` }, 502);
       if (daemonPrompt) {
         if (expectShape === "json_object") {
           const check = hasJsonObject(raw2);
           if (!check.ok) {
             return c.json(
               {
-                error: `\u96F2\u7AEF\u8403\u53D6\uFF1A\u6A21\u578B\u6C92\u6709\u7167\u5951\u7D04\u56DE JSON \u7269\u4EF6\uFF08${check.reason}\uFF09\u3002\u9019\u4E00\u6BB5\u662F\u5728\u4F60\u7684\u77E5\u8B58\u5EAB\u96F2\u7AEF\u8DD1\u7684\uFF08Workers AI ${EXTRACT_MODEL}\uFF09\uFF0C\u4E0D\u662F\u5728\u4F60\u7684\u96FB\u8166\u4E0A\u3002\u6A21\u578B\u5BE6\u969B\u56DE\u7684\u524D 120 \u5B57\uFF1A${snippetForError(raw2)}`,
+                error: `\u96F2\u7AEF\u8403\u53D6\uFF1A\u6A21\u578B\u6C92\u6709\u7167\u5951\u7D04\u56DE JSON \u7269\u4EF6\uFF08${check.reason}\uFF09\u3002\u9019\u4E00\u6BB5\u662F\u5728\u4F60\u7684\u77E5\u8B58\u5EAB\u96F2\u7AEF\u8DD1\u7684\uFF08${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} ${ran.model}\uFF09\uFF0C\u4E0D\u662F\u5728\u4F60\u7684\u96FB\u8166\u4E0A\u3002\u6A21\u578B\u5BE6\u969B\u56DE\u7684\u524D 120 \u5B57\uFF1A${snippetForError(raw2)}`,
                 code: "ai_output_not_json_object",
                 output_kind: norm.kind
               },
@@ -15966,7 +16616,7 @@ portalRouter.post(
     for (const item of wanted) {
       const name = String(item?.name ?? "").trim();
       if (!isValidLibraryName(name) || name === "*" || have.has(name)) continue;
-      const res = await kbdbFetch2(c.env, "/records", {
+      const res = await kbdbFetch3(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({
           template: LIBRARY_TEMPLATE,
@@ -16085,10 +16735,11 @@ portalRouter.get(
       const tenant2 = knowledgeOwner(c.env);
       const ownerParam = ownerQuery(tenant2);
       const [autoRes, cardRes, tripletRes] = await Promise.all([
-        kbdbFetch2(c.env, `/entries/libraries?${ownerParam}`).catch(() => null),
-        kbdbFetch2(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
-        kbdbFetch2(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
+        kbdbFetch3(c.env, `/entries/libraries?${ownerParam}`).catch(() => null),
+        kbdbFetch3(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
+        kbdbFetch3(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
       ]);
+      for (const r of [autoRes, cardRes, tripletRes]) if (r && !r.ok) releaseBody(r);
       const cardMap = /* @__PURE__ */ new Map();
       if (cardRes?.ok) {
         const body = await cardRes.json();
@@ -16171,7 +16822,7 @@ portalRouter.post(
         skipped.push(name);
         continue;
       }
-      const res = await kbdbFetch2(c.env, "/records", {
+      const res = await kbdbFetch3(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({
           template: LIBRARY_TEMPLATE,
@@ -16218,12 +16869,106 @@ portalRouter.patch(
     return c.json({ success: true, library: toPublicLibrary(updated) });
   })
 );
+async function readExtractAiRow(env) {
+  const ns = portalNamespace(env);
+  const res = await kbdbFetch3(env, `/records/by-template/${encodeURIComponent(EXTRACT_AI_TEMPLATE)}?owner_id=${encodeURIComponent(ns)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new KbdbError(`GET /records/by-template/${EXTRACT_AI_TEMPLATE} \u2192 ${res.status}`);
+  const body = await res.json();
+  for (const r of body.records ?? []) {
+    const v = validateExtractAiConfig({ recipe: r.values.recipe, base_url: r.values.base_url, model: r.values.model });
+    if (v.ok) {
+      return { record_id: r.record_id, config: v.config, updated_at: r.values.updated_at ?? "", updated_by: r.values.updated_by ?? "" };
+    }
+  }
+  return null;
+}
+async function readExtractAiConfig(env) {
+  return (await readExtractAiRow(env))?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
+}
+portalRouter.get(
+  "/portal/admin/extract-ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const row = await readExtractAiRow(c.env);
+    let hasKey = false;
+    try {
+      hasKey = await hasCredential(c.env, credentialOwner(c.env), EXTRACT_AI_CREDENTIAL);
+    } catch {
+      hasKey = false;
+    }
+    const config = row?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
+    return c.json({
+      success: true,
+      recipe: config.recipe,
+      base_url: config.base_url ?? null,
+      model: config.model ?? null,
+      has_key: hasKey,
+      is_default: !row,
+      available_recipes: EXTRACT_AI_RECIPE_IDS,
+      updated_at: row?.updated_at || null,
+      updated_by: row?.updated_by || null
+    });
+  })
+);
+portalRouter.put(
+  "/portal/admin/extract-ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const v = validateExtractAiConfig(body);
+    if (!v.ok) return c.json({ error: v.error }, 400);
+    const apiKey = typeof body?.api_key === "string" ? body.api_key.trim() : "";
+    if (apiKey) {
+      try {
+        await storeCredential(c.env, credentialOwner(c.env), EXTRACT_AI_CREDENTIAL, apiKey, "extract_ai");
+      } catch (e) {
+        return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    }
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const values = {
+      recipe: v.config.recipe,
+      base_url: v.config.base_url ?? "",
+      model: v.config.model ?? "",
+      updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      updated_by: auth.user.values.email ?? ""
+    };
+    const existing = await readExtractAiRow(c.env);
+    if (existing) {
+      await patchRecordValues(c.env, existing.record_id, values);
+    } else {
+      const res = await kbdbFetch3(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({ template: EXTRACT_AI_TEMPLATE, owner_id: portalNamespace(c.env), values })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08${EXTRACT_AI_TEMPLATE}\uFF09\u2192 ${res.status}`);
+    }
+    return c.json({ success: true, recipe: v.config.recipe, base_url: v.config.base_url ?? null, model: v.config.model ?? null });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/extract-ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const existing = await readExtractAiRow(c.env);
+    if (!existing) return c.json({ success: true, already: true });
+    const found = await deleteKbdbRecord(c.env, existing.record_id);
+    return c.json({ success: true, removed: found });
+  })
+);
 portalRouter.get(
   "/portal/admin/ai",
   (c) => run(c, async () => {
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
-    const tenantSlug = portalTenant(c.env);
+    const tenantSlug = credentialOwner(c.env);
     let hasKey = false;
     try {
       hasKey = await hasCredential(c.env, tenantSlug, "gemini_api_key");
@@ -16239,7 +16984,7 @@ portalRouter.get(
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch2(c.env, `/execution-log/retention?${ownerQuery(ownerId)}`);
+    const res = await kbdbFetch3(c.env, `/execution-log/retention?${ownerQuery(ownerId)}`);
     if (!res.ok) throw new KbdbError(`GET /execution-log/retention \u2192 ${res.status}`);
     const data = await res.json();
     return c.json({ success: true, retention_days: data.retention_days ?? null, default_days: data.default_days ?? 90 });
@@ -16256,7 +17001,7 @@ portalRouter.put(
       return c.json({ error: "retention_days \u5FC5\u9808\u662F\u6B63\u6574\u6578\uFF0C\u6216 null\uFF08\u4EE3\u8868\u4E0D\u522A\u9664\uFF09" }, 400);
     }
     const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch2(c.env, "/execution-log/retention", {
+    const res = await kbdbFetch3(c.env, "/execution-log/retention", {
       method: "PUT",
       body: JSON.stringify({ owner_id: ownerField(ownerId), retention_days: days === void 0 ? null : days })
     });
@@ -16271,9 +17016,9 @@ portalRouter.get(
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const [settingsRes, brakesRes, usageRes] = await Promise.all([
-      kbdbFetch2(c.env, "/usage-brakes/settings"),
-      kbdbFetch2(c.env, "/usage-brakes?limit=20"),
-      kbdbFetch2(c.env, "/usage-brakes/usage")
+      kbdbFetch3(c.env, "/usage-brakes/settings"),
+      kbdbFetch3(c.env, "/usage-brakes?limit=20"),
+      kbdbFetch3(c.env, "/usage-brakes/usage")
     ]);
     if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
     if (!brakesRes.ok) throw new KbdbError(`GET /usage-brakes \u2192 ${brakesRes.status}`);
@@ -16309,7 +17054,7 @@ portalRouter.post(
     if (typeof body?.brake_enabled !== "boolean") {
       return c.json({ error: "brake_enabled \u5FC5\u9808\u662F boolean" }, 400);
     }
-    const res = await kbdbFetch2(c.env, "/usage-brakes/settings", {
+    const res = await kbdbFetch3(c.env, "/usage-brakes/settings", {
       method: "POST",
       body: JSON.stringify({ brake_enabled: body.brake_enabled, by: auth.user.values.email ?? "portal" })
     });
@@ -16324,7 +17069,7 @@ portalRouter.post(
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const id = c.req.param("id");
-    const res = await kbdbFetch2(c.env, `/usage-brakes/${encodeURIComponent(id)}/release`, {
+    const res = await kbdbFetch3(c.env, `/usage-brakes/${encodeURIComponent(id)}/release`, {
       method: "POST",
       body: JSON.stringify({ by: auth.user.values.email ?? "portal" })
     });
@@ -16345,7 +17090,8 @@ portalRouter.get(
     if (!auth.ok) return auth.res;
     const isAdmin = (auth.user.values.role ?? "") === "admin";
     const sub = String(c.env.WORKER_SUBDOMAIN ?? "").trim();
-    const mcpUrl = mcpUrlFor(sub);
+    const mcpBase = mcpBaseUrl(c.env);
+    const mcpUrl = mcpBase ? `${mcpBase}/mcp` : mcpUrlFor(sub);
     const payload = {
       success: true,
       mcp_url: mcpUrl,
@@ -16392,7 +17138,7 @@ portalRouter.post(
       return c.json({ success: true, already: true, host: norm.host, record_id: dup.record_id });
     }
     const ns = portalNamespace(c.env);
-    const res = await kbdbFetch2(c.env, "/records", {
+    const res = await kbdbFetch3(c.env, "/records", {
       method: "POST",
       body: JSON.stringify({
         template: MCP_REDIRECT_HOST_TEMPLATE,
@@ -16479,7 +17225,7 @@ portalRouter.post(
       await patchRecordValues(c.env, existing.record_id, values);
     } else {
       const ns = portalNamespace(c.env);
-      const res = await kbdbFetch2(c.env, "/records", {
+      const res = await kbdbFetch3(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({ template: MCP_TOKEN_TTL_TEMPLATE, owner_id: ns, values })
       });
@@ -16523,7 +17269,7 @@ portalRouter.delete(
     if (!confirm) return c.json({ error: 'body \u9808\u5E36 { confirm: "<\u5EAB\u540D>" } \u624D\u57F7\u884C\uFF08\u79FB\u9664\u6703\u5F71\u97FF\u8CC7\u6599\u53EF\u641C\u6027\uFF09' }, 400);
     if (confirm !== name) return c.json({ error: `confirm \u503C\u300C${confirm}\u300D\u8207\u5EAB\u540D\u300C${name}\u300D\u4E0D\u7B26` }, 400);
     const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch2(c.env, "/entries/deprecate-by-library", {
+    const res = await kbdbFetch3(c.env, "/entries/deprecate-by-library", {
       method: "PATCH",
       body: JSON.stringify({ owner_id: ownerField(ownerId), library: name })
     });
@@ -16546,7 +17292,7 @@ portalRouter.post(
     if (!rawKey) {
       return c.json({ error: "\u6C92\u6709\u8981\u8B8A\u66F4\u7684\u9805\u76EE\uFF08\u91D1\u9470\u7559\u7A7A\uFF09" }, 400);
     }
-    const tenantSlug = portalTenant(c.env);
+    const tenantSlug = credentialOwner(c.env);
     try {
       await storeCredential(c.env, tenantSlug, "gemini_api_key", rawKey, "gemini");
     } catch (e) {
@@ -16563,7 +17309,7 @@ portalRouter.get(
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
-    const tenantSlug = portalTenant(c.env);
+    const tenantSlug = credentialOwner(c.env);
     try {
       const rows = await listCredentialRows(c.env, tenantSlug);
       return c.json({ success: true, credentials: rows, total: rows.length });
@@ -16586,7 +17332,7 @@ portalRouter.post(
     }
     const service = typeof body.service === "string" ? body.service : void 0;
     const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
-    const tenantSlug = portalTenant(c.env);
+    const tenantSlug = credentialOwner(c.env);
     try {
       await writeCredential(c.env, tenantSlug, body.name, body.value, service, sensitivity);
     } catch (e) {
@@ -16611,7 +17357,7 @@ portalRouter.put(
     }
     const service = typeof body.service === "string" ? body.service : void 0;
     const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
-    const tenantSlug = portalTenant(c.env);
+    const tenantSlug = credentialOwner(c.env);
     try {
       await writeCredential(c.env, tenantSlug, name, body.value, service, sensitivity);
     } catch (e) {
@@ -16634,7 +17380,7 @@ portalRouter.patch(
     const newName = typeof body?.new_name === "string" ? body.new_name : void 0;
     const service = typeof body?.service === "string" ? body.service : void 0;
     const value = typeof body?.value === "string" ? body.value : void 0;
-    const tenantSlug = portalTenant(c.env);
+    const tenantSlug = credentialOwner(c.env);
     try {
       const result = await editCredential(c.env, tenantSlug, name, { newName, service, value });
       return c.json({ success: true, ...result });
@@ -16651,7 +17397,7 @@ portalRouter.delete(
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const name = c.req.param("name");
-    const tenantSlug = portalTenant(c.env);
+    const tenantSlug = credentialOwner(c.env);
     const result = await deleteCredentialByName(c.env, tenantSlug, name);
     if (!result.ok) return c.json({ error: result.error }, result.status);
     return c.json({ success: true, name });
@@ -16684,8 +17430,8 @@ async function buildDiagnostics(env, tenant2) {
   let embedding = { checked: false };
   try {
     const [statusRes, selftestRes] = await Promise.all([
-      kbdbFetch2(env, `/embed/backfill/status?${ownerQuery(tenant2)}`),
-      kbdbFetch2(env, `/embed/selftest?${ownerQuery(tenant2)}`)
+      kbdbFetch3(env, `/embed/backfill/status?${ownerQuery(tenant2)}`),
+      kbdbFetch3(env, `/embed/selftest?${ownerQuery(tenant2)}`)
     ]);
     const statusBody = await statusRes.json().catch(() => null);
     const selftestBody = await selftestRes.json().catch(() => null);
@@ -16711,8 +17457,8 @@ async function buildDiagnostics(env, tenant2) {
   try {
     const [registeredLibs, autoRes, tripletRes] = await Promise.all([
       listRecordsByTemplate(env, LIBRARY_TEMPLATE).catch(() => []),
-      kbdbFetch2(env, `/entries/libraries?${ownerParam}`),
-      kbdbFetch2(env, `/records/triplet-stats?${ownerParam}`)
+      kbdbFetch3(env, `/entries/libraries?${ownerParam}`),
+      kbdbFetch3(env, `/records/triplet-stats?${ownerParam}`)
     ]);
     const knownLibs = new Set(
       registeredLibs.map((r) => (r.values.name ?? "").trim()).filter((n) => !!n)
@@ -16731,7 +17477,7 @@ async function buildDiagnostics(env, tenant2) {
   let library_scope_check = { ran: false };
   if (library_count === 0 && triplet_count === 0) {
     try {
-      const probeRes = await kbdbFetch2(env, `/entries?${new URLSearchParams({ owner_id: ownerField(tenant2), limit: "1" }).toString()}`);
+      const probeRes = await kbdbFetch3(env, `/entries?${new URLSearchParams({ owner_id: ownerField(tenant2), limit: "1" }).toString()}`);
       const probeBody = await probeRes.json().catch(() => null);
       const total = probeBody?.total ?? 0;
       library_scope_check = {
@@ -16791,6 +17537,15 @@ async function movePortalPasswordsToAuthStore(env, tokenOverride) {
   }
   return { moved, already, cleared };
 }
+portalRouter.post(
+  "/portal/admin/update",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const r = await requestInstanceUpdate(c.env);
+    return c.json(r.body, r.status);
+  })
+);
 
 // cypher-executor/src/routes/init-seed.ts
 var initSeedRouter = new Hono2();
@@ -16824,7 +17579,7 @@ initSeedRouter.post("/init/seed", async (c) => {
         hash_id: hashId,
         display_name: seed.display_name,
         description: seed.description,
-        endpoint: seed.endpoint,
+        endpoint: resolveKbdbSeedBase(seed.endpoint, () => kbdbBaseUrl(c.env)),
         method: (seed.method ?? "POST").toUpperCase(),
         auth_service: seed.auth_service,
         // ③ payload/回應/binding 三層（3.12）：不列進來的欄位會被**靜默吃掉**——
@@ -16834,6 +17589,7 @@ initSeedRouter.post("/init/seed", async (c) => {
         response_map: seed.response_map,
         auth: seed.auth,
         binding_name: seed.binding_name,
+        headers: seed.headers,
         created_at: existing?.created_at ?? now2,
         updated_at: now2
       };
@@ -16857,6 +17613,7 @@ initSeedRouter.post("/init/seed", async (c) => {
       const existing = await c.env.RECIPES.get(`auth_recipe:${service}`, "json");
       const recipe = {
         ...seed,
+        base_url: resolveKbdbSeedBase(seed.base_url, () => kbdbBaseUrl(c.env)),
         service,
         created_at: existing?.created_at ?? now2,
         updated_at: now2
@@ -17237,6 +17994,7 @@ function buildTriageModel(todoEntries, inboxEntries) {
 }
 
 // cypher-executor/src/routes/console-dashboard.ts
+init_tenant();
 var consoleDashboardRouter = new Hono2();
 var STALE_MINUTES = 240;
 var JUDGE_START_HOUR = 9;
@@ -17600,378 +18358,13 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
 
 // cypher-executor/src/routes/portal-data.ts
 init_dist();
-init_webhook_handlers();
-
-// cypher-executor/src/lib/app-system.ts
-init_kbdb_proxy();
-init_webhook_handlers();
-function appStore(env) {
-  return env.WEBHOOKS;
-}
-function kbdbBehindHint(e) {
-  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-  if (!msg.includes("KbdbUnavailable")) return null;
-  return "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u6C92\u6709\u56DE\u61C9\uFF0C\u6216\u5B83\u7684\u7248\u672C\u6BD4\u76EE\u524D\u7684\u7A0B\u5F0F\u78BC\u820A\u2014\u2014\u5B89\u88DD\u9700\u8981\u77E5\u8B58\u5EAB\u63D0\u4F9B\u300C\u540C\u4E00\u4EFD\u8CC7\u7522\u6C38\u9060\u540C\u4E00\u5217\u300D\u7684\u5BEB\u5165\u80FD\u529B\u3002\u8ACB\u7BA1\u7406\u8005\u628A\u77E5\u8B58\u5EAB\u4E00\u8D77\u66F4\u65B0\u5230\u540C\u4E00\u7248\uFF1B\u5728\u90A3\u4E4B\u524D**\u5DF2\u7D93\u88DD\u597D\u7684 App \u4E0D\u53D7\u5F71\u97FF**\uFF0C\u7167\u5E38\u53EF\u7528\u3002";
-}
-var APP_UI_STYLES = ["inherit", "own"];
-var DEFAULT_APP_UI_STYLE = "inherit";
-var ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
-function validateAppDeclaration(raw2) {
-  const errors = [];
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) {
-    return { ok: false, errors: ["\u5BA3\u544A\u5FC5\u9808\u662F\u4E00\u500B JSON \u7269\u4EF6"] };
-  }
-  const d = raw2;
-  if (typeof d.id !== "string" || !ID_RE.test(d.id)) {
-    errors.push("id \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09");
-  }
-  if (typeof d.name !== "string" || d.name.trim() === "") {
-    errors.push("name \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32");
-  }
-  const hasWorkflows = Array.isArray(d.workflows) && d.workflows.length > 0;
-  const hasUi = d.ui && typeof d.ui === "object" && typeof d.ui.html === "string" && d.ui.html.trim() !== "";
-  if (!hasWorkflows && !hasUi) {
-    errors.push("workflows \u6216 ui \u81F3\u5C11\u8981\u6709\u4E00\u500B\uFF08\u6C92\u6709\u756B\u9762\u4E5F\u6C92\u6709\u5DE5\u4F5C\u6D41\u7684 App \u4E0D\u6210\u7ACB\uFF0Cdesign \xA7\u4E8C\uFF09");
-  }
-  if (d.workflows !== void 0) {
-    if (!Array.isArray(d.workflows)) {
-      errors.push("workflows \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      d.workflows.forEach((w, i) => {
-        if (!w || typeof w !== "object") {
-          errors.push(`workflows[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const wf = w;
-        if (typeof wf.name !== "string" || wf.name.trim() === "") errors.push(`workflows[${i}].name \u5FC5\u586B`);
-        if (!wf.graph || typeof wf.graph !== "object") {
-          errors.push(`workflows[${i}].graph \u5FC5\u586B\uFF08\u57F7\u884C\u5716\uFF09`);
-        } else {
-          const g = wf.graph;
-          if (typeof g.id !== "string" || g.id.trim() === "") errors.push(`workflows[${i}].graph.id \u5FC5\u586B`);
-          if (typeof g.name !== "string" || g.name.trim() === "") errors.push(`workflows[${i}].graph.name \u5FC5\u586B`);
-          if (!Array.isArray(g.nodes)) errors.push(`workflows[${i}].graph.nodes \u5FC5\u9808\u662F\u9663\u5217`);
-          if (!Array.isArray(g.edges)) errors.push(`workflows[${i}].graph.edges \u5FC5\u9808\u662F\u9663\u5217`);
-        }
-      });
-    }
-  }
-  if (d.ui !== void 0 && !hasUi) {
-    errors.push("ui.html \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
-  }
-  if (d.ui && typeof d.ui === "object") {
-    const s = d.ui.style;
-    if (s !== void 0 && (typeof s !== "string" || !APP_UI_STYLES.includes(s))) {
-      errors.push(`ui.style \u53EA\u80FD\u662F ${APP_UI_STYLES.join(" \u6216 ")}\uFF08\u7701\u7565\uFF1D${DEFAULT_APP_UI_STYLE}\uFF0C\u8DDF\u96A8\u5168\u5C40\uFF09`);
-    }
-  }
-  if (d.data !== void 0) {
-    if (!Array.isArray(d.data)) {
-      errors.push("data \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      d.data.forEach((dt, i) => {
-        if (!dt || typeof dt !== "object") {
-          errors.push(`data[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const decl = dt;
-        if (typeof decl.name !== "string" || decl.name.trim() === "") errors.push(`data[${i}].name \u5FC5\u586B`);
-        if (!Array.isArray(decl.slots) || decl.slots.some((s) => typeof s !== "string")) {
-          errors.push(`data[${i}].slots \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
-        }
-      });
-    }
-  }
-  if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
-    errors.push("actions \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217");
-  } else if (Array.isArray(d.actions) && Array.isArray(d.workflows)) {
-    const wfNames = new Set(
-      d.workflows.map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
-    );
-    for (const a of d.actions) {
-      if (!wfNames.has(a)) {
-        errors.push(
-          `actions \u88E1\u7684\u300C${a}\u300D\u627E\u4E0D\u5230\u540C\u540D\u7684 workflow\uFF08\u52D5\u4F5C\u540D\u5C31\u662F\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\uFF09\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
-        );
-      }
-    }
-  }
-  return { ok: errors.length === 0, errors };
-}
-var ICON_SET = ["\u{1F4C4}", "\u{1F5D2}\uFE0F", "\u{1F9E9}", "\u{1F4CC}", "\u{1F527}", "\u{1F4E6}", "\u{1F5C2}\uFE0F", "\u2705", "\u{1F4A1}", "\u{1F514}", "\u{1F4CA}", "\u{1F9ED}"];
-function generateIcon(name) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
-  return ICON_SET[h % ICON_SET.length];
-}
-function applyDeclarationDefaults(raw2) {
-  const workflows = raw2.workflows ?? [];
-  const actions = raw2.actions ?? workflows.map((w) => w.name);
-  return {
-    ...raw2,
-    id: raw2.id,
-    name: raw2.name,
-    icon: raw2.icon ?? generateIcon(raw2.name),
-    version: raw2.version ?? "0.0.0",
-    workflows,
-    data: raw2.data ?? [],
-    actions,
-    keeps_data: raw2.remove?.keeps_data ?? true
-  };
-}
-var APP_PLACEHOLDERS = ["__NAMESPACE__", "__CYPHER_BASE__"];
-function resolveDeclarationPlaceholders(value, coords) {
-  const base = coords.cypherBase.replace(/\/+$/, "");
-  const swap = (s) => s.split("__NAMESPACE__").join(coords.namespace).split("__CYPHER_BASE__").join(base);
-  const walk = (v) => {
-    if (typeof v === "string") return swap(v);
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === "object") {
-      const out = {};
-      for (const [k, val] of Object.entries(v)) out[swap(k)] = walk(val);
-      return out;
-    }
-    return v;
-  };
-  return walk(value);
-}
-function remainingPlaceholders(value) {
-  const text = JSON.stringify(value) ?? "";
-  return APP_PLACEHOLDERS.filter((p) => text.includes(p));
-}
-async function computeContentHash(raw2) {
-  const canonical = canonicalize(raw2);
-  const data = new TextEncoder().encode(canonical);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function canonicalize(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
-  if (value && typeof value === "object") {
-    const keys = Object.keys(value).sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(value[k])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-function appKey(tenant2, id) {
-  return `${tenant2}:app:${id}`;
-}
-function workflowKvKey(tenant2, wfKey) {
-  return `${tenant2}:wf:${wfKey}`;
-}
-async function getInstalledApp(env, tenant2, id) {
-  const raw2 = await appStore(env).get(appKey(tenant2, id), "text");
-  if (!raw2) return null;
-  try {
-    return JSON.parse(raw2);
-  } catch {
-    return null;
-  }
-}
-async function listInstalledApps(env, tenant2) {
-  const prefix = `${tenant2}:app:`;
-  const list = await appStore(env).list({ prefix });
-  const apps = await Promise.all(
-    list.keys.map(async (k) => {
-      const raw2 = await appStore(env).get(k.name, "text");
-      if (!raw2) return null;
-      try {
-        return JSON.parse(raw2);
-      } catch {
-        return null;
-      }
-    })
-  );
-  return apps.filter((a) => a !== null);
-}
-async function ensureTemplate4(env, name, slots, description) {
-  const { base, headers } = kbdbBase(env);
-  const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
-  if (getRes.ok) {
-    const data = await getRes.json().catch(() => null);
-    if (data?.success && data.template) return;
-  }
-  await fetch(`${base}/templates`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ name, slots, description })
-  });
-}
-async function installApp(env, tenant2, rawDecl, opts = {}) {
-  let decl0 = rawDecl;
-  if (opts.coords) {
-    try {
-      decl0 = resolveDeclarationPlaceholders(rawDecl, opts.coords);
-    } catch (e) {
-      return {
-        ok: false,
-        step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
-        errors: [e instanceof Error ? e.message : String(e)],
-        hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u505A\u932F\u4E86\u3002\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u5373\u53EF\u3002"
-      };
-    }
-  }
-  const left = remainingPlaceholders(decl0);
-  if (left.length > 0) {
-    return {
-      ok: false,
-      step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
-      errors: [`\u9019\u4EFD\u5BA3\u544A\u88E1\u9084\u6709\u6C92\u586B\u7684\u4F4D\u7F6E\uFF1A${left.join("\u3001")}`],
-      hint: "\u9019\u500B App \u7684\u4F5C\u8005\u7559\u4E86\u8981\u7531\u5BE6\u4F8B\u586B\u7684\u6B04\u4F4D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u586B\u5F97\u8D77\u4F86\u3002\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
-    };
-  }
-  const validation = validateAppDeclaration(decl0);
-  if (!validation.ok) {
-    return {
-      ok: false,
-      step: "\u6AA2\u67E5\u9019\u500B App \u7684\u5BA3\u544A",
-      errors: validation.errors,
-      hint: "\u9019\u662F App \u4F5C\u8005\u90A3\u908A\u8981\u4FEE\u7684\uFF0C\u91CD\u8A66\u4E0D\u6703\u8B8A\u597D\u3002\u628A\u4E0A\u9762\u9019\u5E7E\u884C\u539F\u6587\u56DE\u5831\u7D66\u9019\u500B App \u7684\u4F5C\u8005\u3002"
-    };
-  }
-  const decl = applyDeclarationDefaults(decl0);
-  const contentHash = await computeContentHash(decl0);
-  const existing = await getInstalledApp(env, tenant2, decl.id);
-  if (existing && existing.content_hash === contentHash && existing.status === "active") {
-    return { ok: true, changed: false, app: existing };
-  }
-  try {
-    for (const dt of decl.data) {
-      await ensureTemplate4(env, dt.name, dt.slots, dt.description);
-    }
-  } catch (e) {
-    return {
-      ok: false,
-      step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
-      errors: [e instanceof Error ? e.message : String(e)],
-      hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\u670D\u52D9\u6C92\u6709\u56DE\u61C9\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
-    };
-  }
-  const workflowRefs = [];
-  try {
-    for (const wf of decl.workflows) {
-      const wfKey = `${decl.id}__${wf.name}`;
-      await appStore(env).put(
-        workflowKvKey(tenant2, wfKey),
-        JSON.stringify({
-          graph: wf.graph,
-          description: wf.description || `${decl.name}: ${wf.name}`,
-          created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString()
-        })
-      );
-      workflowRefs.push({ name: wf.name, wf_key: wfKey, description: wf.description || "" });
-    }
-  } catch (e) {
-    return {
-      ok: false,
-      step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
-      errors: [e instanceof Error ? e.message : String(e)],
-      hint: kbdbBehindHint(e) ?? `\u5DF2\u7D93\u88DD\u4E0A ${workflowRefs.length}\uFF0F${decl.workflows.length} \u689D\u3002\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u6703\u5F9E\u982D\u8986\u5BEB\u4E00\u904D\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002`
-    };
-  }
-  if (existing) {
-    const keepKeys = new Set(workflowRefs.map((w) => w.wf_key));
-    for (const prev of existing.workflows) {
-      if (!keepKeys.has(prev.wf_key)) {
-        await appStore(env).delete(workflowKvKey(tenant2, prev.wf_key));
-      }
-    }
-  }
-  const uiHtml = decl.ui?.html;
-  const record = {
-    id: decl.id,
-    name: decl.name,
-    icon: decl.icon,
-    version: decl.version,
-    content_hash: contentHash,
-    workflows: workflowRefs,
-    actions: decl.actions,
-    data_templates: decl.data.map((d) => d.name),
-    has_ui: Boolean(uiHtml),
-    ui_html: uiHtml,
-    ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
-    keeps_data: decl.keeps_data,
-    installed_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
-    updated_at: (/* @__PURE__ */ new Date()).toISOString(),
-    status: "active"
-  };
-  try {
-    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
-  } catch (e) {
-    return {
-      ok: false,
-      step: "\u5BEB\u5165\u5B89\u88DD\u7D00\u9304",
-      errors: [e instanceof Error ? e.message : String(e)],
-      hint: kbdbBehindHint(e) ?? "\u5DE5\u4F5C\u6D41\u5DF2\u7D93\u88DD\u597D\u4E86\uFF0C\u53EA\u5DEE\u6700\u5F8C\u9019\u4E00\u7B46\u7D00\u9304\u2014\u2014\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u5C31\u6703\u88DC\u4E0A\u3002"
-    };
-  }
-  return { ok: true, changed: true, app: record };
-}
-async function uninstallApp(env, tenant2, id) {
-  const existing = await getInstalledApp(env, tenant2, id);
-  if (!existing) return { ok: false, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD\u7D00\u9304" };
-  try {
-    for (const wf of existing.workflows) {
-      await appStore(env).delete(workflowKvKey(tenant2, wf.wf_key));
-    }
-    await appStore(env).delete(appKey(tenant2, id));
-  } catch (e) {
-    return {
-      ok: false,
-      error: kbdbBehindHint(e) ?? `\u79FB\u9664\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
-    };
-  }
-  return { ok: true };
-}
-async function runAppAction(env, tenant2, appId, action, payload, ctx) {
-  const app2 = await getInstalledApp(env, tenant2, appId);
-  if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
-  if (!app2.actions.includes(action)) {
-    return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
-  }
-  const wfRef = app2.workflows.find((w) => w.name === action);
-  if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
-  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
-  if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
-  let graph;
-  try {
-    const parsed = JSON.parse(raw2);
-    if (!parsed.graph) throw new Error("no graph");
-    graph = parsed.graph;
-  } catch {
-    return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
-  }
-  const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
-  if (!result.success) {
-    return { ok: false, status: 502, error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` };
-  }
-  return { ok: true, status: 200, result: result.data };
-}
-function summarizeApp(app2) {
-  return { id: app2.id, name: app2.name, icon: app2.icon, has_ui: app2.has_ui, version: app2.version };
-}
-function detailApp(app2) {
-  return {
-    id: app2.id,
-    name: app2.name,
-    icon: app2.icon,
-    version: app2.version,
-    has_ui: app2.has_ui,
-    ui_html: app2.ui_html,
-    // 舊安裝態（v0.1 裝的 App）沒有這一欄——一律當「跟隨全局」，不是「維持原樣」。
-    // 那正是 leo 抱怨的那個狀態，預設值要把它修好，不是把它保留下來。
-    ui_style: app2.ui_style ?? DEFAULT_APP_UI_STYLE,
-    workflows: app2.workflows.map((w) => ({ name: w.name, description: w.description })),
-    actions: app2.actions
-  };
-}
 
 // cypher-executor/src/lib/app-catalog/notes.json
 var notes_default = {
   id: "notes",
   name: "\u7B46\u8A18",
   icon: "\u{1F4DD}",
-  version: "0.2.0",
+  version: "1.1.0",
   workflows: [
     {
       name: "create_note",
@@ -19261,6 +19654,1240 @@ var global_index_app_default = {
   ]
 };
 
+// workflows/kanban.app.json
+var kanban_app_default = {
+  id: "kanban",
+  name: "\u7968\u770B\u677F",
+  icon: "\u{1F5C2}\uFE0F",
+  version: "0.2.1",
+  changelog: "\u5F9E\u5E02\u96C6\u5B89\u88DD\u6642\uFF0C\u5B83\u8981\u7528\u7684\u5169\u652F recipe\uFF08gitea_read\u3001gitea_issue_labels\uFF09\u6703\u4E00\u8D77\u88DD\u597D\uFF1B\u7F3A gitea_token \u6642\uFF0C\u5E02\u96C6\u6703\u660E\u8B1B\u7F3A\u54EA\u4E00\u628A\u3001\u53BB\u300C\u7BA1\u7406 \u2192 \u91D1\u9470\u7BA1\u7406\u300D\u586B\u30020.2.1\uFF1A\u5169\u652F recipe \u5BA3\u544A\u81EA\u5DF1\u8981 gitea_token\uFF0CRecipe \u6E05\u55AE\u4E0D\u518D\u628A\u5B83\u5011\u6A19\u6210\u300C\u514D\u91D1\u9470\u300D\u3002",
+  requires: {
+    recipes: [
+      {
+        canonical_id: "gitea_read",
+        display_name: "Gitea Read\uFF08\u552F\u8B80\uFF09",
+        description: "\u552F\u8B80\u8B80 Gitea API\u3002GET https://git.uncle6.me/api/v1{{_path}}\uFF0C\u8DEF\u5F91\u7531\u547C\u53EB\u7AEF\u7528 _path \u7D66\uFF08\u4F8B /repos/inkstone/Arcrun/issues?state=open&limit=50\uFF09\u3002auth\uFF1A\u7BC0\u9EDE\u81EA\u5DF1\u5E36 gitea_token \u6B04\u4F4D\uFF08\u5BEB {{credential.gitea_token}}\uFF0C\u503C\u5728\u57F7\u884C\u524D\u624D\u7531\u91D1\u9470\u4E2D\u5FC3\u56DE\u586B\uFF09\u3002\u53EA\u505A GET\uFF0C\u4E0D\u6539\u4EFB\u4F55\u7968\u3002global_index\uFF0Fgitea_issues_ingest \u5169\u652F\u5DE5\u4F5C\u6D41\u7528\u5B83\u2014\u2014\u8D70 recipe \u4E0D\u8D70 http_request \u96F6\u4EF6\uFF0C\u56E0\u70BA\u96F6\u4EF6\u8B80\u4E0D\u56DE\u8D85\u904E 64 KiB \u7684\u56DE\u61C9\uFF0C\u800C\u4E00\u9801 50 \u5F35\u7968\u662F 240 KB \u4EE5\u4E0A\u3002",
+        endpoint: "https://git.uncle6.me/api/v1{{_path}}",
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: "token {{gitea_token}}"
+        },
+        credentials_required: [
+          {
+            key: "gitea_token",
+            inject_as: "gitea_token"
+          }
+        ]
+      },
+      {
+        canonical_id: "gitea_issue_labels",
+        display_name: "Gitea Issue Labels\uFF08\u6574\u7D44\u63DB\u6A19\u7C64\uFF09",
+        description: '\u628A Gitea \u4E00\u5F35\u7968\u7684\u6A19\u7C64\u6574\u7D44\u63DB\u6210\u6307\u5B9A\u7684\u90A3\u5E7E\u500B\uFF08PUT https://git.uncle6.me/api/v1/repos/{owner}/{repo}/issues/{n}/labels\uFF09\u3002\u547C\u53EB\u7AEF\u7528 _path \u7D66 /<owner>/<repo>/issues/<n>/labels\uFF0C\u4E26\u5E36\u7BC0\u9EDE\u6B04\u4F4D labels\uFF1D\u6A19\u7C64\u540D\u5B57\u9663\u5217\uFF08\u4F8B ["s/doing","Human"]\uFF0CGitea \u63A5\u53D7\u540D\u5B57\u6216 id\uFF09\u3002auth\uFF1A\u7BC0\u9EDE\u81EA\u5DF1\u5E36 gitea_token \u6B04\u4F4D\uFF08\u5BEB {{credential.gitea_token}}\uFF0C\u503C\u5728\u57F7\u884C\u524D\u624D\u7531\u91D1\u9470\u4E2D\u5FC3\u56DE\u586B\uFF0CD36\uFF09\uFF0C\u8207 gitea_read\uFF0Fgitea_put_file \u540C\u4E00\u628A\u3001\u540C\u4E00\u689D\u8DEF\u3002token \u53EA\u9032 Authorization header\uFF0Cbody_template \u53EA\u6709 labels \u4E00\u6B04 \u21D2 \u91D1\u9470\u4E0D\u6703\u6F0F\u9032\u9001\u51FA\u7684 body\u3002\u662F\u300C\u6574\u7D44\u63DB\u300D\u4E0D\u662F\u300C\u52A0\u4E00\u500B\u300D\uFF1A\u547C\u53EB\u7AEF\u8981\u5148\u8B80\u7968\u3001\u81EA\u5DF1\u7B97\u597D\u65B0\u7684\u6574\u7D44\uFF08\u770B\u677F App \u7684 move_card \u5C31\u662F\u9019\u6A23\u505A\uFF09\u3002\u53EA\u52D5\u6A19\u7C64\uFF0C\u4E0D\u6539\u6A19\u984C\u3001\u5167\u6587\u3001\u72C0\u614B\u3002',
+        endpoint: "https://git.uncle6.me/api/v1/repos{{_path}}",
+        method: "PUT",
+        headers: {
+          Accept: "application/json",
+          Authorization: "token {{gitea_token}}"
+        },
+        body_template: {
+          labels: "{{labels}}"
+        },
+        credentials_required: [
+          {
+            key: "gitea_token",
+            inject_as: "gitea_token"
+          }
+        ]
+      }
+    ],
+    credentials: [
+      {
+        name: "gitea_token",
+        purpose: "\u6709\u8B80\u5BEB\u7968\u6B0A\u9650\u7684 Gitea \u5E33\u865F token\uFF0C\u770B\u677F\u7528\u5B83\u8B80\u7968\u3001\u6539\u6A19\u7C64"
+      }
+    ]
+  },
+  workflows: [
+    {
+      name: "board",
+      description: "\u8B80\u4E00\u500B repo \u958B\u8457\u7684\u7968\uFF0C\u4F9D s/* \u72C0\u614B\u6A19\u7C64\u5206\u6B04\uFF0C\u56DE\u50B3\u770B\u677F\u8981\u756B\u7684\u6B04\u8207\u5361\u3002\u552F\u8B80 Gitea\uFF0C\u4E0D\u6539\u4EFB\u4F55\u7968\u3002",
+      graph: {
+        id: "kanban__board",
+        name: "kanban__board",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: `// \u6536\u53C3\u6578\u3001\u9A57 repo\u3002\u6C92\u5E36\u5230\u7684\u9078\u586B\u53C3\u6578\uFF0CArcrun \u6703\u628A "{{input.x}}" \u539F\u6A23\u7559\u8457\uFF08\u4E0D\u662F null\uFF09\u2014\u2014\u7576\u6210\u6C92\u7D66\u3002
+function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
+var repo = ph(input.repo) || 'inkstone/InkStoneCo';
+// \u524D\u7AEF\u50B3\u4F86\u7684\u5B57\u4E32\u6703\u88AB\u62FC\u9032 Gitea \u7684\u7DB2\u5740\u8DEF\u5F91\uFF0C\u4E14\u91D1\u9470\u662F\u4F3A\u670D\u5668\u4EE3\u5E36\u7684\u2014\u2014\u6240\u4EE5\u53EA\u51C6 owner/repo \u5169\u6BB5\u3001
+// \u4E14 owner \u5FC5\u9808\u5728\u767D\u540D\u55AE\u5167\uFF08\u9019\u500B App \u770B\u7684\u662F\u81EA\u5BB6\u7D44\u7E54\u7684\u7968\uFF0C\u4E0D\u662F\u66FF\u524D\u7AEF\u4EE3\u8B80\u4EFB\u610F repo\uFF09\u3002
+if (!/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(repo) || repo.indexOf('..') >= 0) {
+  return { success: false, error: 'repo \u683C\u5F0F\u8981\u662F\u300C\u7D44\u7E54/\u5009\u5EAB\u300D\uFF0C\u4F8B\u5982 inkstone/InkStoneCo\uFF08\u6536\u5230\uFF1A' + repo.slice(0, 60) + '\uFF09' };
+}
+var OWNERS = ["inkstone"];
+if (OWNERS.indexOf(repo.split('/')[0]) < 0) {
+  return { success: false, error: '\u9019\u500B\u770B\u677F\u53EA\u8B80 ' + OWNERS.join('\u3001') + ' \u5E95\u4E0B\u7684 repo\uFF08\u6536\u5230\uFF1A' + repo + '\uFF09' };
+}
+return { success: true, repo: repo };
+`,
+              input: {
+                repo: "{{input.repo}}"
+              },
+              limits: {
+                timeout_ms: 2e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "fetch",
+            type: "Component",
+            componentId: "gitea_read",
+            label: "fetch",
+            data: {
+              _path: "/repos/{{prep.data.repo}}/issues?state=open&type=issues&limit=50&sort=recentupdate",
+              gitea_token: "{{credential.gitea_token}}"
+            }
+          },
+          {
+            id: "shape",
+            type: "Component",
+            componentId: "code",
+            label: "shape",
+            data: {
+              code: `// \u628A Gitea \u56DE\u7684\u7968\u9663\u5217\uFF08open issues\uFF09\u6574\u5F62\u6210\u770B\u677F\u8981\u7684\u6B04\u4F4D\u3002\u7D14\u6574\u5F62\uFF1A\u4E0D\u6253\u7DB2\u8DEF\u3001\u4E0D\u5B58\u4EFB\u4F55\u6771\u897F\u3002
+var COLUMNS = [{"id":"s/triage","title":"\u65B0\u9032\u4F86"},{"id":"s/backlog","title":"\u5F85\u6392"},{"id":"s/todo","title":"\u5F85\u9818"},{"id":"s/doing","title":"\u9032\u884C\u4E2D"},{"id":"s/pending","title":"\u5361\u4F4F"},{"id":"s/review","title":"\u5F85\u5BE9"},{"id":"s/stage","title":"\u5F85\u9A57\u6536"}];
+var raw = input.issues_raw;
+if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
+if (!Array.isArray(raw)) {
+  return { success: false, error: 'Gitea \u6C92\u6709\u56DE\u7968\u7684\u9663\u5217\uFF08\u62FF\u5230 ' + (typeof input.issues_raw) + '\uFF09\u3002repo \u4E0D\u5B58\u5728\u3001\u6216\u91D1\u9470\u770B\u4E0D\u5230\u5B83\u6642\u6703\u662F\u9019\u6A23\u3002' };
+}
+var NONE = { id: '', title: '\u672A\u5206\u985E' };
+var order = [NONE].concat(COLUMNS);
+var byId = {};
+order.forEach(function (c) { byId[c.id] = { id: c.id, title: c.title, cards: [] }; });
+raw.forEach(function (it) {
+  if (!it || it.pull_request) return; // \u770B\u677F\u53EA\u653E\u7968\uFF0C\u4E0D\u653E PR
+  var labels = Array.isArray(it.labels) ? it.labels : [];
+  var names = labels.map(function (l) { return String((l && l.name) || ''); });
+  var col = '';
+  for (var i = 0; i < names.length; i++) { if (names[i] && byId[names[i]]) { col = names[i]; break; } }
+  var idx = 0;
+  for (var j = 0; j < order.length; j++) if (order[j].id === col) idx = j;
+  // \u524D\u4E00\u6B04\uFF0F\u5F8C\u4E00\u6B04\u7684 id \u7B97\u5728\u9019\u88E1\uFF0C\u524D\u7AEF\u53EA\u7BA1\u300C\u6309\u4E86\u5C31\u628A to \u9001\u56DE\u4F86\u300D\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u61C2\u6B04\u4F4D\u9806\u5E8F\u3002
+  // \u300C\u672A\u5206\u985E\u300D\u4E0D\u662F\u9000\u56DE\u53BB\u7684\u76EE\u6A19\uFF08\u5B83\u662F\u300C\u6C92\u6709 s/* \u6A19\u7C64\u300D\u7684\u6A23\u5B50\uFF09\uFF1A\u7B2C\u4E00\u500B\u771F\u6B04\u4F4D\u6C92\u6709\u300C\u524D\u4E00\u6B04\u300D\u3002
+  var prev = idx > 1 ? order[idx - 1].id : '';
+  var next = idx + 1 < order.length ? order[idx + 1].id : '';
+  var meta = ['#' + it.number];
+  if (it.assignee && it.assignee.login) meta.push(it.assignee.login);
+  if (names.indexOf('Human') >= 0) meta.push('Human');
+  if (it.milestone && it.milestone.title) meta.push(it.milestone.title);
+  byId[col].cards.push({
+    number: it.number,
+    title: String(it.title || ''),
+    meta: meta.join(' \u30FB '),
+    prev: prev,
+    next: next,
+    updated: String(it.updated_at || ''),
+  });
+});
+var columns = [];
+var total = 0;
+order.forEach(function (c) {
+  var b = byId[c.id];
+  if (c.id === '' && b.cards.length === 0) return; // \u6C92\u6709\u672A\u5206\u985E\u7684\u7968\u5C31\u4E0D\u986F\u793A\u90A3\u4E00\u6B04
+  b.cards.sort(function (a, z) { return a.updated < z.updated ? 1 : (a.updated > z.updated ? -1 : 0); });
+  total += b.cards.length;
+  // \u6A19\u984C\u8207\u6578\u5B57\u4E4B\u9593\u7528\u4E0D\u63DB\u884C\u7A7A\u767D\uFF08\\u00A0\uFF09\uFF1A\u6B04\u5BEC\u7531\u5167\u5BB9\u6490\u958B\uFF0C\u7A7A\u6B04\u4E0D\u80FD\u7A84\u5230\u6A19\u984C\u88AB\u6298\u6210\u76F4\u6392\u3002
+  columns.push({ id: b.id, title: b.title + '\\u00A0(' + b.cards.length + ')', count: b.cards.length, hint: b.cards.length ? '' : '\u76EE\u524D\u6C92\u6709\u7968', cards: b.cards });
+});
+return { success: true, repo: input.repo, total: total, truncated: raw.length >= 50, columns: columns };
+`,
+              input: {
+                repo: "{{prep.data.repo}}",
+                issues_raw: "{{fetch.data}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 524288
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "fetch",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "fetch",
+            to: "shape",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "move_card",
+      description: "\u628A\u4E00\u5F35\u7968\u7684\u72C0\u614B\u6A19\u7C64\u63DB\u6210\u6307\u5B9A\u7684\u90A3\u4E00\u6B04\uFF08\u4FDD\u7559\u5176\u4ED6\u6A19\u7C64\uFF09\u3002\u6539\u7684\u662F Gitea \u4E0A\u90A3\u5F35\u7968\uFF0C\u770B\u677F\u672C\u8EAB\u4E0D\u5B58\u4EFB\u4F55\u6771\u897F\u3002",
+      graph: {
+        id: "kanban__move_card",
+        name: "kanban__move_card",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: `function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
+var repo = ph(input.repo) || 'inkstone/InkStoneCo';
+if (!/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(repo) || repo.indexOf('..') >= 0) {
+  return { success: false, error: 'repo \u683C\u5F0F\u8981\u662F\u300C\u7D44\u7E54/\u5009\u5EAB\u300D\uFF08\u6536\u5230\uFF1A' + repo.slice(0, 60) + '\uFF09' };
+}
+var OWNERS = ["inkstone"];
+if (OWNERS.indexOf(repo.split('/')[0]) < 0) {
+  return { success: false, error: '\u9019\u500B\u770B\u677F\u53EA\u52D5 ' + OWNERS.join('\u3001') + ' \u5E95\u4E0B\u7684 repo\uFF08\u6536\u5230\uFF1A' + repo + '\uFF09' };
+}
+var n = Number(ph(input.number));
+if (!isFinite(n) || n < 1 || Math.floor(n) !== n) return { success: false, error: 'number \u8981\u662F\u7968\u865F\uFF08\u6B63\u6574\u6578\uFF09' };
+var COLUMNS = [{"id":"s/triage","title":"\u65B0\u9032\u4F86"},{"id":"s/backlog","title":"\u5F85\u6392"},{"id":"s/todo","title":"\u5F85\u9818"},{"id":"s/doing","title":"\u9032\u884C\u4E2D"},{"id":"s/pending","title":"\u5361\u4F4F"},{"id":"s/review","title":"\u5F85\u5BE9"},{"id":"s/stage","title":"\u5F85\u9A57\u6536"}];
+var to = ph(input.to);
+var ok = false;
+COLUMNS.forEach(function (c) { if (c.id === to) ok = true; });
+if (!ok) return { success: false, error: '\u76EE\u6A19\u6B04\u4F4D\u4E0D\u5B58\u5728\uFF1A' + to.slice(0, 40) };
+return { success: true, repo: repo, number: n, to: to };
+`,
+              input: {
+                repo: "{{input.repo}}",
+                number: "{{input.number}}",
+                to: "{{input.to}}"
+              },
+              limits: {
+                timeout_ms: 2e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "fetch_issue",
+            type: "Component",
+            componentId: "gitea_read",
+            label: "fetch_issue",
+            data: {
+              _path: "/repos/{{prep.data.repo}}/issues/{{prep.data.number}}",
+              gitea_token: "{{credential.gitea_token}}"
+            }
+          },
+          {
+            id: "plan",
+            type: "Component",
+            componentId: "code",
+            label: "plan",
+            data: {
+              code: "// \u7B97\u51FA\u9019\u5F35\u7968\u65B0\u7684\u6574\u7D44\u6A19\u7C64\uFF1A\u4FDD\u7559\u6240\u6709\u300C\u4E0D\u662F\u72C0\u614B\u300D\u7684\u6A19\u7C64\uFF0C\u628A\u72C0\u614B\u6A19\u7C64\uFF08s/ \u958B\u982D\uFF09\u63DB\u6210\u76EE\u6A19\u90A3\u4E00\u500B\u3002\n// \u72C0\u614B\u6A19\u7C64\u5728\u9019\u500B repo \u662F\u4E92\u65A5\u7684\uFF08exclusive\uFF09\uFF0C\u6240\u4EE5\u63DB\u6210\u4E00\u500B\u3001\u4E0D\u662F\u52A0\u4E00\u500B\u3002\nvar raw = input.issue_raw;\nif (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }\nif (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(raw.labels)) {\n  return { success: false, error: 'Gitea \u6C92\u6709\u56DE\u9019\u5F35\u7968\uFF08#' + input.number + '\uFF09\u7684\u5167\u5BB9\u3002\u7968\u865F\u4E0D\u5C0D\u3001\u6216\u91D1\u9470\u770B\u4E0D\u5230\u9019\u500B repo\u3002' };\n}\nif (raw.pull_request) return { success: false, error: '#' + input.number + ' \u662F PR \u4E0D\u662F\u7968\uFF0C\u770B\u677F\u4E0D\u52D5\u5B83' };\nvar keep = [];\nraw.labels.forEach(function (l) {\n  var name = String((l && l.name) || '');\n  if (name && name.indexOf('s/') !== 0) keep.push(name);\n});\nvar labels = keep.concat([input.to]);\nreturn { success: true, labels: labels, number: input.number };\n",
+              input: {
+                issue_raw: "{{fetch_issue.data}}",
+                number: "{{prep.data.number}}",
+                to: "{{prep.data.to}}"
+              },
+              limits: {
+                timeout_ms: 2e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "put_labels",
+            type: "Component",
+            componentId: "gitea_issue_labels",
+            label: "put_labels",
+            data: {
+              _path: "/{{prep.data.repo}}/issues/{{prep.data.number}}/labels",
+              labels: "{{plan.data.labels}}",
+              gitea_token: "{{credential.gitea_token}}"
+            }
+          },
+          {
+            id: "done",
+            type: "Component",
+            componentId: "code",
+            label: "done",
+            data: {
+              code: "return { success: true, repo: input.repo, number: input.number, to: input.to };\n",
+              input: {
+                repo: "{{prep.data.repo}}",
+                number: "{{prep.data.number}}",
+                to: "{{prep.data.to}}"
+              },
+              limits: {
+                timeout_ms: 2e3,
+                max_output_bytes: 65536
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "fetch_issue",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "fetch_issue",
+            to: "plan",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "plan",
+            to: "put_labels",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "put_labels",
+            to: "done",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    }
+  ],
+  ui: {
+    html: `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>\u7968\u770B\u677F</title>
+<!--
+  \u7968\u770B\u677F App \u524D\u7AEF\uFF08inkstone/InkStoneCo#18\uFF09
+
+  \u770B\u677F\u4E0D\u64C1\u6709\u81EA\u5DF1\u7684\u8CC7\u6599\u2014\u2014\u5B83\u53EA\u662F Gitea \u7968\u7684\u6295\u5F71\uFF1A
+    \xB7 \u6B04\u4F4D \uFF1D \u7968\u4E0A\u7684 s/* \u72C0\u614B\u6A19\u7C64\uFF08\u4E92\u65A5\uFF09
+    \xB7 \u8B80   \uFF1D \u52D5\u4F5C board      \u2192 \u5DE5\u4F5C\u6D41\u8B80 Gitea \u7968\u3001\u4F9D\u6A19\u7C64\u5206\u6B04
+    \xB7 \u79FB\u52D5 \uFF1D \u52D5\u4F5C move_card  \u2192 \u5DE5\u4F5C\u6D41\u628A\u90A3\u5F35\u7968\u7684 s/* \u6A19\u7C64\u63DB\u6210\u76EE\u6A19\u6B04
+  \u55AE\u4E00\u4E8B\u5BE6\u4F86\u6E90\u6C38\u9060\u662F Gitea\uFF1A\u770B\u677F\u58DE\u6389\u3001\u63DB\u6389\u3001\u91CD\u5BEB\u90FD\u4E0D\u6703\u6709\u300C\u5169\u4EFD\u8CC7\u6599\u6F02\u958B\u300D\u3002
+
+  \u756B\u9762\u672C\u8EAB\u7531 A2UI \u524D\u7AEF\u96F6\u4EF6\uFF08Column\uFF0FRow\uFF0FList\uFF0FCard\uFF0FText\uFF0FButton\uFF0C\u76EE\u9304 arcrun:catalog/v0\uFF09\u5BA3\u544A\u7D44\u6210\uFF0C
+  Portal \u7684\u6E32\u67D3\u5668 window.ArcrunA2UI \u756B\u5B83\uFF1B\u9019\u652F\u9801\u9762\u53EA\u505A\u4E09\u4EF6\u4E8B\uFF1A\u6253\u52D5\u4F5C\u3001\u628A\u56DE\u61C9\u6574\u5F62\u6210\u96F6\u4EF6\u8981\u7684\u8CC7\u6599\u3001
+  \u63A5\u6309\u9215\u4E8B\u4EF6\u3002\u{1F534} \u4E0D\u5BEB\u7DB2\u5740\u3001\u4E0D\u78B0\u91D1\u9470\u3001\u4E0D\u77E5\u9053\u79DF\u6236\u2014\u2014\u552F\u4E00\u7684\u901A\u9053\u662F window.arcrunApp.action\u3002
+
+  v0 \u6C92\u505A\u7684\uFF08\u8AA0\u5BE6\u5217\u51FA\uFF0C\u4E0D\u5047\u88DD\uFF09\uFF1A
+    \xB7 \u62D6\u653E\uFF08A2UI \u76EE\u9304\u6C92\u6709\u62D6\u653E\u5143\u4EF6\uFF09\u2192 \u7528\u300C\u25C0 \u25B6\u300D\u628A\u7968\u79FB\u5230\u524D\u4E00\u6B04\uFF0F\u5F8C\u4E00\u6B04
+    \xB7 \u6B04\u5167\u9806\u5E8F\uFF08Gitea \u5B58\u4E0D\u4E86\uFF1B\u898F\u683C #136 \u6D1E 3 \u9084\u6C92\u6709\u300CApp \u79C1\u6709\u5C0F\u72C0\u614B\u300D\u7684\u4F4D\u7F6E\uFF09\u2192 \u4E00\u5F8B\u6700\u8FD1\u66F4\u65B0\u7684\u5728\u4E0A\u9762
+    \xB7 \u5373\u6642\u63A8\u9001\uFF08#138 v0 \u4E0D\u505A\uFF09\u2192 \u7528\u300C\u91CD\u65B0\u6574\u7406\u300D
+-->
+<style>
+  .kb-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 10px; }
+  .kb-bar input { flex: 1 1 220px; min-width: 0; padding: 8px 10px; font: inherit; }
+  .kb-status { font-size: 13.5px; min-height: 1.4em; margin: 0 0 8px; }
+  .kb-status.bad { color: #b3261e; white-space: pre-wrap; }
+  .kb-board { overflow-x: auto; padding-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="kb-bar">
+  <input id="kb-repo" type="text" value="inkstone/InkStoneCo" aria-label="\u8981\u770B\u54EA\u500B repo \u7684\u7968\uFF08\u7D44\u7E54/\u5009\u5EAB\uFF09" spellcheck="false" autocapitalize="off" />
+  <button id="kb-load" class="btn3" type="button">\u91CD\u65B0\u6574\u7406</button>
+</div>
+<div id="kb-status" class="kb-status" role="status">\u8F09\u5165\u4E2D\u2026</div>
+<div id="kb-board" class="kb-board"></div>
+
+<script>
+(function () {
+  var COMPONENTS = [
+    { id: 'root', component: 'List', direction: 'horizontal', children: { componentId: 'col', path: '/columns' } },
+    { id: 'col', component: 'Card', child: 'col-body' },
+    { id: 'col-body', component: 'Column', children: ['col-head', 'col-hint', 'col-cards'] },
+    { id: 'col-head', component: 'Text', text: { path: 'title' }, variant: 'h4' },
+    { id: 'col-hint', component: 'Text', text: { path: 'hint' }, variant: 'caption' },
+    { id: 'col-cards', component: 'List', children: { componentId: 'card', path: 'cards' } },
+    { id: 'card', component: 'Card', child: 'card-body' },
+    { id: 'card-body', component: 'Column', children: ['card-title', 'card-meta', 'card-btns'] },
+    { id: 'card-title', component: 'Text', text: { path: 'title' }, variant: 'body' },
+    { id: 'card-meta', component: 'Text', text: { path: 'meta' }, variant: 'caption' },
+    { id: 'card-btns', component: 'Row', children: ['btn-prev', 'btn-next'], justify: 'spaceBetween' },
+    { id: 'btn-prev', component: 'Button', child: 'btn-prev-l', action: { event: { name: 'move', context: { number: { path: 'number' }, to: { path: 'prev' } } } } },
+    { id: 'btn-prev-l', component: 'Text', text: '\u25C0' },
+    { id: 'btn-next', component: 'Button', child: 'btn-next-l', action: { event: { name: 'move', context: { number: { path: 'number' }, to: { path: 'next' } } } } },
+    { id: 'btn-next-l', component: 'Text', text: '\u25B6' }
+  ];
+
+  var statusEl = document.getElementById('kb-status');
+  var repoEl = document.getElementById('kb-repo');
+  var boardEl = document.getElementById('kb-board');
+  var loadBtn = document.getElementById('kb-load');
+  var handle = null;
+  var busy = false;
+
+  try { var saved = window.localStorage.getItem('kanban:repo'); if (saved) repoEl.value = saved; } catch (e) { /* \u6C92\u6709\u5132\u5B58\u7A7A\u9593\u5C31\u7528\u9810\u8A2D */ }
+
+  function say(msg, bad) {
+    statusEl.textContent = msg || '';
+    statusEl.className = 'kb-status' + (bad ? ' bad' : '');
+  }
+
+  // \u52D5\u4F5C\u56DE\u61C9\u7684\u5F62\u72C0\uFF1A{ok,status,d}\uFF0Cd\uFF1D{ok:true,result:<\u5DE5\u4F5C\u6D41\u6700\u5F8C\u4E00\u500B\u7BC0\u9EDE\u7684\u8F38\u51FA>} \u6216 {error}\u3002
+  // result \u53EF\u80FD\u662F {success,\u2026\u6B04\u4F4D} \u6216 {success,data:{\u2026\u6B04\u4F4D}}\uFF08\u770B\u7BC0\u9EDE\u600E\u9EBC\u5305\uFF09\uFF0C\u5169\u7A2E\u90FD\u8A8D\u3002
+  function unwrap(x) {
+    if (!x || !x.ok || !x.d || !x.d.ok) {
+      var err = (x && x.d && x.d.error) || ('HTTP ' + (x && x.status));
+      return { error: hint(String(err)) };
+    }
+    var r = x.d.result;
+    if (r && typeof r === 'object' && r.data && typeof r.data === 'object' && !Array.isArray(r.data) && r.columns === undefined && r.number === undefined) r = r.data;
+    if (r && r.success === false) return { error: hint(String(r.error || '\u5DE5\u4F5C\u6D41\u56DE\u5831\u5931\u6557')) };
+    return { data: r };
+  }
+
+  // \u5931\u6557\u8981\u8AAA\u5F97\u51FA\u4E0B\u4E00\u6B65\uFF08\u4E0D\u662F\u53EA\u4E1F\u4E00\u4E32\u6280\u8853\u5B57\uFF09\u3002
+  function hint(err) {
+    if (/credential/i.test(err) && /gitea_token/.test(err)) {
+      return err + '\\n\u2192 \u9019\u500B\u5BE6\u4F8B\u9084\u6C92\u6709\u300Cgitea_token\u300D\u9019\u628A\u91D1\u9470\u3002\u8ACB\u7BA1\u7406\u54E1\u5230\u300C\u7BA1\u7406 \u2192 \u91D1\u9470\u7BA1\u7406\u300D\u65B0\u589E\u4E00\u628A\u540D\u5B57\u53EB gitea_token \u7684\u91D1\u9470\uFF08\u503C\u662F\u6709\u8B80\u5BEB\u7968\u6B0A\u9650\u7684 Gitea \u5E33\u865F token\uFF09\u3002';
+    }
+    if (/recipe/i.test(err) && /(gitea_read|gitea_issue_labels)/.test(err)) {
+      return err + '\\n\u2192 \u9019\u500B\u5BE6\u4F8B\u9084\u7F3A\u8B80\u5BEB Gitea \u7684 recipe\u3002\u8ACB\u7BA1\u7406\u54E1\u5230\u300CApp \u5E02\u96C6\u300D\u5C0D\u300C\u7968\u770B\u677F\u300D\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF0C\u6703\u81EA\u52D5\u88DC\u9F4A\u3002';
+    }
+    return err;
+  }
+
+  function render(data) {
+    if (!window.ArcrunA2UI) {
+      say('\u756B\u9762\u5143\u4EF6\u6E32\u67D3\u5668\u6C92\u6709\u8F09\u5165\uFF08/portal/a2ui/arcrun-a2ui.js\uFF09\uFF0C\u8ACB\u91CD\u65B0\u6574\u7406\uFF1B\u4ECD\u5931\u6557\u8ACB\u56DE\u5831\u3002', true);
+      return;
+    }
+    var model = { columns: data.columns || [] };
+    if (!handle) {
+      handle = window.ArcrunA2UI.mount(boardEl, { surfaceId: 'kanban', components: COMPONENTS, data: model }, { onAction: onAction });
+    } else {
+      handle.update(model);
+    }
+  }
+
+  function load() {
+    if (busy) return Promise.resolve();
+    var repo = String(repoEl.value || '').trim();
+    busy = true; loadBtn.disabled = true;
+    say('\u8B80\u53D6 ' + repo + ' \u7684\u7968\u2026');
+    return window.arcrunApp.action('board', { repo: repo }).then(function (x) {
+      var u = unwrap(x);
+      if (u.error) { say('\u8B80\u4E0D\u5230\u7968\uFF1A' + u.error, true); return; }
+      try { window.localStorage.setItem('kanban:repo', repo); } catch (e) { /* \u8A18\u4E0D\u4F4F\u5C31\u7B97\u4E86 */ }
+      render(u.data);
+      var n = u.data.total || 0;
+      say(n === 0 ? '\u9019\u500B repo \u6C92\u6709\u958B\u8457\u7684\u7968\u3002' : ('\u5171 ' + n + ' \u5F35\u958B\u8457\u7684\u7968' + (u.data.truncated ? '\uFF08\u53EA\u8B80\u4E86\u6700\u8FD1\u66F4\u65B0\u7684 50 \u5F35\uFF09' : '') + '\u3002\u25C0 \u25B6 \u628A\u7968\u79FB\u5230\u524D\u4E00\u6B04\uFF0F\u5F8C\u4E00\u6B04\u3002'));
+    }).catch(function (e) {
+      say('\u8ACB\u6C42\u5931\u6557\uFF1A' + (e && e.message ? e.message : e), true);
+    }).then(function () { busy = false; loadBtn.disabled = false; });
+  }
+
+  function onAction(a) {
+    var name = a && (a.name || (a.event && a.event.name));
+    var ctx = (a && (a.context || (a.event && a.event.context))) || {};
+    if (name !== 'move') return;
+    if (busy) return;
+    var to = String(ctx.to == null ? '' : ctx.to);
+    var number = ctx.number;
+    if (!to) { say('\u9019\u5F35\u7968\u5DF2\u7D93\u5728\u6700\u524D\u9762\uFF0F\u6700\u5F8C\u9762\u4E00\u6B04\uFF0C\u6C92\u6709\u5730\u65B9\u53EF\u4EE5\u518D\u79FB\u3002'); return; }
+    var repo = String(repoEl.value || '').trim();
+    busy = true; loadBtn.disabled = true;
+    say('\u628A #' + number + ' \u79FB\u5230 ' + to + '\u2026');
+    window.arcrunApp.action('move_card', { repo: repo, number: number, to: to }).then(function (x) {
+      var u = unwrap(x);
+      busy = false; loadBtn.disabled = false;
+      if (u.error) { say('\u79FB\u52D5\u5931\u6557\uFF08\u7968\u6C92\u6709\u88AB\u6539\uFF09\uFF1A' + u.error, true); return; }
+      return load();
+    }).catch(function (e) {
+      busy = false; loadBtn.disabled = false;
+      say('\u8ACB\u6C42\u5931\u6557\uFF1A' + (e && e.message ? e.message : e), true);
+    });
+  }
+
+  loadBtn.addEventListener('click', load);
+  repoEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') load(); });
+  load();
+})();
+<\/script>
+</body>
+</html>
+`,
+    style: "inherit"
+  },
+  actions: [
+    "board",
+    "move_card"
+  ]
+};
+
+// cypher-executor/src/lib/app-system.ts
+init_kbdb_proxy();
+init_webhook_handlers();
+
+// cypher-executor/src/lib/app-ui-assets.ts
+var MAX_UI_ASSET_BYTES = 15e5;
+var MAX_UI_ASSET_COUNT = 64;
+var PATH_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+var MIME_BY_EXT = {
+  css: "text/css",
+  js: "text/javascript",
+  mjs: "text/javascript",
+  json: "application/json",
+  txt: "text/plain",
+  svg: "image/svg+xml",
+  html: "text/html",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  ico: "image/x-icon",
+  avif: "image/avif",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  ttf: "font/ttf",
+  otf: "font/otf"
+};
+function extOf(path) {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  const i = base.lastIndexOf(".");
+  return i < 0 ? "" : base.slice(i + 1).toLowerCase();
+}
+function localRefOf(ref, fromDir = "") {
+  let v = ref.trim();
+  if (!v) return null;
+  if (v.startsWith("#") || v.startsWith("/") || v.startsWith("\\")) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return null;
+  v = v.replace(/[?#].*$/, "");
+  const parts = (fromDir ? `${fromDir}/${v}` : v).split("/");
+  const out = [];
+  for (const seg of parts) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (out.length === 0) return null;
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return out.length ? out.join("/") : null;
+}
+function isAssetValue(v) {
+  if (typeof v === "string") return true;
+  return !!v && typeof v === "object" && typeof v.base64 === "string";
+}
+function validateUiAssets(assets) {
+  if (assets === void 0) return [];
+  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
+    return ["ui.assets \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u8DEF\u5F91 \u2192 \u5167\u5BB9\uFF09"];
+  }
+  const errors = [];
+  const entries = Object.entries(assets);
+  if (entries.length > MAX_UI_ASSET_COUNT) errors.push(`ui.assets \u6700\u591A ${MAX_UI_ASSET_COUNT} \u500B\u6A94\uFF08\u73FE\u5728 ${entries.length}\uFF09`);
+  let total = 0;
+  for (const [path, val] of entries) {
+    if (!PATH_RE.test(path) || path.split("/").includes("..")) {
+      errors.push(`ui.assets \u7684\u8DEF\u5F91\u300C${path}\u300D\u4E0D\u5408\u6CD5\uFF1A\u53EA\u80FD\u662F\u76F8\u5C0D\u8DEF\u5F91\uFF08\u82F1\u6578\u3001\u9EDE\u3001\u5E95\u7DDA\u3001\u9023\u5B57\u865F\uFF0C\u7528 / \u5206\u8CC7\u6599\u593E\uFF09\uFF0C\u4E0D\u53EF\u542B ..`);
+      continue;
+    }
+    if (!isAssetValue(val)) {
+      errors.push(`ui.assets["${path}"] \u5FC5\u9808\u662F\u5B57\u4E32\uFF08\u6587\u5B57\u6A94\uFF09\uFF0C\u6216 { "base64": "\u2026", "type": "image/png" }\uFF08\u4E8C\u9032\u4F4D\u6A94\uFF09`);
+      continue;
+    }
+    if (typeof val === "object" && val.type !== void 0 && (typeof val.type !== "string" || !/^[a-z]+\/[A-Za-z0-9.+-]+$/.test(val.type))) {
+      errors.push(`ui.assets["${path}"].type \u5FC5\u9808\u662F MIME \u683C\u5F0F\uFF08\u4F8B\uFF1Aimage/png\uFF09`);
+    }
+    total += typeof val === "string" ? val.length : val.base64.length;
+  }
+  if (total > MAX_UI_ASSET_BYTES) {
+    errors.push(`ui.assets \u5408\u8A08 ${total} \u5B57\u5143\uFF0C\u8D85\u904E\u4E0A\u9650 ${MAX_UI_ASSET_BYTES}\u3002\u756B\u9762\u5B58\u5728\u77E5\u8B58\u5EAB\u7684\u4E00\u7B46\u7D00\u9304\u88E1\uFF0C\u4E0D\u662F\u6A94\u6848\u4F3A\u670D\u5668\u2014\u2014\u5927\u5716\u8ACB\u7E2E\u5C0F\u6216\u63DB\u6210\u5916\u90E8\u4E0D\u4F9D\u8CF4\u7684\u683C\u5F0F`);
+  }
+  return errors;
+}
+function mimeOf(path, val) {
+  if (typeof val === "object" && val.type) return val.type;
+  return MIME_BY_EXT[extOf(path)] ?? "application/octet-stream";
+}
+function toDataUri(path, val) {
+  const mime = mimeOf(path, val);
+  if (typeof val === "string") return `data:${mime};charset=utf-8,${encodeURIComponent(val)}`;
+  return `data:${mime};base64,${val.base64.replace(/\s+/g, "")}`;
+}
+function textOf(path, val) {
+  if (typeof val === "string") return val;
+  void path;
+  return null;
+}
+function inlineCssUrls(css, cssPath, assets, used, errors) {
+  const dir = cssPath.includes("/") ? cssPath.slice(0, cssPath.lastIndexOf("/")) : "";
+  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (whole, _q, ref) => {
+    const key = localRefOf(ref, dir);
+    if (key === null) return whole;
+    if (!(key in assets)) {
+      errors.push(`\u6A23\u5F0F\u8868\u300C${cssPath}\u300D\u5F15\u7528\u4E86 url(${ref.trim()})\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
+      return whole;
+    }
+    used.add(key);
+    return `url("${toDataUri(key, assets[key])}")`;
+  });
+}
+var ATTR_RE = (name) => new RegExp(`(\\s${name}\\s*=\\s*)(?:"([^"]*)"|'([^']*)')`, "i");
+function bundleUiAssets(html, assets) {
+  if (!assets || Object.keys(assets).length === 0) return { ok: true, html, errors: [], used: [] };
+  const errors = [];
+  const used = /* @__PURE__ */ new Set();
+  const lookup = (ref, what) => {
+    const key = localRefOf(ref);
+    if (key === null) return null;
+    if (!(key in assets)) {
+      errors.push(`${what} \u5F15\u7528\u4E86\u300C${ref.trim()}\u300D\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
+      return null;
+    }
+    used.add(key);
+    return key;
+  };
+  const out = html.replace(/<(script|link|img|source|video|audio|track|input)\b([^>]*?)(\/?)>(?:\s*<\/script\s*>)?/gi, (whole, tagRaw, attrs, selfClose) => {
+    const tag = tagRaw.toLowerCase();
+    if (tag === "script") {
+      const m = ATTR_RE("src").exec(attrs);
+      if (!m) return whole;
+      const ref = m[2] ?? m[3] ?? "";
+      const key = lookup(ref, "<script src>");
+      if (key === null) return whole;
+      const body = textOf(key, assets[key]);
+      if (body === null) {
+        errors.push(`<script src="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u8173\u672C\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
+        return whole;
+      }
+      const rest = attrs.replace(ATTR_RE("src"), "").replace(/\s+$/, "");
+      return `<script${rest}>${body.replace(/<\/script/gi, "<\\/script")}<\/script>`;
+    }
+    if (tag === "link") {
+      const relM = ATTR_RE("rel").exec(attrs);
+      const hrefM = ATTR_RE("href").exec(attrs);
+      if (!hrefM) return whole;
+      const ref = hrefM[2] ?? hrefM[3] ?? "";
+      const isSheet = /(^|\s)stylesheet(\s|$)/i.test(relM ? relM[2] ?? relM[3] ?? "" : "");
+      const key = lookup(ref, isSheet ? '<link rel="stylesheet">' : "<link href>");
+      if (key === null) return whole;
+      if (isSheet) {
+        const css = textOf(key, assets[key]);
+        if (css === null) {
+          errors.push(`<link rel="stylesheet" href="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u6A23\u5F0F\u8868\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
+          return whole;
+        }
+        return `<style>${inlineCssUrls(css, key, assets, used, errors).replace(/<\/style/gi, "<\\/style")}</style>`;
+      }
+      return whole.replace(ATTR_RE("href"), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
+    }
+    let replaced = whole;
+    for (const name of tag === "video" ? ["src", "poster"] : ["src"]) {
+      const m = ATTR_RE(name).exec(replaced);
+      if (!m) continue;
+      const ref = m[2] ?? m[3] ?? "";
+      const key = lookup(ref, `<${tag} ${name}>`);
+      if (key === null) continue;
+      replaced = replaced.replace(ATTR_RE(name), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
+    }
+    void selfClose;
+    return replaced;
+  });
+  return { ok: errors.length === 0, html: out, errors, used: [...used] };
+}
+
+// cypher-executor/src/lib/app-system.ts
+init_recipes();
+init_credentials();
+function appStore(env) {
+  return env.WEBHOOKS;
+}
+function kbdbBehindHint(e) {
+  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  if (!msg.includes("KbdbUnavailable")) return null;
+  return "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u6C92\u6709\u56DE\u61C9\uFF0C\u6216\u5B83\u7684\u7248\u672C\u6BD4\u76EE\u524D\u7684\u7A0B\u5F0F\u78BC\u820A\u2014\u2014\u5B89\u88DD\u9700\u8981\u77E5\u8B58\u5EAB\u63D0\u4F9B\u300C\u540C\u4E00\u4EFD\u8CC7\u7522\u6C38\u9060\u540C\u4E00\u5217\u300D\u7684\u5BEB\u5165\u80FD\u529B\u3002\u8ACB\u7BA1\u7406\u8005\u628A\u77E5\u8B58\u5EAB\u4E00\u8D77\u66F4\u65B0\u5230\u540C\u4E00\u7248\uFF1B\u5728\u90A3\u4E4B\u524D**\u5DF2\u7D93\u88DD\u597D\u7684 App \u4E0D\u53D7\u5F71\u97FF**\uFF0C\u7167\u5E38\u53EF\u7528\u3002";
+}
+var APP_WORKFLOW_TRIGGERS = ["manual", "schedule", "event"];
+function resolveWorkflowTrigger(wf) {
+  if (typeof wf.trigger === "string" && APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
+    return wf.trigger;
+  }
+  return extractCronExpr(wf.graph) ? "schedule" : "manual";
+}
+function normalizeRequiredCredentials(requires) {
+  return (requires?.credentials ?? []).map((c) => typeof c === "string" ? { name: c } : { name: c.name, ...c.purpose ? { purpose: c.purpose } : {} });
+}
+var APP_UI_STYLES = ["inherit", "own"];
+var DEFAULT_APP_UI_STYLE = "inherit";
+var ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
+function validateAppDeclaration(raw2) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) {
+    return { ok: false, errors: ["\u5BA3\u544A\u5FC5\u9808\u662F\u4E00\u500B JSON \u7269\u4EF6"] };
+  }
+  const d = raw2;
+  if (typeof d.id !== "string" || !ID_RE.test(d.id)) {
+    errors.push("id \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09");
+  }
+  if (typeof d.name !== "string" || d.name.trim() === "") {
+    errors.push("name \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32");
+  }
+  const hasWorkflows = Array.isArray(d.workflows) && d.workflows.length > 0;
+  const hasUi = d.ui && typeof d.ui === "object" && typeof d.ui.html === "string" && d.ui.html.trim() !== "";
+  if (!hasWorkflows && !hasUi) {
+    errors.push("workflows \u6216 ui \u81F3\u5C11\u8981\u6709\u4E00\u500B\uFF08\u6C92\u6709\u756B\u9762\u4E5F\u6C92\u6709\u5DE5\u4F5C\u6D41\u7684 App \u4E0D\u6210\u7ACB\uFF0Cdesign \xA7\u4E8C\uFF09");
+  }
+  if (d.workflows !== void 0) {
+    if (!Array.isArray(d.workflows)) {
+      errors.push("workflows \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      d.workflows.forEach((w, i) => {
+        if (!w || typeof w !== "object") {
+          errors.push(`workflows[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const wf = w;
+        if (typeof wf.name !== "string" || wf.name.trim() === "") errors.push(`workflows[${i}].name \u5FC5\u586B`);
+        if (!wf.graph || typeof wf.graph !== "object") {
+          errors.push(`workflows[${i}].graph \u5FC5\u586B\uFF08\u57F7\u884C\u5716\uFF09`);
+        } else {
+          const g = wf.graph;
+          if (typeof g.id !== "string" || g.id.trim() === "") errors.push(`workflows[${i}].graph.id \u5FC5\u586B`);
+          if (typeof g.name !== "string" || g.name.trim() === "") errors.push(`workflows[${i}].graph.name \u5FC5\u586B`);
+          if (!Array.isArray(g.nodes)) errors.push(`workflows[${i}].graph.nodes \u5FC5\u9808\u662F\u9663\u5217`);
+          if (!Array.isArray(g.edges)) errors.push(`workflows[${i}].graph.edges \u5FC5\u9808\u662F\u9663\u5217`);
+        }
+        if (wf.trigger !== void 0) {
+          const label = typeof wf.name === "string" ? `\u300C${wf.name}\u300D` : `workflows[${i}]`;
+          if (typeof wf.trigger !== "string" || !APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
+            errors.push(`workflows[${i}].trigger \u53EA\u80FD\u662F ${APP_WORKFLOW_TRIGGERS.join("\uFF0F")}\uFF08\u7701\u7565\uFF1D\u770B\u5716\uFF1A\u6709\u6392\u7A0B\u96F6\u4EF6\u662F schedule\uFF0C\u5426\u5247 manual\uFF09`);
+          } else {
+            const hasCron = Boolean(extractCronExpr(wf.graph));
+            if (wf.trigger === "manual" && hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u624B\u52D5\uFF08manual\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6703\u81EA\u5DF1\u7167\u6392\u7A0B\u8DD1\u3002\u62FF\u6389 cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A schedule`);
+            }
+            if (wf.trigger === "schedule" && !hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u6392\u7A0B\uFF08schedule\uFF09\uFF0C\u4F46\u5716\u88E1\u6C92\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6C38\u9060\u4E0D\u6703\u81EA\u5DF1\u8DD1\u3002\u88DC\u4E0A cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A manual\uFF0Fevent`);
+            }
+            if (wf.trigger === "event" && hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u5916\u90E8\u4E8B\u4EF6\uFF08event\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5169\u7A2E\u555F\u52D5\u65B9\u5F0F\u53EA\u80FD\u9078\u4E00\u7A2E`);
+            }
+          }
+        }
+      });
+    }
+  }
+  if (d.ui !== void 0 && !hasUi) {
+    errors.push("ui.html \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
+  }
+  if (d.ui && typeof d.ui === "object") {
+    const s = d.ui.style;
+    if (s !== void 0 && (typeof s !== "string" || !APP_UI_STYLES.includes(s))) {
+      errors.push(`ui.style \u53EA\u80FD\u662F ${APP_UI_STYLES.join(" \u6216 ")}\uFF08\u7701\u7565\uFF1D${DEFAULT_APP_UI_STYLE}\uFF0C\u8DDF\u96A8\u5168\u5C40\uFF09`);
+    }
+    const ui = d.ui;
+    const assetErrors = validateUiAssets(ui.assets);
+    errors.push(...assetErrors);
+    if (assetErrors.length === 0 && hasUi) {
+      errors.push(...bundleUiAssets(ui.html, ui.assets).errors);
+    }
+  }
+  if (d.data !== void 0) {
+    if (!Array.isArray(d.data)) {
+      errors.push("data \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      d.data.forEach((dt, i) => {
+        if (!dt || typeof dt !== "object") {
+          errors.push(`data[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const decl = dt;
+        if (typeof decl.name !== "string" || decl.name.trim() === "") errors.push(`data[${i}].name \u5FC5\u586B`);
+        if (!Array.isArray(decl.slots) || decl.slots.some((s) => typeof s !== "string")) {
+          errors.push(`data[${i}].slots \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
+        }
+      });
+    }
+  }
+  if (d.requires !== void 0) errors.push(...validateRequires(d.requires));
+  if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
+    errors.push("actions \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217");
+  } else if (Array.isArray(d.actions) && Array.isArray(d.workflows)) {
+    const wfNames = new Set(
+      d.workflows.map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
+    );
+    for (const a of d.actions) {
+      if (!wfNames.has(a)) {
+        errors.push(
+          `actions \u88E1\u7684\u300C${a}\u300D\u627E\u4E0D\u5230\u540C\u540D\u7684 workflow\uFF08\u52D5\u4F5C\u540D\u5C31\u662F\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\uFF09\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
+        );
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+function validateRequires(raw2) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["requires \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 recipes\u3001credentials \u5169\u6B04\uFF09"];
+  const r = raw2;
+  for (const k of Object.keys(r)) {
+    if (k !== "recipes" && k !== "credentials") errors.push(`requires.${k} \u4E0D\u8A8D\u5F97\uFF08\u53EA\u6709 recipes\u3001credentials\uFF09`);
+  }
+  if (r.recipes !== void 0) {
+    if (!Array.isArray(r.recipes)) errors.push("requires.recipes \u5FC5\u9808\u662F\u9663\u5217");
+    else {
+      const seen = /* @__PURE__ */ new Set();
+      r.recipes.forEach((x, i) => {
+        if (!x || typeof x !== "object" || Array.isArray(x)) {
+          errors.push(`requires.recipes[${i}] \u5FC5\u9808\u662F\u7269\u4EF6\uFF08recipe \u5168\u6587\uFF09`);
+          return;
+        }
+        const rec = x;
+        const cid = typeof rec.canonical_id === "string" ? rec.canonical_id.trim().toLowerCase() : "";
+        if (!cid) errors.push(`requires.recipes[${i}].canonical_id \u5FC5\u586B`);
+        else if (seen.has(cid)) errors.push(`requires.recipes \u88E1\u300C${cid}\u300D\u91CD\u8907`);
+        else seen.add(cid);
+        if (typeof rec.endpoint !== "string" || rec.endpoint.trim() === "") errors.push(`requires.recipes[${i}].endpoint \u5FC5\u586B`);
+      });
+    }
+  }
+  if (r.credentials !== void 0) {
+    if (!Array.isArray(r.credentials)) errors.push("requires.credentials \u5FC5\u9808\u662F\u9663\u5217\uFF08\u91D1\u9470\u7684\u540D\u5B57\uFF09");
+    else {
+      const seen = /* @__PURE__ */ new Set();
+      r.credentials.forEach((x, i) => {
+        let name;
+        if (typeof x === "string") name = x;
+        else if (x && typeof x === "object" && !Array.isArray(x)) {
+          const o = x;
+          const extra = Object.keys(o).filter((k) => k !== "name" && k !== "purpose");
+          if (extra.length > 0) errors.push(`requires.credentials[${i}] \u53EA\u51C6 name\uFF0Fpurpose\uFF0C\u4E0D\u51C6\u6709\u300C${extra.join("\u3001")}\u300D\u2014\u2014\u91D1\u9470\u7684\u503C\u6C38\u9060\u53EA\u7531\u5BE6\u4F8B\u4E3B\u4EBA\u5728\u91D1\u9470\u756B\u9762\u586B\uFF08D36\uFF09`);
+          if (o.purpose !== void 0 && typeof o.purpose !== "string") errors.push(`requires.credentials[${i}].purpose \u5FC5\u9808\u662F\u5B57\u4E32`);
+          name = o.name;
+        } else name = void 0;
+        if (!validateName(name)) errors.push(`requires.credentials[${i}] \u7684\u540D\u5B57\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\uFF08\u9019\u662F\u91D1\u9470\u7684\u540D\u5B57\uFF0C\u4E0D\u662F\u503C\uFF09`);
+        else if (seen.has(name)) errors.push(`requires.credentials \u88E1\u300C${name}\u300D\u91CD\u8907`);
+        else seen.add(name);
+      });
+    }
+  }
+  return errors;
+}
+var ICON_SET = ["\u{1F4C4}", "\u{1F5D2}\uFE0F", "\u{1F9E9}", "\u{1F4CC}", "\u{1F527}", "\u{1F4E6}", "\u{1F5C2}\uFE0F", "\u2705", "\u{1F4A1}", "\u{1F514}", "\u{1F4CA}", "\u{1F9ED}"];
+function generateIcon(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
+  return ICON_SET[h % ICON_SET.length];
+}
+function applyDeclarationDefaults(raw2) {
+  const workflows = raw2.workflows ?? [];
+  const actions = raw2.actions ?? workflows.filter((w) => resolveWorkflowTrigger(w) === "manual").map((w) => w.name);
+  return {
+    ...raw2,
+    id: raw2.id,
+    name: raw2.name,
+    icon: raw2.icon ?? generateIcon(raw2.name),
+    version: raw2.version ?? "0.0.0",
+    workflows,
+    data: raw2.data ?? [],
+    actions,
+    keeps_data: raw2.remove?.keeps_data ?? true
+  };
+}
+var APP_PLACEHOLDERS = ["__NAMESPACE__", "__CYPHER_BASE__"];
+function resolveDeclarationPlaceholders(value, coords) {
+  const base = coords.cypherBase.replace(/\/+$/, "");
+  const swap = (s) => s.split("__NAMESPACE__").join(coords.namespace).split("__CYPHER_BASE__").join(base);
+  const walk = (v) => {
+    if (typeof v === "string") return swap(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out = {};
+      for (const [k, val] of Object.entries(v)) out[swap(k)] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  return walk(value);
+}
+function remainingPlaceholders(value) {
+  const text = JSON.stringify(value) ?? "";
+  return APP_PLACEHOLDERS.filter((p) => text.includes(p));
+}
+async function computeContentHash(raw2) {
+  const canonical = canonicalize(raw2);
+  const data = new TextEncoder().encode(canonical);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(value[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function appKey(tenant2, id) {
+  return `${tenant2}:app:${id}`;
+}
+function workflowKvKey(tenant2, wfKey) {
+  return `${tenant2}:wf:${wfKey}`;
+}
+async function getInstalledApp(env, tenant2, id) {
+  const raw2 = await appStore(env).get(appKey(tenant2, id), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function listInstalledApps(env, tenant2) {
+  const prefix = `${tenant2}:app:`;
+  const list = await appStore(env).list({ prefix });
+  const apps = await Promise.all(
+    list.keys.map(async (k) => {
+      const raw2 = await appStore(env).get(k.name, "text");
+      if (!raw2) return null;
+      try {
+        return JSON.parse(raw2);
+      } catch {
+        return null;
+      }
+    })
+  );
+  return apps.filter((a) => a !== null);
+}
+async function ensureTemplate4(env, name, slots, description) {
+  const { base, headers } = kbdbBase(env);
+  const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
+  if (getRes.ok) {
+    const data = await getRes.json().catch(() => null);
+    if (data?.success && data.template) return;
+  }
+  await fetch(`${base}/templates`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name, slots, description })
+  });
+}
+var RECIPE_BEHAVIOR_FIELDS = [
+  "endpoint",
+  "method",
+  "headers",
+  "body",
+  "body_template",
+  "response_map",
+  "auth",
+  "binding_name",
+  "auth_service",
+  "credentials_required"
+];
+function sameRecipeBehavior(a, b) {
+  const pick = (r) => {
+    const o = {};
+    for (const k of RECIPE_BEHAVIOR_FIELDS) {
+      const v = k === "method" ? (r.method ?? "POST").toUpperCase() : r[k];
+      if (v !== void 0) o[k] = v;
+    }
+    return o;
+  };
+  return canonicalize(pick(a)) === canonicalize(pick(b));
+}
+async function ensureAppRecipes(env, recipes) {
+  const installed = [];
+  for (const decl of recipes) {
+    const cid = String(decl.canonical_id ?? "").trim().toLowerCase();
+    const have = await resolveRecipe(cid, env.RECIPES);
+    if (have && sameRecipeBehavior(have, decl)) continue;
+    const r = await upsertPrivateRecipe(env.RECIPES, { ...decl, canonical_id: cid });
+    if (!r.ok) return { ok: false, error: `recipe\u300C${cid}\u300D\uFF1A${r.error}` };
+    installed.push(cid);
+  }
+  return { ok: true, installed };
+}
+async function findMissingCredentials(env, tenant2, wanted) {
+  if (wanted.length === 0) return { missing: [], checked: true };
+  try {
+    const have = new Set((await listCredentialRows(env, String(tenant2))).map((r) => r.name));
+    return { missing: wanted.filter((w) => !have.has(w.name)), checked: true };
+  } catch {
+    return { missing: [], checked: false };
+  }
+}
+async function installApp(env, tenant2, rawDecl, opts = {}) {
+  let decl0 = rawDecl;
+  if (opts.coords) {
+    try {
+      decl0 = resolveDeclarationPlaceholders(rawDecl, opts.coords);
+    } catch (e) {
+      return {
+        ok: false,
+        step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
+        errors: [e instanceof Error ? e.message : String(e)],
+        hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u505A\u932F\u4E86\u3002\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u5373\u53EF\u3002"
+      };
+    }
+  }
+  const left = remainingPlaceholders(decl0);
+  if (left.length > 0) {
+    return {
+      ok: false,
+      step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
+      errors: [`\u9019\u4EFD\u5BA3\u544A\u88E1\u9084\u6709\u6C92\u586B\u7684\u4F4D\u7F6E\uFF1A${left.join("\u3001")}`],
+      hint: "\u9019\u500B App \u7684\u4F5C\u8005\u7559\u4E86\u8981\u7531\u5BE6\u4F8B\u586B\u7684\u6B04\u4F4D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u586B\u5F97\u8D77\u4F86\u3002\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+    };
+  }
+  const validation = validateAppDeclaration(decl0);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      step: "\u6AA2\u67E5\u9019\u500B App \u7684\u5BA3\u544A",
+      errors: validation.errors,
+      hint: "\u9019\u662F App \u4F5C\u8005\u90A3\u908A\u8981\u4FEE\u7684\uFF0C\u91CD\u8A66\u4E0D\u6703\u8B8A\u597D\u3002\u628A\u4E0A\u9762\u9019\u5E7E\u884C\u539F\u6587\u56DE\u5831\u7D66\u9019\u500B App \u7684\u4F5C\u8005\u3002"
+    };
+  }
+  const decl = applyDeclarationDefaults(decl0);
+  const contentHash = await computeContentHash(decl0);
+  const existing = await getInstalledApp(env, tenant2, decl.id);
+  const wantedCreds = normalizeRequiredCredentials(decl.requires);
+  const wantedRecipes = decl.requires?.recipes ?? [];
+  const ensured = await ensureAppRecipes(env, wantedRecipes);
+  if (!ensured.ok) {
+    return {
+      ok: false,
+      step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
+      errors: [ensured.error],
+      hint: "\u9019\u500B App \u9700\u8981\u7684 recipe \u5BEB\u4E0D\u9032\u9019\u53F0\u5BE6\u4F8B\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+    };
+  }
+  const credCheck = await findMissingCredentials(env, tenant2, wantedCreds);
+  const needs = {
+    recipes_installed: ensured.installed,
+    missing_credentials: credCheck.missing,
+    ...credCheck.checked ? {} : { credentials_check_failed: true }
+  };
+  if (existing && existing.content_hash === contentHash && existing.status === "active") {
+    return { ok: true, changed: false, app: existing, ...needs };
+  }
+  try {
+    for (const dt of decl.data) {
+      await ensureTemplate4(env, dt.name, dt.slots, dt.description);
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
+      errors: [e instanceof Error ? e.message : String(e)],
+      hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\u670D\u52D9\u6C92\u6709\u56DE\u61C9\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+    };
+  }
+  const workflowRefs = [];
+  try {
+    for (const wf of decl.workflows) {
+      const wfKey = `${decl.id}__${wf.name}`;
+      const trigger = resolveWorkflowTrigger(wf);
+      const cronExpr = trigger === "schedule" ? extractCronExpr(wf.graph) : null;
+      await appStore(env).put(
+        workflowKvKey(tenant2, wfKey),
+        JSON.stringify({
+          graph: wf.graph,
+          description: wf.description || `${decl.name}: ${wf.name}`,
+          created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+          ...cronExpr ? { cron_expr: cronExpr } : {}
+        })
+      );
+      await updateCronIndexEntry(appStore(env), String(tenant2), wfKey, cronExpr);
+      const graphId = typeof wf.graph.id === "string" ? wf.graph.id : void 0;
+      workflowRefs.push({
+        name: wf.name,
+        wf_key: wfKey,
+        description: wf.description || "",
+        trigger,
+        ...cronExpr ? { cron_expr: cronExpr } : {},
+        ...graphId ? { graph_id: graphId } : {}
+      });
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
+      errors: [e instanceof Error ? e.message : String(e)],
+      hint: kbdbBehindHint(e) ?? `\u5DF2\u7D93\u88DD\u4E0A ${workflowRefs.length}\uFF0F${decl.workflows.length} \u689D\u3002\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u6703\u5F9E\u982D\u8986\u5BEB\u4E00\u904D\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002`
+    };
+  }
+  if (existing) {
+    const keepKeys = new Set(workflowRefs.map((w) => w.wf_key));
+    for (const prev of existing.workflows) {
+      if (!keepKeys.has(prev.wf_key)) {
+        await appStore(env).delete(workflowKvKey(tenant2, prev.wf_key));
+        await updateCronIndexEntry(appStore(env), String(tenant2), prev.wf_key, null);
+      }
+    }
+  }
+  const uiHtml = decl.ui ? bundleUiAssets(decl.ui.html, decl.ui.assets).html : void 0;
+  const record = {
+    id: decl.id,
+    name: decl.name,
+    icon: decl.icon,
+    version: decl.version,
+    content_hash: contentHash,
+    workflows: workflowRefs,
+    actions: decl.actions,
+    data_templates: decl.data.map((d) => d.name),
+    has_ui: Boolean(uiHtml),
+    ui_html: uiHtml,
+    ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
+    keeps_data: decl.keeps_data,
+    ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
+    installed_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+    updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+    status: "active"
+  };
+  try {
+    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
+  } catch (e) {
+    return {
+      ok: false,
+      step: "\u5BEB\u5165\u5B89\u88DD\u7D00\u9304",
+      errors: [e instanceof Error ? e.message : String(e)],
+      hint: kbdbBehindHint(e) ?? "\u5DE5\u4F5C\u6D41\u5DF2\u7D93\u88DD\u597D\u4E86\uFF0C\u53EA\u5DEE\u6700\u5F8C\u9019\u4E00\u7B46\u7D00\u9304\u2014\u2014\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u5C31\u6703\u88DC\u4E0A\u3002"
+    };
+  }
+  return { ok: true, changed: true, app: record, ...needs };
+}
+async function uninstallApp(env, tenant2, id) {
+  const existing = await getInstalledApp(env, tenant2, id);
+  if (!existing) return { ok: false, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD\u7D00\u9304" };
+  try {
+    for (const wf of existing.workflows) {
+      await appStore(env).delete(workflowKvKey(tenant2, wf.wf_key));
+      await updateCronIndexEntry(appStore(env), String(tenant2), wf.wf_key, null);
+    }
+    await appStore(env).delete(appKey(tenant2, id));
+  } catch (e) {
+    return {
+      ok: false,
+      error: kbdbBehindHint(e) ?? `\u79FB\u9664\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
+    };
+  }
+  return { ok: true };
+}
+async function runAppAction(env, tenant2, appId, action, payload, ctx) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
+  if (!app2.actions.includes(action)) {
+    return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
+  }
+  const wfRef = app2.workflows.find((w) => w.name === action);
+  if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
+  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
+  if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
+  let graph;
+  try {
+    const parsed = JSON.parse(raw2);
+    if (!parsed.graph) throw new Error("no graph");
+    graph = parsed.graph;
+  } catch {
+    return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
+  }
+  const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
+  const g = graph;
+  const verdict = writeExecutionVerdict(
+    env,
+    typeof g.id === "string" ? g.id : wfRef.wf_key,
+    Array.isArray(g.nodes) ? g.nodes : [],
+    result.success ? "success" : "failed",
+    result.duration_ms,
+    result.error ?? "",
+    { ...payload, _triggered_by: "app" },
+    String(tenant2)
+  );
+  if (ctx) ctx.waitUntil(verdict);
+  else await verdict;
+  if (!result.success) {
+    return { ok: false, status: 502, error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` };
+  }
+  return { ok: true, status: 200, result: result.data };
+}
+function refTrigger(w) {
+  return w.trigger ?? "manual";
+}
+function launchOf(app2) {
+  if (app2.has_ui) return { launch: "open" };
+  const runnable = app2.workflows.filter((w) => refTrigger(w) === "manual" && app2.actions.includes(w.name));
+  if (runnable.length === 0) return { launch: "auto" };
+  return runnable.length === 1 ? { launch: "run", run_action: runnable[0].name } : { launch: "run" };
+}
+function summarizeApp(app2) {
+  const l = launchOf(app2);
+  return {
+    id: app2.id,
+    name: app2.name,
+    icon: app2.icon,
+    has_ui: app2.has_ui,
+    version: app2.version,
+    launch: l.launch,
+    ...l.run_action ? { run_action: l.run_action } : {},
+    // 自動的那一格要說得出「它什麼時候會自己跑」，使用者才知道它在替他做事。
+    schedules: app2.workflows.map((w) => w.cron_expr).filter((x) => typeof x === "string")
+  };
+}
+function detailApp(app2) {
+  const l = launchOf(app2);
+  return {
+    id: app2.id,
+    name: app2.name,
+    icon: app2.icon,
+    version: app2.version,
+    has_ui: app2.has_ui,
+    ui_html: app2.ui_html,
+    // 舊安裝態（v0.1 裝的 App）沒有這一欄——一律當「跟隨全局」，不是「維持原樣」。
+    // 那正是 leo 抱怨的那個狀態，預設值要把它修好，不是把它保留下來。
+    ui_style: app2.ui_style ?? DEFAULT_APP_UI_STYLE,
+    workflows: app2.workflows.map((w) => ({
+      name: w.name,
+      description: w.description,
+      trigger: refTrigger(w),
+      ...w.cron_expr ? { cron_expr: w.cron_expr } : {},
+      ...w.graph_id ? { graph_id: w.graph_id } : {},
+      // 畫面只為「真的按得動」的那幾條長出鍵——白名單仍由 runAppAction 在伺服端把關。
+      runnable: app2.actions.includes(w.name)
+    })),
+    actions: app2.actions,
+    launch: l.launch,
+    ...l.run_action ? { run_action: l.run_action } : {}
+  };
+}
+
 // cypher-executor/src/lib/app-catalog.ts
 var APP_CATALOG = [
   {
@@ -19270,7 +20897,7 @@ var APP_CATALOG = [
     // 2026-09-26（arcrun-app-note#1 → c11600）：v0.2 加了 Facebook 河道式設計——
     // 卡片外框、回覆（indented）、全螢幕輸入，跟著 declaration 一起升版。
     summary: "\u96A8\u624B\u5BEB\u4E00\u5247\u7B46\u8A18\uFF0C\u53EF\u4EE5\u56DE\u8986\uFF1B\u4F9D\u65E5\u671F\u6392\u6210\u6CB3\u9053\uFF0C\u5BEB\u4E0B\u53BB\u7684\u5167\u5BB9\u9032\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u3002",
-    version: "0.2.0",
+    version: "1.1.0",
     author: "Arcrun \u5167\u5EFA",
     declaration: notes_default
   },
@@ -19284,24 +20911,190 @@ var APP_CATALOG = [
     version: "0.1.1",
     author: "Arcrun \u5167\u5EFA",
     declaration: global_index_app_default
+  },
+  {
+    id: "kanban",
+    name: "\u7968\u770B\u677F",
+    icon: "\u{1F5C2}\uFE0F",
+    // inkstone/InkStoneCo#18：看板不擁有資料，只是 Gitea 票的投影——欄位＝s/* 狀態標籤，
+    // 移動卡片＝把那張票的標籤換掉。畫面由 A2UI 前端零件宣告組成（#284）。
+    // 前置由宣告自己帶（inkstone/Arcrun#285）：recipe gitea_read／gitea_issue_labels 安裝時一起裝好，
+    // 金鑰 gitea_token 只宣告名字——缺的時候市集會明講缺哪一把、去「管理 → 金鑰管理」填。
+    summary: "\u628A Gitea \u4E0A\u958B\u8457\u7684\u7968\u4F9D\u72C0\u614B\u5206\u6B04\u6392\u958B\uFF0C\u4E00\u773C\u770B\u5230\u8AB0\u5728\u505A\u4EC0\u9EBC\uFF0C\u6309\u4E00\u4E0B\u5C31\u80FD\u628A\u7968\u79FB\u5230\u4E0B\u4E00\u6B04\u3002",
+    version: "0.2.1",
+    author: "Arcrun \u5167\u5EFA",
+    declaration: kanban_app_default
   }
 ];
+function parseVersion(v) {
+  if (typeof v !== "string") return null;
+  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(v.trim());
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+function compareVersions(a, b) {
+  const pa = parseVersion(a);
+  const pb = parseVersion(b);
+  if (!pa || !pb) return null;
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] > pb[i]) return 1;
+    if (pa[i] < pb[i]) return -1;
+  }
+  return 0;
+}
+function updateStatus(installedVersion, catalogVersion2) {
+  if (catalogVersion2 === void 0) return "none";
+  const c = compareVersions(catalogVersion2, installedVersion);
+  if (c === null) return "unknown";
+  return c > 0 ? "update" : c < 0 ? "downgrade" : "current";
+}
+function catalogVersion(e) {
+  const dv = e.declaration.version;
+  return typeof dv === "string" && dv ? dv : e.version;
+}
+function updateInfo(installedVersion, id) {
+  const entry = findCatalogEntry(id);
+  const status = updateStatus(installedVersion, entry ? catalogVersion(entry) : void 0);
+  return {
+    update_status: status,
+    update_available: status === "update",
+    ...entry ? { latest_version: catalogVersion(entry) } : {}
+  };
+}
 function findCatalogEntry(id) {
   return APP_CATALOG.find((e) => e.id === id);
 }
-function catalogListing(installedIds) {
-  return APP_CATALOG.map((e) => ({
-    id: e.id,
-    name: e.name,
-    icon: e.icon,
-    summary: e.summary,
-    version: e.version,
-    author: e.author,
-    installed: installedIds.has(e.id)
-  }));
+function catalogListing(installed) {
+  const verOf = (id) => installed instanceof Map ? installed.get(id) : void 0;
+  const has = (id) => installed.has(id);
+  return APP_CATALOG.map((e) => {
+    const iv = verOf(e.id);
+    const st = has(e.id) && iv !== void 0 ? updateStatus(iv, catalogVersion(e)) : "none";
+    return {
+      id: e.id,
+      name: e.name,
+      icon: e.icon,
+      summary: e.summary,
+      version: catalogVersion(e),
+      author: e.author,
+      installed: has(e.id),
+      ...iv !== void 0 ? { installed_version: iv } : {},
+      update_status: st,
+      update_available: st === "update",
+      needs_credentials: normalizeRequiredCredentials(e.declaration.requires),
+      needs_recipes: (e.declaration.requires?.recipes ?? []).map((r) => String(r.canonical_id))
+    };
+  });
+}
+
+// cypher-executor/src/lib/update-center.ts
+var DEFAULT_INSTALLER_ORIGIN2 = "https://install.arcrun.dev";
+async function fetchInstallerLatest(env, fetchImpl = fetch) {
+  const origin2 = (env.INSTALLER_ORIGIN || DEFAULT_INSTALLER_ORIGIN2).replace(/\/+$/, "");
+  try {
+    const res = await fetchImpl(`${origin2}/api/latest`, { headers: { accept: "application/json" } });
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => null);
+    return j && typeof j === "object" ? j : null;
+  } catch {
+    return null;
+  }
+}
+function engineStatus(current, latest) {
+  if (!latest || !parseVersion(latest)) return "unknown";
+  if (!current) return "unknown";
+  if (!parseVersion(current)) return "update";
+  const c = compareVersions(latest, current);
+  return c === 1 ? "update" : c === null ? "unknown" : "current";
+}
+function daemonStatus(current, latest) {
+  if (!current || !latest) return "unknown";
+  const c = compareVersions(latest, current);
+  return c === 1 ? "update" : c === null ? "unknown" : "current";
+}
+function groupDaemonReports(reports) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const r of reports) {
+    const key = r.machine || (r.machine_label ? `label:${r.machine_label}` : "");
+    const prev = byKey.get(key);
+    if (!prev || (r.received_at || 0) > (prev.received_at || 0)) byKey.set(key, r);
+  }
+  return [...byKey.values()].sort((a, b) => (b.received_at || 0) - (a.received_at || 0));
+}
+var DAEMON_HOWTO = "\u5C0F\u5E6B\u624B\u6BCF\u5929\u6703\u81EA\u5DF1\u4E0B\u8F09\u65B0\u7248\uFF0C\u770B\u5230\u9078\u55AE\u4E0A\u7684\u300C\u91CD\u65B0\u555F\u52D5\u4EE5\u5B8C\u6210\u66F4\u65B0\u300D\u6309\u4E00\u4E0B\u5C31\u597D\uFF1B\u60F3\u99AC\u4E0A\u66F4\u65B0\uFF1A\u6253\u958B\u96FB\u8166\u4E0A\u7684 Arcrun\uFF08\u5DE5\u5177\u5217\uFF0F\u7CFB\u7D71\u5323\u5716\u793A\uFF09\u2192\u300C\u7248\u672C\u8207\u66F4\u65B0\u300D\u2192\u300C\u6AA2\u67E5\u66F4\u65B0\u300D\u3002";
+function buildUpdateCenter(input) {
+  const items = [];
+  const latest = input.latest;
+  const latestRelease = latest && typeof latest.release === "string" && latest.release || "";
+  const daemonLatest = latest && latest.daemon && typeof latest.daemon.version === "string" && latest.daemon.version || "";
+  const downloads = {
+    ...latest?.daemon?.downloads?.mac ? { mac: latest.daemon.downloads.mac } : {},
+    ...latest?.daemon?.downloads?.win ? { win: latest.daemon.downloads.win } : {}
+  };
+  const es = engineStatus(input.engineCurrent, latestRelease);
+  items.push({
+    kind: "engine",
+    id: "engine",
+    name: "Portal\uFF08\u96F2\u7AEF\u5F15\u64CE\uFF09",
+    current: input.engineCurrent,
+    latest: latestRelease,
+    status: es,
+    note: es === "update" ? "\u6709\u65B0\u7248\u3002\u6309\u300C\u66F4\u65B0\u300D\u5C31\u6703\u76F4\u63A5\u63DB\u6210\u6700\u65B0\u7248\uFF0C\u77E5\u8B58\u5EAB\u5167\u5BB9\u4E0D\u6703\u52D5\u5230\uFF0C\u4E0D\u7528\u518D\u767B\u5165 Cloudflare\u3002" : es === "current" ? "\u5DF2\u662F\u6700\u65B0\u7248\u3002" : !latestRelease ? "\u66AB\u6642\u67E5\u4E0D\u5230\u6700\u65B0\u7248\uFF0C\u7A0D\u5F8C\u518D\u8A66\u3002" : "\u8B80\u4E0D\u5230\u9019\u53F0\u76EE\u524D\u7684\u7248\u672C\uFF08\u670D\u52D9\u53EF\u80FD\u6B63\u5728\u555F\u52D5\uFF09\u3002",
+    action: es === "update" ? { type: "instance_update", admin_only: true } : null
+  });
+  const machines = groupDaemonReports(input.daemonReports);
+  if (machines.length === 0) {
+    items.push({
+      kind: "daemon",
+      id: "daemon",
+      name: "\u540C\u6B65\u5C0F\u5E6B\u624B",
+      current: "",
+      latest: daemonLatest,
+      status: "unknown",
+      note: "\u9084\u6C92\u6709\u4EFB\u4F55\u4E00\u53F0\u96FB\u8166\u4E0A\u7684\u5C0F\u5E6B\u624B\u56DE\u5831\u904E\u3002\u88DD\u597D\u4E26\u9023\u4E0A\u4E4B\u5F8C\uFF0C\u9019\u88E1\u6703\u5217\u51FA\u6BCF\u4E00\u53F0\u3002" + (daemonLatest ? `\u6700\u65B0\u7248\u662F ${daemonLatest}\u3002` : ""),
+      action: { type: "daemon_self_update", admin_only: false, downloads }
+    });
+  } else {
+    for (const m of machines) {
+      const st = daemonStatus(m.daemon_version, daemonLatest);
+      const label = m.machine_label || (m.machine ? m.machine.slice(0, 8) : "\u9019\u53F0\u96FB\u8166");
+      items.push({
+        kind: "daemon",
+        id: `daemon:${m.machine || m.machine_label || "unknown"}`,
+        name: `\u540C\u6B65\u5C0F\u5E6B\u624B\uFF08${label}\uFF09`,
+        current: m.daemon_version,
+        latest: daemonLatest,
+        status: st,
+        reported_at: m.received_at,
+        note: st === "update" ? `\u6709\u65B0\u7248\u3002${DAEMON_HOWTO}` : st === "current" ? "\u5DF2\u662F\u6700\u65B0\u7248\u3002" : !m.daemon_version ? `\u9019\u53F0\u7684\u5C0F\u5E6B\u624B\u662F\u820A\u7248\uFF0C\u4E0D\u6703\u56DE\u5831\u81EA\u5DF1\u7684\u7248\u672C\uFF0C\u96F2\u7AEF\u770B\u4E0D\u5230\u5B83\u662F\u4E0D\u662F\u6700\u65B0\u3002${DAEMON_HOWTO}` : !daemonLatest ? "\u66AB\u6642\u67E5\u4E0D\u5230\u6700\u65B0\u7248\uFF0C\u7A0D\u5F8C\u518D\u8A66\u3002" : "\u8B80\u4E0D\u61C2\u9019\u53F0\u56DE\u5831\u7684\u7248\u865F\uFF0C\u7121\u6CD5\u6BD4\u5C0D\u3002",
+        action: { type: "daemon_self_update", admin_only: false, downloads }
+      });
+    }
+  }
+  for (const a of input.apps) {
+    const st = a.update_available ? "update" : a.update_status === "current" ? "current" : "unknown";
+    items.push({
+      kind: "app",
+      id: `app:${a.id}`,
+      name: a.name || a.id,
+      current: a.version,
+      latest: a.latest_version ?? "",
+      status: st,
+      note: st === "update" ? "\u6709\u65B0\u7248\u3002\u6309\u300C\u66F4\u65B0\u300D\u5C31\u63DB\u6210\u65B0\u7248\uFF0CApp \u88E1\u5DF2\u7D93\u5BEB\u7684\u8CC7\u6599\u4E0D\u6703\u4E0D\u898B\u3002" : st === "current" ? "\u5DF2\u662F\u6700\u65B0\u7248\u3002" : a.update_status === "downgrade" ? `\u76EE\u9304\u88E1\u7684\u7248\u672C\uFF08${a.latest_version ?? ""}\uFF09\u6BD4\u4F60\u88DD\u7684\u9084\u820A\uFF0C\u4E0D\u6703\u84CB\u56DE\u53BB\u3002` : a.update_status === "none" ? "\u9019\u500B App \u4E0D\u662F\u5F9E\u5E02\u96C6\u88DD\u7684\uFF0C\u6C92\u6709\u53EF\u6BD4\u5C0D\u7684\u65B0\u7248\u3002" : "\u8B80\u4E0D\u61C2\u9019\u500B App \u7684\u7248\u865F\uFF0C\u7121\u6CD5\u6BD4\u5C0D\u3002",
+      action: st === "update" && a.latest_version ? { type: "app_install", admin_only: true, app_id: a.id, to: a.latest_version } : null
+    });
+  }
+  return {
+    items,
+    updates_available: items.filter((i) => i.status === "update").length,
+    latest_known: !!latestRelease
+  };
 }
 
 // cypher-executor/src/routes/portal-data.ts
+init_tenant();
+init_webhook_handlers();
+init_recipes();
 var portalDataRouter = new Hono2();
 async function getTenantWorkflowGraph(env, name) {
   const raw2 = await env.WEBHOOKS.get(`${knowledgeOwner(env)}:wf:${name}`, "text");
@@ -19399,7 +21192,7 @@ function findBestNodeMatch(searchTerm, nodeNames) {
 }
 async function tripletCount(env, owner) {
   try {
-    const res = await kbdbFetch2(env, `/records/triplet-stats?${owner === null ? censusQueryAllTenants() : ownerQuery(owner)}`);
+    const res = await kbdbFetch3(env, `/records/triplet-stats?${owner === null ? censusQueryAllTenants() : ownerQuery(owner)}`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.stats)) return null;
@@ -19420,7 +21213,7 @@ async function tripletCensus(env, tenant2) {
 }
 async function fuzzyFindNode(env, tenant2, searchTerm, libraries) {
   try {
-    const res = await kbdbFetch2(env, `/records/by-template/triplet?${ownerQuery(tenant2)}`);
+    const res = await kbdbFetch3(env, `/records/by-template/triplet?${ownerQuery(tenant2)}`);
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.records)) return null;
@@ -19461,7 +21254,7 @@ portalDataRouter.get(
     if (entryType) params.set("entry_type", entryType);
     const limit = c.req.query("limit");
     if (limit && /^\d{1,3}$/.test(limit)) params.set("limit", limit);
-    const res = await kbdbFetch2(c.env, `/entries/search?${params.toString()}`);
+    const res = await kbdbFetch3(c.env, `/entries/search?${params.toString()}`);
     if (!res.ok) {
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     }
@@ -19505,7 +21298,7 @@ portalDataRouter.get(
     if (pagesLimit && /^\d{1,3}$/.test(pagesLimit)) params.set("pages_limit", pagesLimit);
     const graphDepth = c.req.query("graph_depth");
     if (graphDepth && /^\d{1,2}$/.test(graphDepth)) params.set("graph_depth", graphDepth);
-    const res = await kbdbFetch2(c.env, `/retrieve?${params.toString()}`);
+    const res = await kbdbFetch3(c.env, `/retrieve?${params.toString()}`);
     if (!res.ok) {
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     }
@@ -19524,7 +21317,7 @@ portalDataRouter.get(
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) return notFound(c);
-    const res = await kbdbFetch2(c.env, `/entries/${encodeURIComponent(c.req.param("id"))}`);
+    const res = await kbdbFetch3(c.env, `/entries/${encodeURIComponent(c.req.param("id"))}`);
     if (res.status === 404) return notFound(c);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json();
@@ -19541,7 +21334,7 @@ async function fetchNeighborsFromKbdb(env, tenant2, node, depth, libraries, dire
   qs.set("template", "triplet");
   if (!libraries.includes("*")) qs.set("library", libraries.join(","));
   if (directed) qs.set("directed", "true");
-  const res = await kbdbFetch2(env, `/graph/neighbors/${encodeURIComponent(node)}?${qs.toString()}&${ownerQuery(tenant2)}`);
+  const res = await kbdbFetch3(env, `/graph/neighbors/${encodeURIComponent(node)}?${qs.toString()}&${ownerQuery(tenant2)}`);
   const body = await res.json().catch(() => null);
   return { ok: res.ok, status: res.status, body };
 }
@@ -19603,7 +21396,7 @@ portalDataRouter.get(
     }
     const tenant2 = knowledgeOwner(c.env);
     const [res, census] = await Promise.all([
-      kbdbFetch2(c.env, `/records/by-template/triplet?${ownerQuery(tenant2)}&limit=500`),
+      kbdbFetch3(c.env, `/records/by-template/triplet?${ownerQuery(tenant2)}&limit=500`),
       tripletCensus(c.env, tenant2)
     ]);
     const tripletsTotal = census.owned;
@@ -19837,7 +21630,7 @@ portalDataRouter.get(
           }
         }
         let last_execution = null;
-        const execRes = await kbdbFetch2(
+        const execRes = await kbdbFetch3(
           c.env,
           `/execution-log/latest?${new URLSearchParams({ workflow_id: name, owner_id: ownerField(tenant2) }).toString()}`
         );
@@ -19852,13 +21645,77 @@ portalDataRouter.get(
   })
 );
 portalDataRouter.get(
+  "/portal/data/recipes",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const setting = (c.env.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
+    if (setting === "off") return notFound(c);
+    if (!workflowsVisible(c.env, auth.user.values.role ?? "user")) {
+      return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
+    }
+    const all = await listAllRecipes(c.env.RECIPES);
+    const authCache = /* @__PURE__ */ new Map();
+    const recipes = (await Promise.all(
+      all.map(async (r) => {
+        let host = "";
+        try {
+          host = new URL(r.endpoint).host;
+        } catch {
+          host = String(r.endpoint ?? "").split("/")[0] ?? "";
+        }
+        const credentials = [
+          .../* @__PURE__ */ new Set([...recipeCredentialNames(r), ...await recipeAuthSecretNames(r, c.env.RECIPES, authCache)])
+        ];
+        return {
+          canonical_id: r.canonical_id,
+          display_name: r.display_name || r.canonical_id,
+          description: r.description ?? "",
+          method: (r.method ?? "POST").toUpperCase(),
+          host,
+          // 金鑰名單＝執行時真的會回填的：宣告 ∪ headers/body 裡的 {{credential.*}}（#152 c17107）
+          // ∪ auth recipe 的必填 required_secrets（#286）。只看前者會把 gmail_send 標成「免金鑰」。
+          credentials,
+          auth: r.auth ?? (credentials.length ? "static_key" : "none"),
+          author: r.author ?? ""
+        };
+      })
+    )).sort((a, b) => a.canonical_id.localeCompare(b.canonical_id));
+    return c.json({ success: true, recipes, total: recipes.length, read_only: true });
+  })
+);
+portalDataRouter.get(
   "/portal/data/apps",
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
     const apps = await listInstalledApps(c.env, tenant2);
-    return c.json({ apps: apps.map(summarizeApp), count: apps.length });
+    return c.json({
+      apps: apps.map((a) => ({ ...summarizeApp(a), ...updateInfo(a.version, a.id) })),
+      count: apps.length,
+      updates_available: apps.filter((a) => updateInfo(a.version, a.id).update_available).length
+    });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/updates",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const [latest, apps, daemonReports] = await Promise.all([
+      fetchInstallerLatest(c.env),
+      listInstalledApps(c.env, tenant2),
+      listDaemonReports(c.env)
+    ]);
+    const center = buildUpdateCenter({
+      engineCurrent: c.env.ARCRUN_BUNDLE_VERSION ?? "",
+      latest,
+      apps: apps.map((a) => ({ id: a.id, name: a.name, version: a.version, ...updateInfo(a.version, a.id) })),
+      daemonReports
+    });
+    return c.json({ success: true, ...center });
   })
 );
 portalDataRouter.get(
@@ -19867,9 +21724,23 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
-    const installed = new Set((await listInstalledApps(c.env, tenant2)).map((a) => a.id));
+    const installedApps = await listInstalledApps(c.env, tenant2);
+    const installed = new Map(installedApps.map((a) => [a.id, a.version]));
+    const wanted = /* @__PURE__ */ new Map();
+    for (const a of installedApps) for (const w of a.requires?.credentials ?? []) wanted.set(w.name, w);
+    const credCheck = await findMissingCredentials(c.env, tenant2, [...wanted.values()]);
+    const missingNames = new Set(credCheck.missing.map((m) => m.name));
+    const listing = catalogListing(installed).map((e) => {
+      const inst = installedApps.find((a) => a.id === e.id);
+      if (!inst?.requires?.credentials?.length) return e;
+      return {
+        ...e,
+        missing_credentials: inst.requires.credentials.filter((w) => missingNames.has(w.name)),
+        ...credCheck.checked ? {} : { credentials_check_failed: true }
+      };
+    });
     return c.json({
-      apps: catalogListing(installed),
+      apps: listing,
       // 前端拿它決定按鈕長什麼樣：不能裝的人看到的是「要管理員才能裝」，不是一顆按了才失敗的按鈕。
       can_install: (auth.user.values.role ?? "user") === "admin"
     });
@@ -19903,6 +21774,20 @@ portalDataRouter.post(
       );
     }
     const tenant2 = knowledgeOwner(c.env);
+    const before = await getInstalledApp(c.env, tenant2, id);
+    const targetVersion = catalogVersion(entry);
+    if (before && compareVersions(targetVersion, before.version) === -1) {
+      return c.json(
+        {
+          error: `\u5E02\u96C6\u88E1\u7684\u300C${entry.name}\u300D\u662F v${targetVersion}\uFF0C\u6BD4\u4F60\u5DF2\u88DD\u7684 v${before.version} \u9084\u820A\uFF0C\u4E0D\u662F\u65B0\u7248`,
+          step: "\u6BD4\u5C0D\u7248\u672C",
+          hint: "\u70BA\u4E86\u4E0D\u628A\u4F60\u7684 App \u9000\u56DE\u820A\u8A2D\u8A08\uFF0C\u9019\u6B21\u6C92\u6709\u52D5\u5B83\u3002\u5982\u679C\u4F60\u78BA\u5B9A\u8981\u9000\u56DE\u53BB\uFF0C\u8ACB\u5148\u79FB\u9664\u518D\u5B89\u88DD\uFF1B\u4E0D\u78BA\u5B9A\u5C31\u7DAD\u6301\u73FE\u5728\u9019\u4E00\u7248\u3002",
+          installed_version: before.version,
+          catalog_version: targetVersion
+        },
+        409
+      );
+    }
     const coords = { namespace: String(tenant2), cypherBase: new URL(c.req.url).origin };
     const result = await installApp(c.env, tenant2, entry.declaration, { coords });
     if (!result.ok) {
@@ -19918,7 +21803,14 @@ portalDataRouter.post(
     return c.json({
       installed: true,
       changed: result.changed,
-      app: result.app ? summarizeApp(result.app) : void 0
+      // 這次是不是「更新」（原本就裝著、換成了別的內容）；前端拿來決定要說「已更新到 vX」還是「裝好了」。
+      updated: Boolean(before && result.changed),
+      from_version: before?.version,
+      app: result.app ? summarizeApp(result.app) : void 0,
+      // inkstone/Arcrun#285：幫忙裝好的 recipe 名字、還缺的金鑰（名字＋用途；永遠沒有值）。
+      recipes_installed: result.recipes_installed ?? [],
+      missing_credentials: result.missing_credentials ?? [],
+      ...result.credentials_check_failed ? { credentials_check_failed: true } : {}
     });
   })
 );
@@ -19930,7 +21822,28 @@ portalDataRouter.get(
     const tenant2 = knowledgeOwner(c.env);
     const app2 = await getInstalledApp(c.env, tenant2, c.req.param("id"));
     if (!app2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B App" }, 404);
-    return c.json(detailApp(app2));
+    const detail = detailApp(app2);
+    if (!detail.has_ui) {
+      const withLast = await Promise.all(
+        detail.workflows.map(async (w) => {
+          let last_execution = null;
+          try {
+            const res = await kbdbFetch3(
+              c.env,
+              `/execution-log/latest?${new URLSearchParams({ workflow_id: w.graph_id ?? `${app2.id}__${w.name}`, owner_id: ownerField(tenant2) }).toString()}`
+            );
+            const b = await res.json().catch(() => null);
+            if (res.ok && b?.success && b.execution) {
+              last_execution = { timestamp: String(b.execution.recorded_at), verdict: b.execution.verdict };
+            }
+          } catch {
+          }
+          return { ...w, last_execution };
+        })
+      );
+      return c.json({ ...detail, workflows: withLast });
+    }
+    return c.json(detail);
   })
 );
 portalDataRouter.post(
@@ -20008,7 +21921,7 @@ portalDataRouter.get(
     params.set("owner_id", String(knowledgeOwner(c.env)));
     const limit = c.req.query("limit");
     if (limit && /^\d{1,3}$/.test(limit)) params.set("limit", limit);
-    const res = await kbdbFetch2(c.env, `/entries/library-cards?${params.toString()}`);
+    const res = await kbdbFetch3(c.env, `/entries/library-cards?${params.toString()}`);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     return new Response(res.body, { status: 200, headers: { "Content-Type": "application/json" } });
   })
@@ -20028,7 +21941,7 @@ portalDataRouter.get(
     const params = new URLSearchParams({ library, page_name: pageName });
     params.set("owner_id", String(knowledgeOwner(c.env)));
     params.set("limit", "200");
-    const res = await kbdbFetch2(c.env, `/entries?${params.toString()}`);
+    const res = await kbdbFetch3(c.env, `/entries?${params.toString()}`);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.entries)) {
@@ -20068,7 +21981,7 @@ portalDataRouter.get(
       });
     }
     const tenant2 = knowledgeOwner(c.env);
-    const res = await kbdbFetch2(c.env, `/map?${ownerQuery(tenant2)}`);
+    const res = await kbdbFetch3(c.env, `/map?${ownerQuery(tenant2)}`);
     if (!res.ok) {
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     }
@@ -20132,7 +22045,7 @@ portalDataRouter.get(
     const libraries = parseLibraries(auth.user.values.libraries);
     const library = c.req.param("library");
     if (!canReadLibrary(libraries, library)) return notFound(c);
-    const res = await kbdbFetch2(
+    const res = await kbdbFetch3(
       c.env,
       `/map/${encodeURIComponent(library)}?${ownerQuery(knowledgeOwner(c.env))}`
     );
@@ -20146,7 +22059,7 @@ portalDataRouter.get(
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
-    const res = await kbdbFetch2(c.env, "/templates");
+    const res = await kbdbFetch3(c.env, "/templates");
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     return new Response(res.body, { status: 200, headers: { "Content-Type": "application/json" } });
   })
@@ -20160,7 +22073,7 @@ portalDataRouter.post(
     if (!body || typeof body.name !== "string" || !body.name.trim() || !Array.isArray(body.slots)) {
       return c.json({ error: "name \u8207 slots[] \u5FC5\u586B" }, 400);
     }
-    const res = await kbdbFetch2(c.env, "/templates", {
+    const res = await kbdbFetch3(c.env, "/templates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -20199,7 +22112,7 @@ portalDataRouter.get(
       const v = c.req.query(k);
       if (v) params.set(k, v);
     }
-    const res = await kbdbFetch2(
+    const res = await kbdbFetch3(
       c.env,
       `/records/by-template/${encodeURIComponent(c.req.param("template"))}?${params.toString()}`
     );
@@ -20229,7 +22142,7 @@ portalDataRouter.get(
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
     if (libraries.length === 0) return notFound(c);
-    const res = await kbdbFetch2(c.env, `/records/${encodeURIComponent(c.req.param("recordId"))}`);
+    const res = await kbdbFetch3(c.env, `/records/${encodeURIComponent(c.req.param("recordId"))}`);
     if (res.status === 404) return notFound(c);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json().catch(() => null);
@@ -20257,7 +22170,7 @@ portalDataRouter.post(
     if (targetLib !== null && !canReadLibrary(libraries, targetLib)) {
       return c.json({ error: `\u7121\u300C${targetLib}\u300D\u5EAB\u7684\u6B0A\u9650\uFF0C\u4E0D\u80FD\u5BEB\u5165\u8A72\u5EAB` }, 403);
     }
-    const res = await kbdbFetch2(c.env, "/records", {
+    const res = await kbdbFetch3(c.env, "/records", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ template: body.template, values, owner_id: ownerField(knowledgeOwner(c.env)) })
@@ -20292,13 +22205,28 @@ appsRouter.post("/apps/install", async (c) => {
   if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "\u7121\u6548\u7684 JSON body" }, 400);
+  const declared = body;
+  const prev = typeof declared.id === "string" ? await getInstalledApp(c.env, apiKey, declared.id) : null;
+  const warnings = [];
+  if (prev && compareVersions(declared.version, prev.version) === -1) {
+    warnings.push(`\u7248\u672C\u5012\u9000\uFF1A\u9019\u6B21\u9001\u7684\u662F v${String(declared.version)}\uFF0C\u5DF2\u88DD\u7684\u662F v${prev.version}\u3002\u5DF2\u7167\u4F60\u9001\u7684\u5167\u5BB9\u8986\u84CB\uFF1B\u82E5\u4E0D\u662F\u6709\u610F\u9000\u7248\uFF0C\u8ACB\u91CD\u9001\u8F03\u65B0\u7684\u5BA3\u544A\u3002`);
+  }
   const result = await installApp(c.env, apiKey, body, {
     coords: { namespace: apiKey, cypherBase: new URL(c.req.url).origin }
   });
   if (!result.ok) {
     return c.json({ error: "\u5BA3\u544A\u672A\u901A\u904E\u9A57\u8B49", step: result.step, hint: result.hint, details: result.errors }, 400);
   }
-  return c.json({ installed: true, changed: result.changed, app: result.app ? summarizeApp(result.app) : void 0 });
+  return c.json({
+    installed: true,
+    changed: result.changed,
+    app: result.app ? summarizeApp(result.app) : void 0,
+    // inkstone/Arcrun#285：與市集一鍵安裝同一份結果——CLI 裝的人也知道還缺哪把金鑰。
+    recipes_installed: result.recipes_installed ?? [],
+    missing_credentials: result.missing_credentials ?? [],
+    ...result.credentials_check_failed ? { credentials_check_failed: true } : {},
+    ...warnings.length ? { warnings } : {}
+  });
 });
 appsRouter.delete("/apps/:id", async (c) => {
   const apiKey = requireApiKey(c);
@@ -20446,6 +22374,1280 @@ helpRouter.get(
   (c) => c.html(renderFaqHtml(origin(c.req.url), c.req.param("code")))
 );
 
+// cypher-executor/src/routes/internal-cron.ts
+init_dist();
+var internalCronRouter = new Hono2();
+internalCronRouter.post("/internal/cron/tick", async (c) => {
+  const expected = String(c.env.CRON_TRIGGER_TOKEN ?? "").trim();
+  if (!expected) {
+    return c.json(
+      { success: false, error: "cron_trigger_disabled", message: "CRON_TRIGGER_TOKEN \u672A\u8A2D\u5B9A\uFF1A\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u958B\u5916\u90E8\u6392\u7A0B\u5165\u53E3\uFF08CF \u96F2\u7531 [triggers].crons \u8CA0\u8CAC\uFF09" },
+      503
+    );
+  }
+  const auth = c.req.header("Authorization") ?? "";
+  const got = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
+  const scheduledTime = Math.floor(Date.now() / 6e4) * 6e4;
+  const controller = { scheduledTime, cron: "external", noRetry() {
+  } };
+  await handleScheduled(controller, c.env, c.executionCtx);
+  return c.json({ success: true, scheduled_at: new Date(scheduledTime).toISOString() });
+});
+
+// cypher-executor/src/routes/ui-components.ts
+init_dist();
+
+// cypher-executor/src/lib/ui-catalog.generated.json
+var ui_catalog_generated_default = {
+  _generated: "\u7531 console-ui/a2ui/build.mjs \u5F9E registry/ui-components/*/component.contract.yaml \u7522\u751F\u2014\u2014\u52FF\u624B\u6539\uFF0C\u6539\u539F\u7A3F\u5F8C\u91CD\u8DD1",
+  catalog_id: "arcrun:catalog/v0",
+  protocol_version: "v0.9",
+  components: [
+    {
+      canonical_id: "ui_button",
+      display_name: "\u6309\u9215",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Button",
+        implementation: "a2ui-basic"
+      },
+      description: "\u6309\u4E0B\u53BB\u9001\u51FA\u4E00\u500B\u4E8B\u4EF6\u540D\u7A31\uFF08\u53EF\u5E36\u53C3\u6578\uFF09\u3002\u6309\u9215\u672C\u8EAB\u4E0D\u542B\u908F\u8F2F\uFF1A\u8981\u89F8\u767C\u54EA\u500B\u5DE5\u4F5C\u6D41\uFF0C\u7531\u4F3A\u670D\u5668\u7AEF\u7684\u52D5\u4F5C\u767D\u540D\u55AE\u6C7A\u5B9A\u3002",
+      renders: "\u4E00\u9846\u6309\u9215\uFF0C\u4E0A\u9762\u7684\u5B57\u7531\u5B50\u5143\u4EF6\uFF08\u901A\u5E38\u662F\u4E00\u500B Text\uFF09\u6C7A\u5B9A\uFF1Bvariant \u70BA primary \u6642\u662F\u4E3B\u8981\u52D5\u4F5C\u7684\u6A23\u5F0F\u3002",
+      data_inputs: [
+        {
+          name: "child",
+          what: "\u6309\u9215\u4E0A\u986F\u793A\u7684\u5B50\u5143\u4EF6 id\uFF08\u901A\u5E38\u662F Text\uFF09"
+        },
+        {
+          name: "action",
+          what: '{"event": {"name": "\u4E8B\u4EF6\u540D\u7A31", "context": {"\u53C3\u6578": {"path": "/\u6B04\u4F4D"}}}}\u2014\u2014context \u7684\u503C\u53EF\u4EE5\u7D81\u8CC7\u6599'
+        }
+      ],
+      interactions: [
+        {
+          event: "action.event",
+          what: "\u6309\u4E0B\u6642\u9001\u51FA {name, context}\u3002Portal \u628A\u5B83\u8F49\u7D66\u5BBF\u4E3B\uFF08App \u7684\u52D5\u4F5C\u767D\u540D\u55AE\u7AEF\u9EDE\uFF09\uFF1B\u756B\u9762\u5B9A\u7FA9\u88E1\u4E0D\u51C6\u5BEB\u7DB2\u5740\u3001\u8DEF\u5F91\u6216\u6307\u4EE4"
+        }
+      ],
+      states: {
+        loading: "\u6309\u9215\u7ACB\u5373\u53EF\u6309\uFF1B\u9001\u51FA\u5F8C\u7684\u7B49\u5F85\u72C0\u614B\u7531\u5BBF\u4E3B\u986F\u793A",
+        empty: "\u6C92\u6709 child \u6642\u662F\u4E00\u9846\u6C92\u6709\u5B57\u7684\u6309\u9215\uFF08child \u5FC5\u586B\uFF0C\u9A57\u8B49\u6703\u64CB\uFF09",
+        error: "\u5BBF\u4E3B\u56DE\u932F\u8AA4\u6642\u7531\u5BBF\u4E3B\u986F\u793A\uFF0C\u6309\u9215\u672C\u8EAB\u4E0D\u8B8A",
+        disabled: "checks \u4E0D\u901A\u904E\u6642\u6309\u9215\u505C\u7528",
+        narrow: "\u6309\u9215\u5BEC\u5EA6\u8DDF\u8457\u5B57\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u6309\u9215\u4E0A\u7684\u5B57",
+          given: '{"components":[{"id":"root","component":"Button","child":"l","action":{"event":{"name":"refresh"}}},{"id":"l","component":"Text","text":"\u91CD\u65B0\u6574\u7406"}]}',
+          then_contains: "\u91CD\u65B0\u6574\u7406"
+        },
+        {
+          scenario: "\u4E3B\u8981\u52D5\u4F5C\u6A23\u5F0F\u7684\u6309\u9215",
+          given: '{"components":[{"id":"root","component":"Button","child":"l","variant":"primary","action":{"event":{"name":"run","context":{"id":{"path":"/id"}}}}},{"id":"l","component":"Text","text":"\u57F7\u884C"}],"data":{"id":"wf-1"}}',
+          then_contains: "\u57F7\u884C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "button",
+        "action",
+        "event"
+      ],
+      example: '{ "id": "refresh", "component": "Button", "child": "refresh-label", "action": { "event": { "name": "refresh" } } }\n',
+      source: "registry/ui-components/button/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "default",
+              "primary",
+              "borderless"
+            ],
+            default: "default",
+            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
+          },
+          action: {
+            $ref: "#/$defs/Action"
+          },
+          component: {
+            const: "Button"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "action",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_card",
+      display_name: "\u5361\u7247",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Card",
+        implementation: "a2ui-basic"
+      },
+      description: "\u6709\u5916\u6846\u7684\u5340\u584A\uFF0C\u628A\u4E00\u7D44\u76F8\u95DC\u5167\u5BB9\u6846\u5728\u4E00\u8D77\uFF08\u4E00\u5247\u5DE5\u4F5C\u6D41\u3001\u4E00\u5F35\u7968\u3001\u4E00\u7B46\u932F\u8AA4\uFF09\u3002",
+      renders: "\u4E00\u500B\u5E36\u5916\u6846\u8207\u5167\u8DDD\u7684\u65B9\u584A\uFF0C\u88E1\u9762\u653E\u4E00\u500B\u5B50\u5143\u4EF6\uFF1B\u8981\u653E\u591A\u500B\u6771\u897F\u6642\uFF0C\u5B50\u5143\u4EF6\u7528 Column \u6216 Row \u5305\u8D77\u4F86\u3002",
+      data_inputs: [
+        {
+          name: "child",
+          what: "\u8981\u6846\u8D77\u4F86\u7684\u90A3\u4E00\u500B\u5B50\u5143\u4EF6\u7684 id\uFF08\u4E0D\u662F\u8CC7\u6599\uFF0C\u662F\u7248\u9762\uFF09"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5916\u6846\u7167\u5E38\u51FA\u73FE\uFF0C\u88E1\u9762\u7531\u5B50\u5143\u4EF6\u81EA\u5DF1\u986F\u793A\u8F09\u5165\u4E2D",
+        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u5C31\u4E0D\u6703\u51FA\u73FE\uFF08child \u5FC5\u586B\uFF09",
+        error: "\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\uFF0C\u6E32\u67D3\u5668\u5728\u4E3B\u63A7\u53F0\u5831\u932F\u3001\u90A3\u4E00\u683C\u7559\u767D\uFF0C\u4E0D\u6703\u6574\u9801\u58DE\u6389",
+        disabled: "\u5361\u7247\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u7E2E\uFF0C\u5167\u5BB9\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5361\u7247\u6846\u4F4F\u4E00\u6BB5\u6587\u5B57",
+          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":"\u6846\u5728\u5361\u7247\u88E1"}]}',
+          then_contains: "\u6846\u5728\u5361\u7247\u88E1"
+        },
+        {
+          scenario: "\u5361\u7247\u88E1\u7684\u6587\u5B57\u53EF\u4EE5\u7D81\u8CC7\u6599",
+          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"/title"}}],"data":{"title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"}}',
+          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "container",
+        "card"
+      ],
+      example: '{ "id": "wf-card", "component": "Card", "child": "wf-body" }\n',
+      source: "registry/ui-components/card/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
+          },
+          component: {
+            const: "Card"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_column",
+      display_name: "\u76F4\u6392",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Column",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u4E0A\u5F80\u4E0B\u6392\u3002\u6574\u500B\u756B\u9762\u7684\u9AA8\u67B6\u901A\u5E38\u662F\u4E00\u500B\u76F4\u6392\u3002",
+      renders: "\u4E00\u6B04\uFF0C\u5B50\u5143\u4EF6\u4F9D\u5E8F\u5F80\u4E0B\u5806\uFF0Cjustify\uFF0Falign \u63A7\u5236\u9593\u8DDD\u8207\u5C0D\u9F4A\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}\uFF0C\u8CC7\u6599\u9663\u5217\u6709\u5E7E\u7B46\u5C31\u9577\u5E7E\u500B'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
+        empty: "\u7D81\u5230\u7684\u6E05\u55AE\u662F\u7A7A\u9663\u5217\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u8981\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\u8ACB\u53E6\u653E\u4E00\u500B Text\uFF09",
+        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u672C\u4F86\u5C31\u662F\u55AE\u6B04\uFF0C\u7A84\u87A2\u5E55\u4E0D\u8B8A\u5F62"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5169\u6BB5\u6587\u5B57\u4E0A\u4E0B\u6392",
+          given: '{"components":[{"id":"root","component":"Column","children":["a","b"]},{"id":"a","component":"Text","text":"\u7B2C\u4E00\u884C"},{"id":"b","component":"Text","text":"\u7B2C\u4E8C\u884C"}]}',
+          then_contains: "\u7B2C\u4E8C\u884C"
+        },
+        {
+          scenario: "\u7528\u8CC7\u6599\u9663\u5217\u9577\u51FA\u5B50\u5143\u4EF6",
+          given: '{"components":[{"id":"root","component":"Column","children":{"componentId":"item","path":"/items"}},{"id":"item","component":"Text","text":{"path":"name"}}],"data":{"items":[{"name":"\u7532"},{"name":"\u4E59"}]}}',
+          then_contains: "\u4E59"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "column",
+        "stack"
+      ],
+      example: '{ "id": "page", "component": "Column", "children": ["title", "list"] }\n',
+      source: "registry/ui-components/column/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "spaceBetween",
+              "spaceAround",
+              "spaceEvenly",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "start",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
+          },
+          component: {
+            const: "Column"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_list",
+      display_name: "\u6E05\u55AE",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "List",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u4E00\u500B\u8CC7\u6599\u9663\u5217\u5C55\u958B\u6210\u91CD\u8907\u7684\u9805\u76EE\uFF1A\u6BCF\u4E00\u7B46\u8CC7\u6599\u9577\u4E00\u500B\u540C\u6A23\u7684\u6A23\u677F\uFF08\u4F8B\u5982\u6BCF\u689D\u5DE5\u4F5C\u6D41\u4E00\u5F35\u5361\uFF09\u3002",
+      renders: "\u4E00\u4E32\u76F4\u5411\uFF08\u6216\u6A6B\u5411\uFF09\u6392\u5217\u7684\u9805\u76EE\uFF0C\u6BCF\u4E00\u9805\u90FD\u662F\u540C\u4E00\u500B\u6A23\u677F\u5143\u4EF6\uFF0C\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\u8B80\u90A3\u4E00\u7B46\u7684\u6B04\u4F4D\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u6A23\u677F {"componentId": "\u6BCF\u4E00\u9805\u7684\u5143\u4EF6 id", "path": "/\u8CC7\u6599\u9663\u5217"}\uFF1B\u6A23\u677F\u88E1\u7684 {"path": "name"} \u8B80\u7684\u662F\u90A3\u4E00\u7B46\u7684 name'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE",
+        empty: "\u7A7A\u9663\u5217\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE\uFF08\u300C\u6C92\u6709\u8CC7\u6599\u300D\u7684\u5B57\u8981\u53E6\u653E\u4E00\u500B Text\uFF0C\u756B\u9762\u5B9A\u7FA9\u81EA\u5DF1\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A\uFF09",
+        error: "\u67D0\u4E00\u7B46\u7F3A\u6B04\u4F4D\u6642\uFF0C\u90A3\u4E00\u7B46\u7684\u5C0D\u61C9\u6587\u5B57\u662F\u7A7A\u7684\uFF0C\u5176\u4ED6\u7B46\u7167\u5E38",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u76F4\u5411\u6E05\u55AE\u4E0D\u53D7\u5F71\u97FF\uFF1B\u6A6B\u5411\u6E05\u55AE\u6703\u51FA\u73FE\u6C34\u5E73\u6372\u52D5"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u6BCF\u7B46\u8CC7\u6599\u9577\u4E00\u9805",
+          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"row","path":"/workflows"}},{"id":"row","component":"Text","text":{"path":"name"}}],"data":{"workflows":[{"name":"notify_daily"},{"name":"ingest_docs"}]}}',
+          then_contains: "ingest_docs"
+        },
+        {
+          scenario: "\u6A23\u677F\u53EF\u4EE5\u662F\u4E00\u5F35\u5361",
+          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"card","path":"/items"}},{"id":"card","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"title"}}],"data":{"items":[{"title":"\u7B2C\u4E00\u5F35\u5361"}]}}',
+          then_contains: "\u7B2C\u4E00\u5F35\u5361"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "list",
+        "repeat",
+        "collection"
+      ],
+      example: '{ "id": "wf-list", "component": "List", "children": { "componentId": "wf-card", "path": "/workflows" } }\n',
+      source: "registry/ui-components/list/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
+          },
+          direction: {
+            type: "string",
+            enum: [
+              "vertical",
+              "horizontal"
+            ],
+            default: "vertical",
+            description: "The direction in which the list items are laid out."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis."
+          },
+          component: {
+            const: "List"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_row",
+      display_name: "\u6A6B\u6392",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Row",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u5DE6\u5F80\u53F3\u6392\uFF0C\u4F8B\u5982\u300C\u540D\u7A31\uFF5C\u6392\u7A0B\uFF5C\u6700\u8FD1\u4E00\u6B21\u7D50\u679C\u300D\u653E\u5728\u540C\u4E00\u884C\u3002",
+      renders: "\u4E00\u5217\uFF0C\u5B50\u5143\u4EF6\u5DE6\u53F3\u4E26\u6392\uFF0Cjustify \u6C7A\u5B9A\u64E0\u5728\u4E00\u8D77\u6216\u63A8\u5230\u5169\u7AEF\uFF08spaceBetween\uFF09\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
+        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u6642\u662F\u4E00\u689D\u7A7A\u5217",
+        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u5B50\u5143\u4EF6\u5BEC\u5EA6\u7E2E\u5C0F\uFF1B\u5167\u5BB9\u592A\u9577\u6642\u6587\u5B57\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u540D\u7A31\u8207\u72C0\u614B\u4E26\u6392",
+          given: '{"components":[{"id":"root","component":"Row","children":["n","s"],"justify":"spaceBetween"},{"id":"n","component":"Text","text":"\u6BCF\u65E5\u5F59\u6574"},{"id":"s","component":"Text","text":"success"}]}',
+          then_contains: "\u6BCF\u65E5\u5F59\u6574"
+        },
+        {
+          scenario: "\u4E26\u6392\u7684\u7B2C\u4E8C\u683C\u4E5F\u756B\u5F97\u51FA\u4F86",
+          given: '{"components":[{"id":"root","component":"Row","children":["n","s"]},{"id":"n","component":"Text","text":"A"},{"id":"s","component":"Text","text":"\u53F3\u908A\u90A3\u683C"}]}',
+          then_contains: "\u53F3\u908A\u90A3\u683C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "row",
+        "inline"
+      ],
+      example: '{ "id": "wf-head", "component": "Row", "children": ["wf-name", "wf-last"], "justify": "spaceBetween" }\n',
+      source: "registry/ui-components/row/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "spaceAround",
+              "spaceBetween",
+              "spaceEvenly",
+              "start",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
+          },
+          component: {
+            const: "Row"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_text",
+      display_name: "\u6587\u5B57",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Text",
+        implementation: "a2ui-basic"
+      },
+      description: "\u986F\u793A\u4E00\u6BB5\u6587\u5B57\uFF1A\u6A19\u984C\u3001\u5167\u6587\u3001\u6578\u5B57\u3001\u8A3B\u8A18\u3002\u5167\u5BB9\u53EF\u4EE5\u5BEB\u6B7B\uFF0C\u4E5F\u53EF\u4EE5\u7D81\u5230\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+      renders: "\u4E00\u884C\u6216\u4E00\u6BB5\u6587\u5B57\uFF0Cvariant \u6C7A\u5B9A\u5927\u5C0F\uFF08h1\u2013h5 \u6A19\u984C\u3001body \u5167\u6587\u3001caption \u5C0F\u5B57\u8A3B\u8A18\uFF09\u3002",
+      data_inputs: [
+        {
+          name: "text",
+          what: '\u8981\u986F\u793A\u7684\u5B57\u3002\u5BEB\u6B7B\u5C31\u662F\u5B57\u4E32\uFF1B\u8981\u5F9E\u8CC7\u6599\u4F86\u5C31\u5BEB {"path": "/\u6B04\u4F4D"}\uFF0C\u5728 List \u7684\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\uFF08\u4F8B {"path": "name"}\uFF09'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642\u986F\u793A\u7A7A\u5B57\u4E32\uFF0C\u4E0D\u986F\u793A undefined",
+        empty: "\u7D81\u5230\u7684\u6B04\u4F4D\u4E0D\u5B58\u5728\u6642\u986F\u793A\u7A7A\u5B57\u4E32",
+        error: "\u4E0D\u6703\u4E1F\u932F\uFF1B\u756B\u4E0D\u51FA\u4F86\u7684\u503C\u4E00\u5F8B\u7576\u7A7A\u5B57\u4E32",
+        disabled: "\u6587\u5B57\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5BEB\u6B7B\u7684\u6A19\u984C",
+          given: '{"components":[{"id":"root","component":"Text","text":"\u5DE5\u4F5C\u6D41","variant":"h2"}]}',
+          then_contains: "\u5DE5\u4F5C\u6D41"
+        },
+        {
+          scenario: "\u7D81\u8CC7\u6599\u7684\u6578\u5B57",
+          given: '{"components":[{"id":"root","component":"Text","text":{"path":"/count"}}],"data":{"count":"\u5171 3 \u689D"}}',
+          then_contains: "\u5171 3 \u689D"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "text",
+        "label",
+        "heading"
+      ],
+      example: '{ "id": "wf-name", "component": "Text", "text": { "path": "name" }, "variant": "h3" }\n',
+      source: "registry/ui-components/text/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          text: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "caption",
+              "body"
+            ],
+            default: "body",
+            description: "A hint for the base text style."
+          },
+          component: {
+            const: "Text"
+          }
+        },
+        required: [
+          "id",
+          "text",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    }
+  ],
+  a2ui_catalog: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    catalogId: "arcrun:catalog/v0",
+    components: {
+      Button: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "default",
+              "primary",
+              "borderless"
+            ],
+            default: "default",
+            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
+          },
+          action: {
+            $ref: "#/$defs/Action"
+          },
+          component: {
+            const: "Button"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "action",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Card: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
+          },
+          component: {
+            const: "Card"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Column: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "spaceBetween",
+              "spaceAround",
+              "spaceEvenly",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "start",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
+          },
+          component: {
+            const: "Column"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      List: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
+          },
+          direction: {
+            type: "string",
+            enum: [
+              "vertical",
+              "horizontal"
+            ],
+            default: "vertical",
+            description: "The direction in which the list items are laid out."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis."
+          },
+          component: {
+            const: "List"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Row: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "spaceAround",
+              "spaceBetween",
+              "spaceEvenly",
+              "start",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
+          },
+          component: {
+            const: "Row"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Text: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          text: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "caption",
+              "body"
+            ],
+            default: "body",
+            description: "A hint for the base text style."
+          },
+          component: {
+            const: "Text"
+          }
+        },
+        required: [
+          "id",
+          "text",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    $defs: {
+      anyComponent: {
+        oneOf: [
+          {
+            $ref: "#/components/Button"
+          },
+          {
+            $ref: "#/components/Card"
+          },
+          {
+            $ref: "#/components/Column"
+          },
+          {
+            $ref: "#/components/List"
+          },
+          {
+            $ref: "#/components/Row"
+          },
+          {
+            $ref: "#/components/Text"
+          }
+        ],
+        discriminator: {
+          propertyName: "component"
+        }
+      },
+      ComponentId: {
+        type: "string",
+        description: "The unique identifier for a component, used for both definitions and references within the same surface."
+      },
+      AccessibilityAttributes: {
+        type: "object",
+        description: "Attributes to enhance accessibility when using assistive technologies like screen readers.",
+        properties: {
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "A short string, typically 1 to 3 words, used by assistive technologies to convey the purpose or intent of an element. For example, an input field might have an accessible label of 'User ID' or a button might be labeled 'Submit'."
+          },
+          description: {
+            $ref: "#/$defs/DynamicString",
+            description: "Additional information provided by assistive technologies about an element such as instructions, format requirements, or result of an action. For example, a mute button might have a label of 'Mute' and a description of 'Silences notifications about this conversation'."
+          }
+        }
+      },
+      CheckRule: {
+        type: "object",
+        description: "A single validation rule applied to an input component.",
+        properties: {
+          condition: {
+            $ref: "#/$defs/DynamicBoolean"
+          },
+          message: {
+            type: "string",
+            description: "The error message to display if the check fails."
+          }
+        },
+        required: [
+          "condition",
+          "message"
+        ],
+        additionalProperties: false
+      },
+      Action: {
+        description: "Defines an interaction handler that can either trigger a server-side event or execute a local client-side function.",
+        oneOf: [
+          {
+            type: "object",
+            description: "Triggers a server-side event.",
+            properties: {
+              event: {
+                type: "object",
+                description: "The event to dispatch to the server.",
+                properties: {
+                  name: {
+                    type: "string",
+                    description: "The name of the action to be dispatched to the server."
+                  },
+                  context: {
+                    type: "object",
+                    description: "A JSON object containing the key-value pairs for the action context. Values can be literals or paths. Use literal values unless the value must be dynamically bound to the data model. Do NOT use paths for static IDs.",
+                    additionalProperties: {
+                      $ref: "#/$defs/DynamicValue"
+                    }
+                  }
+                },
+                required: [
+                  "name"
+                ],
+                additionalProperties: false
+              }
+            },
+            required: [
+              "event"
+            ],
+            additionalProperties: false
+          },
+          {
+            type: "object",
+            description: "Executes a local client-side function.",
+            properties: {
+              functionCall: {
+                $ref: "#/$defs/FunctionCall"
+              }
+            },
+            required: [
+              "functionCall"
+            ],
+            additionalProperties: false
+          }
+        ]
+      },
+      ChildList: {
+        oneOf: [
+          {
+            type: "array",
+            items: {
+              $ref: "#/$defs/ComponentId"
+            },
+            description: "A static list of child component IDs."
+          },
+          {
+            type: "object",
+            description: "A template for generating a dynamic list of children from a data model list. The `componentId` is the component to use as a template.",
+            properties: {
+              componentId: {
+                $ref: "#/$defs/ComponentId"
+              },
+              path: {
+                type: "string",
+                description: "The path to the list of component property objects in the data model."
+              }
+            },
+            required: [
+              "componentId",
+              "path"
+            ],
+            additionalProperties: false
+          }
+        ]
+      },
+      DynamicString: {
+        description: "Represents a string",
+        oneOf: [
+          {
+            type: "string"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            allOf: [
+              {
+                $ref: "#/$defs/FunctionCall"
+              },
+              {
+                properties: {
+                  returnType: {
+                    const: "string"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      DataBinding: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "A JSON Pointer path to a value in the data model."
+          }
+        },
+        required: [
+          "path"
+        ],
+        additionalProperties: false
+      },
+      FunctionCall: {
+        type: "object",
+        description: "Invokes a named function on the client.",
+        properties: {
+          call: {
+            type: "string",
+            description: "The name of the function to call."
+          },
+          args: {
+            type: "object",
+            description: "Arguments passed to the function.",
+            additionalProperties: {
+              anyOf: [
+                {
+                  $ref: "#/$defs/DynamicValue"
+                },
+                {
+                  type: "object",
+                  description: "A literal object argument (e.g. configuration)."
+                }
+              ]
+            }
+          },
+          returnType: {
+            type: "string",
+            description: "The expected return type of the function call.",
+            enum: [
+              "string",
+              "number",
+              "boolean",
+              "array",
+              "object",
+              "any",
+              "void"
+            ],
+            default: "boolean"
+          }
+        },
+        required: [
+          "call"
+        ],
+        oneOf: [
+          {
+            $ref: "catalog.json#/$defs/anyFunction"
+          }
+        ]
+      },
+      DynamicBoolean: {
+        description: "A boolean value that can be a literal, a path, or a function call returning a boolean.",
+        oneOf: [
+          {
+            type: "boolean"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            allOf: [
+              {
+                $ref: "#/$defs/FunctionCall"
+              },
+              {
+                properties: {
+                  returnType: {
+                    const: "boolean"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      DynamicValue: {
+        description: "A value that can be a literal, a path, or a function call returning any type.",
+        oneOf: [
+          {
+            type: "string"
+          },
+          {
+            type: "number"
+          },
+          {
+            type: "boolean"
+          },
+          {
+            type: "array"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            $ref: "#/$defs/FunctionCall"
+          }
+        ]
+      }
+    }
+  }
+};
+
+// cypher-executor/src/lib/ui-catalog.ts
+var CATALOG = ui_catalog_generated_default;
+var UI_CATALOG_ID = CATALOG.catalog_id;
+var UI_PROTOCOL_VERSION = CATALOG.protocol_version;
+function summarize(c) {
+  return {
+    canonical_id: c.canonical_id,
+    component: c.a2ui.component,
+    display_name: c.display_name,
+    description: c.description,
+    renders: c.renders,
+    data_inputs: c.data_inputs.map((d) => d.name),
+    interactions: c.interactions.map((i) => i.event),
+    tags: c.tags
+  };
+}
+function listUiComponents(q) {
+  const needle = (q ?? "").trim().toLowerCase();
+  const all = CATALOG.components;
+  const hit = needle ? all.filter(
+    (c) => [c.canonical_id, c.a2ui.component, c.display_name, c.description, c.renders, ...c.tags].join(" ").toLowerCase().includes(needle)
+  ) : all;
+  return hit.map(summarize);
+}
+function getUiComponent(id) {
+  const k = id.trim();
+  return CATALOG.components.find(
+    (c) => c.canonical_id === k || c.a2ui.component === k || c.a2ui.component.toLowerCase() === k.toLowerCase()
+  );
+}
+function a2uiCatalog() {
+  return CATALOG.a2ui_catalog;
+}
+
+// cypher-executor/src/routes/ui-components.ts
+var uiComponentsRouter = new Hono2();
+uiComponentsRouter.get("/ui/components", (c) => {
+  const q = c.req.query("q");
+  const components = listUiComponents(q);
+  return c.json({
+    success: true,
+    catalog_id: UI_CATALOG_ID,
+    protocol_version: UI_PROTOCOL_VERSION,
+    count: components.length,
+    components,
+    next: "\u8981\u67D0\u4E00\u9846\u7684\u5B8C\u6574\u5BA3\u544A\uFF08\u5C6C\u6027 schema\u3001\u5404\u72C0\u614B\u3001\u7BC4\u4F8B\uFF09\u2192 GET /ui/components/:id"
+  });
+});
+uiComponentsRouter.get("/ui/components/:id", (c) => {
+  const id = c.req.param("id");
+  const component = getUiComponent(id);
+  if (!component) {
+    return c.json({
+      success: false,
+      error: `\u6C92\u6709\u540D\u70BA\u300C${id}\u300D\u7684\u756B\u9762\u5143\u4EF6`,
+      available: listUiComponents().map((x) => x.canonical_id)
+    }, 404);
+  }
+  return c.json({ success: true, catalog_id: UI_CATALOG_ID, protocol_version: UI_PROTOCOL_VERSION, component });
+});
+uiComponentsRouter.get("/ui/catalog", (c) => c.json(a2uiCatalog()));
+
+// cypher-executor/src/index.ts
+init_endpoints();
+
+// cypher-executor/src/lib/secrets-grant.ts
+var DEFAULT_INSTALLER_ORIGIN3 = "https://install.arcrun.dev";
+var GRANT_CODE_RE = /^[A-Za-z0-9_-]{20,128}$/;
+var REDEEM_TIMEOUT_MS = 8e3;
+var GRANT_HEADER = "x-arcrun-secrets-grant";
+function isGrantCodeShape(code) {
+  return GRANT_CODE_RE.test(code);
+}
+async function redeemSecretsGrant(env, apiOrigin, code, fetchImpl = fetch) {
+  if (!isGrantCodeShape(code)) return null;
+  const installer = String(env.INSTALLER_ORIGIN || DEFAULT_INSTALLER_ORIGIN3).replace(/\/+$/, "");
+  try {
+    const res = await fetchImpl(`${installer}/api/grant/redeem`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, api_origin: apiOrigin }),
+      signal: AbortSignal.timeout(REDEEM_TIMEOUT_MS)
+    });
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => null);
+    const token = j && typeof j.token === "string" ? j.token : "";
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
 // cypher-executor/src/index.ts
 var app = new Hono2();
 var STATIC_ORIGINS = ["https://arcrun.dev", "https://www.arcrun.dev"];
@@ -20458,11 +23660,12 @@ app.use("*", cors({
     } catch {
     }
     const sub = String(c.env.WORKER_SUBDOMAIN || "").trim();
-    const sibling = sub ? [`https://arcrun-rag-ui.${sub}.workers.dev`] : [];
-    return [...STATIC_ORIGINS, ...sibling, ...extra].includes(origin2) ? origin2 : null;
+    const priv = isPrivateCloud(c.env);
+    const sibling = sub && !priv ? [`https://arcrun-rag-ui.${sub}.workers.dev`] : [];
+    return [...priv ? [] : STATIC_ORIGINS, ...sibling, ...extra].includes(origin2) ? origin2 : null;
   },
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization", "X-Arcrun-API-Key"],
+  allowHeaders: ["Content-Type", "Authorization", "X-Arcrun-API-Key", "X-Arcrun-Secrets-Grant"],
   credentials: true
 }));
 app.onError((err, c) => {
@@ -20470,12 +23673,24 @@ app.onError((err, c) => {
     const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 503;
     return c.json({ success: false, error: "kbdb_unavailable", message: err.message }, status);
   }
+  if (err instanceof EndpointConfigError) {
+    console.error("[cypher-executor]", err.message);
+    return c.json({ success: false, error: "endpoint_config_missing", missing: err.missing, message: err.message }, 500);
+  }
   console.error("[cypher-executor] unhandled error", err);
   return c.json(
     { success: false, error: "internal_error", message: err instanceof Error ? err.message : String(err) },
     500
   );
 });
+app.use("*", async (c, next) => {
+  const p = new URL(c.req.url).pathname;
+  if (p.startsWith("/portal") || p.startsWith("/console") || p === "/health") {
+    await hydrateAuthStore(c.env);
+  }
+  await next();
+});
+app.route("/", internalCronRouter);
 app.route("/", helpRouter);
 app.route("/", docsRouter);
 app.route("/", healthRouter);
@@ -20499,11 +23714,19 @@ app.route("/", portalRouter);
 app.route("/", portalDataRouter);
 app.route("/", storageRouter);
 app.route("/", appsRouter);
+app.route("/", uiComponentsRouter);
 var index_default = {
   fetch: (req, env, ctx) => {
     const perRequest = withAssetStores(env, newKbdbTally());
     const cfToken = req.headers.get("x-cf-secrets-token");
     if (cfToken) perRequest.CF_SECRETS_TOKEN_FROM_REQUEST = cfToken;
+    const grant = req.headers.get(GRANT_HEADER);
+    if (grant && !cfToken && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS" && !isPrivateCloud(env)) {
+      return redeemSecretsGrant(env, new URL(req.url).origin, grant).then((t) => {
+        if (t) perRequest.CF_SECRETS_TOKEN_FROM_REQUEST = t;
+        return app.fetch(req, perRequest, ctx);
+      });
+    }
     return app.fetch(req, perRequest, ctx);
   },
   scheduled: (controller, env, ctx) => handleScheduled(controller, withAssetStores(env), ctx)

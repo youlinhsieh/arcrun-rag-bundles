@@ -2145,7 +2145,7 @@ var cors = (options) => {
 // .component-builds/array_ops/src/index.ts
 var app = new Hono2();
 app.use("*", cors());
-app.get("/", (c) => c.json({ ok: true, component: COMPONENT_ID }));
+app.get("/", (c) => c.json({ ok: true, component: c.env.COMPONENT_ID }));
 app.post("/", async (c) => {
   let input;
   try {

@@ -31923,6 +31923,59 @@ function registerRecipeDelete(server, env, partnerToken) {
   );
 }
 
+// mcp/src/tools/arcrun_ui_components.ts
+function registerAllUiComponentTools(server, env, partnerToken) {
+  registerListUiComponents(server, env, partnerToken);
+  registerGetUiComponent(server, env, partnerToken);
+}
+function registerListUiComponents(server, env, partnerToken) {
+  server.tool(
+    toolName("list_ui_components"),
+    "\u5217\u51FA\u756B\u9762\u5143\u4EF6\uFF08A2UI \u524D\u7AEF\u5143\u4EF6\uFF0C\u76EE\u9304 arcrun:catalog/v0\uFF09\uFF1A\u6BCF\u9846\u80FD\u9577\u51FA\u4EC0\u9EBC\u756B\u9762\u3001\u8981\u5403\u4EC0\u9EBC\u8CC7\u6599\u3001\u6709\u54EA\u4E9B\u4E92\u52D5\u3002\u8981\u7D44\u4E00\u500B\u756B\u9762\uFF08\u4F8B\uFF1A\u5DE5\u4F5C\u6D41\u6E05\u55AE\u3001\u7968\u5361\u7247\uFF09\u4E4B\u524D\u5148\u67E5\u9019\u652F\u3002\u9019\u4E9B\u662F\u700F\u89BD\u5668\u88E1\u7684\u7248\u9762\u7A4D\u6728\uFF0C\u4E0D\u662F\u5DE5\u4F5C\u6D41\u7BC0\u9EDE\u3002\u53EF\u7528 query \u95DC\u9375\u5B57\u7BE9\uFF08\u4F8B\uFF1A\u300C\u6E05\u55AE\u300D\u300C\u6309\u9215\u300D\u300C\u5361\u7247\u300D\uFF09\u3002",
+    {
+      query: external_exports.string().optional().describe("\u95DC\u9375\u5B57\uFF08\u9078\u586B\uFF09\uFF0C\u6BD4\u5C0D\u540D\u7A31\u3001\u63CF\u8FF0\u3001\u80FD\u9577\u51FA\u4EC0\u9EBC\u3001tags")
+    },
+    async ({ query }) => {
+      try {
+        const res = await cypherFetch(env, "/ui/components", {
+          apiKey: partnerToken,
+          query: query ? { q: query } : void 0
+        });
+        if (!res.ok) return errorResponse("list_failed", "\u67E5\u756B\u9762\u5143\u4EF6\u76EE\u9304\u5931\u6557", ["\u7A0D\u5F8C\u518D\u8A66"], await res.text());
+        return successResponse(await res.json(), [
+          "\u8981\u67D0\u4E00\u9846\u7684\u5B8C\u6574\u5BA3\u544A\uFF08\u5C6C\u6027 schema\u3001\u5404\u72C0\u614B\u3001\u7BC4\u4F8B\uFF09\u2192 arcrun_get_ui_component",
+          '\u756B\u9762\u5B9A\u7FA9\u683C\u5F0F\uFF1DA2UI v0.9\uFF1A\u6241\u5E73\u5143\u4EF6\u6E05\u55AE\uFF0Bid \u5F15\u7528\uFF0C\u8CC7\u6599\u7528 {"path": "/\u6B04\u4F4D"} \u7D81'
+        ]);
+      } catch (e) {
+        return errorResponse("internal_error", e instanceof Error ? e.message : String(e), []);
+      }
+    }
+  );
+}
+function registerGetUiComponent(server, env, partnerToken) {
+  server.tool(
+    toolName("get_ui_component"),
+    "\u53D6\u4E00\u9846\u756B\u9762\u5143\u4EF6\u7684\u5B8C\u6574\u5BA3\u544A\uFF1A\u80FD\u7522\u751F\u4EC0\u9EBC\u756B\u9762\u3001\u8CC7\u6599\u8F38\u5165\u3001\u4E92\u52D5\u4E8B\u4EF6\u3001\u8F09\u5165\u4E2D\uFF0F\u7A7A\u7684\uFF0F\u51FA\u932F\uFF0F\u505C\u7528\uFF0F\u7A84\u87A2\u5E55\u5404\u9577\u4EC0\u9EBC\u6A23\u3001\u5C6C\u6027 schema\u3001\u7BC4\u4F8B\u3002id \u53EF\u7528 canonical_id\uFF08ui_card\uFF09\u6216 A2UI \u540D\u7A31\uFF08Card\uFF09\u3002",
+    {
+      id: external_exports.string().describe("\u756B\u9762\u5143\u4EF6 id\uFF0C\u5982 ui_list \u6216 List")
+    },
+    async ({ id }) => {
+      try {
+        const res = await cypherFetch(env, `/ui/components/${encodeURIComponent(id)}`, { apiKey: partnerToken });
+        if (res.status === 404) {
+          return errorResponse("not_found", `\u6C92\u6709\u540D\u70BA\u300C${id}\u300D\u7684\u756B\u9762\u5143\u4EF6`, ["arcrun_list_ui_components \u770B\u6709\u54EA\u4E9B"], await res.text());
+        }
+        if (!res.ok) return errorResponse("get_failed", "\u53D6\u756B\u9762\u5143\u4EF6\u5931\u6557", ["\u7A0D\u5F8C\u518D\u8A66"], await res.text());
+        return successResponse(await res.json(), [
+          "\u7167 example \u8207 input_schema \u5BEB\u756B\u9762\u5B9A\u7FA9\u7684\u5143\u4EF6\uFF1B\u8CC7\u6599\u7D81\u5B9A\u898B data_inputs"
+        ]);
+      } catch (e) {
+        return errorResponse("internal_error", e instanceof Error ? e.message : String(e), []);
+      }
+    }
+  );
+}
+
 // mcp/src/tools/kbdb_data.ts
 var OWNER_IGNORED_HINT = "owner_id \u5728\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF1A\u67E5\u8A62\u7BC4\u570D\u7531\u4F60\u7684\u5E33\u865F\u6B0A\u9650\u6C7A\u5B9A\uFF08\u8207\u4F60\u5728 portal \u7DB2\u9801\u770B\u5230\u7684\u4E00\u81F4\uFF09";
 function registerAllKbdbDataTools(server, env, identity) {
@@ -32762,6 +32815,7 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
   registerAllWorkflowCrudTools(server, env, partnerToken);
   registerAllSkillExampleTools(server, env, identity);
   registerAllRecipeTools(server, env, partnerToken);
+  registerAllUiComponentTools(server, env, partnerToken);
   registerAllKbdbDataTools(server, env, identity);
   registerAllKbdbGraphTools(server, env, orgNamespace, identity);
   registerAllKbdbMapTools(server, env, identity);
@@ -32855,6 +32909,9 @@ async function buildServerInstructions(env, identity) {
     "5. \u7F3A\u96F6\u4EF6\u6642\uFF1A\u7F3A API \u2192 \u5BEB recipe\uFF08`arcrun_recipe_push`\uFF09\uFF1B\u7F3A\u80FD\u529B \u2192 \u6295\u7A3F\u96F6\u4EF6 PR\u3002",
     "   \u{1F534} **\u4E0D\u8981\u56E0\u70BA\u67E5\u4E0D\u5230\u96F6\u4EF6\u5C31\u6539\u5BEB\u6210 `code` \u7BC0\u9EDE**\u2014\u2014\u90A3\u53EB\u300C\u8179\u8A9E\u8853\u300D\uFF08\u8868\u9762\u7528 Arcrun\u3001",
     "   \u5BE6\u969B\u5168\u5BEB JS\uFF09\u3002`code` \u53EA\u7528\u65BC\u5C40\u90E8\u6574\u5F62\uFF08\u4F8B\uFF1A\u525D\u6389 LLM \u56DE\u61C9\u7684\u96DC\u8A0A\uFF09\u3002",
+    "6. \u8981\u7D44**\u756B\u9762**\uFF08\u7D66\u4EBA\u770B\u7684\u524D\u7AEF\uFF1A\u6E05\u55AE\u3001\u5361\u7247\u3001\u6309\u9215\uFF09\u2192 `arcrun_list_ui_components()` \u770B\u6709\u54EA\u4E9B\u756B\u9762\u5143\u4EF6\u3001",
+    "   \u5404\u81EA\u80FD\u9577\u51FA\u4EC0\u9EBC\u756B\u9762\u3001\u5403\u4EC0\u9EBC\u8CC7\u6599\uFF1B`arcrun_get_ui_component(id)` \u53D6\u5B8C\u6574\u5BA3\u544A\u3002",
+    "   \u756B\u9762\u5143\u4EF6\u662F\u700F\u89BD\u5668\u88E1\u7684\u7248\u9762\u7A4D\u6728\uFF08A2UI\uFF09\uFF0C**\u4E0D\u662F\u5DE5\u4F5C\u6D41\u7BC0\u9EDE**\uFF0C\u5225\u628A\u5B83\u63A5\u9032 `flow:`\u3002",
     "",
     "\u908A\uFF1A`ON_SUCCESS`\uFF08\u6210\u529F\u5F80\u4E0B\uFF09\u3001`\u5C0D\u6BCF\u500B <\u8B8A\u6578>`\uFF08FOREACH\uFF09\u3001",
     "\u4EE5\u53CA**\u689D\u4EF6\u5206\u652F**\uFF082026-08-01 \u8D77\u5F15\u64CE\u652F\u63F4\uFF09\uFF1A",

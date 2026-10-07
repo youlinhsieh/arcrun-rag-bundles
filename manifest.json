@@ -1,24 +1,24 @@
 {
  "schema": 2,
- "release": "1.4.81",
- "fingerprint": "a76319214d1aeee4902ddbecfff4b38c11d808fcd92eaa06d16e82c30e78e0bb",
- "built": "2026-09-30",
- "source": "Arcrun@2db9288eb42a",
+ "release": "1.4.82",
+ "fingerprint": "1390b54fb2cc0a71ff77ae91f7b4b225e882fdb8ed8b31e01af2a831c203a5d1",
+ "built": "2026-10-07",
+ "source": "Arcrun@bc0d75b8a16e",
  "daemon": {
-  "version": "0.18.64",
-  "built": "20260929-2129",
-  "notes": "按「?」送問題回報，遇到雲端版本較舊時不會再送不出去、也不會再看到工程師才懂的錯誤訊息・失敗時不會把伺服器內部的錯誤原文丟給你看",
+  "version": "0.18.65",
+  "built": "20261007-0853",
+  "notes": "你電腦上的設定檔不再留著任何 AI 金鑰・「AI 設定」那一頁只剩說明，不再要你選引擎或貼金鑰・提醒・更新中心看得到每台電腦上的小幫手是哪一版・雲端額度恢復後，小幫手會自己很快接著送，不用重開",
   "mac": {
-   "file": "daemon/Arcrun-0.18.64.dmg",
-   "sha256": "a59c7ac8caa2fd3419e93d00f82d90ce6435a551522886835e7fb45969b04318"
+   "file": "daemon/Arcrun-0.18.65.dmg",
+   "sha256": "52d500ee76763e98b55f4a6f9a293684e729f63989373138bd4f3e3a1b9acaf2"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.64.exe",
-   "sha256": "9ae6a17500e5f2668a85979e7aa16625eafbcac04b5bcb11900eafeac96156b1"
+   "file": "daemon/Arcrun-win-0.18.65.exe",
+   "sha256": "f7be0f5267af6b88fd68756d05d386278ac6e9bca4eb21b557b84089762ebeb4"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.64.msix",
-   "sha256": "bead9d3ab05e5cb41b927309867634f4e89d0176f8903200707e614af027fd6e"
+   "file": "daemon/Arcrun-0.18.65.msix",
+   "sha256": "b9bba6cb186590563a0f625dd9f0f882a54c196c86774d80891eec6d9f724c70"
   }
  },
  "core": [
@@ -26,7 +26,7 @@
    "name": "arcrun-array-ops",
    "main_module": "worker.mjs",
    "main_file": "arcrun-array-ops/worker.mjs",
-   "js_bytes": 67802,
+   "js_bytes": 67808,
    "modules": [
     {
      "name": "component.wasm",
@@ -46,10 +46,10 @@
      "COMPONENT_ID": "array_ops"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "35ad5be6332dde2299efd10be726300c6cace1eb085ab24f08173536ca7fb950",
-   "sha256": "35ad5be6332dde2299efd10be726300c6cace1eb085ab24f08173536ca7fb950",
-   "bytes": 67802
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "55b1ac2ae0e34d4c4809e088646cb77874319642e3d38b3739e1a491ba8ebb28",
+   "sha256": "55b1ac2ae0e34d4c4809e088646cb77874319642e3d38b3739e1a491ba8ebb28",
+   "bytes": 67808
   },
   {
    "name": "arcrun-auth-oauth2",
@@ -208,7 +208,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 848887,
+   "js_bytes": 990301,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -245,16 +245,16 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "5ed868321df215f68c6639fd5d3bfdc13236428b",
-   "source_content_sha256": "8743d3e6d87e75fc53ea705b24180193f8117d03c54a00f1103ff2477ff3f47d",
-   "sha256": "8743d3e6d87e75fc53ea705b24180193f8117d03c54a00f1103ff2477ff3f47d",
-   "bytes": 848887
+   "source_commit": "bc0d75b8a16e23ce5f29c01e482c919a4d0a6430",
+   "source_content_sha256": "5f7d3f2c9f6554241dc55aa2197040af241c9650ec21fcbc43b4c05d781b7a72",
+   "sha256": "5f7d3f2c9f6554241dc55aa2197040af241c9650ec21fcbc43b4c05d781b7a72",
+   "bytes": 990301
   },
   {
    "name": "arcrun-date-ops",
    "main_module": "worker.mjs",
    "main_file": "arcrun-date-ops/worker.mjs",
-   "js_bytes": 67781,
+   "js_bytes": 67787,
    "modules": [
     {
      "name": "component.wasm",
@@ -274,10 +274,10 @@
      "COMPONENT_ID": "date_ops"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "60ebc1d17ab0b9d3bb66f1c71ec63eb5d35bc97ed9f8b4cd1c1c95f4eeb171b7",
-   "sha256": "60ebc1d17ab0b9d3bb66f1c71ec63eb5d35bc97ed9f8b4cd1c1c95f4eeb171b7",
-   "bytes": 67781
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "7b62c18c4e2d61629dddfca2523152f131beada0e506204e652206523110bd0d",
+   "sha256": "7b62c18c4e2d61629dddfca2523152f131beada0e506204e652206523110bd0d",
+   "bytes": 67787
   },
   {
    "name": "arcrun-fetch-relay",
@@ -315,7 +315,7 @@
    "name": "arcrun-filter",
    "main_module": "worker.mjs",
    "main_file": "arcrun-filter/worker.mjs",
-   "js_bytes": 67739,
+   "js_bytes": 67745,
    "modules": [
     {
      "name": "component.wasm",
@@ -335,16 +335,16 @@
      "COMPONENT_ID": "filter"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "c7fd5070ff7c0f0341e9dd364805e393f9d68056a846f48e6bc61ef6f4e67187",
-   "sha256": "c7fd5070ff7c0f0341e9dd364805e393f9d68056a846f48e6bc61ef6f4e67187",
-   "bytes": 67739
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "28ba33d1b914c15bd48171706de41619e4b476c7afcccb50372db03d408310f9",
+   "sha256": "28ba33d1b914c15bd48171706de41619e4b476c7afcccb50372db03d408310f9",
+   "bytes": 67745
   },
   {
    "name": "arcrun-foreach-control",
    "main_module": "worker.mjs",
    "main_file": "arcrun-foreach-control/worker.mjs",
-   "js_bytes": 67928,
+   "js_bytes": 67934,
    "modules": [
     {
      "name": "component.wasm",
@@ -364,16 +364,16 @@
      "COMPONENT_ID": "foreach_control"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "e52410c9611a93ac7fe38c7b11291cc18711c7da3370492788c3c55bc0fb03d5",
-   "sha256": "e52410c9611a93ac7fe38c7b11291cc18711c7da3370492788c3c55bc0fb03d5",
-   "bytes": 67928
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "a5eaca01e0c54acfcdb9d48f4a2ba1d35638fb25c7fe5614093afaed70dc0e61",
+   "sha256": "a5eaca01e0c54acfcdb9d48f4a2ba1d35638fb25c7fe5614093afaed70dc0e61",
+   "bytes": 67934
   },
   {
    "name": "arcrun-hash",
    "main_module": "worker.mjs",
    "main_file": "arcrun-hash/worker.mjs",
-   "js_bytes": 70136,
+   "js_bytes": 70142,
    "modules": [
     {
      "name": "component.wasm",
@@ -393,10 +393,10 @@
      "COMPONENT_ID": "hash"
     }
    },
-   "source_commit": "4eedd5406cf08904989d3f208f24057a27c080fb",
-   "source_content_sha256": "9c274b00a8df326642c4010ebeeb5362337a464343770764941a9f5f2d6684fc",
-   "sha256": "9c274b00a8df326642c4010ebeeb5362337a464343770764941a9f5f2d6684fc",
-   "bytes": 70136
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "7bce831cf8980ace6dd3eb602ee5b27f1c70e91b529e5ecc62c66b7a420f69b3",
+   "sha256": "7bce831cf8980ace6dd3eb602ee5b27f1c70e91b529e5ecc62c66b7a420f69b3",
+   "bytes": 70142
   },
   {
    "name": "arcrun-http-request",
@@ -434,7 +434,7 @@
    "name": "arcrun-if-control",
    "main_module": "worker.mjs",
    "main_file": "arcrun-if-control/worker.mjs",
-   "js_bytes": 67823,
+   "js_bytes": 67829,
    "modules": [
     {
      "name": "component.wasm",
@@ -454,16 +454,16 @@
      "COMPONENT_ID": "if_control"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "557ecf4ee955105af07b2227b08365eb9de8c39ad8ffb323b101397704f438bd",
-   "sha256": "557ecf4ee955105af07b2227b08365eb9de8c39ad8ffb323b101397704f438bd",
-   "bytes": 67823
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "88e5b3b3f7b3ab3f0b2410fc5eb92673166836300cf0e3fd3ec09ec3137ab9b4",
+   "sha256": "88e5b3b3f7b3ab3f0b2410fc5eb92673166836300cf0e3fd3ec09ec3137ab9b4",
+   "bytes": 67829
   },
   {
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 290860,
+   "js_bytes": 293995,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -483,16 +483,16 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "941bbed23f23b5dca1962b12021045e83554d96e",
-   "source_content_sha256": "e7d3554d5d91907a696f99bca27d15f031ac939a3dafa3ea4986190f33a4dc16",
-   "sha256": "e7d3554d5d91907a696f99bca27d15f031ac939a3dafa3ea4986190f33a4dc16",
-   "bytes": 290860
+   "source_commit": "33c3fc714c9b0d058619dd46951558a6ae1a04c7",
+   "source_content_sha256": "477d62a4ab581e0c971e7396b328b20d3cea45df3e31b0f425d56347d9d7e20a",
+   "sha256": "477d62a4ab581e0c971e7396b328b20d3cea45df3e31b0f425d56347d9d7e20a",
+   "bytes": 293995
   },
   {
    "name": "arcrun-mcp",
    "main_module": "worker.mjs",
    "main_file": "arcrun-mcp/worker.mjs",
-   "js_bytes": 1231737,
+   "js_bytes": 1236137,
    "modules": [],
    "compat_date": "2024-11-27",
    "compat_flags": [
@@ -505,16 +505,16 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "2db9288eb42a375ffe56deb855a2e77f7e7c4e32",
-   "source_content_sha256": "f40bdda25db89b11589f9d9520b9b187263f023edf7e0089fec74831af9056a4",
-   "sha256": "f40bdda25db89b11589f9d9520b9b187263f023edf7e0089fec74831af9056a4",
-   "bytes": 1231737
+   "source_commit": "cface9d675b397ffd192fe2e63e4e55332c66e92",
+   "source_content_sha256": "0d79eaa17ae642f3baf431e8f67a589c264cdef6b14c3b20371734f170025643",
+   "sha256": "0d79eaa17ae642f3baf431e8f67a589c264cdef6b14c3b20371734f170025643",
+   "bytes": 1236137
   },
   {
    "name": "arcrun-merge",
    "main_module": "worker.mjs",
    "main_file": "arcrun-merge/worker.mjs",
-   "js_bytes": 67718,
+   "js_bytes": 67724,
    "modules": [
     {
      "name": "component.wasm",
@@ -534,16 +534,16 @@
      "COMPONENT_ID": "merge"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "e4216249436000bbb4db0318cc9028f936ca6537d3d656228cfdd3cb31df25f8",
-   "sha256": "e4216249436000bbb4db0318cc9028f936ca6537d3d656228cfdd3cb31df25f8",
-   "bytes": 67718
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "f1ebe91e08ac150d5fdce741556a0b5abbfe565725924c00f38daf631addf911",
+   "sha256": "f1ebe91e08ac150d5fdce741556a0b5abbfe565725924c00f38daf631addf911",
+   "bytes": 67724
   },
   {
    "name": "arcrun-number-ops",
    "main_module": "worker.mjs",
    "main_file": "arcrun-number-ops/worker.mjs",
-   "js_bytes": 67823,
+   "js_bytes": 67829,
    "modules": [
     {
      "name": "component.wasm",
@@ -563,16 +563,16 @@
      "COMPONENT_ID": "number_ops"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "91821a291117e033bfa4f013cd88de09479cd4ac43708e37a39df3f31c72aaa6",
-   "sha256": "91821a291117e033bfa4f013cd88de09479cd4ac43708e37a39df3f31c72aaa6",
-   "bytes": 67823
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "a37713707080079851ffed5b60d0f26243e583669e9297344c372279df7e5228",
+   "sha256": "a37713707080079851ffed5b60d0f26243e583669e9297344c372279df7e5228",
+   "bytes": 67829
   },
   {
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 796829,
+   "js_bytes": 1211514,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -583,16 +583,16 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "434fd5caa50711ef3aed791538051da26ecd4c60",
-   "source_content_sha256": "d7ac7a03321827f7f32659493e94cce5a682757db22539eb90ba066de53ff434",
-   "sha256": "d7ac7a03321827f7f32659493e94cce5a682757db22539eb90ba066de53ff434",
-   "bytes": 796829
+   "source_commit": "bc0d75b8a16e23ce5f29c01e482c919a4d0a6430",
+   "source_content_sha256": "fa40500945dff9ef09b233e328ecec2621ed5e5bb3f9ffe834fc6b8520687277",
+   "sha256": "fa40500945dff9ef09b233e328ecec2621ed5e5bb3f9ffe834fc6b8520687277",
+   "bytes": 1211514
   },
   {
    "name": "arcrun-set",
    "main_module": "worker.mjs",
    "main_file": "arcrun-set/worker.mjs",
-   "js_bytes": 67676,
+   "js_bytes": 67682,
    "modules": [
     {
      "name": "component.wasm",
@@ -612,16 +612,16 @@
      "COMPONENT_ID": "set"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "6cac587802cae7dc1651d6b461232abafe40dcf0fbfe9e0adc5b1d8e35b41cc1",
-   "sha256": "6cac587802cae7dc1651d6b461232abafe40dcf0fbfe9e0adc5b1d8e35b41cc1",
-   "bytes": 67676
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "ca465d1d6ff28aa1b582713945205266b964d8267c3141442adc0c5a518c9655",
+   "sha256": "ca465d1d6ff28aa1b582713945205266b964d8267c3141442adc0c5a518c9655",
+   "bytes": 67682
   },
   {
    "name": "arcrun-string-ops",
    "main_module": "worker.mjs",
    "main_file": "arcrun-string-ops/worker.mjs",
-   "js_bytes": 67823,
+   "js_bytes": 67829,
    "modules": [
     {
      "name": "component.wasm",
@@ -641,16 +641,16 @@
      "COMPONENT_ID": "string_ops"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "c85166e357b76828c7020426d912b591006152ac38f024a095a4d9dcd10dee72",
-   "sha256": "c85166e357b76828c7020426d912b591006152ac38f024a095a4d9dcd10dee72",
-   "bytes": 67823
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "681cb6e0a3429cd8ae94255d99454bd5af942b79f315ecf02fb9bc010936622d",
+   "sha256": "681cb6e0a3429cd8ae94255d99454bd5af942b79f315ecf02fb9bc010936622d",
+   "bytes": 67829
   },
   {
    "name": "arcrun-switch",
    "main_module": "worker.mjs",
    "main_file": "arcrun-switch/worker.mjs",
-   "js_bytes": 67739,
+   "js_bytes": 67745,
    "modules": [
     {
      "name": "component.wasm",
@@ -670,16 +670,16 @@
      "COMPONENT_ID": "switch"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "e0e7689dbba735a254556272d6d233396c7fa05cc0fba5835a3e20b0ddf00fca",
-   "sha256": "e0e7689dbba735a254556272d6d233396c7fa05cc0fba5835a3e20b0ddf00fca",
-   "bytes": 67739
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "56849e91407f4de9839b62a31634aa33a51d92b07777916cdd207e2c6ddfec98",
+   "sha256": "56849e91407f4de9839b62a31634aa33a51d92b07777916cdd207e2c6ddfec98",
+   "bytes": 67745
   },
   {
    "name": "arcrun-try-catch",
    "main_module": "worker.mjs",
    "main_file": "arcrun-try-catch/worker.mjs",
-   "js_bytes": 67802,
+   "js_bytes": 67808,
    "modules": [
     {
      "name": "component.wasm",
@@ -699,16 +699,16 @@
      "COMPONENT_ID": "try_catch"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "a5fbcbf452ab00269dc857997df3059bee7eb1f2c1b322d249146ab4e5e5bac9",
-   "sha256": "a5fbcbf452ab00269dc857997df3059bee7eb1f2c1b322d249146ab4e5e5bac9",
-   "bytes": 67802
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "023004c33aedef94e69bda592fcb78d6b900d53a2800c6d04b9b0d4f4fd538dd",
+   "sha256": "023004c33aedef94e69bda592fcb78d6b900d53a2800c6d04b9b0d4f4fd538dd",
+   "bytes": 67808
   },
   {
    "name": "arcrun-validate-json",
    "main_module": "worker.mjs",
    "main_file": "arcrun-validate-json/worker.mjs",
-   "js_bytes": 67886,
+   "js_bytes": 67892,
    "modules": [
     {
      "name": "component.wasm",
@@ -728,16 +728,16 @@
      "COMPONENT_ID": "validate_json"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "2d0efa26e9fe38db87eb9585daf72e0f2ba8c859d15d1b65f36798656cc4e83b",
-   "sha256": "2d0efa26e9fe38db87eb9585daf72e0f2ba8c859d15d1b65f36798656cc4e83b",
-   "bytes": 67886
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "534a6e193c3a83938dc05871dddd6b9893a2860ff575d87b14a8b25de02ee97b",
+   "sha256": "534a6e193c3a83938dc05871dddd6b9893a2860ff575d87b14a8b25de02ee97b",
+   "bytes": 67892
   },
   {
    "name": "arcrun-wait",
    "main_module": "worker.mjs",
    "main_file": "arcrun-wait/worker.mjs",
-   "js_bytes": 67697,
+   "js_bytes": 67703,
    "modules": [
     {
      "name": "component.wasm",
@@ -757,17 +757,14 @@
      "COMPONENT_ID": "wait"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "3d1b46e7b1ff056abb2c1aeed738d23d58eaa7c8f36b674e4ea2ed1602015f9e",
-   "sha256": "3d1b46e7b1ff056abb2c1aeed738d23d58eaa7c8f36b674e4ea2ed1602015f9e",
-   "bytes": 67697
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "c424c7d0a7d8b444a7db062b2a4bab80b58474777696a89d1b9f9db63209e703",
+   "sha256": "c424c7d0a7d8b444a7db062b2a4bab80b58474777696a89d1b9f9db63209e703",
+   "bytes": 67703
   }
  ],
  "built_for": "oauth-installer-lazy-load",
- "notes": [
-  "rag_takedown_direct 用了 __CARDS_PREFIX__，但安裝器的代換表沒有它 ⇒ 這個佔位符會原封不動被推進使用者的工作流。",
-  "rag_entity_concept 用了 __ALL_ALREADY_DESCRIBED__，但安裝器的代換表沒有它 ⇒ 這個佔位符會原封不動被推進使用者的工作流。"
- ],
+ "notes": [],
  "promoted_from": {
   "target": "stage",
   "sha": "aaa98a55bb7a057973c93dc91aa5e2338590c804",
@@ -779,7 +776,7 @@
    "name": "arcrun-array-ops",
    "main_module": "worker.mjs",
    "main_file": "arcrun-array-ops/worker.mjs",
-   "js_bytes": 67802,
+   "js_bytes": 67808,
    "modules": [
     {
      "name": "component.wasm",
@@ -798,8 +795,8 @@
      "COMPONENT_ID": "array_ops"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "35ad5be6332dde2299efd10be726300c6cace1eb085ab24f08173536ca7fb950",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "55b1ac2ae0e34d4c4809e088646cb77874319642e3d38b3739e1a491ba8ebb28",
    "first_install": true
   },
   {
@@ -949,7 +946,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 848887,
+   "js_bytes": 990301,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -986,15 +983,15 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "5ed868321df215f68c6639fd5d3bfdc13236428b",
-   "source_content_sha256": "8743d3e6d87e75fc53ea705b24180193f8117d03c54a00f1103ff2477ff3f47d",
+   "source_commit": "bc0d75b8a16e23ce5f29c01e482c919a4d0a6430",
+   "source_content_sha256": "5f7d3f2c9f6554241dc55aa2197040af241c9650ec21fcbc43b4c05d781b7a72",
    "first_install": true
   },
   {
    "name": "arcrun-date-ops",
    "main_module": "worker.mjs",
    "main_file": "arcrun-date-ops/worker.mjs",
-   "js_bytes": 67781,
+   "js_bytes": 67787,
    "modules": [
     {
      "name": "component.wasm",
@@ -1013,8 +1010,8 @@
      "COMPONENT_ID": "date_ops"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "60ebc1d17ab0b9d3bb66f1c71ec63eb5d35bc97ed9f8b4cd1c1c95f4eeb171b7",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "7b62c18c4e2d61629dddfca2523152f131beada0e506204e652206523110bd0d",
    "first_install": true
   },
   {
@@ -1051,7 +1048,7 @@
    "name": "arcrun-filter",
    "main_module": "worker.mjs",
    "main_file": "arcrun-filter/worker.mjs",
-   "js_bytes": 67739,
+   "js_bytes": 67745,
    "modules": [
     {
      "name": "component.wasm",
@@ -1070,15 +1067,15 @@
      "COMPONENT_ID": "filter"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "c7fd5070ff7c0f0341e9dd364805e393f9d68056a846f48e6bc61ef6f4e67187",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "28ba33d1b914c15bd48171706de41619e4b476c7afcccb50372db03d408310f9",
    "first_install": true
   },
   {
    "name": "arcrun-foreach-control",
    "main_module": "worker.mjs",
    "main_file": "arcrun-foreach-control/worker.mjs",
-   "js_bytes": 67928,
+   "js_bytes": 67934,
    "modules": [
     {
      "name": "component.wasm",
@@ -1097,15 +1094,15 @@
      "COMPONENT_ID": "foreach_control"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "e52410c9611a93ac7fe38c7b11291cc18711c7da3370492788c3c55bc0fb03d5",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "a5eaca01e0c54acfcdb9d48f4a2ba1d35638fb25c7fe5614093afaed70dc0e61",
    "first_install": true
   },
   {
    "name": "arcrun-hash",
    "main_module": "worker.mjs",
    "main_file": "arcrun-hash/worker.mjs",
-   "js_bytes": 70136,
+   "js_bytes": 70142,
    "modules": [
     {
      "name": "component.wasm",
@@ -1124,8 +1121,8 @@
      "COMPONENT_ID": "hash"
     }
    },
-   "source_commit": "4eedd5406cf08904989d3f208f24057a27c080fb",
-   "source_content_sha256": "9c274b00a8df326642c4010ebeeb5362337a464343770764941a9f5f2d6684fc",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "7bce831cf8980ace6dd3eb602ee5b27f1c70e91b529e5ecc62c66b7a420f69b3",
    "first_install": true
   },
   {
@@ -1162,7 +1159,7 @@
    "name": "arcrun-if-control",
    "main_module": "worker.mjs",
    "main_file": "arcrun-if-control/worker.mjs",
-   "js_bytes": 67823,
+   "js_bytes": 67829,
    "modules": [
     {
      "name": "component.wasm",
@@ -1181,15 +1178,15 @@
      "COMPONENT_ID": "if_control"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "557ecf4ee955105af07b2227b08365eb9de8c39ad8ffb323b101397704f438bd",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "88e5b3b3f7b3ab3f0b2410fc5eb92673166836300cf0e3fd3ec09ec3137ab9b4",
    "first_install": true
   },
   {
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 290860,
+   "js_bytes": 293995,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1209,15 +1206,15 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "941bbed23f23b5dca1962b12021045e83554d96e",
-   "source_content_sha256": "e7d3554d5d91907a696f99bca27d15f031ac939a3dafa3ea4986190f33a4dc16",
+   "source_commit": "33c3fc714c9b0d058619dd46951558a6ae1a04c7",
+   "source_content_sha256": "477d62a4ab581e0c971e7396b328b20d3cea45df3e31b0f425d56347d9d7e20a",
    "first_install": true
   },
   {
    "name": "arcrun-mcp",
    "main_module": "worker.mjs",
    "main_file": "arcrun-mcp/worker.mjs",
-   "js_bytes": 1231737,
+   "js_bytes": 1236137,
    "modules": [],
    "compat_date": "2024-11-27",
    "compat_flags": [
@@ -1230,15 +1227,15 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "2db9288eb42a375ffe56deb855a2e77f7e7c4e32",
-   "source_content_sha256": "f40bdda25db89b11589f9d9520b9b187263f023edf7e0089fec74831af9056a4",
+   "source_commit": "cface9d675b397ffd192fe2e63e4e55332c66e92",
+   "source_content_sha256": "0d79eaa17ae642f3baf431e8f67a589c264cdef6b14c3b20371734f170025643",
    "first_install": true
   },
   {
    "name": "arcrun-merge",
    "main_module": "worker.mjs",
    "main_file": "arcrun-merge/worker.mjs",
-   "js_bytes": 67718,
+   "js_bytes": 67724,
    "modules": [
     {
      "name": "component.wasm",
@@ -1257,15 +1254,15 @@
      "COMPONENT_ID": "merge"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "e4216249436000bbb4db0318cc9028f936ca6537d3d656228cfdd3cb31df25f8",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "f1ebe91e08ac150d5fdce741556a0b5abbfe565725924c00f38daf631addf911",
    "first_install": true
   },
   {
    "name": "arcrun-number-ops",
    "main_module": "worker.mjs",
    "main_file": "arcrun-number-ops/worker.mjs",
-   "js_bytes": 67823,
+   "js_bytes": 67829,
    "modules": [
     {
      "name": "component.wasm",
@@ -1284,15 +1281,15 @@
      "COMPONENT_ID": "number_ops"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "91821a291117e033bfa4f013cd88de09479cd4ac43708e37a39df3f31c72aaa6",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "a37713707080079851ffed5b60d0f26243e583669e9297344c372279df7e5228",
    "first_install": true
   },
   {
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 796829,
+   "js_bytes": 1211514,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -1303,15 +1300,15 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "434fd5caa50711ef3aed791538051da26ecd4c60",
-   "source_content_sha256": "d7ac7a03321827f7f32659493e94cce5a682757db22539eb90ba066de53ff434",
+   "source_commit": "bc0d75b8a16e23ce5f29c01e482c919a4d0a6430",
+   "source_content_sha256": "fa40500945dff9ef09b233e328ecec2621ed5e5bb3f9ffe834fc6b8520687277",
    "first_install": true
   },
   {
    "name": "arcrun-set",
    "main_module": "worker.mjs",
    "main_file": "arcrun-set/worker.mjs",
-   "js_bytes": 67676,
+   "js_bytes": 67682,
    "modules": [
     {
      "name": "component.wasm",
@@ -1330,15 +1327,15 @@
      "COMPONENT_ID": "set"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "6cac587802cae7dc1651d6b461232abafe40dcf0fbfe9e0adc5b1d8e35b41cc1",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "ca465d1d6ff28aa1b582713945205266b964d8267c3141442adc0c5a518c9655",
    "first_install": true
   },
   {
    "name": "arcrun-string-ops",
    "main_module": "worker.mjs",
    "main_file": "arcrun-string-ops/worker.mjs",
-   "js_bytes": 67823,
+   "js_bytes": 67829,
    "modules": [
     {
      "name": "component.wasm",
@@ -1357,15 +1354,15 @@
      "COMPONENT_ID": "string_ops"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "c85166e357b76828c7020426d912b591006152ac38f024a095a4d9dcd10dee72",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "681cb6e0a3429cd8ae94255d99454bd5af942b79f315ecf02fb9bc010936622d",
    "first_install": true
   },
   {
    "name": "arcrun-switch",
    "main_module": "worker.mjs",
    "main_file": "arcrun-switch/worker.mjs",
-   "js_bytes": 67739,
+   "js_bytes": 67745,
    "modules": [
     {
      "name": "component.wasm",
@@ -1384,15 +1381,15 @@
      "COMPONENT_ID": "switch"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "e0e7689dbba735a254556272d6d233396c7fa05cc0fba5835a3e20b0ddf00fca",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "56849e91407f4de9839b62a31634aa33a51d92b07777916cdd207e2c6ddfec98",
    "first_install": true
   },
   {
    "name": "arcrun-try-catch",
    "main_module": "worker.mjs",
    "main_file": "arcrun-try-catch/worker.mjs",
-   "js_bytes": 67802,
+   "js_bytes": 67808,
    "modules": [
     {
      "name": "component.wasm",
@@ -1411,15 +1408,15 @@
      "COMPONENT_ID": "try_catch"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "a5fbcbf452ab00269dc857997df3059bee7eb1f2c1b322d249146ab4e5e5bac9",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "023004c33aedef94e69bda592fcb78d6b900d53a2800c6d04b9b0d4f4fd538dd",
    "first_install": true
   },
   {
    "name": "arcrun-validate-json",
    "main_module": "worker.mjs",
    "main_file": "arcrun-validate-json/worker.mjs",
-   "js_bytes": 67886,
+   "js_bytes": 67892,
    "modules": [
     {
      "name": "component.wasm",
@@ -1438,15 +1435,15 @@
      "COMPONENT_ID": "validate_json"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "2d0efa26e9fe38db87eb9585daf72e0f2ba8c859d15d1b65f36798656cc4e83b",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "534a6e193c3a83938dc05871dddd6b9893a2860ff575d87b14a8b25de02ee97b",
    "first_install": true
   },
   {
    "name": "arcrun-wait",
    "main_module": "worker.mjs",
    "main_file": "arcrun-wait/worker.mjs",
-   "js_bytes": 67697,
+   "js_bytes": 67703,
    "modules": [
     {
      "name": "component.wasm",
@@ -1465,8 +1462,8 @@
      "COMPONENT_ID": "wait"
     }
    },
-   "source_commit": "922a57fe3458dfda82bcc25d287cef93f8dab838",
-   "source_content_sha256": "3d1b46e7b1ff056abb2c1aeed738d23d58eaa7c8f36b674e4ea2ed1602015f9e",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
+   "source_content_sha256": "c424c7d0a7d8b444a7db062b2a4bab80b58474777696a89d1b9f9db63209e703",
    "first_install": true
   }
  ],
@@ -1693,7 +1690,7 @@
   }
  ],
  "installer": {
-  "version": "1.0.35"
+  "version": "1.0.38"
  },
- "payload_fingerprint": "c4c848f25c8059ca174116f846806dbc7f4179637ddae8dad08420ea2de073ad"
+ "payload_fingerprint": "db12b0e429c8a9f17fa1c4e7ea5e67238138097275b4d5a89f261771e50f2c89"
 }
