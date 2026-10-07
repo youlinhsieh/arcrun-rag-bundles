@@ -6119,7 +6119,7 @@ async function recentBrakes(db) {
   if (!activeCache || now - activeCache.at > ACTIVE_CACHE_MS) {
     const all = await listBrakes(db, 100);
     const today = utcDay3(now);
-    activeCache = { at: now, brakes: all.filter((b) => b.active || b.op.startsWith("DAILY") && b.tripped_at.startsWith(today)) };
+    activeCache = { at: now, brakes: all.filter((b) => b.active || (b.op.startsWith("DAILY") || !!b.released_at) && b.tripped_at.startsWith(today)) };
   }
   return activeCache.brakes;
 }
@@ -6134,6 +6134,12 @@ async function dailyReleased(db) {
   const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
   const disabled = !await brakeEnabled(db);
   return { writes: rel("DAILY writes") || disabled, reads: rel("DAILY reads") || disabled };
+}
+async function opBrakeSuspended(db, op) {
+  if (!await brakeEnabled(db)) return true;
+  const today = utcDay3();
+  const list = await recentBrakes(db);
+  return list.some((b) => b.kind === "brake" && b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
 }
 async function ensureBrakeTemplate(db) {
   await ensureTemplate(
@@ -7349,7 +7355,9 @@ var speedometer = async (c, next) => {
     t.dailyReleased = { writes: true, reads: true };
   } else {
     try {
-      const existing = await findActiveBrake(self, op, caller);
+      const suspended = await opBrakeSuspended(self, op);
+      if (suspended) t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
+      const existing = suspended ? null : await findActiveBrake(self, op, caller);
       if (existing) {
         const res = c.json(brakeBody(existing), 429);
         c.header("X-KBDB-Brake", existing.id);

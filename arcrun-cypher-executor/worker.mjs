@@ -14710,9 +14710,19 @@ consoleAuthRouter.post("/console/setup/reset", async (c) => {
   }
   return c.json({ success: true });
 });
+function consolePropagating(c) {
+  return c.json(
+    {
+      error: "\u5E33\u865F\u8CC7\u6599\u525B\u525B\u66F4\u65B0\u904E\uFF0C\u9019\u53F0\u4F3A\u670D\u5668\u9084\u5728\u540C\u6B65\u4E2D\u2014\u2014\u8ACB\u7B49 10\uFF5E30 \u79D2\u518D\u767B\u5165\u4E00\u6B21\uFF08\u9019\u4E0D\u662F\u5BC6\u78BC\u932F\uFF09\u3002",
+      code: "auth_store_propagating"
+    },
+    503
+  );
+}
 consoleAuthRouter.post("/console/login", async (c) => {
   const { creds: existing } = await loadCredentials(c.env);
   if (!existing) {
+    if (await authStoreStaleHere(c.env)) return consolePropagating(c);
     return c.json(
       {
         error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\uFF08\u6216\u8B80\u4E0D\u5230\uFF09\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8ACB\u5148\u5B8C\u6210\u9996\u6B21\u8A2D\u5B9A\u3002",
@@ -14728,6 +14738,7 @@ consoleAuthRouter.post("/console/login", async (c) => {
   if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
   const hash = await hashPassword(password, existing.salt);
   if (email !== existing.email || hash !== existing.hash) {
+    if (await authStoreStaleHere(c.env)) return consolePropagating(c);
     return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
   }
   const token = randomHex(32);
@@ -18364,7 +18375,7 @@ var notes_default = {
   id: "notes",
   name: "\u7B46\u8A18",
   icon: "\u{1F4DD}",
-  version: "1.1.0",
+  version: "1.1.1",
   workflows: [
     {
       name: "create_note",
@@ -19294,6 +19305,11 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
         return;
       }
       state.openReplyFor = null;
+      // \u5F8C\u7AEF\u56DE\u4F86\u7684 parent_id \u8DDF\u6211\u5011\u9001\u7684\u4E0D\u4E00\u81F4\uFF1D\u8CC7\u6599\u8868\u7F3A\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3001\u88AB\u975C\u9ED8\u4E1F\u6389\uFF08\u820A\u7248 note \u8CC7\u6599\u8868\u7684\u75C7\u72C0\uFF1A
+      // \u56DE\u8986\u8B8A\u6210\u4E00\u5247\u9802\u5C64\u7B46\u8A18\uFF09\u3002\u4E0D\u5047\u88DD\u6210\u529F\uFF1A\u660E\u8B1B\uFF0C\u4E26\u6307\u51FA\u600E\u9EBC\u4FEE\uFF08inkstone/arcrun-app-note#1 c17811\uFF09\u3002
+      if (res.data && res.data.parent_id !== parentId) {
+        window.alert('\u9019\u5247\u56DE\u8986\u88AB\u5B58\u6210\u4E86\u7368\u7ACB\u7B46\u8A18\uFF1A\u9019\u53F0\u7684\u7B46\u8A18\u8CC7\u6599\u8868\u9084\u6C92\u6709\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3002\u8ACB\u5230 App \u5E02\u96C6\u628A\u300C\u7B46\u8A18\u300D\u66F4\u65B0\u5230\u6700\u65B0\u7248\uFF08\u6703\u81EA\u52D5\u88DC\u6B04\u4F4D\uFF09\uFF0C\u518D\u91CD\u65B0\u56DE\u8986\u4E00\u6B21\u3002');
+      }
       loadNotes();
     });
   }
@@ -20591,7 +20607,25 @@ async function ensureTemplate4(env, name, slots, description) {
   const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
   if (getRes.ok) {
     const data = await getRes.json().catch(() => null);
-    if (data?.success && data.template) return;
+    if (data?.success && data.template) {
+      const tpl = data.template;
+      let current = [];
+      try {
+        const parsed = JSON.parse(tpl.slots_json ?? "[]");
+        if (Array.isArray(parsed)) current = parsed.filter((s) => typeof s === "string");
+      } catch {
+      }
+      const missing = slots.filter((s) => !current.includes(s));
+      if (missing.length > 0 && tpl.id) {
+        const patched = await fetch(`${base}/templates/${encodeURIComponent(tpl.id)}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ slots: [...current, ...missing] })
+        });
+        if (!patched.ok) throw new Error(`\u88DC\u8CC7\u6599\u6B04\u4F4D ${name}\uFF08${missing.join("\u3001")}\uFF09\u5931\u6557\uFF1AHTTP ${patched.status}`);
+      }
+      return;
+    }
   }
   await fetch(`${base}/templates`, {
     method: "POST",
@@ -20696,6 +20730,16 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     ...credCheck.checked ? {} : { credentials_check_failed: true }
   };
   if (existing && existing.content_hash === contentHash && existing.status === "active") {
+    try {
+      for (const dt of decl.data) await ensureTemplate4(env, dt.name, dt.slots, dt.description);
+    } catch (e) {
+      return {
+        ok: false,
+        step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
+        errors: [e instanceof Error ? e.message : String(e)],
+        hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\u670D\u52D9\u6C92\u6709\u56DE\u61C9\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+      };
+    }
     return { ok: true, changed: false, app: existing, ...needs };
   }
   try {
@@ -20802,14 +20846,18 @@ async function uninstallApp(env, tenant2, id) {
   return { ok: true };
 }
 async function runAppAction(env, tenant2, appId, action, payload, ctx) {
-  const app2 = await getInstalledApp(env, tenant2, appId);
+  const guessedKey = `${appId}__${action}`;
+  const [app2, guessedRaw] = await Promise.all([
+    getInstalledApp(env, tenant2, appId),
+    appStore(env).get(workflowKvKey(tenant2, guessedKey), "text")
+  ]);
   if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
   if (!app2.actions.includes(action)) {
     return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
   }
   const wfRef = app2.workflows.find((w) => w.name === action);
   if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
-  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
+  const raw2 = wfRef.wf_key === guessedKey ? guessedRaw : await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
   if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
   let graph;
   try {
@@ -20897,7 +20945,7 @@ var APP_CATALOG = [
     // 2026-09-26（arcrun-app-note#1 → c11600）：v0.2 加了 Facebook 河道式設計——
     // 卡片外框、回覆（indented）、全螢幕輸入，跟著 declaration 一起升版。
     summary: "\u96A8\u624B\u5BEB\u4E00\u5247\u7B46\u8A18\uFF0C\u53EF\u4EE5\u56DE\u8986\uFF1B\u4F9D\u65E5\u671F\u6392\u6210\u6CB3\u9053\uFF0C\u5BEB\u4E0B\u53BB\u7684\u5167\u5BB9\u9032\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u3002",
-    version: "1.1.0",
+    version: "1.1.1",
     author: "Arcrun \u5167\u5EFA",
     declaration: notes_default
   },
