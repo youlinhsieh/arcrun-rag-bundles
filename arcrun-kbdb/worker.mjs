@@ -110,6 +110,7 @@ __export(record_crud_exports, {
   getTemplate: () => getTemplate,
   hydrateRecordValues: () => hydrateRecordValues,
   listTemplates: () => listTemplates,
+  memberRecordIds: () => memberRecordIds,
   searchByTemplate: () => searchByTemplate,
   searchByTemplatePage: () => searchByTemplatePage,
   updateRecord: () => updateRecord,
@@ -316,23 +317,26 @@ async function resolveTotal(db, sheetId, owner_id, offset, limit, got, exactTota
   const row = owner_id ? await db.first(`SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?`, [sheetId, owner_id]) : await db.first(`SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`, [sheetId]);
   return { total: row?.total ?? 0, totalExact: true };
 }
+async function memberRecordIds(db, tplId, owner_id, limit, offset) {
+  const res = owner_id ? await db.all(
+    `SELECT src_id AS record_id FROM entries
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
+    [tplId, owner_id, limit, offset]
+  ) : await db.all(
+    `SELECT src_id AS record_id FROM entries
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
+    [tplId, limit, offset]
+  );
+  return (res.results ?? []).map((r) => r.record_id);
+}
 async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false) {
   const tpl = await getTemplate(db, template);
   if (!tpl) return { records: [], total: 0, totalExact: true };
   const cap = Math.min(Math.max(limit, 1), 500);
   const skip = Math.max(offset, 0);
-  const res = owner_id ? await db.all(
-    `SELECT src_id AS record_id FROM entries
-           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
-    [tpl.id, owner_id, cap, skip]
-  ) : await db.all(
-    `SELECT src_id AS record_id FROM entries
-           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
-    [tpl.id, cap, skip]
-  );
-  const ids = (res.results ?? []).map((r) => r.record_id);
+  const ids = await memberRecordIds(db, tpl.id, owner_id, cap, skip);
   const { total, totalExact } = await resolveTotal(db, tpl.id, owner_id, skip, cap, ids.length, exactTotal);
   if (ids.length === 0) return { records: [], total, totalExact };
   return { records: await hydrateRecordValues(db, tpl.id, ids), total, totalExact };
@@ -1671,7 +1675,7 @@ var init_relation_orphans = __esm({
   }
 });
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
     let index = -1;
@@ -1715,10 +1719,10 @@ var compose = (middleware, onError, onNotFound) => {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
 var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -1790,7 +1794,7 @@ var handleParsingNestedValues = (form, key, value) => {
   });
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
 var splitPath = (path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -1994,7 +1998,7 @@ var getQueryParams = (url, key) => {
 };
 var decodeURIComponent_ = decodeURIComponent;
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
 var HonoRequest = class {
   /**
@@ -2277,7 +2281,7 @@ var HonoRequest = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -2319,7 +2323,7 @@ var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => 
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = (contentType, headers) => {
   return {
@@ -2726,7 +2730,7 @@ var Context = class {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -2734,10 +2738,10 @@ var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is
 var UnsupportedPathError = class extends Error {
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
 var notFoundHandler = (c) => {
   return c.text("404 Not Found", 404);
 };
@@ -3113,7 +3117,7 @@ var Hono = class _Hono {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
@@ -3134,7 +3138,7 @@ function match(method, path) {
   return match2(method, path);
 }
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -3242,7 +3246,7 @@ var Node = class _Node {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   #context = { varIndex: 0 };
   #root = new Node();
@@ -3298,7 +3302,7 @@ var Trie = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -3477,7 +3481,7 @@ var RegExpRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   name = "SmartRouter";
   #routers = [];
@@ -3532,7 +3536,7 @@ var SmartRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = (children) => {
   for (const _ in children) {
@@ -3707,7 +3711,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   name = "TrieRouter";
   #node;
@@ -3729,7 +3733,7 @@ var TrieRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
+// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   /**
    * Creates an instance of the Hono class.
@@ -5827,6 +5831,30 @@ function todayUsage(now = Date.now()) {
   rollDay(now);
   return { day: odo.day, written: odo.written + odo.pendingWritten, read: odo.read + odo.pendingRead };
 }
+var ESSENTIAL_HEADER = "X-Arcrun-Essential";
+var ESSENTIAL_DAILY_WRITES = 5e3;
+var ESSENTIAL_DAILY_READS = 15e4;
+var ESSENTIAL_PREFIXES = ["/records", "/templates", "/entries"];
+var essentialUse = { day: utcDay3(), written: 0, read: 0 };
+function rollEssential(now = Date.now()) {
+  const d = utcDay3(now);
+  if (essentialUse.day !== d) essentialUse = { day: d, written: 0, read: 0 };
+}
+function essentialReserveApplies(path, headerValue) {
+  if (headerValue !== "account") return false;
+  if (!ESSENTIAL_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) return false;
+  rollEssential();
+  return essentialUse.written < ESSENTIAL_DAILY_WRITES && essentialUse.read < ESSENTIAL_DAILY_READS;
+}
+function addEssentialUse(written, read) {
+  rollEssential();
+  essentialUse.written += written;
+  essentialUse.read += read;
+}
+function essentialUsageToday() {
+  rollEssential();
+  return { ...essentialUse, limit_written: ESSENTIAL_DAILY_WRITES, limit_read: ESSENTIAL_DAILY_READS };
+}
 function newTally(op) {
   return {
     op,
@@ -6106,6 +6134,7 @@ function warningMessage(percent, written, read, now = Date.now()) {
   return `\u7528\u91CF\u63D0\u9192\uFF1A\u4ECA\u5929\u5DF2\u7528\u6389\u514D\u8CBB\u984D\u5EA6\u7684 ${percent}%\uFF08\u5BEB\u5165 ${n(written)}/${n(FREE_TIER_DAILY_ROWS_WRITTEN)}\u3001\u8B80\u53D6 ${n(read)}/${n(FREE_TIER_DAILY_ROWS_READ)}\uFF09\u3002${speed}\uFF1B\u5230 100% \u6703\u81EA\u52D5\u524E\u4F4F\u5BEB\u5165\uFF0C${taipeiClock(nextQuotaReset(now).toISOString())} \u91CD\u7F6E\u3002`;
 }
 var ACTIVE_CACHE_MS = 3e4;
+var ACTIVE_FULL_RELOAD_MS = 5 * 6e4;
 var activeCache = null;
 async function listBrakes(db, limit = 100) {
   const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
@@ -6114,14 +6143,70 @@ async function listBrakes(db, limit = 100) {
   const recs = await searchByTemplate(db, BRAKE_TEMPLATE_ID, void 0, limit, 0);
   return recs.map((r) => toBrake(r, now));
 }
+var BRAKE_PAGE = 5;
+async function listBrakesSince(db, sinceIso, maxRecords = 100) {
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  if (!tpl) return [];
+  const now = Date.now();
+  const out = [];
+  for (let offset = 0; out.length < maxRecords; offset += BRAKE_PAGE) {
+    const ids = await memberRecordIds(db, tpl.id, void 0, BRAKE_PAGE, offset);
+    if (ids.length === 0) break;
+    const recs = await hydrateRecordValues(db, tpl.id, ids);
+    const page = recs.map((r) => toBrake(r, now));
+    out.push(...page);
+    if (ids.length < BRAKE_PAGE) break;
+    const oldest = page[page.length - 1]?.tripped_at ?? "";
+    if (oldest && oldest < sinceIso) break;
+  }
+  return out;
+}
 async function recentBrakes(db) {
   const now = Date.now();
-  if (!activeCache || now - activeCache.at > ACTIVE_CACHE_MS) {
-    const all = await listBrakes(db, 100);
-    const today = utcDay3(now);
-    activeCache = { at: now, brakes: all.filter((b) => b.active || (b.op.startsWith("DAILY") || !!b.released_at) && b.tripped_at.startsWith(today)) };
+  const today = utcDay3(now);
+  if (activeCache && now - activeCache.at <= ACTIVE_CACHE_MS) return activeCache.brakes;
+  if (activeCache && activeCache.day === today && now - activeCache.fullAt < ACTIVE_FULL_RELOAD_MS) {
+    const tpl2 = await getTemplate(db, BRAKE_TEMPLATE_ID);
+    const [newest] = tpl2 ? await memberRecordIds(db, tpl2.id, void 0, 1, 0) : [];
+    if ((newest ?? null) === activeCache.newestId) {
+      activeCache = { ...activeCache, at: now };
+      return activeCache.brakes;
+    }
   }
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  const [newestNow] = tpl ? await memberRecordIds(db, tpl.id, void 0, 1, 0) : [];
+  const all = await listBrakesSince(db, `${today}T00:00:00.000Z`, 100);
+  activeCache = {
+    at: now,
+    fullAt: now,
+    day: today,
+    newestId: newestNow ?? null,
+    brakes: all.filter((b) => b.active || (b.op.startsWith("DAILY") || !!b.released_at) && b.tripped_at.startsWith(today))
+  };
   return activeCache.brakes;
+}
+var NOTIFY_WINDOW_MS = 24 * 36e5;
+var NOTIFY_CLEAN_TTL_MS = 10 * 6e4;
+var notifyClean = null;
+async function listPendingNotifyBrakes(db, now = Date.now()) {
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  if (!tpl) return [];
+  const [newest] = await memberRecordIds(db, tpl.id, void 0, 1, 0);
+  if (!newest) return [];
+  if (notifyClean && notifyClean.newestId === newest && now - notifyClean.at < NOTIFY_CLEAN_TTL_MS) return [];
+  const since = new Date(now - NOTIFY_WINDOW_MS).toISOString();
+  const pending = [];
+  for (let offset = 0; pending.length < 100; offset += BRAKE_PAGE) {
+    const ids = await memberRecordIds(db, tpl.id, void 0, BRAKE_PAGE, offset);
+    if (ids.length === 0) break;
+    const page = (await hydrateRecordValues(db, tpl.id, ids)).map((r) => toBrake(r, now));
+    const fresh = page.filter((b) => b.tripped_at >= since);
+    const pendingHere = fresh.filter((b) => !b.notified_at);
+    pending.push(...pendingHere);
+    if (ids.length < BRAKE_PAGE || pendingHere.length === 0 || fresh.length < page.length) break;
+  }
+  notifyClean = pending.length === 0 ? { newestId: newest, at: now } : null;
+  return pending;
 }
 async function findActiveBrake(db, op, caller) {
   const now = Date.now();
@@ -6184,7 +6269,7 @@ async function recordBrake(db, t, caller, now = Date.now()) {
   });
   const trueRec = t.dailyBlocked ? await getRecord(db, recordId) : null;
   const brake = trueRec ? toBrake(trueRec, now) : toBrake(rec, now);
-  if (activeCache) activeCache.brakes = [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)];
+  if (activeCache) activeCache = { ...activeCache, newestId: brake.id, brakes: [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)] };
   return brake;
 }
 async function recordWarning(db, percent, written, read, now = Date.now()) {
@@ -7349,7 +7434,8 @@ var speedometer = async (c, next) => {
   const op = opKey(c.req.method, path);
   const caller = (c.req.header("X-Arcrun-Caller") || "unknown").slice(0, 120);
   const t = newTally(op);
-  const isExempt = exempt(path);
+  const isEssential = !exempt(path) && essentialReserveApplies(path, c.req.header(ESSENTIAL_HEADER));
+  const isExempt = exempt(path) || isEssential;
   if (isExempt) {
     t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
     t.dailyReleased = { writes: true, reads: true };
@@ -7386,6 +7472,13 @@ var speedometer = async (c, next) => {
     }
     if (brake) c.header("X-KBDB-Brake", brake.id);
   }
+  if (isEssential) {
+    addEssentialUse(t.rowsWritten, t.rowsRead);
+    try {
+      c.header("X-KBDB-Essential", "reserve");
+    } catch {
+    }
+  }
   setMeterHeaders(c, t);
   const p = scheduleFlush(c, rawDb);
   if (p) await p;
@@ -7393,8 +7486,7 @@ var speedometer = async (c, next) => {
 var usageBrakeRoutes = new Hono2();
 usageBrakeRoutes.get("/", async (c) => {
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? "50") || 50, 1), 100);
-  let brakes = await listBrakes(dbOf(c.env), limit);
-  if (c.req.query("pending_notify") === "1") brakes = brakes.filter((b) => !b.notified_at);
+  const brakes = c.req.query("pending_notify") === "1" ? (await listPendingNotifyBrakes(dbOf(c.env))).slice(0, limit) : await listBrakes(dbOf(c.env), limit);
   return c.json({ success: true, brakes });
 });
 usageBrakeRoutes.get("/usage", async (c) => {
@@ -7416,14 +7508,17 @@ usageBrakeRoutes.get("/usage", async (c) => {
     projected_exhaustion_written: projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now),
     projected_exhaustion_read: projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now),
     reset_at: nextQuotaReset(now).toISOString(),
+    essential_reserve: essentialUsageToday(),
     basis: "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u4E0D\u8AD6\u5E33\u865F\u5BE6\u969B\u65B9\u6848\uFF09\uFF1B\u6578\u5B57\u662F KBDB \u9598\u53E3\u81EA\u5DF1\u7D2F\u8A08\u7684 meta.rows_written\uFF0Frows_read"
   });
 });
 usageBrakeRoutes.post("/:id/release", async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const b = await releaseBrake(dbOf(c.env), c.req.param("id"), String(body.by ?? c.req.header("X-Arcrun-Caller") ?? "manual").slice(0, 120));
+  const by = String(body.by ?? c.req.header("X-Arcrun-Caller") ?? "manual").slice(0, 120);
+  const b = await releaseBrake(dbOf(c.env), c.req.param("id"), by);
   if (!b) return c.json({ success: false, error: "brake not found" }, 404);
-  return c.json({ success: true, brake: b });
+  const settings = await setBrakeEnabled(dbOf(c.env), false, by);
+  return c.json({ success: true, brake: b, brake_enabled: settings.brake_enabled });
 });
 usageBrakeRoutes.post("/:id/notified", async (c) => {
   const b = await markBrakeNotified(dbOf(c.env), c.req.param("id"));

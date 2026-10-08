@@ -13,10 +13,10 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -62,21 +62,21 @@ var init_compose = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -107,7 +107,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -154,10 +154,10 @@ var init_body = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -363,10 +363,10 @@ var init_url = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants();
     init_body();
@@ -640,10 +640,10 @@ var init_request = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -687,10 +687,10 @@ var init_html = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1101,10 +1101,10 @@ var init_context = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1114,18 +1114,18 @@ var init_router = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1503,7 +1503,7 @@ var init_hono_base = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1524,13 +1524,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1552,7 +1552,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1643,10 +1643,10 @@ var init_node = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1705,7 +1705,7 @@ var init_trie = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1787,7 +1787,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -1894,27 +1894,27 @@ var init_router2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -1972,17 +1972,17 @@ var init_router3 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2161,10 +2161,10 @@ var init_node2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2190,17 +2190,17 @@ var init_router4 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2221,9 +2221,9 @@ var init_hono = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
   }
 });
@@ -2253,7 +2253,10 @@ var init_hash = __esm({
 function withCaller(headers, caller) {
   return { ...headers, [KBDB_CALLER_HEADER]: caller.slice(0, 120) };
 }
-var KBDB_CALLER_HEADER, KBDB_CALLERS;
+function withEssential(headers) {
+  return { ...headers, [KBDB_ESSENTIAL_HEADER]: "account" };
+}
+var KBDB_CALLER_HEADER, KBDB_CALLERS, KBDB_ESSENTIAL_HEADER;
 var init_kbdb_caller = __esm({
   "cypher-executor/src/lib/kbdb-caller.ts"() {
     "use strict";
@@ -2272,6 +2275,7 @@ var init_kbdb_caller = __esm({
       /** lib/telemetry.ts 的 recordTelemetry：agent-telemetry entry（fire-and-forget，inkstone/Arcrun#268）。 */
       telemetry: "cypher-telemetry"
     };
+    KBDB_ESSENTIAL_HEADER = "X-Arcrun-Essential";
   }
 });
 
@@ -3315,7 +3319,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// ../../cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3497,7 +3501,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "../../cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -9772,14 +9776,22 @@ function releaseBody(res) {
 }
 
 // cypher-executor/src/lib/ephemeral-store.ts
+init_kbdb_caller();
 var EphemeralStoreError = class extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+    this.name = "EphemeralStoreError";
+  }
+  status;
 };
 async function kFetch(env, path, init) {
   const { base, headers } = kbdbBase(env);
   try {
     return await fetch(`${base}${path}`, {
       ...init,
-      headers: { ...headers, ...init?.headers }
+      // 短效資料＝session／鎖定計數／密碼重設票，全是帳號基本操作（#293）：走保留額度。
+      headers: { ...withEssential(headers), ...init?.headers }
     });
   } catch (e) {
     throw new EphemeralStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
@@ -9837,7 +9849,7 @@ async function ephemeralPut(env, opts) {
       body: JSON.stringify({ values })
     });
     releaseBody(res2);
-    if (!res2.ok) throw new EphemeralStoreError(`PATCH /records(${opts.template}) \u2192 ${res2.status}`);
+    if (!res2.ok) throw new EphemeralStoreError(`PATCH /records(${opts.template}) \u2192 ${res2.status}`, res2.status);
     return;
   }
   const res = await kFetch(env, "/records", {
@@ -9845,7 +9857,7 @@ async function ephemeralPut(env, opts) {
     body: JSON.stringify({ template: opts.template, values })
   });
   releaseBody(res);
-  if (!res.ok) throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 ${res.status}`);
+  if (!res.ok) throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 ${res.status}`, res.status);
 }
 async function ephemeralGet(env, opts) {
   const hash = await sha256Hex(opts.rawKey);
@@ -10114,7 +10126,7 @@ async function migrateConsoleCredentials(env, record, tokenOverride) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const defaults = {
     origin: "*",
@@ -10817,7 +10829,10 @@ var ensuredTemplates2 = /* @__PURE__ */ new Set();
 async function kbdbFetch2(env, path, init, op) {
   const extra = init?.headers ?? {};
   try {
-    const res = await fetch(`${kbdbBase2(env)}${path}`, { ...init, headers: { ...kbdbHeaders(env), ...extra } });
+    const method = (init?.method ?? "GET").toUpperCase();
+    const essential = method !== "GET" || path.startsWith("/templates");
+    const baseH = essential ? withEssential(kbdbHeaders(env)) : kbdbHeaders(env);
+    const res = await fetch(`${kbdbBase2(env)}${path}`, { ...init, headers: { ...baseH, ...extra } });
     addKbdbResponse(env.__kbdbTally, res);
     return res;
   } catch (e) {
@@ -12705,6 +12720,14 @@ async function writeWorkflowSearchEntry(env, apiKey, name, description, workflow
     })
   });
 }
+function extractCredentialNames(graph) {
+  const found = /* @__PURE__ */ new Set();
+  const re = /\{\{\s*credential\.([\w.-]+)\s*\}\}/g;
+  let m;
+  const text = JSON.stringify(graph) ?? "";
+  while ((m = re.exec(text)) !== null) found.add(m[1]);
+  return [...found].sort();
+}
 webhooksNamedRouter.post("/webhooks/named", async (c) => {
   const apiKey = c.req.header("X-Arcrun-API-Key");
   if (!apiKey) {
@@ -12771,7 +12794,10 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
     name,
     webhook_url: `${baseUrl}/webhooks/named/${name}/trigger`,
     description: record.description,
-    created_at: record.created_at
+    created_at: record.created_at,
+    // Arcrun#292：公開觸發是設計（無需金鑰即可 POST）；帶憑證的工作流據此在 push 輸出明講
+    public_trigger: true,
+    credentials_used: extractCredentialNames({ graph, config: body.config })
   }, 201);
 });
 webhooksNamedRouter.get("/workflows/search", async (c) => {
@@ -14596,6 +14622,54 @@ var AUTH_RECIPE_SEEDS = [
   }
 ];
 
+// cypher-executor/src/lib/battery.ts
+var BATTERY_WARN_AT = 20;
+var BATTERY_SAVER_AT = 10;
+function num(n) {
+  const v = typeof n === "number" ? n : Number(n);
+  return Number.isFinite(v) ? v : 0;
+}
+function computeBattery(input) {
+  const reset_at = input.reset_at ?? null;
+  if (input.brake_enabled === false) {
+    return { state: "nuclear", remaining_percent: null, warn: false, saver: false, message: null, reset_at };
+  }
+  const used = Math.min(100, Math.max(0, Math.max(num(input.percent_written), num(input.percent_read))));
+  const remaining = Math.round((100 - used) * 10) / 10;
+  const where = "\u5230\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\uFF0C\u6309\u300C\u653E\u884C\u300D\u6216\u95DC\u6389\u81EA\u52D5\u524E\u8ECA\u5373\u53EF\u4E0D\u518D\u53D7\u9650";
+  if (remaining <= 0) {
+    return {
+      state: "empty",
+      remaining_percent: 0,
+      warn: true,
+      saver: true,
+      reset_at,
+      message: `\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6\u7528\u5B8C\u4E86\uFF1A\u4E00\u822C\u5BEB\u5165\u66AB\u505C\uFF0C\u767B\u5165\u3001\u653E\u884C\u3001\u66F4\u65B0\u4ECD\u53EF\u4F7F\u7528\u3002${where}\u3002`
+    };
+  }
+  if (remaining <= BATTERY_SAVER_AT) {
+    return {
+      state: "saver",
+      remaining_percent: remaining,
+      warn: true,
+      saver: true,
+      reset_at,
+      message: `\u5269\u9918\u7528\u91CF\u53EA\u6709 ${remaining}%\uFF0C\u5DF2\u9032\u5165\u7701\u96FB\u6A21\u5F0F\uFF08\u80CC\u666F\u540C\u6B65\u653E\u6162\uFF09\uFF0C\u518D\u7528\u5B8C\u5C31\u6703\u66AB\u505C\u4E00\u822C\u5BEB\u5165\u3002${where}\u3002`
+    };
+  }
+  if (remaining <= BATTERY_WARN_AT) {
+    return {
+      state: "warn20",
+      remaining_percent: remaining,
+      warn: true,
+      saver: false,
+      reset_at,
+      message: `\u5269\u9918\u7528\u91CF ${remaining}%\uFF0C\u5FEB\u7528\u5B8C\u6642\u6703\u81EA\u52D5\u9032\u5165\u7701\u96FB\u6A21\u5F0F\u3002${where}\u3002`
+    };
+  }
+  return { state: "normal", remaining_percent: remaining, warn: false, saver: false, message: null, reset_at };
+}
+
 // cypher-executor/src/routes/portal.ts
 init_dist();
 init_kbdb_proxy();
@@ -15145,6 +15219,7 @@ async function runExtractAi(env, tenant2, config, req) {
 // cypher-executor/src/routes/portal.ts
 init_tenant();
 init_credentials();
+init_kbdb_caller();
 
 // cypher-executor/src/lib/ai-response.ts
 function pickChatContent(o) {
@@ -15433,11 +15508,12 @@ function bearerToken(c) {
 }
 var KbdbError = class extends Error {
 };
-async function kbdbFetch3(env, path, init) {
+async function kbdbFetch3(env, path, init, opts) {
   const { base, headers } = kbdbBase(env);
+  const baseHeaders = opts?.essential ? withEssential(headers) : headers;
   let res;
   try {
-    res = await fetch(`${base}${path}`, { ...init, headers: { ...headers, ...init?.headers } });
+    res = await fetch(`${base}${path}`, { ...init, headers: { ...baseHeaders, ...init?.headers } });
   } catch (e) {
     throw new KbdbError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
   }
@@ -15473,7 +15549,7 @@ async function ensurePortalTemplates(env) {
   const errors = [];
   for (const seed of PORTAL_TEMPLATE_SEEDS) {
     try {
-      const got = await kbdbFetch3(env, `/templates/${encodeURIComponent(seed.name)}`);
+      const got = await kbdbFetch3(env, `/templates/${encodeURIComponent(seed.name)}`, void 0, { essential: true });
       if (got.ok) {
         const body = await got.json().catch(() => null);
         const tpl = body?.template;
@@ -15489,7 +15565,7 @@ async function ensurePortalTemplates(env) {
             const patched = await kbdbFetch3(env, `/templates/${encodeURIComponent(tpl.id)}`, {
               method: "PATCH",
               body: JSON.stringify({ slots: [...currentSlots, ...missing] })
-            });
+            }, { essential: true });
             if (!patched.ok) throw new KbdbError(`PATCH /templates/${seed.name} \u88DC slots \u2192 ${patched.status}`);
           }
         }
@@ -15505,7 +15581,7 @@ async function ensurePortalTemplates(env) {
           description: seed.description,
           created_by: seed.created_by
         })
-      });
+      }, { essential: true });
       if (!res.ok) throw new KbdbError(`POST /templates ${seed.name} \u2192 ${res.status}`);
       created.push(seed.name);
     } catch (e) {
@@ -15576,7 +15652,7 @@ async function findKbdbUserRecordId(env, email) {
     owner_id: ns,
     limit: "1"
   });
-  const res = await kbdbFetch3(env, `/entries?${params.toString()}`);
+  const res = await kbdbFetch3(env, `/entries?${params.toString()}`, void 0, { essential: true });
   if (!res.ok) throw new KbdbError(`head entry \u67E5\u627E \u2192 ${res.status}`);
   const body = await res.json();
   const content = body.entries?.[0]?.content;
@@ -15587,7 +15663,7 @@ async function getRecordById(env, recordId) {
     const u = findAuthUserById(env, recordId);
     return u ? authUserToRecord(u) : null;
   }
-  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`);
+  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, void 0, { essential: true });
   if (res.status === 404) {
     releaseBody(res);
     return null;
@@ -15615,7 +15691,7 @@ async function patchRecordValues(env, recordId, values) {
   const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, {
     method: "PATCH",
     body: JSON.stringify({ values })
-  });
+  }, { essential: true });
   if (!res.ok) throw new KbdbError(`PATCH /records/${recordId} \u2192 ${res.status}`);
   const body = await res.json();
   if (!body.record) throw new KbdbError(`PATCH /records/${recordId} \u56DE\u61C9\u7F3A record`);
@@ -15633,7 +15709,7 @@ async function deleteKbdbRecord(env, recordId) {
     });
     return found;
   }
-  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" });
+  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }, { essential: true });
   if (res.status === 404) return false;
   if (!res.ok) throw new KbdbError(`DELETE /records/${recordId} \u2192 ${res.status}`);
   return true;
@@ -15685,7 +15761,7 @@ async function createKbdbUserRecord(env, email, values) {
   const res = await kbdbFetch3(env, "/records", {
     method: "POST",
     body: JSON.stringify({ template: USER_TEMPLATE, owner_id: ns, values: { ...values, email } })
-  });
+  }, { essential: true });
   if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_user\uFF09\u2192 ${res.status}`);
   const body = await res.json();
   const recordId = body.record?.record_id;
@@ -15693,7 +15769,7 @@ async function createKbdbUserRecord(env, email, values) {
   const head = await kbdbFetch3(env, "/entries", {
     method: "POST",
     body: JSON.stringify({ entry_type: USER_TEMPLATE, page_name: email, content: recordId, owner_id: ns })
-  });
+  }, { essential: true });
   if (!head.ok) throw new KbdbError(`head entry \u5EFA\u7ACB\u5931\u6557\uFF08record ${recordId} \u5DF2\u5EFA\uFF0C\u9700\u4EBA\u5DE5\u6536\u62FE\uFF09\u2192 ${head.status}`);
   return recordId;
 }
@@ -16343,7 +16419,7 @@ function normalizeFolderNode(raw2) {
   if (!raw2 || typeof raw2 !== "object") return null;
   const r = raw2;
   const path = typeof r.path === "string" ? r.path : "";
-  const num = (v) => {
+  const num2 = (v) => {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
   };
@@ -16351,12 +16427,12 @@ function normalizeFolderNode(raw2) {
     path,
     name: typeof r.name === "string" && r.name ? r.name : path.split("/").pop() || "",
     parent: typeof r.parent === "string" ? r.parent : "-",
-    depth: num(r.depth),
-    total_files: num(r.total_files),
-    synced_files: num(r.synced_files),
-    pending_files: num(r.pending_files),
-    unsupported_files: num(r.unsupported_files),
-    excluded_files: num(r.excluded_files)
+    depth: num2(r.depth),
+    total_files: num2(r.total_files),
+    synced_files: num2(r.synced_files),
+    pending_files: num2(r.pending_files),
+    unsupported_files: num2(r.unsupported_files),
+    excluded_files: num2(r.excluded_files)
   };
   if (r.skipped === true) {
     node.skipped = true;
@@ -17044,6 +17120,13 @@ portalRouter.get(
       updated_at: settings.updated_at ?? null,
       updated_by: settings.updated_by ?? null,
       active_brakes: active,
+      // 電池模型（#293 c18013）：判準只在 lib/battery.ts，前端只畫。
+      battery: computeBattery({
+        brake_enabled: settings.brake_enabled !== false,
+        percent_written: usage.percent_written,
+        percent_read: usage.percent_read,
+        reset_at: usage.reset_at
+      }),
       usage: {
         rows_written: usage.rows_written,
         rows_read: usage.rows_read,
@@ -17053,6 +17136,30 @@ portalRouter.get(
         percent_read: usage.percent_read,
         reset_at: usage.reset_at
       }
+    });
+  })
+);
+portalRouter.get(
+  "/portal/daemon/battery",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const [settingsRes, usageRes] = await Promise.all([
+      kbdbFetch3(c.env, "/usage-brakes/settings"),
+      kbdbFetch3(c.env, "/usage-brakes/usage")
+    ]);
+    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
+    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
+    const settings = await settingsRes.json();
+    const usage = await usageRes.json();
+    return c.json({
+      success: true,
+      battery: computeBattery({
+        brake_enabled: settings.brake_enabled !== false,
+        percent_written: usage.percent_written,
+        percent_read: usage.percent_read,
+        reset_at: usage.reset_at
+      })
     });
   })
 );
@@ -23720,6 +23827,10 @@ app.onError((err, c) => {
   if (err instanceof AssetStoreUnavailableError) {
     const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 503;
     return c.json({ success: false, error: "kbdb_unavailable", message: err.message }, status);
+  }
+  if (err instanceof EphemeralStoreError) {
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 503;
+    return c.json({ success: false, error: "kbdb_unavailable", message: `\u77E5\u8B58\u5EAB\u66AB\u6642\u8B80\u5BEB\u4E0D\u5230\uFF08${err.message}\uFF09\u3002\u9019\u4E0D\u662F\u7A0B\u5F0F\u58DE\u4E86\uFF0C\u4E5F\u4E0D\u662F\u5BC6\u78BC\u932F\u3002` }, status);
   }
   if (err instanceof EndpointConfigError) {
     console.error("[cypher-executor]", err.message);
