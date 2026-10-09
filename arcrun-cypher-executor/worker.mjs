@@ -13,10 +13,10 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -62,21 +62,21 @@ var init_compose = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -107,7 +107,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -154,10 +154,10 @@ var init_body = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -363,10 +363,10 @@ var init_url = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants();
     init_body();
@@ -640,10 +640,10 @@ var init_request = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -687,10 +687,10 @@ var init_html = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1101,10 +1101,10 @@ var init_context = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1114,18 +1114,18 @@ var init_router = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1503,7 +1503,7 @@ var init_hono_base = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1524,13 +1524,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1552,7 +1552,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1643,10 +1643,10 @@ var init_node = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1705,7 +1705,7 @@ var init_trie = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1787,7 +1787,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -1894,27 +1894,27 @@ var init_router2 = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -1972,17 +1972,17 @@ var init_router3 = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2161,10 +2161,10 @@ var init_node2 = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2190,17 +2190,17 @@ var init_router4 = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2221,9 +2221,9 @@ var init_hono = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
   }
 });
@@ -3319,7 +3319,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3501,7 +3501,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "../../cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -9840,8 +9840,8 @@ async function deleteRecordById(env, recordId) {
 async function ephemeralPut(env, opts) {
   await ensureTemplate(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
   const hash = await sha256Hex(opts.rawKey);
-  const exp = Date.now() + opts.ttlSeconds * 1e3;
-  const values = { ...opts.values, [opts.hashField]: hash, exp: String(exp) };
+  const exp = opts.ttlSeconds === null ? "never" : String(Date.now() + opts.ttlSeconds * 1e3);
+  const values = { ...opts.values, [opts.hashField]: hash, exp };
   const existing = opts.fresh ? null : await findByHash(env, opts.template, opts.hashField, hash);
   if (existing) {
     const res2 = await kFetch(env, `/records/${encodeURIComponent(existing.record_id)}`, {
@@ -10126,7 +10126,7 @@ async function migrateConsoleCredentials(env, record, tokenOverride) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const defaults = {
     origin: "*",
@@ -14631,16 +14631,17 @@ function num(n) {
 }
 function computeBattery(input) {
   const reset_at = input.reset_at ?? null;
-  if (input.brake_enabled === false) {
-    return { state: "nuclear", remaining_percent: null, warn: false, saver: false, message: null, reset_at };
-  }
   const used = Math.min(100, Math.max(0, Math.max(num(input.percent_written), num(input.percent_read))));
   const remaining = Math.round((100 - used) * 10) / 10;
+  if (input.brake_enabled === false) {
+    return { state: "nuclear", remaining_percent: remaining, billing: remaining <= 0, warn: false, saver: false, message: null, reset_at };
+  }
   const where = "\u5230\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\uFF0C\u6309\u300C\u653E\u884C\u300D\u6216\u95DC\u6389\u81EA\u52D5\u524E\u8ECA\u5373\u53EF\u4E0D\u518D\u53D7\u9650";
   if (remaining <= 0) {
     return {
       state: "empty",
       remaining_percent: 0,
+      billing: false,
       warn: true,
       saver: true,
       reset_at,
@@ -14651,6 +14652,7 @@ function computeBattery(input) {
     return {
       state: "saver",
       remaining_percent: remaining,
+      billing: false,
       warn: true,
       saver: true,
       reset_at,
@@ -14661,13 +14663,14 @@ function computeBattery(input) {
     return {
       state: "warn20",
       remaining_percent: remaining,
+      billing: false,
       warn: true,
       saver: false,
       reset_at,
       message: `\u5269\u9918\u7528\u91CF ${remaining}%\uFF0C\u5FEB\u7528\u5B8C\u6642\u6703\u81EA\u52D5\u9032\u5165\u7701\u96FB\u6A21\u5F0F\u3002${where}\u3002`
     };
   }
-  return { state: "normal", remaining_percent: remaining, warn: false, saver: false, message: null, reset_at };
+  return { state: "normal", remaining_percent: remaining, billing: false, warn: false, saver: false, message: null, reset_at };
 }
 
 // cypher-executor/src/routes/portal.ts
@@ -14964,9 +14967,10 @@ function mcpUrlFor(subdomain) {
 init_endpoints();
 
 // cypher-executor/src/lib/mcp-token-ttl.ts
-var DEFAULT_TOKEN_TTL_SECONDS = 2592e3;
+var NEVER_EXPIRES_SECONDS = 0;
+var DEFAULT_TOKEN_TTL_SECONDS = NEVER_EXPIRES_SECONDS;
 var MIN_TOKEN_TTL_SECONDS = 3600;
-var MAX_TOKEN_TTL_SECONDS = 2592e3;
+var MAX_TOKEN_TTL_SECONDS = 31536e4;
 var MCP_TOKEN_TTL_TEMPLATE = "portal_mcp_token_ttl";
 function normalizeTokenTtl(input) {
   let n;
@@ -14979,7 +14983,8 @@ function normalizeTokenTtl(input) {
   }
   if (!Number.isFinite(n)) return { ok: false, error: `\u300C${String(input)}\u300D\u4E0D\u662F\u6709\u6548\u7684\u79D2\u6578` };
   n = Math.floor(n);
-  if (n <= 0) return { ok: false, error: "token \u6709\u6548\u79D2\u6578\u5FC5\u9808\u5927\u65BC 0" };
+  if (n === NEVER_EXPIRES_SECONDS) return { ok: true, seconds: NEVER_EXPIRES_SECONDS, clamped: false };
+  if (n < 0) return { ok: false, error: "token \u6709\u6548\u79D2\u6578\u4E0D\u80FD\u662F\u8CA0\u6578" };
   const clamped = n < MIN_TOKEN_TTL_SECONDS || n > MAX_TOKEN_TTL_SECONDS;
   const seconds = Math.min(Math.max(n, MIN_TOKEN_TTL_SECONDS), MAX_TOKEN_TTL_SECONDS);
   return { ok: true, seconds, clamped };
@@ -15149,6 +15154,15 @@ function renderPayload(template, ctx) {
   }
   return out;
 }
+var WORKERS_AI_MAX_ATTEMPTS = 3;
+var TRANSIENT_WORKERS_AI_CODES = /\b(4007|4002)\b/;
+function isTransientWorkersAiError(message) {
+  return TRANSIENT_WORKERS_AI_CODES.test(message);
+}
+function workersAiBackoffMs(attempt, rand = Math.random) {
+  return (attempt === 1 ? 1e3 : 3e3) + Math.floor(rand() * 250);
+}
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function runExtractAi(env, tenant2, config, req) {
   const recipe = await loadRecipe(env, config.recipe);
   if (!recipe) {
@@ -15170,11 +15184,17 @@ async function runExtractAi(env, tenant2, config, req) {
       return { ok: false, code: "ai_binding_missing", error: `\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}` };
     }
     const model2 = config.model || recipe.endpoint;
-    try {
-      return { ok: true, out: await binding.run(model2, payload), model: model2, provider: recipe.canonical_id };
-    } catch (e) {
-      return { ok: false, code: "ai_failed", error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` };
+    let lastError = "";
+    for (let attempt = 1; attempt <= WORKERS_AI_MAX_ATTEMPTS; attempt++) {
+      try {
+        return { ok: true, out: await binding.run(model2, payload), model: model2, provider: recipe.canonical_id };
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e);
+        if (!isTransientWorkersAiError(lastError) || attempt === WORKERS_AI_MAX_ATTEMPTS) break;
+        await sleep(workersAiBackoffMs(attempt));
+      }
     }
+    return { ok: false, code: "ai_failed", error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${lastError}` };
   }
   const url = String(renderBodyTemplate(recipe.endpoint, ctx) ?? "");
   if (!/^https?:\/\//.test(url)) {
@@ -15956,6 +15976,15 @@ function propagatingLogin(c) {
     503
   );
 }
+async function sessionLifeFor(c, body) {
+  if (body?.purpose !== "mcp") return sessionTtl(c.env);
+  const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+  const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+  if (!expected || !got || !constantTimeEqual(got, expected)) return sessionTtl(c.env);
+  const ttl = await readMcpTokenTtl(c.env).catch(() => null);
+  if (!ttl || ttl.seconds === NEVER_EXPIRES_SECONDS) return null;
+  return ttl.seconds;
+}
 portalRouter.post(
   "/portal/login",
   (c) => run(c, async () => {
@@ -16000,6 +16029,7 @@ portalRouter.post(
     }
     const t1 = Date.now();
     const token = randomHex2(32);
+    const sessionLife = await sessionLifeFor(c, body);
     await Promise.all([
       lock.hasFailures ? clearLoginFail(c.env, email) : Promise.resolve(),
       ephemeralPut(c.env, {
@@ -16008,7 +16038,7 @@ portalRouter.post(
         hashField: "token_hash",
         rawKey: token,
         values: { record_id: sessionRecordId },
-        ttlSeconds: sessionTtl(c.env),
+        ttlSeconds: sessionLife,
         fresh: true
       })
     ]);
@@ -16023,7 +16053,8 @@ portalRouter.post(
       // 但呼叫端需要它才能把自己發的憑證對齊這個上限——arcrun-mcp 用它把 OAuth
       // access_token 的 TTL 夾到 min(自己的 TTL, 這個值)：否則 MCP token 活 30 天、
       // 底下的 portal session 7 天就死，使用者會在第 8 天遇到「連著卻查不到」的鬼打牆。
-      session_expires_in: sessionTtl(c.env)
+      // null＝不過期（僅 MCP 授權、且效期設定為不過期時）。
+      session_expires_in: sessionLife
       // 絕不回租戶字串（design §3.3：portal_user 拿到租戶字串就能繞過庫 filter 直打 /kbdb/*）
     });
   })
@@ -17309,7 +17340,7 @@ async function readMcpTokenTtl(env) {
   const rows = await listRecordsByTemplate(env, MCP_TOKEN_TTL_TEMPLATE);
   for (const r of rows) {
     const n = Number.parseInt(r.values.ttl_seconds ?? "", 10);
-    if (Number.isFinite(n) && n > 0) {
+    if (Number.isFinite(n) && n >= 0) {
       return {
         record_id: r.record_id,
         seconds: n,
@@ -18476,6 +18507,50 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
 
 // cypher-executor/src/routes/portal-data.ts
 init_dist();
+
+// cypher-executor/src/lib/app-glyphs.ts
+var APP_GLYPH_IDS = ["doc", "note", "layers", "pin", "wrench", "box", "folder", "check", "bulb", "bell", "chart", "compass"];
+var APP_GLYPH_BODIES = {
+  doc: '<path d="M6 3h7l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M13 3v5h5"/>',
+  note: '<path d="M17 3a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M14.5 5.5 18.5 9.5"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>',
+  pin: '<path d="M8.5 3h7l-1 6 3.5 3v2H6v-2l3.5-3-1-6Z"/><path d="M12 14v7"/>',
+  wrench: '<path d="M15.5 3.4a5.2 5.2 0 0 0-6.4 6.4l-5.4 5.4a2 2 0 0 0 2.8 2.8l5.4-5.4a5.2 5.2 0 0 0 6.4-6.4l-3 3-2.8-.4-.4-2.8 3-3Z"/>',
+  box: '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/>',
+  folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h7A1.5 1.5 0 0 1 19 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
+  check: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.2 2.8 2.8L16 9.8"/>',
+  bulb: '<path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3Z"/><path d="M9.8 19h4.4M10.5 21.5h3"/>',
+  bell: '<path d="M18 8.5a6 6 0 1 0-12 0c0 5.5-2 7-2 7h16s-2-1.5-2-7Z"/><path d="M10.2 19a2.2 2.2 0 0 0 3.6 0"/>',
+  chart: '<path d="M4 4v16h16"/><path d="M8 20v-6.5M12.5 20V8.5M17 20v-4"/>',
+  compass: '<circle cx="12" cy="12" r="8.5"/><path d="m15.6 8.4-2.1 5.1-5.1 2.1 2.1-5.1 5.1-2.1Z"/>'
+};
+var EMOJI_GLYPH = {
+  "\u{1F4C4}": "doc",
+  "\u{1F5D2}\uFE0F": "note",
+  "\u{1F5D2}": "note",
+  "\u{1F4DD}": "note",
+  "\u{1F9E9}": "layers",
+  "\u{1F4CC}": "pin",
+  "\u{1F527}": "wrench",
+  "\u{1F6E0}\uFE0F": "wrench",
+  "\u{1F4E6}": "box",
+  "\u{1F5C2}\uFE0F": "folder",
+  "\u{1F5C2}": "folder",
+  "\u{1F4C1}": "folder",
+  "\u2705": "check",
+  "\u{1F4A1}": "bulb",
+  "\u{1F514}": "bell",
+  "\u{1F4CA}": "chart",
+  "\u{1F4C8}": "chart",
+  "\u{1F9ED}": "compass"
+};
+function appGlyph(icon, name) {
+  if (icon && EMOJI_GLYPH[icon]) return EMOJI_GLYPH[icon];
+  const seed = String(icon || name || "");
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h, 31) + seed.charCodeAt(i) >>> 0;
+  return APP_GLYPH_IDS[h % APP_GLYPH_IDS.length];
+}
 
 // cypher-executor/src/lib/app-catalog/notes.json
 var notes_default = {
@@ -21008,6 +21083,7 @@ function summarizeApp(app2) {
     id: app2.id,
     name: app2.name,
     icon: app2.icon,
+    glyph: appGlyph(app2.icon, app2.name),
     has_ui: app2.has_ui,
     version: app2.version,
     launch: l.launch,
@@ -21129,6 +21205,7 @@ function catalogListing(installed) {
       id: e.id,
       name: e.name,
       icon: e.icon,
+      glyph: appGlyph(e.icon, e.name),
       summary: e.summary,
       version: catalogVersion(e),
       author: e.author,
@@ -21840,6 +21917,14 @@ portalDataRouter.get(
   })
 );
 portalDataRouter.get(
+  "/portal/data/apps/glyphs",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    return c.json({ glyphs: APP_GLYPH_BODIES });
+  })
+);
+portalDataRouter.get(
   "/portal/data/apps",
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
@@ -22390,6 +22475,10 @@ appsRouter.delete("/apps/:id", async (c) => {
   const result = await uninstallApp(c.env, apiKey, id);
   if (!result.ok) return c.json({ error: result.error ?? "\u5378\u8F09\u5931\u6557" }, 404);
   return c.json({ removed: true });
+});
+appsRouter.get("/apps/glyphs", (c) => {
+  if (!requireApiKey(c)) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  return c.json({ glyphs: APP_GLYPH_BODIES });
 });
 appsRouter.get("/apps", async (c) => {
   const apiKey = requireApiKey(c);

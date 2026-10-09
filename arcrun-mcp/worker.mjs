@@ -9127,7 +9127,7 @@ async function issueAccessToken(env, data) {
 async function getAccessToken(env, token) {
   if (token.startsWith(TOKEN_PREFIX)) {
     const d = await open(await tokenKey(env), token.slice(TOKEN_PREFIX.length));
-    if (!d || !Number.isFinite(d.exp) || d.exp * 1e3 < Date.now()) return null;
+    if (!d || !Number.isFinite(d.exp) || d.exp !== 0 && d.exp * 1e3 < Date.now()) return null;
     return d;
   }
   return null;
@@ -23990,7 +23990,7 @@ var toolName = (suffix) => `${TOOL_PREFIX}_${suffix}`;
 function registerSearchComponents(server, env, orgNamespace) {
   server.tool(
     toolName("search_components"),
-    "\u7528\u81EA\u7136\u8A9E\u8A00\u8A9E\u610F\u641C\u5C0B\u96F6\u4EF6\u5EAB\uFF0C\u627E\u51FA\u7B26\u5408\u9700\u6C42\u7684\u96F6\u4EF6\u3002\u4F8B\u5982\uFF1A\u300C\u67E5\u8A62 Google Sheets \u8CC7\u6599\u300D\u3001\u300C\u767C\u9001 LINE \u8A0A\u606F\u300D\u3001\u300C\u9A57\u8B49 JSON \u683C\u5F0F\u300D\u3002\u56DE\u50B3\u96F6\u4EF6\u6E05\u55AE\u542B canonical_id\u3001\u63CF\u8FF0\u3001\u8A55\u5206\u3002",
+    "\u7528\u81EA\u7136\u8A9E\u8A00\u95DC\u9375\u5B57\u641C\u5C0B\u96F6\u4EF6\u5EAB\uFF0C\u627E\u51FA\u7B26\u5408\u9700\u6C42\u7684\u96F6\u4EF6\u3002\u4F8B\u5982\uFF1A\u300C\u67E5\u8A62 Google Sheets \u8CC7\u6599\u300D\u3001\u300C\u767C\u9001 LINE \u8A0A\u606F\u300D\u3001\u300C\u9A57\u8B49 JSON \u683C\u5F0F\u300D\u3002\u56DE\u50B3\u96F6\u4EF6\u6E05\u55AE\u542B canonical_id\u3001\u63CF\u8FF0\u3001\u8A55\u5206\u3002",
     {
       query: external_exports.string().describe("\u81EA\u7136\u8A9E\u8A00\u641C\u5C0B\u8A5E\uFF0C\u5982\u300C\u67E5\u8A62 Google Sheets \u8CC7\u6599\u300D")
     },
@@ -24026,8 +24026,8 @@ function registerSearchComponents(server, env, orgNamespace) {
                 `\u26A0\uFE0F registry \u76EE\u524D\u53EF\u80FD\u662F\u7A7A\u7684\uFF08\u5DF2\u77E5\u554F\u984C\uFF1A\u552F\u4E00\u5BEB\u5165\u89F8\u767C\u9EDE\u96A8 .github/workflows \u79FB\u9664\u800C\u84B8\u767C\uFF09\uFF0C`,
                 `   \u300C\u641C\u4E0D\u5230\u300D\u4E0D\u4EE3\u8868\u300C\u6C92\u6709\u9019\u500B\u80FD\u529B\u300D\u3002\u8ACB\u6539\u7528\u4E0B\u5217\u9806\u5E8F\u627E\uFF1A`,
                 ``,
-                `1. **\u8A9E\u610F\u641C\u5C0B\u77E5\u8B58\u5EAB**\uFF08\u6700\u5F37\uFF0C\u80FD\u627E\u5230\u4F60\u6C92\u731C\u4E2D\u7684\u7528\u8A5E\uFF09\uFF1A`,
-                `   kbdb_search(q="\u6211\u60F3\u9054\u6210\u4EC0\u9EBC\uFF08\u7528\u4E00\u53E5\u8A71\u63CF\u8FF0\uFF09", mode="semantic")`,
+                `1. **\u641C\u5C0B\u77E5\u8B58\u5EAB**\uFF08\u7528\u4E00\u53E5\u8A71\u63CF\u8FF0\u60F3\u9054\u6210\u4EC0\u9EBC\uFF09\uFF1A`,
+                `   kbdb_search(q="\u6211\u60F3\u9054\u6210\u4EC0\u9EBC\uFF08\u7528\u4E00\u53E5\u8A71\u63CF\u8FF0\uFF09")`,
                 `2. **\u770B\u73FE\u6210\u7684\u670D\u52D9\u6574\u5408**\uFF1A\`acr auth-recipe list\`\uFF0826 \u500B\uFF1AGitHub/Notion/Gemini\u2026\uFF09`,
                 `   \u8981\u7528\u54EA\u500B \u2192 \`acr auth-recipe scaffold <\u670D\u52D9>\` \u76F4\u63A5\u5410 credentials \u7BC4\u672C\uFF0Bworkflow \u7BC4\u4F8B`,
                 `3. **\u770B\u96F6\u4EF6\u5168\u96C6**\uFF1A\`acr parts\`\uFF0821 \u9846\u901A\u7528\u96F6\u4EF6\uFF0C\u542B http_request \u53EF\u6253\u4EFB\u610F API\uFF09`,
@@ -32170,12 +32170,12 @@ function registerQuery(server, env, identity) {
 function registerSearch(server, env, identity) {
   server.tool(
     "kbdb_search",
-    "\u641C\u5C0B KBDB \u5167\u5BB9\u3002mode='keyword'\uFF08\u9810\u8A2D\uFF0CD1 LIKE \u95DC\u9375\u5B57\uFF0C\u57FA\u672C\u76E4\u6C38\u9060\u53EF\u7528\uFF09\u6216 'semantic'\uFF08AI \u5411\u91CF\u8A9E\u7FA9\u641C\u5C0B\uFF0C\u9700\u5148\u958B embed \u6A21\u7D44\uFF09\u3002\u8A9E\u7FA9\u6C92\u958B\u6642\u6703\u81EA\u52D5\u964D\u7D1A\u95DC\u9375\u5B57\u4E26\u544A\u8A34\u4F60\u600E\u9EBC\u958B\u3002\u8981\u6309 template \u53D6\u6574\u6279\u7D50\u69CB\u5316\u8CC7\u6599\u7528 kbdb_query\u3002",
+    "\u5E73\u9762\u95DC\u9375\u5B57\u641C\u5C0B KBDB \u5167\u5BB9\uFF08\u5B57\u9762\u6BD4\u5C0D\uFF09\u3002**\u8B80\u77E5\u8B58\u8ACB\u8D70 kbdb_get_map \u2192 kbdb_get_index \u2192 kbdb_get_card \u4E09\u6B65\uFF08\u5716\u8B5C\u9078\u5EAB\u2192\u5B50\u5EAB\u76EE\u9304\u2192\u6574\u5F35\u77E5\u8B58\u5361\uFF09\uFF1B\u672C\u5DE5\u5177\u53EA\u5728\u4E09\u6B65\u8D70\u4E0D\u901A\u6642\u7576\u8F14\u52A9\uFF0C\u4E0D\u662F\u4E3B\u8DEF\u5F91\uFF0C\u4E5F\u4E0D\u8981\u628A\u5B83\u7576\u300C\u8A9E\u610F\uFF0F\u5411\u91CF\u6AA2\u7D22\u300D\u7528\u3002** \u8981\u6309 template \u53D6\u6574\u6279\u7D50\u69CB\u5316\u8CC7\u6599\u7528 kbdb_query\u3002",
     {
-      q: external_exports.string().min(1).describe("\u641C\u5C0B\u95DC\u9375\u5B57 / \u8A9E\u7FA9\u67E5\u8A62\u53E5"),
+      q: external_exports.string().min(1).describe("\u641C\u5C0B\u95DC\u9375\u5B57"),
       owner_id: external_exports.string().optional().describe("\u9650\u5B9A\u67D0\u6B78\u5C6C\u7BC4\u570D\u5167\u641C\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09"),
       source: external_exports.string().optional().describe("\u53EA\u641C\u67D0\u4F86\u6E90\uFF08ingest source.uri\uFF0C\u9078\u586B\uFF09"),
-      mode: external_exports.enum(["keyword", "semantic"]).optional().describe("keyword\uFF08\u9810\u8A2D\uFF09\u6216 semantic\uFF08\u9700\u958B vectorize\uFF09")
+      mode: external_exports.enum(["keyword", "semantic"]).optional().describe("\u5EFA\u8B70\u4E0D\u586B\uFF08\u9810\u8A2D keyword\uFF09\u3002semantic \u70BA\u820A\u53C3\u6578\uFF0C\u4E0D\u5EFA\u8B70\u4F7F\u7528\u2014\u2014\u8B80\u77E5\u8B58\u8ACB\u8D70\u5730\u5716\u2192\u76EE\u9304\u2192\u77E5\u8B58\u5361")
     },
     async ({ q, owner_id, source, mode }) => {
       if (identity.kind === "stale") return staleIdentityError();
@@ -32197,7 +32197,7 @@ function registerSearch(server, env, identity) {
           return errorResponse("search_failed", `\u641C\u5C0B\u5931\u6557`, ["\u7A0D\u5F8C\u91CD\u8A66"], await res.text().catch(() => ""));
         }
         const data = await res.json();
-        const hints = data.index_coverage === "partial" ? ["\u90E8\u5206\u8F03\u820A\u8CC7\u6599\u53EF\u80FD\u9084\u6C92\u8F2A\u5230\u7D22\u5F15\uFF0C\u9019\u6B21\u7D50\u679C\u4E0D\u4FDD\u8B49\u5B8C\u6574\u2014\u2014\u904E\u4E00\u6703\u5152\u518D\u641C\u4E00\u6B21\u901A\u5E38\u5C31\u6703\u88DC\u4E0A"] : data.capability_hint ? [data.capability_hint, "\u8981\u958B\uFF1A\u8DDF\u7528\u6236\u78BA\u8A8D\u5F8C\uFF0CCC \u53EF\u4EE3\u958B\uFF08\u5BEB config kbdb_embed:true + acr update\uFF09"] : data.mode === "semantic" ? ["mode:semantic = AI \u5411\u91CF\u8A9E\u7FA9\u641C\u5C0B"] : ["mode:keyword = D1 LIKE\uFF08\u57FA\u672C\u76E4\uFF09", "\u60F3\u8981\u8A9E\u7FA9\u641C\u5C0B\uFF1Amode='semantic'\uFF08\u9700\u5148\u958B vectorize\uFF09"];
+        const hints = data.index_coverage === "partial" ? ["\u90E8\u5206\u8F03\u820A\u8CC7\u6599\u53EF\u80FD\u9084\u6C92\u8F2A\u5230\u7D22\u5F15\uFF0C\u9019\u6B21\u7D50\u679C\u4E0D\u4FDD\u8B49\u5B8C\u6574\u2014\u2014\u904E\u4E00\u6703\u5152\u518D\u641C\u4E00\u6B21\u901A\u5E38\u5C31\u6703\u88DC\u4E0A"] : data.capability_hint ? [data.capability_hint, "\u8981\u958B\uFF1A\u8DDF\u7528\u6236\u78BA\u8A8D\u5F8C\uFF0CCC \u53EF\u4EE3\u958B\uFF08\u5BEB config kbdb_embed:true + acr update\uFF09"] : data.mode === "semantic" ? ["mode:semantic \u70BA\u820A\u53C3\u6578\uFF1B\u8B80\u77E5\u8B58\u8ACB\u8D70 kbdb_get_map \u2192 kbdb_get_index \u2192 kbdb_get_card"] : ["mode:keyword = \u5B57\u9762\u95DC\u9375\u5B57\u6BD4\u5C0D", "\u8981\u8B80\u77E5\u8B58\uFF1Akbdb_get_map \u2192 kbdb_get_index \u2192 kbdb_get_card"];
         if (identity.kind === "portal") hints.push(OWNER_IGNORED_HINT);
         if (data.note) hints.push(data.note);
         return successResponse(data, hints);
@@ -32221,7 +32221,7 @@ function registerAllKbdbGraphTools(server, env, orgNamespace, identity) {
 function registerGraphNeighbors(server, env, orgNamespace, identity) {
   server.tool(
     "kbdb_graph_neighbors",
-    "knowledge graph \u9130\u5C45\u67E5\u8A62\uFF081-hop/N-hop \u95DC\u4FC2\u904D\u6B77\uFF09\uFF1A\u7D66\u4E00\u500B\u7BC0\u9EDE\u540D\uFF0C\u6CBF KBDB triplet\uFF08subject-predicate-object\uFF09\u8A18\u9304\u505A BFS\uFF0C\u56DE\u50B3 depth \u8DF3\u5167\u7684\u9130\u5C45\u6E05\u55AE\uFF08[{node, predicate, from, depth}]\uFF09\u3002\u8207 kbdb_search\uFF08\u95DC\u9375\u5B57/\u8A9E\u7FA9\uFF09\u4E92\u88DC\uFF1A\u627E\u300C\u8DDF X \u6709\u95DC\u4FC2\u7684\u6771\u897F\u300D\u7528\u672C\u5DE5\u5177\uFF0C\u627E\u300C\u5167\u5BB9\u542B\u95DC\u9375\u5B57\u7684\u6771\u897F\u300D\u7528 kbdb_search\u3002\u767B\u5165\u8EAB\u5206\uFF08\u5E33\u5BC6\uFF0FOAuth\uFF09\u76F4\u63A5\u8D70 KBDB \u7684\u5716 API\uFF0C\u4E0D\u9700\u8981\u88DD\u4EFB\u4F55 workflow\uFF1B\u670D\u52D9\u7D1A token \u9023\u7DDA\u624D\u9700\u8981 namespace \u88E1\u5DF2\u90E8\u7F72 graph_neighbors workflow\uFF08\u6C92\u88DD\u6703\u56DE\u5B89\u88DD\u6307\u5F15\uFF0C\u4E0D\u6703 crash\uFF09\u3002",
+    "knowledge graph \u9130\u5C45\u67E5\u8A62\uFF081-hop/N-hop \u95DC\u4FC2\u904D\u6B77\uFF09\uFF1A\u7D66\u4E00\u500B\u7BC0\u9EDE\u540D\uFF0C\u6CBF KBDB triplet\uFF08subject-predicate-object\uFF09\u8A18\u9304\u505A BFS\uFF0C\u56DE\u50B3 depth \u8DF3\u5167\u7684\u9130\u5C45\u6E05\u55AE\uFF08[{node, predicate, from, depth}]\uFF09\u3002\u8207 kbdb_search\uFF08\u95DC\u9375\u5B57\uFF09\u4E92\u88DC\uFF1A\u627E\u300C\u8DDF X \u6709\u95DC\u4FC2\u7684\u6771\u897F\u300D\u7528\u672C\u5DE5\u5177\uFF0C\u627E\u300C\u5167\u5BB9\u542B\u95DC\u9375\u5B57\u7684\u6771\u897F\u300D\u7528 kbdb_search\u3002\u767B\u5165\u8EAB\u5206\uFF08\u5E33\u5BC6\uFF0FOAuth\uFF09\u76F4\u63A5\u8D70 KBDB \u7684\u5716 API\uFF0C\u4E0D\u9700\u8981\u88DD\u4EFB\u4F55 workflow\uFF1B\u670D\u52D9\u7D1A token \u9023\u7DDA\u624D\u9700\u8981 namespace \u88E1\u5DF2\u90E8\u7F72 graph_neighbors workflow\uFF08\u6C92\u88DD\u6703\u56DE\u5B89\u88DD\u6307\u5F15\uFF0C\u4E0D\u6703 crash\uFF09\u3002",
     {
       subject: external_exports.string().min(1).describe(
         "\u8D77\u9EDE\u7BC0\u9EDE\u540D\uFF08graph triplet \u7684 subject/object \u503C\uFF09\uFF0C\u5982 'Arcrun'"
@@ -32430,13 +32430,13 @@ function entryOnlyHint(tripletCount, entryCount, library) {
   if (tripletCount > 0 || entryCount <= 0) return [];
   const lib = library ? `\u300C${library}\u300D` : "\u9019\u500B\u5EAB";
   return [
-    `${lib} triplet_count\uFF1D0\uFF0C\u4F46\u6709 ${entryCount} \u7B46\u539F\u59CB\u5167\u5BB9\uFF08entries\uFF09\u2014\u2014\u4E09\u5143\u7D44\u8403\u53D6\u9084\u6C92\u5C0D\u5B83\u8DD1\u904E\uFF0C\u4E0D\u4EE3\u8868\u6C92\u6709\u77E5\u8B58\u3002\u7528 kbdb_search\uFF08\u95DC\u9375\u5B57\u6216\u8A9E\u7FA9\uFF09\u76F4\u63A5\u67E5\u5F97\u5230\u5167\u5BB9\u3002`
+    `${lib} triplet_count\uFF1D0\uFF0C\u4F46\u6709 ${entryCount} \u7B46\u539F\u59CB\u5167\u5BB9\uFF08entries\uFF09\u2014\u2014\u4E09\u5143\u7D44\u8403\u53D6\u9084\u6C92\u5C0D\u5B83\u8DD1\u904E\uFF0C\u4E0D\u4EE3\u8868\u6C92\u6709\u77E5\u8B58\u3002\u7528 kbdb_search\uFF08\u95DC\u9375\u5B57\uFF09\u76F4\u63A5\u67E5\u5F97\u5230\u5167\u5BB9\u3002`
   ];
 }
 function registerGetMap(server, env, identity) {
   server.tool(
     "kbdb_get_map",
-    "\u85CF\u66F8\u5730\u5716\uFF1AKBDB \u5168\u9928\u5C0E\u89BD\u3002\u4E0D\u5E36\u53C3\u6578\uFF1D\u5168\u9928\u5730\u5716\uFF08\u6BCF\u5EAB\u4E00\u884C\uFF1A\u5EAB\u540D\uFF0Bnarrative\uFF0B\u6838\u5FC3 top 3 entities\uFF0Btriplet \u6578\uFF09\uFF0C\u5E36 library \u53C3\u6578\uFF1D\u8A72\u5EAB\u8A73\u5716\uFF08\u5B8C\u6574 top_entities/relation_profile/\u8DE8\u5EAB bridges\uFF09\u3002\u4E0D\u78BA\u5B9A\u8A72\u67E5\u4EC0\u9EBC\u6642\uFF0C\u5148\u547C\u53EB\u6B64\u5DE5\u5177\u2014\u2014\u5148\u770B\u5730\u5716\u5B9A\u4F4D\u8A72\u9032\u54EA\u500B\u5EAB\uFF0C\u518D\u7528 kbdb_search\uFF08\u95DC\u9375\u5B57/\u8A9E\u7FA9\uFF09\u6216 kbdb_graph_neighbors\uFF08\u95DC\u4FC2\u904D\u6B77\uFF09\u9032\u5EAB\u67E5\u7D30\u7BC0\u3002",
+    "\u85CF\u66F8\u5730\u5716\uFF1AKBDB \u5168\u9928\u5C0E\u89BD\u3002\u4E0D\u5E36\u53C3\u6578\uFF1D\u5168\u9928\u5730\u5716\uFF08\u6BCF\u5EAB\u4E00\u884C\uFF1A\u5EAB\u540D\uFF0Bnarrative\uFF0B\u6838\u5FC3 top 3 entities\uFF0Btriplet \u6578\uFF09\uFF0C\u5E36 library \u53C3\u6578\uFF1D\u8A72\u5EAB\u8A73\u5716\uFF08\u5B8C\u6574 top_entities/relation_profile/\u8DE8\u5EAB bridges\uFF09\u3002\u4E0D\u78BA\u5B9A\u8A72\u67E5\u4EC0\u9EBC\u6642\uFF0C\u5148\u547C\u53EB\u6B64\u5DE5\u5177\u2014\u2014\u5148\u770B\u5730\u5716\u5B9A\u4F4D\u8A72\u9032\u54EA\u500B\u5EAB\uFF0C\u518D\u7528 kbdb_search\uFF08\u95DC\u9375\u5B57\uFF09\u6216 kbdb_graph_neighbors\uFF08\u95DC\u4FC2\u904D\u6B77\uFF09\u9032\u5EAB\u67E5\u7D30\u7BC0\u3002",
     {
       library: external_exports.string().min(1).optional().describe(
         "\u5EAB\u540D\uFF08\u5982 'kb'\uFF0F'notes'\uFF09\u3002\u5E36\u4E86\u56DE\u8A72\u5EAB\u8A73\u5716\uFF1B\u4E0D\u5E36\u56DE\u5168\u9928\u5730\u5716\uFF08\u5148\u770B\u5168\u9928\u518D\u6311\u5EAB\uFF09"
@@ -32482,7 +32482,7 @@ function registerGetMap(server, env, identity) {
           );
           return successResponse({ libraries, count: libraries.length }, [
             "\u8981\u770B\u67D0\u5EAB\u7D30\u7BC0\uFF1Akbdb_get_map(library='\u5EAB\u540D')",
-            "\u9032\u5EAB\u67E5\u5167\u5BB9\uFF1Akbdb_search\uFF08\u95DC\u9375\u5B57/\u8A9E\u7FA9\uFF09\uFF1B\u67E5\u95DC\u4FC2\uFF1Akbdb_graph_neighbors",
+            "\u9032\u5EAB\u67E5\u5167\u5BB9\uFF1Akbdb_search\uFF08\u95DC\u9375\u5B57\uFF09\uFF1B\u67E5\u95DC\u4FC2\uFF1Akbdb_graph_neighbors",
             ...entryOnlyLibs.length > 0 ? [
               `${entryOnlyLibs.map((l) => l.library).join("\u3001")} \u9019\u5E7E\u5EAB triplet_count\uFF1D0 \u4F46 entry_count\uFF1E0\uFF1A\u6709\u539F\u59CB\u5167\u5BB9\uFF0C\u53EA\u662F\u9084\u6C92\u8403\u53D6\u51FA\u4E09\u5143\u7D44\u95DC\u4FC2\u2014\u2014\u5225\u628A 0 triplets \u8B80\u6210\u300C\u6C92\u6709\u77E5\u8B58\u300D\uFF0C\u76F4\u63A5 kbdb_search \u9032\u53BB\u67E5\u3002`
             ] : []
@@ -32701,7 +32701,7 @@ function registerAllKbdbRetrieveTools(server, env, identity) {
 function registerRetrieve(server, env, identity) {
   server.tool(
     "kbdb_retrieve",
-    "\u554F\u4E00\u53E5\u8A71\uFF0C\u4E00\u6B21\u62FF\u5230\u300C\u8A72\u8B80\u54EA\u4E9B\u5EAB\u3001\u54EA\u4E9B\u9801\u3001\u54EA\u4E9B\u5716\u8B5C\u4E09\u5143\u7D44\u300D\u2014\u2014\u8207 GUI\u300C\u554FAI\u300D\u540C\u4E00\u5957\u6AA2\u7D22\u7D44\u6210\uFF08\u5716\u8B5C\u9078\u5EAB \u2192 \u8B80\u9078\u4E2D\u5EAB\u7684\u9801\uFF09\uFF0C\u547D\u4E2D\u96C6\u5408\u5929\u751F\u4E00\u81F4\uFF0C\u4E0D\u662F\u5404\u81EA\u5BE6\u4F5C\u5230\u770B\u8D77\u4F86\u4E00\u6A23\u3002**\u4E0D\u542B LLM\u3001\u4E0D\u542B\u6392\u5E8F**\uFF1A\u56DE\u7D50\u69CB\u5316 JSON\uFF0C\u8B80\u61C2\u5167\u5BB9\u3001\u7D9C\u8FF0\u6210\u4EBA\u8A71\u662F\u4F60\uFF08\u547C\u53EB\u7AEF\uFF09\u7684\u4E8B\u3002route='graph'\uFF08\u547D\u4E2D\u5716\u8B5C\u5BE6\u9AD4\uFF0C\u4E3B\u8DEF\uFF09\uFF0F'index'\uFF08\u9000\u56DE\u5EAB\u540D/\u6558\u4E8B\u6BD4\u5C0D\uFF09\uFF0F'all'\uFF08\u90FD\u6C92\u547D\u4E2D\uFF0C\u8AA0\u5BE6\u9000\u56DE\u95DC\u9375\u5B57\u641C\u5C0B\uFF0C\u4E0D\u662F\u5410\u51FA\u6574\u500B\u5E33\u865F\uFF09\u3002\u53EA\u8981\u5E73\u9762\u95DC\u9375\u5B57/\u8A9E\u610F\u641C\u5C0B\uFF08\u4E0D\u9700\u8981\u5716\u8B5C\u9078\u5EAB\uFF09\u7528 kbdb_search \u5373\u53EF\uFF0C\u6210\u672C\u66F4\u4F4E\u3002",
+    "\u554F\u4E00\u53E5\u8A71\uFF0C\u4E00\u6B21\u62FF\u5230\u300C\u8A72\u8B80\u54EA\u4E9B\u5EAB\u3001\u54EA\u4E9B\u9801\u3001\u54EA\u4E9B\u5716\u8B5C\u4E09\u5143\u7D44\u300D\u2014\u2014\u8207 GUI\u300C\u554FAI\u300D\u540C\u4E00\u5957\u6AA2\u7D22\u7D44\u6210\uFF08\u5716\u8B5C\u9078\u5EAB \u2192 \u8B80\u9078\u4E2D\u5EAB\u7684\u9801\uFF09\uFF0C\u547D\u4E2D\u96C6\u5408\u5929\u751F\u4E00\u81F4\uFF0C\u4E0D\u662F\u5404\u81EA\u5BE6\u4F5C\u5230\u770B\u8D77\u4F86\u4E00\u6A23\u3002**\u4E0D\u542B LLM\u3001\u4E0D\u542B\u6392\u5E8F**\uFF1A\u56DE\u7D50\u69CB\u5316 JSON\uFF0C\u8B80\u61C2\u5167\u5BB9\u3001\u7D9C\u8FF0\u6210\u4EBA\u8A71\u662F\u4F60\uFF08\u547C\u53EB\u7AEF\uFF09\u7684\u4E8B\u3002route='graph'\uFF08\u547D\u4E2D\u5716\u8B5C\u5BE6\u9AD4\uFF0C\u4E3B\u8DEF\uFF09\uFF0F'index'\uFF08\u9000\u56DE\u5EAB\u540D/\u6558\u4E8B\u6BD4\u5C0D\uFF09\uFF0F'all'\uFF08\u90FD\u6C92\u547D\u4E2D\uFF0C\u8AA0\u5BE6\u9000\u56DE\u95DC\u9375\u5B57\u641C\u5C0B\uFF0C\u4E0D\u662F\u5410\u51FA\u6574\u500B\u5E33\u865F\uFF09\u3002\u53EA\u8981\u5E73\u9762\u95DC\u9375\u5B57\u641C\u5C0B\uFF08\u4E0D\u9700\u8981\u5716\u8B5C\u9078\u5EAB\uFF09\u7528 kbdb_search \u5373\u53EF\uFF0C\u6210\u672C\u66F4\u4F4E\u3002",
     {
       q: external_exports.string().min(1).describe("\u554F\u53E5\uFF08\u4EBA\u8A71\u6216\u95DC\u9375\u5B57\u90FD\u53EF\uFF09"),
       owner_id: external_exports.string().optional().describe("\u9650\u5B9A\u67D0\u6B78\u5C6C\u7BC4\u570D\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09"),
@@ -32855,7 +32855,7 @@ var KNOWLEDGE_FIRST = [
   "\u800C\u4E14**\u4F60\u4E0D\u6703\u77E5\u9053\u81EA\u5DF1\u6F0F\u4E86\u54EA\u5E7E\u6BB5**\u3002\u76EE\u9304\u7684\u5B58\u5728\u5C31\u662F\u70BA\u4E86\u8B93\u4F60\u5148\u770B\u5230\u300C\u6709\u4EC0\u9EBC\u300D\u518D\u6C7A\u5B9A\u8B80\u4EC0\u9EBC\u3002",
   "",
   "\u5176\u9918\u5DE5\u5177\uFF08\u8F14\u52A9\uFF0C\u4E0D\u662F\u4E3B\u8DEF\u5F91\uFF09\uFF1A",
-  "- `kbdb_search({ q: \"...\" })` \u2014 \u5E73\u9762\u641C\u5C0B\uFF08\u95DC\u9375\u5B57\uFF0C\u6216 `mode:'semantic'`\uFF09\u3002**\u4E09\u6B65\u8D70\u4E0D\u901A\u6642\u624D\u7528**\uFF1A",
+  '- `kbdb_search({ q: "..." })` \u2014 \u5E73\u9762\u95DC\u9375\u5B57\u641C\u5C0B\uFF08\u5B57\u9762\u6BD4\u5C0D\uFF0C\u4E0D\u662F\u8A9E\u610F\uFF0F\u5411\u91CF\u6AA2\u7D22\uFF09\u3002**\u4E09\u6B65\u8D70\u4E0D\u901A\u6642\u624D\u7528**\uFF1A',
   "  \u4F8B\u5982\u9023\u8A72\u9032\u54EA\u500B\u5EAB\u90FD\u554F\u4E0D\u51FA\u4F86\u3001\u6216\u8981\u5728\u5168\u9928\u6488\u4E00\u500B\u5F88\u7279\u5225\u7684\u5B57\u3002\u5B83\u56DE\u7684\u662F**\u584A**\u4E0D\u662F\u5361 \u21D2",
   "  \u6488\u5230\u4E4B\u5F8C\u8ACB\u62FF\u5B83\u7684 `page_name` \u56DE\u5230\u7B2C 3 \u6B65\u628A\u6574\u5F35\u5361\u8B80\u5B8C\uFF0C**\u4E0D\u8981\u53EA\u6191\u4E00\u500B\u7247\u6BB5\u56DE\u7B54**\u3002",
   '- `kbdb_graph_neighbors({ name: "..." })` \u2014 \u67E5\u67D0\u500B\u6771\u897F\u8DDF\u8AB0\u6709\u95DC\u4FC2\uFF08\u4E09\u5143\u7D44\u904D\u6B77\uFF09\u3002',
@@ -33795,14 +33795,14 @@ async function fetchOwnerTokenTtl(env) {
     if (!res.ok) return null;
     const body = await res.json();
     const n = typeof body.ttl_seconds === "number" ? body.ttl_seconds : NaN;
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
   } catch {
     return null;
   }
 }
 
 // mcp/src/oauth/routes.ts
-var DEFAULT_TOKEN_TTL = 2592e3;
+var NEVER3 = 0;
 var CORS_JSON = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -33815,7 +33815,7 @@ function workflowTenant(env) {
 var FALLBACK_PORTAL_SESSION_TTL = 604800;
 function tokenTtl(env) {
   const n = parseInt(env.MCP_TOKEN_TTL ?? "", 10);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_TOKEN_TTL;
+  return Number.isFinite(n) && n > 0 ? n : NEVER3;
 }
 function portalUrlFromOrigin(origin) {
   try {
@@ -33989,8 +33989,12 @@ function registerOAuthRoutes(app2) {
       const res = await c.env.CYPHER_EXECUTOR.fetch(
         new Request("https://cypher/portal/login", {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: email2, password })
+          headers: {
+            "content-type": "application/json",
+            // 讓 cypher 知道這是 MCP 授權、session 要跟著「MCP 連線效期」走（只認帶對服務內部金鑰的呼叫端）。
+            ...c.env.KBDB_INTERNAL_TOKEN ? { authorization: `Bearer ${c.env.KBDB_INTERNAL_TOKEN}` } : {}
+          },
+          body: JSON.stringify({ email: email2, password, purpose: "mcp" })
         })
       );
       cypherTiming = (res.headers.get("server-timing") ?? "").split(",").map((x) => x.trim()).filter(Boolean).map((x) => `cypher-${x}`).join(", ");
@@ -34004,8 +34008,12 @@ function registerOAuthRoutes(app2) {
             role: typeof body?.role === "string" ? body.role : "user",
             libraries: Array.isArray(body?.libraries) ? body.libraries.filter((x) => typeof x === "string") : []
           };
-          const ttl = Number(body?.session_expires_in);
-          if (Number.isFinite(ttl) && ttl > 0) portalTtl = ttl;
+          if (body?.session_expires_in === null) {
+            portalTtl = null;
+          } else {
+            const ttl = Number(body?.session_expires_in);
+            if (Number.isFinite(ttl) && ttl > 0) portalTtl = ttl;
+          }
         }
       }
     } catch {
@@ -34027,7 +34035,8 @@ function registerOAuthRoutes(app2) {
         resource: consent.resource,
         namespace: workflowTenant(c.env),
         portal,
-        portal_session_expires_in: portalTtl
+        portal_session_expires_in: portalTtl ?? NEVER3
+        // 0＝不過期
       });
     } catch {
       return c.text("server_error: KBDB unavailable", 503);
@@ -34078,7 +34087,9 @@ function registerOAuthRoutes(app2) {
     }
     const ownerTtl = await fetchOwnerTokenTtl(c.env);
     const baseTtl = ownerTtl ?? tokenTtl(c.env);
-    const ttl = Math.min(baseTtl, data.portal_session_expires_in || FALLBACK_PORTAL_SESSION_TTL);
+    const sessionLife = data.portal_session_expires_in === void 0 ? FALLBACK_PORTAL_SESSION_TTL : data.portal_session_expires_in;
+    const finite = [baseTtl, sessionLife].filter((x) => x > 0);
+    const ttl = finite.length ? Math.min(...finite) : NEVER3;
     let accessToken;
     try {
       accessToken = await issueAccessToken(c.env, {
@@ -34088,7 +34099,7 @@ function registerOAuthRoutes(app2) {
         portal: data.portal,
         // RFC 8707：aud 一律用「本 server canonical resource URI」（非 client 原樣值）。
         aud: resourceUri(originOf(c.req.url)),
-        exp: Math.floor(Date.now() / 1e3) + ttl
+        exp: ttl === NEVER3 ? NEVER3 : Math.floor(Date.now() / 1e3) + ttl
       });
     } catch {
       return err("server_error", "token signing unavailable", 503);
@@ -34097,7 +34108,8 @@ function registerOAuthRoutes(app2) {
       {
         access_token: accessToken,
         token_type: "Bearer",
-        expires_in: ttl,
+        // 不過期＝不回 expires_in（RFC 6749 §5.1 可省略；client 會視為不會過期）。
+        ...ttl === NEVER3 ? {} : { expires_in: ttl },
         scope: data.scope
       },
       200,

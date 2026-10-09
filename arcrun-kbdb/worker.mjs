@@ -3933,6 +3933,9 @@ async function setBrakeEnabled(db, enabled, by, now = Date.now()) {
   return toSettings(rec);
 }
 
+// kbdb/src/actions/maintenance-quota.ts
+init_entry_crud();
+
 // kbdb/src/storage/port.ts
 var SQL_PORT = /* @__PURE__ */ Symbol.for("arcrun.kbdb.SqlPort");
 function isSqlPort(x) {
@@ -4063,7 +4066,14 @@ async function entryWriteBudgetToday(env, db) {
     }
     return { limit: limit2, used: used2, remaining: Number.MAX_SAFE_INTEGER };
   }
-  const limit = Math.max(0, instanceDailyWriteLimit(env) - ftsBackfillReserve(env));
+  let ftsDone = false;
+  try {
+    ftsDone = (await readFtsMigrationState(db)).cutoffRowid === 0;
+  } catch {
+    ftsDone = false;
+  }
+  const reserve = ftsDone ? 0 : ftsBackfillReserve(env);
+  const limit = Math.max(0, instanceDailyWriteLimit(env) - reserve);
   let used = 0;
   try {
     used = await getEntryWriteUsageToday(db);
@@ -5104,7 +5114,7 @@ async function backfillEntriesFts(db, env, opts = {}) {
     const rangeStart = cursor;
     const rangeEnd = toIndex[toIndex.length - 1];
     try {
-      await db.run(`INSERT OR IGNORE INTO entries_fts(rowid, content) SELECT rowid, content FROM entries WHERE rowid > ? AND rowid <= ? AND content IS NOT NULL`, [rangeStart, rangeEnd]);
+      await db.run(`INSERT OR IGNORE INTO entries_fts(rowid, content) SELECT rowid, content FROM entries WHERE rowid > ? AND rowid <= ? AND content IS NOT NULL AND instr(id, '~v~') = 0`, [rangeStart, rangeEnd]);
       indexed = toIndex.length;
     } catch (err) {
       writeError = classifyD1WriteError(err);
@@ -7185,7 +7195,9 @@ var GENERATIONS = [
       { kind: "entries_column", name: "rel_id" },
       { kind: "entries_column", name: "dst_id" },
       { kind: "index", name: "idx_entries_rel_src" },
-      { kind: "index", name: "idx_entries_rel_dst" },
+      // 🔴 這裡原本還探 `idx_entries_rel_dst`，0014 把那支拿掉了（它是 0011
+      // idx_entries_dst_rel_created 的重複前綴）——同第 1 代拿掉 idx_entries_owner 的理由：
+      // 繼續探它，套過 0014 的實例會被判成「停在第 6 代」（inkstone/Arcrun#218 c18235）。
       { kind: "entry", id: "sys_root" },
       { kind: "entry", id: "sys_belongs" },
       { kind: "entry", id: "sys_field_of" },
@@ -7246,6 +7258,21 @@ var GENERATIONS = [
       { kind: "index", name: "idx_entries_pending_embed" },
       { kind: "index", name: "idx_entries_embedded_current" }
     ]
+  },
+  {
+    n: 14,
+    file: "0014_card_write_trim.sql",
+    what: "\u9001\u4E00\u5F35\u5361\u7684\u5BEB\u5165\u518D\u7626\u4E00\u6BB5\u2014\u2014\u62C6\u6389\u91CD\u8907\u7684\u95DC\u4FC2\u7D22\u5F15\u3001\u85CF\u66F8\u5730\u5716\uFF0F\u6642\u901F\u8868\u7684\u8A08\u6578\u683C\u4E0D\u518D\u9032\u5168\u6587\u7D22\u5F15\uFF08Arcrun#218 c18235\uFF09",
+    // `_v2` 觸發器是這一代的指紋（同名重建事後看不出來，同 0012 `_present` 的理由）。
+    checks: [
+      { kind: "trigger", name: "entries_fts_ai_v2" },
+      { kind: "trigger", name: "entries_fts_ad_v2" },
+      { kind: "trigger", name: "entries_fts_au_v2" },
+      { kind: "no_index", name: "idx_entries_rel_dst" }
+    ],
+    // card-rows-written-gate.test.ts「③ 現行」實測（6 段＋5 條的形狀）；同一支閘量第 12 代是 743。
+    // 用 leo 舉的真卡量（card-upload-ledger.test.ts）：第一次送 699 → 615、改過再送 904 → 764。
+    rows_per_card: 667
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
@@ -7275,10 +7302,13 @@ async function probeDataLayer(db) {
   try {
     const [tableRows, indexRows] = await Promise.all([
       db.all("SELECT name, sql FROM sqlite_master WHERE type = 'table'"),
-      db.all("SELECT name FROM sqlite_master WHERE type = 'index'")
+      // 觸發器與索引同一句撈（第 14 代的指紋是觸發器名，見 GENERATIONS）——探針句數不變。
+      db.all("SELECT name, type FROM sqlite_master WHERE type IN ('index', 'trigger')")
     ]);
     const tables = new Set((tableRows.results ?? []).map((r) => r.name));
-    const indexes = new Set((indexRows.results ?? []).map((r) => r.name));
+    const schemaRows = indexRows.results ?? [];
+    const indexes = new Set(schemaRows.filter((r) => (r.type ?? "index") === "index").map((r) => r.name));
+    const triggers = new Set(schemaRows.filter((r) => r.type === "trigger").map((r) => r.name));
     const entriesDdl = (tableRows.results ?? []).find((r) => r.name === "entries")?.sql ?? null;
     const entriesColumns = tables.has("entries") ? await readEntriesColumns(db, entriesDdl) : /* @__PURE__ */ new Set();
     const wantedTemplates = uniq(
@@ -7293,7 +7323,7 @@ async function probeDataLayer(db) {
     );
     const templates = tables.has("templates") ? await pluck(db, `SELECT name FROM templates WHERE name IN (${qs(wantedTemplates)})`, wantedTemplates, "name") : /* @__PURE__ */ new Set();
     const entries = tables.has("entries") ? await pluck(db, `SELECT id FROM entries WHERE id IN (${qs(wantedEntries)})`, wantedEntries, "id") : /* @__PURE__ */ new Set();
-    facts = { tables, indexes, entriesColumns, templates, entries };
+    facts = { tables, indexes, triggers, entriesColumns, templates, entries };
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return {
@@ -7361,6 +7391,10 @@ function explain(c, f) {
       return f.entriesColumns.has(c.name) ? null : `entries \u7F3A\u6B04\u4F4D ${c.name}`;
     case "index":
       return f.indexes.has(c.name) ? null : `\u7F3A\u7D22\u5F15 ${c.name}`;
+    case "no_index":
+      return f.indexes.has(c.name) ? `\u820A\u7D22\u5F15 ${c.name} \u9084\u5728\uFF08\u9019\u4E00\u4EE3\u62C6\u6389\u5B83\uFF09` : null;
+    case "trigger":
+      return f.triggers.has(c.name) ? null : `\u7F3A\u89F8\u767C\u5668 ${c.name}`;
     case "template":
       return f.templates.has(c.name) ? null : `templates \u7F3A ${c.name}`;
     case "entry":
