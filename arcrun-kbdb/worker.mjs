@@ -1675,7 +1675,7 @@ var init_relation_orphans = __esm({
   }
 });
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
     let index = -1;
@@ -1719,10 +1719,10 @@ var compose = (middleware, onError, onNotFound) => {
   };
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
 var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -1794,7 +1794,7 @@ var handleParsingNestedValues = (form, key, value) => {
   });
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
 var splitPath = (path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -1998,7 +1998,7 @@ var getQueryParams = (url, key) => {
 };
 var decodeURIComponent_ = decodeURIComponent;
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
 var HonoRequest = class {
   /**
@@ -2281,7 +2281,7 @@ var HonoRequest = class {
   }
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -2323,7 +2323,7 @@ var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => 
   }
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = (contentType, headers) => {
   return {
@@ -2730,7 +2730,7 @@ var Context = class {
   };
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -2738,10 +2738,10 @@ var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is
 var UnsupportedPathError = class extends Error {
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
 var notFoundHandler = (c) => {
   return c.text("404 Not Found", 404);
 };
@@ -3117,7 +3117,7 @@ var Hono = class _Hono {
   };
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
@@ -3138,7 +3138,7 @@ function match(method, path) {
   return match2(method, path);
 }
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -3246,7 +3246,7 @@ var Node = class _Node {
   }
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   #context = { varIndex: 0 };
   #root = new Node();
@@ -3302,7 +3302,7 @@ var Trie = class {
   }
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -3481,7 +3481,7 @@ var RegExpRouter = class {
   }
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   name = "SmartRouter";
   #routers = [];
@@ -3536,7 +3536,7 @@ var SmartRouter = class {
   }
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = (children) => {
   for (const _ in children) {
@@ -3711,7 +3711,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   name = "TrieRouter";
   #node;
@@ -3733,7 +3733,7 @@ var TrieRouter = class {
   }
 };
 
-// ../../kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
+// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   /**
    * Creates an instance of the Hono class.
@@ -5199,7 +5199,8 @@ entryRoutes.get("/libraries", async (c) => {
   const rows = await dbOf(c.env).all(
     `SELECT DISTINCT ${ENTRY_LIBRARY} AS library
        FROM entries
-      WHERE (?1 = '' OR owner_id = ?1)
+      WHERE (?1 = '' OR +owner_id = ?1)
+        AND page_name IS NOT NULL
         AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
       ORDER BY library`,
     [owner]
@@ -5227,8 +5228,8 @@ entryRoutes.get("/library-stats", async (c) => {
        ${ENTRY_LIBRARY} AS library,
        COUNT(DISTINCT page_name) AS card_count
      FROM entries
-     WHERE (?1 = '' OR owner_id = ?1)
-       AND entry_type = 'block'
+     WHERE (?1 = '' OR +owner_id = ?1)
+       AND +entry_type = 'block'
        AND page_name IS NOT NULL
        AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
      GROUP BY library
@@ -7517,12 +7518,50 @@ var speedometer = async (c, next) => {
   const p = scheduleFlush(c, rawDb);
   if (p) await p;
 };
+var PAID_MONTHLY_INCLUDED_ROWS_READ = 25e9;
+var PAID_MONTHLY_INCLUDED_ROWS_WRITTEN = 5e7;
+function nextMonthStart(now) {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+}
 var usageBrakeRoutes = new Hono2();
 usageBrakeRoutes.get("/", async (c) => {
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? "50") || 50, 1), 100);
   const brakes = c.req.query("pending_notify") === "1" ? (await listPendingNotifyBrakes(dbOf(c.env))).slice(0, limit) : await listBrakes(dbOf(c.env), limit);
   return c.json({ success: true, brakes });
 });
+var monthCache = null;
+var MONTH_CACHE_MS = 5 * 6e4;
+async function monthUsage(db, day, todayWritten, todayRead) {
+  const month = day.slice(0, 7);
+  const now = Date.now();
+  if (!monthCache || monthCache.key !== day || now - monthCache.at >= MONTH_CACHE_MS) {
+    const dom = Number(day.slice(8, 10));
+    const ids = Array.from({ length: dom - 1 }, (_, i) => usageDayRecordId(`${month}-${String(i + 1).padStart(2, "0")}`));
+    const recs = await Promise.all(ids.map((id) => getRecord(db, id).catch(() => null)));
+    let w = 0;
+    let r = 0;
+    let days = 0;
+    let exceeded = false;
+    for (const rec of recs) {
+      if (!rec) continue;
+      const dw = Number(rec.values.rows_written ?? 0);
+      const dr = Number(rec.values.rows_read ?? 0);
+      days += 1;
+      w += dw;
+      r += dr;
+      if (dw > FREE_TIER_DAILY_ROWS_WRITTEN || dr > FREE_TIER_DAILY_ROWS_READ) exceeded = true;
+    }
+    monthCache = { key: day, at: now, w, r, days, exceeded };
+  }
+  return {
+    month,
+    rows_written: monthCache.w + todayWritten,
+    rows_read: monthCache.r + todayRead,
+    days_counted: monthCache.days + 1,
+    exceeded_free_daily: monthCache.exceeded || todayWritten > FREE_TIER_DAILY_ROWS_WRITTEN || todayRead > FREE_TIER_DAILY_ROWS_READ
+  };
+}
 usageBrakeRoutes.get("/usage", async (c) => {
   const day = utcDay3();
   const rec = await getRecord(dbOf(c.env), usageDayRecordId(day));
@@ -7530,6 +7569,7 @@ usageBrakeRoutes.get("/usage", async (c) => {
   const written = Math.max(Number(rec?.values.rows_written ?? 0), mine.written);
   const read = Math.max(Number(rec?.values.rows_read ?? 0), mine.read);
   const now = Date.now();
+  const month = await monthUsage(dbOf(c.env), day, written, read);
   return c.json({
     success: true,
     day,
@@ -7542,6 +7582,14 @@ usageBrakeRoutes.get("/usage", async (c) => {
     projected_exhaustion_written: projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now),
     projected_exhaustion_read: projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now),
     reset_at: nextQuotaReset(now).toISOString(),
+    // 付費方案（Workers Paid）的月內含額度（出處：developers.cloudflare.com/d1/platform/pricing）：
+    // 讀 250 億列／月、寫 5,000 萬列／月內含；超過讀 $0.001／百萬列、寫 $1.00／百萬列。
+    month: {
+      ...month,
+      paid_included_rows_read: PAID_MONTHLY_INCLUDED_ROWS_READ,
+      paid_included_rows_written: PAID_MONTHLY_INCLUDED_ROWS_WRITTEN,
+      next_reset_at: nextMonthStart(now).toISOString()
+    },
     essential_reserve: essentialUsageToday(),
     basis: "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u4E0D\u8AD6\u5E33\u865F\u5BE6\u969B\u65B9\u6848\uFF09\uFF1B\u6578\u5B57\u662F KBDB \u9598\u53E3\u81EA\u5DF1\u7D2F\u8A08\u7684 meta.rows_written\uFF0Frows_read"
   });

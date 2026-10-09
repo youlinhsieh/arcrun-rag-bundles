@@ -9309,10 +9309,15 @@ function validateName(name) {
 function validSensitivity(s) {
   return s === "standard" || s === "high";
 }
+function isSecretsNotReady(e) {
+  if (e instanceof SecretsNotReadyError) return true;
+  const msg = e instanceof Error ? e.message : String(e);
+  return /缺 CF_SECRETS_API_TOKEN \/ CF_ACCOUNT_ID 設定/.test(msg);
+}
 async function putWorkerSecret(env, secretRef, value, tokenOverride) {
   const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
   if (!token || !env.CF_ACCOUNT_ID) {
-    throw new Error(
+    throw new SecretsNotReadyError(
       "\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u5BEB\u5165\u8DEF\u5F91\u672A\u5C31\u7DD2\uFF08\u898B credential-store-migration.md T3\uFF1Aacr init/update \u61C9\u78BA\u4FDD\u9019\u5169\u9805\u5C31\u7DD2\uFF09"
     );
   }
@@ -9334,7 +9339,7 @@ async function putWorkerSecret(env, secretRef, value, tokenOverride) {
 async function deleteWorkerSecret(env, secretRef, tokenOverride) {
   const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
   if (!token || !env.CF_ACCOUNT_ID) {
-    throw new Error("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
+    throw new SecretsNotReadyError("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
   }
   const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
   const res = await fetch(url, {
@@ -9599,7 +9604,7 @@ async function editCredential(env, apiKey, currentName, updates) {
   invalidateCredentialCache(apiKey);
   return { name: newName, service, sensitivity: meta.sensitivity };
 }
-var credentialsRouter, CYPHER_SCRIPT_NAME, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
+var credentialsRouter, CYPHER_SCRIPT_NAME, SECRETS_NOT_READY_CODE, SecretsNotReadyError, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
 var init_credentials = __esm({
   "cypher-executor/src/routes/credentials.ts"() {
     "use strict";
@@ -9610,6 +9615,10 @@ var init_credentials = __esm({
     init_tenant();
     credentialsRouter = new Hono2();
     CYPHER_SCRIPT_NAME = "arcrun-cypher-executor";
+    SECRETS_NOT_READY_CODE = "secrets_write_unavailable";
+    SecretsNotReadyError = class extends Error {
+      code = SECRETS_NOT_READY_CODE;
+    };
     CREDENTIAL_ENTRY_TYPE = "credential";
     DIR_CACHE_TTL_MS = 6e4;
     dirCache = {};
@@ -14623,29 +14632,65 @@ var AUTH_RECIPE_SEEDS = [
 ];
 
 // cypher-executor/src/lib/battery.ts
+var PAID_PRICE_PER_MILLION_READ = 1e-3;
+var PAID_PRICE_PER_MILLION_WRITTEN = 1;
 var BATTERY_WARN_AT = 20;
 var BATTERY_SAVER_AT = 10;
 function num(n) {
   const v = typeof n === "number" ? n : Number(n);
   return Number.isFinite(v) ? v : 0;
 }
+function monthPaid(m) {
+  if (!m) return null;
+  const incR = num(m.paid_included_rows_read);
+  const incW = num(m.paid_included_rows_written);
+  if (incR <= 0 || incW <= 0) return null;
+  const pr = num(m.rows_read) / incR * 100;
+  const pw = num(m.rows_written) / incW * 100;
+  const overR = Math.max(0, num(m.rows_read) - incR);
+  const overW = Math.max(0, num(m.rows_written) - incW);
+  const usd = overR / 1e6 * PAID_PRICE_PER_MILLION_READ + overW / 1e6 * PAID_PRICE_PER_MILLION_WRITTEN;
+  return { used: Math.max(pr, pw), usd: Math.round(usd * 100) / 100 };
+}
 function computeBattery(input) {
-  const reset_at = input.reset_at ?? null;
-  const used = Math.min(100, Math.max(0, Math.max(num(input.percent_written), num(input.percent_read))));
+  const paidMonth = monthPaid(input.month);
+  const isPaid = paidMonth !== null && (input.brake_enabled === false || input.month?.exceeded_free_daily === true);
+  const reset_at = (isPaid ? input.month?.next_reset_at : null) ?? input.reset_at ?? null;
+  const rawUsed = isPaid ? paidMonth.used : Math.max(num(input.percent_written), num(input.percent_read));
+  const used = Math.min(100, Math.max(0, rawUsed));
   const remaining = Math.round((100 - used) * 10) / 10;
+  const plan = isPaid ? "paid" : "free";
+  const basis = isPaid ? "month" : "day";
+  const usd = isPaid ? paidMonth.usd : null;
   if (input.brake_enabled === false) {
-    return { state: "nuclear", remaining_percent: remaining, billing: remaining <= 0, warn: false, saver: false, message: null, reset_at };
+    const billing = remaining <= 0;
+    return {
+      state: "nuclear",
+      remaining_percent: remaining,
+      billing,
+      plan,
+      basis,
+      estimated_overage_usd: usd,
+      warn: false,
+      saver: false,
+      message: billing && isPaid ? `\u672C\u6708\u5167\u542B\u984D\u5EA6\u5DF2\u7528\u5B8C\uFF0C\u8D85\u51FA\u7684\u90E8\u5206\u958B\u59CB\u8A08\u8CBB\uFF08\u76EE\u524D\u4F30\u8A08\u591A\u82B1\u7D04 US$${usd}\uFF09\u3002` : null,
+      reset_at
+    };
   }
   const where = "\u5230\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\uFF0C\u6309\u300C\u653E\u884C\u300D\u6216\u95DC\u6389\u81EA\u52D5\u524E\u8ECA\u5373\u53EF\u4E0D\u518D\u53D7\u9650";
+  const unit = isPaid ? "\u672C\u6708\u5167\u542B\u984D\u5EA6" : "\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6";
   if (remaining <= 0) {
     return {
       state: "empty",
       remaining_percent: 0,
       billing: false,
+      plan,
+      basis,
+      estimated_overage_usd: usd,
       warn: true,
       saver: true,
       reset_at,
-      message: `\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6\u7528\u5B8C\u4E86\uFF1A\u4E00\u822C\u5BEB\u5165\u66AB\u505C\uFF0C\u767B\u5165\u3001\u653E\u884C\u3001\u66F4\u65B0\u4ECD\u53EF\u4F7F\u7528\u3002${where}\u3002`
+      message: `${unit}\u7528\u5B8C\u4E86\uFF1A\u4E00\u822C\u5BEB\u5165\u66AB\u505C\uFF0C\u767B\u5165\u3001\u653E\u884C\u3001\u66F4\u65B0\u4ECD\u53EF\u4F7F\u7528\u3002${where}\u3002`
     };
   }
   if (remaining <= BATTERY_SAVER_AT) {
@@ -14653,6 +14698,9 @@ function computeBattery(input) {
       state: "saver",
       remaining_percent: remaining,
       billing: false,
+      plan,
+      basis,
+      estimated_overage_usd: usd,
       warn: true,
       saver: true,
       reset_at,
@@ -14664,13 +14712,16 @@ function computeBattery(input) {
       state: "warn20",
       remaining_percent: remaining,
       billing: false,
+      plan,
+      basis,
+      estimated_overage_usd: usd,
       warn: true,
       saver: false,
       reset_at,
       message: `\u5269\u9918\u7528\u91CF ${remaining}%\uFF0C\u5FEB\u7528\u5B8C\u6642\u6703\u81EA\u52D5\u9032\u5165\u7701\u96FB\u6A21\u5F0F\u3002${where}\u3002`
     };
   }
-  return { state: "normal", remaining_percent: remaining, billing: false, warn: false, saver: false, message: null, reset_at };
+  return { state: "normal", remaining_percent: remaining, billing: false, plan, basis, estimated_overage_usd: usd, warn: false, saver: false, message: null, reset_at };
 }
 
 // cypher-executor/src/routes/portal.ts
@@ -16852,12 +16903,11 @@ portalRouter.get(
     try {
       const tenant2 = knowledgeOwner(c.env);
       const ownerParam = ownerQuery(tenant2);
-      const [autoRes, cardRes, tripletRes] = await Promise.all([
-        kbdbFetch3(c.env, `/entries/libraries?${ownerParam}`).catch(() => null),
+      const [cardRes, tripletRes] = await Promise.all([
         kbdbFetch3(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
         kbdbFetch3(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
       ]);
-      for (const r of [autoRes, cardRes, tripletRes]) if (r && !r.ok) releaseBody(r);
+      for (const r of [cardRes, tripletRes]) if (r && !r.ok) releaseBody(r);
       const cardMap = /* @__PURE__ */ new Map();
       if (cardRes?.ok) {
         const body = await cardRes.json();
@@ -16872,9 +16922,8 @@ portalRouter.get(
         lib.card_count = cardMap.get(lib.name) ?? 0;
         lib.triplet_count = tripletMap.get(lib.name) ?? 0;
       }
-      if (autoRes?.ok) {
-        const body = await autoRes.json();
-        for (const name of body.libraries ?? []) {
+      {
+        for (const name of cardMap.keys()) {
           const n = String(name ?? "").trim();
           if (!n || n === "general" || known.has(n)) continue;
           known.add(n);
@@ -17156,7 +17205,8 @@ portalRouter.get(
         brake_enabled: settings.brake_enabled !== false,
         percent_written: usage.percent_written,
         percent_read: usage.percent_read,
-        reset_at: usage.reset_at
+        reset_at: usage.reset_at,
+        month: usage.month
       }),
       usage: {
         rows_written: usage.rows_written,
@@ -17165,7 +17215,8 @@ portalRouter.get(
         limit_rows_read: usage.limit_rows_read,
         percent_written: usage.percent_written,
         percent_read: usage.percent_read,
-        reset_at: usage.reset_at
+        reset_at: usage.reset_at,
+        month: usage.month
       }
     });
   })
@@ -17189,7 +17240,8 @@ portalRouter.get(
         brake_enabled: settings.brake_enabled !== false,
         percent_written: usage.percent_written,
         percent_read: usage.percent_read,
-        reset_at: usage.reset_at
+        reset_at: usage.reset_at,
+        month: usage.month
       })
     });
   })
@@ -17453,6 +17505,11 @@ portalRouter.post(
     return c.json({ success: true, has_key: true });
   })
 );
+function credFail(c, label, e, fallbackStatus = 502) {
+  if (isSecretsNotReady(e)) return c.json({ error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE }, 502);
+  const msg = e instanceof Error ? e.message : String(e);
+  return c.json({ error: `${label}\uFF1A${msg}` }, fallbackStatus);
+}
 portalRouter.get(
   "/portal/admin/credentials",
   (c) => run(c, async () => {
@@ -17486,7 +17543,7 @@ portalRouter.post(
       await writeCredential(c.env, tenantSlug, body.name, body.value, service, sensitivity);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${msg}` }, msg.includes("\u4F54\u7528") ? 409 : 502);
+      return credFail(c, "\u91D1\u9470\u5132\u5B58\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
     }
     return c.json({ success: true, name: body.name, service: service ?? null });
   })
@@ -17511,7 +17568,7 @@ portalRouter.put(
       await writeCredential(c.env, tenantSlug, name, body.value, service, sensitivity);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      return c.json({ error: `\u91D1\u9470\u8986\u5BEB\u5931\u6557\uFF1A${msg}` }, msg.includes("\u4F54\u7528") ? 409 : 502);
+      return credFail(c, "\u91D1\u9470\u8986\u5BEB\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
     }
     return c.json({ success: true, name, service: service ?? null });
   })
@@ -17536,7 +17593,7 @@ portalRouter.patch(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
-      return c.json({ error: `\u91D1\u9470\u4FEE\u6539\u5931\u6557\uFF1A${msg}` }, status);
+      return credFail(c, "\u91D1\u9470\u4FEE\u6539\u5931\u6557", e, status);
     }
   })
 );
@@ -17548,7 +17605,10 @@ portalRouter.delete(
     const name = c.req.param("name");
     const tenantSlug = credentialOwner(c.env);
     const result = await deleteCredentialByName(c.env, tenantSlug, name);
-    if (!result.ok) return c.json({ error: result.error }, result.status);
+    if (!result.ok) {
+      if (isSecretsNotReady(result.error)) return c.json({ error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE }, 502);
+      return c.json({ error: result.error }, result.status);
+    }
     return c.json({ success: true, name });
   })
 );
