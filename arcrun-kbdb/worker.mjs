@@ -5194,16 +5194,19 @@ entryRoutes.post("/", async (c) => {
   }));
   return c.json({ success: true, entry });
 });
+function blockScopeOf(owner) {
+  return owner ? { sql: `owner_id = ?1 AND entry_type = 'block'`, params: [owner] } : { sql: `entry_type = 'block'`, params: [] };
+}
 entryRoutes.get("/libraries", async (c) => {
-  const owner = c.req.query("owner_id") || "";
+  const blockScope = blockScopeOf(c.req.query("owner_id") || "");
   const rows = await dbOf(c.env).all(
     `SELECT DISTINCT ${ENTRY_LIBRARY} AS library
        FROM entries
-      WHERE (?1 = '' OR +owner_id = ?1)
+      WHERE ${blockScope.sql}
         AND page_name IS NOT NULL
         AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
       ORDER BY library`,
-    [owner]
+    blockScope.params
   );
   const libraries = (rows.results ?? []).map((r) => r.library).filter(Boolean);
   return c.json({ success: true, libraries, count: libraries.length });
@@ -5222,19 +5225,18 @@ entryRoutes.get("/library-cards", async (c) => {
   return c.json({ success: true, ...result, count: result.cards.length });
 });
 entryRoutes.get("/library-stats", async (c) => {
-  const owner = c.req.query("owner_id") || "";
+  const blockScope = blockScopeOf(c.req.query("owner_id") || "");
   const rows = await dbOf(c.env).all(
     `SELECT
        ${ENTRY_LIBRARY} AS library,
        COUNT(DISTINCT page_name) AS card_count
      FROM entries
-     WHERE (?1 = '' OR +owner_id = ?1)
-       AND +entry_type = 'block'
+     WHERE ${blockScope.sql}
        AND page_name IS NOT NULL
        AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
      GROUP BY library
      ORDER BY library`,
-    [owner]
+    blockScope.params
   );
   const stats = (rows.results ?? []).map((r) => ({ library: r.library, card_count: r.card_count }));
   return c.json({ success: true, stats });

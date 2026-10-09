@@ -2857,18 +2857,18 @@ var init_recipe_payload = __esm({
 });
 
 // cypher-executor/src/types.ts
-async function kvGetNodeOutput(store, nodeId) {
+async function kvGetNodeOutput(store2, nodeId) {
   try {
-    const val = await store.kv.get(`${store.runId}:node:${nodeId}`, "json");
+    const val = await store2.kv.get(`${store2.runId}:node:${nodeId}`, "json");
     return val;
   } catch {
     return void 0;
   }
 }
-async function kvSetNodeOutput(store, nodeId, output) {
+async function kvSetNodeOutput(store2, nodeId, output) {
   try {
-    await store.kv.put(
-      `${store.runId}:node:${nodeId}`,
+    await store2.kv.put(
+      `${store2.runId}:node:${nodeId}`,
       JSON.stringify(output),
       { expirationTtl: 3600 }
     );
@@ -10538,8 +10538,8 @@ var AssetStoreUnavailableError = class extends Error {
   status;
 };
 var UnsupportedAssetKeyError = class extends Error {
-  constructor(store, key) {
-    super(`${store} \u4E0D\u8A8D\u5F97\u9019\u7A2E key\uFF1A\u300C${key}\u300D\u3002\u8CC7\u6599\u7684\u5BB6\u5DF2\u6539\u70BA KBDB record\uFF0C\u6BCF\u4E00\u578B\u90FD\u8981\u5728 kbdb-asset-store.ts \u767B\u8A18\u3002`);
+  constructor(store2, key) {
+    super(`${store2} \u4E0D\u8A8D\u5F97\u9019\u7A2E key\uFF1A\u300C${key}\u300D\u3002\u8CC7\u6599\u7684\u5BB6\u5DF2\u6539\u70BA KBDB record\uFF0C\u6BCF\u4E00\u578B\u90FD\u8981\u5728 kbdb-asset-store.ts \u767B\u8A18\u3002`);
     this.name = "UnsupportedAssetKeyError";
   }
 };
@@ -10621,8 +10621,8 @@ var ANON_WEBHOOK_RE = /^[0-9a-f]{32}$/;
 function pausedRunOwner(apiKey) {
   return `${apiKey || "arcrun"}::runs`;
 }
-function classify(store, key) {
-  if (store === "EXEC_CONTEXT") {
+function classify(store2, key) {
+  if (store2 === "EXEC_CONTEXT") {
     if (key.startsWith("paused_run:")) {
       const taskId = key.slice("paused_run:".length);
       if (!taskId) return null;
@@ -10656,7 +10656,7 @@ function classify(store, key) {
     }
     return null;
   }
-  if (store === "RECIPES") {
+  if (store2 === "RECIPES") {
     if (key.startsWith("idx:installed:")) {
       const canonical = key.slice("idx:installed:".length);
       if (!canonical) return null;
@@ -10800,9 +10800,9 @@ function classify(store, key) {
   }
   return null;
 }
-function listTarget(store, prefix) {
+function listTarget(store2, prefix) {
   const p = prefix ?? "";
-  if (store === "RECIPES") {
+  if (store2 === "RECIPES") {
     if (p === "recipe:") {
       return { tpl: "apiRecipe", owner: INSTANCE_ASSET_OWNER, toKey: (v, id) => `recipe:${v.recipe_key || id.slice("asset:recipe:".length)}` };
     }
@@ -10994,8 +10994,8 @@ function shape(raw2, type) {
   return raw2;
 }
 var KbdbAssetStore = class {
-  constructor(store, env) {
-    this.store = store;
+  constructor(store2, env) {
+    this.store = store2;
     this.env = env;
   }
   store;
@@ -11134,6 +11134,43 @@ function withAssetStores(env, tally) {
 // cypher-executor/src/index.ts
 init_kbdb_tally();
 
+// cypher-executor/src/lib/grant-session.ts
+var GRANT_SESSION_HEADER = "x-arcrun-grant-session";
+var GRANT_SESSION_TTL_MS = 30 * 6e4;
+var MAX_ENTRIES = 200;
+var store = /* @__PURE__ */ new Map();
+async function sha256Hex2(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function sweep(now2) {
+  for (const [k, v] of store) if (v.exp <= now2) store.delete(k);
+  while (store.size > MAX_ENTRIES) {
+    const first = store.keys().next().value;
+    if (first === void 0) break;
+    store.delete(first);
+  }
+}
+async function mintGrantSession(token, bearer, now2 = Date.now()) {
+  sweep(now2);
+  const raw2 = crypto.getRandomValues(new Uint8Array(32));
+  const id = [...raw2].map((b) => b.toString(16).padStart(2, "0")).join("");
+  store.set(await sha256Hex2(id), { token, bearerHash: await sha256Hex2(bearer), exp: now2 + GRANT_SESSION_TTL_MS });
+  return id;
+}
+async function lookupGrantSession(id, bearer, now2 = Date.now()) {
+  if (!/^[0-9a-f]{64}$/.test(id) || !bearer) return null;
+  const key = await sha256Hex2(id);
+  const e = store.get(key);
+  if (!e) return null;
+  if (e.exp <= now2) {
+    store.delete(key);
+    return null;
+  }
+  if (e.bearerHash !== await sha256Hex2(bearer)) return null;
+  return e.token;
+}
+
 // cypher-executor/src/routes/health.ts
 init_dist();
 init_secret_backend();
@@ -11167,11 +11204,11 @@ async function dataLayerStatus(env) {
   return block;
 }
 function authStoreStatus(env) {
-  const store = readAuthStore(env);
+  const store2 = readAuthStore(env);
   const writable = authStoreWritable(env);
   return {
-    console: { home: "workers-secrets", writable, configured: store.console !== null },
-    portal_users: { password_home: "workers-secrets", writable, passwords_migrated: Object.keys(store.passwords).length }
+    console: { home: "workers-secrets", writable, configured: store2.console !== null },
+    portal_users: { password_home: "workers-secrets", writable, passwords_migrated: Object.keys(store2.passwords).length }
   };
 }
 healthRouter.get("/health", async (c) => {
@@ -13098,7 +13135,7 @@ async function kFetch2(env, path, init) {
     throw new PlatformUserStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
   }
 }
-async function sha256Hex2(input) {
+async function sha256Hex3(input) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -13151,20 +13188,20 @@ async function findByHash2(env, field, hash) {
   return recBody?.record ?? null;
 }
 async function findPlatformUserByProvider(env, provider, providerId) {
-  const hash = await sha256Hex2(`${provider}:${providerId}`);
+  const hash = await sha256Hex3(`${provider}:${providerId}`);
   const found = await findByHash2(env, "provider_key_hash", hash);
   return found ? toUser(found.record_id, found.values) : null;
 }
 async function findPlatformUserByApiKey(env, apiKey) {
-  const hash = await sha256Hex2(apiKey);
+  const hash = await sha256Hex3(apiKey);
   const found = await findByHash2(env, "api_key_hash", hash);
   return found ? toUser(found.record_id, found.values) : null;
 }
 async function createPlatformUser(env, input) {
   await ensureTemplate3(env);
   const values = {
-    provider_key_hash: await sha256Hex2(`${input.provider}:${input.provider_id}`),
-    api_key_hash: await sha256Hex2(input.api_key),
+    provider_key_hash: await sha256Hex3(`${input.provider}:${input.provider_id}`),
+    api_key_hash: await sha256Hex3(input.api_key),
     email: input.email,
     display_name: input.display_name,
     avatar_url: input.avatar_url ?? "",
@@ -13187,7 +13224,7 @@ async function updatePlatformUser(env, recordId, patch) {
   if (patch.avatar_url !== void 0) values.avatar_url = patch.avatar_url ?? "";
   if (patch.api_key !== void 0) {
     values.api_key = patch.api_key;
-    values.api_key_hash = await sha256Hex2(patch.api_key);
+    values.api_key_hash = await sha256Hex3(patch.api_key);
   }
   if (patch.revoked !== void 0) values.revoked = String(patch.revoked);
   if (Object.keys(values).length === 0) return;
@@ -14745,14 +14782,14 @@ function randomHex(bytes) {
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-async function sha256Hex3(input) {
+async function sha256Hex4(input) {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function hashPassword(password, salt) {
   let h = `${salt}:${password}`;
-  for (let i = 0; i < 3; i++) h = await sha256Hex3(h);
+  for (let i = 0; i < 3; i++) h = await sha256Hex4(h);
   return h;
 }
 function tenantOf(c) {
@@ -14954,7 +14991,7 @@ function randomHex2(bytes) {
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-async function sha256Hex4(input) {
+async function sha256Hex5(input) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -16224,7 +16261,7 @@ portalRouter.post(
     if (!rec.record_id || !rec.api_origin) return c.json({ ok: false }, 404);
     const token = await issueResetToken(c.env, rec.record_id, rec.email ?? "");
     const link = `${rec.api_origin}/portal/password/reset-link?token=${encodeURIComponent(token)}`;
-    return c.json({ ok: true, email_sha256: await sha256Hex4(rec.email ?? ""), link });
+    return c.json({ ok: true, email_sha256: await sha256Hex5(rec.email ?? ""), link });
   })
 );
 portalRouter.get("/portal/password/reset-link", (c) => {
@@ -16900,6 +16937,16 @@ portalRouter.get(
       return { ...lib, ...watching !== void 0 ? { daemon_watching: watching } : {} };
     });
     const known = new Set(out.map((l) => l.name));
+    if (c.req.query("lite") === "1") {
+      if (daemonActive) {
+        for (const n of daemonActive) {
+          if (!n || n === "general" || known.has(n)) continue;
+          known.add(n);
+          out.push({ record_id: "", name: n, display_name: n, description: "", status: "active", graph_source: false, auto: true, daemon_watching: true });
+        }
+      }
+      return c.json({ success: true, libraries: out, count: out.length, lite: true });
+    }
     try {
       const tenant2 = knowledgeOwner(c.env);
       const ownerParam = ownerQuery(tenant2);
@@ -22571,13 +22618,13 @@ function credentialsKeyOutcome(key) {
     reason: "\u820A\u7684\u81EA\u7BA1\u52A0\u5BC6 credential \u5BC6\u6587\uFF08\u89E3\u5BC6\u6A5F\u5236\u5DF2\u65BC 20c7610 \u79FB\u9664\uFF0C\u5E36\u904E\u4F86\u4E5F\u89E3\u4E0D\u958B\uFF09\uFF1B\u73FE\u884C credential \u5728 Workers Secrets"
   };
 }
-async function importAsset(env, store, entry) {
-  const ref = classify(store, entry.key);
+async function importAsset(env, store2, entry) {
+  const ref = classify(store2, entry.key);
   if (!ref) return { key: entry.key, outcome: "skipped", reason: "\u6C92\u6709\u5C0D\u61C9\u7684\u8CC7\u6599\u578B\u5225\uFF08\u4E0D\u662F\u8CC7\u7522\uFF0C\u4E5F\u4E0D\u662F\u7B97\u5F97\u51FA\u4F86\u7684\u7D22\u5F15\uFF09" };
   if (ref.kind === "derived") return { key: entry.key, outcome: "skipped", reason: "\u884D\u751F\u7D22\u5F15\uFF0C\u7531\u8CC7\u7522\u672C\u8EAB\u91CD\u7B97" };
-  const kv = store === "WEBHOOKS" ? env.WEBHOOKS : env.RECIPES;
+  const kv = store2 === "WEBHOOKS" ? env.WEBHOOKS : env.RECIPES;
   await kv.put(entry.key, entry.value);
-  if (store === "WEBHOOKS" && ref.tpl === "workflow") {
+  if (store2 === "WEBHOOKS" && ref.tpl === "workflow") {
     let cron = "";
     try {
       cron = String(JSON.parse(entry.value).cron_expr ?? "");
@@ -23969,7 +24016,8 @@ app.use("*", cors({
     return [...priv ? [] : STATIC_ORIGINS, ...sibling, ...extra].includes(origin2) ? origin2 : null;
   },
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization", "X-Arcrun-API-Key", "X-Arcrun-Secrets-Grant"],
+  allowHeaders: ["Content-Type", "Authorization", "X-Arcrun-API-Key", "X-Arcrun-Secrets-Grant", "X-Arcrun-Grant-Session"],
+  exposeHeaders: ["X-Arcrun-Grant-Session"],
   credentials: true
 }));
 app.onError((err, c) => {
@@ -24029,8 +24077,24 @@ var index_default = {
     const cfToken = req.headers.get("x-cf-secrets-token");
     if (cfToken) perRequest.CF_SECRETS_TOKEN_FROM_REQUEST = cfToken;
     const grant = req.headers.get(GRANT_HEADER);
-    if (grant && !cfToken && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS" && !isPrivateCloud(env)) {
-      return redeemSecretsGrant(env, new URL(req.url).origin, grant).then((t) => {
+    const isWrite = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
+    const priv = isPrivateCloud(env);
+    const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (grant && !cfToken && isWrite && !priv) {
+      return redeemSecretsGrant(env, new URL(req.url).origin, grant).then(async (t) => {
+        if (!t) return app.fetch(req, perRequest, ctx);
+        perRequest.CF_SECRETS_TOKEN_FROM_REQUEST = t;
+        const sid = bearer ? await mintGrantSession(t, bearer) : null;
+        const res = await app.fetch(req, perRequest, ctx);
+        if (!sid) return res;
+        const out = new Response(res.body, res);
+        out.headers.set("X-Arcrun-Grant-Session", sid);
+        return out;
+      });
+    }
+    const gsess = req.headers.get(GRANT_SESSION_HEADER);
+    if (gsess && !cfToken && isWrite && !priv) {
+      return lookupGrantSession(gsess, bearer).then((t) => {
         if (t) perRequest.CF_SECRETS_TOKEN_FROM_REQUEST = t;
         return app.fetch(req, perRequest, ctx);
       });
