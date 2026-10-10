@@ -5,20 +5,20 @@
  "built": "2026-10-10",
  "source": "Arcrun@35d93f37360c",
  "daemon": {
-  "version": "0.18.89",
-  "built": "20261010-1646",
-  "notes": "內容一模一樣的檔，不管放在哪兩個資料夾，只整理一次、只留一張卡",
+  "version": "0.18.90",
+  "built": "20261010-1824",
+  "notes": "舊版留下的「檔案太大」不再讓大檔卡在 !N・狀態列的 !N 在同步進行中也點得動・掃描成圖片、沒有文字的 PDF 不再算出錯（細節見說明文件）",
   "mac": {
-   "file": "daemon/Arcrun-0.18.89.dmg",
-   "sha256": "c33208d996bebc95c016015d01405fb3bec2b14cc212cd2fd813b5245d544dcf"
+   "file": "daemon/Arcrun-0.18.90.dmg",
+   "sha256": "d8d86fa1acee56838fcdbd9f11f080ba844773744f5aead42ab817c6cb9a7848"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.89.exe",
-   "sha256": "11e74add3e4c475741a401bf21895a275a5d43a5fc2a543f5f5cdc87964e06c6"
+   "file": "daemon/Arcrun-win-0.18.90.exe",
+   "sha256": "ac5efd5a44bb1faf6c72d334b70ea9393174fffa94af8384e314896c90728390"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.89.msix",
-   "sha256": "03a9353b82a5401b5f7d2b8c9b6d68beee5064c1da7bd2ab857e2a1a5bdf1598"
+   "file": "daemon/Arcrun-0.18.90.msix",
+   "sha256": "28c518d7069c2e36cf0a66bc3aa084ff3903e4deb3f68e830921706b2e02e1df"
   }
  },
  "core": [
