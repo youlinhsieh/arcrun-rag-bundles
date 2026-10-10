@@ -1,7 +1,7 @@
 {
  "schema": 2,
- "release": "1.4.93",
- "fingerprint": "c922e61b4b536625c184b1af50fafd850b21e55478f2ba8e00c5a21391d8708d",
+ "release": "1.4.94",
+ "fingerprint": "dbee2c6b1e03dbb2a27d2f74448fb9c36f256ad449d6fccbf56abcabc3a0eb0a",
  "built": "2026-10-10",
  "source": "Arcrun@8d2ffc07a64a",
  "daemon": {
@@ -1694,7 +1694,7 @@
   }
  ],
  "installer": {
-  "version": "1.0.50"
+  "version": "1.0.51"
  },
- "payload_fingerprint": "d8e2ec1603f8c9a03a2eb3d86de6431dabfae22fecc3d9d641c2c4c8afe1d50f"
+ "payload_fingerprint": "20bfa6b73653198ceb6520b195317d718cbf2090c85e2a8351acd372ae7ff318"
 }
