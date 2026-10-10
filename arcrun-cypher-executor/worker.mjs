@@ -15464,7 +15464,13 @@ async function runExtractAi(env, tenant2, config, req) {
     return { ok: false, code: "ai_recipe_missing", error: `\u627E\u4E0D\u5230\u8403\u53D6 AI recipe\u300C${config.recipe}\u300D` };
   }
   const ctx = {
-    messages: [{ role: "user", content: req.prompt }],
+    messages: [
+      ...req.system ? [{ role: "system", content: req.system }] : [],
+      {
+        role: "user",
+        content: req.images?.length ? [{ type: "text", text: req.prompt }, ...req.images.map((url2) => ({ type: "image_url", image_url: { url: url2 } }))] : req.prompt
+      }
+    ],
     max_tokens: req.maxTokens,
     temperature: req.temperature ?? 0.2,
     ...req.jsonObject ? { response_format: { type: "json_object" } } : {},
@@ -15472,13 +15478,14 @@ async function runExtractAi(env, tenant2, config, req) {
     ...config.model ? { model: config.model } : {}
   };
   const payload = renderPayload(recipe.body_template ?? {}, ctx);
+  if (req.extra && recipe.auth === "binding") Object.assign(payload, req.extra);
   if (recipe.auth === "binding") {
     const name = recipe.binding_name ?? "AI";
     const binding = env[name];
     if (!binding || typeof binding.run !== "function") {
       return { ok: false, code: "ai_binding_missing", error: `\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}` };
     }
-    const model2 = config.model || recipe.endpoint;
+    const model2 = req.model || config.model || recipe.endpoint;
     let lastError = "";
     for (let attempt = 1; attempt <= WORKERS_AI_MAX_ATTEMPTS; attempt++) {
       try {
@@ -15611,6 +15618,216 @@ function snippetForError(text, max = 120) {
   const one = text.replace(/\s+/g, " ").trim();
   if (!one) return "\uFF08\u7A7A\u7684\uFF09";
   return one.length <= max ? one : one.slice(0, max) + "\u2026";
+}
+
+// cypher-executor/src/lib/prompt-table.ts
+init_lib();
+
+// cypher-executor/src/lib/prompt-tables/extract_wiki.json
+var extract_wiki_default = {
+  kind: "prompt_table",
+  name: "extract_wiki",
+  description: "\u5C0F\u5E6B\u624B\u8403\u53D6\uFF1A\u4E00\u4EFD\u539F\u7A3F \u2192 \u6587\u4EF6\u7E3D\u89BD\uFF0BN \u500B\u539F\u5B50\u6982\u5FF5\uFF08JSON\uFF09\u3002\u6BCF\u584A\u4E00\u500B key\u3001\u4E00\u500B\u7248\u672C\uFF1Bkey \u7684\u524D\u7DB4\u662F common \u6216\u8B80\u6A94\u7279\u4F8B\u7DE8\u865F\uFF08arcrun-rag system-dev/wiki/cards/reading-edge-cases/\uFF09\u3002\u6CE8\u5165\u65B9\u5F0F\u7531 inject \u6C7A\u5B9A\uFF1Atext\uFF1D\u4F9D\u8868\u4E0A\u9806\u5E8F\u4EE5\u63DB\u884C\u63A5\u8D77\u4F86\uFF08\u8207 #299 \u524D\u5C0F\u5E6B\u624B\u90A3\u6BB5\u9010\u5B57\u76F8\u540C\uFF0C\u9810\u8A2D\uFF09\uFF1Bjson\uFF1D\u7D44\u6210 {key: value} \u7576 system \u8A0A\u606F\uFF08\u5BE6\u6E2C\u5728 llama-4-scout \u4E0A\u54C1\u8CEA\u6389\uFF0C\u898B ADR-299\uFF09\u3002\u6539\u4E00\u584A\uFF1D\u6539\u5B83\u7684 value\u3001\u628A\u5B83\u7684 v \u52A0\u4E00\uFF0C\u4E26\u540C\u6B65 cypher-executor/tests/fixtures/prompt-tables/extract_wiki.fixtures.json\u3002inkstone/Arcrun#299",
+  expect: "json_object",
+  inject: "text",
+  blocks: [
+    {
+      key: "common.role",
+      v: 1,
+      when: "always",
+      value: "\u4F60\u662F\u77E5\u8B58\u6574\u7406\u54E1\u3002\u8B80\u5B8C\u539F\u7A3F\u5F8C\uFF0C\u628A\u5B83\u6574\u7406\u6210\u300C\u4E00\u4EFD\u6587\u4EF6\u7684\u7E3D\u89BD\uFF0BN \u500B\u539F\u5B50\u6982\u5FF5\u300D\u3002\u53EA\u8F38\u51FA\u4E00\u500B JSON \u7269\u4EF6\uFF0C\u4E0D\u8981\u4EFB\u4F55\u8AAA\u660E\u3001markdown \u570D\u6B04\u6216\u601D\u8003\u904E\u7A0B\u3002"
+    },
+    {
+      key: "chunk-cliff.candidates",
+      v: 1,
+      when: "chunk-cliff",
+      attach: "labels",
+      value: "\n\u6A5F\u68B0\u6383\u51FA\u7684\u5019\u9078\u8B58\u5225\u78BC\u6E05\u55AE\uFF08\u539F\u7A3F\u88E1\u5075\u6E2C\u5230\u91CD\u8907\u7684\u6B04\u4F4D\u7D50\u69CB\uFF0C\u4EE5\u4E0B\u6BCF\u4E00\u500B\u90FD\u8981\u5728 entities \u88E1\u5404\u81EA\u5BEB\u4E00\u7B46\uFF0C\u9010\u5B57\u4F7F\u7528\u6E05\u55AE\u88E1\u7684\u539F\u6587\u7576 name\uFF1B\u4E0D\u51C6\u65B0\u589E\u6E05\u55AE\u5916\u7684\u78BC\uFF0C\u4E5F\u4E0D\u51C6\u6F0F\u6389\u6E05\u55AE\u88E1\u7684\u4EFB\u4F55\u4E00\u500B\uFF09\uFF1A"
+    },
+    {
+      key: "transcript.meaning",
+      v: 1,
+      when: "transcript",
+      value: "\n\u9010\u5B57\u7A3F\uFF1A\n- \u9019\u4EFD\u539F\u7A3F\u662F\u6703\u8B70\u6216\u8A2A\u8AC7\u7684\u9010\u5B57\u7A3F\u3002\u8981\u8403\u7684\u662F**\u610F\u601D**\uFF0C\u4E0D\u662F\u8AB0\u8AAA\u4E86\u54EA\u53E5\u8A71\uFF1A\u9019\u5834\u6703\u6C7A\u5B9A\u4E86\u4EC0\u9EBC\u3001\u5F85\u8FA6\u662F\u4EC0\u9EBC\uFF08\u8AB0\u8CA0\u8CAC\u3001\u505A\u4EC0\u9EBC\u3001\u671F\u9650\uFF09\u3001\u5404\u65B9\u7684\u7ACB\u5834\u8207\u7406\u7531\u3001\u9084\u6C92\u8AC7\u5B9A\u7684\u4E8B\u3002\n- \u4E0D\u7559\u539F\u53E5\u3001\u4E0D\u9010\u6BB5\u8F49\u8FF0\u5C0D\u8A71\uFF1B\u8981\u770B\u539F\u8A71\u7684\u4EBA\u6703\u7167\u5361\u4E0A\u7684\u51FA\u8655\u53BB\u958B\u539F\u6A94\uFF08\u51FA\u8655\u7531\u6A5F\u5668\u9644\u4E0A\uFF0C\u4F60\u4E0D\u5FC5\u6284\uFF09\u3002\n- \u6C7A\u5B9A\u8207\u5F85\u8FA6\u5BEB\u9032 points \u8207 facts\uFF08\u4F8B\uFF1A[\u67D0\u90E8\u9580,\u8CA0\u8CAC,\u67D0\u5F85\u8FA6]\uFF09\uFF1B\u8207\u6703\u8005\u5BEB\u9032 entities\uFF08type \u4EBA\u7269\u6216\u7D44\u7E54\uFF09\u3002"
+    },
+    {
+      key: "common.rules",
+      v: 1,
+      when: "always",
+      value: "\n\u898F\u5247\uFF08\u9055\u53CD\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\uFF09\uFF1A\n- \u5361\u7247\u5167\u5BB9\u662F\u4F60\u7684**\u5224\u65B7\u8207\u91CD\u7D44**\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\uFF0C\u7981\u6B62\u6574\u53E5\u7167\u6284\u539F\u7A3F\u3002"
+    },
+    {
+      key: "thin-card.concept-count",
+      v: 1,
+      when: "always",
+      value: "- \u6982\u5FF5\u6578\u7531\u5167\u5BB9\u6C7A\u5B9A\uFF08\u591A\u6578\u6587\u4EF6 1-5 \u500B\uFF09\uFF1B\u6BCF\u500B\u6982\u5FF5\u8981\u80FD**\u96E2\u958B\u539F\u7A3F\u7368\u7ACB\u6210\u7ACB**\u3002"
+    },
+    {
+      key: "common.no-concept",
+      v: 1,
+      when: "always",
+      value: '- \u5831\u50F9\u55AE\u3001\u767C\u7968\u3001\u7D14\u5F85\u8FA6\u3001\u7D14\u6D41\u6C34\u5E33\uFF1D\u6C92\u6709\u53EF\u8403\u53D6\u6982\u5FF5\uFF1A\u56DE {"no_concept":true,"reason":"\u4E00\u53E5\u8A71\u7406\u7531"} \u5373\u53EF\u3002'
+    },
+    {
+      key: "common.fields",
+      v: 1,
+      when: "always",
+      value: "- gloss\uFF1D\u4E00\u53E5\u8A71\uFF0840 \u5B57\u5167\uFF09\u3002summary\uFF1D\u4E00\u5C0F\u6BB5\uFF0880-200 \u5B57\uFF09\u3002points\uFF1D3-8 \u689D\u5224\u65B7\u53E5\uFF08\u4E0D\u662F\u689D\u5217\u8907\u8FF0\uFF09\u3002\n- \u6587\u4EF6\u5C64\u7684 points \u6BCF\u689D\u8981\u628A\u76F8\u95DC\u6982\u5FF5\u540D\u7528 [[\u6982\u5FF5\u540D]] \u5D4C\u5728**\u53E5\u5B50\u4E2D\u9593**\uFF08\u4E0D\u53EF\u653E\u53E5\u9996\u7576\u6A19\u984C\uFF09\u3002\n- entities\uFF1A\u6BCF\u500B\u5BE6\u9AD4\u5E36 type\uFF08\u4EBA\u7269/\u7D44\u7E54/\u5DE5\u5177/\u6982\u5FF5/\u5730\u9EDE/\u4E8B\u4EF6/\u6A94\u6848 \u64C7\u4E00\uFF09\u8207\u4E00\u53E5\u63CF\u8FF0\u3002"
+    },
+    {
+      key: "chunk-cliff.count-first",
+      v: 1,
+      when: "always",
+      value: "- \u{1F534} **\u5148\u6578\u4E00\u904D\uFF1A\u539F\u7A3F\u88E1\u6709\u6C92\u6709\u91CD\u8907\u51FA\u73FE\u7684\u300C\u689D\u76EE\u300D\u7D50\u69CB**\u2014\u2014\u540C\u4E00\u7A2E\u77ED\u8B58\u5225\u78BC\uFF08\u578B\u865F\uFF0F\u4EE3\u78BC\uFF0F\n  \u55AE\u865F\uFF0F\u53C3\u6578\u540D\uFF0C\u4EFB\u4F55\u539F\u7A3F\u81EA\u5DF1\u7528\u4F86\u6A19\u793A\u6BCF\u4E00\u689D\u7684\u5B57\u4E32\uFF09\u5728\u539F\u7A3F\u88E1\u5404\u81EA\u5E36\u958B\u4E00\u6BB5\u8AAA\u660E\uFF0C\n  \u4E00\u6BB5\u63A5\u4E00\u6BB5\u5730\u91CD\u8907\u3002\u6709\u7684\u8A71\uFF1A\n  1. \u5148\u6578\u51FA\u539F\u7A3F\u88E1\u7E3D\u5171\u6709\u5E7E\u689D\u9019\u7A2E\u689D\u76EE\uFF0C\u5728\u5FC3\u88E1\u8A18\u4F4F\u9019\u500B\u6578\u5B57 N\u3002\n  2. entities \u9663\u5217\uFF08\u6240\u6709\u6982\u5FF5\u5408\u8A08\uFF09\u8981\u6B63\u597D\u5217\u51FA N \u7B46\uFF0C\u9010\u4E00\u5C0D\u61C9\u539F\u7A3F\u7684\u6BCF\u4E00\u689D\u2014\u2014\n     **\u4E0D\u662F\u8209\u5E7E\u500B\u4F8B\u5B50\u4EE3\u8868\u5176\u9918\u7684\uFF0C\u662F\u6BCF\u4E00\u689D\u90FD\u8981\u6709\u81EA\u5DF1\u7684\u4E00\u7B46**\u3002\u6F0F\u6389\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\u3002\n  3. \u958B\u5C11\u6578\u5E7E\u500B\u6982\u5FF5\uFF081-3 \u500B\uFF0C\u6309\u4E3B\u984C\u5206\u7D44\uFF09\u7576\u5BB9\u5668\uFF0C\u628A N \u7B46 entities \u5206\u88DD\u9032\u53BB\uFF1B\n     \u6BCF\u500B\u6982\u5FF5\u7684 entities \u9663\u5217\u53EF\u4EE5\u5F88\u9577\uFF08\u5341\u5E7E\u3001\u5E7E\u5341\u7B46\u90FD\u6B63\u5E38\uFF09\uFF0C**\u4E0D\u8981\u56E0\u70BA\u300C\u9019\u6A23\u770B\u8D77\u4F86\n     \u5F88\u9577\u300D\u5C31\u81EA\u5DF1\u622A\u65B7\u3001\u53EA\u6311\u524D\u9762\u5E7E\u7B46\u6216\u770B\u8D77\u4F86\u91CD\u8981\u7684\u5E7E\u7B46**\u2014\u2014\u4F60\u4E0D\u662F\u5728\u5BEB\u6458\u8981\u7D66\u4EBA\u700F\u89BD\uFF0C\n     \u662F\u5728\u5EFA\u4E00\u4EFD\u67E5\u627E\u7528\u7684\u7D22\u5F15\uFF0C\u7F3A\u4E00\u7B46\uFF0C\u90A3\u4E00\u689D\u5728\u7D22\u5F15\u88E1\u5C31\u6C38\u4E45\u627E\u4E0D\u5230\u3002\n  4. entity \u7684 name\uFF1D\u8B58\u5225\u78BC\u539F\u6587\uFF08\u9010\u5B57\uFF0C\u4E0D\u610F\u8B6F\uFF09\u3002desc \u8981\u628A\u8A72\u8B58\u5225\u78BC\u5E95\u4E0B**\u6BCF\u4E00\u500B\u5B50\u6B04\u4F4D**\n     \uFF08\u4F8B\u5982\u539F\u7A3F\u6A19\u7684\u300C\u8A0A\u606F\uFF0F\u539F\u56E0\uFF0F\u8655\u7F6E\u300D\uFF0C\u6216\u8A72\u683C\u5F0F\u5C0D\u61C9\u7684\u5176\u4ED6\u6B04\u4F4D\uFF09\u90FD\u6458\u8981\u9032\u540C\u4E00\u53E5\u8A71\uFF0C\n     \u4E0D\u662F\u53EA\u6284\u7B2C\u4E00\u500B\u6B04\u4F4D\u2014\u2014\u8B80\u8005\u8981\u80FD\u5149\u770B desc \u5C31\u77E5\u9053\u767C\u751F\u4EC0\u9EBC\u3001\u70BA\u4EC0\u9EBC\u3001\u600E\u9EBC\u8655\u7406\uFF0C\n     \u4E26\u4FDD\u7559\u539F\u78BC\u3001\u53C3\u6578\u540D\u3001\u6578\u5B57\u3002\n  \u539F\u7A3F\u6C92\u6709\u9019\u7A2E\u91CD\u8907\u689D\u76EE\u7D50\u69CB\uFF08\u4E00\u822C\u6563\u6587\uFF0F\u5831\u544A\uFF09\u5C31\u4E0D\u53D7\u672C\u689D\u7D04\u675F\uFF0C\u7167\u4E00\u822C\u5BEB\u6CD5\u6574\u7406\u3002"
+    },
+    {
+      key: "common.graph",
+      v: 1,
+      when: "always",
+      value: "- facts\uFF1D[\u4E3B\u8A5E,\u8FF0\u8A5E,\u53D7\u8A5E] \u4E09\u5143\u7D44\uFF0C\u7AEF\u9EDE\u76E1\u91CF\u7528 entities \u7684\u540D\u5B57\uFF1B\u4EFB\u4F55\u6B04\u4F4D\u4E0D\u5F97\u542B\u96D9\u7BAD\u982D\u7B26\u865F\u3002\n- relations\uFF1D\u6982\u5FF5\u4E4B\u9593\u7684\u95DC\u4FC2\uFF08to \u586B\u53E6\u4E00\u500B\u6982\u5FF5\u7684 name\uFF09\u3002"
+    },
+    {
+      key: "common.output-shape",
+      v: 1,
+      when: "always",
+      value: '\nJSON \u5F62\u72C0\uFF08\u7167\u9019\u500B\u7D50\u69CB\u586B\uFF09\uFF1A\n{"gloss":"","tags":[""],"summary":"","points":["\u2026\u53E5\u5B50\u4E2D\u9593\u5D4C [[\u6982\u5FF5\u540D]]\u2026"],\n "no_concept":false,"reason":"",\n "concepts":[{"name":"","gloss":"","tags":[""],"summary":"","points":[""],\n   "entities":[{"name":"","type":"","desc":""}],\n   "facts":[["","",""]],\n   "relations":[{"to":"","pred":""}]}]}'
+    }
+  ]
+};
+
+// cypher-executor/src/lib/prompt-tables/read_image.json
+var read_image_default = {
+  kind: "prompt_table",
+  name: "read_image",
+  description: "\u628A\u542B\u5716\u7684\u6587\u4EF6\u9801\u8B80\u6210\u6587\u5B57\uFF08inkstone/Arcrun#300\uFF09\uFF1A\u5C0F\u5E6B\u624B\u628A\u4E00\u9801\u756B\u6210\u5716\u9001\u4F86\uFF0C\u96F2\u7AEF\u7528\u80FD\u8B80\u5716\u7684\u6A21\u578B\u8B80\u3002\u6A21\u578B\u8207\u6307\u793A\u653E\u540C\u4E00\u5F35\u8868\u3002",
+  expect: "text",
+  inject: "text",
+  max_tokens: 3072,
+  models: {
+    primary: "@cf/meta/llama-4-scout-17b-16e-instruct",
+    check: "@cf/mistralai/mistral-small-3.1-24b-instruct"
+  },
+  blocks: [
+    { key: "common.role", v: 1, when: "always", value: "\u4F60\u662F\u6587\u4EF6\u95B1\u8B80\u54E1\u3002\u9019\u5F35\u5716\u662F\u4E00\u4EFD\u6587\u4EF6\u7684\u5176\u4E2D\u4E00\u9801\uFF0C\u8ACB\u628A\u9801\u9762\u4E0A\u770B\u5F97\u5230\u7684\u6587\u5B57\u8B80\u51FA\u4F86\uFF0C\u7167\u539F\u6A23\u6284\u5BEB\uFF0C\u7528\u539F\u6587\u7684\u8A9E\u8A00\u8207\u9806\u5E8F\u3002" },
+    { key: "common.rules", v: 1, when: "always", value: "\u53EA\u8F38\u51FA\u9801\u9762\u4E0A\u7684\u5167\u5BB9\uFF0C\u4E0D\u8981\u524D\u8A00\u3001\u8AAA\u660E\u3001\u8A55\u8AD6\u6216\u63A8\u6E2C\u3002\u770B\u4E0D\u6E05\u695A\u7684\u5B57\u5BEB\u300C[\u770B\u4E0D\u6E05]\u300D\uFF0C\u4E0D\u8981\u81EA\u5DF1\u88DC\u3002\u6BCF\u4E00\u6BB5\u5167\u5BB9\u53EA\u8B80\u4E00\u6B21\uFF0C\u4E0D\u8981\u91CD\u8907\u8F38\u51FA\u76F8\u540C\u7684\u53E5\u5B50\u6216\u9078\u9805\u3002" },
+    { key: "common.tables", v: 1, when: "always", value: "\u9047\u5230\u8868\u683C\uFF0C\u8F38\u51FA\u6210 markdown \u8868\u683C\uFF1A\u9010\u5217\u7167\u6284\uFF0C\u6B04\u4F4D\u6578\u8207\u8868\u982D\u5C0D\u9F4A\uFF0C\u7A7A\u767D\u5132\u5B58\u683C\u7559\u7A7A\u3002\u6578\u5B57\u3001\u55AE\u4F4D\u3001\u65E5\u671F\u3001\u4EBA\u540D\u9010\u5B57\u7167\u6284\uFF0C\u4E0D\u8981\u63DB\u7B97\u6216\u4FEE\u6B63\u3002" },
+    { key: "common.checkbox", v: 1, when: "always", value: "\u9047\u5230\u52FE\u9078\u6846\uFF0C\u5DF2\u52FE\u7684\u5BEB\u300C\u2611 \u9078\u9805\u6587\u5B57\u300D\uFF0C\u6C92\u52FE\u7684\u5BEB\u300C\u2610 \u9078\u9805\u6587\u5B57\u300D\uFF0C\u6BCF\u500B\u9078\u9805\u53EA\u5BEB\u4E00\u884C\u3002" },
+    { key: "common.caption", v: 1, when: "always", attach: "caption", value: "\u9019\u4E00\u9801\u5DF2\u77E5\u7684\u6A19\u984C\u6587\u5B57\u5982\u4E0B\uFF08\u53EA\u4F9B\u5C0D\u7167\u9801\u9762\u4F4D\u7F6E\uFF0C\u5167\u5BB9\u4ECD\u4EE5\u5716\u4E0A\u5BE6\u969B\u770B\u5230\u7684\u70BA\u6E96\uFF09\uFF1A" },
+    { key: "check.independent", v: 1, when: "check", value: "\u9019\u662F\u7B2C\u4E8C\u6B21\u7368\u7ACB\u95B1\u8B80\uFF0C\u7528\u4F86\u548C\u7B2C\u4E00\u6B21\u4EA4\u53C9\u6838\u5C0D\uFF1A\u8ACB\u91CD\u65B0\u9010\u5B57\u8B80\uFF0C\u4E0D\u8981\u6191\u5370\u8C61\u6216\u63A8\u6E2C\u88DC\u5B57\uFF0C\u6578\u5B57\u8207\u4EBA\u540D\u5C24\u5176\u8981\u9010\u5B57\u78BA\u8A8D\u3002" }
+  ]
+};
+
+// cypher-executor/src/lib/prompt-table.ts
+var KIND_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+var KEY_RE = /^[a-z0-9][a-z0-9-]{0,39}\.[a-z0-9][a-z0-9-]{0,39}$/;
+var PromptBlockSchema = z.object({
+  key: z.string().regex(KEY_RE, "key \u5FC5\u9808\u662F <\u524D\u7DB4>.<\u540D\u7A31>\uFF08\u5C0F\u5BEB\u82F1\u6578\u8207\u9023\u5B57\u865F\uFF09"),
+  v: z.number().int().positive(),
+  when: z.string().refine((w) => w === "always" || KIND_RE.test(w), "when \u5FC5\u9808\u662F always \u6216\u7279\u4F8B\u7DE8\u865F"),
+  attach: z.string().regex(/^[a-z_]{1,32}$/).optional(),
+  value: z.union([z.string().min(1), z.array(z.string().min(1)).min(1), z.record(z.unknown())])
+});
+var PromptTableSchema = z.object({
+  kind: z.literal("prompt_table"),
+  name: z.string().regex(/^[a-z][a-z0-9_]*$/),
+  description: z.string().optional(),
+  expect: z.enum(["json_object", "text"]).default("json_object"),
+  inject: z.enum(["text", "json"]).default("text"),
+  // 讀圖表（inkstone/Arcrun#300）才用：用哪個模型讀、最多吐多少字——「模型與指示放同一張表」，
+  // 換模型＝換表，不改程式。沒填＝這台雲端萃取 AI 設定的預設。
+  models: z.object({ primary: z.string().min(1).optional(), check: z.string().min(1).optional() }).optional(),
+  max_tokens: z.number().int().min(256).max(8192).optional(),
+  blocks: z.array(PromptBlockSchema).min(1)
+}).superRefine((t, ctx) => {
+  const seen = /* @__PURE__ */ new Set();
+  for (const b of t.blocks) {
+    if (seen.has(b.key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `key \u91CD\u8907\uFF1A${b.key}` });
+    seen.add(b.key);
+  }
+});
+var BUILTIN_PROMPT_TABLES = {
+  extract_wiki: PromptTableSchema.parse(extract_wiki_default),
+  read_image: PromptTableSchema.parse(read_image_default)
+};
+function validatePromptTable(raw2) {
+  const r = PromptTableSchema.safeParse(raw2);
+  if (r.success) return { ok: true, table: r.data };
+  return { ok: false, error: r.error.issues.map((i) => `${i.path.join(".") || "(\u8868)"}\uFF1A${i.message}`).join("\uFF1B") };
+}
+var promptTableKey = (name) => `prompt_recipe:${name}`;
+async function loadPromptTable(recipes, name) {
+  const builtin = BUILTIN_PROMPT_TABLES[name] ?? null;
+  if (!recipes) return builtin ? { table: builtin, source: "builtin" } : null;
+  let raw2;
+  try {
+    raw2 = await recipes.get(promptTableKey(name));
+  } catch (e) {
+    if (!builtin) throw e;
+    return { table: builtin, source: "builtin_fallback", note: `\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u88DD\u7684\u8868\uFF0C\u7528\u5167\u5EFA\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (!raw2) return builtin ? { table: builtin, source: "builtin" } : null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw2);
+  } catch {
+    parsed = null;
+  }
+  const v = validatePromptTable(parsed);
+  if (v.ok) return { table: v.table, source: "installed" };
+  if (!builtin) return null;
+  return { table: builtin, source: "builtin_fallback", note: `\u9019\u53F0\u96F2\u7AEF\u88DD\u7684\u8868\u4E0D\u5408\u683C\uFF0C\u7528\u5167\u5EFA\uFF1A${v.error}` };
+}
+function sanitizeTableInput(rawKinds, rawHints) {
+  const kinds = Array.isArray(rawKinds) ? [...new Set(rawKinds.filter((k) => typeof k === "string" && KIND_RE.test(k)))].slice(0, 16) : [];
+  const hints = {};
+  if (rawHints && typeof rawHints === "object" && !Array.isArray(rawHints)) {
+    for (const [k, v] of Object.entries(rawHints)) {
+      if (!/^[a-z_]{1,32}$/.test(k)) continue;
+      if (Array.isArray(v)) {
+        const items = v.filter((x) => typeof x === "string" && x.trim() !== "").map((x) => x.slice(0, 120)).slice(0, 500);
+        if (items.length > 0) hints[k] = items;
+      }
+    }
+  }
+  return { kinds, hints };
+}
+function blockText(value) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.join("\n");
+  return JSON.stringify(value);
+}
+function assemblePromptTable(table, input, source) {
+  const obj = {};
+  const lines = [];
+  const used = [];
+  const known = /* @__PURE__ */ new Set();
+  for (const b of table.blocks) {
+    if (b.when !== "always") known.add(b.when);
+    if (b.when !== "always" && !input.kinds.includes(b.when)) continue;
+    if (b.attach) {
+      const data = input.hints[b.attach];
+      if (!Array.isArray(data) || data.length === 0) continue;
+      obj[b.key] = { \u6307\u793A: b.value, [b.attach]: data };
+      lines.push(`${blockText(b.value)}
+- ${data.join("\n- ")}`);
+    } else {
+      obj[b.key] = b.value;
+      lines.push(blockText(b.value));
+    }
+    used.push(`${b.key}@${b.v}`);
+  }
+  const src = promptTableUserMessage(source.pageName, source.text);
+  const unknownKinds = input.kinds.filter((k) => !known.has(k));
+  if (table.inject === "json") {
+    return { system: JSON.stringify(obj, null, 1), user: src, used, unknownKinds };
+  }
+  return { user: `${lines.join("\n")}
+
+${src}`, used, unknownKinds };
+}
+function promptTableUserMessage(pageName, text) {
+  return `\u539F\u7A3F\uFF08\u6A94\u540D\uFF1A${pageName}\uFF09\uFF1A
+${text}`;
 }
 
 // cypher-executor/src/lib/portal-error-catalog.ts
@@ -16757,6 +16974,7 @@ function normalizeFolderNode(raw2) {
     total_files: num2(r.total_files),
     synced_files: num2(r.synced_files),
     pending_files: num2(r.pending_files),
+    error_files: num2(r.error_files),
     unsupported_files: num2(r.unsupported_files),
     excluded_files: num2(r.excluded_files)
   };
@@ -16800,6 +17018,7 @@ function summarizeFolderTree(tree) {
   let total = 0;
   let synced = 0;
   let pending = 0;
+  let errors = 0;
   let unsupported = 0;
   let excluded = 0;
   let skippedDirs = 0;
@@ -16808,6 +17027,7 @@ function summarizeFolderTree(tree) {
     total += n.total_files;
     synced += n.synced_files;
     pending += n.pending_files;
+    errors += n.error_files ?? 0;
     unsupported += n.unsupported_files;
     excluded += n.excluded_files;
   }
@@ -16826,6 +17046,11 @@ function summarizeFolderTree(tree) {
     total_files: total,
     synced_files: synced,
     pending_files: pending,
+    // inkstone/arcrun-rag#246 c18738：用戶看的數字與小幫手同一套——
+    // 分母 handled_files＝可讀檔＝已上傳＋待上傳（待上傳已含出錯）；error_files 是其中出錯的。
+    // 不在知識範圍的（格式讀不了、程式碼）不進分母，total_files 保留給需要「資料夾裡共幾個檔」的人。
+    handled_files: synced + pending,
+    error_files: errors,
     unsupported_files: unsupported,
     excluded_files: excluded,
     skipped_dirs: skippedDirs,
@@ -16929,7 +17154,28 @@ portalRouter.post(
     const pageName = String(body?.page_name ?? "").trim();
     const srcText = String(body?.text ?? "");
     const daemonPrompt = String(body?.prompt ?? "").trim();
-    const expectShape = parseExpectShape(body?.expect, Boolean(daemonPrompt));
+    const tableName = daemonPrompt ? "" : String(body?.prompt_table ?? "").trim();
+    let tableMode = null;
+    if (tableName) {
+      if (!pageName || !srcText.trim()) return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
+      const loaded = await loadPromptTable(c.env.RECIPES, tableName);
+      if (!loaded) return c.json({ error: `\u6C92\u6709\u53EB\u300C${tableName}\u300D\u7684\u6307\u793A\u8868`, code: "prompt_table_missing" }, 400);
+      const assembled = assemblePromptTable(loaded.table, sanitizeTableInput(body?.kinds, body?.hints), { pageName, text: srcText });
+      tableMode = {
+        ...assembled.system ? { system: assembled.system } : {},
+        user: assembled.user,
+        expect: loaded.table.expect,
+        meta: {
+          name: loaded.table.name,
+          source: loaded.source,
+          inject: loaded.table.inject,
+          blocks: assembled.used,
+          ...assembled.unknownKinds.length ? { unknown_kinds: assembled.unknownKinds } : {},
+          ...loaded.note ? { note: loaded.note } : {}
+        }
+      };
+    }
+    const expectShape = tableMode && !body?.expect ? tableMode.expect : parseExpectShape(body?.expect, Boolean(daemonPrompt));
     if (!daemonPrompt && (!pageName || !srcText.trim()))
       return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
     let aiConfig = DEFAULT_EXTRACT_AI_CONFIG;
@@ -16943,7 +17189,7 @@ portalRouter.post(
       return honestStop(c, "ai_binding_missing", configReadError);
     }
     const REL = ">".repeat(2);
-    const prompt = daemonPrompt || `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
+    const prompt = tableMode ? tableMode.user : daemonPrompt || `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
 # ${pageName}
 ## \u4E00\u53E5\u8A71\u5B9A\u7FA9
 \uFF08\u4E00\u884C\uFF09
@@ -16959,7 +17205,8 @@ ${srcText}`;
     try {
       const ran = await runExtractAi(c.env, credentialOwner(c.env), aiConfig, {
         prompt,
-        maxTokens: daemonPrompt ? 8192 : 2048,
+        ...tableMode?.system ? { system: tableMode.system } : {},
+        maxTokens: daemonPrompt || tableMode ? 8192 : 2048,
         temperature: 0.2,
         // 🔴 Arcrun#134（2026-08-27）：呼叫端說它要一個 JSON 物件 ⇒ **就用模型保證得了的方式去要**
         //	（`response_format: json_object` 走受限解碼，語法由平台保證 ⇒ 骰子拿掉）。
@@ -16979,7 +17226,7 @@ ${srcText}`;
       }
       const raw2 = norm.text;
       if (!raw2) return c.json({ error: `${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} \u6C92\u6709\u56DE\u50B3\u5167\u5BB9` }, 502);
-      if (daemonPrompt) {
+      if (daemonPrompt || tableMode) {
         if (expectShape === "json_object") {
           const check = hasJsonObject(raw2);
           if (!check.ok) {
@@ -16993,7 +17240,7 @@ ${srcText}`;
             );
           }
         }
-        return c.json({ success: true, output: raw2, output_kind: norm.kind });
+        return c.json({ success: true, output: raw2, output_kind: norm.kind, ...tableMode ? { prompt: tableMode.meta } : {} });
       }
       const marker = `# ${pageName}`;
       const idx = raw2.lastIndexOf(marker);
@@ -17001,6 +17248,72 @@ ${srcText}`;
     } catch (e) {
       return c.json({ error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
     }
+  })
+);
+var READ_IMAGE_MAX_BASE64 = 6 * 1024 * 1024;
+var READ_IMAGE_MIMES = /* @__PURE__ */ new Set(["image/png", "image/jpeg", "image/webp"]);
+portalRouter.post(
+  "/portal/daemon/read-image",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const body = await c.req.json().catch(() => null);
+    const pageName = String(body?.page_name ?? "").trim();
+    const page = Number(body?.page ?? 0);
+    const pass = String(body?.pass ?? "primary").trim();
+    const mime = String(body?.mime ?? "image/png").trim().toLowerCase();
+    const b642 = String(body?.image_base64 ?? "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+    const caption = String(body?.caption ?? "").trim().slice(0, 300);
+    if (!pageName) return c.json({ error: "page_name \u5FC5\u586B" }, 400);
+    if (!Number.isInteger(page) || page < 1 || page > 1e4) return c.json({ error: "page \u5FC5\u9808\u662F 1 \u4EE5\u4E0A\u7684\u6574\u6578\u9801\u78BC" }, 400);
+    if (pass !== "primary" && pass !== "check") return c.json({ error: "pass \u53EA\u80FD\u662F 'primary' \u6216 'check'" }, 400);
+    if (!READ_IMAGE_MIMES.has(mime)) return c.json({ error: `mime \u53EA\u6536 ${[...READ_IMAGE_MIMES].join("\u3001")}` }, 400);
+    if (!b642) return c.json({ error: "image_base64 \u5FC5\u586B" }, 400);
+    if (b642.length > READ_IMAGE_MAX_BASE64) return c.json({ error: `\u5716\u592A\u5927\uFF08base64 \u8D85\u904E ${READ_IMAGE_MAX_BASE64} \u5B57\u5143\uFF09`, code: "image_too_large" }, 413);
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b642)) return c.json({ error: "image_base64 \u4E0D\u662F\u5408\u6CD5\u7684 base64" }, 400);
+    const tableName = String(body?.prompt_table ?? "read_image").trim();
+    const loaded = await loadPromptTable(c.env.RECIPES, tableName);
+    if (!loaded) return c.json({ error: `\u6C92\u6709\u53EB\u300C${tableName}\u300D\u7684\u6307\u793A\u8868`, code: "prompt_table_missing" }, 400);
+    const assembled = assemblePromptTable(
+      loaded.table,
+      { kinds: pass === "check" ? ["check"] : [], hints: caption ? { caption: [caption] } : {} },
+      { pageName: `${pageName} \u7B2C ${page} \u9801`, text: "\uFF08\u898B\u5716\u7247\uFF09" }
+    );
+    let aiConfig = DEFAULT_EXTRACT_AI_CONFIG;
+    try {
+      aiConfig = await readExtractAiConfig(c.env);
+    } catch {
+    }
+    if (aiConfig.recipe === DEFAULT_EXTRACT_AI_CONFIG.recipe && !c.env.AI) return honestStop(c, "ai_binding_missing");
+    const tableModel = loaded.table.models?.[pass];
+    const ran = await runExtractAi(c.env, credentialOwner(c.env), aiConfig, {
+      prompt: assembled.user,
+      ...assembled.system ? { system: assembled.system } : {},
+      images: [`data:${mime};base64,${b642}`],
+      ...tableModel ? { model: tableModel } : {},
+      maxTokens: loaded.table.max_tokens ?? 3072,
+      temperature: 0.1,
+      // 抑制「同一頁重複亂轉」（實測 mistral 讀勾選框多的表單會轉到吃滿 token）
+      extra: { frequency_penalty: 0.4 },
+      jsonObject: false
+    });
+    if (!ran.ok) {
+      if (ran.code === "ai_binding_missing") return honestStop(c, "ai_binding_missing");
+      return c.json({ error: `\u96F2\u7AEF\u8B80\u5716\uFF1A${ran.error}`, code: ran.code }, 502);
+    }
+    const norm = normalizeAiText(ran.out);
+    if (norm.kind === "unrenderable") return c.json({ error: `\u96F2\u7AEF\u8B80\u5716\uFF1A\u56DE\u61C9\u9084\u539F\u4E0D\u56DE\u6587\u5B57\uFF08${norm.reason ?? "\u672A\u77E5\u539F\u56E0"}\uFF09`, code: "ai_output_unrenderable" }, 502);
+    if (!norm.text.trim()) return c.json({ error: "\u96F2\u7AEF\u8B80\u5716\uFF1A\u6A21\u578B\u6C92\u6709\u56DE\u50B3\u5167\u5BB9", code: "ai_output_empty" }, 502);
+    const usage = ran.out?.usage;
+    return c.json({
+      success: true,
+      output: norm.text.trim(),
+      model: ran.model,
+      ...usage && typeof usage === "object" ? { usage } : {},
+      pass,
+      page,
+      prompt: { name: loaded.table.name, source: loaded.source, blocks: assembled.used, ...loaded.note ? { note: loaded.note } : {} }
+    });
   })
 );
 portalRouter.post(
@@ -17382,6 +17695,55 @@ portalRouter.delete(
     if (!existing) return c.json({ success: true, already: true });
     const found = await deleteKbdbRecord(c.env, existing.record_id);
     return c.json({ success: true, removed: found });
+  })
+);
+function extractPromptName(c) {
+  const name = (c.req.param("name") ?? "extract_wiki").trim();
+  return Object.prototype.hasOwnProperty.call(BUILTIN_PROMPT_TABLES, name) ? name : null;
+}
+portalRouter.get(
+  "/portal/admin/extract-prompt/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = extractPromptName(c);
+    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
+    const loaded = await loadPromptTable(c.env.RECIPES, name);
+    if (!loaded) return c.json({ error: "\u8B80\u4E0D\u5230\u6307\u793A\u8868" }, 502);
+    return c.json({
+      success: true,
+      source: loaded.source,
+      ...loaded.note ? { note: loaded.note } : {},
+      blocks: loaded.table.blocks.map((b) => `${b.key}@${b.v}`),
+      table: loaded.table,
+      builtin: BUILTIN_PROMPT_TABLES[name]
+    });
+  })
+);
+portalRouter.put(
+  "/portal/admin/extract-prompt/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = extractPromptName(c);
+    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
+    const body = await c.req.json().catch(() => null);
+    const v = validatePromptTable(body);
+    if (!v.ok) return c.json({ error: `\u8868\u4E0D\u5408\u683C\uFF1A${v.error}` }, 400);
+    if (v.table.name !== name) return c.json({ error: `\u8868\u7684 name\uFF08${v.table.name}\uFF09\u8207\u8DEF\u5F91\uFF08${name}\uFF09\u4E0D\u4E00\u81F4` }, 400);
+    await c.env.RECIPES.put(promptTableKey(name), JSON.stringify(v.table));
+    return c.json({ success: true, source: "installed", blocks: v.table.blocks.map((b) => `${b.key}@${b.v}`) });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/extract-prompt/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = extractPromptName(c);
+    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
+    await c.env.RECIPES.delete(promptTableKey(name));
+    return c.json({ success: true, source: "builtin" });
   })
 );
 portalRouter.get(

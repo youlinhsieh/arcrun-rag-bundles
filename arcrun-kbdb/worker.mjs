@@ -1189,7 +1189,7 @@ async function listEntries(db, f = {}) {
   const limit = Math.min(f.limit ?? 100, 1e3);
   const offset = f.offset ?? 0;
   const pageSizeKnown = Number.isFinite(limit) && limit > 0;
-  const rowsRes = await db.all(`SELECT * FROM entries ${where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
+  const rowsRes = await db.all(`SELECT ${f.view === "identity" ? IDENTITY_COLUMNS : "*"} FROM entries ${where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
   const entries = rowsRes.results ?? [];
   let total;
   if (pageSizeKnown && entries.length > 0 && entries.length < limit) total = offset + entries.length;
@@ -1562,13 +1562,14 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   }
   return applyRelativeCut(hits.slice(0, capped));
 }
-var NOT_MACHINERY_PREDICATE, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
+var NOT_MACHINERY_PREDICATE, IDENTITY_COLUMNS, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
 var init_entry_crud = __esm({
   "kbdb/src/actions/entry-crud.ts"() {
     "use strict";
     init_library_predicate();
     init_library_map_store();
     NOT_MACHINERY_PREDICATE = "(src_id IS NULL AND entry_type <> 'record' AND entry_type <> 'sheet' AND entry_type <> 'field' AND entry_type <> 'system')";
+    IDENTITY_COLUMNS = "id, entry_type, owner_id, page_name, created_at, updated_at, json_object('source_path', json_extract(metadata_json, '$.source_path'), 'source', json_extract(metadata_json, '$.source'), 'machine', json_extract(metadata_json, '$.machine'), 'card_hash', json_extract(metadata_json, '$.card_hash'), 'card_blocks', json_extract(metadata_json, '$.card_blocks'), 'library', json_extract(metadata_json, '$.library'), 'card_rels', json_extract(metadata_json, '$.card_rels')) AS metadata_json";
     MAX_LIKE_Q_BYTES = 48;
     MAX_LIKE_TERMS = 6;
     utf8Len = (s) => new TextEncoder().encode(s).length;
@@ -5263,7 +5264,8 @@ entryRoutes.get("/", async (c) => {
     // 地圖摘要不管新舊都不是使用者寫的內容。
     exclude_kind: parseLibraryParam(c.req.query("exclude_kind")),
     limit: c.req.query("limit") ? Number(c.req.query("limit")) : void 0,
-    offset: c.req.query("offset") ? Number(c.req.query("offset")) : void 0
+    offset: c.req.query("offset") ? Number(c.req.query("offset")) : void 0,
+    view: c.req.query("view") === "identity" ? "identity" : void 0
   });
   return c.json({ success: true, entries, count: entries.length, total });
 });
