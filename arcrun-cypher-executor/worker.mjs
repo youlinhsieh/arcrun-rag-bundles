@@ -7761,6 +7761,33 @@ var init_trace_redaction = __esm({
 });
 
 // cypher-executor/src/graph-executor.ts
+function foreachWidth(requested, itemCount) {
+  if (typeof requested !== "number" || !Number.isFinite(requested)) return 1;
+  return Math.max(1, Math.min(Math.floor(requested), MAX_FOREACH_CONCURRENCY, itemCount));
+}
+async function runBounded(items, width, run2) {
+  const results = new Array(items.length);
+  let next = 0;
+  let failed = false;
+  let firstError;
+  const lane = async () => {
+    while (!failed && next < items.length) {
+      const i = next++;
+      try {
+        results[i] = await run2(items[i]);
+      } catch (e) {
+        if (!failed) {
+          failed = true;
+          firstError = e;
+        }
+        return;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: width }, lane));
+  if (failed) throw firstError;
+  return results;
+}
 function propagateCtx(context, upstreamResult, upstreamNodeId) {
   const baseCtx = typeof context === "object" && context !== null ? context : {};
   const baseResult = typeof upstreamResult === "object" && upstreamResult !== null ? upstreamResult : {};
@@ -7886,7 +7913,7 @@ function getIterableFromContext(context, key) {
   }
   return [];
 }
-var GraphExecutor;
+var GraphExecutor, MAX_FOREACH_CONCURRENCY;
 var init_graph_executor = __esm({
   "cypher-executor/src/graph-executor.ts"() {
     "use strict";
@@ -8277,13 +8304,18 @@ var init_graph_executor = __esm({
               }
               const iterResults = [];
               const baseForeachCtx = propagateCtx(context, ownResult, node.id);
-              for (const item of items) {
+              const runItem = (item) => {
                 const itemContext = {
                   ...baseForeachCtx,
                   [iteratorKey]: item
                 };
-                const itemResult = await this.executeNode(nextNode, graph, itemContext, /* @__PURE__ */ new Set(), trace, fanIn, kvStore);
-                iterResults.push(itemResult);
+                return this.executeNode(nextNode, graph, itemContext, /* @__PURE__ */ new Set(), trace, fanIn, kvStore);
+              };
+              const width = foreachWidth(edge.concurrency, items.length);
+              if (width <= 1) {
+                for (const item of items) iterResults.push(await runItem(item));
+              } else {
+                iterResults.push(...await runBounded(items, width, runItem));
               }
               if (iterResults.length > 0) {
                 const failures = iterResults.filter(
@@ -8343,6 +8375,7 @@ var init_graph_executor = __esm({
         return returnValue;
       }
     };
+    MAX_FOREACH_CONCURRENCY = 6;
   }
 });
 
@@ -8368,6 +8401,8 @@ var init_schemas = __esm({
         type: z.enum(["PIPE", "IF", "FOREACH", "CONTINUE", "IS_A", "ON_SUCCESS", "ON_FAIL", "ON_TRUE", "ON_FALSE", "ON_BRANCH", "ON_CLICK", "CALLS_SUBFLOW", "CONTAINS", "HAS_STYLE", "HAS_BEHAVIOR"]),
         condition: z.string().optional(),
         iterator: z.string().optional(),
+        concurrency: z.number().int().min(1).max(64).optional(),
+        // FOREACH 並行圈數（引擎再夾到 MAX_FOREACH_CONCURRENCY）
         branch: z.string().optional()
         // ON_BRANCH 的具名分支（SDD workflow-discovery 3.11）
       }))
@@ -11851,6 +11886,7 @@ async function searchSimilarComponents(registryBase, nodeName) {
 }
 
 // cypher-executor/src/actions/graph-builder.ts
+var FOREACH_LABEL_RE = /^(?:對每個|FOREACH)\s+(\w+)(?:\s+(?:並行|PARALLEL)\s*[（(]?\s*(\d+)\s*[）)]?)?$/i;
 function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
   const nodes = [...parsed.nodeNames].map((name) => {
     const nr = nodeResults[name];
@@ -11863,10 +11899,12 @@ function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
   });
   const edges = parsed.edges.map((e) => {
     let iterator;
+    let concurrency;
     let label = e.label;
-    const foreachMatch = label.match(/^(?:對每個|FOREACH)\s+(\w+)$/i);
+    const foreachMatch = label.match(FOREACH_LABEL_RE);
     if (foreachMatch) {
       iterator = foreachMatch[1];
+      if (foreachMatch[2]) concurrency = Number(foreachMatch[2]);
       label = "\u5C0D\u6BCF\u500B";
     }
     let branch;
@@ -11881,6 +11919,7 @@ function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
       type: toEdgeType(label)
     };
     if (iterator) edge.iterator = iterator;
+    if (concurrency !== void 0) edge.concurrency = concurrency;
     if (branch) edge.branch = branch;
     return edge;
   });
