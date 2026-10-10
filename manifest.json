@@ -1,24 +1,24 @@
 {
  "schema": 2,
- "release": "1.4.94",
- "fingerprint": "dbee2c6b1e03dbb2a27d2f74448fb9c36f256ad449d6fccbf56abcabc3a0eb0a",
+ "release": "1.4.95",
+ "fingerprint": "74f8f9ebcfbdae3ca7e5f46dc5b2dabcaade0056db25af6484e9570fcea5c05c",
  "built": "2026-10-10",
- "source": "Arcrun@8d2ffc07a64a",
+ "source": "Arcrun@35d93f37360c",
  "daemon": {
-  "version": "0.18.79",
-  "built": "20261010-1107",
-  "notes": "同一個知識庫裡的檔案改成好幾份同時整理，上萬份檔案不用再一份一份排隊",
+  "version": "0.18.89",
+  "built": "20261010-1646",
+  "notes": "內容一模一樣的檔，不管放在哪兩個資料夾，只整理一次、只留一張卡",
   "mac": {
-   "file": "daemon/Arcrun-0.18.79.dmg",
-   "sha256": "b10034e2c05f1b1ae6f68b200967ddcdbc5e399763d290446dee665ef3a9cc1f"
+   "file": "daemon/Arcrun-0.18.89.dmg",
+   "sha256": "c33208d996bebc95c016015d01405fb3bec2b14cc212cd2fd813b5245d544dcf"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.79.exe",
-   "sha256": "b0e395df823221761e6f60ec8032ed9b5b1f1e93d41b5bcb2e6146fe86cf4ce8"
+   "file": "daemon/Arcrun-win-0.18.89.exe",
+   "sha256": "11e74add3e4c475741a401bf21895a275a5d43a5fc2a543f5f5cdc87964e06c6"
   },
   "msix": {
-   "file": "daemon/Arcrun-0.18.79.msix",
-   "sha256": "d06e0c2b9a5344dc13f2ffa5a9547f35fdacc969280b5ac8323ac4aa296ff373"
+   "file": "daemon/Arcrun-0.18.89.msix",
+   "sha256": "03a9353b82a5401b5f7d2b8c9b6d68beee5064c1da7bd2ab857e2a1a5bdf1598"
   }
  },
  "core": [
@@ -208,7 +208,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1009275,
+   "js_bytes": 1018533,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -245,10 +245,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "8d2ffc07a64a4a47e8039d9bfd2b4495d612f903",
-   "source_content_sha256": "a4bcf60faa65cce9c51102e9305fd2049ed765b2c05a37712d66c92f9e3dd53a",
-   "sha256": "a4bcf60faa65cce9c51102e9305fd2049ed765b2c05a37712d66c92f9e3dd53a",
-   "bytes": 1009275
+   "source_commit": "35d93f37360c987463fd307c76c3d1fe732dd0f0",
+   "source_content_sha256": "6d5d9f8567818d11bb80a631eb833a5955e8b884d4613e7b0f1d32e8a884b478",
+   "sha256": "6d5d9f8567818d11bb80a631eb833a5955e8b884d4613e7b0f1d32e8a884b478",
+   "bytes": 1018533
   },
   {
    "name": "arcrun-date-ops",
@@ -946,7 +946,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1009275,
+   "js_bytes": 1018533,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -983,8 +983,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "8d2ffc07a64a4a47e8039d9bfd2b4495d612f903",
-   "source_content_sha256": "a4bcf60faa65cce9c51102e9305fd2049ed765b2c05a37712d66c92f9e3dd53a",
+   "source_commit": "35d93f37360c987463fd307c76c3d1fe732dd0f0",
+   "source_content_sha256": "6d5d9f8567818d11bb80a631eb833a5955e8b884d4613e7b0f1d32e8a884b478",
    "first_install": true
   },
   {

@@ -7660,7 +7660,7 @@ function recordNodeSteps(env, apiKey, workflowName, steps, ctx) {
   recordTelemetry(env, apiKey, {
     event_type: "node_steps",
     workflow_name: workflowName,
-    duration_ms: steps.reduce((sum, s) => sum + s.duration_ms, 0),
+    duration_ms: steps.reduce((sum2, s) => sum2 + s.duration_ms, 0),
     ...failed > 0 ? { error_code: "node_error" } : {},
     steps
   }, ctx);
@@ -14800,6 +14800,174 @@ function computeBattery(input) {
   return { state: "normal", remaining_percent: remaining, billing: false, plan, basis, estimated_overage_usd: usd, warn: false, saver: false, message: null, reset_at };
 }
 
+// cypher-executor/src/lib/cf-usage.ts
+var FREE = {
+  d1_write: 1e5,
+  d1_read: 5e6,
+  requests: 1e5,
+  vec_store: 5e6,
+  vec_query: 3e7,
+  ai: 1e4
+};
+var PAID = {
+  d1_write: 5e7,
+  d1_read: 25e9,
+  requests: 1e7,
+  vec_store: 1e7,
+  vec_query: 5e7,
+  ai: 1e4
+};
+var UNIT_USD = {
+  d1_write: 1 / 1e6,
+  d1_read: 1e-3 / 1e6,
+  requests: 0.3 / 1e6,
+  vec_store: 0.05 / 1e8,
+  vec_query: 0.01 / 1e6,
+  ai: 0.011 / 1e3
+};
+var KEYS = ["ai", "vec_store", "vec_query", "d1_write", "d1_read", "requests"];
+var DELAY_SEC = 120;
+function utcDay(now2) {
+  return new Date(now2).toISOString().slice(0, 10);
+}
+function nextUtcMidnight(now2) {
+  const d = new Date(now2);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).toISOString();
+}
+function nextMonthStart(now2) {
+  const d = new Date(now2);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString();
+}
+var sum = (s) => Object.values(s).reduce((a, b) => a + (Number(b) || 0), 0);
+var round4 = (n) => Math.round(n * 1e4) / 1e4;
+function inferPlan(m) {
+  const over = (s, line) => Object.values(s).some((v) => v > line);
+  return over(m.d1_write, FREE.d1_write) || over(m.d1_read, FREE.d1_read) || over(m.requests, FREE.requests) ? "paid" : "free";
+}
+function buildUsage(input) {
+  const { now: now2, data } = input;
+  const plan = input.plan ?? inferPlan(data);
+  const lines = plan === "paid" ? PAID : FREE;
+  const today = utcDay(now2);
+  const minutesToday = Math.max((now2 - Date.parse(`${today}T00:00:00Z`)) / 6e4, 1);
+  const items = [];
+  for (const key of KEYS) {
+    const series = data[key];
+    const line = lines[key];
+    const daily = key === "ai" || plan === "free" && (key === "d1_write" || key === "d1_read" || key === "requests");
+    const period = daily ? "day" : "month";
+    let used;
+    if (key === "vec_store") used = Math.max(0, ...Object.values(series).map((v) => Number(v) || 0));
+    else used = daily ? Number(series[today] ?? 0) : sum(series);
+    const item = {
+      key,
+      used: Math.round(used),
+      limit: line,
+      period,
+      reset_at: daily ? nextUtcMidnight(now2) : nextMonthStart(now2),
+      unit_usd: UNIT_USD[key]
+    };
+    if (key !== "vec_store" && key !== "vec_query") {
+      item.rate_per_min = Math.round(Number(series[today] ?? 0) / minutesToday * 100) / 100;
+    }
+    let over;
+    if (daily) over = Object.values(series).reduce((a, v) => a + Math.max(0, (Number(v) || 0) - line), 0);
+    else over = Math.max(0, used - line);
+    item.cost_usd = plan === "paid" || key === "ai" ? round4(over * UNIT_USD[key]) : 0;
+    items.push(item);
+  }
+  return {
+    plan,
+    base_usd: plan === "paid" ? 5 : void 0,
+    fetched_at: new Date(now2).toISOString(),
+    delay_sec: DELAY_SEC,
+    brake: input.brake,
+    items,
+    source: "cf",
+    estimated: false
+  };
+}
+function buildSelfUsage(input) {
+  const { now: now2, d1 } = input;
+  const plan = d1.exceeded_free_daily ? "paid" : "free";
+  const lines = plan === "paid" ? PAID : FREE;
+  const minutesToday = Math.max((now2 - Date.parse(`${utcDay(now2)}T00:00:00Z`)) / 6e4, 1);
+  const mk = (key, dayUsed, monthUsed) => {
+    const daily = plan === "free";
+    const used = daily ? dayUsed : monthUsed;
+    const over = Math.max(0, used - lines[key]);
+    return {
+      key,
+      used: Math.round(used),
+      limit: lines[key],
+      period: daily ? "day" : "month",
+      reset_at: daily ? nextUtcMidnight(now2) : nextMonthStart(now2),
+      rate_per_min: Math.round(dayUsed / minutesToday * 100) / 100,
+      unit_usd: UNIT_USD[key],
+      cost_usd: plan === "paid" ? round4(over * UNIT_USD[key]) : 0
+    };
+  };
+  return {
+    plan,
+    base_usd: plan === "paid" ? 5 : void 0,
+    fetched_at: new Date(now2).toISOString(),
+    delay_sec: 0,
+    brake: input.brake,
+    items: [mk("d1_write", d1.day_written, d1.month_written), mk("d1_read", d1.day_read, d1.month_read)],
+    source: "self",
+    estimated: true
+  };
+}
+var GQL = `query($a:String!,$f:Date!,$t:Date!){viewer{accounts(filter:{accountTag:$a}){
+ d1:d1AnalyticsAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{rowsRead rowsWritten} dimensions{date}}
+ ai:aiInferenceAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{totalNeurons} dimensions{date}}
+ vq:vectorizeV2QueriesAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{queriedVectorDimensions} dimensions{date}}
+ vs:vectorizeV2StorageAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){max{storedVectorDimensions} dimensions{date}}
+ w:workersInvocationsAdaptive(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{requests} dimensions{date}}
+}}}`;
+var CfAnalyticsError = class extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+  status;
+};
+function addTo(s, date, v, mode = "sum") {
+  if (!date) return;
+  const n = Number(v) || 0;
+  s[date] = mode === "max" ? Math.max(s[date] ?? 0, n) : (s[date] ?? 0) + n;
+}
+function parseCfAnalytics(body) {
+  const accounts = body?.data?.viewer?.accounts;
+  const acc = accounts?.[0];
+  if (!acc) return null;
+  const out = { d1_write: {}, d1_read: {}, ai: {}, vec_query: {}, vec_store: {}, requests: {} };
+  for (const r of acc.d1 ?? []) {
+    addTo(out.d1_write, r.dimensions?.date, r.sum?.rowsWritten);
+    addTo(out.d1_read, r.dimensions?.date, r.sum?.rowsRead);
+  }
+  for (const r of acc.ai ?? []) addTo(out.ai, r.dimensions?.date, r.sum?.totalNeurons);
+  for (const r of acc.vq ?? []) addTo(out.vec_query, r.dimensions?.date, r.sum?.queriedVectorDimensions);
+  for (const r of acc.vs ?? []) addTo(out.vec_store, r.dimensions?.date, r.max?.storedVectorDimensions, "max");
+  for (const r of acc.w ?? []) addTo(out.requests, r.dimensions?.date, r.sum?.requests);
+  return out;
+}
+async function fetchCfAnalytics(token, accountId, now2, f = fetch) {
+  const today = utcDay(now2);
+  const res = await f("https://api.cloudflare.com/client/v4/graphql", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query: GQL, variables: { a: accountId, f: `${today.slice(0, 7)}-01`, t: today } })
+  });
+  if (!res.ok) throw new CfAnalyticsError(`CF GraphQL \u2192 HTTP ${res.status}`, res.status);
+  const body = await res.json();
+  const data = parseCfAnalytics(body);
+  if (!data || body.errors && body.errors.length) {
+    throw new CfAnalyticsError(`CF GraphQL \u8B80\u4E0D\u5230\u5206\u6790\uFF1A${body.errors?.[0]?.message ?? "\u7121\u5E33\u865F\u8CC7\u6599"}`, 200);
+  }
+  return data;
+}
+
 // cypher-executor/src/routes/portal.ts
 init_dist();
 init_kbdb_proxy();
@@ -17307,11 +17475,23 @@ portalRouter.get(
     });
   })
 );
+function daemonKeyDenied(c) {
+  const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  let ns = "";
+  try {
+    ns = knowledgeOwner(c.env);
+  } catch {
+    ns = "";
+  }
+  if (!ns || !constantTimeEqual(apiKey, ns)) return c.json({ error: "X-Arcrun-API-Key \u4E0D\u5C6C\u65BC\u9019\u53F0\u5BE6\u4F8B" }, 401);
+  return null;
+}
 portalRouter.get(
   "/portal/daemon/battery",
   (c) => run(c, async () => {
-    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
-    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const denied = daemonKeyDenied(c);
+    if (denied) return denied;
     const [settingsRes, usageRes] = await Promise.all([
       kbdbFetch3(c.env, "/usage-brakes/settings"),
       kbdbFetch3(c.env, "/usage-brakes/usage")
@@ -17330,6 +17510,66 @@ portalRouter.get(
         month: usage.month
       })
     });
+  })
+);
+var USAGE_TTL_MS = 6e4;
+var usageCache = null;
+var BRAKE_COVERS = ["d1_write", "d1_read"];
+portalRouter.get(
+  "/portal/daemon/usage",
+  (c) => run(c, async () => {
+    const denied = daemonKeyDenied(c);
+    if (denied) return denied;
+    const now2 = Date.now();
+    const token = c.env.CF_SECRETS_TOKEN_FROM_REQUEST || c.env.CF_SECRETS_API_TOKEN || "";
+    const accountId = c.env.CF_ACCOUNT_ID || "";
+    const priv = isPrivateCloud(c.env);
+    const cacheKey = `${accountId}|${priv}`;
+    if (usageCache && usageCache.key === cacheKey && now2 - usageCache.at < USAGE_TTL_MS) {
+      return c.json({ success: true, usage: usageCache.snap });
+    }
+    const [settingsRes, usageRes] = await Promise.all([
+      kbdbFetch3(c.env, "/usage-brakes/settings"),
+      kbdbFetch3(c.env, "/usage-brakes/usage")
+    ]);
+    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
+    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
+    const settings = await settingsRes.json();
+    const kusage = await usageRes.json();
+    const brake = { on: settings.brake_enabled !== false, covers: BRAKE_COVERS };
+    const selfSnap = () => buildSelfUsage({
+      now: now2,
+      brake,
+      d1: {
+        day_written: Number(kusage.rows_written ?? 0),
+        day_read: Number(kusage.rows_read ?? 0),
+        month_written: Number(kusage.month?.rows_written ?? 0),
+        month_read: Number(kusage.month?.rows_read ?? 0),
+        exceeded_free_daily: kusage.month?.exceeded_free_daily === true
+      }
+    });
+    let snap;
+    if (priv) {
+      const s = selfSnap();
+      snap = {
+        ...s,
+        plan: "local",
+        base_usd: void 0,
+        brake: { on: false, covers: [] },
+        items: s.items.map(({ cost_usd: _c, unit_usd: _u, ...rest }) => ({ ...rest, limit: null }))
+      };
+    } else if (token && accountId) {
+      try {
+        snap = buildUsage({ now: now2, brake, data: await fetchCfAnalytics(token, accountId, now2) });
+      } catch (e) {
+        console.warn("[portal daemon/usage] CF \u5206\u6790\u8B80\u4E0D\u5230\uFF0C\u9000\u56DE\u81EA\u8A08\u91CF\uFF1A", e instanceof Error ? e.message : e);
+        snap = selfSnap();
+      }
+    } else {
+      snap = selfSnap();
+    }
+    usageCache = { at: now2, key: cacheKey, snap };
+    return c.json({ success: true, usage: snap });
   })
 );
 portalRouter.post(
@@ -17765,7 +18005,7 @@ async function buildDiagnostics(env, tenant2) {
     }
     library_count = knownLibs.size;
     const tripletBody = await tripletRes.json().catch(() => null);
-    triplet_count = (tripletBody?.stats ?? []).reduce((sum, s) => sum + (Number(s.triplet_count) || 0), 0);
+    triplet_count = (tripletBody?.stats ?? []).reduce((sum2, s) => sum2 + (Number(s.triplet_count) || 0), 0);
   } catch (e) {
     notes.push(`\u77E5\u8B58\u5EAB\u898F\u6A21\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
   }
