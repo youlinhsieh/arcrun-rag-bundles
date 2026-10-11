@@ -1175,6 +1175,13 @@ async function listEntries(db, f = {}) {
     conds.push(libraryPredicate(f.library));
     params.push(...f.library);
   }
+  if (f.origin_path) {
+    const prefix = `kb://${f.origin_path}#`;
+    const sp = "COALESCE(json_extract(metadata_json, '$.source_path'), '')";
+    const src = "COALESCE(json_extract(metadata_json, '$.source'), '')";
+    conds.push(`(${sp} = ? OR substr(${src}, 1, ?) = ? OR (${sp} = '' AND substr(${src}, 1, 5) <> 'kb://'))`);
+    params.push(f.origin_path, [...prefix].length, prefix);
+  }
   if (f.exclude_kind && f.exclude_kind.length > 0) {
     const ph = f.exclude_kind.map(() => "?").join(",");
     conds.push(`COALESCE(json_extract(metadata_json, '$.kind'), '') NOT IN (${ph})`);
@@ -5265,7 +5272,8 @@ entryRoutes.get("/", async (c) => {
     exclude_kind: parseLibraryParam(c.req.query("exclude_kind")),
     limit: c.req.query("limit") ? Number(c.req.query("limit")) : void 0,
     offset: c.req.query("offset") ? Number(c.req.query("offset")) : void 0,
-    view: c.req.query("view") === "identity" ? "identity" : void 0
+    view: c.req.query("view") === "identity" ? "identity" : void 0,
+    origin_path: c.req.query("origin_path") || void 0
   });
   return c.json({ success: true, entries, count: entries.length, total });
 });
