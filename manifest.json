@@ -1,20 +1,20 @@
 {
  "schema": 2,
- "release": "1.4.111",
- "fingerprint": "2e30db3b1a1099f7e3833f17d0b764776b6998565f069fbbabc0a28de67a34e8",
- "built": "2026-10-18",
- "source": "Arcrun@ad88d25eb9a8",
+ "release": "1.4.112",
+ "fingerprint": "1003c49daf9779e1d14a83991bdc8376aeced4007cd43b6c123141e9f4e65e91",
+ "built": "2026-10-19",
+ "source": "Arcrun@afdb6b9991ad",
  "daemon": {
-  "version": "0.18.112",
-  "built": "20261018-2142",
-  "notes": "錯誤碼這類手冊的目錄，每一行都看得出在講什麼・型錄 PDF 的條列與讀圖文字，逐項進知識卡・直排表與並排表不再被拆碎・文件卡帶上各概念之間的內容關係・包含 0.18.111 的全部內容",
+  "version": "0.18.113",
+  "built": "20261019-1114",
+  "notes": "一般段落與純文字、.md 檔的原文，逐字進知識卡・錯誤碼這類英文手冊的目錄，每一行附上統一的中文譯名・包含 0.18.112 的全部內容",
   "mac": {
-   "file": "daemon/Arcrun-0.18.112.dmg",
-   "sha256": "3c71bab6e6b6bf50f6b4a6e174c9ec2dccae6ecf4283cdab7b7c03077681b3cb"
+   "file": "daemon/Arcrun-0.18.113.dmg",
+   "sha256": "25d52730167218c121c63e88c4548202b2833bf113dd365ea94df4032320cc04"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.112.exe",
-   "sha256": "f76b02a9595571704cde3b93676c464f0d7fdc269d6cd4cbd0651162a5e7343c"
+   "file": "daemon/Arcrun-win-0.18.113.exe",
+   "sha256": "399265d307d1ff56ee7c62d60699a9b1eae2f238bda89e233330982dcd3fd138"
   }
  },
  "core": [
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1065861,
+   "js_bytes": 1069215,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -241,10 +241,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "cd9b6beeee74f1719121d0c80554ae7db6bb195d",
-   "source_content_sha256": "0c9ec4538cdc43c242a907a567681f6094cdecc987fdd98111aac683cb91aa18",
-   "sha256": "0c9ec4538cdc43c242a907a567681f6094cdecc987fdd98111aac683cb91aa18",
-   "bytes": 1065861
+   "source_commit": "afdb6b9991adaaa8cc84aebb3675734223f02ab0",
+   "source_content_sha256": "ed783cf9d8a8d9869d3b12282417139257ee9612f2538f518609e8c6e4b911d8",
+   "sha256": "ed783cf9d8a8d9869d3b12282417139257ee9612f2538f518609e8c6e4b911d8",
+   "bytes": 1069215
   },
   {
    "name": "arcrun-date-ops",
@@ -942,7 +942,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1065861,
+   "js_bytes": 1069215,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -979,8 +979,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "cd9b6beeee74f1719121d0c80554ae7db6bb195d",
-   "source_content_sha256": "0c9ec4538cdc43c242a907a567681f6094cdecc987fdd98111aac683cb91aa18",
+   "source_commit": "afdb6b9991adaaa8cc84aebb3675734223f02ab0",
+   "source_content_sha256": "ed783cf9d8a8d9869d3b12282417139257ee9612f2538f518609e8c6e4b911d8",
    "first_install": true
   },
   {
@@ -1534,6 +1534,42 @@
   },
   {
    "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p2 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p3 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p4 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p5 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p6 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p7 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p8 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p9 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_ingest_card／list_old_blocks_p10 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
    "why": "rag_ingest_card／list_old_triplets 用 __HTTP_REQ_URL__"
   },
   {
@@ -1627,6 +1663,42 @@
   {
    "worker": "arcrun-http-request",
    "why": "rag_takedown_direct／list_dead_blocks 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p2 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p3 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p4 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p5 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p6 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p7 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p8 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p9 用 __HTTP_REQ_URL__"
+  },
+  {
+   "worker": "arcrun-http-request",
+   "why": "rag_takedown_direct／list_dead_blocks_p10 用 __HTTP_REQ_URL__"
   },
   {
    "worker": "arcrun-code",
@@ -1726,7 +1798,7 @@
   }
  ],
  "installer": {
-  "version": "1.0.60"
+  "version": "1.0.61"
  },
- "payload_fingerprint": "de89a3b83a4a0e016a8aebc50c2808ad327de6b30fea8ea899e66a2e70e61a7e"
+ "payload_fingerprint": "dca4783f11276f5c2d66e274e47ba7501692eed421038500ba07c2ab47e2adea"
 }
