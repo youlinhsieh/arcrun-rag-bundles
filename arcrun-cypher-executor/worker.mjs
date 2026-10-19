@@ -3149,14 +3149,7 @@ async function resolveSecretsFromNewHomeDetailed(env, apiKey, names) {
   if (resolvedNames.length > 0) touchLastUsed(env, apiKey, resolvedNames);
   return { resolved, directoryError };
 }
-function humanizeMissingCredential(message) {
-  return message.replace(MISSING_CREDENTIAL_RE, (_m, name, label) => {
-    const shown = label ? `${name}\uFF08${label}\uFF09` : name;
-    return `\u7F3A\u5C11 credential: ${shown}\u3002\u8ACB\u7BA1\u7406\u54E1\u5230 Portal\u300C\u7BA1\u7406 \u2192 \u91D1\u9470\u7BA1\u7406\u300D\u65B0\u589E\u4E00\u628A\u540D\u5B57\u53EB ${name} \u7684\u91D1\u9470\uFF08\u540D\u5B57\u8981\u4E00\u6A21\u4E00\u6A23\uFF1B\u503C\u53EA\u586B\u5728\u90A3\u88E1\uFF09\u3002\uFF08\u958B\u767C\u8005\u9032\u968E\uFF1A\u7528 CLI \u7684\u8A71\uFF0C\u7DE8\u8F2F credentials.yaml \u5F8C\u57F7\u884C acr creds push\uFF09`;
-  });
-}
-function explainCredentialFailure(rawMessage, directoryError, names) {
-  const message = humanizeMissingCredential(rawMessage);
+function explainCredentialFailure(message, directoryError, names) {
   if (!directoryError) return message;
   return `credential \u76EE\u9304\u8B80\u4E0D\u5230\uFF08${directoryError}\uFF09\uFF0C${names.join("\u3001")} \u7121\u6CD5\u5F9E\u4FDD\u7BA1\u8655\u53D6\u7528\u2014\u2014\u9019\u4E0D\u4EE3\u8868 credential \u4E0D\u5B58\u5728\uFF0C\u662F\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u9019\u4E00\u523B\u56DE\u932F\uFF0C\u8ACB\u5148\u78BA\u8A8D KBDB \u662F\u5426\u6B63\u5E38\u3002\u9000\u56DE\u820A\u8DEF\u5F91\u7684\u7D50\u679C\uFF1A${message}`;
 }
@@ -3303,7 +3296,7 @@ async function resolveCredentialRefs(data, env, apiKey, redactor) {
   redactor?.addRecord(result.credentials, (name) => `credential:${name}`);
   return replaceCredentialRefs(data, result.credentials ?? {});
 }
-var MISSING_CREDENTIAL_RE, oauth2Cache, OAUTH2_CACHE_MAX, SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
+var oauth2Cache, OAUTH2_CACHE_MAX, SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
 var init_auth_dispatcher = __esm({
   "cypher-executor/src/actions/auth-dispatcher.ts"() {
     "use strict";
@@ -3313,7 +3306,6 @@ var init_auth_dispatcher = __esm({
     init_secret_backend();
     init_credentials();
     init_tenant();
-    MISSING_CREDENTIAL_RE = /缺少 credential: ([^\s。，,（(]+)(?:\s*[（(]([^）)]*)[）)])?(?:。?\s*修復: 編輯 credentials\.yaml 後執行 acr creds push|。?\s*執行 acr creds push 推送|。?)/g;
     oauth2Cache = /* @__PURE__ */ new Map();
     OAUTH2_CACHE_MAX = 200;
     SUPPORTED_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
@@ -8227,7 +8219,7 @@ var init_graph_executor = __esm({
         if (node.type === "Component") {
           this.nodeSteps.push({ component_id: node.componentId, duration_ms, ok: true });
         }
-        let ownResult = result;
+        const ownResult = result;
         let returnValue = ownResult;
         const outEdges = graph.edges.filter((e) => e.from === node.id);
         for (const edge of outEdges) {
@@ -8344,13 +8336,6 @@ var init_graph_executor = __esm({
                 }
               }
               returnValue = { ...ownResult, results: iterResults };
-              if (ownResult !== null && typeof ownResult === "object" && !Array.isArray(ownResult)) {
-                ownResult = { ...ownResult, results: iterResults };
-              }
-              context = {
-                ...typeof context === "object" && context !== null ? context : {},
-                [nextNode.id]: { results: iterResults }
-              };
               break;
             }
             case "CALLS_SUBFLOW": {
@@ -9103,18 +9088,6 @@ var init_kbdb_proxy = __esm({
       if (!body || !body.template || !body.values && !body.entry_ids) {
         return c.json({ error: "template \u5FC5\u586B\uFF0Cvalues \u8207 entry_ids \u81F3\u5C11\u8981\u6709\u4E00\u500B" }, 400);
       }
-      if (body.record_id !== void 0 && (typeof body.record_id !== "string" || !body.record_id)) {
-        return c.json({ error: "record_id \u5FC5\u9808\u662F\u975E\u7A7A\u5B57\u4E32" }, 400);
-      }
-      if (body.create_only !== void 0 && typeof body.create_only !== "boolean") {
-        return c.json({ error: "create_only \u5FC5\u9808\u662F boolean" }, 400);
-      }
-      if (body.record_id && body.create_only !== true) {
-        return c.json({ error: "\u6307\u5B9A record_id \u5FC5\u9808\u540C\u6642\u5E36 create_only:true\uFF08\u53EA\u5728\u4E0D\u5B58\u5728\u6642\u5EFA\u7ACB\uFF1B\u5DF2\u5B58\u5728\u56DE 409\uFF09" }, 400);
-      }
-      if (body.create_only === true && !body.record_id) {
-        return c.json({ error: "create_only \u5FC5\u9808\u642D\u914D record_id" }, 400);
-      }
       const { base, headers } = kbdbBase(c.env);
       const res = await fetch(`${base}/records`, {
         method: "POST",
@@ -9124,22 +9097,8 @@ var init_kbdb_proxy = __esm({
           template: body.template,
           ...body.values ? { values: body.values } : {},
           ...body.entry_ids ? { entry_ids: body.entry_ids } : {},
-          ...body.record_id ? { record_id: body.record_id, create_only: true } : {},
           owner_id: owner
         })
-      });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-    });
-    kbdbProxyRouter.post("/kbdb/records/batch-get", async (c) => {
-      const owner = tenant(c);
-      if (!owner) return c.json(NEED_KEY, 401);
-      const body = await c.req.json().catch(() => null);
-      if (!body || !Array.isArray(body.ids)) return c.json({ error: "ids[] \u5FC5\u586B" }, 400);
-      const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records/batch-get`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ ids: body.ids, owner_id: owner })
       });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
@@ -10464,36 +10423,6 @@ async function runFtsBackfillTick(env, log = console.log, logError = console.err
   return { calls: MAX_TICK_CALLS, totalScanned, stoppedBecause: "max_calls" };
 }
 
-// cypher-executor/src/lib/vector-sync-tick.ts
-init_kbdb_proxy();
-var MAX_SYNC_TICK_CALLS = 8;
-async function runVectorSyncTick(env, log = console.log, logError = console.error) {
-  const { base, headers } = kbdbBase(env);
-  let totalReset = 0;
-  let totalReEmbedded = 0;
-  for (let i = 0; i < MAX_SYNC_TICK_CALLS; i++) {
-    let status = 0;
-    let body = null;
-    try {
-      const res = await fetch(`${base}/embed/sync`, { method: "POST", headers, body: JSON.stringify({ limit: 100 }) });
-      status = res.status;
-      body = await res.json().catch(() => null);
-      log("[scheduled] vector-sync tick", i, status, JSON.stringify(body));
-    } catch (e) {
-      logError("[scheduled] vector-sync tick failed", i, e);
-      return { calls: i, totalReset, totalReEmbedded, stoppedBecause: "error" };
-    }
-    const s = (stoppedBecause) => ({ calls: i + 1, totalReset, totalReEmbedded, stoppedBecause });
-    if (status === 409) return s("embed_off");
-    if (!body?.success) return s("error");
-    totalReset += body.reset_to_pending ?? 0;
-    totalReEmbedded += body.re_embedded ?? 0;
-    if (body.quota_exceeded) return s("quota_exceeded");
-    if (!body.more) return s(body.healthy ? "healthy" : "done");
-  }
-  return { calls: MAX_SYNC_TICK_CALLS, totalReset, totalReEmbedded, stoppedBecause: "max_calls" };
-}
-
 // cypher-executor/src/lib/usage-brake-notify-tick.ts
 init_kbdb_proxy();
 var SKIPPED = { skipped: true, checked: 0, notified: 0, errors: 0 };
@@ -10609,14 +10538,6 @@ async function handleScheduled(controller, env, ctx) {
       runFtsBackfillTick(env).then(
         (summary) => console.log("[scheduled] fts-backfill tick summary", JSON.stringify(summary)),
         (e) => console.error("[scheduled] fts-backfill tick summary failed", e)
-      )
-    );
-  }
-  if (now2.getUTCMinutes() % 10 === 5) {
-    ctx.waitUntil(
-      runVectorSyncTick(env).then(
-        (summary) => console.log("[scheduled] vector-sync tick summary", JSON.stringify(summary)),
-        (e) => console.error("[scheduled] vector-sync tick summary failed", e)
       )
     );
   }
@@ -12856,59 +12777,6 @@ init_webhook_handlers();
 init_schemas();
 init_telemetry();
 init_endpoints();
-
-// cypher-executor/src/lib/trace-summary.ts
-var FAILED_OUTPUT_PREVIEW_CHARS = 2048;
-function isFailedOutput(output) {
-  if (!output || typeof output !== "object") return false;
-  const r = output;
-  return r["success"] === false || "error" in r;
-}
-function preview(output) {
-  if (output === void 0) return void 0;
-  let s;
-  try {
-    s = typeof output === "string" ? output : JSON.stringify(output);
-  } catch {
-    return void 0;
-  }
-  if (typeof s !== "string") return void 0;
-  return s.length > FAILED_OUTPUT_PREVIEW_CHARS ? `${s.slice(0, FAILED_OUTPUT_PREVIEW_CHARS)}\u2026(\u622A\u65B7\uFF0C\u5171 ${s.length} \u5B57\u5143)` : s;
-}
-function summarizeTrace(trace) {
-  if (!Array.isArray(trace)) return trace;
-  return trace.map((raw2) => {
-    if (!raw2 || typeof raw2 !== "object") return raw2;
-    const s = raw2;
-    const id = s.nodeId ?? s.node ?? "";
-    if (s.status && !("output" in s) && !("input" in s)) {
-      return { ...raw2, node: id, nodeId: id };
-    }
-    const failed = Boolean(s.error) || isFailedOutput(s.output);
-    const step = {
-      node: id,
-      nodeId: id,
-      ...s.type !== void 0 ? { type: s.type } : {},
-      status: failed ? "failed" : "success",
-      ...s.duration_ms !== void 0 ? { duration_ms: s.duration_ms } : {},
-      ...s.error ? { error: s.error } : {}
-    };
-    if (failed) {
-      const p = preview(s.output);
-      if (p !== void 0) step.output_preview = p;
-    }
-    return step;
-  });
-}
-function wantsFullTrace(query) {
-  return query("trace") === "full";
-}
-function shapeTraceForResponse(result, full) {
-  if (full || result.trace === void 0) return result;
-  return { ...result, trace: summarizeTrace(result.trace), trace_mode: "summary" };
-}
-
-// cypher-executor/src/routes/webhooks-named.ts
 var webhooksNamedRouter = new Hono2();
 function kvKey(apiKey, name) {
   return `${apiKey}:wf:${name}`;
@@ -13148,8 +13016,7 @@ async function triggerNamed(c, apiKey, name) {
   c.executionCtx.waitUntil(
     writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
   );
-  const full = wantsFullTrace((n) => c.req.query(n));
-  return c.json(shapeTraceForResponse(result, full), result.success ? 200 : 500);
+  return c.json(result, result.success ? 200 : 500);
 }
 var MAX_QUERY_OUTPUT_BYTES = 5 * 1024 * 1024;
 function queryStringContext(c) {
@@ -13192,7 +13059,7 @@ async function queryNamed(c, apiKey, name, triggerContext) {
       {
         success: false,
         error: result.error ?? "\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557",
-        trace: wantsFullTrace((n) => c.req.query(n)) ? result.trace : summarizeTrace(result.trace),
+        trace: result.trace,
         ...paused ? { paused: true, hint: "\u6B64\u5DE5\u4F5C\u6D41\u6703\u66AB\u505C\u7B49\u5F85\u975E\u540C\u6B65 callback\uFF0C\u7121\u6CD5\u7576\u540C\u6B65\u67E5\u8A62\u7AEF\u9EDE\uFF1B\u6539\u7528 /webhooks/named/:name/trigger?async=1 + /workflows/resume\u3002" } : {}
       },
       paused ? 409 : 500
@@ -13972,187 +13839,6 @@ init_dist();
 init_hash();
 init_recipes();
 
-// cypher-executor/src/lib/extract-ai-providers.ts
-var GENERIC_OPENAI_COMPAT_ID = "extract_ai_openai_compat";
-var GENERIC_OPENAI_COMPAT_CREDENTIAL = "extract_ai_api_key";
-var EXTRACT_AI_PROVIDERS = [
-  {
-    id: "extract_ai_workers_ai",
-    label: "Cloudflare Workers AI\uFF08\u514D\u91D1\u9470\uFF0C\u9810\u8A2D\uFF09",
-    group: "cloud",
-    kind: "binding",
-    key: "none",
-    models: [
-      { id: "@cf/meta/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B\uFF08\u9810\u8A2D\uFF09" },
-      { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", label: "Llama 3.3 70B" },
-      { id: "@cf/mistralai/mistral-small-3.1-24b-instruct", label: "Mistral Small 3.1 24B" },
-      { id: "@cf/google/gemma-3-12b-it", label: "Gemma 3 12B" }
-    ],
-    description: "CF \u96F2\u9810\u8A2D\u3002\u8D70 env.AI binding\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\u3002\u4F01\u696D\u79C1\u6709\u96F2\u6C92\u6709\u9019\u500B binding \u21D2 \u8ACB\u6539\u9078\u5225\u5BB6\u3002"
-  },
-  {
-    id: "extract_ai_openai",
-    label: "OpenAI",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.openai.com/v1/chat/completions",
-    models_url: "https://api.openai.com/v1/models",
-    models: [{ id: "gpt-4o-mini" }, { id: "gpt-4o" }, { id: "gpt-4.1-mini" }, { id: "gpt-4.1" }],
-    credential: "extract_ai_openai_key",
-    description: "OpenAI \u5B98\u65B9 API\u3002"
-  },
-  {
-    id: "extract_ai_anthropic",
-    label: "Anthropic Claude",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.anthropic.com/v1/chat/completions",
-    models_url: "https://api.anthropic.com/v1/models",
-    models_headers: { "anthropic-version": "2023-06-01" },
-    models: [{ id: "claude-haiku-5-5" }, { id: "claude-sonnet-5-5" }, { id: "claude-opus-5-5" }],
-    credential: "extract_ai_anthropic_key",
-    description: "Anthropic \u7684 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u3002"
-  },
-  {
-    id: "extract_ai_gemini",
-    label: "Google Gemini",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-    models_url: "https://generativelanguage.googleapis.com/v1beta/openai/models",
-    models: [{ id: "gemini-2.5-flash" }, { id: "gemini-2.5-pro" }, { id: "gemini-2.0-flash" }],
-    credential: "extract_ai_gemini_key",
-    description: "Google AI Studio \u7684 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u3002"
-  },
-  {
-    id: "extract_ai_groq",
-    label: "Groq",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.groq.com/openai/v1/chat/completions",
-    models_url: "https://api.groq.com/openai/v1/models",
-    models: [{ id: "llama-3.3-70b-versatile" }, { id: "llama-3.1-8b-instant" }],
-    credential: "extract_ai_groq_key",
-    description: "Groq \u96F2\u7AEF\u63A8\u8AD6\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_openrouter",
-    label: "OpenRouter",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://openrouter.ai/api/v1/chat/completions",
-    models_url: "https://openrouter.ai/api/v1/models",
-    models: [
-      { id: "openai/gpt-4o-mini" },
-      { id: "anthropic/claude-sonnet-4.5" },
-      { id: "google/gemini-2.5-flash" },
-      { id: "meta-llama/llama-3.3-70b-instruct" }
-    ],
-    credential: "extract_ai_openrouter_key",
-    description: "OpenRouter \u805A\u5408\uFF08\u4E00\u628A\u91D1\u9470\u901A\u591A\u5BB6\u6A21\u578B\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_deepseek",
-    label: "DeepSeek",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.deepseek.com/chat/completions",
-    models_url: "https://api.deepseek.com/models",
-    models: [{ id: "deepseek-chat" }, { id: "deepseek-reasoner" }],
-    credential: "extract_ai_deepseek_key",
-    description: "DeepSeek \u5B98\u65B9 API\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_mistral",
-    label: "Mistral",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.mistral.ai/v1/chat/completions",
-    models_url: "https://api.mistral.ai/v1/models",
-    models: [{ id: "mistral-small-latest" }, { id: "mistral-large-latest" }],
-    credential: "extract_ai_mistral_key",
-    description: "Mistral La Plateforme\u3002"
-  },
-  {
-    id: "extract_ai_xai",
-    label: "xAI Grok",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.x.ai/v1/chat/completions",
-    models_url: "https://api.x.ai/v1/models",
-    models: [{ id: "grok-3-mini" }, { id: "grok-3" }],
-    credential: "extract_ai_xai_key",
-    description: "xAI \u5B98\u65B9 API\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_together",
-    label: "Together AI",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.together.xyz/v1/chat/completions",
-    models_url: "https://api.together.xyz/v1/models",
-    models: [{ id: "meta-llama/Llama-3.3-70B-Instruct-Turbo" }, { id: "Qwen/Qwen2.5-72B-Instruct-Turbo" }],
-    credential: "extract_ai_together_key",
-    description: "Together AI \u958B\u6E90\u6A21\u578B\u8A17\u7BA1\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_ollama",
-    label: "Ollama\uFF08\u5730\u7AEF\uFF09",
-    group: "local",
-    kind: "http",
-    key: "optional",
-    needs_base_url: true,
-    default_base_url: "http://localhost:11434",
-    models: [],
-    credential: "extract_ai_ollama_key",
-    description: "\u5730\u7AEF\u6216\u5167\u7DB2\u7684 Ollama\u3002\u91D1\u9470\u901A\u5E38\u4E0D\u9700\u8981\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
-  },
-  {
-    id: GENERIC_OPENAI_COMPAT_ID,
-    label: "\u5176\u4ED6 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\uFF08vLLM\uFF0FLM Studio\uFF0F\u81EA\u5EFA\uFF09",
-    group: "local",
-    kind: "http",
-    key: "optional",
-    needs_base_url: true,
-    models: [],
-    credential: GENERIC_OPENAI_COMPAT_CREDENTIAL,
-    description: "\u4EFB\u4F55\u5BE6\u4F5C /v1/chat/completions \u7684\u7AEF\u9EDE\u3002\u91D1\u9470\u9078\u586B\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
-  }
-];
-function findProvider(id) {
-  return EXTRACT_AI_PROVIDERS.find((p) => p.id === id);
-}
-function extractAiProviderSeeds() {
-  return EXTRACT_AI_PROVIDERS.filter((p) => p.kind === "http").map((p) => {
-    const body_template = {
-      model: "{{model}}",
-      messages: "{{messages}}",
-      max_tokens: "{{max_tokens}}",
-      temperature: "{{temperature}}",
-      response_format: "{{response_format}}"
-    };
-    return {
-      canonical_id: p.id,
-      display_name: `\u8403\u53D6 AI\uFF1A${p.label}`,
-      description: `${p.description}` + (p.credential ? ` \u91D1\u9470\u8D70 credential\u300C${p.credential}\u300D${p.key === "optional" ? "\uFF08\u9078\u586B\uFF0C\u6709\u8A2D\u624D\u5E36 Authorization\uFF09" : ""}\u3002` : ""),
-      endpoint: p.chat_url ?? "{{base_url}}/v1/chat/completions",
-      method: "POST",
-      ...p.credential ? { headers: { Authorization: `Bearer {{credential.${p.credential}}}` } } : {},
-      body_template,
-      response_map: { text_path: "choices.0.message.content" }
-    };
-  });
-}
-
 // cypher-executor/src/lib/api-recipe-seeds.ts
 var KBDB_BASE_TOKEN = "{{KBDB_BASE_URL}}";
 function resolveKbdbSeedBase(text, resolveBase) {
@@ -14306,9 +13992,22 @@ var API_RECIPE_SEEDS = [
     },
     response_map: { text_path: "response" }
   },
-  // 其餘每家提供商（OpenAI／Anthropic／Gemini／…／Ollama／通用 OpenAI 相容）的 recipe 由
-  // extract-ai-providers.ts 的清單產生（leo 10-15：清單由開發端維護）。
-  ...extractAiProviderSeeds()
+  {
+    canonical_id: "extract_ai_openai_compat",
+    display_name: "\u8403\u53D6 AI\uFF1AOpenAI \u76F8\u5BB9\u7AEF\u9EDE\uFF08Ollama\uFF0FvLLM\uFF0FLM Studio\u2026\uFF09",
+    description: "\u4F01\u696D\u79C1\u6709\u96F2\u7528\u3002POST {{base_url}}/v1/chat/completions\uFF0Cbody \u70BA OpenAI chat \u683C\u5F0F\u3002\u91D1\u9470\u9078\u586B\uFF08\u5167\u7DB2 Ollama \u901A\u5E38\u4E0D\u9700\u8981\uFF09\uFF1A\u6709\u8A2D credential\u300Cextract_ai_api_key\u300D\u624D\u5E36 Authorization\u3002",
+    endpoint: "{{base_url}}/v1/chat/completions",
+    method: "POST",
+    headers: { Authorization: "Bearer {{credential.extract_ai_api_key}}" },
+    body_template: {
+      model: "{{model}}",
+      messages: "{{messages}}",
+      max_tokens: "{{max_tokens}}",
+      temperature: "{{temperature}}",
+      response_format: "{{response_format}}"
+    },
+    response_map: { text_path: "choices.0.message.content" }
+  }
 ];
 
 // cypher-executor/src/routes/init-seed.ts
@@ -15649,8 +15348,8 @@ var PORTAL_TEMPLATE_SEEDS = [
   {
     // inkstone/Arcrun#277：這台雲端的萃取 AI 由管理員選（每種 AI 一份 recipe，見 api-recipe-seeds）。
     // 一台雲端一筆設定（純量，鏡像 portal_mcp_token_ttl 那條路）；**每台雲端各一份，不跨租戶共用**。
-    //   recipe     ＝ 提供商清單上的 id（extract_ai_workers_ai｜extract_ai_openai｜…｜extract_ai_ollama｜extract_ai_openai_compat；見 extract-ai-providers.ts）
-    //   base_url   ＝ 地端／自建端點根網址（雲端託管的家與 Workers AI 不用）
+    //   recipe     ＝ extract_ai_workers_ai｜extract_ai_openai_compat
+    //   base_url   ＝ OpenAI 相容端點根網址（Workers AI 不用）
     //   model      ＝ 模型名（Workers AI 不填＝recipe 預設）
     //   updated_at／updated_by ＝ 誰在什麼時候改的
     // 金鑰**不在這裡**：只存在 credential 中心（名字 extract_ai_api_key），這筆 record 永遠沒有值。
@@ -15704,25 +15403,22 @@ init_auth_dispatcher();
 init_recipes();
 var EXTRACT_AI_TEMPLATE = "portal_extract_ai";
 var DEFAULT_EXTRACT_AI_RECIPE = "extract_ai_workers_ai";
-var EXTRACT_AI_RECIPE_IDS = EXTRACT_AI_PROVIDERS.map((p) => p.id);
+var EXTRACT_AI_RECIPE_IDS = ["extract_ai_workers_ai", "extract_ai_openai_compat"];
+var EXTRACT_AI_CREDENTIAL = "extract_ai_api_key";
 var DEFAULT_EXTRACT_AI_CONFIG = { recipe: DEFAULT_EXTRACT_AI_RECIPE };
 function validateExtractAiConfig(raw2) {
   if (!raw2 || typeof raw2 !== "object") return { ok: false, error: "body \u5FC5\u9808\u662F JSON \u7269\u4EF6" };
   const o = raw2;
   const recipe = typeof o.recipe === "string" ? o.recipe.trim() : "";
-  const provider = findProvider(recipe);
-  if (!provider) {
-    return { ok: false, error: `recipe \u5FC5\u9808\u662F\u6E05\u55AE\u4E0A\u7684\u63D0\u4F9B\u5546\u4E4B\u4E00\uFF1A${EXTRACT_AI_RECIPE_IDS.join("\u3001")}` };
+  if (!EXTRACT_AI_RECIPE_IDS.includes(recipe)) {
+    return { ok: false, error: `recipe \u5FC5\u9808\u662F ${EXTRACT_AI_RECIPE_IDS.join(" \u6216 ")}` };
   }
   const config = { recipe };
   const model = typeof o.model === "string" ? o.model.trim() : "";
   if (model) config.model = model;
-  if (provider.kind === "http" && !model) {
-    return { ok: false, error: `${provider.label} \u5FC5\u9808\u5F9E\u9078\u55AE\u6311\u4E00\u500B\u6A21\u578B\uFF08model\uFF09` };
-  }
-  if (provider.needs_base_url) {
+  if (recipe === "extract_ai_openai_compat") {
     const baseUrl = typeof o.base_url === "string" ? o.base_url.trim().replace(/\/+$/, "") : "";
-    if (!baseUrl) return { ok: false, error: `${provider.label} \u5FC5\u9808\u586B base_url\uFF08\u4F8B ${provider.default_base_url ?? "http://ollama.internal:11434"}\uFF09` };
+    if (!baseUrl) return { ok: false, error: "OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u5FC5\u9808\u586B base_url\uFF08\u4F8B http://ollama.internal:11434\uFF09" };
     let u;
     try {
       u = new URL(baseUrl);
@@ -15732,6 +15428,7 @@ function validateExtractAiConfig(raw2) {
     if (u.protocol !== "http:" && u.protocol !== "https:") {
       return { ok: false, error: "base_url \u53EA\u63A5\u53D7 http\uFF0Fhttps" };
     }
+    if (!model) return { ok: false, error: "OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u5FC5\u9808\u586B model\uFF08\u4F8B llama3.1:70b\uFF09" };
     config.base_url = baseUrl;
   }
   return { ok: true, config };
@@ -15839,54 +15536,6 @@ async function runExtractAi(env, tenant2, config, req) {
   } catch (e) {
     return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
   }
-}
-var NON_CHAT_MODEL = /(embed|whisper|tts|dall-e|moderation|image|audio|realtime|transcribe|rerank|imagen|veo)/i;
-async function fetchModelIds(url, headers) {
-  try {
-    const res = await fetch(url, { headers });
-    if (!res.ok) return { error: `\u7AEF\u9EDE\u56DE ${res.status}\uFF0C\u5217\u4E0D\u51FA\u6A21\u578B` };
-    const json = await res.json();
-    const raw2 = json.data ?? json.models ?? [];
-    const ids = raw2.map((m) => typeof m.id === "string" ? m.id : typeof m.name === "string" ? m.name : "").map((id) => id.replace(/^models\//, "")).filter(Boolean);
-    return { ids };
-  } catch (e) {
-    return { error: `\u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
-  }
-}
-async function listProviderModels(env, tenant2, providerId, baseUrl) {
-  const provider = findProvider(providerId);
-  if (!provider) return { models: [], source: "none", error: `\u6C92\u6709\u9019\u500B\u63D0\u4F9B\u5546\uFF1A${providerId}` };
-  let key = "";
-  if (provider.credential) {
-    try {
-      key = (await resolveSecretsFromNewHome(env, tenant2, [provider.credential]))[provider.credential] ?? "";
-    } catch {
-      key = "";
-    }
-  }
-  const headers = { ...provider.models_headers ?? {} };
-  if (key) {
-    headers.Authorization = `Bearer ${key}`;
-    if (provider.id === "extract_ai_anthropic") headers["x-api-key"] = key;
-  }
-  if (provider.needs_base_url) {
-    const base = (baseUrl ?? "").trim().replace(/\/+$/, "");
-    if (!/^https?:\/\//.test(base)) return { models: [], source: "none", error: "\u5148\u586B\u7AEF\u9EDE\u7DB2\u5740\uFF0C\u624D\u80FD\u5217\u51FA\u5B83\u6709\u54EA\u4E9B\u6A21\u578B" };
-    const r2 = await fetchModelIds(`${base}/v1/models`, headers);
-    if ("error" in r2) return { models: [], source: "none", error: r2.error };
-    if (r2.ids.length === 0) return { models: [], source: "none", error: "\u7AEF\u9EDE\u6C92\u6709\u56DE\u4EFB\u4F55\u6A21\u578B\uFF08Ollama \u5148 pull \u4E00\u500B\u6A21\u578B\uFF09" };
-    return { models: r2.ids.sort().map((id) => ({ id })), source: "live" };
-  }
-  if (!provider.models_url) return { models: provider.models, source: "catalog" };
-  if (!key) {
-    return { models: provider.models, source: "catalog", error: "\u9084\u6C92\u52A0\u91D1\u9470\uFF0C\u7121\u6CD5\u5411\u8A72\u5BB6\u53D6\u5F97\u6700\u65B0\u6A21\u578B\u6E05\u55AE\uFF1B\u5148\u986F\u793A\u9810\u8A2D\u6E05\u55AE" };
-  }
-  const r = await fetchModelIds(provider.models_url, headers);
-  if ("error" in r || r.ids.length === 0) {
-    return { models: provider.models, source: "catalog", error: "error" in r ? r.error : "\u8A72\u5BB6\u6C92\u6709\u56DE\u4EFB\u4F55\u6A21\u578B" };
-  }
-  const chat = r.ids.filter((id) => !NON_CHAT_MODEL.test(id));
-  return { models: (chat.length ? chat : r.ids).sort().map((id) => ({ id })), source: "live" };
 }
 
 // cypher-executor/src/routes/portal.ts
@@ -16003,21 +15652,15 @@ var extract_wiki_default = {
     },
     {
       key: "common.rules",
-      v: 2,
-      when: "always",
-      value: "\n\u898F\u5247\uFF08\u9055\u53CD\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\uFF09\uFF1A\n- \u7528\u6B63\u9AD4\u4E2D\u6587\u5BEB\uFF0C\u8B1B\u539F\u7A3F\u7684**\u5167\u5BB9**\uFF1A\u5B83\u8AAA\u4E86\u4EC0\u9EBC\u3001\u898F\u5B9A\u4EC0\u9EBC\u3001\u5217\u4E86\u54EA\u4E9B\u9805\u76EE\u3001\u7D50\u8AD6\u662F\u4EC0\u9EBC\u3002\u4E0D\u662F\u6539\u5BEB\u6210\u7A7A\u6CDB\u7684\u8A55\u8A9E\uFF0C\u4E5F\u4E0D\u662F\u6574\u6BB5\u7167\u6284\u539F\u7A3F\u3002"
-    },
-    {
-      key: "common.keep-verbatim",
       v: 1,
       when: "always",
-      value: "- \u5C08\u6709\u540D\u8A5E\u3001\u4EBA\u540D\u3001\u516C\u53F8\u540D\u3001\u7522\u54C1\u540D\u3001\u578B\u865F\u3001\u932F\u8AA4\u78BC\uFF0F\u4EE3\u78BC\u3001\u53C3\u6578\u540D\u3001\u65E5\u671F\u3001\u91D1\u984D\u3001\u7248\u672C\u865F\u8207\u4E00\u5207\u6578\u5B57\uFF0C\u4E00\u5F8B**\u4FDD\u7559\u539F\u7A3F\u7684\u539F\u5B57\u4E32**\uFF1A\u4E0D\u610F\u8B6F\u3001\u4E0D\u63DB\u7B97\u3001\u4E0D\u7701\u7565\uFF0C\u4E5F\u4E0D\u7528\u300C\u591A\u7A2E\u300D\u300C\u82E5\u5E72\u300D\u300C\u76F8\u95DC\u300D\u9019\u985E\u8A5E\u6982\u62EC\u3002\u539F\u7A3F\u5217\u4E86\u5E7E\u500B\u9805\u76EE\uFF0C\u5361\u4E0A\u5C31\u5BEB\u51FA\u9019\u4E9B\u9805\u76EE\u7684\u540D\u7A31\u8207\u6578\u503C\uFF0C\u4E0D\u8981\u58D3\u6210\u4E00\u53E5\u300C\u5177\u6709\u591A\u7A2E\u529F\u80FD\u300D\u3002\n- gloss\u3001summary\u3001points \u90FD\u8B1B\u5167\u5BB9\u672C\u8EAB\uFF0C**\u4E0D\u51C6\u8B1B\u9019\u662F\u4EC0\u9EBC\u985E\u578B\u7684\u6A94\u6848**\uFF1A\u4E0D\u53EF\u5BEB\u300C\u9019\u662F\u4E00\u4EFD\u2026\u6587\u4EF6\uFF0F\u6A94\u6848\uFF0F\u624B\u518A\uFF0F\u7D00\u9304\u300D\u300C\u2026\u63CF\u8FF0\u6A94\u6848\u300D\u4E4B\u985E\u7684\u8A71\uFF0C\u4E5F\u4E0D\u53EF\u62FF\u6A94\u540D\u7576\u6982\u5FF5\u540D\u3002\u8B80\u8005\u4E0D\u770B\u539F\u7A3F\u3001\u53EA\u770B\u9019\u5F35\u5361\uFF0C\u5C31\u8981\u77E5\u9053\u539F\u7A3F\u5BEB\u4E86\u4EC0\u9EBC\u3002"
+      value: "\n\u898F\u5247\uFF08\u9055\u53CD\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\uFF09\uFF1A\n- \u5361\u7247\u5167\u5BB9\u662F\u4F60\u7684**\u5224\u65B7\u8207\u91CD\u7D44**\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\uFF0C\u7981\u6B62\u6574\u53E5\u7167\u6284\u539F\u7A3F\u3002"
     },
     {
       key: "thin-card.concept-count",
-      v: 2,
+      v: 1,
       when: "always",
-      value: "- \u6982\u5FF5\u6578\u7531\u5167\u5BB9\u6C7A\u5B9A\uFF08\u591A\u6578\u6587\u4EF6 1-5 \u500B\uFF09\uFF1B\u6BCF\u500B\u6982\u5FF5\u8981\u80FD**\u96E2\u958B\u539F\u7A3F\u7368\u7ACB\u6210\u7ACB**\u3002\u5167\u5BB9\u53EA\u6709\u5E7E\u884C\u7684\u77ED\u7D00\u9304\uFF08\u4E00\u689D\u932F\u8AA4\u78BC\u3001\u4E00\u689D\u898F\u5247\u3001\u4E00\u5247\u516C\u544A\uFF09\u53EA\u958B 1 \u500B\u6982\u5FF5\uFF0C\u7528\u539F\u7A3F\u7684\u5C08\u540D\u6216\u4EE3\u78BC\u7576\u6982\u5FF5\u540D\uFF1B\u4E0D\u8981\u70BA\u4E86\u6E4A\u6578\u628A\u540C\u4E00\u4EF6\u4E8B\u62C6\u6210\u591A\u500B\uFF0C\u4E5F\u4E0D\u8981\u767C\u660E\u539F\u7A3F\u6C92\u8B1B\u7684\u6982\u5FF5\u3002"
+      value: "- \u6982\u5FF5\u6578\u7531\u5167\u5BB9\u6C7A\u5B9A\uFF08\u591A\u6578\u6587\u4EF6 1-5 \u500B\uFF09\uFF1B\u6BCF\u500B\u6982\u5FF5\u8981\u80FD**\u96E2\u958B\u539F\u7A3F\u7368\u7ACB\u6210\u7ACB**\u3002"
     },
     {
       key: "common.no-concept",
@@ -16027,15 +15670,9 @@ var extract_wiki_default = {
     },
     {
       key: "common.fields",
-      v: 2,
-      when: "always",
-      value: "- gloss\uFF1D\u4E00\u53E5\u8A71\uFF0840 \u5B57\u5167\uFF09\uFF1A\u76F4\u63A5\u8B1B\u5167\u5BB9\uFF0C\u5E36\u4E0A\u6700\u95DC\u9375\u7684\u5C08\u540D\u6216\u6578\u5B57\u3002summary\uFF1D\u4E00\u5C0F\u6BB5\uFF0880-200 \u5B57\uFF09\uFF1A\u628A\u539F\u7A3F\u7684\u5177\u9AD4\u5167\u5BB9\uFF08\u9805\u76EE\u3001\u6578\u503C\u3001\u689D\u4EF6\u3001\u7D50\u8AD6\uFF09\u4EA4\u4EE3\u6E05\u695A\u3002points\uFF1D3-8 \u689D\u53E5\u5B50\uFF0C\u6BCF\u689D\u5E36\u5177\u9AD4\u7684\u5C08\u540D\u6216\u6578\u5B57\uFF0C\u4E0D\u662F\u689D\u5217\u8907\u8FF0\uFF1B\u539F\u7A3F\u5F88\u77ED\u6642\u6709\u5E7E\u4EF6\u4E8B\u5BEB\u5E7E\u689D\uFF0C\u4E0D\u5FC5\u6E4A\u6EFF\u3002\n- \u6587\u4EF6\u5C64\u7684 points \u6BCF\u689D\u8981\u628A\u76F8\u95DC\u6982\u5FF5\u540D\u7528 [[\u6982\u5FF5\u540D]] \u5D4C\u5728**\u53E5\u5B50\u4E2D\u9593**\uFF08\u4E0D\u53EF\u653E\u53E5\u9996\u7576\u6A19\u984C\uFF09\u3002\n- entities\uFF1A\u6BCF\u500B\u5BE6\u9AD4\u662F\u539F\u7A3F**\u5167\u5BB9\u88E1\u8B1B\u5230\u7684\u6771\u897F**\uFF0C\u5E36 type\uFF08\u4EBA\u7269/\u7D44\u7E54/\u5DE5\u5177/\u6982\u5FF5/\u5730\u9EDE/\u4E8B\u4EF6/\u6A94\u6848 \u64C7\u4E00\uFF09\u8207\u4E00\u53E5\u63CF\u8FF0\u3002\u539F\u7A3F\u9019\u4EFD\u6587\u4EF6\u672C\u8EAB\u3001\u5B83\u7684\u6A94\u540D\u3001\u526F\u6A94\u540D\u3001\u9801\u9762\u7DE8\u865F\u90FD\u4E0D\u662F\u5BE6\u9AD4\uFF1Btype \u9078\u300C\u6A94\u6848\u300D\u53EA\u9650\u539F\u7A3F\u5167\u5BB9\u660E\u78BA\u8AC7\u5230\u7684\u67D0\u500B\u6A94\u6848\u3002"
-    },
-    {
-      key: "common.cross-language-terms",
       v: 1,
       when: "always",
-      value: "- \u539F\u7A3F\u4E0D\u662F\u4E2D\u6587\u6642\uFF08\u82F1\u6587\u624B\u518A\u3001\u898F\u683C\u66F8\u3001\u65E5\u6587\u6587\u4EF6\u2026\uFF09\uFF0C\u8981\u8B93\u4EBA\u7528**\u4E2D\u6587\u767D\u8A71**\u6216\u7528**\u539F\u6587\u5B57\u4E32**\u90FD\u627E\u5F97\u5230\u9019\u5F35\u5361\uFF1A\u95DC\u9375\u53E5\u4FDD\u7559\u539F\u6587\u3001\u8853\u8A9E\u7528\u7D71\u4E00\u7684\u4E2D\u6587\u8B6F\u540D\uFF08\u683C\u5F0F\u898B\u6700\u5F8C\u63D0\u9192\uFF09\uFF1B\u539F\u7A3F\u5728\u8B1B\u4E00\u500B\u72C0\u6CC1\u3001\u75C7\u72C0\u6216\u554F\u984C\uFF08\u932F\u8AA4\u8A0A\u606F\u3001\u6545\u969C\u3001\u9650\u5236\u3001\u4E0D\u80FD\u505A\u4EC0\u9EBC\uFF09\u6642\uFF0Csummary \u8981\u7528\u4F7F\u7528\u8005\u6703\u8AAA\u7684\u767D\u8A71\u628A\u5B83\u8B1B\u51FA\u4F86\uFF08\u4F8B\uFF1A\u300C\u5E33\u865F\u88AB\u9396\u4F4F\u767B\u4E0D\u9032\u53BB\u300D\u300C\u6578\u503C\u8D85\u51FA\u7BC4\u570D\u5B58\u4E0D\u4E86\u300D\uFF09\uFF1B\u539F\u56E0\u8207\u8655\u7F6E\u4E5F\u7528\u767D\u8A71\u9010\u9805\u5BEB\u51FA\uFF0C\u4E0D\u8981\u53EA\u5BEB\u300C\u8AAA\u660E\u4E86\u539F\u56E0\u548C\u4FEE\u6B63\u65B9\u6CD5\u300D\u3002"
+      value: "- gloss\uFF1D\u4E00\u53E5\u8A71\uFF0840 \u5B57\u5167\uFF09\u3002summary\uFF1D\u4E00\u5C0F\u6BB5\uFF0880-200 \u5B57\uFF09\u3002points\uFF1D3-8 \u689D\u5224\u65B7\u53E5\uFF08\u4E0D\u662F\u689D\u5217\u8907\u8FF0\uFF09\u3002\n- \u6587\u4EF6\u5C64\u7684 points \u6BCF\u689D\u8981\u628A\u76F8\u95DC\u6982\u5FF5\u540D\u7528 [[\u6982\u5FF5\u540D]] \u5D4C\u5728**\u53E5\u5B50\u4E2D\u9593**\uFF08\u4E0D\u53EF\u653E\u53E5\u9996\u7576\u6A19\u984C\uFF09\u3002\n- entities\uFF1A\u6BCF\u500B\u5BE6\u9AD4\u5E36 type\uFF08\u4EBA\u7269/\u7D44\u7E54/\u5DE5\u5177/\u6982\u5FF5/\u5730\u9EDE/\u4E8B\u4EF6/\u6A94\u6848 \u64C7\u4E00\uFF09\u8207\u4E00\u53E5\u63CF\u8FF0\u3002"
     },
     {
       key: "chunk-cliff.count-first",
@@ -16054,13 +15691,6 @@ var extract_wiki_default = {
       v: 1,
       when: "always",
       value: '\nJSON \u5F62\u72C0\uFF08\u7167\u9019\u500B\u7D50\u69CB\u586B\uFF09\uFF1A\n{"gloss":"","tags":[""],"summary":"","points":["\u2026\u53E5\u5B50\u4E2D\u9593\u5D4C [[\u6982\u5FF5\u540D]]\u2026"],\n "no_concept":false,"reason":"",\n "concepts":[{"name":"","gloss":"","tags":[""],"summary":"","points":[""],\n   "entities":[{"name":"","type":"","desc":""}],\n   "facts":[["","",""]],\n   "relations":[{"to":"","pred":""}]}]}'
-    },
-    {
-      key: "common.language-reminder",
-      v: 5,
-      when: "always",
-      place: "after",
-      value: "\n\u6700\u5F8C\u63D0\u9192\uFF1A\u6240\u6709\u6B04\u4F4D\u7684\u6587\u5B57\u4E00\u5F8B\u7528\u6B63\u9AD4\u4E2D\u6587\u3002\u5167\u5BB9\u662F\u82F1\u6587\uFF08\u6216\u65E5\u6587\u7B49\u5176\u4ED6\u8A9E\u8A00\uFF09\u4E5F\u8981\u7FFB\u6210\u4E2D\u6587\u518D\u5BEB\uFF1B\u53EA\u6709\u5C08\u6709\u540D\u8A5E\u3001\u578B\u865F\u3001\u4EE3\u78BC\u3001\u53C3\u6578\u540D\u8207\u6578\u5B57\u7167\u539F\u5B57\u4E32\u4FDD\u7559\u3002gloss \u8207 summary \u76F4\u63A5\u5BEB\u5167\u5BB9\u672C\u8EAB\uFF08\u4F8B\uFF1A\u300CCompactB-3020 \u7684\u884C\u7A0B\u3001\u4E3B\u8EF8\u8207\u63A7\u5236\u7CFB\u7D71\u898F\u683C\u300D\uFF09\uFF0C\u4E0D\u8981\u4EE5\u300C\u672C\u6587\u4EF6\u662F\u2026\u300D\u300C\u9019\u662F\u4E00\u4EFD\u2026\u300D\u958B\u982D\u3002\n\u539F\u7A3F\u662F\u5916\u8A9E\u6642\uFF0C\u9084\u8981\u505A\u5230\uFF1A\u2460points \u7684\u7B2C\u4E00\u689D\u8981\u653E\u539F\u7A3F\u6700\u95DC\u9375\u7684\u4E00\u53E5\u539F\u6587\uFF08\u7167\u6284\u539F\u5B57\u4E32\u3001\u4E0D\u7FFB\uFF09\uFF0C\u5F8C\u9762\u63A5\u300C\uFF1D\u300D\u518D\u5BEB\u4E2D\u6587\u610F\u601D\uFF0C\u4F8B\uFF1A\u300CBackup file '%1' cannot be restored.\uFF1D\u5099\u4EFD\u6A94 '%1' \u9084\u539F\u4E0D\u4E86\u300D\u3002\u2461\u540C\u4E00\u500B\u82F1\u6587\u8A5E\u5168\u5361\u53EA\u7528\u540C\u4E00\u500B\u4E2D\u6587\u8B6F\u540D\uFF0C\u7528\u8A72\u9818\u57DF\u901A\u884C\u7684\u8AAA\u6CD5\uFF0C\u4E26\u4FDD\u7559\u9650\u5B9A\u8A5E\uFF08\u4F8B\uFF1Asoftware license\uFF1D\u6388\u6B0A\uFF0C\u4E0D\u662F\u57F7\u7167\uFF1Bbackup file\uFF1D\u5099\u4EFD\u6A94\uFF0C\u4E0D\u662F\u6A94\u6848\uFF1B\u6A5F\u68B0\u52A0\u5DE5\u7684 tool\uFF1D\u5200\u5177\uFF0C\u4E0D\u662F\u5DE5\u5177\uFF1B\u6703\u8A08\u7684 invoice\uFF1D\u767C\u7968\uFF0C\u4E0D\u662F\u5E33\u55AE\uFF09\u3002\u2462tags \u540C\u6642\u653E\u4E2D\u6587\u8B6F\u540D\u8207\u82F1\u6587\u539F\u8A5E\u3002\u53EA\u8F38\u51FA\u90A3\u500B JSON \u7269\u4EF6\u3002"
     }
   ]
 };
@@ -16095,9 +15725,6 @@ var PromptBlockSchema = z.object({
   v: z.number().int().positive(),
   when: z.string().refine((w) => w === "always" || KIND_RE.test(w), "when \u5FC5\u9808\u662F always \u6216\u7279\u4F8B\u7DE8\u865F"),
   attach: z.string().regex(/^[a-z_]{1,32}$/).optional(),
-  // 'after'＝text 注入時這一塊接在**原稿後面**（預設在原稿前面）。要放「最後再提醒一次」的規則用：
-  // 原稿很長（整本手冊）時，放在前面的規則離輸出太遠，模型會跟著原稿的語言走（inkstone/Arcrun#317）。
-  place: z.enum(["before", "after"]).optional(),
   value: z.union([z.string().min(1), z.array(z.string().min(1)).min(1), z.record(z.unknown())])
 });
 var PromptTableSchema = z.object({
@@ -16172,7 +15799,6 @@ function blockText(value) {
 function assemblePromptTable(table, input, source) {
   const obj = {};
   const lines = [];
-  const tail = [];
   const used = [];
   const known = /* @__PURE__ */ new Set();
   for (const b of table.blocks) {
@@ -16182,11 +15808,11 @@ function assemblePromptTable(table, input, source) {
       const data = input.hints[b.attach];
       if (!Array.isArray(data) || data.length === 0) continue;
       obj[b.key] = { \u6307\u793A: b.value, [b.attach]: data };
-      (b.place === "after" ? tail : lines).push(`${blockText(b.value)}
+      lines.push(`${blockText(b.value)}
 - ${data.join("\n- ")}`);
     } else {
       obj[b.key] = b.value;
-      (b.place === "after" ? tail : lines).push(blockText(b.value));
+      lines.push(blockText(b.value));
     }
     used.push(`${b.key}@${b.v}`);
   }
@@ -16197,8 +15823,7 @@ function assemblePromptTable(table, input, source) {
   }
   return { user: `${lines.join("\n")}
 
-${src}${tail.length ? `
-${tail.join("\n")}` : ""}`, used, unknownKinds };
+${src}`, used, unknownKinds };
 }
 function promptTableUserMessage(pageName, text) {
   return `\u539F\u7A3F\uFF08\u6A94\u540D\uFF1A${pageName}\uFF09\uFF1A
@@ -18001,51 +17626,24 @@ portalRouter.get(
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const row = await readExtractAiRow(c.env);
-    let have = /* @__PURE__ */ new Set();
+    let hasKey = false;
     try {
-      have = new Set((await listCredentialRows(c.env, credentialOwner(c.env))).map((r) => r.name));
+      hasKey = await hasCredential(c.env, credentialOwner(c.env), EXTRACT_AI_CREDENTIAL);
     } catch {
-      have = /* @__PURE__ */ new Set();
+      hasKey = false;
     }
-    const providers = EXTRACT_AI_PROVIDERS.map((p) => ({
-      id: p.id,
-      label: p.label,
-      group: p.group,
-      key: p.key,
-      credential: p.credential ?? null,
-      has_key: !!p.credential && have.has(p.credential),
-      needs_base_url: !!p.needs_base_url,
-      live_models: !!p.models_url || !!p.needs_base_url,
-      default_base_url: p.default_base_url ?? null,
-      models: p.models,
-      description: p.description
-    }));
     const config = row?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
-    const current = providers.find((p) => p.id === config.recipe);
     return c.json({
       success: true,
       recipe: config.recipe,
-      provider_label: current?.label ?? config.recipe,
       base_url: config.base_url ?? null,
       model: config.model ?? null,
-      has_key: current?.has_key ?? false,
+      has_key: hasKey,
       is_default: !row,
-      providers,
-      available_recipes: providers.map((p) => p.id),
+      available_recipes: EXTRACT_AI_RECIPE_IDS,
       updated_at: row?.updated_at || null,
       updated_by: row?.updated_by || null
     });
-  })
-);
-portalRouter.get(
-  "/portal/admin/extract-ai/models",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const recipe = (c.req.query("recipe") ?? "").trim();
-    if (!findProvider(recipe)) return c.json({ error: "\u4E0D\u8A8D\u5F97\u9019\u500B\u63D0\u4F9B\u5546" }, 400);
-    const list = await listProviderModels(c.env, credentialOwner(c.env), recipe, c.req.query("base_url") ?? void 0);
-    return c.json({ success: true, recipe, ...list });
   })
 );
 portalRouter.put(
@@ -18056,22 +17654,10 @@ portalRouter.put(
     const body = await c.req.json().catch(() => null);
     const v = validateExtractAiConfig(body);
     if (!v.ok) return c.json({ error: v.error }, 400);
-    const provider = findProvider(v.config.recipe);
     const apiKey = typeof body?.api_key === "string" ? body.api_key.trim() : "";
-    if (provider.key === "required" && !apiKey) {
-      let have = false;
+    if (apiKey) {
       try {
-        have = await hasCredential(c.env, credentialOwner(c.env), provider.credential);
-      } catch {
-        have = false;
-      }
-      if (!have) {
-        return c.json({ error: `${provider.label} \u9700\u8981\u91D1\u9470\uFF1A\u8ACB\u5148\u586B\u5165\u91D1\u9470\uFF08\u6703\u5B58\u9032\u6191\u8B49\u4E2D\u5FC3\uFF0C\u540D\u7A31 ${provider.credential}\uFF09` }, 400);
-      }
-    }
-    if (apiKey && provider.credential) {
-      try {
-        await storeCredential(c.env, credentialOwner(c.env), provider.credential, apiKey, "extract_ai");
+        await storeCredential(c.env, credentialOwner(c.env), EXTRACT_AI_CREDENTIAL, apiKey, "extract_ai");
       } catch (e) {
         return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
@@ -22681,9 +22267,6 @@ portalDataRouter.get(
         pages: [],
         pages_count: 0,
         pages_truncated: false,
-        cards: [],
-        cards_found_by: "none",
-        index_trail: [],
         note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002"
       });
     }
@@ -22704,21 +22287,7 @@ portalDataRouter.get(
       return c.json(body ?? { error: "KBDB \u56DE\u61C9\u4E0D\u662F JSON" }, body ? 200 : 502);
     }
     const pages = filterDeprecatedEntries(body.pages);
-    const rawCards = Array.isArray(body.cards) ? body.cards : [];
-    const cards = rawCards.filter((card) => canReadLibrary(libraries, card.library));
-    let withLocation = [];
-    if (cards.length > 0) {
-      const libRecords = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE).catch(() => []);
-      withLocation = cards.map((card) => {
-        const rootRaw = libRecords.find((r) => String(r.values.name ?? "") === card.library)?.values.root;
-        const meta = JSON.stringify({ source_path: card.source_path, machine_label: card.machine });
-        return {
-          ...card,
-          location: cardOriginalLocation([{ metadata_json: meta }], card.library, typeof rootRaw === "string" ? rootRaw : null)
-        };
-      });
-    }
-    return c.json({ ...body, pages, pages_count: pages.length, cards: withLocation });
+    return c.json({ ...body, pages, pages_count: pages.length });
   })
 );
 portalDataRouter.get(
