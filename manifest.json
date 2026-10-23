@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.114",
- "fingerprint": "f3ed23cef590a152b698d16bfa4c840ca68ed6cb8b3122ee4d4c274ffb77eb7d",
+ "release": "1.4.116",
+ "fingerprint": "cb5392303a2f5c43658b034b81a5dfd2b4d640980ef0294a9e20b754aa119ca9",
  "built": "2026-10-23",
- "source": "Arcrun@94ffd9dfc491",
+ "source": "Arcrun@7e8abc6b4bb7",
  "daemon": {
   "version": "0.18.116",
   "built": "20261023-1542",
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1746606,
+   "js_bytes": 2014626,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -230,7 +230,7 @@
      "CONSOLE_TENANT": "leo",
      "PORTAL_SESSION_TTL": "604800",
      "PORTAL_SHOW_WORKFLOWS": "admin",
-     "GITEA_BASE_URL": "https://git.uncle6.me",
+     "GITEA_BASE_URL": "",
      "GITEA_SPRINT_REPO": "inkstone/InkStoneCo",
      "GITEA_SPRINT_DIR": "system-dev/docs/3-specs/autonomy-dispatch"
     },
@@ -241,10 +241,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "0d5f76b2d9095aead140b018424d3a3d591e05fb",
-   "source_content_sha256": "b8195fbf3c250e2a9e023e38cf15e994dedbc21271e1c197996cbd226ebd5660",
-   "sha256": "b8195fbf3c250e2a9e023e38cf15e994dedbc21271e1c197996cbd226ebd5660",
-   "bytes": 1746606
+   "source_commit": "7e8abc6b4bb779fcb642516f0d1cd39bf7a9aff9",
+   "source_content_sha256": "ad202ce5edc18db3a3cd7a471dbe7d5819fc01703c28685eb19946bacd66c923",
+   "sha256": "ad202ce5edc18db3a3cd7a471dbe7d5819fc01703c28685eb19946bacd66c923",
+   "bytes": 2014626
   },
   {
    "name": "arcrun-date-ops",
@@ -942,7 +942,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1746606,
+   "js_bytes": 2014626,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -968,7 +968,7 @@
      "CONSOLE_TENANT": "leo",
      "PORTAL_SESSION_TTL": "604800",
      "PORTAL_SHOW_WORKFLOWS": "admin",
-     "GITEA_BASE_URL": "https://git.uncle6.me",
+     "GITEA_BASE_URL": "",
      "GITEA_SPRINT_REPO": "inkstone/InkStoneCo",
      "GITEA_SPRINT_DIR": "system-dev/docs/3-specs/autonomy-dispatch"
     },
@@ -979,8 +979,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "0d5f76b2d9095aead140b018424d3a3d591e05fb",
-   "source_content_sha256": "b8195fbf3c250e2a9e023e38cf15e994dedbc21271e1c197996cbd226ebd5660",
+   "source_commit": "7e8abc6b4bb779fcb642516f0d1cd39bf7a9aff9",
+   "source_content_sha256": "ad202ce5edc18db3a3cd7a471dbe7d5819fc01703c28685eb19946bacd66c923",
    "first_install": true
   },
   {
