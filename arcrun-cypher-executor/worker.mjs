@@ -3149,7 +3149,14 @@ async function resolveSecretsFromNewHomeDetailed(env, apiKey, names) {
   if (resolvedNames.length > 0) touchLastUsed(env, apiKey, resolvedNames);
   return { resolved, directoryError };
 }
-function explainCredentialFailure(message, directoryError, names) {
+function humanizeMissingCredential(message) {
+  return message.replace(MISSING_CREDENTIAL_RE, (_m, name, label) => {
+    const shown = label ? `${name}\uFF08${label}\uFF09` : name;
+    return `\u7F3A\u5C11 credential: ${shown}\u3002\u8ACB\u7BA1\u7406\u54E1\u5230 Portal\u300C\u7BA1\u7406 \u2192 \u91D1\u9470\u7BA1\u7406\u300D\u65B0\u589E\u4E00\u628A\u540D\u5B57\u53EB ${name} \u7684\u91D1\u9470\uFF08\u540D\u5B57\u8981\u4E00\u6A21\u4E00\u6A23\uFF1B\u503C\u53EA\u586B\u5728\u90A3\u88E1\uFF09\u3002\uFF08\u958B\u767C\u8005\u9032\u968E\uFF1A\u7528 CLI \u7684\u8A71\uFF0C\u7DE8\u8F2F credentials.yaml \u5F8C\u57F7\u884C acr creds push\uFF09`;
+  });
+}
+function explainCredentialFailure(rawMessage, directoryError, names) {
+  const message = humanizeMissingCredential(rawMessage);
   if (!directoryError) return message;
   return `credential \u76EE\u9304\u8B80\u4E0D\u5230\uFF08${directoryError}\uFF09\uFF0C${names.join("\u3001")} \u7121\u6CD5\u5F9E\u4FDD\u7BA1\u8655\u53D6\u7528\u2014\u2014\u9019\u4E0D\u4EE3\u8868 credential \u4E0D\u5B58\u5728\uFF0C\u662F\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u9019\u4E00\u523B\u56DE\u932F\uFF0C\u8ACB\u5148\u78BA\u8A8D KBDB \u662F\u5426\u6B63\u5E38\u3002\u9000\u56DE\u820A\u8DEF\u5F91\u7684\u7D50\u679C\uFF1A${message}`;
 }
@@ -3296,7 +3303,7 @@ async function resolveCredentialRefs(data, env, apiKey, redactor) {
   redactor?.addRecord(result.credentials, (name) => `credential:${name}`);
   return replaceCredentialRefs(data, result.credentials ?? {});
 }
-var oauth2Cache, OAUTH2_CACHE_MAX, SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
+var MISSING_CREDENTIAL_RE, oauth2Cache, OAUTH2_CACHE_MAX, SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
 var init_auth_dispatcher = __esm({
   "cypher-executor/src/actions/auth-dispatcher.ts"() {
     "use strict";
@@ -3306,6 +3313,7 @@ var init_auth_dispatcher = __esm({
     init_secret_backend();
     init_credentials();
     init_tenant();
+    MISSING_CREDENTIAL_RE = /缺少 credential: ([^\s。，,（(]+)(?:\s*[（(]([^）)]*)[）)])?(?:。?\s*修復: 編輯 credentials\.yaml 後執行 acr creds push|。?\s*執行 acr creds push 推送|。?)/g;
     oauth2Cache = /* @__PURE__ */ new Map();
     OAUTH2_CACHE_MAX = 200;
     SUPPORTED_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
@@ -8219,7 +8227,7 @@ var init_graph_executor = __esm({
         if (node.type === "Component") {
           this.nodeSteps.push({ component_id: node.componentId, duration_ms, ok: true });
         }
-        const ownResult = result;
+        let ownResult = result;
         let returnValue = ownResult;
         const outEdges = graph.edges.filter((e) => e.from === node.id);
         for (const edge of outEdges) {
@@ -8336,6 +8344,13 @@ var init_graph_executor = __esm({
                 }
               }
               returnValue = { ...ownResult, results: iterResults };
+              if (ownResult !== null && typeof ownResult === "object" && !Array.isArray(ownResult)) {
+                ownResult = { ...ownResult, results: iterResults };
+              }
+              context = {
+                ...typeof context === "object" && context !== null ? context : {},
+                [nextNode.id]: { results: iterResults }
+              };
               break;
             }
             case "CALLS_SUBFLOW": {
@@ -9088,6 +9103,18 @@ var init_kbdb_proxy = __esm({
       if (!body || !body.template || !body.values && !body.entry_ids) {
         return c.json({ error: "template \u5FC5\u586B\uFF0Cvalues \u8207 entry_ids \u81F3\u5C11\u8981\u6709\u4E00\u500B" }, 400);
       }
+      if (body.record_id !== void 0 && (typeof body.record_id !== "string" || !body.record_id)) {
+        return c.json({ error: "record_id \u5FC5\u9808\u662F\u975E\u7A7A\u5B57\u4E32" }, 400);
+      }
+      if (body.create_only !== void 0 && typeof body.create_only !== "boolean") {
+        return c.json({ error: "create_only \u5FC5\u9808\u662F boolean" }, 400);
+      }
+      if (body.record_id && body.create_only !== true) {
+        return c.json({ error: "\u6307\u5B9A record_id \u5FC5\u9808\u540C\u6642\u5E36 create_only:true\uFF08\u53EA\u5728\u4E0D\u5B58\u5728\u6642\u5EFA\u7ACB\uFF1B\u5DF2\u5B58\u5728\u56DE 409\uFF09" }, 400);
+      }
+      if (body.create_only === true && !body.record_id) {
+        return c.json({ error: "create_only \u5FC5\u9808\u642D\u914D record_id" }, 400);
+      }
       const { base, headers } = kbdbBase(c.env);
       const res = await fetch(`${base}/records`, {
         method: "POST",
@@ -9097,8 +9124,22 @@ var init_kbdb_proxy = __esm({
           template: body.template,
           ...body.values ? { values: body.values } : {},
           ...body.entry_ids ? { entry_ids: body.entry_ids } : {},
+          ...body.record_id ? { record_id: body.record_id, create_only: true } : {},
           owner_id: owner
         })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.post("/kbdb/records/batch-get", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || !Array.isArray(body.ids)) return c.json({ error: "ids[] \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/records/batch-get`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ids: body.ids, owner_id: owner })
       });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
@@ -10423,6 +10464,36 @@ async function runFtsBackfillTick(env, log = console.log, logError = console.err
   return { calls: MAX_TICK_CALLS, totalScanned, stoppedBecause: "max_calls" };
 }
 
+// cypher-executor/src/lib/vector-sync-tick.ts
+init_kbdb_proxy();
+var MAX_SYNC_TICK_CALLS = 8;
+async function runVectorSyncTick(env, log = console.log, logError = console.error) {
+  const { base, headers } = kbdbBase(env);
+  let totalReset = 0;
+  let totalReEmbedded = 0;
+  for (let i = 0; i < MAX_SYNC_TICK_CALLS; i++) {
+    let status = 0;
+    let body = null;
+    try {
+      const res = await fetch(`${base}/embed/sync`, { method: "POST", headers, body: JSON.stringify({ limit: 100 }) });
+      status = res.status;
+      body = await res.json().catch(() => null);
+      log("[scheduled] vector-sync tick", i, status, JSON.stringify(body));
+    } catch (e) {
+      logError("[scheduled] vector-sync tick failed", i, e);
+      return { calls: i, totalReset, totalReEmbedded, stoppedBecause: "error" };
+    }
+    const s = (stoppedBecause) => ({ calls: i + 1, totalReset, totalReEmbedded, stoppedBecause });
+    if (status === 409) return s("embed_off");
+    if (!body?.success) return s("error");
+    totalReset += body.reset_to_pending ?? 0;
+    totalReEmbedded += body.re_embedded ?? 0;
+    if (body.quota_exceeded) return s("quota_exceeded");
+    if (!body.more) return s(body.healthy ? "healthy" : "done");
+  }
+  return { calls: MAX_SYNC_TICK_CALLS, totalReset, totalReEmbedded, stoppedBecause: "max_calls" };
+}
+
 // cypher-executor/src/lib/usage-brake-notify-tick.ts
 init_kbdb_proxy();
 var SKIPPED = { skipped: true, checked: 0, notified: 0, errors: 0 };
@@ -10538,6 +10609,14 @@ async function handleScheduled(controller, env, ctx) {
       runFtsBackfillTick(env).then(
         (summary) => console.log("[scheduled] fts-backfill tick summary", JSON.stringify(summary)),
         (e) => console.error("[scheduled] fts-backfill tick summary failed", e)
+      )
+    );
+  }
+  if (now2.getUTCMinutes() % 10 === 5) {
+    ctx.waitUntil(
+      runVectorSyncTick(env).then(
+        (summary) => console.log("[scheduled] vector-sync tick summary", JSON.stringify(summary)),
+        (e) => console.error("[scheduled] vector-sync tick summary failed", e)
       )
     );
   }
@@ -12777,6 +12856,59 @@ init_webhook_handlers();
 init_schemas();
 init_telemetry();
 init_endpoints();
+
+// cypher-executor/src/lib/trace-summary.ts
+var FAILED_OUTPUT_PREVIEW_CHARS = 2048;
+function isFailedOutput(output) {
+  if (!output || typeof output !== "object") return false;
+  const r = output;
+  return r["success"] === false || "error" in r;
+}
+function preview(output) {
+  if (output === void 0) return void 0;
+  let s;
+  try {
+    s = typeof output === "string" ? output : JSON.stringify(output);
+  } catch {
+    return void 0;
+  }
+  if (typeof s !== "string") return void 0;
+  return s.length > FAILED_OUTPUT_PREVIEW_CHARS ? `${s.slice(0, FAILED_OUTPUT_PREVIEW_CHARS)}\u2026(\u622A\u65B7\uFF0C\u5171 ${s.length} \u5B57\u5143)` : s;
+}
+function summarizeTrace(trace) {
+  if (!Array.isArray(trace)) return trace;
+  return trace.map((raw2) => {
+    if (!raw2 || typeof raw2 !== "object") return raw2;
+    const s = raw2;
+    const id = s.nodeId ?? s.node ?? "";
+    if (s.status && !("output" in s) && !("input" in s)) {
+      return { ...raw2, node: id, nodeId: id };
+    }
+    const failed = Boolean(s.error) || isFailedOutput(s.output);
+    const step = {
+      node: id,
+      nodeId: id,
+      ...s.type !== void 0 ? { type: s.type } : {},
+      status: failed ? "failed" : "success",
+      ...s.duration_ms !== void 0 ? { duration_ms: s.duration_ms } : {},
+      ...s.error ? { error: s.error } : {}
+    };
+    if (failed) {
+      const p = preview(s.output);
+      if (p !== void 0) step.output_preview = p;
+    }
+    return step;
+  });
+}
+function wantsFullTrace(query) {
+  return query("trace") === "full";
+}
+function shapeTraceForResponse(result, full) {
+  if (full || result.trace === void 0) return result;
+  return { ...result, trace: summarizeTrace(result.trace), trace_mode: "summary" };
+}
+
+// cypher-executor/src/routes/webhooks-named.ts
 var webhooksNamedRouter = new Hono2();
 function kvKey(apiKey, name) {
   return `${apiKey}:wf:${name}`;
@@ -13016,7 +13148,8 @@ async function triggerNamed(c, apiKey, name) {
   c.executionCtx.waitUntil(
     writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
   );
-  return c.json(result, result.success ? 200 : 500);
+  const full = wantsFullTrace((n) => c.req.query(n));
+  return c.json(shapeTraceForResponse(result, full), result.success ? 200 : 500);
 }
 var MAX_QUERY_OUTPUT_BYTES = 5 * 1024 * 1024;
 function queryStringContext(c) {
@@ -13059,7 +13192,7 @@ async function queryNamed(c, apiKey, name, triggerContext) {
       {
         success: false,
         error: result.error ?? "\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557",
-        trace: result.trace,
+        trace: wantsFullTrace((n) => c.req.query(n)) ? result.trace : summarizeTrace(result.trace),
         ...paused ? { paused: true, hint: "\u6B64\u5DE5\u4F5C\u6D41\u6703\u66AB\u505C\u7B49\u5F85\u975E\u540C\u6B65 callback\uFF0C\u7121\u6CD5\u7576\u540C\u6B65\u67E5\u8A62\u7AEF\u9EDE\uFF1B\u6539\u7528 /webhooks/named/:name/trigger?async=1 + /workflows/resume\u3002" } : {}
       },
       paused ? 409 : 500
@@ -13839,6 +13972,187 @@ init_dist();
 init_hash();
 init_recipes();
 
+// cypher-executor/src/lib/extract-ai-providers.ts
+var GENERIC_OPENAI_COMPAT_ID = "extract_ai_openai_compat";
+var GENERIC_OPENAI_COMPAT_CREDENTIAL = "extract_ai_api_key";
+var EXTRACT_AI_PROVIDERS = [
+  {
+    id: "extract_ai_workers_ai",
+    label: "Cloudflare Workers AI\uFF08\u514D\u91D1\u9470\uFF0C\u9810\u8A2D\uFF09",
+    group: "cloud",
+    kind: "binding",
+    key: "none",
+    models: [
+      { id: "@cf/meta/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B\uFF08\u9810\u8A2D\uFF09" },
+      { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", label: "Llama 3.3 70B" },
+      { id: "@cf/mistralai/mistral-small-3.1-24b-instruct", label: "Mistral Small 3.1 24B" },
+      { id: "@cf/google/gemma-3-12b-it", label: "Gemma 3 12B" }
+    ],
+    description: "CF \u96F2\u9810\u8A2D\u3002\u8D70 env.AI binding\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\u3002\u4F01\u696D\u79C1\u6709\u96F2\u6C92\u6709\u9019\u500B binding \u21D2 \u8ACB\u6539\u9078\u5225\u5BB6\u3002"
+  },
+  {
+    id: "extract_ai_openai",
+    label: "OpenAI",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.openai.com/v1/chat/completions",
+    models_url: "https://api.openai.com/v1/models",
+    models: [{ id: "gpt-4o-mini" }, { id: "gpt-4o" }, { id: "gpt-4.1-mini" }, { id: "gpt-4.1" }],
+    credential: "extract_ai_openai_key",
+    description: "OpenAI \u5B98\u65B9 API\u3002"
+  },
+  {
+    id: "extract_ai_anthropic",
+    label: "Anthropic Claude",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.anthropic.com/v1/chat/completions",
+    models_url: "https://api.anthropic.com/v1/models",
+    models_headers: { "anthropic-version": "2023-06-01" },
+    models: [{ id: "claude-haiku-5-5" }, { id: "claude-sonnet-5-5" }, { id: "claude-opus-5-5" }],
+    credential: "extract_ai_anthropic_key",
+    description: "Anthropic \u7684 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u3002"
+  },
+  {
+    id: "extract_ai_gemini",
+    label: "Google Gemini",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    models_url: "https://generativelanguage.googleapis.com/v1beta/openai/models",
+    models: [{ id: "gemini-2.5-flash" }, { id: "gemini-2.5-pro" }, { id: "gemini-2.0-flash" }],
+    credential: "extract_ai_gemini_key",
+    description: "Google AI Studio \u7684 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u3002"
+  },
+  {
+    id: "extract_ai_groq",
+    label: "Groq",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.groq.com/openai/v1/chat/completions",
+    models_url: "https://api.groq.com/openai/v1/models",
+    models: [{ id: "llama-3.3-70b-versatile" }, { id: "llama-3.1-8b-instant" }],
+    credential: "extract_ai_groq_key",
+    description: "Groq \u96F2\u7AEF\u63A8\u8AD6\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_openrouter",
+    label: "OpenRouter",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://openrouter.ai/api/v1/chat/completions",
+    models_url: "https://openrouter.ai/api/v1/models",
+    models: [
+      { id: "openai/gpt-4o-mini" },
+      { id: "anthropic/claude-sonnet-4.5" },
+      { id: "google/gemini-2.5-flash" },
+      { id: "meta-llama/llama-3.3-70b-instruct" }
+    ],
+    credential: "extract_ai_openrouter_key",
+    description: "OpenRouter \u805A\u5408\uFF08\u4E00\u628A\u91D1\u9470\u901A\u591A\u5BB6\u6A21\u578B\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_deepseek",
+    label: "DeepSeek",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.deepseek.com/chat/completions",
+    models_url: "https://api.deepseek.com/models",
+    models: [{ id: "deepseek-chat" }, { id: "deepseek-reasoner" }],
+    credential: "extract_ai_deepseek_key",
+    description: "DeepSeek \u5B98\u65B9 API\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_mistral",
+    label: "Mistral",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.mistral.ai/v1/chat/completions",
+    models_url: "https://api.mistral.ai/v1/models",
+    models: [{ id: "mistral-small-latest" }, { id: "mistral-large-latest" }],
+    credential: "extract_ai_mistral_key",
+    description: "Mistral La Plateforme\u3002"
+  },
+  {
+    id: "extract_ai_xai",
+    label: "xAI Grok",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.x.ai/v1/chat/completions",
+    models_url: "https://api.x.ai/v1/models",
+    models: [{ id: "grok-3-mini" }, { id: "grok-3" }],
+    credential: "extract_ai_xai_key",
+    description: "xAI \u5B98\u65B9 API\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_together",
+    label: "Together AI",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.together.xyz/v1/chat/completions",
+    models_url: "https://api.together.xyz/v1/models",
+    models: [{ id: "meta-llama/Llama-3.3-70B-Instruct-Turbo" }, { id: "Qwen/Qwen2.5-72B-Instruct-Turbo" }],
+    credential: "extract_ai_together_key",
+    description: "Together AI \u958B\u6E90\u6A21\u578B\u8A17\u7BA1\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_ollama",
+    label: "Ollama\uFF08\u5730\u7AEF\uFF09",
+    group: "local",
+    kind: "http",
+    key: "optional",
+    needs_base_url: true,
+    default_base_url: "http://localhost:11434",
+    models: [],
+    credential: "extract_ai_ollama_key",
+    description: "\u5730\u7AEF\u6216\u5167\u7DB2\u7684 Ollama\u3002\u91D1\u9470\u901A\u5E38\u4E0D\u9700\u8981\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
+  },
+  {
+    id: GENERIC_OPENAI_COMPAT_ID,
+    label: "\u5176\u4ED6 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\uFF08vLLM\uFF0FLM Studio\uFF0F\u81EA\u5EFA\uFF09",
+    group: "local",
+    kind: "http",
+    key: "optional",
+    needs_base_url: true,
+    models: [],
+    credential: GENERIC_OPENAI_COMPAT_CREDENTIAL,
+    description: "\u4EFB\u4F55\u5BE6\u4F5C /v1/chat/completions \u7684\u7AEF\u9EDE\u3002\u91D1\u9470\u9078\u586B\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
+  }
+];
+function findProvider(id) {
+  return EXTRACT_AI_PROVIDERS.find((p) => p.id === id);
+}
+function extractAiProviderSeeds() {
+  return EXTRACT_AI_PROVIDERS.filter((p) => p.kind === "http").map((p) => {
+    const body_template = {
+      model: "{{model}}",
+      messages: "{{messages}}",
+      max_tokens: "{{max_tokens}}",
+      temperature: "{{temperature}}",
+      response_format: "{{response_format}}"
+    };
+    return {
+      canonical_id: p.id,
+      display_name: `\u8403\u53D6 AI\uFF1A${p.label}`,
+      description: `${p.description}` + (p.credential ? ` \u91D1\u9470\u8D70 credential\u300C${p.credential}\u300D${p.key === "optional" ? "\uFF08\u9078\u586B\uFF0C\u6709\u8A2D\u624D\u5E36 Authorization\uFF09" : ""}\u3002` : ""),
+      endpoint: p.chat_url ?? "{{base_url}}/v1/chat/completions",
+      method: "POST",
+      ...p.credential ? { headers: { Authorization: `Bearer {{credential.${p.credential}}}` } } : {},
+      body_template,
+      response_map: { text_path: "choices.0.message.content" }
+    };
+  });
+}
+
 // cypher-executor/src/lib/api-recipe-seeds.ts
 var KBDB_BASE_TOKEN = "{{KBDB_BASE_URL}}";
 function resolveKbdbSeedBase(text, resolveBase) {
@@ -13992,22 +14306,9 @@ var API_RECIPE_SEEDS = [
     },
     response_map: { text_path: "response" }
   },
-  {
-    canonical_id: "extract_ai_openai_compat",
-    display_name: "\u8403\u53D6 AI\uFF1AOpenAI \u76F8\u5BB9\u7AEF\u9EDE\uFF08Ollama\uFF0FvLLM\uFF0FLM Studio\u2026\uFF09",
-    description: "\u4F01\u696D\u79C1\u6709\u96F2\u7528\u3002POST {{base_url}}/v1/chat/completions\uFF0Cbody \u70BA OpenAI chat \u683C\u5F0F\u3002\u91D1\u9470\u9078\u586B\uFF08\u5167\u7DB2 Ollama \u901A\u5E38\u4E0D\u9700\u8981\uFF09\uFF1A\u6709\u8A2D credential\u300Cextract_ai_api_key\u300D\u624D\u5E36 Authorization\u3002",
-    endpoint: "{{base_url}}/v1/chat/completions",
-    method: "POST",
-    headers: { Authorization: "Bearer {{credential.extract_ai_api_key}}" },
-    body_template: {
-      model: "{{model}}",
-      messages: "{{messages}}",
-      max_tokens: "{{max_tokens}}",
-      temperature: "{{temperature}}",
-      response_format: "{{response_format}}"
-    },
-    response_map: { text_path: "choices.0.message.content" }
-  }
+  // 其餘每家提供商（OpenAI／Anthropic／Gemini／…／Ollama／通用 OpenAI 相容）的 recipe 由
+  // extract-ai-providers.ts 的清單產生（leo 10-15：清單由開發端維護）。
+  ...extractAiProviderSeeds()
 ];
 
 // cypher-executor/src/routes/init-seed.ts
@@ -15348,8 +15649,8 @@ var PORTAL_TEMPLATE_SEEDS = [
   {
     // inkstone/Arcrun#277：這台雲端的萃取 AI 由管理員選（每種 AI 一份 recipe，見 api-recipe-seeds）。
     // 一台雲端一筆設定（純量，鏡像 portal_mcp_token_ttl 那條路）；**每台雲端各一份，不跨租戶共用**。
-    //   recipe     ＝ extract_ai_workers_ai｜extract_ai_openai_compat
-    //   base_url   ＝ OpenAI 相容端點根網址（Workers AI 不用）
+    //   recipe     ＝ 提供商清單上的 id（extract_ai_workers_ai｜extract_ai_openai｜…｜extract_ai_ollama｜extract_ai_openai_compat；見 extract-ai-providers.ts）
+    //   base_url   ＝ 地端／自建端點根網址（雲端託管的家與 Workers AI 不用）
     //   model      ＝ 模型名（Workers AI 不填＝recipe 預設）
     //   updated_at／updated_by ＝ 誰在什麼時候改的
     // 金鑰**不在這裡**：只存在 credential 中心（名字 extract_ai_api_key），這筆 record 永遠沒有值。
@@ -15403,22 +15704,25 @@ init_auth_dispatcher();
 init_recipes();
 var EXTRACT_AI_TEMPLATE = "portal_extract_ai";
 var DEFAULT_EXTRACT_AI_RECIPE = "extract_ai_workers_ai";
-var EXTRACT_AI_RECIPE_IDS = ["extract_ai_workers_ai", "extract_ai_openai_compat"];
-var EXTRACT_AI_CREDENTIAL = "extract_ai_api_key";
+var EXTRACT_AI_RECIPE_IDS = EXTRACT_AI_PROVIDERS.map((p) => p.id);
 var DEFAULT_EXTRACT_AI_CONFIG = { recipe: DEFAULT_EXTRACT_AI_RECIPE };
 function validateExtractAiConfig(raw2) {
   if (!raw2 || typeof raw2 !== "object") return { ok: false, error: "body \u5FC5\u9808\u662F JSON \u7269\u4EF6" };
   const o = raw2;
   const recipe = typeof o.recipe === "string" ? o.recipe.trim() : "";
-  if (!EXTRACT_AI_RECIPE_IDS.includes(recipe)) {
-    return { ok: false, error: `recipe \u5FC5\u9808\u662F ${EXTRACT_AI_RECIPE_IDS.join(" \u6216 ")}` };
+  const provider = findProvider(recipe);
+  if (!provider) {
+    return { ok: false, error: `recipe \u5FC5\u9808\u662F\u6E05\u55AE\u4E0A\u7684\u63D0\u4F9B\u5546\u4E4B\u4E00\uFF1A${EXTRACT_AI_RECIPE_IDS.join("\u3001")}` };
   }
   const config = { recipe };
   const model = typeof o.model === "string" ? o.model.trim() : "";
   if (model) config.model = model;
-  if (recipe === "extract_ai_openai_compat") {
+  if (provider.kind === "http" && !model) {
+    return { ok: false, error: `${provider.label} \u5FC5\u9808\u5F9E\u9078\u55AE\u6311\u4E00\u500B\u6A21\u578B\uFF08model\uFF09` };
+  }
+  if (provider.needs_base_url) {
     const baseUrl = typeof o.base_url === "string" ? o.base_url.trim().replace(/\/+$/, "") : "";
-    if (!baseUrl) return { ok: false, error: "OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u5FC5\u9808\u586B base_url\uFF08\u4F8B http://ollama.internal:11434\uFF09" };
+    if (!baseUrl) return { ok: false, error: `${provider.label} \u5FC5\u9808\u586B base_url\uFF08\u4F8B ${provider.default_base_url ?? "http://ollama.internal:11434"}\uFF09` };
     let u;
     try {
       u = new URL(baseUrl);
@@ -15428,7 +15732,6 @@ function validateExtractAiConfig(raw2) {
     if (u.protocol !== "http:" && u.protocol !== "https:") {
       return { ok: false, error: "base_url \u53EA\u63A5\u53D7 http\uFF0Fhttps" };
     }
-    if (!model) return { ok: false, error: "OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u5FC5\u9808\u586B model\uFF08\u4F8B llama3.1:70b\uFF09" };
     config.base_url = baseUrl;
   }
   return { ok: true, config };
@@ -15536,6 +15839,54 @@ async function runExtractAi(env, tenant2, config, req) {
   } catch (e) {
     return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
   }
+}
+var NON_CHAT_MODEL = /(embed|whisper|tts|dall-e|moderation|image|audio|realtime|transcribe|rerank|imagen|veo)/i;
+async function fetchModelIds(url, headers) {
+  try {
+    const res = await fetch(url, { headers });
+    if (!res.ok) return { error: `\u7AEF\u9EDE\u56DE ${res.status}\uFF0C\u5217\u4E0D\u51FA\u6A21\u578B` };
+    const json = await res.json();
+    const raw2 = json.data ?? json.models ?? [];
+    const ids = raw2.map((m) => typeof m.id === "string" ? m.id : typeof m.name === "string" ? m.name : "").map((id) => id.replace(/^models\//, "")).filter(Boolean);
+    return { ids };
+  } catch (e) {
+    return { error: `\u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+async function listProviderModels(env, tenant2, providerId, baseUrl) {
+  const provider = findProvider(providerId);
+  if (!provider) return { models: [], source: "none", error: `\u6C92\u6709\u9019\u500B\u63D0\u4F9B\u5546\uFF1A${providerId}` };
+  let key = "";
+  if (provider.credential) {
+    try {
+      key = (await resolveSecretsFromNewHome(env, tenant2, [provider.credential]))[provider.credential] ?? "";
+    } catch {
+      key = "";
+    }
+  }
+  const headers = { ...provider.models_headers ?? {} };
+  if (key) {
+    headers.Authorization = `Bearer ${key}`;
+    if (provider.id === "extract_ai_anthropic") headers["x-api-key"] = key;
+  }
+  if (provider.needs_base_url) {
+    const base = (baseUrl ?? "").trim().replace(/\/+$/, "");
+    if (!/^https?:\/\//.test(base)) return { models: [], source: "none", error: "\u5148\u586B\u7AEF\u9EDE\u7DB2\u5740\uFF0C\u624D\u80FD\u5217\u51FA\u5B83\u6709\u54EA\u4E9B\u6A21\u578B" };
+    const r2 = await fetchModelIds(`${base}/v1/models`, headers);
+    if ("error" in r2) return { models: [], source: "none", error: r2.error };
+    if (r2.ids.length === 0) return { models: [], source: "none", error: "\u7AEF\u9EDE\u6C92\u6709\u56DE\u4EFB\u4F55\u6A21\u578B\uFF08Ollama \u5148 pull \u4E00\u500B\u6A21\u578B\uFF09" };
+    return { models: r2.ids.sort().map((id) => ({ id })), source: "live" };
+  }
+  if (!provider.models_url) return { models: provider.models, source: "catalog" };
+  if (!key) {
+    return { models: provider.models, source: "catalog", error: "\u9084\u6C92\u52A0\u91D1\u9470\uFF0C\u7121\u6CD5\u5411\u8A72\u5BB6\u53D6\u5F97\u6700\u65B0\u6A21\u578B\u6E05\u55AE\uFF1B\u5148\u986F\u793A\u9810\u8A2D\u6E05\u55AE" };
+  }
+  const r = await fetchModelIds(provider.models_url, headers);
+  if ("error" in r || r.ids.length === 0) {
+    return { models: provider.models, source: "catalog", error: "error" in r ? r.error : "\u8A72\u5BB6\u6C92\u6709\u56DE\u4EFB\u4F55\u6A21\u578B" };
+  }
+  const chat = r.ids.filter((id) => !NON_CHAT_MODEL.test(id));
+  return { models: (chat.length ? chat : r.ids).sort().map((id) => ({ id })), source: "live" };
 }
 
 // cypher-executor/src/routes/portal.ts
@@ -15652,15 +16003,21 @@ var extract_wiki_default = {
     },
     {
       key: "common.rules",
+      v: 2,
+      when: "always",
+      value: "\n\u898F\u5247\uFF08\u9055\u53CD\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\uFF09\uFF1A\n- \u7528\u6B63\u9AD4\u4E2D\u6587\u5BEB\uFF0C\u8B1B\u539F\u7A3F\u7684**\u5167\u5BB9**\uFF1A\u5B83\u8AAA\u4E86\u4EC0\u9EBC\u3001\u898F\u5B9A\u4EC0\u9EBC\u3001\u5217\u4E86\u54EA\u4E9B\u9805\u76EE\u3001\u7D50\u8AD6\u662F\u4EC0\u9EBC\u3002\u4E0D\u662F\u6539\u5BEB\u6210\u7A7A\u6CDB\u7684\u8A55\u8A9E\uFF0C\u4E5F\u4E0D\u662F\u6574\u6BB5\u7167\u6284\u539F\u7A3F\u3002"
+    },
+    {
+      key: "common.keep-verbatim",
       v: 1,
       when: "always",
-      value: "\n\u898F\u5247\uFF08\u9055\u53CD\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\uFF09\uFF1A\n- \u5361\u7247\u5167\u5BB9\u662F\u4F60\u7684**\u5224\u65B7\u8207\u91CD\u7D44**\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\uFF0C\u7981\u6B62\u6574\u53E5\u7167\u6284\u539F\u7A3F\u3002"
+      value: "- \u5C08\u6709\u540D\u8A5E\u3001\u4EBA\u540D\u3001\u516C\u53F8\u540D\u3001\u7522\u54C1\u540D\u3001\u578B\u865F\u3001\u932F\u8AA4\u78BC\uFF0F\u4EE3\u78BC\u3001\u53C3\u6578\u540D\u3001\u65E5\u671F\u3001\u91D1\u984D\u3001\u7248\u672C\u865F\u8207\u4E00\u5207\u6578\u5B57\uFF0C\u4E00\u5F8B**\u4FDD\u7559\u539F\u7A3F\u7684\u539F\u5B57\u4E32**\uFF1A\u4E0D\u610F\u8B6F\u3001\u4E0D\u63DB\u7B97\u3001\u4E0D\u7701\u7565\uFF0C\u4E5F\u4E0D\u7528\u300C\u591A\u7A2E\u300D\u300C\u82E5\u5E72\u300D\u300C\u76F8\u95DC\u300D\u9019\u985E\u8A5E\u6982\u62EC\u3002\u539F\u7A3F\u5217\u4E86\u5E7E\u500B\u9805\u76EE\uFF0C\u5361\u4E0A\u5C31\u5BEB\u51FA\u9019\u4E9B\u9805\u76EE\u7684\u540D\u7A31\u8207\u6578\u503C\uFF0C\u4E0D\u8981\u58D3\u6210\u4E00\u53E5\u300C\u5177\u6709\u591A\u7A2E\u529F\u80FD\u300D\u3002\n- gloss\u3001summary\u3001points \u90FD\u8B1B\u5167\u5BB9\u672C\u8EAB\uFF0C**\u4E0D\u51C6\u8B1B\u9019\u662F\u4EC0\u9EBC\u985E\u578B\u7684\u6A94\u6848**\uFF1A\u4E0D\u53EF\u5BEB\u300C\u9019\u662F\u4E00\u4EFD\u2026\u6587\u4EF6\uFF0F\u6A94\u6848\uFF0F\u624B\u518A\uFF0F\u7D00\u9304\u300D\u300C\u2026\u63CF\u8FF0\u6A94\u6848\u300D\u4E4B\u985E\u7684\u8A71\uFF0C\u4E5F\u4E0D\u53EF\u62FF\u6A94\u540D\u7576\u6982\u5FF5\u540D\u3002\u8B80\u8005\u4E0D\u770B\u539F\u7A3F\u3001\u53EA\u770B\u9019\u5F35\u5361\uFF0C\u5C31\u8981\u77E5\u9053\u539F\u7A3F\u5BEB\u4E86\u4EC0\u9EBC\u3002"
     },
     {
       key: "thin-card.concept-count",
-      v: 1,
+      v: 2,
       when: "always",
-      value: "- \u6982\u5FF5\u6578\u7531\u5167\u5BB9\u6C7A\u5B9A\uFF08\u591A\u6578\u6587\u4EF6 1-5 \u500B\uFF09\uFF1B\u6BCF\u500B\u6982\u5FF5\u8981\u80FD**\u96E2\u958B\u539F\u7A3F\u7368\u7ACB\u6210\u7ACB**\u3002"
+      value: "- \u6982\u5FF5\u6578\u7531\u5167\u5BB9\u6C7A\u5B9A\uFF08\u591A\u6578\u6587\u4EF6 1-5 \u500B\uFF09\uFF1B\u6BCF\u500B\u6982\u5FF5\u8981\u80FD**\u96E2\u958B\u539F\u7A3F\u7368\u7ACB\u6210\u7ACB**\u3002\u5167\u5BB9\u53EA\u6709\u5E7E\u884C\u7684\u77ED\u7D00\u9304\uFF08\u4E00\u689D\u932F\u8AA4\u78BC\u3001\u4E00\u689D\u898F\u5247\u3001\u4E00\u5247\u516C\u544A\uFF09\u53EA\u958B 1 \u500B\u6982\u5FF5\uFF0C\u7528\u539F\u7A3F\u7684\u5C08\u540D\u6216\u4EE3\u78BC\u7576\u6982\u5FF5\u540D\uFF1B\u4E0D\u8981\u70BA\u4E86\u6E4A\u6578\u628A\u540C\u4E00\u4EF6\u4E8B\u62C6\u6210\u591A\u500B\uFF0C\u4E5F\u4E0D\u8981\u767C\u660E\u539F\u7A3F\u6C92\u8B1B\u7684\u6982\u5FF5\u3002"
     },
     {
       key: "common.no-concept",
@@ -15670,9 +16027,15 @@ var extract_wiki_default = {
     },
     {
       key: "common.fields",
+      v: 2,
+      when: "always",
+      value: "- gloss\uFF1D\u4E00\u53E5\u8A71\uFF0840 \u5B57\u5167\uFF09\uFF1A\u76F4\u63A5\u8B1B\u5167\u5BB9\uFF0C\u5E36\u4E0A\u6700\u95DC\u9375\u7684\u5C08\u540D\u6216\u6578\u5B57\u3002summary\uFF1D\u4E00\u5C0F\u6BB5\uFF0880-200 \u5B57\uFF09\uFF1A\u628A\u539F\u7A3F\u7684\u5177\u9AD4\u5167\u5BB9\uFF08\u9805\u76EE\u3001\u6578\u503C\u3001\u689D\u4EF6\u3001\u7D50\u8AD6\uFF09\u4EA4\u4EE3\u6E05\u695A\u3002points\uFF1D3-8 \u689D\u53E5\u5B50\uFF0C\u6BCF\u689D\u5E36\u5177\u9AD4\u7684\u5C08\u540D\u6216\u6578\u5B57\uFF0C\u4E0D\u662F\u689D\u5217\u8907\u8FF0\uFF1B\u539F\u7A3F\u5F88\u77ED\u6642\u6709\u5E7E\u4EF6\u4E8B\u5BEB\u5E7E\u689D\uFF0C\u4E0D\u5FC5\u6E4A\u6EFF\u3002\n- \u6587\u4EF6\u5C64\u7684 points \u6BCF\u689D\u8981\u628A\u76F8\u95DC\u6982\u5FF5\u540D\u7528 [[\u6982\u5FF5\u540D]] \u5D4C\u5728**\u53E5\u5B50\u4E2D\u9593**\uFF08\u4E0D\u53EF\u653E\u53E5\u9996\u7576\u6A19\u984C\uFF09\u3002\n- entities\uFF1A\u6BCF\u500B\u5BE6\u9AD4\u662F\u539F\u7A3F**\u5167\u5BB9\u88E1\u8B1B\u5230\u7684\u6771\u897F**\uFF0C\u5E36 type\uFF08\u4EBA\u7269/\u7D44\u7E54/\u5DE5\u5177/\u6982\u5FF5/\u5730\u9EDE/\u4E8B\u4EF6/\u6A94\u6848 \u64C7\u4E00\uFF09\u8207\u4E00\u53E5\u63CF\u8FF0\u3002\u539F\u7A3F\u9019\u4EFD\u6587\u4EF6\u672C\u8EAB\u3001\u5B83\u7684\u6A94\u540D\u3001\u526F\u6A94\u540D\u3001\u9801\u9762\u7DE8\u865F\u90FD\u4E0D\u662F\u5BE6\u9AD4\uFF1Btype \u9078\u300C\u6A94\u6848\u300D\u53EA\u9650\u539F\u7A3F\u5167\u5BB9\u660E\u78BA\u8AC7\u5230\u7684\u67D0\u500B\u6A94\u6848\u3002"
+    },
+    {
+      key: "common.cross-language-terms",
       v: 1,
       when: "always",
-      value: "- gloss\uFF1D\u4E00\u53E5\u8A71\uFF0840 \u5B57\u5167\uFF09\u3002summary\uFF1D\u4E00\u5C0F\u6BB5\uFF0880-200 \u5B57\uFF09\u3002points\uFF1D3-8 \u689D\u5224\u65B7\u53E5\uFF08\u4E0D\u662F\u689D\u5217\u8907\u8FF0\uFF09\u3002\n- \u6587\u4EF6\u5C64\u7684 points \u6BCF\u689D\u8981\u628A\u76F8\u95DC\u6982\u5FF5\u540D\u7528 [[\u6982\u5FF5\u540D]] \u5D4C\u5728**\u53E5\u5B50\u4E2D\u9593**\uFF08\u4E0D\u53EF\u653E\u53E5\u9996\u7576\u6A19\u984C\uFF09\u3002\n- entities\uFF1A\u6BCF\u500B\u5BE6\u9AD4\u5E36 type\uFF08\u4EBA\u7269/\u7D44\u7E54/\u5DE5\u5177/\u6982\u5FF5/\u5730\u9EDE/\u4E8B\u4EF6/\u6A94\u6848 \u64C7\u4E00\uFF09\u8207\u4E00\u53E5\u63CF\u8FF0\u3002"
+      value: "- \u539F\u7A3F\u4E0D\u662F\u4E2D\u6587\u6642\uFF08\u82F1\u6587\u624B\u518A\u3001\u898F\u683C\u66F8\u3001\u65E5\u6587\u6587\u4EF6\u2026\uFF09\uFF0C\u8981\u8B93\u4EBA\u7528**\u4E2D\u6587\u767D\u8A71**\u6216\u7528**\u539F\u6587\u5B57\u4E32**\u90FD\u627E\u5F97\u5230\u9019\u5F35\u5361\uFF1A\u95DC\u9375\u53E5\u4FDD\u7559\u539F\u6587\u3001\u8853\u8A9E\u7528\u7D71\u4E00\u7684\u4E2D\u6587\u8B6F\u540D\uFF08\u683C\u5F0F\u898B\u6700\u5F8C\u63D0\u9192\uFF09\uFF1B\u539F\u7A3F\u5728\u8B1B\u4E00\u500B\u72C0\u6CC1\u3001\u75C7\u72C0\u6216\u554F\u984C\uFF08\u932F\u8AA4\u8A0A\u606F\u3001\u6545\u969C\u3001\u9650\u5236\u3001\u4E0D\u80FD\u505A\u4EC0\u9EBC\uFF09\u6642\uFF0Csummary \u8981\u7528\u4F7F\u7528\u8005\u6703\u8AAA\u7684\u767D\u8A71\u628A\u5B83\u8B1B\u51FA\u4F86\uFF08\u4F8B\uFF1A\u300C\u5E33\u865F\u88AB\u9396\u4F4F\u767B\u4E0D\u9032\u53BB\u300D\u300C\u6578\u503C\u8D85\u51FA\u7BC4\u570D\u5B58\u4E0D\u4E86\u300D\uFF09\uFF1B\u539F\u56E0\u8207\u8655\u7F6E\u4E5F\u7528\u767D\u8A71\u9010\u9805\u5BEB\u51FA\uFF0C\u4E0D\u8981\u53EA\u5BEB\u300C\u8AAA\u660E\u4E86\u539F\u56E0\u548C\u4FEE\u6B63\u65B9\u6CD5\u300D\u3002"
     },
     {
       key: "chunk-cliff.count-first",
@@ -15691,6 +16054,13 @@ var extract_wiki_default = {
       v: 1,
       when: "always",
       value: '\nJSON \u5F62\u72C0\uFF08\u7167\u9019\u500B\u7D50\u69CB\u586B\uFF09\uFF1A\n{"gloss":"","tags":[""],"summary":"","points":["\u2026\u53E5\u5B50\u4E2D\u9593\u5D4C [[\u6982\u5FF5\u540D]]\u2026"],\n "no_concept":false,"reason":"",\n "concepts":[{"name":"","gloss":"","tags":[""],"summary":"","points":[""],\n   "entities":[{"name":"","type":"","desc":""}],\n   "facts":[["","",""]],\n   "relations":[{"to":"","pred":""}]}]}'
+    },
+    {
+      key: "common.language-reminder",
+      v: 5,
+      when: "always",
+      place: "after",
+      value: "\n\u6700\u5F8C\u63D0\u9192\uFF1A\u6240\u6709\u6B04\u4F4D\u7684\u6587\u5B57\u4E00\u5F8B\u7528\u6B63\u9AD4\u4E2D\u6587\u3002\u5167\u5BB9\u662F\u82F1\u6587\uFF08\u6216\u65E5\u6587\u7B49\u5176\u4ED6\u8A9E\u8A00\uFF09\u4E5F\u8981\u7FFB\u6210\u4E2D\u6587\u518D\u5BEB\uFF1B\u53EA\u6709\u5C08\u6709\u540D\u8A5E\u3001\u578B\u865F\u3001\u4EE3\u78BC\u3001\u53C3\u6578\u540D\u8207\u6578\u5B57\u7167\u539F\u5B57\u4E32\u4FDD\u7559\u3002gloss \u8207 summary \u76F4\u63A5\u5BEB\u5167\u5BB9\u672C\u8EAB\uFF08\u4F8B\uFF1A\u300CCompactB-3020 \u7684\u884C\u7A0B\u3001\u4E3B\u8EF8\u8207\u63A7\u5236\u7CFB\u7D71\u898F\u683C\u300D\uFF09\uFF0C\u4E0D\u8981\u4EE5\u300C\u672C\u6587\u4EF6\u662F\u2026\u300D\u300C\u9019\u662F\u4E00\u4EFD\u2026\u300D\u958B\u982D\u3002\n\u539F\u7A3F\u662F\u5916\u8A9E\u6642\uFF0C\u9084\u8981\u505A\u5230\uFF1A\u2460points \u7684\u7B2C\u4E00\u689D\u8981\u653E\u539F\u7A3F\u6700\u95DC\u9375\u7684\u4E00\u53E5\u539F\u6587\uFF08\u7167\u6284\u539F\u5B57\u4E32\u3001\u4E0D\u7FFB\uFF09\uFF0C\u5F8C\u9762\u63A5\u300C\uFF1D\u300D\u518D\u5BEB\u4E2D\u6587\u610F\u601D\uFF0C\u4F8B\uFF1A\u300CBackup file '%1' cannot be restored.\uFF1D\u5099\u4EFD\u6A94 '%1' \u9084\u539F\u4E0D\u4E86\u300D\u3002\u2461\u540C\u4E00\u500B\u82F1\u6587\u8A5E\u5168\u5361\u53EA\u7528\u540C\u4E00\u500B\u4E2D\u6587\u8B6F\u540D\uFF0C\u7528\u8A72\u9818\u57DF\u901A\u884C\u7684\u8AAA\u6CD5\uFF0C\u4E26\u4FDD\u7559\u9650\u5B9A\u8A5E\uFF08\u4F8B\uFF1Asoftware license\uFF1D\u6388\u6B0A\uFF0C\u4E0D\u662F\u57F7\u7167\uFF1Bbackup file\uFF1D\u5099\u4EFD\u6A94\uFF0C\u4E0D\u662F\u6A94\u6848\uFF1B\u6A5F\u68B0\u52A0\u5DE5\u7684 tool\uFF1D\u5200\u5177\uFF0C\u4E0D\u662F\u5DE5\u5177\uFF1B\u6703\u8A08\u7684 invoice\uFF1D\u767C\u7968\uFF0C\u4E0D\u662F\u5E33\u55AE\uFF09\u3002\u2462tags \u540C\u6642\u653E\u4E2D\u6587\u8B6F\u540D\u8207\u82F1\u6587\u539F\u8A5E\u3002\u53EA\u8F38\u51FA\u90A3\u500B JSON \u7269\u4EF6\u3002"
     }
   ]
 };
@@ -15725,6 +16095,9 @@ var PromptBlockSchema = z.object({
   v: z.number().int().positive(),
   when: z.string().refine((w) => w === "always" || KIND_RE.test(w), "when \u5FC5\u9808\u662F always \u6216\u7279\u4F8B\u7DE8\u865F"),
   attach: z.string().regex(/^[a-z_]{1,32}$/).optional(),
+  // 'after'＝text 注入時這一塊接在**原稿後面**（預設在原稿前面）。要放「最後再提醒一次」的規則用：
+  // 原稿很長（整本手冊）時，放在前面的規則離輸出太遠，模型會跟著原稿的語言走（inkstone/Arcrun#317）。
+  place: z.enum(["before", "after"]).optional(),
   value: z.union([z.string().min(1), z.array(z.string().min(1)).min(1), z.record(z.unknown())])
 });
 var PromptTableSchema = z.object({
@@ -15799,6 +16172,7 @@ function blockText(value) {
 function assemblePromptTable(table, input, source) {
   const obj = {};
   const lines = [];
+  const tail = [];
   const used = [];
   const known = /* @__PURE__ */ new Set();
   for (const b of table.blocks) {
@@ -15808,11 +16182,11 @@ function assemblePromptTable(table, input, source) {
       const data = input.hints[b.attach];
       if (!Array.isArray(data) || data.length === 0) continue;
       obj[b.key] = { \u6307\u793A: b.value, [b.attach]: data };
-      lines.push(`${blockText(b.value)}
+      (b.place === "after" ? tail : lines).push(`${blockText(b.value)}
 - ${data.join("\n- ")}`);
     } else {
       obj[b.key] = b.value;
-      lines.push(blockText(b.value));
+      (b.place === "after" ? tail : lines).push(blockText(b.value));
     }
     used.push(`${b.key}@${b.v}`);
   }
@@ -15823,7 +16197,8 @@ function assemblePromptTable(table, input, source) {
   }
   return { user: `${lines.join("\n")}
 
-${src}`, used, unknownKinds };
+${src}${tail.length ? `
+${tail.join("\n")}` : ""}`, used, unknownKinds };
 }
 function promptTableUserMessage(pageName, text) {
   return `\u539F\u7A3F\uFF08\u6A94\u540D\uFF1A${pageName}\uFF09\uFF1A
@@ -17626,24 +18001,51 @@ portalRouter.get(
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const row = await readExtractAiRow(c.env);
-    let hasKey = false;
+    let have = /* @__PURE__ */ new Set();
     try {
-      hasKey = await hasCredential(c.env, credentialOwner(c.env), EXTRACT_AI_CREDENTIAL);
+      have = new Set((await listCredentialRows(c.env, credentialOwner(c.env))).map((r) => r.name));
     } catch {
-      hasKey = false;
+      have = /* @__PURE__ */ new Set();
     }
+    const providers = EXTRACT_AI_PROVIDERS.map((p) => ({
+      id: p.id,
+      label: p.label,
+      group: p.group,
+      key: p.key,
+      credential: p.credential ?? null,
+      has_key: !!p.credential && have.has(p.credential),
+      needs_base_url: !!p.needs_base_url,
+      live_models: !!p.models_url || !!p.needs_base_url,
+      default_base_url: p.default_base_url ?? null,
+      models: p.models,
+      description: p.description
+    }));
     const config = row?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
+    const current = providers.find((p) => p.id === config.recipe);
     return c.json({
       success: true,
       recipe: config.recipe,
+      provider_label: current?.label ?? config.recipe,
       base_url: config.base_url ?? null,
       model: config.model ?? null,
-      has_key: hasKey,
+      has_key: current?.has_key ?? false,
       is_default: !row,
-      available_recipes: EXTRACT_AI_RECIPE_IDS,
+      providers,
+      available_recipes: providers.map((p) => p.id),
       updated_at: row?.updated_at || null,
       updated_by: row?.updated_by || null
     });
+  })
+);
+portalRouter.get(
+  "/portal/admin/extract-ai/models",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recipe = (c.req.query("recipe") ?? "").trim();
+    if (!findProvider(recipe)) return c.json({ error: "\u4E0D\u8A8D\u5F97\u9019\u500B\u63D0\u4F9B\u5546" }, 400);
+    const list = await listProviderModels(c.env, credentialOwner(c.env), recipe, c.req.query("base_url") ?? void 0);
+    return c.json({ success: true, recipe, ...list });
   })
 );
 portalRouter.put(
@@ -17654,10 +18056,22 @@ portalRouter.put(
     const body = await c.req.json().catch(() => null);
     const v = validateExtractAiConfig(body);
     if (!v.ok) return c.json({ error: v.error }, 400);
+    const provider = findProvider(v.config.recipe);
     const apiKey = typeof body?.api_key === "string" ? body.api_key.trim() : "";
-    if (apiKey) {
+    if (provider.key === "required" && !apiKey) {
+      let have = false;
       try {
-        await storeCredential(c.env, credentialOwner(c.env), EXTRACT_AI_CREDENTIAL, apiKey, "extract_ai");
+        have = await hasCredential(c.env, credentialOwner(c.env), provider.credential);
+      } catch {
+        have = false;
+      }
+      if (!have) {
+        return c.json({ error: `${provider.label} \u9700\u8981\u91D1\u9470\uFF1A\u8ACB\u5148\u586B\u5165\u91D1\u9470\uFF08\u6703\u5B58\u9032\u6191\u8B49\u4E2D\u5FC3\uFF0C\u540D\u7A31 ${provider.credential}\uFF09` }, 400);
+      }
+    }
+    if (apiKey && provider.credential) {
+      try {
+        await storeCredential(c.env, credentialOwner(c.env), provider.credential, apiKey, "extract_ai");
       } catch (e) {
         return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
@@ -21094,6 +21508,3595 @@ return { success: true, repo: repo, number: n, to: to };
   ]
 };
 
+// workflows/ahub.app.json
+var ahub_app_default = {
+  id: "ahub",
+  name: "AHub",
+  icon: "\u{1F9ED}",
+  version: "0.3.1",
+  changelog: "0.3.1\uFF1A\u4FEE\u958B\u7968\u7671\u7613\u2014\u2014\u4E00\u500B repo \u6700\u65B0\u5E7E\u7B46\u5168\u662F key \u4E0D\u50CF\u7968\u865F\u7684\u7D00\u9304\u6642\uFF0C\u958B\u7968\u5F9E #1 \u8D77\u6392\u7684\u516B\u500B\u5617\u8A66\u5168\u649E\u65E2\u6709\u7684\u7968\u800C 503\uFF1B\u73FE\u5728\u9019\u7A2E\u60C5\u6CC1\u6539\u5F9E\u7B46\u6578+1 \u8D77\u6392\uFF08inkstone/Arcrun#308 c20214\uFF09\u30020.3.0\uFF1A\u8B80\u53D6\u4E26\u884C\uFF08\u7B2C\u4E00\u6279\u8B80\u540C\u6642\u6253\uFF0C\u8EAB\u5206\u67E5\u8A62\u4F75\u9032\u7B2C\u4E00\u6279\uFF09\u3001\u7968\u865F\u7528 create_only \u6436\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u958B\u7968\u4E0D\u6703\u540C\u865F\uFF09\u3001\u76F8\u4F9D\u7968\u7528 batch-get \u4E00\u6B21\u8B80\u5B8C\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#305\uFF0B#307\u30020.2.0\uFF1A\u8CC7\u6599\u6539\u6210 template\uFF0Brecord\uFF08\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u5404\u4E00\u7A2E\uFF09\uFF0C\u7A2E\u985E\u53EA\u7531 template \u6C7A\u5B9A\uFF08inkstone/Arcrun#301\uFF09\u30020.1.0\uFF1A\u9AA8\u67B6\u3002\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u3001\u91CC\u7A0B\u7891\u3001\u8DE8 repo \u641C\u5C0B\u2014\u2014Gitea \u5F62\u72C0\u7684 API\uFF0C\u72C0\u614B\u4F4F KBDB\uFF08\u96F6 SQL\uFF09\u3002\u6C92\u6709\u756B\u9762\uFF1B\u756B\u9762\u662F\u7968\u770B\u677F App \u63DB\u8CC7\u6599\u4F86\u6E90\u3002",
+  requires: {
+    recipes: [
+      {
+        canonical_id: "ahub_rec_get",
+        display_name: "AHub \u8B80 KBDB \u7684 record\uFF08\u552F\u8B80\uFF09",
+        description: "AHub \u7528\uFF1AGET __CYPHER_BASE__/kbdb/records/by-template{{_path}}\uFF0C\u8DEF\u5F91\u8207\u67E5\u8A62\u5B57\u4E32\u7531\u547C\u53EB\u7AEF\u7528 _path \u7D66\uFF08\u4F8B /ahub_issue?field=key&value=o%2Fr%235&limit=5\uFF09\u3002field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\u3002\u53EA\u505A GET\u3002\u8D70 recipe \u4E0D\u8D70 http_request \u96F6\u4EF6\uFF0C\u56E0\u70BA\u96F6\u4EF6\u8B80\u4E0D\u56DE\u8D85\u904E 64 KiB \u7684\u56DE\u61C9\uFF0C\u800C\u4E00\u9801\u7968\u53EF\u4EE5\u6BD4\u9019\u5927\u3002",
+        endpoint: "__CYPHER_BASE__/kbdb/records/by-template{{_path}}",
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "X-Arcrun-API-Key": "{{_tenant}}"
+        }
+      },
+      {
+        canonical_id: "ahub_rec_post",
+        display_name: "AHub \u5BEB KBDB\uFF08\u5EFA\u4E00\u7B46 record\uFF09",
+        description: "AHub \u7528\uFF1APOST __CYPHER_BASE__/kbdb/records\uFF0C\u5728 template \u5E95\u4E0B\u5EFA\u4E00\u7B46 record\uFF0Cvalues \u662F {\u683C\u540D: \u5B57\u4E32}\u3002",
+        endpoint: "__CYPHER_BASE__/kbdb/records",
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Arcrun-API-Key": "{{_tenant}}"
+        },
+        body_template: {
+          template: "{{template}}",
+          values: "{{values}}"
+        }
+      },
+      {
+        canonical_id: "ahub_rec_patch",
+        display_name: "AHub \u5BEB KBDB\uFF08\u6539\u4E00\u7B46 record \u7684\u5E7E\u683C\uFF09",
+        description: "AHub \u7528\uFF1APATCH __CYPHER_BASE__/kbdb/records/{{id}}\uFF0C\u53EA\u6539 values \u88E1\u6709\u7684\u683C\u5B50\u3002",
+        endpoint: "__CYPHER_BASE__/kbdb/records/{{id}}",
+        method: "PATCH",
+        headers: {
+          Accept: "application/json",
+          "X-Arcrun-API-Key": "{{_tenant}}"
+        },
+        body_template: {
+          values: "{{values}}"
+        }
+      },
+      {
+        canonical_id: "ahub_rec_claim",
+        display_name: "AHub \u6436\u865F\uFF08\u53EA\u5728\u4E0D\u5B58\u5728\u6642\u5EFA\u4E00\u7B46 record\uFF09",
+        description: "AHub \u7528\uFF1APOST __CYPHER_BASE__/kbdb/records\uFF0C\u5E36 record_id \u8207 create_only:true\u2014\u2014\u9019\u500B id \u9084\u6C92\u6709\u4EBA\u7528\u624D\u6703\u5EFA\uFF0C\u5DF2\u5B58\u5728\u56DE 409\uFF08record_exists\uFF09\uFF0C\u4E0D\u662F\u975C\u9ED8\u6210\u529F\u3002\u7968\u865F\u9760\u5B83\u6436\uFF08inkstone/Arcrun#307\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 #307\uFF1B\u6C92\u6709\u7684\u5F15\u64CE\u6703\u5FFD\u7565 record_id\uFF0CAHub \u6703\u767C\u73FE\u56DE\u4F86\u7684 id \u4E0D\u5C0D\u800C\u62D2\u7D55\u3002",
+        endpoint: "__CYPHER_BASE__/kbdb/records",
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Arcrun-API-Key": "{{_tenant}}"
+        },
+        body_template: {
+          template: "{{template}}",
+          record_id: "{{record_id}}",
+          values: "{{values}}",
+          create_only: true
+        }
+      },
+      {
+        canonical_id: "ahub_rec_batch",
+        display_name: "AHub \u4E00\u6B21\u8B80\u4E00\u6279 record\uFF08\u552F\u8B80\uFF09",
+        description: "AHub \u7528\uFF1APOST __CYPHER_BASE__/kbdb/records/batch-get\uFF0Cids \u662F record id \u7684\u9663\u5217\uFF08\u4E00\u6B21\u6700\u591A 200 \u500B\uFF09\uFF0C\u56DE {records, missing}\u3002\u53EA\u8B80\u3001\u53EA\u56DE\u672C\u79DF\u6236\u7684\uFF08inkstone/Arcrun#307\uFF09\u3002",
+        endpoint: "__CYPHER_BASE__/kbdb/records/batch-get",
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Arcrun-API-Key": "{{_tenant}}"
+        },
+        body_template: {
+          ids: "{{ids}}"
+        }
+      }
+    ]
+  },
+  data: [
+    {
+      name: "ahub_repo",
+      slots: [
+        "full_name",
+        "description",
+        "private",
+        "created_by",
+        "created_at"
+      ],
+      description: "AHub\uFF1Arepo\uFF08\u7968\u7684\u5BB9\u5668\uFF09"
+    },
+    {
+      name: "ahub_issue",
+      slots: [
+        "key",
+        "repo",
+        "title",
+        "body",
+        "state",
+        "author",
+        "created_at",
+        "updated_at",
+        "closed_at",
+        "milestone",
+        "comments"
+      ],
+      description: "AHub\uFF1A\u7968\u3002key\uFF1Downer/repo#\u865F\u78BC\uFF1Bmilestone\uFF1D\u91CC\u7A0B\u7891 id\uFF1Bcomments\uFF1D\u7559\u8A00\u6578"
+    },
+    {
+      name: "ahub_comment",
+      slots: [
+        "cid",
+        "repo",
+        "issue",
+        "author",
+        "body",
+        "created_at"
+      ],
+      description: "AHub\uFF1A\u7559\u8A00\u3002issue\uFF1D\u7968\u7684 key"
+    },
+    {
+      name: "ahub_label",
+      slots: [
+        "lid",
+        "repo",
+        "name",
+        "color",
+        "description",
+        "exclusive",
+        "deleted",
+        "created_at"
+      ],
+      description: "AHub\uFF1A\u6A19\u7C64\u672C\u8EAB\uFF08\u540D\u5B57\u3001\u984F\u8272\uFF09\u3002deleted\uFF1D\u5DF2\u522A"
+    },
+    {
+      name: "ahub_milestone",
+      slots: [
+        "mid",
+        "repo",
+        "title",
+        "description",
+        "state",
+        "due_on",
+        "closed_at",
+        "created_at",
+        "updated_at"
+      ],
+      description: "AHub\uFF1A\u91CC\u7A0B\u7891"
+    },
+    {
+      name: "ahub_issue_label",
+      slots: [
+        "issue",
+        "repo",
+        "lid",
+        "gone"
+      ],
+      description: "AHub\uFF1A\u7968\u639B\u4E86\u54EA\u500B\u6A19\u7C64\uFF08\u4E00\u7968\u4E00\u6A19\u7C64\u4E00\u7B46\uFF09\u3002gone\uFF1D\u5DF2\u62FF\u6389"
+    },
+    {
+      name: "ahub_issue_assignee",
+      slots: [
+        "issue",
+        "repo",
+        "login",
+        "gone"
+      ],
+      description: "AHub\uFF1A\u7968\u6307\u6D3E\u7D66\u8AB0\uFF08\u4E00\u7968\u4E00\u4EBA\u4E00\u7B46\uFF09\u3002gone\uFF1D\u5DF2\u62FF\u6389"
+    },
+    {
+      name: "ahub_dependency",
+      slots: [
+        "issue",
+        "needs",
+        "gone"
+      ],
+      description: "AHub\uFF1A\u76F8\u4F9D\u3002issue \u88AB needs \u64CB\u4F4F\uFF08needs \u6C92\u95DC\uFF0Cissue \u95DC\u4E0D\u6389\uFF09\u3002gone\uFF1D\u5DF2\u62FF\u6389"
+    },
+    {
+      name: "ahub_user",
+      slots: [
+        "login",
+        "kind",
+        "created_at"
+      ],
+      description: "AHub\uFF1A\u767B\u5165\u540D"
+    },
+    {
+      name: "ahub_token",
+      slots: [
+        "token_sha256",
+        "login",
+        "name",
+        "created_at",
+        "revoked"
+      ],
+      description: "AHub\uFF1Atoken\uFF08\u53EA\u5B58 sha256\uFF0C\u4E0D\u5B58\u539F\u6587\uFF09"
+    }
+  ],
+  workflows: [
+    {
+      name: "comment_create",
+      description: "\u5728\u4E00\u5F35\u7968\u5E95\u4E0B\u7559\u8A00\uFF1B\u7559\u8A00\u7F72\u540D\u662F token \u5C0D\u61C9\u7684\u767B\u5165\u540D\uFF0C\u4E0D\u662F\u81EA\u5831\u3002",
+      graph: {
+        id: "ahub__comment_create",
+        name: "ahub__comment_create",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B), b = bodyObj(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nvar text = b.body == null ? '' : String(b.body);\nif (!text.trim()) return prepEarly(B, 422, 'body is required');\nreturn prepOut(B, { full: full, n: n, key: issueKey(full, n), text: text, reads: [rd(T.issue, 'key', issueKey(full, n), 5)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction newNumId() { return Date.now() * 1000 + Math.floor(Math.random() * 1000); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction patchRec(R, v) {\n  var o = {}, n = 0;\n  Object.keys(v).forEach(function (k) {\n    var x = v[k] === undefined || v[k] === null ? '' : String(v[k]);\n    if (x === sv(R, k)) return;\n    o[k] = x; n++;\n  });\n  return n ? { id: R.rid, values: o } : null;\n}\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction commentDoc(R) {\n  var k = parseKey(sv(R, 'issue'));\n  return { rid: R.rid, id: parseInt(sv(R, 'cid'), 10), repo: sv(R, 'repo'), issue: k ? k.n : 0, user: sv(R, 'author'), body: sv(R, 'body'),\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'created_at') };\n}\n\n// \u2500\u2500 Gitea \u5F62\u72C0\u7684\u6AA2\u8996 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction commentView(C, base) {\n  var full = C.repo;\n  return { id: C.id, body: C.body, user: userView(C.user), created_at: C.created_at, updated_at: C.updated_at || C.created_at,\n    html_url: base + '/' + full + '/issues/' + C.issue + '#issuecomment-' + C.id, issue_url: base + '/' + full + '/issues/' + C.issue,\n    pull_request_url: '' };\n}\n\n// \u2500\u2500 \u901A\u7528\uFF1A\u8EAB\u4EFD \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// who = \u5C0D ahub_token \u7684\u300Ctoken_sha256\uFF1D\u96DC\u6E4A\u300D\u67E5\u8A62\u3002\u56DE\u767B\u5165\u540D\uFF0C\u6216 ''\uFF08\u672A\u6388\u6B0A\uFF09\u3002\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, R = issueRowOf(readsOf(input)[0], P.key);\nif (!R) return done(notFound('issue'));\nvar now = nowIso(), id = newNumId();\nvar cv = { cid: id, repo: P.full, issue: P.key, author: g.me, body: P.text, created_at: now };\nvar cnt = (parseInt(sv(R, 'comments') || '0', 10) || 0) + 1;\nreturn done(reply(201, commentView(commentDoc({ rid: '', v: compact(cv) }), P.base)), [postRec(T.comment, cv)], [patchRec(R, { comments: cnt, updated_at: now })]);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "comment_list",
+      description: "\u5217\u4E00\u5F35\u7968\u7684\u7559\u8A00\uFF0C\u4F9D\u5EFA\u7ACB\u5148\u5F8C\uFF08\u820A\u5728\u524D\uFF09\u3002limit=100 \u4EE5\u5167\u4E00\u6B21\u7D66\u5168\uFF0C\u4E0D\u8981\u6C42\u7FFB\u9801\u3002",
+      graph: {
+        id: "ahub__comment_list",
+        name: "ahub__comment_list",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction intOf(v, dflt) { var n = parseInt(ph(v), 10); return n > 0 ? n : dflt; }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction pageOf(q, dflt) {\n  var limit = Math.min(intOf(q.limit, dflt || 30), 100), page = intOf(q.page, 1);\n  return { limit: limit, page: page };\n}\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 2;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nvar key = issueKey(full, n);\nreturn prepOut(B, { full: full, n: n, key: key, pg: pageOf(B.q, 100), reads: [rd(T.issue, 'key', key, 5), rd(T.comment, 'issue', key, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction commentDoc(R) {\n  var k = parseKey(sv(R, 'issue'));\n  return { rid: R.rid, id: parseInt(sv(R, 'cid'), 10), repo: sv(R, 'repo'), issue: k ? k.n : 0, user: sv(R, 'author'), body: sv(R, 'body'),\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'created_at') };\n}\n\n// \u2500\u2500 Gitea \u5F62\u72C0\u7684\u6AA2\u8996 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction commentView(C, base) {\n  var full = C.repo;\n  return { id: C.id, body: C.body, user: userView(C.user), created_at: C.created_at, updated_at: C.updated_at || C.created_at,\n    html_url: base + '/' + full + '/issues/' + C.issue + '#issuecomment-' + C.id, issue_url: base + '/' + full + '/issues/' + C.issue,\n    pull_request_url: '' };\n}\n\n// \u2500\u2500 \u901A\u7528\uFF1A\u8EAB\u4EFD \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// who = \u5C0D ahub_token \u7684\u300Ctoken_sha256\uFF1D\u96DC\u6E4A\u300D\u67E5\u8A62\u3002\u56DE\u767B\u5165\u540D\uFF0C\u6216 ''\uFF08\u672A\u6388\u6B0A\uFF09\u3002\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction slicePage(arr, pg) { return arr.slice((pg.page - 1) * pg.limit, pg.page * pg.limit); }\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!issueRowOf(rs[0], P.key)) return notFound('issue');\nvar rows = rowsOf(rs[1]).map(commentDoc);\nrows.sort(function (a, b) { return a.id - b.id; });     // KBDB \u56DE\u65B0\u2192\u820A\uFF0CGitea \u7684\u9806\u5E8F\u662F\u820A\u2192\u65B0\nreturn reply(200, slicePage(rows, P.pg).map(function (C) { return commentView(C, P.base); }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "dep_add",
+      description: "\u8B93\u9019\u5F35\u7968\u300C\u88AB\u300D\u53E6\u4E00\u5F35\u7968\u64CB\u4F4F\uFF08body {owner,repo,index}\uFF09\u3002\u91CD\u9001\u540C\u4E00\u689D\u908A\u4E0D\u6703\u9577\u51FA\u7B2C\u4E8C\u689D\u3002",
+      graph: {
+        id: "ahub__dep_add",
+        name: "ahub__dep_add",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\n\nvar READS_N = 3;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B), b = bodyObj(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nvar dfull = fullOf({ owner: b.owner, repo: b.repo }), dn = parseInt(b.index, 10);\nif (!dfull || !(dn > 0)) return prepEarly(B, 422, 'owner\uFF0Frepo\uFF0Findex of the dependency are required');\nif (dfull === full && dn === n) return prepEarly(B, 422, 'an issue cannot depend on itself');\nvar pk = issueKey(full, n), ck = issueKey(dfull, dn);\nreturn prepOut(B, { full: full, n: n, pk: pk, ck: ck, reads: [rd(T.issue, 'key', pk, 5), rd(T.issue, 'key', ck, 5), rd(T.dep, 'issue', pk, 200)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction patchRec(R, v) {\n  var o = {}, n = 0;\n  Object.keys(v).forEach(function (k) {\n    var x = v[k] === undefined || v[k] === null ? '' : String(v[k]);\n    if (x === sv(R, k)) return;\n    o[k] = x; n++;\n  });\n  return n ? { id: R.rid, values: o } : null;\n}\nfunction addPatch(list, R, v) { var p = patchRec(R, v); if (p) list.push(p); return list; }\n\n// \u2500\u2500 \u7968\u7684\u9375\uFF08owner/repo#n\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction issueDoc(R, J) {\n  var k = sv(R, 'key'), pk = parseKey(k) || { full: sv(R, 'repo'), n: 0 };\n  var D = { rid: R.rid, key: k, repo: pk.full, number: pk.n, title: sv(R, 'title'), body: sv(R, 'body'), state: sv(R, 'state') || 'open',\n    user: sv(R, 'author'), comments: parseInt(sv(R, 'comments') || '0', 10) || 0,\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null,\n    mid: parseInt(sv(R, 'milestone'), 10) || 0 };\n  if (J) {\n    D.labels = (J.links[k] || []).slice().sort(function (a, b) { return a.id - b.id; });\n    D.assignees = (J.assign[k] || []).slice().reverse();     // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6307\u6D3E\u9806\u5E8F\u8981\u820A\u2192\u65B0\uFF08\u7B2C\u4E00\u500B\uFF1Dassignee\uFF09\n    D.milestone = D.mid ? (J.ms[D.mid] || null) : null;\n  }\n  return D;\n}\n\n// \u2500\u2500 \u5F9E\u8B80\u56DE\u7684\u5217\u88E1\u627E\u6771\u897F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u540C\u4E00\u500B\u9375\u82E5\u6709\u591A\u7B46\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u6436\u540C\u4E00\u500B\u7968\u865F\uFF0C\u898B README\u300C\u539F\u5B50\u6027\u300D\uFF09\uFF0C\u53D6\u6700\u820A\u7684\u90A3\u7B46\u2014\u2014\u5927\u5BB6\u770B\u5230\u540C\u4E00\u5F35\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!issueRowOf(rs[0], P.pk)) return done(notFound('issue'));\nvar CR = issueRowOf(rs[1], P.ck);\nif (!CR) return done(notFound('dependency issue'));\nvar posts = [], patches = [];\nvar mine = rowsOf(rs[2]).filter(function (R) { return sv(R, 'needs') === P.ck; });     // \u65B0\u2192\u820A\nif (!mine.length) posts.push(postRec(T.dep, { issue: P.pk, needs: P.ck }));\nelse if (isOn(mine[0], 'gone')) addPatch(patches, mine[0], { gone: '' });\nreturn done(reply(201, issueView(issueDoc(CR), P.base)), posts, patches);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "dep_blocks",
+      description: "\u9019\u5F35\u7968\u300C\u64CB\u4F4F\u8AB0\u300D\uFF08\u6BCD\u7968\uFF09\uFF0Cticket pick \u627E\u9802\u5C64\u7968\u9760\u5B83\u3002",
+      graph: {
+        id: "ahub__dep_blocks",
+        name: "ahub__dep_blocks",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 2;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nvar key = issueKey(full, n);\n// \u6BCD\u7968\uFF1D\u6709\u908A\u6307\u5230\u9019\u5F35\u7968\uFF08needs\uFF1D\u6211\uFF09\u7684\u90A3\u4E9B\u908A\u4E0A\u7684 issue\nreturn prepOut(B, { full: full, n: n, key: key, reads: [rd(T.issue, 'key', key, 5), rd(T.dep, 'needs', key, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "prep2",
+            type: "Component",
+            componentId: "code",
+            label: "prep2",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction uniq(a) { var s = {}, o = []; a.forEach(function (x) { if (!s[x]) { s[x] = 1; o.push(x); } }); return o; }\n\n// \u2500\u2500 SHA-256\uFF08\u7D14 JS\uFF1Btoken \u53EA\u5B58\u96DC\u6E4A\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction liveEdges(rows, side) {\n  var seen = {}, out = [];\n  rows.forEach(function (R) {\n    var k = sv(R, 'issue') + '>' + sv(R, 'needs');\n    if (seen[k]) return; seen[k] = 1;\n    if (!isOn(R, 'gone')) out.push(sv(R, side));\n  });\n  return out;\n}\n// \u8981\u8B80\u4E00\u6279\u7968\uFF08\u7528\u7968\u7684\u9375\uFF09\u2192 \u5B83\u5011\u7684 record id\uFF1A\u7968\u7684 id \u7531\u79DF\u6236\uFF0B\u9375\u6C7A\u5B9A\uFF08issueRid\uFF0C\u6436\u865F\u6642\u5C31\u5B9A\u4E86\uFF09\uFF0C\u6240\u4EE5\u4E00\u500B\u8ACB\u6C42\u5C31\u80FD\u8B80\u5B8C\n// \uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u4E0D\u5FC5\u4E00\u5F35\u7968\u4E00\u8D9F\u30020.2.0 \u4EE5\u524D\u5EFA\u7684\u7968\u662F\u96A8\u6A5F id\uFF0C\u8B80\u4E0D\u5230\u2014\u2014\u898B README\u300C0.3.0 \u7684\u8CC7\u6599\u300D\u3002\nfunction issueRidsOf(tenant, keys) { return uniq(keys).map(function (k) { return issueRid(tenant, k); }); }\nfunction batch2Out(ids) {\n  ids = uniq(ids || []);\n  if (ids.length > 200) throw new Error('\u4E00\u6B21\u6700\u591A\u8B80 200 \u7B46\uFF0C\u62FF\u5230 ' + ids.length);\n  return { success: true, branch: ids.length ? '1' : '0', nids: ids.length, ids: ids };\n}\n// \u7B2C\u4E00\u6BB5\u8B80\u7684\u7D50\u679C\uFF1Areads[0] \u662F\u8EAB\u5206\u67E5\u8A62\uFF08\u6709\u7684\u8A71\uFF09\u3002\u4EFB\u4F55\u4E00\u8B80\u5931\u6557\uFF08\u4E0D\u662F\u300C\u6C92\u6709\u8CC7\u6599\u300D\u800C\u662F KBDB \u56DE\u932F\uFF09\uFF1D\u6574\u500B\u8ACB\u6C42\u4E0D\u80FD\u4FE1\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS2_N = 0;\n\nvar P = input.prep, me = meIn(input);\nif (!me || P.early) return batch2Out([]);\nvar rs = readsOf(input);\nif (!issueRowOf(rs[0], P.key)) return batch2Out([]);\nvar parents = liveEdges(rowsOf(rs[1]), 'issue');\nreturn batch2Out(issueRidsOf(P.tenant, parents));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "bg",
+            type: "Component",
+            componentId: "ahub_rec_batch",
+            label: "bg",
+            data: {
+              ids: "{{prep2.data.ids}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction allRows(results, from, to) {\n  var out = [];\n  for (var i = from || 0; i < (to === undefined ? results.length : to); i++) rowsOf(results[i]).forEach(function (x) { out.push(x); });\n  return out;\n}\n\n// \u2500\u2500 \u5BEB\uFF1APOST /kbdb/records\uFF08\u5EFA\u4E00\u7B46\uFF09\u3001PATCH /kbdb/records/<rid>\uFF08\u6539\u5E7E\u683C\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u503C\u4E00\u5F8B\u662F\u5B57\u4E32\uFF1B\u7A7A\u7684\u683C\u5B50\u4E0D\u5BEB\uFF08\u8B80\u56DE\u4F86\u5C31\u662F ''\uFF09\uFF0C\u7701\u5BEB\u5165\u2014\u2014\u4E00\u683C\u7D04\u5360\u5169\u5217\u3001\u7D04 0.5\uFF5E1 \u79D2\u3002\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction issueDoc(R, J) {\n  var k = sv(R, 'key'), pk = parseKey(k) || { full: sv(R, 'repo'), n: 0 };\n  var D = { rid: R.rid, key: k, repo: pk.full, number: pk.n, title: sv(R, 'title'), body: sv(R, 'body'), state: sv(R, 'state') || 'open',\n    user: sv(R, 'author'), comments: parseInt(sv(R, 'comments') || '0', 10) || 0,\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null,\n    mid: parseInt(sv(R, 'milestone'), 10) || 0 };\n  if (J) {\n    D.labels = (J.links[k] || []).slice().sort(function (a, b) { return a.id - b.id; });\n    D.assignees = (J.assign[k] || []).slice().reverse();     // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6307\u6D3E\u9806\u5E8F\u8981\u820A\u2192\u65B0\uFF08\u7B2C\u4E00\u500B\uFF1Dassignee\uFF09\n    D.milestone = D.mid ? (J.ms[D.mid] || null) : null;\n  }\n  return D;\n}\n\n// \u2500\u2500 \u5F9E\u8B80\u56DE\u7684\u5217\u88E1\u627E\u6771\u897F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u540C\u4E00\u500B\u9375\u82E5\u6709\u591A\u7B46\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u6436\u540C\u4E00\u500B\u7968\u865F\uFF0C\u898B README\u300C\u539F\u5B50\u6027\u300D\uFF09\uFF0C\u53D6\u6700\u820A\u7684\u90A3\u7B46\u2014\u2014\u5927\u5BB6\u770B\u5230\u540C\u4E00\u5F35\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction liveEdges(rows, side) {\n  var seen = {}, out = [];\n  rows.forEach(function (R) {\n    var k = sv(R, 'issue') + '>' + sv(R, 'needs');\n    if (seen[k]) return; seen[k] = 1;\n    if (!isOn(R, 'gone')) out.push(sv(R, side));\n  });\n  return out;\n}\n// \u8981\u8B80\u4E00\u6279\u7968\uFF08\u7528\u7968\u7684\u9375\uFF09\u2192 \u5B83\u5011\u7684 record id\uFF1A\u7968\u7684 id \u7531\u79DF\u6236\uFF0B\u9375\u6C7A\u5B9A\uFF08issueRid\uFF0C\u6436\u865F\u6642\u5C31\u5B9A\u4E86\uFF09\uFF0C\u6240\u4EE5\u4E00\u500B\u8ACB\u6C42\u5C31\u80FD\u8B80\u5B8C\n// \uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u4E0D\u5FC5\u4E00\u5F35\u7968\u4E00\u8D9F\u30020.2.0 \u4EE5\u524D\u5EFA\u7684\u7968\u662F\u96A8\u6A5F id\uFF0C\u8B80\u4E0D\u5230\u2014\u2014\u898B README\u300C0.3.0 \u7684\u8CC7\u6599\u300D\u3002\nfunction issuesByKeys(results, keys) {\n  var want = {}; keys.forEach(function (k) { want[k] = 1; });\n  var got = {};\n  allRows(results).forEach(function (R) { var k = sv(R, 'key'); if (want[k]) got[k] = R; });   // \u65B0\u2192\u820A\uFF0C\u5F8C\u84CB\u524D\uFF1D\u7559\u6700\u820A\u7684\n  return got;\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction batch2Of(input) {\n  var P2 = input.prep2, r = input.reads2;\n  if (!P2 || !P2.nids) return [];\n  var d = innerOf(r);\n  return d && Array.isArray(d.records) ? [r] : null;\n}\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!issueRowOf(rs[0], P.key)) return notFound('issue');\nvar parents = liveEdges(rowsOf(rs[1]), 'issue'), b2 = batch2Of(input);\nif (b2 === null) return fail(502, 'dependency lookup failed (records/batch-get needs Arcrun#307)');\nvar got = issuesByKeys(b2, parents);\nreturn reply(200, parents.filter(function (k) { return got[k]; }).map(function (k) { return issueView(issueDoc(got[k]), P.base); }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}",
+                prep2: "{{prep2.data}}",
+                reads2: "{{bg.data}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "prep2",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep2",
+            to: "bg",
+            type: "ON_BRANCH",
+            branch: "1"
+          },
+          {
+            from: "prep2",
+            to: "decide",
+            type: "ON_BRANCH",
+            branch: "0"
+          },
+          {
+            from: "bg",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "bg",
+            to: "decide",
+            type: "ON_FAIL"
+          }
+        ]
+      }
+    },
+    {
+      name: "dep_list",
+      description: "\u9019\u5F35\u7968\u300C\u88AB\u8AB0\u64CB\u4F4F\u300D\uFF08\u524D\u7F6E\u7968\uFF09\uFF0C\u6BCF\u5F35\u5E36 repository.full_name\u3002",
+      graph: {
+        id: "ahub__dep_list",
+        name: "ahub__dep_list",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 2;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nvar key = issueKey(full, n);\nreturn prepOut(B, { full: full, n: n, key: key, reads: [rd(T.issue, 'key', key, 5), rd(T.dep, 'issue', key, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "prep2",
+            type: "Component",
+            componentId: "code",
+            label: "prep2",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction uniq(a) { var s = {}, o = []; a.forEach(function (x) { if (!s[x]) { s[x] = 1; o.push(x); } }); return o; }\n\n// \u2500\u2500 SHA-256\uFF08\u7D14 JS\uFF1Btoken \u53EA\u5B58\u96DC\u6E4A\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction liveEdges(rows, side) {\n  var seen = {}, out = [];\n  rows.forEach(function (R) {\n    var k = sv(R, 'issue') + '>' + sv(R, 'needs');\n    if (seen[k]) return; seen[k] = 1;\n    if (!isOn(R, 'gone')) out.push(sv(R, side));\n  });\n  return out;\n}\n// \u8981\u8B80\u4E00\u6279\u7968\uFF08\u7528\u7968\u7684\u9375\uFF09\u2192 \u5B83\u5011\u7684 record id\uFF1A\u7968\u7684 id \u7531\u79DF\u6236\uFF0B\u9375\u6C7A\u5B9A\uFF08issueRid\uFF0C\u6436\u865F\u6642\u5C31\u5B9A\u4E86\uFF09\uFF0C\u6240\u4EE5\u4E00\u500B\u8ACB\u6C42\u5C31\u80FD\u8B80\u5B8C\n// \uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u4E0D\u5FC5\u4E00\u5F35\u7968\u4E00\u8D9F\u30020.2.0 \u4EE5\u524D\u5EFA\u7684\u7968\u662F\u96A8\u6A5F id\uFF0C\u8B80\u4E0D\u5230\u2014\u2014\u898B README\u300C0.3.0 \u7684\u8CC7\u6599\u300D\u3002\nfunction issueRidsOf(tenant, keys) { return uniq(keys).map(function (k) { return issueRid(tenant, k); }); }\nfunction batch2Out(ids) {\n  ids = uniq(ids || []);\n  if (ids.length > 200) throw new Error('\u4E00\u6B21\u6700\u591A\u8B80 200 \u7B46\uFF0C\u62FF\u5230 ' + ids.length);\n  return { success: true, branch: ids.length ? '1' : '0', nids: ids.length, ids: ids };\n}\n// \u7B2C\u4E00\u6BB5\u8B80\u7684\u7D50\u679C\uFF1Areads[0] \u662F\u8EAB\u5206\u67E5\u8A62\uFF08\u6709\u7684\u8A71\uFF09\u3002\u4EFB\u4F55\u4E00\u8B80\u5931\u6557\uFF08\u4E0D\u662F\u300C\u6C92\u6709\u8CC7\u6599\u300D\u800C\u662F KBDB \u56DE\u932F\uFF09\uFF1D\u6574\u500B\u8ACB\u6C42\u4E0D\u80FD\u4FE1\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS2_N = 0;\n\nvar P = input.prep, me = meIn(input);\nif (!me || P.early) return batch2Out([]);\nvar rs = readsOf(input);\nif (!issueRowOf(rs[0], P.key)) return batch2Out([]);\nvar need = liveEdges(rowsOf(rs[1]), 'needs');\nreturn batch2Out(issueRidsOf(P.tenant, need));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "bg",
+            type: "Component",
+            componentId: "ahub_rec_batch",
+            label: "bg",
+            data: {
+              ids: "{{prep2.data.ids}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction allRows(results, from, to) {\n  var out = [];\n  for (var i = from || 0; i < (to === undefined ? results.length : to); i++) rowsOf(results[i]).forEach(function (x) { out.push(x); });\n  return out;\n}\n\n// \u2500\u2500 \u5BEB\uFF1APOST /kbdb/records\uFF08\u5EFA\u4E00\u7B46\uFF09\u3001PATCH /kbdb/records/<rid>\uFF08\u6539\u5E7E\u683C\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u503C\u4E00\u5F8B\u662F\u5B57\u4E32\uFF1B\u7A7A\u7684\u683C\u5B50\u4E0D\u5BEB\uFF08\u8B80\u56DE\u4F86\u5C31\u662F ''\uFF09\uFF0C\u7701\u5BEB\u5165\u2014\u2014\u4E00\u683C\u7D04\u5360\u5169\u5217\u3001\u7D04 0.5\uFF5E1 \u79D2\u3002\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction issueDoc(R, J) {\n  var k = sv(R, 'key'), pk = parseKey(k) || { full: sv(R, 'repo'), n: 0 };\n  var D = { rid: R.rid, key: k, repo: pk.full, number: pk.n, title: sv(R, 'title'), body: sv(R, 'body'), state: sv(R, 'state') || 'open',\n    user: sv(R, 'author'), comments: parseInt(sv(R, 'comments') || '0', 10) || 0,\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null,\n    mid: parseInt(sv(R, 'milestone'), 10) || 0 };\n  if (J) {\n    D.labels = (J.links[k] || []).slice().sort(function (a, b) { return a.id - b.id; });\n    D.assignees = (J.assign[k] || []).slice().reverse();     // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6307\u6D3E\u9806\u5E8F\u8981\u820A\u2192\u65B0\uFF08\u7B2C\u4E00\u500B\uFF1Dassignee\uFF09\n    D.milestone = D.mid ? (J.ms[D.mid] || null) : null;\n  }\n  return D;\n}\n\n// \u2500\u2500 \u5F9E\u8B80\u56DE\u7684\u5217\u88E1\u627E\u6771\u897F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u540C\u4E00\u500B\u9375\u82E5\u6709\u591A\u7B46\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u6436\u540C\u4E00\u500B\u7968\u865F\uFF0C\u898B README\u300C\u539F\u5B50\u6027\u300D\uFF09\uFF0C\u53D6\u6700\u820A\u7684\u90A3\u7B46\u2014\u2014\u5927\u5BB6\u770B\u5230\u540C\u4E00\u5F35\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction liveEdges(rows, side) {\n  var seen = {}, out = [];\n  rows.forEach(function (R) {\n    var k = sv(R, 'issue') + '>' + sv(R, 'needs');\n    if (seen[k]) return; seen[k] = 1;\n    if (!isOn(R, 'gone')) out.push(sv(R, side));\n  });\n  return out;\n}\n// \u8981\u8B80\u4E00\u6279\u7968\uFF08\u7528\u7968\u7684\u9375\uFF09\u2192 \u5B83\u5011\u7684 record id\uFF1A\u7968\u7684 id \u7531\u79DF\u6236\uFF0B\u9375\u6C7A\u5B9A\uFF08issueRid\uFF0C\u6436\u865F\u6642\u5C31\u5B9A\u4E86\uFF09\uFF0C\u6240\u4EE5\u4E00\u500B\u8ACB\u6C42\u5C31\u80FD\u8B80\u5B8C\n// \uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u4E0D\u5FC5\u4E00\u5F35\u7968\u4E00\u8D9F\u30020.2.0 \u4EE5\u524D\u5EFA\u7684\u7968\u662F\u96A8\u6A5F id\uFF0C\u8B80\u4E0D\u5230\u2014\u2014\u898B README\u300C0.3.0 \u7684\u8CC7\u6599\u300D\u3002\nfunction issuesByKeys(results, keys) {\n  var want = {}; keys.forEach(function (k) { want[k] = 1; });\n  var got = {};\n  allRows(results).forEach(function (R) { var k = sv(R, 'key'); if (want[k]) got[k] = R; });   // \u65B0\u2192\u820A\uFF0C\u5F8C\u84CB\u524D\uFF1D\u7559\u6700\u820A\u7684\n  return got;\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction batch2Of(input) {\n  var P2 = input.prep2, r = input.reads2;\n  if (!P2 || !P2.nids) return [];\n  var d = innerOf(r);\n  return d && Array.isArray(d.records) ? [r] : null;\n}\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!issueRowOf(rs[0], P.key)) return notFound('issue');\nvar need = liveEdges(rowsOf(rs[1]), 'needs'), b2 = batch2Of(input);\nif (b2 === null) return fail(502, 'dependency lookup failed (records/batch-get needs Arcrun#307)');\nvar got = issuesByKeys(b2, need);\nreturn reply(200, need.filter(function (k) { return got[k]; }).map(function (k) { return issueView(issueDoc(got[k]), P.base); }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}",
+                prep2: "{{prep2.data}}",
+                reads2: "{{bg.data}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "prep2",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep2",
+            to: "bg",
+            type: "ON_BRANCH",
+            branch: "1"
+          },
+          {
+            from: "prep2",
+            to: "decide",
+            type: "ON_BRANCH",
+            branch: "0"
+          },
+          {
+            from: "bg",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "bg",
+            to: "decide",
+            type: "ON_FAIL"
+          }
+        ]
+      }
+    },
+    {
+      name: "issue_create",
+      description: "\u958B\u4E00\u5F35\u7968\uFF1A\u4E00\u7B46 ahub_issue\uFF0C\u52A0\u4E0A\u6BCF\u500B\u6A19\u7C64\u3001\u6BCF\u4F4D\u6307\u6D3E\u5404\u4E00\u7B46\u9023\u7D50\u3002\u7968\u865F\uFF1D\u9019\u500B repo \u6700\u65B0\u5E7E\u5F35\u7684\u6700\u5927\u865F+1\uFF0C\u7528 create_only \u6436\u865F\uFF08inkstone/Arcrun#307\uFF09\uFF1A\u5169\u500B\u8ACB\u6C42\u540C\u6642\u958B\u7968\uFF0C\u53EA\u6709\u4E00\u500B\u62FF\u5F97\u5230\u9019\u500B\u865F\uFF0C\u53E6\u4E00\u500B\u81EA\u52D5\u63DB\u4E0B\u4E00\u865F\u3002",
+      graph: {
+        id: "ahub__issue_create",
+        name: "ahub__issue_create",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction uniq(a) { var s = {}, o = []; a.forEach(function (x) { if (!s[x]) { s[x] = 1; o.push(x); } }); return o; }\n\n// \u2500\u2500 SHA-256\uFF08\u7D14 JS\uFF1Btoken \u53EA\u5B58\u96DC\u6E4A\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\n\nvar READS_N = 4;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), b = bodyObj(B), title = String(b.title == null ? '' : b.title).trim();\nif (!full) return prepEarly(B, 404, 'repository not found');\nif (!title) return prepEarly(B, 422, 'title is required');\nvar assignees = Array.isArray(b.assignees) ? b.assignees.map(String) : (ph(b.assignee) ? [ph(b.assignee)] : []);\nvar labels = Array.isArray(b.labels) ? b.labels : [];\nvar reads = [rd(T.repo, 'full_name', full, 5), rd(T.issue, 'repo', full, 5)];   // \u7B2C\u4E8C\u683C\uFF1A\u6700\u65B0\u5E7E\u5F35\uFF0C\u7B97\u300C\u4E0B\u4E00\u865F\u300D\nvar iL = -1, iM = -1;\nif (labels.length) { iL = reads.length; reads.push(rd(T.label, 'repo', full, 200)); }\nif (b.milestone) { iM = reads.length; reads.push(rd(T.ms, 'repo', full, 200)); }\nreturn prepOut(B, { full: full, title: title, body: String(b.body == null ? '' : b.body), assignees: uniq(assignees), labels: labels, ms: b.milestone ? b.milestone : 0, iL: iL, iM: iM, reads: reads });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction totalOf(r) { var d = innerOf(r), t = d && typeof d.total === 'number' ? d.total : 0; return t > 0 ? t : 0; }\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }\nfunction liveLabels(result) { return rowsOf(result).map(labelDoc).filter(function (L) { return !L.deleted; }); }\n// \u6A19\u7C64\u5F15\u7528\uFF08\u540D\u5B57\u6216 id\uFF09\u2192 \u6A19\u7C64\u6587\u4EF6\uFF1B\u627E\u4E0D\u5230\u56DE null\nfunction labelByRef(labels, ref) {\n  for (var i = 0; i < labels.length; i++) {\n    if (typeof ref === 'number' ? labels[i].id === ref : (String(labels[i].name) === String(ref) || String(labels[i].id) === String(ref))) return labels[i];\n  }\n  return null;\n}\nfunction msById(result, id) {\n  var hit = oldestBy(rowsOf(result), function (R) { return parseInt(sv(R, 'mid'), 10) === id; });\n  return hit ? msDoc(hit) : null;\n}\n\n// \u7968\u7684\u7BE9\u9078\uFF08f\uFF1Astate/labels[]/milestones[]/assignee/q/since\uFF09\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\nfunction claimOut(attempts, fin) { return { success: true, branch: 'claim', attempts: attempts, fin: fin }; }\n// \u8D0F\u7684\u90A3\u4E00\u7B46\uFF1Ak0..k3 \u4E4B\u4E2D\uFF0C\u56DE\u7684 record_id \u525B\u597D\u662F\u6211\u5011\u8981\u6436\u7684\u90A3\u500B id\u3002\u5C0D\u4E0D\u4E0A\uFF08\u5F15\u64CE\u6C92\u6709 #307\u3001\u628A record_id \u4E1F\u6389\u81EA\u5DF1\u767C\u4E86\u4E00\u500B\uFF09\uFF1D\u6436\u865F\u6C92\u751F\u6548\uFF0C\u4E0D\u80FD\u7576\u6210\u529F\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!repoRowOf(rs[0], P.full)) return done(notFound('repository'));\nif (!P.tenant) return done(fail(500, 'tenant unknown (the engine did not inject _tenant)'));\nvar top = 0;\nrowsOf(rs[1]).forEach(function (R) { var k = parseKey(sv(R, 'key')); if (k && k.n > top) top = k.n; });\n// \u6700\u65B0\u90A3\u5E7E\u7B46\u88E1\u4E00\u5F35\u300C\u865F\u78BC\u8B80\u5F97\u51FA\u4F86\u300D\u7684\u7968\u90FD\u6C92\u6709\uFF08\u4F8B\u5982\u5E7E\u7B46 key \u4E0D\u662F <repo>#<\u6578\u5B57> \u7684\u96DC\u8A0A\u7D00\u9304\u6392\u5728\u6700\u524D\u9762\uFF09\u2192 top \u6703\u662F 0\uFF0C\n// \u5F9E #1 \u8D77\u6392\u7684\u516B\u500B\u5617\u8A66\u5168\u649E\u5230\u65E2\u6709\u7684\u7968\u3001\u6574\u500B repo \u958B\u4E0D\u51FA\u7968\uFF08inkstone/Arcrun#308 c20214 \u5BE6\u649E\uFF09\u3002\n// \u9019\u6642\u6539\u7528\u9019\u500B repo \u7684 ahub_issue \u7E3D\u7B46\u6578\u7576\u4E0A\u754C\uFF1AAHub \u7684\u7968\u865F\u5F9E 1 \u9023\u7E8C\u767C\uFF0C\u6700\u5927\u865F \u2264 \u7B46\u6578\uFF08\u96DC\u8A0A\u53EA\u6703\u8B93\u7B46\u6578\u8B8A\u5927\uFF1D\u865F\u78BC\u8DF3\u4E00\u6BB5\uFF0C\u4E0D\u6703\u649E\uFF09\u3002\n// \u7A97\u88E1\u8B80\u5F97\u5230\u7968\u865F\u6642\u4E0D\u7528\u5B83\u2014\u2014\u6700\u65B0\u7684\u7968\u4E00\u5B9A\u5728\u6700\u65B0\u90A3\u5E7E\u7B46\u88E1\uFF0C\u90A3\u500B\u6700\u5927\u865F\u624D\u662F\u6E96\u7684\uFF0C\u4E0D\u5FC5\u8B93\u865F\u78BC\u8DF3\u3002\nif (top === 0) top = totalOf(rs[1]);\nvar chosen = [];\nif (P.iL >= 0) {\n  var defs = liveLabels(rs[P.iL]);\n  for (var i = 0; i < P.labels.length; i++) {\n    var L = labelByRef(defs, P.labels[i]);\n    if (!L) return done(fail(422, 'label not found: ' + P.labels[i]));\n    if (chosen.indexOf(L) < 0) chosen.push(L);\n  }\n}\nvar M = null;\nif (P.iM >= 0) {\n  M = msById(rs[P.iM], parseInt(P.ms, 10));\n  if (!M) return done(fail(422, 'milestone not found: ' + P.ms));\n}\n// \u6436\u865F\uFF1A\u5F9E top+1 \u958B\u59CB\u6392 CLAIM_TRIES \u500B\u5617\u8A66\uFF0C\u6BCF\u500B\u5617\u8A66\u662F\u540C\u4E00\u5F35\u7968\u63DB\u4E00\u500B\u865F\uFF08key \u8207 record id \u90FD\u8DDF\u8457\u865F\u8D70\uFF09\u3002\n// \u53EA\u5BEB\u6709\u503C\u7684\u683C\u5B50\uFF1Bupdated_at \u7701\u6389\uFF08\u8B80\u56DE\u4F86\u9810\u8A2D\u7B49\u65BC created_at\uFF0C\u7B2C\u4E00\u6B21\u6539\u7968\u6642\u624D\u5BEB\uFF09\u3002\nvar now = nowIso(), attempts = [];\nfor (var j = 0; j < CLAIM_TRIES; j++) {\n  var key = issueKey(P.full, top + 1 + j);\n  attempts.push({ template: T.issue, record_id: issueRid(P.tenant, key),\n    values: compact({ key: key, repo: P.full, title: P.title, body: P.body, state: 'open', author: g.me, created_at: now, milestone: M ? M.id : '' }) });\n}\nreturn claimOut(attempts, { full: P.full, base: P.base, labels: chosen, assignees: P.assignees, M: M });\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "k0",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k0",
+            data: {
+              template: "{{decide.data.attempts.0.template}}",
+              record_id: "{{decide.data.attempts.0.record_id}}",
+              values: "{{decide.data.attempts.0.values}}"
+            }
+          },
+          {
+            id: "k1",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k1",
+            data: {
+              template: "{{decide.data.attempts.1.template}}",
+              record_id: "{{decide.data.attempts.1.record_id}}",
+              values: "{{decide.data.attempts.1.values}}"
+            }
+          },
+          {
+            id: "k2",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k2",
+            data: {
+              template: "{{decide.data.attempts.2.template}}",
+              record_id: "{{decide.data.attempts.2.record_id}}",
+              values: "{{decide.data.attempts.2.values}}"
+            }
+          },
+          {
+            id: "k3",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k3",
+            data: {
+              template: "{{decide.data.attempts.3.template}}",
+              record_id: "{{decide.data.attempts.3.record_id}}",
+              values: "{{decide.data.attempts.3.values}}"
+            }
+          },
+          {
+            id: "k4",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k4",
+            data: {
+              template: "{{decide.data.attempts.4.template}}",
+              record_id: "{{decide.data.attempts.4.record_id}}",
+              values: "{{decide.data.attempts.4.values}}"
+            }
+          },
+          {
+            id: "k5",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k5",
+            data: {
+              template: "{{decide.data.attempts.5.template}}",
+              record_id: "{{decide.data.attempts.5.record_id}}",
+              values: "{{decide.data.attempts.5.values}}"
+            }
+          },
+          {
+            id: "k6",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k6",
+            data: {
+              template: "{{decide.data.attempts.6.template}}",
+              record_id: "{{decide.data.attempts.6.record_id}}",
+              values: "{{decide.data.attempts.6.values}}"
+            }
+          },
+          {
+            id: "k7",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k7",
+            data: {
+              template: "{{decide.data.attempts.7.template}}",
+              record_id: "{{decide.data.attempts.7.record_id}}",
+              values: "{{decide.data.attempts.7.values}}"
+            }
+          },
+          {
+            id: "fin",
+            type: "Component",
+            componentId: "code",
+            label: "fin",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction issueDoc(R, J) {\n  var k = sv(R, 'key'), pk = parseKey(k) || { full: sv(R, 'repo'), n: 0 };\n  var D = { rid: R.rid, key: k, repo: pk.full, number: pk.n, title: sv(R, 'title'), body: sv(R, 'body'), state: sv(R, 'state') || 'open',\n    user: sv(R, 'author'), comments: parseInt(sv(R, 'comments') || '0', 10) || 0,\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null,\n    mid: parseInt(sv(R, 'milestone'), 10) || 0 };\n  if (J) {\n    D.labels = (J.links[k] || []).slice().sort(function (a, b) { return a.id - b.id; });\n    D.assignees = (J.assign[k] || []).slice().reverse();     // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6307\u6D3E\u9806\u5E8F\u8981\u820A\u2192\u65B0\uFF08\u7B2C\u4E00\u500B\uFF1Dassignee\uFF09\n    D.milestone = D.mid ? (J.ms[D.mid] || null) : null;\n  }\n  return D;\n}\n\n// \u2500\u2500 \u5F9E\u8B80\u56DE\u7684\u5217\u88E1\u627E\u6771\u897F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u540C\u4E00\u500B\u9375\u82E5\u6709\u591A\u7B46\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u6436\u540C\u4E00\u500B\u7968\u865F\uFF0C\u898B README\u300C\u539F\u5B50\u6027\u300D\uFF09\uFF0C\u53D6\u6700\u820A\u7684\u90A3\u7B46\u2014\u2014\u5927\u5BB6\u770B\u5230\u540C\u4E00\u5F35\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction claimedOf(input, attempts) {\n  var names = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'];\n  for (var i = 0; i < names.length; i++) {\n    var d = innerOf({ data: input[names[i]] });\n    var rec = d && d.record ? d.record : null;\n    if (rec && attempts[i] && rec.record_id === attempts[i].record_id) return { rid: rec.record_id, n: i, v: attempts[i].values };\n  }\n  return null;\n}\n\n// \u6436\u5230\u865F\u4E86\uFF08k0..k3 \u88E1\u6709\u4E00\u500B\u6210\u529F\uFF09\u3002\u9019\u6642\u624D\u5EFA\u6A19\u7C64\u9023\u7D50\u8207\u6307\u6D3E\u9023\u7D50\u2014\u2014\u5B83\u5011\u7528\u7968\u7684\u9375\u6307\u7968\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u7B49\u865F\u78BC\u78BA\u5B9A\nvar X = input.decide, F = X.fin, w = claimedOf(input, X.attempts);\nif (!w) return done(fail(500, 'issue number claim did not take effect: the engine ignored record_id/create_only (needs Arcrun#307)'));\nvar key = w.v.key, posts = [];\nF.labels.forEach(function (L) { posts.push(postRec(T.ilabel, { issue: key, repo: F.full, lid: L.id })); });\nF.assignees.forEach(function (a) { posts.push(postRec(T.iassign, { issue: key, repo: F.full, login: a })); });\nvar D = issueDoc({ rid: w.rid, v: w.v });\nD.labels = F.labels; D.assignees = F.assignees; D.milestone = F.M;\nreturn done(reply(201, issueView(D, F.base)), posts, []);\n",
+              input: {
+                decide: "{{decide.data}}",
+                k0: "{{k0.data}}",
+                k1: "{{k1.data}}",
+                k2: "{{k2.data}}",
+                k3: "{{k3.data}}",
+                k4: "{{k4.data}}",
+                k5: "{{k5.data}}",
+                k6: "{{k6.data}}",
+                k7: "{{k7.data}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "giveup",
+            type: "Component",
+            componentId: "code",
+            label: "giveup",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nvar CLAIM_TRIES = 8;\n\nreturn done(fail(503, 'could not claim an issue number after ' + CLAIM_TRIES + ' attempts (too many concurrent creators or the store is failing); retry'));\n",
+              input: {
+                decide: "{{decide.data}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar cands = [input.fin, input.giveup, input.skip];\nfor (var i = 0; i < cands.length; i++) {\n  var c = cands[i];\n  if (c && typeof c === 'object' && !Array.isArray(c) && c.final !== undefined) return partial(input) || c.final;\n}\nreturn fail(500, '\u6436\u865F\u6D41\u7A0B\u6C92\u6709\u7522\u51FA final');\n",
+              input: {
+                fin: "{{fin.data}}",
+                giveup: "{{giveup.data}}",
+                skip: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_BRANCH",
+            branch: "skip"
+          },
+          {
+            from: "decide",
+            to: "k0",
+            type: "ON_BRANCH",
+            branch: "claim"
+          },
+          {
+            from: "k0",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k0",
+            to: "k1",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k1",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k1",
+            to: "k2",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k2",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k2",
+            to: "k3",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k3",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k3",
+            to: "k4",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k4",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k4",
+            to: "k5",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k5",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k5",
+            to: "k6",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k6",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k6",
+            to: "k7",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k7",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k7",
+            to: "giveup",
+            type: "ON_FAIL"
+          },
+          {
+            from: "fin",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "fin",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "fin",
+            to: "respond",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "giveup",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "issue_get",
+      description: "\u8B80\u4E00\u5F35\u7968\uFF08\u5167\u6587\u539F\u6A23\u3001\u542B user\uFF0Flabels\uFF0Fassignees\uFF0Fmilestone\uFF0F\u7559\u8A00\u6578\uFF09\u3002",
+      graph: {
+        id: "ahub__issue_get",
+        name: "ahub__issue_get",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction issueBundleReads(full, key) {\n  return [rd(T.issue, 'key', key, 5), rd(T.ilabel, 'issue', key, 200), rd(T.iassign, 'issue', key, 100), rd(T.label, 'repo', full, 200), rd(T.ms, 'repo', full, 200)];\n}\n// rs[i0..i0+4] \u662F\u4E0A\u9762\u4E94\u683C\u7684\u7D50\u679C\uFF1B\u627E\u4E0D\u5230\u7968\u56DE null\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\n\nvar READS_N = 5;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nvar key = issueKey(full, n);\nreturn prepOut(B, { full: full, n: n, key: key, reads: issueBundleReads(full, key) });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction joinOf(labelRows, linkRows, assignRows, msRows) {\n  var J = { labels: {}, links: {}, assign: {}, ms: {} };\n  labelRows.forEach(function (R) { var L = labelDoc(R); if (!L.deleted) J.labels[L.id] = L; });\n  msRows.forEach(function (R) { var M = msDoc(R); J.ms[M.id] = M; });\n  var seen = {};\n  // \u65B0\u2192\u820A\u8B80\u56DE\uFF1B\u540C\u4E00\u7968\u540C\u4E00\u6A19\u7C64\u82E5\u6709\u591A\u7B46\uFF08\u91CD\u9001\uFF09\uFF0C\u4EE5\u6700\u65B0\u90A3\u7B46\u7684 gone \u70BA\u6E96\n  linkRows.forEach(function (R) {\n    var k = sv(R, 'issue'), lid = parseInt(sv(R, 'lid'), 10), id = k + '|' + lid;\n    if (seen[id]) return; seen[id] = 1;\n    if (isOn(R, 'gone')) return;\n    var L = J.labels[lid]; if (!L) return;\n    (J.links[k] = J.links[k] || []).push(L);\n  });\n  var seenA = {};\n  assignRows.forEach(function (R) {\n    var k = sv(R, 'issue'), who = sv(R, 'login'), id = k + '|' + who;\n    if (seenA[id]) return; seenA[id] = 1;\n    if (isOn(R, 'gone')) return;\n    (J.assign[k] = J.assign[k] || []).push(who);\n  });\n  return J;\n}\n// \u7968 record \u2192 \u7968\u6587\u4EF6\u3002J \u7D66\u4E86\u5C31\u628A\u6A19\u7C64\uFF0F\u6307\u6D3E\uFF0F\u91CC\u7A0B\u7891\u63A5\u4E0A\uFF1B\u6C92\u7D66\u5C31\u7559 undefined\uFF08issueView \u4E0D\u653E\u9019\u5E7E\u6B04\uFF09\nfunction issueDoc(R, J) {\n  var k = sv(R, 'key'), pk = parseKey(k) || { full: sv(R, 'repo'), n: 0 };\n  var D = { rid: R.rid, key: k, repo: pk.full, number: pk.n, title: sv(R, 'title'), body: sv(R, 'body'), state: sv(R, 'state') || 'open',\n    user: sv(R, 'author'), comments: parseInt(sv(R, 'comments') || '0', 10) || 0,\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null,\n    mid: parseInt(sv(R, 'milestone'), 10) || 0 };\n  if (J) {\n    D.labels = (J.links[k] || []).slice().sort(function (a, b) { return a.id - b.id; });\n    D.assignees = (J.assign[k] || []).slice().reverse();     // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6307\u6D3E\u9806\u5E8F\u8981\u820A\u2192\u65B0\uFF08\u7B2C\u4E00\u500B\uFF1Dassignee\uFF09\n    D.milestone = D.mid ? (J.ms[D.mid] || null) : null;\n  }\n  return D;\n}\n\n// \u2500\u2500 \u5F9E\u8B80\u56DE\u7684\u5217\u88E1\u627E\u6771\u897F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u540C\u4E00\u500B\u9375\u82E5\u6709\u591A\u7B46\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u6436\u540C\u4E00\u500B\u7968\u865F\uFF0C\u898B README\u300C\u539F\u5B50\u6027\u300D\uFF09\uFF0C\u53D6\u6700\u820A\u7684\u90A3\u7B46\u2014\u2014\u5927\u5BB6\u770B\u5230\u540C\u4E00\u5F35\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction bundleOf(rs, i0, key) {\n  var R = issueRowOf(rs[i0], key);\n  if (!R) return null;\n  var links = rowsOf(rs[i0 + 1]), assigns = rowsOf(rs[i0 + 2]);\n  var J = joinOf(rowsOf(rs[i0 + 3]), links, assigns, rowsOf(rs[i0 + 4]));\n  return { R: R, D: issueDoc(R, J), J: J, links: links, assigns: assigns };\n}\n\n// \u2500\u2500 \u76F8\u4F9D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u908A\uFF1Aahub_dependency { issue\uFF1D\u88AB\u64CB\u4F4F\u7684\u90A3\u5F35\uFF08\u6BCD\u7968\uFF09, needs\uFF1D\u64CB\u4F4F\u5B83\u7684\u90A3\u5F35\uFF08\u5B50\u7968\uFF0F\u524D\u7F6E\u7968\uFF09, gone }\u3002\u4E00\u689D\u908A\u4E00\u7B46\uFF1B\n// \u540C\u4E00\u689D\u908A\u82E5\u6709\u591A\u7B46\uFF08\u91CD\u9001\uFF09\uFF0C\u4EE5\u6700\u65B0\u90A3\u7B46\u7684 gone \u70BA\u6E96\u3002\u56DE\u6709\u6548\u908A\u7684\u53E6\u4E00\u7AEF\uFF08side\uFF1D\u8981\u53D6\u54EA\u4E00\u7AEF\u7684\u9375\uFF09\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, bd = bundleOf(readsOf(input), 0, P.key);\nif (!bd) return notFound('issue');\nreturn reply(200, issueView(bd.D, P.base));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "issue_labels_add",
+      description: "\u7D66\u7968\u300C\u52A0\u300D\u6A19\u7C64\uFF08body.labels \u53EF\u4EE5\u662F\u540D\u5B57\u6216 id\uFF09\uFF1B\u6A19\u7C64\u5F97\u5148\u5B58\u5728\uFF0C\u5426\u5247 422\u3002",
+      graph: {
+        id: "ahub__issue_labels_add",
+        name: "ahub__issue_labels_add",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\n\nvar READS_N = 3;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B), b = bodyObj(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nif (!Array.isArray(b.labels)) return prepEarly(B, 422, 'labels must be an array');\nvar key = issueKey(full, n);\nreturn prepOut(B, { full: full, n: n, key: key, refs: b.labels, reads: [rd(T.issue, 'key', key, 5), rd(T.ilabel, 'issue', key, 200), rd(T.label, 'repo', full, 200)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction patchRec(R, v) {\n  var o = {}, n = 0;\n  Object.keys(v).forEach(function (k) {\n    var x = v[k] === undefined || v[k] === null ? '' : String(v[k]);\n    if (x === sv(R, k)) return;\n    o[k] = x; n++;\n  });\n  return n ? { id: R.rid, values: o } : null;\n}\nfunction addPatch(list, R, v) { var p = patchRec(R, v); if (p) list.push(p); return list; }\n\n// \u2500\u2500 \u7968\u7684\u9375\uFF08owner/repo#n\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction joinOf(labelRows, linkRows, assignRows, msRows) {\n  var J = { labels: {}, links: {}, assign: {}, ms: {} };\n  labelRows.forEach(function (R) { var L = labelDoc(R); if (!L.deleted) J.labels[L.id] = L; });\n  msRows.forEach(function (R) { var M = msDoc(R); J.ms[M.id] = M; });\n  var seen = {};\n  // \u65B0\u2192\u820A\u8B80\u56DE\uFF1B\u540C\u4E00\u7968\u540C\u4E00\u6A19\u7C64\u82E5\u6709\u591A\u7B46\uFF08\u91CD\u9001\uFF09\uFF0C\u4EE5\u6700\u65B0\u90A3\u7B46\u7684 gone \u70BA\u6E96\n  linkRows.forEach(function (R) {\n    var k = sv(R, 'issue'), lid = parseInt(sv(R, 'lid'), 10), id = k + '|' + lid;\n    if (seen[id]) return; seen[id] = 1;\n    if (isOn(R, 'gone')) return;\n    var L = J.labels[lid]; if (!L) return;\n    (J.links[k] = J.links[k] || []).push(L);\n  });\n  var seenA = {};\n  assignRows.forEach(function (R) {\n    var k = sv(R, 'issue'), who = sv(R, 'login'), id = k + '|' + who;\n    if (seenA[id]) return; seenA[id] = 1;\n    if (isOn(R, 'gone')) return;\n    (J.assign[k] = J.assign[k] || []).push(who);\n  });\n  return J;\n}\n// \u7968 record \u2192 \u7968\u6587\u4EF6\u3002J \u7D66\u4E86\u5C31\u628A\u6A19\u7C64\uFF0F\u6307\u6D3E\uFF0F\u91CC\u7A0B\u7891\u63A5\u4E0A\uFF1B\u6C92\u7D66\u5C31\u7559 undefined\uFF08issueView \u4E0D\u653E\u9019\u5E7E\u6B04\uFF09\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction liveLabels(result) { return rowsOf(result).map(labelDoc).filter(function (L) { return !L.deleted; }); }\n// \u6A19\u7C64\u5F15\u7528\uFF08\u540D\u5B57\u6216 id\uFF09\u2192 \u6A19\u7C64\u6587\u4EF6\uFF1B\u627E\u4E0D\u5230\u56DE null\nfunction labelByRef(labels, ref) {\n  for (var i = 0; i < labels.length; i++) {\n    if (typeof ref === 'number' ? labels[i].id === ref : (String(labels[i].name) === String(ref) || String(labels[i].id) === String(ref))) return labels[i];\n  }\n  return null;\n}\nfunction relinkLabels(key, full, want, rows, keepOthers) {\n  var posts = [], patches = [], wantIds = {}, byLid = {};\n  want.forEach(function (L) { wantIds[L.id] = L; });\n  rows.forEach(function (R) { var lid = parseInt(sv(R, 'lid'), 10); if (!byLid[lid]) byLid[lid] = R; });   // \u65B0\u2192\u820A\uFF0C\u7B2C\u4E00\u7B46\u6700\u65B0\n  want.forEach(function (L) {\n    var R = byLid[L.id];\n    if (!R) posts.push(postRec(T.ilabel, { issue: key, repo: full, lid: L.id }));\n    else if (isOn(R, 'gone')) addPatch(patches, R, { gone: '' });\n  });\n  if (!keepOthers) {\n    Object.keys(byLid).forEach(function (lid) { if (!wantIds[lid] && !isOn(byLid[lid], 'gone')) addPatch(patches, byLid[lid], { gone: '1' }); });\n  }\n  return { posts: posts, patches: patches };\n}\n// \u6307\u6D3E\u96C6\u5408\u8B8A\u66F4\uFF1A\u540C\u4E0A\uFF0C\u4EE5\u767B\u5165\u540D\u70BA\u9375\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input), R = issueRowOf(rs[0], P.key);\nif (!R) return done(notFound('issue'));\nvar defs = liveLabels(rs[2]), links = rowsOf(rs[1]);\nvar J = joinOf(rowsOf(rs[2]), links, [], []);\nvar have = (J.links[P.key] || []).slice(), want = have.slice();\nfor (var i = 0; i < P.refs.length; i++) {\n  var L = labelByRef(defs, P.refs[i]);\n  if (!L) return done(fail(422, 'label not found: ' + P.refs[i]));\n  if (!want.some(function (x) { return x.id === L.id; })) want.push(L);\n}\nvar rl = relinkLabels(P.key, P.full, want, links, true);\nwant.sort(function (a, b) { return a.id - b.id; });\nreturn done(reply(200, want.map(labelView)), rl.posts, rl.patches.concat([patchRec(R, { updated_at: nowIso() })]));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "issue_labels_set",
+      description: "\u6574\u7D44\u53D6\u4EE3\u7968\u7684\u6A19\u7C64\uFF08ticket \u63DB s/* \u72C0\u614B\u9760\u5B83\uFF1Bbody.labels \u53EF\u4EE5\u662F\u540D\u5B57\u6216 id\uFF09\u3002",
+      graph: {
+        id: "ahub__issue_labels_set",
+        name: "ahub__issue_labels_set",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\n\nvar READS_N = 3;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B), b = bodyObj(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nif (!Array.isArray(b.labels)) return prepEarly(B, 422, 'labels must be an array');\nvar key = issueKey(full, n);\nreturn prepOut(B, { full: full, n: n, key: key, refs: b.labels, reads: [rd(T.issue, 'key', key, 5), rd(T.ilabel, 'issue', key, 200), rd(T.label, 'repo', full, 200)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction patchRec(R, v) {\n  var o = {}, n = 0;\n  Object.keys(v).forEach(function (k) {\n    var x = v[k] === undefined || v[k] === null ? '' : String(v[k]);\n    if (x === sv(R, k)) return;\n    o[k] = x; n++;\n  });\n  return n ? { id: R.rid, values: o } : null;\n}\nfunction addPatch(list, R, v) { var p = patchRec(R, v); if (p) list.push(p); return list; }\n\n// \u2500\u2500 \u7968\u7684\u9375\uFF08owner/repo#n\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction liveLabels(result) { return rowsOf(result).map(labelDoc).filter(function (L) { return !L.deleted; }); }\n// \u6A19\u7C64\u5F15\u7528\uFF08\u540D\u5B57\u6216 id\uFF09\u2192 \u6A19\u7C64\u6587\u4EF6\uFF1B\u627E\u4E0D\u5230\u56DE null\nfunction labelByRef(labels, ref) {\n  for (var i = 0; i < labels.length; i++) {\n    if (typeof ref === 'number' ? labels[i].id === ref : (String(labels[i].name) === String(ref) || String(labels[i].id) === String(ref))) return labels[i];\n  }\n  return null;\n}\nfunction relinkLabels(key, full, want, rows, keepOthers) {\n  var posts = [], patches = [], wantIds = {}, byLid = {};\n  want.forEach(function (L) { wantIds[L.id] = L; });\n  rows.forEach(function (R) { var lid = parseInt(sv(R, 'lid'), 10); if (!byLid[lid]) byLid[lid] = R; });   // \u65B0\u2192\u820A\uFF0C\u7B2C\u4E00\u7B46\u6700\u65B0\n  want.forEach(function (L) {\n    var R = byLid[L.id];\n    if (!R) posts.push(postRec(T.ilabel, { issue: key, repo: full, lid: L.id }));\n    else if (isOn(R, 'gone')) addPatch(patches, R, { gone: '' });\n  });\n  if (!keepOthers) {\n    Object.keys(byLid).forEach(function (lid) { if (!wantIds[lid] && !isOn(byLid[lid], 'gone')) addPatch(patches, byLid[lid], { gone: '1' }); });\n  }\n  return { posts: posts, patches: patches };\n}\n// \u6307\u6D3E\u96C6\u5408\u8B8A\u66F4\uFF1A\u540C\u4E0A\uFF0C\u4EE5\u767B\u5165\u540D\u70BA\u9375\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input), R = issueRowOf(rs[0], P.key);\nif (!R) return done(notFound('issue'));\nvar defs = liveLabels(rs[2]), want = [];\nfor (var i = 0; i < P.refs.length; i++) {\n  var L = labelByRef(defs, P.refs[i]);\n  if (!L) return done(fail(422, 'label not found: ' + P.refs[i]));\n  if (!want.some(function (x) { return x.id === L.id; })) want.push(L);\n}\nvar rl = relinkLabels(P.key, P.full, want, rowsOf(rs[1]), false);\nwant.sort(function (a, b) { return a.id - b.id; });\nreturn done(reply(200, want.map(labelView)), rl.posts, rl.patches.concat([patchRec(R, { updated_at: nowIso() })]));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "issue_list",
+      description: "\u5217\u4E00\u500B repo \u7684\u7968\uFF1Astate\uFF0Ftype\uFF0Flabels\uFF0Fmilestones\uFF0Fassigned_by\uFF0Fq\uFF0Fsince\uFF0Fsort\uFF0Flimit\uFF0Fpage\u3002\u53EA\u6383\u9019\u500B repo \u6700\u8FD1\u7684 300 \u5F35\uFF08\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\uFF09\u3002",
+      graph: {
+        id: "ahub__issue_list",
+        name: "ahub__issue_list",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction intOf(v, dflt) { var n = parseInt(ph(v), 10); return n > 0 ? n : dflt; }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction pageOf(q, dflt) {\n  var limit = Math.min(intOf(q.limit, dflt || 30), 100), page = intOf(q.page, 1);\n  return { limit: limit, page: page };\n}\nfunction csv(v) { v = ph(v); return v ? v.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : []; }\nfunction sinceIso(v) { v = ph(v); if (!v) return ''; var t = Date.parse(v); return isNaN(t) ? '' : new Date(t).toISOString().replace(/\\.\\d+Z$/, 'Z'); }\n\n// \u6A19\u7C64\u96C6\u5408\u8B8A\u66F4\uFF1A\u8981\u8B8A\u6210 want\uFF08\u6A19\u7C64\u6587\u4EF6\u9663\u5217\uFF09\uFF0C\u73FE\u6709\u7684\u9023\u7D50\u5217\u662F rows\uFF08\u9019\u5F35\u7968\u7684\u5168\u90E8 ahub_issue_label\uFF0C\u542B\u5DF2\u62FF\u6389\u7684\uFF09\n// \u56DE { posts, patches }\uFF1A\u6C92\u6709\u7684\u5EFA\u4E00\u7B46\u3001\u62FF\u6389\u904E\u7684\u6062\u5FA9\u3001\u4E0D\u8981\u4E86\u7684\u6A19\u8A18 gone\u3002\u5DF2\u7D93\u5C0D\u7684\u4E0D\u52D5\u3002\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 5;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params);\nif (!full) return prepEarly(B, 404, 'repository not found');\nvar q = B.q, state = ph(q.state) || 'open';\nif (['open', 'closed', 'all'].indexOf(state) < 0) state = 'open';\nif (ph(q.type) === 'pulls') return prepOut(B, { early: { status: 200, body: [] } });    // PR \u4E0D\u5728\u7B2C\u4E00\u5C64\uFF0C\u6C38\u9060\u662F\u7A7A\u6E05\u55AE\nvar f = { state: state, labels: csv(q.labels), milestones: csv(q.milestones), assignee: ph(q.assigned_by) || ph(q.assignee), q: ph(q.q), since: sinceIso(q.since) };\n// repo \u5B58\u5728\u8207\u5426\u4E0D\u5728\u7B2C\u4E00\u6279\u8B80\uFF1A\u7968\u53EA\u80FD\u958B\u5728\u5B58\u5728\u7684 repo \u88E1\uFF0C\u6240\u4EE5\u8B80\u5230\u7968\uFF1Drepo \u5728\uFF1B\u4E00\u5F35\u7968\u90FD\u6C92\u6709\u624D\u9700\u8981\u7B2C\u4E8C\u6BB5\u53BB\u78BA\u8A8D\u5B83\uFF08\u5C11\u4E00\u8B80\uFF0C\u9019\u4E00\u6279\u525B\u597D 6 \u500B\uFF1D\u4E00\u8F2A\uFF09\nreturn prepOut(B, { full: full, f: f, pg: pageOf(q, 30), sort: ph(q.sort), reads: [\n  rd(T.issue, 'repo', full, 300),\n  rd(T.ilabel, 'repo', full, REPO_SCAN), rd(T.iassign, 'repo', full, REPO_SCAN), rd(T.label, 'repo', full, 200), rd(T.ms, 'repo', full, 200)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "prep2",
+            type: "Component",
+            componentId: "code",
+            label: "prep2",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction prep2Out(list) {\n  var r = (list || []).slice();\n  if (r.length > READS2_N) throw new Error('reads2 ' + r.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS2_N + ' \u683C');\n  return { success: true, nreads: r.length, ahsreads: r };\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\n\nvar READS2_N = 1;\n\nvar P = input.prep, me = meIn(input);\nif (!me || P.early) return prep2Out([]);\nvar rs = readsOf(input);\nreturn prep2Out(rowsOf(rs[0]).length ? [] : [rd(T.repo, 'full_name', P.full, 5)]);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq2",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq2",
+            data: {
+              _path: "{{ahsread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction slicePage(arr, pg) { return arr.slice((pg.page - 1) * pg.limit, pg.page * pg.limit); }\nfunction joinOf(labelRows, linkRows, assignRows, msRows) {\n  var J = { labels: {}, links: {}, assign: {}, ms: {} };\n  labelRows.forEach(function (R) { var L = labelDoc(R); if (!L.deleted) J.labels[L.id] = L; });\n  msRows.forEach(function (R) { var M = msDoc(R); J.ms[M.id] = M; });\n  var seen = {};\n  // \u65B0\u2192\u820A\u8B80\u56DE\uFF1B\u540C\u4E00\u7968\u540C\u4E00\u6A19\u7C64\u82E5\u6709\u591A\u7B46\uFF08\u91CD\u9001\uFF09\uFF0C\u4EE5\u6700\u65B0\u90A3\u7B46\u7684 gone \u70BA\u6E96\n  linkRows.forEach(function (R) {\n    var k = sv(R, 'issue'), lid = parseInt(sv(R, 'lid'), 10), id = k + '|' + lid;\n    if (seen[id]) return; seen[id] = 1;\n    if (isOn(R, 'gone')) return;\n    var L = J.labels[lid]; if (!L) return;\n    (J.links[k] = J.links[k] || []).push(L);\n  });\n  var seenA = {};\n  assignRows.forEach(function (R) {\n    var k = sv(R, 'issue'), who = sv(R, 'login'), id = k + '|' + who;\n    if (seenA[id]) return; seenA[id] = 1;\n    if (isOn(R, 'gone')) return;\n    (J.assign[k] = J.assign[k] || []).push(who);\n  });\n  return J;\n}\n// \u7968 record \u2192 \u7968\u6587\u4EF6\u3002J \u7D66\u4E86\u5C31\u628A\u6A19\u7C64\uFF0F\u6307\u6D3E\uFF0F\u91CC\u7A0B\u7891\u63A5\u4E0A\uFF1B\u6C92\u7D66\u5C31\u7559 undefined\uFF08issueView \u4E0D\u653E\u9019\u5E7E\u6B04\uFF09\nfunction issueDoc(R, J) {\n  var k = sv(R, 'key'), pk = parseKey(k) || { full: sv(R, 'repo'), n: 0 };\n  var D = { rid: R.rid, key: k, repo: pk.full, number: pk.n, title: sv(R, 'title'), body: sv(R, 'body'), state: sv(R, 'state') || 'open',\n    user: sv(R, 'author'), comments: parseInt(sv(R, 'comments') || '0', 10) || 0,\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null,\n    mid: parseInt(sv(R, 'milestone'), 10) || 0 };\n  if (J) {\n    D.labels = (J.links[k] || []).slice().sort(function (a, b) { return a.id - b.id; });\n    D.assignees = (J.assign[k] || []).slice().reverse();     // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6307\u6D3E\u9806\u5E8F\u8981\u820A\u2192\u65B0\uFF08\u7B2C\u4E00\u500B\uFF1Dassignee\uFF09\n    D.milestone = D.mid ? (J.ms[D.mid] || null) : null;\n  }\n  return D;\n}\n\n// \u2500\u2500 \u5F9E\u8B80\u56DE\u7684\u5217\u88E1\u627E\u6771\u897F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u540C\u4E00\u500B\u9375\u82E5\u6709\u591A\u7B46\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u6436\u540C\u4E00\u500B\u7968\u865F\uFF0C\u898B README\u300C\u539F\u5B50\u6027\u300D\uFF09\uFF0C\u53D6\u6700\u820A\u7684\u90A3\u7B46\u2014\u2014\u5927\u5BB6\u770B\u5230\u540C\u4E00\u5F35\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }\nfunction wantIssue(D, f) {\n  if (f.state && f.state !== 'all' && D.state !== f.state) return false;\n  if (f.labels && f.labels.length) {\n    var names = (D.labels || []).map(function (l) { return l.name; });\n    for (var i = 0; i < f.labels.length; i++) if (names.indexOf(f.labels[i]) < 0) return false;\n  }\n  if (f.milestones && f.milestones.length) {\n    var ms = D.milestone ? [String(D.milestone.id), String(D.milestone.title)] : [];\n    var hit = false; f.milestones.forEach(function (m) { if (ms.indexOf(String(m)) >= 0) hit = true; });\n    if (!hit) return false;\n  }\n  if (f.assignee && (D.assignees || []).indexOf(f.assignee) < 0) return false;\n  if (f.q) {\n    var hay = (String(D.title) + '\\n' + String(D.body || '')).toLowerCase();\n    if (hay.indexOf(String(f.q).toLowerCase()) < 0) return false;\n  }\n  if (f.since && String(D.updated_at) < f.since) return false;\n  return true;\n}\nfunction sortIssues(arr, sort) {\n  var by = sort === 'recentupdate' || sort === 'leastupdate' ? function (d) { return d.updated_at; } : function (d) { return d.created_at; };\n  var asc = sort === 'oldest' || sort === 'leastupdate';\n  return arr.sort(function (a, b) {\n    var x = String(by(a)), y = String(by(b));\n    if (x === y) return asc ? a.number - b.number : b.number - a.number;\n    return asc ? (x < y ? -1 : 1) : (x < y ? 1 : -1);\n  });\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction reads2Of(input) { return Array.isArray(input.reads2) ? input.reads2 : []; }\n// batch \u7248\u7B2C\u4E8C\u6BB5\u7684\u7D50\u679C\uFF08\u4E00\u500B\u7269\u4EF6 {records, missing}\uFF09\u3002\u6C92\u8B80\uFF08\u4E0D\u9700\u8981\uFF09\u56DE []\uFF0C\u8B80\u58DE\u4E86\u56DE null\u2014\u2014\u547C\u53EB\u7AEF\u8981\u5206\u5F97\u51FA\u4F86\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!rowsOf(rs[0]).length && !repoRowOf(reads2Of(input)[0], P.full)) return notFound('repository');\nvar J = joinOf(rowsOf(rs[3]), rowsOf(rs[1]), rowsOf(rs[2]), rowsOf(rs[4]));\nvar docs = rowsOf(rs[0]).map(function (R) { return issueDoc(R, J); }).filter(function (D) { return wantIssue(D, P.f); });\nsortIssues(docs, P.sort);\nreturn reply(200, slicePage(docs, P.pg).map(function (D) { return issueView(D, P.base); }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}",
+                prep2: "{{prep2.data}}",
+                reads2: "{{prep2.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "prep2",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep2",
+            to: "rdq2",
+            type: "FOREACH",
+            iterator: "ahsread",
+            concurrency: 6
+          },
+          {
+            from: "prep2",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "issue_patch",
+      description: "\u6539\u7968\uFF1Atitle\uFF0Fbody\uFF0Fstate\uFF0Fassignees\uFF0Fmilestone\u3002\u524D\u7F6E\u7968\uFF08\u5B50\u7968\uFF09\u6C92\u95DC\u5B8C\uFF0C\u8981\u95DC\u9019\u5F35\u6703\u88AB\u64CB\uFF08412\uFF09\u3002",
+      graph: {
+        id: "ahub__issue_patch",
+        name: "ahub__issue_patch",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction issueBundleReads(full, key) {\n  return [rd(T.issue, 'key', key, 5), rd(T.ilabel, 'issue', key, 200), rd(T.iassign, 'issue', key, 100), rd(T.label, 'repo', full, 200), rd(T.ms, 'repo', full, 200)];\n}\n// rs[i0..i0+4] \u662F\u4E0A\u9762\u4E94\u683C\u7684\u7D50\u679C\uFF1B\u627E\u4E0D\u5230\u7968\u56DE null\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nfunction issueIndex(B) { var n = parseInt(ph(B.params.index), 10); return n > 0 ? n : 0; }\n\nvar READS_N = 6;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), n = issueIndex(B), b = bodyObj(B);\nif (!full || !n) return prepEarly(B, 404, 'issue not found');\nvar st = b.state == null ? '' : String(b.state);\nif (st && st !== 'open' && st !== 'closed') return prepEarly(B, 422, 'state must be open or closed');\nvar key = issueKey(full, n);\nvar reads = issueBundleReads(full, key);\n// \u8981\u95DC\u7968\u624D\u9700\u8981\uFF1A\u9019\u5F35\u7968\u7684\u524D\u7F6E\u7968\u6709\u54EA\u4E9B\uFF08\u518D\u7531\u7B2C\u4E8C\u6BB5\u8B80\u5B83\u5011\u7684\u72C0\u614B\uFF09\nif (st === 'closed') reads.push(rd(T.dep, 'issue', key, 200));\nreturn prepOut(B, { full: full, n: n, key: key, b: b, closing: st === 'closed', reads: reads });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "prep2",
+            type: "Component",
+            componentId: "code",
+            label: "prep2",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction uniq(a) { var s = {}, o = []; a.forEach(function (x) { if (!s[x]) { s[x] = 1; o.push(x); } }); return o; }\n\n// \u2500\u2500 SHA-256\uFF08\u7D14 JS\uFF1Btoken \u53EA\u5B58\u96DC\u6E4A\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction liveEdges(rows, side) {\n  var seen = {}, out = [];\n  rows.forEach(function (R) {\n    var k = sv(R, 'issue') + '>' + sv(R, 'needs');\n    if (seen[k]) return; seen[k] = 1;\n    if (!isOn(R, 'gone')) out.push(sv(R, side));\n  });\n  return out;\n}\n// \u8981\u8B80\u4E00\u6279\u7968\uFF08\u7528\u7968\u7684\u9375\uFF09\u2192 \u5B83\u5011\u7684 record id\uFF1A\u7968\u7684 id \u7531\u79DF\u6236\uFF0B\u9375\u6C7A\u5B9A\uFF08issueRid\uFF0C\u6436\u865F\u6642\u5C31\u5B9A\u4E86\uFF09\uFF0C\u6240\u4EE5\u4E00\u500B\u8ACB\u6C42\u5C31\u80FD\u8B80\u5B8C\n// \uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u4E0D\u5FC5\u4E00\u5F35\u7968\u4E00\u8D9F\u30020.2.0 \u4EE5\u524D\u5EFA\u7684\u7968\u662F\u96A8\u6A5F id\uFF0C\u8B80\u4E0D\u5230\u2014\u2014\u898B README\u300C0.3.0 \u7684\u8CC7\u6599\u300D\u3002\nfunction issueRidsOf(tenant, keys) { return uniq(keys).map(function (k) { return issueRid(tenant, k); }); }\nfunction batch2Out(ids) {\n  ids = uniq(ids || []);\n  if (ids.length > 200) throw new Error('\u4E00\u6B21\u6700\u591A\u8B80 200 \u7B46\uFF0C\u62FF\u5230 ' + ids.length);\n  return { success: true, branch: ids.length ? '1' : '0', nids: ids.length, ids: ids };\n}\n// \u7B2C\u4E00\u6BB5\u8B80\u7684\u7D50\u679C\uFF1Areads[0] \u662F\u8EAB\u5206\u67E5\u8A62\uFF08\u6709\u7684\u8A71\uFF09\u3002\u4EFB\u4F55\u4E00\u8B80\u5931\u6557\uFF08\u4E0D\u662F\u300C\u6C92\u6709\u8CC7\u6599\u300D\u800C\u662F KBDB \u56DE\u932F\uFF09\uFF1D\u6574\u500B\u8ACB\u6C42\u4E0D\u80FD\u4FE1\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS2_N = 0;\n\nvar P = input.prep, me = meIn(input);\nif (!me || P.early || !P.closing) return batch2Out([]);\nvar rs = readsOf(input);\nvar need = liveEdges(rowsOf(rs[5]), 'needs');\nreturn batch2Out(issueRidsOf(P.tenant, need));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "bg",
+            type: "Component",
+            componentId: "ahub_rec_batch",
+            label: "bg",
+            data: {
+              ids: "{{prep2.data.ids}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction uniq(a) { var s = {}, o = []; a.forEach(function (x) { if (!s[x]) { s[x] = 1; o.push(x); } }); return o; }\n\n// \u2500\u2500 SHA-256\uFF08\u7D14 JS\uFF1Btoken \u53EA\u5B58\u96DC\u6E4A\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction allRows(results, from, to) {\n  var out = [];\n  for (var i = from || 0; i < (to === undefined ? results.length : to); i++) rowsOf(results[i]).forEach(function (x) { out.push(x); });\n  return out;\n}\n\n// \u2500\u2500 \u5BEB\uFF1APOST /kbdb/records\uFF08\u5EFA\u4E00\u7B46\uFF09\u3001PATCH /kbdb/records/<rid>\uFF08\u6539\u5E7E\u683C\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u503C\u4E00\u5F8B\u662F\u5B57\u4E32\uFF1B\u7A7A\u7684\u683C\u5B50\u4E0D\u5BEB\uFF08\u8B80\u56DE\u4F86\u5C31\u662F ''\uFF09\uFF0C\u7701\u5BEB\u5165\u2014\u2014\u4E00\u683C\u7D04\u5360\u5169\u5217\u3001\u7D04 0.5\uFF5E1 \u79D2\u3002\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction patchRec(R, v) {\n  var o = {}, n = 0;\n  Object.keys(v).forEach(function (k) {\n    var x = v[k] === undefined || v[k] === null ? '' : String(v[k]);\n    if (x === sv(R, k)) return;\n    o[k] = x; n++;\n  });\n  return n ? { id: R.rid, values: o } : null;\n}\nfunction addPatch(list, R, v) { var p = patchRec(R, v); if (p) list.push(p); return list; }\n\n// \u2500\u2500 \u7968\u7684\u9375\uFF08owner/repo#n\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction joinOf(labelRows, linkRows, assignRows, msRows) {\n  var J = { labels: {}, links: {}, assign: {}, ms: {} };\n  labelRows.forEach(function (R) { var L = labelDoc(R); if (!L.deleted) J.labels[L.id] = L; });\n  msRows.forEach(function (R) { var M = msDoc(R); J.ms[M.id] = M; });\n  var seen = {};\n  // \u65B0\u2192\u820A\u8B80\u56DE\uFF1B\u540C\u4E00\u7968\u540C\u4E00\u6A19\u7C64\u82E5\u6709\u591A\u7B46\uFF08\u91CD\u9001\uFF09\uFF0C\u4EE5\u6700\u65B0\u90A3\u7B46\u7684 gone \u70BA\u6E96\n  linkRows.forEach(function (R) {\n    var k = sv(R, 'issue'), lid = parseInt(sv(R, 'lid'), 10), id = k + '|' + lid;\n    if (seen[id]) return; seen[id] = 1;\n    if (isOn(R, 'gone')) return;\n    var L = J.labels[lid]; if (!L) return;\n    (J.links[k] = J.links[k] || []).push(L);\n  });\n  var seenA = {};\n  assignRows.forEach(function (R) {\n    var k = sv(R, 'issue'), who = sv(R, 'login'), id = k + '|' + who;\n    if (seenA[id]) return; seenA[id] = 1;\n    if (isOn(R, 'gone')) return;\n    (J.assign[k] = J.assign[k] || []).push(who);\n  });\n  return J;\n}\n// \u7968 record \u2192 \u7968\u6587\u4EF6\u3002J \u7D66\u4E86\u5C31\u628A\u6A19\u7C64\uFF0F\u6307\u6D3E\uFF0F\u91CC\u7A0B\u7891\u63A5\u4E0A\uFF1B\u6C92\u7D66\u5C31\u7559 undefined\uFF08issueView \u4E0D\u653E\u9019\u5E7E\u6B04\uFF09\nfunction issueDoc(R, J) {\n  var k = sv(R, 'key'), pk = parseKey(k) || { full: sv(R, 'repo'), n: 0 };\n  var D = { rid: R.rid, key: k, repo: pk.full, number: pk.n, title: sv(R, 'title'), body: sv(R, 'body'), state: sv(R, 'state') || 'open',\n    user: sv(R, 'author'), comments: parseInt(sv(R, 'comments') || '0', 10) || 0,\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null,\n    mid: parseInt(sv(R, 'milestone'), 10) || 0 };\n  if (J) {\n    D.labels = (J.links[k] || []).slice().sort(function (a, b) { return a.id - b.id; });\n    D.assignees = (J.assign[k] || []).slice().reverse();     // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6307\u6D3E\u9806\u5E8F\u8981\u820A\u2192\u65B0\uFF08\u7B2C\u4E00\u500B\uFF1Dassignee\uFF09\n    D.milestone = D.mid ? (J.ms[D.mid] || null) : null;\n  }\n  return D;\n}\n\n// \u2500\u2500 \u5F9E\u8B80\u56DE\u7684\u5217\u88E1\u627E\u6771\u897F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u540C\u4E00\u500B\u9375\u82E5\u6709\u591A\u7B46\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u6436\u540C\u4E00\u500B\u7968\u865F\uFF0C\u898B README\u300C\u539F\u5B50\u6027\u300D\uFF09\uFF0C\u53D6\u6700\u820A\u7684\u90A3\u7B46\u2014\u2014\u5927\u5BB6\u770B\u5230\u540C\u4E00\u5F35\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction issueRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction relinkAssignees(key, full, want, rows) {\n  var posts = [], patches = [], wantSet = {}, byWho = {};\n  want.forEach(function (w) { wantSet[w] = 1; });\n  rows.forEach(function (R) { var w = sv(R, 'login'); if (!byWho[w]) byWho[w] = R; });\n  want.forEach(function (w) {\n    var R = byWho[w];\n    if (!R) posts.push(postRec(T.iassign, { issue: key, repo: full, login: w }));\n    else if (isOn(R, 'gone')) addPatch(patches, R, { gone: '' });\n  });\n  Object.keys(byWho).forEach(function (w) { if (!wantSet[w] && !isOn(byWho[w], 'gone')) addPatch(patches, byWho[w], { gone: '1' }); });\n  return { posts: posts, patches: patches };\n}\n\n// \u2500\u2500 \u4E00\u5F35\u7968\u5B8C\u6574\u63A5\u5408\u6240\u9700\u8981\u7684\u4E94\u683C\u8B80\u53D6\uFF1A\u7968\u672C\u8EAB\u3001\u5B83\u7684\u6A19\u7C64\u9023\u7D50\u3001\u5B83\u7684\u6307\u6D3E\u3001\u9019\u500B repo \u7684\u6A19\u7C64\u3001\u9019\u500B repo \u7684\u91CC\u7A0B\u7891 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction bundleOf(rs, i0, key) {\n  var R = issueRowOf(rs[i0], key);\n  if (!R) return null;\n  var links = rowsOf(rs[i0 + 1]), assigns = rowsOf(rs[i0 + 2]);\n  var J = joinOf(rowsOf(rs[i0 + 3]), links, assigns, rowsOf(rs[i0 + 4]));\n  return { R: R, D: issueDoc(R, J), J: J, links: links, assigns: assigns };\n}\n\n// \u2500\u2500 \u76F8\u4F9D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u908A\uFF1Aahub_dependency { issue\uFF1D\u88AB\u64CB\u4F4F\u7684\u90A3\u5F35\uFF08\u6BCD\u7968\uFF09, needs\uFF1D\u64CB\u4F4F\u5B83\u7684\u90A3\u5F35\uFF08\u5B50\u7968\uFF0F\u524D\u7F6E\u7968\uFF09, gone }\u3002\u4E00\u689D\u908A\u4E00\u7B46\uFF1B\n// \u540C\u4E00\u689D\u908A\u82E5\u6709\u591A\u7B46\uFF08\u91CD\u9001\uFF09\uFF0C\u4EE5\u6700\u65B0\u90A3\u7B46\u7684 gone \u70BA\u6E96\u3002\u56DE\u6709\u6548\u908A\u7684\u53E6\u4E00\u7AEF\uFF08side\uFF1D\u8981\u53D6\u54EA\u4E00\u7AEF\u7684\u9375\uFF09\nfunction liveEdges(rows, side) {\n  var seen = {}, out = [];\n  rows.forEach(function (R) {\n    var k = sv(R, 'issue') + '>' + sv(R, 'needs');\n    if (seen[k]) return; seen[k] = 1;\n    if (!isOn(R, 'gone')) out.push(sv(R, side));\n  });\n  return out;\n}\n// \u8981\u8B80\u4E00\u6279\u7968\uFF08\u7528\u7968\u7684\u9375\uFF09\u2192 \u5B83\u5011\u7684 record id\uFF1A\u7968\u7684 id \u7531\u79DF\u6236\uFF0B\u9375\u6C7A\u5B9A\uFF08issueRid\uFF0C\u6436\u865F\u6642\u5C31\u5B9A\u4E86\uFF09\uFF0C\u6240\u4EE5\u4E00\u500B\u8ACB\u6C42\u5C31\u80FD\u8B80\u5B8C\n// \uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u4E0D\u5FC5\u4E00\u5F35\u7968\u4E00\u8D9F\u30020.2.0 \u4EE5\u524D\u5EFA\u7684\u7968\u662F\u96A8\u6A5F id\uFF0C\u8B80\u4E0D\u5230\u2014\u2014\u898B README\u300C0.3.0 \u7684\u8CC7\u6599\u300D\u3002\nfunction issuesByKeys(results, keys) {\n  var want = {}; keys.forEach(function (k) { want[k] = 1; });\n  var got = {};\n  allRows(results).forEach(function (R) { var k = sv(R, 'key'); if (want[k]) got[k] = R; });   // \u65B0\u2192\u820A\uFF0C\u5F8C\u84CB\u524D\uFF1D\u7559\u6700\u820A\u7684\n  return got;\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction batch2Of(input) {\n  var P2 = input.prep2, r = input.reads2;\n  if (!P2 || !P2.nids) return [];\n  var d = innerOf(r);\n  return d && Array.isArray(d.records) ? [r] : null;\n}\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input), b = P.b, now = nowIso();\nvar bd = bundleOf(rs, 0, P.key);\nif (!bd) return done(notFound('issue'));\nvar D = bd.D, R = bd.R, set = {}, posts = [], patches = [];\nif (b.title !== undefined) { var t = String(b.title).trim(); if (!t) return done(fail(422, 'title is required')); D.title = t; set.title = t; }\nif (b.body !== undefined) { D.body = String(b.body == null ? '' : b.body); set.body = D.body; }\nif (b.assignees !== undefined || b.assignee !== undefined) {\n  var want = b.assignees !== undefined ? uniq((Array.isArray(b.assignees) ? b.assignees : []).map(String)) : (b.assignee ? [String(b.assignee)] : []);\n  var rl = relinkAssignees(P.key, P.full, want, bd.assigns);\n  posts = posts.concat(rl.posts); patches = patches.concat(rl.patches);\n  D.assignees = want;\n}\nif (b.milestone !== undefined) {\n  if (!b.milestone) { D.milestone = null; set.milestone = ''; }\n  else {\n    var M = bd.J.ms[parseInt(b.milestone, 10)];\n    if (!M) return done(fail(422, 'milestone not found: ' + b.milestone));\n    D.milestone = M; set.milestone = M.id;\n  }\n}\nif (b.state !== undefined && b.state !== '' && b.state !== D.state) {\n  if (b.state === 'closed') {\n    var need = liveEdges(rowsOf(rs[5]), 'needs'), b2 = batch2Of(input);\n    if (b2 === null) return done(fail(502, 'dependency lookup failed (records/batch-get needs Arcrun#307)'));\n    var got = issuesByKeys(b2, need);\n    var open = need.filter(function (k) { return !got[k] || sv(got[k], 'state') !== 'closed'; });   // \u8B80\u4E0D\u5230\u7684\u4E5F\u7B97\u6C92\u95DC\uFF1A\u4E0D\u80FD\u56E0\u70BA\u770B\u4E0D\u5230\u5C31\u653E\u884C\n    if (open.length) return done(fail(412, 'cannot close this issue because it still has open (or unreadable) dependencies: ' + open.join(', ')));\n    D.state = 'closed'; D.closed_at = now; set.state = 'closed'; set.closed_at = now;\n  } else { D.state = 'open'; D.closed_at = null; set.state = 'open'; set.closed_at = ''; }\n}\nD.updated_at = now; set.updated_at = now;\npatches.unshift(patchRec(R, set));\nreturn done(reply(201, issueView(D, P.base)), posts, patches);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}",
+                prep2: "{{prep2.data}}",
+                reads2: "{{bg.data}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "prep2",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep2",
+            to: "bg",
+            type: "ON_BRANCH",
+            branch: "1"
+          },
+          {
+            from: "prep2",
+            to: "decide",
+            type: "ON_BRANCH",
+            branch: "0"
+          },
+          {
+            from: "bg",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "bg",
+            to: "decide",
+            type: "ON_FAIL"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "issue_search",
+      description: "\u8DE8 repo \u641C\u7968\uFF1Aq\uFF0Fowner\uFF0Fstate\uFF0Ftype\uFF0Fassigned\uFF0Fsince\uFF0Flabels\uFF0Flimit\uFF0Fpage\uFF08ticket where\uFF0Fmine \u9760\u5B83\uFF09\u3002\u53EA\u6383\u6700\u8FD1\u7684 300 \u5F35\u3002",
+      graph: {
+        id: "ahub__issue_search",
+        name: "ahub__issue_search",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction intOf(v, dflt) { var n = parseInt(ph(v), 10); return n > 0 ? n : dflt; }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction pageOf(q, dflt) {\n  var limit = Math.min(intOf(q.limit, dflt || 30), 100), page = intOf(q.page, 1);\n  return { limit: limit, page: page };\n}\nfunction csv(v) { v = ph(v); return v ? v.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : []; }\nfunction sinceIso(v) { v = ph(v); if (!v) return ''; var t = Date.parse(v); return isNaN(t) ? '' : new Date(t).toISOString().replace(/\\.\\d+Z$/, 'Z'); }\n\n// \u6A19\u7C64\u96C6\u5408\u8B8A\u66F4\uFF1A\u8981\u8B8A\u6210 want\uFF08\u6A19\u7C64\u6587\u4EF6\u9663\u5217\uFF09\uFF0C\u73FE\u6709\u7684\u9023\u7D50\u5217\u662F rows\uFF08\u9019\u5F35\u7968\u7684\u5168\u90E8 ahub_issue_label\uFF0C\u542B\u5DF2\u62FF\u6389\u7684\uFF09\n// \u56DE { posts, patches }\uFF1A\u6C92\u6709\u7684\u5EFA\u4E00\u7B46\u3001\u62FF\u6389\u904E\u7684\u6062\u5FA9\u3001\u4E0D\u8981\u4E86\u7684\u6A19\u8A18 gone\u3002\u5DF2\u7D93\u5C0D\u7684\u4E0D\u52D5\u3002\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar q = B.q, state = ph(q.state) || 'open';\nif (['open', 'closed', 'all'].indexOf(state) < 0) state = 'open';\nif (ph(q.type) === 'pulls') return prepOut(B, { early: { status: 200, body: [] } });\nvar f = { state: state, labels: csv(q.labels), milestones: csv(q.milestones), q: ph(q.q), since: sinceIso(q.since) };\nvar assigned = ph(q.assigned) === 'true' || ph(q.assigned) === '1';\nvar owner = ph(q.owner);\nif (owner && !NAME_RE.test(owner)) return prepEarly(B, 422, 'bad owner');\n// \u4F3A\u670D\u5668\u7AEF\u5148\u7BE9\u4E00\u683C\uFF1Astate\uFF08\u7CBE\u78BA\u6BD4\u5C0D\uFF09\uFF1B\u5176\u9918\uFF08q\uFF0Fowner\uFF0Flabels\uFF0Fsince\uFF09\u5728\u7A0B\u5F0F\u88E1\u7BE9\nreturn prepOut(B, { f: f, owner: owner, assigned: assigned, pg: pageOf(q, 30), reads: [state !== 'all' ? rd(T.issue, 'state', state, 300) : rd(T.issue, null, null, 300)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "prep2",
+            type: "Component",
+            componentId: "code",
+            label: "prep2",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction prep2Out(list) {\n  var r = (list || []).slice();\n  if (r.length > READS2_N) throw new Error('reads2 ' + r.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS2_N + ' \u683C');\n  return { success: true, nreads: r.length, ahsreads: r };\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS2_N = 4;\n\n// \u7B2C\u4E8C\u6BB5\uFF1A\u63A5\u5408\u6240\u9700\u7684\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u3001\u6A19\u7C64\u3001\u91CC\u7A0B\u7891\uFF08\u8DE8 repo\uFF0C\u6240\u4EE5\u4E0D\u6309 repo \u7BE9\uFF09\u3002\u8A8D\u4E0D\u51FA\u662F\u8AB0\u5C31\u4E0D\u8B80\uFF08\u6703\u88AB 401\uFF09\nvar P = input.prep, me = meIn(input);\nif (!me || P.early) return prep2Out([]);\nreturn prep2Out([rd(T.ilabel, null, null, REPO_SCAN),\n  P.assigned ? rd(T.iassign, 'login', me, REPO_SCAN) : rd(T.iassign, null, null, REPO_SCAN),\n  rd(T.label, null, null, REPO_SCAN), rd(T.ms, null, null, REPO_SCAN)]);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq2",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq2",
+            data: {
+              _path: "{{ahsread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction issueView(D, base, R) {\n  var full = D.repo, v = {\n    id: D.number, number: D.number, title: D.title, body: D.body || '', state: D.state,\n    user: userView(D.user),\n    comments: D.comments || 0, created_at: D.created_at, updated_at: D.updated_at, closed_at: D.closed_at || null,\n    html_url: base + '/' + full + '/issues/' + D.number, url: base + '/api/v1/repos/' + full + '/issues/' + D.number,\n    is_locked: false\n  };\n  if (D.labels !== undefined) v.labels = D.labels.map(labelView);\n  if (D.assignees !== undefined) { v.assignees = D.assignees.map(userView); v.assignee = D.assignees.length ? userView(D.assignees[0]) : null; }\n  if (D.milestone !== undefined) v.milestone = D.milestone ? msView(D.milestone) : null;\n  if (R !== false) {\n    var p = full.split('/');\n    v.repository = { id: 0, name: p[1], owner: p[0], full_name: full };\n  }\n  return v;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction slicePage(arr, pg) { return arr.slice((pg.page - 1) * pg.limit, pg.page * pg.limit); }\nfunction joinOf(labelRows, linkRows, assignRows, msRows) {\n  var J = { labels: {}, links: {}, assign: {}, ms: {} };\n  labelRows.forEach(function (R) { var L = labelDoc(R); if (!L.deleted) J.labels[L.id] = L; });\n  msRows.forEach(function (R) { var M = msDoc(R); J.ms[M.id] = M; });\n  var seen = {};\n  // \u65B0\u2192\u820A\u8B80\u56DE\uFF1B\u540C\u4E00\u7968\u540C\u4E00\u6A19\u7C64\u82E5\u6709\u591A\u7B46\uFF08\u91CD\u9001\uFF09\uFF0C\u4EE5\u6700\u65B0\u90A3\u7B46\u7684 gone \u70BA\u6E96\n  linkRows.forEach(function (R) {\n    var k = sv(R, 'issue'), lid = parseInt(sv(R, 'lid'), 10), id = k + '|' + lid;\n    if (seen[id]) return; seen[id] = 1;\n    if (isOn(R, 'gone')) return;\n    var L = J.labels[lid]; if (!L) return;\n    (J.links[k] = J.links[k] || []).push(L);\n  });\n  var seenA = {};\n  assignRows.forEach(function (R) {\n    var k = sv(R, 'issue'), who = sv(R, 'login'), id = k + '|' + who;\n    if (seenA[id]) return; seenA[id] = 1;\n    if (isOn(R, 'gone')) return;\n    (J.assign[k] = J.assign[k] || []).push(who);\n  });\n  return J;\n}\n// \u7968 record \u2192 \u7968\u6587\u4EF6\u3002J \u7D66\u4E86\u5C31\u628A\u6A19\u7C64\uFF0F\u6307\u6D3E\uFF0F\u91CC\u7A0B\u7891\u63A5\u4E0A\uFF1B\u6C92\u7D66\u5C31\u7559 undefined\uFF08issueView \u4E0D\u653E\u9019\u5E7E\u6B04\uFF09\nfunction issueDoc(R, J) {\n  var k = sv(R, 'key'), pk = parseKey(k) || { full: sv(R, 'repo'), n: 0 };\n  var D = { rid: R.rid, key: k, repo: pk.full, number: pk.n, title: sv(R, 'title'), body: sv(R, 'body'), state: sv(R, 'state') || 'open',\n    user: sv(R, 'author'), comments: parseInt(sv(R, 'comments') || '0', 10) || 0,\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null,\n    mid: parseInt(sv(R, 'milestone'), 10) || 0 };\n  if (J) {\n    D.labels = (J.links[k] || []).slice().sort(function (a, b) { return a.id - b.id; });\n    D.assignees = (J.assign[k] || []).slice().reverse();     // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6307\u6D3E\u9806\u5E8F\u8981\u820A\u2192\u65B0\uFF08\u7B2C\u4E00\u500B\uFF1Dassignee\uFF09\n    D.milestone = D.mid ? (J.ms[D.mid] || null) : null;\n  }\n  return D;\n}\n\n// \u2500\u2500 \u5F9E\u8B80\u56DE\u7684\u5217\u88E1\u627E\u6771\u897F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u540C\u4E00\u500B\u9375\u82E5\u6709\u591A\u7B46\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u6436\u540C\u4E00\u500B\u7968\u865F\uFF0C\u898B README\u300C\u539F\u5B50\u6027\u300D\uFF09\uFF0C\u53D6\u6700\u820A\u7684\u90A3\u7B46\u2014\u2014\u5927\u5BB6\u770B\u5230\u540C\u4E00\u5F35\nfunction wantIssue(D, f) {\n  if (f.state && f.state !== 'all' && D.state !== f.state) return false;\n  if (f.labels && f.labels.length) {\n    var names = (D.labels || []).map(function (l) { return l.name; });\n    for (var i = 0; i < f.labels.length; i++) if (names.indexOf(f.labels[i]) < 0) return false;\n  }\n  if (f.milestones && f.milestones.length) {\n    var ms = D.milestone ? [String(D.milestone.id), String(D.milestone.title)] : [];\n    var hit = false; f.milestones.forEach(function (m) { if (ms.indexOf(String(m)) >= 0) hit = true; });\n    if (!hit) return false;\n  }\n  if (f.assignee && (D.assignees || []).indexOf(f.assignee) < 0) return false;\n  if (f.q) {\n    var hay = (String(D.title) + '\\n' + String(D.body || '')).toLowerCase();\n    if (hay.indexOf(String(f.q).toLowerCase()) < 0) return false;\n  }\n  if (f.since && String(D.updated_at) < f.since) return false;\n  return true;\n}\nfunction sortIssues(arr, sort) {\n  var by = sort === 'recentupdate' || sort === 'leastupdate' ? function (d) { return d.updated_at; } : function (d) { return d.created_at; };\n  var asc = sort === 'oldest' || sort === 'leastupdate';\n  return arr.sort(function (a, b) {\n    var x = String(by(a)), y = String(by(b));\n    if (x === y) return asc ? a.number - b.number : b.number - a.number;\n    return asc ? (x < y ? -1 : 1) : (x < y ? 1 : -1);\n  });\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction reads2Of(input) { return Array.isArray(input.reads2) ? input.reads2 : []; }\n// batch \u7248\u7B2C\u4E8C\u6BB5\u7684\u7D50\u679C\uFF08\u4E00\u500B\u7269\u4EF6 {records, missing}\uFF09\u3002\u6C92\u8B80\uFF08\u4E0D\u9700\u8981\uFF09\u56DE []\uFF0C\u8B80\u58DE\u4E86\u56DE null\u2014\u2014\u547C\u53EB\u7AEF\u8981\u5206\u5F97\u51FA\u4F86\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input), r2 = reads2Of(input);\nif (P.assigned) P.f.assignee = g.me;\nvar J = joinOf(rowsOf(r2[2]), rowsOf(r2[0]), rowsOf(r2[1]), rowsOf(r2[3]));\nvar docs = rowsOf(rs[0]).map(function (R) { return issueDoc(R, J); })\n  .filter(function (D) { return (!P.owner || D.repo.indexOf(P.owner + '/') === 0) && wantIssue(D, P.f); });\nsortIssues(docs, '');\nreturn reply(200, slicePage(docs, P.pg).map(function (D) { return issueView(D, P.base); }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}",
+                prep2: "{{prep2.data}}",
+                reads2: "{{prep2.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "prep2",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep2",
+            to: "rdq2",
+            type: "FOREACH",
+            iterator: "ahsread",
+            concurrency: 6
+          },
+          {
+            from: "prep2",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "label_create",
+      description: "\u5EFA\u4E00\u500B\u6A19\u7C64\uFF08name\uFF0Fcolor\uFF0Fdescription\uFF0Fexclusive\uFF09\uFF1B\u540C\u540D 422\u3002",
+      graph: {
+        id: "ahub__label_create",
+        name: "ahub__label_create",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 2;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), b = bodyObj(B), name = String(b.name == null ? '' : b.name).trim();\nif (!full) return prepEarly(B, 404, 'repository not found');\nif (!name) return prepEarly(B, 422, 'name is required');\nreturn prepOut(B, { full: full, name: name, color: String(b.color || '#cccccc'), desc: String(b.description || ''), exclusive: !!b.exclusive,\n  reads: [rd(T.repo, 'full_name', full, 5), rd(T.label, 'repo', full, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction newNumId() { return Date.now() * 1000 + Math.floor(Math.random() * 1000); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction flag(b) { return b ? '1' : ''; }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }\nfunction liveLabels(result) { return rowsOf(result).map(labelDoc).filter(function (L) { return !L.deleted; }); }\n// \u6A19\u7C64\u5F15\u7528\uFF08\u540D\u5B57\u6216 id\uFF09\u2192 \u6A19\u7C64\u6587\u4EF6\uFF1B\u627E\u4E0D\u5230\u56DE null\nfunction labelByRef(labels, ref) {\n  for (var i = 0; i < labels.length; i++) {\n    if (typeof ref === 'number' ? labels[i].id === ref : (String(labels[i].name) === String(ref) || String(labels[i].id) === String(ref))) return labels[i];\n  }\n  return null;\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!repoRowOf(rs[0], P.full)) return done(notFound('repository'));\nif (labelByRef(liveLabels(rs[1]), P.name)) return done(fail(422, 'label already exists: ' + P.name));\nvar id = newNumId(), now = nowIso();\nvar v = { lid: id, repo: P.full, name: P.name, color: P.color.replace(/^#/, ''), description: P.desc, exclusive: flag(P.exclusive), created_at: now };\nreturn done(reply(201, labelView(labelDoc({ rid: '', v: compact(v) }))), [postRec(T.label, v)], []);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "label_delete",
+      description: "\u522A\u6A19\u7C64\uFF1A\u6A19\u6210\u5DF2\u522A\uFF08KBDB \u4EE3\u8F49\u5C64\u6C92\u6709\u522A\u9664\uFF09\u3002\u639B\u5728\u7968\u4E0A\u7684\u9023\u7D50\u4E0D\u7528\u52D5\u2014\u2014\u8B80\u7968\u6642\u5DF2\u522A\u7684\u6A19\u7C64\u4E0D\u6703\u88AB\u63A5\u56DE\u4F86\u3002",
+      graph: {
+        id: "ahub__label_delete",
+        name: "ahub__label_delete",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), id = parseInt(ph(B.params.id), 10);\nif (!full || !(id > 0)) return prepEarly(B, 404, 'label not found');\nreturn prepOut(B, { full: full, id: id, reads: [rd(T.label, 'repo', full, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction liveLabels(result) { return rowsOf(result).map(labelDoc).filter(function (L) { return !L.deleted; }); }\n// \u6A19\u7C64\u5F15\u7528\uFF08\u540D\u5B57\u6216 id\uFF09\u2192 \u6A19\u7C64\u6587\u4EF6\uFF1B\u627E\u4E0D\u5230\u56DE null\nfunction labelByRef(labels, ref) {\n  for (var i = 0; i < labels.length; i++) {\n    if (typeof ref === 'number' ? labels[i].id === ref : (String(labels[i].name) === String(ref) || String(labels[i].id) === String(ref))) return labels[i];\n  }\n  return null;\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, L = labelByRef(liveLabels(readsOf(input)[0]), P.id);\nif (!L || L.id !== P.id) return done(notFound('label'));\nreturn done(reply(204, null), [], [{ id: L.rid, values: { deleted: '1' } }]);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "label_list",
+      description: "\u5217\u4E00\u500B repo \u7684\u6A19\u7C64\u3002",
+      graph: {
+        id: "ahub__label_list",
+        name: "ahub__label_list",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction intOf(v, dflt) { var n = parseInt(ph(v), 10); return n > 0 ? n : dflt; }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction pageOf(q, dflt) {\n  var limit = Math.min(intOf(q.limit, dflt || 30), 100), page = intOf(q.page, 1);\n  return { limit: limit, page: page };\n}\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 2;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params);\nif (!full) return prepEarly(B, 404, 'repository not found');\nreturn prepOut(B, { full: full, pg: pageOf(B.q, 30), reads: [rd(T.repo, 'full_name', full, 5), rd(T.label, 'repo', full, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction slicePage(arr, pg) { return arr.slice((pg.page - 1) * pg.limit, pg.page * pg.limit); }\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }\nfunction liveLabels(result) { return rowsOf(result).map(labelDoc).filter(function (L) { return !L.deleted; }); }\n// \u6A19\u7C64\u5F15\u7528\uFF08\u540D\u5B57\u6216 id\uFF09\u2192 \u6A19\u7C64\u6587\u4EF6\uFF1B\u627E\u4E0D\u5230\u56DE null\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!repoRowOf(rs[0], P.full)) return notFound('repository');\nvar labels = liveLabels(rs[1]);\nlabels.sort(function (a, b) { return a.id - b.id; });\nreturn reply(200, slicePage(labels, P.pg).map(labelView));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "label_patch",
+      description: "\u6539\u6A19\u7C64\u7684\u540D\u5B57\uFF0F\u984F\u8272\uFF0F\u8AAA\u660E\u3002\u7968\u4E0A\u7684\u6A19\u7C64\u662F\u63A5\u56DE\u4F86\u7684\uFF0C\u6539\u9019\u4E00\u7B46\u6240\u6709\u7968\u8B80\u56DE\u4F86\u5C31\u662F\u65B0\u7684\u3002",
+      graph: {
+        id: "ahub__label_patch",
+        name: "ahub__label_patch",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), id = parseInt(ph(B.params.id), 10), b = bodyObj(B);\nif (!full || !(id > 0)) return prepEarly(B, 404, 'label not found');\nreturn prepOut(B, { full: full, id: id, b: b, reads: [rd(T.label, 'repo', full, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction patchRec(R, v) {\n  var o = {}, n = 0;\n  Object.keys(v).forEach(function (k) {\n    var x = v[k] === undefined || v[k] === null ? '' : String(v[k]);\n    if (x === sv(R, k)) return;\n    o[k] = x; n++;\n  });\n  return n ? { id: R.rid, values: o } : null;\n}\nfunction flag(b) { return b ? '1' : ''; }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction labelDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',\n    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };\n}\nfunction labelView(L) {\n  return { id: L.id, name: L.name, exclusive: !!L.exclusive, is_archived: false, color: String(L.color || '').replace(/^#/, ''), description: L.description || '', url: '' };\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction liveLabels(result) { return rowsOf(result).map(labelDoc).filter(function (L) { return !L.deleted; }); }\n// \u6A19\u7C64\u5F15\u7528\uFF08\u540D\u5B57\u6216 id\uFF09\u2192 \u6A19\u7C64\u6587\u4EF6\uFF1B\u627E\u4E0D\u5230\u56DE null\nfunction labelByRef(labels, ref) {\n  for (var i = 0; i < labels.length; i++) {\n    if (typeof ref === 'number' ? labels[i].id === ref : (String(labels[i].name) === String(ref) || String(labels[i].id) === String(ref))) return labels[i];\n  }\n  return null;\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, b = P.b, labels = liveLabels(readsOf(input)[0]);\nvar L = labelByRef(labels, P.id);\nif (!L || L.id !== P.id) return done(notFound('label'));\nvar R = oldestBy(rowsOf(readsOf(input)[0]), function (x) { return x.rid === L.rid; });\nvar set = {};\nif (b.name !== undefined) {\n  var nn = String(b.name).trim();\n  if (!nn) return done(fail(422, 'name is required'));\n  var clash = labelByRef(labels, nn);\n  if (clash && clash.id !== L.id) return done(fail(422, 'label already exists: ' + nn));\n  set.name = nn; L.name = nn;\n}\nif (b.color !== undefined) { set.color = String(b.color).replace(/^#/, ''); L.color = set.color; }\nif (b.description !== undefined) { set.description = String(b.description || ''); L.description = set.description; }\nif (b.exclusive !== undefined) { set.exclusive = flag(!!b.exclusive); L.exclusive = !!b.exclusive; }\nreturn done(reply(200, labelView(L)), [], [patchRec(R, set)]);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "ms_create",
+      description: "\u5EFA\u91CC\u7A0B\u7891\uFF08title\uFF0Fdescription\uFF0Fdue_on\uFF09\uFF1B\u540C\u540D 422\u3002",
+      graph: {
+        id: "ahub__ms_create",
+        name: "ahub__ms_create",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction sinceIso(v) { v = ph(v); if (!v) return ''; var t = Date.parse(v); return isNaN(t) ? '' : new Date(t).toISOString().replace(/\\.\\d+Z$/, 'Z'); }\n\n// \u6A19\u7C64\u96C6\u5408\u8B8A\u66F4\uFF1A\u8981\u8B8A\u6210 want\uFF08\u6A19\u7C64\u6587\u4EF6\u9663\u5217\uFF09\uFF0C\u73FE\u6709\u7684\u9023\u7D50\u5217\u662F rows\uFF08\u9019\u5F35\u7968\u7684\u5168\u90E8 ahub_issue_label\uFF0C\u542B\u5DF2\u62FF\u6389\u7684\uFF09\n// \u56DE { posts, patches }\uFF1A\u6C92\u6709\u7684\u5EFA\u4E00\u7B46\u3001\u62FF\u6389\u904E\u7684\u6062\u5FA9\u3001\u4E0D\u8981\u4E86\u7684\u6A19\u8A18 gone\u3002\u5DF2\u7D93\u5C0D\u7684\u4E0D\u52D5\u3002\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 2;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), b = bodyObj(B), title = String(b.title == null ? '' : b.title).trim();\nif (!full) return prepEarly(B, 404, 'repository not found');\nif (!title) return prepEarly(B, 422, 'title is required');\nvar due = ph(b.due_on) ? sinceIso(b.due_on) : '';\nreturn prepOut(B, { full: full, title: title, desc: String(b.description || ''), due: due,\n  reads: [rd(T.repo, 'full_name', full, 5), rd(T.ms, 'repo', full, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction newNumId() { return Date.now() * 1000 + Math.floor(Math.random() * 1000); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!repoRowOf(rs[0], P.full)) return done(notFound('repository'));\nif (rowsOf(rs[1]).some(function (R) { return sv(R, 'title') === P.title; })) return done(fail(422, 'milestone already exists: ' + P.title));\nvar id = newNumId(), now = nowIso();\nvar v = { mid: id, repo: P.full, title: P.title, description: P.desc, state: 'open', due_on: P.due, created_at: now };\nreturn done(reply(201, msView(msDoc({ rid: '', v: compact(v) }), { open: 0, closed: 0 })), [postRec(T.ms, v)], []);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "ms_get",
+      description: "\u8B80\u4E00\u500B\u91CC\u7A0B\u7891\uFF0C\u9644 open_issues\uFF0Fclosed_issues\uFF08\u9032\u5EA6\u689D\u7684\u5206\u6BCD\u5206\u5B50\uFF09\u3002",
+      graph: {
+        id: "ahub__ms_get",
+        name: "ahub__ms_get",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 2;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), id = parseInt(ph(B.params.id), 10);\nif (!full || !(id > 0)) return prepEarly(B, 404, 'milestone not found');\n// \u639B\u5728\u9019\u500B\u91CC\u7A0B\u7891\u4E0A\u7684\u7968\uFF1A\u7968\u7684 milestone \u683C\u5B58\u91CC\u7A0B\u7891 id\uFF0C\u76F4\u63A5\u6309\u9019\u4E00\u683C\u67E5\uFF08\u4F3A\u670D\u5668\u7AEF\u7CBE\u78BA\u6BD4\u5C0D\uFF09\nreturn prepOut(B, { full: full, id: id, reads: [rd(T.ms, 'repo', full, REPO_SCAN), rd(T.issue, 'milestone', String(id), REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction msById(result, id) {\n  var hit = oldestBy(rowsOf(result), function (R) { return parseInt(sv(R, 'mid'), 10) === id; });\n  return hit ? msDoc(hit) : null;\n}\n\n// \u7968\u7684\u7BE9\u9078\uFF08f\uFF1Astate/labels[]/milestones[]/assignee/q/since\uFF09\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input), M = msById(rs[0], P.id);\nif (!M) return notFound('milestone');\nvar op = 0, cl = 0;\nrowsOf(rs[1]).forEach(function (R) { if (sv(R, 'state') === 'closed') cl++; else op++; });\nreturn reply(200, msView(M, { open: op, closed: cl }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "ms_list",
+      description: "\u5217\u91CC\u7A0B\u7891\uFF08state\uFF0Fname\uFF0Flimit\uFF0Fpage\uFF09\uFF0C\u6BCF\u500B\u5E36 open_issues\uFF0Fclosed_issues\uFF08\u6383\u9019\u500B repo \u6700\u8FD1 500 \u5F35\u7968\uFF09\u3002",
+      graph: {
+        id: "ahub__ms_list",
+        name: "ahub__ms_list",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction intOf(v, dflt) { var n = parseInt(ph(v), 10); return n > 0 ? n : dflt; }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction pageOf(q, dflt) {\n  var limit = Math.min(intOf(q.limit, dflt || 30), 100), page = intOf(q.page, 1);\n  return { limit: limit, page: page };\n}\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 3;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params);\nif (!full) return prepEarly(B, 404, 'repository not found');\nvar state = ph(B.q.state) || 'open';\nif (['open', 'closed', 'all'].indexOf(state) < 0) state = 'open';\nreturn prepOut(B, { full: full, state: state, name: ph(B.q.name), pg: pageOf(B.q, 30), reads: [\n  rd(T.repo, 'full_name', full, 5), rd(T.ms, 'repo', full, REPO_SCAN), rd(T.issue, 'repo', full, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction slicePage(arr, pg) { return arr.slice((pg.page - 1) * pg.limit, pg.page * pg.limit); }\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input);\nif (!repoRowOf(rs[0], P.full)) return notFound('repository');\nvar list = rowsOf(rs[1]).map(msDoc).filter(function (m) { return (P.state === 'all' || m.state === P.state) && (!P.name || m.title === P.name); });\nlist.sort(function (a, b) { return String(a.due_on || '9') < String(b.due_on || '9') ? -1 : 1; });\nvar count = {};\nrowsOf(rs[2]).forEach(function (R) {\n  var mid = parseInt(sv(R, 'milestone'), 10);\n  if (!mid) return;\n  var c = count[mid] || (count[mid] = { open: 0, closed: 0 });\n  if (sv(R, 'state') === 'closed') c.closed++; else c.open++;\n});\nreturn reply(200, slicePage(list, P.pg).map(function (m) { return msView(m, count[m.id] || { open: 0, closed: 0 }); }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "ms_patch",
+      description: "\u6539\u91CC\u7A0B\u7891\uFF08title\uFF0Fdescription\uFF0Fdue_on\uFF0Fstate=closed\uFF09\u3002",
+      graph: {
+        id: "ahub__ms_patch",
+        name: "ahub__ms_patch",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params), id = parseInt(ph(B.params.id), 10), b = bodyObj(B);\nif (!full || !(id > 0)) return prepEarly(B, 404, 'milestone not found');\nif (b.state !== undefined && b.state !== 'open' && b.state !== 'closed') return prepEarly(B, 422, 'state must be open or closed');\nreturn prepOut(B, { full: full, id: id, b: b, reads: [rd(T.ms, 'repo', full, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction patchRec(R, v) {\n  var o = {}, n = 0;\n  Object.keys(v).forEach(function (k) {\n    var x = v[k] === undefined || v[k] === null ? '' : String(v[k]);\n    if (x === sv(R, k)) return;\n    o[k] = x; n++;\n  });\n  return n ? { id: R.rid, values: o } : null;\n}\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction msDoc(R) {\n  return { rid: R.rid, id: parseInt(sv(R, 'mid'), 10), repo: sv(R, 'repo'), title: sv(R, 'title'), description: sv(R, 'description'),\n    state: sv(R, 'state') || 'open', due_on: sv(R, 'due_on') || null, created_at: sv(R, 'created_at'),\n    updated_at: sv(R, 'updated_at') || sv(R, 'created_at'), closed_at: sv(R, 'closed_at') || null };\n}\nfunction msView(M, counts) {\n  var o = { id: M.id, title: M.title, description: M.description || '', state: M.state || 'open', due_on: M.due_on || null,\n    created_at: M.created_at, updated_at: M.updated_at || M.created_at, closed_at: M.closed_at || null, open_issues: 0, closed_issues: 0 };\n  if (counts) { o.open_issues = counts.open; o.closed_issues = counts.closed; }\n  return o;\n}\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction sinceIso(v) { v = ph(v); if (!v) return ''; var t = Date.parse(v); return isNaN(t) ? '' : new Date(t).toISOString().replace(/\\.\\d+Z$/, 'Z'); }\n\n// \u6A19\u7C64\u96C6\u5408\u8B8A\u66F4\uFF1A\u8981\u8B8A\u6210 want\uFF08\u6A19\u7C64\u6587\u4EF6\u9663\u5217\uFF09\uFF0C\u73FE\u6709\u7684\u9023\u7D50\u5217\u662F rows\uFF08\u9019\u5F35\u7968\u7684\u5168\u90E8 ahub_issue_label\uFF0C\u542B\u5DF2\u62FF\u6389\u7684\uFF09\n// \u56DE { posts, patches }\uFF1A\u6C92\u6709\u7684\u5EFA\u4E00\u7B46\u3001\u62FF\u6389\u904E\u7684\u6062\u5FA9\u3001\u4E0D\u8981\u4E86\u7684\u6A19\u8A18 gone\u3002\u5DF2\u7D93\u5C0D\u7684\u4E0D\u52D5\u3002\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P, b = P.b, now = nowIso();\nvar R = oldestBy(rowsOf(readsOf(input)[0]), function (x) { return parseInt(sv(x, 'mid'), 10) === P.id; });\nif (!R) return done(notFound('milestone'));\nvar M = msDoc(R), set = {};\nif (b.title !== undefined) { var t = String(b.title).trim(); if (!t) return done(fail(422, 'title is required')); M.title = t; set.title = t; }\nif (b.description !== undefined) { M.description = String(b.description || ''); set.description = M.description; }\nif (b.due_on !== undefined) { M.due_on = b.due_on ? sinceIso(b.due_on) : null; set.due_on = M.due_on || ''; }\nif (b.state !== undefined && b.state !== M.state) { M.state = b.state; M.closed_at = b.state === 'closed' ? now : null; set.state = M.state; set.closed_at = M.closed_at || ''; }\nM.updated_at = now; set.updated_at = now;\nreturn done(reply(200, msView(M)), [], [patchRec(R, set)]);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "org_repo_create",
+      description: "\u5728\u7D44\u7E54\u5E95\u4E0B\u958B\u4E00\u500B repo\uFF08\u53EA\u662F\u7968\u7684\u5BB9\u5668\uFF1Bgit \u5167\u5BB9\u4F4F Artifacts\uFF0C\u4E0D\u5728\u9019\u88E1\uFF09\u3002",
+      graph: {
+        id: "ahub__org_repo_create",
+        name: "ahub__org_repo_create",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar org = ph(B.params.org), b = bodyObj(B), name = ph(b.name);\nif (!NAME_RE.test(org) || !NAME_RE.test(name) || name === '..') return prepEarly(B, 422, 'bad org or repo name');\nvar full = org + '/' + name;\nreturn prepOut(B, { full: full, desc: String(b.description || ''), priv: !!b['private'], reads: [rd(T.repo, 'full_name', full, 5)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction flag(b) { return b ? '1' : ''; }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction repoDoc(R) {\n  return { rid: R.rid, full_name: sv(R, 'full_name'), description: sv(R, 'description'), private: isOn(R, 'private'), has_issues: true,\n    created_by: sv(R, 'created_by'), created_at: sv(R, 'created_at'), updated_at: sv(R, 'created_at') };\n}\nfunction repoView(R, base) {\n  var parts = R.full_name.split('/');\n  return { id: 0, name: parts[1], full_name: R.full_name, owner: { id: 0, login: parts[0], username: parts[0] }, private: !!R.private,\n    has_issues: R.has_issues !== false, description: R.description || '', empty: false, archived: false,\n    html_url: base + '/' + R.full_name, clone_url: base + '/' + R.full_name + '.git', default_branch: 'main', created_at: R.created_at, updated_at: R.updated_at || R.created_at };\n}\n// D.labels\uFF0FD.assignees\uFF0FD.milestone \u6C92\u8F09\u5165\uFF08undefined\uFF09\u5C31\u4E0D\u653E\u9032\u56DE\u61C9\u2014\u2014\u4E0D\u5047\u88DD\u300C\u6C92\u6709\u300D\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction gateW(input) {\n  var g = gate(input);\n  if (g.stop) return { stop: done(g.stop) };\n  return g;\n}\n// reads \u7D50\u679C\uFF1A\u628A\u8EAB\u5206\u90A3\u4E00\u8B80\u62FF\u6389\uFF0C\u5269\u4E0B\u7684\u5C31\u662F\u8DEF\u7531\u81EA\u5DF1\u6392\u7684\u8B80\u53D6\uFF08\u4E0B\u6A19 0\uFF1Dprep \u6392\u7684\u7B2C\u4E00\u500B\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\n\nvar g = gateW(input); if (g.stop) return g.stop;\nvar P = g.P;\nif (repoRowOf(readsOf(input)[0], P.full)) return done(fail(409, 'The repository with the same name already exists.'));\nvar now = nowIso();\nvar v = { full_name: P.full, description: P.desc, private: flag(P.priv), created_by: g.me, created_at: now };\nreturn done(reply(201, repoView(repoDoc({ rid: '', v: compact(v) }), P.base)), [postRec(T.repo, v)], []);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "org_repos",
+      description: "\u5217\u4E00\u500B\u7D44\u7E54\u5E95\u4E0B\u6709\u54EA\u4E9B repo\uFF08limit\uFF0Fpage \u6709\u6548\uFF09\u3002",
+      graph: {
+        id: "ahub__org_repos",
+        name: "ahub__org_repos",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction intOf(v, dflt) { var n = parseInt(ph(v), 10); return n > 0 ? n : dflt; }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction pageOf(q, dflt) {\n  var limit = Math.min(intOf(q.limit, dflt || 30), 100), page = intOf(q.page, 1);\n  return { limit: limit, page: page };\n}\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar org = ph(B.params.org);\nif (!NAME_RE.test(org)) return prepEarly(B, 400, 'bad org name');\nreturn prepOut(B, { org: org, page: pageOf(B.q, 30), reads: [rd(T.repo, null, null, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction repoDoc(R) {\n  return { rid: R.rid, full_name: sv(R, 'full_name'), description: sv(R, 'description'), private: isOn(R, 'private'), has_issues: true,\n    created_by: sv(R, 'created_by'), created_at: sv(R, 'created_at'), updated_at: sv(R, 'created_at') };\n}\nfunction repoView(R, base) {\n  var parts = R.full_name.split('/');\n  return { id: 0, name: parts[1], full_name: R.full_name, owner: { id: 0, login: parts[0], username: parts[0] }, private: !!R.private,\n    has_issues: R.has_issues !== false, description: R.description || '', empty: false, archived: false,\n    html_url: base + '/' + R.full_name, clone_url: base + '/' + R.full_name + '.git', default_branch: 'main', created_at: R.created_at, updated_at: R.updated_at || R.created_at };\n}\n// D.labels\uFF0FD.assignees\uFF0FD.milestone \u6C92\u8F09\u5165\uFF08undefined\uFF09\u5C31\u4E0D\u653E\u9032\u56DE\u61C9\u2014\u2014\u4E0D\u5047\u88DD\u300C\u6C92\u6709\u300D\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction slicePage(arr, pg) { return arr.slice((pg.page - 1) * pg.limit, pg.page * pg.limit); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P;\nvar rows = rowsOf(readsOf(input)[0]).map(repoDoc).filter(function (m) { return m.full_name && m.full_name.indexOf(P.org + '/') === 0; });\nrows.sort(function (a, b) { return a.full_name < b.full_name ? -1 : 1; });\nreturn reply(200, slicePage(rows, P.page).map(function (m) { return repoView(m, P.base); }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "repo_comments",
+      description: "\u6574\u500B repo \u7684\u7559\u8A00\uFF0C?since= \u53D6\u6642\u9593\u7A97\uFF08milestone-account \u9760\u5B83\u7B97\u82B1\u8CBB\uFF09\u3002",
+      graph: {
+        id: "ahub__repo_comments",
+        name: "ahub__repo_comments",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction intOf(v, dflt) { var n = parseInt(ph(v), 10); return n > 0 ? n : dflt; }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction pageOf(q, dflt) {\n  var limit = Math.min(intOf(q.limit, dflt || 30), 100), page = intOf(q.page, 1);\n  return { limit: limit, page: page };\n}\nfunction sinceIso(v) { v = ph(v); if (!v) return ''; var t = Date.parse(v); return isNaN(t) ? '' : new Date(t).toISOString().replace(/\\.\\d+Z$/, 'Z'); }\n\n// \u6A19\u7C64\u96C6\u5408\u8B8A\u66F4\uFF1A\u8981\u8B8A\u6210 want\uFF08\u6A19\u7C64\u6587\u4EF6\u9663\u5217\uFF09\uFF0C\u73FE\u6709\u7684\u9023\u7D50\u5217\u662F rows\uFF08\u9019\u5F35\u7968\u7684\u5168\u90E8 ahub_issue_label\uFF0C\u542B\u5DF2\u62FF\u6389\u7684\uFF09\n// \u56DE { posts, patches }\uFF1A\u6C92\u6709\u7684\u5EFA\u4E00\u7B46\u3001\u62FF\u6389\u904E\u7684\u6062\u5FA9\u3001\u4E0D\u8981\u4E86\u7684\u6A19\u8A18 gone\u3002\u5DF2\u7D93\u5C0D\u7684\u4E0D\u52D5\u3002\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nvar REPO_SCAN = 500;\n\n// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014\n// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002\n// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002\nvar CLAIM_TRIES = 8;\nfunction issueRid(tenant, key) {\n  var p = parseKey(key);\n  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');\n  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;\n}\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params);\nif (!full) return prepEarly(B, 404, 'repository not found');\nreturn prepOut(B, { full: full, pg: pageOf(B.q, 30), since: sinceIso(B.q.since), reads: [rd(T.comment, 'repo', full, REPO_SCAN)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction commentDoc(R) {\n  var k = parseKey(sv(R, 'issue'));\n  return { rid: R.rid, id: parseInt(sv(R, 'cid'), 10), repo: sv(R, 'repo'), issue: k ? k.n : 0, user: sv(R, 'author'), body: sv(R, 'body'),\n    created_at: sv(R, 'created_at'), updated_at: sv(R, 'created_at') };\n}\n\n// \u2500\u2500 Gitea \u5F62\u72C0\u7684\u6AA2\u8996 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction commentView(C, base) {\n  var full = C.repo;\n  return { id: C.id, body: C.body, user: userView(C.user), created_at: C.created_at, updated_at: C.updated_at || C.created_at,\n    html_url: base + '/' + full + '/issues/' + C.issue + '#issuecomment-' + C.id, issue_url: base + '/' + full + '/issues/' + C.issue,\n    pull_request_url: '' };\n}\n\n// \u2500\u2500 \u901A\u7528\uFF1A\u8EAB\u4EFD \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// who = \u5C0D ahub_token \u7684\u300Ctoken_sha256\uFF1D\u96DC\u6E4A\u300D\u67E5\u8A62\u3002\u56DE\u767B\u5165\u540D\uFF0C\u6216 ''\uFF08\u672A\u6388\u6B0A\uFF09\u3002\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction slicePage(arr, pg) { return arr.slice((pg.page - 1) * pg.limit, pg.page * pg.limit); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P;\nvar rows = rowsOf(readsOf(input)[0]).map(commentDoc).filter(function (C) { return !P.since || String(C.updated_at) >= P.since; });\nrows.sort(function (a, b) { return a.id - b.id; });\nreturn reply(200, slicePage(rows, P.pg).map(function (C) { return commentView(C, P.base); }));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "repo_get",
+      description: "\u8B80\u4E00\u500B repo \u7684\u57FA\u672C\u8CC7\u6599\uFF08\u6709\u6C92\u6709\u958B issues\u3001\u662F\u4E0D\u662F\u79C1\u6709\uFF09\u3002",
+      graph: {
+        id: "ahub__repo_get",
+        name: "ahub__repo_get",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\n\nvar READS_N = 1;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar full = fullOf(B.params);\nif (!full) return prepEarly(B, 400, 'bad repo name');\nreturn prepOut(B, { full: full, reads: [rd(T.repo, 'full_name', full, 5)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction repoDoc(R) {\n  return { rid: R.rid, full_name: sv(R, 'full_name'), description: sv(R, 'description'), private: isOn(R, 'private'), has_issues: true,\n    created_by: sv(R, 'created_by'), created_at: sv(R, 'created_at'), updated_at: sv(R, 'created_at') };\n}\nfunction repoView(R, base) {\n  var parts = R.full_name.split('/');\n  return { id: 0, name: parts[1], full_name: R.full_name, owner: { id: 0, login: parts[0], username: parts[0] }, private: !!R.private,\n    has_issues: R.has_issues !== false, description: R.description || '', empty: false, archived: false,\n    html_url: base + '/' + R.full_name, clone_url: base + '/' + R.full_name + '.git', default_branch: 'main', created_at: R.created_at, updated_at: R.updated_at || R.created_at };\n}\n// D.labels\uFF0FD.assignees\uFF0FD.milestone \u6C92\u8F09\u5165\uFF08undefined\uFF09\u5C31\u4E0D\u653E\u9032\u56DE\u61C9\u2014\u2014\u4E0D\u5047\u88DD\u300C\u6C92\u6709\u300D\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction notFound(what) { return fail(404, what + ' not found'); }\n// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar R = repoRowOf(readsOf(input)[0], g.P.full);\nif (!R) return notFound('repository');\nreturn reply(200, repoView(repoDoc(R), g.P.base));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "token_register",
+      description: "\u767B\u8A18\u4E00\u628A agent\uFF0F\u4EBA\u7684 token\uFF08\u53EA\u6536\u96DC\u6E4A\uFF0CAHub \u6C38\u9060\u770B\u4E0D\u5230 token \u539F\u6587\uFF09\u3002\u6301\u6709\u5BE6\u4F8B namespace \u7684\u4EBA\u624D\u6253\u5F97\u5230\u2014\u2014\u9019\u662F Arcrun \u73FE\u6709\u7684\u552F\u4E00\u6839\u6B0A\u9650\u3002",
+      graph: {
+        id: "ahub__token_register",
+        name: "ahub__token_register",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction bodyObj(B) { return isObj(B.body) ? B.body : {}; }\n\nvar READS_N = 2;\nvar PUBLIC = true;\n\nvar B = boot(input);\nvar b = bodyObj(B), login = ph(b.login), hex = ph(b.token_sha256).toLowerCase();\nif (!NAME_RE.test(login)) return prepEarly(B, 422, 'login \u53EA\u80FD\u662F\u82F1\u6578\u5B57\u3001\u5E95\u7DDA\u3001\u9EDE\u3001\u9023\u5B57\u865F');\nif (!/^[0-9a-f]{64}$/.test(hex)) return prepEarly(B, 422, 'token_sha256 \u8981\u662F 64 \u4F4D\u5341\u516D\u9032\u4F4D\uFF08\u81EA\u5DF1\u5728\u672C\u6A5F\u7B97 sha256\uFF0C\u4E0D\u8981\u628A token \u539F\u6587\u9001\u4F86\uFF09');\nreturn prepOut(B, { login: login, hex: hex, kind: ph(b.kind) === 'human' ? 'human' : 'agent', tname: ph(b.name) || 'default',\n  reads: [rd(T.token, 'token_sha256', hex, 5), rd(T.user, 'login', login, 5)] });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction done(final, posts, patches) { return { success: true, branch: 'skip', final: final, ahposts: posts || [], ahpatches: (patches || []).filter(Boolean) }; }\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\n\n// \u4E0D\u9A57 token\uFF08\u9019\u652F\u5C31\u662F\u7528\u4F86\u767C\u7B2C\u4E00\u628A\u7684\uFF09\uFF1B\u53EA\u64CB prep \u65E9\u9000\nvar P = input.prep;\nif (P.early) return done(reply(P.early.status, P.early.body));\nvar rs = readsOf(input), now = nowIso(), posts = [];\nif (rowsOf(rs[0]).some(function (R) { return sv(R, 'token_sha256') === P.hex; })) return done(fail(409, 'token already registered'));\nif (!rowsOf(rs[1]).some(function (R) { return sv(R, 'login') === P.login; })) posts.push(postRec(T.user, { login: P.login, kind: P.kind, created_at: now }));\nposts.push(postRec(T.token, { token_sha256: P.hex, login: P.login, name: P.tname, created_at: now }));\nreturn done(reply(201, { login: P.login, kind: P.kind, token_name: P.tname }), posts, []);\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar d = input.decide;\nif (!d || d.final === undefined) return fail(500, 'decide \u6C92\u6709\u7522\u51FA final');\nreturn partial(input) || d.final;\n",
+              input: {
+                decide: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "whoami",
+      description: "\u6211\u662F\u8AB0\uFF1A\u6191 token \u56DE\u767B\u5165\u540D\uFF08ticket claim \u7684\u9810\u8A2D\u8EAB\u5206\uFF09\u3002",
+      graph: {
+        id: "ahub__whoami",
+        name: "ahub__whoami",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\nfunction rd(tpl, field, value, limit, offset) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction boot(input) {\n  var tok = ph(input.token);\n  return {\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: tok ? sha256hex(tok) : 'none',\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    base: (ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  r.whon = PUBLIC ? 0 : 1;\n  r.ahreads = (r.whon ? [rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  return r;\n}\n\nvar READS_N = 0;\nvar PUBLIC = false;\n\nvar B = boot(input);\nreturn prepOut(B);\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction userView(login) { return { id: 0, login: login, username: login, full_name: '', email: '', is_admin: false }; }\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (!P.whon) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u5BEB\u5165\u578B\u8DEF\u7531 decide \u7684\u56DE\u50B3\u3002branch:'skip' \u7D66\u6709\u300C\u6436\u865F\u300D\u7AD9\u7684\u8DEF\u7531\uFF08\u898B build.mjs\uFF09\u7528\uFF1A\u6C92\u6771\u897F\u8981\u6436\u5C31\u76F4\u63A5\u53BB\u56DE\u61C9\n\nvar g = gate(input); if (g.stop) return g.stop;\nreturn reply(200, userView(g.me));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    }
+  ],
+  actions: []
+};
+
 // cypher-executor/src/lib/app-system.ts
 init_kbdb_proxy();
 init_webhook_handlers();
@@ -21903,6 +25906,19 @@ var APP_CATALOG = [
     version: "0.2.1",
     author: "Arcrun \u5167\u5EFA",
     declaration: kanban_app_default
+  },
+  {
+    id: "ahub",
+    name: "AHub",
+    icon: "\u{1F9ED}",
+    // inkstone/InkStoneCo#232 c19791、inkstone/gitea-ops#3：AHub 是**選裝**的 Arcrun App（不進基本安裝）。
+    // 它是「票的正本」：Gitea 形狀的 API（票、留言、標籤、指派、相依、里程碑），狀態住自己的知識庫，沒有畫面。
+    // 資料型別（10 個 ahub_* template）隨宣告走，安裝器的 ensureTemplate 建——不需要 install-ahub-app.sh 先替它建。
+    // 引擎需要 inkstone/Arcrun#305＋#307（create_only 搶票號、records/batch-get）；比這早的引擎裝了票號搶不到，更新引擎後再裝。
+    summary: "\u628A\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u76F8\u4F9D\u8207\u91CC\u7A0B\u7891\u5B58\u5728\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u88E1\uFF0C\u7528\u548C Gitea \u4E00\u6A23\u7684\u65B9\u5F0F\u8B80\u5BEB\uFF1B\u9078\u88DD\uFF0C\u6C92\u88DD\u7684\u5BE6\u4F8B\u4E0D\u53D7\u5F71\u97FF\u3002",
+    version: "0.3.1",
+    author: "Arcrun \u5167\u5EFA",
+    declaration: ahub_app_default
   }
 ];
 function parseVersion(v) {
@@ -22267,6 +26283,9 @@ portalDataRouter.get(
         pages: [],
         pages_count: 0,
         pages_truncated: false,
+        cards: [],
+        cards_found_by: "none",
+        index_trail: [],
         note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002"
       });
     }
@@ -22287,7 +26306,21 @@ portalDataRouter.get(
       return c.json(body ?? { error: "KBDB \u56DE\u61C9\u4E0D\u662F JSON" }, body ? 200 : 502);
     }
     const pages = filterDeprecatedEntries(body.pages);
-    return c.json({ ...body, pages, pages_count: pages.length });
+    const rawCards = Array.isArray(body.cards) ? body.cards : [];
+    const cards = rawCards.filter((card) => canReadLibrary(libraries, card.library));
+    let withLocation = [];
+    if (cards.length > 0) {
+      const libRecords = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE).catch(() => []);
+      withLocation = cards.map((card) => {
+        const rootRaw = libRecords.find((r) => String(r.values.name ?? "") === card.library)?.values.root;
+        const meta = JSON.stringify({ source_path: card.source_path, machine_label: card.machine });
+        return {
+          ...card,
+          location: cardOriginalLocation([{ metadata_json: meta }], card.library, typeof rootRaw === "string" ? rootRaw : null)
+        };
+      });
+    }
+    return c.json({ ...body, pages, pages_count: pages.length, cards: withLocation });
   })
 );
 portalDataRouter.get(

@@ -98,6 +98,7 @@ var init_entity_canon = __esm({
 // kbdb/src/actions/record-crud.ts
 var record_crud_exports = {};
 __export(record_crud_exports, {
+  RecordExistsError: () => RecordExistsError,
   SYS_BELONGS: () => SYS_BELONGS,
   SYS_FIELD_OF: () => SYS_FIELD_OF,
   SYS_ROOT: () => SYS_ROOT,
@@ -106,7 +107,9 @@ __export(record_crud_exports, {
   deleteRecord: () => deleteRecord,
   derivedCellIds: () => derivedCellIds,
   fieldEntryId: () => fieldEntryId,
+  filterExistingRecordIds: () => filterExistingRecordIds,
   getRecord: () => getRecord,
+  getRecords: () => getRecords,
   getTemplate: () => getTemplate,
   hydrateRecordValues: () => hydrateRecordValues,
   listTemplates: () => listTemplates,
@@ -128,12 +131,18 @@ async function ensureAnchors(db) {
        ('${SYS_BELONGS}', 'belongs', 'system', NULL),
        ('${SYS_FIELD_OF}', 'field_of', 'system', NULL)`);
 }
-async function ensureFieldEntries(db, templateId, slots) {
+function fieldEntryStatements(templateId, slots) {
+  const out = [];
   for (const slot of slots) {
     const fid = fieldEntryId(templateId, slot);
-    await db.run(`INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'field')`, [fid, slot]);
-    await db.run(`INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_FIELD_OF}', ?)`, [`relf_${templateId}_${slot}`, fid, templateId]);
+    out.push({ sql: `INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'field')`, params: [fid, slot] });
+    out.push({ sql: `INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_FIELD_OF}', ?)`, params: [`relf_${templateId}_${slot}`, fid, templateId] });
   }
+  return out;
+}
+async function ensureFieldEntries(db, templateId, slots) {
+  const stmts = fieldEntryStatements(templateId, slots);
+  if (stmts.length > 0) await db.batch(stmts);
 }
 async function createTemplate(db, input) {
   const id = input.id ?? uid("tpl");
@@ -200,10 +209,25 @@ async function recordBelongs(db, recordId) {
   const row = await db.first(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}' LIMIT 1`, [recordId]);
   return row ?? null;
 }
+async function filterExistingRecordIds(db, templateId, ids) {
+  const keep = /* @__PURE__ */ new Set();
+  const CHUNK = 80;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const ph = chunk.map(() => "?").join(",");
+    const rows = await db.all(
+      `SELECT DISTINCT src_id FROM entries WHERE src_id IN (${ph}) AND rel_id = '${SYS_BELONGS}' AND dst_id = ?`,
+      [...chunk, templateId]
+    );
+    for (const r of rows.results ?? []) keep.add(r.src_id);
+  }
+  return ids.filter((id) => keep.has(id));
+}
 async function insertCellRelation(db, recordId, templateId, slot, dstEntryId, ownerId) {
   await db.run(`INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, [uid("relv"), ownerId, recordId, fieldEntryId(templateId, slot), dstEntryId]);
 }
 async function createRecord(db, input) {
+  if (input.create_only && !input.record_id) throw new Error("create_only requires record_id");
   const tpl = await getTemplate(db, input.template);
   if (!tpl) throw new Error(`template not found: ${input.template}`);
   const slots = JSON.parse(tpl.slots_json);
@@ -219,28 +243,38 @@ async function createRecord(db, input) {
   const referenced = await loadReferencedEntries(db, entryIds, ownerId);
   const mapTracked = isMapTrackedTemplate(tpl.name);
   const mapBefore = mapTracked && input.record_id ? (await getRecord(db, input.record_id))?.values ?? null : null;
-  await db.run(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id) VALUES (?, 'record', ?)`, [recordId, ownerId]);
-  await db.run(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, '${SYS_BELONGS}', ?)`, [`relb_${recordId}_${tpl.id}`, ownerId, recordId, tpl.id]);
+  const claim = await db.run(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id) VALUES (?, 'record', ?)`, [recordId, ownerId]);
+  if (input.create_only && claim.meta?.changes !== 1) {
+    if (claim.meta?.changes === void 0) throw new Error("create_only needs a storage driver that reports meta.changes");
+    throw new RecordExistsError(recordId);
+  }
   const writtenSlots = slots.filter((s) => s in entryIds || s in values);
-  await ensureFieldEntries(db, tpl.id, writtenSlots);
+  const stmts = [
+    // 歸屬＝一條關係（舊 template_id 欄的下場）
+    { sql: `INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, '${SYS_BELONGS}', ?)`, params: [`relb_${recordId}_${tpl.id}`, ownerId, recordId, tpl.id] },
+    // 欄位謂詞自癒（決定性 id，冪等）——只補這次真的要寫的 slot
+    ...fieldEntryStatements(tpl.id, writtenSlots)
+  ];
   for (const slot of writtenSlots) {
     if (slot in entryIds) {
-      await insertCellRelation(db, recordId, tpl.id, slot, entryIds[slot], ownerId);
+      stmts.push({ sql: `INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, params: [uid("relv"), ownerId, recordId, fieldEntryId(tpl.id, slot), entryIds[slot]] });
       continue;
     }
     if (input.derived_cell_ids) {
       const ids = derivedCellIds(recordId, slot);
-      await db.run(`INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES (?, ?, 'value', ?)`, [ids.value, values[slot], ownerId]);
-      await db.run(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, [ids.relation, ownerId, recordId, fieldEntryId(tpl.id, slot), ids.value]);
+      stmts.push({ sql: `INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES (?, ?, 'value', ?)`, params: [ids.value, values[slot], ownerId] });
+      stmts.push({ sql: `INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, params: [ids.relation, ownerId, recordId, fieldEntryId(tpl.id, slot), ids.value] });
       continue;
     }
-    const entry = await createEntry(db, {
-      content: values[slot],
-      entry_type: "value",
-      owner_id: ownerId
+    const valueId = uid("e");
+    stmts.push({
+      sql: `INSERT INTO entries (id, content, entry_type, owner_id, parent_id, page_name, refs_json, tags_json, task_status, confidence, metadata_json)
+       VALUES (?, ?, 'value', ?, NULL, NULL, '[]', '[]', NULL, NULL, NULL)`,
+      params: [valueId, values[slot], ownerId]
     });
-    await insertCellRelation(db, recordId, tpl.id, slot, entry.id, ownerId);
+    stmts.push({ sql: `INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, params: [uid("relv"), ownerId, recordId, fieldEntryId(tpl.id, slot), valueId] });
   }
+  await db.batch(stmts);
   const out = { ...values };
   for (const [slot, entryId] of Object.entries(entryIds)) out[slot] = referenced.get(entryId) ?? "";
   if (mapTracked) {
@@ -307,6 +341,45 @@ async function getRecord(db, recordId) {
   for (const r of res.results ?? []) values[r.slot] = r.content;
   const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
   return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
+}
+async function getRecords(db, recordIds, ownerId) {
+  const ids = [...new Set(recordIds)];
+  const belongs = /* @__PURE__ */ new Map();
+  const owners = /* @__PURE__ */ new Map();
+  const values = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const ph = chunk.map(() => "?").join(",");
+    const b = await db.all(
+      `SELECT src_id, dst_id FROM entries WHERE src_id IN (${ph}) AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}'`,
+      [...chunk]
+    );
+    for (const r of b.results ?? []) if (!belongs.has(r.src_id)) belongs.set(r.src_id, r.dst_id);
+    const o = await db.all(`SELECT id, owner_id FROM entries WHERE id IN (${ph})`, [...chunk]);
+    for (const r of o.results ?? []) owners.set(r.id, r.owner_id);
+    const v = await db.all(
+      `SELECT r.src_id AS rid, f.content AS slot, v.content AS content
+       FROM entries r
+       JOIN entries f ON r.rel_id = f.id
+       JOIN entries v ON r.dst_id = v.id
+       WHERE r.src_id IN (${ph}) AND r.rel_id != '${SYS_BELONGS}'`,
+      [...chunk]
+    );
+    for (const r of v.results ?? []) {
+      const m = values.get(r.rid) ?? {};
+      m[r.slot] = r.content;
+      values.set(r.rid, m);
+    }
+  }
+  const out = [];
+  for (const id of ids) {
+    const tpl = belongs.get(id);
+    if (!tpl) continue;
+    const owner = owners.get(id) ?? null;
+    if (ownerId != null && owner !== ownerId) continue;
+    out.push({ record_id: id, template_id: tpl, values: values.get(id) ?? {}, owner_id: owner });
+  }
+  return out;
 }
 async function searchByTemplate(db, template, owner_id, limit = 100, offset = 0) {
   return (await searchByTemplatePage(db, template, owner_id, limit, offset)).records;
@@ -394,7 +467,7 @@ async function deleteRecord(db, recordId) {
   if (mapTpl && mapBefore) await noteRecordWrite(db, mapTpl.name, mapBefore.owner_id, mapBefore.values, null);
   return true;
 }
-var SYS_ROOT, SYS_BELONGS, SYS_FIELD_OF;
+var SYS_ROOT, SYS_BELONGS, SYS_FIELD_OF, RecordExistsError;
 var init_record_crud = __esm({
   "kbdb/src/actions/record-crud.ts"() {
     "use strict";
@@ -404,6 +477,14 @@ var init_record_crud = __esm({
     SYS_ROOT = "sys_root";
     SYS_BELONGS = "sys_belongs";
     SYS_FIELD_OF = "sys_field_of";
+    RecordExistsError = class extends Error {
+      recordId;
+      constructor(recordId) {
+        super(`record already exists: ${recordId}`);
+        this.name = "RecordExistsError";
+        this.recordId = recordId;
+      }
+    };
   }
 });
 
@@ -1475,6 +1556,11 @@ function buildFtsCandidateMatch(q) {
   if (!trimmed) return null;
   const seen = /* @__PURE__ */ new Set();
   outer: for (const run of splitRuns(trimmed)) {
+    if (!run.cjk && [...run.text].length >= FTS_WINDOW && new TextEncoder().encode(run.text).length <= MAX_LIKE_Q_BYTES) {
+      if (seen.size >= MAX_FTS_WINDOWS) break outer;
+      seen.add(run.text);
+      continue;
+    }
     for (const w of windowsForRun(run.text)) {
       if (seen.size >= MAX_FTS_WINDOWS) break outer;
       seen.add(w);
@@ -1482,6 +1568,23 @@ function buildFtsCandidateMatch(q) {
   }
   if (seen.size === 0) return null;
   return [...seen].map((w) => `"${escapeFtsPhrase(w)}"`).join(" OR ");
+}
+function buildFtsCandidateLayers(q) {
+  const widest = buildFtsCandidateMatch(q);
+  if (!widest) return [];
+  const trimmed = q.trim();
+  const layers = [];
+  const runs = splitRuns(trimmed);
+  const contentRuns = runs.filter((r) => [...r.text].length >= FTS_WINDOW && !(!r.cjk && ASCII_STOP_WORDS.has(r.text.toLowerCase())));
+  if (runs.length > 1 && likeBytes(trimmed) <= MAX_LIKE_Q_BYTES && [...trimmed].length >= FTS_WINDOW) {
+    layers.push(`"${escapeFtsPhrase(trimmed)}"`);
+  }
+  const distinct = [...new Set(contentRuns.map((r) => r.text.toLowerCase()))].slice(0, MAX_SEARCH_TERMS);
+  if (distinct.length >= 2) {
+    layers.push(distinct.map((t) => `"${escapeFtsPhrase(t)}"`).join(" AND "));
+  }
+  layers.push(widest);
+  return layers;
 }
 function libraryPredicate(libraries) {
   const placeholders = libraries.map(() => "?").join(",");
@@ -1544,11 +1647,10 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
     return applyRelativeCut(res.results ?? []);
   }
   const { cutoffRowid, backfillCursor } = await readFtsMigrationState(db);
-  const candidateRes = await stmt(
-    "rowid IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?)",
-    [ftsMatch, FTS_CANDIDATE_LIMIT],
-    true
-  ).all();
+  const layers = buildFtsCandidateLayers(q);
+  const candidateRange = `rowid IN (${layers.map(() => "SELECT rowid FROM (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ? LIMIT ?)").join(" UNION ")})`;
+  const candidateParams = layers.flatMap((m) => [m, FTS_CANDIDATE_LIMIT]);
+  const candidateRes = await stmt(candidateRange, candidateParams, true).all();
   const hits = candidateRes.results ?? [];
   if (cutoffRowid > backfillCursor) {
     const seen = new Set(hits.map((e) => e.id));
@@ -4114,8 +4216,11 @@ function withWriteTally(db, tally) {
       tally.rowsWritten += Number(r.meta?.rows_written ?? 0);
       return r;
     },
-    batch: (stmts) => db.batch(stmts)
-    // 目前呼叫端（POST /entries、/records）不用 batch；保留原樣轉發，不假裝算過
+    async batch(stmts) {
+      const r = await db.batch(stmts);
+      for (const x of r) tally.rowsWritten += Number(x.meta?.rows_written ?? 0);
+      return r;
+    }
   };
   return port;
 }
@@ -4174,6 +4279,202 @@ function dbOf(env) {
   }
   return p;
 }
+
+// kbdb/src/actions/graph-query.ts
+init_record_crud();
+init_library_predicate();
+init_entity_canon();
+var D1_MAX_BOUND_PARAMS = 90;
+function chunkForD1(items, fixedParams) {
+  const size = Math.max(1, D1_MAX_BOUND_PARAMS - fixedParams);
+  if (items.length <= size) return [items];
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+async function recordIdsByFieldValue(db, tplId, fields, value, owner_id) {
+  if (!value || fields.length === 0) return [];
+  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND entry_type = 'value' AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ? AND entry_type = 'value'`;
+  const valueParams = owner_id ? [value, owner_id] : [value];
+  const valueRows = await db.all(valueSql, [...valueParams]);
+  const valueIds = (valueRows.results ?? []).map((r) => r.id);
+  if (valueIds.length === 0) return [];
+  const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
+  const relPh = fieldIds.map(() => "?").join(",");
+  const recordIdSet = /* @__PURE__ */ new Set();
+  for (const idsChunk of chunkForD1(valueIds, fieldIds.length + (owner_id ? 1 : 0))) {
+    const dstPh = idsChunk.map(() => "?").join(",");
+    const relSql = owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
+    const relParams = owner_id ? [...idsChunk, ...fieldIds, owner_id] : [...idsChunk, ...fieldIds];
+    const relRows = await db.all(relSql, [...relParams]);
+    for (const r of relRows.results ?? []) recordIdSet.add(r.record_id);
+  }
+  return [...recordIdSet];
+}
+async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, owner_id, libraries) {
+  if (!nodeValue || fields.length === 0) return [];
+  const tpl = await getTemplate(db, templateIdOrName);
+  if (!tpl) return [];
+  const recordIds = await recordIdsByFieldValue(db, tpl.id, fields, nodeValue, owner_id);
+  if (recordIds.length === 0) return [];
+  const libFilter = libraries && libraries.length > 0 ? libraries : null;
+  const libAgg = "MAX(CASE WHEN r.rel_id = ? THEN v.content END)";
+  const pivotFixed = 5 + (libFilter ? 1 + libFilter.length : 0);
+  const rows = [];
+  for (const recChunk of chunkForD1(recordIds, pivotFixed)) {
+    const recPh = recChunk.map(() => "?").join(",");
+    const pivotSql = `
+      SELECT b.src_id AS record_id,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS subject,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS predicate,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS object,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS status,
+             ${libAgg} AS library
+        FROM entries b
+        LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+        LEFT JOIN entries v ON v.id = r.dst_id
+       WHERE b.rel_id = 'sys_belongs' AND b.src_id IN (${recPh})
+       GROUP BY b.src_id${libFilter ? `
+      HAVING ${libraryOf(libAgg)} IN (${libFilter.map(() => "?").join(",")})` : ""}`;
+    const pivotParams = [
+      fieldEntryId(tpl.id, "subject"),
+      fieldEntryId(tpl.id, "predicate"),
+      fieldEntryId(tpl.id, "object"),
+      fieldEntryId(tpl.id, "status"),
+      fieldEntryId(tpl.id, "library"),
+      ...recChunk,
+      ...libFilter ? [fieldEntryId(tpl.id, "library"), ...libFilter] : []
+    ];
+    const pivotRows = await db.all(pivotSql, [...pivotParams]);
+    rows.push(...pivotRows.results ?? []);
+  }
+  return rows;
+}
+function neighborToEdge(n2) {
+  return n2.direction === "in" ? { subject: n2.node, predicate: n2.predicate, object: n2.from } : { subject: n2.from, predicate: n2.predicate, object: n2.node };
+}
+async function graphNeighbors(db, start, opts = {}) {
+  const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
+  const template = opts.template ?? "triplet";
+  const directed = !!opts.directed;
+  const owner_id = opts.owner_id;
+  const libraries = opts.library && opts.library.length > 0 ? opts.library : void 0;
+  const startNode = canonicalEntity(start);
+  const visited = /* @__PURE__ */ new Set([startNode]);
+  let frontier = [startNode];
+  const neighbors = [];
+  for (let d = 1; d <= depth; d++) {
+    if (frontier.length === 0) break;
+    const next = [];
+    for (const cur of frontier) {
+      const outgoing = await findTripletEdgesByNode(db, template, ["subject"], cur, owner_id, libraries);
+      for (const e of outgoing) {
+        if (e.status === "deprecated") continue;
+        const nb = e.object;
+        if (!nb || visited.has(nb)) continue;
+        visited.add(nb);
+        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "out" });
+        next.push(nb);
+      }
+      if (!directed) {
+        const incoming = await findTripletEdgesByNode(db, template, ["object"], cur, owner_id, libraries);
+        for (const e of incoming) {
+          if (e.status === "deprecated") continue;
+          const nb = e.subject;
+          if (!nb || visited.has(nb)) continue;
+          visited.add(nb);
+          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "in" });
+          next.push(nb);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
+}
+async function recordsByFieldValuePage(db, template, field, value, owner_id, limit, offset, exactTotal = false) {
+  const tpl = await getTemplate(db, template);
+  if (!tpl) return null;
+  let allIds;
+  let exhausted = true;
+  if (exactTotal) {
+    allIds = await recordIdsByFieldValue(db, tpl.id, [field], value, owner_id);
+  } else {
+    const got = await newestRecordIdsByFieldValue(db, tpl.id, [field], value, owner_id, Math.max(offset, 0) + Math.max(limit, 0));
+    allIds = got.ids;
+    exhausted = got.exhausted;
+  }
+  if (allIds.length === 0) return { records: [], total: 0, totalExact: true };
+  const meta = await identityMeta(db, allIds);
+  const ordered = orderNewestFirst(allIds, meta);
+  const page = ordered.slice(Math.max(offset, 0), Math.max(offset, 0) + Math.max(limit, 0));
+  const records = await hydrateRecordValues(db, tpl.id, page);
+  if (exhausted) return { records, total: ordered.length, totalExact: true };
+  return { records, total: Math.max(ordered.length, Math.max(offset, 0) + page.length) + 1, totalExact: false };
+}
+function orderNewestFirst(ids, meta) {
+  return [...ids].sort((a, b) => {
+    const ma = meta.get(a);
+    const mb = meta.get(b);
+    const ca = ma?.createdAt ?? 0;
+    const cb = mb?.createdAt ?? 0;
+    if (ca !== cb) return cb - ca;
+    return (mb?.rowid ?? 0) - (ma?.rowid ?? 0);
+  });
+}
+function newestLookahead(need) {
+  return Math.max(50, Math.ceil(need * 0.1));
+}
+async function newestRecordIdsByFieldValue(db, tplId, fields, value, owner_id, need) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  if (!value || fields.length === 0) return { ids: out, exhausted: true };
+  const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
+  const relPh = fieldIds.map(() => "?").join(",");
+  const valueSql = owner_id ? `SELECT rowid AS rid, id FROM entries
+       WHERE content = ? AND entry_type = 'value' AND (owner_id = ? OR owner_id IS NULL) AND rowid < ?
+       ORDER BY rowid DESC LIMIT ?` : `SELECT rowid AS rid, id FROM entries
+       WHERE content = ? AND entry_type = 'value' AND rowid < ?
+       ORDER BY rowid DESC LIMIT ?`;
+  const relSql = (n2) => {
+    const dstPh = Array.from({ length: n2 }, () => "?").join(",");
+    return owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
+  };
+  const batch = Math.max(1, D1_MAX_BOUND_PARAMS - fieldIds.length - (owner_id ? 1 : 0));
+  let size = Math.min(batch, 30);
+  let cursor = Number.MAX_SAFE_INTEGER;
+  for (; ; ) {
+    const vp = owner_id ? [value, owner_id, cursor, size] : [value, cursor, size];
+    const vr = await db.all(valueSql, vp);
+    const rows = vr.results ?? [];
+    if (rows.length === 0) return { ids: out, exhausted: true };
+    cursor = rows[rows.length - 1].rid;
+    const dstIds = rows.map((r) => r.id);
+    const rp = owner_id ? [...dstIds, ...fieldIds, owner_id] : [...dstIds, ...fieldIds];
+    const rr = await db.all(relSql(dstIds.length), rp);
+    for (const r of rr.results ?? []) if (!seen.has(r.record_id)) {
+      seen.add(r.record_id);
+      out.push(r.record_id);
+    }
+    if (rows.length < size) return { ids: out, exhausted: true };
+    if (out.length >= need + newestLookahead(need)) return { ids: out, exhausted: false };
+    size = Math.min(batch, size * 2);
+  }
+}
+async function identityMeta(db, ids) {
+  const out = /* @__PURE__ */ new Map();
+  for (const chunk of chunkForD1(ids, 0)) {
+    const ph = chunk.map(() => "?").join(",");
+    const rows = await db.all(`SELECT id, created_at, rowid FROM entries WHERE id IN (${ph})`, [...chunk]);
+    for (const r of rows.results ?? []) out.set(r.id, { createdAt: r.created_at, rowid: r.rowid });
+  }
+  return out;
+}
+
+// kbdb/src/embed.ts
+init_entity_canon();
 
 // kbdb/src/vector/http.ts
 function httpVectorPort(baseUrl, token, fetchImpl = fetch) {
@@ -4309,7 +4610,7 @@ async function embedText(env, text) {
 async function embedOnWrite(env, entry) {
   if (!embedEnabled(env)) return false;
   if (!isEmbeddable(entry)) return false;
-  const vec = await embedText(env, entry.content ?? "");
+  const vec = await embedText(env, await vectorTextOf(dbOf(env), entry));
   if (!vec) return false;
   await vectorsOf(env).upsert([
     {
@@ -4330,9 +4631,27 @@ async function embedOnWrite(env, entry) {
   await dbOf(env).run("UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id = ?", [embedModel(env), entry.id]);
   return true;
 }
+var VECTOR_ENTRY_TYPES = ["entity", "predicate", "alias"];
+var VECTOR_ENTRY_TYPES_SQL = `(${VECTOR_ENTRY_TYPES.map((t) => `'${t}'`).join(",")})`;
+var ENTRY_TYPE_GATE = `+entry_type IN ${VECTOR_ENTRY_TYPES_SQL}`;
+function isVectorEntryType(entryType) {
+  return VECTOR_ENTRY_TYPES.includes(entryType);
+}
 function isEmbeddable(entry) {
+  if (!isVectorEntryType(entry.entry_type)) return false;
   const meta = parseMeta2(entry.metadata_json);
   return meta?.embed === true;
+}
+async function vectorTextOf(db, entry) {
+  const name = (entry.content ?? "").trim();
+  if (entry.entry_type !== "entity" || !name) return name;
+  try {
+    const hit = await recordsByFieldValuePage(db, "triplet", "subject", canonicalEntity(name), entry.owner_id ?? void 0, 50, 0);
+    const desc = hit?.records.filter((r) => r.values.predicate === "description").map((r) => (r.values.object ?? "").trim()).find((o) => o !== "");
+    return desc ? `${name}\uFF1A${desc}` : name;
+  } catch {
+    return name;
+  }
 }
 function readSource(entry) {
   const meta = parseMeta2(entry.metadata_json);
@@ -4353,7 +4672,7 @@ function parseMeta2(json) {
     return null;
   }
 }
-var BACKFILL_PREDICATE = "is_embedded = 0 AND content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1";
+var BACKFILL_PREDICATE = `is_embedded = 0 AND content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND ${ENTRY_TYPE_GATE}`;
 var DEFAULT_BACKFILL_DAILY_LIMIT = 1800;
 function backfillDailyLimit(env) {
   const raw2 = env.EMBED_BACKFILL_DAILY_LIMIT;
@@ -4433,13 +4752,17 @@ async function backfillEmbeddings(env, opts = {}) {
   }
   const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
   const offset = Math.max(opts.offset ?? 0, 0);
-  const basePredicate = opts.reindex ? "content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1" : BACKFILL_PREDICATE;
+  const basePredicate = opts.reindex ? `content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND ${ENTRY_TYPE_GATE}` : BACKFILL_PREDICATE;
   const sel = selectionCriteriaPredicate(opts);
   const conds = [basePredicate, "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'", ...sel.conds];
   const params = [...sel.params];
   const where = conds.join(" AND ");
-  const res = await dbOf(env).all(`SELECT * FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
-  const rows = res.results ?? [];
+  const allOwners = !opts.owner_id && !opts.reindex;
+  const rows = allOwners ? mergeNewestFirst(
+    await Promise.all(OWNER_SEGMENTS.map((seg) => dbOf(env).all(`SELECT * FROM entries WHERE ${seg} AND ${where} ORDER BY created_at DESC LIMIT ?`, [...params, limit + offset]))),
+    offset,
+    limit
+  ) : (await dbOf(env).all(`SELECT * FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset])).results ?? [];
   const scanned = rows.length;
   const dailyCap = backfillDailyLimit(env);
   let usedToday = 0;
@@ -4456,7 +4779,7 @@ async function backfillEmbeddings(env, opts = {}) {
   const provider = embedProviderOf(env);
   const store = vectorsOf(env);
   if (embeddable.length > 0 && provider && store) {
-    const texts = embeddable.map((e) => (e.content ?? "").trim());
+    const texts = await Promise.all(embeddable.map((e) => vectorTextOf(dbOf(env), e)));
     const data = await provider.embed(embedModel(env), texts) ?? [];
     const vectors = embeddable.map((e, i) => ({ e, vec: data[i] })).filter((x) => Array.isArray(x.vec) && x.vec.length > 0).map((x) => ({
       id: x.e.id,
@@ -4481,8 +4804,7 @@ async function backfillEmbeddings(env, opts = {}) {
       }
     }
   }
-  const remRow = await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${where}`, [...params]);
-  const totalMatching = remRow?.c ?? 0;
+  const totalMatching = allOwners ? (await Promise.all(OWNER_SEGMENTS.map((seg) => dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${seg} AND ${where}`, [...params])))).reduce((n2, r) => n2 + (r?.c ?? 0), 0) : (await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${where}`, [...params]))?.c ?? 0;
   const remaining = opts.reindex ? Math.max(0, totalMatching - (offset + scanned)) : totalMatching;
   return {
     enabled: true,
@@ -4494,6 +4816,20 @@ async function backfillEmbeddings(env, opts = {}) {
     quota_used_today: usedToday + processed,
     quota_exceeded: quotaExceeded
   };
+}
+var OWNER_SEGMENTS = ["owner_id >= ''", "owner_id IS NULL"];
+function mergeNewestFirst(parts, offset, limit) {
+  const all = parts.flatMap((r) => r.results ?? []);
+  all.sort((a, b) => Number(b.created_at ?? 0) - Number(a.created_at ?? 0));
+  return all.slice(offset, offset + limit);
+}
+async function countPendingAllOwners(env, extra, params) {
+  const db = dbOf(env);
+  const [named, nullOwner] = await Promise.all([
+    db.first(`SELECT COUNT(*) as c FROM entries WHERE owner_id >= '' AND ${BACKFILL_PREDICATE}${extra}`, [...params]),
+    db.first(`SELECT COUNT(*) as c FROM entries WHERE owner_id IS NULL AND ${BACKFILL_PREDICATE}${extra}`, [...params])
+  ]);
+  return (named?.c ?? 0) + (nullOwner?.c ?? 0);
 }
 async function backfillStatus(env, opts = {}) {
   const conds = [];
@@ -4507,7 +4843,7 @@ async function backfillStatus(env, opts = {}) {
     params.push(opts.source);
   }
   const extra = conds.length ? ` AND ${conds.join(" AND ")}` : "";
-  const pendingRow = await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${BACKFILL_PREDICATE}${extra}`, [...params]);
+  const pendingRow = opts.owner_id ? await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${BACKFILL_PREDICATE}${extra}`, [...params]) : { c: await countPendingAllOwners(env, extra, params) };
   const embeddedRow = await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE is_embedded = 1 AND json_extract(metadata_json, '$.embed') = 1${extra}`, [...params]);
   return { enabled: embedEnabled(env), pending: pendingRow?.c ?? 0, embedded: embeddedRow?.c ?? 0 };
 }
@@ -4530,6 +4866,9 @@ async function reconcileEmbedGeneration(env, opts = {}) {
   const sel = selectionCriteriaPredicate(opts);
   const conds = [
     "is_embedded = 1",
+    // 收錄範圍外的（舊的卡片向量）不在這裡核對——核對會把「不在 index」的重置回待補嵌，
+    // 而它們根本不該被補嵌；它們隨舊索引整個丟掉（安裝器換索引，c19183 A）。
+    ENTRY_TYPE_GATE,
     "(content_hash IS NULL OR content_hash != ?)",
     "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'",
     ...sel.conds
@@ -4579,6 +4918,96 @@ async function reconcileEmbedGeneration(env, opts = {}) {
     quota_used_today: budget.used + written,
     quota_exceeded: quotaExceeded
   };
+}
+var SYNC_STATE_ID = "kbdb-embed-sync-state";
+var SYNC_PROBE = 5;
+var SYNC_DEFAULT_LIMIT = 100;
+var SYNC_MAX_LIMIT = 200;
+var SYNC_ROW_WRITES = 2;
+var VECTOR_ENTRY_TYPES_IN = `entry_type IN ${VECTOR_ENTRY_TYPES_SQL}`;
+async function syncVectorIndex(env, opts = {}) {
+  const off = { enabled: false, healthy: false, sweeping: false, checked: 0, reset_to_pending: 0, re_embedded: 0, more: false, quota_exceeded: false };
+  const store = vectorsOf(env);
+  if (!embedEnabled(env) || !store) return off;
+  const db = dbOf(env);
+  const limit = Math.min(Math.max(Math.trunc(opts.limit ?? SYNC_DEFAULT_LIMIT) || SYNC_DEFAULT_LIMIT, 1), SYNC_MAX_LIMIT);
+  const state = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [SYNC_STATE_ID]);
+  let cursor = null;
+  if (state) {
+    const m = parseMeta2(state.metadata_json);
+    cursor = typeof m?.cursor === "string" ? m.cursor : "";
+  }
+  if (cursor === null) {
+    const probe = await db.all(`SELECT id FROM entries WHERE is_embedded = 1 AND ${VECTOR_ENTRY_TYPES_IN} LIMIT ?`, [SYNC_PROBE]);
+    const ids2 = (probe.results ?? []).map((r) => r.id);
+    if (ids2.length > 0) {
+      const present = new Set((await store.getByIds(ids2)).map((v) => v.id));
+      if (ids2.every((id) => present.has(id))) {
+        const b2 = await backfillEmbeddings(env, { limit: 25 });
+        return { ...off, enabled: true, healthy: true, re_embedded: b2.processed, more: b2.remaining > 0 && !b2.quota_exceeded, quota_exceeded: b2.quota_exceeded };
+      }
+      cursor = "";
+    } else {
+      const b2 = await backfillEmbeddings(env, { limit: 25 });
+      return { ...off, enabled: true, healthy: true, re_embedded: b2.processed, more: b2.remaining > 0 && !b2.quota_exceeded, quota_exceeded: b2.quota_exceeded };
+    }
+  }
+  const budget = await maintenanceBudgetToday(env, db);
+  const affordable = Math.floor(budget.remaining / SYNC_ROW_WRITES);
+  if (affordable <= 0) return { ...off, enabled: true, sweeping: true, more: true, quota_exceeded: true };
+  const take = Math.min(limit, affordable);
+  const res = await db.all(
+    `SELECT id FROM entries WHERE is_embedded = 1 AND ${VECTOR_ENTRY_TYPES_IN} AND id > ? ORDER BY id LIMIT ?`,
+    [cursor, take]
+  );
+  const ids = (res.results ?? []).map((r) => r.id);
+  let reset = 0;
+  if (ids.length > 0) {
+    const present = new Set((await store.getByIds(ids)).map((v) => v.id));
+    const missing = ids.filter((id) => !present.has(id));
+    for (let i = 0; i < missing.length; i += 90) {
+      const part = missing.slice(i, i + 90);
+      const ph = part.map(() => "?").join(",");
+      await db.run(`UPDATE entries SET is_embedded = 0, content_hash = NULL WHERE id IN (${ph})`, part);
+    }
+    reset = missing.length;
+    if (reset > 0) {
+      try {
+        await addMaintenanceUsage(db, reset * SYNC_ROW_WRITES);
+      } catch {
+      }
+    }
+  }
+  const sweepDone = ids.length < take;
+  if (sweepDone) {
+    await db.run("DELETE FROM entries WHERE id = ?", [SYNC_STATE_ID]);
+  } else {
+    await db.run(`INSERT OR REPLACE INTO entries (id, entry_type, metadata_json) VALUES (?, 'system', ?)`, [SYNC_STATE_ID, JSON.stringify({ cursor: ids[ids.length - 1] })]);
+  }
+  const b = await backfillEmbeddings(env, { limit: 25 });
+  return {
+    enabled: true,
+    healthy: false,
+    sweeping: true,
+    checked: ids.length,
+    reset_to_pending: reset,
+    re_embedded: b.processed,
+    more: !sweepDone || b.remaining > 0 && !b.quota_exceeded,
+    quota_exceeded: b.quota_exceeded
+  };
+}
+async function expectedVectorCount(env, opts = {}) {
+  const params = [];
+  const own = opts.owner_id ? " AND owner_id = ?" : "";
+  if (opts.owner_id) params.push(opts.owner_id);
+  const base = `${VECTOR_ENTRY_TYPES_IN} AND content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'${own}`;
+  const row = await dbOf(env).first(
+    `SELECT COUNT(*) AS expected, SUM(is_embedded) AS marked FROM entries WHERE ${base}`,
+    [...params]
+  );
+  const expected = row?.expected ?? 0;
+  const marked = row?.marked ?? 0;
+  return { enabled: embedEnabled(env), expected, marked_embedded: marked, pending: Math.max(expected - marked, 0) };
 }
 async function embedSelfTest(env, opts = {}) {
   if (!embedEnabled(env)) {
@@ -5586,148 +6015,6 @@ templateRoutes.patch("/:id", async (c) => {
 // kbdb/src/routes/records.ts
 init_record_crud();
 
-// kbdb/src/actions/graph-query.ts
-init_record_crud();
-init_library_predicate();
-init_entity_canon();
-var D1_MAX_BOUND_PARAMS = 90;
-function chunkForD1(items, fixedParams) {
-  const size = Math.max(1, D1_MAX_BOUND_PARAMS - fixedParams);
-  if (items.length <= size) return [items];
-  const out = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-async function recordIdsByFieldValue(db, tplId, fields, value, owner_id) {
-  if (!value || fields.length === 0) return [];
-  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND entry_type = 'value' AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ? AND entry_type = 'value'`;
-  const valueParams = owner_id ? [value, owner_id] : [value];
-  const valueRows = await db.all(valueSql, [...valueParams]);
-  const valueIds = (valueRows.results ?? []).map((r) => r.id);
-  if (valueIds.length === 0) return [];
-  const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
-  const relPh = fieldIds.map(() => "?").join(",");
-  const recordIdSet = /* @__PURE__ */ new Set();
-  for (const idsChunk of chunkForD1(valueIds, fieldIds.length + (owner_id ? 1 : 0))) {
-    const dstPh = idsChunk.map(() => "?").join(",");
-    const relSql = owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries
-         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
-         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
-    const relParams = owner_id ? [...idsChunk, ...fieldIds, owner_id] : [...idsChunk, ...fieldIds];
-    const relRows = await db.all(relSql, [...relParams]);
-    for (const r of relRows.results ?? []) recordIdSet.add(r.record_id);
-  }
-  return [...recordIdSet];
-}
-async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, owner_id, libraries) {
-  if (!nodeValue || fields.length === 0) return [];
-  const tpl = await getTemplate(db, templateIdOrName);
-  if (!tpl) return [];
-  const recordIds = await recordIdsByFieldValue(db, tpl.id, fields, nodeValue, owner_id);
-  if (recordIds.length === 0) return [];
-  const libFilter = libraries && libraries.length > 0 ? libraries : null;
-  const libAgg = "MAX(CASE WHEN r.rel_id = ? THEN v.content END)";
-  const pivotFixed = 5 + (libFilter ? 1 + libFilter.length : 0);
-  const rows = [];
-  for (const recChunk of chunkForD1(recordIds, pivotFixed)) {
-    const recPh = recChunk.map(() => "?").join(",");
-    const pivotSql = `
-      SELECT b.src_id AS record_id,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS subject,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS predicate,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS object,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS status,
-             ${libAgg} AS library
-        FROM entries b
-        LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-        LEFT JOIN entries v ON v.id = r.dst_id
-       WHERE b.rel_id = 'sys_belongs' AND b.src_id IN (${recPh})
-       GROUP BY b.src_id${libFilter ? `
-      HAVING ${libraryOf(libAgg)} IN (${libFilter.map(() => "?").join(",")})` : ""}`;
-    const pivotParams = [
-      fieldEntryId(tpl.id, "subject"),
-      fieldEntryId(tpl.id, "predicate"),
-      fieldEntryId(tpl.id, "object"),
-      fieldEntryId(tpl.id, "status"),
-      fieldEntryId(tpl.id, "library"),
-      ...recChunk,
-      ...libFilter ? [fieldEntryId(tpl.id, "library"), ...libFilter] : []
-    ];
-    const pivotRows = await db.all(pivotSql, [...pivotParams]);
-    rows.push(...pivotRows.results ?? []);
-  }
-  return rows;
-}
-function neighborToEdge(n2) {
-  return n2.direction === "in" ? { subject: n2.node, predicate: n2.predicate, object: n2.from } : { subject: n2.from, predicate: n2.predicate, object: n2.node };
-}
-async function graphNeighbors(db, start, opts = {}) {
-  const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
-  const template = opts.template ?? "triplet";
-  const directed = !!opts.directed;
-  const owner_id = opts.owner_id;
-  const libraries = opts.library && opts.library.length > 0 ? opts.library : void 0;
-  const startNode = canonicalEntity(start);
-  const visited = /* @__PURE__ */ new Set([startNode]);
-  let frontier = [startNode];
-  const neighbors = [];
-  for (let d = 1; d <= depth; d++) {
-    if (frontier.length === 0) break;
-    const next = [];
-    for (const cur of frontier) {
-      const outgoing = await findTripletEdgesByNode(db, template, ["subject"], cur, owner_id, libraries);
-      for (const e of outgoing) {
-        if (e.status === "deprecated") continue;
-        const nb = e.object;
-        if (!nb || visited.has(nb)) continue;
-        visited.add(nb);
-        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "out" });
-        next.push(nb);
-      }
-      if (!directed) {
-        const incoming = await findTripletEdgesByNode(db, template, ["object"], cur, owner_id, libraries);
-        for (const e of incoming) {
-          if (e.status === "deprecated") continue;
-          const nb = e.subject;
-          if (!nb || visited.has(nb)) continue;
-          visited.add(nb);
-          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "in" });
-          next.push(nb);
-        }
-      }
-    }
-    frontier = next;
-  }
-  return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
-}
-async function recordsByFieldValuePage(db, template, field, value, owner_id, limit, offset) {
-  const tpl = await getTemplate(db, template);
-  if (!tpl) return null;
-  const allIds = await recordIdsByFieldValue(db, tpl.id, [field], value, owner_id);
-  if (allIds.length === 0) return { records: [], total: 0, totalExact: true };
-  const meta = await identityMeta(db, allIds);
-  const ordered = [...allIds].sort((a, b) => {
-    const ma = meta.get(a);
-    const mb = meta.get(b);
-    const ca = ma?.createdAt ?? 0;
-    const cb = mb?.createdAt ?? 0;
-    if (ca !== cb) return cb - ca;
-    return (mb?.rowid ?? 0) - (ma?.rowid ?? 0);
-  });
-  const page = ordered.slice(Math.max(offset, 0), Math.max(offset, 0) + Math.max(limit, 0));
-  const records = await hydrateRecordValues(db, tpl.id, page);
-  return { records, total: ordered.length, totalExact: true };
-}
-async function identityMeta(db, ids) {
-  const out = /* @__PURE__ */ new Map();
-  for (const chunk of chunkForD1(ids, 0)) {
-    const ph = chunk.map(() => "?").join(",");
-    const rows = await db.all(`SELECT id, created_at, rowid FROM entries WHERE id IN (${ph})`, [...chunk]);
-    for (const r of rows.results ?? []) out.set(r.id, { createdAt: r.created_at, rowid: r.rowid });
-  }
-  return out;
-}
-
 // kbdb/src/actions/speedometer.ts
 init_record_crud();
 var FREE_TIER_DAILY_ROWS_WRITTEN = 1e5;
@@ -5766,7 +6053,8 @@ var OP_CEILINGS = {
   "POST /entries/fts-backfill": DECLARED_MAINTENANCE,
   "POST /entries/backfill-library": DECLARED_MAINTENANCE,
   "POST /embed/backfill": DECLARED_MAINTENANCE,
-  "POST /embed/reconcile": DECLARED_MAINTENANCE
+  "POST /embed/reconcile": DECLARED_MAINTENANCE,
+  "POST /embed/sync": DECLARED_MAINTENANCE
 };
 function ceilingFor(op) {
   return OP_CEILINGS[op] ?? DEFAULT_CEILING;
@@ -5783,6 +6071,7 @@ var OP_LABELS = {
   "POST /entries/backfill-library": "\u88DC\u6A19\u5EAB",
   "POST /embed/backfill": "\u88DC\u5411\u91CF",
   "POST /embed/reconcile": "\u5411\u91CF\u4E16\u4EE3\u6838\u5C0D",
+  "POST /embed/sync": "\u63DB\u7D22\u5F15\u5F8C\u91CD\u5D4C\u5411\u91CF",
   "POST /map/recompute": "\u91CD\u7B97\u85CF\u66F8\u5730\u5716",
   "POST /graph/canonicalize-entities": "\u6574\u4F75\u5716\u4E0A\u7684\u540C\u540D\u7BC0\u9EDE",
   "POST /execution-log/cleanup": "\u6E05\u7406\u904E\u671F\u57F7\u884C\u7D00\u9304",
@@ -5822,6 +6111,8 @@ var LITERAL_SEGMENTS = /* @__PURE__ */ new Set([
   "backfill",
   "reconcile",
   "selftest",
+  "sync",
+  "expected",
   "canonicalize-entities",
   "neighbors",
   "select",
@@ -6371,8 +6662,20 @@ recordRoutes.post("/", async (c) => {
     }
     return c.json({ success: true, record: rec });
   } catch (e) {
+    if (e instanceof RecordExistsError) return c.json({ success: false, error: e.message, code: "record_exists", record_id: e.recordId }, 409);
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
+});
+recordRoutes.post("/batch-get", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !Array.isArray(body.ids) || !body.ids.every((x) => typeof x === "string")) {
+    return c.json({ success: false, error: "ids must be an array of record_id strings" }, 400);
+  }
+  if (body.ids.length > 200) return c.json({ success: false, error: "ids at most 200 per request" }, 400);
+  const records = await getRecords(dbOf(c.env), body.ids, typeof body.owner_id === "string" && body.owner_id ? body.owner_id : null);
+  const got = new Set(records.map((r) => r.record_id));
+  const missing = [...new Set(body.ids)].filter((id) => !got.has(id));
+  return c.json({ success: true, records, missing, count: records.length });
 });
 recordRoutes.get("/triplet-stats", async (c) => {
   const owner = c.req.query("owner_id") || void 0;
@@ -6403,7 +6706,8 @@ recordRoutes.get("/by-template/:template", async (c) => {
       value,
       c.req.query("owner_id") || void 0,
       limit,
-      offset
+      offset,
+      exactTotal
     );
     const { records: records2, total: total2, totalExact: totalExact2 } = filtered ?? { records: [], total: 0, totalExact: true };
     return c.json({ success: true, records: records2, count: records2.length, limit, offset, total: total2, total_exact: totalExact2 });
@@ -6426,7 +6730,8 @@ recordRoutes.get("/by-source/:template", async (c) => {
   const offset = intParam(c.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
   const tpl = await getTemplate(dbOf(c.env), c.req.param("template"));
   if (!tpl) return c.json({ success: true, record_ids: [], count: 0, total: 0, limit, offset });
-  const all = await recordIdsByFieldValue(dbOf(c.env), tpl.id, [field], value, c.req.query("owner_id") || void 0);
+  const candidates = await recordIdsByFieldValue(dbOf(c.env), tpl.id, [field], value, c.req.query("owner_id") || void 0);
+  const all = await filterExistingRecordIds(dbOf(c.env), tpl.id, candidates);
   all.sort();
   const page = all.slice(offset, offset + limit);
   return c.json({ success: true, record_ids: page, count: page.length, total: all.length, limit, offset });
@@ -6594,6 +6899,18 @@ embedRoutes.post("/reconcile", async (c) => {
     until: body.until !== void 0 ? Number(body.until) : void 0
   });
   return c.json({ success: true, ...result });
+});
+embedRoutes.post("/sync", async (c) => {
+  if (!embedEnabled(c.env)) {
+    return c.json(offBody(c.env), 409);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const result = await syncVectorIndex(c.env, { limit: body.limit !== void 0 ? Number(body.limit) : void 0 });
+  return c.json({ success: true, ...result });
+});
+embedRoutes.get("/expected", async (c) => {
+  const r = await expectedVectorCount(c.env, { owner_id: c.req.query("owner_id") || void 0 });
+  return c.json({ success: true, ...r });
 });
 embedRoutes.get("/selftest", async (c) => {
   const result = await embedSelfTest(c.env, { owner_id: c.req.query("owner_id") || void 0 });
@@ -6798,6 +7115,327 @@ graphRoutes.get("/neighbors/:node", async (c) => {
 
 // kbdb/src/actions/retrieve.ts
 init_entry_crud();
+
+// kbdb/src/actions/card-lookup.ts
+init_entry_crud();
+init_library_predicate();
+var MAX_CARDS = 5;
+var MAX_BLOCKS_PER_CARD = 60;
+var MAX_INDEX_CARDS = 12;
+var MAX_BRANCH = 3;
+var NAME_SCAN_CAP = 400;
+var MAX_LIBRARIES = 40;
+var NOT_DEPRECATED = "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'";
+var NOT_MAP = "COALESCE(json_extract(metadata_json, '$.kind'), '') != 'library_map'";
+var STOP_BIGRAMS = /* @__PURE__ */ new Set([
+  "\u4EC0\u9EBC",
+  "\u662F\u4EC0",
+  "\u9EBC\u610F",
+  "\u610F\u601D",
+  "\u600E\u9EBC",
+  "\u5982\u4F55",
+  "\u70BA\u4EC0",
+  "\u8ACB\u554F",
+  "\u4E00\u4E0B",
+  "\u54EA\u88E1",
+  "\u54EA\u500B",
+  "\u53EF\u4EE5",
+  "\u544A\u8A34",
+  "\u751A\u9EBC",
+  "\u662F\u751A",
+  "\u9019\u500B",
+  "\u90A3\u500B",
+  "\u6709\u6C92",
+  "\u6C92\u6709",
+  "\u7684\u662F",
+  "\u662F\u54EA",
+  "\u4EE3\u8868",
+  "\u8868\u793A",
+  "\u8AAA\u660E"
+]);
+var STOP_WORDS = /* @__PURE__ */ new Set([
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+  "how",
+  "the",
+  "and",
+  "for",
+  "with",
+  "this",
+  "that",
+  "from",
+  "does",
+  "have",
+  "has",
+  "are",
+  "was",
+  "were",
+  "mean",
+  "means",
+  "meaning",
+  "about",
+  "error",
+  "code"
+]);
+function questionTerms(q) {
+  const codes = /* @__PURE__ */ new Set();
+  for (const m of q.matchAll(/[A-Za-z0-9][A-Za-z0-9_.\-]*[A-Za-z0-9]|[A-Za-z0-9]/g)) {
+    const t = m[0].toLowerCase();
+    if (t.length >= 3 && !STOP_WORDS.has(t)) codes.add(t);
+  }
+  const bigrams = /* @__PURE__ */ new Set();
+  for (const run of q.match(/[㐀-鿿豈-﫿]+/g) ?? []) {
+    const chars = [...run];
+    for (let i = 0; i + 1 < chars.length; i++) {
+      const bg = chars[i] + chars[i + 1];
+      if (!STOP_BIGRAMS.has(bg)) bigrams.add(bg);
+    }
+  }
+  return { codes: [...codes], bigrams: [...bigrams] };
+}
+function isIndexCardName(name) {
+  return name === INDEX_CARD_NAME || name.startsWith(INDEX_CARD_NAME);
+}
+function parseIndexLines(content) {
+  const out = [];
+  for (const raw2 of content.split("\n")) {
+    const line = raw2.trim();
+    if (!line) continue;
+    if (line.startsWith("\u2190")) continue;
+    const m = line.match(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/);
+    if (!m) continue;
+    const link = m[1].trim();
+    if (!link) continue;
+    out.push({ link, text: line, isSubIndex: isIndexCardName(link) });
+  }
+  return out;
+}
+function spanOf(text) {
+  const m = text.match(/\d+\s*篇[（(]\s*([^（）()]+?)\s*(?:[～~]\s*([^（）()]+?)\s*)?[）)]/);
+  if (!m) return null;
+  const first = m[1].toUpperCase();
+  return { first, last: (m[2] ?? m[1]).toUpperCase() };
+}
+function isFolderLine(line) {
+  return line.isSubIndex && line.text.includes("\u{1F4C1}");
+}
+function scoreIndexLine(line, terms) {
+  const text = line.text.toLowerCase();
+  const link = line.link.toLowerCase();
+  let score = 0;
+  for (const code of terms.codes) {
+    if (link === code) score += 100;
+    else if (link.startsWith(code)) score += 60;
+    else if (text.includes(code)) score += 40;
+    else if (line.isSubIndex) {
+      const span = spanOf(line.text);
+      const c = code.toUpperCase();
+      if (span && c >= span.first && c <= span.last + "\uFFFF") score += 50;
+    }
+  }
+  for (const bg of terms.bigrams) if (text.includes(bg)) score += 3;
+  if (score === 0 && isFolderLine(line)) score = 1;
+  return score;
+}
+async function blocksOf(db, pageNames, owner, libraries, cardCount = pageNames.length) {
+  if (pageNames.length === 0) return [];
+  const ph = pageNames.map(() => "?").join(",");
+  const libs = libraries ? [...libraries] : [];
+  const libFilter = libs.length > 0 ? `AND ${ENTRY_LIBRARY} IN (${libs.map(() => "?").join(",")})` : "";
+  const rows = await db.all(
+    `SELECT page_name, content, metadata_json, ${ENTRY_LIBRARY} AS lib
+       FROM entries
+      WHERE page_name IN (${ph}) AND page_name IS NOT NULL
+        AND entry_type = 'block'
+        AND (? = '' OR +owner_id = ?)
+        ${libFilter}
+        AND ${NOT_DEPRECATED}
+        AND ${NOT_MAP}
+      ORDER BY created_at ASC, rowid ASC
+      LIMIT ?`,
+    [...pageNames, owner, owner, ...libs, Math.max(1, cardCount) * MAX_BLOCKS_PER_CARD]
+  );
+  const all = rows.results ?? [];
+  return libraries ? all.filter((r) => libraries.has(libraryOfValue(r.lib))) : all;
+}
+function anchorOf(metadata) {
+  try {
+    const meta = metadata ? JSON.parse(metadata) : {};
+    const src = typeof meta.source === "string" ? meta.source : "";
+    const m = src.match(/#(\d+)\s*$/);
+    return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+function metaField(metadata, keys) {
+  if (!metadata) return null;
+  try {
+    const meta = JSON.parse(metadata);
+    for (const k of keys) {
+      const v = meta[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+  } catch {
+  }
+  return null;
+}
+function assemble(blocks) {
+  return blocks.map((b, i) => ({ b, i, a: anchorOf(b.metadata_json) })).sort((x, y) => x.a - y.a || x.i - y.i).map(({ b }) => String(b.content ?? "").trim()).filter(Boolean).join("\n\n");
+}
+function groupCards(rows) {
+  const m = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const key = `${libraryOfValue(r.lib)}\0${r.page_name}`;
+    const arr = m.get(key) ?? [];
+    arr.push(r);
+    m.set(key, arr);
+  }
+  return m;
+}
+function toCard(blocks, foundBy) {
+  const first = blocks[0];
+  let source_path = null;
+  let machine = null;
+  for (const b of blocks) {
+    source_path = source_path ?? metaField(b.metadata_json, ["source_path"]);
+    machine = machine ?? metaField(b.metadata_json, ["machine_label", "machine"]);
+  }
+  return {
+    library: libraryOfValue(first.lib),
+    page_name: first.page_name,
+    found_by: foundBy,
+    content: assemble(blocks),
+    block_count: blocks.length,
+    source_path,
+    machine
+  };
+}
+async function walkIndexes(db, terms, owner, libraries, trail) {
+  if (libraries.length === 0 || terms.codes.length === 0 && terms.bigrams.length === 0) return [];
+  const libSet = new Set(libraries);
+  const picked = /* @__PURE__ */ new Map();
+  let budget = MAX_INDEX_CARDS;
+  let frontier = libraries.map((l) => ({ library: l, page_name: INDEX_CARD_NAME }));
+  const visited = /* @__PURE__ */ new Set();
+  while (frontier.length > 0 && budget > 0) {
+    const names = [...new Set(frontier.map((f) => f.page_name))];
+    const wanted = new Set(frontier.map((f) => `${f.library}\0${f.page_name}`));
+    for (const k of wanted) visited.add(k);
+    const rows = (await blocksOf(db, names, owner, libSet, wanted.size)).filter(
+      (r) => wanted.has(`${libraryOfValue(r.lib)}\0${r.page_name}`)
+    );
+    const next = [];
+    for (const [key, blocks] of groupCards(rows)) {
+      if (budget <= 0) break;
+      budget--;
+      const [library, pageName] = key.split("\0");
+      trail.push(`${library}\uFF5C${pageName}`);
+      for (const line of parseIndexLines(assemble(blocks))) {
+        const score = scoreIndexLine(line, terms);
+        if (score <= 0) continue;
+        if (line.isSubIndex) {
+          if (!visited.has(`${library}\0${line.link}`)) next.push({ library, page_name: line.link, score });
+        } else {
+          const k = `${library}\0${line.link}`;
+          const prev = picked.get(k);
+          if (!prev || prev.score < score) picked.set(k, { library, page_name: line.link, score });
+        }
+      }
+    }
+    next.sort((a, b) => b.score - a.score);
+    const best = next.length > 0 ? next[0].score : 0;
+    frontier = next.filter((n2) => n2.score >= best / 2).slice(0, MAX_BRANCH);
+  }
+  return [...picked.values()].sort((a, b) => b.score - a.score);
+}
+async function matchCardNames(db, terms, owner, libSet) {
+  const out = /* @__PURE__ */ new Map();
+  const codes = terms.codes.filter((c) => /\d/.test(c) || c.length >= 4);
+  for (const code of codes.slice(0, 6)) {
+    for (const variant of [.../* @__PURE__ */ new Set([code, code.toUpperCase()])]) {
+      const rows = await db.all(
+        `SELECT page_name, lib FROM (
+           SELECT page_name, ${ENTRY_LIBRARY} AS lib, entry_type, owner_id, metadata_json
+             FROM entries
+            WHERE page_name IS NOT NULL AND page_name >= ? AND page_name < ?
+            LIMIT ?
+         )
+         WHERE entry_type = 'block' AND (? = '' OR owner_id = ?) AND ${NOT_DEPRECATED} AND ${NOT_MAP}
+         GROUP BY page_name, lib
+         LIMIT 20`,
+        [variant, variant + "\uFFFF", NAME_SCAN_CAP, owner, owner]
+      );
+      for (const r of rows.results ?? []) {
+        const library = libraryOfValue(r.lib);
+        if (libSet && !libSet.has(library)) continue;
+        if (isIndexCardName(r.page_name)) continue;
+        const k = `${library}\0${r.page_name}`;
+        const score = r.page_name.toLowerCase() === code ? 100 : 60;
+        const prev = out.get(k);
+        if (!prev || prev.score < score) out.set(k, { library, page_name: r.page_name, score });
+      }
+    }
+  }
+  return [...out.values()].sort((a, b) => b.score - a.score || a.page_name.localeCompare(b.page_name));
+}
+async function hydrate(db, refs, owner, foundBy) {
+  const take = refs.slice(0, MAX_CARDS);
+  if (take.length === 0) return [];
+  const libs = new Set(take.map((r) => r.library));
+  const rows = await blocksOf(db, [...new Set(take.map((r) => r.page_name))], owner, libs);
+  const grouped = groupCards(rows);
+  const out = [];
+  for (const r of take) {
+    const blocks = grouped.get(`${r.library}\0${r.page_name}`);
+    if (blocks && blocks.length > 0) out.push(toCard(blocks, foundBy));
+  }
+  return out;
+}
+async function lookupCards(db, question, opts) {
+  const owner = opts.owner_id ?? "";
+  const terms = questionTerms(question);
+  const trail = [];
+  const libraries = opts.libraries.slice(0, MAX_LIBRARIES);
+  const viaIndex = await walkIndexes(db, terms, owner, libraries, trail);
+  if (viaIndex.length > 0) {
+    const top = viaIndex[0].score;
+    const cards2 = await hydrate(db, viaIndex.filter((c) => c.score >= Math.min(top, 60)), owner, "index");
+    if (cards2.length > 0) return { found_by: "index", cards: cards2, index_trail: trail };
+  }
+  const viaName = await matchCardNames(db, terms, owner, opts.allowed);
+  if (viaName.length > 0) {
+    const top = viaName[0].score;
+    const cards2 = await hydrate(db, viaName.filter((c) => c.score >= top), owner, "card_name");
+    if (cards2.length > 0) return { found_by: "card_name", cards: cards2, index_trail: trail };
+  }
+  const hits = await searchEntries(
+    db,
+    question,
+    opts.owner_id,
+    void 0,
+    40,
+    opts.allowed ? [...opts.allowed] : void 0
+  );
+  const refs = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const h of hits) {
+    if (!h.page_name || isIndexCardName(h.page_name)) continue;
+    const library = libraryOfValue(metaField(h.metadata_json, ["library"]));
+    const k = `${library}\0${h.page_name}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    refs.push({ library, page_name: h.page_name });
+  }
+  const cards = await hydrate(db, refs, owner, "keyword_fallback");
+  return { found_by: cards.length > 0 ? "keyword_fallback" : "none", cards, index_trail: trail };
+}
+
+// kbdb/src/actions/retrieve.ts
 var MAX_PAGES = 200;
 var DEFAULT_PAGES = 50;
 var MAX_GRAPH_ENTITIES = 20;
@@ -6874,6 +7512,13 @@ async function retrieveForQuestion(db, question, opts = {}) {
       }
     }
   }
+  const candidateLibraries = [];
+  for (const l of scopedLibraries) if (!candidateLibraries.includes(l.library)) candidateLibraries.push(l.library);
+  for (const i of scopedIndexes) if (!candidateLibraries.includes(i.library)) candidateLibraries.push(i.library);
+  if (allowed) {
+    for (const l of allowed) if (!candidateLibraries.includes(l)) candidateLibraries.push(l);
+  }
+  const found = await lookupCards(db, q, { owner_id: opts.owner_id, libraries: candidateLibraries, allowed });
   return {
     route,
     vector_used: false,
@@ -6883,7 +7528,10 @@ async function retrieveForQuestion(db, question, opts = {}) {
     graph_facts: graphFacts,
     pages,
     pages_count: pages.length,
-    pages_truncated: pagesTruncated
+    pages_truncated: pagesTruncated,
+    cards: found.cards,
+    cards_found_by: found.found_by,
+    index_trail: found.index_trail
   };
 }
 
