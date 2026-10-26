@@ -9388,6 +9388,13 @@ async function getAccessToken(env, token) {
   }
   return null;
 }
+async function diagnoseAccessToken(env, token) {
+  if (!token.startsWith(TOKEN_PREFIX)) return { reason: "not_oauth" };
+  const d = await open(await tokenKey(env), token.slice(TOKEN_PREFIX.length));
+  if (!d || !Number.isFinite(d.exp)) return { reason: "key_mismatch" };
+  if (d.exp !== 0 && d.exp * 1e3 < Date.now()) return { reason: "expired", expiredAt: d.exp };
+  return { reason: "ok" };
+}
 
 // mcp/src/oauth/metadata.ts
 function originOf(reqUrl) {
@@ -9461,6 +9468,7 @@ async function partnerAuthMiddleware(c, next) {
   if (!token) {
     return unauthorized("Empty bearer token");
   }
+  let signingKeyMissing = false;
   try {
     const at = await getAccessToken(c.env, token);
     if (at) {
@@ -9476,6 +9484,14 @@ async function partnerAuthMiddleware(c, next) {
       return;
     }
   } catch {
+    signingKeyMissing = token.startsWith("at1.");
+  }
+  if (signingKeyMissing) {
+    return c.json(
+      { error: "temporarily_unavailable", error_description: "MCP server \u66AB\u6642\u7121\u6CD5\u9A57\u8B49 token\uFF08\u7C3D\u7AE0\u91D1\u9470\u8B80\u4E0D\u5230\uFF0C\u901A\u5E38\u662F\u66F4\u65B0\u7A7A\u7A97\uFF09\uFF0C\u8ACB\u7A0D\u5F8C\u91CD\u8A66\uFF1B\u4E0D\u9700\u8981\u91CD\u65B0\u6388\u6B0A" },
+      503,
+      { "Retry-After": "15" }
+    );
   }
   if (c.env.MCP_STATIC_TOKEN && constantTimeEqual(token, c.env.MCP_STATIC_TOKEN)) {
     const ns = c.env.MCP_OWNER_NAMESPACE || "leo";
@@ -9509,6 +9525,21 @@ async function partnerAuthMiddleware(c, next) {
     c.set("auth_path", "service");
     await next();
     return;
+  }
+  if (token.startsWith("at1.")) {
+    const why = await diagnoseAccessToken(c.env, token).catch(() => null);
+    if (why?.reason === "expired") {
+      return unauthorized(
+        `Access token expired at ${new Date(why.expiredAt * 1e3).toISOString()}; reconnect once to get a non-expiring token`,
+        "invalid_token"
+      );
+    }
+    if (why?.reason === "key_mismatch") {
+      return unauthorized(
+        "Access token was issued under a different signing key (KBDB_INTERNAL_TOKEN changed or token from another instance); reconnect to get a new token",
+        "invalid_token"
+      );
+    }
   }
   return unauthorized("Bearer token not recognized; complete OAuth to obtain an access token", "invalid_token");
 }
@@ -35027,14 +35058,52 @@ function registerOAuthRoutes(app2) {
   });
 }
 
+// mcp/src/lib/build-label.ts
+var CACHE_MS = 1e4;
+var cache = null;
+async function cypherBundleVersion(env) {
+  if (!env.CYPHER_EXECUTOR) return null;
+  const now = Date.now();
+  if (cache && now - cache.at < CACHE_MS) return cache.version;
+  let version2 = null;
+  try {
+    const res = await env.CYPHER_EXECUTOR.fetch(
+      new Request("https://cypher/health", { signal: AbortSignal.timeout(3e3) })
+    );
+    if (res.ok) {
+      const body = await res.json().catch(() => null);
+      const v = typeof body?.bundle_version === "string" ? body.bundle_version.trim() : "";
+      version2 = v || null;
+    }
+  } catch {
+    version2 = null;
+  }
+  cache = { at: now, version: version2 };
+  return version2;
+}
+async function resolveBuildLabel(env) {
+  const fromVar = (env.MCP_BUILD ?? "").trim();
+  const live = await cypherBundleVersion(env);
+  if (live) {
+    return {
+      build: live,
+      build_source: "cypher-executor",
+      ...fromVar && fromVar !== live ? { mcp_build_var: fromVar } : {}
+    };
+  }
+  if (fromVar) return { build: fromVar, build_source: "MCP_BUILD" };
+  return { build: "unknown", build_source: "none" };
+}
+
 // mcp/src/index.ts
 var _app = new Hono3();
 registerOAuthRoutes(_app);
-_app.get("/health", (c) => c.json({
+_app.get("/health", async (c) => c.json({
   ok: true,
   service: "arcrun-mcp",
   auth: "portal-login",
-  build: c.env.MCP_BUILD ?? "unknown",
+  // #310：版本以同實例 cypher /health.bundle_version 為準（MCP_BUILD 只是退路，會漂）。見 lib/build-label.ts。
+  ...await resolveBuildLabel(c.env),
   // 2026-09-25 起 OAuth 短效認證不再綁 KV（inkstone/Arcrun#98）——改走 KBDB records，
   // 沒有獨立 binding 可查「有沒有接」，這裡誠實回報現在用的是哪個機制，不留一個永遠
   // 回 true 的假欄位。
