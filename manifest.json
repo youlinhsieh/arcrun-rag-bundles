@@ -1,20 +1,20 @@
 {
  "schema": 2,
- "release": "1.4.119",
- "fingerprint": "896b812204705db9b01d1f66247c5d61f743aedcc5eeedba26b58eadfeac7724",
- "built": "2026-10-26",
- "source": "Arcrun@57423a1b7b23",
+ "release": "1.4.121",
+ "fingerprint": "33813133ef582578e6f0dcf758457cfd01ea20e4003e830152f0adc60b346e6f",
+ "built": "2026-10-28",
+ "source": "Arcrun@4a47ef4d790e",
  "daemon": {
-  "version": "0.18.116",
-  "built": "20261023-1542",
-  "notes": "雲端把一張卡下架之後，小幫手不再誤以為它還在・包含 0.18.115 的全部內容",
+  "version": "0.18.117",
+  "built": "20261029-2026",
+  "notes": "大檔分次整理卡在同一段時，不會再無限重試、燒光額度・Windows 存的文字檔不再被讀成亂碼・出錯檔不再只寫「重試中」",
   "mac": {
-   "file": "daemon/Arcrun-0.18.116.dmg",
-   "sha256": "6ab4d89dac9ad7eca9101136947799c56339474b1bcbc183a10b814c391f5995"
+   "file": "daemon/Arcrun-0.18.117.dmg",
+   "sha256": "9dd2897c37f95bb0052731f006075ec230a2ba836fad5a977a041bb0db822ded"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.116.exe",
-   "sha256": "731368672f9d7c1c3d51ef79587eb4faaca1a5f4a4c464fcda7e5e3135074cf3"
+   "file": "daemon/Arcrun-win-0.18.117.exe",
+   "sha256": "3062844575af5aad3480147103de2af7be06e3ad822555e6d6bfd2b46387a1b0"
   }
  },
  "core": [
@@ -42,7 +42,7 @@
      "COMPONENT_ID": "array_ops"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "55b1ac2ae0e34d4c4809e088646cb77874319642e3d38b3739e1a491ba8ebb28",
    "sha256": "55b1ac2ae0e34d4c4809e088646cb77874319642e3d38b3739e1a491ba8ebb28",
    "bytes": 67808
@@ -73,7 +73,7 @@
      "COMPONENT_ID": "auth_oauth2"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "11b964ebdd5bef5c0999ce619a7e21d1e381e7ea",
    "source_content_sha256": "0f0dedb9ef43c937d2ab155265808e1623c34738ce577d69c6a6d4152afd2246",
    "sha256": "0f0dedb9ef43c937d2ab155265808e1623c34738ce577d69c6a6d4152afd2246",
    "bytes": 81459
@@ -104,7 +104,7 @@
      "COMPONENT_ID": "auth_service_account"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "11b964ebdd5bef5c0999ce619a7e21d1e381e7ea",
    "source_content_sha256": "72cb5b58072d40c1fdc37549dbc34ad9761ad8a5f6c38270f3fe6f5bdc2eeb82",
    "sha256": "72cb5b58072d40c1fdc37549dbc34ad9761ad8a5f6c38270f3fe6f5bdc2eeb82",
    "bytes": 82680
@@ -135,7 +135,7 @@
      "COMPONENT_ID": "auth_static_key"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "11b964ebdd5bef5c0999ce619a7e21d1e381e7ea",
    "source_content_sha256": "84c3ab7bf1b1241b2db89509f97ddfb596121f62b7b0c9a42c543905bc6e51d5",
    "sha256": "84c3ab7bf1b1241b2db89509f97ddfb596121f62b7b0c9a42c543905bc6e51d5",
    "bytes": 82204
@@ -164,7 +164,7 @@
      "COMPONENT_ID": "code"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "621cb8d948d61be6202063fd02effb3f538437fe",
    "source_content_sha256": "751634a3fc9a99cc2da662026818d754c48f031d10bff3b3be2d3a8ee2311bd6",
    "sha256": "751634a3fc9a99cc2da662026818d754c48f031d10bff3b3be2d3a8ee2311bd6",
    "bytes": 153758
@@ -195,7 +195,7 @@
      "COMPONENT_ID": "cron"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "6e92ca03727bf22143499d6c0df06b40cb65c17b",
    "source_content_sha256": "45b62398fb61f15b54ba8cdf577a5a381d53121e54c96115491be81ebaae53ae",
    "sha256": "45b62398fb61f15b54ba8cdf577a5a381d53121e54c96115491be81ebaae53ae",
    "bytes": 80671
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 2623265,
+   "js_bytes": 2630589,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -242,9 +242,9 @@
     "services": 13
    },
    "source_commit": "481c7dbc32a475d30db9fc1585dfad160c7f8e4e",
-   "source_content_sha256": "b23f8287ba381681a0b66458bf71b7298a3dd9fa855429c0b7985a7c8221ade9",
-   "sha256": "b23f8287ba381681a0b66458bf71b7298a3dd9fa855429c0b7985a7c8221ade9",
-   "bytes": 2623265
+   "source_content_sha256": "e6a8ee6987bdb3dd808384869dec87840cbd42a273bd5773eba000fc491a8089",
+   "sha256": "e6a8ee6987bdb3dd808384869dec87840cbd42a273bd5773eba000fc491a8089",
+   "bytes": 2630589
   },
   {
    "name": "arcrun-date-ops",
@@ -270,7 +270,7 @@
      "COMPONENT_ID": "date_ops"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "7b62c18c4e2d61629dddfca2523152f131beada0e506204e652206523110bd0d",
    "sha256": "7b62c18c4e2d61629dddfca2523152f131beada0e506204e652206523110bd0d",
    "bytes": 67787
@@ -302,7 +302,7 @@
      "COMPONENT_ID": "fetch_relay"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "debaab6e60853084184b138ab72c5ecf260f8171",
    "source_content_sha256": "438962361ec56ee03e3aa9427ea9e55beba75dbcb8b8c39942f121246f48eb7a",
    "sha256": "438962361ec56ee03e3aa9427ea9e55beba75dbcb8b8c39942f121246f48eb7a",
    "bytes": 85934
@@ -331,7 +331,7 @@
      "COMPONENT_ID": "filter"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "28ba33d1b914c15bd48171706de41619e4b476c7afcccb50372db03d408310f9",
    "sha256": "28ba33d1b914c15bd48171706de41619e4b476c7afcccb50372db03d408310f9",
    "bytes": 67745
@@ -360,7 +360,7 @@
      "COMPONENT_ID": "foreach_control"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "a5eaca01e0c54acfcdb9d48f4a2ba1d35638fb25c7fe5614093afaed70dc0e61",
    "sha256": "a5eaca01e0c54acfcdb9d48f4a2ba1d35638fb25c7fe5614093afaed70dc0e61",
    "bytes": 67934
@@ -389,7 +389,7 @@
      "COMPONENT_ID": "hash"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "7bce831cf8980ace6dd3eb602ee5b27f1c70e91b529e5ecc62c66b7a420f69b3",
    "sha256": "7bce831cf8980ace6dd3eb602ee5b27f1c70e91b529e5ecc62c66b7a420f69b3",
    "bytes": 70142
@@ -421,7 +421,7 @@
      "COMPONENT_ID": "http_request"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "11b964ebdd5bef5c0999ce619a7e21d1e381e7ea",
    "source_content_sha256": "a87fcb4b9af24a2da03bbfa9a4f4a15c2b43405b53bec7110e1a7a8acf7655b7",
    "sha256": "a87fcb4b9af24a2da03bbfa9a4f4a15c2b43405b53bec7110e1a7a8acf7655b7",
    "bytes": 81839
@@ -450,7 +450,7 @@
      "COMPONENT_ID": "if_control"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "88e5b3b3f7b3ab3f0b2410fc5eb92673166836300cf0e3fd3ec09ec3137ab9b4",
    "sha256": "88e5b3b3f7b3ab3f0b2410fc5eb92673166836300cf0e3fd3ec09ec3137ab9b4",
    "bytes": 67829
@@ -479,7 +479,7 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "94ffd9dfc4913175a7a5c7d952a38c1f33bc18a9",
    "source_content_sha256": "4105c799ba19ed53592d4c5b68291f1d84a019e496050ab8b8b00090baedf915",
    "sha256": "4105c799ba19ed53592d4c5b68291f1d84a019e496050ab8b8b00090baedf915",
    "bytes": 331550
@@ -530,7 +530,7 @@
      "COMPONENT_ID": "merge"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "f1ebe91e08ac150d5fdce741556a0b5abbfe565725924c00f38daf631addf911",
    "sha256": "f1ebe91e08ac150d5fdce741556a0b5abbfe565725924c00f38daf631addf911",
    "bytes": 67724
@@ -559,7 +559,7 @@
      "COMPONENT_ID": "number_ops"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "a37713707080079851ffed5b60d0f26243e583669e9297344c372279df7e5228",
    "sha256": "a37713707080079851ffed5b60d0f26243e583669e9297344c372279df7e5228",
    "bytes": 67829
@@ -608,7 +608,7 @@
      "COMPONENT_ID": "set"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "ca465d1d6ff28aa1b582713945205266b964d8267c3141442adc0c5a518c9655",
    "sha256": "ca465d1d6ff28aa1b582713945205266b964d8267c3141442adc0c5a518c9655",
    "bytes": 67682
@@ -637,7 +637,7 @@
      "COMPONENT_ID": "string_ops"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "681cb6e0a3429cd8ae94255d99454bd5af942b79f315ecf02fb9bc010936622d",
    "sha256": "681cb6e0a3429cd8ae94255d99454bd5af942b79f315ecf02fb9bc010936622d",
    "bytes": 67829
@@ -666,7 +666,7 @@
      "COMPONENT_ID": "switch"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "56849e91407f4de9839b62a31634aa33a51d92b07777916cdd207e2c6ddfec98",
    "sha256": "56849e91407f4de9839b62a31634aa33a51d92b07777916cdd207e2c6ddfec98",
    "bytes": 67745
@@ -695,7 +695,7 @@
      "COMPONENT_ID": "try_catch"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "023004c33aedef94e69bda592fcb78d6b900d53a2800c6d04b9b0d4f4fd538dd",
    "sha256": "023004c33aedef94e69bda592fcb78d6b900d53a2800c6d04b9b0d4f4fd538dd",
    "bytes": 67808
@@ -724,7 +724,7 @@
      "COMPONENT_ID": "validate_json"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "534a6e193c3a83938dc05871dddd6b9893a2860ff575d87b14a8b25de02ee97b",
    "sha256": "534a6e193c3a83938dc05871dddd6b9893a2860ff575d87b14a8b25de02ee97b",
    "bytes": 67892
@@ -753,7 +753,7 @@
      "COMPONENT_ID": "wait"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "c424c7d0a7d8b444a7db062b2a4bab80b58474777696a89d1b9f9db63209e703",
    "sha256": "c424c7d0a7d8b444a7db062b2a4bab80b58474777696a89d1b9f9db63209e703",
    "bytes": 67703
@@ -791,7 +791,7 @@
      "COMPONENT_ID": "array_ops"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "55b1ac2ae0e34d4c4809e088646cb77874319642e3d38b3739e1a491ba8ebb28",
    "first_install": true
   },
@@ -820,7 +820,7 @@
      "COMPONENT_ID": "auth_oauth2"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "11b964ebdd5bef5c0999ce619a7e21d1e381e7ea",
    "source_content_sha256": "0f0dedb9ef43c937d2ab155265808e1623c34738ce577d69c6a6d4152afd2246",
    "first_install": true
   },
@@ -849,7 +849,7 @@
      "COMPONENT_ID": "auth_service_account"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "11b964ebdd5bef5c0999ce619a7e21d1e381e7ea",
    "source_content_sha256": "72cb5b58072d40c1fdc37549dbc34ad9761ad8a5f6c38270f3fe6f5bdc2eeb82",
    "first_install": true
   },
@@ -878,7 +878,7 @@
      "COMPONENT_ID": "auth_static_key"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "11b964ebdd5bef5c0999ce619a7e21d1e381e7ea",
    "source_content_sha256": "84c3ab7bf1b1241b2db89509f97ddfb596121f62b7b0c9a42c543905bc6e51d5",
    "first_install": true
   },
@@ -905,7 +905,7 @@
      "COMPONENT_ID": "code"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "621cb8d948d61be6202063fd02effb3f538437fe",
    "source_content_sha256": "751634a3fc9a99cc2da662026818d754c48f031d10bff3b3be2d3a8ee2311bd6",
    "first_install": true
   },
@@ -934,7 +934,7 @@
      "COMPONENT_ID": "cron"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "6e92ca03727bf22143499d6c0df06b40cb65c17b",
    "source_content_sha256": "45b62398fb61f15b54ba8cdf577a5a381d53121e54c96115491be81ebaae53ae",
    "first_install": true
   },
@@ -942,7 +942,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 2623265,
+   "js_bytes": 2630589,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -980,7 +980,7 @@
     "services": 13
    },
    "source_commit": "481c7dbc32a475d30db9fc1585dfad160c7f8e4e",
-   "source_content_sha256": "b23f8287ba381681a0b66458bf71b7298a3dd9fa855429c0b7985a7c8221ade9",
+   "source_content_sha256": "e6a8ee6987bdb3dd808384869dec87840cbd42a273bd5773eba000fc491a8089",
    "first_install": true
   },
   {
@@ -1006,7 +1006,7 @@
      "COMPONENT_ID": "date_ops"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "7b62c18c4e2d61629dddfca2523152f131beada0e506204e652206523110bd0d",
    "first_install": true
   },
@@ -1036,7 +1036,7 @@
      "COMPONENT_ID": "fetch_relay"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "debaab6e60853084184b138ab72c5ecf260f8171",
    "source_content_sha256": "438962361ec56ee03e3aa9427ea9e55beba75dbcb8b8c39942f121246f48eb7a",
    "first_install": true
   },
@@ -1063,7 +1063,7 @@
      "COMPONENT_ID": "filter"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "28ba33d1b914c15bd48171706de41619e4b476c7afcccb50372db03d408310f9",
    "first_install": true
   },
@@ -1090,7 +1090,7 @@
      "COMPONENT_ID": "foreach_control"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "a5eaca01e0c54acfcdb9d48f4a2ba1d35638fb25c7fe5614093afaed70dc0e61",
    "first_install": true
   },
@@ -1117,7 +1117,7 @@
      "COMPONENT_ID": "hash"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "7bce831cf8980ace6dd3eb602ee5b27f1c70e91b529e5ecc62c66b7a420f69b3",
    "first_install": true
   },
@@ -1147,7 +1147,7 @@
      "COMPONENT_ID": "http_request"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "11b964ebdd5bef5c0999ce619a7e21d1e381e7ea",
    "source_content_sha256": "a87fcb4b9af24a2da03bbfa9a4f4a15c2b43405b53bec7110e1a7a8acf7655b7",
    "first_install": true
   },
@@ -1174,7 +1174,7 @@
      "COMPONENT_ID": "if_control"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "88e5b3b3f7b3ab3f0b2410fc5eb92673166836300cf0e3fd3ec09ec3137ab9b4",
    "first_install": true
   },
@@ -1202,7 +1202,7 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "94ffd9dfc4913175a7a5c7d952a38c1f33bc18a9",
    "source_content_sha256": "4105c799ba19ed53592d4c5b68291f1d84a019e496050ab8b8b00090baedf915",
    "first_install": true
   },
@@ -1250,7 +1250,7 @@
      "COMPONENT_ID": "merge"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "f1ebe91e08ac150d5fdce741556a0b5abbfe565725924c00f38daf631addf911",
    "first_install": true
   },
@@ -1277,7 +1277,7 @@
      "COMPONENT_ID": "number_ops"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "a37713707080079851ffed5b60d0f26243e583669e9297344c372279df7e5228",
    "first_install": true
   },
@@ -1323,7 +1323,7 @@
      "COMPONENT_ID": "set"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "ca465d1d6ff28aa1b582713945205266b964d8267c3141442adc0c5a518c9655",
    "first_install": true
   },
@@ -1350,7 +1350,7 @@
      "COMPONENT_ID": "string_ops"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "681cb6e0a3429cd8ae94255d99454bd5af942b79f315ecf02fb9bc010936622d",
    "first_install": true
   },
@@ -1377,7 +1377,7 @@
      "COMPONENT_ID": "switch"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "56849e91407f4de9839b62a31634aa33a51d92b07777916cdd207e2c6ddfec98",
    "first_install": true
   },
@@ -1404,7 +1404,7 @@
      "COMPONENT_ID": "try_catch"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "023004c33aedef94e69bda592fcb78d6b900d53a2800c6d04b9b0d4f4fd538dd",
    "first_install": true
   },
@@ -1431,7 +1431,7 @@
      "COMPONENT_ID": "validate_json"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "534a6e193c3a83938dc05871dddd6b9893a2860ff575d87b14a8b25de02ee97b",
    "first_install": true
   },
@@ -1458,7 +1458,7 @@
      "COMPONENT_ID": "wait"
     }
    },
-   "source_commit": "e7996b486662fcc51fe0bd1588170a984f51d632",
+   "source_commit": "78b63c959211c55991b0328f0562350b407b2a4c",
    "source_content_sha256": "c424c7d0a7d8b444a7db062b2a4bab80b58474777696a89d1b9f9db63209e703",
    "first_install": true
   }
