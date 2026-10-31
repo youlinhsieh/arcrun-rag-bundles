@@ -6607,6 +6607,39 @@ async function recordWarning(db, percent, written, read, now = Date.now()) {
   const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
   return toBrake(rec, now);
 }
+var METERED_ITEMS = ["ai"];
+var METERED_LABELS = {
+  ai: { label: "\u4ECA\u5929\u7684 Workers AI \u7528\u91CF", unit: "neurons", what: "Workers AI", stopped: "\u96F2\u7AEF\u8403\u53D6\u5148\u66AB\u505C" }
+};
+async function recordMeteredBrake(db, input, now = Date.now()) {
+  await ensureBrakeTemplate(db);
+  const meta = METERED_LABELS[input.item];
+  const op = `DAILY ${input.item}`;
+  const recordId = `brake_daily_${input.item}_${utcDay3(now)}`;
+  const releaseAt = nextQuotaReset(now).toISOString();
+  const values = {
+    kind: "brake",
+    op,
+    op_label: meta.label,
+    caller: "*",
+    rows_written: "0",
+    rows_read: "0",
+    statements: "0",
+    ceiling_write: "0",
+    ceiling_read: "0",
+    basis: `${meta.what} \u514D\u8CBB\u984D\u5EA6\u6BCF\u65E5 ${n(input.limit)} ${meta.unit}\uFF08\u4ECA\u5929\u5DF2\u7528 ${n(input.used)}\uFF09`,
+    top_sql: "",
+    blocked: "true",
+    tripped_at: new Date(now).toISOString(),
+    release_at: releaseAt,
+    message: `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u4ECA\u5929\u7684 ${meta.what} \u5DF2\u7528 ${n(input.used)} ${meta.unit}\uFF0C\u5230\u4E86\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650 ${n(input.limit)}\u3002\u518D\u7528\u4E0B\u53BB\u5C31\u958B\u59CB\u8A08\u8CBB\uFF0C\u6240\u4EE5${meta.stopped}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF08\u63A5\u53D7\u8D85\u51FA\u7684\u90E8\u5206\u8A08\u8CBB\uFF09\uFF0C\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\uFF0C\u6216\u547C\u53EB POST /usage-brakes/${recordId}/release\u3002`
+  };
+  const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
+  const trueRec = await getRecord(db, recordId);
+  const brake = toBrake(trueRec ?? rec, now);
+  if (activeCache) activeCache = { ...activeCache, newestId: brake.id, brakes: [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)] };
+  return brake;
+}
 async function getBrake(db, id) {
   const { getRecord: getRecord2 } = await Promise.resolve().then(() => (init_record_crud(), record_crud_exports));
   const rec = await getRecord2(db, id);
@@ -8253,6 +8286,19 @@ usageBrakeRoutes.get("/usage", async (c) => {
     essential_reserve: essentialUsageToday(),
     basis: "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u4E0D\u8AD6\u5E33\u865F\u5BE6\u969B\u65B9\u6848\uFF09\uFF1B\u6578\u5B57\u662F KBDB \u9598\u53E3\u81EA\u5DF1\u7D2F\u8A08\u7684 meta.rows_written\uFF0Frows_read"
   });
+});
+usageBrakeRoutes.post("/metered", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const used = Number(body.used);
+  const limit = Number(body.limit);
+  if (!METERED_ITEMS.includes(String(body.item))) {
+    return c.json({ success: false, error: `item \u5FC5\u9808\u662F ${METERED_ITEMS.join("\uFF0F")}` }, 400);
+  }
+  if (!Number.isFinite(used) || used < 0 || !Number.isFinite(limit) || limit <= 0) {
+    return c.json({ success: false, error: "used \u5FC5\u9808\u662F \u22650 \u7684\u6578\u5B57\u3001limit \u5FC5\u9808\u662F >0 \u7684\u6578\u5B57" }, 400);
+  }
+  const brake = await recordMeteredBrake(dbOf(c.env), { item: body.item, used: Math.round(used), limit: Math.round(limit) });
+  return c.json({ success: true, brake });
 });
 usageBrakeRoutes.post("/:id/release", async (c) => {
   const body = await c.req.json().catch(() => ({}));
