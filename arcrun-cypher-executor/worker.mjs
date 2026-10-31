@@ -16523,3297 +16523,6 @@ async function requestInstanceUpdate(env, fetchImpl = fetch) {
   return { status: 200, body: { ok: false, state: "refused", message: message2 || "\u9019\u6B21\u6C92\u8FA6\u6CD5\u5E6B\u4F60\u66F4\u65B0\u3002" } };
 }
 
-// cypher-executor/src/routes/portal.ts
-var portalRouter = new Hono2();
-var SESSION_TEMPLATE3 = "portal_session";
-var LOCKFAIL_TEMPLATE = "portal_lockfail";
-var LOCK_LIMIT = 5;
-var LOCK_TTL_SECONDS = 15 * 60;
-var DEFAULT_SESSION_TTL = 604800;
-var USER_TEMPLATE = "portal_user";
-var LIBRARY_TEMPLATE = "portal_library";
-function portalTenant(env) {
-  return accountTenant(env);
-}
-function portalNamespace(env) {
-  return `${accountTenant(env)}::portal`;
-}
-function sessionTtl(env) {
-  const n = Number.parseInt(env.PORTAL_SESSION_TTL ?? "", 10);
-  return Number.isFinite(n) && n >= 60 ? n : DEFAULT_SESSION_TTL;
-}
-function bearerToken(c) {
-  const auth = c.req.header("authorization") ?? "";
-  return auth.match(/^Bearer\s+(\S+)/i)?.[1] ?? null;
-}
-var KbdbError = class extends Error {
-};
-async function kbdbFetch3(env, path, init, opts) {
-  const { base, headers } = kbdbBase(env);
-  const baseHeaders = opts?.essential ? withEssential(headers) : headers;
-  let res;
-  try {
-    res = await fetch(`${base}${path}`, { ...init, headers: { ...baseHeaders, ...init?.headers } });
-  } catch (e) {
-    throw new KbdbError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
-  }
-  return res;
-}
-async function aiPercentNow(env) {
-  const now2 = Date.now();
-  return aiPercentToday(await getCfMonth(env, now2), now2) ?? void 0;
-}
-async function run(c, fn) {
-  try {
-    return await fn();
-  } catch (e) {
-    if (e instanceof AuthStorePropagatingError) {
-      return c.json({ error: e.message, code: "auth_store_propagating" }, 503);
-    }
-    const origin2 = new URL(c.req.url).origin;
-    if (e instanceof AuthStoreWriteError) {
-      const { body, status } = portalErrorBody(origin2, "auth_store_not_writable", { advanced: e.message });
-      return c.json(body, status);
-    }
-    if (e instanceof TenantUnresolvedError) {
-      const { body, status } = portalErrorBody(origin2, e.code, { advanced: e.message });
-      return c.json(body, status);
-    }
-    if (e instanceof KbdbError) return c.json({ error: `KBDB \u4E0D\u53EF\u9054\u6216\u56DE\u932F\uFF1A${e.message}` }, 502);
-    throw e;
-  }
-}
-function honestStop(c, code, advanced) {
-  const { body, status } = portalErrorBody(new URL(c.req.url).origin, code, advanced ? { advanced } : void 0);
-  return c.json(body, status);
-}
-async function ensurePortalTemplates(env) {
-  const created = [];
-  const existing = [];
-  const errors = [];
-  for (const seed of PORTAL_TEMPLATE_SEEDS) {
-    try {
-      const got = await kbdbFetch3(env, `/templates/${encodeURIComponent(seed.name)}`, void 0, { essential: true });
-      if (got.ok) {
-        const body = await got.json().catch(() => null);
-        const tpl = body?.template;
-        if (tpl?.id && tpl.slots_json) {
-          let currentSlots = [];
-          try {
-            const parsed = JSON.parse(tpl.slots_json);
-            if (Array.isArray(parsed)) currentSlots = parsed.filter((s) => typeof s === "string");
-          } catch {
-          }
-          const missing = seed.slots.filter((s) => !currentSlots.includes(s));
-          if (missing.length > 0) {
-            const patched = await kbdbFetch3(env, `/templates/${encodeURIComponent(tpl.id)}`, {
-              method: "PATCH",
-              body: JSON.stringify({ slots: [...currentSlots, ...missing] })
-            }, { essential: true });
-            if (!patched.ok) throw new KbdbError(`PATCH /templates/${seed.name} \u88DC slots \u2192 ${patched.status}`);
-          }
-        }
-        existing.push(seed.name);
-        continue;
-      }
-      if (got.status !== 404) throw new KbdbError(`GET /templates/${seed.name} \u2192 ${got.status}`);
-      const res = await kbdbFetch3(env, "/templates", {
-        method: "POST",
-        body: JSON.stringify({
-          name: seed.name,
-          slots: seed.slots,
-          description: seed.description,
-          created_by: seed.created_by
-        })
-      }, { essential: true });
-      if (!res.ok) throw new KbdbError(`POST /templates ${seed.name} \u2192 ${res.status}`);
-      created.push(seed.name);
-    } catch (e) {
-      errors.push(`${seed.name}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  return { created, existing, errors };
-}
-function authUserToRecord(u) {
-  return {
-    record_id: u.id,
-    template_id: USER_TEMPLATE,
-    values: {
-      email: u.email,
-      display_name: u.display_name,
-      status: u.status,
-      role: u.role,
-      password_hash: u.password_hash,
-      libraries: JSON.stringify(u.libraries ?? []),
-      created_at: u.created_at,
-      updated_at: u.updated_at
-    }
-  };
-}
-function recordValuesToAuthUser(id, v) {
-  return {
-    id,
-    email: (v.email ?? "").toLowerCase(),
-    display_name: v.display_name ?? "",
-    status: v.status ?? "active",
-    role: v.role ?? "user",
-    libraries: parseLibraries(v.libraries),
-    password_hash: v.password_hash ?? "",
-    created_at: v.created_at ?? (/* @__PURE__ */ new Date()).toISOString(),
-    updated_at: v.updated_at ?? (/* @__PURE__ */ new Date()).toISOString()
-  };
-}
-async function promoteToKbdb(env, rec) {
-  try {
-    const email = (rec.values.email ?? "").toLowerCase();
-    if (!email) return null;
-    const already = await findKbdbUserRecordId(env, email);
-    if (already) return already;
-    const recordId = await createKbdbUserRecord(env, email, {
-      display_name: rec.values.display_name ?? "",
-      status: rec.values.status ?? "active",
-      role: rec.values.role ?? "user",
-      libraries: rec.values.libraries ?? "[]",
-      created_at: rec.values.created_at ?? (/* @__PURE__ */ new Date()).toISOString(),
-      updated_at: rec.values.updated_at ?? (/* @__PURE__ */ new Date()).toISOString()
-    });
-    if (rec.values.password_hash) await setPortalPasswordHash(env, recordId, rec.values.password_hash);
-    return recordId;
-  } catch {
-    return null;
-  }
-}
-async function findUserRecordId(env, email) {
-  const inKbdb = await findKbdbUserRecordId(env, email);
-  if (inKbdb) return inKbdb;
-  return findAuthUserByEmail(env, email)?.id ?? null;
-}
-async function findKbdbUserRecordId(env, email) {
-  const ns = portalNamespace(env);
-  const params = new URLSearchParams({
-    page_name: email,
-    entry_type: USER_TEMPLATE,
-    owner_id: ns,
-    limit: "1"
-  });
-  const res = await kbdbFetch3(env, `/entries?${params.toString()}`, void 0, { essential: true });
-  if (!res.ok) throw new KbdbError(`head entry \u67E5\u627E \u2192 ${res.status}`);
-  const body = await res.json();
-  const content = body.entries?.[0]?.content;
-  return content ?? null;
-}
-async function getRecordById(env, recordId) {
-  if (isAuthStoreId(recordId)) {
-    const u = findAuthUserById(env, recordId);
-    return u ? authUserToRecord(u) : null;
-  }
-  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, void 0, { essential: true });
-  if (res.status === 404) {
-    releaseBody(res);
-    return null;
-  }
-  if (!res.ok) {
-    releaseBody(res);
-    throw new KbdbError(`GET /records/${recordId} \u2192 ${res.status}`);
-  }
-  const body = await res.json();
-  return body.record ?? null;
-}
-async function patchRecordValues(env, recordId, values) {
-  if (isAuthStoreId(recordId)) {
-    let updated = null;
-    await mutateAuthStore(env, (data) => {
-      const idx = data.users.findIndex((u) => u.id === recordId);
-      if (idx < 0) throw new KbdbError(`\u8A8D\u8B49\u5132\u5B58\u627E\u4E0D\u5230\u5E33\u865F ${recordId}`);
-      const merged = { ...authUserToRecord(data.users[idx]).values, ...values };
-      updated = recordValuesToAuthUser(recordId, merged);
-      data.users[idx] = updated;
-    });
-    if (!updated) throw new KbdbError(`\u8A8D\u8B49\u5132\u5B58\u66F4\u65B0\u5931\u6557 ${recordId}`);
-    return authUserToRecord(updated);
-  }
-  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ values })
-  }, { essential: true });
-  if (!res.ok) throw new KbdbError(`PATCH /records/${recordId} \u2192 ${res.status}`);
-  const body = await res.json();
-  if (!body.record) throw new KbdbError(`PATCH /records/${recordId} \u56DE\u61C9\u7F3A record`);
-  return body.record;
-}
-async function deleteKbdbRecord(env, recordId) {
-  if (isAuthStoreId(recordId)) {
-    let found = false;
-    await mutateAuthStore(env, (data) => {
-      const idx = data.users.findIndex((u) => u.id === recordId);
-      if (idx >= 0) {
-        data.users.splice(idx, 1);
-        found = true;
-      }
-    });
-    return found;
-  }
-  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }, { essential: true });
-  if (res.status === 404) return false;
-  if (!res.ok) throw new KbdbError(`DELETE /records/${recordId} \u2192 ${res.status}`);
-  return true;
-}
-function daemonActiveKey(env) {
-  return `${portalTenant(env)}:portal:daemon_active_libs`;
-}
-async function markDaemonLibraryActive(env, library) {
-  try {
-    const names = /* @__PURE__ */ new Set();
-    const raw2 = await env.WEBHOOKS.get(daemonActiveKey(env), "text");
-    if (raw2) {
-      for (const n of JSON.parse(raw2)) {
-        const s = String(n ?? "").trim();
-        if (s) names.add(s);
-      }
-    }
-    names.add(library);
-    await env.WEBHOOKS.put(daemonActiveKey(env), JSON.stringify([...names]), { expirationTtl: 172800 });
-  } catch {
-  }
-}
-async function listRecordsByTemplate(env, template) {
-  if (template === USER_TEMPLATE) {
-    let fromKbdb = [];
-    try {
-      fromKbdb = await listKbdbRecordsByTemplate(env, template);
-    } catch {
-      fromKbdb = [];
-    }
-    const seen = new Set(fromKbdb.map((r) => (r.values.email ?? "").toLowerCase()));
-    const fromLegacy = readAuthStore(env).users.map(authUserToRecord).filter((r) => !seen.has((r.values.email ?? "").toLowerCase()));
-    return [...fromKbdb, ...fromLegacy];
-  }
-  return listKbdbRecordsByTemplate(env, template);
-}
-async function listKbdbRecordsByTemplate(env, template) {
-  const ns = portalNamespace(env);
-  const res = await kbdbFetch3(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
-  if (!res.ok) {
-    releaseBody(res);
-    throw new KbdbError(`GET /records/by-template/${template} \u2192 ${res.status}`);
-  }
-  const body = await res.json();
-  return body.records ?? [];
-}
-async function createKbdbUserRecord(env, email, values) {
-  const ns = portalNamespace(env);
-  const res = await kbdbFetch3(env, "/records", {
-    method: "POST",
-    body: JSON.stringify({ template: USER_TEMPLATE, owner_id: ns, values: { ...values, email } })
-  }, { essential: true });
-  if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_user\uFF09\u2192 ${res.status}`);
-  const body = await res.json();
-  const recordId = body.record?.record_id;
-  if (!recordId) throw new KbdbError("POST /records \u56DE\u61C9\u7F3A record_id");
-  const head = await kbdbFetch3(env, "/entries", {
-    method: "POST",
-    body: JSON.stringify({ entry_type: USER_TEMPLATE, page_name: email, content: recordId, owner_id: ns })
-  }, { essential: true });
-  if (!head.ok) throw new KbdbError(`head entry \u5EFA\u7ACB\u5931\u6557\uFF08record ${recordId} \u5DF2\u5EFA\uFF0C\u9700\u4EBA\u5DE5\u6536\u62FE\uFF09\u2192 ${head.status}`);
-  return recordId;
-}
-async function createPortalUser(env, input, tokenOverride) {
-  if (!authStoreWritable(env, tokenOverride)) {
-    throw new AuthStoreWriteError(
-      "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u5BEB\u4E0D\u9032\u8A8D\u8B49\u5132\u5B58\uFF08\u7F3A\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF09\u3002\u5B89\u88DD\u7CBE\u9748\u5EFA\u7ACB\u5E33\u865F\u6642\u6703\u81EA\u52D5\u5E36\u4E0A\uFF1B\u5B89\u88DD\u5B8C\u4E4B\u5F8C\u8981\u65B0\u589E\u5E33\u865F\uFF0C\u9700\u8981\u5BE6\u4F8B\u8A2D\u5B9A CF_SECRETS_API_TOKEN\uFF08\u8ACB\u56DE\u5831\u652F\u63F4\uFF09\u3002"
-    );
-  }
-  const now2 = (/* @__PURE__ */ new Date()).toISOString();
-  const recordId = await createKbdbUserRecord(env, input.email.toLowerCase(), {
-    display_name: input.display_name,
-    status: "active",
-    role: input.role,
-    libraries: JSON.stringify(input.libraries),
-    created_at: now2,
-    updated_at: now2
-  });
-  try {
-    await setPortalPasswordHash(env, recordId, input.password_hash, tokenOverride);
-  } catch (e) {
-    await deleteKbdbRecord(env, recordId).catch(() => {
-    });
-    throw e;
-  }
-  return recordId;
-}
-function parseLibraries(raw2) {
-  if (!raw2) return [];
-  try {
-    const arr = JSON.parse(raw2);
-    if (Array.isArray(arr) && arr.every((x) => typeof x === "string")) return arr;
-  } catch {
-  }
-  return [];
-}
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
-}
-function isValidLibraryName(name) {
-  return /^(\*|[A-Za-z0-9_-]{1,64})$/.test(name);
-}
-function validLibrariesInput(libs) {
-  return Array.isArray(libs) && libs.length > 0 && libs.every((x) => typeof x === "string" && isValidLibraryName(x));
-}
-function toPublicUser(rec) {
-  const v = rec.values;
-  return {
-    record_id: rec.record_id,
-    email: v.email ?? "",
-    display_name: v.display_name ?? "",
-    status: v.status ?? "",
-    role: v.role ?? "",
-    libraries: parseLibraries(v.libraries),
-    created_at: v.created_at ?? "",
-    updated_at: v.updated_at ?? ""
-  };
-}
-async function requirePortalUser(c) {
-  const token = bearerToken(c);
-  if (!token) return { ok: false, res: c.json({ error: "\u672A\u767B\u5165" }, 401) };
-  const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
-  if (!sess) return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
-  const recordId = sess.record_id;
-  if (!recordId) {
-    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
-    return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
-  }
-  let rec = await getRecordById(c.env, recordId);
-  if (!rec && await hydrateFromAccelerator(c.env)) {
-    rec = await getRecordById(c.env, recordId);
-  }
-  if (!rec) {
-    if (await authStoreRecentlyWritten(c.env)) {
-      return {
-        ok: false,
-        res: c.json(
-          {
-            error: "\u8A8D\u8B49\u8CC7\u6599\u6B63\u5728\u66F4\u65B0\u4E2D\uFF08Cloudflare \u6B63\u5728\u92EA\u958B\u65B0\u7248\u672C\uFF09\uFF0C\u8ACB\u7A0D\u5019\u5E7E\u79D2\u518D\u8A66\u2014\u2014\u4F60\u4E26\u6C92\u6709\u88AB\u767B\u51FA\u3002",
-            code: "auth_store_propagating"
-          },
-          503
-        )
-      };
-    }
-    return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
-  }
-  if ((rec.values.status ?? "") !== "active") {
-    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
-    return { ok: false, res: c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403) };
-  }
-  return { ok: true, user: { token, recordId, values: rec.values } };
-}
-async function requirePortalAdmin(c) {
-  const auth = await requirePortalUser(c);
-  if (!auth.ok) return auth;
-  if ((auth.user.values.role ?? "") !== "admin") {
-    return { ok: false, res: c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403) };
-  }
-  return auth;
-}
-async function graphSourceLibraries(env) {
-  const libs = await listRecordsByTemplate(env, LIBRARY_TEMPLATE);
-  const marked = libs.filter((l) => (l.values.graph_source ?? "") === "true" && (l.values.status ?? "active") !== "disabled").map((l) => l.values.name ?? "").filter(Boolean);
-  return marked.length > 0 ? marked : ["general"];
-}
-async function hasGraphAccess(env, userLibraries) {
-  if (userLibraries.includes("*")) return true;
-  if (userLibraries.length === 0) return false;
-  const sources = await graphSourceLibraries(env);
-  return sources.some((s) => userLibraries.includes(s));
-}
-function workflowsVisible(env, role) {
-  const setting = (env.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
-  if (setting === "off") return false;
-  if (setting === "all") return true;
-  return role === "admin";
-}
-function uploadEnabled(env) {
-  return Boolean(env.PORTAL_UPLOAD_REPO && env.PORTAL_UPLOAD_GITEA && env.PORTAL_UPLOAD_TOKEN);
-}
-async function assertPortalUserRecord(env, recordId) {
-  const rec = await getRecordById(env, recordId);
-  if (!rec) return null;
-  const email = rec.values.email;
-  if (!email) return null;
-  const headRecordId = await findUserRecordId(env, email);
-  if (headRecordId !== recordId) return null;
-  return rec;
-}
-async function isLocked(env, email) {
-  return (await lockState(env, email)).locked;
-}
-async function lockState(env, email) {
-  const rec = await ephemeralGet(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
-  if (!rec) return { locked: false, hasFailures: false };
-  return { locked: (Number(rec.count) || 0) >= LOCK_LIMIT, hasFailures: true };
-}
-async function recordLoginFail(env, email) {
-  const rec = await ephemeralGet(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
-  const count = rec ? Number(rec.count) || 0 : 0;
-  await ephemeralPut(env, {
-    template: LOCKFAIL_TEMPLATE,
-    slots: ["count"],
-    hashField: "email_hash",
-    rawKey: email,
-    values: { count: String(count + 1) },
-    ttlSeconds: LOCK_TTL_SECONDS
-  });
-}
-async function clearLoginFail(env, email) {
-  await ephemeralDelete(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
-}
-async function instanceHasNoAuthData(env) {
-  if (readAuthStore(env).users.length > 0) return false;
-  try {
-    return (await listKbdbRecordsByTemplate(env, USER_TEMPLATE)).length === 0;
-  } catch {
-    return true;
-  }
-}
-async function findAndVerifyUser(env, email, password) {
-  const attempt = async () => {
-    const recordId = await findUserRecordId(env, email);
-    const rec = recordId ? await getRecordById(env, recordId) : null;
-    const hash = recordId ? findPortalPasswordHash(env, recordId) ?? rec?.values.password_hash ?? "" : "";
-    const ok = rec ? await verifyPassword(password, hash) : false;
-    return { recordId, rec, ok };
-  };
-  const first = await attempt();
-  if (first.ok) return first;
-  if (await hydrateFromAccelerator(env)) {
-    const second = await attempt();
-    if (second.ok || second.rec) return second;
-  }
-  return first;
-}
-function propagatingLogin(c) {
-  return c.json(
-    {
-      error: "\u5E33\u865F\u8CC7\u6599\u525B\u525B\u66F4\u65B0\u904E\uFF0C\u9019\u53F0\u4F3A\u670D\u5668\u9084\u5728\u540C\u6B65\u4E2D\u2014\u2014\u8ACB\u7B49 10\uFF5E30 \u79D2\u518D\u767B\u5165\u4E00\u6B21\uFF08\u9019\u6B21\u4E0D\u7B97\u5931\u6557\uFF09\u3002",
-      code: "auth_store_propagating"
-    },
-    503
-  );
-}
-async function sessionLifeFor(c, body) {
-  if (body?.purpose !== "mcp") return sessionTtl(c.env);
-  const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
-  const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
-  if (!expected || !got || !constantTimeEqual(got, expected)) return sessionTtl(c.env);
-  const ttl = await readMcpTokenTtl(c.env).catch(() => null);
-  if (!ttl || ttl.seconds === NEVER_EXPIRES_SECONDS) return null;
-  return ttl.seconds;
-}
-portalRouter.post(
-  "/portal/login",
-  (c) => run(c, async () => {
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const password = String(body?.password ?? "");
-    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-    const lock = await lockState(c.env, email);
-    if (lock.locked) {
-      return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
-    }
-    const t0 = Date.now();
-    const { recordId, rec, ok } = await findAndVerifyUser(c.env, email, password);
-    const tVerify = Date.now() - t0;
-    if (!recordId || !rec) {
-      if (await instanceHasNoAuthData(c.env)) {
-        return c.json(
-          {
-            error: "\u9019\u53F0\u5BE6\u4F8B\u8B80\u4E0D\u5230\u4EFB\u4F55\u767B\u5165\u8CC7\u6599\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8A8D\u8B49\u5132\u5B58\u662F\u7A7A\u7684\uFF0C\u8ACB\u91CD\u65B0\u57F7\u884C\u5B89\u88DD\uFF0F\u66F4\u65B0\u4EE5\u91CD\u65B0\u5EFA\u7ACB\u7BA1\u7406\u54E1\u5E33\u865F\u3002",
-            code: "auth_store_empty",
-            auth_store: { home: "kbdb", writable: true, users: 0 }
-          },
-          503
-        );
-      }
-      if (await authStoreStaleHere(c.env)) return propagatingLogin(c);
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    if ((rec.values.status ?? "") !== "active") {
-      return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
-    }
-    if (!ok) {
-      if (await authStoreStaleHere(c.env)) return propagatingLogin(c);
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    let sessionRecordId = recordId;
-    if (isAuthStoreId(recordId)) {
-      const migrated = await promoteToKbdb(c.env, rec);
-      if (migrated) sessionRecordId = migrated;
-    }
-    const t1 = Date.now();
-    const token = randomHex2(32);
-    const sessionLife = await sessionLifeFor(c, body);
-    await Promise.all([
-      lock.hasFailures ? clearLoginFail(c.env, email) : Promise.resolve(),
-      ephemeralPut(c.env, {
-        template: SESSION_TEMPLATE3,
-        slots: ["record_id"],
-        hashField: "token_hash",
-        rawKey: token,
-        values: { record_id: sessionRecordId },
-        ttlSeconds: sessionLife,
-        fresh: true
-      })
-    ]);
-    c.header("Server-Timing", `verify;dur=${tVerify}, session;dur=${Date.now() - t1}`);
-    return c.json({
-      success: true,
-      session_token: token,
-      display_name: rec.values.display_name ?? "",
-      role: rec.values.role ?? "user",
-      libraries: parseLibraries(rec.values.libraries),
-      // session 還能活多久（秒）。**非機密**（是這台實例的 TTL 設定，不是任何人的憑據），
-      // 但呼叫端需要它才能把自己發的憑證對齊這個上限——arcrun-mcp 用它把 OAuth
-      // access_token 的 TTL 夾到 min(自己的 TTL, 這個值)：否則 MCP token 活 30 天、
-      // 底下的 portal session 7 天就死，使用者會在第 8 天遇到「連著卻查不到」的鬼打牆。
-      // null＝不過期（僅 MCP 授權、且效期設定為不過期時）。
-      session_expires_in: sessionLife
-      // 絕不回租戶字串（design §3.3：portal_user 拿到租戶字串就能繞過庫 filter 直打 /kbdb/*）
-    });
-  })
-);
-portalRouter.post("/portal/logout", async (c) => {
-  const token = bearerToken(c);
-  if (token) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
-  return c.json({ success: true });
-});
-portalRouter.get(
-  "/portal/session",
-  (c) => run(c, async () => {
-    const auth = await requirePortalUser(c);
-    if (!auth.ok) return auth.res;
-    const v = auth.user.values;
-    const role = v.role ?? "user";
-    const libraries = parseLibraries(v.libraries);
-    return c.json({
-      valid: true,
-      display_name: v.display_name ?? "",
-      email: v.email ?? "",
-      // t53：完成安裝清單在站內生 daemon config.json 要用（身分顯示欄）
-      role,
-      libraries,
-      graph_allowed: await hasGraphAccess(c.env, libraries),
-      workflows_visible: workflowsVisible(c.env, role),
-      // portal-demo-suite：上傳頁能力（bindings 齊全才 true；同上，只是顯示提示，真閘在路由層）
-      upload_enabled: uploadEnabled(c.env)
-    });
-  })
-);
-var PWRESET_TEMPLATE = "portal_pwreset";
-var PWRESET_TTL_SECONDS = 30 * 60;
-var PWRESET_THROTTLE_TEMPLATE = "portal_pwreset_throttle";
-var PWRESET_THROTTLE_SECONDS = 120;
-var RELAY_TICKET_TEMPLATE = "portal_relay_ticket";
-var RELAY_TICKET_TTL_SECONDS = 120;
-function portalUiOrigin(env) {
-  const declared = String(env.UI_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (declared.length > 0) return declared[0];
-  if (isPrivateCloud(env)) return null;
-  const sub = String(env.WORKER_SUBDOMAIN ?? "").trim();
-  return sub ? `https://arcrun-rag-ui.${sub}.workers.dev` : null;
-}
-async function issueResetToken(env, recordId, email) {
-  const token = randomHex2(32);
-  await ephemeralPut(env, {
-    template: PWRESET_TEMPLATE,
-    slots: ["record_id", "email", "created_at"],
-    hashField: "token_hash",
-    rawKey: token,
-    values: { record_id: recordId, email, created_at: (/* @__PURE__ */ new Date()).toISOString() },
-    ttlSeconds: PWRESET_TTL_SECONDS
-  });
-  return token;
-}
-async function peekResetToken(env, token) {
-  if (!token || !/^[0-9a-f]{16,128}$/i.test(token)) return null;
-  const rec = await ephemeralGet(env, { template: PWRESET_TEMPLATE, hashField: "token_hash", rawKey: token });
-  if (!rec) return null;
-  return { record_id: rec.record_id ?? "", email: rec.email ?? "", created_at: rec.created_at ?? "" };
-}
-async function restoreResetToken(env, token, payload) {
-  const age = Math.floor((Date.now() - new Date(payload.created_at).getTime()) / 1e3);
-  const remaining = PWRESET_TTL_SECONDS - (Number.isFinite(age) && age > 0 ? age : 0);
-  if (remaining <= 0) return;
-  try {
-    await ephemeralPut(env, {
-      template: PWRESET_TEMPLATE,
-      slots: ["record_id", "email", "created_at"],
-      hashField: "token_hash",
-      rawKey: token,
-      values: { record_id: payload.record_id, email: payload.email, created_at: payload.created_at },
-      ttlSeconds: remaining
-    });
-  } catch {
-  }
-}
-async function consumeResetToken(env, token) {
-  if (!token || !/^[0-9a-f]{16,128}$/i.test(token)) return null;
-  const rec = await ephemeralGet(env, { template: PWRESET_TEMPLATE, hashField: "token_hash", rawKey: token, consume: true });
-  if (!rec) return null;
-  return { record_id: rec.record_id ?? "", email: rec.email ?? "", created_at: rec.created_at ?? "" };
-}
-async function writeNewPassword(env, recordId, newPassword) {
-  const newHash = await hashPassword2(newPassword);
-  await setPortalPasswordHash(env, recordId, newHash);
-  await patchRecordValues(env, recordId, {
-    updated_at: (/* @__PURE__ */ new Date()).toISOString()
-  });
-}
-async function relayResetLink(env, apiOrigin, email, ticket) {
-  const base = String(env.PORTAL_MAIL_RELAY_BASE ?? "").trim().replace(/\/$/, "");
-  if (!base) return "not_configured";
-  const headers = { "Content-Type": "application/json" };
-  if (env.PORTAL_MAIL_RELAY_KEY) headers["X-Arcrun-Relay-Key"] = env.PORTAL_MAIL_RELAY_KEY;
-  try {
-    const res = await fetch(`${base}/api/send-password-reset`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ email, api_origin: apiOrigin, ticket })
-    });
-    return res.ok ? "sent" : "failed";
-  } catch {
-    return "failed";
-  }
-}
-portalRouter.post(
-  "/portal/password/relay-verify",
-  (c) => run(c, async () => {
-    const body = await c.req.json().catch(() => null);
-    const ticket = String(body?.ticket ?? "").trim();
-    if (!ticket || !/^[0-9a-f]{8,64}$/i.test(ticket)) return c.json({ ok: false }, 400);
-    const rec = await ephemeralGet(c.env, { template: RELAY_TICKET_TEMPLATE, hashField: "ticket_hash", rawKey: ticket, consume: true });
-    if (!rec) return c.json({ ok: false }, 404);
-    if (!rec.record_id || !rec.api_origin) return c.json({ ok: false }, 404);
-    const token = await issueResetToken(c.env, rec.record_id, rec.email ?? "");
-    const link = `${rec.api_origin}/portal/password/reset-link?token=${encodeURIComponent(token)}`;
-    return c.json({ ok: true, email_sha256: await sha256Hex5(rec.email ?? ""), link });
-  })
-);
-portalRouter.get("/portal/password/reset-link", (c) => {
-  const token = c.req.query("token") ?? "";
-  const ui = portalUiOrigin(c.env);
-  if (!ui) return c.text("\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A portal \u524D\u7AEF\u7DB2\u5740\uFF0C\u7121\u6CD5\u5C0E\u5411\u4FEE\u6539\u5BC6\u78BC\u756B\u9762\u3002", 500);
-  return c.redirect(`${ui}/portal/#/reset?token=${encodeURIComponent(token)}`, 302);
-});
-portalRouter.post(
-  "/portal/password/forgot",
-  (c) => run(c, async () => {
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    if (!email || !isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
-    if (!String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim()) {
-      return c.json(
-        {
-          error: "\u5BC4\u4FE1\u529F\u80FD\u9084\u6C92\u63A5\u4E0A\uFF0C\u6240\u4EE5\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u7684\u4FE1\u5BC4\u4E0D\u51FA\u53BB\u3002\u8ACB\u7167\u7576\u521D\u6536\u5230\u7684\u5B89\u88DD\u7DB2\u5740\uFF0C\u91CD\u65B0\u57F7\u884C\u4E00\u6B21\u5B89\u88DD\uFF08\u9078\u540C\u4E00\u500B Cloudflare \u5E33\u865F\uFF09\u2014\u2014\u5B8C\u6210\u5F8C\u9019\u500B\u529F\u80FD\u5C31\u6703\u81EA\u52D5\u63A5\u4E0A\uFF0C\u4E0D\u9700\u8981\u81EA\u5DF1\u8A2D\u5B9A\u4EFB\u4F55\u6771\u897F\uFF0C\u4E5F\u4E0D\u7528\u627E\u4EFB\u4F55\u4EBA\u5E6B\u5FD9\u3002",
-          code: "mail_relay_not_configured"
-        },
-        503
-      );
-    }
-    const generic = {
-      success: true,
-      message: "\u5982\u679C\u9019\u500B email \u6709\u5E33\u865F\uFF0C\u6211\u5011\u5DF2\u7D93\u628A\u300C\u4FEE\u6539\u5BC6\u78BC\u300D\u7684\u9023\u7D50\u5BC4\u904E\u53BB\u4E86\uFF08\u9023\u7D50 30 \u5206\u9418\u5167\u6709\u6548\u3001\u53EA\u80FD\u7528\u4E00\u6B21\uFF09\u3002"
-    };
-    const throttled = await ephemeralGet(c.env, { template: PWRESET_THROTTLE_TEMPLATE, hashField: "email_hash", rawKey: email });
-    if (throttled) return c.json(generic);
-    await ephemeralPut(c.env, {
-      template: PWRESET_THROTTLE_TEMPLATE,
-      slots: ["marker"],
-      hashField: "email_hash",
-      rawKey: email,
-      values: { marker: "1" },
-      ttlSeconds: PWRESET_THROTTLE_SECONDS
-    });
-    const recordId = await findUserRecordId(c.env, email).catch(() => null);
-    if (!recordId) return c.json(generic);
-    const apiOrigin = new URL(c.req.url).origin;
-    const ticket = randomHex2(16);
-    await ephemeralPut(c.env, {
-      template: RELAY_TICKET_TEMPLATE,
-      slots: ["email", "record_id", "api_origin"],
-      hashField: "ticket_hash",
-      rawKey: ticket,
-      values: { email, record_id: recordId, api_origin: apiOrigin },
-      ttlSeconds: RELAY_TICKET_TTL_SECONDS
-    });
-    await relayResetLink(c.env, apiOrigin, email, ticket);
-    return c.json(generic);
-  })
-);
-portalRouter.get(
-  "/portal/password/reset",
-  (c) => run(c, async () => {
-    const payload = await peekResetToken(c.env, c.req.query("token") ?? "");
-    if (!payload) {
-      return c.json(
-        { valid: false, error: "\u9019\u689D\u9023\u7D50\u5DF2\u7D93\u5931\u6548\u4E86\uFF08\u53EA\u80FD\u7528\u4E00\u6B21\u300130 \u5206\u9418\u5167\u6709\u6548\uFF09\u3002\u8ACB\u56DE\u767B\u5165\u9801\u91CD\u65B0\u6309\u4E00\u6B21\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u3002" },
-        400
-      );
-    }
-    return c.json({ valid: true, email: payload.email });
-  })
-);
-async function handlePasswordChange(c) {
-  const body = await c.req.json().catch(() => null);
-  const next = String(body?.new ?? "");
-  const resetToken = String(body?.reset_token ?? "").trim();
-  if (!next) return c.json({ error: "new\uFF08\u65B0\u5BC6\u78BC\uFF09\u5FC5\u586B" }, 400);
-  if (next.length < 8) return c.json({ error: "\u65B0\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
-  if (resetToken) {
-    const payload = await consumeResetToken(c.env, resetToken);
-    if (!payload) {
-      return c.json(
-        { error: "\u9019\u689D\u9023\u7D50\u5DF2\u7D93\u5931\u6548\u4E86\uFF08\u53EA\u80FD\u7528\u4E00\u6B21\u300130 \u5206\u9418\u5167\u6709\u6548\uFF09\u3002\u8ACB\u56DE\u767B\u5165\u9801\u91CD\u65B0\u6309\u4E00\u6B21\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u3002", code: "reset_token_invalid" },
-        400
-      );
-    }
-    try {
-      await writeNewPassword(c.env, payload.record_id, next);
-    } catch (e) {
-      if (e instanceof AuthStoreWriteError) await restoreResetToken(c.env, resetToken, payload);
-      throw e;
-    }
-    return c.json({ success: true, email: payload.email, via: "reset_link" });
-  }
-  const auth = await requirePortalUser(c);
-  if (!auth.ok) return auth.res;
-  const current = String(body?.current ?? "");
-  if (!current) return c.json({ error: "current\uFF08\u73FE\u6709\u5BC6\u78BC\uFF09\u5FC5\u586B" }, 400);
-  const currentHash = findPortalPasswordHash(c.env, auth.user.recordId) ?? auth.user.values.password_hash ?? "";
-  const ok = await verifyPassword(current, currentHash);
-  if (!ok) return c.json({ error: "\u820A\u5BC6\u78BC\u4E0D\u6B63\u78BA" }, 401);
-  await writeNewPassword(c.env, auth.user.recordId, next);
-  return c.json({ success: true, via: "current_password" });
-}
-portalRouter.post("/portal/password/change", (c) => run(c, () => handlePasswordChange(c)));
-portalRouter.post("/portal/me/password", (c) => run(c, () => handlePasswordChange(c)));
-portalRouter.post(
-  "/portal/admin/bootstrap",
-  (c) => run(c, async () => {
-    const consoleOk = await validateConsoleSession(c.env, c.req.header("authorization"));
-    if (!consoleOk) return c.json({ error: "\u9700\u8981 console owner session\uFF08\u5148\u767B\u5165 /console\uFF09" }, 401);
-    const seeded = await ensurePortalTemplates(c.env);
-    if (seeded.errors.length > 0) {
-      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
-    }
-    const users = await listRecordsByTemplate(c.env, USER_TEMPLATE);
-    if (users.some((u) => (u.values.role ?? "") === "admin")) {
-      return c.json({ error: "\u5DF2\u6709 admin\uFF0Cbootstrap \u53EA\u80FD\u57F7\u884C\u4E00\u6B21\uFF1B\u5F8C\u7E8C\u5E33\u865F\u8ACB\u7528 /portal/admin/users" }, 409);
-    }
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const password = String(body?.password ?? "");
-    const displayName = String(body?.display_name ?? "").trim() || email;
-    if (!isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
-    if (password.length < 8) return c.json({ error: "\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
-    if (await findUserRecordId(c.env, email)) return c.json({ error: "\u6B64 email \u5DF2\u5B58\u5728" }, 409);
-    const recordId = await createPortalUser(c.env, {
-      email,
-      display_name: displayName,
-      role: "admin",
-      libraries: ["*"],
-      // bootstrap admin 預設全庫（design §3.3：["*"]＝不注 library filter）
-      password_hash: await hashPassword2(password)
-    }, c.req.header("x-cf-secrets-token") || void 0);
-    return c.json({ success: true, record_id: recordId, email, role: "admin" });
-  })
-);
-portalRouter.post(
-  "/portal/admin/recover-password",
-  (c) => run(c, async () => {
-    const consoleOk = await validateConsoleSession(c.env, c.req.header("authorization"));
-    if (!consoleOk) return c.json({ error: "\u9700\u8981 console owner session\uFF08\u5148\u767B\u5165 /console\uFF09" }, 401);
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    if (!isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
-    const recordId = await findUserRecordId(c.env, email);
-    const rec = recordId ? await getRecordById(c.env, recordId) : null;
-    if (!recordId || !rec) return c.json({ error: `\u627E\u4E0D\u5230 email\uFF1D${email} \u7684 portal \u5E33\u865F` }, 404);
-    const password = generatePassword();
-    await writeNewPassword(c.env, recordId, password);
-    return c.json({ success: true, email, password });
-  })
-);
-portalRouter.get(
-  "/portal/admin/users",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const users = await listRecordsByTemplate(c.env, USER_TEMPLATE);
-    return c.json({ success: true, users: users.map(toPublicUser), count: users.length });
-  })
-);
-portalRouter.post(
-  "/portal/admin/users",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const displayName = String(body?.display_name ?? "").trim() || email;
-    const role = body?.role === "admin" ? "admin" : "user";
-    const libraries = validLibrariesInput(body?.libraries) ? body.libraries : ["general"];
-    if (!isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
-    if (body?.libraries !== void 0 && !validLibrariesInput(body?.libraries)) {
-      return c.json({ error: 'libraries \u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u5EAB\u540D\u9650 A-Za-z0-9_- \u6216 "*"\uFF09' }, 400);
-    }
-    if (await findUserRecordId(c.env, email)) return c.json({ error: "\u6B64 email \u5DF2\u5B58\u5728" }, 409);
-    let password = body?.password !== void 0 ? String(body.password) : "";
-    let generated;
-    if (password) {
-      if (password.length < 8) return c.json({ error: "\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
-    } else {
-      generated = generatePassword();
-      password = generated;
-    }
-    const recordId = await createPortalUser(c.env, {
-      email,
-      display_name: displayName,
-      role,
-      libraries,
-      password_hash: await hashPassword2(password)
-    });
-    const rec = await getRecordById(c.env, recordId);
-    return c.json({
-      success: true,
-      user: rec ? toPublicUser(rec) : { record_id: recordId, email },
-      // 一次性回傳（不儲存明碼）；admin 口頭轉交同仁後即失效於 server 側
-      ...generated ? { generated_password: generated } : {}
-    });
-  })
-);
-portalRouter.patch(
-  "/portal/admin/users/:id",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const recordId = c.req.param("id");
-    const rec = await assertPortalUserRecord(c.env, recordId);
-    if (!rec) return c.json({ error: "\u7528\u6236\u4E0D\u5B58\u5728" }, 404);
-    const body = await c.req.json().catch(() => null);
-    if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
-    const patch = {};
-    if (body.status !== void 0) {
-      if (body.status !== "active" && body.status !== "disabled") {
-        return c.json({ error: "status \u53EA\u80FD\u662F active / disabled" }, 400);
-      }
-      patch.status = body.status;
-    }
-    if (body.role !== void 0) {
-      if (body.role !== "user" && body.role !== "admin") return c.json({ error: "role \u53EA\u80FD\u662F user / admin" }, 400);
-      patch.role = body.role;
-    }
-    if (body.libraries !== void 0) {
-      if (!validLibrariesInput(body.libraries)) {
-        return c.json({ error: 'libraries \u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u5EAB\u540D\u9650 A-Za-z0-9_- \u6216 "*"\uFF09' }, 400);
-      }
-      patch.libraries = JSON.stringify(body.libraries);
-    }
-    if (Object.keys(patch).length === 0) return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08status/role/libraries\uFF09" }, 400);
-    const isActiveAdmin = (rec.values.role ?? "") === "admin" && (rec.values.status ?? "") === "active";
-    const wouldLoseAdmin = patch.status === "disabled" || patch.role === "user";
-    if (isActiveAdmin && wouldLoseAdmin) {
-      const all = await listRecordsByTemplate(c.env, USER_TEMPLATE);
-      const otherActiveAdmins = all.filter(
-        (u) => u.record_id !== recordId && (u.values.role ?? "") === "admin" && (u.values.status ?? "") === "active"
-      );
-      if (otherActiveAdmins.length === 0) {
-        return c.json({ error: "\u4E0D\u53EF\u505C\u7528\u6216\u964D\u7D1A\u6700\u5F8C\u4E00\u500B\u7BA1\u7406\u54E1\u2014\u2014\u7CFB\u7D71\u81F3\u5C11\u8981\u4FDD\u7559\u4E00\u500B active admin" }, 409);
-      }
-    }
-    patch.updated_at = (/* @__PURE__ */ new Date()).toISOString();
-    const updated = await patchRecordValues(c.env, recordId, patch);
-    return c.json({ success: true, user: toPublicUser(updated) });
-  })
-);
-portalRouter.post(
-  "/portal/admin/users/:id/reset-password",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const recordId = c.req.param("id");
-    const rec = await assertPortalUserRecord(c.env, recordId);
-    if (!rec) return c.json({ error: "\u7528\u6236\u4E0D\u5B58\u5728" }, 404);
-    const password = generatePassword();
-    await writeNewPassword(c.env, recordId, password);
-    return c.json({ success: true, password });
-  })
-);
-function toPublicLibrary(rec) {
-  const v = rec.values;
-  return {
-    record_id: rec.record_id,
-    name: v.name ?? "",
-    display_name: v.display_name ?? "",
-    description: v.description ?? "",
-    status: v.status ?? "",
-    // D-4：此庫是否為知識圖譜萃取來源（graph 粗閘按這個判定；全都沒標 → 預設 general）
-    graph_source: (v.graph_source ?? "") === "true",
-    // InkStoneCo#44：一個庫＝地端的一個資料夾。這三個是「資料夾」這個物件本身的屬性
-    // （小幫手回報時登記，見 POST /portal/daemon/folder-tree），空字串＝這台小幫手還沒報過。
-    root: v.root ?? "",
-    mode: v.mode ?? "",
-    reason: v.reason ?? ""
-  };
-}
-function folderTreeKey(env, library) {
-  return `${portalTenant(env)}:portal:folder_tree:${library}`;
-}
-function normalizeFolderNode(raw2) {
-  if (!raw2 || typeof raw2 !== "object") return null;
-  const r = raw2;
-  const path = typeof r.path === "string" ? r.path : "";
-  const num2 = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-  };
-  const node = {
-    path,
-    name: typeof r.name === "string" && r.name ? r.name : path.split("/").pop() || "",
-    parent: typeof r.parent === "string" ? r.parent : "-",
-    depth: num2(r.depth),
-    total_files: num2(r.total_files),
-    synced_files: num2(r.synced_files),
-    pending_files: num2(r.pending_files),
-    error_files: num2(r.error_files),
-    unsupported_files: num2(r.unsupported_files),
-    excluded_files: num2(r.excluded_files)
-  };
-  if (r.skipped === true) {
-    node.skipped = true;
-    node.skip_reason = typeof r.skip_reason === "string" ? r.skip_reason : "";
-  }
-  return node;
-}
-async function readFolderTree(env, library) {
-  let raw2 = null;
-  try {
-    raw2 = await env.WEBHOOKS.get(folderTreeKey(env, library), "text");
-  } catch {
-    return null;
-  }
-  if (!raw2) return null;
-  try {
-    return JSON.parse(raw2);
-  } catch {
-    return null;
-  }
-}
-async function listDaemonReports(env) {
-  let libs = [];
-  try {
-    libs = await listRecordsByTemplate(env, LIBRARY_TEMPLATE);
-  } catch {
-    return [];
-  }
-  const names = libs.map((l) => (l.values.name ?? "").trim()).filter(Boolean).slice(0, 25);
-  const trees = await Promise.all(names.map((n) => readFolderTree(env, n)));
-  return trees.filter((t) => t !== null).map((t) => ({
-    machine: t.machine ?? "",
-    machine_label: t.machine_label ?? "",
-    daemon_version: t.daemon_version ?? "",
-    received_at: t.received_at ?? 0
-  }));
-}
-function summarizeFolderTree(tree) {
-  let total = 0;
-  let synced = 0;
-  let pending = 0;
-  let errors = 0;
-  let unsupported = 0;
-  let excluded = 0;
-  let skippedDirs = 0;
-  for (const n of tree.nodes ?? []) {
-    if (n.skipped) skippedDirs++;
-    total += n.total_files;
-    synced += n.synced_files;
-    pending += n.pending_files;
-    errors += n.error_files ?? 0;
-    unsupported += n.unsupported_files;
-    excluded += n.excluded_files;
-  }
-  return {
-    root: tree.root,
-    mode: tree.mode,
-    reason: tree.reason,
-    // inkstone/Arcrun#180：庫目錄那張列表就是靠這兩格把庫掛到正確的機器底下。
-    // 摘要吐它們（而不是只放在整棵樹裡）的理由：分組要在**畫第一層之前**就成立，
-    // 而整棵樹是使用者展開那一列才去抓的 ⇒ 只放樹裡的話第一眼永遠是「未知來源」。
-    machine: tree.machine ?? "",
-    machine_label: tree.machine_label ?? "",
-    node_count: (tree.nodes ?? []).length,
-    total_nodes: tree.total_nodes,
-    truncated: !!tree.truncated,
-    total_files: total,
-    synced_files: synced,
-    pending_files: pending,
-    // inkstone/arcrun-rag#246 c18738：用戶看的數字與小幫手同一套——
-    // 分母 handled_files＝可讀檔＝已上傳＋待上傳（待上傳已含出錯）；error_files 是其中出錯的。
-    // 不在知識範圍的（格式讀不了、程式碼）不進分母，total_files 保留給需要「資料夾裡共幾個檔」的人。
-    handled_files: synced + pending,
-    error_files: errors,
-    unsupported_files: unsupported,
-    excluded_files: excluded,
-    skipped_dirs: skippedDirs,
-    generated_at: tree.generated_at,
-    received_at: tree.received_at
-  };
-}
-portalRouter.post(
-  "/portal/daemon/folder-tree",
-  (c) => run(c, async () => {
-    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
-    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-    const body = await c.req.json().catch(() => null);
-    if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
-    const library = String(body.library ?? "").trim();
-    if (!isValidLibraryName(library) || library === "*") {
-      return c.json({ error: "library \u9808\u70BA\u5408\u6CD5\u5EAB\u540D\uFF08A-Za-z0-9_-\uFF0C1-64 \u5B57\uFF09" }, 400);
-    }
-    const rawNodes = Array.isArray(body.nodes) ? body.nodes : [];
-    const nodes = rawNodes.map(normalizeFolderNode).filter((n) => n !== null);
-    const displayName = String(body.display_name ?? "").trim() || library;
-    const root = String(body.root ?? "").trim();
-    const mode = String(body.mode ?? "").trim();
-    const reason = String(body.reason ?? "").trim();
-    const seeded = await ensurePortalTemplates(c.env);
-    if (seeded.errors.length > 0) {
-      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
-    }
-    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    const mine = existing.find((l) => (l.values.name ?? "") === library);
-    let registered = false;
-    if (!mine) {
-      const res = await kbdbFetch3(c.env, "/records", {
-        method: "POST",
-        body: JSON.stringify({
-          template: LIBRARY_TEMPLATE,
-          owner_id: portalNamespace(c.env),
-          values: { name: library, display_name: displayName, description: "", status: "active", root, mode, reason }
-        })
-      });
-      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF0C\u8CC7\u6599\u593E\u6A39\u767B\u8A18\uFF09\u2192 ${res.status}`);
-      registered = true;
-    } else {
-      const patch = {};
-      if ((mine.values.root ?? "") !== root) patch.root = root;
-      if ((mine.values.mode ?? "") !== mode) patch.mode = mode;
-      if ((mine.values.reason ?? "") !== reason) patch.reason = reason;
-      if (Object.keys(patch).length > 0) await patchRecordValues(c.env, mine.record_id, patch);
-    }
-    const stored = {
-      library,
-      display_name: displayName,
-      root,
-      mode,
-      reason,
-      // 🔴 缺 → 空字串，**不猜也不 backfill**（同卡片那條路：D97）。
-      //    舊版小幫手不送這兩格，而「不知道是哪一台」本身就是要顯示出來的事實。
-      machine: String(body.machine ?? "").trim(),
-      machine_label: String(body.machine_label ?? "").trim(),
-      // arcrun-rag#122：版號只收短字串（防有人塞一大包進 KV）；不合理就當沒送。
-      daemon_version: ((v) => v.length <= 40 ? v : "")(String(body.daemon_version ?? "").trim()),
-      truncated: body.truncated === true,
-      total_nodes: Number.isFinite(Number(body.total_nodes)) ? Number(body.total_nodes) : nodes.length,
-      sync_token: String(body.sync_token ?? ""),
-      generated_at: Number.isFinite(Number(body.generated_at)) ? Number(body.generated_at) : 0,
-      received_at: Math.floor(Date.now() / 1e3),
-      nodes
-    };
-    await c.env.WEBHOOKS.put(folderTreeKey(c.env, library), JSON.stringify(stored));
-    await markDaemonLibraryActive(c.env, library);
-    return c.json({ success: true, library, registered, nodes: nodes.length, truncated: stored.truncated });
-  })
-);
-portalRouter.get(
-  "/portal/admin/folder-tree",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const library = (c.req.query("library") ?? "").trim();
-    if (!isValidLibraryName(library) || library === "*") {
-      return c.json({ error: "library \u53C3\u6578\u5FC5\u586B\u4E14\u9808\u70BA\u5408\u6CD5\u5EAB\u540D" }, 400);
-    }
-    const tree = await readFolderTree(c.env, library);
-    if (!tree) {
-      return c.json({
-        success: true,
-        library,
-        tree: null,
-        note: "\u540C\u6B65\u5C0F\u5E6B\u624B\u9084\u6C92\u56DE\u5831\u904E\u9019\u500B\u8CC7\u6599\u593E\u7684\u7D50\u69CB\uFF08\u820A\u7248\u5C0F\u5E6B\u624B\u4E0D\u6703\u56DE\u5831\uFF0C\u66F4\u65B0\u5F8C\u624D\u6703\u51FA\u73FE\uFF09\u3002"
-      });
-    }
-    return c.json({ success: true, library, tree });
-  })
-);
-portalRouter.post(
-  "/portal/daemon/extract",
-  (c) => run(c, async () => {
-    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
-    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-    const body = await c.req.json().catch(() => null);
-    const pageName = String(body?.page_name ?? "").trim();
-    const srcText = String(body?.text ?? "");
-    const daemonPrompt = String(body?.prompt ?? "").trim();
-    const tableName = daemonPrompt ? "" : String(body?.prompt_table ?? "").trim();
-    let tableMode = null;
-    if (tableName) {
-      if (!pageName || !srcText.trim()) return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
-      const loaded = await loadPromptTable(c.env.RECIPES, tableName);
-      if (!loaded) return c.json({ error: `\u6C92\u6709\u53EB\u300C${tableName}\u300D\u7684\u6307\u793A\u8868`, code: "prompt_table_missing" }, 400);
-      const assembled = assemblePromptTable(loaded.table, sanitizeTableInput(body?.kinds, body?.hints), { pageName, text: srcText });
-      tableMode = {
-        ...assembled.system ? { system: assembled.system } : {},
-        user: assembled.user,
-        expect: loaded.table.expect,
-        meta: {
-          name: loaded.table.name,
-          source: loaded.source,
-          inject: loaded.table.inject,
-          blocks: assembled.used,
-          ...assembled.unknownKinds.length ? { unknown_kinds: assembled.unknownKinds } : {},
-          ...loaded.note ? { note: loaded.note } : {}
-        }
-      };
-    }
-    const expectShape = tableMode && !body?.expect ? tableMode.expect : parseExpectShape(body?.expect, Boolean(daemonPrompt));
-    if (!daemonPrompt && (!pageName || !srcText.trim()))
-      return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
-    let aiConfig = DEFAULT_EXTRACT_AI_CONFIG;
-    let configReadError;
-    try {
-      aiConfig = await readExtractAiConfig(c.env);
-    } catch (e) {
-      configReadError = `\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u7684\u8403\u53D6 AI \u8A2D\u5B9A\uFF0C\u5DF2\u9000\u56DE\u9810\u8A2D\uFF1A${e instanceof Error ? e.message : String(e)}`;
-    }
-    if (aiConfig.recipe === DEFAULT_EXTRACT_AI_CONFIG.recipe && !c.env.AI) {
-      return honestStop(c, "ai_binding_missing", configReadError);
-    }
-    const REL = ">".repeat(2);
-    const prompt = tableMode ? tableMode.user : daemonPrompt || `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
-# ${pageName}
-## \u4E00\u53E5\u8A71\u5B9A\u7FA9
-\uFF08\u4E00\u884C\uFF09
-## \u8981\u9EDE
-- \uFF083-12 \u689D\uFF0C\u5177\u9AD4\u3001\u542B\u6578\u5B57\u689D\u4EF6\uFF09
-## \u95DC\u9375\u5BE6\u9AD4
-- **\u5BE6\u9AD4\u540D** \u2014 \u4E00\u53E5\u8AAA\u660E
-## \u95DC\u806F
-- \u5BE6\u9AD4A ${REL} \u95DC\u4FC2 ${REL} \u5BE6\u9AD4B\uFF083-8 \u884C\uFF0C\u7528\u4E0A\u9762\u5BE6\u9AD4\u540D\uFF09
-
-\u539F\u7A3F\uFF1A
-${srcText}`;
-    if (aiConfig.recipe === DEFAULT_EXTRACT_AI_CONFIG.recipe) {
-      const verdict = await aiBrakeVerdict(c.env, (path, init) => kbdbFetch3(c.env, path, init));
-      if (verdict.blocked) {
-        return c.json(
-          { error: verdict.message, code: "usage_brake", brake: verdict.brake, used: verdict.used, limit: verdict.limit, unit: "neurons" },
-          429
-        );
-      }
-    }
-    try {
-      const ran = await runExtractAi(c.env, credentialOwner(c.env), aiConfig, {
-        prompt,
-        ...tableMode?.system ? { system: tableMode.system } : {},
-        maxTokens: daemonPrompt || tableMode ? 8192 : 2048,
-        temperature: 0.2,
-        // 🔴 Arcrun#134（2026-08-27）：呼叫端說它要一個 JSON 物件 ⇒ **就用模型保證得了的方式去要**
-        //	（`response_format: json_object` 走受限解碼，語法由平台保證 ⇒ 骰子拿掉）。
-        //	實測（youlin 真檔打 6 次）3 次壞在模型把字串收尾引號打成全形 `”`。
-        //	只在呼叫端宣告要 JSON 時才要：legacy（要 markdown 卡）那條路一個字都沒動。
-        //	#277：組請求的是 recipe（body_template），這裡只宣告「要不要 JSON」。
-        jsonObject: expectShape === "json_object"
-      });
-      if (!ran.ok) {
-        if (ran.code === "ai_binding_missing") return honestStop(c, "ai_binding_missing");
-        return c.json({ error: `\u96F2\u7AEF\u8403\u53D6\uFF1A${ran.error}`, code: ran.code }, 502);
-      }
-      const out = ran.out;
-      const norm = normalizeAiText(out);
-      if (norm.kind === "unrenderable") {
-        return c.json({ error: `\u96F2\u7AEF\u8403\u53D6\uFF1A${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} \u7684\u56DE\u61C9\u9084\u539F\u4E0D\u56DE\u6587\u5B57\uFF08${norm.reason ?? "\u672A\u77E5\u539F\u56E0"}\uFF09` }, 502);
-      }
-      const raw2 = norm.text;
-      if (!raw2) return c.json({ error: `${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} \u6C92\u6709\u56DE\u50B3\u5167\u5BB9` }, 502);
-      if (daemonPrompt || tableMode) {
-        if (expectShape === "json_object") {
-          const check = hasJsonObject(raw2);
-          if (!check.ok) {
-            return c.json(
-              {
-                error: `\u96F2\u7AEF\u8403\u53D6\uFF1A\u6A21\u578B\u6C92\u6709\u7167\u5951\u7D04\u56DE JSON \u7269\u4EF6\uFF08${check.reason}\uFF09\u3002\u9019\u4E00\u6BB5\u662F\u5728\u4F60\u7684\u77E5\u8B58\u5EAB\u96F2\u7AEF\u8DD1\u7684\uFF08${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} ${ran.model}\uFF09\uFF0C\u4E0D\u662F\u5728\u4F60\u7684\u96FB\u8166\u4E0A\u3002\u6A21\u578B\u5BE6\u969B\u56DE\u7684\u524D 120 \u5B57\uFF1A${snippetForError(raw2)}`,
-                code: "ai_output_not_json_object",
-                output_kind: norm.kind
-              },
-              502
-            );
-          }
-        }
-        return c.json({ success: true, output: raw2, output_kind: norm.kind, ...tableMode ? { prompt: tableMode.meta } : {} });
-      }
-      const marker = `# ${pageName}`;
-      const idx = raw2.lastIndexOf(marker);
-      return c.json({ success: true, card: (idx >= 0 ? raw2.slice(idx) : raw2).trim() + "\n" });
-    } catch (e) {
-      return c.json({ error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-    }
-  })
-);
-var READ_IMAGE_MAX_BASE64 = 6 * 1024 * 1024;
-var READ_IMAGE_MIMES = /* @__PURE__ */ new Set(["image/png", "image/jpeg", "image/webp"]);
-portalRouter.post(
-  "/portal/daemon/read-image",
-  (c) => run(c, async () => {
-    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
-    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-    const body = await c.req.json().catch(() => null);
-    const pageName = String(body?.page_name ?? "").trim();
-    const page = Number(body?.page ?? 0);
-    const pass = String(body?.pass ?? "primary").trim();
-    const mime = String(body?.mime ?? "image/png").trim().toLowerCase();
-    const b642 = String(body?.image_base64 ?? "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
-    const caption = String(body?.caption ?? "").trim().slice(0, 300);
-    if (!pageName) return c.json({ error: "page_name \u5FC5\u586B" }, 400);
-    if (!Number.isInteger(page) || page < 1 || page > 1e4) return c.json({ error: "page \u5FC5\u9808\u662F 1 \u4EE5\u4E0A\u7684\u6574\u6578\u9801\u78BC" }, 400);
-    if (pass !== "primary" && pass !== "check") return c.json({ error: "pass \u53EA\u80FD\u662F 'primary' \u6216 'check'" }, 400);
-    if (!READ_IMAGE_MIMES.has(mime)) return c.json({ error: `mime \u53EA\u6536 ${[...READ_IMAGE_MIMES].join("\u3001")}` }, 400);
-    if (!b642) return c.json({ error: "image_base64 \u5FC5\u586B" }, 400);
-    if (b642.length > READ_IMAGE_MAX_BASE64) return c.json({ error: `\u5716\u592A\u5927\uFF08base64 \u8D85\u904E ${READ_IMAGE_MAX_BASE64} \u5B57\u5143\uFF09`, code: "image_too_large" }, 413);
-    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b642)) return c.json({ error: "image_base64 \u4E0D\u662F\u5408\u6CD5\u7684 base64" }, 400);
-    const tableName = String(body?.prompt_table ?? "read_image").trim();
-    const loaded = await loadPromptTable(c.env.RECIPES, tableName);
-    if (!loaded) return c.json({ error: `\u6C92\u6709\u53EB\u300C${tableName}\u300D\u7684\u6307\u793A\u8868`, code: "prompt_table_missing" }, 400);
-    const assembled = assemblePromptTable(
-      loaded.table,
-      { kinds: pass === "check" ? ["check"] : [], hints: caption ? { caption: [caption] } : {} },
-      { pageName: `${pageName} \u7B2C ${page} \u9801`, text: "\uFF08\u898B\u5716\u7247\uFF09" }
-    );
-    let aiConfig = DEFAULT_EXTRACT_AI_CONFIG;
-    try {
-      aiConfig = await readExtractAiConfig(c.env);
-    } catch {
-    }
-    if (aiConfig.recipe === DEFAULT_EXTRACT_AI_CONFIG.recipe && !c.env.AI) return honestStop(c, "ai_binding_missing");
-    const tableModel = loaded.table.models?.[pass];
-    const ran = await runExtractAi(c.env, credentialOwner(c.env), aiConfig, {
-      prompt: assembled.user,
-      ...assembled.system ? { system: assembled.system } : {},
-      images: [`data:${mime};base64,${b642}`],
-      ...tableModel ? { model: tableModel } : {},
-      maxTokens: loaded.table.max_tokens ?? 3072,
-      temperature: 0.1,
-      // 抑制「同一頁重複亂轉」（實測 mistral 讀勾選框多的表單會轉到吃滿 token）
-      extra: { frequency_penalty: 0.4 },
-      jsonObject: false
-    });
-    if (!ran.ok) {
-      if (ran.code === "ai_binding_missing") return honestStop(c, "ai_binding_missing");
-      return c.json({ error: `\u96F2\u7AEF\u8B80\u5716\uFF1A${ran.error}`, code: ran.code }, 502);
-    }
-    const norm = normalizeAiText(ran.out);
-    if (norm.kind === "unrenderable") return c.json({ error: `\u96F2\u7AEF\u8B80\u5716\uFF1A\u56DE\u61C9\u9084\u539F\u4E0D\u56DE\u6587\u5B57\uFF08${norm.reason ?? "\u672A\u77E5\u539F\u56E0"}\uFF09`, code: "ai_output_unrenderable" }, 502);
-    if (!norm.text.trim()) return c.json({ error: "\u96F2\u7AEF\u8B80\u5716\uFF1A\u6A21\u578B\u6C92\u6709\u56DE\u50B3\u5167\u5BB9", code: "ai_output_empty" }, 502);
-    const usage = ran.out?.usage;
-    return c.json({
-      success: true,
-      output: norm.text.trim(),
-      model: ran.model,
-      ...usage && typeof usage === "object" ? { usage } : {},
-      pass,
-      page,
-      prompt: { name: loaded.table.name, source: loaded.source, blocks: assembled.used, ...loaded.note ? { note: loaded.note } : {} }
-    });
-  })
-);
-portalRouter.post(
-  "/portal/daemon/libraries",
-  (c) => run(c, async () => {
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const password = String(body?.password ?? "");
-    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
-    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
-    if (!rec || (rec.values.status ?? "") !== "active" || !ok) {
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    await clearLoginFail(c.env, email);
-    const wanted = Array.isArray(body?.libraries) ? body.libraries : [];
-    const seeded = await ensurePortalTemplates(c.env);
-    if (seeded.errors.length > 0) {
-      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
-    }
-    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    const have = new Set(existing.map((l) => String(l.values.name ?? "")));
-    const ns = portalNamespace(c.env);
-    const created = [];
-    for (const item of wanted) {
-      const name = String(item?.name ?? "").trim();
-      if (!isValidLibraryName(name) || name === "*" || have.has(name)) continue;
-      const res = await kbdbFetch3(c.env, "/records", {
-        method: "POST",
-        body: JSON.stringify({
-          template: LIBRARY_TEMPLATE,
-          owner_id: ns,
-          values: {
-            name,
-            display_name: String(item?.display_name ?? "").trim() || name,
-            description: "\u540C\u6B65\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u8CC7\u6599\u593E",
-            status: "active"
-          }
-        })
-      });
-      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF09\u2192 ${res.status}`);
-      have.add(name);
-      created.push(name);
-    }
-    const after = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    const activeNames = wanted.map((item) => String(item?.name ?? "").trim()).filter(Boolean);
-    if (activeNames.length > 0) {
-      await c.env.WEBHOOKS.put(daemonActiveKey(c.env), JSON.stringify(activeNames), { expirationTtl: 172800 });
-    }
-    return c.json({ success: true, created, libraries: after.map(toPublicLibrary) });
-  })
-);
-portalRouter.post(
-  "/portal/daemon/config",
-  (c) => run(c, async () => {
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const password = String(body?.password ?? "");
-    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-    if (await isLocked(c.env, email)) {
-      return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
-    }
-    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
-    if (!rec) {
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    if ((rec.values.status ?? "") !== "active") return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
-    if (!ok) {
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    await clearLoginFail(c.env, email);
-    const daemonCfg = {
-      cypher_url: new URL(c.req.url).origin,
-      namespace: knowledgeOwner(c.env),
-      library: "kb",
-      email,
-      instance_name: String(rec.values.display_name ?? "")
-    };
-    return c.json({ success: true, config: daemonCfg });
-  })
-);
-portalRouter.post(
-  "/portal/admin/chat-key",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const key = String(body?.key ?? "").trim();
-    if (!key) return c.json({ error: "\u8ACB\u8CBC\u4E0A\u4F60\u7684 Google AI \u91D1\u9470" }, 400);
-    const tenant2 = knowledgeOwner(c.env);
-    const kvKey2 = `${tenant2}:wf:rag_chat`;
-    const raw2 = await c.env.WEBHOOKS.get(kvKey2, "text");
-    if (!raw2) return honestStop(c, "ai_workflow_missing");
-    let record;
-    try {
-      record = JSON.parse(raw2);
-    } catch {
-      return honestStop(c, "ai_workflow_corrupt");
-    }
-    let replaced = 0;
-    const visit = (o) => {
-      if (Array.isArray(o)) {
-        o.forEach(visit);
-        return;
-      }
-      if (o && typeof o === "object") {
-        const rec = o;
-        for (const k of Object.keys(rec)) {
-          if (k.toLowerCase() === "x-goog-api-key") {
-            rec[k] = key;
-            replaced += 1;
-          } else visit(rec[k]);
-        }
-      }
-    };
-    visit(record["graph"]);
-    visit(record["config"]);
-    if (replaced === 0) return honestStop(c, "ai_workflow_no_key_field");
-    await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
-    return c.json({ success: true, replaced });
-  })
-);
-portalRouter.get(
-  "/portal/admin/libraries",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    let daemonActive = null;
-    try {
-      const raw2 = await c.env.WEBHOOKS.get(daemonActiveKey(c.env), "text");
-      if (raw2) daemonActive = new Set(JSON.parse(raw2).map((n) => String(n).trim()));
-    } catch {
-    }
-    const out = libs.map((rec) => {
-      const lib = toPublicLibrary(rec);
-      const watching = daemonActive === null ? void 0 : daemonActive.has(lib.name);
-      return { ...lib, ...watching !== void 0 ? { daemon_watching: watching } : {} };
-    });
-    const known = new Set(out.map((l) => l.name));
-    if (c.req.query("lite") === "1") {
-      if (daemonActive) {
-        for (const n of daemonActive) {
-          if (!n || n === "general" || known.has(n)) continue;
-          known.add(n);
-          out.push({ record_id: "", name: n, display_name: n, description: "", status: "active", graph_source: false, auto: true, daemon_watching: true });
-        }
-      }
-      return c.json({ success: true, libraries: out, count: out.length, lite: true });
-    }
-    try {
-      const tenant2 = knowledgeOwner(c.env);
-      const ownerParam = ownerQuery(tenant2);
-      const [cardRes, tripletRes] = await Promise.all([
-        kbdbFetch3(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
-        kbdbFetch3(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
-      ]);
-      for (const r of [cardRes, tripletRes]) if (r && !r.ok) releaseBody(r);
-      const cardMap = /* @__PURE__ */ new Map();
-      if (cardRes?.ok) {
-        const body = await cardRes.json();
-        for (const s of body.stats ?? []) cardMap.set(s.library, s.card_count);
-      }
-      const tripletMap = /* @__PURE__ */ new Map();
-      if (tripletRes?.ok) {
-        const body = await tripletRes.json();
-        for (const s of body.stats ?? []) tripletMap.set(s.library, s.triplet_count);
-      }
-      for (const lib of out) {
-        lib.card_count = cardMap.get(lib.name) ?? 0;
-        lib.triplet_count = tripletMap.get(lib.name) ?? 0;
-      }
-      {
-        for (const name of cardMap.keys()) {
-          const n = String(name ?? "").trim();
-          if (!n || n === "general" || known.has(n)) continue;
-          known.add(n);
-          const watching = daemonActive === null ? void 0 : daemonActive.has(n);
-          out.push({
-            record_id: "",
-            name: n,
-            display_name: n,
-            description: "\u8CC7\u6599\u540C\u6B65\u6642\u81EA\u52D5\u51FA\u73FE\uFF08\u53EF\u5728\u6B64\u88DC\u986F\u793A\u540D\uFF09",
-            status: "active",
-            graph_source: false,
-            auto: true,
-            card_count: cardMap.get(n) ?? 0,
-            triplet_count: tripletMap.get(n) ?? 0,
-            ...watching !== void 0 ? { daemon_watching: watching } : {}
-          });
-        }
-      }
-    } catch {
-    }
-    await Promise.all(out.map(async (lib) => {
-      const name = String(lib.name ?? "");
-      if (!name) return;
-      const tree = await readFolderTree(c.env, name);
-      if (tree) lib.folder_tree = summarizeFolderTree(tree);
-    }));
-    return c.json({ success: true, libraries: out, count: out.length });
-  })
-);
-portalRouter.post(
-  "/portal/daemon/libraries",
-  (c) => run(c, async () => {
-    const body = await c.req.json().catch(() => null);
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const password = String(body?.password ?? "");
-    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-    const items = Array.isArray(body?.libraries) ? body.libraries : [];
-    if (items.length === 0) return c.json({ success: true, registered: [], skipped: [] });
-    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
-    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
-    if (!rec || (rec.values.status ?? "") !== "active" || !ok) {
-      await recordLoginFail(c.env, email);
-      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-    }
-    await clearLoginFail(c.env, email);
-    const seeded = await ensurePortalTemplates(c.env);
-    if (seeded.errors.length > 0) {
-      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
-    }
-    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    const have = new Set(existing.map((l) => l.values.name ?? ""));
-    const ns = portalNamespace(c.env);
-    const registered = [];
-    const skipped = [];
-    for (const it of items) {
-      const name = String(it?.name ?? "").trim();
-      const displayName = String(it?.display_name ?? "").trim() || name;
-      if (!isValidLibraryName(name) || name === "*") {
-        skipped.push(name || "(\u7A7A)");
-        continue;
-      }
-      if (have.has(name)) {
-        skipped.push(name);
-        continue;
-      }
-      const res = await kbdbFetch3(c.env, "/records", {
-        method: "POST",
-        body: JSON.stringify({
-          template: LIBRARY_TEMPLATE,
-          owner_id: ns,
-          values: { name, display_name: displayName, description: "", status: "active" }
-        })
-      });
-      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF0Cdaemon \u767B\u8A18\uFF09\u2192 ${res.status}`);
-      have.add(name);
-      registered.push(name);
-    }
-    return c.json({ success: true, registered, skipped });
-  })
-);
-portalRouter.patch(
-  "/portal/admin/libraries/:id",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const recordId = c.req.param("id");
-    const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    if (!libs.some((l) => l.record_id === recordId)) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
-    const body = await c.req.json().catch(() => null);
-    if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
-    const patch = {};
-    if (body.display_name !== void 0) patch.display_name = String(body.display_name).trim();
-    if (body.description !== void 0) patch.description = String(body.description).trim();
-    if (body.status !== void 0) {
-      if (body.status !== "active" && body.status !== "disabled") {
-        return c.json({ error: "status \u53EA\u80FD\u662F active / disabled" }, 400);
-      }
-      patch.status = body.status;
-    }
-    if (body.graph_source !== void 0) {
-      if (typeof body.graph_source !== "boolean") {
-        return c.json({ error: "graph_source \u53EA\u80FD\u662F true / false" }, 400);
-      }
-      patch.graph_source = body.graph_source ? "true" : "false";
-    }
-    if (Object.keys(patch).length === 0) {
-      return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08display_name/description/status/graph_source\uFF09" }, 400);
-    }
-    const updated = await patchRecordValues(c.env, recordId, patch);
-    return c.json({ success: true, library: toPublicLibrary(updated) });
-  })
-);
-async function readExtractAiRow(env) {
-  const ns = portalNamespace(env);
-  const res = await kbdbFetch3(env, `/records/by-template/${encodeURIComponent(EXTRACT_AI_TEMPLATE)}?owner_id=${encodeURIComponent(ns)}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new KbdbError(`GET /records/by-template/${EXTRACT_AI_TEMPLATE} \u2192 ${res.status}`);
-  const body = await res.json();
-  for (const r of body.records ?? []) {
-    const v = validateExtractAiConfig({ recipe: r.values.recipe, base_url: r.values.base_url, model: r.values.model });
-    if (v.ok) {
-      return { record_id: r.record_id, config: v.config, updated_at: r.values.updated_at ?? "", updated_by: r.values.updated_by ?? "" };
-    }
-  }
-  return null;
-}
-async function readExtractAiConfig(env) {
-  return (await readExtractAiRow(env))?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
-}
-portalRouter.get(
-  "/portal/admin/extract-ai",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const row = await readExtractAiRow(c.env);
-    let have = /* @__PURE__ */ new Set();
-    try {
-      have = new Set((await listCredentialRows(c.env, credentialOwner(c.env))).map((r) => r.name));
-    } catch {
-      have = /* @__PURE__ */ new Set();
-    }
-    const providers = EXTRACT_AI_PROVIDERS.map((p) => ({
-      id: p.id,
-      label: p.label,
-      group: p.group,
-      key: p.key,
-      credential: p.credential ?? null,
-      has_key: !!p.credential && have.has(p.credential),
-      needs_base_url: !!p.needs_base_url,
-      live_models: !!p.models_url || !!p.needs_base_url,
-      default_base_url: p.default_base_url ?? null,
-      models: p.models,
-      description: p.description
-    }));
-    const config = row?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
-    const current = providers.find((p) => p.id === config.recipe);
-    return c.json({
-      success: true,
-      recipe: config.recipe,
-      provider_label: current?.label ?? config.recipe,
-      base_url: config.base_url ?? null,
-      model: config.model ?? null,
-      has_key: current?.has_key ?? false,
-      is_default: !row,
-      providers,
-      available_recipes: providers.map((p) => p.id),
-      updated_at: row?.updated_at || null,
-      updated_by: row?.updated_by || null
-    });
-  })
-);
-portalRouter.get(
-  "/portal/admin/extract-ai/models",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const recipe = (c.req.query("recipe") ?? "").trim();
-    if (!findProvider(recipe)) return c.json({ error: "\u4E0D\u8A8D\u5F97\u9019\u500B\u63D0\u4F9B\u5546" }, 400);
-    const list = await listProviderModels(c.env, credentialOwner(c.env), recipe, c.req.query("base_url") ?? void 0);
-    return c.json({ success: true, recipe, ...list });
-  })
-);
-portalRouter.put(
-  "/portal/admin/extract-ai",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const v = validateExtractAiConfig(body);
-    if (!v.ok) return c.json({ error: v.error }, 400);
-    const provider = findProvider(v.config.recipe);
-    const apiKey = typeof body?.api_key === "string" ? body.api_key.trim() : "";
-    if (provider.key === "required" && !apiKey) {
-      let have = false;
-      try {
-        have = await hasCredential(c.env, credentialOwner(c.env), provider.credential);
-      } catch {
-        have = false;
-      }
-      if (!have) {
-        return c.json({ error: `${provider.label} \u9700\u8981\u91D1\u9470\uFF1A\u8ACB\u5148\u586B\u5165\u91D1\u9470\uFF08\u6703\u5B58\u9032\u6191\u8B49\u4E2D\u5FC3\uFF0C\u540D\u7A31 ${provider.credential}\uFF09` }, 400);
-      }
-    }
-    if (apiKey && provider.credential) {
-      try {
-        await storeCredential(c.env, credentialOwner(c.env), provider.credential, apiKey, "extract_ai");
-      } catch (e) {
-        return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
-      }
-    }
-    const seeded = await ensurePortalTemplates(c.env);
-    if (seeded.errors.length > 0) {
-      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
-    }
-    const values = {
-      recipe: v.config.recipe,
-      base_url: v.config.base_url ?? "",
-      model: v.config.model ?? "",
-      updated_at: (/* @__PURE__ */ new Date()).toISOString(),
-      updated_by: auth.user.values.email ?? ""
-    };
-    const existing = await readExtractAiRow(c.env);
-    if (existing) {
-      await patchRecordValues(c.env, existing.record_id, values);
-    } else {
-      const res = await kbdbFetch3(c.env, "/records", {
-        method: "POST",
-        body: JSON.stringify({ template: EXTRACT_AI_TEMPLATE, owner_id: portalNamespace(c.env), values })
-      });
-      if (!res.ok) throw new KbdbError(`POST /records\uFF08${EXTRACT_AI_TEMPLATE}\uFF09\u2192 ${res.status}`);
-    }
-    return c.json({ success: true, recipe: v.config.recipe, base_url: v.config.base_url ?? null, model: v.config.model ?? null });
-  })
-);
-portalRouter.delete(
-  "/portal/admin/extract-ai",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const existing = await readExtractAiRow(c.env);
-    if (!existing) return c.json({ success: true, already: true });
-    const found = await deleteKbdbRecord(c.env, existing.record_id);
-    return c.json({ success: true, removed: found });
-  })
-);
-function extractPromptName(c) {
-  const name = (c.req.param("name") ?? "extract_wiki").trim();
-  return Object.prototype.hasOwnProperty.call(BUILTIN_PROMPT_TABLES, name) ? name : null;
-}
-portalRouter.get(
-  "/portal/admin/extract-prompt/:name",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const name = extractPromptName(c);
-    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
-    const loaded = await loadPromptTable(c.env.RECIPES, name);
-    if (!loaded) return c.json({ error: "\u8B80\u4E0D\u5230\u6307\u793A\u8868" }, 502);
-    return c.json({
-      success: true,
-      source: loaded.source,
-      ...loaded.note ? { note: loaded.note } : {},
-      blocks: loaded.table.blocks.map((b) => `${b.key}@${b.v}`),
-      table: loaded.table,
-      builtin: BUILTIN_PROMPT_TABLES[name]
-    });
-  })
-);
-portalRouter.put(
-  "/portal/admin/extract-prompt/:name",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const name = extractPromptName(c);
-    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
-    const body = await c.req.json().catch(() => null);
-    const v = validatePromptTable(body);
-    if (!v.ok) return c.json({ error: `\u8868\u4E0D\u5408\u683C\uFF1A${v.error}` }, 400);
-    if (v.table.name !== name) return c.json({ error: `\u8868\u7684 name\uFF08${v.table.name}\uFF09\u8207\u8DEF\u5F91\uFF08${name}\uFF09\u4E0D\u4E00\u81F4` }, 400);
-    await c.env.RECIPES.put(promptTableKey(name), JSON.stringify(v.table));
-    return c.json({ success: true, source: "installed", blocks: v.table.blocks.map((b) => `${b.key}@${b.v}`) });
-  })
-);
-portalRouter.delete(
-  "/portal/admin/extract-prompt/:name",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const name = extractPromptName(c);
-    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
-    await c.env.RECIPES.delete(promptTableKey(name));
-    return c.json({ success: true, source: "builtin" });
-  })
-);
-portalRouter.get(
-  "/portal/admin/ai",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const tenantSlug = credentialOwner(c.env);
-    let hasKey = false;
-    try {
-      hasKey = await hasCredential(c.env, tenantSlug, "gemini_api_key");
-    } catch {
-      hasKey = false;
-    }
-    return c.json({ success: true, has_key: hasKey });
-  })
-);
-portalRouter.get(
-  "/portal/admin/execution-log-retention",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch3(c.env, `/execution-log/retention?${ownerQuery(ownerId)}`);
-    if (!res.ok) throw new KbdbError(`GET /execution-log/retention \u2192 ${res.status}`);
-    const data = await res.json();
-    return c.json({ success: true, retention_days: data.retention_days ?? null, default_days: data.default_days ?? 90 });
-  })
-);
-portalRouter.put(
-  "/portal/admin/execution-log-retention",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const days = body?.retention_days;
-    if (days !== null && days !== void 0 && (typeof days !== "number" || !Number.isFinite(days) || days <= 0)) {
-      return c.json({ error: "retention_days \u5FC5\u9808\u662F\u6B63\u6574\u6578\uFF0C\u6216 null\uFF08\u4EE3\u8868\u4E0D\u522A\u9664\uFF09" }, 400);
-    }
-    const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch3(c.env, "/execution-log/retention", {
-      method: "PUT",
-      body: JSON.stringify({ owner_id: ownerField(ownerId), retention_days: days === void 0 ? null : days })
-    });
-    if (!res.ok) throw new KbdbError(`PUT /execution-log/retention \u2192 ${res.status}`);
-    const data = await res.json();
-    return c.json({ success: true, retention_days: data.retention_days ?? null });
-  })
-);
-portalRouter.get(
-  "/portal/admin/usage-brakes",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const [settingsRes, brakesRes, usageRes] = await Promise.all([
-      kbdbFetch3(c.env, "/usage-brakes/settings"),
-      kbdbFetch3(c.env, "/usage-brakes?limit=20"),
-      kbdbFetch3(c.env, "/usage-brakes/usage")
-    ]);
-    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
-    if (!brakesRes.ok) throw new KbdbError(`GET /usage-brakes \u2192 ${brakesRes.status}`);
-    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
-    const settings = await settingsRes.json();
-    const brakesBody = await brakesRes.json();
-    const usage = await usageRes.json();
-    const active = (brakesBody.brakes ?? []).filter((b) => b.active === true);
-    return c.json({
-      success: true,
-      brake_enabled: settings.brake_enabled !== false,
-      updated_at: settings.updated_at ?? null,
-      updated_by: settings.updated_by ?? null,
-      active_brakes: active,
-      // 電池模型（#293 c18013）：判準只在 lib/battery.ts，前端只畫。
-      battery: computeBattery({
-        brake_enabled: settings.brake_enabled !== false,
-        percent_written: usage.percent_written,
-        percent_read: usage.percent_read,
-        reset_at: usage.reset_at,
-        month: usage.month,
-        percent_ai: await aiPercentNow(c.env)
-      }),
-      usage: {
-        rows_written: usage.rows_written,
-        rows_read: usage.rows_read,
-        limit_rows_written: usage.limit_rows_written,
-        limit_rows_read: usage.limit_rows_read,
-        percent_written: usage.percent_written,
-        percent_read: usage.percent_read,
-        reset_at: usage.reset_at,
-        month: usage.month
-      }
-    });
-  })
-);
-function daemonKeyDenied(c) {
-  const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
-  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  let ns = "";
-  try {
-    ns = knowledgeOwner(c.env);
-  } catch {
-    ns = "";
-  }
-  if (!ns || !constantTimeEqual(apiKey, ns)) return c.json({ error: "X-Arcrun-API-Key \u4E0D\u5C6C\u65BC\u9019\u53F0\u5BE6\u4F8B" }, 401);
-  return null;
-}
-portalRouter.get(
-  "/portal/daemon/battery",
-  (c) => run(c, async () => {
-    const denied = daemonKeyDenied(c);
-    if (denied) return denied;
-    const [settingsRes, usageRes] = await Promise.all([
-      kbdbFetch3(c.env, "/usage-brakes/settings"),
-      kbdbFetch3(c.env, "/usage-brakes/usage")
-    ]);
-    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
-    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
-    const settings = await settingsRes.json();
-    const usage = await usageRes.json();
-    return c.json({
-      success: true,
-      battery: computeBattery({
-        brake_enabled: settings.brake_enabled !== false,
-        percent_written: usage.percent_written,
-        percent_read: usage.percent_read,
-        reset_at: usage.reset_at,
-        month: usage.month,
-        percent_ai: await aiPercentNow(c.env)
-      })
-    });
-  })
-);
-var USAGE_TTL_MS = 6e4;
-var usageCache = null;
-var BRAKE_COVERS_D1 = ["d1_write", "d1_read"];
-var BRAKE_COVERS_WITH_AI = [...BRAKE_COVERS_D1, "ai"];
-portalRouter.get(
-  "/portal/daemon/usage",
-  (c) => run(c, async () => {
-    const denied = daemonKeyDenied(c);
-    if (denied) return denied;
-    const now2 = Date.now();
-    const accountId = c.env.CF_ACCOUNT_ID || "";
-    const priv = isPrivateCloud(c.env);
-    const cacheKey = `${accountId}|${priv}`;
-    if (usageCache && usageCache.key === cacheKey && now2 - usageCache.at < USAGE_TTL_MS) {
-      return c.json({ success: true, usage: usageCache.snap });
-    }
-    const [settingsRes, usageRes] = await Promise.all([
-      kbdbFetch3(c.env, "/usage-brakes/settings"),
-      kbdbFetch3(c.env, "/usage-brakes/usage")
-    ]);
-    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
-    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
-    const settings = await settingsRes.json();
-    const kusage = await usageRes.json();
-    const cfMonth = priv ? null : await getCfMonth(c.env, now2);
-    const brake = { on: settings.brake_enabled !== false, covers: cfMonth ? BRAKE_COVERS_WITH_AI : BRAKE_COVERS_D1 };
-    const selfSnap = () => buildSelfUsage({
-      now: now2,
-      brake,
-      d1: {
-        day_written: Number(kusage.rows_written ?? 0),
-        day_read: Number(kusage.rows_read ?? 0),
-        month_written: Number(kusage.month?.rows_written ?? 0),
-        month_read: Number(kusage.month?.rows_read ?? 0),
-        exceeded_free_daily: kusage.month?.exceeded_free_daily === true
-      }
-    });
-    let snap;
-    if (priv) {
-      const s = selfSnap();
-      snap = {
-        ...s,
-        plan: "local",
-        base_usd: void 0,
-        brake: { on: false, covers: [] },
-        items: s.items.map(({ cost_usd: _c, unit_usd: _u, ...rest }) => ({ ...rest, limit: null }))
-      };
-    } else if (cfMonth) {
-      snap = buildUsage({ now: now2, brake, data: cfMonth });
-    } else {
-      snap = selfSnap();
-    }
-    usageCache = { at: now2, key: cacheKey, snap };
-    return c.json({ success: true, usage: snap });
-  })
-);
-portalRouter.post(
-  "/portal/admin/usage-brakes/settings",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    if (typeof body?.brake_enabled !== "boolean") {
-      return c.json({ error: "brake_enabled \u5FC5\u9808\u662F boolean" }, 400);
-    }
-    const res = await kbdbFetch3(c.env, "/usage-brakes/settings", {
-      method: "POST",
-      body: JSON.stringify({ brake_enabled: body.brake_enabled, by: auth.user.values.email ?? "portal" })
-    });
-    if (!res.ok) throw new KbdbError(`POST /usage-brakes/settings \u2192 ${res.status}`);
-    const data = await res.json();
-    return c.json({ success: true, brake_enabled: data.brake_enabled !== false });
-  })
-);
-portalRouter.post(
-  "/portal/admin/usage-brakes/:id/release",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const id = c.req.param("id");
-    const res = await kbdbFetch3(c.env, `/usage-brakes/${encodeURIComponent(id)}/release`, {
-      method: "POST",
-      body: JSON.stringify({ by: auth.user.values.email ?? "portal" })
-    });
-    if (res.status === 404) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u524E\u8ECA\u7D00\u9304\uFF08\u53EF\u80FD\u5DF2\u7D93\u653E\u884C\u904E\u4E86\uFF09" }, 404);
-    if (!res.ok) throw new KbdbError(`POST /usage-brakes/:id/release \u2192 ${res.status}`);
-    const data = await res.json();
-    return c.json({ success: true, brake: data.brake ?? null });
-  })
-);
-async function listMcpRedirectHosts(env) {
-  const rows = await listRecordsByTemplate(env, MCP_REDIRECT_HOST_TEMPLATE);
-  return rows.filter((r) => (r.values.host ?? "").trim() !== "").sort((a, b) => (a.values.host ?? "").localeCompare(b.values.host ?? ""));
-}
-portalRouter.get(
-  "/portal/mcp-settings",
-  (c) => run(c, async () => {
-    const auth = await requirePortalUser(c);
-    if (!auth.ok) return auth.res;
-    const isAdmin = (auth.user.values.role ?? "") === "admin";
-    const sub = String(c.env.WORKER_SUBDOMAIN ?? "").trim();
-    const mcpBase = mcpBaseUrl(c.env);
-    const mcpUrl = mcpBase ? `${mcpBase}/mcp` : mcpUrlFor(sub);
-    const payload = {
-      success: true,
-      mcp_url: mcpUrl,
-      // 誠實講「為什麼沒有」：這台實例的部署設定裡沒有 WORKER_SUBDOMAIN ⇒ 多半是安裝
-      // 中途失敗（畫面卻說裝好了）。不要讓使用者以為是自己沒找到。
-      mcp_url_reason: mcpUrl ? "" : "\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u8A18\u9304\u81EA\u5DF1\u7684\u90E8\u7F72\u4F4D\u7F6E\uFF08\u5B89\u88DD\u53EF\u80FD\u6C92\u6709\u5B8C\u6210\uFF09\uFF0C\u6240\u4EE5\u7B97\u4E0D\u51FA MCP \u7DB2\u5740",
-      builtin_hosts: [...MCP_BUILTIN_REDIRECT_HOSTS],
-      can_edit: isAdmin
-    };
-    const ttl = await readMcpTokenTtl(c.env).catch(() => null);
-    payload.token_ttl_seconds = ttl?.seconds ?? null;
-    payload.token_ttl_default_seconds = DEFAULT_TOKEN_TTL_SECONDS;
-    if (isAdmin && ttl) {
-      payload.token_ttl_updated_at = ttl.updated_at;
-      payload.token_ttl_updated_by = ttl.updated_by;
-    }
-    if (isAdmin) {
-      payload.hosts = (await listMcpRedirectHosts(c.env)).map((r) => ({
-        record_id: r.record_id,
-        host: r.values.host ?? "",
-        label: r.values.label ?? "",
-        created_at: r.values.created_at ?? "",
-        created_by: r.values.created_by ?? ""
-      }));
-    }
-    return c.json(payload);
-  })
-);
-portalRouter.post(
-  "/portal/admin/mcp-redirect-hosts",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const norm = normalizeRedirectHost(body?.host);
-    if (!norm.ok) return c.json({ error: norm.error }, 400);
-    const seeded = await ensurePortalTemplates(c.env);
-    if (seeded.errors.length > 0) {
-      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
-    }
-    const existing = await listMcpRedirectHosts(c.env);
-    const dup = existing.find((r) => (r.values.host ?? "") === norm.host);
-    if (dup) {
-      return c.json({ success: true, already: true, host: norm.host, record_id: dup.record_id });
-    }
-    const ns = portalNamespace(c.env);
-    const res = await kbdbFetch3(c.env, "/records", {
-      method: "POST",
-      body: JSON.stringify({
-        template: MCP_REDIRECT_HOST_TEMPLATE,
-        owner_id: ns,
-        values: {
-          host: norm.host,
-          label: String(body?.label ?? "").trim().slice(0, 80),
-          created_at: (/* @__PURE__ */ new Date()).toISOString(),
-          created_by: auth.user.values.email ?? ""
-        }
-      })
-    });
-    if (!res.ok) throw new KbdbError(`POST /records\uFF08${MCP_REDIRECT_HOST_TEMPLATE}\uFF09\u2192 ${res.status}`);
-    const created = await res.json().catch(() => null);
-    return c.json({
-      success: true,
-      host: norm.host,
-      record_id: created?.record_id ?? created?.record?.record_id ?? ""
-    });
-  })
-);
-portalRouter.delete(
-  "/portal/admin/mcp-redirect-hosts/:id",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const recordId = c.req.param("id");
-    const rows = await listMcpRedirectHosts(c.env);
-    const target = rows.find((r) => r.record_id === recordId);
-    if (!target) return c.json({ error: "\u9019\u500B\u7DB2\u57DF\u4E0D\u5728\u540D\u55AE\u4E0A\uFF08\u53EF\u80FD\u5DF2\u7D93\u88AB\u79FB\u9664\u4E86\uFF09" }, 404);
-    const found = await deleteKbdbRecord(c.env, recordId);
-    if (!found) return c.json({ error: "\u9019\u500B\u7DB2\u57DF\u4E0D\u5728\u540D\u55AE\u4E0A\uFF08\u53EF\u80FD\u5DF2\u7D93\u88AB\u79FB\u9664\u4E86\uFF09" }, 404);
-    return c.json({ success: true, host: target.values.host ?? "" });
-  })
-);
-portalRouter.get(
-  "/portal/internal/mcp-redirect-hosts",
-  (c) => run(c, async () => {
-    const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
-    if (!expected) {
-      return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09\uFF0C\u7121\u6CD5\u56DE\u7B54" }, 503);
-    }
-    const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
-    if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
-    const rows = await listMcpRedirectHosts(c.env);
-    return c.json({ success: true, hosts: rows.map((r) => (r.values.host ?? "").trim()).filter(Boolean) });
-  })
-);
-async function readMcpTokenTtl(env) {
-  const rows = await listRecordsByTemplate(env, MCP_TOKEN_TTL_TEMPLATE);
-  for (const r of rows) {
-    const n = Number.parseInt(r.values.ttl_seconds ?? "", 10);
-    if (Number.isFinite(n) && n >= 0) {
-      return {
-        record_id: r.record_id,
-        seconds: n,
-        updated_at: r.values.updated_at ?? "",
-        updated_by: r.values.updated_by ?? ""
-      };
-    }
-  }
-  return null;
-}
-portalRouter.post(
-  "/portal/admin/mcp-token-ttl",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const raw2 = body?.ttl_seconds !== void 0 ? body.ttl_seconds : body?.ttl_days !== void 0 && body.ttl_days !== null ? Number(body.ttl_days) * 86400 : void 0;
-    const norm = normalizeTokenTtl(raw2);
-    if (!norm.ok) return c.json({ error: norm.error }, 400);
-    const seeded = await ensurePortalTemplates(c.env);
-    if (seeded.errors.length > 0) {
-      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
-    }
-    const values = {
-      ttl_seconds: String(norm.seconds),
-      updated_at: (/* @__PURE__ */ new Date()).toISOString(),
-      updated_by: auth.user.values.email ?? ""
-    };
-    const existing = await readMcpTokenTtl(c.env);
-    if (existing) {
-      await patchRecordValues(c.env, existing.record_id, values);
-    } else {
-      const ns = portalNamespace(c.env);
-      const res = await kbdbFetch3(c.env, "/records", {
-        method: "POST",
-        body: JSON.stringify({ template: MCP_TOKEN_TTL_TEMPLATE, owner_id: ns, values })
-      });
-      if (!res.ok) throw new KbdbError(`POST /records\uFF08${MCP_TOKEN_TTL_TEMPLATE}\uFF09\u2192 ${res.status}`);
-    }
-    return c.json({ success: true, ttl_seconds: norm.seconds, clamped: norm.clamped });
-  })
-);
-portalRouter.delete(
-  "/portal/admin/mcp-token-ttl",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const existing = await readMcpTokenTtl(c.env);
-    if (!existing) return c.json({ success: true, already: true });
-    const found = await deleteKbdbRecord(c.env, existing.record_id);
-    return c.json({ success: true, removed: found });
-  })
-);
-portalRouter.get(
-  "/portal/internal/mcp-token-ttl",
-  (c) => run(c, async () => {
-    const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
-    if (!expected) {
-      return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09\uFF0C\u7121\u6CD5\u56DE\u7B54" }, 503);
-    }
-    const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
-    if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
-    const ttl = await readMcpTokenTtl(c.env);
-    return c.json({ success: true, ttl_seconds: ttl?.seconds ?? null });
-  })
-);
-portalRouter.delete(
-  "/portal/admin/libraries/by-name/:name",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const name = decodeURIComponent(c.req.param("name"));
-    const body = await c.req.json().catch(() => null);
-    const confirm = String(body?.confirm ?? "").trim();
-    if (!confirm) return c.json({ error: 'body \u9808\u5E36 { confirm: "<\u5EAB\u540D>" } \u624D\u57F7\u884C\uFF08\u79FB\u9664\u6703\u5F71\u97FF\u8CC7\u6599\u53EF\u641C\u6027\uFF09' }, 400);
-    if (confirm !== name) return c.json({ error: `confirm \u503C\u300C${confirm}\u300D\u8207\u5EAB\u540D\u300C${name}\u300D\u4E0D\u7B26` }, 400);
-    const ownerId = knowledgeOwner(c.env);
-    const res = await kbdbFetch3(c.env, "/entries/deprecate-by-library", {
-      method: "PATCH",
-      body: JSON.stringify({ owner_id: ownerField(ownerId), library: name })
-    });
-    if (!res.ok) throw new KbdbError(`PATCH /entries/deprecate-by-library \u2192 ${res.status}`);
-    const data = await res.json();
-    return c.json({
-      success: true,
-      deprecated_count: data.deprecated_count ?? 0,
-      message: `\u5DF2\u5F9E\u81EA\u52D5\u6E05\u55AE\u79FB\u9664\u300C${name}\u300D\uFF08\u5171\u6A19\u8A18 ${data.deprecated_count ?? 0} \u7B46\u8CC7\u6599\u4E0D\u53EF\u641C\uFF09\u3002\u8CC7\u6599\u4FDD\u7559\u53EF\u9084\u539F\u2014\u2014\u91CD\u65B0\u540C\u6B65\u6642\u6703\u518D\u51FA\u73FE\u3002`
-    });
-  })
-);
-portalRouter.post(
-  "/portal/admin/ai",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    const rawKey = typeof body?.gemini_api_key === "string" ? body.gemini_api_key.trim() : "";
-    if (!rawKey) {
-      return c.json({ error: "\u6C92\u6709\u8981\u8B8A\u66F4\u7684\u9805\u76EE\uFF08\u91D1\u9470\u7559\u7A7A\uFF09" }, 400);
-    }
-    const tenantSlug = credentialOwner(c.env);
-    try {
-      await storeCredential(c.env, tenantSlug, "gemini_api_key", rawKey, "gemini");
-    } catch (e) {
-      return c.json(
-        { error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` },
-        502
-      );
-    }
-    return c.json({ success: true, has_key: true });
-  })
-);
-function credFail(c, label, e, fallbackStatus = 502) {
-  if (isSecretsNotReady(e)) return c.json({ error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE }, 502);
-  const msg = e instanceof Error ? e.message : String(e);
-  return c.json({ error: `${label}\uFF1A${msg}` }, fallbackStatus);
-}
-portalRouter.get(
-  "/portal/admin/credentials",
-  (c) => run(c, async () => {
-    const auth = await requirePortalUser(c);
-    if (!auth.ok) return auth.res;
-    const tenantSlug = credentialOwner(c.env);
-    try {
-      const rows = await listCredentialRows(c.env, tenantSlug);
-      return c.json({ success: true, credentials: rows, total: rows.length });
-    } catch (e) {
-      return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
-    }
-  })
-);
-portalRouter.post(
-  "/portal/admin/credentials",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const body = await c.req.json().catch(() => null);
-    if (!validateName(body?.name)) {
-      return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
-    }
-    if (!body?.value || typeof body.value !== "string") {
-      return c.json({ error: "value \u5FC5\u586B\uFF08\u91D1\u9470\u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF0C\u4E0D\u843D\u5730\u3001\u4E0D\u8A18 log\uFF09" }, 400);
-    }
-    const service = typeof body.service === "string" ? body.service : void 0;
-    const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
-    const tenantSlug = credentialOwner(c.env);
-    try {
-      await writeCredential(c.env, tenantSlug, body.name, body.value, service, sensitivity);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return credFail(c, "\u91D1\u9470\u5132\u5B58\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
-    }
-    return c.json({ success: true, name: body.name, service: service ?? null });
-  })
-);
-portalRouter.put(
-  "/portal/admin/credentials/:name",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const name = c.req.param("name");
-    if (!validateName(name)) {
-      return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
-    }
-    const body = await c.req.json().catch(() => null);
-    if (!body?.value || typeof body.value !== "string") {
-      return c.json({ error: "value \u5FC5\u586B\uFF08\u91D1\u9470\u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF0C\u4E0D\u843D\u5730\u3001\u4E0D\u8A18 log\uFF09" }, 400);
-    }
-    const service = typeof body.service === "string" ? body.service : void 0;
-    const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
-    const tenantSlug = credentialOwner(c.env);
-    try {
-      await writeCredential(c.env, tenantSlug, name, body.value, service, sensitivity);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return credFail(c, "\u91D1\u9470\u8986\u5BEB\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
-    }
-    return c.json({ success: true, name, service: service ?? null });
-  })
-);
-portalRouter.patch(
-  "/portal/admin/credentials/:name",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const name = c.req.param("name");
-    if (!validateName(name)) {
-      return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
-    }
-    const body = await c.req.json().catch(() => null);
-    const newName = typeof body?.new_name === "string" ? body.new_name : void 0;
-    const service = typeof body?.service === "string" ? body.service : void 0;
-    const value = typeof body?.value === "string" ? body.value : void 0;
-    const tenantSlug = credentialOwner(c.env);
-    try {
-      const result = await editCredential(c.env, tenantSlug, name, { newName, service, value });
-      return c.json({ success: true, ...result });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
-      return credFail(c, "\u91D1\u9470\u4FEE\u6539\u5931\u6557", e, status);
-    }
-  })
-);
-portalRouter.delete(
-  "/portal/admin/credentials/:name",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const name = c.req.param("name");
-    const tenantSlug = credentialOwner(c.env);
-    const result = await deleteCredentialByName(c.env, tenantSlug, name);
-    if (!result.ok) {
-      if (isSecretsNotReady(result.error)) return c.json({ error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE }, 502);
-      return c.json({ error: result.error }, result.status);
-    }
-    return c.json({ success: true, name });
-  })
-);
-portalRouter.delete(
-  "/portal/admin/libraries/:id",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const recordId = c.req.param("id");
-    const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    const target = libs.find((l) => l.record_id === recordId);
-    if (!target) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
-    const found = await deleteKbdbRecord(c.env, recordId);
-    if (!found) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
-    try {
-      await c.env.WEBHOOKS.delete(folderTreeKey(c.env, target.values.name ?? ""));
-    } catch {
-    }
-    return c.json({
-      success: true,
-      name: target.values.name ?? "",
-      message: `\u5DF2\u5F9E\u76EE\u9304\u79FB\u9664\u300C${target.values.display_name ?? target.values.name ?? ""}\u300D\u3002\u8CC7\u6599\u4ECD\u5728\uFF0C\u91CD\u65B0\u540C\u6B65\u6703\u518D\u51FA\u73FE\u3002`
-    });
-  })
-);
-async function buildDiagnostics(env, tenant2) {
-  const notes = [];
-  let embedding = { checked: false };
-  try {
-    const [statusRes, selftestRes] = await Promise.all([
-      kbdbFetch3(env, `/embed/backfill/status?${ownerQuery(tenant2)}`),
-      kbdbFetch3(env, `/embed/selftest?${ownerQuery(tenant2)}`)
-    ]);
-    const statusBody = await statusRes.json().catch(() => null);
-    const selftestBody = await selftestRes.json().catch(() => null);
-    embedding = {
-      checked: true,
-      module_enabled: statusBody?.enabled ?? false,
-      // Vectorize+AI binding 都在，才有「index」這回事
-      cards_embedded: statusBody?.embedded ?? 0,
-      cards_pending: statusBody?.pending ?? 0,
-      self_test: {
-        ran: selftestBody?.tested ?? false,
-        // 三態：true=能搜到自己 ／ false=搜不到自己（index 收錄有缺）／ null=還沒東西可測或模組未開
-        found_itself: selftestBody?.tested ? selftestBody?.passed ?? null : null,
-        note: selftestBody?.note ?? ""
-      }
-    };
-  } catch (e) {
-    notes.push(`embed \u5065\u5EB7\u72C0\u614B\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
-  }
-  let library_count = 0;
-  let triplet_count = 0;
-  const ownerParam = ownerQuery(tenant2);
-  try {
-    const [registeredLibs, autoRes, tripletRes] = await Promise.all([
-      listRecordsByTemplate(env, LIBRARY_TEMPLATE).catch(() => []),
-      kbdbFetch3(env, `/entries/libraries?${ownerParam}`),
-      kbdbFetch3(env, `/records/triplet-stats?${ownerParam}`)
-    ]);
-    const knownLibs = new Set(
-      registeredLibs.map((r) => (r.values.name ?? "").trim()).filter((n) => !!n)
-    );
-    const autoBody = await autoRes.json().catch(() => null);
-    for (const name of autoBody?.libraries ?? []) {
-      const n = String(name ?? "").trim();
-      if (n && n !== "general") knownLibs.add(n);
-    }
-    library_count = knownLibs.size;
-    const tripletBody = await tripletRes.json().catch(() => null);
-    triplet_count = (tripletBody?.stats ?? []).reduce((sum2, s) => sum2 + (Number(s.triplet_count) || 0), 0);
-  } catch (e) {
-    notes.push(`\u77E5\u8B58\u5EAB\u898F\u6A21\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
-  }
-  let library_scope_check = { ran: false };
-  if (library_count === 0 && triplet_count === 0) {
-    try {
-      const probeRes = await kbdbFetch3(env, `/entries?${new URLSearchParams({ owner_id: ownerField(tenant2), limit: "1" }).toString()}`);
-      const probeBody = await probeRes.json().catch(() => null);
-      const total = probeBody?.total ?? 0;
-      library_scope_check = {
-        ran: true,
-        any_entries_found: total > 0,
-        note: total > 0 ? `\u9019\u500B\u79DF\u6236\u5E95\u4E0B\u67E5\u5F97\u5230\u5176\u4ED6\u8CC7\u6599\uFF08entries \u5171 ${total} \u7B46\uFF09\uFF0C\u4F46\u5EAB\uFF0F\u4E09\u5143\u7D44\u7D71\u8A08\u4ECD\u56DE 0\u2014\u2014\u50CF\u662F\u67E5\u8A62\u65B9\u5F0F\u6216\u79DF\u6236\u5C0D\u4E0D\u4E0A\uFF0C\u4E0D\u50CF\u771F\u7684\u6C92\u8CC7\u6599\uFF0C\u9700\u8981\u4EBA\u518D\u67E5\u4E00\u6B21` : "\u9019\u500B\u79DF\u6236\u5E95\u4E0B\u5B8C\u5168\u67E5\u4E0D\u5230\u4EFB\u4F55\u8CC7\u6599\u2014\u2014\u6BD4\u8F03\u50CF\u662F\u771F\u7684\u9084\u6C92\u6709\u8CC7\u6599\uFF0C\u4E0D\u662F\u67E5\u8A62\u65B9\u5F0F\u932F\u4E86"
-      };
-    } catch (e) {
-      library_scope_check = {
-        ran: true,
-        any_entries_found: null,
-        note: `\u81EA\u6211\u63A2\u6E2C\u67E5\u8A62\u672C\u8EAB\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
-      };
-    }
-  }
-  return { library_count, triplet_count, library_scope_check, embedding, notes };
-}
-portalRouter.get(
-  "/portal/daemon/diagnostics",
-  (c) => run(c, async () => {
-    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
-    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-    const core = await buildDiagnostics(c.env, tenantFromApiKey(apiKey));
-    return c.json({
-      generated_at: (/* @__PURE__ */ new Date()).toISOString(),
-      instance_url: new URL(c.req.url).origin,
-      bundle_version: c.env.ARCRUN_BUNDLE_VERSION ?? null,
-      ...core
-    });
-  })
-);
-async function movePortalPasswordsToAuthStore(env, tokenOverride) {
-  const users = (await listRecordsByTemplate(env, USER_TEMPLATE)).filter(
-    (r) => !isAuthStoreId(r.record_id) && (r.values.password_hash ?? "") !== ""
-  );
-  if (users.length === 0) return { moved: 0, already: 0, cleared: 0 };
-  let moved = 0;
-  let already = 0;
-  await mutateAuthStore(
-    env,
-    (data) => {
-      for (const u of users) {
-        if (data.passwords[u.record_id]) {
-          already++;
-          continue;
-        }
-        data.passwords[u.record_id] = u.values.password_hash;
-        moved++;
-      }
-    },
-    tokenOverride
-  );
-  let cleared = 0;
-  for (const u of users) {
-    await patchRecordValues(env, u.record_id, { password_hash: "" });
-    cleared++;
-  }
-  return { moved, already, cleared };
-}
-portalRouter.post(
-  "/portal/admin/update",
-  (c) => run(c, async () => {
-    const auth = await requirePortalAdmin(c);
-    if (!auth.ok) return auth.res;
-    const r = await requestInstanceUpdate(c.env);
-    return c.json(r.body, r.status);
-  })
-);
-
-// cypher-executor/src/routes/init-seed.ts
-var initSeedRouter = new Hono2();
-function sameContent(a, b, omit) {
-  const strip = (obj) => {
-    const rec = obj;
-    const out = {};
-    for (const k of Object.keys(rec).sort()) {
-      if (!omit.includes(k)) out[k] = rec[k];
-    }
-    return JSON.stringify(out);
-  };
-  return strip(a) === strip(b);
-}
-var TIMESTAMP_FIELDS = ["created_at", "updated_at"];
-initSeedRouter.post("/init/seed", async (c) => {
-  const now2 = Date.now();
-  let apiOk = 0;
-  let apiWritten = 0;
-  let apiFail = 0;
-  const apiErrors = [];
-  await Promise.all(API_RECIPE_SEEDS.map(async (seed) => {
-    try {
-      const canonicalId = seed.canonical_id.trim().toLowerCase();
-      const hashId = await deriveRecipeHash(canonicalId);
-      const existing = await resolveRecipe(canonicalId, c.env.RECIPES);
-      const recipe = {
-        uuid: existing?.uuid ?? crypto.randomUUID(),
-        author: existing?.author ?? "system",
-        canonical_id: canonicalId,
-        hash_id: hashId,
-        display_name: seed.display_name,
-        description: seed.description,
-        endpoint: resolveKbdbSeedBase(seed.endpoint, () => kbdbBaseUrl(c.env)),
-        method: (seed.method ?? "POST").toUpperCase(),
-        auth_service: seed.auth_service,
-        // ③ payload/回應/binding 三層（3.12）：不列進來的欄位會被**靜默吃掉**——
-        // 種子帶了 body_template/response_map/auth 卻沒進 KV，症狀是 recipe 存在但跑起來
-        // 「像沒設定過」，且哪裡都不會紅（08-02 manifest.daemon 欄被列舉式重建吃掉的同型）。
-        body_template: seed.body_template,
-        response_map: seed.response_map,
-        auth: seed.auth,
-        binding_name: seed.binding_name,
-        headers: seed.headers,
-        created_at: existing?.created_at ?? now2,
-        updated_at: now2
-      };
-      if (!existing || !sameContent(recipe, existing, TIMESTAMP_FIELDS)) {
-        await installRecipeRecord(c.env.RECIPES, recipe);
-        apiWritten++;
-      }
-      apiOk++;
-    } catch (e) {
-      apiFail++;
-      apiErrors.push(`${seed.canonical_id}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }));
-  let authOk = 0;
-  let authWritten = 0;
-  let authFail = 0;
-  const authErrors = [];
-  await Promise.all(AUTH_RECIPE_SEEDS.map(async (seed) => {
-    try {
-      const service = seed.service.trim().toLowerCase();
-      const existing = await c.env.RECIPES.get(`auth_recipe:${service}`, "json");
-      const recipe = {
-        ...seed,
-        base_url: resolveKbdbSeedBase(seed.base_url, () => kbdbBaseUrl(c.env)),
-        service,
-        created_at: existing?.created_at ?? now2,
-        updated_at: now2
-      };
-      if (!existing || !sameContent(recipe, existing, TIMESTAMP_FIELDS)) {
-        await c.env.RECIPES.put(`auth_recipe:${service}`, JSON.stringify(recipe));
-        authWritten++;
-      }
-      authOk++;
-    } catch (e) {
-      authFail++;
-      authErrors.push(`${seed.service}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }));
-  const portalTemplates = await ensurePortalTemplates(c.env);
-  const allOk = apiFail === 0 && authFail === 0 && portalTemplates.errors.length === 0;
-  const durationMs = Date.now() - now2;
-  return c.json(
-    {
-      success: allOk,
-      duration_ms: durationMs,
-      api_recipes: {
-        seeded: apiOk,
-        written: apiWritten,
-        unchanged: apiOk - apiWritten,
-        failed: apiFail,
-        errors: apiErrors
-      },
-      auth_recipes: {
-        seeded: authOk,
-        written: authWritten,
-        unchanged: authOk - authWritten,
-        failed: authFail,
-        errors: authErrors
-      },
-      portal_templates: portalTemplates,
-      message: allOk ? `seed \u5B8C\u6210\uFF08${durationMs}ms\uFF09\uFF1A${apiOk} \u500B API recipe\uFF08\u5BEB\u5165 ${apiWritten}\uFF0F\u6CBF\u7528 ${apiOk - apiWritten}\uFF09+ ${authOk} \u500B auth recipe\uFF08\u5BEB\u5165 ${authWritten}\uFF0F\u6CBF\u7528 ${authOk - authWritten}\uFF09+ portal templates\uFF08\u65B0\u5EFA ${portalTemplates.created.length}\uFF0F\u5DF2\u5B58\u5728 ${portalTemplates.existing.length}\uFF09` : `seed \u90E8\u5206\u5931\u6557\uFF08\u8AA0\u5BE6\u56DE\u5831\uFF0C\u672A\u5047\u7DA0\uFF09\uFF1AAPI ${apiOk}\u2713/${apiFail}\u2717\uFF0Cauth ${authOk}\u2713/${authFail}\u2717\uFF0Cportal templates \u932F\u8AA4 ${portalTemplates.errors.length}`
-    },
-    allOk ? 200 : 207
-  );
-});
-
-// cypher-executor/src/index.ts
-init_kbdb_proxy();
-
-// cypher-executor/src/routes/console-dashboard.ts
-init_dist();
-init_kbdb_proxy();
-
-// cypher-executor/src/lib/taipei-time.ts
-var TAIPEI_OFFSET_MS = 8 * 3600 * 1e3;
-function taipeiDayKey(ms) {
-  return new Date(ms + TAIPEI_OFFSET_MS).toISOString().slice(0, 10);
-}
-var TAIPEI_CLIENT_JS = [
-  "var TAIPEI_OFFSET_MS = 28800000; // UTC+8\uFF0C\u53F0\u5317\u7121 DST",
-  "function tpePad(n) { n = String(n); return n.length < 2 ? '0' + n : n; }",
-  "function taipeiDayKey(ms) { return new Date(ms + TAIPEI_OFFSET_MS).toISOString().slice(0, 10); }",
-  "function taipeiDateStr(ms) { return taipeiDayKey(ms); }",
-  "function taipeiDateTimeStr(ms) { var d = new Date(ms + TAIPEI_OFFSET_MS); return taipeiDayKey(ms) + ' ' + tpePad(d.getUTCHours()) + ':' + tpePad(d.getUTCMinutes()); }",
-  "function taipeiTimeStr(ms) { var d = new Date(ms + TAIPEI_OFFSET_MS); return tpePad(d.getUTCHours()) + ':' + tpePad(d.getUTCMinutes()) + ':' + tpePad(d.getUTCSeconds()); }",
-  "function taipeiMonthDay(ms) { var d = new Date(ms + TAIPEI_OFFSET_MS); return { month: d.getUTCMonth() + 1, day: d.getUTCDate() }; }"
-].join("\n");
-
-// cypher-executor/src/lib/console-dashboard-model.ts
-function parseCreatedAtMs(s) {
-  if (s === null || s === void 0 || s === "") return null;
-  if (typeof s === "number") return s < 1e12 ? s * 1e3 : s;
-  if (/^\d+$/.test(s)) {
-    const n = Number(s);
-    return n < 1e12 ? n * 1e3 : n;
-  }
-  const iso = /T/.test(s) ? s : `${s.replace(" ", "T")}Z`;
-  const ms = Date.parse(iso);
-  return Number.isNaN(ms) ? null : ms;
-}
-function parseJsonContent(e) {
-  if (!e.content) return null;
-  try {
-    const v = JSON.parse(e.content);
-    return v && typeof v === "object" ? v : null;
-  } catch {
-    return null;
-  }
-}
-function agoMinutes(nowMs, ms) {
-  return ms === null ? -1 : Math.max(0, Math.round((nowMs - ms) / 6e4));
-}
-function buildRouteModel(entries, nowMs) {
-  const todayKey = taipeiDayKey(nowMs);
-  const byTitle = /* @__PURE__ */ new Map();
-  for (const e of entries) {
-    const j = parseJsonContent(e);
-    const title = typeof j?.title === "string" ? j.title : null;
-    if (!title || byTitle.has(title)) continue;
-    const ms = parseCreatedAtMs(e.created_at);
-    byTitle.set(title, {
-      title,
-      status: typeof j?.status === "string" ? j.status : "todo",
-      order: typeof j?.order === "number" ? j.order : 999,
-      scope: j?.scope === "week" ? "week" : "today",
-      at_ms: ms,
-      age_minutes: agoMinutes(nowMs, ms),
-      is_today_write: ms !== null && taipeiDayKey(ms) === todayKey
-    });
-  }
-  const tasks = [...byTitle.values()].sort(
-    (a, b) => a.scope !== b.scope ? a.scope === "today" ? -1 : 1 : a.order - b.order
-  );
-  const newestMs = tasks.reduce((m, t) => t.at_ms !== null && (m === null || t.at_ms > m) ? t.at_ms : m, null);
-  const isToday = newestMs !== null && taipeiDayKey(newestMs) === todayKey;
-  const todayTasks = tasks.filter((t) => t.scope === "today" && t.is_today_write);
-  return {
-    tasks,
-    updated_ago_minutes: agoMinutes(nowMs, newestMs),
-    is_today: isToday,
-    today_done: todayTasks.filter((t) => t.status === "done").length,
-    today_total: todayTasks.length
-  };
-}
-var URGENCY_EMOJI = /(🔴|🟡|🟢|⚪)/u;
-var CLOSED_MARKERS = /(✅|已完成|已解|銷案|已銷)/u;
-function parseSprintWaitingTable(md, sprintFile) {
-  const secIdx = md.search(/^##\s*等\s*leo\s*清單/mu);
-  if (secIdx < 0) return null;
-  const section = md.slice(secIdx);
-  const lines = section.split("\n");
-  const items = [];
-  let sawTable = false;
-  for (const line of lines.slice(1)) {
-    if (/^#{2,3}\s/.test(line) && !/^##\s*等/.test(line)) break;
-    const m = line.match(/^\|\s*([A-Za-z]?\d+)\s*\|(.*)\|(.*)\|\s*$/u);
-    if (!m) continue;
-    sawTable = true;
-    const id = m[1];
-    const item = m[2].trim();
-    const urgency = m[3].trim();
-    if (item.startsWith("~~")) continue;
-    if (CLOSED_MARKERS.test(urgency)) continue;
-    items.push({
-      id,
-      urgency: urgency.match(URGENCY_EMOJI)?.[1] ?? "",
-      title: cleanWaitingTitle(item),
-      sprint: sprintFile
-    });
-  }
-  if (!sawTable) return null;
-  return sortWaitingItems(items);
-}
-function sortWaitingItems(items) {
-  const rank = (u) => u === "\u{1F534}" ? 0 : u === "\u{1F7E1}" ? 1 : 2;
-  return items.map((it, i) => ({ it, i })).sort((a, b) => rank(a.it.urgency) - rank(b.it.urgency) || a.i - b.i).map((x) => x.it);
-}
-function cleanWaitingTitle(raw2) {
-  let s = raw2.replace(/\*\*/g, "").replace(/~~/g, "").replace(/`/g, "").trim();
-  s = s.replace(/^(?:🔴|🟡|🟢|⚪)\s*/u, "");
-  const colon = s.indexOf("\uFF1A");
-  if (colon >= 12) s = s.slice(0, colon);
-  if (s.length > 80) s = `${s.slice(0, 79)}\u2026`;
-  return trimUnbalancedParen(s);
-}
-function pickLatestSprintFiles(names, n = 2) {
-  return names.filter((name) => /^sprint-.*\.md$/.test(name)).sort().slice(-n).reverse();
-}
-function buildWaitingFallback(entries, nowMs) {
-  const byTitle = /* @__PURE__ */ new Map();
-  for (const e of entries) {
-    const j = parseJsonContent(e);
-    const title = typeof j?.title === "string" ? j.title : null;
-    if (!title || byTitle.has(title)) continue;
-    byTitle.set(title, {
-      status: typeof j?.status === "string" ? j.status : "open",
-      at_ms: parseCreatedAtMs(e.created_at)
-    });
-  }
-  const open = [...byTitle.entries()].filter(([, v]) => v.status === "open");
-  const newestMs = [...byTitle.values()].reduce(
-    (m, v) => v.at_ms !== null && (m === null || v.at_ms > m) ? v.at_ms : m,
-    null
-  );
-  const ago = agoMinutes(nowMs, newestMs);
-  return {
-    items: open.map(([title]) => ({ title })),
-    source: byTitle.size ? "kbdb_dash_wait" : "none",
-    updated_ago_minutes: ago,
-    stale: ago < 0 || ago > 24 * 60,
-    note: byTitle.size ? void 0 : "\u7BA1\u7DDA\u672A\u63A5\uFF1Adash_wait \u7121\u8CC7\u6599\u3001Gitea sprint \u8B80\u53D6\u672A\u8A2D\u5B9A\uFF08GITEA_TOKEN\uFF09"
-  };
-}
-var BOARD_LINE = /^- \[([^\]]*)\]\s*(.*)$/u;
-var DONE_STAMP = /完成（([^）\n]*)/gu;
-var STAMP_DAY = /\d{4}-\d{2}-\d{2}/u;
-var UTC_DAYLINE_ACTORS = /\[cloud-worker\]/u;
-function nextDayKey(day) {
-  const ms = Date.parse(`${day}T00:00:00Z`);
-  return Number.isNaN(ms) ? day : new Date(ms + 24 * 3600 * 1e3).toISOString().slice(0, 10);
-}
-function classifyBoardMark(mark) {
-  if (mark === " " || mark === "") return "todo";
-  if (mark === "x" || mark === "X") return "done";
-  if (mark.startsWith("\u{1F504}")) return "doing";
-  if (mark.startsWith("!")) return "blocked";
-  return null;
-}
-function extractCompletedDays(text) {
-  const days = [];
-  const push = (d) => {
-    if (!days.includes(d)) days.push(d);
-  };
-  for (const m of text.matchAll(DONE_STAMP)) {
-    const content = m[1];
-    const day = content.match(STAMP_DAY)?.[0];
-    if (!day) continue;
-    push(day);
-    if (UTC_DAYLINE_ACTORS.test(content)) push(nextDayKey(day));
-  }
-  return days;
-}
-function trimUnbalancedParen(s) {
-  let depth = 0;
-  let lastOpen = -1;
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === "\uFF08") {
-      if (depth === 0) lastOpen = i;
-      depth++;
-    } else if (s[i] === "\uFF09") {
-      depth = Math.max(0, depth - 1);
-    }
-  }
-  if (depth > 0 && lastOpen >= 0) s = s.slice(0, lastOpen).trim();
-  return s;
-}
-function cleanBoardTitle(raw2) {
-  let s = raw2.replace(/\*\*/g, "").replace(/~~/g, "").replace(/`/g, "").trim();
-  const colon = s.indexOf("\uFF1A");
-  if (colon >= 4) s = s.slice(0, colon);
-  if (s.length > 80) s = `${s.slice(0, 79)}\u2026`;
-  return trimUnbalancedParen(s.trim());
-}
-function parseSprintTaskBoard(md, sprintFile) {
-  const secIdx = md.search(/^##\s*任務板/mu);
-  if (secIdx < 0) return null;
-  const section = md.slice(secIdx);
-  const lines = section.split("\n");
-  const tasks = [];
-  let current = null;
-  for (const line of lines.slice(1)) {
-    if (/^##\s/.test(line) && !/^###/.test(line)) break;
-    if (/^###\s/.test(line)) {
-      current = null;
-      continue;
-    }
-    const m = line.match(BOARD_LINE);
-    if (m) {
-      current = null;
-      const status = classifyBoardMark(m[1]);
-      const body = m[2];
-      const title = cleanBoardTitle(body);
-      if (status === null || !title) continue;
-      current = { title, status, completed_days: extractCompletedDays(body), sprint: sprintFile };
-      tasks.push(current);
-      continue;
-    }
-    if (/^\s+\S/.test(line)) {
-      if (current) {
-        for (const d of extractCompletedDays(line)) {
-          if (!current.completed_days.includes(d)) current.completed_days.push(d);
-        }
-      }
-      continue;
-    }
-    if (line.trim() !== "") current = null;
-  }
-  return tasks.length ? tasks : null;
-}
-function buildSprintRouteModel(tasks, nowMs) {
-  const todayKey = taipeiDayKey(nowMs);
-  const doneToday = tasks.filter((t) => t.status === "done" && t.completed_days.includes(todayKey));
-  const open = tasks.filter((t) => t.status !== "done");
-  return {
-    tasks: [...doneToday, ...open].map((t) => ({ title: t.title, status: t.status, sprint: t.sprint })),
-    today_done: doneToday.length,
-    today_total: doneToday.length + open.length,
-    done_today_titles: doneToday.map((t) => t.title)
-  };
-}
-var GITEA_WAITING_CACHE_TTL_SECONDS = 90;
-function reviveWaitingAges(model, fetchedAtMs, nowMs) {
-  if (model.updated_ago_minutes < 0) return model;
-  const drift = Math.max(0, Math.round((nowMs - fetchedAtMs) / 6e4));
-  const ago = model.updated_ago_minutes + drift;
-  return { ...model, updated_ago_minutes: ago, stale: ago > 48 * 60 };
-}
-
-// cypher-executor/src/lib/console-triage-model.ts
-var TIER_ALIASES = {
-  ai: "ai",
-  collab: "collab",
-  leo: "leo",
-  mira80: "ai",
-  collab15: "collab",
-  leo5: "leo"
-};
-function normalizeStatus(v) {
-  return v === "done" ? "done" : "new";
-}
-function normalizeTier(v) {
-  const mapped = typeof v === "string" ? TIER_ALIASES[v.trim()] : void 0;
-  return mapped ? { tier: mapped, unclassified: false } : { tier: "collab", unclassified: true };
-}
-function str(v) {
-  return typeof v === "string" ? v.trim() : "";
-}
-function todoToTriageItem(e) {
-  const j = parseJsonContent(e);
-  const { tier, unclassified } = normalizeTier(j?.owner_tier);
-  return {
-    id: e.id,
-    text: str(j?.text) || (e.content ?? ""),
-    tier,
-    unclassified,
-    project: str(j?.project),
-    source: str(j?.source),
-    marker: str(j?.marker),
-    status: normalizeStatus(j?.status),
-    origin: "todo",
-    at: e.created_at,
-    at_ms: parseCreatedAtMs(e.created_at)
-  };
-}
-function inboxToTriageItem(e) {
-  const j = parseJsonContent(e);
-  const from = str(j?.from);
-  return {
-    id: e.id,
-    text: str(j?.text) || (e.content ?? ""),
-    tier: "collab",
-    unclassified: true,
-    project: "",
-    source: from ? `telegram\u30FB${from}` : "telegram",
-    marker: "",
-    status: normalizeStatus(j?.status),
-    origin: "inbox",
-    at: e.created_at,
-    at_ms: parseCreatedAtMs(e.created_at)
-  };
-}
-function applyTriageCheck(content, action, nowIso2) {
-  let obj;
-  try {
-    const v = JSON.parse(content ?? "");
-    obj = v && typeof v === "object" && !Array.isArray(v) ? v : { text: content ?? "" };
-  } catch {
-    obj = { text: content ?? "" };
-  }
-  if (action === "restore") {
-    const { checked_via: _via, checked_at: _at, ...rest } = obj;
-    return JSON.stringify({ ...rest, status: "new" });
-  }
-  return JSON.stringify({ ...obj, status: "done", checked_via: "console", checked_at: nowIso2 });
-}
-function buildTriageModel(todoEntries, inboxEntries) {
-  const items = [
-    ...todoEntries.map(todoToTriageItem),
-    ...inboxEntries.map(inboxToTriageItem)
-  ].sort((a, b) => (b.at_ms ?? -1) - (a.at_ms ?? -1));
-  const projects = [...new Set(items.map((i) => i.project).filter(Boolean))].sort();
-  const counts = { ai: 0, collab: 0, leo: 0, unclassified: 0, done: 0, total: items.length };
-  for (const it of items) {
-    if (it.status === "done") {
-      counts.done++;
-      continue;
-    }
-    counts[it.tier]++;
-    if (it.unclassified) counts.unclassified++;
-  }
-  return { items, projects, counts };
-}
-
-// cypher-executor/src/routes/console-dashboard.ts
-init_tenant();
-var consoleDashboardRouter = new Hono2();
-var STALE_MINUTES = 240;
-var JUDGE_START_HOUR = 9;
-var JUDGE_END_HOUR = 22;
-var STANDARD_TASK_STATUS = /* @__PURE__ */ new Set(["done", "doing", "todo", "blocked"]);
-async function fetchEntries(env, tenant2, entryType, limit) {
-  const { base, headers } = kbdbBase(env);
-  const params = new URLSearchParams({ owner_id: tenant2, entry_type: entryType, limit: String(limit) });
-  try {
-    const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.entries ?? [];
-  } catch {
-    return [];
-  }
-}
-async function fetchJson(url, headers) {
-  try {
-    const res = await fetch(url, headers ? { headers } : void 0);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-async function fetchTripletTotal(env, tenant2) {
-  const { base, headers } = kbdbBase(env);
-  const data = await fetchJson(
-    `${base}/records/triplet-stats?owner_id=${encodeURIComponent(tenant2)}`,
-    headers
-  );
-  if (!data || !Array.isArray(data.stats)) return null;
-  let total = 0;
-  for (const row of data.stats) {
-    if (typeof row?.triplet_count !== "number") return null;
-    total += row.triplet_count;
-  }
-  return total;
-}
-async function fetchEntryTotal(env, filters) {
-  const { base, headers } = kbdbBase(env);
-  const params = new URLSearchParams({ ...filters, limit: "1" });
-  const data = await fetchJson(`${base}/entries?${params.toString()}`, headers);
-  return data && typeof data.total === "number" ? data.total : null;
-}
-async function fetchGiteaSprint(env, nowMs) {
-  const base = (env.GITEA_BASE_URL ?? "").replace(/\/$/, "");
-  const token = env.GITEA_TOKEN;
-  if (!base || !token) return null;
-  const repo = env.GITEA_SPRINT_REPO ?? "inkstone/InkStoneCo";
-  const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
-  const headers = { Authorization: `token ${token}` };
-  try {
-    const files = await fetchJson(`${base}/api/v1/repos/${repo}/contents/${encodeURI(dir)}`, headers);
-    if (!files) return null;
-    const sprints = pickLatestSprintFiles(files.map((f) => f.name));
-    if (!sprints.length) return null;
-    const parsed = await Promise.all(
-      sprints.map(async (name) => {
-        const rawRes = await fetch(`${base}/api/v1/repos/${repo}/raw/${encodeURI(`${dir}/${name}`)}`, { headers });
-        if (!rawRes.ok) return null;
-        const text = await rawRes.text();
-        return { waiting: parseSprintWaitingTable(text, name), board: parseSprintTaskBoard(text, name) };
-      })
-    );
-    const readFiles = sprints.filter((_, i) => parsed[i]?.waiting != null);
-    const merged = parsed.map((p) => p?.waiting).filter((p) => p != null).flat();
-    if (!readFiles.length) return null;
-    const boardMerged = parsed.map((p) => p?.board).filter((b) => b != null).flat();
-    let ago = -1;
-    const commits = await fetchJson(
-      `${base}/api/v1/repos/${repo}/commits?path=${encodeURIComponent(`${dir}/${readFiles[0]}`)}&limit=1&stat=false&verification=false&files=false`,
-      headers
-    );
-    const date = commits?.[0]?.commit?.committer?.date;
-    if (date) {
-      const ms = Date.parse(date);
-      if (!Number.isNaN(ms)) ago = agoMinutes(nowMs, ms);
-    }
-    return {
-      waiting: {
-        items: sortWaitingItems(merged),
-        source: "gitea_sprint",
-        updated_ago_minutes: ago,
-        stale: ago >= 0 && ago > 48 * 60,
-        sprint_files: readFiles
-      },
-      board: boardMerged.length ? boardMerged : null
-    };
-  } catch {
-    return null;
-  }
-}
-async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSprint) {
-  if (!env.GITEA_BASE_URL || !env.GITEA_TOKEN) return null;
-  const repo = env.GITEA_SPRINT_REPO ?? "inkstone/InkStoneCo";
-  const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
-  const cacheKey = new Request(
-    `https://console-dashboard.arcrun.internal/gitea-waiting?${new URLSearchParams({ base: env.GITEA_BASE_URL, repo, dir }).toString()}`
-  );
-  const cache2 = caches.default;
-  try {
-    const hit = await cache2.match(cacheKey);
-    if (hit) {
-      const envelope2 = await hit.json();
-      return {
-        waiting: reviveWaitingAges(envelope2.snapshot.waiting, envelope2.fetched_at_ms, nowMs),
-        board: envelope2.snapshot.board,
-        cache: "hit"
-      };
-    }
-  } catch {
-  }
-  const fresh = await fetcher(env, nowMs);
-  if (!fresh) return null;
-  const envelope = { snapshot: fresh, fetched_at_ms: nowMs };
-  try {
-    waitUntil(
-      cache2.put(
-        cacheKey,
-        new Response(JSON.stringify(envelope), {
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": `public, max-age=${GITEA_WAITING_CACHE_TTL_SECONDS}`
-          }
-        })
-      )
-    );
-  } catch {
-  }
-  return { ...fresh, cache: "miss" };
-}
-consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
-  const tenant2 = knowledgeOwner(c.env);
-  const now2 = Date.now();
-  const { base: kbdbUrl, headers: kbdbHeaders2 } = kbdbBase(c.env);
-  const [
-    beatEntries,
-    taskEntries,
-    waitEntries,
-    inboxEntries,
-    giteaSprint,
-    kbdbHealth,
-    embedStatus,
-    graphProbe,
-    tripletTotal,
-    entriesTotal,
-    wikiCardTotal,
-    workflowTotal
-  ] = await Promise.all([
-    fetchEntries(c.env, tenant2, "dash_beat", 100),
-    fetchEntries(c.env, tenant2, "dash_task", 200),
-    fetchEntries(c.env, tenant2, "dash_wait", 100),
-    fetchEntries(c.env, tenant2, "inbox", 200),
-    cachedGiteaSprint(c.env, now2, (p) => c.executionCtx.waitUntil(p)),
-    fetchJson(`${kbdbUrl}/health`, kbdbHeaders2),
-    fetchJson(`${kbdbUrl}/embed/backfill/status`, kbdbHeaders2),
-    // 圖服務活著沒（燈號）——數字不從這裡拿，見 fetchTripletTotal。
-    // 🔴 inkstone/Arcrun#168 收斂：原本探的是 kbdb-graph-plugin 的 /triplets/stats，
-    // 但圖能力已收斂回 KBDB（GET /graph/neighbors/:node）⇒ 探那顆 plugin 等於在量一個
-    // 沒有人走的服務：它沒裝就永遠紅燈、裝了也只證明一個不再被使用的東西活著。
-    // 改探 KBDB 那支端點本身——用一個不存在的節點名，它會誠實回 count:0 的 200
-    //（graph-query.ts：查不到就是空結果，不是錯誤），正好當「這條路通不通」的探針。
-    fetchJson(
-      `${kbdbUrl}/graph/neighbors/${encodeURIComponent("__arcrun_graph_probe__")}?depth=1`,
-      kbdbHeaders2
-    ),
-    fetchTripletTotal(c.env, tenant2),
-    // owner_id 一律鎖本租戶：原本不帶 owner 會混到別租戶（實測 459,137 vs leo 的 458,732）
-    fetchEntryTotal(c.env, { owner_id: tenant2 }),
-    fetchEntryTotal(c.env, { entry_type: "wiki_card", owner_id: tenant2 }),
-    fetchEntryTotal(c.env, { entry_type: "workflow", owner_id: tenant2 })
-  ]);
-  const beats = [];
-  const seenActors = /* @__PURE__ */ new Set();
-  for (const e of beatEntries) {
-    const j = parseJsonContent(e);
-    const actor = typeof j?.actor === "string" ? j.actor : null;
-    if (!actor || seenActors.has(actor)) continue;
-    seenActors.add(actor);
-    const ms = parseCreatedAtMs(e.created_at);
-    beats.push({
-      actor,
-      event: typeof j?.event === "string" ? j.event : "",
-      note: typeof j?.note === "string" ? j.note : "",
-      at: e.created_at,
-      ago_minutes: agoMinutes(now2, ms)
-    });
-  }
-  const lastBeat = beats.filter((b) => b.ago_minutes >= 0).sort((a, b) => a.ago_minutes - b.ago_minutes)[0] ?? null;
-  let waiting;
-  let waitingCache = null;
-  if (giteaSprint) {
-    waiting = giteaSprint.waiting;
-    waitingCache = giteaSprint.cache;
-  } else {
-    waiting = buildWaitingFallback(waitEntries, now2);
-    if (waiting.source === "kbdb_dash_wait" && !(c.env.GITEA_BASE_URL && c.env.GITEA_TOKEN)) {
-      waiting.note = "Gitea sprint \u6E05\u55AE\u672A\u63A5\uFF08\u7F3A GITEA_TOKEN secret\uFF09\u2014\u2014\u4EE5\u4E0B\u662F dash_wait \u6B98\u8CC7\u6599";
-    } else if (waiting.source === "kbdb_dash_wait") {
-      waiting.note = "Gitea sprint \u6E05\u55AE\u8B80\u53D6\u5931\u6557\u2014\u2014\u4EE5\u4E0B\u662F dash_wait \u6B98\u8CC7\u6599";
-    }
-  }
-  const sprintRoute = giteaSprint?.board ? buildSprintRouteModel(giteaSprint.board, now2) : null;
-  const route = buildRouteModel(taskEntries, now2);
-  const boardAgo = giteaSprint ? giteaSprint.waiting.updated_ago_minutes : -1;
-  const boardUpdatedToday = boardAgo >= 0 && taipeiDayKey(now2 - boardAgo * 6e4) === taipeiDayKey(now2);
-  const inboxNew = inboxEntries.reduce((n, e) => {
-    const j = parseJsonContent(e);
-    return j && j.status !== "done" ? n + 1 : n;
-  }, 0);
-  const todayWrites = route.tasks.filter((t) => t.is_today_write);
-  const hasBlocked = todayWrites.some((t) => t.status === "blocked");
-  const hasLagMark = todayWrites.some((t) => !STANDARD_TASK_STATUS.has(t.status));
-  const taipeiHour = new Date(now2 + 8 * 3600 * 1e3).getUTCHours();
-  const inJudgeWindow = taipeiHour >= JUDGE_START_HOUR && taipeiHour < JUDGE_END_HOUR;
-  const beatStale = lastBeat === null || lastBeat.ago_minutes > STALE_MINUTES;
-  const kbdbOk = kbdbHealth?.ok === true;
-  const light = hasBlocked || inJudgeWindow && beatStale || !kbdbOk ? "red" : hasLagMark ? "yellow" : "green";
-  const lightReason = !kbdbOk ? "KBDB \u57FA\u672C\u76E4 /health \u6253\u4E0D\u901A" : hasBlocked ? "\u4ECA\u65E5\u4EFB\u52D9\u6709 blocked" : inJudgeWindow && beatStale ? `\u5FC3\u8DF3\u8D85\u904E ${STALE_MINUTES} \u5206\u9418` : hasLagMark ? "\u4ECA\u65E5\u4EFB\u52D9\u6709\u843D\u5F8C\u6A19\u8A18" : "";
-  return c.json({
-    light,
-    light_reason: lightReason,
-    last_beat: lastBeat ? { actor: lastBeat.actor, ago_minutes: lastBeat.ago_minutes, event: lastBeat.event, note: lastBeat.note } : null,
-    beats,
-    // 路線：sprint 任務板優先（tasks 欄位形狀與 dash_task 版相容——title/status/scope）；
-    // 板上開著的項 is_today_write=false（燈號沿 #36 原則只吃 dash_task 今日寫入＋心跳＋KBDB，
-    // 板上掛了幾天的 [!] 不會天天亮紅燈——那是「等裁決」不是「今天卡住」）
-    tasks: sprintRoute ? sprintRoute.tasks.map((t, i) => ({
-      title: t.title,
-      status: t.status,
-      order: i,
-      scope: "today",
-      age_minutes: boardAgo,
-      is_today_write: t.status === "done",
-      // done 項必然是「今天完成」的（模型已濾）
-      sprint: t.sprint ?? null
-    })) : route.tasks.map((t) => ({
-      title: t.title,
-      status: t.status,
-      order: t.order,
-      scope: t.scope,
-      age_minutes: t.age_minutes,
-      is_today_write: t.is_today_write,
-      sprint: null
-    })),
-    route_meta: sprintRoute ? {
-      source: "gitea_sprint_board",
-      // is_today＝板檔今天（台北）有 commit 過；false → 頁面誠實標「今日任務板未更新」
-      is_today: boardUpdatedToday,
-      updated_ago_minutes: boardAgo,
-      sprint_files: waiting.sprint_files ?? null
-    } : {
-      source: "kbdb_dash_task",
-      is_today: route.is_today,
-      updated_ago_minutes: route.updated_ago_minutes,
-      sprint_files: null
-    },
-    today_done: sprintRoute ? sprintRoute.today_done : route.today_done,
-    today_total: sprintRoute ? sprintRoute.today_total : route.today_total,
-    done_today_titles: sprintRoute ? sprintRoute.done_today_titles : null,
-    waiting: waiting.items,
-    waiting_meta: {
-      source: waiting.source,
-      updated_ago_minutes: waiting.updated_ago_minutes,
-      stale: waiting.stale,
-      sprint_files: waiting.sprint_files ?? null,
-      note: waiting.note ?? null,
-      // Gitea 快取層狀態（hit/miss；fallback 路徑為 null）——快取生效的客觀證據
-      cache: waitingCache
-    },
-    inbox_new: inboxNew,
-    system: {
-      kbdb_ok: kbdbHealth ? kbdbHealth.ok === true : false,
-      embed: embedStatus ? { enabled: embedStatus.enabled === true, embedded: embedStatus.embedded ?? null, pending: embedStatus.pending ?? null } : null,
-      // ok = 圖查詢通不通（探針讀得到就是通）；triplets = KBDB 真 COUNT（兩件事，不互相吞）
-      graph: { ok: graphProbe !== null, triplets: tripletTotal },
-      workflow_total: workflowTotal
-    },
-    kb: {
-      entries_total: entriesTotal,
-      wiki_card_total: wikiCardTotal,
-      triplets_total: tripletTotal
-    },
-    generated_at: new Date(now2).toISOString()
-  });
-});
-consoleDashboardRouter.get("/console/kb-scale-data", async (c) => {
-  const tenant2 = knowledgeOwner(c.env);
-  const { base, headers } = kbdbBase(c.env);
-  const now2 = Date.now();
-  const [wikiCards, tripletTotal, embedStatus] = await Promise.all([
-    // limit=1 順手拿最新一筆 created_at（list 為 created_at DESC）＝「最近寫入時間」
-    fetchJson(
-      `${base}/entries?${new URLSearchParams({ owner_id: tenant2, entry_type: "wiki_card", limit: "1" }).toString()}`,
-      headers
-    ),
-    // #100：三元組數改讀 KBDB 真 COUNT，不再讀 graph-plugin 的分頁長度（見 fetchTripletTotal 註）
-    fetchTripletTotal(c.env, tenant2),
-    fetchJson(`${base}/embed/backfill/status`, headers)
-  ]);
-  const latestMs = parseCreatedAtMs(wikiCards?.entries?.[0]?.created_at ?? null);
-  return c.json({
-    wiki_card_total: typeof wikiCards?.total === "number" ? wikiCards.total : null,
-    wiki_card_latest_ago_minutes: latestMs === null ? -1 : agoMinutes(now2, latestMs),
-    triplets_total: tripletTotal,
-    embedded: embedStatus?.embedded ?? null,
-    embed_enabled: embedStatus ? embedStatus.enabled === true : null,
-    generated_at: new Date(now2).toISOString()
-  });
-});
-consoleDashboardRouter.get("/console/settings-data", (c) => {
-  const raw2 = c.env.MCP_TOKEN_TTL;
-  const parsed = raw2 ? parseInt(raw2, 10) : NaN;
-  const fromEnv = Number.isFinite(parsed) && parsed > 0;
-  return c.json({
-    mcp_token_ttl_seconds: fromEnv ? parsed : 2592e3,
-    mcp_token_ttl_source: fromEnv ? "env" : "default"
-  });
-});
-consoleDashboardRouter.get("/console/triage-data", async (c) => {
-  const ok = await validateConsoleSession(c.env, c.req.header("authorization"));
-  if (!ok) return c.json({ error: "\u9700\u8981\u767B\u5165\uFF08console session\uFF09" }, 401);
-  const tenant2 = knowledgeOwner(c.env);
-  const [todoEntries, inboxEntries] = await Promise.all([
-    fetchEntries(c.env, tenant2, "todo", 500),
-    fetchEntries(c.env, tenant2, "inbox", 200)
-  ]);
-  const model = buildTriageModel(todoEntries, inboxEntries);
-  return c.json({ ...model, generated_at: (/* @__PURE__ */ new Date()).toISOString() });
-});
-consoleDashboardRouter.post("/console/triage-check", async (c) => {
-  const ok = await validateConsoleSession(c.env, c.req.header("authorization"));
-  if (!ok) return c.json({ error: "\u9700\u8981\u767B\u5165\uFF08console session\uFF09" }, 401);
-  const body = await c.req.json().catch(() => null);
-  const entryId = typeof body?.entry_id === "string" ? body.entry_id.trim() : "";
-  if (!entryId) return c.json({ error: "entry_id \u5FC5\u586B" }, 400);
-  const action = body?.action === "restore" ? "restore" : "check";
-  const tenant2 = knowledgeOwner(c.env);
-  const { base, headers } = kbdbBase(c.env);
-  const got = await fetchJson(
-    `${base}/entries/${encodeURIComponent(entryId)}`,
-    headers
-  );
-  const entry = got?.entry;
-  if (!entry) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u5F85\u8FA6\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09" }, 404);
-  if (entry.owner_id !== tenant2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u5F85\u8FA6\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09" }, 404);
-  if (entry.entry_type !== "todo" && entry.entry_type !== "inbox") {
-    return c.json({ error: "\u53EA\u6709\u5206\u6D41\u53F0\u9805\u76EE\uFF08todo/inbox\uFF09\u80FD\u5728\u9019\u88E1\u52FE\u6389" }, 400);
-  }
-  const newContent = applyTriageCheck(entry.content, action, (/* @__PURE__ */ new Date()).toISOString());
-  const res = await fetch(`${base}/entries/${encodeURIComponent(entryId)}`, {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify({ content: newContent })
-  });
-  if (!res.ok) return c.json({ error: `KBDB \u56DE\u5BEB\u5931\u6557\uFF08HTTP ${res.status}\uFF09` }, 502);
-  return c.json({ success: true, entry_id: entryId, action, status: action === "restore" ? "new" : "done" });
-});
-
-// cypher-executor/src/routes/portal-data.ts
-init_dist();
-
 // cypher-executor/src/lib/app-glyphs.ts
 var APP_GLYPH_IDS = ["doc", "note", "layers", "pin", "wrench", "box", "folder", "check", "bulb", "bell", "chart", "compass"];
 var APP_GLYPH_BODIES = {
@@ -42438,6 +39147,78 @@ async function fetchInstallerLatest(env, fetchImpl = fetch) {
     return null;
   }
 }
+var LEDGER_KINDS = ["network_login_required", "network", "quota", "unreadable", "other"];
+function normalizeLedgerSummary(raw2) {
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return null;
+  const r = raw2;
+  const num2 = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  };
+  const reasons = [];
+  if (Array.isArray(r.reasons)) {
+    for (const x of r.reasons.slice(0, 20)) {
+      if (!x || typeof x !== "object") continue;
+      const k = String(x.kind ?? "");
+      const kind = LEDGER_KINDS.includes(k) ? k : "other";
+      const count = num2(x.count);
+      if (count <= 0) continue;
+      reasons.push({ kind, count, sample: String(x.sample ?? "").slice(0, 200) });
+    }
+  }
+  return {
+    round_at: typeof r.round_at === "string" ? r.round_at.slice(0, 40) : "",
+    total: num2(r.total),
+    confirmed: num2(r.confirmed),
+    retrying: num2(r.retrying),
+    stalled: num2(r.stalled),
+    reasons
+  };
+}
+function trackLedger(prev, next) {
+  const missing = Math.max(0, next.total - next.confirmed);
+  if (prev && next.round_at && prev.round_at === next.round_at) {
+    return { ...next, missing, no_progress_rounds: prev.no_progress_rounds };
+  }
+  let rounds = 0;
+  if (missing > 0) {
+    rounds = prev && prev.missing > 0 && missing >= prev.missing ? prev.no_progress_rounds + 1 : 1;
+  }
+  return { ...next, missing, no_progress_rounds: rounds };
+}
+var REASON_TEXT = {
+  network_login_required: "\u9019\u500B\u7DB2\u8DEF\u9700\u8981\u5148\u767B\u5165",
+  network: "\u7DB2\u8DEF\u9023\u4E0D\u4E0A\u96F2\u7AEF",
+  quota: "\u96F2\u7AEF\u984D\u5EA6\u7528\u5B8C\u4E86",
+  unreadable: "\u6A94\u6848\u8B80\u4E0D\u51FA\u5167\u5BB9",
+  other: "\u5176\u4ED6\u539F\u56E0"
+};
+function ledgerText(l) {
+  if (l.missing === 0) return `\u61C9\u9001 ${l.total} \u4EF6\uFF0C\u5DF2\u5168\u90E8\u9001\u9054\u3002`;
+  const why = l.reasons.length ? l.reasons.map((r) => {
+    const base = REASON_TEXT[r.kind] ?? REASON_TEXT.other;
+    const who = r.sample ? `\uFF08\u4F8B\uFF1A${r.sample}\uFF09` : "";
+    return r.count > 1 ? `${base}\uFF0C${r.count} \u4EF6${who}` : `${base}${who}`;
+  }).join("\uFF1B") : "\u5C0F\u5E6B\u624B\u6C92\u6709\u8AAA\u660E\u539F\u56E0";
+  const stuck = l.no_progress_rounds >= 2 ? `\u5DF2\u9023\u7E8C ${l.no_progress_rounds} \u8F2A\u6C92\u6709\u6E1B\u5C11\u3002` : "";
+  return `\u5DEE ${l.missing} \u4EF6\uFF1A${why}\u3002${stuck}`;
+}
+function ledgerView(l) {
+  if (!l) return { state: "unsupported", text: "\u9019\u53F0\u9084\u4E0D\u6703\u56DE\u5831\u9001\u4EF6\u5E33\uFF08\u5C0F\u5E6B\u624B\u66F4\u65B0\u5F8C\u624D\u6709\uFF09\u3002", alert: false };
+  return {
+    state: l.missing > 0 ? "short" : "ok",
+    text: ledgerText(l),
+    total: l.total,
+    confirmed: l.confirmed,
+    missing: l.missing,
+    retrying: l.retrying,
+    stalled: l.stalled,
+    reasons: l.reasons,
+    round_at: l.round_at,
+    no_progress_rounds: l.no_progress_rounds,
+    alert: l.missing > 0 && l.no_progress_rounds >= 2
+  };
+}
 function engineStatus(current, latest) {
   if (!latest || !parseVersion(latest)) return "unknown";
   if (!current) return "unknown";
@@ -42504,6 +39285,7 @@ function buildUpdateCenter(input) {
         latest: daemonLatest,
         status: st,
         reported_at: m.received_at,
+        ledger: ledgerView(m.ledger),
         note: st === "update" ? `\u6709\u65B0\u7248\u3002${DAEMON_HOWTO}` : st === "current" ? "\u5DF2\u662F\u6700\u65B0\u7248\u3002" : !m.daemon_version ? `\u9019\u53F0\u7684\u5C0F\u5E6B\u624B\u662F\u820A\u7248\uFF0C\u4E0D\u6703\u56DE\u5831\u81EA\u5DF1\u7684\u7248\u672C\uFF0C\u96F2\u7AEF\u770B\u4E0D\u5230\u5B83\u662F\u4E0D\u662F\u6700\u65B0\u3002${DAEMON_HOWTO}` : !daemonLatest ? "\u66AB\u6642\u67E5\u4E0D\u5230\u6700\u65B0\u7248\uFF0C\u7A0D\u5F8C\u518D\u8A66\u3002" : "\u8B80\u4E0D\u61C2\u9019\u53F0\u56DE\u5831\u7684\u7248\u865F\uFF0C\u7121\u6CD5\u6BD4\u5C0D\u3002",
         action: { type: "daemon_self_update", admin_only: false, downloads }
       });
@@ -42525,9 +39307,3323 @@ function buildUpdateCenter(input) {
   return {
     items,
     updates_available: items.filter((i) => i.status === "update").length,
+    ledger_alerts: items.filter((i) => i.ledger?.alert).length,
     latest_known: !!latestRelease
   };
 }
+
+// cypher-executor/src/routes/portal.ts
+var portalRouter = new Hono2();
+var SESSION_TEMPLATE3 = "portal_session";
+var LOCKFAIL_TEMPLATE = "portal_lockfail";
+var LOCK_LIMIT = 5;
+var LOCK_TTL_SECONDS = 15 * 60;
+var DEFAULT_SESSION_TTL = 604800;
+var USER_TEMPLATE = "portal_user";
+var LIBRARY_TEMPLATE = "portal_library";
+function portalTenant(env) {
+  return accountTenant(env);
+}
+function portalNamespace(env) {
+  return `${accountTenant(env)}::portal`;
+}
+function sessionTtl(env) {
+  const n = Number.parseInt(env.PORTAL_SESSION_TTL ?? "", 10);
+  return Number.isFinite(n) && n >= 60 ? n : DEFAULT_SESSION_TTL;
+}
+function bearerToken(c) {
+  const auth = c.req.header("authorization") ?? "";
+  return auth.match(/^Bearer\s+(\S+)/i)?.[1] ?? null;
+}
+var KbdbError = class extends Error {
+};
+async function kbdbFetch3(env, path, init, opts) {
+  const { base, headers } = kbdbBase(env);
+  const baseHeaders = opts?.essential ? withEssential(headers) : headers;
+  let res;
+  try {
+    res = await fetch(`${base}${path}`, { ...init, headers: { ...baseHeaders, ...init?.headers } });
+  } catch (e) {
+    throw new KbdbError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+  return res;
+}
+async function aiPercentNow(env) {
+  const now2 = Date.now();
+  return aiPercentToday(await getCfMonth(env, now2), now2) ?? void 0;
+}
+async function run(c, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof AuthStorePropagatingError) {
+      return c.json({ error: e.message, code: "auth_store_propagating" }, 503);
+    }
+    const origin2 = new URL(c.req.url).origin;
+    if (e instanceof AuthStoreWriteError) {
+      const { body, status } = portalErrorBody(origin2, "auth_store_not_writable", { advanced: e.message });
+      return c.json(body, status);
+    }
+    if (e instanceof TenantUnresolvedError) {
+      const { body, status } = portalErrorBody(origin2, e.code, { advanced: e.message });
+      return c.json(body, status);
+    }
+    if (e instanceof KbdbError) return c.json({ error: `KBDB \u4E0D\u53EF\u9054\u6216\u56DE\u932F\uFF1A${e.message}` }, 502);
+    throw e;
+  }
+}
+function honestStop(c, code, advanced) {
+  const { body, status } = portalErrorBody(new URL(c.req.url).origin, code, advanced ? { advanced } : void 0);
+  return c.json(body, status);
+}
+async function ensurePortalTemplates(env) {
+  const created = [];
+  const existing = [];
+  const errors = [];
+  for (const seed of PORTAL_TEMPLATE_SEEDS) {
+    try {
+      const got = await kbdbFetch3(env, `/templates/${encodeURIComponent(seed.name)}`, void 0, { essential: true });
+      if (got.ok) {
+        const body = await got.json().catch(() => null);
+        const tpl = body?.template;
+        if (tpl?.id && tpl.slots_json) {
+          let currentSlots = [];
+          try {
+            const parsed = JSON.parse(tpl.slots_json);
+            if (Array.isArray(parsed)) currentSlots = parsed.filter((s) => typeof s === "string");
+          } catch {
+          }
+          const missing = seed.slots.filter((s) => !currentSlots.includes(s));
+          if (missing.length > 0) {
+            const patched = await kbdbFetch3(env, `/templates/${encodeURIComponent(tpl.id)}`, {
+              method: "PATCH",
+              body: JSON.stringify({ slots: [...currentSlots, ...missing] })
+            }, { essential: true });
+            if (!patched.ok) throw new KbdbError(`PATCH /templates/${seed.name} \u88DC slots \u2192 ${patched.status}`);
+          }
+        }
+        existing.push(seed.name);
+        continue;
+      }
+      if (got.status !== 404) throw new KbdbError(`GET /templates/${seed.name} \u2192 ${got.status}`);
+      const res = await kbdbFetch3(env, "/templates", {
+        method: "POST",
+        body: JSON.stringify({
+          name: seed.name,
+          slots: seed.slots,
+          description: seed.description,
+          created_by: seed.created_by
+        })
+      }, { essential: true });
+      if (!res.ok) throw new KbdbError(`POST /templates ${seed.name} \u2192 ${res.status}`);
+      created.push(seed.name);
+    } catch (e) {
+      errors.push(`${seed.name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { created, existing, errors };
+}
+function authUserToRecord(u) {
+  return {
+    record_id: u.id,
+    template_id: USER_TEMPLATE,
+    values: {
+      email: u.email,
+      display_name: u.display_name,
+      status: u.status,
+      role: u.role,
+      password_hash: u.password_hash,
+      libraries: JSON.stringify(u.libraries ?? []),
+      created_at: u.created_at,
+      updated_at: u.updated_at
+    }
+  };
+}
+function recordValuesToAuthUser(id, v) {
+  return {
+    id,
+    email: (v.email ?? "").toLowerCase(),
+    display_name: v.display_name ?? "",
+    status: v.status ?? "active",
+    role: v.role ?? "user",
+    libraries: parseLibraries(v.libraries),
+    password_hash: v.password_hash ?? "",
+    created_at: v.created_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+    updated_at: v.updated_at ?? (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function promoteToKbdb(env, rec) {
+  try {
+    const email = (rec.values.email ?? "").toLowerCase();
+    if (!email) return null;
+    const already = await findKbdbUserRecordId(env, email);
+    if (already) return already;
+    const recordId = await createKbdbUserRecord(env, email, {
+      display_name: rec.values.display_name ?? "",
+      status: rec.values.status ?? "active",
+      role: rec.values.role ?? "user",
+      libraries: rec.values.libraries ?? "[]",
+      created_at: rec.values.created_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+      updated_at: rec.values.updated_at ?? (/* @__PURE__ */ new Date()).toISOString()
+    });
+    if (rec.values.password_hash) await setPortalPasswordHash(env, recordId, rec.values.password_hash);
+    return recordId;
+  } catch {
+    return null;
+  }
+}
+async function findUserRecordId(env, email) {
+  const inKbdb = await findKbdbUserRecordId(env, email);
+  if (inKbdb) return inKbdb;
+  return findAuthUserByEmail(env, email)?.id ?? null;
+}
+async function findKbdbUserRecordId(env, email) {
+  const ns = portalNamespace(env);
+  const params = new URLSearchParams({
+    page_name: email,
+    entry_type: USER_TEMPLATE,
+    owner_id: ns,
+    limit: "1"
+  });
+  const res = await kbdbFetch3(env, `/entries?${params.toString()}`, void 0, { essential: true });
+  if (!res.ok) throw new KbdbError(`head entry \u67E5\u627E \u2192 ${res.status}`);
+  const body = await res.json();
+  const content = body.entries?.[0]?.content;
+  return content ?? null;
+}
+async function getRecordById(env, recordId) {
+  if (isAuthStoreId(recordId)) {
+    const u = findAuthUserById(env, recordId);
+    return u ? authUserToRecord(u) : null;
+  }
+  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, void 0, { essential: true });
+  if (res.status === 404) {
+    releaseBody(res);
+    return null;
+  }
+  if (!res.ok) {
+    releaseBody(res);
+    throw new KbdbError(`GET /records/${recordId} \u2192 ${res.status}`);
+  }
+  const body = await res.json();
+  return body.record ?? null;
+}
+async function patchRecordValues(env, recordId, values) {
+  if (isAuthStoreId(recordId)) {
+    let updated = null;
+    await mutateAuthStore(env, (data) => {
+      const idx = data.users.findIndex((u) => u.id === recordId);
+      if (idx < 0) throw new KbdbError(`\u8A8D\u8B49\u5132\u5B58\u627E\u4E0D\u5230\u5E33\u865F ${recordId}`);
+      const merged = { ...authUserToRecord(data.users[idx]).values, ...values };
+      updated = recordValuesToAuthUser(recordId, merged);
+      data.users[idx] = updated;
+    });
+    if (!updated) throw new KbdbError(`\u8A8D\u8B49\u5132\u5B58\u66F4\u65B0\u5931\u6557 ${recordId}`);
+    return authUserToRecord(updated);
+  }
+  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ values })
+  }, { essential: true });
+  if (!res.ok) throw new KbdbError(`PATCH /records/${recordId} \u2192 ${res.status}`);
+  const body = await res.json();
+  if (!body.record) throw new KbdbError(`PATCH /records/${recordId} \u56DE\u61C9\u7F3A record`);
+  return body.record;
+}
+async function deleteKbdbRecord(env, recordId) {
+  if (isAuthStoreId(recordId)) {
+    let found = false;
+    await mutateAuthStore(env, (data) => {
+      const idx = data.users.findIndex((u) => u.id === recordId);
+      if (idx >= 0) {
+        data.users.splice(idx, 1);
+        found = true;
+      }
+    });
+    return found;
+  }
+  const res = await kbdbFetch3(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }, { essential: true });
+  if (res.status === 404) return false;
+  if (!res.ok) throw new KbdbError(`DELETE /records/${recordId} \u2192 ${res.status}`);
+  return true;
+}
+function daemonActiveKey(env) {
+  return `${portalTenant(env)}:portal:daemon_active_libs`;
+}
+async function markDaemonLibraryActive(env, library) {
+  try {
+    const names = /* @__PURE__ */ new Set();
+    const raw2 = await env.WEBHOOKS.get(daemonActiveKey(env), "text");
+    if (raw2) {
+      for (const n of JSON.parse(raw2)) {
+        const s = String(n ?? "").trim();
+        if (s) names.add(s);
+      }
+    }
+    names.add(library);
+    await env.WEBHOOKS.put(daemonActiveKey(env), JSON.stringify([...names]), { expirationTtl: 172800 });
+  } catch {
+  }
+}
+async function listRecordsByTemplate(env, template) {
+  if (template === USER_TEMPLATE) {
+    let fromKbdb = [];
+    try {
+      fromKbdb = await listKbdbRecordsByTemplate(env, template);
+    } catch {
+      fromKbdb = [];
+    }
+    const seen = new Set(fromKbdb.map((r) => (r.values.email ?? "").toLowerCase()));
+    const fromLegacy = readAuthStore(env).users.map(authUserToRecord).filter((r) => !seen.has((r.values.email ?? "").toLowerCase()));
+    return [...fromKbdb, ...fromLegacy];
+  }
+  return listKbdbRecordsByTemplate(env, template);
+}
+async function listKbdbRecordsByTemplate(env, template) {
+  const ns = portalNamespace(env);
+  const res = await kbdbFetch3(env, `/records/by-template/${encodeURIComponent(template)}?owner_id=${encodeURIComponent(ns)}`);
+  if (!res.ok) {
+    releaseBody(res);
+    throw new KbdbError(`GET /records/by-template/${template} \u2192 ${res.status}`);
+  }
+  const body = await res.json();
+  return body.records ?? [];
+}
+async function createKbdbUserRecord(env, email, values) {
+  const ns = portalNamespace(env);
+  const res = await kbdbFetch3(env, "/records", {
+    method: "POST",
+    body: JSON.stringify({ template: USER_TEMPLATE, owner_id: ns, values: { ...values, email } })
+  }, { essential: true });
+  if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_user\uFF09\u2192 ${res.status}`);
+  const body = await res.json();
+  const recordId = body.record?.record_id;
+  if (!recordId) throw new KbdbError("POST /records \u56DE\u61C9\u7F3A record_id");
+  const head = await kbdbFetch3(env, "/entries", {
+    method: "POST",
+    body: JSON.stringify({ entry_type: USER_TEMPLATE, page_name: email, content: recordId, owner_id: ns })
+  }, { essential: true });
+  if (!head.ok) throw new KbdbError(`head entry \u5EFA\u7ACB\u5931\u6557\uFF08record ${recordId} \u5DF2\u5EFA\uFF0C\u9700\u4EBA\u5DE5\u6536\u62FE\uFF09\u2192 ${head.status}`);
+  return recordId;
+}
+async function createPortalUser(env, input, tokenOverride) {
+  if (!authStoreWritable(env, tokenOverride)) {
+    throw new AuthStoreWriteError(
+      "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u5BEB\u4E0D\u9032\u8A8D\u8B49\u5132\u5B58\uFF08\u7F3A\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF09\u3002\u5B89\u88DD\u7CBE\u9748\u5EFA\u7ACB\u5E33\u865F\u6642\u6703\u81EA\u52D5\u5E36\u4E0A\uFF1B\u5B89\u88DD\u5B8C\u4E4B\u5F8C\u8981\u65B0\u589E\u5E33\u865F\uFF0C\u9700\u8981\u5BE6\u4F8B\u8A2D\u5B9A CF_SECRETS_API_TOKEN\uFF08\u8ACB\u56DE\u5831\u652F\u63F4\uFF09\u3002"
+    );
+  }
+  const now2 = (/* @__PURE__ */ new Date()).toISOString();
+  const recordId = await createKbdbUserRecord(env, input.email.toLowerCase(), {
+    display_name: input.display_name,
+    status: "active",
+    role: input.role,
+    libraries: JSON.stringify(input.libraries),
+    created_at: now2,
+    updated_at: now2
+  });
+  try {
+    await setPortalPasswordHash(env, recordId, input.password_hash, tokenOverride);
+  } catch (e) {
+    await deleteKbdbRecord(env, recordId).catch(() => {
+    });
+    throw e;
+  }
+  return recordId;
+}
+function parseLibraries(raw2) {
+  if (!raw2) return [];
+  try {
+    const arr = JSON.parse(raw2);
+    if (Array.isArray(arr) && arr.every((x) => typeof x === "string")) return arr;
+  } catch {
+  }
+  return [];
+}
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
+}
+function isValidLibraryName(name) {
+  return /^(\*|[A-Za-z0-9_-]{1,64})$/.test(name);
+}
+function validLibrariesInput(libs) {
+  return Array.isArray(libs) && libs.length > 0 && libs.every((x) => typeof x === "string" && isValidLibraryName(x));
+}
+function toPublicUser(rec) {
+  const v = rec.values;
+  return {
+    record_id: rec.record_id,
+    email: v.email ?? "",
+    display_name: v.display_name ?? "",
+    status: v.status ?? "",
+    role: v.role ?? "",
+    libraries: parseLibraries(v.libraries),
+    created_at: v.created_at ?? "",
+    updated_at: v.updated_at ?? ""
+  };
+}
+async function requirePortalUser(c) {
+  const token = bearerToken(c);
+  if (!token) return { ok: false, res: c.json({ error: "\u672A\u767B\u5165" }, 401) };
+  const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
+  if (!sess) return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
+  const recordId = sess.record_id;
+  if (!recordId) {
+    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
+    return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
+  }
+  let rec = await getRecordById(c.env, recordId);
+  if (!rec && await hydrateFromAccelerator(c.env)) {
+    rec = await getRecordById(c.env, recordId);
+  }
+  if (!rec) {
+    if (await authStoreRecentlyWritten(c.env)) {
+      return {
+        ok: false,
+        res: c.json(
+          {
+            error: "\u8A8D\u8B49\u8CC7\u6599\u6B63\u5728\u66F4\u65B0\u4E2D\uFF08Cloudflare \u6B63\u5728\u92EA\u958B\u65B0\u7248\u672C\uFF09\uFF0C\u8ACB\u7A0D\u5019\u5E7E\u79D2\u518D\u8A66\u2014\u2014\u4F60\u4E26\u6C92\u6709\u88AB\u767B\u51FA\u3002",
+            code: "auth_store_propagating"
+          },
+          503
+        )
+      };
+    }
+    return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
+  }
+  if ((rec.values.status ?? "") !== "active") {
+    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
+    return { ok: false, res: c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403) };
+  }
+  return { ok: true, user: { token, recordId, values: rec.values } };
+}
+async function requirePortalAdmin(c) {
+  const auth = await requirePortalUser(c);
+  if (!auth.ok) return auth;
+  if ((auth.user.values.role ?? "") !== "admin") {
+    return { ok: false, res: c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403) };
+  }
+  return auth;
+}
+async function graphSourceLibraries(env) {
+  const libs = await listRecordsByTemplate(env, LIBRARY_TEMPLATE);
+  const marked = libs.filter((l) => (l.values.graph_source ?? "") === "true" && (l.values.status ?? "active") !== "disabled").map((l) => l.values.name ?? "").filter(Boolean);
+  return marked.length > 0 ? marked : ["general"];
+}
+async function hasGraphAccess(env, userLibraries) {
+  if (userLibraries.includes("*")) return true;
+  if (userLibraries.length === 0) return false;
+  const sources = await graphSourceLibraries(env);
+  return sources.some((s) => userLibraries.includes(s));
+}
+function workflowsVisible(env, role) {
+  const setting = (env.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
+  if (setting === "off") return false;
+  if (setting === "all") return true;
+  return role === "admin";
+}
+function uploadEnabled(env) {
+  return Boolean(env.PORTAL_UPLOAD_REPO && env.PORTAL_UPLOAD_GITEA && env.PORTAL_UPLOAD_TOKEN);
+}
+async function assertPortalUserRecord(env, recordId) {
+  const rec = await getRecordById(env, recordId);
+  if (!rec) return null;
+  const email = rec.values.email;
+  if (!email) return null;
+  const headRecordId = await findUserRecordId(env, email);
+  if (headRecordId !== recordId) return null;
+  return rec;
+}
+async function isLocked(env, email) {
+  return (await lockState(env, email)).locked;
+}
+async function lockState(env, email) {
+  const rec = await ephemeralGet(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
+  if (!rec) return { locked: false, hasFailures: false };
+  return { locked: (Number(rec.count) || 0) >= LOCK_LIMIT, hasFailures: true };
+}
+async function recordLoginFail(env, email) {
+  const rec = await ephemeralGet(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
+  const count = rec ? Number(rec.count) || 0 : 0;
+  await ephemeralPut(env, {
+    template: LOCKFAIL_TEMPLATE,
+    slots: ["count"],
+    hashField: "email_hash",
+    rawKey: email,
+    values: { count: String(count + 1) },
+    ttlSeconds: LOCK_TTL_SECONDS
+  });
+}
+async function clearLoginFail(env, email) {
+  await ephemeralDelete(env, { template: LOCKFAIL_TEMPLATE, hashField: "email_hash", rawKey: email });
+}
+async function instanceHasNoAuthData(env) {
+  if (readAuthStore(env).users.length > 0) return false;
+  try {
+    return (await listKbdbRecordsByTemplate(env, USER_TEMPLATE)).length === 0;
+  } catch {
+    return true;
+  }
+}
+async function findAndVerifyUser(env, email, password) {
+  const attempt = async () => {
+    const recordId = await findUserRecordId(env, email);
+    const rec = recordId ? await getRecordById(env, recordId) : null;
+    const hash = recordId ? findPortalPasswordHash(env, recordId) ?? rec?.values.password_hash ?? "" : "";
+    const ok = rec ? await verifyPassword(password, hash) : false;
+    return { recordId, rec, ok };
+  };
+  const first = await attempt();
+  if (first.ok) return first;
+  if (await hydrateFromAccelerator(env)) {
+    const second = await attempt();
+    if (second.ok || second.rec) return second;
+  }
+  return first;
+}
+function propagatingLogin(c) {
+  return c.json(
+    {
+      error: "\u5E33\u865F\u8CC7\u6599\u525B\u525B\u66F4\u65B0\u904E\uFF0C\u9019\u53F0\u4F3A\u670D\u5668\u9084\u5728\u540C\u6B65\u4E2D\u2014\u2014\u8ACB\u7B49 10\uFF5E30 \u79D2\u518D\u767B\u5165\u4E00\u6B21\uFF08\u9019\u6B21\u4E0D\u7B97\u5931\u6557\uFF09\u3002",
+      code: "auth_store_propagating"
+    },
+    503
+  );
+}
+async function sessionLifeFor(c, body) {
+  if (body?.purpose !== "mcp") return sessionTtl(c.env);
+  const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+  const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+  if (!expected || !got || !constantTimeEqual(got, expected)) return sessionTtl(c.env);
+  const ttl = await readMcpTokenTtl(c.env).catch(() => null);
+  if (!ttl || ttl.seconds === NEVER_EXPIRES_SECONDS) return null;
+  return ttl.seconds;
+}
+portalRouter.post(
+  "/portal/login",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    const lock = await lockState(c.env, email);
+    if (lock.locked) {
+      return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
+    }
+    const t0 = Date.now();
+    const { recordId, rec, ok } = await findAndVerifyUser(c.env, email, password);
+    const tVerify = Date.now() - t0;
+    if (!recordId || !rec) {
+      if (await instanceHasNoAuthData(c.env)) {
+        return c.json(
+          {
+            error: "\u9019\u53F0\u5BE6\u4F8B\u8B80\u4E0D\u5230\u4EFB\u4F55\u767B\u5165\u8CC7\u6599\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8A8D\u8B49\u5132\u5B58\u662F\u7A7A\u7684\uFF0C\u8ACB\u91CD\u65B0\u57F7\u884C\u5B89\u88DD\uFF0F\u66F4\u65B0\u4EE5\u91CD\u65B0\u5EFA\u7ACB\u7BA1\u7406\u54E1\u5E33\u865F\u3002",
+            code: "auth_store_empty",
+            auth_store: { home: "kbdb", writable: true, users: 0 }
+          },
+          503
+        );
+      }
+      if (await authStoreStaleHere(c.env)) return propagatingLogin(c);
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    if ((rec.values.status ?? "") !== "active") {
+      return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
+    }
+    if (!ok) {
+      if (await authStoreStaleHere(c.env)) return propagatingLogin(c);
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    let sessionRecordId = recordId;
+    if (isAuthStoreId(recordId)) {
+      const migrated = await promoteToKbdb(c.env, rec);
+      if (migrated) sessionRecordId = migrated;
+    }
+    const t1 = Date.now();
+    const token = randomHex2(32);
+    const sessionLife = await sessionLifeFor(c, body);
+    await Promise.all([
+      lock.hasFailures ? clearLoginFail(c.env, email) : Promise.resolve(),
+      ephemeralPut(c.env, {
+        template: SESSION_TEMPLATE3,
+        slots: ["record_id"],
+        hashField: "token_hash",
+        rawKey: token,
+        values: { record_id: sessionRecordId },
+        ttlSeconds: sessionLife,
+        fresh: true
+      })
+    ]);
+    c.header("Server-Timing", `verify;dur=${tVerify}, session;dur=${Date.now() - t1}`);
+    return c.json({
+      success: true,
+      session_token: token,
+      display_name: rec.values.display_name ?? "",
+      role: rec.values.role ?? "user",
+      libraries: parseLibraries(rec.values.libraries),
+      // session 還能活多久（秒）。**非機密**（是這台實例的 TTL 設定，不是任何人的憑據），
+      // 但呼叫端需要它才能把自己發的憑證對齊這個上限——arcrun-mcp 用它把 OAuth
+      // access_token 的 TTL 夾到 min(自己的 TTL, 這個值)：否則 MCP token 活 30 天、
+      // 底下的 portal session 7 天就死，使用者會在第 8 天遇到「連著卻查不到」的鬼打牆。
+      // null＝不過期（僅 MCP 授權、且效期設定為不過期時）。
+      session_expires_in: sessionLife
+      // 絕不回租戶字串（design §3.3：portal_user 拿到租戶字串就能繞過庫 filter 直打 /kbdb/*）
+    });
+  })
+);
+portalRouter.post("/portal/logout", async (c) => {
+  const token = bearerToken(c);
+  if (token) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
+  return c.json({ success: true });
+});
+portalRouter.get(
+  "/portal/session",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const v = auth.user.values;
+    const role = v.role ?? "user";
+    const libraries = parseLibraries(v.libraries);
+    return c.json({
+      valid: true,
+      display_name: v.display_name ?? "",
+      email: v.email ?? "",
+      // t53：完成安裝清單在站內生 daemon config.json 要用（身分顯示欄）
+      role,
+      libraries,
+      graph_allowed: await hasGraphAccess(c.env, libraries),
+      workflows_visible: workflowsVisible(c.env, role),
+      // portal-demo-suite：上傳頁能力（bindings 齊全才 true；同上，只是顯示提示，真閘在路由層）
+      upload_enabled: uploadEnabled(c.env)
+    });
+  })
+);
+var PWRESET_TEMPLATE = "portal_pwreset";
+var PWRESET_TTL_SECONDS = 30 * 60;
+var PWRESET_THROTTLE_TEMPLATE = "portal_pwreset_throttle";
+var PWRESET_THROTTLE_SECONDS = 120;
+var RELAY_TICKET_TEMPLATE = "portal_relay_ticket";
+var RELAY_TICKET_TTL_SECONDS = 120;
+function portalUiOrigin(env) {
+  const declared = String(env.UI_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (declared.length > 0) return declared[0];
+  if (isPrivateCloud(env)) return null;
+  const sub = String(env.WORKER_SUBDOMAIN ?? "").trim();
+  return sub ? `https://arcrun-rag-ui.${sub}.workers.dev` : null;
+}
+async function issueResetToken(env, recordId, email) {
+  const token = randomHex2(32);
+  await ephemeralPut(env, {
+    template: PWRESET_TEMPLATE,
+    slots: ["record_id", "email", "created_at"],
+    hashField: "token_hash",
+    rawKey: token,
+    values: { record_id: recordId, email, created_at: (/* @__PURE__ */ new Date()).toISOString() },
+    ttlSeconds: PWRESET_TTL_SECONDS
+  });
+  return token;
+}
+async function peekResetToken(env, token) {
+  if (!token || !/^[0-9a-f]{16,128}$/i.test(token)) return null;
+  const rec = await ephemeralGet(env, { template: PWRESET_TEMPLATE, hashField: "token_hash", rawKey: token });
+  if (!rec) return null;
+  return { record_id: rec.record_id ?? "", email: rec.email ?? "", created_at: rec.created_at ?? "" };
+}
+async function restoreResetToken(env, token, payload) {
+  const age = Math.floor((Date.now() - new Date(payload.created_at).getTime()) / 1e3);
+  const remaining = PWRESET_TTL_SECONDS - (Number.isFinite(age) && age > 0 ? age : 0);
+  if (remaining <= 0) return;
+  try {
+    await ephemeralPut(env, {
+      template: PWRESET_TEMPLATE,
+      slots: ["record_id", "email", "created_at"],
+      hashField: "token_hash",
+      rawKey: token,
+      values: { record_id: payload.record_id, email: payload.email, created_at: payload.created_at },
+      ttlSeconds: remaining
+    });
+  } catch {
+  }
+}
+async function consumeResetToken(env, token) {
+  if (!token || !/^[0-9a-f]{16,128}$/i.test(token)) return null;
+  const rec = await ephemeralGet(env, { template: PWRESET_TEMPLATE, hashField: "token_hash", rawKey: token, consume: true });
+  if (!rec) return null;
+  return { record_id: rec.record_id ?? "", email: rec.email ?? "", created_at: rec.created_at ?? "" };
+}
+async function writeNewPassword(env, recordId, newPassword) {
+  const newHash = await hashPassword2(newPassword);
+  await setPortalPasswordHash(env, recordId, newHash);
+  await patchRecordValues(env, recordId, {
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  });
+}
+async function relayResetLink(env, apiOrigin, email, ticket) {
+  const base = String(env.PORTAL_MAIL_RELAY_BASE ?? "").trim().replace(/\/$/, "");
+  if (!base) return "not_configured";
+  const headers = { "Content-Type": "application/json" };
+  if (env.PORTAL_MAIL_RELAY_KEY) headers["X-Arcrun-Relay-Key"] = env.PORTAL_MAIL_RELAY_KEY;
+  try {
+    const res = await fetch(`${base}/api/send-password-reset`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email, api_origin: apiOrigin, ticket })
+    });
+    return res.ok ? "sent" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+portalRouter.post(
+  "/portal/password/relay-verify",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const ticket = String(body?.ticket ?? "").trim();
+    if (!ticket || !/^[0-9a-f]{8,64}$/i.test(ticket)) return c.json({ ok: false }, 400);
+    const rec = await ephemeralGet(c.env, { template: RELAY_TICKET_TEMPLATE, hashField: "ticket_hash", rawKey: ticket, consume: true });
+    if (!rec) return c.json({ ok: false }, 404);
+    if (!rec.record_id || !rec.api_origin) return c.json({ ok: false }, 404);
+    const token = await issueResetToken(c.env, rec.record_id, rec.email ?? "");
+    const link = `${rec.api_origin}/portal/password/reset-link?token=${encodeURIComponent(token)}`;
+    return c.json({ ok: true, email_sha256: await sha256Hex5(rec.email ?? ""), link });
+  })
+);
+portalRouter.get("/portal/password/reset-link", (c) => {
+  const token = c.req.query("token") ?? "";
+  const ui = portalUiOrigin(c.env);
+  if (!ui) return c.text("\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A portal \u524D\u7AEF\u7DB2\u5740\uFF0C\u7121\u6CD5\u5C0E\u5411\u4FEE\u6539\u5BC6\u78BC\u756B\u9762\u3002", 500);
+  return c.redirect(`${ui}/portal/#/reset?token=${encodeURIComponent(token)}`, 302);
+});
+portalRouter.post(
+  "/portal/password/forgot",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    if (!email || !isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
+    if (!String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim()) {
+      return c.json(
+        {
+          error: "\u5BC4\u4FE1\u529F\u80FD\u9084\u6C92\u63A5\u4E0A\uFF0C\u6240\u4EE5\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u7684\u4FE1\u5BC4\u4E0D\u51FA\u53BB\u3002\u8ACB\u7167\u7576\u521D\u6536\u5230\u7684\u5B89\u88DD\u7DB2\u5740\uFF0C\u91CD\u65B0\u57F7\u884C\u4E00\u6B21\u5B89\u88DD\uFF08\u9078\u540C\u4E00\u500B Cloudflare \u5E33\u865F\uFF09\u2014\u2014\u5B8C\u6210\u5F8C\u9019\u500B\u529F\u80FD\u5C31\u6703\u81EA\u52D5\u63A5\u4E0A\uFF0C\u4E0D\u9700\u8981\u81EA\u5DF1\u8A2D\u5B9A\u4EFB\u4F55\u6771\u897F\uFF0C\u4E5F\u4E0D\u7528\u627E\u4EFB\u4F55\u4EBA\u5E6B\u5FD9\u3002",
+          code: "mail_relay_not_configured"
+        },
+        503
+      );
+    }
+    const generic = {
+      success: true,
+      message: "\u5982\u679C\u9019\u500B email \u6709\u5E33\u865F\uFF0C\u6211\u5011\u5DF2\u7D93\u628A\u300C\u4FEE\u6539\u5BC6\u78BC\u300D\u7684\u9023\u7D50\u5BC4\u904E\u53BB\u4E86\uFF08\u9023\u7D50 30 \u5206\u9418\u5167\u6709\u6548\u3001\u53EA\u80FD\u7528\u4E00\u6B21\uFF09\u3002"
+    };
+    const throttled = await ephemeralGet(c.env, { template: PWRESET_THROTTLE_TEMPLATE, hashField: "email_hash", rawKey: email });
+    if (throttled) return c.json(generic);
+    await ephemeralPut(c.env, {
+      template: PWRESET_THROTTLE_TEMPLATE,
+      slots: ["marker"],
+      hashField: "email_hash",
+      rawKey: email,
+      values: { marker: "1" },
+      ttlSeconds: PWRESET_THROTTLE_SECONDS
+    });
+    const recordId = await findUserRecordId(c.env, email).catch(() => null);
+    if (!recordId) return c.json(generic);
+    const apiOrigin = new URL(c.req.url).origin;
+    const ticket = randomHex2(16);
+    await ephemeralPut(c.env, {
+      template: RELAY_TICKET_TEMPLATE,
+      slots: ["email", "record_id", "api_origin"],
+      hashField: "ticket_hash",
+      rawKey: ticket,
+      values: { email, record_id: recordId, api_origin: apiOrigin },
+      ttlSeconds: RELAY_TICKET_TTL_SECONDS
+    });
+    await relayResetLink(c.env, apiOrigin, email, ticket);
+    return c.json(generic);
+  })
+);
+portalRouter.get(
+  "/portal/password/reset",
+  (c) => run(c, async () => {
+    const payload = await peekResetToken(c.env, c.req.query("token") ?? "");
+    if (!payload) {
+      return c.json(
+        { valid: false, error: "\u9019\u689D\u9023\u7D50\u5DF2\u7D93\u5931\u6548\u4E86\uFF08\u53EA\u80FD\u7528\u4E00\u6B21\u300130 \u5206\u9418\u5167\u6709\u6548\uFF09\u3002\u8ACB\u56DE\u767B\u5165\u9801\u91CD\u65B0\u6309\u4E00\u6B21\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u3002" },
+        400
+      );
+    }
+    return c.json({ valid: true, email: payload.email });
+  })
+);
+async function handlePasswordChange(c) {
+  const body = await c.req.json().catch(() => null);
+  const next = String(body?.new ?? "");
+  const resetToken = String(body?.reset_token ?? "").trim();
+  if (!next) return c.json({ error: "new\uFF08\u65B0\u5BC6\u78BC\uFF09\u5FC5\u586B" }, 400);
+  if (next.length < 8) return c.json({ error: "\u65B0\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
+  if (resetToken) {
+    const payload = await consumeResetToken(c.env, resetToken);
+    if (!payload) {
+      return c.json(
+        { error: "\u9019\u689D\u9023\u7D50\u5DF2\u7D93\u5931\u6548\u4E86\uFF08\u53EA\u80FD\u7528\u4E00\u6B21\u300130 \u5206\u9418\u5167\u6709\u6548\uFF09\u3002\u8ACB\u56DE\u767B\u5165\u9801\u91CD\u65B0\u6309\u4E00\u6B21\u300C\u5FD8\u8A18\u5BC6\u78BC\u300D\u3002", code: "reset_token_invalid" },
+        400
+      );
+    }
+    try {
+      await writeNewPassword(c.env, payload.record_id, next);
+    } catch (e) {
+      if (e instanceof AuthStoreWriteError) await restoreResetToken(c.env, resetToken, payload);
+      throw e;
+    }
+    return c.json({ success: true, email: payload.email, via: "reset_link" });
+  }
+  const auth = await requirePortalUser(c);
+  if (!auth.ok) return auth.res;
+  const current = String(body?.current ?? "");
+  if (!current) return c.json({ error: "current\uFF08\u73FE\u6709\u5BC6\u78BC\uFF09\u5FC5\u586B" }, 400);
+  const currentHash = findPortalPasswordHash(c.env, auth.user.recordId) ?? auth.user.values.password_hash ?? "";
+  const ok = await verifyPassword(current, currentHash);
+  if (!ok) return c.json({ error: "\u820A\u5BC6\u78BC\u4E0D\u6B63\u78BA" }, 401);
+  await writeNewPassword(c.env, auth.user.recordId, next);
+  return c.json({ success: true, via: "current_password" });
+}
+portalRouter.post("/portal/password/change", (c) => run(c, () => handlePasswordChange(c)));
+portalRouter.post("/portal/me/password", (c) => run(c, () => handlePasswordChange(c)));
+portalRouter.post(
+  "/portal/admin/bootstrap",
+  (c) => run(c, async () => {
+    const consoleOk = await validateConsoleSession(c.env, c.req.header("authorization"));
+    if (!consoleOk) return c.json({ error: "\u9700\u8981 console owner session\uFF08\u5148\u767B\u5165 /console\uFF09" }, 401);
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const users = await listRecordsByTemplate(c.env, USER_TEMPLATE);
+    if (users.some((u) => (u.values.role ?? "") === "admin")) {
+      return c.json({ error: "\u5DF2\u6709 admin\uFF0Cbootstrap \u53EA\u80FD\u57F7\u884C\u4E00\u6B21\uFF1B\u5F8C\u7E8C\u5E33\u865F\u8ACB\u7528 /portal/admin/users" }, 409);
+    }
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    const displayName = String(body?.display_name ?? "").trim() || email;
+    if (!isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
+    if (password.length < 8) return c.json({ error: "\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
+    if (await findUserRecordId(c.env, email)) return c.json({ error: "\u6B64 email \u5DF2\u5B58\u5728" }, 409);
+    const recordId = await createPortalUser(c.env, {
+      email,
+      display_name: displayName,
+      role: "admin",
+      libraries: ["*"],
+      // bootstrap admin 預設全庫（design §3.3：["*"]＝不注 library filter）
+      password_hash: await hashPassword2(password)
+    }, c.req.header("x-cf-secrets-token") || void 0);
+    return c.json({ success: true, record_id: recordId, email, role: "admin" });
+  })
+);
+portalRouter.post(
+  "/portal/admin/recover-password",
+  (c) => run(c, async () => {
+    const consoleOk = await validateConsoleSession(c.env, c.req.header("authorization"));
+    if (!consoleOk) return c.json({ error: "\u9700\u8981 console owner session\uFF08\u5148\u767B\u5165 /console\uFF09" }, 401);
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    if (!isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
+    const recordId = await findUserRecordId(c.env, email);
+    const rec = recordId ? await getRecordById(c.env, recordId) : null;
+    if (!recordId || !rec) return c.json({ error: `\u627E\u4E0D\u5230 email\uFF1D${email} \u7684 portal \u5E33\u865F` }, 404);
+    const password = generatePassword();
+    await writeNewPassword(c.env, recordId, password);
+    return c.json({ success: true, email, password });
+  })
+);
+portalRouter.get(
+  "/portal/admin/users",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const users = await listRecordsByTemplate(c.env, USER_TEMPLATE);
+    return c.json({ success: true, users: users.map(toPublicUser), count: users.length });
+  })
+);
+portalRouter.post(
+  "/portal/admin/users",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const displayName = String(body?.display_name ?? "").trim() || email;
+    const role = body?.role === "admin" ? "admin" : "user";
+    const libraries = validLibrariesInput(body?.libraries) ? body.libraries : ["general"];
+    if (!isValidEmail(email)) return c.json({ error: "email \u683C\u5F0F\u4E0D\u6B63\u78BA" }, 400);
+    if (body?.libraries !== void 0 && !validLibrariesInput(body?.libraries)) {
+      return c.json({ error: 'libraries \u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u5EAB\u540D\u9650 A-Za-z0-9_- \u6216 "*"\uFF09' }, 400);
+    }
+    if (await findUserRecordId(c.env, email)) return c.json({ error: "\u6B64 email \u5DF2\u5B58\u5728" }, 409);
+    let password = body?.password !== void 0 ? String(body.password) : "";
+    let generated;
+    if (password) {
+      if (password.length < 8) return c.json({ error: "\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
+    } else {
+      generated = generatePassword();
+      password = generated;
+    }
+    const recordId = await createPortalUser(c.env, {
+      email,
+      display_name: displayName,
+      role,
+      libraries,
+      password_hash: await hashPassword2(password)
+    });
+    const rec = await getRecordById(c.env, recordId);
+    return c.json({
+      success: true,
+      user: rec ? toPublicUser(rec) : { record_id: recordId, email },
+      // 一次性回傳（不儲存明碼）；admin 口頭轉交同仁後即失效於 server 側
+      ...generated ? { generated_password: generated } : {}
+    });
+  })
+);
+portalRouter.patch(
+  "/portal/admin/users/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recordId = c.req.param("id");
+    const rec = await assertPortalUserRecord(c.env, recordId);
+    if (!rec) return c.json({ error: "\u7528\u6236\u4E0D\u5B58\u5728" }, 404);
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
+    const patch = {};
+    if (body.status !== void 0) {
+      if (body.status !== "active" && body.status !== "disabled") {
+        return c.json({ error: "status \u53EA\u80FD\u662F active / disabled" }, 400);
+      }
+      patch.status = body.status;
+    }
+    if (body.role !== void 0) {
+      if (body.role !== "user" && body.role !== "admin") return c.json({ error: "role \u53EA\u80FD\u662F user / admin" }, 400);
+      patch.role = body.role;
+    }
+    if (body.libraries !== void 0) {
+      if (!validLibrariesInput(body.libraries)) {
+        return c.json({ error: 'libraries \u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u5EAB\u540D\u9650 A-Za-z0-9_- \u6216 "*"\uFF09' }, 400);
+      }
+      patch.libraries = JSON.stringify(body.libraries);
+    }
+    if (Object.keys(patch).length === 0) return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08status/role/libraries\uFF09" }, 400);
+    const isActiveAdmin = (rec.values.role ?? "") === "admin" && (rec.values.status ?? "") === "active";
+    const wouldLoseAdmin = patch.status === "disabled" || patch.role === "user";
+    if (isActiveAdmin && wouldLoseAdmin) {
+      const all = await listRecordsByTemplate(c.env, USER_TEMPLATE);
+      const otherActiveAdmins = all.filter(
+        (u) => u.record_id !== recordId && (u.values.role ?? "") === "admin" && (u.values.status ?? "") === "active"
+      );
+      if (otherActiveAdmins.length === 0) {
+        return c.json({ error: "\u4E0D\u53EF\u505C\u7528\u6216\u964D\u7D1A\u6700\u5F8C\u4E00\u500B\u7BA1\u7406\u54E1\u2014\u2014\u7CFB\u7D71\u81F3\u5C11\u8981\u4FDD\u7559\u4E00\u500B active admin" }, 409);
+      }
+    }
+    patch.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+    const updated = await patchRecordValues(c.env, recordId, patch);
+    return c.json({ success: true, user: toPublicUser(updated) });
+  })
+);
+portalRouter.post(
+  "/portal/admin/users/:id/reset-password",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recordId = c.req.param("id");
+    const rec = await assertPortalUserRecord(c.env, recordId);
+    if (!rec) return c.json({ error: "\u7528\u6236\u4E0D\u5B58\u5728" }, 404);
+    const password = generatePassword();
+    await writeNewPassword(c.env, recordId, password);
+    return c.json({ success: true, password });
+  })
+);
+function toPublicLibrary(rec) {
+  const v = rec.values;
+  return {
+    record_id: rec.record_id,
+    name: v.name ?? "",
+    display_name: v.display_name ?? "",
+    description: v.description ?? "",
+    status: v.status ?? "",
+    // D-4：此庫是否為知識圖譜萃取來源（graph 粗閘按這個判定；全都沒標 → 預設 general）
+    graph_source: (v.graph_source ?? "") === "true",
+    // InkStoneCo#44：一個庫＝地端的一個資料夾。這三個是「資料夾」這個物件本身的屬性
+    // （小幫手回報時登記，見 POST /portal/daemon/folder-tree），空字串＝這台小幫手還沒報過。
+    root: v.root ?? "",
+    mode: v.mode ?? "",
+    reason: v.reason ?? ""
+  };
+}
+function folderTreeKey(env, library) {
+  return `${portalTenant(env)}:portal:folder_tree:${library}`;
+}
+async function notifyLedgerStuck(env, t) {
+  const url = env.NOTIFY_LEO_WEBHOOK_URL;
+  if (!url || !t.ledger) return;
+  try {
+    const who = t.machine_label || t.machine || "\u4E00\u53F0\u96FB\u8166";
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: `[\u9001\u4EF6\u5E33] ${who}\uFF08\u5EAB ${t.library}\uFF09${ledgerText(t.ledger)}` })
+    });
+  } catch {
+  }
+}
+function normalizeFolderNode(raw2) {
+  if (!raw2 || typeof raw2 !== "object") return null;
+  const r = raw2;
+  const path = typeof r.path === "string" ? r.path : "";
+  const num2 = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  };
+  const node = {
+    path,
+    name: typeof r.name === "string" && r.name ? r.name : path.split("/").pop() || "",
+    parent: typeof r.parent === "string" ? r.parent : "-",
+    depth: num2(r.depth),
+    total_files: num2(r.total_files),
+    synced_files: num2(r.synced_files),
+    pending_files: num2(r.pending_files),
+    error_files: num2(r.error_files),
+    unsupported_files: num2(r.unsupported_files),
+    excluded_files: num2(r.excluded_files)
+  };
+  if (r.skipped === true) {
+    node.skipped = true;
+    node.skip_reason = typeof r.skip_reason === "string" ? r.skip_reason : "";
+  }
+  return node;
+}
+async function readFolderTree(env, library) {
+  let raw2 = null;
+  try {
+    raw2 = await env.WEBHOOKS.get(folderTreeKey(env, library), "text");
+  } catch {
+    return null;
+  }
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function listDaemonReports(env) {
+  let libs = [];
+  try {
+    libs = await listRecordsByTemplate(env, LIBRARY_TEMPLATE);
+  } catch {
+    return [];
+  }
+  const names = libs.map((l) => (l.values.name ?? "").trim()).filter(Boolean).slice(0, 25);
+  const trees = await Promise.all(names.map((n) => readFolderTree(env, n)));
+  return trees.filter((t) => t !== null).map((t) => ({
+    machine: t.machine ?? "",
+    machine_label: t.machine_label ?? "",
+    daemon_version: t.daemon_version ?? "",
+    received_at: t.received_at ?? 0,
+    ...t.ledger ? { ledger: t.ledger } : {}
+  }));
+}
+function summarizeFolderTree(tree) {
+  let total = 0;
+  let synced = 0;
+  let pending = 0;
+  let errors = 0;
+  let unsupported = 0;
+  let excluded = 0;
+  let skippedDirs = 0;
+  for (const n of tree.nodes ?? []) {
+    if (n.skipped) skippedDirs++;
+    total += n.total_files;
+    synced += n.synced_files;
+    pending += n.pending_files;
+    errors += n.error_files ?? 0;
+    unsupported += n.unsupported_files;
+    excluded += n.excluded_files;
+  }
+  return {
+    root: tree.root,
+    mode: tree.mode,
+    reason: tree.reason,
+    // inkstone/Arcrun#180：庫目錄那張列表就是靠這兩格把庫掛到正確的機器底下。
+    // 摘要吐它們（而不是只放在整棵樹裡）的理由：分組要在**畫第一層之前**就成立，
+    // 而整棵樹是使用者展開那一列才去抓的 ⇒ 只放樹裡的話第一眼永遠是「未知來源」。
+    machine: tree.machine ?? "",
+    machine_label: tree.machine_label ?? "",
+    node_count: (tree.nodes ?? []).length,
+    total_nodes: tree.total_nodes,
+    truncated: !!tree.truncated,
+    total_files: total,
+    synced_files: synced,
+    pending_files: pending,
+    // inkstone/arcrun-rag#246 c18738：用戶看的數字與小幫手同一套——
+    // 分母 handled_files＝可讀檔＝已上傳＋待上傳（待上傳已含出錯）；error_files 是其中出錯的。
+    // 不在知識範圍的（格式讀不了、程式碼）不進分母，total_files 保留給需要「資料夾裡共幾個檔」的人。
+    handled_files: synced + pending,
+    error_files: errors,
+    unsupported_files: unsupported,
+    excluded_files: excluded,
+    skipped_dirs: skippedDirs,
+    generated_at: tree.generated_at,
+    received_at: tree.received_at
+  };
+}
+portalRouter.post(
+  "/portal/daemon/folder-tree",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
+    const library = String(body.library ?? "").trim();
+    if (!isValidLibraryName(library) || library === "*") {
+      return c.json({ error: "library \u9808\u70BA\u5408\u6CD5\u5EAB\u540D\uFF08A-Za-z0-9_-\uFF0C1-64 \u5B57\uFF09" }, 400);
+    }
+    const rawNodes = Array.isArray(body.nodes) ? body.nodes : [];
+    const nodes = rawNodes.map(normalizeFolderNode).filter((n) => n !== null);
+    const displayName = String(body.display_name ?? "").trim() || library;
+    const root = String(body.root ?? "").trim();
+    const mode = String(body.mode ?? "").trim();
+    const reason = String(body.reason ?? "").trim();
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const mine = existing.find((l) => (l.values.name ?? "") === library);
+    let registered = false;
+    if (!mine) {
+      const res = await kbdbFetch3(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({
+          template: LIBRARY_TEMPLATE,
+          owner_id: portalNamespace(c.env),
+          values: { name: library, display_name: displayName, description: "", status: "active", root, mode, reason }
+        })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF0C\u8CC7\u6599\u593E\u6A39\u767B\u8A18\uFF09\u2192 ${res.status}`);
+      registered = true;
+    } else {
+      const patch = {};
+      if ((mine.values.root ?? "") !== root) patch.root = root;
+      if ((mine.values.mode ?? "") !== mode) patch.mode = mode;
+      if ((mine.values.reason ?? "") !== reason) patch.reason = reason;
+      if (Object.keys(patch).length > 0) await patchRecordValues(c.env, mine.record_id, patch);
+    }
+    const stored = {
+      library,
+      display_name: displayName,
+      root,
+      mode,
+      reason,
+      // 🔴 缺 → 空字串，**不猜也不 backfill**（同卡片那條路：D97）。
+      //    舊版小幫手不送這兩格，而「不知道是哪一台」本身就是要顯示出來的事實。
+      machine: String(body.machine ?? "").trim(),
+      machine_label: String(body.machine_label ?? "").trim(),
+      // arcrun-rag#122：版號只收短字串（防有人塞一大包進 KV）；不合理就當沒送。
+      daemon_version: ((v) => v.length <= 40 ? v : "")(String(body.daemon_version ?? "").trim()),
+      truncated: body.truncated === true,
+      total_nodes: Number.isFinite(Number(body.total_nodes)) ? Number(body.total_nodes) : nodes.length,
+      sync_token: String(body.sync_token ?? ""),
+      generated_at: Number.isFinite(Number(body.generated_at)) ? Number(body.generated_at) : 0,
+      received_at: Math.floor(Date.now() / 1e3),
+      nodes
+    };
+    const ledgerIn = normalizeLedgerSummary(body.ledger_summary);
+    if (ledgerIn) {
+      const prevTree = await readFolderTree(c.env, library);
+      stored.ledger = trackLedger(prevTree?.ledger, ledgerIn);
+    }
+    await c.env.WEBHOOKS.put(folderTreeKey(c.env, library), JSON.stringify(stored));
+    if (stored.ledger && stored.ledger.no_progress_rounds === 2) {
+      await notifyLedgerStuck(c.env, stored);
+    }
+    await markDaemonLibraryActive(c.env, library);
+    return c.json({ success: true, library, registered, nodes: nodes.length, truncated: stored.truncated });
+  })
+);
+portalRouter.get(
+  "/portal/admin/folder-tree",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const library = (c.req.query("library") ?? "").trim();
+    if (!isValidLibraryName(library) || library === "*") {
+      return c.json({ error: "library \u53C3\u6578\u5FC5\u586B\u4E14\u9808\u70BA\u5408\u6CD5\u5EAB\u540D" }, 400);
+    }
+    const tree = await readFolderTree(c.env, library);
+    if (!tree) {
+      return c.json({
+        success: true,
+        library,
+        tree: null,
+        note: "\u540C\u6B65\u5C0F\u5E6B\u624B\u9084\u6C92\u56DE\u5831\u904E\u9019\u500B\u8CC7\u6599\u593E\u7684\u7D50\u69CB\uFF08\u820A\u7248\u5C0F\u5E6B\u624B\u4E0D\u6703\u56DE\u5831\uFF0C\u66F4\u65B0\u5F8C\u624D\u6703\u51FA\u73FE\uFF09\u3002"
+      });
+    }
+    return c.json({ success: true, library, tree });
+  })
+);
+portalRouter.post(
+  "/portal/daemon/extract",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const body = await c.req.json().catch(() => null);
+    const pageName = String(body?.page_name ?? "").trim();
+    const srcText = String(body?.text ?? "");
+    const daemonPrompt = String(body?.prompt ?? "").trim();
+    const tableName = daemonPrompt ? "" : String(body?.prompt_table ?? "").trim();
+    let tableMode = null;
+    if (tableName) {
+      if (!pageName || !srcText.trim()) return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
+      const loaded = await loadPromptTable(c.env.RECIPES, tableName);
+      if (!loaded) return c.json({ error: `\u6C92\u6709\u53EB\u300C${tableName}\u300D\u7684\u6307\u793A\u8868`, code: "prompt_table_missing" }, 400);
+      const assembled = assemblePromptTable(loaded.table, sanitizeTableInput(body?.kinds, body?.hints), { pageName, text: srcText });
+      tableMode = {
+        ...assembled.system ? { system: assembled.system } : {},
+        user: assembled.user,
+        expect: loaded.table.expect,
+        meta: {
+          name: loaded.table.name,
+          source: loaded.source,
+          inject: loaded.table.inject,
+          blocks: assembled.used,
+          ...assembled.unknownKinds.length ? { unknown_kinds: assembled.unknownKinds } : {},
+          ...loaded.note ? { note: loaded.note } : {}
+        }
+      };
+    }
+    const expectShape = tableMode && !body?.expect ? tableMode.expect : parseExpectShape(body?.expect, Boolean(daemonPrompt));
+    if (!daemonPrompt && (!pageName || !srcText.trim()))
+      return c.json({ error: "page_name \u8207 text \u5FC5\u586B" }, 400);
+    let aiConfig = DEFAULT_EXTRACT_AI_CONFIG;
+    let configReadError;
+    try {
+      aiConfig = await readExtractAiConfig(c.env);
+    } catch (e) {
+      configReadError = `\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u7684\u8403\u53D6 AI \u8A2D\u5B9A\uFF0C\u5DF2\u9000\u56DE\u9810\u8A2D\uFF1A${e instanceof Error ? e.message : String(e)}`;
+    }
+    if (aiConfig.recipe === DEFAULT_EXTRACT_AI_CONFIG.recipe && !c.env.AI) {
+      return honestStop(c, "ai_binding_missing", configReadError);
+    }
+    const REL = ">".repeat(2);
+    const prompt = tableMode ? tableMode.user : daemonPrompt || `\u628A\u4EE5\u4E0B\u539F\u7A3F\u91CD\u5BEB\u6210\u5B9A\u7A3F\u77E5\u8B58\u5361\uFF08\u6B63\u9AD4\u4E2D\u6587\uFF09\u3002\u76F4\u63A5\u8F38\u51FA\u5361\u7247\u672C\u8EAB\uFF1A\u7B2C\u4E00\u884C\u5FC5\u9808\u662F\u300C# ${pageName}\u300D\uFF0C\u4E0D\u8981\u4EFB\u4F55\u524D\u8A00\u3001\u601D\u8003\u904E\u7A0B\u3001\u82F1\u6587\u8349\u7A3F\u6216\u8AAA\u660E\u3002\u683C\u5F0F\uFF1A
+# ${pageName}
+## \u4E00\u53E5\u8A71\u5B9A\u7FA9
+\uFF08\u4E00\u884C\uFF09
+## \u8981\u9EDE
+- \uFF083-12 \u689D\uFF0C\u5177\u9AD4\u3001\u542B\u6578\u5B57\u689D\u4EF6\uFF09
+## \u95DC\u9375\u5BE6\u9AD4
+- **\u5BE6\u9AD4\u540D** \u2014 \u4E00\u53E5\u8AAA\u660E
+## \u95DC\u806F
+- \u5BE6\u9AD4A ${REL} \u95DC\u4FC2 ${REL} \u5BE6\u9AD4B\uFF083-8 \u884C\uFF0C\u7528\u4E0A\u9762\u5BE6\u9AD4\u540D\uFF09
+
+\u539F\u7A3F\uFF1A
+${srcText}`;
+    if (aiConfig.recipe === DEFAULT_EXTRACT_AI_CONFIG.recipe) {
+      const verdict = await aiBrakeVerdict(c.env, (path, init) => kbdbFetch3(c.env, path, init));
+      if (verdict.blocked) {
+        return c.json(
+          { error: verdict.message, code: "usage_brake", brake: verdict.brake, used: verdict.used, limit: verdict.limit, unit: "neurons" },
+          429
+        );
+      }
+    }
+    try {
+      const ran = await runExtractAi(c.env, credentialOwner(c.env), aiConfig, {
+        prompt,
+        ...tableMode?.system ? { system: tableMode.system } : {},
+        maxTokens: daemonPrompt || tableMode ? 8192 : 2048,
+        temperature: 0.2,
+        // 🔴 Arcrun#134（2026-08-27）：呼叫端說它要一個 JSON 物件 ⇒ **就用模型保證得了的方式去要**
+        //	（`response_format: json_object` 走受限解碼，語法由平台保證 ⇒ 骰子拿掉）。
+        //	實測（youlin 真檔打 6 次）3 次壞在模型把字串收尾引號打成全形 `”`。
+        //	只在呼叫端宣告要 JSON 時才要：legacy（要 markdown 卡）那條路一個字都沒動。
+        //	#277：組請求的是 recipe（body_template），這裡只宣告「要不要 JSON」。
+        jsonObject: expectShape === "json_object"
+      });
+      if (!ran.ok) {
+        if (ran.code === "ai_binding_missing") return honestStop(c, "ai_binding_missing");
+        return c.json({ error: `\u96F2\u7AEF\u8403\u53D6\uFF1A${ran.error}`, code: ran.code }, 502);
+      }
+      const out = ran.out;
+      const norm = normalizeAiText(out);
+      if (norm.kind === "unrenderable") {
+        return c.json({ error: `\u96F2\u7AEF\u8403\u53D6\uFF1A${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} \u7684\u56DE\u61C9\u9084\u539F\u4E0D\u56DE\u6587\u5B57\uFF08${norm.reason ?? "\u672A\u77E5\u539F\u56E0"}\uFF09` }, 502);
+      }
+      const raw2 = norm.text;
+      if (!raw2) return c.json({ error: `${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} \u6C92\u6709\u56DE\u50B3\u5167\u5BB9` }, 502);
+      if (daemonPrompt || tableMode) {
+        if (expectShape === "json_object") {
+          const check = hasJsonObject(raw2);
+          if (!check.ok) {
+            return c.json(
+              {
+                error: `\u96F2\u7AEF\u8403\u53D6\uFF1A\u6A21\u578B\u6C92\u6709\u7167\u5951\u7D04\u56DE JSON \u7269\u4EF6\uFF08${check.reason}\uFF09\u3002\u9019\u4E00\u6BB5\u662F\u5728\u4F60\u7684\u77E5\u8B58\u5EAB\u96F2\u7AEF\u8DD1\u7684\uFF08${ran.provider === DEFAULT_EXTRACT_AI_CONFIG.recipe ? "Workers AI" : "AI"} ${ran.model}\uFF09\uFF0C\u4E0D\u662F\u5728\u4F60\u7684\u96FB\u8166\u4E0A\u3002\u6A21\u578B\u5BE6\u969B\u56DE\u7684\u524D 120 \u5B57\uFF1A${snippetForError(raw2)}`,
+                code: "ai_output_not_json_object",
+                output_kind: norm.kind
+              },
+              502
+            );
+          }
+        }
+        return c.json({ success: true, output: raw2, output_kind: norm.kind, ...tableMode ? { prompt: tableMode.meta } : {} });
+      }
+      const marker = `# ${pageName}`;
+      const idx = raw2.lastIndexOf(marker);
+      return c.json({ success: true, card: (idx >= 0 ? raw2.slice(idx) : raw2).trim() + "\n" });
+    } catch (e) {
+      return c.json({ error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+    }
+  })
+);
+var READ_IMAGE_MAX_BASE64 = 6 * 1024 * 1024;
+var READ_IMAGE_MIMES = /* @__PURE__ */ new Set(["image/png", "image/jpeg", "image/webp"]);
+portalRouter.post(
+  "/portal/daemon/read-image",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const body = await c.req.json().catch(() => null);
+    const pageName = String(body?.page_name ?? "").trim();
+    const page = Number(body?.page ?? 0);
+    const pass = String(body?.pass ?? "primary").trim();
+    const mime = String(body?.mime ?? "image/png").trim().toLowerCase();
+    const b642 = String(body?.image_base64 ?? "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+    const caption = String(body?.caption ?? "").trim().slice(0, 300);
+    if (!pageName) return c.json({ error: "page_name \u5FC5\u586B" }, 400);
+    if (!Number.isInteger(page) || page < 1 || page > 1e4) return c.json({ error: "page \u5FC5\u9808\u662F 1 \u4EE5\u4E0A\u7684\u6574\u6578\u9801\u78BC" }, 400);
+    if (pass !== "primary" && pass !== "check") return c.json({ error: "pass \u53EA\u80FD\u662F 'primary' \u6216 'check'" }, 400);
+    if (!READ_IMAGE_MIMES.has(mime)) return c.json({ error: `mime \u53EA\u6536 ${[...READ_IMAGE_MIMES].join("\u3001")}` }, 400);
+    if (!b642) return c.json({ error: "image_base64 \u5FC5\u586B" }, 400);
+    if (b642.length > READ_IMAGE_MAX_BASE64) return c.json({ error: `\u5716\u592A\u5927\uFF08base64 \u8D85\u904E ${READ_IMAGE_MAX_BASE64} \u5B57\u5143\uFF09`, code: "image_too_large" }, 413);
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b642)) return c.json({ error: "image_base64 \u4E0D\u662F\u5408\u6CD5\u7684 base64" }, 400);
+    const tableName = String(body?.prompt_table ?? "read_image").trim();
+    const loaded = await loadPromptTable(c.env.RECIPES, tableName);
+    if (!loaded) return c.json({ error: `\u6C92\u6709\u53EB\u300C${tableName}\u300D\u7684\u6307\u793A\u8868`, code: "prompt_table_missing" }, 400);
+    const assembled = assemblePromptTable(
+      loaded.table,
+      { kinds: pass === "check" ? ["check"] : [], hints: caption ? { caption: [caption] } : {} },
+      { pageName: `${pageName} \u7B2C ${page} \u9801`, text: "\uFF08\u898B\u5716\u7247\uFF09" }
+    );
+    let aiConfig = DEFAULT_EXTRACT_AI_CONFIG;
+    try {
+      aiConfig = await readExtractAiConfig(c.env);
+    } catch {
+    }
+    if (aiConfig.recipe === DEFAULT_EXTRACT_AI_CONFIG.recipe && !c.env.AI) return honestStop(c, "ai_binding_missing");
+    const tableModel = loaded.table.models?.[pass];
+    const ran = await runExtractAi(c.env, credentialOwner(c.env), aiConfig, {
+      prompt: assembled.user,
+      ...assembled.system ? { system: assembled.system } : {},
+      images: [`data:${mime};base64,${b642}`],
+      ...tableModel ? { model: tableModel } : {},
+      maxTokens: loaded.table.max_tokens ?? 3072,
+      temperature: 0.1,
+      // 抑制「同一頁重複亂轉」（實測 mistral 讀勾選框多的表單會轉到吃滿 token）
+      extra: { frequency_penalty: 0.4 },
+      jsonObject: false
+    });
+    if (!ran.ok) {
+      if (ran.code === "ai_binding_missing") return honestStop(c, "ai_binding_missing");
+      return c.json({ error: `\u96F2\u7AEF\u8B80\u5716\uFF1A${ran.error}`, code: ran.code }, 502);
+    }
+    const norm = normalizeAiText(ran.out);
+    if (norm.kind === "unrenderable") return c.json({ error: `\u96F2\u7AEF\u8B80\u5716\uFF1A\u56DE\u61C9\u9084\u539F\u4E0D\u56DE\u6587\u5B57\uFF08${norm.reason ?? "\u672A\u77E5\u539F\u56E0"}\uFF09`, code: "ai_output_unrenderable" }, 502);
+    if (!norm.text.trim()) return c.json({ error: "\u96F2\u7AEF\u8B80\u5716\uFF1A\u6A21\u578B\u6C92\u6709\u56DE\u50B3\u5167\u5BB9", code: "ai_output_empty" }, 502);
+    const usage = ran.out?.usage;
+    return c.json({
+      success: true,
+      output: norm.text.trim(),
+      model: ran.model,
+      ...usage && typeof usage === "object" ? { usage } : {},
+      pass,
+      page,
+      prompt: { name: loaded.table.name, source: loaded.source, blocks: assembled.used, ...loaded.note ? { note: loaded.note } : {} }
+    });
+  })
+);
+portalRouter.post(
+  "/portal/daemon/libraries",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
+    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
+    if (!rec || (rec.values.status ?? "") !== "active" || !ok) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    await clearLoginFail(c.env, email);
+    const wanted = Array.isArray(body?.libraries) ? body.libraries : [];
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const have = new Set(existing.map((l) => String(l.values.name ?? "")));
+    const ns = portalNamespace(c.env);
+    const created = [];
+    for (const item of wanted) {
+      const name = String(item?.name ?? "").trim();
+      if (!isValidLibraryName(name) || name === "*" || have.has(name)) continue;
+      const res = await kbdbFetch3(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({
+          template: LIBRARY_TEMPLATE,
+          owner_id: ns,
+          values: {
+            name,
+            display_name: String(item?.display_name ?? "").trim() || name,
+            description: "\u540C\u6B65\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u8CC7\u6599\u593E",
+            status: "active"
+          }
+        })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF09\u2192 ${res.status}`);
+      have.add(name);
+      created.push(name);
+    }
+    const after = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const activeNames = wanted.map((item) => String(item?.name ?? "").trim()).filter(Boolean);
+    if (activeNames.length > 0) {
+      await c.env.WEBHOOKS.put(daemonActiveKey(c.env), JSON.stringify(activeNames), { expirationTtl: 172800 });
+    }
+    return c.json({ success: true, created, libraries: after.map(toPublicLibrary) });
+  })
+);
+portalRouter.post(
+  "/portal/daemon/config",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    if (await isLocked(c.env, email)) {
+      return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u5DF2\u66AB\u6642\u9396\u5B9A\uFF0C\u8ACB 15 \u5206\u9418\u5F8C\u518D\u8A66" }, 429);
+    }
+    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
+    if (!rec) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    if ((rec.values.status ?? "") !== "active") return c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403);
+    if (!ok) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    await clearLoginFail(c.env, email);
+    const daemonCfg = {
+      cypher_url: new URL(c.req.url).origin,
+      namespace: knowledgeOwner(c.env),
+      library: "kb",
+      email,
+      instance_name: String(rec.values.display_name ?? "")
+    };
+    return c.json({ success: true, config: daemonCfg });
+  })
+);
+portalRouter.post(
+  "/portal/admin/chat-key",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const key = String(body?.key ?? "").trim();
+    if (!key) return c.json({ error: "\u8ACB\u8CBC\u4E0A\u4F60\u7684 Google AI \u91D1\u9470" }, 400);
+    const tenant2 = knowledgeOwner(c.env);
+    const kvKey2 = `${tenant2}:wf:rag_chat`;
+    const raw2 = await c.env.WEBHOOKS.get(kvKey2, "text");
+    if (!raw2) return honestStop(c, "ai_workflow_missing");
+    let record;
+    try {
+      record = JSON.parse(raw2);
+    } catch {
+      return honestStop(c, "ai_workflow_corrupt");
+    }
+    let replaced = 0;
+    const visit = (o) => {
+      if (Array.isArray(o)) {
+        o.forEach(visit);
+        return;
+      }
+      if (o && typeof o === "object") {
+        const rec = o;
+        for (const k of Object.keys(rec)) {
+          if (k.toLowerCase() === "x-goog-api-key") {
+            rec[k] = key;
+            replaced += 1;
+          } else visit(rec[k]);
+        }
+      }
+    };
+    visit(record["graph"]);
+    visit(record["config"]);
+    if (replaced === 0) return honestStop(c, "ai_workflow_no_key_field");
+    await c.env.WEBHOOKS.put(kvKey2, JSON.stringify(record));
+    return c.json({ success: true, replaced });
+  })
+);
+portalRouter.get(
+  "/portal/admin/libraries",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    let daemonActive = null;
+    try {
+      const raw2 = await c.env.WEBHOOKS.get(daemonActiveKey(c.env), "text");
+      if (raw2) daemonActive = new Set(JSON.parse(raw2).map((n) => String(n).trim()));
+    } catch {
+    }
+    const out = libs.map((rec) => {
+      const lib = toPublicLibrary(rec);
+      const watching = daemonActive === null ? void 0 : daemonActive.has(lib.name);
+      return { ...lib, ...watching !== void 0 ? { daemon_watching: watching } : {} };
+    });
+    const known = new Set(out.map((l) => l.name));
+    if (c.req.query("lite") === "1") {
+      if (daemonActive) {
+        for (const n of daemonActive) {
+          if (!n || n === "general" || known.has(n)) continue;
+          known.add(n);
+          out.push({ record_id: "", name: n, display_name: n, description: "", status: "active", graph_source: false, auto: true, daemon_watching: true });
+        }
+      }
+      return c.json({ success: true, libraries: out, count: out.length, lite: true });
+    }
+    try {
+      const tenant2 = knowledgeOwner(c.env);
+      const ownerParam = ownerQuery(tenant2);
+      const [cardRes, tripletRes] = await Promise.all([
+        kbdbFetch3(c.env, `/entries/library-stats?${ownerParam}`).catch(() => null),
+        kbdbFetch3(c.env, `/records/triplet-stats?${ownerParam}`).catch(() => null)
+      ]);
+      for (const r of [cardRes, tripletRes]) if (r && !r.ok) releaseBody(r);
+      const cardMap = /* @__PURE__ */ new Map();
+      if (cardRes?.ok) {
+        const body = await cardRes.json();
+        for (const s of body.stats ?? []) cardMap.set(s.library, s.card_count);
+      }
+      const tripletMap = /* @__PURE__ */ new Map();
+      if (tripletRes?.ok) {
+        const body = await tripletRes.json();
+        for (const s of body.stats ?? []) tripletMap.set(s.library, s.triplet_count);
+      }
+      for (const lib of out) {
+        lib.card_count = cardMap.get(lib.name) ?? 0;
+        lib.triplet_count = tripletMap.get(lib.name) ?? 0;
+      }
+      {
+        for (const name of cardMap.keys()) {
+          const n = String(name ?? "").trim();
+          if (!n || n === "general" || known.has(n)) continue;
+          known.add(n);
+          const watching = daemonActive === null ? void 0 : daemonActive.has(n);
+          out.push({
+            record_id: "",
+            name: n,
+            display_name: n,
+            description: "\u8CC7\u6599\u540C\u6B65\u6642\u81EA\u52D5\u51FA\u73FE\uFF08\u53EF\u5728\u6B64\u88DC\u986F\u793A\u540D\uFF09",
+            status: "active",
+            graph_source: false,
+            auto: true,
+            card_count: cardMap.get(n) ?? 0,
+            triplet_count: tripletMap.get(n) ?? 0,
+            ...watching !== void 0 ? { daemon_watching: watching } : {}
+          });
+        }
+      }
+    } catch {
+    }
+    await Promise.all(out.map(async (lib) => {
+      const name = String(lib.name ?? "");
+      if (!name) return;
+      const tree = await readFolderTree(c.env, name);
+      if (tree) lib.folder_tree = summarizeFolderTree(tree);
+    }));
+    return c.json({ success: true, libraries: out, count: out.length });
+  })
+);
+portalRouter.post(
+  "/portal/daemon/libraries",
+  (c) => run(c, async () => {
+    const body = await c.req.json().catch(() => null);
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const password = String(body?.password ?? "");
+    if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+    const items = Array.isArray(body?.libraries) ? body.libraries : [];
+    if (items.length === 0) return c.json({ success: true, registered: [], skipped: [] });
+    if (await isLocked(c.env, email)) return c.json({ error: "\u767B\u5165\u5931\u6557\u6B21\u6578\u904E\u591A\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 429);
+    const { rec, ok } = await findAndVerifyUser(c.env, email, password);
+    if (!rec || (rec.values.status ?? "") !== "active" || !ok) {
+      await recordLoginFail(c.env, email);
+      return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+    }
+    await clearLoginFail(c.env, email);
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const have = new Set(existing.map((l) => l.values.name ?? ""));
+    const ns = portalNamespace(c.env);
+    const registered = [];
+    const skipped = [];
+    for (const it of items) {
+      const name = String(it?.name ?? "").trim();
+      const displayName = String(it?.display_name ?? "").trim() || name;
+      if (!isValidLibraryName(name) || name === "*") {
+        skipped.push(name || "(\u7A7A)");
+        continue;
+      }
+      if (have.has(name)) {
+        skipped.push(name);
+        continue;
+      }
+      const res = await kbdbFetch3(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({
+          template: LIBRARY_TEMPLATE,
+          owner_id: ns,
+          values: { name, display_name: displayName, description: "", status: "active" }
+        })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF0Cdaemon \u767B\u8A18\uFF09\u2192 ${res.status}`);
+      have.add(name);
+      registered.push(name);
+    }
+    return c.json({ success: true, registered, skipped });
+  })
+);
+portalRouter.patch(
+  "/portal/admin/libraries/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recordId = c.req.param("id");
+    const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    if (!libs.some((l) => l.record_id === recordId)) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
+    const patch = {};
+    if (body.display_name !== void 0) patch.display_name = String(body.display_name).trim();
+    if (body.description !== void 0) patch.description = String(body.description).trim();
+    if (body.status !== void 0) {
+      if (body.status !== "active" && body.status !== "disabled") {
+        return c.json({ error: "status \u53EA\u80FD\u662F active / disabled" }, 400);
+      }
+      patch.status = body.status;
+    }
+    if (body.graph_source !== void 0) {
+      if (typeof body.graph_source !== "boolean") {
+        return c.json({ error: "graph_source \u53EA\u80FD\u662F true / false" }, 400);
+      }
+      patch.graph_source = body.graph_source ? "true" : "false";
+    }
+    if (Object.keys(patch).length === 0) {
+      return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08display_name/description/status/graph_source\uFF09" }, 400);
+    }
+    const updated = await patchRecordValues(c.env, recordId, patch);
+    return c.json({ success: true, library: toPublicLibrary(updated) });
+  })
+);
+async function readExtractAiRow(env) {
+  const ns = portalNamespace(env);
+  const res = await kbdbFetch3(env, `/records/by-template/${encodeURIComponent(EXTRACT_AI_TEMPLATE)}?owner_id=${encodeURIComponent(ns)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new KbdbError(`GET /records/by-template/${EXTRACT_AI_TEMPLATE} \u2192 ${res.status}`);
+  const body = await res.json();
+  for (const r of body.records ?? []) {
+    const v = validateExtractAiConfig({ recipe: r.values.recipe, base_url: r.values.base_url, model: r.values.model });
+    if (v.ok) {
+      return { record_id: r.record_id, config: v.config, updated_at: r.values.updated_at ?? "", updated_by: r.values.updated_by ?? "" };
+    }
+  }
+  return null;
+}
+async function readExtractAiConfig(env) {
+  return (await readExtractAiRow(env))?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
+}
+portalRouter.get(
+  "/portal/admin/extract-ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const row = await readExtractAiRow(c.env);
+    let have = /* @__PURE__ */ new Set();
+    try {
+      have = new Set((await listCredentialRows(c.env, credentialOwner(c.env))).map((r) => r.name));
+    } catch {
+      have = /* @__PURE__ */ new Set();
+    }
+    const providers = EXTRACT_AI_PROVIDERS.map((p) => ({
+      id: p.id,
+      label: p.label,
+      group: p.group,
+      key: p.key,
+      credential: p.credential ?? null,
+      has_key: !!p.credential && have.has(p.credential),
+      needs_base_url: !!p.needs_base_url,
+      live_models: !!p.models_url || !!p.needs_base_url,
+      default_base_url: p.default_base_url ?? null,
+      models: p.models,
+      description: p.description
+    }));
+    const config = row?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
+    const current = providers.find((p) => p.id === config.recipe);
+    return c.json({
+      success: true,
+      recipe: config.recipe,
+      provider_label: current?.label ?? config.recipe,
+      base_url: config.base_url ?? null,
+      model: config.model ?? null,
+      has_key: current?.has_key ?? false,
+      is_default: !row,
+      providers,
+      available_recipes: providers.map((p) => p.id),
+      updated_at: row?.updated_at || null,
+      updated_by: row?.updated_by || null
+    });
+  })
+);
+portalRouter.get(
+  "/portal/admin/extract-ai/models",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recipe = (c.req.query("recipe") ?? "").trim();
+    if (!findProvider(recipe)) return c.json({ error: "\u4E0D\u8A8D\u5F97\u9019\u500B\u63D0\u4F9B\u5546" }, 400);
+    const list = await listProviderModels(c.env, credentialOwner(c.env), recipe, c.req.query("base_url") ?? void 0);
+    return c.json({ success: true, recipe, ...list });
+  })
+);
+portalRouter.put(
+  "/portal/admin/extract-ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const v = validateExtractAiConfig(body);
+    if (!v.ok) return c.json({ error: v.error }, 400);
+    const provider = findProvider(v.config.recipe);
+    const apiKey = typeof body?.api_key === "string" ? body.api_key.trim() : "";
+    if (provider.key === "required" && !apiKey) {
+      let have = false;
+      try {
+        have = await hasCredential(c.env, credentialOwner(c.env), provider.credential);
+      } catch {
+        have = false;
+      }
+      if (!have) {
+        return c.json({ error: `${provider.label} \u9700\u8981\u91D1\u9470\uFF1A\u8ACB\u5148\u586B\u5165\u91D1\u9470\uFF08\u6703\u5B58\u9032\u6191\u8B49\u4E2D\u5FC3\uFF0C\u540D\u7A31 ${provider.credential}\uFF09` }, 400);
+      }
+    }
+    if (apiKey && provider.credential) {
+      try {
+        await storeCredential(c.env, credentialOwner(c.env), provider.credential, apiKey, "extract_ai");
+      } catch (e) {
+        return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    }
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const values = {
+      recipe: v.config.recipe,
+      base_url: v.config.base_url ?? "",
+      model: v.config.model ?? "",
+      updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      updated_by: auth.user.values.email ?? ""
+    };
+    const existing = await readExtractAiRow(c.env);
+    if (existing) {
+      await patchRecordValues(c.env, existing.record_id, values);
+    } else {
+      const res = await kbdbFetch3(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({ template: EXTRACT_AI_TEMPLATE, owner_id: portalNamespace(c.env), values })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08${EXTRACT_AI_TEMPLATE}\uFF09\u2192 ${res.status}`);
+    }
+    return c.json({ success: true, recipe: v.config.recipe, base_url: v.config.base_url ?? null, model: v.config.model ?? null });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/extract-ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const existing = await readExtractAiRow(c.env);
+    if (!existing) return c.json({ success: true, already: true });
+    const found = await deleteKbdbRecord(c.env, existing.record_id);
+    return c.json({ success: true, removed: found });
+  })
+);
+function extractPromptName(c) {
+  const name = (c.req.param("name") ?? "extract_wiki").trim();
+  return Object.prototype.hasOwnProperty.call(BUILTIN_PROMPT_TABLES, name) ? name : null;
+}
+portalRouter.get(
+  "/portal/admin/extract-prompt/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = extractPromptName(c);
+    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
+    const loaded = await loadPromptTable(c.env.RECIPES, name);
+    if (!loaded) return c.json({ error: "\u8B80\u4E0D\u5230\u6307\u793A\u8868" }, 502);
+    return c.json({
+      success: true,
+      source: loaded.source,
+      ...loaded.note ? { note: loaded.note } : {},
+      blocks: loaded.table.blocks.map((b) => `${b.key}@${b.v}`),
+      table: loaded.table,
+      builtin: BUILTIN_PROMPT_TABLES[name]
+    });
+  })
+);
+portalRouter.put(
+  "/portal/admin/extract-prompt/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = extractPromptName(c);
+    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
+    const body = await c.req.json().catch(() => null);
+    const v = validatePromptTable(body);
+    if (!v.ok) return c.json({ error: `\u8868\u4E0D\u5408\u683C\uFF1A${v.error}` }, 400);
+    if (v.table.name !== name) return c.json({ error: `\u8868\u7684 name\uFF08${v.table.name}\uFF09\u8207\u8DEF\u5F91\uFF08${name}\uFF09\u4E0D\u4E00\u81F4` }, 400);
+    await c.env.RECIPES.put(promptTableKey(name), JSON.stringify(v.table));
+    return c.json({ success: true, source: "installed", blocks: v.table.blocks.map((b) => `${b.key}@${b.v}`) });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/extract-prompt/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = extractPromptName(c);
+    if (!name) return c.json({ error: `\u6C92\u6709\u9019\u5F35\u6307\u793A\u8868\uFF1B\u53EF\u7528\uFF1A${Object.keys(BUILTIN_PROMPT_TABLES).join("\u3001")}` }, 404);
+    await c.env.RECIPES.delete(promptTableKey(name));
+    return c.json({ success: true, source: "builtin" });
+  })
+);
+portalRouter.get(
+  "/portal/admin/ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const tenantSlug = credentialOwner(c.env);
+    let hasKey = false;
+    try {
+      hasKey = await hasCredential(c.env, tenantSlug, "gemini_api_key");
+    } catch {
+      hasKey = false;
+    }
+    return c.json({ success: true, has_key: hasKey });
+  })
+);
+portalRouter.get(
+  "/portal/admin/execution-log-retention",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const ownerId = knowledgeOwner(c.env);
+    const res = await kbdbFetch3(c.env, `/execution-log/retention?${ownerQuery(ownerId)}`);
+    if (!res.ok) throw new KbdbError(`GET /execution-log/retention \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({ success: true, retention_days: data.retention_days ?? null, default_days: data.default_days ?? 90 });
+  })
+);
+portalRouter.put(
+  "/portal/admin/execution-log-retention",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const days = body?.retention_days;
+    if (days !== null && days !== void 0 && (typeof days !== "number" || !Number.isFinite(days) || days <= 0)) {
+      return c.json({ error: "retention_days \u5FC5\u9808\u662F\u6B63\u6574\u6578\uFF0C\u6216 null\uFF08\u4EE3\u8868\u4E0D\u522A\u9664\uFF09" }, 400);
+    }
+    const ownerId = knowledgeOwner(c.env);
+    const res = await kbdbFetch3(c.env, "/execution-log/retention", {
+      method: "PUT",
+      body: JSON.stringify({ owner_id: ownerField(ownerId), retention_days: days === void 0 ? null : days })
+    });
+    if (!res.ok) throw new KbdbError(`PUT /execution-log/retention \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({ success: true, retention_days: data.retention_days ?? null });
+  })
+);
+portalRouter.get(
+  "/portal/admin/usage-brakes",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const [settingsRes, brakesRes, usageRes] = await Promise.all([
+      kbdbFetch3(c.env, "/usage-brakes/settings"),
+      kbdbFetch3(c.env, "/usage-brakes?limit=20"),
+      kbdbFetch3(c.env, "/usage-brakes/usage")
+    ]);
+    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
+    if (!brakesRes.ok) throw new KbdbError(`GET /usage-brakes \u2192 ${brakesRes.status}`);
+    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
+    const settings = await settingsRes.json();
+    const brakesBody = await brakesRes.json();
+    const usage = await usageRes.json();
+    const active = (brakesBody.brakes ?? []).filter((b) => b.active === true);
+    return c.json({
+      success: true,
+      brake_enabled: settings.brake_enabled !== false,
+      updated_at: settings.updated_at ?? null,
+      updated_by: settings.updated_by ?? null,
+      active_brakes: active,
+      // 電池模型（#293 c18013）：判準只在 lib/battery.ts，前端只畫。
+      battery: computeBattery({
+        brake_enabled: settings.brake_enabled !== false,
+        percent_written: usage.percent_written,
+        percent_read: usage.percent_read,
+        reset_at: usage.reset_at,
+        month: usage.month,
+        percent_ai: await aiPercentNow(c.env)
+      }),
+      usage: {
+        rows_written: usage.rows_written,
+        rows_read: usage.rows_read,
+        limit_rows_written: usage.limit_rows_written,
+        limit_rows_read: usage.limit_rows_read,
+        percent_written: usage.percent_written,
+        percent_read: usage.percent_read,
+        reset_at: usage.reset_at,
+        month: usage.month
+      }
+    });
+  })
+);
+function daemonKeyDenied(c) {
+  const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  let ns = "";
+  try {
+    ns = knowledgeOwner(c.env);
+  } catch {
+    ns = "";
+  }
+  if (!ns || !constantTimeEqual(apiKey, ns)) return c.json({ error: "X-Arcrun-API-Key \u4E0D\u5C6C\u65BC\u9019\u53F0\u5BE6\u4F8B" }, 401);
+  return null;
+}
+portalRouter.get(
+  "/portal/daemon/battery",
+  (c) => run(c, async () => {
+    const denied = daemonKeyDenied(c);
+    if (denied) return denied;
+    const [settingsRes, usageRes] = await Promise.all([
+      kbdbFetch3(c.env, "/usage-brakes/settings"),
+      kbdbFetch3(c.env, "/usage-brakes/usage")
+    ]);
+    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
+    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
+    const settings = await settingsRes.json();
+    const usage = await usageRes.json();
+    return c.json({
+      success: true,
+      battery: computeBattery({
+        brake_enabled: settings.brake_enabled !== false,
+        percent_written: usage.percent_written,
+        percent_read: usage.percent_read,
+        reset_at: usage.reset_at,
+        month: usage.month,
+        percent_ai: await aiPercentNow(c.env)
+      })
+    });
+  })
+);
+var USAGE_TTL_MS = 6e4;
+var usageCache = null;
+var BRAKE_COVERS_D1 = ["d1_write", "d1_read"];
+var BRAKE_COVERS_WITH_AI = [...BRAKE_COVERS_D1, "ai"];
+portalRouter.get(
+  "/portal/daemon/usage",
+  (c) => run(c, async () => {
+    const denied = daemonKeyDenied(c);
+    if (denied) return denied;
+    const now2 = Date.now();
+    const accountId = c.env.CF_ACCOUNT_ID || "";
+    const priv = isPrivateCloud(c.env);
+    const cacheKey = `${accountId}|${priv}`;
+    if (usageCache && usageCache.key === cacheKey && now2 - usageCache.at < USAGE_TTL_MS) {
+      return c.json({ success: true, usage: usageCache.snap });
+    }
+    const [settingsRes, usageRes] = await Promise.all([
+      kbdbFetch3(c.env, "/usage-brakes/settings"),
+      kbdbFetch3(c.env, "/usage-brakes/usage")
+    ]);
+    if (!settingsRes.ok) throw new KbdbError(`GET /usage-brakes/settings \u2192 ${settingsRes.status}`);
+    if (!usageRes.ok) throw new KbdbError(`GET /usage-brakes/usage \u2192 ${usageRes.status}`);
+    const settings = await settingsRes.json();
+    const kusage = await usageRes.json();
+    const cfMonth = priv ? null : await getCfMonth(c.env, now2);
+    const brake = { on: settings.brake_enabled !== false, covers: cfMonth ? BRAKE_COVERS_WITH_AI : BRAKE_COVERS_D1 };
+    const selfSnap = () => buildSelfUsage({
+      now: now2,
+      brake,
+      d1: {
+        day_written: Number(kusage.rows_written ?? 0),
+        day_read: Number(kusage.rows_read ?? 0),
+        month_written: Number(kusage.month?.rows_written ?? 0),
+        month_read: Number(kusage.month?.rows_read ?? 0),
+        exceeded_free_daily: kusage.month?.exceeded_free_daily === true
+      }
+    });
+    let snap;
+    if (priv) {
+      const s = selfSnap();
+      snap = {
+        ...s,
+        plan: "local",
+        base_usd: void 0,
+        brake: { on: false, covers: [] },
+        items: s.items.map(({ cost_usd: _c, unit_usd: _u, ...rest }) => ({ ...rest, limit: null }))
+      };
+    } else if (cfMonth) {
+      snap = buildUsage({ now: now2, brake, data: cfMonth });
+    } else {
+      snap = selfSnap();
+    }
+    usageCache = { at: now2, key: cacheKey, snap };
+    return c.json({ success: true, usage: snap });
+  })
+);
+portalRouter.post(
+  "/portal/admin/usage-brakes/settings",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    if (typeof body?.brake_enabled !== "boolean") {
+      return c.json({ error: "brake_enabled \u5FC5\u9808\u662F boolean" }, 400);
+    }
+    const res = await kbdbFetch3(c.env, "/usage-brakes/settings", {
+      method: "POST",
+      body: JSON.stringify({ brake_enabled: body.brake_enabled, by: auth.user.values.email ?? "portal" })
+    });
+    if (!res.ok) throw new KbdbError(`POST /usage-brakes/settings \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({ success: true, brake_enabled: data.brake_enabled !== false });
+  })
+);
+portalRouter.post(
+  "/portal/admin/usage-brakes/:id/release",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const id = c.req.param("id");
+    const res = await kbdbFetch3(c.env, `/usage-brakes/${encodeURIComponent(id)}/release`, {
+      method: "POST",
+      body: JSON.stringify({ by: auth.user.values.email ?? "portal" })
+    });
+    if (res.status === 404) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u524E\u8ECA\u7D00\u9304\uFF08\u53EF\u80FD\u5DF2\u7D93\u653E\u884C\u904E\u4E86\uFF09" }, 404);
+    if (!res.ok) throw new KbdbError(`POST /usage-brakes/:id/release \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({ success: true, brake: data.brake ?? null });
+  })
+);
+async function listMcpRedirectHosts(env) {
+  const rows = await listRecordsByTemplate(env, MCP_REDIRECT_HOST_TEMPLATE);
+  return rows.filter((r) => (r.values.host ?? "").trim() !== "").sort((a, b) => (a.values.host ?? "").localeCompare(b.values.host ?? ""));
+}
+portalRouter.get(
+  "/portal/mcp-settings",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const isAdmin = (auth.user.values.role ?? "") === "admin";
+    const sub = String(c.env.WORKER_SUBDOMAIN ?? "").trim();
+    const mcpBase = mcpBaseUrl(c.env);
+    const mcpUrl = mcpBase ? `${mcpBase}/mcp` : mcpUrlFor(sub);
+    const payload = {
+      success: true,
+      mcp_url: mcpUrl,
+      // 誠實講「為什麼沒有」：這台實例的部署設定裡沒有 WORKER_SUBDOMAIN ⇒ 多半是安裝
+      // 中途失敗（畫面卻說裝好了）。不要讓使用者以為是自己沒找到。
+      mcp_url_reason: mcpUrl ? "" : "\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u8A18\u9304\u81EA\u5DF1\u7684\u90E8\u7F72\u4F4D\u7F6E\uFF08\u5B89\u88DD\u53EF\u80FD\u6C92\u6709\u5B8C\u6210\uFF09\uFF0C\u6240\u4EE5\u7B97\u4E0D\u51FA MCP \u7DB2\u5740",
+      builtin_hosts: [...MCP_BUILTIN_REDIRECT_HOSTS],
+      can_edit: isAdmin
+    };
+    const ttl = await readMcpTokenTtl(c.env).catch(() => null);
+    payload.token_ttl_seconds = ttl?.seconds ?? null;
+    payload.token_ttl_default_seconds = DEFAULT_TOKEN_TTL_SECONDS;
+    if (isAdmin && ttl) {
+      payload.token_ttl_updated_at = ttl.updated_at;
+      payload.token_ttl_updated_by = ttl.updated_by;
+    }
+    if (isAdmin) {
+      payload.hosts = (await listMcpRedirectHosts(c.env)).map((r) => ({
+        record_id: r.record_id,
+        host: r.values.host ?? "",
+        label: r.values.label ?? "",
+        created_at: r.values.created_at ?? "",
+        created_by: r.values.created_by ?? ""
+      }));
+    }
+    return c.json(payload);
+  })
+);
+portalRouter.post(
+  "/portal/admin/mcp-redirect-hosts",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const norm = normalizeRedirectHost(body?.host);
+    if (!norm.ok) return c.json({ error: norm.error }, 400);
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const existing = await listMcpRedirectHosts(c.env);
+    const dup = existing.find((r) => (r.values.host ?? "") === norm.host);
+    if (dup) {
+      return c.json({ success: true, already: true, host: norm.host, record_id: dup.record_id });
+    }
+    const ns = portalNamespace(c.env);
+    const res = await kbdbFetch3(c.env, "/records", {
+      method: "POST",
+      body: JSON.stringify({
+        template: MCP_REDIRECT_HOST_TEMPLATE,
+        owner_id: ns,
+        values: {
+          host: norm.host,
+          label: String(body?.label ?? "").trim().slice(0, 80),
+          created_at: (/* @__PURE__ */ new Date()).toISOString(),
+          created_by: auth.user.values.email ?? ""
+        }
+      })
+    });
+    if (!res.ok) throw new KbdbError(`POST /records\uFF08${MCP_REDIRECT_HOST_TEMPLATE}\uFF09\u2192 ${res.status}`);
+    const created = await res.json().catch(() => null);
+    return c.json({
+      success: true,
+      host: norm.host,
+      record_id: created?.record_id ?? created?.record?.record_id ?? ""
+    });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/mcp-redirect-hosts/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recordId = c.req.param("id");
+    const rows = await listMcpRedirectHosts(c.env);
+    const target = rows.find((r) => r.record_id === recordId);
+    if (!target) return c.json({ error: "\u9019\u500B\u7DB2\u57DF\u4E0D\u5728\u540D\u55AE\u4E0A\uFF08\u53EF\u80FD\u5DF2\u7D93\u88AB\u79FB\u9664\u4E86\uFF09" }, 404);
+    const found = await deleteKbdbRecord(c.env, recordId);
+    if (!found) return c.json({ error: "\u9019\u500B\u7DB2\u57DF\u4E0D\u5728\u540D\u55AE\u4E0A\uFF08\u53EF\u80FD\u5DF2\u7D93\u88AB\u79FB\u9664\u4E86\uFF09" }, 404);
+    return c.json({ success: true, host: target.values.host ?? "" });
+  })
+);
+portalRouter.get(
+  "/portal/internal/mcp-redirect-hosts",
+  (c) => run(c, async () => {
+    const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+    if (!expected) {
+      return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09\uFF0C\u7121\u6CD5\u56DE\u7B54" }, 503);
+    }
+    const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+    if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
+    const rows = await listMcpRedirectHosts(c.env);
+    return c.json({ success: true, hosts: rows.map((r) => (r.values.host ?? "").trim()).filter(Boolean) });
+  })
+);
+async function readMcpTokenTtl(env) {
+  const rows = await listRecordsByTemplate(env, MCP_TOKEN_TTL_TEMPLATE);
+  for (const r of rows) {
+    const n = Number.parseInt(r.values.ttl_seconds ?? "", 10);
+    if (Number.isFinite(n) && n >= 0) {
+      return {
+        record_id: r.record_id,
+        seconds: n,
+        updated_at: r.values.updated_at ?? "",
+        updated_by: r.values.updated_by ?? ""
+      };
+    }
+  }
+  return null;
+}
+portalRouter.post(
+  "/portal/admin/mcp-token-ttl",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const raw2 = body?.ttl_seconds !== void 0 ? body.ttl_seconds : body?.ttl_days !== void 0 && body.ttl_days !== null ? Number(body.ttl_days) * 86400 : void 0;
+    const norm = normalizeTokenTtl(raw2);
+    if (!norm.ok) return c.json({ error: norm.error }, 400);
+    const seeded = await ensurePortalTemplates(c.env);
+    if (seeded.errors.length > 0) {
+      return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
+    }
+    const values = {
+      ttl_seconds: String(norm.seconds),
+      updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      updated_by: auth.user.values.email ?? ""
+    };
+    const existing = await readMcpTokenTtl(c.env);
+    if (existing) {
+      await patchRecordValues(c.env, existing.record_id, values);
+    } else {
+      const ns = portalNamespace(c.env);
+      const res = await kbdbFetch3(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({ template: MCP_TOKEN_TTL_TEMPLATE, owner_id: ns, values })
+      });
+      if (!res.ok) throw new KbdbError(`POST /records\uFF08${MCP_TOKEN_TTL_TEMPLATE}\uFF09\u2192 ${res.status}`);
+    }
+    return c.json({ success: true, ttl_seconds: norm.seconds, clamped: norm.clamped });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/mcp-token-ttl",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const existing = await readMcpTokenTtl(c.env);
+    if (!existing) return c.json({ success: true, already: true });
+    const found = await deleteKbdbRecord(c.env, existing.record_id);
+    return c.json({ success: true, removed: found });
+  })
+);
+portalRouter.get(
+  "/portal/internal/mcp-token-ttl",
+  (c) => run(c, async () => {
+    const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+    if (!expected) {
+      return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09\uFF0C\u7121\u6CD5\u56DE\u7B54" }, 503);
+    }
+    const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+    if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
+    const ttl = await readMcpTokenTtl(c.env);
+    return c.json({ success: true, ttl_seconds: ttl?.seconds ?? null });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/libraries/by-name/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = decodeURIComponent(c.req.param("name"));
+    const body = await c.req.json().catch(() => null);
+    const confirm = String(body?.confirm ?? "").trim();
+    if (!confirm) return c.json({ error: 'body \u9808\u5E36 { confirm: "<\u5EAB\u540D>" } \u624D\u57F7\u884C\uFF08\u79FB\u9664\u6703\u5F71\u97FF\u8CC7\u6599\u53EF\u641C\u6027\uFF09' }, 400);
+    if (confirm !== name) return c.json({ error: `confirm \u503C\u300C${confirm}\u300D\u8207\u5EAB\u540D\u300C${name}\u300D\u4E0D\u7B26` }, 400);
+    const ownerId = knowledgeOwner(c.env);
+    const res = await kbdbFetch3(c.env, "/entries/deprecate-by-library", {
+      method: "PATCH",
+      body: JSON.stringify({ owner_id: ownerField(ownerId), library: name })
+    });
+    if (!res.ok) throw new KbdbError(`PATCH /entries/deprecate-by-library \u2192 ${res.status}`);
+    const data = await res.json();
+    return c.json({
+      success: true,
+      deprecated_count: data.deprecated_count ?? 0,
+      message: `\u5DF2\u5F9E\u81EA\u52D5\u6E05\u55AE\u79FB\u9664\u300C${name}\u300D\uFF08\u5171\u6A19\u8A18 ${data.deprecated_count ?? 0} \u7B46\u8CC7\u6599\u4E0D\u53EF\u641C\uFF09\u3002\u8CC7\u6599\u4FDD\u7559\u53EF\u9084\u539F\u2014\u2014\u91CD\u65B0\u540C\u6B65\u6642\u6703\u518D\u51FA\u73FE\u3002`
+    });
+  })
+);
+portalRouter.post(
+  "/portal/admin/ai",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const rawKey = typeof body?.gemini_api_key === "string" ? body.gemini_api_key.trim() : "";
+    if (!rawKey) {
+      return c.json({ error: "\u6C92\u6709\u8981\u8B8A\u66F4\u7684\u9805\u76EE\uFF08\u91D1\u9470\u7559\u7A7A\uFF09" }, 400);
+    }
+    const tenantSlug = credentialOwner(c.env);
+    try {
+      await storeCredential(c.env, tenantSlug, "gemini_api_key", rawKey, "gemini");
+    } catch (e) {
+      return c.json(
+        { error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` },
+        502
+      );
+    }
+    return c.json({ success: true, has_key: true });
+  })
+);
+function credFail(c, label, e, fallbackStatus = 502) {
+  if (isSecretsNotReady(e)) return c.json({ error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE }, 502);
+  const msg = e instanceof Error ? e.message : String(e);
+  return c.json({ error: `${label}\uFF1A${msg}` }, fallbackStatus);
+}
+portalRouter.get(
+  "/portal/admin/credentials",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenantSlug = credentialOwner(c.env);
+    try {
+      const rows = await listCredentialRows(c.env, tenantSlug);
+      return c.json({ success: true, credentials: rows, total: rows.length });
+    } catch (e) {
+      return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  })
+);
+portalRouter.post(
+  "/portal/admin/credentials",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    if (!validateName(body?.name)) {
+      return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+    }
+    if (!body?.value || typeof body.value !== "string") {
+      return c.json({ error: "value \u5FC5\u586B\uFF08\u91D1\u9470\u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF0C\u4E0D\u843D\u5730\u3001\u4E0D\u8A18 log\uFF09" }, 400);
+    }
+    const service = typeof body.service === "string" ? body.service : void 0;
+    const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
+    const tenantSlug = credentialOwner(c.env);
+    try {
+      await writeCredential(c.env, tenantSlug, body.name, body.value, service, sensitivity);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return credFail(c, "\u91D1\u9470\u5132\u5B58\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
+    }
+    return c.json({ success: true, name: body.name, service: service ?? null });
+  })
+);
+portalRouter.put(
+  "/portal/admin/credentials/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = c.req.param("name");
+    if (!validateName(name)) {
+      return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+    }
+    const body = await c.req.json().catch(() => null);
+    if (!body?.value || typeof body.value !== "string") {
+      return c.json({ error: "value \u5FC5\u586B\uFF08\u91D1\u9470\u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF0C\u4E0D\u843D\u5730\u3001\u4E0D\u8A18 log\uFF09" }, 400);
+    }
+    const service = typeof body.service === "string" ? body.service : void 0;
+    const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
+    const tenantSlug = credentialOwner(c.env);
+    try {
+      await writeCredential(c.env, tenantSlug, name, body.value, service, sensitivity);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return credFail(c, "\u91D1\u9470\u8986\u5BEB\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
+    }
+    return c.json({ success: true, name, service: service ?? null });
+  })
+);
+portalRouter.patch(
+  "/portal/admin/credentials/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = c.req.param("name");
+    if (!validateName(name)) {
+      return c.json({ error: "name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+    }
+    const body = await c.req.json().catch(() => null);
+    const newName = typeof body?.new_name === "string" ? body.new_name : void 0;
+    const service = typeof body?.service === "string" ? body.service : void 0;
+    const value = typeof body?.value === "string" ? body.value : void 0;
+    const tenantSlug = credentialOwner(c.env);
+    try {
+      const result = await editCredential(c.env, tenantSlug, name, { newName, service, value });
+      return c.json({ success: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
+      return credFail(c, "\u91D1\u9470\u4FEE\u6539\u5931\u6557", e, status);
+    }
+  })
+);
+portalRouter.delete(
+  "/portal/admin/credentials/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = c.req.param("name");
+    const tenantSlug = credentialOwner(c.env);
+    const result = await deleteCredentialByName(c.env, tenantSlug, name);
+    if (!result.ok) {
+      if (isSecretsNotReady(result.error)) return c.json({ error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE }, 502);
+      return c.json({ error: result.error }, result.status);
+    }
+    return c.json({ success: true, name });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/libraries/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const recordId = c.req.param("id");
+    const libs = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
+    const target = libs.find((l) => l.record_id === recordId);
+    if (!target) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
+    const found = await deleteKbdbRecord(c.env, recordId);
+    if (!found) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
+    try {
+      await c.env.WEBHOOKS.delete(folderTreeKey(c.env, target.values.name ?? ""));
+    } catch {
+    }
+    return c.json({
+      success: true,
+      name: target.values.name ?? "",
+      message: `\u5DF2\u5F9E\u76EE\u9304\u79FB\u9664\u300C${target.values.display_name ?? target.values.name ?? ""}\u300D\u3002\u8CC7\u6599\u4ECD\u5728\uFF0C\u91CD\u65B0\u540C\u6B65\u6703\u518D\u51FA\u73FE\u3002`
+    });
+  })
+);
+async function buildDiagnostics(env, tenant2) {
+  const notes = [];
+  let embedding = { checked: false };
+  try {
+    const [statusRes, selftestRes] = await Promise.all([
+      kbdbFetch3(env, `/embed/backfill/status?${ownerQuery(tenant2)}`),
+      kbdbFetch3(env, `/embed/selftest?${ownerQuery(tenant2)}`)
+    ]);
+    const statusBody = await statusRes.json().catch(() => null);
+    const selftestBody = await selftestRes.json().catch(() => null);
+    embedding = {
+      checked: true,
+      module_enabled: statusBody?.enabled ?? false,
+      // Vectorize+AI binding 都在，才有「index」這回事
+      cards_embedded: statusBody?.embedded ?? 0,
+      cards_pending: statusBody?.pending ?? 0,
+      self_test: {
+        ran: selftestBody?.tested ?? false,
+        // 三態：true=能搜到自己 ／ false=搜不到自己（index 收錄有缺）／ null=還沒東西可測或模組未開
+        found_itself: selftestBody?.tested ? selftestBody?.passed ?? null : null,
+        note: selftestBody?.note ?? ""
+      }
+    };
+  } catch (e) {
+    notes.push(`embed \u5065\u5EB7\u72C0\u614B\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+  let library_count = 0;
+  let triplet_count = 0;
+  const ownerParam = ownerQuery(tenant2);
+  try {
+    const [registeredLibs, autoRes, tripletRes] = await Promise.all([
+      listRecordsByTemplate(env, LIBRARY_TEMPLATE).catch(() => []),
+      kbdbFetch3(env, `/entries/libraries?${ownerParam}`),
+      kbdbFetch3(env, `/records/triplet-stats?${ownerParam}`)
+    ]);
+    const knownLibs = new Set(
+      registeredLibs.map((r) => (r.values.name ?? "").trim()).filter((n) => !!n)
+    );
+    const autoBody = await autoRes.json().catch(() => null);
+    for (const name of autoBody?.libraries ?? []) {
+      const n = String(name ?? "").trim();
+      if (n && n !== "general") knownLibs.add(n);
+    }
+    library_count = knownLibs.size;
+    const tripletBody = await tripletRes.json().catch(() => null);
+    triplet_count = (tripletBody?.stats ?? []).reduce((sum2, s) => sum2 + (Number(s.triplet_count) || 0), 0);
+  } catch (e) {
+    notes.push(`\u77E5\u8B58\u5EAB\u898F\u6A21\u67E5\u8A62\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+  let library_scope_check = { ran: false };
+  if (library_count === 0 && triplet_count === 0) {
+    try {
+      const probeRes = await kbdbFetch3(env, `/entries?${new URLSearchParams({ owner_id: ownerField(tenant2), limit: "1" }).toString()}`);
+      const probeBody = await probeRes.json().catch(() => null);
+      const total = probeBody?.total ?? 0;
+      library_scope_check = {
+        ran: true,
+        any_entries_found: total > 0,
+        note: total > 0 ? `\u9019\u500B\u79DF\u6236\u5E95\u4E0B\u67E5\u5F97\u5230\u5176\u4ED6\u8CC7\u6599\uFF08entries \u5171 ${total} \u7B46\uFF09\uFF0C\u4F46\u5EAB\uFF0F\u4E09\u5143\u7D44\u7D71\u8A08\u4ECD\u56DE 0\u2014\u2014\u50CF\u662F\u67E5\u8A62\u65B9\u5F0F\u6216\u79DF\u6236\u5C0D\u4E0D\u4E0A\uFF0C\u4E0D\u50CF\u771F\u7684\u6C92\u8CC7\u6599\uFF0C\u9700\u8981\u4EBA\u518D\u67E5\u4E00\u6B21` : "\u9019\u500B\u79DF\u6236\u5E95\u4E0B\u5B8C\u5168\u67E5\u4E0D\u5230\u4EFB\u4F55\u8CC7\u6599\u2014\u2014\u6BD4\u8F03\u50CF\u662F\u771F\u7684\u9084\u6C92\u6709\u8CC7\u6599\uFF0C\u4E0D\u662F\u67E5\u8A62\u65B9\u5F0F\u932F\u4E86"
+      };
+    } catch (e) {
+      library_scope_check = {
+        ran: true,
+        any_entries_found: null,
+        note: `\u81EA\u6211\u63A2\u6E2C\u67E5\u8A62\u672C\u8EAB\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
+      };
+    }
+  }
+  return { library_count, triplet_count, library_scope_check, embedding, notes };
+}
+portalRouter.get(
+  "/portal/daemon/diagnostics",
+  (c) => run(c, async () => {
+    const apiKey = (c.req.header("X-Arcrun-API-Key") ?? "").trim();
+    if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+    const core = await buildDiagnostics(c.env, tenantFromApiKey(apiKey));
+    return c.json({
+      generated_at: (/* @__PURE__ */ new Date()).toISOString(),
+      instance_url: new URL(c.req.url).origin,
+      bundle_version: c.env.ARCRUN_BUNDLE_VERSION ?? null,
+      ...core
+    });
+  })
+);
+async function movePortalPasswordsToAuthStore(env, tokenOverride) {
+  const users = (await listRecordsByTemplate(env, USER_TEMPLATE)).filter(
+    (r) => !isAuthStoreId(r.record_id) && (r.values.password_hash ?? "") !== ""
+  );
+  if (users.length === 0) return { moved: 0, already: 0, cleared: 0 };
+  let moved = 0;
+  let already = 0;
+  await mutateAuthStore(
+    env,
+    (data) => {
+      for (const u of users) {
+        if (data.passwords[u.record_id]) {
+          already++;
+          continue;
+        }
+        data.passwords[u.record_id] = u.values.password_hash;
+        moved++;
+      }
+    },
+    tokenOverride
+  );
+  let cleared = 0;
+  for (const u of users) {
+    await patchRecordValues(env, u.record_id, { password_hash: "" });
+    cleared++;
+  }
+  return { moved, already, cleared };
+}
+portalRouter.post(
+  "/portal/admin/update",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const r = await requestInstanceUpdate(c.env);
+    return c.json(r.body, r.status);
+  })
+);
+
+// cypher-executor/src/routes/init-seed.ts
+var initSeedRouter = new Hono2();
+function sameContent(a, b, omit) {
+  const strip = (obj) => {
+    const rec = obj;
+    const out = {};
+    for (const k of Object.keys(rec).sort()) {
+      if (!omit.includes(k)) out[k] = rec[k];
+    }
+    return JSON.stringify(out);
+  };
+  return strip(a) === strip(b);
+}
+var TIMESTAMP_FIELDS = ["created_at", "updated_at"];
+initSeedRouter.post("/init/seed", async (c) => {
+  const now2 = Date.now();
+  let apiOk = 0;
+  let apiWritten = 0;
+  let apiFail = 0;
+  const apiErrors = [];
+  await Promise.all(API_RECIPE_SEEDS.map(async (seed) => {
+    try {
+      const canonicalId = seed.canonical_id.trim().toLowerCase();
+      const hashId = await deriveRecipeHash(canonicalId);
+      const existing = await resolveRecipe(canonicalId, c.env.RECIPES);
+      const recipe = {
+        uuid: existing?.uuid ?? crypto.randomUUID(),
+        author: existing?.author ?? "system",
+        canonical_id: canonicalId,
+        hash_id: hashId,
+        display_name: seed.display_name,
+        description: seed.description,
+        endpoint: resolveKbdbSeedBase(seed.endpoint, () => kbdbBaseUrl(c.env)),
+        method: (seed.method ?? "POST").toUpperCase(),
+        auth_service: seed.auth_service,
+        // ③ payload/回應/binding 三層（3.12）：不列進來的欄位會被**靜默吃掉**——
+        // 種子帶了 body_template/response_map/auth 卻沒進 KV，症狀是 recipe 存在但跑起來
+        // 「像沒設定過」，且哪裡都不會紅（08-02 manifest.daemon 欄被列舉式重建吃掉的同型）。
+        body_template: seed.body_template,
+        response_map: seed.response_map,
+        auth: seed.auth,
+        binding_name: seed.binding_name,
+        headers: seed.headers,
+        created_at: existing?.created_at ?? now2,
+        updated_at: now2
+      };
+      if (!existing || !sameContent(recipe, existing, TIMESTAMP_FIELDS)) {
+        await installRecipeRecord(c.env.RECIPES, recipe);
+        apiWritten++;
+      }
+      apiOk++;
+    } catch (e) {
+      apiFail++;
+      apiErrors.push(`${seed.canonical_id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }));
+  let authOk = 0;
+  let authWritten = 0;
+  let authFail = 0;
+  const authErrors = [];
+  await Promise.all(AUTH_RECIPE_SEEDS.map(async (seed) => {
+    try {
+      const service = seed.service.trim().toLowerCase();
+      const existing = await c.env.RECIPES.get(`auth_recipe:${service}`, "json");
+      const recipe = {
+        ...seed,
+        base_url: resolveKbdbSeedBase(seed.base_url, () => kbdbBaseUrl(c.env)),
+        service,
+        created_at: existing?.created_at ?? now2,
+        updated_at: now2
+      };
+      if (!existing || !sameContent(recipe, existing, TIMESTAMP_FIELDS)) {
+        await c.env.RECIPES.put(`auth_recipe:${service}`, JSON.stringify(recipe));
+        authWritten++;
+      }
+      authOk++;
+    } catch (e) {
+      authFail++;
+      authErrors.push(`${seed.service}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }));
+  const portalTemplates = await ensurePortalTemplates(c.env);
+  const allOk = apiFail === 0 && authFail === 0 && portalTemplates.errors.length === 0;
+  const durationMs = Date.now() - now2;
+  return c.json(
+    {
+      success: allOk,
+      duration_ms: durationMs,
+      api_recipes: {
+        seeded: apiOk,
+        written: apiWritten,
+        unchanged: apiOk - apiWritten,
+        failed: apiFail,
+        errors: apiErrors
+      },
+      auth_recipes: {
+        seeded: authOk,
+        written: authWritten,
+        unchanged: authOk - authWritten,
+        failed: authFail,
+        errors: authErrors
+      },
+      portal_templates: portalTemplates,
+      message: allOk ? `seed \u5B8C\u6210\uFF08${durationMs}ms\uFF09\uFF1A${apiOk} \u500B API recipe\uFF08\u5BEB\u5165 ${apiWritten}\uFF0F\u6CBF\u7528 ${apiOk - apiWritten}\uFF09+ ${authOk} \u500B auth recipe\uFF08\u5BEB\u5165 ${authWritten}\uFF0F\u6CBF\u7528 ${authOk - authWritten}\uFF09+ portal templates\uFF08\u65B0\u5EFA ${portalTemplates.created.length}\uFF0F\u5DF2\u5B58\u5728 ${portalTemplates.existing.length}\uFF09` : `seed \u90E8\u5206\u5931\u6557\uFF08\u8AA0\u5BE6\u56DE\u5831\uFF0C\u672A\u5047\u7DA0\uFF09\uFF1AAPI ${apiOk}\u2713/${apiFail}\u2717\uFF0Cauth ${authOk}\u2713/${authFail}\u2717\uFF0Cportal templates \u932F\u8AA4 ${portalTemplates.errors.length}`
+    },
+    allOk ? 200 : 207
+  );
+});
+
+// cypher-executor/src/index.ts
+init_kbdb_proxy();
+
+// cypher-executor/src/routes/console-dashboard.ts
+init_dist();
+init_kbdb_proxy();
+
+// cypher-executor/src/lib/taipei-time.ts
+var TAIPEI_OFFSET_MS = 8 * 3600 * 1e3;
+function taipeiDayKey(ms) {
+  return new Date(ms + TAIPEI_OFFSET_MS).toISOString().slice(0, 10);
+}
+var TAIPEI_CLIENT_JS = [
+  "var TAIPEI_OFFSET_MS = 28800000; // UTC+8\uFF0C\u53F0\u5317\u7121 DST",
+  "function tpePad(n) { n = String(n); return n.length < 2 ? '0' + n : n; }",
+  "function taipeiDayKey(ms) { return new Date(ms + TAIPEI_OFFSET_MS).toISOString().slice(0, 10); }",
+  "function taipeiDateStr(ms) { return taipeiDayKey(ms); }",
+  "function taipeiDateTimeStr(ms) { var d = new Date(ms + TAIPEI_OFFSET_MS); return taipeiDayKey(ms) + ' ' + tpePad(d.getUTCHours()) + ':' + tpePad(d.getUTCMinutes()); }",
+  "function taipeiTimeStr(ms) { var d = new Date(ms + TAIPEI_OFFSET_MS); return tpePad(d.getUTCHours()) + ':' + tpePad(d.getUTCMinutes()) + ':' + tpePad(d.getUTCSeconds()); }",
+  "function taipeiMonthDay(ms) { var d = new Date(ms + TAIPEI_OFFSET_MS); return { month: d.getUTCMonth() + 1, day: d.getUTCDate() }; }"
+].join("\n");
+
+// cypher-executor/src/lib/console-dashboard-model.ts
+function parseCreatedAtMs(s) {
+  if (s === null || s === void 0 || s === "") return null;
+  if (typeof s === "number") return s < 1e12 ? s * 1e3 : s;
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    return n < 1e12 ? n * 1e3 : n;
+  }
+  const iso = /T/.test(s) ? s : `${s.replace(" ", "T")}Z`;
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? null : ms;
+}
+function parseJsonContent(e) {
+  if (!e.content) return null;
+  try {
+    const v = JSON.parse(e.content);
+    return v && typeof v === "object" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function agoMinutes(nowMs, ms) {
+  return ms === null ? -1 : Math.max(0, Math.round((nowMs - ms) / 6e4));
+}
+function buildRouteModel(entries, nowMs) {
+  const todayKey = taipeiDayKey(nowMs);
+  const byTitle = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const j = parseJsonContent(e);
+    const title = typeof j?.title === "string" ? j.title : null;
+    if (!title || byTitle.has(title)) continue;
+    const ms = parseCreatedAtMs(e.created_at);
+    byTitle.set(title, {
+      title,
+      status: typeof j?.status === "string" ? j.status : "todo",
+      order: typeof j?.order === "number" ? j.order : 999,
+      scope: j?.scope === "week" ? "week" : "today",
+      at_ms: ms,
+      age_minutes: agoMinutes(nowMs, ms),
+      is_today_write: ms !== null && taipeiDayKey(ms) === todayKey
+    });
+  }
+  const tasks = [...byTitle.values()].sort(
+    (a, b) => a.scope !== b.scope ? a.scope === "today" ? -1 : 1 : a.order - b.order
+  );
+  const newestMs = tasks.reduce((m, t) => t.at_ms !== null && (m === null || t.at_ms > m) ? t.at_ms : m, null);
+  const isToday = newestMs !== null && taipeiDayKey(newestMs) === todayKey;
+  const todayTasks = tasks.filter((t) => t.scope === "today" && t.is_today_write);
+  return {
+    tasks,
+    updated_ago_minutes: agoMinutes(nowMs, newestMs),
+    is_today: isToday,
+    today_done: todayTasks.filter((t) => t.status === "done").length,
+    today_total: todayTasks.length
+  };
+}
+var URGENCY_EMOJI = /(🔴|🟡|🟢|⚪)/u;
+var CLOSED_MARKERS = /(✅|已完成|已解|銷案|已銷)/u;
+function parseSprintWaitingTable(md, sprintFile) {
+  const secIdx = md.search(/^##\s*等\s*leo\s*清單/mu);
+  if (secIdx < 0) return null;
+  const section = md.slice(secIdx);
+  const lines = section.split("\n");
+  const items = [];
+  let sawTable = false;
+  for (const line of lines.slice(1)) {
+    if (/^#{2,3}\s/.test(line) && !/^##\s*等/.test(line)) break;
+    const m = line.match(/^\|\s*([A-Za-z]?\d+)\s*\|(.*)\|(.*)\|\s*$/u);
+    if (!m) continue;
+    sawTable = true;
+    const id = m[1];
+    const item = m[2].trim();
+    const urgency = m[3].trim();
+    if (item.startsWith("~~")) continue;
+    if (CLOSED_MARKERS.test(urgency)) continue;
+    items.push({
+      id,
+      urgency: urgency.match(URGENCY_EMOJI)?.[1] ?? "",
+      title: cleanWaitingTitle(item),
+      sprint: sprintFile
+    });
+  }
+  if (!sawTable) return null;
+  return sortWaitingItems(items);
+}
+function sortWaitingItems(items) {
+  const rank = (u) => u === "\u{1F534}" ? 0 : u === "\u{1F7E1}" ? 1 : 2;
+  return items.map((it, i) => ({ it, i })).sort((a, b) => rank(a.it.urgency) - rank(b.it.urgency) || a.i - b.i).map((x) => x.it);
+}
+function cleanWaitingTitle(raw2) {
+  let s = raw2.replace(/\*\*/g, "").replace(/~~/g, "").replace(/`/g, "").trim();
+  s = s.replace(/^(?:🔴|🟡|🟢|⚪)\s*/u, "");
+  const colon = s.indexOf("\uFF1A");
+  if (colon >= 12) s = s.slice(0, colon);
+  if (s.length > 80) s = `${s.slice(0, 79)}\u2026`;
+  return trimUnbalancedParen(s);
+}
+function pickLatestSprintFiles(names, n = 2) {
+  return names.filter((name) => /^sprint-.*\.md$/.test(name)).sort().slice(-n).reverse();
+}
+function buildWaitingFallback(entries, nowMs) {
+  const byTitle = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const j = parseJsonContent(e);
+    const title = typeof j?.title === "string" ? j.title : null;
+    if (!title || byTitle.has(title)) continue;
+    byTitle.set(title, {
+      status: typeof j?.status === "string" ? j.status : "open",
+      at_ms: parseCreatedAtMs(e.created_at)
+    });
+  }
+  const open = [...byTitle.entries()].filter(([, v]) => v.status === "open");
+  const newestMs = [...byTitle.values()].reduce(
+    (m, v) => v.at_ms !== null && (m === null || v.at_ms > m) ? v.at_ms : m,
+    null
+  );
+  const ago = agoMinutes(nowMs, newestMs);
+  return {
+    items: open.map(([title]) => ({ title })),
+    source: byTitle.size ? "kbdb_dash_wait" : "none",
+    updated_ago_minutes: ago,
+    stale: ago < 0 || ago > 24 * 60,
+    note: byTitle.size ? void 0 : "\u7BA1\u7DDA\u672A\u63A5\uFF1Adash_wait \u7121\u8CC7\u6599\u3001Gitea sprint \u8B80\u53D6\u672A\u8A2D\u5B9A\uFF08GITEA_TOKEN\uFF09"
+  };
+}
+var BOARD_LINE = /^- \[([^\]]*)\]\s*(.*)$/u;
+var DONE_STAMP = /完成（([^）\n]*)/gu;
+var STAMP_DAY = /\d{4}-\d{2}-\d{2}/u;
+var UTC_DAYLINE_ACTORS = /\[cloud-worker\]/u;
+function nextDayKey(day) {
+  const ms = Date.parse(`${day}T00:00:00Z`);
+  return Number.isNaN(ms) ? day : new Date(ms + 24 * 3600 * 1e3).toISOString().slice(0, 10);
+}
+function classifyBoardMark(mark) {
+  if (mark === " " || mark === "") return "todo";
+  if (mark === "x" || mark === "X") return "done";
+  if (mark.startsWith("\u{1F504}")) return "doing";
+  if (mark.startsWith("!")) return "blocked";
+  return null;
+}
+function extractCompletedDays(text) {
+  const days = [];
+  const push = (d) => {
+    if (!days.includes(d)) days.push(d);
+  };
+  for (const m of text.matchAll(DONE_STAMP)) {
+    const content = m[1];
+    const day = content.match(STAMP_DAY)?.[0];
+    if (!day) continue;
+    push(day);
+    if (UTC_DAYLINE_ACTORS.test(content)) push(nextDayKey(day));
+  }
+  return days;
+}
+function trimUnbalancedParen(s) {
+  let depth = 0;
+  let lastOpen = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\uFF08") {
+      if (depth === 0) lastOpen = i;
+      depth++;
+    } else if (s[i] === "\uFF09") {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  if (depth > 0 && lastOpen >= 0) s = s.slice(0, lastOpen).trim();
+  return s;
+}
+function cleanBoardTitle(raw2) {
+  let s = raw2.replace(/\*\*/g, "").replace(/~~/g, "").replace(/`/g, "").trim();
+  const colon = s.indexOf("\uFF1A");
+  if (colon >= 4) s = s.slice(0, colon);
+  if (s.length > 80) s = `${s.slice(0, 79)}\u2026`;
+  return trimUnbalancedParen(s.trim());
+}
+function parseSprintTaskBoard(md, sprintFile) {
+  const secIdx = md.search(/^##\s*任務板/mu);
+  if (secIdx < 0) return null;
+  const section = md.slice(secIdx);
+  const lines = section.split("\n");
+  const tasks = [];
+  let current = null;
+  for (const line of lines.slice(1)) {
+    if (/^##\s/.test(line) && !/^###/.test(line)) break;
+    if (/^###\s/.test(line)) {
+      current = null;
+      continue;
+    }
+    const m = line.match(BOARD_LINE);
+    if (m) {
+      current = null;
+      const status = classifyBoardMark(m[1]);
+      const body = m[2];
+      const title = cleanBoardTitle(body);
+      if (status === null || !title) continue;
+      current = { title, status, completed_days: extractCompletedDays(body), sprint: sprintFile };
+      tasks.push(current);
+      continue;
+    }
+    if (/^\s+\S/.test(line)) {
+      if (current) {
+        for (const d of extractCompletedDays(line)) {
+          if (!current.completed_days.includes(d)) current.completed_days.push(d);
+        }
+      }
+      continue;
+    }
+    if (line.trim() !== "") current = null;
+  }
+  return tasks.length ? tasks : null;
+}
+function buildSprintRouteModel(tasks, nowMs) {
+  const todayKey = taipeiDayKey(nowMs);
+  const doneToday = tasks.filter((t) => t.status === "done" && t.completed_days.includes(todayKey));
+  const open = tasks.filter((t) => t.status !== "done");
+  return {
+    tasks: [...doneToday, ...open].map((t) => ({ title: t.title, status: t.status, sprint: t.sprint })),
+    today_done: doneToday.length,
+    today_total: doneToday.length + open.length,
+    done_today_titles: doneToday.map((t) => t.title)
+  };
+}
+var GITEA_WAITING_CACHE_TTL_SECONDS = 90;
+function reviveWaitingAges(model, fetchedAtMs, nowMs) {
+  if (model.updated_ago_minutes < 0) return model;
+  const drift = Math.max(0, Math.round((nowMs - fetchedAtMs) / 6e4));
+  const ago = model.updated_ago_minutes + drift;
+  return { ...model, updated_ago_minutes: ago, stale: ago > 48 * 60 };
+}
+
+// cypher-executor/src/lib/console-triage-model.ts
+var TIER_ALIASES = {
+  ai: "ai",
+  collab: "collab",
+  leo: "leo",
+  mira80: "ai",
+  collab15: "collab",
+  leo5: "leo"
+};
+function normalizeStatus(v) {
+  return v === "done" ? "done" : "new";
+}
+function normalizeTier(v) {
+  const mapped = typeof v === "string" ? TIER_ALIASES[v.trim()] : void 0;
+  return mapped ? { tier: mapped, unclassified: false } : { tier: "collab", unclassified: true };
+}
+function str(v) {
+  return typeof v === "string" ? v.trim() : "";
+}
+function todoToTriageItem(e) {
+  const j = parseJsonContent(e);
+  const { tier, unclassified } = normalizeTier(j?.owner_tier);
+  return {
+    id: e.id,
+    text: str(j?.text) || (e.content ?? ""),
+    tier,
+    unclassified,
+    project: str(j?.project),
+    source: str(j?.source),
+    marker: str(j?.marker),
+    status: normalizeStatus(j?.status),
+    origin: "todo",
+    at: e.created_at,
+    at_ms: parseCreatedAtMs(e.created_at)
+  };
+}
+function inboxToTriageItem(e) {
+  const j = parseJsonContent(e);
+  const from = str(j?.from);
+  return {
+    id: e.id,
+    text: str(j?.text) || (e.content ?? ""),
+    tier: "collab",
+    unclassified: true,
+    project: "",
+    source: from ? `telegram\u30FB${from}` : "telegram",
+    marker: "",
+    status: normalizeStatus(j?.status),
+    origin: "inbox",
+    at: e.created_at,
+    at_ms: parseCreatedAtMs(e.created_at)
+  };
+}
+function applyTriageCheck(content, action, nowIso2) {
+  let obj;
+  try {
+    const v = JSON.parse(content ?? "");
+    obj = v && typeof v === "object" && !Array.isArray(v) ? v : { text: content ?? "" };
+  } catch {
+    obj = { text: content ?? "" };
+  }
+  if (action === "restore") {
+    const { checked_via: _via, checked_at: _at, ...rest } = obj;
+    return JSON.stringify({ ...rest, status: "new" });
+  }
+  return JSON.stringify({ ...obj, status: "done", checked_via: "console", checked_at: nowIso2 });
+}
+function buildTriageModel(todoEntries, inboxEntries) {
+  const items = [
+    ...todoEntries.map(todoToTriageItem),
+    ...inboxEntries.map(inboxToTriageItem)
+  ].sort((a, b) => (b.at_ms ?? -1) - (a.at_ms ?? -1));
+  const projects = [...new Set(items.map((i) => i.project).filter(Boolean))].sort();
+  const counts = { ai: 0, collab: 0, leo: 0, unclassified: 0, done: 0, total: items.length };
+  for (const it of items) {
+    if (it.status === "done") {
+      counts.done++;
+      continue;
+    }
+    counts[it.tier]++;
+    if (it.unclassified) counts.unclassified++;
+  }
+  return { items, projects, counts };
+}
+
+// cypher-executor/src/routes/console-dashboard.ts
+init_tenant();
+var consoleDashboardRouter = new Hono2();
+var STALE_MINUTES = 240;
+var JUDGE_START_HOUR = 9;
+var JUDGE_END_HOUR = 22;
+var STANDARD_TASK_STATUS = /* @__PURE__ */ new Set(["done", "doing", "todo", "blocked"]);
+async function fetchEntries(env, tenant2, entryType, limit) {
+  const { base, headers } = kbdbBase(env);
+  const params = new URLSearchParams({ owner_id: tenant2, entry_type: entryType, limit: String(limit) });
+  try {
+    const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.entries ?? [];
+  } catch {
+    return [];
+  }
+}
+async function fetchJson(url, headers) {
+  try {
+    const res = await fetch(url, headers ? { headers } : void 0);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+async function fetchTripletTotal(env, tenant2) {
+  const { base, headers } = kbdbBase(env);
+  const data = await fetchJson(
+    `${base}/records/triplet-stats?owner_id=${encodeURIComponent(tenant2)}`,
+    headers
+  );
+  if (!data || !Array.isArray(data.stats)) return null;
+  let total = 0;
+  for (const row of data.stats) {
+    if (typeof row?.triplet_count !== "number") return null;
+    total += row.triplet_count;
+  }
+  return total;
+}
+async function fetchEntryTotal(env, filters) {
+  const { base, headers } = kbdbBase(env);
+  const params = new URLSearchParams({ ...filters, limit: "1" });
+  const data = await fetchJson(`${base}/entries?${params.toString()}`, headers);
+  return data && typeof data.total === "number" ? data.total : null;
+}
+async function fetchGiteaSprint(env, nowMs) {
+  const base = (env.GITEA_BASE_URL ?? "").replace(/\/$/, "");
+  const token = env.GITEA_TOKEN;
+  if (!base || !token) return null;
+  const repo = env.GITEA_SPRINT_REPO ?? "inkstone/InkStoneCo";
+  const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
+  const headers = { Authorization: `token ${token}` };
+  try {
+    const files = await fetchJson(`${base}/api/v1/repos/${repo}/contents/${encodeURI(dir)}`, headers);
+    if (!files) return null;
+    const sprints = pickLatestSprintFiles(files.map((f) => f.name));
+    if (!sprints.length) return null;
+    const parsed = await Promise.all(
+      sprints.map(async (name) => {
+        const rawRes = await fetch(`${base}/api/v1/repos/${repo}/raw/${encodeURI(`${dir}/${name}`)}`, { headers });
+        if (!rawRes.ok) return null;
+        const text = await rawRes.text();
+        return { waiting: parseSprintWaitingTable(text, name), board: parseSprintTaskBoard(text, name) };
+      })
+    );
+    const readFiles = sprints.filter((_, i) => parsed[i]?.waiting != null);
+    const merged = parsed.map((p) => p?.waiting).filter((p) => p != null).flat();
+    if (!readFiles.length) return null;
+    const boardMerged = parsed.map((p) => p?.board).filter((b) => b != null).flat();
+    let ago = -1;
+    const commits = await fetchJson(
+      `${base}/api/v1/repos/${repo}/commits?path=${encodeURIComponent(`${dir}/${readFiles[0]}`)}&limit=1&stat=false&verification=false&files=false`,
+      headers
+    );
+    const date = commits?.[0]?.commit?.committer?.date;
+    if (date) {
+      const ms = Date.parse(date);
+      if (!Number.isNaN(ms)) ago = agoMinutes(nowMs, ms);
+    }
+    return {
+      waiting: {
+        items: sortWaitingItems(merged),
+        source: "gitea_sprint",
+        updated_ago_minutes: ago,
+        stale: ago >= 0 && ago > 48 * 60,
+        sprint_files: readFiles
+      },
+      board: boardMerged.length ? boardMerged : null
+    };
+  } catch {
+    return null;
+  }
+}
+async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSprint) {
+  if (!env.GITEA_BASE_URL || !env.GITEA_TOKEN) return null;
+  const repo = env.GITEA_SPRINT_REPO ?? "inkstone/InkStoneCo";
+  const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
+  const cacheKey = new Request(
+    `https://console-dashboard.arcrun.internal/gitea-waiting?${new URLSearchParams({ base: env.GITEA_BASE_URL, repo, dir }).toString()}`
+  );
+  const cache2 = caches.default;
+  try {
+    const hit = await cache2.match(cacheKey);
+    if (hit) {
+      const envelope2 = await hit.json();
+      return {
+        waiting: reviveWaitingAges(envelope2.snapshot.waiting, envelope2.fetched_at_ms, nowMs),
+        board: envelope2.snapshot.board,
+        cache: "hit"
+      };
+    }
+  } catch {
+  }
+  const fresh = await fetcher(env, nowMs);
+  if (!fresh) return null;
+  const envelope = { snapshot: fresh, fetched_at_ms: nowMs };
+  try {
+    waitUntil(
+      cache2.put(
+        cacheKey,
+        new Response(JSON.stringify(envelope), {
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": `public, max-age=${GITEA_WAITING_CACHE_TTL_SECONDS}`
+          }
+        })
+      )
+    );
+  } catch {
+  }
+  return { ...fresh, cache: "miss" };
+}
+consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
+  const tenant2 = knowledgeOwner(c.env);
+  const now2 = Date.now();
+  const { base: kbdbUrl, headers: kbdbHeaders2 } = kbdbBase(c.env);
+  const [
+    beatEntries,
+    taskEntries,
+    waitEntries,
+    inboxEntries,
+    giteaSprint,
+    kbdbHealth,
+    embedStatus,
+    graphProbe,
+    tripletTotal,
+    entriesTotal,
+    wikiCardTotal,
+    workflowTotal
+  ] = await Promise.all([
+    fetchEntries(c.env, tenant2, "dash_beat", 100),
+    fetchEntries(c.env, tenant2, "dash_task", 200),
+    fetchEntries(c.env, tenant2, "dash_wait", 100),
+    fetchEntries(c.env, tenant2, "inbox", 200),
+    cachedGiteaSprint(c.env, now2, (p) => c.executionCtx.waitUntil(p)),
+    fetchJson(`${kbdbUrl}/health`, kbdbHeaders2),
+    fetchJson(`${kbdbUrl}/embed/backfill/status`, kbdbHeaders2),
+    // 圖服務活著沒（燈號）——數字不從這裡拿，見 fetchTripletTotal。
+    // 🔴 inkstone/Arcrun#168 收斂：原本探的是 kbdb-graph-plugin 的 /triplets/stats，
+    // 但圖能力已收斂回 KBDB（GET /graph/neighbors/:node）⇒ 探那顆 plugin 等於在量一個
+    // 沒有人走的服務：它沒裝就永遠紅燈、裝了也只證明一個不再被使用的東西活著。
+    // 改探 KBDB 那支端點本身——用一個不存在的節點名，它會誠實回 count:0 的 200
+    //（graph-query.ts：查不到就是空結果，不是錯誤），正好當「這條路通不通」的探針。
+    fetchJson(
+      `${kbdbUrl}/graph/neighbors/${encodeURIComponent("__arcrun_graph_probe__")}?depth=1`,
+      kbdbHeaders2
+    ),
+    fetchTripletTotal(c.env, tenant2),
+    // owner_id 一律鎖本租戶：原本不帶 owner 會混到別租戶（實測 459,137 vs leo 的 458,732）
+    fetchEntryTotal(c.env, { owner_id: tenant2 }),
+    fetchEntryTotal(c.env, { entry_type: "wiki_card", owner_id: tenant2 }),
+    fetchEntryTotal(c.env, { entry_type: "workflow", owner_id: tenant2 })
+  ]);
+  const beats = [];
+  const seenActors = /* @__PURE__ */ new Set();
+  for (const e of beatEntries) {
+    const j = parseJsonContent(e);
+    const actor = typeof j?.actor === "string" ? j.actor : null;
+    if (!actor || seenActors.has(actor)) continue;
+    seenActors.add(actor);
+    const ms = parseCreatedAtMs(e.created_at);
+    beats.push({
+      actor,
+      event: typeof j?.event === "string" ? j.event : "",
+      note: typeof j?.note === "string" ? j.note : "",
+      at: e.created_at,
+      ago_minutes: agoMinutes(now2, ms)
+    });
+  }
+  const lastBeat = beats.filter((b) => b.ago_minutes >= 0).sort((a, b) => a.ago_minutes - b.ago_minutes)[0] ?? null;
+  let waiting;
+  let waitingCache = null;
+  if (giteaSprint) {
+    waiting = giteaSprint.waiting;
+    waitingCache = giteaSprint.cache;
+  } else {
+    waiting = buildWaitingFallback(waitEntries, now2);
+    if (waiting.source === "kbdb_dash_wait" && !(c.env.GITEA_BASE_URL && c.env.GITEA_TOKEN)) {
+      waiting.note = "Gitea sprint \u6E05\u55AE\u672A\u63A5\uFF08\u7F3A GITEA_TOKEN secret\uFF09\u2014\u2014\u4EE5\u4E0B\u662F dash_wait \u6B98\u8CC7\u6599";
+    } else if (waiting.source === "kbdb_dash_wait") {
+      waiting.note = "Gitea sprint \u6E05\u55AE\u8B80\u53D6\u5931\u6557\u2014\u2014\u4EE5\u4E0B\u662F dash_wait \u6B98\u8CC7\u6599";
+    }
+  }
+  const sprintRoute = giteaSprint?.board ? buildSprintRouteModel(giteaSprint.board, now2) : null;
+  const route = buildRouteModel(taskEntries, now2);
+  const boardAgo = giteaSprint ? giteaSprint.waiting.updated_ago_minutes : -1;
+  const boardUpdatedToday = boardAgo >= 0 && taipeiDayKey(now2 - boardAgo * 6e4) === taipeiDayKey(now2);
+  const inboxNew = inboxEntries.reduce((n, e) => {
+    const j = parseJsonContent(e);
+    return j && j.status !== "done" ? n + 1 : n;
+  }, 0);
+  const todayWrites = route.tasks.filter((t) => t.is_today_write);
+  const hasBlocked = todayWrites.some((t) => t.status === "blocked");
+  const hasLagMark = todayWrites.some((t) => !STANDARD_TASK_STATUS.has(t.status));
+  const taipeiHour = new Date(now2 + 8 * 3600 * 1e3).getUTCHours();
+  const inJudgeWindow = taipeiHour >= JUDGE_START_HOUR && taipeiHour < JUDGE_END_HOUR;
+  const beatStale = lastBeat === null || lastBeat.ago_minutes > STALE_MINUTES;
+  const kbdbOk = kbdbHealth?.ok === true;
+  const light = hasBlocked || inJudgeWindow && beatStale || !kbdbOk ? "red" : hasLagMark ? "yellow" : "green";
+  const lightReason = !kbdbOk ? "KBDB \u57FA\u672C\u76E4 /health \u6253\u4E0D\u901A" : hasBlocked ? "\u4ECA\u65E5\u4EFB\u52D9\u6709 blocked" : inJudgeWindow && beatStale ? `\u5FC3\u8DF3\u8D85\u904E ${STALE_MINUTES} \u5206\u9418` : hasLagMark ? "\u4ECA\u65E5\u4EFB\u52D9\u6709\u843D\u5F8C\u6A19\u8A18" : "";
+  return c.json({
+    light,
+    light_reason: lightReason,
+    last_beat: lastBeat ? { actor: lastBeat.actor, ago_minutes: lastBeat.ago_minutes, event: lastBeat.event, note: lastBeat.note } : null,
+    beats,
+    // 路線：sprint 任務板優先（tasks 欄位形狀與 dash_task 版相容——title/status/scope）；
+    // 板上開著的項 is_today_write=false（燈號沿 #36 原則只吃 dash_task 今日寫入＋心跳＋KBDB，
+    // 板上掛了幾天的 [!] 不會天天亮紅燈——那是「等裁決」不是「今天卡住」）
+    tasks: sprintRoute ? sprintRoute.tasks.map((t, i) => ({
+      title: t.title,
+      status: t.status,
+      order: i,
+      scope: "today",
+      age_minutes: boardAgo,
+      is_today_write: t.status === "done",
+      // done 項必然是「今天完成」的（模型已濾）
+      sprint: t.sprint ?? null
+    })) : route.tasks.map((t) => ({
+      title: t.title,
+      status: t.status,
+      order: t.order,
+      scope: t.scope,
+      age_minutes: t.age_minutes,
+      is_today_write: t.is_today_write,
+      sprint: null
+    })),
+    route_meta: sprintRoute ? {
+      source: "gitea_sprint_board",
+      // is_today＝板檔今天（台北）有 commit 過；false → 頁面誠實標「今日任務板未更新」
+      is_today: boardUpdatedToday,
+      updated_ago_minutes: boardAgo,
+      sprint_files: waiting.sprint_files ?? null
+    } : {
+      source: "kbdb_dash_task",
+      is_today: route.is_today,
+      updated_ago_minutes: route.updated_ago_minutes,
+      sprint_files: null
+    },
+    today_done: sprintRoute ? sprintRoute.today_done : route.today_done,
+    today_total: sprintRoute ? sprintRoute.today_total : route.today_total,
+    done_today_titles: sprintRoute ? sprintRoute.done_today_titles : null,
+    waiting: waiting.items,
+    waiting_meta: {
+      source: waiting.source,
+      updated_ago_minutes: waiting.updated_ago_minutes,
+      stale: waiting.stale,
+      sprint_files: waiting.sprint_files ?? null,
+      note: waiting.note ?? null,
+      // Gitea 快取層狀態（hit/miss；fallback 路徑為 null）——快取生效的客觀證據
+      cache: waitingCache
+    },
+    inbox_new: inboxNew,
+    system: {
+      kbdb_ok: kbdbHealth ? kbdbHealth.ok === true : false,
+      embed: embedStatus ? { enabled: embedStatus.enabled === true, embedded: embedStatus.embedded ?? null, pending: embedStatus.pending ?? null } : null,
+      // ok = 圖查詢通不通（探針讀得到就是通）；triplets = KBDB 真 COUNT（兩件事，不互相吞）
+      graph: { ok: graphProbe !== null, triplets: tripletTotal },
+      workflow_total: workflowTotal
+    },
+    kb: {
+      entries_total: entriesTotal,
+      wiki_card_total: wikiCardTotal,
+      triplets_total: tripletTotal
+    },
+    generated_at: new Date(now2).toISOString()
+  });
+});
+consoleDashboardRouter.get("/console/kb-scale-data", async (c) => {
+  const tenant2 = knowledgeOwner(c.env);
+  const { base, headers } = kbdbBase(c.env);
+  const now2 = Date.now();
+  const [wikiCards, tripletTotal, embedStatus] = await Promise.all([
+    // limit=1 順手拿最新一筆 created_at（list 為 created_at DESC）＝「最近寫入時間」
+    fetchJson(
+      `${base}/entries?${new URLSearchParams({ owner_id: tenant2, entry_type: "wiki_card", limit: "1" }).toString()}`,
+      headers
+    ),
+    // #100：三元組數改讀 KBDB 真 COUNT，不再讀 graph-plugin 的分頁長度（見 fetchTripletTotal 註）
+    fetchTripletTotal(c.env, tenant2),
+    fetchJson(`${base}/embed/backfill/status`, headers)
+  ]);
+  const latestMs = parseCreatedAtMs(wikiCards?.entries?.[0]?.created_at ?? null);
+  return c.json({
+    wiki_card_total: typeof wikiCards?.total === "number" ? wikiCards.total : null,
+    wiki_card_latest_ago_minutes: latestMs === null ? -1 : agoMinutes(now2, latestMs),
+    triplets_total: tripletTotal,
+    embedded: embedStatus?.embedded ?? null,
+    embed_enabled: embedStatus ? embedStatus.enabled === true : null,
+    generated_at: new Date(now2).toISOString()
+  });
+});
+consoleDashboardRouter.get("/console/settings-data", (c) => {
+  const raw2 = c.env.MCP_TOKEN_TTL;
+  const parsed = raw2 ? parseInt(raw2, 10) : NaN;
+  const fromEnv = Number.isFinite(parsed) && parsed > 0;
+  return c.json({
+    mcp_token_ttl_seconds: fromEnv ? parsed : 2592e3,
+    mcp_token_ttl_source: fromEnv ? "env" : "default"
+  });
+});
+consoleDashboardRouter.get("/console/triage-data", async (c) => {
+  const ok = await validateConsoleSession(c.env, c.req.header("authorization"));
+  if (!ok) return c.json({ error: "\u9700\u8981\u767B\u5165\uFF08console session\uFF09" }, 401);
+  const tenant2 = knowledgeOwner(c.env);
+  const [todoEntries, inboxEntries] = await Promise.all([
+    fetchEntries(c.env, tenant2, "todo", 500),
+    fetchEntries(c.env, tenant2, "inbox", 200)
+  ]);
+  const model = buildTriageModel(todoEntries, inboxEntries);
+  return c.json({ ...model, generated_at: (/* @__PURE__ */ new Date()).toISOString() });
+});
+consoleDashboardRouter.post("/console/triage-check", async (c) => {
+  const ok = await validateConsoleSession(c.env, c.req.header("authorization"));
+  if (!ok) return c.json({ error: "\u9700\u8981\u767B\u5165\uFF08console session\uFF09" }, 401);
+  const body = await c.req.json().catch(() => null);
+  const entryId = typeof body?.entry_id === "string" ? body.entry_id.trim() : "";
+  if (!entryId) return c.json({ error: "entry_id \u5FC5\u586B" }, 400);
+  const action = body?.action === "restore" ? "restore" : "check";
+  const tenant2 = knowledgeOwner(c.env);
+  const { base, headers } = kbdbBase(c.env);
+  const got = await fetchJson(
+    `${base}/entries/${encodeURIComponent(entryId)}`,
+    headers
+  );
+  const entry = got?.entry;
+  if (!entry) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u5F85\u8FA6\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09" }, 404);
+  if (entry.owner_id !== tenant2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u5F85\u8FA6\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09" }, 404);
+  if (entry.entry_type !== "todo" && entry.entry_type !== "inbox") {
+    return c.json({ error: "\u53EA\u6709\u5206\u6D41\u53F0\u9805\u76EE\uFF08todo/inbox\uFF09\u80FD\u5728\u9019\u88E1\u52FE\u6389" }, 400);
+  }
+  const newContent = applyTriageCheck(entry.content, action, (/* @__PURE__ */ new Date()).toISOString());
+  const res = await fetch(`${base}/entries/${encodeURIComponent(entryId)}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ content: newContent })
+  });
+  if (!res.ok) return c.json({ error: `KBDB \u56DE\u5BEB\u5931\u6557\uFF08HTTP ${res.status}\uFF09` }, 502);
+  return c.json({ success: true, entry_id: entryId, action, status: action === "restore" ? "new" : "done" });
+});
+
+// cypher-executor/src/routes/portal-data.ts
+init_dist();
 
 // cypher-executor/src/lib/portal-actor.ts
 var PORTAL_ACTOR_TTL_SEC = 90;
