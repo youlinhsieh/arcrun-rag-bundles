@@ -2494,6 +2494,8 @@ async function listAllRecipes(kv) {
   return all.filter((r) => r.uuid || !hasUuid.has(r.canonical_id));
 }
 async function resolveRecipe(id, kv) {
+  const speculativeInstalled = id.startsWith("rec_") ? null : kv.get(kIdxInstalled(id));
+  speculativeInstalled?.catch(() => void 0);
   const direct = await kv.get(`recipe:${id}`, "json");
   if (direct && direct.uuid) return direct;
   let canonicalId = id;
@@ -2502,7 +2504,7 @@ async function resolveRecipe(id, kv) {
     if (!looked) return direct;
     canonicalId = looked;
   }
-  const installedUuid = await kv.get(kIdxInstalled(canonicalId));
+  const installedUuid = speculativeInstalled && canonicalId === id ? await speculativeInstalled : await kv.get(kIdxInstalled(canonicalId));
   if (installedUuid) {
     const byUuid = await kv.get(`recipe:${installedUuid}`, "json");
     if (byUuid) return byUuid;
@@ -3183,12 +3185,16 @@ async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
   if (AUTH_PRIMITIVE_IDS.has(componentId)) {
     return null;
   }
+  if (WASM_HTTP_RUNNER_IDS.has(componentId)) return null;
   let service = componentId;
-  const apiRecipe = await resolveRecipe(componentId, env.RECIPES);
+  const [apiRecipe, authByComponentId] = await Promise.all([
+    resolveRecipe(componentId, env.RECIPES),
+    resolveAuthRecipe(componentId, env.RECIPES)
+  ]);
   if (apiRecipe?.auth_service) {
     service = apiRecipe.auth_service;
   }
-  const recipe = await resolveAuthRecipe(service, env.RECIPES);
+  const recipe = service === componentId ? authByComponentId : await resolveAuthRecipe(service, env.RECIPES);
   if (!recipe) return null;
   if (!SUPPORTED_PRIMITIVES.has(recipe.primitive)) return null;
   const secretNames = recipe.required_secrets.filter((s) => !s.optional).map((s) => s.key);
@@ -3309,6 +3315,7 @@ var init_auth_dispatcher = __esm({
     "use strict";
     init_recipes();
     init_endpoints();
+    init_component_loader();
     init_wasi_shim();
     init_secret_backend();
     init_credentials();
@@ -7927,6 +7934,7 @@ var init_graph_executor = __esm({
     "use strict";
     init_types();
     init_auth_dispatcher();
+    init_component_loader();
     init_recipe_expander();
     init_recipes();
     init_paused_runs();
@@ -8144,7 +8152,7 @@ var init_graph_executor = __esm({
                   mergedContext = dispatched;
                 }
               }
-              if (this.env?.RECIPES) {
+              if (this.env?.RECIPES && !WASM_HTTP_RUNNER_IDS.has(node.componentId)) {
                 try {
                   const apiRecipe = await resolveRecipe(node.componentId, this.env.RECIPES);
                   if (apiRecipe) this.usedRecipeKeys.add(apiRecipe.uuid ?? apiRecipe.canonical_id);
@@ -11341,5187 +11349,6 @@ async function lookupGrantSession(id, bearer, now2 = Date.now()) {
 init_dist();
 init_secret_backend();
 init_kbdb_proxy();
-var healthRouter = new Hono2();
-var DATA_LAYER_CACHE_MS = 1e4;
-var dataLayerCache = null;
-async function dataLayerStatus(env) {
-  const now2 = Date.now();
-  if (dataLayerCache && now2 - dataLayerCache.at < DATA_LAYER_CACHE_MS) return dataLayerCache.block;
-  let block;
-  try {
-    const { base, headers } = kbdbBase(env);
-    const res = await fetch(`${base}/health`, { headers, signal: AbortSignal.timeout(5e3) });
-    const body = await res.json().catch(() => null);
-    block = body?.data_layer ?? {
-      ok: false,
-      reason: "kbdb_health_unreadable",
-      detail: `HTTP ${res.status}`,
-      summary: "\u9019\u53F0\u7684 kbdb \u9084\u6C92\u6709\u8CC7\u6599\u5C64\u4E16\u4EE3\u63A2\u91DD\uFF08\u6BD4 Arcrun#159 \u7684\u4FEE\u6CD5\u820A\uFF09\u2014\u2014\u72C0\u614B\u672A\u77E5\u3002"
-    };
-  } catch (e) {
-    block = {
-      ok: false,
-      reason: "kbdb_unreachable",
-      detail: e instanceof Error ? e.message : String(e),
-      summary: "\u6253\u4E0D\u5230 kbdb\u2014\u2014\u8CC7\u6599\u5C64\u72C0\u614B\u672A\u77E5\uFF08\u672A\u77E5\u4E0D\u7B49\u65BC\u5065\u5EB7\uFF09\u3002"
-    };
-  }
-  dataLayerCache = { at: now2, block };
-  return block;
-}
-function authStoreStatus(env) {
-  const store2 = readAuthStore(env);
-  const writable = authStoreWritable(env);
-  return {
-    console: { home: "workers-secrets", writable, configured: store2.console !== null },
-    portal_users: { password_home: "workers-secrets", writable, passwords_migrated: Object.keys(store2.passwords).length }
-  };
-}
-healthRouter.get("/health", async (c) => {
-  const bundleVersion = c.env.ARCRUN_BUNDLE_VERSION;
-  const bundleCommit = c.env.ARCRUN_BUNDLE_COMMIT;
-  const dataLayer = await dataLayerStatus(c.env);
-  return c.json({
-    ok: true,
-    status: dataLayer.ok ? "ok" : "degraded",
-    data_layer: dataLayer,
-    ...bundleVersion ? { bundle_version: bundleVersion } : {},
-    ...bundleCommit ? { bundle_commit: bundleCommit } : {},
-    auth_store: authStoreStatus(c.env),
-    // inkstone/Arcrun#276：金鑰值放哪（cf＝Workers Secrets／local＝企業私有雲由這台 server 保存）。
-    // local 另報主金鑰有沒有設（只回布林，不回內容）。
-    credential_store: (() => {
-      const backend = secretBackendMode(c.env);
-      return backend === "local" ? { backend, ready: localBackendReady(c.env) } : { backend };
-    })(),
-    // arcrun-rag#38/#69/#25（2026-08-11）：安裝器判斷「要不要重推」只比 bundle_version——
-    // 但這次要修的洞是「installer 從沒注入過 PORTAL_MAIL_RELAY_BASE」，跟 bundle 內容
-    // 版本無關（同一個 cypher 版本，有的實例有這個 var、有的沒有）。純比版本號的話，
-    // 已經在最新版的實例（如 leo 自己那台）永遠不會因為「按更新」而重推，這個 var
-    // 就永遠補不進去。只回布林（有沒有設，不回值本身）——不洩漏郵差網址。
-    mail_relay_configured: Boolean(String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim()),
-    // Arcrun#98 c11358（leo：「一台實例的 portal 永遠指向實際安裝它的那台安裝器」）：
-    // 有設就吐出去（非機密，只是一個 URL），portal 前端拿它取代寫死的 install.arcrun.dev，
-    // 這樣版本檢查／「前往安裝精靈」兩處才會跟著這台實例真正的安裝來源走，而不是恆指 prod。
-    // 未注入（尚未走過會設這個 var 的部署）→ 省略該欄，前端退回原本寫死的 prod 網址
-    // （同 bundle_version 的既有行為：省略欄位 ≠ 回傳假值）。
-    ...c.env.INSTALLER_ORIGIN ? { installer_origin: c.env.INSTALLER_ORIGIN } : {}
-  });
-});
-healthRouter.get(
-  "/",
-  (c) => c.json({
-    service: "arcrun-cypher-executor",
-    version: "1.0.0",
-    status: "ok"
-  })
-);
-
-// cypher-executor/src/routes/execute.ts
-init_dist();
-init_types();
-init_graph_executor();
-init_schemas();
-init_component_loader();
-init_run_scratch();
-var executeRouter = new Hono2();
-executeRouter.post("/execute", async (c) => {
-  const body = await c.req.json();
-  const parsed = executeSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "\u5716\u5B9A\u7FA9\u9A57\u8B49\u5931\u6557", details: parsed.error.issues }, 400);
-  }
-  const { graph, context } = parsed.data;
-  const apiKey = c.req.header("x-arcrun-api-key") ?? void 0;
-  const loader = createComponentLoader(c.env);
-  const executor = new GraphExecutor(loader, void 0, c.env, apiKey);
-  const start = Date.now();
-  try {
-    const result = await executor.execute(graph, context, createRunScratch());
-    const duration_ms = Date.now() - start;
-    const verdict = deriveExecutionVerdict(graph, result.trace);
-    c.executionCtx.waitUntil(
-      writeExecutionVerdict(
-        c.env,
-        graph.id,
-        graph.nodes,
-        verdict.success ? "success" : "failed",
-        duration_ms,
-        verdict.success ? "\u57F7\u884C\u5B8C\u6210" : (verdict.error ?? "\u7BC0\u9EDE\u5931\u6557").slice(0, 100),
-        context,
-        apiKey,
-        c.env.__kbdbTally
-      )
-    );
-    if (!verdict.success) {
-      return c.json({
-        success: false,
-        error: verdict.error,
-        failed_node: verdict.failedNode ?? null,
-        data: result.data,
-        trace: result.trace,
-        duration_ms
-      }, 500);
-    }
-    return c.json({ success: true, data: result.data, trace: result.trace, duration_ms });
-  } catch (err) {
-    const duration_ms = Date.now() - start;
-    const errMsg = err instanceof Error ? err.message : String(err);
-    c.executionCtx.waitUntil(
-      writeExecutionVerdict(c.env, graph.id, graph.nodes, "failed", duration_ms, errMsg.slice(0, 100), context, apiKey, c.env.__kbdbTally)
-    );
-    if (err instanceof ExecutionError) {
-      const traceFormatted = err.trace.map((s) => ({
-        node: s.nodeId,
-        status: s.error ? "failed" : "success",
-        ...s.error ? { error: s.error } : {}
-      }));
-      return c.json({
-        success: false,
-        error: errMsg,
-        failed_node: err.failed_node,
-        failed_input: err.failed_input,
-        trace: traceFormatted,
-        duration_ms
-      }, 500);
-    }
-    return c.json({ success: false, error: errMsg, failed_node: null, trace: [], duration_ms }, 500);
-  }
-});
-
-// cypher-executor/src/routes/cypher.ts
-init_dist();
-
-// cypher-executor/src/actions/cypher-handlers.ts
-init_types();
-init_graph_executor();
-init_schemas();
-init_component_loader();
-init_execution_evaluator();
-
-// cypher-executor/src/actions/triplet-parser.ts
-init_constants3();
-function parseTriplets(rawTriplets) {
-  const edges = [];
-  const nodeNames = /* @__PURE__ */ new Set();
-  const fromSet = /* @__PURE__ */ new Set();
-  const toSet = /* @__PURE__ */ new Set();
-  for (const line of rawTriplets) {
-    if (typeof line !== "string") continue;
-    const parts = line.split(">>").map((s) => s.trim());
-    if (parts.length !== 3) continue;
-    const [from, action, to] = parts;
-    edges.push({ from, to, label: action });
-    nodeNames.add(from);
-    nodeNames.add(to);
-    fromSet.add(from);
-    toSet.add(to);
-  }
-  if (nodeNames.size === 0) return null;
-  const sourceNodes = new Set([...fromSet].filter((n) => !toSet.has(n)));
-  const sinkNodes = new Set([...toSet].filter((n) => !fromSet.has(n)));
-  return { edges, nodeNames, sourceNodes, sinkNodes };
-}
-var INPUT_NAMES = /* @__PURE__ */ new Set(["input", "trigger", "webhook", "start"]);
-var OUTPUT_NAMES = /* @__PURE__ */ new Set(["output", "result", "end", "done"]);
-function isVirtualIoName(name) {
-  const lower = name.toLowerCase();
-  return INPUT_NAMES.has(lower) || OUTPUT_NAMES.has(lower);
-}
-function resolveNodeRole(name, parsed) {
-  if (INPUT_NAMES.has(name.toLowerCase())) return "Input";
-  if (OUTPUT_NAMES.has(name.toLowerCase())) return "Output";
-  if (parsed.sourceNodes.has(name)) return "Input";
-  return "Component";
-}
-function toEdgeType(label) {
-  const upper = label.toUpperCase();
-  if (VALID_EDGE_TYPES.has(upper)) return upper;
-  return SEMANTIC_EDGE_MAP[label] ?? SEMANTIC_EDGE_MAP[upper] ?? "PIPE";
-}
-
-// cypher-executor/src/actions/search-nodes.ts
-init_component_loader();
-init_endpoints();
-init_recipes();
-
-// cypher-executor/src/lib/branch-hints.ts
-var BRANCH_HINTS = {
-  if_control: {
-    branch_field: "data.branch",
-    branches: ["true", "false"],
-    edge_types: ["ON_TRUE", "ON_FALSE"],
-    usage: '\u9019\u9846\u7B97\u5B8C\u6703\u8F38\u51FA data.branch\uFF08"true"\uFF0F"false"\uFF09\u3002\u4E0B\u6E38\u63A5\u5169\u689D\u908A\uFF1AON_TRUE \u63A5\u689D\u4EF6\u6210\u7ACB\u8981\u505A\u7684\u4E8B\uFF0CON_FALSE \u63A5\u4E0D\u6210\u7ACB\u8981\u505A\u7684\u4E8B\u3002**\u4E0D\u9700\u8981\u81EA\u5DF1\u5BEB code \u5224\u65B7\u8D70\u54EA\u689D**\u2014\u2014\u5F15\u64CE\u4F9D branch \u81EA\u52D5\u9078\u8DEF\u3002',
-    example: "\u5224\u65B7\u6709\u6C92\u6709\u65B0\u8CC7\u6599 >> ON_TRUE >> \u50B3\u5230 telegram\n\u5224\u65B7\u6709\u6C92\u6709\u65B0\u8CC7\u6599 >> ON_FALSE >> \u7D50\u675F\n\uFF08\u4E2D\u6587\u8A9E\u610F\u8A5E\u4EA6\u53EF\uFF1A\u300C\u6210\u7ACB\u6642\u300D\uFF1DON_TRUE\u3001\u300C\u5426\u5247\u300D\uFF1DON_FALSE\uFF09"
-  },
-  switch: {
-    branch_field: "data.branch",
-    branches: "\u7531 input_schema.cases[].branch \u8207 default_branch \u6C7A\u5B9A\uFF08N \u8DEF\uFF0C\u975E\u56FA\u5B9A\u6E05\u55AE\uFF09",
-    edge_types: ["ON_BRANCH"],
-    usage: "\u9019\u9846\u4F9D value \u6BD4\u5C0D cases\uFF0C\u8F38\u51FA data.branch\uFF1D\u547D\u4E2D\u90A3\u500B case \u7684 branch \u540D\uFF08\u90FD\u6C92\u4E2D\u5247\u662F default_branch\uFF09\u3002\u4E0B\u6E38**\u6BCF\u689D\u8DEF\u5404\u63A5\u4E00\u689D ON_BRANCH \u908A\uFF0C\u4E26\u5728\u908A\u4E0A\u6A19 branch \u7B49\u65BC\u4F60\u5728 cases \u88E1\u53D6\u7684\u540D\u5B57**\u3002default_branch \u4E0D\u9700\u8981\u7279\u5225\u7684\u908A\u578B\uFF0C\u7167\u6A23\u7528 ON_BRANCH \u6A19\u5B83\u7684\u540D\u5B57\u5373\u53EF\u3002",
-    example: '{"cases":[{"match":"active","branch":"branch_active"}],"default_branch":"branch_default"}\nedges: [\n  {"from":"my_switch","to":"\u8655\u7406\u555F\u7528","type":"ON_BRANCH","branch":"branch_active"},\n  {"from":"my_switch","to":"\u8655\u7406\u5176\u4ED6","type":"ON_BRANCH","branch":"branch_default"}\n]'
-  },
-  try_catch: {
-    branch_field: "data.branch",
-    branches: ["try", "catch"],
-    edge_types: ["ON_BRANCH"],
-    usage: '\u9019\u9846\u770B\u4E0A\u6E38 error \u662F\u5426\u975E\u7A7A\uFF0C\u8F38\u51FA data.branch\uFF08"try"\uFF1D\u6C92\u932F\uFF0F"catch"\uFF1D\u6709\u932F\uFF09\u3002\u4E0B\u6E38\u63A5\u5169\u689D ON_BRANCH \u908A\uFF0Cbranch \u5206\u5225\u6A19 "try" \u8207 "catch"\u3002**\u932F\u8AA4\u8655\u7406\u4E0D\u9700\u8981\u5BEB code**\u2014\u2014\u628A\u8981\u88DC\u6551\u7684\u7BC0\u9EDE\u63A5\u5728 catch \u90A3\u689D\u908A\u5F8C\u9762\u5373\u53EF\u3002',
-    example: 'edges: [\n  {"from":"my_try_catch","to":"\u6B63\u5E38\u6D41\u7A0B","type":"ON_BRANCH","branch":"try"},\n  {"from":"my_try_catch","to":"\u88DC\u6551\u6D41\u7A0B","type":"ON_BRANCH","branch":"catch"}\n]'
-  }
-};
-function branchHintFor(componentId) {
-  if (!componentId) return void 0;
-  return BRANCH_HINTS[componentId.toLowerCase()];
-}
-
-// cypher-executor/src/actions/search-nodes.ts
-async function searchNodes(parsed, config, env, mode = "discover", target) {
-  const nodeResults = {};
-  const missingNodes = [];
-  if (mode === "compile") {
-    for (const nodeName of parsed.nodeNames) {
-      const role = resolveNodeRole(nodeName, parsed);
-      if ((role === "Input" || role === "Output") && isVirtualIoName(nodeName)) {
-        nodeResults[nodeName] = { status: "found", componentId: nodeName.toLowerCase(), type: role };
-        continue;
-      }
-      const configComponent = config?.[nodeName]?.component;
-      nodeResults[nodeName] = {
-        status: configComponent ? "found" : "unchecked",
-        componentId: configComponent ?? nodeName,
-        type: role
-      };
-    }
-    return { nodeResults, missingNodes };
-  }
-  const registryBase = env ? registryBaseUrl(env) : void 0;
-  const wantComponents = target !== "recipe";
-  const wantRecipes = target !== "component";
-  const catalog = !wantComponents ? { status: "ok", entries: [] } : registryBase ? await fetchCatalog(registryBase) : { status: "unreachable", entries: [] };
-  const recipes = wantRecipes && env?.RECIPES ? await listAllRecipes2(env.RECIPES) : [];
-  const byId = /* @__PURE__ */ new Map();
-  for (const e of catalog.entries) {
-    const prev = byId.get(e.canonical_id);
-    if (!prev || (e.score ?? 0) > (prev.score ?? 0)) byId.set(e.canonical_id, e);
-    for (const a of e.aliases ?? []) if (!byId.has(a)) byId.set(a, e);
-  }
-  for (const nodeName of parsed.nodeNames) {
-    const role = resolveNodeRole(nodeName, parsed);
-    if ((role === "Input" || role === "Output") && isVirtualIoName(nodeName)) {
-      nodeResults[nodeName] = { status: "found", componentId: nodeName.toLowerCase(), type: role };
-      continue;
-    }
-    const configComponent = config?.[nodeName]?.component;
-    const componentId = configComponent ?? nodeName;
-    if (configComponent) {
-      nodeResults[nodeName] = { status: "found", componentId, type: role };
-      continue;
-    }
-    if (wantComponents && RUNTIME_NATIVE_COMPONENT_IDS.has(componentId)) {
-      nodeResults[nodeName] = {
-        status: "found",
-        componentId,
-        type: role,
-        source: "builtin",
-        branch_hint: branchHintFor(componentId)
-      };
-      continue;
-    }
-    if (catalog.status === "unreachable") {
-      nodeResults[nodeName] = { status: "unknown", componentId, type: role };
-      continue;
-    }
-    if (catalog.status === "no_endpoint") {
-      const legacy = await legacyPerNodeLookup(registryBase, componentId, nodeName, role, env, recipes);
-      nodeResults[nodeName] = legacy.info;
-      if (legacy.missing) missingNodes.push(nodeName);
-      continue;
-    }
-    const hit = byId.get(componentId);
-    if (hit) {
-      nodeResults[nodeName] = {
-        status: "found",
-        componentId,
-        type: role,
-        source: "component",
-        input_schema: hit.input_schema,
-        success_rate: typeof hit.success_rate === "number" ? hit.success_rate : void 0,
-        stability: typeof hit.stability === "string" ? hit.stability : void 0,
-        branch_hint: branchHintFor(componentId)
-      };
-      continue;
-    }
-    const recipe = recipes.find((r) => r.canonical_id === componentId);
-    if (recipe) {
-      nodeResults[nodeName] = {
-        status: "found",
-        componentId: recipe.canonical_id,
-        type: role,
-        source: "recipe",
-        description: recipe.description,
-        endpoint: recipe.endpoint,
-        payload_hint: buildPayloadHint(recipe)
-      };
-      continue;
-    }
-    const substituted = trySubstitution(nodeName, catalog.entries, recipes);
-    if (substituted) {
-      nodeResults[nodeName] = { ...substituted, type: role };
-      continue;
-    }
-    const similarComponents = similarFromCatalog(catalog.entries, nodeName);
-    const similarRecipes = similarFromRecipes(recipes, nodeName);
-    nodeResults[nodeName] = {
-      status: "not_found",
-      componentId,
-      type: role,
-      suggestion: buildSuggestion(componentId),
-      ...similarComponents.length > 0 ? { similar_components: similarComponents } : {},
-      ...similarRecipes.length > 0 ? { similar_recipes: similarRecipes } : {}
-    };
-    missingNodes.push(nodeName);
-  }
-  return { nodeResults, missingNodes };
-}
-async function fetchCatalog(registryBase) {
-  try {
-    const res = await fetch(`${registryBase}/components/catalog`, { signal: AbortSignal.timeout(1e4) });
-    if (res.status === 404) return { status: "no_endpoint", entries: [] };
-    if (!res.ok) return { status: "unreachable", entries: [] };
-    const body = await res.json();
-    return { status: "ok", entries: body.data?.components ?? [] };
-  } catch {
-    return { status: "unreachable", entries: [] };
-  }
-}
-async function listAllRecipes2(kv) {
-  try {
-    const list = await kv.list({ prefix: "recipe:" });
-    return (await Promise.all(
-      list.keys.map((k) => kv.get(k.name, "json"))
-    )).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-function similarFromCatalog(entries, nodeName) {
-  const searchableOf = (e) => [e.canonical_id, e.display_name ?? "", e.description ?? "", ...e.aliases ?? [], ...e.tags ?? []].join(" ").toLowerCase();
-  const full = nodeName.toLowerCase();
-  const direct = entries.filter((e) => searchableOf(e).includes(full)).map((e) => e.canonical_id);
-  if (direct.length > 0) return [...new Set(direct)].slice(0, 3);
-  const tokens = extractTokens(nodeName);
-  if (tokens.length === 0) return [];
-  const count = /* @__PURE__ */ new Map();
-  for (const e of entries) {
-    const hay = searchableOf(e);
-    const hits = tokens.filter((t) => hay.includes(t)).length;
-    if (hits > 0) count.set(e.canonical_id, Math.max(count.get(e.canonical_id) ?? 0, hits));
-  }
-  return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
-}
-function similarFromRecipes(recipes, nodeName) {
-  const tokens = [nodeName.toLowerCase(), ...extractTokens(nodeName)];
-  const seen = /* @__PURE__ */ new Set();
-  const matched = [];
-  for (const r of recipes) {
-    if (seen.has(r.canonical_id)) continue;
-    const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
-    if (tokens.some((t) => hay.includes(t))) {
-      seen.add(r.canonical_id);
-      matched.push(r.canonical_id);
-    }
-  }
-  return matched.slice(0, 3);
-}
-async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, env, recipes) {
-  const q = await fetchComponent(registryBase, componentId);
-  if (!q.ok) return { info: { status: "unknown", componentId, type: role }, missing: false };
-  if (q.entry) {
-    return {
-      info: {
-        status: "found",
-        componentId,
-        type: role,
-        source: "component",
-        input_schema: q.entry.input_schema,
-        success_rate: q.entry.success_rate,
-        stability: q.entry.stability,
-        branch_hint: branchHintFor(componentId)
-      },
-      missing: false
-    };
-  }
-  const recipe = recipes.find((r) => r.canonical_id === componentId) ?? (env?.RECIPES ? await resolveRecipe(componentId, env.RECIPES) : null);
-  if (recipe) {
-    return {
-      info: {
-        status: "found",
-        componentId: recipe.canonical_id,
-        type: role,
-        source: "recipe",
-        description: recipe.description,
-        endpoint: recipe.endpoint,
-        payload_hint: buildPayloadHint(recipe)
-      },
-      missing: false
-    };
-  }
-  const similarComponents = await searchSimilarComponents(registryBase, nodeName);
-  const similarRecipes = similarFromRecipes(recipes, nodeName);
-  return {
-    info: {
-      status: "not_found",
-      componentId,
-      type: role,
-      suggestion: buildSuggestion(componentId),
-      ...similarComponents.length > 0 ? { similar_components: similarComponents } : {},
-      ...similarRecipes.length > 0 ? { similar_recipes: similarRecipes } : {}
-    },
-    missing: true
-  };
-}
-function trySubstitution(nodeName, catalogEntries, recipes) {
-  const lower = nodeName.toLowerCase();
-  const serviceHits = SERVICE_HINTS.filter((w) => lower.includes(w));
-  if (serviceHits.length > 0) {
-    const matched = /* @__PURE__ */ new Map();
-    for (const r of recipes) {
-      const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
-      if (serviceHits.every((h) => hay.includes(h))) matched.set(r.canonical_id, r);
-    }
-    if (matched.size !== 1) return null;
-    const recipe = [...matched.values()][0];
-    return {
-      status: "resolved",
-      componentId: recipe.canonical_id,
-      source: "recipe",
-      description: recipe.description,
-      endpoint: recipe.endpoint,
-      substitution: {
-        from: nodeName,
-        componentId: "http_request",
-        // recipe＝http_request＋參數模板的具名封裝
-        recipe: recipe.canonical_id,
-        reason: `\u670D\u52D9\u8A5E\u300C${serviceHits.join("\u3001")}\u300D\u552F\u4E00\u547D\u4E2D recipe\u300C${recipe.canonical_id}\u300D\uFF1Bworkflow config \u5BEB component: ${recipe.canonical_id}\uFF08\u5E95\u5C64\u96F6\u4EF6\uFF1Dhttp_request\uFF09\uFF0C\u53EA\u9700\u586B payload`
-      }
-    };
-  }
-  const tokens = extractTokens(nodeName);
-  if (tokens.length === 0) return null;
-  const byCanonical = /* @__PURE__ */ new Map();
-  for (const e of catalogEntries) {
-    const strongHay = [e.canonical_id, e.display_name ?? "", ...e.aliases ?? []].join(" ").toLowerCase();
-    const weakHay = [e.description ?? "", ...e.tags ?? []].join(" ").toLowerCase();
-    const strongHits = tokens.filter((t) => strongHay.includes(t));
-    const weakCount = tokens.filter((t) => weakHay.includes(t)).length;
-    const score = strongHits.length * 10 + weakCount;
-    if (score === 0) continue;
-    const prev = byCanonical.get(e.canonical_id);
-    if (!prev || score > prev.score) byCanonical.set(e.canonical_id, { entry: e, score, strongHits });
-  }
-  const ranked = [...byCanonical.values()].sort((a, b) => b.score - a.score);
-  const top = ranked[0];
-  if (!top || top.strongHits.length === 0) return null;
-  if (ranked[1] && ranked[1].score >= top.score) return null;
-  return {
-    status: "resolved",
-    componentId: top.entry.canonical_id,
-    source: "component",
-    input_schema: top.entry.input_schema,
-    success_rate: typeof top.entry.success_rate === "number" ? top.entry.success_rate : void 0,
-    stability: typeof top.entry.stability === "string" ? top.entry.stability : void 0,
-    // 替換成分岔零件時（例「判斷有沒有新資料」→ if_control）一併附分支用法，
-    // 否則 AI 換到零件卻不知道怎麼接兩條路，仍會退回寫 code。
-    branch_hint: branchHintFor(top.entry.canonical_id),
-    substitution: {
-      from: nodeName,
-      componentId: top.entry.canonical_id,
-      reason: `\u65B7\u8A5E\u300C${top.strongHits.join("\u3001")}\u300D\u547D\u4E2D\u96F6\u4EF6\u300C${top.entry.canonical_id}\u300D\uFF08${top.entry.display_name ?? ""}\uFF09\u5F37\u6B04\u4F4D\u4E14\u5206\u6578\u552F\u4E00\u6700\u9AD8\uFF1B\u53EA\u9700\u7167 input_schema \u586B payload`
-    }
-  };
-}
-var SERVICE_HINTS = [
-  "google",
-  "gmail",
-  "sheets",
-  "slides",
-  "gdocs",
-  "drive",
-  "calendar",
-  "youtube",
-  "slack",
-  "telegram",
-  "discord",
-  "line",
-  "whatsapp",
-  "twilio",
-  "notion",
-  "airtable",
-  "trello",
-  "jira",
-  "asana",
-  "linear",
-  "github",
-  "gitea",
-  "gitlab",
-  "bitbucket",
-  "stripe",
-  "paypal",
-  "shopify",
-  "hubspot",
-  "salesforce",
-  "openai",
-  "anthropic",
-  "claude",
-  "gemini",
-  "groq",
-  "twitter",
-  "facebook",
-  "instagram",
-  "linkedin",
-  "dropbox",
-  "zoom",
-  "sendgrid",
-  "mailgun",
-  "kbdb"
-];
-var COMPUTE_HINTS = [
-  "encrypt",
-  "decrypt",
-  "cipher",
-  "aes",
-  "rsa",
-  "sha",
-  "md5",
-  "hmac",
-  "hash",
-  "sign",
-  "verify",
-  "encode",
-  "decode",
-  "base64",
-  "hex",
-  "compress",
-  "decompress",
-  "zip",
-  "gzip",
-  "uuid",
-  "random",
-  "regex",
-  "math",
-  "calc",
-  "sort",
-  "dedup",
-  "diff",
-  "template",
-  "render",
-  "convert",
-  "transform",
-  "parse",
-  "format",
-  "csv",
-  "xml"
-];
-function buildSuggestion(componentId) {
-  const lower = componentId.toLowerCase();
-  const serviceHit = SERVICE_HINTS.find((w) => lower.includes(w));
-  const computeHit = COMPUTE_HINTS.find((w) => lower.includes(w));
-  if (serviceHit) {
-    return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\u3002\u540D\u5B57\u542B\u670D\u52D9\u8A5E\u300C${serviceHit}\u300D\uFF1D\u5916\u90E8 API \u6A23\u8C8C \u2192 \u6C92\u6709\u6B64 recipe\uFF0C\u53EF\u81EA\u5DF1\u5BEB\uFF1A\u5BEB\u6CD5\u770B skill\u300Cwrite_recipe\u300D\uFF08arcrun_get_skill('write_recipe')\uFF09\uFF0C\u5BEB\u597D\u7528 acr recipe push \u6216 POST /recipes \u88DD\u4E0A\u5373\u53EF\u7528\uFF0C\u4E0D\u7528\u6539\u5E73\u53F0\u3002`;
-  }
-  if (computeHit) {
-    return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\u3002\u540D\u5B57\u542B\u8A08\u7B97\u8A5E\u300C${computeHit}\u300D\uFF1D\u8A08\u7B97\u539F\u8A9E\u6A23\u8C8C \u2192 \u6C92\u6709\u6B64\u96F6\u4EF6\uFF0C\u53EF\u6295\u7A3F PR \u65B0\u589E WASM component\uFF1A\u505A\u6CD5\u770B skill\u300Cadd_new_wasm_component\u300D\uFF08arcrun_get_skill('add_new_wasm_component')\uFF09\u3002`;
-  }
-  return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\uFF0C\u4E14\u540D\u5B57\u5224\u4E0D\u51FA\u578B\u3002\u7F3A\u5916\u90E8 API \u2192 \u81EA\u5DF1\u5BEB recipe\uFF08skill\u300Cwrite_recipe\u300D\uFF09\uFF1B\u7F3A\u8A08\u7B97\u80FD\u529B \u2192 \u6295\u7A3F\u96F6\u4EF6 PR\uFF08skill\u300Cadd_new_wasm_component\u300D\uFF0Ccomponent \u9032 WASM \u6C99\u7BB1\uFF09\u3002`;
-}
-function buildPayloadHint(recipe) {
-  const parts = [];
-  if (recipe.body_template) {
-    parts.push("payload \u5DF2\u6536\u5728 recipe \u7684 body_template \u88E1\uFF0C\u4F60\u53EA\u8981\u628A {{\u8B8A\u6578}} \u5C0D\u61C9\u7684\u503C\u653E\u9032\u7BC0\u9EDE context");
-  } else if (recipe.body) {
-    parts.push("payload \u5F62\u72C0\u898B body \u6B04\u4F4D\uFF08{{\u8B8A\u6578}} \u7531\u7BC0\u9EDE context \u586B\uFF09");
-  } else {
-    parts.push("\u672A\u5B9A\u7FA9 body_template\uFF1A\u7BC0\u9EDE context \u6703\u6574\u5305\u7576 body \u9001\u51FA\uFF08_ \u958B\u982D\u7684\u5167\u90E8\u6B04\u4F4D\u6703\u88AB\u5254\u9664\uFF09");
-  }
-  if (recipe.response_map) {
-    parts.push("\u56DE\u61C9\u5DF2\u6B63\u898F\u5316\uFF1A\u57F7\u884C\u7D50\u679C\u9664\u4E86\u539F\u59CB data\uFF0C\u53E6\u9644 text\uFF08\u53D6\u503C\u8DEF\u5F91\u7B49\u898F\u5247\u5BEB\u5728 recipe \u88E1\uFF0C\u63DB\u6E90\u4E0D\u5FC5\u6539 workflow\uFF09");
-  } else {
-    parts.push("\u672A\u5B9A\u7FA9 response_map\uFF1A\u56DE\u61C9\u539F\u6A23\u653E\u5728 data\uFF0C\u53D6\u503C\u8981\u81EA\u5DF1\u6307\u8DEF\u5F91");
-  }
-  if (recipe.auth === "binding") {
-    parts.push(`\u8A8D\u8B49\uFF1Dbinding\uFF08\u514D\u91D1\u9470\uFF0C\u7528\u5E73\u53F0\u5167\u5EFA ${recipe.binding_name ?? "AI"}\uFF09`);
-  } else if (recipe.auth_service) {
-    parts.push(`\u8A8D\u8B49\u8D70 auth recipe\u300C${recipe.auth_service}\u300D\uFF08\u91D1\u9470\u7531\u7CFB\u7D71\u5728\u57F7\u884C\u524D\u6CE8\u5165\uFF0C\u4F60\u4E0D\u5FC5\u4E5F\u4E0D\u8A72\u586B\uFF09`);
-  }
-  return {
-    body_template: recipe.body_template,
-    response_map: recipe.response_map,
-    usage: parts.join("\uFF1B") + "\u3002"
-  };
-}
-async function fetchComponent(registryBase, id) {
-  try {
-    const res = await fetch(`${registryBase}/components/${encodeURIComponent(id)}`, {
-      signal: AbortSignal.timeout(5e3)
-    });
-    if (res.status === 404) return { ok: true };
-    if (!res.ok) return { ok: false };
-    const body = await res.json();
-    if (body.success === false) return { ok: true };
-    const d = body.data ?? body;
-    return {
-      ok: true,
-      entry: {
-        input_schema: d.input_schema,
-        success_rate: typeof d.success_rate === "number" ? d.success_rate : void 0,
-        stability: typeof d.stability === "string" ? d.stability : void 0
-      }
-    };
-  } catch {
-    return { ok: false };
-  }
-}
-function extractTokens(name) {
-  const tokens = [];
-  const ascii = name.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
-  tokens.push(...ascii);
-  const cjkRuns = name.match(/[一-鿿]+/g) ?? [];
-  for (const run2 of cjkRuns) {
-    for (let i = 0; i + 2 <= run2.length; i++) tokens.push(run2.slice(i, i + 2));
-  }
-  return [...new Set(tokens)].slice(0, 8);
-}
-async function searchRegistryIds(registryBase, q) {
-  try {
-    const res = await fetch(`${registryBase}/components/search?q=${encodeURIComponent(q)}`, {
-      signal: AbortSignal.timeout(5e3)
-    });
-    if (!res.ok) return [];
-    const body = await res.json();
-    return (body.data?.results ?? []).map((r) => r.canonical_id).filter((s) => !!s);
-  } catch {
-    return [];
-  }
-}
-async function searchSimilarComponents(registryBase, nodeName) {
-  const direct = await searchRegistryIds(registryBase, nodeName);
-  if (direct.length > 0) return direct.slice(0, 3);
-  const tokens = extractTokens(nodeName);
-  if (tokens.length === 0) return [];
-  const hits = await Promise.all(tokens.map((t) => searchRegistryIds(registryBase, t)));
-  const count = /* @__PURE__ */ new Map();
-  for (const ids of hits) {
-    for (const id of ids) count.set(id, (count.get(id) ?? 0) + 1);
-  }
-  return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
-}
-
-// cypher-executor/src/actions/graph-builder.ts
-var FOREACH_LABEL_RE = /^(?:對每個|FOREACH)\s+(\w+)(?:\s+(?:並行|PARALLEL)\s*[（(]?\s*(\d+)\s*[）)]?)?$/i;
-function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
-  const nodes = [...parsed.nodeNames].map((name) => {
-    const nr = nodeResults[name];
-    const id = name.toLowerCase().replace(/\s+/g, "-");
-    const nodeConfig = config?.[name] ?? {};
-    const componentId = nodeConfig.component ?? nr.componentId;
-    const { component: _component, ...staticParams } = nodeConfig;
-    const data = Object.keys(staticParams).length > 0 ? staticParams : void 0;
-    return { id, type: nr.type, componentId, label: name, data };
-  });
-  const edges = parsed.edges.map((e) => {
-    let iterator;
-    let concurrency;
-    let label = e.label;
-    const foreachMatch = label.match(FOREACH_LABEL_RE);
-    if (foreachMatch) {
-      iterator = foreachMatch[1];
-      if (foreachMatch[2]) concurrency = Number(foreachMatch[2]);
-      label = "\u5C0D\u6BCF\u500B";
-    }
-    let branch;
-    const branchMatch = label.match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
-    if (branchMatch) {
-      branch = branchMatch[1];
-      label = "ON_BRANCH";
-    }
-    const edge = {
-      from: e.from.toLowerCase().replace(/\s+/g, "-"),
-      to: e.to.toLowerCase().replace(/\s+/g, "-"),
-      type: toEdgeType(label)
-    };
-    if (iterator) edge.iterator = iterator;
-    if (concurrency !== void 0) edge.concurrency = concurrency;
-    if (branch) edge.branch = branch;
-    return edge;
-  });
-  return { id: graphId, name: graphName, nodes, edges };
-}
-
-// cypher-executor/src/actions/cypher-handlers.ts
-init_run_scratch();
-async function handleCypherSearch(triplets, env, mode = "discover", target) {
-  const parsed = parseTriplets(triplets);
-  if (!parsed) {
-    throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE");
-  }
-  const { nodeResults, missingNodes } = await searchNodes(parsed, void 0, env, mode, target);
-  const graph = buildExecutionGraph(parsed, nodeResults, "cypher-search-result", "Cypher Search Result");
-  return { nodes: nodeResults, cypher: { nodes: graph.nodes, edges: graph.edges }, missing: missingNodes };
-}
-async function compileCypherBinding(flow, config, graphId, graphName, env) {
-  const parsed = parseTriplets(flow);
-  if (!parsed) {
-    throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE\uFF08flow \u4E09\u5143\u7D44\u683C\u5F0F\u932F\u8AA4\uFF09");
-  }
-  const { nodeResults } = await searchNodes(parsed, config, env, "compile");
-  return buildExecutionGraph(parsed, nodeResults, graphId, graphName, config);
-}
-async function handleCypherExecute(triplets, context, graphId, graphName, config, env, waitUntil, apiKey) {
-  const parsed = parseTriplets(triplets);
-  if (!parsed) {
-    throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE");
-  }
-  const { nodeResults } = await searchNodes(parsed, config, env, "compile");
-  const graph = buildExecutionGraph(parsed, nodeResults, graphId, graphName, config);
-  const parseResult = graphSchema.safeParse(graph);
-  if (!parseResult.success) {
-    throw new Error("\u5716\u5B9A\u7FA9\u7522\u751F\u5931\u6557");
-  }
-  const loader = createComponentLoader(env);
-  const executor = new GraphExecutor(loader, void 0, env, apiKey);
-  const start = Date.now();
-  try {
-    const result = await executor.execute(parseResult.data, context ?? {}, createRunScratch());
-    const duration_ms = Date.now() - start;
-    waitUntil(recordComponentStats(env, graph.nodes, result.trace));
-    const verdict = deriveExecutionVerdict(parseResult.data, result.trace);
-    if (!verdict.success) {
-      return {
-        success: false,
-        error: verdict.error,
-        data: result.data,
-        trace: result.trace,
-        duration_ms,
-        graph
-      };
-    }
-    return { success: true, data: result.data, trace: result.trace, duration_ms, graph };
-  } catch (err) {
-    const duration_ms = Date.now() - start;
-    if (err instanceof WorkflowPaused) {
-      return {
-        success: true,
-        paused: true,
-        task_id: err.task_id,
-        run_id: err.run_id,
-        paused_node_id: err.paused_node_id,
-        trace: err.trace_so_far,
-        duration_ms,
-        graph
-      };
-    }
-    const errMsg = err instanceof Error ? err.message : String(err);
-    if (err instanceof ExecutionError) {
-      waitUntil(recordComponentStats(env, graph.nodes, err.trace));
-      const traceFormatted = err.trace.map((s) => ({
-        node: s.nodeId,
-        status: s.error ? "failed" : "success",
-        ...s.error ? { error: s.error } : {}
-      }));
-      throw new Error(JSON.stringify({
-        success: false,
-        error: errMsg,
-        failed_node: err.failed_node,
-        failed_input: err.failed_input,
-        trace: traceFormatted,
-        duration_ms
-      }));
-    }
-    throw err;
-  }
-}
-
-// cypher-executor/src/actions/target-search.ts
-init_endpoints();
-
-// cypher-executor/src/lib/workflow-search.ts
-init_endpoints();
-async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
-  const base = kbdbBaseUrl(env);
-  const headers = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-  const params = new URLSearchParams({
-    q,
-    owner_id: apiKey,
-    // 租戶隔離（只搜本租戶的 workflow）
-    entry_type: "workflow",
-    // base 通用 filter（Q4），只回 workflow entry
-    mode
-  });
-  return fetch(`${base}/entries/search?${params.toString()}`, { headers });
-}
-
-// cypher-executor/src/actions/target-search.ts
-async function searchByTarget(target, query, env, apiKey) {
-  if (target === "component") {
-    const registryBase = registryBaseUrl(env);
-    if (!registryBase) return { ok: false, status: 502, error: "registry \u4F4D\u7F6E\u672A\u8A2D\u5B9A\uFF08REGISTRY_BASE_URL\uFF0FCOMPONENT_URL_TEMPLATE\uFF0FWORKER_SUBDOMAIN \u7686\u7F3A\uFF09" };
-    try {
-      const res2 = await fetch(
-        `${registryBase}/components/search?q=${encodeURIComponent(query)}`,
-        { signal: AbortSignal.timeout(1e4) }
-      );
-      if (!res2.ok) return { ok: false, status: 502, error: `registry \u641C\u5C0B\u5931\u6557\uFF08HTTP ${res2.status}\uFF09` };
-      const body2 = await res2.json();
-      const results = (body2.data?.results ?? []).map((r) => {
-        if (!r || typeof r !== "object") return r;
-        const rec = r;
-        const hint = branchHintFor(typeof rec.canonical_id === "string" ? rec.canonical_id : void 0);
-        return hint ? { ...rec, branch_hint: hint } : rec;
-      });
-      return {
-        ok: true,
-        body: {
-          target,
-          query,
-          results,
-          count: body2.data?.count ?? 0
-        }
-      };
-    } catch (e) {
-      return { ok: false, status: 502, error: `registry \u67E5\u4E0D\u901A\uFF1A${e instanceof Error ? e.message : String(e)}` };
-    }
-  }
-  if (target === "recipe") {
-    if (!env.RECIPES) return { ok: false, status: 502, error: "RECIPES KV \u672A\u7D81\u5B9A" };
-    const all = await listAllRecipes2(env.RECIPES);
-    const q = query.toLowerCase();
-    const seen = /* @__PURE__ */ new Set();
-    const results = [];
-    for (const r of all) {
-      if (seen.has(r.canonical_id)) continue;
-      const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
-      if (!hay.includes(q)) continue;
-      seen.add(r.canonical_id);
-      results.push({
-        canonical_id: r.canonical_id,
-        display_name: r.display_name,
-        description: r.description,
-        endpoint: r.endpoint,
-        // 3.12：逐顆查 recipe 時也要說得出「payload 怎麼填、回應怎麼取值」
-        payload_hint: buildPayloadHint(r)
-      });
-    }
-    return {
-      ok: true,
-      body: {
-        target,
-        query,
-        results,
-        count: results.length,
-        note: "\u641C\u7684\u662F\u672C\u90E8\u7F72\u79C1\u5EAB\uFF08workflow \u53EF\u76F4\u63A5 component: <canonical_id> \u5F15\u7528\uFF09\u3002\u516C\u5EAB\uFF08\u591A\u4F5C\u8005\u5E02\u5834\uFF09\u8D70 MCP arcrun_recipe_search\uFF0FGET /public-recipes\u3002"
-      }
-    };
-  }
-  if (!apiKey) return { ok: false, status: 401, error: "target=workflow \u9700\u8981 X-Arcrun-API-Key header\uFF08workflow \u641C\u5C0B\u9650\u672C\u79DF\u6236\uFF09" };
-  const res = await fetchTenantWorkflowSearch(env, apiKey, query);
-  if (!res.ok) return { ok: false, status: 502, error: `workflow \u641C\u5C0B\u5931\u6557\uFF08KBDB HTTP ${res.status}\uFF09` };
-  const body = await res.json();
-  return { ok: true, body: { target, query, ...body } };
-}
-
-// cypher-executor/src/routes/cypher.ts
-var cypherRouter = new Hono2();
-var VALID_TARGETS = /* @__PURE__ */ new Set(["component", "recipe", "workflow"]);
-cypherRouter.post("/cypher/search", async (c) => {
-  const body = await c.req.json();
-  const rawTriplets = body?.triplets;
-  const target = typeof body?.target === "string" ? body.target : void 0;
-  if (target !== void 0 && !VALID_TARGETS.has(target)) {
-    return c.json({ error: `target \u53EA\u63A5\u53D7 component\uFF0Frecipe\uFF0Fworkflow\uFF0C\u6536\u5230\u300C${target}\u300D` }, 400);
-  }
-  const query = typeof body?.query === "string" ? body.query.trim() : "";
-  if (query) {
-    if (!target) {
-      return c.json({ error: "\u7D66 query \u5FC5\u9808\u540C\u6642\u7D66 target\uFF08component\uFF0Frecipe\uFF0Fworkflow\uFF09\uFF0C\u6307\u660E\u8981\u641C\u54EA\u500B\u5EAB" }, 400);
-    }
-    const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
-    const r = await searchByTarget(target, query, c.env, apiKey);
-    if (!r.ok) return c.json({ error: r.error }, r.status);
-    return c.json(r.body);
-  }
-  if (!Array.isArray(rawTriplets) || rawTriplets.length === 0) {
-    return c.json({ error: "triplets \u5FC5\u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u6216\u7D66 query + target \u505A\u540D\u5B57\u641C\u5C0B\uFF09" }, 400);
-  }
-  const mode = body?.mode === "compile" ? "compile" : "discover";
-  if (target && mode === "compile") {
-    return c.json({ error: "mode=compile\uFF08\u8907\u88FD\u8DEF\u5F91\uFF09\u4E0D\u67E5\u5EAB\uFF0C\u4E0D\u63A5\u53D7 target\uFF1B\u8981\u6307\u5B9A\u641C\u5C0B\u5C0D\u8C61\u8ACB\u7528 discover\uFF08\u9810\u8A2D\uFF09" }, 400);
-  }
-  if (target === "workflow") {
-    return c.json({ error: 'target=workflow \u662F\u540D\u5B57\u641C\u5C0B\uFF0C\u8ACB\u6539\u5E36 { target: "workflow", query: "..." }\uFF08\u4E0D\u5403 triplets\uFF09' }, 400);
-  }
-  try {
-    const now2 = /* @__PURE__ */ new Date();
-    const timestamp = now2.toISOString();
-    const versionId = `search-v1-${now2.getFullYear()}${String(now2.getMonth() + 1).padStart(2, "0")}${String(now2.getDate()).padStart(2, "0")}-${String(now2.getHours()).padStart(2, "0")}${String(now2.getMinutes()).padStart(2, "0")}${String(now2.getSeconds()).padStart(2, "0")}`;
-    const result = await handleCypherSearch(rawTriplets, c.env, mode, target);
-    const response = {
-      version: versionId,
-      timestamp,
-      triplets: rawTriplets,
-      nodes: result.nodes,
-      cypher: result.cypher,
-      missing: result.missing
-    };
-    return c.json(response);
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: errMsg }, 400);
-  }
-});
-cypherRouter.post("/cypher/execute", async (c) => {
-  const body = await c.req.json();
-  if (!Array.isArray(body?.triplets) || body.triplets.length === 0) {
-    return c.json({ error: "triplets \u5FC5\u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217" }, 400);
-  }
-  const graphId = typeof body.graph_id === "string" ? body.graph_id : `triplet-exec-${Date.now()}`;
-  const graphName = typeof body.graph_name === "string" ? body.graph_name : "Triplet Execution";
-  const now2 = /* @__PURE__ */ new Date();
-  const timestamp = now2.toISOString();
-  const versionId = `execute-v1-${now2.getFullYear()}${String(now2.getMonth() + 1).padStart(2, "0")}${String(now2.getDate()).padStart(2, "0")}-${String(now2.getHours()).padStart(2, "0")}${String(now2.getMinutes()).padStart(2, "0")}${String(now2.getSeconds()).padStart(2, "0")}`;
-  const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
-  try {
-    const result = await handleCypherExecute(
-      body.triplets,
-      body.context,
-      graphId,
-      graphName,
-      body.config,
-      c.env,
-      (p) => c.executionCtx.waitUntil(p),
-      apiKey
-    );
-    const response = {
-      version: versionId,
-      timestamp,
-      ...result
-    };
-    return c.json(response);
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    try {
-      const parsed = JSON.parse(errMsg);
-      const response = {
-        version: versionId,
-        timestamp,
-        ...parsed
-      };
-      return c.json(response, 500);
-    } catch {
-      return c.json({ version: versionId, timestamp, success: false, error: errMsg, duration_ms: 0 }, 500);
-    }
-  }
-});
-
-// cypher-executor/src/routes/validate.ts
-init_dist();
-init_schemas();
-init_telemetry();
-var validateRouter = new Hono2();
-validateRouter.post("/validate", async (c) => {
-  const start = Date.now();
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  const userAgent = c.req.header("User-Agent") ?? void 0;
-  const body = await c.req.json();
-  const parsed = graphSchema.safeParse(body);
-  if (!parsed.success) {
-    recordTelemetry(c.env, apiKey, {
-      event_type: "validation_error",
-      error_code: "schema_failed",
-      duration_ms: Date.now() - start,
-      agent_user_agent: userAgent
-    }, c.executionCtx);
-    return c.json({ valid: false, errors: parsed.error.issues }, 400);
-  }
-  const nodeIds = new Set(parsed.data.nodes.map((n) => n.id));
-  const invalidEdges = parsed.data.edges.filter((e) => !nodeIds.has(e.from) || !nodeIds.has(e.to));
-  if (invalidEdges.length > 0) {
-    recordTelemetry(c.env, apiKey, {
-      event_type: "validation_error",
-      error_code: "edge_node_missing",
-      duration_ms: Date.now() - start,
-      agent_user_agent: userAgent
-    }, c.executionCtx);
-    return c.json({
-      valid: false,
-      errors: invalidEdges.map((e) => `\u908A ${e.from} \u2192 ${e.to} \u6307\u5411\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE`)
-    }, 400);
-  }
-  return c.json({ valid: true, nodeCount: parsed.data.nodes.length, edgeCount: parsed.data.edges.length });
-});
-
-// cypher-executor/src/routes/docs.ts
-init_dist();
-
-// cypher-executor/src/lib/openapi.ts
-var OPENAPI_SPEC = {
-  openapi: "3.0.3",
-  info: {
-    title: "arcrun cypher-executor API",
-    description: "AI Workflow Execution Engine \u2014 \u900F\u904E\u4E09\u5143\u7D44 Triplet \u6216\u5716 Graph \u5B9A\u7FA9\u5DE5\u4F5C\u6D41\uFF0C\u7CFB\u7D71\u57F7\u884C\u4E26\u56DE\u50B3\u7D50\u679C",
-    version: "1.0.0",
-    contact: {
-      name: "arcrun",
-      url: "https://github.com/arcrun/arcrun"
-    }
-  },
-  servers: [
-    { url: "https://cypher.arcrun.dev", description: "arcrun.dev Hosted" },
-    { url: "http://localhost:8787", description: "Local Development" }
-  ],
-  paths: {
-    "/": {
-      get: {
-        summary: "Health Check",
-        tags: ["Health"],
-        responses: {
-          "200": {
-            description: "Service is running",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    service: { type: "string" },
-                    version: { type: "string" },
-                    status: { type: "string" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/cypher/search": {
-      post: {
-        summary: "\u641C\u5C0B\u5DE5\u4F5C\u6D41\u9700\u8981\u7684\u96F6\u4EF6",
-        tags: ["Cypher"],
-        description: "\u7528\u4E09\u5143\u7D44\u63CF\u8FF0\u5DE5\u4F5C\u6D41\uFF0C\u7CFB\u7D71\u89E3\u6790\u4E26\u5F9E Registry \u67E5\u8A62\u5C0D\u61C9\u96F6\u4EF6",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  triplets: {
-                    type: "array",
-                    items: { type: "string" },
-                    example: ["start >> \u5B8C\u6210\u5F8C >> get-data", "get-data >> \u5B8C\u6210\u5F8C >> done"],
-                    description: '\u4E09\u5143\u7D44\u9663\u5217\uFF0C\u683C\u5F0F\uFF1A"FROM >> ACTION >> TO"'
-                  },
-                  auto_publish: {
-                    type: "boolean",
-                    default: true,
-                    description: "\u7F3A\u5931\u7684\u96F6\u4EF6\u662F\u5426\u81EA\u52D5\u7522\u751F\u767C\u4F48"
-                  }
-                },
-                required: ["triplets"]
-              }
-            }
-          }
-        },
-        responses: {
-          "200": {
-            description: "\u96F6\u4EF6\u641C\u5C0B\u6210\u529F\uFF08\u542B\u7248\u672C\u865F\u548C\u6642\u6233\uFF0C\u9069\u5408 Markdown \u6587\u6A94\u8FFD\u8E64\uFF09",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    version: { type: "string", example: "search-v1-20260327-143022", description: "\u7248\u672C\u865F\uFF08endpoint-v{major}-{timestamp}\uFF09" },
-                    timestamp: { type: "string", format: "date-time", description: "ISO 8601 \u6642\u6233" },
-                    triplets: { type: "array", items: { type: "string" }, description: "\u56DE\u9001\u7684\u4E09\u5143\u7D44\u5217\u8868" },
-                    nodes: { type: "object", description: "\u641C\u5C0B\u5230\u7684\u96F6\u4EF6\u53CA\u5176\u72C0\u614B" },
-                    cypher: { type: "object", description: "\u5DE5\u4F5C\u6D41\u5716\uFF08null \u82E5\u6709\u7F3A\u5931\u96F6\u4EF6\uFF09" },
-                    missing: { type: "array", items: { type: "string" }, description: "\u7F3A\u5931\u96F6\u4EF6\u5217\u8868" },
-                    auto_published: { type: "object", description: "\u81EA\u52D5\u767C\u4F48\u7684\u96F6\u4EF6\uFF08\u82E5 auto_publish=true\uFF09" }
-                  }
-                }
-              }
-            }
-          },
-          "400": { description: "\u7121\u6CD5\u89E3\u6790\u4E09\u5143\u7D44" }
-        }
-      }
-    },
-    "/cypher/execute": {
-      post: {
-        summary: "\u57F7\u884C\u5DE5\u4F5C\u6D41",
-        tags: ["Cypher"],
-        description: "\u76F4\u63A5\u57F7\u884C triplets\uFF0C\u56DE\u50B3\u5B8C\u6574\u57F7\u884C\u7D50\u679C\u3002\u652F\u63F4\u81EA\u52D5\u767C\u4F48\u7F3A\u5931\u96F6\u4EF6\u3002",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  triplets: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: '\u4E09\u5143\u7D44\u9663\u5217\uFF0C\u683C\u5F0F\uFF1A"FROM >> ACTION >> TO"'
-                  },
-                  context: {
-                    type: "object",
-                    description: "\u57F7\u884C\u4E0A\u4E0B\u6587\uFF0C\u50B3\u5165\u5404\u7BC0\u9EDE\u4F5C\u70BA\u521D\u59CB\u53C3\u6578"
-                  },
-                  auto_publish: {
-                    type: "boolean",
-                    default: true,
-                    description: "\u7F3A\u5931\u7684\u96F6\u4EF6\u662F\u5426\u81EA\u52D5\u7522\u751F\u81E8\u6642\u5BE6\u4F5C"
-                  }
-                },
-                required: ["triplets"]
-              }
-            }
-          }
-        },
-        responses: {
-          "200": {
-            description: "\u57F7\u884C\u6210\u529F\uFF08\u542B\u7248\u672C\u865F\u548C\u6642\u6233\uFF09",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    version: { type: "string", example: "execute-v1-20260327-143022", description: "\u7248\u672C\u865F\uFF08endpoint-v{major}-{timestamp}\uFF09" },
-                    timestamp: { type: "string", format: "date-time", description: "ISO 8601 \u6642\u6233" },
-                    success: { type: "boolean", enum: [true] },
-                    data: { type: "object", description: "\u57F7\u884C\u7D50\u679C" },
-                    trace: { type: "array", description: "\u57F7\u884C\u8DDF\u8E64" },
-                    duration_ms: { type: "number" }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            description: "\u57F7\u884C\u5931\u6557\u6216\u90E8\u4EFD\u96F6\u4EF6\u7F3A\u5931\uFF08\u542B\u7248\u672C\u865F\u548C\u6642\u6233\uFF09",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    version: { type: "string", example: "execute-v1-20260327-143022", description: "\u7248\u672C\u865F\uFF08endpoint-v{major}-{timestamp}\uFF09" },
-                    timestamp: { type: "string", format: "date-time", description: "ISO 8601 \u6642\u6233" },
-                    success: { type: "boolean", enum: [false] },
-                    error: { type: "string" },
-                    missing: { type: "array", items: { type: "string" }, description: "\u7121\u6CD5\u81EA\u52D5\u767C\u4F48\u7684\u7F3A\u5931\u96F6\u4EF6" },
-                    auto_published: {
-                      type: "object",
-                      description: "\u81EA\u52D5\u767C\u4F48\u7684\u96F6\u4EF6\u8CC7\u8A0A",
-                      additionalProperties: {
-                        type: "object",
-                        properties: {
-                          ok: { type: "boolean" },
-                          componentId: { type: "string" },
-                          temporary_endpoint: { type: "string", format: "uri", description: "\u81E8\u6642\u5BE6\u4F5C\u7684 URL" },
-                          implement_by: { type: "string", format: "date-time", description: "\u5BE6\u4F5C\u622A\u6B62\u6642\u9593" }
-                        }
-                      }
-                    },
-                    duration_ms: { type: "number" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/webhooks": {
-      post: {
-        summary: "\u5EFA\u7ACB Webhook",
-        tags: ["Webhooks"],
-        description: "\u5C07\u5DE5\u4F5C\u6D41\u8A3B\u518A\u6210 Webhook\uFF0C\u5F97\u5230\u516C\u958B URL",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  triplets: {
-                    type: "array",
-                    items: { type: "string" }
-                  },
-                  description: { type: "string" }
-                }
-              }
-            }
-          }
-        },
-        responses: {
-          "201": {
-            description: "Webhook \u5EFA\u7ACB\u6210\u529F",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    token: { type: "string" },
-                    webhook_url: { type: "string", format: "uri" },
-                    description: { type: "string" },
-                    created_at: { type: "string", format: "date-time" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      get: {
-        summary: "\u5217\u51FA\u6240\u6709 Webhooks",
-        tags: ["Webhooks"],
-        parameters: [
-          {
-            name: "Authorization",
-            in: "header",
-            required: true,
-            schema: { type: "string", example: "Bearer u6u_xxxxx" },
-            description: "API Key \u8A8D\u8B49"
-          }
-        ],
-        responses: {
-          "200": {
-            description: "Webhooks \u5217\u8868",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    webhooks: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          token: { type: "string" },
-                          description: { type: "string" },
-                          created_at: { type: "string", format: "date-time" }
-                        }
-                      }
-                    },
-                    total: { type: "number" }
-                  }
-                }
-              }
-            }
-          },
-          "401": { description: "\u672A\u6388\u6B0A" }
-        }
-      }
-    },
-    "/webhooks/{token}": {
-      get: {
-        summary: "\u67E5\u8A62\u55AE\u500B Webhook",
-        tags: ["Webhooks"],
-        parameters: [
-          {
-            name: "token",
-            in: "path",
-            required: true,
-            schema: { type: "string" }
-          }
-        ],
-        responses: {
-          "200": {
-            description: "Webhook \u8CC7\u8A0A"
-          },
-          "404": { description: "Webhook \u4E0D\u5B58\u5728" }
-        }
-      },
-      delete: {
-        summary: "\u522A\u9664 Webhook",
-        tags: ["Webhooks"],
-        parameters: [
-          {
-            name: "token",
-            in: "path",
-            required: true,
-            schema: { type: "string" }
-          }
-        ],
-        responses: {
-          "200": { description: "Webhook \u5DF2\u522A\u9664" },
-          "404": { description: "Webhook \u4E0D\u5B58\u5728" }
-        }
-      }
-    }
-  },
-  components: {
-    securitySchemes: {
-      ApiKeyAuth: {
-        type: "apiKey",
-        in: "header",
-        name: "Authorization"
-      }
-    }
-  }
-};
-
-// cypher-executor/src/routes/docs.ts
-var docsRouter = new Hono2();
-docsRouter.get("/openapi.json", (c) => {
-  return c.json(OPENAPI_SPEC);
-});
-docsRouter.get("/docs", (c) => {
-  const specStr = JSON.stringify(OPENAPI_SPEC);
-  const htmlStr = `<!doctype html>
-<html>
-  <head>
-    <title>Cypher Executor API Docs</title>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@4/swagger-ui.css">
-    <style>html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; } *, *:before, *:after { box-sizing: inherit; } body { margin:0; padding:0; }</style>
-  </head>
-  <body>
-    <div id="swagger-ui"></div>
-    <script src="https://unpkg.com/swagger-ui-dist@4/swagger-ui-bundle.js"> <\/script>
-    <script src="https://unpkg.com/swagger-ui-dist@4/swagger-ui-standalone-preset.js"> <\/script>
-    <script>
-    window.onload = () => {
-      window.ui = SwaggerUIBundle({
-        spec: ${specStr},
-        dom_id: '#swagger-ui',
-        deepLinking: true,
-        presets: [
-          SwaggerUIBundle.presets.apis,
-          SwaggerUIStandalonePreset
-        ],
-        plugins: [
-          SwaggerUIBundle.plugins.DownloadUrl
-        ],
-        layout: "BaseLayout"
-      })
-    }
-  <\/script>
-  </body>
-</html>
-  `;
-  return c.html(htmlStr);
-});
-
-// cypher-executor/src/routes/webhooks.ts
-init_dist();
-init_webhook_handlers();
-
-// cypher-executor/src/actions/webhook-graph-resolver.ts
-init_schemas();
-async function resolveWebhookGraph(body, description, env) {
-  if (Array.isArray(body.triplets) && body.triplets.length > 0) {
-    const parsed = parseTriplets(body.triplets);
-    if (!parsed) return { resolvedGraph: {}, error: "\u7121\u6CD5\u89E3\u6790 triplets" };
-    const { nodeResults } = await searchNodes(parsed);
-    const graphId = `webhook-${Date.now()}`;
-    const graphName = description || `Webhook ${(/* @__PURE__ */ new Date()).toISOString()}`;
-    const graph = buildExecutionGraph(parsed, nodeResults, graphId, graphName);
-    const parseResult = graphSchema.safeParse(graph);
-    if (!parseResult.success) {
-      return { resolvedGraph: {}, error: "\u5716\u5B9A\u7FA9\u7522\u751F\u5931\u6557" };
-    }
-    return { resolvedGraph: graph };
-  }
-  if (body.graph && typeof body.graph === "object") {
-    const graphWithDefaults = {
-      id: `webhook-${Date.now()}`,
-      name: description || `Webhook ${(/* @__PURE__ */ new Date()).toISOString()}`,
-      ...body.graph
-    };
-    const parsed = graphSchema.safeParse(graphWithDefaults);
-    if (!parsed.success) {
-      return { resolvedGraph: {}, error: "\u5716\u5B9A\u7FA9\u9A57\u8B49\u5931\u6557" };
-    }
-    return { resolvedGraph: graphWithDefaults };
-  }
-  if (body.nodes && body.edges) {
-    const graphWithDefaults = {
-      id: `webhook-${Date.now()}`,
-      name: description || `Webhook ${(/* @__PURE__ */ new Date()).toISOString()}`,
-      ...body
-    };
-    const parsed = graphSchema.safeParse(graphWithDefaults);
-    if (!parsed.success) {
-      return { resolvedGraph: {}, error: "\u5716\u5B9A\u7FA9\u9A57\u8B49\u5931\u6557" };
-    }
-    return { resolvedGraph: graphWithDefaults };
-  }
-  return { resolvedGraph: {}, error: "\u9700\u63D0\u4F9B graph \u7269\u4EF6\u6216 triplets \u9663\u5217" };
-}
-
-// cypher-executor/src/routes/webhooks.ts
-var webhooksRouter = new Hono2();
-webhooksRouter.post("/webhooks", async (c) => {
-  const body = await c.req.json().catch(() => null);
-  if (!body) return c.json({ error: "invalid json" }, 400);
-  const description = typeof body.description === "string" ? body.description : "";
-  const resolved = await resolveWebhookGraph(body, description, c.env);
-  if (resolved.error) {
-    return c.json({ error: resolved.error }, 400);
-  }
-  const token = generateToken();
-  const record = {
-    graph: resolved.resolvedGraph,
-    description,
-    created_at: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  await c.env.WEBHOOKS.put(token, JSON.stringify(record));
-  const baseUrl = new URL(c.req.url).origin;
-  return c.json({
-    token,
-    webhook_url: `${baseUrl}/webhooks/${token}/trigger`,
-    description: record.description,
-    created_at: record.created_at
-  }, 201);
-});
-webhooksRouter.post("/webhooks/:token/trigger", async (c) => {
-  const token = c.req.param("token");
-  if (!token || token.length < 16) {
-    return c.json({ error: "invalid token" }, 400);
-  }
-  const raw2 = await c.env.WEBHOOKS.get(token, "text");
-  if (!raw2) return c.json({ error: "webhook not found" }, 404);
-  const record = await validateAndParseWebhook(raw2);
-  if (!record) return c.json({ error: "webhook \u5B9A\u7FA9\u640D\u6BC0" }, 500);
-  let triggerContext = {};
-  try {
-    const body = await c.req.json().catch(() => null);
-    if (body && typeof body === "object") {
-      triggerContext = body;
-    }
-  } catch {
-  }
-  const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
-  const result = await executeWebhookGraph(c.env, record.graph, triggerContext, token, apiKey);
-  const graph = record.graph;
-  const workflowId = graph.id ?? token;
-  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
-  c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
-  );
-  return c.json(result, result.success ? 200 : 500);
-});
-
-// cypher-executor/src/routes/webhooks-crud.ts
-init_dist();
-init_webhook_handlers();
-var webhooksCrudRouter = new Hono2();
-webhooksCrudRouter.get("/webhooks/:token", async (c) => {
-  const token = c.req.param("token");
-  const raw2 = await c.env.WEBHOOKS.get(token, "text");
-  if (!raw2) return c.json({ error: "not found" }, 404);
-  const record = await validateAndParseWebhook(raw2);
-  if (!record) return c.json({ error: "\u8CC7\u6599\u640D\u6BC0" }, 500);
-  return c.json({
-    token,
-    description: record.description,
-    created_at: record.created_at
-  });
-});
-webhooksCrudRouter.put("/webhooks/:token", async (c) => {
-  const token = c.req.param("token");
-  if (!token || token.length < 16) {
-    return c.json({ error: "invalid token" }, 400);
-  }
-  const raw2 = await c.env.WEBHOOKS.get(token, "text");
-  if (!raw2) return c.json({ error: "webhook not found" }, 404);
-  const existing = await validateAndParseWebhook(raw2);
-  if (!existing) return c.json({ error: "webhook \u5B9A\u7FA9\u640D\u6BC0" }, 500);
-  const body = await c.req.json().catch(() => null);
-  if (!body) return c.json({ error: "invalid json" }, 400);
-  const updatedRecord = {
-    graph: existing.graph,
-    description: existing.description,
-    created_at: existing.created_at
-  };
-  if (body.description !== void 0) {
-    updatedRecord.description = typeof body.description === "string" ? body.description : existing.description;
-  }
-  if (body.graph !== void 0) {
-    updatedRecord.graph = body.graph;
-  }
-  await c.env.WEBHOOKS.put(token, JSON.stringify(updatedRecord));
-  const baseUrl = new URL(c.req.url).origin;
-  return c.json({
-    token,
-    webhook_url: `${baseUrl}/webhooks/${token}/trigger`,
-    description: updatedRecord.description,
-    created_at: updatedRecord.created_at,
-    updated: true
-  });
-});
-webhooksCrudRouter.delete("/webhooks/:token", async (c) => {
-  const token = c.req.param("token");
-  if (!token || token.length < 16) {
-    return c.json({ error: "invalid token" }, 400);
-  }
-  const existing = await c.env.WEBHOOKS.get(token, "text");
-  if (!existing) return c.json({ error: "webhook not found" }, 404);
-  await c.env.WEBHOOKS.delete(token);
-  return c.json({ deleted: true, token });
-});
-
-// cypher-executor/src/routes/webhooks-list.ts
-init_dist();
-init_webhook_handlers();
-var webhooksListRouter = new Hono2();
-webhooksListRouter.get("/webhooks", async (c) => {
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader) {
-    return c.json({ error: "unauthorized: missing Authorization header" }, 401);
-  }
-  const list = await c.env.WEBHOOKS.list();
-  const webhooks = [];
-  for (const key of list.keys) {
-    const raw2 = await c.env.WEBHOOKS.get(key.name, "text");
-    if (!raw2) continue;
-    const record = await validateAndParseWebhook(raw2);
-    if (!record) continue;
-    webhooks.push({
-      token: key.name,
-      description: record.description,
-      created_at: record.created_at
-    });
-  }
-  return c.json({ webhooks, total: webhooks.length });
-});
-
-// cypher-executor/src/index.ts
-init_recipes();
-init_credentials();
-
-// cypher-executor/src/routes/webhooks-named.ts
-init_dist();
-init_webhook_handlers();
-init_schemas();
-init_telemetry();
-init_endpoints();
-
-// cypher-executor/src/lib/trace-summary.ts
-var FAILED_OUTPUT_PREVIEW_CHARS = 2048;
-function isFailedOutput(output) {
-  if (!output || typeof output !== "object") return false;
-  const r = output;
-  return r["success"] === false || "error" in r;
-}
-function preview(output) {
-  if (output === void 0) return void 0;
-  let s;
-  try {
-    s = typeof output === "string" ? output : JSON.stringify(output);
-  } catch {
-    return void 0;
-  }
-  if (typeof s !== "string") return void 0;
-  return s.length > FAILED_OUTPUT_PREVIEW_CHARS ? `${s.slice(0, FAILED_OUTPUT_PREVIEW_CHARS)}\u2026(\u622A\u65B7\uFF0C\u5171 ${s.length} \u5B57\u5143)` : s;
-}
-function summarizeTrace(trace) {
-  if (!Array.isArray(trace)) return trace;
-  return trace.map((raw2) => {
-    if (!raw2 || typeof raw2 !== "object") return raw2;
-    const s = raw2;
-    const id = s.nodeId ?? s.node ?? "";
-    if (s.status && !("output" in s) && !("input" in s)) {
-      return { ...raw2, node: id, nodeId: id };
-    }
-    const failed = Boolean(s.error) || isFailedOutput(s.output);
-    const step = {
-      node: id,
-      nodeId: id,
-      ...s.type !== void 0 ? { type: s.type } : {},
-      status: failed ? "failed" : "success",
-      ...s.duration_ms !== void 0 ? { duration_ms: s.duration_ms } : {},
-      ...s.error ? { error: s.error } : {}
-    };
-    if (failed) {
-      const p = preview(s.output);
-      if (p !== void 0) step.output_preview = p;
-    }
-    return step;
-  });
-}
-function wantsFullTrace(query) {
-  return query("trace") === "full";
-}
-function shapeTraceForResponse(result, full) {
-  if (full || result.trace === void 0) return result;
-  return { ...result, trace: summarizeTrace(result.trace), trace_mode: "summary" };
-}
-
-// cypher-executor/src/routes/webhooks-named.ts
-var webhooksNamedRouter = new Hono2();
-function kvKey(apiKey, name) {
-  return `${apiKey}:wf:${name}`;
-}
-async function writeWorkflowSearchEntry(env, apiKey, name, description, workflowId) {
-  const base = kbdbBaseUrl(env);
-  const headers = { "Content-Type": "application/json" };
-  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-  await fetch(`${base}/entries`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      entry_type: "workflow",
-      owner_id: apiKey,
-      // 租戶隔離（與 kbdb-proxy 同身份）
-      page_name: name,
-      content: description,
-      // 被 embed / LIKE 命中的主體
-      // KBDB createEntry 吃 metadata_json（TEXT），embed.ts isEmbeddable 讀 metadata_json.embed === true。
-      metadata_json: JSON.stringify({
-        embed: true,
-        // #7 精耕開關：標 true 才進 Vectorize
-        workflow_name: name,
-        workflow_id: workflowId ?? name
-      })
-    })
-  });
-}
-function extractCredentialNames(graph) {
-  const found = /* @__PURE__ */ new Set();
-  const re = /\{\{\s*credential\.([\w.-]+)\s*\}\}/g;
-  let m;
-  const text = JSON.stringify(graph) ?? "";
-  while ((m = re.exec(text)) !== null) found.add(m[1]);
-  return [...found].sort();
-}
-webhooksNamedRouter.post("/webhooks/named", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  const body = await c.req.json().catch(() => null);
-  if (!body?.name || !body.graph) {
-    return c.json({ error: "\u7F3A\u5C11\u5FC5\u8981\u6B04\u4F4D\uFF1Aname, graph" }, 400);
-  }
-  if (typeof body.description !== "string" || body.description.trim() === "") {
-    return c.json({
-      error: "description \u5FC5\u586B\uFF1A\u8ACB\u64CD\u76E4\u7684 AI \u64DA\u5BE6\u5BEB\u4E00\u53E5\u300C\u9019\u5DE5\u4F5C\u6D41\u80FD\u505A\u4EC0\u9EBC\u300D\uFF08\u5982\u300C\u547C\u53EB\u53EF Upsert Google Sheets\u300D\uFF09\uFF0C\u7528\u6236\u53EF\u518D\u6539\u3002\u4F9B\u8A9E\u610F\u641C\u5C0B\u7528\uFF0C\u4E0D\u662F\u5BEB\u6587\u7AE0\u3002",
-      requires: "description"
-    }, 400);
-  }
-  const name = body.name.trim();
-  if (!/^[\w-]+$/.test(name)) {
-    return c.json({ error: "workflow name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u3001\u5E95\u7DDA\u548C\u9023\u5B57\u865F" }, 400);
-  }
-  let graph = body.graph;
-  if (Array.isArray(body.graph.flow) && !Array.isArray(body.graph.nodes)) {
-    const rawConfig = body.config ?? body.graph.config;
-    try {
-      graph = await compileCypherBinding(
-        body.graph.flow,
-        rawConfig,
-        name,
-        name,
-        c.env
-      );
-    } catch (e) {
-      return c.json({ error: `flow \u7DE8\u8B6F\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 400);
-    }
-    const compiled = graphSchema.safeParse(graph);
-    if (!compiled.success) {
-      return c.json({ error: "\u5716\u5B9A\u7FA9\u7DE8\u8B6F\u5F8C\u4ECD\u7121\u6548\uFF0C\u8ACB\u6AA2\u67E5 flow \u4E09\u5143\u7D44\u8207 config", details: compiled.error.issues }, 400);
-    }
-  }
-  const cronExpr = extractCronExpr(graph);
-  const record = {
-    name,
-    graph,
-    config: body.config,
-    description: body.description.trim(),
-    // R1：已驗非空（見上），存 trim 後的值
-    created_at: (/* @__PURE__ */ new Date()).toISOString(),
-    cron_expr: cronExpr ?? void 0
-  };
-  const start = Date.now();
-  await c.env.WEBHOOKS.put(kvKey(apiKey, name), JSON.stringify(record));
-  await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, cronExpr);
-  c.executionCtx.waitUntil(
-    writeWorkflowSearchEntry(c.env, apiKey, name, record.description).catch(() => {
-    })
-  );
-  recordTelemetry(c.env, apiKey, {
-    event_type: "deploy_success",
-    workflow_name: name,
-    duration_ms: Date.now() - start,
-    agent_user_agent: c.req.header("User-Agent") ?? void 0
-  }, c.executionCtx);
-  const baseUrl = new URL(c.req.url).origin;
-  return c.json({
-    name,
-    webhook_url: `${baseUrl}/webhooks/named/${name}/trigger`,
-    description: record.description,
-    created_at: record.created_at,
-    // Arcrun#292：公開觸發是設計（無需金鑰即可 POST）；帶憑證的工作流據此在 push 輸出明講
-    public_trigger: true,
-    credentials_used: extractCredentialNames({ graph, config: body.config })
-  }, 201);
-});
-webhooksNamedRouter.get("/workflows/search", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  const q = c.req.query("q");
-  if (!q) return c.json({ error: "q \u5FC5\u586B\uFF1A\u7528\u81EA\u7136\u8A9E\u8A00\u63CF\u8FF0\u8981\u627E\u7684\u5DE5\u4F5C\u6D41\uFF08\u5982\u300C\u628A\u8CC7\u6599\u5BEB\u9032 Google Sheets\u300D\uFF09" }, 400);
-  const mode = c.req.query("mode") === "keyword" ? "keyword" : "semantic";
-  const res = await fetchTenantWorkflowSearch(c.env, apiKey, q, mode);
-  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
-});
-webhooksNamedRouter.post("/workflows/backfill-search-entries", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  const prefix = `${apiKey}:wf:`;
-  const list = await c.env.WEBHOOKS.list({ prefix });
-  const backfilled = [];
-  const needsDescription = [];
-  const errors = [];
-  for (const k of list.keys) {
-    const name = k.name.slice(prefix.length);
-    const raw2 = await c.env.WEBHOOKS.get(k.name, "text");
-    if (!raw2) continue;
-    const rec = JSON.parse(raw2);
-    const desc = rec.description?.trim();
-    if (!desc) {
-      needsDescription.push(name);
-      continue;
-    }
-    try {
-      await writeWorkflowSearchEntry(c.env, apiKey, name, desc);
-      backfilled.push(name);
-    } catch (e) {
-      errors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  return c.json({
-    backfilled,
-    backfilled_count: backfilled.length,
-    needs_description: needsDescription,
-    needs_description_count: needsDescription.length,
-    errors,
-    hint: needsDescription.length > 0 ? `${needsDescription.length} \u500B\u5DE5\u4F5C\u6D41\u7F3A description \u7121\u6CD5\u88AB\u641C\u5C0B\u3002\u8ACB\u64CD\u76E4\u7684 AI re-deploy \u5B83\u5011\u6642\u64DA\u5BE6\u88DC\u4E00\u53E5\u300C\u80FD\u505A\u4EC0\u9EBC\u300D\uFF08\u4E0D\u81EA\u52D5\u7DE8\u9020\uFF09\u3002` : void 0
-  });
-});
-webhooksNamedRouter.post("/webhooks/named/migrate-cron-index", async (c) => {
-  const list = await c.env.WEBHOOKS.list({ prefix: "cron-idx:" });
-  let migrated = 0, skipped = 0;
-  const errors = [];
-  for (const k of list.keys) {
-    if (k.name === CRON_INDEX_KEY) {
-      skipped++;
-      continue;
-    }
-    const parts = k.name.split(":");
-    if (parts.length < 3) {
-      skipped++;
-      continue;
-    }
-    const apiKey = parts[1];
-    const name = parts.slice(2).join(":");
-    try {
-      const raw2 = await c.env.WEBHOOKS.get(k.name, "text");
-      if (!raw2) {
-        skipped++;
-        continue;
-      }
-      const idx = JSON.parse(raw2);
-      if (!idx.cron_expr) {
-        skipped++;
-        continue;
-      }
-      await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, idx.cron_expr);
-      migrated++;
-    } catch (e) {
-      errors.push(`${k.name}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  return c.json({ success: errors.length === 0, migrated, skipped, errors });
-});
-webhooksNamedRouter.post("/webhooks/named/:name/trigger", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  return triggerNamed(c, apiKey, c.req.param("name"));
-});
-webhooksNamedRouter.post("/webhooks/named/:ns/:name/trigger", async (c) => {
-  return triggerNamed(c, c.req.param("ns"), c.req.param("name"));
-});
-async function triggerNamed(c, apiKey, name) {
-  const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
-  if (!raw2) {
-    return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"\uFF0C\u8ACB\u5148\u57F7\u884C acr push` }, 404);
-  }
-  let record;
-  try {
-    record = JSON.parse(raw2);
-  } catch {
-    return c.json({ error: "workflow \u5B9A\u7FA9\u640D\u6BC0" }, 500);
-  }
-  let triggerContext = {};
-  try {
-    const body = await c.req.json().catch(() => null);
-    if (body && typeof body === "object") {
-      triggerContext = body;
-    }
-  } catch {
-  }
-  const graph = record.graph;
-  const workflowId = graph.id ?? name;
-  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
-  const userAgent = c.req.header("User-Agent") ?? void 0;
-  if (c.req.query("async") === "1") {
-    c.executionCtx.waitUntil(
-      executeWebhookGraph(c.env, record.graph, triggerContext, name, apiKey, c.executionCtx, userAgent).then(
-        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
-      )
-    );
-    return c.json({ accepted: true }, 202);
-  }
-  const result = await executeWebhookGraph(
-    c.env,
-    record.graph,
-    triggerContext,
-    name,
-    apiKey,
-    c.executionCtx,
-    userAgent
-  );
-  c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
-  );
-  const full = wantsFullTrace((n) => c.req.query(n));
-  return c.json(shapeTraceForResponse(result, full), result.success ? 200 : 500);
-}
-var MAX_QUERY_OUTPUT_BYTES = 5 * 1024 * 1024;
-function queryStringContext(c) {
-  return { ...c.req.query() };
-}
-async function bodyContext(c) {
-  const body = await c.req.json().catch(() => null);
-  return body && typeof body === "object" ? body : {};
-}
-async function queryNamed(c, apiKey, name, triggerContext) {
-  const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
-  if (!raw2) {
-    return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"\uFF0C\u8ACB\u5148\u57F7\u884C acr push` }, 404);
-  }
-  let record;
-  try {
-    record = JSON.parse(raw2);
-  } catch {
-    return c.json({ error: "workflow \u5B9A\u7FA9\u640D\u6BC0" }, 500);
-  }
-  const graph = record.graph;
-  const workflowId = graph.id ?? name;
-  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
-  const userAgent = c.req.header("User-Agent") ?? void 0;
-  const result = await executeWebhookGraph(
-    c.env,
-    record.graph,
-    { ...triggerContext, _public_origin: new URL(c.req.url).origin },
-    name,
-    apiKey,
-    c.executionCtx,
-    userAgent
-  );
-  c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
-  );
-  if (!result.success) {
-    const paused = typeof result.error === "string" && /workflow paused/i.test(result.error);
-    return c.json(
-      {
-        success: false,
-        error: result.error ?? "\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557",
-        trace: wantsFullTrace((n) => c.req.query(n)) ? result.trace : summarizeTrace(result.trace),
-        ...paused ? { paused: true, hint: "\u6B64\u5DE5\u4F5C\u6D41\u6703\u66AB\u505C\u7B49\u5F85\u975E\u540C\u6B65 callback\uFF0C\u7121\u6CD5\u7576\u540C\u6B65\u67E5\u8A62\u7AEF\u9EDE\uFF1B\u6539\u7528 /webhooks/named/:name/trigger?async=1 + /workflows/resume\u3002" } : {}
-      },
-      paused ? 409 : 500
-    );
-  }
-  const serialized = JSON.stringify(result.data ?? null);
-  const byteLen = new TextEncoder().encode(serialized).byteLength;
-  if (byteLen > MAX_QUERY_OUTPUT_BYTES) {
-    return c.json(
-      {
-        success: false,
-        error: `\u67E5\u8A62\u8F38\u51FA\u904E\u5927\uFF08${byteLen} bytes > \u4E0A\u9650 ${MAX_QUERY_OUTPUT_BYTES}\uFF09\u3002\u8ACB\u5728 workflow \u5167\u5148\u805A\u5408 / \u5206\u9801\u518D\u56DE\u3002`
-      },
-      413
-    );
-  }
-  return new Response(serialized, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json; charset=UTF-8",
-      "X-Arcrun-Duration-Ms": String(result.duration_ms)
-    }
-  });
-}
-webhooksNamedRouter.get("/webhooks/named/:name/query", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  return queryNamed(c, apiKey, c.req.param("name"), queryStringContext(c));
-});
-webhooksNamedRouter.post("/webhooks/named/:name/query", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  return queryNamed(c, apiKey, c.req.param("name"), await bodyContext(c));
-});
-webhooksNamedRouter.post("/webhooks/named/:ns/:name/query", async (c) => {
-  return queryNamed(c, c.req.param("ns"), c.req.param("name"), await bodyContext(c));
-});
-webhooksNamedRouter.get("/q/:ns/:name", async (c) => {
-  return queryNamed(c, c.req.param("ns"), c.req.param("name"), queryStringContext(c));
-});
-webhooksNamedRouter.get("/webhooks/named/:name/definition", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  const name = c.req.param("name");
-  const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
-  if (!raw2) return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"` }, 404);
-  const rec = JSON.parse(raw2);
-  return c.json({
-    name: rec.name,
-    description: rec.description ?? "",
-    graph: rec.graph,
-    config: rec.config ?? {},
-    created_at: rec.created_at ?? "",
-    ...rec.cron_expr ? { cron_expr: rec.cron_expr } : {}
-  });
-});
-webhooksNamedRouter.get("/webhooks/named", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  const prefix = `${apiKey}:wf:`;
-  const list = await c.env.WEBHOOKS.list({ prefix });
-  const baseUrl = new URL(c.req.url).origin;
-  const result = await Promise.all(
-    list.keys.map(async (k) => {
-      const name = k.name.slice(prefix.length);
-      const raw2 = await c.env.WEBHOOKS.get(k.name, "text");
-      const rec = raw2 ? JSON.parse(raw2) : null;
-      return {
-        name,
-        description: rec?.description ?? "",
-        created_at: rec?.created_at ?? "",
-        cron_expr: rec?.cron_expr,
-        webhook_url: `${baseUrl}/webhooks/named/${name}/trigger`
-      };
-    })
-  );
-  return c.json({ workflows: result, total: result.length });
-});
-webhooksNamedRouter.delete("/webhooks/named/:name", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  }
-  const name = c.req.param("name");
-  const existing = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
-  if (!existing) {
-    return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"` }, 404);
-  }
-  await c.env.WEBHOOKS.delete(kvKey(apiKey, name));
-  await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, null);
-  return c.json({ deleted: true, name });
-});
-
-// cypher-executor/src/routes/auth.ts
-init_dist();
-init_credentials();
-
-// cypher-executor/src/lib/platform-oauth-users.ts
-init_kbdb_proxy();
-var PlatformUserStoreError = class extends Error {
-};
-async function kFetch2(env, path, init) {
-  const { base, headers } = kbdbBase(env);
-  try {
-    return await fetch(`${base}${path}`, {
-      ...init,
-      headers: { ...headers, ...init?.headers }
-    });
-  } catch (e) {
-    throw new PlatformUserStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
-  }
-}
-async function sha256Hex3(input) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-var TEMPLATE = "platform_oauth_user";
-var SLOTS = [
-  "provider_key_hash",
-  "api_key_hash",
-  "email",
-  "display_name",
-  "avatar_url",
-  "api_key",
-  "provider",
-  "provider_id",
-  "created_at",
-  "revoked"
-];
-var templateEnsured = false;
-async function ensureTemplate3(env) {
-  if (templateEnsured) return;
-  const got = await kFetch2(env, `/templates/${TEMPLATE}`);
-  if (!got.ok) {
-    await kFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name: TEMPLATE, slots: SLOTS }) }).catch(
-      () => void 0
-    );
-  }
-  templateEnsured = true;
-}
-function toUser(recordId, v) {
-  return {
-    record_id: recordId,
-    email: v.email ?? "",
-    display_name: v.display_name ?? "",
-    avatar_url: v.avatar_url || void 0,
-    api_key: v.api_key ?? "",
-    provider: v.provider ?? "google",
-    provider_id: v.provider_id ?? "",
-    created_at: v.created_at ?? "",
-    revoked: v.revoked === "true"
-  };
-}
-async function findByHash2(env, field, hash) {
-  const res = await kFetch2(env, `/records/by-source/${TEMPLATE}?field=${encodeURIComponent(field)}&value=${encodeURIComponent(hash)}`);
-  if (!res.ok) return null;
-  const body = await res.json().catch(() => null);
-  const id = body?.record_ids?.[0];
-  if (!id) return null;
-  const rec = await kFetch2(env, `/records/${encodeURIComponent(id)}`);
-  if (!rec.ok) return null;
-  const recBody = await rec.json().catch(() => null);
-  return recBody?.record ?? null;
-}
-async function findPlatformUserByProvider(env, provider, providerId) {
-  const hash = await sha256Hex3(`${provider}:${providerId}`);
-  const found = await findByHash2(env, "provider_key_hash", hash);
-  return found ? toUser(found.record_id, found.values) : null;
-}
-async function findPlatformUserByApiKey(env, apiKey) {
-  const hash = await sha256Hex3(apiKey);
-  const found = await findByHash2(env, "api_key_hash", hash);
-  return found ? toUser(found.record_id, found.values) : null;
-}
-async function createPlatformUser(env, input) {
-  await ensureTemplate3(env);
-  const values = {
-    provider_key_hash: await sha256Hex3(`${input.provider}:${input.provider_id}`),
-    api_key_hash: await sha256Hex3(input.api_key),
-    email: input.email,
-    display_name: input.display_name,
-    avatar_url: input.avatar_url ?? "",
-    api_key: input.api_key,
-    provider: input.provider,
-    provider_id: input.provider_id,
-    created_at: (/* @__PURE__ */ new Date()).toISOString(),
-    revoked: "false"
-  };
-  const res = await kFetch2(env, "/records", { method: "POST", body: JSON.stringify({ template: TEMPLATE, values }) });
-  if (!res.ok) throw new PlatformUserStoreError(`POST /records(${TEMPLATE}) \u2192 ${res.status}`);
-  const body = await res.json().catch(() => null);
-  const recordId = body?.record?.record_id;
-  if (!recordId) throw new PlatformUserStoreError("POST /records \u56DE\u61C9\u7F3A record_id");
-  return { ...input, record_id: recordId, created_at: values.created_at, revoked: false };
-}
-async function updatePlatformUser(env, recordId, patch) {
-  const values = {};
-  if (patch.display_name !== void 0) values.display_name = patch.display_name;
-  if (patch.avatar_url !== void 0) values.avatar_url = patch.avatar_url ?? "";
-  if (patch.api_key !== void 0) {
-    values.api_key = patch.api_key;
-    values.api_key_hash = await sha256Hex3(patch.api_key);
-  }
-  if (patch.revoked !== void 0) values.revoked = String(patch.revoked);
-  if (Object.keys(values).length === 0) return;
-  const res = await kFetch2(env, `/records/${encodeURIComponent(recordId)}`, { method: "PATCH", body: JSON.stringify({ values }) });
-  if (!res.ok) throw new PlatformUserStoreError(`PATCH /records/${recordId} \u2192 ${res.status}`);
-}
-
-// cypher-executor/src/routes/auth.ts
-var authRouter = new Hono2();
-var STATE_TEMPLATE = "platform_oauth_state";
-var STATE_TTL_SECONDS = 600;
-var SESSION_TEMPLATE = "platform_oauth_session";
-var SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
-function getLandingOrigin(c) {
-  const origin2 = c.req.raw.headers.get("origin");
-  const allowed = ["https://arcrun.dev", "https://www.arcrun.dev"];
-  if (origin2 && allowed.includes(origin2)) return origin2;
-  return "https://arcrun.dev";
-}
-function generateApiKey() {
-  return "ak_" + randomToken(24);
-}
-async function upsertAuthRecipe(recipes, recipe) {
-  const key = `auth_recipe:${recipe.service}`;
-  const existing = await recipes.get(key);
-  if (existing) return;
-  await recipes.put(key, JSON.stringify({ ...recipe, created_at: Date.now(), updated_at: Date.now() }));
-}
-function randomToken(bytes = 32) {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function getSessionId(req) {
-  const cookie = req.headers.get("cookie") ?? "";
-  const match2 = cookie.match(/arcrun_session=([a-f0-9]+)/);
-  return match2 ? match2[1] : null;
-}
-function getApiKeyFromRequest(req) {
-  const direct = req.headers.get("x-arcrun-api-key");
-  if (direct) return direct;
-  const auth = req.headers.get("authorization") ?? "";
-  const match2 = auth.match(/^Bearer\s+(ak_\S+)/i);
-  return match2 ? match2[1] : null;
-}
-async function resolveSession(c) {
-  const sessId = getSessionId(c.req.raw);
-  if (sessId) {
-    const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
-    if (sess?.record_id) {
-      const user = await findPlatformUserByApiKey(c.env, sess.api_key ?? "");
-      if (user && !user.revoked && user.record_id === sess.record_id) return user;
-    }
-  }
-  const apiKey = getApiKeyFromRequest(c.req.raw);
-  if (apiKey) {
-    const user = await findPlatformUserByApiKey(c.env, apiKey);
-    if (user && !user.revoked && user.api_key === apiKey) return user;
-  }
-  return null;
-}
-authRouter.get("/auth/google/start", async (c) => {
-  const clientId = c.env.GOOGLE_CLIENT_ID;
-  if (!clientId) return c.json({ error: "Google OAuth not configured" }, 503);
-  const state = randomToken(16);
-  const stateRecord = {
-    provider: "google",
-    redirect_back: c.req.query("redirect") ?? "/dashboard",
-    created_at: Date.now()
-  };
-  await ephemeralPut(c.env, {
-    template: STATE_TEMPLATE,
-    slots: ["provider", "redirect_back", "created_at"],
-    hashField: "state_hash",
-    rawKey: state,
-    values: {
-      provider: stateRecord.provider,
-      redirect_back: stateRecord.redirect_back,
-      created_at: String(stateRecord.created_at)
-    },
-    ttlSeconds: STATE_TTL_SECONDS
-  });
-  const redirectUri = "https://cypher.arcrun.dev/auth/callback";
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope: "openid profile email",
-    state,
-    access_type: "offline",
-    prompt: "consent"
-  });
-  return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`, 302);
-});
-authRouter.get("/auth/github/start", async (c) => {
-  const clientId = c.env.GITHUB_CLIENT_ID;
-  if (!clientId) return c.json({ error: "GitHub OAuth not configured" }, 503);
-  const state = randomToken(16);
-  const stateRecord = {
-    provider: "github",
-    redirect_back: c.req.query("redirect") ?? "/dashboard",
-    created_at: Date.now()
-  };
-  await ephemeralPut(c.env, {
-    template: STATE_TEMPLATE,
-    slots: ["provider", "redirect_back", "created_at"],
-    hashField: "state_hash",
-    rawKey: state,
-    values: {
-      provider: stateRecord.provider,
-      redirect_back: stateRecord.redirect_back,
-      created_at: String(stateRecord.created_at)
-    },
-    ttlSeconds: STATE_TTL_SECONDS
-  });
-  const redirectUri = "https://cypher.arcrun.dev/auth/callback";
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    scope: "read:user user:email",
-    state
-  });
-  return Response.redirect(`https://github.com/login/oauth/authorize?${params}`, 302);
-});
-authRouter.get("/auth/callback", async (c) => {
-  const code = c.req.query("code");
-  const state = c.req.query("state");
-  const error = c.req.query("error");
-  const landingOrigin = getLandingOrigin(c);
-  if (error || !code || !state) {
-    return Response.redirect(`${landingOrigin}/login?error=${encodeURIComponent(error ?? "cancelled")}`, 302);
-  }
-  const stateVals = await ephemeralGet(c.env, { template: STATE_TEMPLATE, hashField: "state_hash", rawKey: state, consume: true });
-  if (!stateVals) {
-    return Response.redirect(`${landingOrigin}/login?error=invalid_state`, 302);
-  }
-  const stateRecord = {
-    provider: stateVals.provider ?? "google",
-    redirect_back: stateVals.redirect_back ?? "/dashboard",
-    created_at: Number(stateVals.created_at) || Date.now()
-  };
-  try {
-    let email;
-    let displayName;
-    let avatarUrl;
-    let providerId;
-    let pendingCredential = null;
-    const provider = stateRecord.provider;
-    const redirectUri = "https://cypher.arcrun.dev/auth/callback";
-    if (provider === "google") {
-      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          code,
-          client_id: c.env.GOOGLE_CLIENT_ID ?? "",
-          client_secret: c.env.GOOGLE_CLIENT_SECRET ?? "",
-          redirect_uri: redirectUri,
-          grant_type: "authorization_code"
-        })
-      });
-      if (!tokenRes.ok) throw new Error("google token exchange failed");
-      const tokenData = await tokenRes.json();
-      const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: `Bearer ${tokenData.access_token}` }
-      });
-      if (!userRes.ok) throw new Error("google userinfo failed");
-      const userInfo = await userRes.json();
-      email = userInfo.email.toLowerCase();
-      displayName = userInfo.name;
-      avatarUrl = userInfo.picture;
-      providerId = userInfo.sub;
-      if (tokenData.refresh_token) {
-        pendingCredential = { name: "google_refresh_token", value: tokenData.refresh_token, service: "google_user" };
-        void upsertAuthRecipe(c.env.RECIPES, {
-          kind: "auth_recipe",
-          service: "google_user",
-          version: 1,
-          primitive: "oauth2",
-          base_url: "https://www.googleapis.com",
-          display_name: "Google\uFF08\u7528\u6236\u5E33\u865F\uFF09",
-          oauth2: {
-            token_endpoint: "https://oauth2.googleapis.com/token",
-            client_id: c.env.GOOGLE_CLIENT_ID ?? "",
-            client_secret: c.env.GOOGLE_CLIENT_SECRET ?? "",
-            scopes: ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
-          },
-          required_secrets: [{ key: "google_refresh_token", label: "Google Refresh Token" }],
-          inject: { header: { Authorization: "Bearer {{runtime.access_token}}" } }
-        });
-      }
-    } else {
-      const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Accept": "application/json"
-        },
-        body: new URLSearchParams({
-          code,
-          client_id: c.env.GITHUB_CLIENT_ID ?? "",
-          client_secret: c.env.GITHUB_CLIENT_SECRET ?? "",
-          redirect_uri: redirectUri
-        })
-      });
-      if (!tokenRes.ok) throw new Error("github token exchange failed");
-      const tokenData = await tokenRes.json();
-      const userRes = await fetch("https://api.github.com/user", {
-        headers: {
-          Authorization: `Bearer ${tokenData.access_token}`,
-          "User-Agent": "arcrun",
-          "Accept": "application/vnd.github+json"
-        }
-      });
-      if (!userRes.ok) throw new Error("github user fetch failed");
-      const userInfo = await userRes.json();
-      let ghEmail = userInfo.email ?? "";
-      if (!ghEmail) {
-        const emailsRes = await fetch("https://api.github.com/user/emails", {
-          headers: {
-            Authorization: `Bearer ${tokenData.access_token}`,
-            "User-Agent": "arcrun",
-            "Accept": "application/vnd.github+json"
-          }
-        });
-        if (emailsRes.ok) {
-          const emails = await emailsRes.json();
-          const primary = emails.find((e) => e.primary && e.verified);
-          ghEmail = primary?.email ?? emails[0]?.email ?? "";
-        }
-      }
-      if (!ghEmail) throw new Error("github email not available");
-      email = ghEmail.toLowerCase();
-      displayName = userInfo.name ?? userInfo.login;
-      avatarUrl = userInfo.avatar_url;
-      providerId = String(userInfo.id);
-      if (tokenData.access_token) {
-        pendingCredential = { name: "github_access_token", value: tokenData.access_token, service: "github_user" };
-        void upsertAuthRecipe(c.env.RECIPES, {
-          kind: "auth_recipe",
-          service: "github_user",
-          version: 1,
-          primitive: "static_key",
-          base_url: "https://api.github.com",
-          display_name: "GitHub\uFF08\u7528\u6236\u5E33\u865F\uFF09",
-          required_secrets: [{ key: "github_access_token", label: "GitHub Access Token" }],
-          inject: { header: { Authorization: "Bearer {{secret.github_access_token}}" } }
-        });
-      }
-    }
-    const existing = await findPlatformUserByProvider(c.env, provider, providerId);
-    let apiKey;
-    let recordId;
-    if (existing && !existing.revoked) {
-      apiKey = existing.api_key;
-      recordId = existing.record_id;
-      await updatePlatformUser(c.env, recordId, { display_name: displayName, avatar_url: avatarUrl });
-    } else if (existing) {
-      apiKey = generateApiKey();
-      recordId = existing.record_id;
-      await updatePlatformUser(c.env, recordId, { display_name: displayName, avatar_url: avatarUrl, api_key: apiKey, revoked: false });
-    } else {
-      apiKey = generateApiKey();
-      const created = await createPlatformUser(c.env, {
-        email,
-        display_name: displayName,
-        avatar_url: avatarUrl,
-        api_key: apiKey,
-        provider,
-        provider_id: providerId
-      });
-      recordId = created.record_id;
-    }
-    if (pendingCredential) {
-      try {
-        await storeCredential(c.env, apiKey, pendingCredential.name, pendingCredential.value, pendingCredential.service);
-      } catch (e) {
-        console.error("\u5B58 provider token \u5931\u6557\uFF08\u4E0D\u5F71\u97FF\u767B\u5165\uFF09:", e instanceof Error ? e.message : String(e));
-      }
-    }
-    const sessionId = randomToken(32);
-    await ephemeralPut(c.env, {
-      template: SESSION_TEMPLATE,
-      slots: ["record_id", "api_key", "email"],
-      hashField: "session_hash",
-      rawKey: sessionId,
-      values: { record_id: recordId, api_key: apiKey, email },
-      ttlSeconds: SESSION_TTL_SECONDS
-    });
-    const redirectBack = stateRecord.redirect_back.startsWith("/") ? stateRecord.redirect_back : "/dashboard";
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: `${landingOrigin}${redirectBack}`,
-        "Set-Cookie": `arcrun_session=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax; Domain=.arcrun.dev; Max-Age=${7 * 24 * 60 * 60}`
-      }
-    });
-  } catch (err) {
-    console.error("[auth/callback]", err);
-    return Response.redirect(`${landingOrigin}/login?error=server_error`, 302);
-  }
-});
-authRouter.post("/auth/logout", async (c) => {
-  const sessId = getSessionId(c.req.raw);
-  if (sessId) {
-    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
-  }
-  const landingOrigin = getLandingOrigin(c);
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: `${landingOrigin}/`,
-      "Set-Cookie": "arcrun_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Domain=.arcrun.dev; Max-Age=0"
-    }
-  });
-});
-authRouter.get("/me", async (c) => {
-  const user = await resolveSession(c);
-  if (!user) return c.json({ error: "not authenticated" }, 401);
-  return c.json({
-    email: user.email,
-    display_name: user.display_name,
-    avatar_url: user.avatar_url,
-    api_key: user.api_key,
-    provider: user.provider,
-    created_at: user.created_at
-  });
-});
-authRouter.put("/me/api-key/rotate", async (c) => {
-  const user = await resolveSession(c);
-  if (!user) return c.json({ error: "not authenticated" }, 401);
-  const newRaw = randomToken(24);
-  const newKey = "ak_" + newRaw;
-  await updatePlatformUser(c.env, user.record_id, { api_key: newKey });
-  return c.json({
-    success: true,
-    api_key: newKey,
-    message: "API Key rotated. Your existing workflow credentials are still stored under the old key namespace."
-  });
-});
-authRouter.delete("/me/api-key", async (c) => {
-  const user = await resolveSession(c);
-  if (!user) return c.json({ error: "not authenticated" }, 401);
-  await updatePlatformUser(c.env, user.record_id, { revoked: true });
-  const sessId = getSessionId(c.req.raw);
-  if (sessId) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
-  return new Response(JSON.stringify({ success: true, message: "API Key revoked." }), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      "Set-Cookie": "arcrun_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Domain=.arcrun.dev; Max-Age=0"
-    }
-  });
-});
-
-// cypher-executor/src/routes/resume.ts
-init_dist();
-init_types();
-init_graph_executor();
-init_component_loader();
-init_paused_runs();
-init_run_scratch();
-var resumeRouter = new Hono2();
-resumeRouter.post("/workflows/resume", async (c) => {
-  let body;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
-  }
-  const taskId = typeof body.task_id === "string" ? body.task_id : void 0;
-  if (!taskId) {
-    return c.json({ error: "task_id \u5FC5\u586B" }, 400);
-  }
-  const state = await consumePausedRun(c.env.EXEC_CONTEXT, taskId);
-  if (!state) {
-    return c.json({
-      success: true,
-      noop: true,
-      reason: `paused state \u4E0D\u5B58\u5728\u6216\u5DF2\u904E\u671F (task_id=${taskId})`
-    });
-  }
-  const callbackResult = {
-    success: body.success ?? true,
-    data: body.data,
-    error: body.error
-  };
-  const loader = createComponentLoader(c.env);
-  const executor = new GraphExecutor(loader, void 0, c.env, state.api_key);
-  const start = Date.now();
-  try {
-    const result = await executor.resumeFromPaused({
-      graph: state.graph,
-      paused_node_id: state.paused_node_id,
-      paused_context: state.paused_context,
-      callback_result: callbackResult,
-      prior_trace: state.trace_so_far,
-      kvNamespace: createRunScratch(),
-      // #98：恢復是新的一趟執行（新 run_id），節點 output 住記憶體
-      recipe_output_format: state.recipe_output_format,
-      recipe_output_required_fields: state.recipe_output_required_fields
-    });
-    const duration_ms = Date.now() - start;
-    const verdict = deriveExecutionVerdict(state.graph, result.trace);
-    if (!verdict.success) {
-      return c.json({
-        success: false,
-        resumed: true,
-        error: verdict.error,
-        failed_node: verdict.failedNode ?? null,
-        task_id: taskId,
-        run_id: state.run_id,
-        data: result.data,
-        trace: result.trace,
-        duration_ms
-      }, 500);
-    }
-    return c.json({
-      success: true,
-      resumed: true,
-      task_id: taskId,
-      run_id: state.run_id,
-      data: result.data,
-      trace: result.trace,
-      duration_ms
-    });
-  } catch (err) {
-    if (err instanceof WorkflowPaused) {
-      return c.json({
-        success: true,
-        paused_again: true,
-        task_id: err.task_id,
-        run_id: err.run_id,
-        paused_node_id: err.paused_node_id
-      });
-    }
-    const errMsg = err instanceof Error ? err.message : String(err);
-    return c.json({ success: false, error: errMsg, task_id: taskId, run_id: state.run_id }, 500);
-  }
-});
-
-// cypher-executor/src/routes/executions.ts
-init_dist();
-init_paused_runs();
-init_kbdb_proxy();
-var executionsRouter = new Hono2();
-executionsRouter.get("/executions/paused", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({
-      ok: false,
-      error_code: "auth_missing",
-      human_message: "\u7F3A X-Arcrun-API-Key header",
-      next_actions: ["call /me \u53D6\u5F97\u4F60\u7684 ak_xxx\uFF0C\u52A0\u9032 header"]
-    }, 401);
-  }
-  const limitParam = c.req.query("limit");
-  const limit = Math.min(Math.max(parseInt(limitParam || "20", 10), 1), 100);
-  const paused = await listPausedRunsByApiKey(c.env.EXEC_CONTEXT, apiKey, limit);
-  return c.json({
-    ok: true,
-    data: { count: paused.length, paused },
-    hints: paused.length > 0 ? [`${paused.length} \u500B workflow \u7B49 callback resume\u3002call get_execution_trace(task_id) \u770B\u7D30\u7BC0`] : ["\u6C92\u6709\u4EFB\u4F55 paused workflow"]
-  });
-});
-executionsRouter.get("/executions/:task_id", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({
-      ok: false,
-      error_code: "auth_missing",
-      human_message: "\u7F3A X-Arcrun-API-Key header",
-      next_actions: ["\u52A0 X-Arcrun-API-Key header"]
-    }, 401);
-  }
-  const taskId = c.req.param("task_id");
-  const raw2 = await c.env.EXEC_CONTEXT.get(`paused_run:${taskId}`);
-  if (!raw2) {
-    return c.json({
-      ok: false,
-      error_code: "not_found",
-      human_message: `task_id "${taskId}" \u6C92\u5C0D\u61C9\u7684 paused state\uFF08\u53EF\u80FD\u5DF2 resume \u5B8C\u3001\u904E 24h TTL \u88AB GC\u3001\u6216\u5F9E\u672A\u5B58\u5728\uFF09`,
-      next_actions: [
-        "call /executions/paused \u770B\u7576\u524D\u6240\u6709 paused\uFF0C\u78BA\u8A8D task_id \u6B63\u78BA",
-        "\u82E5\u8A72 workflow \u4E0D\u662F paused \u578B\uFF0C\u770B /workflows/:name/executions \u67E5\u6B77\u53F2 verdict"
-      ]
-    }, 404);
-  }
-  let state;
-  try {
-    state = JSON.parse(raw2);
-  } catch {
-    return c.json({
-      ok: false,
-      error_code: "internal_error",
-      human_message: "paused state JSON \u640D\u6BC0",
-      next_actions: ["\u544A\u8A34 leo / \u5E73\u53F0\u7DAD\u8B77\u8005"]
-    }, 500);
-  }
-  if (state.api_key !== apiKey) {
-    return c.json({
-      ok: false,
-      error_code: "not_found",
-      // 不洩漏存在性
-      human_message: `task_id "${taskId}" \u627E\u4E0D\u5230`,
-      next_actions: ["\u78BA\u8A8D task_id \u5C6C\u65BC\u4F60 (\u7528 /executions/paused \u5217\u51FA)"]
-    }, 404);
-  }
-  return c.json({
-    ok: true,
-    data: {
-      task_id: taskId,
-      run_id: state.run_id,
-      paused_node_id: state.paused_node_id,
-      paused_context: state.paused_context,
-      paused_pending_result: state.paused_pending_result,
-      trace_so_far: state.trace_so_far,
-      expires_at: state.expires_at
-    },
-    hints: [
-      "paused \u72C0\u614B = workflow \u7B49 daemon callback\u3002\u7B49\u5C0D\u61C9 service \u56DE POST /workflows/resume \u5373\u53EF\u7E7C\u7E8C",
-      "\u82E5 daemon \u639B\u4E86\uFF0C\u770B expires_at \u2014 \u904E 24h KV TTL \u6703 GC \u6B64 state"
-    ]
-  });
-});
-executionsRouter.get("/workflows/:name/executions", async (c) => {
-  const apiKey = c.req.header("X-Arcrun-API-Key");
-  if (!apiKey) {
-    return c.json({
-      ok: false,
-      error_code: "auth_missing",
-      human_message: "\u7F3A X-Arcrun-API-Key header",
-      next_actions: ["\u52A0 X-Arcrun-API-Key header"]
-    }, 401);
-  }
-  const name = c.req.param("name");
-  const limitParam = c.req.query("limit");
-  const limit = Math.min(Math.max(parseInt(limitParam || "10", 10), 1), 100);
-  const wfRaw = await c.env.WEBHOOKS.get(`${apiKey}:wf:${name}`, "text");
-  if (!wfRaw) {
-    return c.json({
-      ok: false,
-      error_code: "not_found",
-      human_message: `workflow "${name}" \u4E0D\u5B58\u5728\u6216\u4E0D\u5C6C\u65BC\u4F60`,
-      next_actions: ["call /webhooks/named \u770B\u4F60\u6709\u4EC0\u9EBC workflow"]
-    }, 404);
-  }
-  const { base, headers } = kbdbBase(c.env);
-  const params = new URLSearchParams({ workflow_id: name, owner_id: apiKey, limit: String(limit) });
-  const kbdbRes = await fetch(`${base}/execution-log?${params.toString()}`, { headers });
-  const kbdbBody = await kbdbRes.json().catch(() => null);
-  const executions = (kbdbRes.ok && kbdbBody?.success ? kbdbBody.executions ?? [] : []).map((r) => ({
-    timestamp: String(r.recorded_at),
-    workflow_id: name,
-    verdict: r.verdict,
-    duration_ms: r.duration_ms,
-    message: r.message ?? "",
-    ...r.target ? { target: r.target } : {}
-  }));
-  return c.json({
-    ok: true,
-    data: {
-      workflow_name: name,
-      count: executions.length,
-      executions
-    },
-    hints: executions.length === 0 ? ["\u5C1A\u672A\u6709\u4EFB\u4F55\u57F7\u884C\u7D00\u9304\u3002\u5148 call /webhooks/named/:name/trigger \u8DD1\u4E00\u6B21"] : [`\u6700\u8FD1 ${executions.length} \u6B21\u3002\u770B\u5230 verdict=failed \u7684\uFF0Ccall /executions/:task_id \u770B paused state \u6216\u7E7C\u7E8C debug`]
-  });
-});
-
-// cypher-executor/src/routes/init-seed.ts
-init_dist();
-init_hash();
-init_recipes();
-
-// cypher-executor/src/lib/extract-ai-providers.ts
-var GENERIC_OPENAI_COMPAT_ID = "extract_ai_openai_compat";
-var GENERIC_OPENAI_COMPAT_CREDENTIAL = "extract_ai_api_key";
-var EXTRACT_AI_PROVIDERS = [
-  {
-    id: "extract_ai_workers_ai",
-    label: "Cloudflare Workers AI\uFF08\u514D\u91D1\u9470\uFF0C\u9810\u8A2D\uFF09",
-    group: "cloud",
-    kind: "binding",
-    key: "none",
-    models: [
-      { id: "@cf/meta/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B\uFF08\u9810\u8A2D\uFF09" },
-      { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", label: "Llama 3.3 70B" },
-      { id: "@cf/mistralai/mistral-small-3.1-24b-instruct", label: "Mistral Small 3.1 24B" },
-      { id: "@cf/google/gemma-3-12b-it", label: "Gemma 3 12B" }
-    ],
-    description: "CF \u96F2\u9810\u8A2D\u3002\u8D70 env.AI binding\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\u3002\u4F01\u696D\u79C1\u6709\u96F2\u6C92\u6709\u9019\u500B binding \u21D2 \u8ACB\u6539\u9078\u5225\u5BB6\u3002"
-  },
-  {
-    id: "extract_ai_openai",
-    label: "OpenAI",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.openai.com/v1/chat/completions",
-    models_url: "https://api.openai.com/v1/models",
-    models: [{ id: "gpt-4o-mini" }, { id: "gpt-4o" }, { id: "gpt-4.1-mini" }, { id: "gpt-4.1" }],
-    credential: "extract_ai_openai_key",
-    description: "OpenAI \u5B98\u65B9 API\u3002"
-  },
-  {
-    id: "extract_ai_anthropic",
-    label: "Anthropic Claude",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.anthropic.com/v1/chat/completions",
-    models_url: "https://api.anthropic.com/v1/models",
-    models_headers: { "anthropic-version": "2023-06-01" },
-    models: [{ id: "claude-haiku-5-5" }, { id: "claude-sonnet-5-5" }, { id: "claude-opus-5-5" }],
-    credential: "extract_ai_anthropic_key",
-    description: "Anthropic \u7684 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u3002"
-  },
-  {
-    id: "extract_ai_gemini",
-    label: "Google Gemini",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-    models_url: "https://generativelanguage.googleapis.com/v1beta/openai/models",
-    models: [{ id: "gemini-2.5-flash" }, { id: "gemini-2.5-pro" }, { id: "gemini-2.0-flash" }],
-    credential: "extract_ai_gemini_key",
-    description: "Google AI Studio \u7684 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u3002"
-  },
-  {
-    id: "extract_ai_groq",
-    label: "Groq",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.groq.com/openai/v1/chat/completions",
-    models_url: "https://api.groq.com/openai/v1/models",
-    models: [{ id: "llama-3.3-70b-versatile" }, { id: "llama-3.1-8b-instant" }],
-    credential: "extract_ai_groq_key",
-    description: "Groq \u96F2\u7AEF\u63A8\u8AD6\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_openrouter",
-    label: "OpenRouter",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://openrouter.ai/api/v1/chat/completions",
-    models_url: "https://openrouter.ai/api/v1/models",
-    models: [
-      { id: "openai/gpt-4o-mini" },
-      { id: "anthropic/claude-sonnet-4.5" },
-      { id: "google/gemini-2.5-flash" },
-      { id: "meta-llama/llama-3.3-70b-instruct" }
-    ],
-    credential: "extract_ai_openrouter_key",
-    description: "OpenRouter \u805A\u5408\uFF08\u4E00\u628A\u91D1\u9470\u901A\u591A\u5BB6\u6A21\u578B\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_deepseek",
-    label: "DeepSeek",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.deepseek.com/chat/completions",
-    models_url: "https://api.deepseek.com/models",
-    models: [{ id: "deepseek-chat" }, { id: "deepseek-reasoner" }],
-    credential: "extract_ai_deepseek_key",
-    description: "DeepSeek \u5B98\u65B9 API\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_mistral",
-    label: "Mistral",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.mistral.ai/v1/chat/completions",
-    models_url: "https://api.mistral.ai/v1/models",
-    models: [{ id: "mistral-small-latest" }, { id: "mistral-large-latest" }],
-    credential: "extract_ai_mistral_key",
-    description: "Mistral La Plateforme\u3002"
-  },
-  {
-    id: "extract_ai_xai",
-    label: "xAI Grok",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.x.ai/v1/chat/completions",
-    models_url: "https://api.x.ai/v1/models",
-    models: [{ id: "grok-3-mini" }, { id: "grok-3" }],
-    credential: "extract_ai_xai_key",
-    description: "xAI \u5B98\u65B9 API\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_together",
-    label: "Together AI",
-    group: "hosted",
-    kind: "http",
-    key: "required",
-    chat_url: "https://api.together.xyz/v1/chat/completions",
-    models_url: "https://api.together.xyz/v1/models",
-    models: [{ id: "meta-llama/Llama-3.3-70B-Instruct-Turbo" }, { id: "Qwen/Qwen2.5-72B-Instruct-Turbo" }],
-    credential: "extract_ai_together_key",
-    description: "Together AI \u958B\u6E90\u6A21\u578B\u8A17\u7BA1\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
-  },
-  {
-    id: "extract_ai_ollama",
-    label: "Ollama\uFF08\u5730\u7AEF\uFF09",
-    group: "local",
-    kind: "http",
-    key: "optional",
-    needs_base_url: true,
-    default_base_url: "http://localhost:11434",
-    models: [],
-    credential: "extract_ai_ollama_key",
-    description: "\u5730\u7AEF\u6216\u5167\u7DB2\u7684 Ollama\u3002\u91D1\u9470\u901A\u5E38\u4E0D\u9700\u8981\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
-  },
-  {
-    id: GENERIC_OPENAI_COMPAT_ID,
-    label: "\u5176\u4ED6 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\uFF08vLLM\uFF0FLM Studio\uFF0F\u81EA\u5EFA\uFF09",
-    group: "local",
-    kind: "http",
-    key: "optional",
-    needs_base_url: true,
-    models: [],
-    credential: GENERIC_OPENAI_COMPAT_CREDENTIAL,
-    description: "\u4EFB\u4F55\u5BE6\u4F5C /v1/chat/completions \u7684\u7AEF\u9EDE\u3002\u91D1\u9470\u9078\u586B\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
-  }
-];
-function findProvider(id) {
-  return EXTRACT_AI_PROVIDERS.find((p) => p.id === id);
-}
-function extractAiProviderSeeds() {
-  return EXTRACT_AI_PROVIDERS.filter((p) => p.kind === "http").map((p) => {
-    const body_template = {
-      model: "{{model}}",
-      messages: "{{messages}}",
-      max_tokens: "{{max_tokens}}",
-      temperature: "{{temperature}}",
-      response_format: "{{response_format}}"
-    };
-    return {
-      canonical_id: p.id,
-      display_name: `\u8403\u53D6 AI\uFF1A${p.label}`,
-      description: `${p.description}` + (p.credential ? ` \u91D1\u9470\u8D70 credential\u300C${p.credential}\u300D${p.key === "optional" ? "\uFF08\u9078\u586B\uFF0C\u6709\u8A2D\u624D\u5E36 Authorization\uFF09" : ""}\u3002` : ""),
-      endpoint: p.chat_url ?? "{{base_url}}/v1/chat/completions",
-      method: "POST",
-      ...p.credential ? { headers: { Authorization: `Bearer {{credential.${p.credential}}}` } } : {},
-      body_template,
-      response_map: { text_path: "choices.0.message.content" }
-    };
-  });
-}
-
-// cypher-executor/src/lib/api-recipe-seeds.ts
-var KBDB_BASE_TOKEN = "{{KBDB_BASE_URL}}";
-function resolveKbdbSeedBase(text, resolveBase) {
-  return text.includes(KBDB_BASE_TOKEN) ? text.replaceAll(KBDB_BASE_TOKEN, resolveBase()) : text;
-}
-var API_RECIPE_SEEDS = [
-  // ── KBDB（Supabase 模式，auth_service=kbdb static_key）──
-  {
-    canonical_id: "kbdb_get",
-    display_name: "KBDB Get",
-    description: "GET \u8B80\u53D6 block / \u67E5\u8A62\u3002_path \u5E36\u67E5\u8A62\u8DEF\u5F91\u3002auth: kbdb static_key\u3002",
-    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
-    method: "GET",
-    auth_service: "kbdb"
-  },
-  {
-    canonical_id: "kbdb_create_block",
-    display_name: "KBDB Create Block",
-    description: "POST /blocks \u5EFA\u7ACB block\u3002body \u5E36 block \u6B04\u4F4D\uFF08content/type/page_name/source/user_id \u7B49\uFF09\u3002auth: kbdb static_key\u3002",
-    endpoint: "{{KBDB_BASE_URL}}/blocks",
-    method: "POST",
-    auth_service: "kbdb"
-  },
-  {
-    canonical_id: "kbdb_patch_block",
-    display_name: "KBDB Patch Block",
-    description: "PATCH /blocks/:id \u5C40\u90E8\u66F4\u65B0\u3002_path \u5E36 /blocks/{id}\uFF0Cbody \u5E36\u8981\u6539\u7684\u6B04\u4F4D\u3002auth: kbdb static_key\u3002",
-    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
-    method: "PATCH",
-    auth_service: "kbdb"
-  },
-  {
-    canonical_id: "kbdb_delete",
-    display_name: "KBDB Delete",
-    description: "DELETE /blocks/:id \u522A\u9664 block\u3002_path \u5E36 /blocks/{id}\u3002auth: kbdb static_key\u3002",
-    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
-    method: "DELETE",
-    auth_service: "kbdb"
-  },
-  {
-    canonical_id: "kbdb_ingest",
-    display_name: "KBDB Ingest",
-    description: "POST /blocks/ingest \u6279\u6B21\u5BEB\u5165\u3002body \u5E36 input\u3002auth: kbdb static_key\u3002",
-    endpoint: "{{KBDB_BASE_URL}}/blocks/ingest",
-    method: "POST",
-    auth_service: "kbdb"
-  },
-  // ── Google（service_account）──
-  {
-    canonical_id: "gmail_send",
-    display_name: "Gmail Send",
-    description: "\u5BC4 Gmail\u3002POST messages/send\uFF0Cbody \u5E36 raw\uFF08base64url MIME\uFF09\u3002auth: google service_account\u3002",
-    endpoint: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-    method: "POST",
-    auth_service: "google_gmail_sa"
-  },
-  {
-    canonical_id: "google_sheets_append",
-    display_name: "Google Sheets Append",
-    // 壓測階段 12 修正：append 官方 API 是 POST .../values/{range}:append（PUT 是 values.update 覆寫的動詞），
-    // 種子寫死 PUT 導致每個 self-host 用戶 seed 到壞 recipe（PUT :append → Google 400）。
-    // body 形狀屬工作流，泛用種子不寫死欄位 → 由工作流的 _path + body 處理（body_from 機制待 §13.4 補）。
-    description: "\u8FFD\u52A0\u4E00\u5217\u5230 Sheets\u3002POST .../values/{range}:append?valueInputOption=RAW\uFF0Cbody \u5E36 {values:[[...]]}\u3002auth: google service_account\u3002",
-    endpoint: "https://sheets.googleapis.com{{_path}}",
-    method: "POST",
-    auth_service: "google_sheets_sa"
-  },
-  {
-    canonical_id: "google_sheets_read",
-    display_name: "Google Sheets Read",
-    description: "\u8B80 Sheets\u3002GET values\u3002_path \u5E36\u5B8C\u6574\u8DEF\u5F91\u3002auth: google service_account\u3002",
-    endpoint: "https://sheets.googleapis.com{{_path}}",
-    method: "GET",
-    auth_service: "google_sheets_sa"
-  },
-  // ── 訊息（static_key）──
-  {
-    canonical_id: "telegram_send",
-    display_name: "Telegram Send",
-    description: "Telegram sendMessage\u3002token \u5728 URL path\uFF08{{auth.bot_token}}\uFF09\uFF0Cbody \u5E36 chat_id+text\u3002auth: static_key path \u6CE8\u5165\u3002",
-    endpoint: "https://api.telegram.org/bot{{auth.bot_token}}/sendMessage",
-    method: "POST",
-    auth_service: "telegram"
-  },
-  {
-    canonical_id: "line_notify_send",
-    display_name: "LINE Notify",
-    description: "LINE Notify \u63A8\u8A0A\u606F\u3002POST notify\uFF0Cbody \u5E36 message\uFF08form-urlencoded\uFF09\u3002auth: static_key Bearer line token\u3002",
-    endpoint: "https://notify-api.line.me/api/notify",
-    method: "POST",
-    auth_service: "line_notify"
-  },
-  // ── LLM 對話（binding＝免金鑰，3.12 第四型認證的第一個真實案例）──
-  //
-  // 為什麼進種子（而非寫在某個產品的安裝器裡）：「裝好之後預設有哪些 recipe」是平台能力，
-  // 與本檔其餘種子同理由（見檔頭）。裝完 /init/seed 就有 ⇒ **用戶不填任何金鑰就能問答**。
-  //
-  // 換模型／換供應商＝**改這一筆 recipe**（endpoint + body_template + response_map），
-  // workflow 的 ask_llm 節點不動——這正是「換源＝換 recipe 不是換引擎」。
-  //
-  // 選型實測（2026-08-03，在 1.4.4 實例上跑真實長度的 RAG prompt，每個模型連跑 2 次）：
-  //   @cf/meta/llama-4-scout-17b-16e-instruct        2373／2173 ms　✅ 答案最完整、引用正確
-  //   @cf/meta/llama-3.3-70b-instruct-fp8-fast       3261／2147 ms　✅ 可用但波動較大
-  //   @cf/mistralai/mistral-small-3.1-24b-instruct   3560／3631 ms
-  //   @cf/qwen/qwen2.5-coder-32b-instruct            3572／3353 ms
-  //   @cf/openai/gpt-oss-120b                        1971／2295 ms　❌ 回應形狀不同，response 取不到文字
-  //   @cf/google/gemma-3-12b-it                      ❌ 5018 This account is not allowed to access this model
-  // 對照舊路徑（Gemini `gemma-4-31b-it`）：同型提問 **16.87 s**，且吐整段英文思考草稿
-  //   ⇒ 選 llama-4-scout：**快 7 倍以上，且不需要淨化思考草稿**。
-  {
-    canonical_id: "workers_ai_chat",
-    display_name: "Workers AI \u5C0D\u8A71\uFF08\u514D\u91D1\u9470\uFF09",
-    description: "Cloudflare Workers AI \u6587\u5B57\u751F\u6210\uFF0C\u8D70 env.AI binding \u21D2 \u4E0D\u9700\u8981\u4EFB\u4F55 API \u91D1\u9470\u3002ctx \u5E36 prompt\uFF0C\u56DE\u61C9\u6B63\u898F\u5316\u6210 text\uFF08\u542B\u3010\u7B54\u3011\u6A19\u8A18\u8207\u524D\u7DB4\u6DE8\u5316\uFF09\u3002\u63DB\u6A21\u578B\uFF1D\u6539\u672C recipe \u7684 endpoint\uFF0Cworkflow \u4E0D\u52D5\u3002",
-    endpoint: "@cf/meta/llama-4-scout-17b-16e-instruct",
-    method: "POST",
-    auth: "binding",
-    binding_name: "AI",
-    body_template: {
-      messages: [{ role: "user", content: "{{prompt}}" }],
-      max_tokens: 1024,
-      temperature: 0.2
-    },
-    response_map: {
-      // Workers AI chat 回應：{ response: "…" }（另有 OpenAI 相容的 choices，取 response 最穩）
-      text_path: "response",
-      // 提示詞要求答案以【答】開頭；模型偶爾會在前面多帶一行 ⇒ 取最後一個標記之後
-      answer_marker: "\u3010\u7B54\u3011",
-      // 前綴組合順序不定，循環剝殼（規則見 recipe-payload.ts sanitize）
-      strip_prefixes: ["*", "-", "\u2022", ">", "#", '"', "\u300C", "\u3010\u7B54\u3011", "Answer:", "Draft:"]
-    }
-  },
-  // ── 萃取 AI（inkstone/Arcrun#277）：小幫手送文字上雲，雲端用哪個 AI 由**這台雲端**的管理員選 ──
-  //
-  // 「每種 AI 一份 recipe」（leo 09-29）。執行器是 lib/extract-ai.ts（不認得任何一家 AI 的形狀，
-  // 只照 recipe 組請求）；要接新的 AI 供應商＝在這裡加一筆，不改執行器。
-  // 輸入 ctx：messages／max_tokens／temperature／response_format（要 JSON 時才有）／base_url／model。
-  // 選填欄位沒值時，lib 會把整個欄位剔除（不會把 `{{x}}` 字面送出去）。
-  {
-    canonical_id: "extract_ai_workers_ai",
-    display_name: "\u8403\u53D6 AI\uFF1ACloudflare Workers AI\uFF08\u514D\u91D1\u9470\uFF09",
-    description: "CF \u96F2\u9810\u8A2D\u3002\u8D70 env.AI binding\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\uFF1B\u6A21\u578B\u9078\u578B\u8207 workers_ai_chat \u540C\u4E00\u652F\uFF08llama-4-scout\uFF09\u3002\u4F01\u696D\u79C1\u6709\u96F2\u6C92\u6709\u9019\u500B binding \u21D2 \u8ACB\u6539\u9078 extract_ai_openai_compat\u3002",
-    endpoint: "@cf/meta/llama-4-scout-17b-16e-instruct",
-    method: "POST",
-    auth: "binding",
-    binding_name: "AI",
-    body_template: {
-      messages: "{{messages}}",
-      max_tokens: "{{max_tokens}}",
-      temperature: "{{temperature}}",
-      response_format: "{{response_format}}"
-    },
-    response_map: { text_path: "response" }
-  },
-  // 其餘每家提供商（OpenAI／Anthropic／Gemini／…／Ollama／通用 OpenAI 相容）的 recipe 由
-  // extract-ai-providers.ts 的清單產生（leo 10-15：清單由開發端維護）。
-  ...extractAiProviderSeeds()
-];
-
-// cypher-executor/src/routes/init-seed.ts
-init_endpoints();
-
-// cypher-executor/src/lib/auth-recipe-seeds.ts
-var now = Date.now();
-var GOOGLE_SA_SECRETS = [
-  {
-    key: "client_email",
-    label: "Service Account Email\uFF08client_email\uFF09",
-    help: "Service Account \u7684\u4FE1\u7BB1\uFF0C\u5F62\u5982 xxx@yyy.iam.gserviceaccount.com\uFF08\u5C31\u662F\u4E0B\u8F09\u7684 SA JSON \u88E1 client_email \u90A3\u4E00\u884C\u7684\u503C\uFF09",
-    help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
-  },
-  {
-    key: "private_key",
-    label: "Service Account Private Key\uFF08private_key\uFF09",
-    help: "SA JSON \u88E1 private_key \u90A3\u4E00\u6BB5\uFF08-----BEGIN PRIVATE KEY----- \u2026 -----END PRIVATE KEY-----\uFF09\uFF0C\u6574\u6BB5\u8CBC\u4E0A\u5373\u53EF\uFF0C\u542B\u771F\u5BE6\u63DB\u884C\u6216 \\n \u90FD\u80FD\u8A8D",
-    help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
-  }
-];
-var AUTH_RECIPE_SEEDS = [
-  // ── Static Key 類 ──────────────────────────────────────────────────────────
-  {
-    kind: "auth_recipe",
-    service: "notion",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.notion.com/v1",
-    display_name: "Notion",
-    description: "Notion API \u2014 \u9801\u9762\u3001\u8CC7\u6599\u5EAB\u8B80\u5BEB",
-    required_secrets: [
-      {
-        key: "notion_token",
-        label: "Internal Integration Token",
-        help: "\u81F3 https://www.notion.so/my-integrations \u5EFA\u7ACB Integration",
-        help_url: "https://www.notion.so/my-integrations"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.notion_token}}",
-        "Notion-Version": "2022-06-28"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "slack",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://slack.com/api",
-    display_name: "Slack",
-    description: "Slack Bot API \u2014 \u767C\u8A0A\u606F\u3001\u67E5\u983B\u9053",
-    required_secrets: [
-      {
-        key: "slack_bot_token",
-        label: "Bot User OAuth Token (xoxb-...)",
-        help: "\u81F3 https://api.slack.com/apps \u5EFA\u7ACB App\uFF0C\u53D6\u5F97 Bot Token",
-        help_url: "https://api.slack.com/apps"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.slack_bot_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "github",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.github.com",
-    display_name: "GitHub",
-    description: "GitHub REST API \u2014 repo\u3001issue\u3001PR \u64CD\u4F5C",
-    required_secrets: [
-      {
-        key: "github_token",
-        label: "Personal Access Token (classic \u6216 fine-grained)",
-        help: "\u81F3 https://github.com/settings/tokens \u5EFA\u7ACB",
-        help_url: "https://github.com/settings/tokens"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.github_token}}",
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "openai",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.openai.com/v1",
-    display_name: "OpenAI",
-    description: "OpenAI API \u2014 Chat Completions\u3001Embeddings \u7B49",
-    required_secrets: [
-      {
-        key: "openai_api_key",
-        label: "API Key (sk-...)",
-        help: "\u81F3 https://platform.openai.com/api-keys \u5EFA\u7ACB",
-        help_url: "https://platform.openai.com/api-keys"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.openai_api_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "anthropic",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.anthropic.com/v1",
-    display_name: "Anthropic (Claude)",
-    description: "Anthropic API \u2014 Claude \u6A21\u578B\u547C\u53EB",
-    required_secrets: [
-      {
-        key: "anthropic_api_key",
-        label: "API Key",
-        help: "\u81F3 https://console.anthropic.com/settings/keys \u5EFA\u7ACB",
-        help_url: "https://console.anthropic.com/settings/keys"
-      }
-    ],
-    inject: {
-      header: {
-        "x-api-key": "{{secret.anthropic_api_key}}",
-        "anthropic-version": "2023-06-01"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "airtable",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.airtable.com/v0",
-    display_name: "Airtable",
-    description: "Airtable API \u2014 \u8B80\u5BEB Base \u8CC7\u6599",
-    required_secrets: [
-      {
-        key: "airtable_token",
-        label: "Personal Access Token",
-        help: "\u81F3 https://airtable.com/create/tokens \u5EFA\u7ACB",
-        help_url: "https://airtable.com/create/tokens"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.airtable_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "discord",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://discord.com/api/v10",
-    display_name: "Discord",
-    description: "Discord Bot API \u2014 \u767C\u8A0A\u606F\u3001\u7BA1\u7406\u4F3A\u670D\u5668",
-    required_secrets: [
-      {
-        key: "discord_bot_token",
-        label: "Bot Token",
-        help: "\u81F3 https://discord.com/developers/applications \u5EFA\u7ACB Bot\uFF0C\u53D6\u5F97 Token",
-        help_url: "https://discord.com/developers/applications"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bot {{secret.discord_bot_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "stripe",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.stripe.com/v1",
-    display_name: "Stripe",
-    description: "Stripe API \u2014 \u652F\u4ED8\u3001\u5BA2\u6236\u3001\u8A02\u95B1\u7BA1\u7406",
-    required_secrets: [
-      {
-        key: "stripe_secret_key",
-        label: "Secret Key (sk_live_... \u6216 sk_test_...)",
-        help: "\u81F3 https://dashboard.stripe.com/apikeys \u53D6\u5F97",
-        help_url: "https://dashboard.stripe.com/apikeys"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.stripe_secret_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "twilio",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.twilio.com/2010-04-01",
-    display_name: "Twilio",
-    description: "Twilio API \u2014 SMS\u3001\u96FB\u8A71\u3001WhatsApp",
-    required_secrets: [
-      {
-        key: "twilio_account_sid",
-        label: "Account SID",
-        help: "\u81F3 https://console.twilio.com/ \u53D6\u5F97",
-        help_url: "https://console.twilio.com/"
-      },
-      {
-        key: "twilio_auth_token",
-        label: "Auth Token",
-        help: "\u81F3 https://console.twilio.com/ \u53D6\u5F97",
-        help_url: "https://console.twilio.com/"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Basic {{secret.twilio_account_sid}}:{{secret.twilio_auth_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "sendgrid",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.sendgrid.com/v3",
-    display_name: "SendGrid",
-    description: "SendGrid Email API \u2014 \u767C\u9001\u4EA4\u6613\u90F5\u4EF6",
-    required_secrets: [
-      {
-        key: "sendgrid_api_key",
-        label: "API Key (SG....)",
-        help: "\u81F3 https://app.sendgrid.com/settings/api_keys \u5EFA\u7ACB",
-        help_url: "https://app.sendgrid.com/settings/api_keys"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.sendgrid_api_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "hubspot",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.hubapi.com",
-    display_name: "HubSpot",
-    description: "HubSpot CRM API \u2014 \u806F\u7D61\u4EBA\u3001\u516C\u53F8\u3001\u4EA4\u6613\u7BA1\u7406",
-    required_secrets: [
-      {
-        key: "hubspot_token",
-        label: "Private App Access Token",
-        help: "\u81F3 HubSpot Settings \u2192 Integrations \u2192 Private Apps \u5EFA\u7ACB",
-        help_url: "https://developers.hubspot.com/docs/api/private-apps"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.hubspot_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "linear",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.linear.app",
-    display_name: "Linear",
-    description: "Linear API \u2014 Issue\u3001Project \u7BA1\u7406",
-    required_secrets: [
-      {
-        key: "linear_api_key",
-        label: "Personal API Key",
-        help: "\u81F3 https://linear.app/settings/api \u5EFA\u7ACB",
-        help_url: "https://linear.app/settings/api"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "{{secret.linear_api_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "shopify",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://{{secret.shopify_store}}.myshopify.com/admin/api/2024-01",
-    display_name: "Shopify",
-    description: "Shopify Admin API \u2014 \u8A02\u55AE\u3001\u5546\u54C1\u3001\u5BA2\u6236\u7BA1\u7406",
-    required_secrets: [
-      {
-        key: "shopify_access_token",
-        label: "Admin API Access Token",
-        help: "\u81F3 Shopify Admin \u2192 Apps \u2192 App and sales channel settings \u2192 Private apps",
-        help_url: "https://shopify.dev/docs/apps/auth/admin-app-access-tokens"
-      },
-      {
-        key: "shopify_store",
-        label: "Store subdomain\uFF08\u4E0D\u542B .myshopify.com\uFF09",
-        help: "\u4F8B\u5982 my-store\uFF08\u5C0D\u61C9 my-store.myshopify.com\uFF09"
-      }
-    ],
-    inject: {
-      header: {
-        "X-Shopify-Access-Token": "{{secret.shopify_access_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "resend",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.resend.com",
-    display_name: "Resend",
-    description: "Resend Email API \u2014 \u767C\u9001\u4EA4\u6613\u90F5\u4EF6",
-    required_secrets: [
-      {
-        key: "resend_api_key",
-        label: "API Key (re_...)",
-        help: "\u81F3 https://resend.com/api-keys \u5EFA\u7ACB",
-        help_url: "https://resend.com/api-keys"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.resend_api_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "supabase",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://{{secret.supabase_project_ref}}.supabase.co/rest/v1",
-    display_name: "Supabase",
-    description: "Supabase REST API \u2014 \u8CC7\u6599\u5EAB\u8B80\u5BEB",
-    required_secrets: [
-      {
-        key: "supabase_service_key",
-        label: "Service Role Key (eyJ...)",
-        help: "\u81F3 Supabase Project Settings \u2192 API \u2192 service_role key",
-        help_url: "https://supabase.com/dashboard"
-      },
-      {
-        key: "supabase_project_ref",
-        label: "Project Reference ID\uFF08URL \u4E2D\u7684 xxx.supabase.co \u7684 xxx\uFF09"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.supabase_service_key}}",
-        apikey: "{{secret.supabase_service_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "typeform",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.typeform.com",
-    display_name: "Typeform",
-    description: "Typeform API \u2014 \u8868\u55AE\u3001\u554F\u5377\u56DE\u61C9\u8B80\u53D6",
-    required_secrets: [
-      {
-        key: "typeform_token",
-        label: "Personal Access Token",
-        help: "\u81F3 https://admin.typeform.com/account#/section/tokens \u5EFA\u7ACB",
-        help_url: "https://developer.typeform.com/get-started/"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.typeform_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "jira",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://{{secret.jira_domain}}.atlassian.net/rest/api/3",
-    display_name: "Jira",
-    description: "Jira API \u2014 Issue\u3001Sprint\u3001Project \u7BA1\u7406",
-    required_secrets: [
-      {
-        key: "jira_api_token",
-        label: "API Token",
-        help: "\u81F3 https://id.atlassian.com/manage-profile/security/api-tokens \u5EFA\u7ACB",
-        help_url: "https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/"
-      },
-      {
-        key: "jira_email",
-        label: "\u4F60\u7684 Atlassian \u5E33\u865F Email"
-      },
-      {
-        key: "jira_domain",
-        label: "Jira \u5B50\u7DB2\u57DF\uFF08xxx.atlassian.net \u7684 xxx\uFF09"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Basic {{secret.jira_email}}:{{secret.jira_api_token}}",
-        Accept: "application/json"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "gemini",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://generativelanguage.googleapis.com/v1beta",
-    display_name: "Google Gemini",
-    description: "Google Gemini API \u2014 generateContent / embedContent\uFF08\u4F7F\u7528 API Key\uFF09",
-    required_secrets: [
-      {
-        key: "gemini_api_key",
-        label: "API Key",
-        help: "\u81F3 https://aistudio.google.com/apikey \u5EFA\u7ACB",
-        help_url: "https://aistudio.google.com/apikey"
-      }
-    ],
-    inject: {
-      header: {
-        "x-goog-api-key": "{{secret.gemini_api_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "trello",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.trello.com/1",
-    display_name: "Trello",
-    description: "Trello API \u2014 boards / cards / lists\uFF08API key + token \u8D70 query string\uFF09",
-    required_secrets: [
-      {
-        key: "trello_api_key",
-        label: "API Key",
-        help: "\u81F3 https://trello.com/power-ups/admin \u5EFA\u7ACB Power-Up \u5F8C\u53D6\u5F97",
-        help_url: "https://trello.com/power-ups/admin"
-      },
-      {
-        key: "trello_token",
-        label: "Token",
-        help: "\u65BC Power-Up \u9801\u9762\u9EDE\u300CGenerate Token\u300D\u6388\u6B0A\u5F8C\u53D6\u5F97",
-        help_url: "https://trello.com/power-ups/admin"
-      }
-    ],
-    inject: {
-      query: {
-        key: "{{secret.trello_api_key}}",
-        token: "{{secret.trello_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "mailgun",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.mailgun.net/v3",
-    display_name: "Mailgun",
-    description: 'Mailgun API \u2014 \u5BC4\u4FE1\uFF08username \u56FA\u5B9A "api"\uFF0Cpassword \u70BA Private API Key\uFF0C\u8D70 Basic Auth\uFF09',
-    required_secrets: [
-      {
-        key: "mailgun_api_key",
-        label: "Private API Key",
-        help: "\u81F3 Mailgun Dashboard \u2192 API Security \u2192 Sending Keys \u5EFA\u7ACB",
-        help_url: "https://app.mailgun.com/mg/sending/domains"
-      },
-      {
-        key: "mailgun_domain",
-        label: "Sending Domain",
-        help: "\u4F60\u5728 Mailgun \u8A2D\u5B9A\u597D\u7684 sending domain\uFF08\u4F8B\uFF1Amg.yourdomain.com\uFF09",
-        help_url: "https://app.mailgun.com/mg/sending/domains"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Basic api:{{secret.mailgun_api_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  // ── 訊息 / URL-path 注入類（static_key）────────────────────────────────────
-  //
-  // 2026-06-29 補：以下三個 static_key auth recipe 一直存在於 prod RECIPES KV（手動 seed 過），
-  // 但**從未進 source seed**（auth-recipe-seeds.ts）→ 任何全新 self-hosted `POST /init/seed`
-  // 只會 seed 23 個、漏掉 telegram/line_notify/kbdb → self-host（mira/leo21c）的 telegram 發訊
-  // 走不通（telegram_send 的 auth_service:'telegram' 找不到 auth recipe → {{auth.bot_token}} 注入空）。
-  // 這正是「source vs live drift = 假綠」（總管反覆踩的同一類）。把 prod 現役定義回灌 source，
-  // 讓 official 與 self-host 共用同一份種子。形態取自 prod GET /auth-recipes/{service}（2026-06-29）。
-  // 設計權威：auth-recipe.md §六(line 70-71, telegram path 注入) + §七(line 150-151, kbdb 共用)。
-  {
-    kind: "auth_recipe",
-    service: "telegram",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://api.telegram.org",
-    display_name: "Telegram Bot",
-    description: "Telegram Bot API \u2014 sendMessage \u7B49\uFF08bot token \u6CE8\u5165 URL path /bot{token}/\uFF09",
-    required_secrets: [
-      {
-        key: "telegram_bot_token",
-        label: "Bot Token\uFF08\u5F9E @BotFather \u53D6\u5F97\uFF09",
-        help: "\u5728 Telegram \u5C0D @BotFather \u9001 /newbot \u5EFA\u7ACB bot\uFF0C\u53D6\u5F97\u683C\u5F0F\u70BA 123456:ABC... \u7684 token",
-        help_url: "https://core.telegram.org/bots/features#botfather"
-      }
-    ],
-    // path 注入：recipe:telegram_send 的 endpoint 用 {{auth.bot_token}} 從 _auth_path 取值
-    // （auth_static_key WASM 解密後輸出 auth_path → auth-dispatcher 帶進 _auth_path
-    //   → makeRecipeRunner interpolate）。token 不落 header/query/body，符合 Telegram 的 URL-path 慣例。
-    inject: {
-      path: {
-        bot_token: "{{secret.telegram_bot_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "line_notify",
-    version: 1,
-    primitive: "static_key",
-    base_url: "https://notify-api.line.me",
-    display_name: "LINE Notify",
-    description: "LINE Notify \u2014 \u63A8\u64AD\u8A0A\u606F\uFF08static_key Bearer\uFF09",
-    required_secrets: [
-      {
-        key: "line_token",
-        label: "LINE Notify Token",
-        help: "\u81F3 https://notify-bot.line.me/my/ \u767C\u884C\u500B\u4EBA\u5B58\u53D6\u6B0A\u6756",
-        help_url: "https://notify-bot.line.me/my/"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.line_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "kbdb",
-    version: 1,
-    primitive: "static_key",
-    base_url: KBDB_BASE_TOKEN,
-    // 灌種子時換成部署的 KBDB_BASE_URL（#275）
-    display_name: "KBDB",
-    description: "KBDB partner API \u2014 block \u8B80\u5BEB\uFF08static_key Bearer\uFF09\u3002kbdb_* recipe \u5171\u7528\u6B64\u628A auth\u3002",
-    required_secrets: [
-      {
-        key: "kbdb_api_key",
-        label: "KBDB API Key\uFF08\u81F3 arcrun \u53D6\u7D71\u4E00 API Key \u7576 credential\uFF09",
-        help: "KBDB \u63A1 Supabase \u6A21\u5F0F\uFF1A\u8981\u7528 \u2192 \u53BB arcrun \u53D6\u7D71\u4E00 API Key \u7576\u6B64 credential",
-        help_url: "https://arcrun.dev"
-      }
-    ],
-    inject: {
-      header: {
-        Authorization: "Bearer {{secret.kbdb_api_key}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  // ── Service Account 類（Google 家族，共用同一份 service_account_json）────────
-  {
-    kind: "auth_recipe",
-    service: "google_sheets_sa",
-    version: 1,
-    primitive: "service_account",
-    service_account_kind: "google_jwt",
-    base_url: "https://sheets.googleapis.com/v4",
-    display_name: "Google Sheets (Service Account)",
-    description: "Google Sheets API \u2014 \u8A66\u7B97\u8868\u8B80\u5BEB\uFF08\u4F7F\u7528 Service Account\uFF09",
-    token_exchange: {
-      endpoint: "https://oauth2.googleapis.com/token",
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-    },
-    required_secrets: GOOGLE_SA_SECRETS,
-    inject: {
-      header: {
-        Authorization: "Bearer {{runtime.access_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "google_gmail_sa",
-    version: 1,
-    primitive: "service_account",
-    service_account_kind: "google_jwt",
-    base_url: "https://gmail.googleapis.com/gmail/v1",
-    display_name: "Gmail (Service Account)",
-    description: "Gmail API \u2014 \u767C\u9001\u90F5\u4EF6\uFF08\u4F7F\u7528 Service Account + Domain-Wide Delegation\uFF09",
-    token_exchange: {
-      endpoint: "https://oauth2.googleapis.com/token",
-      scopes: ["https://www.googleapis.com/auth/gmail.send"]
-    },
-    required_secrets: GOOGLE_SA_SECRETS,
-    inject: {
-      header: {
-        Authorization: "Bearer {{runtime.access_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  },
-  {
-    kind: "auth_recipe",
-    service: "google_drive_sa",
-    version: 1,
-    primitive: "service_account",
-    service_account_kind: "google_jwt",
-    base_url: "https://www.googleapis.com/drive/v3",
-    display_name: "Google Drive (Service Account)",
-    description: "Google Drive API \u2014 \u6A94\u6848\u4E0A\u50B3\u3001\u4E0B\u8F09\u3001\u7BA1\u7406\uFF08\u4F7F\u7528 Service Account\uFF09",
-    token_exchange: {
-      endpoint: "https://oauth2.googleapis.com/token",
-      scopes: ["https://www.googleapis.com/auth/drive"]
-    },
-    required_secrets: GOOGLE_SA_SECRETS,
-    inject: {
-      header: {
-        Authorization: "Bearer {{runtime.access_token}}"
-      }
-    },
-    created_at: now,
-    updated_at: now
-  }
-];
-
-// cypher-executor/src/lib/battery.ts
-var PAID_PRICE_PER_MILLION_READ = 1e-3;
-var PAID_PRICE_PER_MILLION_WRITTEN = 1;
-var BATTERY_WARN_AT = 20;
-var BATTERY_SAVER_AT = 10;
-function num(n) {
-  const v = typeof n === "number" ? n : Number(n);
-  return Number.isFinite(v) ? v : 0;
-}
-function monthPaid(m) {
-  if (!m) return null;
-  const incR = num(m.paid_included_rows_read);
-  const incW = num(m.paid_included_rows_written);
-  if (incR <= 0 || incW <= 0) return null;
-  const pr = num(m.rows_read) / incR * 100;
-  const pw = num(m.rows_written) / incW * 100;
-  const overR = Math.max(0, num(m.rows_read) - incR);
-  const overW = Math.max(0, num(m.rows_written) - incW);
-  const usd = overR / 1e6 * PAID_PRICE_PER_MILLION_READ + overW / 1e6 * PAID_PRICE_PER_MILLION_WRITTEN;
-  return { used: Math.max(pr, pw), usd: Math.round(usd * 100) / 100 };
-}
-function computeBattery(input) {
-  const paidMonth = monthPaid(input.month);
-  const isPaid = paidMonth !== null && (input.brake_enabled === false || input.month?.exceeded_free_daily === true);
-  const reset_at = (isPaid ? input.month?.next_reset_at : null) ?? input.reset_at ?? null;
-  const d1Used = isPaid ? paidMonth.used : Math.max(num(input.percent_written), num(input.percent_read));
-  const aiUsed = num(input.percent_ai);
-  const limiting = aiUsed > d1Used ? "ai" : "d1";
-  const rawUsed = Math.max(d1Used, aiUsed);
-  const used = Math.min(100, Math.max(0, rawUsed));
-  const remaining = Math.round((100 - used) * 10) / 10;
-  const plan = isPaid ? "paid" : "free";
-  const basis = isPaid ? "month" : "day";
-  const usd = isPaid ? paidMonth.usd : null;
-  if (input.brake_enabled === false) {
-    const billing = remaining <= 0;
-    return {
-      state: "nuclear",
-      remaining_percent: remaining,
-      billing,
-      plan,
-      basis,
-      estimated_overage_usd: usd,
-      limiting,
-      warn: false,
-      saver: false,
-      message: billing && limiting === "ai" ? "\u4ECA\u5929\u7684 AI \u514D\u8CBB\u984D\u5EA6\u5DF2\u7528\u5B8C\uFF0C\u8D85\u51FA\u7684\u90E8\u5206\u958B\u59CB\u8A08\u8CBB\u3002" : billing && isPaid ? `\u672C\u6708\u5167\u542B\u984D\u5EA6\u5DF2\u7528\u5B8C\uFF0C\u8D85\u51FA\u7684\u90E8\u5206\u958B\u59CB\u8A08\u8CBB\uFF08\u76EE\u524D\u4F30\u8A08\u591A\u82B1\u7D04 US$${usd}\uFF09\u3002` : null,
-      reset_at
-    };
-  }
-  const where = "\u5230\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\uFF0C\u6309\u300C\u653E\u884C\u300D\u6216\u95DC\u6389\u81EA\u52D5\u524E\u8ECA\u5373\u53EF\u4E0D\u518D\u53D7\u9650";
-  const unit = limiting === "ai" ? "\u4ECA\u5929\u7684 AI \u514D\u8CBB\u984D\u5EA6" : isPaid ? "\u672C\u6708\u5167\u542B\u984D\u5EA6" : "\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6";
-  const stops = limiting === "ai" ? "\u96F2\u7AEF\u8403\u53D6\u66AB\u505C" : "\u4E00\u822C\u5BEB\u5165\u66AB\u505C";
-  const stopsNext = limiting === "ai" ? "\u96F2\u7AEF\u8403\u53D6" : "\u4E00\u822C\u5BEB\u5165";
-  if (remaining <= 0) {
-    return {
-      state: "empty",
-      remaining_percent: 0,
-      billing: false,
-      plan,
-      basis,
-      estimated_overage_usd: usd,
-      limiting,
-      warn: true,
-      saver: true,
-      reset_at,
-      message: `${unit}\u7528\u5B8C\u4E86\uFF1A${stops}\uFF0C\u767B\u5165\u3001\u653E\u884C\u3001\u66F4\u65B0\u4ECD\u53EF\u4F7F\u7528\u3002${where}\u3002`
-    };
-  }
-  if (remaining <= BATTERY_SAVER_AT) {
-    return {
-      state: "saver",
-      remaining_percent: remaining,
-      billing: false,
-      plan,
-      basis,
-      estimated_overage_usd: usd,
-      limiting,
-      warn: true,
-      saver: true,
-      reset_at,
-      message: `\u5269\u9918\u7528\u91CF\u53EA\u6709 ${remaining}%\uFF0C\u5DF2\u9032\u5165\u7701\u96FB\u6A21\u5F0F\uFF08\u80CC\u666F\u540C\u6B65\u653E\u6162\uFF09\uFF0C\u518D\u7528\u5B8C\u5C31\u6703\u66AB\u505C${stopsNext}\u3002${where}\u3002`
-    };
-  }
-  if (remaining <= BATTERY_WARN_AT) {
-    return {
-      state: "warn20",
-      remaining_percent: remaining,
-      billing: false,
-      plan,
-      basis,
-      estimated_overage_usd: usd,
-      limiting,
-      warn: true,
-      saver: false,
-      reset_at,
-      message: `\u5269\u9918\u7528\u91CF ${remaining}%\uFF0C\u5FEB\u7528\u5B8C\u6642\u6703\u81EA\u52D5\u9032\u5165\u7701\u96FB\u6A21\u5F0F\u3002${where}\u3002`
-    };
-  }
-  return { state: "normal", remaining_percent: remaining, billing: false, plan, basis, estimated_overage_usd: usd, limiting, warn: false, saver: false, message: null, reset_at };
-}
-
-// cypher-executor/src/lib/cf-usage.ts
-var FREE = {
-  d1_write: 1e5,
-  d1_read: 5e6,
-  requests: 1e5,
-  vec_store: 5e6,
-  vec_query: 3e7,
-  ai: 1e4
-};
-var AI_DAILY_FREE_NEURONS = FREE.ai;
-var PAID = {
-  d1_write: 5e7,
-  d1_read: 25e9,
-  requests: 1e7,
-  vec_store: 1e7,
-  vec_query: 5e7,
-  ai: 1e4
-};
-var UNIT_USD = {
-  d1_write: 1 / 1e6,
-  d1_read: 1e-3 / 1e6,
-  requests: 0.3 / 1e6,
-  vec_store: 0.05 / 1e8,
-  vec_query: 0.01 / 1e6,
-  ai: 0.011 / 1e3
-};
-var KEYS = ["ai", "vec_store", "vec_query", "d1_write", "d1_read", "requests"];
-var DELAY_SEC = 120;
-function aiNeuronsToday(data, now2) {
-  return Math.round(Number(data.ai[utcDay(now2)] ?? 0));
-}
-function utcDay(now2) {
-  return new Date(now2).toISOString().slice(0, 10);
-}
-function nextUtcMidnight(now2) {
-  const d = new Date(now2);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).toISOString();
-}
-function nextMonthStart(now2) {
-  const d = new Date(now2);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString();
-}
-var sum = (s) => Object.values(s).reduce((a, b) => a + (Number(b) || 0), 0);
-var round4 = (n) => Math.round(n * 1e4) / 1e4;
-function inferPlan(m) {
-  const over = (s, line) => Object.values(s).some((v) => v > line);
-  return over(m.d1_write, FREE.d1_write) || over(m.d1_read, FREE.d1_read) || over(m.requests, FREE.requests) ? "paid" : "free";
-}
-function buildUsage(input) {
-  const { now: now2, data } = input;
-  const plan = input.plan ?? inferPlan(data);
-  const lines = plan === "paid" ? PAID : FREE;
-  const today = utcDay(now2);
-  const minutesToday = Math.max((now2 - Date.parse(`${today}T00:00:00Z`)) / 6e4, 1);
-  const items = [];
-  for (const key of KEYS) {
-    const series = data[key];
-    const line = lines[key];
-    const daily = key === "ai" || plan === "free" && (key === "d1_write" || key === "d1_read" || key === "requests");
-    const period = daily ? "day" : "month";
-    let used;
-    if (key === "vec_store") used = Math.max(0, ...Object.values(series).map((v) => Number(v) || 0));
-    else used = daily ? Number(series[today] ?? 0) : sum(series);
-    const item = {
-      key,
-      used: Math.round(used),
-      limit: line,
-      period,
-      reset_at: daily ? nextUtcMidnight(now2) : nextMonthStart(now2),
-      unit_usd: UNIT_USD[key]
-    };
-    if (key !== "vec_store" && key !== "vec_query") {
-      item.rate_per_min = Math.round(Number(series[today] ?? 0) / minutesToday * 100) / 100;
-    }
-    let over;
-    if (daily) over = Object.values(series).reduce((a, v) => a + Math.max(0, (Number(v) || 0) - line), 0);
-    else over = Math.max(0, used - line);
-    item.cost_usd = plan === "paid" || key === "ai" ? round4(over * UNIT_USD[key]) : 0;
-    items.push(item);
-  }
-  return {
-    plan,
-    base_usd: plan === "paid" ? 5 : void 0,
-    fetched_at: new Date(now2).toISOString(),
-    delay_sec: DELAY_SEC,
-    brake: input.brake,
-    items,
-    source: "cf",
-    estimated: false
-  };
-}
-function buildSelfUsage(input) {
-  const { now: now2, d1 } = input;
-  const plan = d1.exceeded_free_daily ? "paid" : "free";
-  const lines = plan === "paid" ? PAID : FREE;
-  const minutesToday = Math.max((now2 - Date.parse(`${utcDay(now2)}T00:00:00Z`)) / 6e4, 1);
-  const mk = (key, dayUsed, monthUsed) => {
-    const daily = plan === "free";
-    const used = daily ? dayUsed : monthUsed;
-    const over = Math.max(0, used - lines[key]);
-    return {
-      key,
-      used: Math.round(used),
-      limit: lines[key],
-      period: daily ? "day" : "month",
-      reset_at: daily ? nextUtcMidnight(now2) : nextMonthStart(now2),
-      rate_per_min: Math.round(dayUsed / minutesToday * 100) / 100,
-      unit_usd: UNIT_USD[key],
-      cost_usd: plan === "paid" ? round4(over * UNIT_USD[key]) : 0
-    };
-  };
-  return {
-    plan,
-    base_usd: plan === "paid" ? 5 : void 0,
-    fetched_at: new Date(now2).toISOString(),
-    delay_sec: 0,
-    brake: input.brake,
-    items: [mk("d1_write", d1.day_written, d1.month_written), mk("d1_read", d1.day_read, d1.month_read)],
-    source: "self",
-    estimated: true
-  };
-}
-var GQL = `query($a:String!,$f:Date!,$t:Date!){viewer{accounts(filter:{accountTag:$a}){
- d1:d1AnalyticsAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{rowsRead rowsWritten} dimensions{date}}
- ai:aiInferenceAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{totalNeurons} dimensions{date}}
- vq:vectorizeV2QueriesAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{queriedVectorDimensions} dimensions{date}}
- vs:vectorizeV2StorageAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){max{storedVectorDimensions} dimensions{date}}
- w:workersInvocationsAdaptive(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{requests} dimensions{date}}
-}}}`;
-var CfAnalyticsError = class extends Error {
-  constructor(message2, status) {
-    super(message2);
-    this.status = status;
-  }
-  status;
-};
-function addTo(s, date, v, mode = "sum") {
-  if (!date) return;
-  const n = Number(v) || 0;
-  s[date] = mode === "max" ? Math.max(s[date] ?? 0, n) : (s[date] ?? 0) + n;
-}
-function parseCfAnalytics(body) {
-  const accounts = body?.data?.viewer?.accounts;
-  const acc = accounts?.[0];
-  if (!acc) return null;
-  const out = { d1_write: {}, d1_read: {}, ai: {}, vec_query: {}, vec_store: {}, requests: {} };
-  for (const r of acc.d1 ?? []) {
-    addTo(out.d1_write, r.dimensions?.date, r.sum?.rowsWritten);
-    addTo(out.d1_read, r.dimensions?.date, r.sum?.rowsRead);
-  }
-  for (const r of acc.ai ?? []) addTo(out.ai, r.dimensions?.date, r.sum?.totalNeurons);
-  for (const r of acc.vq ?? []) addTo(out.vec_query, r.dimensions?.date, r.sum?.queriedVectorDimensions);
-  for (const r of acc.vs ?? []) addTo(out.vec_store, r.dimensions?.date, r.max?.storedVectorDimensions, "max");
-  for (const r of acc.w ?? []) addTo(out.requests, r.dimensions?.date, r.sum?.requests);
-  return out;
-}
-async function queryCf(token, accountId, from, to, f) {
-  const res = await f("https://api.cloudflare.com/client/v4/graphql", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query: GQL, variables: { a: accountId, f: from, t: to } })
-  });
-  if (!res.ok) throw new CfAnalyticsError(`CF GraphQL \u2192 HTTP ${res.status}`, res.status);
-  const body = await res.json();
-  const data = parseCfAnalytics(body);
-  if (!data || body.errors && body.errors.length) {
-    throw new CfAnalyticsError(`CF GraphQL \u8B80\u4E0D\u5230\u5206\u6790\uFF1A${body.errors?.[0]?.message ?? "\u7121\u5E33\u865F\u8CC7\u6599"}`, 200);
-  }
-  return data;
-}
-async function fetchCfAnalytics(token, accountId, now2, f = fetch) {
-  const today = utcDay(now2);
-  const month = await queryCf(token, accountId, `${today.slice(0, 7)}-01`, today, f);
-  try {
-    const day = await queryCf(token, accountId, today, today, f);
-    for (const k of Object.keys(month)) {
-      const v = day[k]?.[today];
-      if (v !== void 0) month[k][today] = Math.max(v, month[k][today] ?? 0);
-    }
-  } catch (e) {
-    console.warn("[cf-usage] \u53EA\u67E5\u4ECA\u5929\u5931\u6557\uFF0C\u6CBF\u7528\u6574\u6708\u8CC7\u6599\uFF1A", e instanceof Error ? e.message : e);
-  }
-  return month;
-}
-
-// cypher-executor/src/lib/cf-live.ts
-init_endpoints();
-var CF_LIVE_TTL_MS = 6e4;
-var cache = null;
-async function getCfMonth(env, now2, f = fetch) {
-  if (isPrivateCloud(env)) return null;
-  const token = env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN || "";
-  const accountId = env.CF_ACCOUNT_ID || "";
-  if (!token || !accountId) return null;
-  const key = `${accountId}|${token.slice(-6)}`;
-  if (cache && cache.key === key && now2 - cache.at < CF_LIVE_TTL_MS) return cache.data;
-  let data = null;
-  try {
-    data = await fetchCfAnalytics(token, accountId, now2, f);
-  } catch (e) {
-    console.warn("[cf-live] CF \u5206\u6790\u8B80\u4E0D\u5230\uFF1A", e instanceof Error ? e.message : e);
-  }
-  cache = { key, at: now2, data };
-  return data;
-}
-
-// cypher-executor/src/lib/ai-brake.ts
-var AI_BRAKE_LIMIT = AI_DAILY_FREE_NEURONS;
-function aiPercentToday(data, now2) {
-  if (!data) return null;
-  return Math.round(aiNeuronsToday(data, now2) / AI_BRAKE_LIMIT * 1e3) / 10;
-}
-async function aiBrakeVerdict(env, kbdbFetch4, now2 = Date.now()) {
-  try {
-    const res = await kbdbFetch4("/usage-brakes/settings");
-    if (res.ok) {
-      const s = await res.json();
-      if (s.brake_enabled === false) return { blocked: false, reason: "brake_off" };
-    }
-  } catch (e) {
-    console.warn("[ai-brake] \u8B80\u524E\u8ECA\u958B\u95DC\u5931\u6557\uFF0C\u8996\u540C\u958B\u8457\u7E7C\u7E8C\u5224\u65B7\uFF1A", e instanceof Error ? e.message : e);
-  }
-  const data = await getCfMonth(env, now2);
-  if (!data) return { blocked: false, reason: "unmeasurable" };
-  const used = aiNeuronsToday(data, now2);
-  if (used < AI_BRAKE_LIMIT) return { blocked: false, reason: "under_line" };
-  let brake = null;
-  try {
-    const res = await kbdbFetch4("/usage-brakes/metered", {
-      method: "POST",
-      body: JSON.stringify({ item: "ai", used, limit: AI_BRAKE_LIMIT })
-    });
-    if (res.ok) brake = (await res.json()).brake ?? null;
-  } catch (e) {
-    console.warn("[ai-brake] \u8A18\u524E\u8ECA\u7D00\u9304\u5931\u6557\uFF08\u7167\u64CB\uFF09\uFF1A", e instanceof Error ? e.message : e);
-  }
-  const msg = brake?.message ?? `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u4ECA\u5929\u7684 Workers AI \u5DF2\u7528 ${used.toLocaleString("en-US")} neurons\uFF0C\u5230\u4E86\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650 ${AI_BRAKE_LIMIT.toLocaleString("en-US")}\uFF0C\u96F2\u7AEF\u8403\u53D6\u5148\u66AB\u505C\uFF1BUTC 00:00\uFF08\u53F0\u5317 08:00\uFF09\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF0C\u6216\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\u3002`;
-  return { blocked: true, used, limit: AI_BRAKE_LIMIT, message: msg, brake };
-}
-
-// cypher-executor/src/routes/portal.ts
-init_dist();
-init_kbdb_proxy();
-
-// cypher-executor/src/routes/console-auth.ts
-init_dist();
-init_tenant();
-var consoleAuthRouter = new Hono2();
-var SESSION_TEMPLATE2 = "console_session";
-var SESSION_TTL_SECONDS2 = 30 * 24 * 60 * 60;
-async function validateConsoleSession(env, authHeader) {
-  const token = (authHeader ?? "").match(/^Bearer\s+(\S+)/i)?.[1];
-  if (!token) return false;
-  const sess = await ephemeralGet(env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
-  return !!sess;
-}
-function randomHex(bytes) {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function sha256Hex4(input) {
-  const data = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function hashPassword(password, salt) {
-  let h = `${salt}:${password}`;
-  for (let i = 0; i < 3; i++) h = await sha256Hex4(h);
-  return h;
-}
-function tenantOf(c) {
-  return knowledgeOwner(c.env);
-}
-async function loadCredentials(env) {
-  const creds = readAuthStore(env).console;
-  return creds ? { creds, source: "secrets" } : { creds: null, source: "none" };
-}
-async function saveCredentials(env, record, tokenOverride) {
-  await mutateAuthStore(env, (data) => {
-    data.console = record;
-  }, tokenOverride);
-}
-function callerCfToken(c) {
-  return c.req.header("x-cf-secrets-token") || void 0;
-}
-function consoleAuthStoreStatus(env) {
-  return {
-    home: "workers-secrets",
-    writable: authStoreWritable(env)
-  };
-}
-consoleAuthRouter.get("/console/auth-status", async (c) => {
-  const { creds, source } = await loadCredentials(c.env);
-  return c.json({ configured: !!creds, credentials_source: source, auth_store: consoleAuthStoreStatus(c.env) });
-});
-consoleAuthRouter.post("/console/setup", async (c) => {
-  const { creds: existing } = await loadCredentials(c.env);
-  if (existing) {
-    return c.json(
-      {
-        error: "\u9019\u53F0\u5BE6\u4F8B\u5DF2\u7D93\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\u4E86\uFF0C**\u4F60\u525B\u624D\u8F38\u5165\u7684\u5BC6\u78BC\u6C92\u6709\u88AB\u63A1\u7528**\uFF0C\u76EE\u524D\u7684\u5BC6\u78BC\u4ECD\u662F\u7576\u521D\u8A2D\u5B9A\u7684\u90A3\u4E00\u7D44\u3002\u8981\u7528\u820A\u5BC6\u78BC\u767B\u5165\uFF0C\u6216\u7528 /console/setup/reset\uFF08\u9700\u8981\u820A\u5BC6\u78BC\uFF09\u63DB\u4E00\u7D44\u3002",
-        code: "already_configured",
-        password_applied: false,
-        reset_path: "/console/setup/reset"
-      },
-      409
-    );
-  }
-  const body = await c.req.json().catch(() => null);
-  const email = (body?.email ?? "").trim();
-  const password = body?.password ?? "";
-  if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-  if (password.length < 8) return c.json({ error: "\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
-  const salt = randomHex(16);
-  const hash = await hashPassword(password, salt);
-  const record = { email: email.toLowerCase(), salt, hash, created_at: (/* @__PURE__ */ new Date()).toISOString() };
-  try {
-    await saveCredentials(c.env, record, callerCfToken(c));
-  } catch (e) {
-    return c.json({ error: `\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
-  }
-  const token = randomHex(32);
-  await ephemeralPut(c.env, {
-    template: SESSION_TEMPLATE2,
-    slots: ["created_at"],
-    hashField: "token_hash",
-    rawKey: token,
-    values: { created_at: String(Date.now()) },
-    ttlSeconds: SESSION_TTL_SECONDS2
-  });
-  return c.json({ success: true, session_token: token, tenant: tenantOf(c) });
-});
-consoleAuthRouter.post("/console/setup/reset", async (c) => {
-  const { creds: existing } = await loadCredentials(c.env);
-  if (!existing) return c.json({ error: "\u5C1A\u672A\u8A2D\u5B9A\u904E\uFF0C\u8ACB\u7528 /console/setup" }, 400);
-  const body = await c.req.json().catch(() => null);
-  const currentPassword = body?.current_password ?? "";
-  const email = (body?.email ?? "").trim();
-  const password = body?.password ?? "";
-  if (!currentPassword || !email || !password) return c.json({ error: "current_password\u3001email\u3001password \u5FC5\u586B" }, 400);
-  if (password.length < 8) return c.json({ error: "\u65B0\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
-  const currentHash = await hashPassword(currentPassword, existing.salt);
-  if (currentHash !== existing.hash) return c.json({ error: "\u820A\u5BC6\u78BC\u4E0D\u6B63\u78BA" }, 401);
-  const salt = randomHex(16);
-  const hash = await hashPassword(password, salt);
-  const record = { email: email.toLowerCase(), salt, hash, created_at: existing.created_at };
-  try {
-    await saveCredentials(c.env, record, callerCfToken(c));
-  } catch (e) {
-    return c.json({ error: `\u65B0\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
-  }
-  return c.json({ success: true });
-});
-function consolePropagating(c) {
-  return c.json(
-    {
-      error: "\u5E33\u865F\u8CC7\u6599\u525B\u525B\u66F4\u65B0\u904E\uFF0C\u9019\u53F0\u4F3A\u670D\u5668\u9084\u5728\u540C\u6B65\u4E2D\u2014\u2014\u8ACB\u7B49 10\uFF5E30 \u79D2\u518D\u767B\u5165\u4E00\u6B21\uFF08\u9019\u4E0D\u662F\u5BC6\u78BC\u932F\uFF09\u3002",
-      code: "auth_store_propagating"
-    },
-    503
-  );
-}
-consoleAuthRouter.post("/console/login", async (c) => {
-  const { creds: existing } = await loadCredentials(c.env);
-  if (!existing) {
-    if (await authStoreStaleHere(c.env)) return consolePropagating(c);
-    return c.json(
-      {
-        error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\uFF08\u6216\u8B80\u4E0D\u5230\uFF09\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8ACB\u5148\u5B8C\u6210\u9996\u6B21\u8A2D\u5B9A\u3002",
-        code: "auth_store_empty",
-        auth_store: consoleAuthStoreStatus(c.env)
-      },
-      400
-    );
-  }
-  const body = await c.req.json().catch(() => null);
-  const email = (body?.email ?? "").trim().toLowerCase();
-  const password = body?.password ?? "";
-  if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
-  const hash = await hashPassword(password, existing.salt);
-  if (email !== existing.email || hash !== existing.hash) {
-    if (await authStoreStaleHere(c.env)) return consolePropagating(c);
-    return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
-  }
-  const token = randomHex(32);
-  await ephemeralPut(c.env, {
-    template: SESSION_TEMPLATE2,
-    slots: ["created_at"],
-    hashField: "token_hash",
-    rawKey: token,
-    values: { created_at: String(Date.now()) },
-    ttlSeconds: SESSION_TTL_SECONDS2
-  });
-  return c.json({ success: true, session_token: token, tenant: tenantOf(c) });
-});
-consoleAuthRouter.get("/console/session", async (c) => {
-  const auth = c.req.header("authorization") ?? "";
-  const token = auth.match(/^Bearer\s+(\S+)/i)?.[1];
-  if (!token) return c.json({ valid: false }, 401);
-  const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
-  if (!sess) return c.json({ valid: false }, 401);
-  return c.json({ valid: true, tenant: tenantOf(c) });
-});
-consoleAuthRouter.post("/console/logout", async (c) => {
-  const auth = c.req.header("authorization") ?? "";
-  const token = auth.match(/^Bearer\s+(\S+)/i)?.[1];
-  if (token) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
-  return c.json({ success: true });
-});
-
-// cypher-executor/src/lib/portal-auth.ts
-var PBKDF2_ALGO_PREFIX = "pbkdf2-sha256";
-var PBKDF2_ITERATIONS = 1e5;
-function b64encode(bytes) {
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin);
-}
-function b64decode(s) {
-  try {
-    const bin = atob(s);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
-  } catch {
-    return null;
-  }
-}
-async function deriveBits(password, salt, iterations) {
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, [
-    "deriveBits"
-  ]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
-    key,
-    256
-  );
-  return new Uint8Array(bits);
-}
-function constantTimeEqual(a, b) {
-  const ab = new TextEncoder().encode(a);
-  const bb = new TextEncoder().encode(b);
-  let diff = ab.length ^ bb.length;
-  const len = Math.max(ab.length, bb.length);
-  for (let i = 0; i < len; i++) {
-    diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0);
-  }
-  return diff === 0;
-}
-async function hashPassword2(password, iterations = PBKDF2_ITERATIONS) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const hash = await deriveBits(password, salt, iterations);
-  return `${PBKDF2_ALGO_PREFIX}$${iterations}$${b64encode(salt)}$${b64encode(hash)}`;
-}
-async function verifyPassword(password, stored) {
-  const parts = (stored ?? "").split("$");
-  if (parts.length !== 4 || parts[0] !== PBKDF2_ALGO_PREFIX) return false;
-  const iterations = Number.parseInt(parts[1], 10);
-  if (!Number.isFinite(iterations) || iterations < 1 || iterations > 1e7) return false;
-  const salt = b64decode(parts[2]);
-  if (!salt || salt.length === 0) return false;
-  const derived = await deriveBits(password, salt, iterations);
-  return constantTimeEqual(b64encode(derived), parts[3]);
-}
-function randomHex2(bytes) {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function sha256Hex5(input) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function generatePassword(length = 16) {
-  const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const arr = new Uint8Array(length);
-  crypto.getRandomValues(arr);
-  let out = "";
-  for (const b of arr) out += charset[b % charset.length];
-  return out;
-}
-
-// cypher-executor/src/lib/mcp-redirect-hosts.ts
-var MCP_BUILTIN_REDIRECT_HOSTS = ["claude.ai", "claude.com", "anthropic.com"];
-var MCP_REDIRECT_HOST_TEMPLATE = "portal_mcp_redirect_host";
-function normalizeRedirectHost(input) {
-  const raw2 = String(input ?? "").trim();
-  if (!raw2) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
-  let host = raw2.toLowerCase();
-  if (host.includes("://")) {
-    let u;
-    try {
-      u = new URL(raw2);
-    } catch {
-      return { ok: false, error: `\u770B\u4E0D\u61C2\u9019\u500B\u7DB2\u5740\uFF1A${raw2}` };
-    }
-    if (u.protocol !== "https:" && u.protocol !== "http:") {
-      return { ok: false, error: "\u53EA\u6536 https:// \u958B\u982D\u7684\u7DB2\u5740\uFF08\u672C\u6A5F\u6E2C\u8A66\u53EF\u7528 localhost\uFF09" };
-    }
-    host = u.hostname.toLowerCase();
-  } else {
-    host = host.split("/")[0].split("?")[0];
-    if (host.includes("@")) return { ok: false, error: "\u8ACB\u4E0D\u8981\u5E36\u5E33\u865F\u5BC6\u78BC\uFF0C\u53EA\u8981\u7DB2\u57DF\u5C31\u597D" };
-    if (host.startsWith("[")) return { ok: false, error: "\u4E0D\u652F\u63F4 IPv6 \u4F4D\u5740\uFF0C\u672C\u6A5F\u6E2C\u8A66\u8ACB\u586B localhost" };
-    host = host.split(":")[0];
-  }
-  if (!host) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host)) {
-    return { ok: false, error: `\u300C${raw2}\u300D\u4E0D\u662F\u5408\u6CD5\u7684\u7DB2\u57DF\u3002\u4E0D\u63A5\u53D7\u842C\u7528\u5B57\u5143\uFF0C\u8ACB\u586B\u78BA\u5207\u7684\u7DB2\u57DF` };
-  }
-  const isLocal = host === "localhost" || host === "127.0.0.1";
-  if (!isLocal && !host.includes(".")) {
-    return { ok: false, error: `\u300C${host}\u300D\u770B\u8D77\u4F86\u4E0D\u662F\u5B8C\u6574\u7DB2\u57DF\uFF08\u5C11\u4E86 .com \u4E4B\u985E\u7684\u7D50\u5C3E\uFF09` };
-  }
-  if (host.length > 253) return { ok: false, error: "\u7DB2\u57DF\u592A\u9577" };
-  if (!isLocal && host.split(".").length < 2) {
-    return { ok: false, error: `\u300C${host}\u300D\u7BC4\u570D\u592A\u5927\uFF0C\u8ACB\u586B\u5B8C\u6574\u7DB2\u57DF` };
-  }
-  if (MCP_BUILTIN_REDIRECT_HOSTS.some((h) => host === h || host.endsWith("." + h))) {
-    return { ok: false, error: `\u300C${host}\u300D\u662F\u5167\u5EFA\u5C31\u5141\u8A31\u7684\u7DB2\u57DF\uFF08Claude \u5B98\u65B9\uFF09\uFF0C\u4E0D\u5FC5\u518D\u52A0\u4E00\u6B21` };
-  }
-  return { ok: true, host };
-}
-function mcpUrlFor(subdomain) {
-  const sub = String(subdomain ?? "").trim();
-  if (!sub) return "";
-  return `https://arcrun-mcp.${sub}.workers.dev/mcp`;
-}
-
-// cypher-executor/src/routes/portal.ts
-init_endpoints();
-
-// cypher-executor/src/lib/mcp-token-ttl.ts
-var NEVER_EXPIRES_SECONDS = 0;
-var DEFAULT_TOKEN_TTL_SECONDS = NEVER_EXPIRES_SECONDS;
-var MIN_TOKEN_TTL_SECONDS = 3600;
-var MAX_TOKEN_TTL_SECONDS = 31536e4;
-var MCP_TOKEN_TTL_TEMPLATE = "portal_mcp_token_ttl";
-function normalizeTokenTtl(input) {
-  let n;
-  if (typeof input === "number") {
-    n = input;
-  } else if (typeof input === "string" && input.trim() !== "") {
-    n = Number(input.trim());
-  } else {
-    return { ok: false, error: "\u8ACB\u586B\u5165 token \u6709\u6548\u79D2\u6578\uFF08\u6B63\u6574\u6578\uFF09" };
-  }
-  if (!Number.isFinite(n)) return { ok: false, error: `\u300C${String(input)}\u300D\u4E0D\u662F\u6709\u6548\u7684\u79D2\u6578` };
-  n = Math.floor(n);
-  if (n === NEVER_EXPIRES_SECONDS) return { ok: true, seconds: NEVER_EXPIRES_SECONDS, clamped: false };
-  if (n < 0) return { ok: false, error: "token \u6709\u6548\u79D2\u6578\u4E0D\u80FD\u662F\u8CA0\u6578" };
-  const clamped = n < MIN_TOKEN_TTL_SECONDS || n > MAX_TOKEN_TTL_SECONDS;
-  const seconds = Math.min(Math.max(n, MIN_TOKEN_TTL_SECONDS), MAX_TOKEN_TTL_SECONDS);
-  return { ok: true, seconds, clamped };
-}
-
-// cypher-executor/src/lib/portal-seeds.ts
-var PORTAL_TEMPLATE_SEEDS = [
-  {
-    // design §2.1：portal 同仁帳號。password_hash 存 KDF 輸出（pbkdf2-sha256$…，D-6），
-    // 永不存明碼；libraries 是 JSON array 字串（["general"] / ["*"]＝全庫）。
-    name: "portal_user",
-    description: "RAG Portal \u540C\u4EC1\u5E33\u865F\uFF08portal-auth \xA72.1\uFF1B\u8CC7\u6599\u5BEB {tenant}::portal \u5B50 namespace\uFF09",
-    slots: ["email", "display_name", "status", "role", "password_hash", "libraries", "created_at", "updated_at"],
-    created_by: "system"
-  },
-  {
-    // design §3.2：庫目錄（admin 頁列庫用）。庫本體＝知識條目 metadata_json.$.library 標記，
-    // 這裡只是「有哪些庫」的登記簿。
-    // graph_source（design D-4，P3）：'true'＝此庫是知識圖譜的萃取來源——graph 粗閘按
-    // 「用戶是否擁有 graph 來源庫權限」放行。**沒有任何庫標記時預設視同 general**（D-4 定案）。
-    // root / mode / reason（InkStoneCo#44，2026-08-17）：**一個庫＝地端的一個資料夾**，
-    // 而在此之前雲端只記得住它的名字，於是「資料夾」在雲端不是一個持久物件——
-    // 它是「有卡片才有庫」的副作用（arcrun-rag#106 實測：空資料夾指定了，雲端什麼都不出現）。
-    // leo：「**不能因為地端資料夾內沒東西就當作不存在，如果那是他打算放東西的資料夾呢？**」
-    // ⇒ 小幫手一報上來就登記，不必等到有卡片。
-    //   root＝地端絕對路徑（使用者認得回去的那條路）
-    //   mode＝收檔策略（all／curated-wiki／docs-only，地端 IngestPlan 決定）
-    //   reason＝那句人話（「為什麼只收這些」）
-    // 🔴 這三個是**欄位、不是 JSON 團**（D91）：它們是「資料夾」這個物件本身的屬性。
-    //    每輪會變的計數（同步數／總數／整棵樹）**不住在這裡**——那是投影，
-    //    見 portal.ts 的 folderTreeKey() 與那段「為什麼樹不進 KBDB」的說明。
-    // 既有實例靠 ensurePortalTemplates 的「補 slots」路徑自動補上（同 P3 加 graph_source 那次）。
-    name: "portal_library",
-    description: "RAG Portal \u5EAB\u76EE\u9304\u767B\u8A18\uFF08portal-auth \xA73.2\uFF1B\u4E00\u500B\u5EAB\uFF1D\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u4E00\u500B\u8CC7\u6599\u593E\uFF09",
-    slots: ["name", "display_name", "description", "status", "graph_source", "root", "mode", "reason"],
-    created_by: "system"
-  },
-  {
-    // `inkstone/Arcrun#164`：「哪些網址可以接我的 MCP」——一個網域一筆 record。
-    // 為什麼是 record 而不是一個字串設定：加了誰要留得下痕跡（本票紅線第三條），
-    // 而「誰在什麼時候加的」是這個物件本身的屬性，不是一團 JSON（D91 同一條）。
-    //   host       ＝ 已正規化的小寫網域（lib/mcp-redirect-hosts.ts normalizeRedirectHost）
-    //   label      ＝ 使用者自己認得的名字（「我的 n8n」），純顯示用
-    //   created_at ＝ ISO 時間字串
-    //   created_by ＝ 加它的那個 portal 帳號 email
-    // 🔴 不寫 KV（leo 2026-08-25 已禁長效用途），也不加 D1 表——這是 KBDB 萬用表的 template。
-    name: "portal_mcp_redirect_host",
-    description: "MCP OAuth \u5141\u8A31\u7684 redirect \u7DB2\u57DF\uFF08Arcrun#164\uFF1B\u4E00\u500B\u7DB2\u57DF\u4E00\u7B46\uFF0C\u53EF\u52A0\u53EF\u6536\u56DE\uFF09",
-    slots: ["host", "label", "created_at", "created_by"],
-    created_by: "system"
-  },
-  {
-    // `inkstone/Arcrun#19`：MCP access_token 的 TTL 交由用戶決定（風險偏好，非技術常數）。
-    // 一台實例一筆設定（純量，不是清單）——**鏡像上面 portal_mcp_redirect_host 那條路**
-    // （KBDB template ＋ 給 mcp 讀的內部端點），不自創第二套機制（D36）。
-    //   ttl_seconds ＝ 已正規化並夾進 [1h, 30d] 的秒數（lib/mcp-token-ttl.ts）
-    //   updated_at  ＝ ISO 時間字串
-    //   updated_by  ＝ 改它的那個 portal admin email（改了誰要留得下痕跡，D91 同一條）
-    // 讀不到／沒設過 → mcp 回退 env MCP_TOKEN_TTL 預設（誠實回退，不假綠）。
-    // 🔴 不寫 KV（長效設定，leo 2026-08-25 已禁 KV 長效用途），也不加 D1 表——KBDB 萬用表 template。
-    name: "portal_mcp_token_ttl",
-    description: "MCP OAuth access_token \u6709\u6548\u79D2\u6578\uFF08Arcrun#19\uFF1B\u4E00\u53F0\u5BE6\u4F8B\u4E00\u7B46\uFF0C\u8B80\u4E0D\u5230\u56DE\u9000 env \u9810\u8A2D\uFF09",
-    slots: ["ttl_seconds", "updated_at", "updated_by"],
-    created_by: "system"
-  },
-  {
-    // inkstone/Arcrun#277：這台雲端的萃取 AI 由管理員選（每種 AI 一份 recipe，見 api-recipe-seeds）。
-    // 一台雲端一筆設定（純量，鏡像 portal_mcp_token_ttl 那條路）；**每台雲端各一份，不跨租戶共用**。
-    //   recipe     ＝ 提供商清單上的 id（extract_ai_workers_ai｜extract_ai_openai｜…｜extract_ai_ollama｜extract_ai_openai_compat；見 extract-ai-providers.ts）
-    //   base_url   ＝ 地端／自建端點根網址（雲端託管的家與 Workers AI 不用）
-    //   model      ＝ 模型名（Workers AI 不填＝recipe 預設）
-    //   updated_at／updated_by ＝ 誰在什麼時候改的
-    // 金鑰**不在這裡**：只存在 credential 中心（名字 extract_ai_api_key），這筆 record 永遠沒有值。
-    // 🔴 不寫 KV、不加 D1 表——KBDB 萬用表 template。
-    name: "portal_extract_ai",
-    description: "\u9019\u53F0\u96F2\u7AEF\u8403\u53D6\u7528\u7684 AI \u8A2D\u5B9A\uFF08Arcrun#277\uFF1B\u4E00\u53F0\u96F2\u7AEF\u4E00\u7B46\uFF0C\u8B80\u4E0D\u5230\uFF1DCF Workers AI \u9810\u8A2D\uFF09",
-    slots: ["recipe", "base_url", "model", "updated_at", "updated_by"],
-    created_by: "system"
-  },
-  {
-    // t130：rag_ingest_card.post_triplet 寫 POST /records {template:'triplet'}。
-    // 新實例若無此 template 回 400「template not found: triplet」→ 三元組全滅。
-    // slots 來源：kbdb_list_templates 核實（2026-07-19，library-map.test.ts PROD_TRIPLET_SLOTS）
-    // + library（library-map.ts M1 預案：recompute 歸庫用，ensurePortalTemplates 若缺則 PATCH 補入）。
-    // + machine（`inkstone/mira#6`，leo 2026-08-18 拍板「掛上資料夾至少先給一個 ID，
-    //   例如 youlinhsieh@Leo-MBA」）：這則知識的原稿**在哪一台機器上**。
-    //   為什麼三元組也要有這一格（而不是只放在 block 的 metadata）：`source_uri` 只到
-    //   「相對於被監看資料夾的路徑」為止，兩台機器上的 `RFP/design.md` 完全同名 ⇒
-    //   rag_ingest_card 的 upsert（先照鍵刪光再寫）會把另一台的三元組無聲刪掉。
-    //   machine 是唯一分得開它們的那一維，而 KBDB 會**靜默丟掉** template 沒宣告的 slot
-    //   （record-crud.ts createRecord），所以少了這一列，daemon 送上來的值等於沒送。
-    //   走的就是 library 當初那條路：加在這裡，ensurePortalTemplates 對既有實例 PATCH 補聯集。
-    name: "triplet",
-    description: "KBDB \u77E5\u8B58\u5716\u8B5C\u4E09\u5143\u7D44\uFF08kbdb-graph-plugin \u5BEB\u5165\uFF1Bportal \u8B80\u6B64 template \u5EFA\u9130\u63A5\u5716\uFF09",
-    slots: [
-      "subject",
-      "predicate",
-      "object",
-      "source_block_id",
-      "confidence",
-      "clusters_json",
-      "bridge_score",
-      "subject_entity_type",
-      "object_entity_type",
-      "status",
-      "superseded_by",
-      "source_uri",
-      "content_hash",
-      "source_anchor",
-      "predicate_embed",
-      "library",
-      "machine"
-    ],
-    created_by: "system"
-  }
-];
-
-// cypher-executor/src/lib/extract-ai.ts
-init_recipe_payload();
-init_auth_dispatcher();
-init_recipes();
-var EXTRACT_AI_TEMPLATE = "portal_extract_ai";
-var DEFAULT_EXTRACT_AI_RECIPE = "extract_ai_workers_ai";
-var EXTRACT_AI_RECIPE_IDS = EXTRACT_AI_PROVIDERS.map((p) => p.id);
-var DEFAULT_EXTRACT_AI_CONFIG = { recipe: DEFAULT_EXTRACT_AI_RECIPE };
-function validateExtractAiConfig(raw2) {
-  if (!raw2 || typeof raw2 !== "object") return { ok: false, error: "body \u5FC5\u9808\u662F JSON \u7269\u4EF6" };
-  const o = raw2;
-  const recipe = typeof o.recipe === "string" ? o.recipe.trim() : "";
-  const provider = findProvider(recipe);
-  if (!provider) {
-    return { ok: false, error: `recipe \u5FC5\u9808\u662F\u6E05\u55AE\u4E0A\u7684\u63D0\u4F9B\u5546\u4E4B\u4E00\uFF1A${EXTRACT_AI_RECIPE_IDS.join("\u3001")}` };
-  }
-  const config = { recipe };
-  const model = typeof o.model === "string" ? o.model.trim() : "";
-  if (model) config.model = model;
-  if (provider.kind === "http" && !model) {
-    return { ok: false, error: `${provider.label} \u5FC5\u9808\u5F9E\u9078\u55AE\u6311\u4E00\u500B\u6A21\u578B\uFF08model\uFF09` };
-  }
-  if (provider.needs_base_url) {
-    const baseUrl = typeof o.base_url === "string" ? o.base_url.trim().replace(/\/+$/, "") : "";
-    if (!baseUrl) return { ok: false, error: `${provider.label} \u5FC5\u9808\u586B base_url\uFF08\u4F8B ${provider.default_base_url ?? "http://ollama.internal:11434"}\uFF09` };
-    let u;
-    try {
-      u = new URL(baseUrl);
-    } catch {
-      return { ok: false, error: "base_url \u4E0D\u662F\u5408\u6CD5\u7DB2\u5740" };
-    }
-    if (u.protocol !== "http:" && u.protocol !== "https:") {
-      return { ok: false, error: "base_url \u53EA\u63A5\u53D7 http\uFF0Fhttps" };
-    }
-    config.base_url = baseUrl;
-  }
-  return { ok: true, config };
-}
-async function loadRecipe(env, id) {
-  if (id !== DEFAULT_EXTRACT_AI_RECIPE && env.RECIPES) {
-    const installed = await resolveRecipe(id, env.RECIPES).catch(() => null);
-    if (installed) return installed;
-  }
-  return API_RECIPE_SEEDS.find((s) => s.canonical_id === id) ?? null;
-}
-function renderPayload(template, ctx) {
-  const rendered = renderBodyTemplate(template, ctx);
-  const out = {};
-  for (const [k, v] of Object.entries(rendered ?? {})) {
-    if (typeof v === "string" && /^\s*\{\{[\w.]+\}\}\s*$/.test(v)) continue;
-    out[k] = v;
-  }
-  return out;
-}
-var WORKERS_AI_MAX_ATTEMPTS = 3;
-var TRANSIENT_WORKERS_AI_CODES = /\b(4007|4002)\b/;
-function isTransientWorkersAiError(message2) {
-  return TRANSIENT_WORKERS_AI_CODES.test(message2);
-}
-function workersAiBackoffMs(attempt, rand = Math.random) {
-  return (attempt === 1 ? 1e3 : 3e3) + Math.floor(rand() * 250);
-}
-var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function runExtractAi(env, tenant2, config, req) {
-  const recipe = await loadRecipe(env, config.recipe);
-  if (!recipe) {
-    return { ok: false, code: "ai_recipe_missing", error: `\u627E\u4E0D\u5230\u8403\u53D6 AI recipe\u300C${config.recipe}\u300D` };
-  }
-  const ctx = {
-    messages: [
-      ...req.system ? [{ role: "system", content: req.system }] : [],
-      {
-        role: "user",
-        content: req.images?.length ? [{ type: "text", text: req.prompt }, ...req.images.map((url2) => ({ type: "image_url", image_url: { url: url2 } }))] : req.prompt
-      }
-    ],
-    max_tokens: req.maxTokens,
-    temperature: req.temperature ?? 0.2,
-    ...req.jsonObject ? { response_format: { type: "json_object" } } : {},
-    ...config.base_url ? { base_url: config.base_url } : {},
-    ...config.model ? { model: config.model } : {}
-  };
-  const payload = renderPayload(recipe.body_template ?? {}, ctx);
-  if (req.extra && recipe.auth === "binding") Object.assign(payload, req.extra);
-  if (recipe.auth === "binding") {
-    const name = recipe.binding_name ?? "AI";
-    const binding = env[name];
-    if (!binding || typeof binding.run !== "function") {
-      return { ok: false, code: "ai_binding_missing", error: `\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}` };
-    }
-    const model2 = req.model || config.model || recipe.endpoint;
-    let lastError = "";
-    for (let attempt = 1; attempt <= WORKERS_AI_MAX_ATTEMPTS; attempt++) {
-      try {
-        return { ok: true, out: await binding.run(model2, payload), model: model2, provider: recipe.canonical_id };
-      } catch (e) {
-        lastError = e instanceof Error ? e.message : String(e);
-        if (!isTransientWorkersAiError(lastError) || attempt === WORKERS_AI_MAX_ATTEMPTS) break;
-        await sleep(workersAiBackoffMs(attempt));
-      }
-    }
-    return { ok: false, code: "ai_failed", error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${lastError}` };
-  }
-  const url = String(renderBodyTemplate(recipe.endpoint, ctx) ?? "");
-  if (!/^https?:\/\//.test(url)) {
-    return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u7DB2\u5740\u4E0D\u5B8C\u6574\uFF08${url}\uFF09\u2014\u2014\u7BA1\u7406\u54E1\u5C1A\u672A\u8A2D\u5B9A base_url\uFF1F` };
-  }
-  const headers = { "Content-Type": "application/json" };
-  const recipeHeaders = recipe.headers ?? {};
-  for (const [k, v] of Object.entries(recipeHeaders)) {
-    const names = [...v.matchAll(/\{\{credential\.([\w-]+)\}\}/g)].map((m) => m[1]);
-    if (names.length === 0) {
-      headers[k] = v;
-      continue;
-    }
-    const secrets = await resolveSecretsFromNewHome(env, tenant2, names);
-    if (names.every((n) => secrets[n])) {
-      headers[k] = v.replace(/\{\{credential\.([\w-]+)\}\}/g, (_m, n) => secrets[n]);
-    }
-  }
-  const model = String(payload.model ?? config.model ?? "");
-  try {
-    const res = await fetch(url, {
-      method: (recipe.method ?? "POST").toUpperCase(),
-      headers,
-      body: JSON.stringify(payload)
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u56DE ${res.status}\uFF1A${text.slice(0, 200)}` };
-    }
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u56DE\u7684\u4E0D\u662F JSON\uFF1A${text.slice(0, 120)}` };
-    }
-    return { ok: true, out: json, model, provider: recipe.canonical_id };
-  } catch (e) {
-    return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
-  }
-}
-var NON_CHAT_MODEL = /(embed|whisper|tts|dall-e|moderation|image|audio|realtime|transcribe|rerank|imagen|veo)/i;
-async function fetchModelIds(url, headers) {
-  try {
-    const res = await fetch(url, { headers });
-    if (!res.ok) return { error: `\u7AEF\u9EDE\u56DE ${res.status}\uFF0C\u5217\u4E0D\u51FA\u6A21\u578B` };
-    const json = await res.json();
-    const raw2 = json.data ?? json.models ?? [];
-    const ids = raw2.map((m) => typeof m.id === "string" ? m.id : typeof m.name === "string" ? m.name : "").map((id) => id.replace(/^models\//, "")).filter(Boolean);
-    return { ids };
-  } catch (e) {
-    return { error: `\u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
-  }
-}
-async function listProviderModels(env, tenant2, providerId, baseUrl) {
-  const provider = findProvider(providerId);
-  if (!provider) return { models: [], source: "none", error: `\u6C92\u6709\u9019\u500B\u63D0\u4F9B\u5546\uFF1A${providerId}` };
-  let key = "";
-  if (provider.credential) {
-    try {
-      key = (await resolveSecretsFromNewHome(env, tenant2, [provider.credential]))[provider.credential] ?? "";
-    } catch {
-      key = "";
-    }
-  }
-  const headers = { ...provider.models_headers ?? {} };
-  if (key) {
-    headers.Authorization = `Bearer ${key}`;
-    if (provider.id === "extract_ai_anthropic") headers["x-api-key"] = key;
-  }
-  if (provider.needs_base_url) {
-    const base = (baseUrl ?? "").trim().replace(/\/+$/, "");
-    if (!/^https?:\/\//.test(base)) return { models: [], source: "none", error: "\u5148\u586B\u7AEF\u9EDE\u7DB2\u5740\uFF0C\u624D\u80FD\u5217\u51FA\u5B83\u6709\u54EA\u4E9B\u6A21\u578B" };
-    const r2 = await fetchModelIds(`${base}/v1/models`, headers);
-    if ("error" in r2) return { models: [], source: "none", error: r2.error };
-    if (r2.ids.length === 0) return { models: [], source: "none", error: "\u7AEF\u9EDE\u6C92\u6709\u56DE\u4EFB\u4F55\u6A21\u578B\uFF08Ollama \u5148 pull \u4E00\u500B\u6A21\u578B\uFF09" };
-    return { models: r2.ids.sort().map((id) => ({ id })), source: "live" };
-  }
-  if (!provider.models_url) return { models: provider.models, source: "catalog" };
-  if (!key) {
-    return { models: provider.models, source: "catalog", error: "\u9084\u6C92\u52A0\u91D1\u9470\uFF0C\u7121\u6CD5\u5411\u8A72\u5BB6\u53D6\u5F97\u6700\u65B0\u6A21\u578B\u6E05\u55AE\uFF1B\u5148\u986F\u793A\u9810\u8A2D\u6E05\u55AE" };
-  }
-  const r = await fetchModelIds(provider.models_url, headers);
-  if ("error" in r || r.ids.length === 0) {
-    return { models: provider.models, source: "catalog", error: "error" in r ? r.error : "\u8A72\u5BB6\u6C92\u6709\u56DE\u4EFB\u4F55\u6A21\u578B" };
-  }
-  const chat = r.ids.filter((id) => !NON_CHAT_MODEL.test(id));
-  return { models: (chat.length ? chat : r.ids).sort().map((id) => ({ id })), source: "live" };
-}
-
-// cypher-executor/src/routes/portal.ts
-init_tenant();
-init_credentials();
-init_kbdb_caller();
-
-// cypher-executor/src/lib/ai-response.ts
-function pickChatContent(o) {
-  const choices = o.choices;
-  if (!Array.isArray(choices) || choices.length === 0) return void 0;
-  const first = choices[0];
-  if (!first || typeof first !== "object") return void 0;
-  const msg = first.message;
-  if (!msg || typeof msg !== "object") return void 0;
-  const content = msg.content;
-  return typeof content === "string" && content.length > 0 ? content : void 0;
-}
-function pickResponseValue(out) {
-  if (out === null || out === void 0) return void 0;
-  if (typeof out === "string") return out;
-  if (typeof out !== "object") return out;
-  const o = out;
-  const chat = pickChatContent(o);
-  if (chat !== void 0) return chat;
-  if ("response" in o) return o.response;
-  const result = o.result;
-  if (result && typeof result === "object") {
-    const r = result;
-    const rc = pickChatContent(r);
-    if (rc !== void 0) return rc;
-    if ("response" in r) return r.response;
-  }
-  return void 0;
-}
-function normalizeAiText(out) {
-  const v = pickResponseValue(out);
-  if (v === null || v === void 0) return { text: "", kind: "empty" };
-  if (typeof v === "string") return { text: v.trim(), kind: v.trim() ? "string" : "empty" };
-  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
-    return { text: String(v), kind: "scalar" };
-  }
-  if (typeof v === "object") {
-    try {
-      const s = JSON.stringify(v);
-      if (typeof s !== "string") {
-        return { text: "", kind: "unrenderable", reason: "JSON.stringify \u56DE undefined" };
-      }
-      return { text: s, kind: "json" };
-    } catch (e) {
-      return {
-        text: "",
-        kind: "unrenderable",
-        reason: e instanceof Error ? e.message : "\u7121\u6CD5\u5E8F\u5217\u5316"
-      };
-    }
-  }
-  return { text: "", kind: "unrenderable", reason: `\u672A\u9810\u671F\u7684\u578B\u5225 ${typeof v}` };
-}
-function parseExpectShape(raw2, hasPrompt) {
-  const s = String(raw2 ?? "").trim();
-  if (s === "json_object" || s === "text") return s;
-  return hasPrompt ? "json_object" : "text";
-}
-function hasJsonObject(text) {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return { ok: false, reason: "\u6574\u6BB5\u56DE\u61C9\u88E1\u627E\u4E0D\u5230 JSON \u7269\u4EF6\uFF08\u6C92\u6709\u6210\u5C0D\u7684\u5927\u62EC\u865F\uFF09" };
-  try {
-    const parsed = JSON.parse(text.slice(start, end + 1));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { ok: false, reason: "\u5927\u62EC\u865F\u88E1\u7684\u5167\u5BB9\u4E0D\u662F JSON \u7269\u4EF6" };
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, reason: `JSON \u89E3\u6790\u5931\u6557\uFF1A${e instanceof Error ? e.message : "\u672A\u77E5\u932F\u8AA4"}` };
-  }
-}
-function snippetForError(text, max = 120) {
-  const one = text.replace(/\s+/g, " ").trim();
-  if (!one) return "\uFF08\u7A7A\u7684\uFF09";
-  return one.length <= max ? one : one.slice(0, max) + "\u2026";
-}
-
-// cypher-executor/src/lib/prompt-table.ts
-init_lib();
-
-// cypher-executor/src/lib/prompt-tables/extract_wiki.json
-var extract_wiki_default = {
-  kind: "prompt_table",
-  name: "extract_wiki",
-  description: "\u5C0F\u5E6B\u624B\u8403\u53D6\uFF1A\u4E00\u4EFD\u539F\u7A3F \u2192 \u6587\u4EF6\u7E3D\u89BD\uFF0BN \u500B\u539F\u5B50\u6982\u5FF5\uFF08JSON\uFF09\u3002\u6BCF\u584A\u4E00\u500B key\u3001\u4E00\u500B\u7248\u672C\uFF1Bkey \u7684\u524D\u7DB4\u662F common \u6216\u8B80\u6A94\u7279\u4F8B\u7DE8\u865F\uFF08arcrun-rag system-dev/wiki/cards/reading-edge-cases/\uFF09\u3002\u6CE8\u5165\u65B9\u5F0F\u7531 inject \u6C7A\u5B9A\uFF1Atext\uFF1D\u4F9D\u8868\u4E0A\u9806\u5E8F\u4EE5\u63DB\u884C\u63A5\u8D77\u4F86\uFF08\u8207 #299 \u524D\u5C0F\u5E6B\u624B\u90A3\u6BB5\u9010\u5B57\u76F8\u540C\uFF0C\u9810\u8A2D\uFF09\uFF1Bjson\uFF1D\u7D44\u6210 {key: value} \u7576 system \u8A0A\u606F\uFF08\u5BE6\u6E2C\u5728 llama-4-scout \u4E0A\u54C1\u8CEA\u6389\uFF0C\u898B ADR-299\uFF09\u3002\u6539\u4E00\u584A\uFF1D\u6539\u5B83\u7684 value\u3001\u628A\u5B83\u7684 v \u52A0\u4E00\uFF0C\u4E26\u540C\u6B65 cypher-executor/tests/fixtures/prompt-tables/extract_wiki.fixtures.json\u3002inkstone/Arcrun#299",
-  expect: "json_object",
-  inject: "text",
-  blocks: [
-    {
-      key: "common.role",
-      v: 1,
-      when: "always",
-      value: "\u4F60\u662F\u77E5\u8B58\u6574\u7406\u54E1\u3002\u8B80\u5B8C\u539F\u7A3F\u5F8C\uFF0C\u628A\u5B83\u6574\u7406\u6210\u300C\u4E00\u4EFD\u6587\u4EF6\u7684\u7E3D\u89BD\uFF0BN \u500B\u539F\u5B50\u6982\u5FF5\u300D\u3002\u53EA\u8F38\u51FA\u4E00\u500B JSON \u7269\u4EF6\uFF0C\u4E0D\u8981\u4EFB\u4F55\u8AAA\u660E\u3001markdown \u570D\u6B04\u6216\u601D\u8003\u904E\u7A0B\u3002"
-    },
-    {
-      key: "chunk-cliff.candidates",
-      v: 1,
-      when: "chunk-cliff",
-      attach: "labels",
-      value: "\n\u6A5F\u68B0\u6383\u51FA\u7684\u5019\u9078\u8B58\u5225\u78BC\u6E05\u55AE\uFF08\u539F\u7A3F\u88E1\u5075\u6E2C\u5230\u91CD\u8907\u7684\u6B04\u4F4D\u7D50\u69CB\uFF0C\u4EE5\u4E0B\u6BCF\u4E00\u500B\u90FD\u8981\u5728 entities \u88E1\u5404\u81EA\u5BEB\u4E00\u7B46\uFF0C\u9010\u5B57\u4F7F\u7528\u6E05\u55AE\u88E1\u7684\u539F\u6587\u7576 name\uFF1B\u4E0D\u51C6\u65B0\u589E\u6E05\u55AE\u5916\u7684\u78BC\uFF0C\u4E5F\u4E0D\u51C6\u6F0F\u6389\u6E05\u55AE\u88E1\u7684\u4EFB\u4F55\u4E00\u500B\uFF09\uFF1A"
-    },
-    {
-      key: "transcript.meaning",
-      v: 1,
-      when: "transcript",
-      value: "\n\u9010\u5B57\u7A3F\uFF1A\n- \u9019\u4EFD\u539F\u7A3F\u662F\u6703\u8B70\u6216\u8A2A\u8AC7\u7684\u9010\u5B57\u7A3F\u3002\u8981\u8403\u7684\u662F**\u610F\u601D**\uFF0C\u4E0D\u662F\u8AB0\u8AAA\u4E86\u54EA\u53E5\u8A71\uFF1A\u9019\u5834\u6703\u6C7A\u5B9A\u4E86\u4EC0\u9EBC\u3001\u5F85\u8FA6\u662F\u4EC0\u9EBC\uFF08\u8AB0\u8CA0\u8CAC\u3001\u505A\u4EC0\u9EBC\u3001\u671F\u9650\uFF09\u3001\u5404\u65B9\u7684\u7ACB\u5834\u8207\u7406\u7531\u3001\u9084\u6C92\u8AC7\u5B9A\u7684\u4E8B\u3002\n- \u4E0D\u7559\u539F\u53E5\u3001\u4E0D\u9010\u6BB5\u8F49\u8FF0\u5C0D\u8A71\uFF1B\u8981\u770B\u539F\u8A71\u7684\u4EBA\u6703\u7167\u5361\u4E0A\u7684\u51FA\u8655\u53BB\u958B\u539F\u6A94\uFF08\u51FA\u8655\u7531\u6A5F\u5668\u9644\u4E0A\uFF0C\u4F60\u4E0D\u5FC5\u6284\uFF09\u3002\n- \u6C7A\u5B9A\u8207\u5F85\u8FA6\u5BEB\u9032 points \u8207 facts\uFF08\u4F8B\uFF1A[\u67D0\u90E8\u9580,\u8CA0\u8CAC,\u67D0\u5F85\u8FA6]\uFF09\uFF1B\u8207\u6703\u8005\u5BEB\u9032 entities\uFF08type \u4EBA\u7269\u6216\u7D44\u7E54\uFF09\u3002"
-    },
-    {
-      key: "common.rules",
-      v: 2,
-      when: "always",
-      value: "\n\u898F\u5247\uFF08\u9055\u53CD\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\uFF09\uFF1A\n- \u7528\u6B63\u9AD4\u4E2D\u6587\u5BEB\uFF0C\u8B1B\u539F\u7A3F\u7684**\u5167\u5BB9**\uFF1A\u5B83\u8AAA\u4E86\u4EC0\u9EBC\u3001\u898F\u5B9A\u4EC0\u9EBC\u3001\u5217\u4E86\u54EA\u4E9B\u9805\u76EE\u3001\u7D50\u8AD6\u662F\u4EC0\u9EBC\u3002\u4E0D\u662F\u6539\u5BEB\u6210\u7A7A\u6CDB\u7684\u8A55\u8A9E\uFF0C\u4E5F\u4E0D\u662F\u6574\u6BB5\u7167\u6284\u539F\u7A3F\u3002"
-    },
-    {
-      key: "common.keep-verbatim",
-      v: 1,
-      when: "always",
-      value: "- \u5C08\u6709\u540D\u8A5E\u3001\u4EBA\u540D\u3001\u516C\u53F8\u540D\u3001\u7522\u54C1\u540D\u3001\u578B\u865F\u3001\u932F\u8AA4\u78BC\uFF0F\u4EE3\u78BC\u3001\u53C3\u6578\u540D\u3001\u65E5\u671F\u3001\u91D1\u984D\u3001\u7248\u672C\u865F\u8207\u4E00\u5207\u6578\u5B57\uFF0C\u4E00\u5F8B**\u4FDD\u7559\u539F\u7A3F\u7684\u539F\u5B57\u4E32**\uFF1A\u4E0D\u610F\u8B6F\u3001\u4E0D\u63DB\u7B97\u3001\u4E0D\u7701\u7565\uFF0C\u4E5F\u4E0D\u7528\u300C\u591A\u7A2E\u300D\u300C\u82E5\u5E72\u300D\u300C\u76F8\u95DC\u300D\u9019\u985E\u8A5E\u6982\u62EC\u3002\u539F\u7A3F\u5217\u4E86\u5E7E\u500B\u9805\u76EE\uFF0C\u5361\u4E0A\u5C31\u5BEB\u51FA\u9019\u4E9B\u9805\u76EE\u7684\u540D\u7A31\u8207\u6578\u503C\uFF0C\u4E0D\u8981\u58D3\u6210\u4E00\u53E5\u300C\u5177\u6709\u591A\u7A2E\u529F\u80FD\u300D\u3002\n- gloss\u3001summary\u3001points \u90FD\u8B1B\u5167\u5BB9\u672C\u8EAB\uFF0C**\u4E0D\u51C6\u8B1B\u9019\u662F\u4EC0\u9EBC\u985E\u578B\u7684\u6A94\u6848**\uFF1A\u4E0D\u53EF\u5BEB\u300C\u9019\u662F\u4E00\u4EFD\u2026\u6587\u4EF6\uFF0F\u6A94\u6848\uFF0F\u624B\u518A\uFF0F\u7D00\u9304\u300D\u300C\u2026\u63CF\u8FF0\u6A94\u6848\u300D\u4E4B\u985E\u7684\u8A71\uFF0C\u4E5F\u4E0D\u53EF\u62FF\u6A94\u540D\u7576\u6982\u5FF5\u540D\u3002\u8B80\u8005\u4E0D\u770B\u539F\u7A3F\u3001\u53EA\u770B\u9019\u5F35\u5361\uFF0C\u5C31\u8981\u77E5\u9053\u539F\u7A3F\u5BEB\u4E86\u4EC0\u9EBC\u3002"
-    },
-    {
-      key: "thin-card.concept-count",
-      v: 2,
-      when: "always",
-      value: "- \u6982\u5FF5\u6578\u7531\u5167\u5BB9\u6C7A\u5B9A\uFF08\u591A\u6578\u6587\u4EF6 1-5 \u500B\uFF09\uFF1B\u6BCF\u500B\u6982\u5FF5\u8981\u80FD**\u96E2\u958B\u539F\u7A3F\u7368\u7ACB\u6210\u7ACB**\u3002\u5167\u5BB9\u53EA\u6709\u5E7E\u884C\u7684\u77ED\u7D00\u9304\uFF08\u4E00\u689D\u932F\u8AA4\u78BC\u3001\u4E00\u689D\u898F\u5247\u3001\u4E00\u5247\u516C\u544A\uFF09\u53EA\u958B 1 \u500B\u6982\u5FF5\uFF0C\u7528\u539F\u7A3F\u7684\u5C08\u540D\u6216\u4EE3\u78BC\u7576\u6982\u5FF5\u540D\uFF1B\u4E0D\u8981\u70BA\u4E86\u6E4A\u6578\u628A\u540C\u4E00\u4EF6\u4E8B\u62C6\u6210\u591A\u500B\uFF0C\u4E5F\u4E0D\u8981\u767C\u660E\u539F\u7A3F\u6C92\u8B1B\u7684\u6982\u5FF5\u3002"
-    },
-    {
-      key: "common.no-concept",
-      v: 1,
-      when: "always",
-      value: '- \u5831\u50F9\u55AE\u3001\u767C\u7968\u3001\u7D14\u5F85\u8FA6\u3001\u7D14\u6D41\u6C34\u5E33\uFF1D\u6C92\u6709\u53EF\u8403\u53D6\u6982\u5FF5\uFF1A\u56DE {"no_concept":true,"reason":"\u4E00\u53E5\u8A71\u7406\u7531"} \u5373\u53EF\u3002'
-    },
-    {
-      key: "common.fields",
-      v: 2,
-      when: "always",
-      value: "- gloss\uFF1D\u4E00\u53E5\u8A71\uFF0840 \u5B57\u5167\uFF09\uFF1A\u76F4\u63A5\u8B1B\u5167\u5BB9\uFF0C\u5E36\u4E0A\u6700\u95DC\u9375\u7684\u5C08\u540D\u6216\u6578\u5B57\u3002summary\uFF1D\u4E00\u5C0F\u6BB5\uFF0880-200 \u5B57\uFF09\uFF1A\u628A\u539F\u7A3F\u7684\u5177\u9AD4\u5167\u5BB9\uFF08\u9805\u76EE\u3001\u6578\u503C\u3001\u689D\u4EF6\u3001\u7D50\u8AD6\uFF09\u4EA4\u4EE3\u6E05\u695A\u3002points\uFF1D3-8 \u689D\u53E5\u5B50\uFF0C\u6BCF\u689D\u5E36\u5177\u9AD4\u7684\u5C08\u540D\u6216\u6578\u5B57\uFF0C\u4E0D\u662F\u689D\u5217\u8907\u8FF0\uFF1B\u539F\u7A3F\u5F88\u77ED\u6642\u6709\u5E7E\u4EF6\u4E8B\u5BEB\u5E7E\u689D\uFF0C\u4E0D\u5FC5\u6E4A\u6EFF\u3002\n- \u6587\u4EF6\u5C64\u7684 points \u6BCF\u689D\u8981\u628A\u76F8\u95DC\u6982\u5FF5\u540D\u7528 [[\u6982\u5FF5\u540D]] \u5D4C\u5728**\u53E5\u5B50\u4E2D\u9593**\uFF08\u4E0D\u53EF\u653E\u53E5\u9996\u7576\u6A19\u984C\uFF09\u3002\n- entities\uFF1A\u6BCF\u500B\u5BE6\u9AD4\u662F\u539F\u7A3F**\u5167\u5BB9\u88E1\u8B1B\u5230\u7684\u6771\u897F**\uFF0C\u5E36 type\uFF08\u4EBA\u7269/\u7D44\u7E54/\u5DE5\u5177/\u6982\u5FF5/\u5730\u9EDE/\u4E8B\u4EF6/\u6A94\u6848 \u64C7\u4E00\uFF09\u8207\u4E00\u53E5\u63CF\u8FF0\u3002\u539F\u7A3F\u9019\u4EFD\u6587\u4EF6\u672C\u8EAB\u3001\u5B83\u7684\u6A94\u540D\u3001\u526F\u6A94\u540D\u3001\u9801\u9762\u7DE8\u865F\u90FD\u4E0D\u662F\u5BE6\u9AD4\uFF1Btype \u9078\u300C\u6A94\u6848\u300D\u53EA\u9650\u539F\u7A3F\u5167\u5BB9\u660E\u78BA\u8AC7\u5230\u7684\u67D0\u500B\u6A94\u6848\u3002"
-    },
-    {
-      key: "common.cross-language-terms",
-      v: 1,
-      when: "always",
-      value: "- \u539F\u7A3F\u4E0D\u662F\u4E2D\u6587\u6642\uFF08\u82F1\u6587\u624B\u518A\u3001\u898F\u683C\u66F8\u3001\u65E5\u6587\u6587\u4EF6\u2026\uFF09\uFF0C\u8981\u8B93\u4EBA\u7528**\u4E2D\u6587\u767D\u8A71**\u6216\u7528**\u539F\u6587\u5B57\u4E32**\u90FD\u627E\u5F97\u5230\u9019\u5F35\u5361\uFF1A\u95DC\u9375\u53E5\u4FDD\u7559\u539F\u6587\u3001\u8853\u8A9E\u7528\u7D71\u4E00\u7684\u4E2D\u6587\u8B6F\u540D\uFF08\u683C\u5F0F\u898B\u6700\u5F8C\u63D0\u9192\uFF09\uFF1B\u539F\u7A3F\u5728\u8B1B\u4E00\u500B\u72C0\u6CC1\u3001\u75C7\u72C0\u6216\u554F\u984C\uFF08\u932F\u8AA4\u8A0A\u606F\u3001\u6545\u969C\u3001\u9650\u5236\u3001\u4E0D\u80FD\u505A\u4EC0\u9EBC\uFF09\u6642\uFF0Csummary \u8981\u7528\u4F7F\u7528\u8005\u6703\u8AAA\u7684\u767D\u8A71\u628A\u5B83\u8B1B\u51FA\u4F86\uFF08\u4F8B\uFF1A\u300C\u5E33\u865F\u88AB\u9396\u4F4F\u767B\u4E0D\u9032\u53BB\u300D\u300C\u6578\u503C\u8D85\u51FA\u7BC4\u570D\u5B58\u4E0D\u4E86\u300D\uFF09\uFF1B\u539F\u56E0\u8207\u8655\u7F6E\u4E5F\u7528\u767D\u8A71\u9010\u9805\u5BEB\u51FA\uFF0C\u4E0D\u8981\u53EA\u5BEB\u300C\u8AAA\u660E\u4E86\u539F\u56E0\u548C\u4FEE\u6B63\u65B9\u6CD5\u300D\u3002"
-    },
-    {
-      key: "chunk-cliff.count-first",
-      v: 1,
-      when: "always",
-      value: "- \u{1F534} **\u5148\u6578\u4E00\u904D\uFF1A\u539F\u7A3F\u88E1\u6709\u6C92\u6709\u91CD\u8907\u51FA\u73FE\u7684\u300C\u689D\u76EE\u300D\u7D50\u69CB**\u2014\u2014\u540C\u4E00\u7A2E\u77ED\u8B58\u5225\u78BC\uFF08\u578B\u865F\uFF0F\u4EE3\u78BC\uFF0F\n  \u55AE\u865F\uFF0F\u53C3\u6578\u540D\uFF0C\u4EFB\u4F55\u539F\u7A3F\u81EA\u5DF1\u7528\u4F86\u6A19\u793A\u6BCF\u4E00\u689D\u7684\u5B57\u4E32\uFF09\u5728\u539F\u7A3F\u88E1\u5404\u81EA\u5E36\u958B\u4E00\u6BB5\u8AAA\u660E\uFF0C\n  \u4E00\u6BB5\u63A5\u4E00\u6BB5\u5730\u91CD\u8907\u3002\u6709\u7684\u8A71\uFF1A\n  1. \u5148\u6578\u51FA\u539F\u7A3F\u88E1\u7E3D\u5171\u6709\u5E7E\u689D\u9019\u7A2E\u689D\u76EE\uFF0C\u5728\u5FC3\u88E1\u8A18\u4F4F\u9019\u500B\u6578\u5B57 N\u3002\n  2. entities \u9663\u5217\uFF08\u6240\u6709\u6982\u5FF5\u5408\u8A08\uFF09\u8981\u6B63\u597D\u5217\u51FA N \u7B46\uFF0C\u9010\u4E00\u5C0D\u61C9\u539F\u7A3F\u7684\u6BCF\u4E00\u689D\u2014\u2014\n     **\u4E0D\u662F\u8209\u5E7E\u500B\u4F8B\u5B50\u4EE3\u8868\u5176\u9918\u7684\uFF0C\u662F\u6BCF\u4E00\u689D\u90FD\u8981\u6709\u81EA\u5DF1\u7684\u4E00\u7B46**\u3002\u6F0F\u6389\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\u3002\n  3. \u958B\u5C11\u6578\u5E7E\u500B\u6982\u5FF5\uFF081-3 \u500B\uFF0C\u6309\u4E3B\u984C\u5206\u7D44\uFF09\u7576\u5BB9\u5668\uFF0C\u628A N \u7B46 entities \u5206\u88DD\u9032\u53BB\uFF1B\n     \u6BCF\u500B\u6982\u5FF5\u7684 entities \u9663\u5217\u53EF\u4EE5\u5F88\u9577\uFF08\u5341\u5E7E\u3001\u5E7E\u5341\u7B46\u90FD\u6B63\u5E38\uFF09\uFF0C**\u4E0D\u8981\u56E0\u70BA\u300C\u9019\u6A23\u770B\u8D77\u4F86\n     \u5F88\u9577\u300D\u5C31\u81EA\u5DF1\u622A\u65B7\u3001\u53EA\u6311\u524D\u9762\u5E7E\u7B46\u6216\u770B\u8D77\u4F86\u91CD\u8981\u7684\u5E7E\u7B46**\u2014\u2014\u4F60\u4E0D\u662F\u5728\u5BEB\u6458\u8981\u7D66\u4EBA\u700F\u89BD\uFF0C\n     \u662F\u5728\u5EFA\u4E00\u4EFD\u67E5\u627E\u7528\u7684\u7D22\u5F15\uFF0C\u7F3A\u4E00\u7B46\uFF0C\u90A3\u4E00\u689D\u5728\u7D22\u5F15\u88E1\u5C31\u6C38\u4E45\u627E\u4E0D\u5230\u3002\n  4. entity \u7684 name\uFF1D\u8B58\u5225\u78BC\u539F\u6587\uFF08\u9010\u5B57\uFF0C\u4E0D\u610F\u8B6F\uFF09\u3002desc \u8981\u628A\u8A72\u8B58\u5225\u78BC\u5E95\u4E0B**\u6BCF\u4E00\u500B\u5B50\u6B04\u4F4D**\n     \uFF08\u4F8B\u5982\u539F\u7A3F\u6A19\u7684\u300C\u8A0A\u606F\uFF0F\u539F\u56E0\uFF0F\u8655\u7F6E\u300D\uFF0C\u6216\u8A72\u683C\u5F0F\u5C0D\u61C9\u7684\u5176\u4ED6\u6B04\u4F4D\uFF09\u90FD\u6458\u8981\u9032\u540C\u4E00\u53E5\u8A71\uFF0C\n     \u4E0D\u662F\u53EA\u6284\u7B2C\u4E00\u500B\u6B04\u4F4D\u2014\u2014\u8B80\u8005\u8981\u80FD\u5149\u770B desc \u5C31\u77E5\u9053\u767C\u751F\u4EC0\u9EBC\u3001\u70BA\u4EC0\u9EBC\u3001\u600E\u9EBC\u8655\u7406\uFF0C\n     \u4E26\u4FDD\u7559\u539F\u78BC\u3001\u53C3\u6578\u540D\u3001\u6578\u5B57\u3002\n  \u539F\u7A3F\u6C92\u6709\u9019\u7A2E\u91CD\u8907\u689D\u76EE\u7D50\u69CB\uFF08\u4E00\u822C\u6563\u6587\uFF0F\u5831\u544A\uFF09\u5C31\u4E0D\u53D7\u672C\u689D\u7D04\u675F\uFF0C\u7167\u4E00\u822C\u5BEB\u6CD5\u6574\u7406\u3002"
-    },
-    {
-      key: "common.graph",
-      v: 1,
-      when: "always",
-      value: "- facts\uFF1D[\u4E3B\u8A5E,\u8FF0\u8A5E,\u53D7\u8A5E] \u4E09\u5143\u7D44\uFF0C\u7AEF\u9EDE\u76E1\u91CF\u7528 entities \u7684\u540D\u5B57\uFF1B\u4EFB\u4F55\u6B04\u4F4D\u4E0D\u5F97\u542B\u96D9\u7BAD\u982D\u7B26\u865F\u3002\n- relations\uFF1D\u6982\u5FF5\u4E4B\u9593\u7684\u95DC\u4FC2\uFF08to \u586B\u53E6\u4E00\u500B\u6982\u5FF5\u7684 name\uFF09\u3002"
-    },
-    {
-      key: "common.output-shape",
-      v: 1,
-      when: "always",
-      value: '\nJSON \u5F62\u72C0\uFF08\u7167\u9019\u500B\u7D50\u69CB\u586B\uFF09\uFF1A\n{"gloss":"","tags":[""],"summary":"","points":["\u2026\u53E5\u5B50\u4E2D\u9593\u5D4C [[\u6982\u5FF5\u540D]]\u2026"],\n "no_concept":false,"reason":"",\n "concepts":[{"name":"","gloss":"","tags":[""],"summary":"","points":[""],\n   "entities":[{"name":"","type":"","desc":""}],\n   "facts":[["","",""]],\n   "relations":[{"to":"","pred":""}]}]}'
-    },
-    {
-      key: "common.language-reminder",
-      v: 5,
-      when: "always",
-      place: "after",
-      value: "\n\u6700\u5F8C\u63D0\u9192\uFF1A\u6240\u6709\u6B04\u4F4D\u7684\u6587\u5B57\u4E00\u5F8B\u7528\u6B63\u9AD4\u4E2D\u6587\u3002\u5167\u5BB9\u662F\u82F1\u6587\uFF08\u6216\u65E5\u6587\u7B49\u5176\u4ED6\u8A9E\u8A00\uFF09\u4E5F\u8981\u7FFB\u6210\u4E2D\u6587\u518D\u5BEB\uFF1B\u53EA\u6709\u5C08\u6709\u540D\u8A5E\u3001\u578B\u865F\u3001\u4EE3\u78BC\u3001\u53C3\u6578\u540D\u8207\u6578\u5B57\u7167\u539F\u5B57\u4E32\u4FDD\u7559\u3002gloss \u8207 summary \u76F4\u63A5\u5BEB\u5167\u5BB9\u672C\u8EAB\uFF08\u4F8B\uFF1A\u300CCompactB-3020 \u7684\u884C\u7A0B\u3001\u4E3B\u8EF8\u8207\u63A7\u5236\u7CFB\u7D71\u898F\u683C\u300D\uFF09\uFF0C\u4E0D\u8981\u4EE5\u300C\u672C\u6587\u4EF6\u662F\u2026\u300D\u300C\u9019\u662F\u4E00\u4EFD\u2026\u300D\u958B\u982D\u3002\n\u539F\u7A3F\u662F\u5916\u8A9E\u6642\uFF0C\u9084\u8981\u505A\u5230\uFF1A\u2460points \u7684\u7B2C\u4E00\u689D\u8981\u653E\u539F\u7A3F\u6700\u95DC\u9375\u7684\u4E00\u53E5\u539F\u6587\uFF08\u7167\u6284\u539F\u5B57\u4E32\u3001\u4E0D\u7FFB\uFF09\uFF0C\u5F8C\u9762\u63A5\u300C\uFF1D\u300D\u518D\u5BEB\u4E2D\u6587\u610F\u601D\uFF0C\u4F8B\uFF1A\u300CBackup file '%1' cannot be restored.\uFF1D\u5099\u4EFD\u6A94 '%1' \u9084\u539F\u4E0D\u4E86\u300D\u3002\u2461\u540C\u4E00\u500B\u82F1\u6587\u8A5E\u5168\u5361\u53EA\u7528\u540C\u4E00\u500B\u4E2D\u6587\u8B6F\u540D\uFF0C\u7528\u8A72\u9818\u57DF\u901A\u884C\u7684\u8AAA\u6CD5\uFF0C\u4E26\u4FDD\u7559\u9650\u5B9A\u8A5E\uFF08\u4F8B\uFF1Asoftware license\uFF1D\u6388\u6B0A\uFF0C\u4E0D\u662F\u57F7\u7167\uFF1Bbackup file\uFF1D\u5099\u4EFD\u6A94\uFF0C\u4E0D\u662F\u6A94\u6848\uFF1B\u6A5F\u68B0\u52A0\u5DE5\u7684 tool\uFF1D\u5200\u5177\uFF0C\u4E0D\u662F\u5DE5\u5177\uFF1B\u6703\u8A08\u7684 invoice\uFF1D\u767C\u7968\uFF0C\u4E0D\u662F\u5E33\u55AE\uFF09\u3002\u2462tags \u540C\u6642\u653E\u4E2D\u6587\u8B6F\u540D\u8207\u82F1\u6587\u539F\u8A5E\u3002\u53EA\u8F38\u51FA\u90A3\u500B JSON \u7269\u4EF6\u3002"
-    }
-  ]
-};
-
-// cypher-executor/src/lib/prompt-tables/read_image.json
-var read_image_default = {
-  kind: "prompt_table",
-  name: "read_image",
-  description: "\u628A\u542B\u5716\u7684\u6587\u4EF6\u9801\u8B80\u6210\u6587\u5B57\uFF08inkstone/Arcrun#300\uFF09\uFF1A\u5C0F\u5E6B\u624B\u628A\u4E00\u9801\u756B\u6210\u5716\u9001\u4F86\uFF0C\u96F2\u7AEF\u7528\u80FD\u8B80\u5716\u7684\u6A21\u578B\u8B80\u3002\u6A21\u578B\u8207\u6307\u793A\u653E\u540C\u4E00\u5F35\u8868\u3002",
-  expect: "text",
-  inject: "text",
-  max_tokens: 3072,
-  models: {
-    primary: "@cf/meta/llama-4-scout-17b-16e-instruct",
-    check: "@cf/mistralai/mistral-small-3.1-24b-instruct"
-  },
-  blocks: [
-    { key: "common.role", v: 1, when: "always", value: "\u4F60\u662F\u6587\u4EF6\u95B1\u8B80\u54E1\u3002\u9019\u5F35\u5716\u662F\u4E00\u4EFD\u6587\u4EF6\u7684\u5176\u4E2D\u4E00\u9801\uFF0C\u8ACB\u628A\u9801\u9762\u4E0A\u770B\u5F97\u5230\u7684\u6587\u5B57\u8B80\u51FA\u4F86\uFF0C\u7167\u539F\u6A23\u6284\u5BEB\uFF0C\u7528\u539F\u6587\u7684\u8A9E\u8A00\u8207\u9806\u5E8F\u3002" },
-    { key: "common.rules", v: 1, when: "always", value: "\u53EA\u8F38\u51FA\u9801\u9762\u4E0A\u7684\u5167\u5BB9\uFF0C\u4E0D\u8981\u524D\u8A00\u3001\u8AAA\u660E\u3001\u8A55\u8AD6\u6216\u63A8\u6E2C\u3002\u770B\u4E0D\u6E05\u695A\u7684\u5B57\u5BEB\u300C[\u770B\u4E0D\u6E05]\u300D\uFF0C\u4E0D\u8981\u81EA\u5DF1\u88DC\u3002\u6BCF\u4E00\u6BB5\u5167\u5BB9\u53EA\u8B80\u4E00\u6B21\uFF0C\u4E0D\u8981\u91CD\u8907\u8F38\u51FA\u76F8\u540C\u7684\u53E5\u5B50\u6216\u9078\u9805\u3002" },
-    { key: "common.tables", v: 1, when: "always", value: "\u9047\u5230\u8868\u683C\uFF0C\u8F38\u51FA\u6210 markdown \u8868\u683C\uFF1A\u9010\u5217\u7167\u6284\uFF0C\u6B04\u4F4D\u6578\u8207\u8868\u982D\u5C0D\u9F4A\uFF0C\u7A7A\u767D\u5132\u5B58\u683C\u7559\u7A7A\u3002\u6578\u5B57\u3001\u55AE\u4F4D\u3001\u65E5\u671F\u3001\u4EBA\u540D\u9010\u5B57\u7167\u6284\uFF0C\u4E0D\u8981\u63DB\u7B97\u6216\u4FEE\u6B63\u3002" },
-    { key: "common.checkbox", v: 1, when: "always", value: "\u9047\u5230\u52FE\u9078\u6846\uFF0C\u5DF2\u52FE\u7684\u5BEB\u300C\u2611 \u9078\u9805\u6587\u5B57\u300D\uFF0C\u6C92\u52FE\u7684\u5BEB\u300C\u2610 \u9078\u9805\u6587\u5B57\u300D\uFF0C\u6BCF\u500B\u9078\u9805\u53EA\u5BEB\u4E00\u884C\u3002" },
-    { key: "common.caption", v: 1, when: "always", attach: "caption", value: "\u9019\u4E00\u9801\u5DF2\u77E5\u7684\u6A19\u984C\u6587\u5B57\u5982\u4E0B\uFF08\u53EA\u4F9B\u5C0D\u7167\u9801\u9762\u4F4D\u7F6E\uFF0C\u5167\u5BB9\u4ECD\u4EE5\u5716\u4E0A\u5BE6\u969B\u770B\u5230\u7684\u70BA\u6E96\uFF09\uFF1A" },
-    { key: "check.independent", v: 1, when: "check", value: "\u9019\u662F\u7B2C\u4E8C\u6B21\u7368\u7ACB\u95B1\u8B80\uFF0C\u7528\u4F86\u548C\u7B2C\u4E00\u6B21\u4EA4\u53C9\u6838\u5C0D\uFF1A\u8ACB\u91CD\u65B0\u9010\u5B57\u8B80\uFF0C\u4E0D\u8981\u6191\u5370\u8C61\u6216\u63A8\u6E2C\u88DC\u5B57\uFF0C\u6578\u5B57\u8207\u4EBA\u540D\u5C24\u5176\u8981\u9010\u5B57\u78BA\u8A8D\u3002" }
-  ]
-};
-
-// cypher-executor/src/lib/prompt-table.ts
-var KIND_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
-var KEY_RE = /^[a-z0-9][a-z0-9-]{0,39}\.[a-z0-9][a-z0-9-]{0,39}$/;
-var PromptBlockSchema = z.object({
-  key: z.string().regex(KEY_RE, "key \u5FC5\u9808\u662F <\u524D\u7DB4>.<\u540D\u7A31>\uFF08\u5C0F\u5BEB\u82F1\u6578\u8207\u9023\u5B57\u865F\uFF09"),
-  v: z.number().int().positive(),
-  when: z.string().refine((w) => w === "always" || KIND_RE.test(w), "when \u5FC5\u9808\u662F always \u6216\u7279\u4F8B\u7DE8\u865F"),
-  attach: z.string().regex(/^[a-z_]{1,32}$/).optional(),
-  // 'after'＝text 注入時這一塊接在**原稿後面**（預設在原稿前面）。要放「最後再提醒一次」的規則用：
-  // 原稿很長（整本手冊）時，放在前面的規則離輸出太遠，模型會跟著原稿的語言走（inkstone/Arcrun#317）。
-  place: z.enum(["before", "after"]).optional(),
-  value: z.union([z.string().min(1), z.array(z.string().min(1)).min(1), z.record(z.unknown())])
-});
-var PromptTableSchema = z.object({
-  kind: z.literal("prompt_table"),
-  name: z.string().regex(/^[a-z][a-z0-9_]*$/),
-  description: z.string().optional(),
-  expect: z.enum(["json_object", "text"]).default("json_object"),
-  inject: z.enum(["text", "json"]).default("text"),
-  // 讀圖表（inkstone/Arcrun#300）才用：用哪個模型讀、最多吐多少字——「模型與指示放同一張表」，
-  // 換模型＝換表，不改程式。沒填＝這台雲端萃取 AI 設定的預設。
-  models: z.object({ primary: z.string().min(1).optional(), check: z.string().min(1).optional() }).optional(),
-  max_tokens: z.number().int().min(256).max(8192).optional(),
-  blocks: z.array(PromptBlockSchema).min(1)
-}).superRefine((t, ctx) => {
-  const seen = /* @__PURE__ */ new Set();
-  for (const b of t.blocks) {
-    if (seen.has(b.key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `key \u91CD\u8907\uFF1A${b.key}` });
-    seen.add(b.key);
-  }
-});
-var BUILTIN_PROMPT_TABLES = {
-  extract_wiki: PromptTableSchema.parse(extract_wiki_default),
-  read_image: PromptTableSchema.parse(read_image_default)
-};
-function validatePromptTable(raw2) {
-  const r = PromptTableSchema.safeParse(raw2);
-  if (r.success) return { ok: true, table: r.data };
-  return { ok: false, error: r.error.issues.map((i) => `${i.path.join(".") || "(\u8868)"}\uFF1A${i.message}`).join("\uFF1B") };
-}
-var promptTableKey = (name) => `prompt_recipe:${name}`;
-async function loadPromptTable(recipes, name) {
-  const builtin = BUILTIN_PROMPT_TABLES[name] ?? null;
-  if (!recipes) return builtin ? { table: builtin, source: "builtin" } : null;
-  let raw2;
-  try {
-    raw2 = await recipes.get(promptTableKey(name));
-  } catch (e) {
-    if (!builtin) throw e;
-    return { table: builtin, source: "builtin_fallback", note: `\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u88DD\u7684\u8868\uFF0C\u7528\u5167\u5EFA\uFF1A${e instanceof Error ? e.message : String(e)}` };
-  }
-  if (!raw2) return builtin ? { table: builtin, source: "builtin" } : null;
-  let parsed;
-  try {
-    parsed = JSON.parse(raw2);
-  } catch {
-    parsed = null;
-  }
-  const v = validatePromptTable(parsed);
-  if (v.ok) return { table: v.table, source: "installed" };
-  if (!builtin) return null;
-  return { table: builtin, source: "builtin_fallback", note: `\u9019\u53F0\u96F2\u7AEF\u88DD\u7684\u8868\u4E0D\u5408\u683C\uFF0C\u7528\u5167\u5EFA\uFF1A${v.error}` };
-}
-function sanitizeTableInput(rawKinds, rawHints) {
-  const kinds = Array.isArray(rawKinds) ? [...new Set(rawKinds.filter((k) => typeof k === "string" && KIND_RE.test(k)))].slice(0, 16) : [];
-  const hints = {};
-  if (rawHints && typeof rawHints === "object" && !Array.isArray(rawHints)) {
-    for (const [k, v] of Object.entries(rawHints)) {
-      if (!/^[a-z_]{1,32}$/.test(k)) continue;
-      if (Array.isArray(v)) {
-        const items = v.filter((x) => typeof x === "string" && x.trim() !== "").map((x) => x.slice(0, 120)).slice(0, 500);
-        if (items.length > 0) hints[k] = items;
-      }
-    }
-  }
-  return { kinds, hints };
-}
-function blockText(value) {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) return value.join("\n");
-  return JSON.stringify(value);
-}
-function assemblePromptTable(table, input, source) {
-  const obj = {};
-  const lines = [];
-  const tail = [];
-  const used = [];
-  const known = /* @__PURE__ */ new Set();
-  for (const b of table.blocks) {
-    if (b.when !== "always") known.add(b.when);
-    if (b.when !== "always" && !input.kinds.includes(b.when)) continue;
-    if (b.attach) {
-      const data = input.hints[b.attach];
-      if (!Array.isArray(data) || data.length === 0) continue;
-      obj[b.key] = { \u6307\u793A: b.value, [b.attach]: data };
-      (b.place === "after" ? tail : lines).push(`${blockText(b.value)}
-- ${data.join("\n- ")}`);
-    } else {
-      obj[b.key] = b.value;
-      (b.place === "after" ? tail : lines).push(blockText(b.value));
-    }
-    used.push(`${b.key}@${b.v}`);
-  }
-  const src = promptTableUserMessage(source.pageName, source.text);
-  const unknownKinds = input.kinds.filter((k) => !known.has(k));
-  if (table.inject === "json") {
-    return { system: JSON.stringify(obj, null, 1), user: src, used, unknownKinds };
-  }
-  return { user: `${lines.join("\n")}
-
-${src}${tail.length ? `
-${tail.join("\n")}` : ""}`, used, unknownKinds };
-}
-function promptTableUserMessage(pageName, text) {
-  return `\u539F\u7A3F\uFF08\u6A94\u540D\uFF1A${pageName}\uFF09\uFF1A
-${text}`;
-}
-
-// cypher-executor/src/lib/portal-error-catalog.ts
-var PORTAL_ERRORS = {
-  config_not_loaded: {
-    http_status: 500,
-    title: "\u9019\u500B\u9801\u9762\u8F09\u5165\u4E0D\u5230\u5B83\u7684\u8A2D\u5B9A",
-    message: "\u9019\u500B\u9801\u9762\u6C92\u6709\u8F09\u5165\u5230\u9023\u7DDA\u8A2D\u5B9A\uFF0C\u6240\u4EE5\u9023\u4E0D\u5230\u4F60\u7684\u670D\u52D9\u3002\u8ACB\u5148\u91CD\u65B0\u6574\u7406\u4E00\u6B21\uFF1B\u5982\u679C\u9084\u662F\u4E00\u6A23\uFF0C\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
-    advanced: "\u524D\u7AEF\u8F09\u5165\u4E0D\u5230 config.js \u7684 apiBase\uFF08window.ARCRUN_CONFIG.apiBase \u7A7A\u503C\uFF09\u2014\u2014\u901A\u5E38\u662F UI worker \u7F3A WORKER_SUBDOMAIN\uFF0FapiBase \u6C92\u88AB\u6CE8\u5165\u3002",
-    why: "Portal \u7DB2\u9801\u9700\u8981\u4E00\u4EFD\u8A2D\u5B9A\u6A94\uFF08config.js\uFF09\u624D\u77E5\u9053\u8981\u9023\u5230\u54EA\u4E00\u53F0 cypher \u670D\u52D9\u3002\u9019\u4EFD\u8A2D\u5B9A\u662F\u5B89\u88DD\uFF0F\u90E8\u7F72 UI \u6642\u7522\u751F\u7684\uFF1B\u5982\u679C\u5B83\u7F3A\u4E86\uFF0C\u7DB2\u9801\u5C31\u6703\u9023\u4E0D\u5230\u5F8C\u7AEF\u2014\u2014\u9019\u6642\u5B83\u6703\u660E\u767D\u5730\u8AAA\u51FA\u4F86\uFF0C\u800C\u4E0D\u662F\u975C\u9ED8\u5730\u7576\u6389\u3002",
-    operator: "\u78BA\u8A8D UI worker \u6709\u8A2D WORKER_SUBDOMAIN\u3001\u4E14 config.js \u7684 apiBase \u6307\u5230\u6B63\u78BA\u7684 cypher-executor \u4F4D\u5740\uFF0C\u91CD\u65B0\u90E8\u7F72 UI \u5F8C\u91CD\u65B0\u6574\u7406\u3002"
-  },
-  tenant_unresolved: {
-    http_status: 500,
-    title: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u8A2D\u5B9A\u597D\u77E5\u8B58\u7684\u5B58\u653E\u4F4D\u7F6E",
-    message: "\u9019\u53F0 Arcrun \u5BE6\u4F8B\u9084\u4E0D\u77E5\u9053\u8981\u53BB\u54EA\u88E1\u627E\u4F60\u7684\u77E5\u8B58\u8CC7\u6599\uFF0C\u6240\u4EE5\u66AB\u6642\u6253\u4E0D\u958B\u3002\u9019\u901A\u5E38\u662F\u5B89\u88DD\u6216\u66F4\u65B0\u6C92\u6709\u5B8C\u5168\u8DD1\u5B8C\u9020\u6210\u7684\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u3002\u8ACB\u628A\u4E0B\u9762\u7684\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\uFF0C\u4F9D\u8AAA\u660E\u9801\u8655\u7406\u5373\u53EF\u3002",
-    advanced: "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08\u74B0\u5883\u8B8A\u6578 ARCRUN_NAMESPACE / CONSOLE_TENANT \u90FD\u6C92\u8A2D\uFF09\uFF0C\u56E0\u6B64\u7121\u6CD5\u6C7A\u5B9A\u8981\u7528\u54EA\u500B owner_id \u53BB KBDB \u53D6\u8CC7\u6599\u3002",
-    why: "Arcrun \u7528\u4E00\u500B\u300C\u547D\u540D\u7A7A\u9593\u300D\u628A\u4F60\u7684\u77E5\u8B58\u8CC7\u6599\u5708\u5728\u4E00\u8D77\u3002\u5B89\u88DD\uFF0F\u66F4\u65B0\u6642\uFF0C\u9019\u500B\u503C\u6703\u5F9E\u4F60\u7684 ~/.arcrun/config.yaml \u81EA\u52D5\u6CE8\u5165\u5230\u5BE6\u4F8B\u4E0A\u3002\u5982\u679C\u5B89\u88DD\u6216\u66F4\u65B0\u6C92\u8DD1\u5B8C\uFF0C\u9019\u500B\u503C\u5C31\u6703\u7F3A\uFF0C\u5BE6\u4F8B\u5C31\u4E0D\u77E5\u9053\u8A72\u53BB\u54EA\u4E00\u683C\u627E\u8CC7\u6599\u2014\u2014\u9019\u6642\u5B83\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u6253\u4E0D\u958B\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u4F60\u6C92\u6709\u8CC7\u6599\u3002",
-    operator: "\u5728\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u6A5F\u5668\u4E0A\u91CD\u8DD1\u4E00\u6B21 `acr update`\uFF0C\u5B83\u6703\u5F9E ~/.arcrun/config.yaml \u7684 api_key \u628A ARCRUN_NAMESPACE \u91CD\u65B0\u6CE8\u5165\u5230 cypher-executor\u3002\u8DD1\u5B8C\u5F8C\u91CD\u65B0\u6574\u7406\u9801\u9762\u5373\u53EF\u3002"
-  },
-  missing_api_key: {
-    http_status: 400,
-    title: "\u9019\u500B\u8ACB\u6C42\u6C92\u6709\u5E36\u8EAB\u5206",
-    message: "\u9019\u500B\u8ACB\u6C42\u6C92\u6709\u5E36\u4E0A\u53EF\u4EE5\u6C7A\u5B9A\u67E5\u8A62\u7BC4\u570D\u7684\u8EAB\u5206\u8CC7\u8A0A\uFF0C\u6240\u4EE5\u7121\u6CD5\u8655\u7406\u3002\u5982\u679C\u4F60\u662F\u900F\u904E App \u6216\u5DE5\u5177\u9023\u9032\u4F86\u7684\uFF0C\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u8005\u6216\u4F60\u7684 AI \u52A9\u624B\u3002",
-    advanced: "\u8ACB\u6C42\u7F3A\u5C11 X-Arcrun-API-Key \u6A19\u982D\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u67E5\u8A62\u7684 owner_id \u7BC4\u570D\u3002",
-    why: "\u900F\u904E API\uFF0FMCP \u76F4\u63A5\u547C\u53EB\u9019\u53F0\u5BE6\u4F8B\u6642\uFF0C\u9700\u8981\u7528 X-Arcrun-API-Key \u6A19\u982D\u8868\u660E\u300C\u6211\u662F\u8AB0\u300D\uFF0C\u5BE6\u4F8B\u624D\u77E5\u9053\u8A72\u56DE\u54EA\u500B\u7BC4\u570D\u7684\u8CC7\u6599\u3002\u5F9E Portal \u7DB2\u9801\u767B\u5165\u7684\u4E00\u822C\u7528\u6236\u4E0D\u6703\u9047\u5230\u9019\u500B\u3002",
-    operator: "\u547C\u53EB\u7AEF\u8981\u5728\u8ACB\u6C42\u6A19\u982D\u5E36\u4E0A X-Arcrun-API-Key\uFF08\uFF1D\u4F60 ~/.arcrun/config.yaml \u7684 api_key\uFF09\u3002\u82E5\u8D70\u7684\u662F\u5B98\u65B9 App\uFF0FMCP\uFF0C\u78BA\u8A8D\u5B83\u5DF2\u7528 `acr` \u8A2D\u5B9A\u904E\u5E33\u865F\u3002"
-  },
-  auth_store_not_writable: {
-    http_status: 502,
-    title: "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u7121\u6CD5\u5132\u5B58\u5E33\u865F\u8CC7\u6599",
-    message: "\u9019\u53F0 Arcrun \u5BE6\u4F8B\u73FE\u5728\u5BEB\u4E0D\u9032\u5E33\u865F\uFF0F\u5BC6\u78BC\u8CC7\u6599\uFF0C\u6240\u4EE5\u6C92\u8FA6\u6CD5\u5EFA\u7ACB\u6216\u4FEE\u6539\u5E33\u865F\u3002\u9019\u662F\u5E73\u53F0\u7AEF\u7684\u8A2D\u5B9A\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u2014\u2014\u76EE\u524D\u756B\u9762\u4E0A\u6C92\u6709\u4F60\u81EA\u5DF1\u80FD\u505A\u7684\u4E0B\u4E00\u6B65\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u3001\u4EE5\u53CA\u4F60\u525B\u624D\u5728\u505A\u7684\u4E8B\uFF08\u4F8B\u5982\uFF1A\u5EFA\u7ACB\u7B2C\u4E00\u500B\u5E33\u865F\u3001\u65B0\u589E\u4F7F\u7528\u8005\u3001\u4FEE\u6539\u5BC6\u78BC\uFF09\uFF0C\u4E00\u8D77\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
-    advanced: "\u7F3A\u5C11\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF08CF_SECRETS_API_TOKEN\uFF09\u3002\u8A8D\u8B49\u5132\u5B58\u8D70 Workers per-script Secrets\uFF08D61 \u8A8D\u8B49\u8207\u8CC7\u6599\u5206\u96E2\uFF09\uFF0C\u5BEB\u5165\u9700\u8981\u9019\u628A token\uFF1B\u8B80\u53D6\u4E0D\u9700\u8981\uFF0C\u6240\u4EE5\u65E2\u6709\u5E33\u865F\u4ECD\u767B\u5F97\u9032\u53BB\uFF0C\u53EA\u662F\u4E0D\u80FD\u65B0\u589E\uFF0F\u4FEE\u6539\u3002",
-    why: "\u70BA\u4E86\u8B93\u300C\u91CD\u88DD\uFF0F\u63DB\u8CC7\u6599\u5EAB\u90FD\u4E0D\u6703\u628A\u4F60\u9396\u5728\u9580\u5916\u300D\uFF0C\u5E33\u865F\u5BC6\u78BC\u5B58\u5728 Cloudflare \u7684 Workers Secrets \uFF08\u8DDF\u77E5\u8B58\u8CC7\u6599\u5EAB\u5206\u958B\u7684\u5730\u65B9\uFF09\u3002\u5BEB\u9032\u90A3\u88E1\u9700\u8981\u4E00\u628A Cloudflare \u5BEB\u5165 token\uFF1B\u9019\u628A token \u4E0D\u6703\u88AB\u5B89\u88DD\uFF0F\u66F4\u65B0\u81EA\u52D5\u7A2E\u6210\u5E38\u99D0\u503C\uFF0C\u6240\u4EE5\u5728\u67D0\u4E9B\u5BE6\u4F8B\u4E0A\u6703\u7F3A\u2014\u2014\u7F3A\u7684\u6642\u5019\u5C31\u5BEB\u4E0D\u9032\u53BB\u3002",
-    operator: "\u9019\u9700\u8981\u4EBA\u5DE5\u5728\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684 Cloudflare \u5E33\u865F\u4E0A\u8655\u7406\uFF1A\u628A\u6709\u6548\u7684 CF_SECRETS_API_TOKEN \u8A2D\u9032 cypher-executor\uFF08wrangler secret put\uFF09\uFF0C\u6216\u7528\u5B89\u88DD\u7CBE\u9748\u7576\u4E0B\u624B\u4E0A\u4ECD\u6709\u6548\u7684 OAuth token \u5E36\u5165\u3002\u55AE\u7D14\u91CD\u8DD1\u5B89\u88DD\uFF0F\u66F4\u65B0**\u4E0D\u4FDD\u8B49**\u7A2E\u597D\u9019\u628A token\uFF0C\u6240\u4EE5\u8ACB\u4E0D\u8981\u53EA\u53EB\u7528\u6236\u91CD\u88DD\u3002"
-  },
-  ai_binding_missing: {
-    http_status: 501,
-    title: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u555F\u7528\u5167\u5EFA AI",
-    message: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u555F\u7528\u5167\u5EFA AI\uFF0C\u6240\u4EE5\u7121\u6CD5\u8655\u7406\u9019\u500B AI \u76F8\u95DC\u7684\u8ACB\u6C42\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
-    advanced: "wrangler.toml \u7F3A [ai] binding\uFF08Workers AI \u672A\u7D81\u5B9A\u5230 cypher-executor\uFF09\u3002",
-    why: "\u6709\u4E9B\u529F\u80FD\uFF08\u4F8B\u5982\u628A\u539F\u7A3F\u6574\u7406\u6210\u77E5\u8B58\u5361\uFF09\u7528\u7684\u662F Cloudflare \u5167\u5EFA\u7684 Workers AI\u3002\u5982\u679C\u9019\u53F0\u5BE6\u4F8B\u90E8\u7F72\u7684\u7248\u672C\u6C92\u6709\u7D81\u5B9A\u5B83\uFF0C\u9019\u985E\u529F\u80FD\u5C31\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u6C92\u555F\u7528\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u6210\u529F\u3002",
-    operator: "\u66F4\u65B0\u5230\u542B Workers AI binding \u7684\u77E5\u8B58\u5EAB\u7248\u672C\u5F8C\u91CD\u65B0\u90E8\u7F72 cypher-executor\uFF08wrangler.toml \u9700\u6709 [ai] binding\uFF09\u3002"
-  },
-  ai_workflow_missing: {
-    http_status: 404,
-    title: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u5B89\u88DD AI \u554F\u7B54\u529F\u80FD",
-    message: "\u4F60\u60F3\u8A2D\u5B9A\u7684 AI \u554F\u7B54\u529F\u80FD\u9084\u6C92\u6709\u5B89\u88DD\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
-    advanced: "\u627E\u4E0D\u5230 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\uFF08WEBHOOKS KV \u6C92\u6709\u9019\u53F0\u5BE6\u4F8B\u7684 rag_chat \u8A18\u9304\uFF09\u3002",
-    why: "AI \u554F\u7B54\u662F\u4E00\u689D\u53EF\u5B89\u88DD\u7684\u5DE5\u4F5C\u6D41\u3002\u8981\u5148\u628A\u5B83\u88DD\u5230\u5BE6\u4F8B\u4E0A\uFF0C\u624D\u80FD\u66FF\u5B83\u8A2D\u5B9A\u91D1\u9470\u6216\u4F7F\u7528\u5B83\u3002",
-    operator: "\u5728\u67B6\u8A2D\u8005\u7684\u6A5F\u5668\u4E0A\u5B89\u88DD\uFF0F\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\uFF08\u900F\u904E\u5B89\u88DD\u7CBE\u9748\u6216 `acr push`\uFF09\u5F8C\u518D\u8A66\u3002"
-  },
-  ai_workflow_corrupt: {
-    http_status: 500,
-    title: "AI \u554F\u7B54\u8A2D\u5B9A\u8CC7\u6599\u640D\u58DE",
-    message: "\u9019\u53F0\u5BE6\u4F8B\u7684 AI \u554F\u7B54\u8A2D\u5B9A\u8CC7\u6599\u8B80\u4E0D\u51FA\u4F86\uFF08\u683C\u5F0F\u58DE\u4E86\uFF09\uFF0C\u6240\u4EE5\u91D1\u9470\u6C92\u8FA6\u6CD5\u5B58\u9032\u53BB\u3002\u9019\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
-    advanced: "rag_chat \u5DE5\u4F5C\u6D41\u8A18\u9304\u7684 JSON \u89E3\u6790\u5931\u6557\uFF08WEBHOOKS KV \u5167\u5BB9\u6BC0\u640D\uFF09\u3002",
-    why: "\u91D1\u9470\u662F\u5BEB\u9032\u300CAI \u554F\u7B54\u5DE5\u4F5C\u6D41\u300D\u9019\u7B46\u8A2D\u5B9A\u88E1\u7684\u3002\u5982\u679C\u90A3\u7B46\u8A2D\u5B9A\u7684\u5167\u5BB9\u58DE\u6389\u4E86\uFF0C\u5C31\u6C92\u6709\u4E00\u500B\u5B8C\u6574\u7684\u5730\u65B9\u53EF\u4EE5\u653E\u91D1\u9470\uFF0C\u6240\u4EE5\u6703\u8AA0\u5BE6\u5730\u64CB\u4E0B\u4F86\uFF0C\u800C\u4E0D\u662F\u628A\u91D1\u9470\u5BEB\u9032\u4E00\u7B46\u58DE\u8CC7\u6599\u3002",
-    operator: "\u91CD\u65B0\u5B89\u88DD\uFF0F\u91CD\u65B0\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\u4EE5\u9084\u539F\u4E00\u4EFD\u4E7E\u6DE8\u7684\u8A18\u9304\uFF0C\u7136\u5F8C\u518D\u8A2D\u5B9A\u91D1\u9470\u3002"
-  },
-  ai_workflow_no_key_field: {
-    http_status: 500,
-    title: "AI \u554F\u7B54\u8A2D\u5B9A\u627E\u4E0D\u5230\u53EF\u586B\u91D1\u9470\u7684\u4F4D\u7F6E",
-    message: "\u9019\u53F0\u5BE6\u4F8B\u7684 AI \u554F\u7B54\u8A2D\u5B9A\u88E1\u6C92\u6709\u53EF\u4EE5\u653E\u91D1\u9470\u7684\u6B04\u4F4D\uFF0C\u6240\u4EE5\u91D1\u9470\u6C92\u6709\u5B58\u9032\u53BB\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
-    advanced: "rag_chat \u5DE5\u4F5C\u6D41\u7684 graph/config \u88E1\u627E\u4E0D\u5230 x-goog-api-key \u6B04\u4F4D\u53EF\u4F9B\u8986\u5BEB\u3002",
-    why: "\u8A2D\u5B9A\u91D1\u9470\u7684\u505A\u6CD5\uFF0C\u662F\u628A\u91D1\u9470\u503C\u586B\u9032 AI \u554F\u7B54\u5DE5\u4F5C\u6D41\u88E1\u653E\u91D1\u9470\u7684\u90A3\u500B\u6B04\u4F4D\u3002\u5982\u679C\u9019\u7B46\u8A2D\u5B9A\u7684\u7248\u672C\u8F03\u820A\u3001\u6C92\u6709\u90A3\u500B\u6B04\u4F4D\uFF0C\u5C31\u7121\u8655\u53EF\u586B\u2014\u2014\u9019\u6642\u5B83\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u627E\u4E0D\u5230\u4F4D\u7F6E\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u5B58\u597D\u4E86\u3002",
-    operator: "\u66F4\u65B0\uFF0F\u91CD\u65B0\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\u5230\u542B\u91D1\u9470\u6B04\u4F4D\u7684\u7248\u672C\u5F8C\u518D\u8A2D\u5B9A\u91D1\u9470\u3002"
-  }
-};
-var HELP_BASE_PATH = "/e";
-function normalizeOrigin(origin2) {
-  return origin2.replace(/\/+$/, "");
-}
-function helpUrl(origin2, code) {
-  return `${normalizeOrigin(origin2)}${HELP_BASE_PATH}/${code}`;
-}
-var UNKNOWN = {
-  http_status: 500,
-  title: "\u767C\u751F\u672A\u9810\u671F\u7684\u554F\u984C",
-  message: "\u9019\u53F0\u5BE6\u4F8B\u9047\u5230\u4E00\u500B\u672A\u9810\u671F\u7684\u554F\u984C\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
-  why: "\u9019\u662F\u4E00\u500B\u76EE\u524D\u6C92\u6709\u5C08\u5C6C\u8AAA\u660E\u7684\u932F\u8AA4\u78BC\u3002",
-  operator: "\u628A\u932F\u8AA4\u78BC\u8207\u91CD\u73FE\u6B65\u9A5F\u63D0\u4F9B\u7D66\u67B6\u8A2D\u8005\uFF0C\u4E26\u6AA2\u67E5 cypher-executor \u7684\u57F7\u884C\u7D00\u9304\u3002"
-};
-function specFor(code) {
-  return PORTAL_ERRORS[code] ?? UNKNOWN;
-}
-function portalErrorBody(origin2, code, opts) {
-  const spec = specFor(code);
-  const parts = [spec.advanced, opts?.advanced].filter((s) => Boolean(s && s.trim()));
-  const body = {
-    error: spec.message,
-    code,
-    help_url: helpUrl(origin2, code)
-  };
-  if (parts.length > 0) body.advanced = parts.join("\n");
-  return { body, status: spec.http_status };
-}
-function esc(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-var PAGE_HEAD = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Arcrun \u932F\u8AA4\u78BC\u8AAA\u660E</title>
-<style>
-:root{color-scheme:light dark}
-body{margin:0;padding:32px 20px;font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.75;background:#faf9f6;color:#1e1b16}
-@media(prefers-color-scheme:dark){body{background:#16130e;color:#ece7dd}}
-main{max-width:680px;margin:0 auto}
-.code{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;padding:3px 10px;border-radius:6px;background:rgba(194,73,46,.12);color:#c2492e;margin-bottom:14px}
-h1{font-size:24px;margin:.2em 0 .6em}
-h2{font-size:16px;margin:1.8em 0 .4em;opacity:.75}
-.msg{font-size:17px}
-.op{border:1px dashed rgba(127,127,127,.4);border-radius:10px;padding:14px 16px;background:rgba(127,127,127,.06)}
-.op .tag{font-size:13px;opacity:.7;margin-bottom:6px}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(127,127,127,.15);padding:1px 5px;border-radius:4px}
-a{color:#c2492e}
-ul{padding-left:1.2em}
-.foot{margin-top:2.5em;font-size:13px;opacity:.6}
-</style></head><body><main>`;
-var PAGE_FOOT = `</main></body></html>`;
-function renderFaqHtml(origin2, code) {
-  const known = code && PORTAL_ERRORS[code] ? code : null;
-  if (!known) {
-    const items = Object.entries(PORTAL_ERRORS).map(
-      ([c, s2]) => `<li><a href="${esc(helpUrl(origin2, c))}"><code>${esc(c)}</code></a> \u2014 ${esc(s2.title)}</li>`
-    ).join("");
-    return PAGE_HEAD + `<h1>Arcrun \u932F\u8AA4\u78BC\u8AAA\u660E</h1><p class="msg">\u4E0B\u9762\u662F\u9019\u53F0\u5BE6\u4F8B\u53EF\u80FD\u986F\u793A\u7684\u932F\u8AA4\u78BC\u3002\u9EDE\u9032\u53BB\u770B\u5B83\u7684\u610F\u601D\u3001\u70BA\u4EC0\u9EBC\u6703\u767C\u751F\u3001\u4EE5\u53CA\u600E\u9EBC\u89E3\u6C7A\u3002\u4F60\u4E5F\u53EF\u4EE5\u628A\u8A72\u9801\u7DB2\u5740\u76F4\u63A5\u8CBC\u7D66\u4F60\u7684 AI \u52A9\u624B\u3002</p><ul>${items}</ul>` + PAGE_FOOT;
-  }
-  const s = PORTAL_ERRORS[known];
-  return PAGE_HEAD + `<div class="code">${esc(known)}</div><h1>${esc(s.title)}</h1><p class="msg">${esc(s.message)}</p><h2>\u70BA\u4EC0\u9EBC\u6703\u9019\u6A23</h2><p>${esc(s.why)}</p>` + (s.advanced ? `<h2>\u6280\u8853\u7D30\u7BC0</h2><p>${esc(s.advanced)}</p>` : "") + `<h2>\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA</h2><div class="op"><div class="tag">\u9019\u4E00\u6BB5\u662F\u7D66\u67B6\u8A2D\u8005\uFF0F\u5DE5\u7A0B\u5E2B\u770B\u7684\uFF0C\u4E0D\u662F\u7D66\u4E00\u822C\u7528\u6236\u7684\u64CD\u4F5C\u6B65\u9A5F</div>${esc(s.operator)}</div><p class="foot">\u932F\u8AA4\u78BC <code>${esc(known)}</code> \xB7 <a href="${esc(helpUrl(origin2, ""))}">\u770B\u5168\u90E8\u932F\u8AA4\u78BC</a></p>` + PAGE_FOOT;
-}
-
-// cypher-executor/src/lib/instance-update.ts
-var DEFAULT_INSTALLER_ORIGIN = "https://install.arcrun.dev";
-async function requestInstanceUpdate(env, fetchImpl = fetch) {
-  const token = env.ARCRUN_UPDATE_TOKEN;
-  const accountId = env.CF_ACCOUNT_ID;
-  if (!token || !accountId) {
-    return {
-      status: 501,
-      body: {
-        ok: false,
-        state: "unavailable",
-        fallback_to_installer: true,
-        message: "\u9019\u53F0\u9084\u6C92\u6709\u4E00\u9375\u66F4\u65B0\u7684\u529F\u80FD\uFF0C\u9700\u8981\u5148\u7528\u5B89\u88DD\u9801\u66F4\u65B0\u4E00\u6B21\uFF0C\u4E4B\u5F8C\u5C31\u80FD\u76F4\u63A5\u5728\u9019\u88E1\u66F4\u65B0\u3002"
-      }
-    };
-  }
-  const origin2 = (env.INSTALLER_ORIGIN || DEFAULT_INSTALLER_ORIGIN).replace(/\/+$/, "");
-  let res;
-  try {
-    res = await fetchImpl(`${origin2}/api/instance/update`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      // body 只有 accountId——刻意沒有版本欄位。
-      body: JSON.stringify({ accountId })
-    });
-  } catch {
-    return {
-      status: 502,
-      body: { ok: false, state: "unavailable", message: "\u66AB\u6642\u9023\u4E0D\u4E0A\u66F4\u65B0\u670D\u52D9\uFF0C\u8ACB\u7A0D\u5F8C\u91CD\u65B0\u6574\u7406\u770B\u770B\u7248\u672C\u6709\u6C92\u6709\u8B8A\u3002" }
-    };
-  }
-  const j = await res.json().catch(() => null);
-  const message2 = typeof j?.message === "string" && j.message ? j.message : "";
-  if (!j || res.status >= 500) {
-    return {
-      status: 502,
-      body: { ok: false, state: "unavailable", message: message2 || "\u66F4\u65B0\u670D\u52D9\u66AB\u6642\u6C92\u6709\u56DE\u61C9\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u3002" }
-    };
-  }
-  if (res.status === 401 || res.status === 403) {
-    return { status: 200, body: { ok: false, state: "refused", message: message2 || "\u9019\u500B\u66F4\u65B0\u8981\u6C42\u6C92\u6709\u901A\u904E\u9A57\u8B49\u3002" } };
-  }
-  if (j.ok === true && j.state === "busy") {
-    return { status: 200, body: { ok: true, state: "busy", message: message2 || "\u6B63\u5728\u5E6B\u4F60\u66F4\u65B0\uFF0C\u8ACB\u7A0D\u5019\u518D\u91CD\u65B0\u6574\u7406\u3002" } };
-  }
-  if (j.ok === true) {
-    const deployed = typeof j.deployed === "number" ? j.deployed : 0;
-    return {
-      status: 200,
-      body: { ok: true, state: deployed > 0 ? "updated" : "up_to_date", deployed, message: message2 || "\u66F4\u65B0\u5B8C\u6210\u3002" }
-    };
-  }
-  return { status: 200, body: { ok: false, state: "refused", message: message2 || "\u9019\u6B21\u6C92\u8FA6\u6CD5\u5E6B\u4F60\u66F4\u65B0\u3002" } };
-}
 
 // cypher-executor/src/lib/app-glyphs.ts
 var APP_GLYPH_IDS = ["doc", "note", "layers", "pin", "wrench", "box", "folder", "check", "bulb", "bell", "chart", "compass"];
@@ -38657,7 +33484,7 @@ async function listInstalledApps(env, tenant2) {
   );
   return apps.filter((a) => a !== null);
 }
-async function ensureTemplate4(env, name, slots, description) {
+async function ensureTemplate3(env, name, slots, description) {
   const { base, headers } = kbdbBase(env);
   const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
   if (getRes.ok) {
@@ -38786,7 +33613,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   };
   if (existing && existing.content_hash === contentHash && existing.status === "active") {
     try {
-      for (const dt of decl.data) await ensureTemplate4(env, dt.name, dt.slots, dt.description);
+      for (const dt of decl.data) await ensureTemplate3(env, dt.name, dt.slots, dt.description);
     } catch (e) {
       return {
         ok: false,
@@ -38799,7 +33626,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   }
   try {
     for (const dt of decl.data) {
-      await ensureTemplate4(env, dt.name, dt.slots, dt.description);
+      await ensureTemplate3(env, dt.name, dt.slots, dt.description);
     }
   } catch (e) {
     return {
@@ -38902,12 +33729,18 @@ async function uninstallApp(env, tenant2, id) {
   }
   return { ok: true };
 }
-async function runAppAction(env, tenant2, appId, action, payload, ctx) {
+function prefetchAppAction(env, tenant2, appId, action) {
   const guessedKey = `${appId}__${action}`;
-  const [app2, guessedRaw] = await Promise.all([
-    getInstalledApp(env, tenant2, appId),
-    appStore(env).get(workflowKvKey(tenant2, guessedKey), "text")
-  ]);
+  const app2 = getInstalledApp(env, tenant2, appId);
+  const guessedRaw = appStore(env).get(workflowKvKey(tenant2, guessedKey), "text");
+  app2.catch(() => void 0);
+  guessedRaw.catch(() => void 0);
+  return { guessedKey, app: app2, guessedRaw };
+}
+async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch) {
+  const pre = prefetch ?? prefetchAppAction(env, tenant2, appId, action);
+  const guessedKey = pre.guessedKey;
+  const [app2, guessedRaw] = await Promise.all([pre.app, pre.guessedRaw]);
   if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
   if (!app2.actions.includes(action)) {
     return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
@@ -39134,6 +33967,5260 @@ function catalogListing(installed) {
   });
 }
 
+// cypher-executor/src/lib/bundle-consistency.ts
+init_endpoints();
+var PROBE_TIMEOUT_MS = 4e3;
+function targets(env) {
+  const sub = String(env.WORKER_SUBDOMAIN ?? "").trim();
+  const mcpBase = String(env.MCP_BASE_URL ?? "").trim().replace(/\/+$/, "").replace(/\/mcp$/, "");
+  const viaSub = (name) => sub && !isPrivateCloud(env) ? `https://${name}.${sub}.workers.dev` : null;
+  const mcp = mcpBase || viaSub("arcrun-mcp");
+  const ui = viaSub("arcrun-rag-ui");
+  return [
+    { worker: "arcrun-mcp", url: mcp ? `${mcp}/health` : null, pick: (j) => j.build },
+    { worker: "arcrun-rag-ui", url: ui ? `${ui}/__version` : null, pick: (j) => j.bundle_version }
+  ];
+}
+async function probeSiblingVersions(env, fetchImpl = fetch) {
+  return Promise.all(
+    targets(env).filter((t) => t.url).map(async (t) => {
+      try {
+        const res = await fetchImpl(t.url, {
+          headers: { accept: "application/json" },
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
+        });
+        if (!res.ok) return { worker: t.worker, version: "" };
+        const j = await res.json().catch(() => null);
+        const v = j ? t.pick(j) : "";
+        return { worker: t.worker, version: typeof v === "string" ? v : "" };
+      } catch {
+        return { worker: t.worker, version: "" };
+      }
+    })
+  );
+}
+function assessConsistency(self, siblings) {
+  const lagging = parseVersion(self) ? siblings.filter((s) => compareVersions(self, s.version) === 1) : [];
+  return { self, siblings, lagging };
+}
+function describeLagging(lagging) {
+  return lagging.map((l) => `${l.worker} \u9084\u662F ${l.version}`).join("\u3001");
+}
+
+// cypher-executor/src/routes/health.ts
+var healthRouter = new Hono2();
+var DATA_LAYER_CACHE_MS = 1e4;
+var dataLayerCache = null;
+async function dataLayerStatus(env) {
+  const now2 = Date.now();
+  if (dataLayerCache && now2 - dataLayerCache.at < DATA_LAYER_CACHE_MS) return dataLayerCache.block;
+  let block;
+  try {
+    const { base, headers } = kbdbBase(env);
+    const res = await fetch(`${base}/health`, { headers, signal: AbortSignal.timeout(5e3) });
+    const body = await res.json().catch(() => null);
+    block = body?.data_layer ?? {
+      ok: false,
+      reason: "kbdb_health_unreadable",
+      detail: `HTTP ${res.status}`,
+      summary: "\u9019\u53F0\u7684 kbdb \u9084\u6C92\u6709\u8CC7\u6599\u5C64\u4E16\u4EE3\u63A2\u91DD\uFF08\u6BD4 Arcrun#159 \u7684\u4FEE\u6CD5\u820A\uFF09\u2014\u2014\u72C0\u614B\u672A\u77E5\u3002"
+    };
+  } catch (e) {
+    block = {
+      ok: false,
+      reason: "kbdb_unreachable",
+      detail: e instanceof Error ? e.message : String(e),
+      summary: "\u6253\u4E0D\u5230 kbdb\u2014\u2014\u8CC7\u6599\u5C64\u72C0\u614B\u672A\u77E5\uFF08\u672A\u77E5\u4E0D\u7B49\u65BC\u5065\u5EB7\uFF09\u3002"
+    };
+  }
+  dataLayerCache = { at: now2, block };
+  return block;
+}
+function authStoreStatus(env) {
+  const store2 = readAuthStore(env);
+  const writable = authStoreWritable(env);
+  return {
+    console: { home: "workers-secrets", writable, configured: store2.console !== null },
+    portal_users: { password_home: "workers-secrets", writable, passwords_migrated: Object.keys(store2.passwords).length }
+  };
+}
+healthRouter.get("/health", async (c) => {
+  const bundleVersion = c.env.ARCRUN_BUNDLE_VERSION;
+  const bundleCommit = c.env.ARCRUN_BUNDLE_COMMIT;
+  const dataLayer = await dataLayerStatus(c.env);
+  return c.json({
+    ok: true,
+    status: dataLayer.ok ? "ok" : "degraded",
+    data_layer: dataLayer,
+    ...bundleVersion ? { bundle_version: bundleVersion } : {},
+    ...bundleCommit ? { bundle_commit: bundleCommit } : {},
+    auth_store: authStoreStatus(c.env),
+    // inkstone/Arcrun#276：金鑰值放哪（cf＝Workers Secrets／local＝企業私有雲由這台 server 保存）。
+    // local 另報主金鑰有沒有設（只回布林，不回內容）。
+    credential_store: (() => {
+      const backend = secretBackendMode(c.env);
+      return backend === "local" ? { backend, ready: localBackendReady(c.env) } : { backend };
+    })(),
+    // arcrun-rag#38/#69/#25（2026-08-11）：安裝器判斷「要不要重推」只比 bundle_version——
+    // 但這次要修的洞是「installer 從沒注入過 PORTAL_MAIL_RELAY_BASE」，跟 bundle 內容
+    // 版本無關（同一個 cypher 版本，有的實例有這個 var、有的沒有）。純比版本號的話，
+    // 已經在最新版的實例（如 leo 自己那台）永遠不會因為「按更新」而重推，這個 var
+    // 就永遠補不進去。只回布林（有沒有設，不回值本身）——不洩漏郵差網址。
+    mail_relay_configured: Boolean(String(c.env.PORTAL_MAIL_RELAY_BASE ?? "").trim()),
+    // Arcrun#98 c11358（leo：「一台實例的 portal 永遠指向實際安裝它的那台安裝器」）：
+    // 有設就吐出去（非機密，只是一個 URL），portal 前端拿它取代寫死的 install.arcrun.dev，
+    // 這樣版本檢查／「前往安裝精靈」兩處才會跟著這台實例真正的安裝來源走，而不是恆指 prod。
+    // 未注入（尚未走過會設這個 var 的部署）→ 省略該欄，前端退回原本寫死的 prod 網址
+    // （同 bundle_version 的既有行為：省略欄位 ≠ 回傳假值）。
+    ...c.env.INSTALLER_ORIGIN ? { installer_origin: c.env.INSTALLER_ORIGIN } : {}
+  });
+});
+healthRouter.get(
+  "/",
+  (c) => c.json({
+    service: "arcrun-cypher-executor",
+    version: "1.0.0",
+    status: "ok"
+  })
+);
+var BUNDLE_CACHE_MS = 1e4;
+var bundleCache = null;
+healthRouter.get("/health/bundle", async (c) => {
+  const self = c.env.ARCRUN_BUNDLE_VERSION ?? "";
+  const now2 = Date.now();
+  if (!bundleCache || bundleCache.self !== self || now2 - bundleCache.at > BUNDLE_CACHE_MS) {
+    const siblings = await probeSiblingVersions(c.env);
+    bundleCache = { at: now2, self, block: assessConsistency(self, siblings) };
+  }
+  const b = bundleCache.block;
+  return c.json({ ok: true, complete: b.lagging.length === 0, ...b });
+});
+
+// cypher-executor/src/routes/execute.ts
+init_dist();
+init_types();
+init_graph_executor();
+init_schemas();
+init_component_loader();
+init_run_scratch();
+var executeRouter = new Hono2();
+executeRouter.post("/execute", async (c) => {
+  const body = await c.req.json();
+  const parsed = executeSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "\u5716\u5B9A\u7FA9\u9A57\u8B49\u5931\u6557", details: parsed.error.issues }, 400);
+  }
+  const { graph, context } = parsed.data;
+  const apiKey = c.req.header("x-arcrun-api-key") ?? void 0;
+  const loader = createComponentLoader(c.env);
+  const executor = new GraphExecutor(loader, void 0, c.env, apiKey);
+  const start = Date.now();
+  try {
+    const result = await executor.execute(graph, context, createRunScratch());
+    const duration_ms = Date.now() - start;
+    const verdict = deriveExecutionVerdict(graph, result.trace);
+    c.executionCtx.waitUntil(
+      writeExecutionVerdict(
+        c.env,
+        graph.id,
+        graph.nodes,
+        verdict.success ? "success" : "failed",
+        duration_ms,
+        verdict.success ? "\u57F7\u884C\u5B8C\u6210" : (verdict.error ?? "\u7BC0\u9EDE\u5931\u6557").slice(0, 100),
+        context,
+        apiKey,
+        c.env.__kbdbTally
+      )
+    );
+    if (!verdict.success) {
+      return c.json({
+        success: false,
+        error: verdict.error,
+        failed_node: verdict.failedNode ?? null,
+        data: result.data,
+        trace: result.trace,
+        duration_ms
+      }, 500);
+    }
+    return c.json({ success: true, data: result.data, trace: result.trace, duration_ms });
+  } catch (err) {
+    const duration_ms = Date.now() - start;
+    const errMsg = err instanceof Error ? err.message : String(err);
+    c.executionCtx.waitUntil(
+      writeExecutionVerdict(c.env, graph.id, graph.nodes, "failed", duration_ms, errMsg.slice(0, 100), context, apiKey, c.env.__kbdbTally)
+    );
+    if (err instanceof ExecutionError) {
+      const traceFormatted = err.trace.map((s) => ({
+        node: s.nodeId,
+        status: s.error ? "failed" : "success",
+        ...s.error ? { error: s.error } : {}
+      }));
+      return c.json({
+        success: false,
+        error: errMsg,
+        failed_node: err.failed_node,
+        failed_input: err.failed_input,
+        trace: traceFormatted,
+        duration_ms
+      }, 500);
+    }
+    return c.json({ success: false, error: errMsg, failed_node: null, trace: [], duration_ms }, 500);
+  }
+});
+
+// cypher-executor/src/routes/cypher.ts
+init_dist();
+
+// cypher-executor/src/actions/cypher-handlers.ts
+init_types();
+init_graph_executor();
+init_schemas();
+init_component_loader();
+init_execution_evaluator();
+
+// cypher-executor/src/actions/triplet-parser.ts
+init_constants3();
+function parseTriplets(rawTriplets) {
+  const edges = [];
+  const nodeNames = /* @__PURE__ */ new Set();
+  const fromSet = /* @__PURE__ */ new Set();
+  const toSet = /* @__PURE__ */ new Set();
+  for (const line of rawTriplets) {
+    if (typeof line !== "string") continue;
+    const parts = line.split(">>").map((s) => s.trim());
+    if (parts.length !== 3) continue;
+    const [from, action, to] = parts;
+    edges.push({ from, to, label: action });
+    nodeNames.add(from);
+    nodeNames.add(to);
+    fromSet.add(from);
+    toSet.add(to);
+  }
+  if (nodeNames.size === 0) return null;
+  const sourceNodes = new Set([...fromSet].filter((n) => !toSet.has(n)));
+  const sinkNodes = new Set([...toSet].filter((n) => !fromSet.has(n)));
+  return { edges, nodeNames, sourceNodes, sinkNodes };
+}
+var INPUT_NAMES = /* @__PURE__ */ new Set(["input", "trigger", "webhook", "start"]);
+var OUTPUT_NAMES = /* @__PURE__ */ new Set(["output", "result", "end", "done"]);
+function isVirtualIoName(name) {
+  const lower = name.toLowerCase();
+  return INPUT_NAMES.has(lower) || OUTPUT_NAMES.has(lower);
+}
+function resolveNodeRole(name, parsed) {
+  if (INPUT_NAMES.has(name.toLowerCase())) return "Input";
+  if (OUTPUT_NAMES.has(name.toLowerCase())) return "Output";
+  if (parsed.sourceNodes.has(name)) return "Input";
+  return "Component";
+}
+function toEdgeType(label) {
+  const upper = label.toUpperCase();
+  if (VALID_EDGE_TYPES.has(upper)) return upper;
+  return SEMANTIC_EDGE_MAP[label] ?? SEMANTIC_EDGE_MAP[upper] ?? "PIPE";
+}
+
+// cypher-executor/src/actions/search-nodes.ts
+init_component_loader();
+init_endpoints();
+init_recipes();
+
+// cypher-executor/src/lib/branch-hints.ts
+var BRANCH_HINTS = {
+  if_control: {
+    branch_field: "data.branch",
+    branches: ["true", "false"],
+    edge_types: ["ON_TRUE", "ON_FALSE"],
+    usage: '\u9019\u9846\u7B97\u5B8C\u6703\u8F38\u51FA data.branch\uFF08"true"\uFF0F"false"\uFF09\u3002\u4E0B\u6E38\u63A5\u5169\u689D\u908A\uFF1AON_TRUE \u63A5\u689D\u4EF6\u6210\u7ACB\u8981\u505A\u7684\u4E8B\uFF0CON_FALSE \u63A5\u4E0D\u6210\u7ACB\u8981\u505A\u7684\u4E8B\u3002**\u4E0D\u9700\u8981\u81EA\u5DF1\u5BEB code \u5224\u65B7\u8D70\u54EA\u689D**\u2014\u2014\u5F15\u64CE\u4F9D branch \u81EA\u52D5\u9078\u8DEF\u3002',
+    example: "\u5224\u65B7\u6709\u6C92\u6709\u65B0\u8CC7\u6599 >> ON_TRUE >> \u50B3\u5230 telegram\n\u5224\u65B7\u6709\u6C92\u6709\u65B0\u8CC7\u6599 >> ON_FALSE >> \u7D50\u675F\n\uFF08\u4E2D\u6587\u8A9E\u610F\u8A5E\u4EA6\u53EF\uFF1A\u300C\u6210\u7ACB\u6642\u300D\uFF1DON_TRUE\u3001\u300C\u5426\u5247\u300D\uFF1DON_FALSE\uFF09"
+  },
+  switch: {
+    branch_field: "data.branch",
+    branches: "\u7531 input_schema.cases[].branch \u8207 default_branch \u6C7A\u5B9A\uFF08N \u8DEF\uFF0C\u975E\u56FA\u5B9A\u6E05\u55AE\uFF09",
+    edge_types: ["ON_BRANCH"],
+    usage: "\u9019\u9846\u4F9D value \u6BD4\u5C0D cases\uFF0C\u8F38\u51FA data.branch\uFF1D\u547D\u4E2D\u90A3\u500B case \u7684 branch \u540D\uFF08\u90FD\u6C92\u4E2D\u5247\u662F default_branch\uFF09\u3002\u4E0B\u6E38**\u6BCF\u689D\u8DEF\u5404\u63A5\u4E00\u689D ON_BRANCH \u908A\uFF0C\u4E26\u5728\u908A\u4E0A\u6A19 branch \u7B49\u65BC\u4F60\u5728 cases \u88E1\u53D6\u7684\u540D\u5B57**\u3002default_branch \u4E0D\u9700\u8981\u7279\u5225\u7684\u908A\u578B\uFF0C\u7167\u6A23\u7528 ON_BRANCH \u6A19\u5B83\u7684\u540D\u5B57\u5373\u53EF\u3002",
+    example: '{"cases":[{"match":"active","branch":"branch_active"}],"default_branch":"branch_default"}\nedges: [\n  {"from":"my_switch","to":"\u8655\u7406\u555F\u7528","type":"ON_BRANCH","branch":"branch_active"},\n  {"from":"my_switch","to":"\u8655\u7406\u5176\u4ED6","type":"ON_BRANCH","branch":"branch_default"}\n]'
+  },
+  try_catch: {
+    branch_field: "data.branch",
+    branches: ["try", "catch"],
+    edge_types: ["ON_BRANCH"],
+    usage: '\u9019\u9846\u770B\u4E0A\u6E38 error \u662F\u5426\u975E\u7A7A\uFF0C\u8F38\u51FA data.branch\uFF08"try"\uFF1D\u6C92\u932F\uFF0F"catch"\uFF1D\u6709\u932F\uFF09\u3002\u4E0B\u6E38\u63A5\u5169\u689D ON_BRANCH \u908A\uFF0Cbranch \u5206\u5225\u6A19 "try" \u8207 "catch"\u3002**\u932F\u8AA4\u8655\u7406\u4E0D\u9700\u8981\u5BEB code**\u2014\u2014\u628A\u8981\u88DC\u6551\u7684\u7BC0\u9EDE\u63A5\u5728 catch \u90A3\u689D\u908A\u5F8C\u9762\u5373\u53EF\u3002',
+    example: 'edges: [\n  {"from":"my_try_catch","to":"\u6B63\u5E38\u6D41\u7A0B","type":"ON_BRANCH","branch":"try"},\n  {"from":"my_try_catch","to":"\u88DC\u6551\u6D41\u7A0B","type":"ON_BRANCH","branch":"catch"}\n]'
+  }
+};
+function branchHintFor(componentId) {
+  if (!componentId) return void 0;
+  return BRANCH_HINTS[componentId.toLowerCase()];
+}
+
+// cypher-executor/src/actions/search-nodes.ts
+async function searchNodes(parsed, config, env, mode = "discover", target) {
+  const nodeResults = {};
+  const missingNodes = [];
+  if (mode === "compile") {
+    for (const nodeName of parsed.nodeNames) {
+      const role = resolveNodeRole(nodeName, parsed);
+      if ((role === "Input" || role === "Output") && isVirtualIoName(nodeName)) {
+        nodeResults[nodeName] = { status: "found", componentId: nodeName.toLowerCase(), type: role };
+        continue;
+      }
+      const configComponent = config?.[nodeName]?.component;
+      nodeResults[nodeName] = {
+        status: configComponent ? "found" : "unchecked",
+        componentId: configComponent ?? nodeName,
+        type: role
+      };
+    }
+    return { nodeResults, missingNodes };
+  }
+  const registryBase = env ? registryBaseUrl(env) : void 0;
+  const wantComponents = target !== "recipe";
+  const wantRecipes = target !== "component";
+  const catalog = !wantComponents ? { status: "ok", entries: [] } : registryBase ? await fetchCatalog(registryBase) : { status: "unreachable", entries: [] };
+  const recipes = wantRecipes && env?.RECIPES ? await listAllRecipes2(env.RECIPES) : [];
+  const byId = /* @__PURE__ */ new Map();
+  for (const e of catalog.entries) {
+    const prev = byId.get(e.canonical_id);
+    if (!prev || (e.score ?? 0) > (prev.score ?? 0)) byId.set(e.canonical_id, e);
+    for (const a of e.aliases ?? []) if (!byId.has(a)) byId.set(a, e);
+  }
+  for (const nodeName of parsed.nodeNames) {
+    const role = resolveNodeRole(nodeName, parsed);
+    if ((role === "Input" || role === "Output") && isVirtualIoName(nodeName)) {
+      nodeResults[nodeName] = { status: "found", componentId: nodeName.toLowerCase(), type: role };
+      continue;
+    }
+    const configComponent = config?.[nodeName]?.component;
+    const componentId = configComponent ?? nodeName;
+    if (configComponent) {
+      nodeResults[nodeName] = { status: "found", componentId, type: role };
+      continue;
+    }
+    if (wantComponents && RUNTIME_NATIVE_COMPONENT_IDS.has(componentId)) {
+      nodeResults[nodeName] = {
+        status: "found",
+        componentId,
+        type: role,
+        source: "builtin",
+        branch_hint: branchHintFor(componentId)
+      };
+      continue;
+    }
+    if (catalog.status === "unreachable") {
+      nodeResults[nodeName] = { status: "unknown", componentId, type: role };
+      continue;
+    }
+    if (catalog.status === "no_endpoint") {
+      const legacy = await legacyPerNodeLookup(registryBase, componentId, nodeName, role, env, recipes);
+      nodeResults[nodeName] = legacy.info;
+      if (legacy.missing) missingNodes.push(nodeName);
+      continue;
+    }
+    const hit = byId.get(componentId);
+    if (hit) {
+      nodeResults[nodeName] = {
+        status: "found",
+        componentId,
+        type: role,
+        source: "component",
+        input_schema: hit.input_schema,
+        success_rate: typeof hit.success_rate === "number" ? hit.success_rate : void 0,
+        stability: typeof hit.stability === "string" ? hit.stability : void 0,
+        branch_hint: branchHintFor(componentId)
+      };
+      continue;
+    }
+    const recipe = recipes.find((r) => r.canonical_id === componentId);
+    if (recipe) {
+      nodeResults[nodeName] = {
+        status: "found",
+        componentId: recipe.canonical_id,
+        type: role,
+        source: "recipe",
+        description: recipe.description,
+        endpoint: recipe.endpoint,
+        payload_hint: buildPayloadHint(recipe)
+      };
+      continue;
+    }
+    const substituted = trySubstitution(nodeName, catalog.entries, recipes);
+    if (substituted) {
+      nodeResults[nodeName] = { ...substituted, type: role };
+      continue;
+    }
+    const similarComponents = similarFromCatalog(catalog.entries, nodeName);
+    const similarRecipes = similarFromRecipes(recipes, nodeName);
+    nodeResults[nodeName] = {
+      status: "not_found",
+      componentId,
+      type: role,
+      suggestion: buildSuggestion(componentId),
+      ...similarComponents.length > 0 ? { similar_components: similarComponents } : {},
+      ...similarRecipes.length > 0 ? { similar_recipes: similarRecipes } : {}
+    };
+    missingNodes.push(nodeName);
+  }
+  return { nodeResults, missingNodes };
+}
+async function fetchCatalog(registryBase) {
+  try {
+    const res = await fetch(`${registryBase}/components/catalog`, { signal: AbortSignal.timeout(1e4) });
+    if (res.status === 404) return { status: "no_endpoint", entries: [] };
+    if (!res.ok) return { status: "unreachable", entries: [] };
+    const body = await res.json();
+    return { status: "ok", entries: body.data?.components ?? [] };
+  } catch {
+    return { status: "unreachable", entries: [] };
+  }
+}
+async function listAllRecipes2(kv) {
+  try {
+    const list = await kv.list({ prefix: "recipe:" });
+    return (await Promise.all(
+      list.keys.map((k) => kv.get(k.name, "json"))
+    )).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function similarFromCatalog(entries, nodeName) {
+  const searchableOf = (e) => [e.canonical_id, e.display_name ?? "", e.description ?? "", ...e.aliases ?? [], ...e.tags ?? []].join(" ").toLowerCase();
+  const full = nodeName.toLowerCase();
+  const direct = entries.filter((e) => searchableOf(e).includes(full)).map((e) => e.canonical_id);
+  if (direct.length > 0) return [...new Set(direct)].slice(0, 3);
+  const tokens = extractTokens(nodeName);
+  if (tokens.length === 0) return [];
+  const count = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const hay = searchableOf(e);
+    const hits = tokens.filter((t) => hay.includes(t)).length;
+    if (hits > 0) count.set(e.canonical_id, Math.max(count.get(e.canonical_id) ?? 0, hits));
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
+}
+function similarFromRecipes(recipes, nodeName) {
+  const tokens = [nodeName.toLowerCase(), ...extractTokens(nodeName)];
+  const seen = /* @__PURE__ */ new Set();
+  const matched = [];
+  for (const r of recipes) {
+    if (seen.has(r.canonical_id)) continue;
+    const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
+    if (tokens.some((t) => hay.includes(t))) {
+      seen.add(r.canonical_id);
+      matched.push(r.canonical_id);
+    }
+  }
+  return matched.slice(0, 3);
+}
+async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, env, recipes) {
+  const q = await fetchComponent(registryBase, componentId);
+  if (!q.ok) return { info: { status: "unknown", componentId, type: role }, missing: false };
+  if (q.entry) {
+    return {
+      info: {
+        status: "found",
+        componentId,
+        type: role,
+        source: "component",
+        input_schema: q.entry.input_schema,
+        success_rate: q.entry.success_rate,
+        stability: q.entry.stability,
+        branch_hint: branchHintFor(componentId)
+      },
+      missing: false
+    };
+  }
+  const recipe = recipes.find((r) => r.canonical_id === componentId) ?? (env?.RECIPES ? await resolveRecipe(componentId, env.RECIPES) : null);
+  if (recipe) {
+    return {
+      info: {
+        status: "found",
+        componentId: recipe.canonical_id,
+        type: role,
+        source: "recipe",
+        description: recipe.description,
+        endpoint: recipe.endpoint,
+        payload_hint: buildPayloadHint(recipe)
+      },
+      missing: false
+    };
+  }
+  const similarComponents = await searchSimilarComponents(registryBase, nodeName);
+  const similarRecipes = similarFromRecipes(recipes, nodeName);
+  return {
+    info: {
+      status: "not_found",
+      componentId,
+      type: role,
+      suggestion: buildSuggestion(componentId),
+      ...similarComponents.length > 0 ? { similar_components: similarComponents } : {},
+      ...similarRecipes.length > 0 ? { similar_recipes: similarRecipes } : {}
+    },
+    missing: true
+  };
+}
+function trySubstitution(nodeName, catalogEntries, recipes) {
+  const lower = nodeName.toLowerCase();
+  const serviceHits = SERVICE_HINTS.filter((w) => lower.includes(w));
+  if (serviceHits.length > 0) {
+    const matched = /* @__PURE__ */ new Map();
+    for (const r of recipes) {
+      const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
+      if (serviceHits.every((h) => hay.includes(h))) matched.set(r.canonical_id, r);
+    }
+    if (matched.size !== 1) return null;
+    const recipe = [...matched.values()][0];
+    return {
+      status: "resolved",
+      componentId: recipe.canonical_id,
+      source: "recipe",
+      description: recipe.description,
+      endpoint: recipe.endpoint,
+      substitution: {
+        from: nodeName,
+        componentId: "http_request",
+        // recipe＝http_request＋參數模板的具名封裝
+        recipe: recipe.canonical_id,
+        reason: `\u670D\u52D9\u8A5E\u300C${serviceHits.join("\u3001")}\u300D\u552F\u4E00\u547D\u4E2D recipe\u300C${recipe.canonical_id}\u300D\uFF1Bworkflow config \u5BEB component: ${recipe.canonical_id}\uFF08\u5E95\u5C64\u96F6\u4EF6\uFF1Dhttp_request\uFF09\uFF0C\u53EA\u9700\u586B payload`
+      }
+    };
+  }
+  const tokens = extractTokens(nodeName);
+  if (tokens.length === 0) return null;
+  const byCanonical = /* @__PURE__ */ new Map();
+  for (const e of catalogEntries) {
+    const strongHay = [e.canonical_id, e.display_name ?? "", ...e.aliases ?? []].join(" ").toLowerCase();
+    const weakHay = [e.description ?? "", ...e.tags ?? []].join(" ").toLowerCase();
+    const strongHits = tokens.filter((t) => strongHay.includes(t));
+    const weakCount = tokens.filter((t) => weakHay.includes(t)).length;
+    const score = strongHits.length * 10 + weakCount;
+    if (score === 0) continue;
+    const prev = byCanonical.get(e.canonical_id);
+    if (!prev || score > prev.score) byCanonical.set(e.canonical_id, { entry: e, score, strongHits });
+  }
+  const ranked = [...byCanonical.values()].sort((a, b) => b.score - a.score);
+  const top = ranked[0];
+  if (!top || top.strongHits.length === 0) return null;
+  if (ranked[1] && ranked[1].score >= top.score) return null;
+  return {
+    status: "resolved",
+    componentId: top.entry.canonical_id,
+    source: "component",
+    input_schema: top.entry.input_schema,
+    success_rate: typeof top.entry.success_rate === "number" ? top.entry.success_rate : void 0,
+    stability: typeof top.entry.stability === "string" ? top.entry.stability : void 0,
+    // 替換成分岔零件時（例「判斷有沒有新資料」→ if_control）一併附分支用法，
+    // 否則 AI 換到零件卻不知道怎麼接兩條路，仍會退回寫 code。
+    branch_hint: branchHintFor(top.entry.canonical_id),
+    substitution: {
+      from: nodeName,
+      componentId: top.entry.canonical_id,
+      reason: `\u65B7\u8A5E\u300C${top.strongHits.join("\u3001")}\u300D\u547D\u4E2D\u96F6\u4EF6\u300C${top.entry.canonical_id}\u300D\uFF08${top.entry.display_name ?? ""}\uFF09\u5F37\u6B04\u4F4D\u4E14\u5206\u6578\u552F\u4E00\u6700\u9AD8\uFF1B\u53EA\u9700\u7167 input_schema \u586B payload`
+    }
+  };
+}
+var SERVICE_HINTS = [
+  "google",
+  "gmail",
+  "sheets",
+  "slides",
+  "gdocs",
+  "drive",
+  "calendar",
+  "youtube",
+  "slack",
+  "telegram",
+  "discord",
+  "line",
+  "whatsapp",
+  "twilio",
+  "notion",
+  "airtable",
+  "trello",
+  "jira",
+  "asana",
+  "linear",
+  "github",
+  "gitea",
+  "gitlab",
+  "bitbucket",
+  "stripe",
+  "paypal",
+  "shopify",
+  "hubspot",
+  "salesforce",
+  "openai",
+  "anthropic",
+  "claude",
+  "gemini",
+  "groq",
+  "twitter",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "dropbox",
+  "zoom",
+  "sendgrid",
+  "mailgun",
+  "kbdb"
+];
+var COMPUTE_HINTS = [
+  "encrypt",
+  "decrypt",
+  "cipher",
+  "aes",
+  "rsa",
+  "sha",
+  "md5",
+  "hmac",
+  "hash",
+  "sign",
+  "verify",
+  "encode",
+  "decode",
+  "base64",
+  "hex",
+  "compress",
+  "decompress",
+  "zip",
+  "gzip",
+  "uuid",
+  "random",
+  "regex",
+  "math",
+  "calc",
+  "sort",
+  "dedup",
+  "diff",
+  "template",
+  "render",
+  "convert",
+  "transform",
+  "parse",
+  "format",
+  "csv",
+  "xml"
+];
+function buildSuggestion(componentId) {
+  const lower = componentId.toLowerCase();
+  const serviceHit = SERVICE_HINTS.find((w) => lower.includes(w));
+  const computeHit = COMPUTE_HINTS.find((w) => lower.includes(w));
+  if (serviceHit) {
+    return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\u3002\u540D\u5B57\u542B\u670D\u52D9\u8A5E\u300C${serviceHit}\u300D\uFF1D\u5916\u90E8 API \u6A23\u8C8C \u2192 \u6C92\u6709\u6B64 recipe\uFF0C\u53EF\u81EA\u5DF1\u5BEB\uFF1A\u5BEB\u6CD5\u770B skill\u300Cwrite_recipe\u300D\uFF08arcrun_get_skill('write_recipe')\uFF09\uFF0C\u5BEB\u597D\u7528 acr recipe push \u6216 POST /recipes \u88DD\u4E0A\u5373\u53EF\u7528\uFF0C\u4E0D\u7528\u6539\u5E73\u53F0\u3002`;
+  }
+  if (computeHit) {
+    return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\u3002\u540D\u5B57\u542B\u8A08\u7B97\u8A5E\u300C${computeHit}\u300D\uFF1D\u8A08\u7B97\u539F\u8A9E\u6A23\u8C8C \u2192 \u6C92\u6709\u6B64\u96F6\u4EF6\uFF0C\u53EF\u6295\u7A3F PR \u65B0\u589E WASM component\uFF1A\u505A\u6CD5\u770B skill\u300Cadd_new_wasm_component\u300D\uFF08arcrun_get_skill('add_new_wasm_component')\uFF09\u3002`;
+  }
+  return `\u5169\u5EAB\u90FD\u67E5\u904E\uFF0C\u96F6\u4EF6 registry \u8207 recipe \u5EAB\u7686\u7121\u300C${componentId}\u300D\uFF0C\u4E14\u540D\u5B57\u5224\u4E0D\u51FA\u578B\u3002\u7F3A\u5916\u90E8 API \u2192 \u81EA\u5DF1\u5BEB recipe\uFF08skill\u300Cwrite_recipe\u300D\uFF09\uFF1B\u7F3A\u8A08\u7B97\u80FD\u529B \u2192 \u6295\u7A3F\u96F6\u4EF6 PR\uFF08skill\u300Cadd_new_wasm_component\u300D\uFF0Ccomponent \u9032 WASM \u6C99\u7BB1\uFF09\u3002`;
+}
+function buildPayloadHint(recipe) {
+  const parts = [];
+  if (recipe.body_template) {
+    parts.push("payload \u5DF2\u6536\u5728 recipe \u7684 body_template \u88E1\uFF0C\u4F60\u53EA\u8981\u628A {{\u8B8A\u6578}} \u5C0D\u61C9\u7684\u503C\u653E\u9032\u7BC0\u9EDE context");
+  } else if (recipe.body) {
+    parts.push("payload \u5F62\u72C0\u898B body \u6B04\u4F4D\uFF08{{\u8B8A\u6578}} \u7531\u7BC0\u9EDE context \u586B\uFF09");
+  } else {
+    parts.push("\u672A\u5B9A\u7FA9 body_template\uFF1A\u7BC0\u9EDE context \u6703\u6574\u5305\u7576 body \u9001\u51FA\uFF08_ \u958B\u982D\u7684\u5167\u90E8\u6B04\u4F4D\u6703\u88AB\u5254\u9664\uFF09");
+  }
+  if (recipe.response_map) {
+    parts.push("\u56DE\u61C9\u5DF2\u6B63\u898F\u5316\uFF1A\u57F7\u884C\u7D50\u679C\u9664\u4E86\u539F\u59CB data\uFF0C\u53E6\u9644 text\uFF08\u53D6\u503C\u8DEF\u5F91\u7B49\u898F\u5247\u5BEB\u5728 recipe \u88E1\uFF0C\u63DB\u6E90\u4E0D\u5FC5\u6539 workflow\uFF09");
+  } else {
+    parts.push("\u672A\u5B9A\u7FA9 response_map\uFF1A\u56DE\u61C9\u539F\u6A23\u653E\u5728 data\uFF0C\u53D6\u503C\u8981\u81EA\u5DF1\u6307\u8DEF\u5F91");
+  }
+  if (recipe.auth === "binding") {
+    parts.push(`\u8A8D\u8B49\uFF1Dbinding\uFF08\u514D\u91D1\u9470\uFF0C\u7528\u5E73\u53F0\u5167\u5EFA ${recipe.binding_name ?? "AI"}\uFF09`);
+  } else if (recipe.auth_service) {
+    parts.push(`\u8A8D\u8B49\u8D70 auth recipe\u300C${recipe.auth_service}\u300D\uFF08\u91D1\u9470\u7531\u7CFB\u7D71\u5728\u57F7\u884C\u524D\u6CE8\u5165\uFF0C\u4F60\u4E0D\u5FC5\u4E5F\u4E0D\u8A72\u586B\uFF09`);
+  }
+  return {
+    body_template: recipe.body_template,
+    response_map: recipe.response_map,
+    usage: parts.join("\uFF1B") + "\u3002"
+  };
+}
+async function fetchComponent(registryBase, id) {
+  try {
+    const res = await fetch(`${registryBase}/components/${encodeURIComponent(id)}`, {
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (res.status === 404) return { ok: true };
+    if (!res.ok) return { ok: false };
+    const body = await res.json();
+    if (body.success === false) return { ok: true };
+    const d = body.data ?? body;
+    return {
+      ok: true,
+      entry: {
+        input_schema: d.input_schema,
+        success_rate: typeof d.success_rate === "number" ? d.success_rate : void 0,
+        stability: typeof d.stability === "string" ? d.stability : void 0
+      }
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+function extractTokens(name) {
+  const tokens = [];
+  const ascii = name.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
+  tokens.push(...ascii);
+  const cjkRuns = name.match(/[一-鿿]+/g) ?? [];
+  for (const run2 of cjkRuns) {
+    for (let i = 0; i + 2 <= run2.length; i++) tokens.push(run2.slice(i, i + 2));
+  }
+  return [...new Set(tokens)].slice(0, 8);
+}
+async function searchRegistryIds(registryBase, q) {
+  try {
+    const res = await fetch(`${registryBase}/components/search?q=${encodeURIComponent(q)}`, {
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return (body.data?.results ?? []).map((r) => r.canonical_id).filter((s) => !!s);
+  } catch {
+    return [];
+  }
+}
+async function searchSimilarComponents(registryBase, nodeName) {
+  const direct = await searchRegistryIds(registryBase, nodeName);
+  if (direct.length > 0) return direct.slice(0, 3);
+  const tokens = extractTokens(nodeName);
+  if (tokens.length === 0) return [];
+  const hits = await Promise.all(tokens.map((t) => searchRegistryIds(registryBase, t)));
+  const count = /* @__PURE__ */ new Map();
+  for (const ids of hits) {
+    for (const id of ids) count.set(id, (count.get(id) ?? 0) + 1);
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
+}
+
+// cypher-executor/src/actions/graph-builder.ts
+var FOREACH_LABEL_RE = /^(?:對每個|FOREACH)\s+(\w+)(?:\s+(?:並行|PARALLEL)\s*[（(]?\s*(\d+)\s*[）)]?)?$/i;
+function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
+  const nodes = [...parsed.nodeNames].map((name) => {
+    const nr = nodeResults[name];
+    const id = name.toLowerCase().replace(/\s+/g, "-");
+    const nodeConfig = config?.[name] ?? {};
+    const componentId = nodeConfig.component ?? nr.componentId;
+    const { component: _component, ...staticParams } = nodeConfig;
+    const data = Object.keys(staticParams).length > 0 ? staticParams : void 0;
+    return { id, type: nr.type, componentId, label: name, data };
+  });
+  const edges = parsed.edges.map((e) => {
+    let iterator;
+    let concurrency;
+    let label = e.label;
+    const foreachMatch = label.match(FOREACH_LABEL_RE);
+    if (foreachMatch) {
+      iterator = foreachMatch[1];
+      if (foreachMatch[2]) concurrency = Number(foreachMatch[2]);
+      label = "\u5C0D\u6BCF\u500B";
+    }
+    let branch;
+    const branchMatch = label.match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
+    if (branchMatch) {
+      branch = branchMatch[1];
+      label = "ON_BRANCH";
+    }
+    const edge = {
+      from: e.from.toLowerCase().replace(/\s+/g, "-"),
+      to: e.to.toLowerCase().replace(/\s+/g, "-"),
+      type: toEdgeType(label)
+    };
+    if (iterator) edge.iterator = iterator;
+    if (concurrency !== void 0) edge.concurrency = concurrency;
+    if (branch) edge.branch = branch;
+    return edge;
+  });
+  return { id: graphId, name: graphName, nodes, edges };
+}
+
+// cypher-executor/src/actions/cypher-handlers.ts
+init_run_scratch();
+async function handleCypherSearch(triplets, env, mode = "discover", target) {
+  const parsed = parseTriplets(triplets);
+  if (!parsed) {
+    throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE");
+  }
+  const { nodeResults, missingNodes } = await searchNodes(parsed, void 0, env, mode, target);
+  const graph = buildExecutionGraph(parsed, nodeResults, "cypher-search-result", "Cypher Search Result");
+  return { nodes: nodeResults, cypher: { nodes: graph.nodes, edges: graph.edges }, missing: missingNodes };
+}
+async function compileCypherBinding(flow, config, graphId, graphName, env) {
+  const parsed = parseTriplets(flow);
+  if (!parsed) {
+    throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE\uFF08flow \u4E09\u5143\u7D44\u683C\u5F0F\u932F\u8AA4\uFF09");
+  }
+  const { nodeResults } = await searchNodes(parsed, config, env, "compile");
+  return buildExecutionGraph(parsed, nodeResults, graphId, graphName, config);
+}
+async function handleCypherExecute(triplets, context, graphId, graphName, config, env, waitUntil, apiKey) {
+  const parsed = parseTriplets(triplets);
+  if (!parsed) {
+    throw new Error("\u7121\u6CD5\u89E3\u6790\u4EFB\u4F55\u7BC0\u9EDE");
+  }
+  const { nodeResults } = await searchNodes(parsed, config, env, "compile");
+  const graph = buildExecutionGraph(parsed, nodeResults, graphId, graphName, config);
+  const parseResult = graphSchema.safeParse(graph);
+  if (!parseResult.success) {
+    throw new Error("\u5716\u5B9A\u7FA9\u7522\u751F\u5931\u6557");
+  }
+  const loader = createComponentLoader(env);
+  const executor = new GraphExecutor(loader, void 0, env, apiKey);
+  const start = Date.now();
+  try {
+    const result = await executor.execute(parseResult.data, context ?? {}, createRunScratch());
+    const duration_ms = Date.now() - start;
+    waitUntil(recordComponentStats(env, graph.nodes, result.trace));
+    const verdict = deriveExecutionVerdict(parseResult.data, result.trace);
+    if (!verdict.success) {
+      return {
+        success: false,
+        error: verdict.error,
+        data: result.data,
+        trace: result.trace,
+        duration_ms,
+        graph
+      };
+    }
+    return { success: true, data: result.data, trace: result.trace, duration_ms, graph };
+  } catch (err) {
+    const duration_ms = Date.now() - start;
+    if (err instanceof WorkflowPaused) {
+      return {
+        success: true,
+        paused: true,
+        task_id: err.task_id,
+        run_id: err.run_id,
+        paused_node_id: err.paused_node_id,
+        trace: err.trace_so_far,
+        duration_ms,
+        graph
+      };
+    }
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (err instanceof ExecutionError) {
+      waitUntil(recordComponentStats(env, graph.nodes, err.trace));
+      const traceFormatted = err.trace.map((s) => ({
+        node: s.nodeId,
+        status: s.error ? "failed" : "success",
+        ...s.error ? { error: s.error } : {}
+      }));
+      throw new Error(JSON.stringify({
+        success: false,
+        error: errMsg,
+        failed_node: err.failed_node,
+        failed_input: err.failed_input,
+        trace: traceFormatted,
+        duration_ms
+      }));
+    }
+    throw err;
+  }
+}
+
+// cypher-executor/src/actions/target-search.ts
+init_endpoints();
+
+// cypher-executor/src/lib/workflow-search.ts
+init_endpoints();
+async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
+  const base = kbdbBaseUrl(env);
+  const headers = { "Content-Type": "application/json" };
+  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  const params = new URLSearchParams({
+    q,
+    owner_id: apiKey,
+    // 租戶隔離（只搜本租戶的 workflow）
+    entry_type: "workflow",
+    // base 通用 filter（Q4），只回 workflow entry
+    mode
+  });
+  return fetch(`${base}/entries/search?${params.toString()}`, { headers });
+}
+
+// cypher-executor/src/actions/target-search.ts
+async function searchByTarget(target, query, env, apiKey) {
+  if (target === "component") {
+    const registryBase = registryBaseUrl(env);
+    if (!registryBase) return { ok: false, status: 502, error: "registry \u4F4D\u7F6E\u672A\u8A2D\u5B9A\uFF08REGISTRY_BASE_URL\uFF0FCOMPONENT_URL_TEMPLATE\uFF0FWORKER_SUBDOMAIN \u7686\u7F3A\uFF09" };
+    try {
+      const res2 = await fetch(
+        `${registryBase}/components/search?q=${encodeURIComponent(query)}`,
+        { signal: AbortSignal.timeout(1e4) }
+      );
+      if (!res2.ok) return { ok: false, status: 502, error: `registry \u641C\u5C0B\u5931\u6557\uFF08HTTP ${res2.status}\uFF09` };
+      const body2 = await res2.json();
+      const results = (body2.data?.results ?? []).map((r) => {
+        if (!r || typeof r !== "object") return r;
+        const rec = r;
+        const hint = branchHintFor(typeof rec.canonical_id === "string" ? rec.canonical_id : void 0);
+        return hint ? { ...rec, branch_hint: hint } : rec;
+      });
+      return {
+        ok: true,
+        body: {
+          target,
+          query,
+          results,
+          count: body2.data?.count ?? 0
+        }
+      };
+    } catch (e) {
+      return { ok: false, status: 502, error: `registry \u67E5\u4E0D\u901A\uFF1A${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+  if (target === "recipe") {
+    if (!env.RECIPES) return { ok: false, status: 502, error: "RECIPES KV \u672A\u7D81\u5B9A" };
+    const all = await listAllRecipes2(env.RECIPES);
+    const q = query.toLowerCase();
+    const seen = /* @__PURE__ */ new Set();
+    const results = [];
+    for (const r of all) {
+      if (seen.has(r.canonical_id)) continue;
+      const hay = `${r.canonical_id} ${r.display_name ?? ""} ${r.description ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) continue;
+      seen.add(r.canonical_id);
+      results.push({
+        canonical_id: r.canonical_id,
+        display_name: r.display_name,
+        description: r.description,
+        endpoint: r.endpoint,
+        // 3.12：逐顆查 recipe 時也要說得出「payload 怎麼填、回應怎麼取值」
+        payload_hint: buildPayloadHint(r)
+      });
+    }
+    return {
+      ok: true,
+      body: {
+        target,
+        query,
+        results,
+        count: results.length,
+        note: "\u641C\u7684\u662F\u672C\u90E8\u7F72\u79C1\u5EAB\uFF08workflow \u53EF\u76F4\u63A5 component: <canonical_id> \u5F15\u7528\uFF09\u3002\u516C\u5EAB\uFF08\u591A\u4F5C\u8005\u5E02\u5834\uFF09\u8D70 MCP arcrun_recipe_search\uFF0FGET /public-recipes\u3002"
+      }
+    };
+  }
+  if (!apiKey) return { ok: false, status: 401, error: "target=workflow \u9700\u8981 X-Arcrun-API-Key header\uFF08workflow \u641C\u5C0B\u9650\u672C\u79DF\u6236\uFF09" };
+  const res = await fetchTenantWorkflowSearch(env, apiKey, query);
+  if (!res.ok) return { ok: false, status: 502, error: `workflow \u641C\u5C0B\u5931\u6557\uFF08KBDB HTTP ${res.status}\uFF09` };
+  const body = await res.json();
+  return { ok: true, body: { target, query, ...body } };
+}
+
+// cypher-executor/src/routes/cypher.ts
+var cypherRouter = new Hono2();
+var VALID_TARGETS = /* @__PURE__ */ new Set(["component", "recipe", "workflow"]);
+cypherRouter.post("/cypher/search", async (c) => {
+  const body = await c.req.json();
+  const rawTriplets = body?.triplets;
+  const target = typeof body?.target === "string" ? body.target : void 0;
+  if (target !== void 0 && !VALID_TARGETS.has(target)) {
+    return c.json({ error: `target \u53EA\u63A5\u53D7 component\uFF0Frecipe\uFF0Fworkflow\uFF0C\u6536\u5230\u300C${target}\u300D` }, 400);
+  }
+  const query = typeof body?.query === "string" ? body.query.trim() : "";
+  if (query) {
+    if (!target) {
+      return c.json({ error: "\u7D66 query \u5FC5\u9808\u540C\u6642\u7D66 target\uFF08component\uFF0Frecipe\uFF0Fworkflow\uFF09\uFF0C\u6307\u660E\u8981\u641C\u54EA\u500B\u5EAB" }, 400);
+    }
+    const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
+    const r = await searchByTarget(target, query, c.env, apiKey);
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    return c.json(r.body);
+  }
+  if (!Array.isArray(rawTriplets) || rawTriplets.length === 0) {
+    return c.json({ error: "triplets \u5FC5\u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u6216\u7D66 query + target \u505A\u540D\u5B57\u641C\u5C0B\uFF09" }, 400);
+  }
+  const mode = body?.mode === "compile" ? "compile" : "discover";
+  if (target && mode === "compile") {
+    return c.json({ error: "mode=compile\uFF08\u8907\u88FD\u8DEF\u5F91\uFF09\u4E0D\u67E5\u5EAB\uFF0C\u4E0D\u63A5\u53D7 target\uFF1B\u8981\u6307\u5B9A\u641C\u5C0B\u5C0D\u8C61\u8ACB\u7528 discover\uFF08\u9810\u8A2D\uFF09" }, 400);
+  }
+  if (target === "workflow") {
+    return c.json({ error: 'target=workflow \u662F\u540D\u5B57\u641C\u5C0B\uFF0C\u8ACB\u6539\u5E36 { target: "workflow", query: "..." }\uFF08\u4E0D\u5403 triplets\uFF09' }, 400);
+  }
+  try {
+    const now2 = /* @__PURE__ */ new Date();
+    const timestamp = now2.toISOString();
+    const versionId = `search-v1-${now2.getFullYear()}${String(now2.getMonth() + 1).padStart(2, "0")}${String(now2.getDate()).padStart(2, "0")}-${String(now2.getHours()).padStart(2, "0")}${String(now2.getMinutes()).padStart(2, "0")}${String(now2.getSeconds()).padStart(2, "0")}`;
+    const result = await handleCypherSearch(rawTriplets, c.env, mode, target);
+    const response = {
+      version: versionId,
+      timestamp,
+      triplets: rawTriplets,
+      nodes: result.nodes,
+      cypher: result.cypher,
+      missing: result.missing
+    };
+    return c.json(response);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: errMsg }, 400);
+  }
+});
+cypherRouter.post("/cypher/execute", async (c) => {
+  const body = await c.req.json();
+  if (!Array.isArray(body?.triplets) || body.triplets.length === 0) {
+    return c.json({ error: "triplets \u5FC5\u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217" }, 400);
+  }
+  const graphId = typeof body.graph_id === "string" ? body.graph_id : `triplet-exec-${Date.now()}`;
+  const graphName = typeof body.graph_name === "string" ? body.graph_name : "Triplet Execution";
+  const now2 = /* @__PURE__ */ new Date();
+  const timestamp = now2.toISOString();
+  const versionId = `execute-v1-${now2.getFullYear()}${String(now2.getMonth() + 1).padStart(2, "0")}${String(now2.getDate()).padStart(2, "0")}-${String(now2.getHours()).padStart(2, "0")}${String(now2.getMinutes()).padStart(2, "0")}${String(now2.getSeconds()).padStart(2, "0")}`;
+  const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
+  try {
+    const result = await handleCypherExecute(
+      body.triplets,
+      body.context,
+      graphId,
+      graphName,
+      body.config,
+      c.env,
+      (p) => c.executionCtx.waitUntil(p),
+      apiKey
+    );
+    const response = {
+      version: versionId,
+      timestamp,
+      ...result
+    };
+    return c.json(response);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    try {
+      const parsed = JSON.parse(errMsg);
+      const response = {
+        version: versionId,
+        timestamp,
+        ...parsed
+      };
+      return c.json(response, 500);
+    } catch {
+      return c.json({ version: versionId, timestamp, success: false, error: errMsg, duration_ms: 0 }, 500);
+    }
+  }
+});
+
+// cypher-executor/src/routes/validate.ts
+init_dist();
+init_schemas();
+init_telemetry();
+var validateRouter = new Hono2();
+validateRouter.post("/validate", async (c) => {
+  const start = Date.now();
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  const userAgent = c.req.header("User-Agent") ?? void 0;
+  const body = await c.req.json();
+  const parsed = graphSchema.safeParse(body);
+  if (!parsed.success) {
+    recordTelemetry(c.env, apiKey, {
+      event_type: "validation_error",
+      error_code: "schema_failed",
+      duration_ms: Date.now() - start,
+      agent_user_agent: userAgent
+    }, c.executionCtx);
+    return c.json({ valid: false, errors: parsed.error.issues }, 400);
+  }
+  const nodeIds = new Set(parsed.data.nodes.map((n) => n.id));
+  const invalidEdges = parsed.data.edges.filter((e) => !nodeIds.has(e.from) || !nodeIds.has(e.to));
+  if (invalidEdges.length > 0) {
+    recordTelemetry(c.env, apiKey, {
+      event_type: "validation_error",
+      error_code: "edge_node_missing",
+      duration_ms: Date.now() - start,
+      agent_user_agent: userAgent
+    }, c.executionCtx);
+    return c.json({
+      valid: false,
+      errors: invalidEdges.map((e) => `\u908A ${e.from} \u2192 ${e.to} \u6307\u5411\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE`)
+    }, 400);
+  }
+  return c.json({ valid: true, nodeCount: parsed.data.nodes.length, edgeCount: parsed.data.edges.length });
+});
+
+// cypher-executor/src/routes/docs.ts
+init_dist();
+
+// cypher-executor/src/lib/openapi.ts
+var OPENAPI_SPEC = {
+  openapi: "3.0.3",
+  info: {
+    title: "arcrun cypher-executor API",
+    description: "AI Workflow Execution Engine \u2014 \u900F\u904E\u4E09\u5143\u7D44 Triplet \u6216\u5716 Graph \u5B9A\u7FA9\u5DE5\u4F5C\u6D41\uFF0C\u7CFB\u7D71\u57F7\u884C\u4E26\u56DE\u50B3\u7D50\u679C",
+    version: "1.0.0",
+    contact: {
+      name: "arcrun",
+      url: "https://github.com/arcrun/arcrun"
+    }
+  },
+  servers: [
+    { url: "https://cypher.arcrun.dev", description: "arcrun.dev Hosted" },
+    { url: "http://localhost:8787", description: "Local Development" }
+  ],
+  paths: {
+    "/": {
+      get: {
+        summary: "Health Check",
+        tags: ["Health"],
+        responses: {
+          "200": {
+            description: "Service is running",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    service: { type: "string" },
+                    version: { type: "string" },
+                    status: { type: "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cypher/search": {
+      post: {
+        summary: "\u641C\u5C0B\u5DE5\u4F5C\u6D41\u9700\u8981\u7684\u96F6\u4EF6",
+        tags: ["Cypher"],
+        description: "\u7528\u4E09\u5143\u7D44\u63CF\u8FF0\u5DE5\u4F5C\u6D41\uFF0C\u7CFB\u7D71\u89E3\u6790\u4E26\u5F9E Registry \u67E5\u8A62\u5C0D\u61C9\u96F6\u4EF6",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  triplets: {
+                    type: "array",
+                    items: { type: "string" },
+                    example: ["start >> \u5B8C\u6210\u5F8C >> get-data", "get-data >> \u5B8C\u6210\u5F8C >> done"],
+                    description: '\u4E09\u5143\u7D44\u9663\u5217\uFF0C\u683C\u5F0F\uFF1A"FROM >> ACTION >> TO"'
+                  },
+                  auto_publish: {
+                    type: "boolean",
+                    default: true,
+                    description: "\u7F3A\u5931\u7684\u96F6\u4EF6\u662F\u5426\u81EA\u52D5\u7522\u751F\u767C\u4F48"
+                  }
+                },
+                required: ["triplets"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "\u96F6\u4EF6\u641C\u5C0B\u6210\u529F\uFF08\u542B\u7248\u672C\u865F\u548C\u6642\u6233\uFF0C\u9069\u5408 Markdown \u6587\u6A94\u8FFD\u8E64\uFF09",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    version: { type: "string", example: "search-v1-20260327-143022", description: "\u7248\u672C\u865F\uFF08endpoint-v{major}-{timestamp}\uFF09" },
+                    timestamp: { type: "string", format: "date-time", description: "ISO 8601 \u6642\u6233" },
+                    triplets: { type: "array", items: { type: "string" }, description: "\u56DE\u9001\u7684\u4E09\u5143\u7D44\u5217\u8868" },
+                    nodes: { type: "object", description: "\u641C\u5C0B\u5230\u7684\u96F6\u4EF6\u53CA\u5176\u72C0\u614B" },
+                    cypher: { type: "object", description: "\u5DE5\u4F5C\u6D41\u5716\uFF08null \u82E5\u6709\u7F3A\u5931\u96F6\u4EF6\uFF09" },
+                    missing: { type: "array", items: { type: "string" }, description: "\u7F3A\u5931\u96F6\u4EF6\u5217\u8868" },
+                    auto_published: { type: "object", description: "\u81EA\u52D5\u767C\u4F48\u7684\u96F6\u4EF6\uFF08\u82E5 auto_publish=true\uFF09" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { description: "\u7121\u6CD5\u89E3\u6790\u4E09\u5143\u7D44" }
+        }
+      }
+    },
+    "/cypher/execute": {
+      post: {
+        summary: "\u57F7\u884C\u5DE5\u4F5C\u6D41",
+        tags: ["Cypher"],
+        description: "\u76F4\u63A5\u57F7\u884C triplets\uFF0C\u56DE\u50B3\u5B8C\u6574\u57F7\u884C\u7D50\u679C\u3002\u652F\u63F4\u81EA\u52D5\u767C\u4F48\u7F3A\u5931\u96F6\u4EF6\u3002",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  triplets: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: '\u4E09\u5143\u7D44\u9663\u5217\uFF0C\u683C\u5F0F\uFF1A"FROM >> ACTION >> TO"'
+                  },
+                  context: {
+                    type: "object",
+                    description: "\u57F7\u884C\u4E0A\u4E0B\u6587\uFF0C\u50B3\u5165\u5404\u7BC0\u9EDE\u4F5C\u70BA\u521D\u59CB\u53C3\u6578"
+                  },
+                  auto_publish: {
+                    type: "boolean",
+                    default: true,
+                    description: "\u7F3A\u5931\u7684\u96F6\u4EF6\u662F\u5426\u81EA\u52D5\u7522\u751F\u81E8\u6642\u5BE6\u4F5C"
+                  }
+                },
+                required: ["triplets"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "\u57F7\u884C\u6210\u529F\uFF08\u542B\u7248\u672C\u865F\u548C\u6642\u6233\uFF09",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    version: { type: "string", example: "execute-v1-20260327-143022", description: "\u7248\u672C\u865F\uFF08endpoint-v{major}-{timestamp}\uFF09" },
+                    timestamp: { type: "string", format: "date-time", description: "ISO 8601 \u6642\u6233" },
+                    success: { type: "boolean", enum: [true] },
+                    data: { type: "object", description: "\u57F7\u884C\u7D50\u679C" },
+                    trace: { type: "array", description: "\u57F7\u884C\u8DDF\u8E64" },
+                    duration_ms: { type: "number" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "\u57F7\u884C\u5931\u6557\u6216\u90E8\u4EFD\u96F6\u4EF6\u7F3A\u5931\uFF08\u542B\u7248\u672C\u865F\u548C\u6642\u6233\uFF09",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    version: { type: "string", example: "execute-v1-20260327-143022", description: "\u7248\u672C\u865F\uFF08endpoint-v{major}-{timestamp}\uFF09" },
+                    timestamp: { type: "string", format: "date-time", description: "ISO 8601 \u6642\u6233" },
+                    success: { type: "boolean", enum: [false] },
+                    error: { type: "string" },
+                    missing: { type: "array", items: { type: "string" }, description: "\u7121\u6CD5\u81EA\u52D5\u767C\u4F48\u7684\u7F3A\u5931\u96F6\u4EF6" },
+                    auto_published: {
+                      type: "object",
+                      description: "\u81EA\u52D5\u767C\u4F48\u7684\u96F6\u4EF6\u8CC7\u8A0A",
+                      additionalProperties: {
+                        type: "object",
+                        properties: {
+                          ok: { type: "boolean" },
+                          componentId: { type: "string" },
+                          temporary_endpoint: { type: "string", format: "uri", description: "\u81E8\u6642\u5BE6\u4F5C\u7684 URL" },
+                          implement_by: { type: "string", format: "date-time", description: "\u5BE6\u4F5C\u622A\u6B62\u6642\u9593" }
+                        }
+                      }
+                    },
+                    duration_ms: { type: "number" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks": {
+      post: {
+        summary: "\u5EFA\u7ACB Webhook",
+        tags: ["Webhooks"],
+        description: "\u5C07\u5DE5\u4F5C\u6D41\u8A3B\u518A\u6210 Webhook\uFF0C\u5F97\u5230\u516C\u958B URL",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  triplets: {
+                    type: "array",
+                    items: { type: "string" }
+                  },
+                  description: { type: "string" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Webhook \u5EFA\u7ACB\u6210\u529F",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    token: { type: "string" },
+                    webhook_url: { type: "string", format: "uri" },
+                    description: { type: "string" },
+                    created_at: { type: "string", format: "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      get: {
+        summary: "\u5217\u51FA\u6240\u6709 Webhooks",
+        tags: ["Webhooks"],
+        parameters: [
+          {
+            name: "Authorization",
+            in: "header",
+            required: true,
+            schema: { type: "string", example: "Bearer u6u_xxxxx" },
+            description: "API Key \u8A8D\u8B49"
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Webhooks \u5217\u8868",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    webhooks: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          token: { type: "string" },
+                          description: { type: "string" },
+                          created_at: { type: "string", format: "date-time" }
+                        }
+                      }
+                    },
+                    total: { type: "number" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { description: "\u672A\u6388\u6B0A" }
+        }
+      }
+    },
+    "/webhooks/{token}": {
+      get: {
+        summary: "\u67E5\u8A62\u55AE\u500B Webhook",
+        tags: ["Webhooks"],
+        parameters: [
+          {
+            name: "token",
+            in: "path",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Webhook \u8CC7\u8A0A"
+          },
+          "404": { description: "Webhook \u4E0D\u5B58\u5728" }
+        }
+      },
+      delete: {
+        summary: "\u522A\u9664 Webhook",
+        tags: ["Webhooks"],
+        parameters: [
+          {
+            name: "token",
+            in: "path",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Webhook \u5DF2\u522A\u9664" },
+          "404": { description: "Webhook \u4E0D\u5B58\u5728" }
+        }
+      }
+    }
+  },
+  components: {
+    securitySchemes: {
+      ApiKeyAuth: {
+        type: "apiKey",
+        in: "header",
+        name: "Authorization"
+      }
+    }
+  }
+};
+
+// cypher-executor/src/routes/docs.ts
+var docsRouter = new Hono2();
+docsRouter.get("/openapi.json", (c) => {
+  return c.json(OPENAPI_SPEC);
+});
+docsRouter.get("/docs", (c) => {
+  const specStr = JSON.stringify(OPENAPI_SPEC);
+  const htmlStr = `<!doctype html>
+<html>
+  <head>
+    <title>Cypher Executor API Docs</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@4/swagger-ui.css">
+    <style>html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; } *, *:before, *:after { box-sizing: inherit; } body { margin:0; padding:0; }</style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@4/swagger-ui-bundle.js"> <\/script>
+    <script src="https://unpkg.com/swagger-ui-dist@4/swagger-ui-standalone-preset.js"> <\/script>
+    <script>
+    window.onload = () => {
+      window.ui = SwaggerUIBundle({
+        spec: ${specStr},
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "BaseLayout"
+      })
+    }
+  <\/script>
+  </body>
+</html>
+  `;
+  return c.html(htmlStr);
+});
+
+// cypher-executor/src/routes/webhooks.ts
+init_dist();
+init_webhook_handlers();
+
+// cypher-executor/src/actions/webhook-graph-resolver.ts
+init_schemas();
+async function resolveWebhookGraph(body, description, env) {
+  if (Array.isArray(body.triplets) && body.triplets.length > 0) {
+    const parsed = parseTriplets(body.triplets);
+    if (!parsed) return { resolvedGraph: {}, error: "\u7121\u6CD5\u89E3\u6790 triplets" };
+    const { nodeResults } = await searchNodes(parsed);
+    const graphId = `webhook-${Date.now()}`;
+    const graphName = description || `Webhook ${(/* @__PURE__ */ new Date()).toISOString()}`;
+    const graph = buildExecutionGraph(parsed, nodeResults, graphId, graphName);
+    const parseResult = graphSchema.safeParse(graph);
+    if (!parseResult.success) {
+      return { resolvedGraph: {}, error: "\u5716\u5B9A\u7FA9\u7522\u751F\u5931\u6557" };
+    }
+    return { resolvedGraph: graph };
+  }
+  if (body.graph && typeof body.graph === "object") {
+    const graphWithDefaults = {
+      id: `webhook-${Date.now()}`,
+      name: description || `Webhook ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      ...body.graph
+    };
+    const parsed = graphSchema.safeParse(graphWithDefaults);
+    if (!parsed.success) {
+      return { resolvedGraph: {}, error: "\u5716\u5B9A\u7FA9\u9A57\u8B49\u5931\u6557" };
+    }
+    return { resolvedGraph: graphWithDefaults };
+  }
+  if (body.nodes && body.edges) {
+    const graphWithDefaults = {
+      id: `webhook-${Date.now()}`,
+      name: description || `Webhook ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      ...body
+    };
+    const parsed = graphSchema.safeParse(graphWithDefaults);
+    if (!parsed.success) {
+      return { resolvedGraph: {}, error: "\u5716\u5B9A\u7FA9\u9A57\u8B49\u5931\u6557" };
+    }
+    return { resolvedGraph: graphWithDefaults };
+  }
+  return { resolvedGraph: {}, error: "\u9700\u63D0\u4F9B graph \u7269\u4EF6\u6216 triplets \u9663\u5217" };
+}
+
+// cypher-executor/src/routes/webhooks.ts
+var webhooksRouter = new Hono2();
+webhooksRouter.post("/webhooks", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: "invalid json" }, 400);
+  const description = typeof body.description === "string" ? body.description : "";
+  const resolved = await resolveWebhookGraph(body, description, c.env);
+  if (resolved.error) {
+    return c.json({ error: resolved.error }, 400);
+  }
+  const token = generateToken();
+  const record = {
+    graph: resolved.resolvedGraph,
+    description,
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  await c.env.WEBHOOKS.put(token, JSON.stringify(record));
+  const baseUrl = new URL(c.req.url).origin;
+  return c.json({
+    token,
+    webhook_url: `${baseUrl}/webhooks/${token}/trigger`,
+    description: record.description,
+    created_at: record.created_at
+  }, 201);
+});
+webhooksRouter.post("/webhooks/:token/trigger", async (c) => {
+  const token = c.req.param("token");
+  if (!token || token.length < 16) {
+    return c.json({ error: "invalid token" }, 400);
+  }
+  const raw2 = await c.env.WEBHOOKS.get(token, "text");
+  if (!raw2) return c.json({ error: "webhook not found" }, 404);
+  const record = await validateAndParseWebhook(raw2);
+  if (!record) return c.json({ error: "webhook \u5B9A\u7FA9\u640D\u6BC0" }, 500);
+  let triggerContext = {};
+  try {
+    const body = await c.req.json().catch(() => null);
+    if (body && typeof body === "object") {
+      triggerContext = body;
+    }
+  } catch {
+  }
+  const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
+  const result = await executeWebhookGraph(c.env, record.graph, triggerContext, token, apiKey);
+  const graph = record.graph;
+  const workflowId = graph.id ?? token;
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  c.executionCtx.waitUntil(
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
+  );
+  return c.json(result, result.success ? 200 : 500);
+});
+
+// cypher-executor/src/routes/webhooks-crud.ts
+init_dist();
+init_webhook_handlers();
+var webhooksCrudRouter = new Hono2();
+webhooksCrudRouter.get("/webhooks/:token", async (c) => {
+  const token = c.req.param("token");
+  const raw2 = await c.env.WEBHOOKS.get(token, "text");
+  if (!raw2) return c.json({ error: "not found" }, 404);
+  const record = await validateAndParseWebhook(raw2);
+  if (!record) return c.json({ error: "\u8CC7\u6599\u640D\u6BC0" }, 500);
+  return c.json({
+    token,
+    description: record.description,
+    created_at: record.created_at
+  });
+});
+webhooksCrudRouter.put("/webhooks/:token", async (c) => {
+  const token = c.req.param("token");
+  if (!token || token.length < 16) {
+    return c.json({ error: "invalid token" }, 400);
+  }
+  const raw2 = await c.env.WEBHOOKS.get(token, "text");
+  if (!raw2) return c.json({ error: "webhook not found" }, 404);
+  const existing = await validateAndParseWebhook(raw2);
+  if (!existing) return c.json({ error: "webhook \u5B9A\u7FA9\u640D\u6BC0" }, 500);
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: "invalid json" }, 400);
+  const updatedRecord = {
+    graph: existing.graph,
+    description: existing.description,
+    created_at: existing.created_at
+  };
+  if (body.description !== void 0) {
+    updatedRecord.description = typeof body.description === "string" ? body.description : existing.description;
+  }
+  if (body.graph !== void 0) {
+    updatedRecord.graph = body.graph;
+  }
+  await c.env.WEBHOOKS.put(token, JSON.stringify(updatedRecord));
+  const baseUrl = new URL(c.req.url).origin;
+  return c.json({
+    token,
+    webhook_url: `${baseUrl}/webhooks/${token}/trigger`,
+    description: updatedRecord.description,
+    created_at: updatedRecord.created_at,
+    updated: true
+  });
+});
+webhooksCrudRouter.delete("/webhooks/:token", async (c) => {
+  const token = c.req.param("token");
+  if (!token || token.length < 16) {
+    return c.json({ error: "invalid token" }, 400);
+  }
+  const existing = await c.env.WEBHOOKS.get(token, "text");
+  if (!existing) return c.json({ error: "webhook not found" }, 404);
+  await c.env.WEBHOOKS.delete(token);
+  return c.json({ deleted: true, token });
+});
+
+// cypher-executor/src/routes/webhooks-list.ts
+init_dist();
+init_webhook_handlers();
+var webhooksListRouter = new Hono2();
+webhooksListRouter.get("/webhooks", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader) {
+    return c.json({ error: "unauthorized: missing Authorization header" }, 401);
+  }
+  const list = await c.env.WEBHOOKS.list();
+  const webhooks = [];
+  for (const key of list.keys) {
+    const raw2 = await c.env.WEBHOOKS.get(key.name, "text");
+    if (!raw2) continue;
+    const record = await validateAndParseWebhook(raw2);
+    if (!record) continue;
+    webhooks.push({
+      token: key.name,
+      description: record.description,
+      created_at: record.created_at
+    });
+  }
+  return c.json({ webhooks, total: webhooks.length });
+});
+
+// cypher-executor/src/index.ts
+init_recipes();
+init_credentials();
+
+// cypher-executor/src/routes/webhooks-named.ts
+init_dist();
+init_webhook_handlers();
+init_schemas();
+init_telemetry();
+init_endpoints();
+
+// cypher-executor/src/lib/trace-summary.ts
+var FAILED_OUTPUT_PREVIEW_CHARS = 2048;
+function isFailedOutput(output) {
+  if (!output || typeof output !== "object") return false;
+  const r = output;
+  return r["success"] === false || "error" in r;
+}
+function preview(output) {
+  if (output === void 0) return void 0;
+  let s;
+  try {
+    s = typeof output === "string" ? output : JSON.stringify(output);
+  } catch {
+    return void 0;
+  }
+  if (typeof s !== "string") return void 0;
+  return s.length > FAILED_OUTPUT_PREVIEW_CHARS ? `${s.slice(0, FAILED_OUTPUT_PREVIEW_CHARS)}\u2026(\u622A\u65B7\uFF0C\u5171 ${s.length} \u5B57\u5143)` : s;
+}
+function summarizeTrace(trace) {
+  if (!Array.isArray(trace)) return trace;
+  return trace.map((raw2) => {
+    if (!raw2 || typeof raw2 !== "object") return raw2;
+    const s = raw2;
+    const id = s.nodeId ?? s.node ?? "";
+    if (s.status && !("output" in s) && !("input" in s)) {
+      return { ...raw2, node: id, nodeId: id };
+    }
+    const failed = Boolean(s.error) || isFailedOutput(s.output);
+    const step = {
+      node: id,
+      nodeId: id,
+      ...s.type !== void 0 ? { type: s.type } : {},
+      status: failed ? "failed" : "success",
+      ...s.duration_ms !== void 0 ? { duration_ms: s.duration_ms } : {},
+      ...s.error ? { error: s.error } : {}
+    };
+    if (failed) {
+      const p = preview(s.output);
+      if (p !== void 0) step.output_preview = p;
+    }
+    return step;
+  });
+}
+function wantsFullTrace(query) {
+  return query("trace") === "full";
+}
+function shapeTraceForResponse(result, full) {
+  if (full || result.trace === void 0) return result;
+  return { ...result, trace: summarizeTrace(result.trace), trace_mode: "summary" };
+}
+
+// cypher-executor/src/routes/webhooks-named.ts
+var webhooksNamedRouter = new Hono2();
+function kvKey(apiKey, name) {
+  return `${apiKey}:wf:${name}`;
+}
+async function writeWorkflowSearchEntry(env, apiKey, name, description, workflowId) {
+  const base = kbdbBaseUrl(env);
+  const headers = { "Content-Type": "application/json" };
+  if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+  await fetch(`${base}/entries`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      entry_type: "workflow",
+      owner_id: apiKey,
+      // 租戶隔離（與 kbdb-proxy 同身份）
+      page_name: name,
+      content: description,
+      // 被 embed / LIKE 命中的主體
+      // KBDB createEntry 吃 metadata_json（TEXT），embed.ts isEmbeddable 讀 metadata_json.embed === true。
+      metadata_json: JSON.stringify({
+        embed: true,
+        // #7 精耕開關：標 true 才進 Vectorize
+        workflow_name: name,
+        workflow_id: workflowId ?? name
+      })
+    })
+  });
+}
+function extractCredentialNames(graph) {
+  const found = /* @__PURE__ */ new Set();
+  const re = /\{\{\s*credential\.([\w.-]+)\s*\}\}/g;
+  let m;
+  const text = JSON.stringify(graph) ?? "";
+  while ((m = re.exec(text)) !== null) found.add(m[1]);
+  return [...found].sort();
+}
+webhooksNamedRouter.post("/webhooks/named", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) {
+    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  }
+  const body = await c.req.json().catch(() => null);
+  if (!body?.name || !body.graph) {
+    return c.json({ error: "\u7F3A\u5C11\u5FC5\u8981\u6B04\u4F4D\uFF1Aname, graph" }, 400);
+  }
+  if (typeof body.description !== "string" || body.description.trim() === "") {
+    return c.json({
+      error: "description \u5FC5\u586B\uFF1A\u8ACB\u64CD\u76E4\u7684 AI \u64DA\u5BE6\u5BEB\u4E00\u53E5\u300C\u9019\u5DE5\u4F5C\u6D41\u80FD\u505A\u4EC0\u9EBC\u300D\uFF08\u5982\u300C\u547C\u53EB\u53EF Upsert Google Sheets\u300D\uFF09\uFF0C\u7528\u6236\u53EF\u518D\u6539\u3002\u4F9B\u8A9E\u610F\u641C\u5C0B\u7528\uFF0C\u4E0D\u662F\u5BEB\u6587\u7AE0\u3002",
+      requires: "description"
+    }, 400);
+  }
+  const name = body.name.trim();
+  if (!/^[\w-]+$/.test(name)) {
+    return c.json({ error: "workflow name \u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u3001\u5E95\u7DDA\u548C\u9023\u5B57\u865F" }, 400);
+  }
+  let graph = body.graph;
+  if (Array.isArray(body.graph.flow) && !Array.isArray(body.graph.nodes)) {
+    const rawConfig = body.config ?? body.graph.config;
+    try {
+      graph = await compileCypherBinding(
+        body.graph.flow,
+        rawConfig,
+        name,
+        name,
+        c.env
+      );
+    } catch (e) {
+      return c.json({ error: `flow \u7DE8\u8B6F\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 400);
+    }
+    const compiled = graphSchema.safeParse(graph);
+    if (!compiled.success) {
+      return c.json({ error: "\u5716\u5B9A\u7FA9\u7DE8\u8B6F\u5F8C\u4ECD\u7121\u6548\uFF0C\u8ACB\u6AA2\u67E5 flow \u4E09\u5143\u7D44\u8207 config", details: compiled.error.issues }, 400);
+    }
+  }
+  const cronExpr = extractCronExpr(graph);
+  const record = {
+    name,
+    graph,
+    config: body.config,
+    description: body.description.trim(),
+    // R1：已驗非空（見上），存 trim 後的值
+    created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    cron_expr: cronExpr ?? void 0
+  };
+  const start = Date.now();
+  await c.env.WEBHOOKS.put(kvKey(apiKey, name), JSON.stringify(record));
+  await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, cronExpr);
+  c.executionCtx.waitUntil(
+    writeWorkflowSearchEntry(c.env, apiKey, name, record.description).catch(() => {
+    })
+  );
+  recordTelemetry(c.env, apiKey, {
+    event_type: "deploy_success",
+    workflow_name: name,
+    duration_ms: Date.now() - start,
+    agent_user_agent: c.req.header("User-Agent") ?? void 0
+  }, c.executionCtx);
+  const baseUrl = new URL(c.req.url).origin;
+  return c.json({
+    name,
+    webhook_url: `${baseUrl}/webhooks/named/${name}/trigger`,
+    description: record.description,
+    created_at: record.created_at,
+    // Arcrun#292：公開觸發是設計（無需金鑰即可 POST）；帶憑證的工作流據此在 push 輸出明講
+    public_trigger: true,
+    credentials_used: extractCredentialNames({ graph, config: body.config })
+  }, 201);
+});
+webhooksNamedRouter.get("/workflows/search", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const q = c.req.query("q");
+  if (!q) return c.json({ error: "q \u5FC5\u586B\uFF1A\u7528\u81EA\u7136\u8A9E\u8A00\u63CF\u8FF0\u8981\u627E\u7684\u5DE5\u4F5C\u6D41\uFF08\u5982\u300C\u628A\u8CC7\u6599\u5BEB\u9032 Google Sheets\u300D\uFF09" }, 400);
+  const mode = c.req.query("mode") === "keyword" ? "keyword" : "semantic";
+  const res = await fetchTenantWorkflowSearch(c.env, apiKey, q, mode);
+  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+});
+webhooksNamedRouter.post("/workflows/backfill-search-entries", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const prefix = `${apiKey}:wf:`;
+  const list = await c.env.WEBHOOKS.list({ prefix });
+  const backfilled = [];
+  const needsDescription = [];
+  const errors = [];
+  for (const k of list.keys) {
+    const name = k.name.slice(prefix.length);
+    const raw2 = await c.env.WEBHOOKS.get(k.name, "text");
+    if (!raw2) continue;
+    const rec = JSON.parse(raw2);
+    const desc = rec.description?.trim();
+    if (!desc) {
+      needsDescription.push(name);
+      continue;
+    }
+    try {
+      await writeWorkflowSearchEntry(c.env, apiKey, name, desc);
+      backfilled.push(name);
+    } catch (e) {
+      errors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return c.json({
+    backfilled,
+    backfilled_count: backfilled.length,
+    needs_description: needsDescription,
+    needs_description_count: needsDescription.length,
+    errors,
+    hint: needsDescription.length > 0 ? `${needsDescription.length} \u500B\u5DE5\u4F5C\u6D41\u7F3A description \u7121\u6CD5\u88AB\u641C\u5C0B\u3002\u8ACB\u64CD\u76E4\u7684 AI re-deploy \u5B83\u5011\u6642\u64DA\u5BE6\u88DC\u4E00\u53E5\u300C\u80FD\u505A\u4EC0\u9EBC\u300D\uFF08\u4E0D\u81EA\u52D5\u7DE8\u9020\uFF09\u3002` : void 0
+  });
+});
+webhooksNamedRouter.post("/webhooks/named/migrate-cron-index", async (c) => {
+  const list = await c.env.WEBHOOKS.list({ prefix: "cron-idx:" });
+  let migrated = 0, skipped = 0;
+  const errors = [];
+  for (const k of list.keys) {
+    if (k.name === CRON_INDEX_KEY) {
+      skipped++;
+      continue;
+    }
+    const parts = k.name.split(":");
+    if (parts.length < 3) {
+      skipped++;
+      continue;
+    }
+    const apiKey = parts[1];
+    const name = parts.slice(2).join(":");
+    try {
+      const raw2 = await c.env.WEBHOOKS.get(k.name, "text");
+      if (!raw2) {
+        skipped++;
+        continue;
+      }
+      const idx = JSON.parse(raw2);
+      if (!idx.cron_expr) {
+        skipped++;
+        continue;
+      }
+      await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, idx.cron_expr);
+      migrated++;
+    } catch (e) {
+      errors.push(`${k.name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return c.json({ success: errors.length === 0, migrated, skipped, errors });
+});
+webhooksNamedRouter.post("/webhooks/named/:name/trigger", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) {
+    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  }
+  return triggerNamed(c, apiKey, c.req.param("name"));
+});
+webhooksNamedRouter.post("/webhooks/named/:ns/:name/trigger", async (c) => {
+  return triggerNamed(c, c.req.param("ns"), c.req.param("name"));
+});
+async function triggerNamed(c, apiKey, name) {
+  const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
+  if (!raw2) {
+    return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"\uFF0C\u8ACB\u5148\u57F7\u884C acr push` }, 404);
+  }
+  let record;
+  try {
+    record = JSON.parse(raw2);
+  } catch {
+    return c.json({ error: "workflow \u5B9A\u7FA9\u640D\u6BC0" }, 500);
+  }
+  let triggerContext = {};
+  try {
+    const body = await c.req.json().catch(() => null);
+    if (body && typeof body === "object") {
+      triggerContext = body;
+    }
+  } catch {
+  }
+  const graph = record.graph;
+  const workflowId = graph.id ?? name;
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const userAgent = c.req.header("User-Agent") ?? void 0;
+  if (c.req.query("async") === "1") {
+    c.executionCtx.waitUntil(
+      executeWebhookGraph(c.env, record.graph, triggerContext, name, apiKey, c.executionCtx, userAgent).then(
+        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
+      )
+    );
+    return c.json({ accepted: true }, 202);
+  }
+  const result = await executeWebhookGraph(
+    c.env,
+    record.graph,
+    triggerContext,
+    name,
+    apiKey,
+    c.executionCtx,
+    userAgent
+  );
+  c.executionCtx.waitUntil(
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
+  );
+  const full = wantsFullTrace((n) => c.req.query(n));
+  return c.json(shapeTraceForResponse(result, full), result.success ? 200 : 500);
+}
+var MAX_QUERY_OUTPUT_BYTES = 5 * 1024 * 1024;
+function queryStringContext(c) {
+  return { ...c.req.query() };
+}
+async function bodyContext(c) {
+  const body = await c.req.json().catch(() => null);
+  return body && typeof body === "object" ? body : {};
+}
+async function queryNamed(c, apiKey, name, triggerContext) {
+  const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
+  if (!raw2) {
+    return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"\uFF0C\u8ACB\u5148\u57F7\u884C acr push` }, 404);
+  }
+  let record;
+  try {
+    record = JSON.parse(raw2);
+  } catch {
+    return c.json({ error: "workflow \u5B9A\u7FA9\u640D\u6BC0" }, 500);
+  }
+  const graph = record.graph;
+  const workflowId = graph.id ?? name;
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const userAgent = c.req.header("User-Agent") ?? void 0;
+  const result = await executeWebhookGraph(
+    c.env,
+    record.graph,
+    { ...triggerContext, _public_origin: new URL(c.req.url).origin },
+    name,
+    apiKey,
+    c.executionCtx,
+    userAgent
+  );
+  c.executionCtx.waitUntil(
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
+  );
+  if (!result.success) {
+    const paused = typeof result.error === "string" && /workflow paused/i.test(result.error);
+    return c.json(
+      {
+        success: false,
+        error: result.error ?? "\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557",
+        trace: wantsFullTrace((n) => c.req.query(n)) ? result.trace : summarizeTrace(result.trace),
+        ...paused ? { paused: true, hint: "\u6B64\u5DE5\u4F5C\u6D41\u6703\u66AB\u505C\u7B49\u5F85\u975E\u540C\u6B65 callback\uFF0C\u7121\u6CD5\u7576\u540C\u6B65\u67E5\u8A62\u7AEF\u9EDE\uFF1B\u6539\u7528 /webhooks/named/:name/trigger?async=1 + /workflows/resume\u3002" } : {}
+      },
+      paused ? 409 : 500
+    );
+  }
+  const serialized = JSON.stringify(result.data ?? null);
+  const byteLen = new TextEncoder().encode(serialized).byteLength;
+  if (byteLen > MAX_QUERY_OUTPUT_BYTES) {
+    return c.json(
+      {
+        success: false,
+        error: `\u67E5\u8A62\u8F38\u51FA\u904E\u5927\uFF08${byteLen} bytes > \u4E0A\u9650 ${MAX_QUERY_OUTPUT_BYTES}\uFF09\u3002\u8ACB\u5728 workflow \u5167\u5148\u805A\u5408 / \u5206\u9801\u518D\u56DE\u3002`
+      },
+      413
+    );
+  }
+  return new Response(serialized, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Arcrun-Duration-Ms": String(result.duration_ms)
+    }
+  });
+}
+webhooksNamedRouter.get("/webhooks/named/:name/query", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  return queryNamed(c, apiKey, c.req.param("name"), queryStringContext(c));
+});
+webhooksNamedRouter.post("/webhooks/named/:name/query", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  return queryNamed(c, apiKey, c.req.param("name"), await bodyContext(c));
+});
+webhooksNamedRouter.post("/webhooks/named/:ns/:name/query", async (c) => {
+  return queryNamed(c, c.req.param("ns"), c.req.param("name"), await bodyContext(c));
+});
+webhooksNamedRouter.get("/q/:ns/:name", async (c) => {
+  return queryNamed(c, c.req.param("ns"), c.req.param("name"), queryStringContext(c));
+});
+webhooksNamedRouter.get("/webhooks/named/:name/definition", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const name = c.req.param("name");
+  const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
+  if (!raw2) return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"` }, 404);
+  const rec = JSON.parse(raw2);
+  return c.json({
+    name: rec.name,
+    description: rec.description ?? "",
+    graph: rec.graph,
+    config: rec.config ?? {},
+    created_at: rec.created_at ?? "",
+    ...rec.cron_expr ? { cron_expr: rec.cron_expr } : {}
+  });
+});
+webhooksNamedRouter.get("/webhooks/named", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) {
+    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  }
+  const prefix = `${apiKey}:wf:`;
+  const list = await c.env.WEBHOOKS.list({ prefix });
+  const baseUrl = new URL(c.req.url).origin;
+  const result = await Promise.all(
+    list.keys.map(async (k) => {
+      const name = k.name.slice(prefix.length);
+      const raw2 = await c.env.WEBHOOKS.get(k.name, "text");
+      const rec = raw2 ? JSON.parse(raw2) : null;
+      return {
+        name,
+        description: rec?.description ?? "",
+        created_at: rec?.created_at ?? "",
+        cron_expr: rec?.cron_expr,
+        webhook_url: `${baseUrl}/webhooks/named/${name}/trigger`
+      };
+    })
+  );
+  return c.json({ workflows: result, total: result.length });
+});
+webhooksNamedRouter.delete("/webhooks/named/:name", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) {
+    return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  }
+  const name = c.req.param("name");
+  const existing = await c.env.WEBHOOKS.get(kvKey(apiKey, name), "text");
+  if (!existing) {
+    return c.json({ error: `\u627E\u4E0D\u5230 workflow "${name}"` }, 404);
+  }
+  await c.env.WEBHOOKS.delete(kvKey(apiKey, name));
+  await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, null);
+  return c.json({ deleted: true, name });
+});
+
+// cypher-executor/src/routes/auth.ts
+init_dist();
+init_credentials();
+
+// cypher-executor/src/lib/platform-oauth-users.ts
+init_kbdb_proxy();
+var PlatformUserStoreError = class extends Error {
+};
+async function kFetch2(env, path, init) {
+  const { base, headers } = kbdbBase(env);
+  try {
+    return await fetch(`${base}${path}`, {
+      ...init,
+      headers: { ...headers, ...init?.headers }
+    });
+  } catch (e) {
+    throw new PlatformUserStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+async function sha256Hex3(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var TEMPLATE = "platform_oauth_user";
+var SLOTS = [
+  "provider_key_hash",
+  "api_key_hash",
+  "email",
+  "display_name",
+  "avatar_url",
+  "api_key",
+  "provider",
+  "provider_id",
+  "created_at",
+  "revoked"
+];
+var templateEnsured = false;
+async function ensureTemplate4(env) {
+  if (templateEnsured) return;
+  const got = await kFetch2(env, `/templates/${TEMPLATE}`);
+  if (!got.ok) {
+    await kFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name: TEMPLATE, slots: SLOTS }) }).catch(
+      () => void 0
+    );
+  }
+  templateEnsured = true;
+}
+function toUser(recordId, v) {
+  return {
+    record_id: recordId,
+    email: v.email ?? "",
+    display_name: v.display_name ?? "",
+    avatar_url: v.avatar_url || void 0,
+    api_key: v.api_key ?? "",
+    provider: v.provider ?? "google",
+    provider_id: v.provider_id ?? "",
+    created_at: v.created_at ?? "",
+    revoked: v.revoked === "true"
+  };
+}
+async function findByHash2(env, field, hash) {
+  const res = await kFetch2(env, `/records/by-source/${TEMPLATE}?field=${encodeURIComponent(field)}&value=${encodeURIComponent(hash)}`);
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => null);
+  const id = body?.record_ids?.[0];
+  if (!id) return null;
+  const rec = await kFetch2(env, `/records/${encodeURIComponent(id)}`);
+  if (!rec.ok) return null;
+  const recBody = await rec.json().catch(() => null);
+  return recBody?.record ?? null;
+}
+async function findPlatformUserByProvider(env, provider, providerId) {
+  const hash = await sha256Hex3(`${provider}:${providerId}`);
+  const found = await findByHash2(env, "provider_key_hash", hash);
+  return found ? toUser(found.record_id, found.values) : null;
+}
+async function findPlatformUserByApiKey(env, apiKey) {
+  const hash = await sha256Hex3(apiKey);
+  const found = await findByHash2(env, "api_key_hash", hash);
+  return found ? toUser(found.record_id, found.values) : null;
+}
+async function createPlatformUser(env, input) {
+  await ensureTemplate4(env);
+  const values = {
+    provider_key_hash: await sha256Hex3(`${input.provider}:${input.provider_id}`),
+    api_key_hash: await sha256Hex3(input.api_key),
+    email: input.email,
+    display_name: input.display_name,
+    avatar_url: input.avatar_url ?? "",
+    api_key: input.api_key,
+    provider: input.provider,
+    provider_id: input.provider_id,
+    created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    revoked: "false"
+  };
+  const res = await kFetch2(env, "/records", { method: "POST", body: JSON.stringify({ template: TEMPLATE, values }) });
+  if (!res.ok) throw new PlatformUserStoreError(`POST /records(${TEMPLATE}) \u2192 ${res.status}`);
+  const body = await res.json().catch(() => null);
+  const recordId = body?.record?.record_id;
+  if (!recordId) throw new PlatformUserStoreError("POST /records \u56DE\u61C9\u7F3A record_id");
+  return { ...input, record_id: recordId, created_at: values.created_at, revoked: false };
+}
+async function updatePlatformUser(env, recordId, patch) {
+  const values = {};
+  if (patch.display_name !== void 0) values.display_name = patch.display_name;
+  if (patch.avatar_url !== void 0) values.avatar_url = patch.avatar_url ?? "";
+  if (patch.api_key !== void 0) {
+    values.api_key = patch.api_key;
+    values.api_key_hash = await sha256Hex3(patch.api_key);
+  }
+  if (patch.revoked !== void 0) values.revoked = String(patch.revoked);
+  if (Object.keys(values).length === 0) return;
+  const res = await kFetch2(env, `/records/${encodeURIComponent(recordId)}`, { method: "PATCH", body: JSON.stringify({ values }) });
+  if (!res.ok) throw new PlatformUserStoreError(`PATCH /records/${recordId} \u2192 ${res.status}`);
+}
+
+// cypher-executor/src/routes/auth.ts
+var authRouter = new Hono2();
+var STATE_TEMPLATE = "platform_oauth_state";
+var STATE_TTL_SECONDS = 600;
+var SESSION_TEMPLATE = "platform_oauth_session";
+var SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+function getLandingOrigin(c) {
+  const origin2 = c.req.raw.headers.get("origin");
+  const allowed = ["https://arcrun.dev", "https://www.arcrun.dev"];
+  if (origin2 && allowed.includes(origin2)) return origin2;
+  return "https://arcrun.dev";
+}
+function generateApiKey() {
+  return "ak_" + randomToken(24);
+}
+async function upsertAuthRecipe(recipes, recipe) {
+  const key = `auth_recipe:${recipe.service}`;
+  const existing = await recipes.get(key);
+  if (existing) return;
+  await recipes.put(key, JSON.stringify({ ...recipe, created_at: Date.now(), updated_at: Date.now() }));
+}
+function randomToken(bytes = 32) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function getSessionId(req) {
+  const cookie = req.headers.get("cookie") ?? "";
+  const match2 = cookie.match(/arcrun_session=([a-f0-9]+)/);
+  return match2 ? match2[1] : null;
+}
+function getApiKeyFromRequest(req) {
+  const direct = req.headers.get("x-arcrun-api-key");
+  if (direct) return direct;
+  const auth = req.headers.get("authorization") ?? "";
+  const match2 = auth.match(/^Bearer\s+(ak_\S+)/i);
+  return match2 ? match2[1] : null;
+}
+async function resolveSession(c) {
+  const sessId = getSessionId(c.req.raw);
+  if (sessId) {
+    const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
+    if (sess?.record_id) {
+      const user = await findPlatformUserByApiKey(c.env, sess.api_key ?? "");
+      if (user && !user.revoked && user.record_id === sess.record_id) return user;
+    }
+  }
+  const apiKey = getApiKeyFromRequest(c.req.raw);
+  if (apiKey) {
+    const user = await findPlatformUserByApiKey(c.env, apiKey);
+    if (user && !user.revoked && user.api_key === apiKey) return user;
+  }
+  return null;
+}
+authRouter.get("/auth/google/start", async (c) => {
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return c.json({ error: "Google OAuth not configured" }, 503);
+  const state = randomToken(16);
+  const stateRecord = {
+    provider: "google",
+    redirect_back: c.req.query("redirect") ?? "/dashboard",
+    created_at: Date.now()
+  };
+  await ephemeralPut(c.env, {
+    template: STATE_TEMPLATE,
+    slots: ["provider", "redirect_back", "created_at"],
+    hashField: "state_hash",
+    rawKey: state,
+    values: {
+      provider: stateRecord.provider,
+      redirect_back: stateRecord.redirect_back,
+      created_at: String(stateRecord.created_at)
+    },
+    ttlSeconds: STATE_TTL_SECONDS
+  });
+  const redirectUri = "https://cypher.arcrun.dev/auth/callback";
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid profile email",
+    state,
+    access_type: "offline",
+    prompt: "consent"
+  });
+  return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`, 302);
+});
+authRouter.get("/auth/github/start", async (c) => {
+  const clientId = c.env.GITHUB_CLIENT_ID;
+  if (!clientId) return c.json({ error: "GitHub OAuth not configured" }, 503);
+  const state = randomToken(16);
+  const stateRecord = {
+    provider: "github",
+    redirect_back: c.req.query("redirect") ?? "/dashboard",
+    created_at: Date.now()
+  };
+  await ephemeralPut(c.env, {
+    template: STATE_TEMPLATE,
+    slots: ["provider", "redirect_back", "created_at"],
+    hashField: "state_hash",
+    rawKey: state,
+    values: {
+      provider: stateRecord.provider,
+      redirect_back: stateRecord.redirect_back,
+      created_at: String(stateRecord.created_at)
+    },
+    ttlSeconds: STATE_TTL_SECONDS
+  });
+  const redirectUri = "https://cypher.arcrun.dev/auth/callback";
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: "read:user user:email",
+    state
+  });
+  return Response.redirect(`https://github.com/login/oauth/authorize?${params}`, 302);
+});
+authRouter.get("/auth/callback", async (c) => {
+  const code = c.req.query("code");
+  const state = c.req.query("state");
+  const error = c.req.query("error");
+  const landingOrigin = getLandingOrigin(c);
+  if (error || !code || !state) {
+    return Response.redirect(`${landingOrigin}/login?error=${encodeURIComponent(error ?? "cancelled")}`, 302);
+  }
+  const stateVals = await ephemeralGet(c.env, { template: STATE_TEMPLATE, hashField: "state_hash", rawKey: state, consume: true });
+  if (!stateVals) {
+    return Response.redirect(`${landingOrigin}/login?error=invalid_state`, 302);
+  }
+  const stateRecord = {
+    provider: stateVals.provider ?? "google",
+    redirect_back: stateVals.redirect_back ?? "/dashboard",
+    created_at: Number(stateVals.created_at) || Date.now()
+  };
+  try {
+    let email;
+    let displayName;
+    let avatarUrl;
+    let providerId;
+    let pendingCredential = null;
+    const provider = stateRecord.provider;
+    const redirectUri = "https://cypher.arcrun.dev/auth/callback";
+    if (provider === "google") {
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: c.env.GOOGLE_CLIENT_ID ?? "",
+          client_secret: c.env.GOOGLE_CLIENT_SECRET ?? "",
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code"
+        })
+      });
+      if (!tokenRes.ok) throw new Error("google token exchange failed");
+      const tokenData = await tokenRes.json();
+      const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` }
+      });
+      if (!userRes.ok) throw new Error("google userinfo failed");
+      const userInfo = await userRes.json();
+      email = userInfo.email.toLowerCase();
+      displayName = userInfo.name;
+      avatarUrl = userInfo.picture;
+      providerId = userInfo.sub;
+      if (tokenData.refresh_token) {
+        pendingCredential = { name: "google_refresh_token", value: tokenData.refresh_token, service: "google_user" };
+        void upsertAuthRecipe(c.env.RECIPES, {
+          kind: "auth_recipe",
+          service: "google_user",
+          version: 1,
+          primitive: "oauth2",
+          base_url: "https://www.googleapis.com",
+          display_name: "Google\uFF08\u7528\u6236\u5E33\u865F\uFF09",
+          oauth2: {
+            token_endpoint: "https://oauth2.googleapis.com/token",
+            client_id: c.env.GOOGLE_CLIENT_ID ?? "",
+            client_secret: c.env.GOOGLE_CLIENT_SECRET ?? "",
+            scopes: ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
+          },
+          required_secrets: [{ key: "google_refresh_token", label: "Google Refresh Token" }],
+          inject: { header: { Authorization: "Bearer {{runtime.access_token}}" } }
+        });
+      }
+    } else {
+      const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json"
+        },
+        body: new URLSearchParams({
+          code,
+          client_id: c.env.GITHUB_CLIENT_ID ?? "",
+          client_secret: c.env.GITHUB_CLIENT_SECRET ?? "",
+          redirect_uri: redirectUri
+        })
+      });
+      if (!tokenRes.ok) throw new Error("github token exchange failed");
+      const tokenData = await tokenRes.json();
+      const userRes = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+          "User-Agent": "arcrun",
+          "Accept": "application/vnd.github+json"
+        }
+      });
+      if (!userRes.ok) throw new Error("github user fetch failed");
+      const userInfo = await userRes.json();
+      let ghEmail = userInfo.email ?? "";
+      if (!ghEmail) {
+        const emailsRes = await fetch("https://api.github.com/user/emails", {
+          headers: {
+            Authorization: `Bearer ${tokenData.access_token}`,
+            "User-Agent": "arcrun",
+            "Accept": "application/vnd.github+json"
+          }
+        });
+        if (emailsRes.ok) {
+          const emails = await emailsRes.json();
+          const primary = emails.find((e) => e.primary && e.verified);
+          ghEmail = primary?.email ?? emails[0]?.email ?? "";
+        }
+      }
+      if (!ghEmail) throw new Error("github email not available");
+      email = ghEmail.toLowerCase();
+      displayName = userInfo.name ?? userInfo.login;
+      avatarUrl = userInfo.avatar_url;
+      providerId = String(userInfo.id);
+      if (tokenData.access_token) {
+        pendingCredential = { name: "github_access_token", value: tokenData.access_token, service: "github_user" };
+        void upsertAuthRecipe(c.env.RECIPES, {
+          kind: "auth_recipe",
+          service: "github_user",
+          version: 1,
+          primitive: "static_key",
+          base_url: "https://api.github.com",
+          display_name: "GitHub\uFF08\u7528\u6236\u5E33\u865F\uFF09",
+          required_secrets: [{ key: "github_access_token", label: "GitHub Access Token" }],
+          inject: { header: { Authorization: "Bearer {{secret.github_access_token}}" } }
+        });
+      }
+    }
+    const existing = await findPlatformUserByProvider(c.env, provider, providerId);
+    let apiKey;
+    let recordId;
+    if (existing && !existing.revoked) {
+      apiKey = existing.api_key;
+      recordId = existing.record_id;
+      await updatePlatformUser(c.env, recordId, { display_name: displayName, avatar_url: avatarUrl });
+    } else if (existing) {
+      apiKey = generateApiKey();
+      recordId = existing.record_id;
+      await updatePlatformUser(c.env, recordId, { display_name: displayName, avatar_url: avatarUrl, api_key: apiKey, revoked: false });
+    } else {
+      apiKey = generateApiKey();
+      const created = await createPlatformUser(c.env, {
+        email,
+        display_name: displayName,
+        avatar_url: avatarUrl,
+        api_key: apiKey,
+        provider,
+        provider_id: providerId
+      });
+      recordId = created.record_id;
+    }
+    if (pendingCredential) {
+      try {
+        await storeCredential(c.env, apiKey, pendingCredential.name, pendingCredential.value, pendingCredential.service);
+      } catch (e) {
+        console.error("\u5B58 provider token \u5931\u6557\uFF08\u4E0D\u5F71\u97FF\u767B\u5165\uFF09:", e instanceof Error ? e.message : String(e));
+      }
+    }
+    const sessionId = randomToken(32);
+    await ephemeralPut(c.env, {
+      template: SESSION_TEMPLATE,
+      slots: ["record_id", "api_key", "email"],
+      hashField: "session_hash",
+      rawKey: sessionId,
+      values: { record_id: recordId, api_key: apiKey, email },
+      ttlSeconds: SESSION_TTL_SECONDS
+    });
+    const redirectBack = stateRecord.redirect_back.startsWith("/") ? stateRecord.redirect_back : "/dashboard";
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: `${landingOrigin}${redirectBack}`,
+        "Set-Cookie": `arcrun_session=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax; Domain=.arcrun.dev; Max-Age=${7 * 24 * 60 * 60}`
+      }
+    });
+  } catch (err) {
+    console.error("[auth/callback]", err);
+    return Response.redirect(`${landingOrigin}/login?error=server_error`, 302);
+  }
+});
+authRouter.post("/auth/logout", async (c) => {
+  const sessId = getSessionId(c.req.raw);
+  if (sessId) {
+    await ephemeralDelete(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
+  }
+  const landingOrigin = getLandingOrigin(c);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${landingOrigin}/`,
+      "Set-Cookie": "arcrun_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Domain=.arcrun.dev; Max-Age=0"
+    }
+  });
+});
+authRouter.get("/me", async (c) => {
+  const user = await resolveSession(c);
+  if (!user) return c.json({ error: "not authenticated" }, 401);
+  return c.json({
+    email: user.email,
+    display_name: user.display_name,
+    avatar_url: user.avatar_url,
+    api_key: user.api_key,
+    provider: user.provider,
+    created_at: user.created_at
+  });
+});
+authRouter.put("/me/api-key/rotate", async (c) => {
+  const user = await resolveSession(c);
+  if (!user) return c.json({ error: "not authenticated" }, 401);
+  const newRaw = randomToken(24);
+  const newKey = "ak_" + newRaw;
+  await updatePlatformUser(c.env, user.record_id, { api_key: newKey });
+  return c.json({
+    success: true,
+    api_key: newKey,
+    message: "API Key rotated. Your existing workflow credentials are still stored under the old key namespace."
+  });
+});
+authRouter.delete("/me/api-key", async (c) => {
+  const user = await resolveSession(c);
+  if (!user) return c.json({ error: "not authenticated" }, 401);
+  await updatePlatformUser(c.env, user.record_id, { revoked: true });
+  const sessId = getSessionId(c.req.raw);
+  if (sessId) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE, hashField: "session_hash", rawKey: sessId });
+  return new Response(JSON.stringify({ success: true, message: "API Key revoked." }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Set-Cookie": "arcrun_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Domain=.arcrun.dev; Max-Age=0"
+    }
+  });
+});
+
+// cypher-executor/src/routes/resume.ts
+init_dist();
+init_types();
+init_graph_executor();
+init_component_loader();
+init_paused_runs();
+init_run_scratch();
+var resumeRouter = new Hono2();
+resumeRouter.post("/workflows/resume", async (c) => {
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
+  }
+  const taskId = typeof body.task_id === "string" ? body.task_id : void 0;
+  if (!taskId) {
+    return c.json({ error: "task_id \u5FC5\u586B" }, 400);
+  }
+  const state = await consumePausedRun(c.env.EXEC_CONTEXT, taskId);
+  if (!state) {
+    return c.json({
+      success: true,
+      noop: true,
+      reason: `paused state \u4E0D\u5B58\u5728\u6216\u5DF2\u904E\u671F (task_id=${taskId})`
+    });
+  }
+  const callbackResult = {
+    success: body.success ?? true,
+    data: body.data,
+    error: body.error
+  };
+  const loader = createComponentLoader(c.env);
+  const executor = new GraphExecutor(loader, void 0, c.env, state.api_key);
+  const start = Date.now();
+  try {
+    const result = await executor.resumeFromPaused({
+      graph: state.graph,
+      paused_node_id: state.paused_node_id,
+      paused_context: state.paused_context,
+      callback_result: callbackResult,
+      prior_trace: state.trace_so_far,
+      kvNamespace: createRunScratch(),
+      // #98：恢復是新的一趟執行（新 run_id），節點 output 住記憶體
+      recipe_output_format: state.recipe_output_format,
+      recipe_output_required_fields: state.recipe_output_required_fields
+    });
+    const duration_ms = Date.now() - start;
+    const verdict = deriveExecutionVerdict(state.graph, result.trace);
+    if (!verdict.success) {
+      return c.json({
+        success: false,
+        resumed: true,
+        error: verdict.error,
+        failed_node: verdict.failedNode ?? null,
+        task_id: taskId,
+        run_id: state.run_id,
+        data: result.data,
+        trace: result.trace,
+        duration_ms
+      }, 500);
+    }
+    return c.json({
+      success: true,
+      resumed: true,
+      task_id: taskId,
+      run_id: state.run_id,
+      data: result.data,
+      trace: result.trace,
+      duration_ms
+    });
+  } catch (err) {
+    if (err instanceof WorkflowPaused) {
+      return c.json({
+        success: true,
+        paused_again: true,
+        task_id: err.task_id,
+        run_id: err.run_id,
+        paused_node_id: err.paused_node_id
+      });
+    }
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return c.json({ success: false, error: errMsg, task_id: taskId, run_id: state.run_id }, 500);
+  }
+});
+
+// cypher-executor/src/routes/executions.ts
+init_dist();
+init_paused_runs();
+init_kbdb_proxy();
+var executionsRouter = new Hono2();
+executionsRouter.get("/executions/paused", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) {
+    return c.json({
+      ok: false,
+      error_code: "auth_missing",
+      human_message: "\u7F3A X-Arcrun-API-Key header",
+      next_actions: ["call /me \u53D6\u5F97\u4F60\u7684 ak_xxx\uFF0C\u52A0\u9032 header"]
+    }, 401);
+  }
+  const limitParam = c.req.query("limit");
+  const limit = Math.min(Math.max(parseInt(limitParam || "20", 10), 1), 100);
+  const paused = await listPausedRunsByApiKey(c.env.EXEC_CONTEXT, apiKey, limit);
+  return c.json({
+    ok: true,
+    data: { count: paused.length, paused },
+    hints: paused.length > 0 ? [`${paused.length} \u500B workflow \u7B49 callback resume\u3002call get_execution_trace(task_id) \u770B\u7D30\u7BC0`] : ["\u6C92\u6709\u4EFB\u4F55 paused workflow"]
+  });
+});
+executionsRouter.get("/executions/:task_id", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) {
+    return c.json({
+      ok: false,
+      error_code: "auth_missing",
+      human_message: "\u7F3A X-Arcrun-API-Key header",
+      next_actions: ["\u52A0 X-Arcrun-API-Key header"]
+    }, 401);
+  }
+  const taskId = c.req.param("task_id");
+  const raw2 = await c.env.EXEC_CONTEXT.get(`paused_run:${taskId}`);
+  if (!raw2) {
+    return c.json({
+      ok: false,
+      error_code: "not_found",
+      human_message: `task_id "${taskId}" \u6C92\u5C0D\u61C9\u7684 paused state\uFF08\u53EF\u80FD\u5DF2 resume \u5B8C\u3001\u904E 24h TTL \u88AB GC\u3001\u6216\u5F9E\u672A\u5B58\u5728\uFF09`,
+      next_actions: [
+        "call /executions/paused \u770B\u7576\u524D\u6240\u6709 paused\uFF0C\u78BA\u8A8D task_id \u6B63\u78BA",
+        "\u82E5\u8A72 workflow \u4E0D\u662F paused \u578B\uFF0C\u770B /workflows/:name/executions \u67E5\u6B77\u53F2 verdict"
+      ]
+    }, 404);
+  }
+  let state;
+  try {
+    state = JSON.parse(raw2);
+  } catch {
+    return c.json({
+      ok: false,
+      error_code: "internal_error",
+      human_message: "paused state JSON \u640D\u6BC0",
+      next_actions: ["\u544A\u8A34 leo / \u5E73\u53F0\u7DAD\u8B77\u8005"]
+    }, 500);
+  }
+  if (state.api_key !== apiKey) {
+    return c.json({
+      ok: false,
+      error_code: "not_found",
+      // 不洩漏存在性
+      human_message: `task_id "${taskId}" \u627E\u4E0D\u5230`,
+      next_actions: ["\u78BA\u8A8D task_id \u5C6C\u65BC\u4F60 (\u7528 /executions/paused \u5217\u51FA)"]
+    }, 404);
+  }
+  return c.json({
+    ok: true,
+    data: {
+      task_id: taskId,
+      run_id: state.run_id,
+      paused_node_id: state.paused_node_id,
+      paused_context: state.paused_context,
+      paused_pending_result: state.paused_pending_result,
+      trace_so_far: state.trace_so_far,
+      expires_at: state.expires_at
+    },
+    hints: [
+      "paused \u72C0\u614B = workflow \u7B49 daemon callback\u3002\u7B49\u5C0D\u61C9 service \u56DE POST /workflows/resume \u5373\u53EF\u7E7C\u7E8C",
+      "\u82E5 daemon \u639B\u4E86\uFF0C\u770B expires_at \u2014 \u904E 24h KV TTL \u6703 GC \u6B64 state"
+    ]
+  });
+});
+executionsRouter.get("/workflows/:name/executions", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) {
+    return c.json({
+      ok: false,
+      error_code: "auth_missing",
+      human_message: "\u7F3A X-Arcrun-API-Key header",
+      next_actions: ["\u52A0 X-Arcrun-API-Key header"]
+    }, 401);
+  }
+  const name = c.req.param("name");
+  const limitParam = c.req.query("limit");
+  const limit = Math.min(Math.max(parseInt(limitParam || "10", 10), 1), 100);
+  const wfRaw = await c.env.WEBHOOKS.get(`${apiKey}:wf:${name}`, "text");
+  if (!wfRaw) {
+    return c.json({
+      ok: false,
+      error_code: "not_found",
+      human_message: `workflow "${name}" \u4E0D\u5B58\u5728\u6216\u4E0D\u5C6C\u65BC\u4F60`,
+      next_actions: ["call /webhooks/named \u770B\u4F60\u6709\u4EC0\u9EBC workflow"]
+    }, 404);
+  }
+  const { base, headers } = kbdbBase(c.env);
+  const params = new URLSearchParams({ workflow_id: name, owner_id: apiKey, limit: String(limit) });
+  const kbdbRes = await fetch(`${base}/execution-log?${params.toString()}`, { headers });
+  const kbdbBody = await kbdbRes.json().catch(() => null);
+  const executions = (kbdbRes.ok && kbdbBody?.success ? kbdbBody.executions ?? [] : []).map((r) => ({
+    timestamp: String(r.recorded_at),
+    workflow_id: name,
+    verdict: r.verdict,
+    duration_ms: r.duration_ms,
+    message: r.message ?? "",
+    ...r.target ? { target: r.target } : {}
+  }));
+  return c.json({
+    ok: true,
+    data: {
+      workflow_name: name,
+      count: executions.length,
+      executions
+    },
+    hints: executions.length === 0 ? ["\u5C1A\u672A\u6709\u4EFB\u4F55\u57F7\u884C\u7D00\u9304\u3002\u5148 call /webhooks/named/:name/trigger \u8DD1\u4E00\u6B21"] : [`\u6700\u8FD1 ${executions.length} \u6B21\u3002\u770B\u5230 verdict=failed \u7684\uFF0Ccall /executions/:task_id \u770B paused state \u6216\u7E7C\u7E8C debug`]
+  });
+});
+
+// cypher-executor/src/routes/init-seed.ts
+init_dist();
+init_hash();
+init_recipes();
+
+// cypher-executor/src/lib/extract-ai-providers.ts
+var GENERIC_OPENAI_COMPAT_ID = "extract_ai_openai_compat";
+var GENERIC_OPENAI_COMPAT_CREDENTIAL = "extract_ai_api_key";
+var EXTRACT_AI_PROVIDERS = [
+  {
+    id: "extract_ai_workers_ai",
+    label: "Cloudflare Workers AI\uFF08\u514D\u91D1\u9470\uFF0C\u9810\u8A2D\uFF09",
+    group: "cloud",
+    kind: "binding",
+    key: "none",
+    models: [
+      { id: "@cf/meta/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B\uFF08\u9810\u8A2D\uFF09" },
+      { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", label: "Llama 3.3 70B" },
+      { id: "@cf/mistralai/mistral-small-3.1-24b-instruct", label: "Mistral Small 3.1 24B" },
+      { id: "@cf/google/gemma-3-12b-it", label: "Gemma 3 12B" }
+    ],
+    description: "CF \u96F2\u9810\u8A2D\u3002\u8D70 env.AI binding\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\u3002\u4F01\u696D\u79C1\u6709\u96F2\u6C92\u6709\u9019\u500B binding \u21D2 \u8ACB\u6539\u9078\u5225\u5BB6\u3002"
+  },
+  {
+    id: "extract_ai_openai",
+    label: "OpenAI",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.openai.com/v1/chat/completions",
+    models_url: "https://api.openai.com/v1/models",
+    models: [{ id: "gpt-4o-mini" }, { id: "gpt-4o" }, { id: "gpt-4.1-mini" }, { id: "gpt-4.1" }],
+    credential: "extract_ai_openai_key",
+    description: "OpenAI \u5B98\u65B9 API\u3002"
+  },
+  {
+    id: "extract_ai_anthropic",
+    label: "Anthropic Claude",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.anthropic.com/v1/chat/completions",
+    models_url: "https://api.anthropic.com/v1/models",
+    models_headers: { "anthropic-version": "2023-06-01" },
+    models: [{ id: "claude-haiku-5-5" }, { id: "claude-sonnet-5-5" }, { id: "claude-opus-5-5" }],
+    credential: "extract_ai_anthropic_key",
+    description: "Anthropic \u7684 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u3002"
+  },
+  {
+    id: "extract_ai_gemini",
+    label: "Google Gemini",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    models_url: "https://generativelanguage.googleapis.com/v1beta/openai/models",
+    models: [{ id: "gemini-2.5-flash" }, { id: "gemini-2.5-pro" }, { id: "gemini-2.0-flash" }],
+    credential: "extract_ai_gemini_key",
+    description: "Google AI Studio \u7684 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\u3002"
+  },
+  {
+    id: "extract_ai_groq",
+    label: "Groq",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.groq.com/openai/v1/chat/completions",
+    models_url: "https://api.groq.com/openai/v1/models",
+    models: [{ id: "llama-3.3-70b-versatile" }, { id: "llama-3.1-8b-instant" }],
+    credential: "extract_ai_groq_key",
+    description: "Groq \u96F2\u7AEF\u63A8\u8AD6\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_openrouter",
+    label: "OpenRouter",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://openrouter.ai/api/v1/chat/completions",
+    models_url: "https://openrouter.ai/api/v1/models",
+    models: [
+      { id: "openai/gpt-4o-mini" },
+      { id: "anthropic/claude-sonnet-4.5" },
+      { id: "google/gemini-2.5-flash" },
+      { id: "meta-llama/llama-3.3-70b-instruct" }
+    ],
+    credential: "extract_ai_openrouter_key",
+    description: "OpenRouter \u805A\u5408\uFF08\u4E00\u628A\u91D1\u9470\u901A\u591A\u5BB6\u6A21\u578B\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_deepseek",
+    label: "DeepSeek",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.deepseek.com/chat/completions",
+    models_url: "https://api.deepseek.com/models",
+    models: [{ id: "deepseek-chat" }, { id: "deepseek-reasoner" }],
+    credential: "extract_ai_deepseek_key",
+    description: "DeepSeek \u5B98\u65B9 API\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_mistral",
+    label: "Mistral",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.mistral.ai/v1/chat/completions",
+    models_url: "https://api.mistral.ai/v1/models",
+    models: [{ id: "mistral-small-latest" }, { id: "mistral-large-latest" }],
+    credential: "extract_ai_mistral_key",
+    description: "Mistral La Plateforme\u3002"
+  },
+  {
+    id: "extract_ai_xai",
+    label: "xAI Grok",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.x.ai/v1/chat/completions",
+    models_url: "https://api.x.ai/v1/models",
+    models: [{ id: "grok-3-mini" }, { id: "grok-3" }],
+    credential: "extract_ai_xai_key",
+    description: "xAI \u5B98\u65B9 API\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_together",
+    label: "Together AI",
+    group: "hosted",
+    kind: "http",
+    key: "required",
+    chat_url: "https://api.together.xyz/v1/chat/completions",
+    models_url: "https://api.together.xyz/v1/models",
+    models: [{ id: "meta-llama/Llama-3.3-70B-Instruct-Turbo" }, { id: "Qwen/Qwen2.5-72B-Instruct-Turbo" }],
+    credential: "extract_ai_together_key",
+    description: "Together AI \u958B\u6E90\u6A21\u578B\u8A17\u7BA1\uFF08OpenAI \u76F8\u5BB9\uFF09\u3002"
+  },
+  {
+    id: "extract_ai_ollama",
+    label: "Ollama\uFF08\u5730\u7AEF\uFF09",
+    group: "local",
+    kind: "http",
+    key: "optional",
+    needs_base_url: true,
+    default_base_url: "http://localhost:11434",
+    models: [],
+    credential: "extract_ai_ollama_key",
+    description: "\u5730\u7AEF\u6216\u5167\u7DB2\u7684 Ollama\u3002\u91D1\u9470\u901A\u5E38\u4E0D\u9700\u8981\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
+  },
+  {
+    id: GENERIC_OPENAI_COMPAT_ID,
+    label: "\u5176\u4ED6 OpenAI \u76F8\u5BB9\u7AEF\u9EDE\uFF08vLLM\uFF0FLM Studio\uFF0F\u81EA\u5EFA\uFF09",
+    group: "local",
+    kind: "http",
+    key: "optional",
+    needs_base_url: true,
+    models: [],
+    credential: GENERIC_OPENAI_COMPAT_CREDENTIAL,
+    description: "\u4EFB\u4F55\u5BE6\u4F5C /v1/chat/completions \u7684\u7AEF\u9EDE\u3002\u91D1\u9470\u9078\u586B\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
+  }
+];
+function findProvider(id) {
+  return EXTRACT_AI_PROVIDERS.find((p) => p.id === id);
+}
+function extractAiProviderSeeds() {
+  return EXTRACT_AI_PROVIDERS.filter((p) => p.kind === "http").map((p) => {
+    const body_template = {
+      model: "{{model}}",
+      messages: "{{messages}}",
+      max_tokens: "{{max_tokens}}",
+      temperature: "{{temperature}}",
+      response_format: "{{response_format}}"
+    };
+    return {
+      canonical_id: p.id,
+      display_name: `\u8403\u53D6 AI\uFF1A${p.label}`,
+      description: `${p.description}` + (p.credential ? ` \u91D1\u9470\u8D70 credential\u300C${p.credential}\u300D${p.key === "optional" ? "\uFF08\u9078\u586B\uFF0C\u6709\u8A2D\u624D\u5E36 Authorization\uFF09" : ""}\u3002` : ""),
+      endpoint: p.chat_url ?? "{{base_url}}/v1/chat/completions",
+      method: "POST",
+      ...p.credential ? { headers: { Authorization: `Bearer {{credential.${p.credential}}}` } } : {},
+      body_template,
+      response_map: { text_path: "choices.0.message.content" }
+    };
+  });
+}
+
+// cypher-executor/src/lib/api-recipe-seeds.ts
+var KBDB_BASE_TOKEN = "{{KBDB_BASE_URL}}";
+function resolveKbdbSeedBase(text, resolveBase) {
+  return text.includes(KBDB_BASE_TOKEN) ? text.replaceAll(KBDB_BASE_TOKEN, resolveBase()) : text;
+}
+var API_RECIPE_SEEDS = [
+  // ── KBDB（Supabase 模式，auth_service=kbdb static_key）──
+  {
+    canonical_id: "kbdb_get",
+    display_name: "KBDB Get",
+    description: "GET \u8B80\u53D6 block / \u67E5\u8A62\u3002_path \u5E36\u67E5\u8A62\u8DEF\u5F91\u3002auth: kbdb static_key\u3002",
+    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
+    method: "GET",
+    auth_service: "kbdb"
+  },
+  {
+    canonical_id: "kbdb_create_block",
+    display_name: "KBDB Create Block",
+    description: "POST /blocks \u5EFA\u7ACB block\u3002body \u5E36 block \u6B04\u4F4D\uFF08content/type/page_name/source/user_id \u7B49\uFF09\u3002auth: kbdb static_key\u3002",
+    endpoint: "{{KBDB_BASE_URL}}/blocks",
+    method: "POST",
+    auth_service: "kbdb"
+  },
+  {
+    canonical_id: "kbdb_patch_block",
+    display_name: "KBDB Patch Block",
+    description: "PATCH /blocks/:id \u5C40\u90E8\u66F4\u65B0\u3002_path \u5E36 /blocks/{id}\uFF0Cbody \u5E36\u8981\u6539\u7684\u6B04\u4F4D\u3002auth: kbdb static_key\u3002",
+    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
+    method: "PATCH",
+    auth_service: "kbdb"
+  },
+  {
+    canonical_id: "kbdb_delete",
+    display_name: "KBDB Delete",
+    description: "DELETE /blocks/:id \u522A\u9664 block\u3002_path \u5E36 /blocks/{id}\u3002auth: kbdb static_key\u3002",
+    endpoint: "{{KBDB_BASE_URL}}{{_path}}",
+    method: "DELETE",
+    auth_service: "kbdb"
+  },
+  {
+    canonical_id: "kbdb_ingest",
+    display_name: "KBDB Ingest",
+    description: "POST /blocks/ingest \u6279\u6B21\u5BEB\u5165\u3002body \u5E36 input\u3002auth: kbdb static_key\u3002",
+    endpoint: "{{KBDB_BASE_URL}}/blocks/ingest",
+    method: "POST",
+    auth_service: "kbdb"
+  },
+  // ── Google（service_account）──
+  {
+    canonical_id: "gmail_send",
+    display_name: "Gmail Send",
+    description: "\u5BC4 Gmail\u3002POST messages/send\uFF0Cbody \u5E36 raw\uFF08base64url MIME\uFF09\u3002auth: google service_account\u3002",
+    endpoint: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    method: "POST",
+    auth_service: "google_gmail_sa"
+  },
+  {
+    canonical_id: "google_sheets_append",
+    display_name: "Google Sheets Append",
+    // 壓測階段 12 修正：append 官方 API 是 POST .../values/{range}:append（PUT 是 values.update 覆寫的動詞），
+    // 種子寫死 PUT 導致每個 self-host 用戶 seed 到壞 recipe（PUT :append → Google 400）。
+    // body 形狀屬工作流，泛用種子不寫死欄位 → 由工作流的 _path + body 處理（body_from 機制待 §13.4 補）。
+    description: "\u8FFD\u52A0\u4E00\u5217\u5230 Sheets\u3002POST .../values/{range}:append?valueInputOption=RAW\uFF0Cbody \u5E36 {values:[[...]]}\u3002auth: google service_account\u3002",
+    endpoint: "https://sheets.googleapis.com{{_path}}",
+    method: "POST",
+    auth_service: "google_sheets_sa"
+  },
+  {
+    canonical_id: "google_sheets_read",
+    display_name: "Google Sheets Read",
+    description: "\u8B80 Sheets\u3002GET values\u3002_path \u5E36\u5B8C\u6574\u8DEF\u5F91\u3002auth: google service_account\u3002",
+    endpoint: "https://sheets.googleapis.com{{_path}}",
+    method: "GET",
+    auth_service: "google_sheets_sa"
+  },
+  // ── 訊息（static_key）──
+  {
+    canonical_id: "telegram_send",
+    display_name: "Telegram Send",
+    description: "Telegram sendMessage\u3002token \u5728 URL path\uFF08{{auth.bot_token}}\uFF09\uFF0Cbody \u5E36 chat_id+text\u3002auth: static_key path \u6CE8\u5165\u3002",
+    endpoint: "https://api.telegram.org/bot{{auth.bot_token}}/sendMessage",
+    method: "POST",
+    auth_service: "telegram"
+  },
+  {
+    canonical_id: "line_notify_send",
+    display_name: "LINE Notify",
+    description: "LINE Notify \u63A8\u8A0A\u606F\u3002POST notify\uFF0Cbody \u5E36 message\uFF08form-urlencoded\uFF09\u3002auth: static_key Bearer line token\u3002",
+    endpoint: "https://notify-api.line.me/api/notify",
+    method: "POST",
+    auth_service: "line_notify"
+  },
+  // ── LLM 對話（binding＝免金鑰，3.12 第四型認證的第一個真實案例）──
+  //
+  // 為什麼進種子（而非寫在某個產品的安裝器裡）：「裝好之後預設有哪些 recipe」是平台能力，
+  // 與本檔其餘種子同理由（見檔頭）。裝完 /init/seed 就有 ⇒ **用戶不填任何金鑰就能問答**。
+  //
+  // 換模型／換供應商＝**改這一筆 recipe**（endpoint + body_template + response_map），
+  // workflow 的 ask_llm 節點不動——這正是「換源＝換 recipe 不是換引擎」。
+  //
+  // 選型實測（2026-08-03，在 1.4.4 實例上跑真實長度的 RAG prompt，每個模型連跑 2 次）：
+  //   @cf/meta/llama-4-scout-17b-16e-instruct        2373／2173 ms　✅ 答案最完整、引用正確
+  //   @cf/meta/llama-3.3-70b-instruct-fp8-fast       3261／2147 ms　✅ 可用但波動較大
+  //   @cf/mistralai/mistral-small-3.1-24b-instruct   3560／3631 ms
+  //   @cf/qwen/qwen2.5-coder-32b-instruct            3572／3353 ms
+  //   @cf/openai/gpt-oss-120b                        1971／2295 ms　❌ 回應形狀不同，response 取不到文字
+  //   @cf/google/gemma-3-12b-it                      ❌ 5018 This account is not allowed to access this model
+  // 對照舊路徑（Gemini `gemma-4-31b-it`）：同型提問 **16.87 s**，且吐整段英文思考草稿
+  //   ⇒ 選 llama-4-scout：**快 7 倍以上，且不需要淨化思考草稿**。
+  {
+    canonical_id: "workers_ai_chat",
+    display_name: "Workers AI \u5C0D\u8A71\uFF08\u514D\u91D1\u9470\uFF09",
+    description: "Cloudflare Workers AI \u6587\u5B57\u751F\u6210\uFF0C\u8D70 env.AI binding \u21D2 \u4E0D\u9700\u8981\u4EFB\u4F55 API \u91D1\u9470\u3002ctx \u5E36 prompt\uFF0C\u56DE\u61C9\u6B63\u898F\u5316\u6210 text\uFF08\u542B\u3010\u7B54\u3011\u6A19\u8A18\u8207\u524D\u7DB4\u6DE8\u5316\uFF09\u3002\u63DB\u6A21\u578B\uFF1D\u6539\u672C recipe \u7684 endpoint\uFF0Cworkflow \u4E0D\u52D5\u3002",
+    endpoint: "@cf/meta/llama-4-scout-17b-16e-instruct",
+    method: "POST",
+    auth: "binding",
+    binding_name: "AI",
+    body_template: {
+      messages: [{ role: "user", content: "{{prompt}}" }],
+      max_tokens: 1024,
+      temperature: 0.2
+    },
+    response_map: {
+      // Workers AI chat 回應：{ response: "…" }（另有 OpenAI 相容的 choices，取 response 最穩）
+      text_path: "response",
+      // 提示詞要求答案以【答】開頭；模型偶爾會在前面多帶一行 ⇒ 取最後一個標記之後
+      answer_marker: "\u3010\u7B54\u3011",
+      // 前綴組合順序不定，循環剝殼（規則見 recipe-payload.ts sanitize）
+      strip_prefixes: ["*", "-", "\u2022", ">", "#", '"', "\u300C", "\u3010\u7B54\u3011", "Answer:", "Draft:"]
+    }
+  },
+  // ── 萃取 AI（inkstone/Arcrun#277）：小幫手送文字上雲，雲端用哪個 AI 由**這台雲端**的管理員選 ──
+  //
+  // 「每種 AI 一份 recipe」（leo 09-29）。執行器是 lib/extract-ai.ts（不認得任何一家 AI 的形狀，
+  // 只照 recipe 組請求）；要接新的 AI 供應商＝在這裡加一筆，不改執行器。
+  // 輸入 ctx：messages／max_tokens／temperature／response_format（要 JSON 時才有）／base_url／model。
+  // 選填欄位沒值時，lib 會把整個欄位剔除（不會把 `{{x}}` 字面送出去）。
+  {
+    canonical_id: "extract_ai_workers_ai",
+    display_name: "\u8403\u53D6 AI\uFF1ACloudflare Workers AI\uFF08\u514D\u91D1\u9470\uFF09",
+    description: "CF \u96F2\u9810\u8A2D\u3002\u8D70 env.AI binding\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\uFF1B\u6A21\u578B\u9078\u578B\u8207 workers_ai_chat \u540C\u4E00\u652F\uFF08llama-4-scout\uFF09\u3002\u4F01\u696D\u79C1\u6709\u96F2\u6C92\u6709\u9019\u500B binding \u21D2 \u8ACB\u6539\u9078 extract_ai_openai_compat\u3002",
+    endpoint: "@cf/meta/llama-4-scout-17b-16e-instruct",
+    method: "POST",
+    auth: "binding",
+    binding_name: "AI",
+    body_template: {
+      messages: "{{messages}}",
+      max_tokens: "{{max_tokens}}",
+      temperature: "{{temperature}}",
+      response_format: "{{response_format}}"
+    },
+    response_map: { text_path: "response" }
+  },
+  // 其餘每家提供商（OpenAI／Anthropic／Gemini／…／Ollama／通用 OpenAI 相容）的 recipe 由
+  // extract-ai-providers.ts 的清單產生（leo 10-15：清單由開發端維護）。
+  ...extractAiProviderSeeds()
+];
+
+// cypher-executor/src/routes/init-seed.ts
+init_endpoints();
+
+// cypher-executor/src/lib/auth-recipe-seeds.ts
+var now = Date.now();
+var GOOGLE_SA_SECRETS = [
+  {
+    key: "client_email",
+    label: "Service Account Email\uFF08client_email\uFF09",
+    help: "Service Account \u7684\u4FE1\u7BB1\uFF0C\u5F62\u5982 xxx@yyy.iam.gserviceaccount.com\uFF08\u5C31\u662F\u4E0B\u8F09\u7684 SA JSON \u88E1 client_email \u90A3\u4E00\u884C\u7684\u503C\uFF09",
+    help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
+  },
+  {
+    key: "private_key",
+    label: "Service Account Private Key\uFF08private_key\uFF09",
+    help: "SA JSON \u88E1 private_key \u90A3\u4E00\u6BB5\uFF08-----BEGIN PRIVATE KEY----- \u2026 -----END PRIVATE KEY-----\uFF09\uFF0C\u6574\u6BB5\u8CBC\u4E0A\u5373\u53EF\uFF0C\u542B\u771F\u5BE6\u63DB\u884C\u6216 \\n \u90FD\u80FD\u8A8D",
+    help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
+  }
+];
+var AUTH_RECIPE_SEEDS = [
+  // ── Static Key 類 ──────────────────────────────────────────────────────────
+  {
+    kind: "auth_recipe",
+    service: "notion",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.notion.com/v1",
+    display_name: "Notion",
+    description: "Notion API \u2014 \u9801\u9762\u3001\u8CC7\u6599\u5EAB\u8B80\u5BEB",
+    required_secrets: [
+      {
+        key: "notion_token",
+        label: "Internal Integration Token",
+        help: "\u81F3 https://www.notion.so/my-integrations \u5EFA\u7ACB Integration",
+        help_url: "https://www.notion.so/my-integrations"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.notion_token}}",
+        "Notion-Version": "2022-06-28"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "slack",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://slack.com/api",
+    display_name: "Slack",
+    description: "Slack Bot API \u2014 \u767C\u8A0A\u606F\u3001\u67E5\u983B\u9053",
+    required_secrets: [
+      {
+        key: "slack_bot_token",
+        label: "Bot User OAuth Token (xoxb-...)",
+        help: "\u81F3 https://api.slack.com/apps \u5EFA\u7ACB App\uFF0C\u53D6\u5F97 Bot Token",
+        help_url: "https://api.slack.com/apps"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.slack_bot_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "github",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.github.com",
+    display_name: "GitHub",
+    description: "GitHub REST API \u2014 repo\u3001issue\u3001PR \u64CD\u4F5C",
+    required_secrets: [
+      {
+        key: "github_token",
+        label: "Personal Access Token (classic \u6216 fine-grained)",
+        help: "\u81F3 https://github.com/settings/tokens \u5EFA\u7ACB",
+        help_url: "https://github.com/settings/tokens"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.github_token}}",
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "openai",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.openai.com/v1",
+    display_name: "OpenAI",
+    description: "OpenAI API \u2014 Chat Completions\u3001Embeddings \u7B49",
+    required_secrets: [
+      {
+        key: "openai_api_key",
+        label: "API Key (sk-...)",
+        help: "\u81F3 https://platform.openai.com/api-keys \u5EFA\u7ACB",
+        help_url: "https://platform.openai.com/api-keys"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.openai_api_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "anthropic",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.anthropic.com/v1",
+    display_name: "Anthropic (Claude)",
+    description: "Anthropic API \u2014 Claude \u6A21\u578B\u547C\u53EB",
+    required_secrets: [
+      {
+        key: "anthropic_api_key",
+        label: "API Key",
+        help: "\u81F3 https://console.anthropic.com/settings/keys \u5EFA\u7ACB",
+        help_url: "https://console.anthropic.com/settings/keys"
+      }
+    ],
+    inject: {
+      header: {
+        "x-api-key": "{{secret.anthropic_api_key}}",
+        "anthropic-version": "2023-06-01"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "airtable",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.airtable.com/v0",
+    display_name: "Airtable",
+    description: "Airtable API \u2014 \u8B80\u5BEB Base \u8CC7\u6599",
+    required_secrets: [
+      {
+        key: "airtable_token",
+        label: "Personal Access Token",
+        help: "\u81F3 https://airtable.com/create/tokens \u5EFA\u7ACB",
+        help_url: "https://airtable.com/create/tokens"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.airtable_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "discord",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://discord.com/api/v10",
+    display_name: "Discord",
+    description: "Discord Bot API \u2014 \u767C\u8A0A\u606F\u3001\u7BA1\u7406\u4F3A\u670D\u5668",
+    required_secrets: [
+      {
+        key: "discord_bot_token",
+        label: "Bot Token",
+        help: "\u81F3 https://discord.com/developers/applications \u5EFA\u7ACB Bot\uFF0C\u53D6\u5F97 Token",
+        help_url: "https://discord.com/developers/applications"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bot {{secret.discord_bot_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "stripe",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.stripe.com/v1",
+    display_name: "Stripe",
+    description: "Stripe API \u2014 \u652F\u4ED8\u3001\u5BA2\u6236\u3001\u8A02\u95B1\u7BA1\u7406",
+    required_secrets: [
+      {
+        key: "stripe_secret_key",
+        label: "Secret Key (sk_live_... \u6216 sk_test_...)",
+        help: "\u81F3 https://dashboard.stripe.com/apikeys \u53D6\u5F97",
+        help_url: "https://dashboard.stripe.com/apikeys"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.stripe_secret_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "twilio",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.twilio.com/2010-04-01",
+    display_name: "Twilio",
+    description: "Twilio API \u2014 SMS\u3001\u96FB\u8A71\u3001WhatsApp",
+    required_secrets: [
+      {
+        key: "twilio_account_sid",
+        label: "Account SID",
+        help: "\u81F3 https://console.twilio.com/ \u53D6\u5F97",
+        help_url: "https://console.twilio.com/"
+      },
+      {
+        key: "twilio_auth_token",
+        label: "Auth Token",
+        help: "\u81F3 https://console.twilio.com/ \u53D6\u5F97",
+        help_url: "https://console.twilio.com/"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Basic {{secret.twilio_account_sid}}:{{secret.twilio_auth_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "sendgrid",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.sendgrid.com/v3",
+    display_name: "SendGrid",
+    description: "SendGrid Email API \u2014 \u767C\u9001\u4EA4\u6613\u90F5\u4EF6",
+    required_secrets: [
+      {
+        key: "sendgrid_api_key",
+        label: "API Key (SG....)",
+        help: "\u81F3 https://app.sendgrid.com/settings/api_keys \u5EFA\u7ACB",
+        help_url: "https://app.sendgrid.com/settings/api_keys"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.sendgrid_api_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "hubspot",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.hubapi.com",
+    display_name: "HubSpot",
+    description: "HubSpot CRM API \u2014 \u806F\u7D61\u4EBA\u3001\u516C\u53F8\u3001\u4EA4\u6613\u7BA1\u7406",
+    required_secrets: [
+      {
+        key: "hubspot_token",
+        label: "Private App Access Token",
+        help: "\u81F3 HubSpot Settings \u2192 Integrations \u2192 Private Apps \u5EFA\u7ACB",
+        help_url: "https://developers.hubspot.com/docs/api/private-apps"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.hubspot_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "linear",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.linear.app",
+    display_name: "Linear",
+    description: "Linear API \u2014 Issue\u3001Project \u7BA1\u7406",
+    required_secrets: [
+      {
+        key: "linear_api_key",
+        label: "Personal API Key",
+        help: "\u81F3 https://linear.app/settings/api \u5EFA\u7ACB",
+        help_url: "https://linear.app/settings/api"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "{{secret.linear_api_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "shopify",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://{{secret.shopify_store}}.myshopify.com/admin/api/2024-01",
+    display_name: "Shopify",
+    description: "Shopify Admin API \u2014 \u8A02\u55AE\u3001\u5546\u54C1\u3001\u5BA2\u6236\u7BA1\u7406",
+    required_secrets: [
+      {
+        key: "shopify_access_token",
+        label: "Admin API Access Token",
+        help: "\u81F3 Shopify Admin \u2192 Apps \u2192 App and sales channel settings \u2192 Private apps",
+        help_url: "https://shopify.dev/docs/apps/auth/admin-app-access-tokens"
+      },
+      {
+        key: "shopify_store",
+        label: "Store subdomain\uFF08\u4E0D\u542B .myshopify.com\uFF09",
+        help: "\u4F8B\u5982 my-store\uFF08\u5C0D\u61C9 my-store.myshopify.com\uFF09"
+      }
+    ],
+    inject: {
+      header: {
+        "X-Shopify-Access-Token": "{{secret.shopify_access_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "resend",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.resend.com",
+    display_name: "Resend",
+    description: "Resend Email API \u2014 \u767C\u9001\u4EA4\u6613\u90F5\u4EF6",
+    required_secrets: [
+      {
+        key: "resend_api_key",
+        label: "API Key (re_...)",
+        help: "\u81F3 https://resend.com/api-keys \u5EFA\u7ACB",
+        help_url: "https://resend.com/api-keys"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.resend_api_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "supabase",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://{{secret.supabase_project_ref}}.supabase.co/rest/v1",
+    display_name: "Supabase",
+    description: "Supabase REST API \u2014 \u8CC7\u6599\u5EAB\u8B80\u5BEB",
+    required_secrets: [
+      {
+        key: "supabase_service_key",
+        label: "Service Role Key (eyJ...)",
+        help: "\u81F3 Supabase Project Settings \u2192 API \u2192 service_role key",
+        help_url: "https://supabase.com/dashboard"
+      },
+      {
+        key: "supabase_project_ref",
+        label: "Project Reference ID\uFF08URL \u4E2D\u7684 xxx.supabase.co \u7684 xxx\uFF09"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.supabase_service_key}}",
+        apikey: "{{secret.supabase_service_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "typeform",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.typeform.com",
+    display_name: "Typeform",
+    description: "Typeform API \u2014 \u8868\u55AE\u3001\u554F\u5377\u56DE\u61C9\u8B80\u53D6",
+    required_secrets: [
+      {
+        key: "typeform_token",
+        label: "Personal Access Token",
+        help: "\u81F3 https://admin.typeform.com/account#/section/tokens \u5EFA\u7ACB",
+        help_url: "https://developer.typeform.com/get-started/"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.typeform_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "jira",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://{{secret.jira_domain}}.atlassian.net/rest/api/3",
+    display_name: "Jira",
+    description: "Jira API \u2014 Issue\u3001Sprint\u3001Project \u7BA1\u7406",
+    required_secrets: [
+      {
+        key: "jira_api_token",
+        label: "API Token",
+        help: "\u81F3 https://id.atlassian.com/manage-profile/security/api-tokens \u5EFA\u7ACB",
+        help_url: "https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/"
+      },
+      {
+        key: "jira_email",
+        label: "\u4F60\u7684 Atlassian \u5E33\u865F Email"
+      },
+      {
+        key: "jira_domain",
+        label: "Jira \u5B50\u7DB2\u57DF\uFF08xxx.atlassian.net \u7684 xxx\uFF09"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Basic {{secret.jira_email}}:{{secret.jira_api_token}}",
+        Accept: "application/json"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "gemini",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://generativelanguage.googleapis.com/v1beta",
+    display_name: "Google Gemini",
+    description: "Google Gemini API \u2014 generateContent / embedContent\uFF08\u4F7F\u7528 API Key\uFF09",
+    required_secrets: [
+      {
+        key: "gemini_api_key",
+        label: "API Key",
+        help: "\u81F3 https://aistudio.google.com/apikey \u5EFA\u7ACB",
+        help_url: "https://aistudio.google.com/apikey"
+      }
+    ],
+    inject: {
+      header: {
+        "x-goog-api-key": "{{secret.gemini_api_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "trello",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.trello.com/1",
+    display_name: "Trello",
+    description: "Trello API \u2014 boards / cards / lists\uFF08API key + token \u8D70 query string\uFF09",
+    required_secrets: [
+      {
+        key: "trello_api_key",
+        label: "API Key",
+        help: "\u81F3 https://trello.com/power-ups/admin \u5EFA\u7ACB Power-Up \u5F8C\u53D6\u5F97",
+        help_url: "https://trello.com/power-ups/admin"
+      },
+      {
+        key: "trello_token",
+        label: "Token",
+        help: "\u65BC Power-Up \u9801\u9762\u9EDE\u300CGenerate Token\u300D\u6388\u6B0A\u5F8C\u53D6\u5F97",
+        help_url: "https://trello.com/power-ups/admin"
+      }
+    ],
+    inject: {
+      query: {
+        key: "{{secret.trello_api_key}}",
+        token: "{{secret.trello_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "mailgun",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.mailgun.net/v3",
+    display_name: "Mailgun",
+    description: 'Mailgun API \u2014 \u5BC4\u4FE1\uFF08username \u56FA\u5B9A "api"\uFF0Cpassword \u70BA Private API Key\uFF0C\u8D70 Basic Auth\uFF09',
+    required_secrets: [
+      {
+        key: "mailgun_api_key",
+        label: "Private API Key",
+        help: "\u81F3 Mailgun Dashboard \u2192 API Security \u2192 Sending Keys \u5EFA\u7ACB",
+        help_url: "https://app.mailgun.com/mg/sending/domains"
+      },
+      {
+        key: "mailgun_domain",
+        label: "Sending Domain",
+        help: "\u4F60\u5728 Mailgun \u8A2D\u5B9A\u597D\u7684 sending domain\uFF08\u4F8B\uFF1Amg.yourdomain.com\uFF09",
+        help_url: "https://app.mailgun.com/mg/sending/domains"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Basic api:{{secret.mailgun_api_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  // ── 訊息 / URL-path 注入類（static_key）────────────────────────────────────
+  //
+  // 2026-06-29 補：以下三個 static_key auth recipe 一直存在於 prod RECIPES KV（手動 seed 過），
+  // 但**從未進 source seed**（auth-recipe-seeds.ts）→ 任何全新 self-hosted `POST /init/seed`
+  // 只會 seed 23 個、漏掉 telegram/line_notify/kbdb → self-host（mira/leo21c）的 telegram 發訊
+  // 走不通（telegram_send 的 auth_service:'telegram' 找不到 auth recipe → {{auth.bot_token}} 注入空）。
+  // 這正是「source vs live drift = 假綠」（總管反覆踩的同一類）。把 prod 現役定義回灌 source，
+  // 讓 official 與 self-host 共用同一份種子。形態取自 prod GET /auth-recipes/{service}（2026-06-29）。
+  // 設計權威：auth-recipe.md §六(line 70-71, telegram path 注入) + §七(line 150-151, kbdb 共用)。
+  {
+    kind: "auth_recipe",
+    service: "telegram",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://api.telegram.org",
+    display_name: "Telegram Bot",
+    description: "Telegram Bot API \u2014 sendMessage \u7B49\uFF08bot token \u6CE8\u5165 URL path /bot{token}/\uFF09",
+    required_secrets: [
+      {
+        key: "telegram_bot_token",
+        label: "Bot Token\uFF08\u5F9E @BotFather \u53D6\u5F97\uFF09",
+        help: "\u5728 Telegram \u5C0D @BotFather \u9001 /newbot \u5EFA\u7ACB bot\uFF0C\u53D6\u5F97\u683C\u5F0F\u70BA 123456:ABC... \u7684 token",
+        help_url: "https://core.telegram.org/bots/features#botfather"
+      }
+    ],
+    // path 注入：recipe:telegram_send 的 endpoint 用 {{auth.bot_token}} 從 _auth_path 取值
+    // （auth_static_key WASM 解密後輸出 auth_path → auth-dispatcher 帶進 _auth_path
+    //   → makeRecipeRunner interpolate）。token 不落 header/query/body，符合 Telegram 的 URL-path 慣例。
+    inject: {
+      path: {
+        bot_token: "{{secret.telegram_bot_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "line_notify",
+    version: 1,
+    primitive: "static_key",
+    base_url: "https://notify-api.line.me",
+    display_name: "LINE Notify",
+    description: "LINE Notify \u2014 \u63A8\u64AD\u8A0A\u606F\uFF08static_key Bearer\uFF09",
+    required_secrets: [
+      {
+        key: "line_token",
+        label: "LINE Notify Token",
+        help: "\u81F3 https://notify-bot.line.me/my/ \u767C\u884C\u500B\u4EBA\u5B58\u53D6\u6B0A\u6756",
+        help_url: "https://notify-bot.line.me/my/"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.line_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "kbdb",
+    version: 1,
+    primitive: "static_key",
+    base_url: KBDB_BASE_TOKEN,
+    // 灌種子時換成部署的 KBDB_BASE_URL（#275）
+    display_name: "KBDB",
+    description: "KBDB partner API \u2014 block \u8B80\u5BEB\uFF08static_key Bearer\uFF09\u3002kbdb_* recipe \u5171\u7528\u6B64\u628A auth\u3002",
+    required_secrets: [
+      {
+        key: "kbdb_api_key",
+        label: "KBDB API Key\uFF08\u81F3 arcrun \u53D6\u7D71\u4E00 API Key \u7576 credential\uFF09",
+        help: "KBDB \u63A1 Supabase \u6A21\u5F0F\uFF1A\u8981\u7528 \u2192 \u53BB arcrun \u53D6\u7D71\u4E00 API Key \u7576\u6B64 credential",
+        help_url: "https://arcrun.dev"
+      }
+    ],
+    inject: {
+      header: {
+        Authorization: "Bearer {{secret.kbdb_api_key}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  // ── Service Account 類（Google 家族，共用同一份 service_account_json）────────
+  {
+    kind: "auth_recipe",
+    service: "google_sheets_sa",
+    version: 1,
+    primitive: "service_account",
+    service_account_kind: "google_jwt",
+    base_url: "https://sheets.googleapis.com/v4",
+    display_name: "Google Sheets (Service Account)",
+    description: "Google Sheets API \u2014 \u8A66\u7B97\u8868\u8B80\u5BEB\uFF08\u4F7F\u7528 Service Account\uFF09",
+    token_exchange: {
+      endpoint: "https://oauth2.googleapis.com/token",
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+    },
+    required_secrets: GOOGLE_SA_SECRETS,
+    inject: {
+      header: {
+        Authorization: "Bearer {{runtime.access_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "google_gmail_sa",
+    version: 1,
+    primitive: "service_account",
+    service_account_kind: "google_jwt",
+    base_url: "https://gmail.googleapis.com/gmail/v1",
+    display_name: "Gmail (Service Account)",
+    description: "Gmail API \u2014 \u767C\u9001\u90F5\u4EF6\uFF08\u4F7F\u7528 Service Account + Domain-Wide Delegation\uFF09",
+    token_exchange: {
+      endpoint: "https://oauth2.googleapis.com/token",
+      scopes: ["https://www.googleapis.com/auth/gmail.send"]
+    },
+    required_secrets: GOOGLE_SA_SECRETS,
+    inject: {
+      header: {
+        Authorization: "Bearer {{runtime.access_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  },
+  {
+    kind: "auth_recipe",
+    service: "google_drive_sa",
+    version: 1,
+    primitive: "service_account",
+    service_account_kind: "google_jwt",
+    base_url: "https://www.googleapis.com/drive/v3",
+    display_name: "Google Drive (Service Account)",
+    description: "Google Drive API \u2014 \u6A94\u6848\u4E0A\u50B3\u3001\u4E0B\u8F09\u3001\u7BA1\u7406\uFF08\u4F7F\u7528 Service Account\uFF09",
+    token_exchange: {
+      endpoint: "https://oauth2.googleapis.com/token",
+      scopes: ["https://www.googleapis.com/auth/drive"]
+    },
+    required_secrets: GOOGLE_SA_SECRETS,
+    inject: {
+      header: {
+        Authorization: "Bearer {{runtime.access_token}}"
+      }
+    },
+    created_at: now,
+    updated_at: now
+  }
+];
+
+// cypher-executor/src/lib/battery.ts
+var PAID_PRICE_PER_MILLION_READ = 1e-3;
+var PAID_PRICE_PER_MILLION_WRITTEN = 1;
+var BATTERY_WARN_AT = 20;
+var BATTERY_SAVER_AT = 10;
+function num(n) {
+  const v = typeof n === "number" ? n : Number(n);
+  return Number.isFinite(v) ? v : 0;
+}
+function monthPaid(m) {
+  if (!m) return null;
+  const incR = num(m.paid_included_rows_read);
+  const incW = num(m.paid_included_rows_written);
+  if (incR <= 0 || incW <= 0) return null;
+  const pr = num(m.rows_read) / incR * 100;
+  const pw = num(m.rows_written) / incW * 100;
+  const overR = Math.max(0, num(m.rows_read) - incR);
+  const overW = Math.max(0, num(m.rows_written) - incW);
+  const usd = overR / 1e6 * PAID_PRICE_PER_MILLION_READ + overW / 1e6 * PAID_PRICE_PER_MILLION_WRITTEN;
+  return { used: Math.max(pr, pw), usd: Math.round(usd * 100) / 100 };
+}
+function computeBattery(input) {
+  const paidMonth = monthPaid(input.month);
+  const isPaid = paidMonth !== null && (input.brake_enabled === false || input.month?.exceeded_free_daily === true);
+  const reset_at = (isPaid ? input.month?.next_reset_at : null) ?? input.reset_at ?? null;
+  const d1Used = isPaid ? paidMonth.used : Math.max(num(input.percent_written), num(input.percent_read));
+  const aiUsed = num(input.percent_ai);
+  const limiting = aiUsed > d1Used ? "ai" : "d1";
+  const rawUsed = Math.max(d1Used, aiUsed);
+  const used = Math.min(100, Math.max(0, rawUsed));
+  const remaining = Math.round((100 - used) * 10) / 10;
+  const plan = isPaid ? "paid" : "free";
+  const basis = isPaid ? "month" : "day";
+  const usd = isPaid ? paidMonth.usd : null;
+  if (input.brake_enabled === false) {
+    const billing = remaining <= 0;
+    return {
+      state: "nuclear",
+      remaining_percent: remaining,
+      billing,
+      plan,
+      basis,
+      estimated_overage_usd: usd,
+      limiting,
+      warn: false,
+      saver: false,
+      message: billing && limiting === "ai" ? "\u4ECA\u5929\u7684 AI \u514D\u8CBB\u984D\u5EA6\u5DF2\u7528\u5B8C\uFF0C\u8D85\u51FA\u7684\u90E8\u5206\u958B\u59CB\u8A08\u8CBB\u3002" : billing && isPaid ? `\u672C\u6708\u5167\u542B\u984D\u5EA6\u5DF2\u7528\u5B8C\uFF0C\u8D85\u51FA\u7684\u90E8\u5206\u958B\u59CB\u8A08\u8CBB\uFF08\u76EE\u524D\u4F30\u8A08\u591A\u82B1\u7D04 US$${usd}\uFF09\u3002` : null,
+      reset_at
+    };
+  }
+  const where = "\u5230\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\uFF0C\u6309\u300C\u653E\u884C\u300D\u6216\u95DC\u6389\u81EA\u52D5\u524E\u8ECA\u5373\u53EF\u4E0D\u518D\u53D7\u9650";
+  const unit = limiting === "ai" ? "\u4ECA\u5929\u7684 AI \u514D\u8CBB\u984D\u5EA6" : isPaid ? "\u672C\u6708\u5167\u542B\u984D\u5EA6" : "\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6";
+  const stops = limiting === "ai" ? "\u96F2\u7AEF\u8403\u53D6\u66AB\u505C" : "\u4E00\u822C\u5BEB\u5165\u66AB\u505C";
+  const stopsNext = limiting === "ai" ? "\u96F2\u7AEF\u8403\u53D6" : "\u4E00\u822C\u5BEB\u5165";
+  if (remaining <= 0) {
+    return {
+      state: "empty",
+      remaining_percent: 0,
+      billing: false,
+      plan,
+      basis,
+      estimated_overage_usd: usd,
+      limiting,
+      warn: true,
+      saver: true,
+      reset_at,
+      message: `${unit}\u7528\u5B8C\u4E86\uFF1A${stops}\uFF0C\u767B\u5165\u3001\u653E\u884C\u3001\u66F4\u65B0\u4ECD\u53EF\u4F7F\u7528\u3002${where}\u3002`
+    };
+  }
+  if (remaining <= BATTERY_SAVER_AT) {
+    return {
+      state: "saver",
+      remaining_percent: remaining,
+      billing: false,
+      plan,
+      basis,
+      estimated_overage_usd: usd,
+      limiting,
+      warn: true,
+      saver: true,
+      reset_at,
+      message: `\u5269\u9918\u7528\u91CF\u53EA\u6709 ${remaining}%\uFF0C\u5DF2\u9032\u5165\u7701\u96FB\u6A21\u5F0F\uFF08\u80CC\u666F\u540C\u6B65\u653E\u6162\uFF09\uFF0C\u518D\u7528\u5B8C\u5C31\u6703\u66AB\u505C${stopsNext}\u3002${where}\u3002`
+    };
+  }
+  if (remaining <= BATTERY_WARN_AT) {
+    return {
+      state: "warn20",
+      remaining_percent: remaining,
+      billing: false,
+      plan,
+      basis,
+      estimated_overage_usd: usd,
+      limiting,
+      warn: true,
+      saver: false,
+      reset_at,
+      message: `\u5269\u9918\u7528\u91CF ${remaining}%\uFF0C\u5FEB\u7528\u5B8C\u6642\u6703\u81EA\u52D5\u9032\u5165\u7701\u96FB\u6A21\u5F0F\u3002${where}\u3002`
+    };
+  }
+  return { state: "normal", remaining_percent: remaining, billing: false, plan, basis, estimated_overage_usd: usd, limiting, warn: false, saver: false, message: null, reset_at };
+}
+
+// cypher-executor/src/lib/cf-usage.ts
+var FREE = {
+  d1_write: 1e5,
+  d1_read: 5e6,
+  requests: 1e5,
+  vec_store: 5e6,
+  vec_query: 3e7,
+  ai: 1e4
+};
+var AI_DAILY_FREE_NEURONS = FREE.ai;
+var PAID = {
+  d1_write: 5e7,
+  d1_read: 25e9,
+  requests: 1e7,
+  vec_store: 1e7,
+  vec_query: 5e7,
+  ai: 1e4
+};
+var UNIT_USD = {
+  d1_write: 1 / 1e6,
+  d1_read: 1e-3 / 1e6,
+  requests: 0.3 / 1e6,
+  vec_store: 0.05 / 1e8,
+  vec_query: 0.01 / 1e6,
+  ai: 0.011 / 1e3
+};
+var KEYS = ["ai", "vec_store", "vec_query", "d1_write", "d1_read", "requests"];
+var DELAY_SEC = 120;
+function aiNeuronsToday(data, now2) {
+  return Math.round(Number(data.ai[utcDay(now2)] ?? 0));
+}
+function utcDay(now2) {
+  return new Date(now2).toISOString().slice(0, 10);
+}
+function nextUtcMidnight(now2) {
+  const d = new Date(now2);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).toISOString();
+}
+function nextMonthStart(now2) {
+  const d = new Date(now2);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString();
+}
+var sum = (s) => Object.values(s).reduce((a, b) => a + (Number(b) || 0), 0);
+var round4 = (n) => Math.round(n * 1e4) / 1e4;
+function inferPlan(m) {
+  const over = (s, line) => Object.values(s).some((v) => v > line);
+  return over(m.d1_write, FREE.d1_write) || over(m.d1_read, FREE.d1_read) || over(m.requests, FREE.requests) ? "paid" : "free";
+}
+function buildUsage(input) {
+  const { now: now2, data } = input;
+  const plan = input.plan ?? inferPlan(data);
+  const lines = plan === "paid" ? PAID : FREE;
+  const today = utcDay(now2);
+  const minutesToday = Math.max((now2 - Date.parse(`${today}T00:00:00Z`)) / 6e4, 1);
+  const items = [];
+  for (const key of KEYS) {
+    const series = data[key];
+    const line = lines[key];
+    const daily = key === "ai" || plan === "free" && (key === "d1_write" || key === "d1_read" || key === "requests");
+    const period = daily ? "day" : "month";
+    let used;
+    if (key === "vec_store") used = Math.max(0, ...Object.values(series).map((v) => Number(v) || 0));
+    else used = daily ? Number(series[today] ?? 0) : sum(series);
+    const item = {
+      key,
+      used: Math.round(used),
+      limit: line,
+      period,
+      reset_at: daily ? nextUtcMidnight(now2) : nextMonthStart(now2),
+      unit_usd: UNIT_USD[key]
+    };
+    if (key !== "vec_store" && key !== "vec_query") {
+      item.rate_per_min = Math.round(Number(series[today] ?? 0) / minutesToday * 100) / 100;
+    }
+    let over;
+    if (daily) over = Object.values(series).reduce((a, v) => a + Math.max(0, (Number(v) || 0) - line), 0);
+    else over = Math.max(0, used - line);
+    item.cost_usd = plan === "paid" || key === "ai" ? round4(over * UNIT_USD[key]) : 0;
+    items.push(item);
+  }
+  return {
+    plan,
+    base_usd: plan === "paid" ? 5 : void 0,
+    fetched_at: new Date(now2).toISOString(),
+    delay_sec: DELAY_SEC,
+    brake: input.brake,
+    items,
+    source: "cf",
+    estimated: false
+  };
+}
+function buildSelfUsage(input) {
+  const { now: now2, d1 } = input;
+  const plan = d1.exceeded_free_daily ? "paid" : "free";
+  const lines = plan === "paid" ? PAID : FREE;
+  const minutesToday = Math.max((now2 - Date.parse(`${utcDay(now2)}T00:00:00Z`)) / 6e4, 1);
+  const mk = (key, dayUsed, monthUsed) => {
+    const daily = plan === "free";
+    const used = daily ? dayUsed : monthUsed;
+    const over = Math.max(0, used - lines[key]);
+    return {
+      key,
+      used: Math.round(used),
+      limit: lines[key],
+      period: daily ? "day" : "month",
+      reset_at: daily ? nextUtcMidnight(now2) : nextMonthStart(now2),
+      rate_per_min: Math.round(dayUsed / minutesToday * 100) / 100,
+      unit_usd: UNIT_USD[key],
+      cost_usd: plan === "paid" ? round4(over * UNIT_USD[key]) : 0
+    };
+  };
+  return {
+    plan,
+    base_usd: plan === "paid" ? 5 : void 0,
+    fetched_at: new Date(now2).toISOString(),
+    delay_sec: 0,
+    brake: input.brake,
+    items: [mk("d1_write", d1.day_written, d1.month_written), mk("d1_read", d1.day_read, d1.month_read)],
+    source: "self",
+    estimated: true
+  };
+}
+var GQL = `query($a:String!,$f:Date!,$t:Date!){viewer{accounts(filter:{accountTag:$a}){
+ d1:d1AnalyticsAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{rowsRead rowsWritten} dimensions{date}}
+ ai:aiInferenceAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{totalNeurons} dimensions{date}}
+ vq:vectorizeV2QueriesAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{queriedVectorDimensions} dimensions{date}}
+ vs:vectorizeV2StorageAdaptiveGroups(limit:40,filter:{date_geq:$f,date_leq:$t}){max{storedVectorDimensions} dimensions{date}}
+ w:workersInvocationsAdaptive(limit:40,filter:{date_geq:$f,date_leq:$t}){sum{requests} dimensions{date}}
+}}}`;
+var CfAnalyticsError = class extends Error {
+  constructor(message2, status) {
+    super(message2);
+    this.status = status;
+  }
+  status;
+};
+function addTo(s, date, v, mode = "sum") {
+  if (!date) return;
+  const n = Number(v) || 0;
+  s[date] = mode === "max" ? Math.max(s[date] ?? 0, n) : (s[date] ?? 0) + n;
+}
+function parseCfAnalytics(body) {
+  const accounts = body?.data?.viewer?.accounts;
+  const acc = accounts?.[0];
+  if (!acc) return null;
+  const out = { d1_write: {}, d1_read: {}, ai: {}, vec_query: {}, vec_store: {}, requests: {} };
+  for (const r of acc.d1 ?? []) {
+    addTo(out.d1_write, r.dimensions?.date, r.sum?.rowsWritten);
+    addTo(out.d1_read, r.dimensions?.date, r.sum?.rowsRead);
+  }
+  for (const r of acc.ai ?? []) addTo(out.ai, r.dimensions?.date, r.sum?.totalNeurons);
+  for (const r of acc.vq ?? []) addTo(out.vec_query, r.dimensions?.date, r.sum?.queriedVectorDimensions);
+  for (const r of acc.vs ?? []) addTo(out.vec_store, r.dimensions?.date, r.max?.storedVectorDimensions, "max");
+  for (const r of acc.w ?? []) addTo(out.requests, r.dimensions?.date, r.sum?.requests);
+  return out;
+}
+async function queryCf(token, accountId, from, to, f) {
+  const res = await f("https://api.cloudflare.com/client/v4/graphql", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query: GQL, variables: { a: accountId, f: from, t: to } })
+  });
+  if (!res.ok) throw new CfAnalyticsError(`CF GraphQL \u2192 HTTP ${res.status}`, res.status);
+  const body = await res.json();
+  const data = parseCfAnalytics(body);
+  if (!data || body.errors && body.errors.length) {
+    throw new CfAnalyticsError(`CF GraphQL \u8B80\u4E0D\u5230\u5206\u6790\uFF1A${body.errors?.[0]?.message ?? "\u7121\u5E33\u865F\u8CC7\u6599"}`, 200);
+  }
+  return data;
+}
+async function fetchCfAnalytics(token, accountId, now2, f = fetch) {
+  const today = utcDay(now2);
+  const month = await queryCf(token, accountId, `${today.slice(0, 7)}-01`, today, f);
+  try {
+    const day = await queryCf(token, accountId, today, today, f);
+    for (const k of Object.keys(month)) {
+      const v = day[k]?.[today];
+      if (v !== void 0) month[k][today] = Math.max(v, month[k][today] ?? 0);
+    }
+  } catch (e) {
+    console.warn("[cf-usage] \u53EA\u67E5\u4ECA\u5929\u5931\u6557\uFF0C\u6CBF\u7528\u6574\u6708\u8CC7\u6599\uFF1A", e instanceof Error ? e.message : e);
+  }
+  return month;
+}
+
+// cypher-executor/src/lib/cf-live.ts
+init_endpoints();
+var CF_LIVE_TTL_MS = 6e4;
+var cache = null;
+async function getCfMonth(env, now2, f = fetch) {
+  if (isPrivateCloud(env)) return null;
+  const token = env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN || "";
+  const accountId = env.CF_ACCOUNT_ID || "";
+  if (!token || !accountId) return null;
+  const key = `${accountId}|${token.slice(-6)}`;
+  if (cache && cache.key === key && now2 - cache.at < CF_LIVE_TTL_MS) return cache.data;
+  let data = null;
+  try {
+    data = await fetchCfAnalytics(token, accountId, now2, f);
+  } catch (e) {
+    console.warn("[cf-live] CF \u5206\u6790\u8B80\u4E0D\u5230\uFF1A", e instanceof Error ? e.message : e);
+  }
+  cache = { key, at: now2, data };
+  return data;
+}
+
+// cypher-executor/src/lib/ai-brake.ts
+var AI_BRAKE_LIMIT = AI_DAILY_FREE_NEURONS;
+function aiPercentToday(data, now2) {
+  if (!data) return null;
+  return Math.round(aiNeuronsToday(data, now2) / AI_BRAKE_LIMIT * 1e3) / 10;
+}
+async function aiBrakeVerdict(env, kbdbFetch4, now2 = Date.now()) {
+  try {
+    const res = await kbdbFetch4("/usage-brakes/settings");
+    if (res.ok) {
+      const s = await res.json();
+      if (s.brake_enabled === false) return { blocked: false, reason: "brake_off" };
+    }
+  } catch (e) {
+    console.warn("[ai-brake] \u8B80\u524E\u8ECA\u958B\u95DC\u5931\u6557\uFF0C\u8996\u540C\u958B\u8457\u7E7C\u7E8C\u5224\u65B7\uFF1A", e instanceof Error ? e.message : e);
+  }
+  const data = await getCfMonth(env, now2);
+  if (!data) return { blocked: false, reason: "unmeasurable" };
+  const used = aiNeuronsToday(data, now2);
+  if (used < AI_BRAKE_LIMIT) return { blocked: false, reason: "under_line" };
+  let brake = null;
+  try {
+    const res = await kbdbFetch4("/usage-brakes/metered", {
+      method: "POST",
+      body: JSON.stringify({ item: "ai", used, limit: AI_BRAKE_LIMIT })
+    });
+    if (res.ok) brake = (await res.json()).brake ?? null;
+  } catch (e) {
+    console.warn("[ai-brake] \u8A18\u524E\u8ECA\u7D00\u9304\u5931\u6557\uFF08\u7167\u64CB\uFF09\uFF1A", e instanceof Error ? e.message : e);
+  }
+  const msg = brake?.message ?? `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u4ECA\u5929\u7684 Workers AI \u5DF2\u7528 ${used.toLocaleString("en-US")} neurons\uFF0C\u5230\u4E86\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650 ${AI_BRAKE_LIMIT.toLocaleString("en-US")}\uFF0C\u96F2\u7AEF\u8403\u53D6\u5148\u66AB\u505C\uFF1BUTC 00:00\uFF08\u53F0\u5317 08:00\uFF09\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF0C\u6216\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\u3002`;
+  return { blocked: true, used, limit: AI_BRAKE_LIMIT, message: msg, brake };
+}
+
+// cypher-executor/src/routes/portal.ts
+init_dist();
+init_kbdb_proxy();
+
+// cypher-executor/src/routes/console-auth.ts
+init_dist();
+init_tenant();
+var consoleAuthRouter = new Hono2();
+var SESSION_TEMPLATE2 = "console_session";
+var SESSION_TTL_SECONDS2 = 30 * 24 * 60 * 60;
+async function validateConsoleSession(env, authHeader) {
+  const token = (authHeader ?? "").match(/^Bearer\s+(\S+)/i)?.[1];
+  if (!token) return false;
+  const sess = await ephemeralGet(env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
+  return !!sess;
+}
+function randomHex(bytes) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function sha256Hex4(input) {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function hashPassword(password, salt) {
+  let h = `${salt}:${password}`;
+  for (let i = 0; i < 3; i++) h = await sha256Hex4(h);
+  return h;
+}
+function tenantOf(c) {
+  return knowledgeOwner(c.env);
+}
+async function loadCredentials(env) {
+  const creds = readAuthStore(env).console;
+  return creds ? { creds, source: "secrets" } : { creds: null, source: "none" };
+}
+async function saveCredentials(env, record, tokenOverride) {
+  await mutateAuthStore(env, (data) => {
+    data.console = record;
+  }, tokenOverride);
+}
+function callerCfToken(c) {
+  return c.req.header("x-cf-secrets-token") || void 0;
+}
+function ownerProofToken(c) {
+  return callerCfToken(c) || c.env.CF_SECRETS_TOKEN_FROM_REQUEST || void 0;
+}
+function consoleAuthStoreStatus(env) {
+  return {
+    home: "workers-secrets",
+    writable: authStoreWritable(env)
+  };
+}
+consoleAuthRouter.get("/console/auth-status", async (c) => {
+  const { creds, source } = await loadCredentials(c.env);
+  return c.json({
+    configured: !!creds,
+    credentials_source: source,
+    auth_store: consoleAuthStoreStatus(c.env),
+    owner_proof_required: !creds && !authStoreIsLocal(c.env)
+  });
+});
+consoleAuthRouter.post("/console/setup", async (c) => {
+  const { creds: existing } = await loadCredentials(c.env);
+  if (existing) {
+    return c.json(
+      {
+        error: "\u9019\u53F0\u5BE6\u4F8B\u5DF2\u7D93\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\u4E86\uFF0C**\u4F60\u525B\u624D\u8F38\u5165\u7684\u5BC6\u78BC\u6C92\u6709\u88AB\u63A1\u7528**\uFF0C\u76EE\u524D\u7684\u5BC6\u78BC\u4ECD\u662F\u7576\u521D\u8A2D\u5B9A\u7684\u90A3\u4E00\u7D44\u3002\u8981\u7528\u820A\u5BC6\u78BC\u767B\u5165\uFF0C\u6216\u7528 /console/setup/reset\uFF08\u9700\u8981\u820A\u5BC6\u78BC\uFF09\u63DB\u4E00\u7D44\u3002",
+        code: "already_configured",
+        password_applied: false,
+        reset_path: "/console/setup/reset"
+      },
+      409
+    );
+  }
+  const proof = ownerProofToken(c);
+  if (!authStoreIsLocal(c.env) && !proof) {
+    return c.json(
+      {
+        error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\uFF0C\u4F46\u9996\u6B21\u8A2D\u5B9A\u5FC5\u9808\u8B49\u660E\u4F60\u662F\u5BE6\u4F8B\u64C1\u6709\u8005\uFF08\u7531\u5B89\u88DD\u7CBE\u9748\u5E36 Cloudflare \u6388\u6B0A\uFF09\u3002\u76F4\u63A5\u6253\u9019\u500B\u7DB2\u5740\u7121\u6CD5\u8A2D\u5B9A\u2014\u2014\u8ACB\u56DE\u5B89\u88DD\u7CBE\u9748\u5B8C\u6210\u8A2D\u5B9A\u3002",
+        code: "owner_proof_required",
+        password_applied: false
+      },
+      403
+    );
+  }
+  const body = await c.req.json().catch(() => null);
+  const email = (body?.email ?? "").trim();
+  const password = body?.password ?? "";
+  if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+  if (password.length < 8) return c.json({ error: "\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
+  const salt = randomHex(16);
+  const hash = await hashPassword(password, salt);
+  const record = { email: email.toLowerCase(), salt, hash, created_at: (/* @__PURE__ */ new Date()).toISOString() };
+  try {
+    await saveCredentials(c.env, record, proof);
+  } catch (e) {
+    return c.json({ error: `\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
+  }
+  const token = randomHex(32);
+  await ephemeralPut(c.env, {
+    template: SESSION_TEMPLATE2,
+    slots: ["created_at"],
+    hashField: "token_hash",
+    rawKey: token,
+    values: { created_at: String(Date.now()) },
+    ttlSeconds: SESSION_TTL_SECONDS2
+  });
+  return c.json({ success: true, session_token: token, tenant: tenantOf(c) });
+});
+consoleAuthRouter.post("/console/setup/reset", async (c) => {
+  const { creds: existing } = await loadCredentials(c.env);
+  if (!existing) return c.json({ error: "\u5C1A\u672A\u8A2D\u5B9A\u904E\uFF0C\u8ACB\u7528 /console/setup" }, 400);
+  const body = await c.req.json().catch(() => null);
+  const currentPassword = body?.current_password ?? "";
+  const email = (body?.email ?? "").trim();
+  const password = body?.password ?? "";
+  if (!currentPassword || !email || !password) return c.json({ error: "current_password\u3001email\u3001password \u5FC5\u586B" }, 400);
+  if (password.length < 8) return c.json({ error: "\u65B0\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
+  const currentHash = await hashPassword(currentPassword, existing.salt);
+  if (currentHash !== existing.hash) return c.json({ error: "\u820A\u5BC6\u78BC\u4E0D\u6B63\u78BA" }, 401);
+  const salt = randomHex(16);
+  const hash = await hashPassword(password, salt);
+  const record = { email: email.toLowerCase(), salt, hash, created_at: existing.created_at };
+  try {
+    await saveCredentials(c.env, record, callerCfToken(c));
+  } catch (e) {
+    return c.json({ error: `\u65B0\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
+  }
+  return c.json({ success: true });
+});
+function consolePropagating(c) {
+  return c.json(
+    {
+      error: "\u5E33\u865F\u8CC7\u6599\u525B\u525B\u66F4\u65B0\u904E\uFF0C\u9019\u53F0\u4F3A\u670D\u5668\u9084\u5728\u540C\u6B65\u4E2D\u2014\u2014\u8ACB\u7B49 10\uFF5E30 \u79D2\u518D\u767B\u5165\u4E00\u6B21\uFF08\u9019\u4E0D\u662F\u5BC6\u78BC\u932F\uFF09\u3002",
+      code: "auth_store_propagating"
+    },
+    503
+  );
+}
+consoleAuthRouter.post("/console/login", async (c) => {
+  const { creds: existing } = await loadCredentials(c.env);
+  if (!existing) {
+    if (await authStoreStaleHere(c.env)) return consolePropagating(c);
+    return c.json(
+      {
+        error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u7BA1\u7406\u54E1\u5E33\u5BC6\uFF08\u6216\u8B80\u4E0D\u5230\uFF09\u2014\u2014\u4E0D\u662F\u5BC6\u78BC\u932F\u3002\u8ACB\u5148\u5B8C\u6210\u9996\u6B21\u8A2D\u5B9A\u3002",
+        code: "auth_store_empty",
+        auth_store: consoleAuthStoreStatus(c.env)
+      },
+      400
+    );
+  }
+  const body = await c.req.json().catch(() => null);
+  const email = (body?.email ?? "").trim().toLowerCase();
+  const password = body?.password ?? "";
+  if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
+  const hash = await hashPassword(password, existing.salt);
+  if (email !== existing.email || hash !== existing.hash) {
+    if (await authStoreStaleHere(c.env)) return consolePropagating(c);
+    return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
+  }
+  const token = randomHex(32);
+  await ephemeralPut(c.env, {
+    template: SESSION_TEMPLATE2,
+    slots: ["created_at"],
+    hashField: "token_hash",
+    rawKey: token,
+    values: { created_at: String(Date.now()) },
+    ttlSeconds: SESSION_TTL_SECONDS2
+  });
+  return c.json({ success: true, session_token: token, tenant: tenantOf(c) });
+});
+consoleAuthRouter.get("/console/session", async (c) => {
+  const auth = c.req.header("authorization") ?? "";
+  const token = auth.match(/^Bearer\s+(\S+)/i)?.[1];
+  if (!token) return c.json({ valid: false }, 401);
+  const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
+  if (!sess) return c.json({ valid: false }, 401);
+  return c.json({ valid: true, tenant: tenantOf(c) });
+});
+consoleAuthRouter.post("/console/logout", async (c) => {
+  const auth = c.req.header("authorization") ?? "";
+  const token = auth.match(/^Bearer\s+(\S+)/i)?.[1];
+  if (token) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
+  return c.json({ success: true });
+});
+
+// cypher-executor/src/lib/portal-auth.ts
+var PBKDF2_ALGO_PREFIX = "pbkdf2-sha256";
+var PBKDF2_ITERATIONS = 1e5;
+function b64encode(bytes) {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+function b64decode(s) {
+  try {
+    const bin = atob(s);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+async function deriveBits(password, salt, iterations) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, [
+    "deriveBits"
+  ]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    key,
+    256
+  );
+  return new Uint8Array(bits);
+}
+function constantTimeEqual(a, b) {
+  const ab = new TextEncoder().encode(a);
+  const bb = new TextEncoder().encode(b);
+  let diff = ab.length ^ bb.length;
+  const len = Math.max(ab.length, bb.length);
+  for (let i = 0; i < len; i++) {
+    diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0);
+  }
+  return diff === 0;
+}
+async function hashPassword2(password, iterations = PBKDF2_ITERATIONS) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await deriveBits(password, salt, iterations);
+  return `${PBKDF2_ALGO_PREFIX}$${iterations}$${b64encode(salt)}$${b64encode(hash)}`;
+}
+async function verifyPassword(password, stored) {
+  const parts = (stored ?? "").split("$");
+  if (parts.length !== 4 || parts[0] !== PBKDF2_ALGO_PREFIX) return false;
+  const iterations = Number.parseInt(parts[1], 10);
+  if (!Number.isFinite(iterations) || iterations < 1 || iterations > 1e7) return false;
+  const salt = b64decode(parts[2]);
+  if (!salt || salt.length === 0) return false;
+  const derived = await deriveBits(password, salt, iterations);
+  return constantTimeEqual(b64encode(derived), parts[3]);
+}
+function randomHex2(bytes) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function sha256Hex5(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function generatePassword(length = 16) {
+  const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const arr = new Uint8Array(length);
+  crypto.getRandomValues(arr);
+  let out = "";
+  for (const b of arr) out += charset[b % charset.length];
+  return out;
+}
+
+// cypher-executor/src/lib/mcp-redirect-hosts.ts
+var MCP_BUILTIN_REDIRECT_HOSTS = ["claude.ai", "claude.com", "anthropic.com"];
+var MCP_REDIRECT_HOST_TEMPLATE = "portal_mcp_redirect_host";
+function normalizeRedirectHost(input) {
+  const raw2 = String(input ?? "").trim();
+  if (!raw2) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
+  let host = raw2.toLowerCase();
+  if (host.includes("://")) {
+    let u;
+    try {
+      u = new URL(raw2);
+    } catch {
+      return { ok: false, error: `\u770B\u4E0D\u61C2\u9019\u500B\u7DB2\u5740\uFF1A${raw2}` };
+    }
+    if (u.protocol !== "https:" && u.protocol !== "http:") {
+      return { ok: false, error: "\u53EA\u6536 https:// \u958B\u982D\u7684\u7DB2\u5740\uFF08\u672C\u6A5F\u6E2C\u8A66\u53EF\u7528 localhost\uFF09" };
+    }
+    host = u.hostname.toLowerCase();
+  } else {
+    host = host.split("/")[0].split("?")[0];
+    if (host.includes("@")) return { ok: false, error: "\u8ACB\u4E0D\u8981\u5E36\u5E33\u865F\u5BC6\u78BC\uFF0C\u53EA\u8981\u7DB2\u57DF\u5C31\u597D" };
+    if (host.startsWith("[")) return { ok: false, error: "\u4E0D\u652F\u63F4 IPv6 \u4F4D\u5740\uFF0C\u672C\u6A5F\u6E2C\u8A66\u8ACB\u586B localhost" };
+    host = host.split(":")[0];
+  }
+  if (!host) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host)) {
+    return { ok: false, error: `\u300C${raw2}\u300D\u4E0D\u662F\u5408\u6CD5\u7684\u7DB2\u57DF\u3002\u4E0D\u63A5\u53D7\u842C\u7528\u5B57\u5143\uFF0C\u8ACB\u586B\u78BA\u5207\u7684\u7DB2\u57DF` };
+  }
+  const isLocal = host === "localhost" || host === "127.0.0.1";
+  if (!isLocal && !host.includes(".")) {
+    return { ok: false, error: `\u300C${host}\u300D\u770B\u8D77\u4F86\u4E0D\u662F\u5B8C\u6574\u7DB2\u57DF\uFF08\u5C11\u4E86 .com \u4E4B\u985E\u7684\u7D50\u5C3E\uFF09` };
+  }
+  if (host.length > 253) return { ok: false, error: "\u7DB2\u57DF\u592A\u9577" };
+  if (!isLocal && host.split(".").length < 2) {
+    return { ok: false, error: `\u300C${host}\u300D\u7BC4\u570D\u592A\u5927\uFF0C\u8ACB\u586B\u5B8C\u6574\u7DB2\u57DF` };
+  }
+  if (MCP_BUILTIN_REDIRECT_HOSTS.some((h) => host === h || host.endsWith("." + h))) {
+    return { ok: false, error: `\u300C${host}\u300D\u662F\u5167\u5EFA\u5C31\u5141\u8A31\u7684\u7DB2\u57DF\uFF08Claude \u5B98\u65B9\uFF09\uFF0C\u4E0D\u5FC5\u518D\u52A0\u4E00\u6B21` };
+  }
+  return { ok: true, host };
+}
+function mcpUrlFor(subdomain) {
+  const sub = String(subdomain ?? "").trim();
+  if (!sub) return "";
+  return `https://arcrun-mcp.${sub}.workers.dev/mcp`;
+}
+
+// cypher-executor/src/routes/portal.ts
+init_endpoints();
+
+// cypher-executor/src/lib/mcp-token-ttl.ts
+var NEVER_EXPIRES_SECONDS = 0;
+var DEFAULT_TOKEN_TTL_SECONDS = NEVER_EXPIRES_SECONDS;
+var MIN_TOKEN_TTL_SECONDS = 3600;
+var MAX_TOKEN_TTL_SECONDS = 31536e4;
+var MCP_TOKEN_TTL_TEMPLATE = "portal_mcp_token_ttl";
+function normalizeTokenTtl(input) {
+  let n;
+  if (typeof input === "number") {
+    n = input;
+  } else if (typeof input === "string" && input.trim() !== "") {
+    n = Number(input.trim());
+  } else {
+    return { ok: false, error: "\u8ACB\u586B\u5165 token \u6709\u6548\u79D2\u6578\uFF08\u6B63\u6574\u6578\uFF09" };
+  }
+  if (!Number.isFinite(n)) return { ok: false, error: `\u300C${String(input)}\u300D\u4E0D\u662F\u6709\u6548\u7684\u79D2\u6578` };
+  n = Math.floor(n);
+  if (n === NEVER_EXPIRES_SECONDS) return { ok: true, seconds: NEVER_EXPIRES_SECONDS, clamped: false };
+  if (n < 0) return { ok: false, error: "token \u6709\u6548\u79D2\u6578\u4E0D\u80FD\u662F\u8CA0\u6578" };
+  const clamped = n < MIN_TOKEN_TTL_SECONDS || n > MAX_TOKEN_TTL_SECONDS;
+  const seconds = Math.min(Math.max(n, MIN_TOKEN_TTL_SECONDS), MAX_TOKEN_TTL_SECONDS);
+  return { ok: true, seconds, clamped };
+}
+
+// cypher-executor/src/lib/portal-seeds.ts
+var PORTAL_TEMPLATE_SEEDS = [
+  {
+    // design §2.1：portal 同仁帳號。password_hash 存 KDF 輸出（pbkdf2-sha256$…，D-6），
+    // 永不存明碼；libraries 是 JSON array 字串（["general"] / ["*"]＝全庫）。
+    name: "portal_user",
+    description: "RAG Portal \u540C\u4EC1\u5E33\u865F\uFF08portal-auth \xA72.1\uFF1B\u8CC7\u6599\u5BEB {tenant}::portal \u5B50 namespace\uFF09",
+    slots: ["email", "display_name", "status", "role", "password_hash", "libraries", "created_at", "updated_at"],
+    created_by: "system"
+  },
+  {
+    // design §3.2：庫目錄（admin 頁列庫用）。庫本體＝知識條目 metadata_json.$.library 標記，
+    // 這裡只是「有哪些庫」的登記簿。
+    // graph_source（design D-4，P3）：'true'＝此庫是知識圖譜的萃取來源——graph 粗閘按
+    // 「用戶是否擁有 graph 來源庫權限」放行。**沒有任何庫標記時預設視同 general**（D-4 定案）。
+    // root / mode / reason（InkStoneCo#44，2026-08-17）：**一個庫＝地端的一個資料夾**，
+    // 而在此之前雲端只記得住它的名字，於是「資料夾」在雲端不是一個持久物件——
+    // 它是「有卡片才有庫」的副作用（arcrun-rag#106 實測：空資料夾指定了，雲端什麼都不出現）。
+    // leo：「**不能因為地端資料夾內沒東西就當作不存在，如果那是他打算放東西的資料夾呢？**」
+    // ⇒ 小幫手一報上來就登記，不必等到有卡片。
+    //   root＝地端絕對路徑（使用者認得回去的那條路）
+    //   mode＝收檔策略（all／curated-wiki／docs-only，地端 IngestPlan 決定）
+    //   reason＝那句人話（「為什麼只收這些」）
+    // 🔴 這三個是**欄位、不是 JSON 團**（D91）：它們是「資料夾」這個物件本身的屬性。
+    //    每輪會變的計數（同步數／總數／整棵樹）**不住在這裡**——那是投影，
+    //    見 portal.ts 的 folderTreeKey() 與那段「為什麼樹不進 KBDB」的說明。
+    // 既有實例靠 ensurePortalTemplates 的「補 slots」路徑自動補上（同 P3 加 graph_source 那次）。
+    name: "portal_library",
+    description: "RAG Portal \u5EAB\u76EE\u9304\u767B\u8A18\uFF08portal-auth \xA73.2\uFF1B\u4E00\u500B\u5EAB\uFF1D\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u4E00\u500B\u8CC7\u6599\u593E\uFF09",
+    slots: ["name", "display_name", "description", "status", "graph_source", "root", "mode", "reason"],
+    created_by: "system"
+  },
+  {
+    // `inkstone/Arcrun#164`：「哪些網址可以接我的 MCP」——一個網域一筆 record。
+    // 為什麼是 record 而不是一個字串設定：加了誰要留得下痕跡（本票紅線第三條），
+    // 而「誰在什麼時候加的」是這個物件本身的屬性，不是一團 JSON（D91 同一條）。
+    //   host       ＝ 已正規化的小寫網域（lib/mcp-redirect-hosts.ts normalizeRedirectHost）
+    //   label      ＝ 使用者自己認得的名字（「我的 n8n」），純顯示用
+    //   created_at ＝ ISO 時間字串
+    //   created_by ＝ 加它的那個 portal 帳號 email
+    // 🔴 不寫 KV（leo 2026-08-25 已禁長效用途），也不加 D1 表——這是 KBDB 萬用表的 template。
+    name: "portal_mcp_redirect_host",
+    description: "MCP OAuth \u5141\u8A31\u7684 redirect \u7DB2\u57DF\uFF08Arcrun#164\uFF1B\u4E00\u500B\u7DB2\u57DF\u4E00\u7B46\uFF0C\u53EF\u52A0\u53EF\u6536\u56DE\uFF09",
+    slots: ["host", "label", "created_at", "created_by"],
+    created_by: "system"
+  },
+  {
+    // `inkstone/Arcrun#19`：MCP access_token 的 TTL 交由用戶決定（風險偏好，非技術常數）。
+    // 一台實例一筆設定（純量，不是清單）——**鏡像上面 portal_mcp_redirect_host 那條路**
+    // （KBDB template ＋ 給 mcp 讀的內部端點），不自創第二套機制（D36）。
+    //   ttl_seconds ＝ 已正規化並夾進 [1h, 30d] 的秒數（lib/mcp-token-ttl.ts）
+    //   updated_at  ＝ ISO 時間字串
+    //   updated_by  ＝ 改它的那個 portal admin email（改了誰要留得下痕跡，D91 同一條）
+    // 讀不到／沒設過 → mcp 回退 env MCP_TOKEN_TTL 預設（誠實回退，不假綠）。
+    // 🔴 不寫 KV（長效設定，leo 2026-08-25 已禁 KV 長效用途），也不加 D1 表——KBDB 萬用表 template。
+    name: "portal_mcp_token_ttl",
+    description: "MCP OAuth access_token \u6709\u6548\u79D2\u6578\uFF08Arcrun#19\uFF1B\u4E00\u53F0\u5BE6\u4F8B\u4E00\u7B46\uFF0C\u8B80\u4E0D\u5230\u56DE\u9000 env \u9810\u8A2D\uFF09",
+    slots: ["ttl_seconds", "updated_at", "updated_by"],
+    created_by: "system"
+  },
+  {
+    // inkstone/Arcrun#277：這台雲端的萃取 AI 由管理員選（每種 AI 一份 recipe，見 api-recipe-seeds）。
+    // 一台雲端一筆設定（純量，鏡像 portal_mcp_token_ttl 那條路）；**每台雲端各一份，不跨租戶共用**。
+    //   recipe     ＝ 提供商清單上的 id（extract_ai_workers_ai｜extract_ai_openai｜…｜extract_ai_ollama｜extract_ai_openai_compat；見 extract-ai-providers.ts）
+    //   base_url   ＝ 地端／自建端點根網址（雲端託管的家與 Workers AI 不用）
+    //   model      ＝ 模型名（Workers AI 不填＝recipe 預設）
+    //   updated_at／updated_by ＝ 誰在什麼時候改的
+    // 金鑰**不在這裡**：只存在 credential 中心（名字 extract_ai_api_key），這筆 record 永遠沒有值。
+    // 🔴 不寫 KV、不加 D1 表——KBDB 萬用表 template。
+    name: "portal_extract_ai",
+    description: "\u9019\u53F0\u96F2\u7AEF\u8403\u53D6\u7528\u7684 AI \u8A2D\u5B9A\uFF08Arcrun#277\uFF1B\u4E00\u53F0\u96F2\u7AEF\u4E00\u7B46\uFF0C\u8B80\u4E0D\u5230\uFF1DCF Workers AI \u9810\u8A2D\uFF09",
+    slots: ["recipe", "base_url", "model", "updated_at", "updated_by"],
+    created_by: "system"
+  },
+  {
+    // t130：rag_ingest_card.post_triplet 寫 POST /records {template:'triplet'}。
+    // 新實例若無此 template 回 400「template not found: triplet」→ 三元組全滅。
+    // slots 來源：kbdb_list_templates 核實（2026-07-19，library-map.test.ts PROD_TRIPLET_SLOTS）
+    // + library（library-map.ts M1 預案：recompute 歸庫用，ensurePortalTemplates 若缺則 PATCH 補入）。
+    // + machine（`inkstone/mira#6`，leo 2026-08-18 拍板「掛上資料夾至少先給一個 ID，
+    //   例如 youlinhsieh@Leo-MBA」）：這則知識的原稿**在哪一台機器上**。
+    //   為什麼三元組也要有這一格（而不是只放在 block 的 metadata）：`source_uri` 只到
+    //   「相對於被監看資料夾的路徑」為止，兩台機器上的 `RFP/design.md` 完全同名 ⇒
+    //   rag_ingest_card 的 upsert（先照鍵刪光再寫）會把另一台的三元組無聲刪掉。
+    //   machine 是唯一分得開它們的那一維，而 KBDB 會**靜默丟掉** template 沒宣告的 slot
+    //   （record-crud.ts createRecord），所以少了這一列，daemon 送上來的值等於沒送。
+    //   走的就是 library 當初那條路：加在這裡，ensurePortalTemplates 對既有實例 PATCH 補聯集。
+    name: "triplet",
+    description: "KBDB \u77E5\u8B58\u5716\u8B5C\u4E09\u5143\u7D44\uFF08kbdb-graph-plugin \u5BEB\u5165\uFF1Bportal \u8B80\u6B64 template \u5EFA\u9130\u63A5\u5716\uFF09",
+    slots: [
+      "subject",
+      "predicate",
+      "object",
+      "source_block_id",
+      "confidence",
+      "clusters_json",
+      "bridge_score",
+      "subject_entity_type",
+      "object_entity_type",
+      "status",
+      "superseded_by",
+      "source_uri",
+      "content_hash",
+      "source_anchor",
+      "predicate_embed",
+      "library",
+      "machine"
+    ],
+    created_by: "system"
+  }
+];
+
+// cypher-executor/src/lib/extract-ai.ts
+init_recipe_payload();
+init_auth_dispatcher();
+init_recipes();
+var EXTRACT_AI_TEMPLATE = "portal_extract_ai";
+var DEFAULT_EXTRACT_AI_RECIPE = "extract_ai_workers_ai";
+var EXTRACT_AI_RECIPE_IDS = EXTRACT_AI_PROVIDERS.map((p) => p.id);
+var DEFAULT_EXTRACT_AI_CONFIG = { recipe: DEFAULT_EXTRACT_AI_RECIPE };
+function validateExtractAiConfig(raw2) {
+  if (!raw2 || typeof raw2 !== "object") return { ok: false, error: "body \u5FC5\u9808\u662F JSON \u7269\u4EF6" };
+  const o = raw2;
+  const recipe = typeof o.recipe === "string" ? o.recipe.trim() : "";
+  const provider = findProvider(recipe);
+  if (!provider) {
+    return { ok: false, error: `recipe \u5FC5\u9808\u662F\u6E05\u55AE\u4E0A\u7684\u63D0\u4F9B\u5546\u4E4B\u4E00\uFF1A${EXTRACT_AI_RECIPE_IDS.join("\u3001")}` };
+  }
+  const config = { recipe };
+  const model = typeof o.model === "string" ? o.model.trim() : "";
+  if (model) config.model = model;
+  if (provider.kind === "http" && !model) {
+    return { ok: false, error: `${provider.label} \u5FC5\u9808\u5F9E\u9078\u55AE\u6311\u4E00\u500B\u6A21\u578B\uFF08model\uFF09` };
+  }
+  if (provider.needs_base_url) {
+    const baseUrl = typeof o.base_url === "string" ? o.base_url.trim().replace(/\/+$/, "") : "";
+    if (!baseUrl) return { ok: false, error: `${provider.label} \u5FC5\u9808\u586B base_url\uFF08\u4F8B ${provider.default_base_url ?? "http://ollama.internal:11434"}\uFF09` };
+    let u;
+    try {
+      u = new URL(baseUrl);
+    } catch {
+      return { ok: false, error: "base_url \u4E0D\u662F\u5408\u6CD5\u7DB2\u5740" };
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return { ok: false, error: "base_url \u53EA\u63A5\u53D7 http\uFF0Fhttps" };
+    }
+    config.base_url = baseUrl;
+  }
+  return { ok: true, config };
+}
+async function loadRecipe(env, id) {
+  if (id !== DEFAULT_EXTRACT_AI_RECIPE && env.RECIPES) {
+    const installed = await resolveRecipe(id, env.RECIPES).catch(() => null);
+    if (installed) return installed;
+  }
+  return API_RECIPE_SEEDS.find((s) => s.canonical_id === id) ?? null;
+}
+function renderPayload(template, ctx) {
+  const rendered = renderBodyTemplate(template, ctx);
+  const out = {};
+  for (const [k, v] of Object.entries(rendered ?? {})) {
+    if (typeof v === "string" && /^\s*\{\{[\w.]+\}\}\s*$/.test(v)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+var WORKERS_AI_MAX_ATTEMPTS = 3;
+var TRANSIENT_WORKERS_AI_CODES = /\b(4007|4002)\b/;
+function isTransientWorkersAiError(message2) {
+  return TRANSIENT_WORKERS_AI_CODES.test(message2);
+}
+function workersAiBackoffMs(attempt, rand = Math.random) {
+  return (attempt === 1 ? 1e3 : 3e3) + Math.floor(rand() * 250);
+}
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function runExtractAi(env, tenant2, config, req) {
+  const recipe = await loadRecipe(env, config.recipe);
+  if (!recipe) {
+    return { ok: false, code: "ai_recipe_missing", error: `\u627E\u4E0D\u5230\u8403\u53D6 AI recipe\u300C${config.recipe}\u300D` };
+  }
+  const ctx = {
+    messages: [
+      ...req.system ? [{ role: "system", content: req.system }] : [],
+      {
+        role: "user",
+        content: req.images?.length ? [{ type: "text", text: req.prompt }, ...req.images.map((url2) => ({ type: "image_url", image_url: { url: url2 } }))] : req.prompt
+      }
+    ],
+    max_tokens: req.maxTokens,
+    temperature: req.temperature ?? 0.2,
+    ...req.jsonObject ? { response_format: { type: "json_object" } } : {},
+    ...config.base_url ? { base_url: config.base_url } : {},
+    ...config.model ? { model: config.model } : {}
+  };
+  const payload = renderPayload(recipe.body_template ?? {}, ctx);
+  if (req.extra && recipe.auth === "binding") Object.assign(payload, req.extra);
+  if (recipe.auth === "binding") {
+    const name = recipe.binding_name ?? "AI";
+    const binding = env[name];
+    if (!binding || typeof binding.run !== "function") {
+      return { ok: false, code: "ai_binding_missing", error: `\u9019\u500B\u90E8\u7F72\u6C92\u6709\u7D81\u5B9A ${name}` };
+    }
+    const model2 = req.model || config.model || recipe.endpoint;
+    let lastError = "";
+    for (let attempt = 1; attempt <= WORKERS_AI_MAX_ATTEMPTS; attempt++) {
+      try {
+        return { ok: true, out: await binding.run(model2, payload), model: model2, provider: recipe.canonical_id };
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e);
+        if (!isTransientWorkersAiError(lastError) || attempt === WORKERS_AI_MAX_ATTEMPTS) break;
+        await sleep(workersAiBackoffMs(attempt));
+      }
+    }
+    return { ok: false, code: "ai_failed", error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${lastError}` };
+  }
+  const url = String(renderBodyTemplate(recipe.endpoint, ctx) ?? "");
+  if (!/^https?:\/\//.test(url)) {
+    return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u7DB2\u5740\u4E0D\u5B8C\u6574\uFF08${url}\uFF09\u2014\u2014\u7BA1\u7406\u54E1\u5C1A\u672A\u8A2D\u5B9A base_url\uFF1F` };
+  }
+  const headers = { "Content-Type": "application/json" };
+  const recipeHeaders = recipe.headers ?? {};
+  for (const [k, v] of Object.entries(recipeHeaders)) {
+    const names = [...v.matchAll(/\{\{credential\.([\w-]+)\}\}/g)].map((m) => m[1]);
+    if (names.length === 0) {
+      headers[k] = v;
+      continue;
+    }
+    const secrets = await resolveSecretsFromNewHome(env, tenant2, names);
+    if (names.every((n) => secrets[n])) {
+      headers[k] = v.replace(/\{\{credential\.([\w-]+)\}\}/g, (_m, n) => secrets[n]);
+    }
+  }
+  const model = String(payload.model ?? config.model ?? "");
+  try {
+    const res = await fetch(url, {
+      method: (recipe.method ?? "POST").toUpperCase(),
+      headers,
+      body: JSON.stringify(payload)
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u56DE ${res.status}\uFF1A${text.slice(0, 200)}` };
+    }
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u56DE\u7684\u4E0D\u662F JSON\uFF1A${text.slice(0, 120)}` };
+    }
+    return { ok: true, out: json, model, provider: recipe.canonical_id };
+  } catch (e) {
+    return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+var NON_CHAT_MODEL = /(embed|whisper|tts|dall-e|moderation|image|audio|realtime|transcribe|rerank|imagen|veo)/i;
+async function fetchModelIds(url, headers) {
+  try {
+    const res = await fetch(url, { headers });
+    if (!res.ok) return { error: `\u7AEF\u9EDE\u56DE ${res.status}\uFF0C\u5217\u4E0D\u51FA\u6A21\u578B` };
+    const json = await res.json();
+    const raw2 = json.data ?? json.models ?? [];
+    const ids = raw2.map((m) => typeof m.id === "string" ? m.id : typeof m.name === "string" ? m.name : "").map((id) => id.replace(/^models\//, "")).filter(Boolean);
+    return { ids };
+  } catch (e) {
+    return { error: `\u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+async function listProviderModels(env, tenant2, providerId, baseUrl) {
+  const provider = findProvider(providerId);
+  if (!provider) return { models: [], source: "none", error: `\u6C92\u6709\u9019\u500B\u63D0\u4F9B\u5546\uFF1A${providerId}` };
+  let key = "";
+  if (provider.credential) {
+    try {
+      key = (await resolveSecretsFromNewHome(env, tenant2, [provider.credential]))[provider.credential] ?? "";
+    } catch {
+      key = "";
+    }
+  }
+  const headers = { ...provider.models_headers ?? {} };
+  if (key) {
+    headers.Authorization = `Bearer ${key}`;
+    if (provider.id === "extract_ai_anthropic") headers["x-api-key"] = key;
+  }
+  if (provider.needs_base_url) {
+    const base = (baseUrl ?? "").trim().replace(/\/+$/, "");
+    if (!/^https?:\/\//.test(base)) return { models: [], source: "none", error: "\u5148\u586B\u7AEF\u9EDE\u7DB2\u5740\uFF0C\u624D\u80FD\u5217\u51FA\u5B83\u6709\u54EA\u4E9B\u6A21\u578B" };
+    const r2 = await fetchModelIds(`${base}/v1/models`, headers);
+    if ("error" in r2) return { models: [], source: "none", error: r2.error };
+    if (r2.ids.length === 0) return { models: [], source: "none", error: "\u7AEF\u9EDE\u6C92\u6709\u56DE\u4EFB\u4F55\u6A21\u578B\uFF08Ollama \u5148 pull \u4E00\u500B\u6A21\u578B\uFF09" };
+    return { models: r2.ids.sort().map((id) => ({ id })), source: "live" };
+  }
+  if (!provider.models_url) return { models: provider.models, source: "catalog" };
+  if (!key) {
+    return { models: provider.models, source: "catalog", error: "\u9084\u6C92\u52A0\u91D1\u9470\uFF0C\u7121\u6CD5\u5411\u8A72\u5BB6\u53D6\u5F97\u6700\u65B0\u6A21\u578B\u6E05\u55AE\uFF1B\u5148\u986F\u793A\u9810\u8A2D\u6E05\u55AE" };
+  }
+  const r = await fetchModelIds(provider.models_url, headers);
+  if ("error" in r || r.ids.length === 0) {
+    return { models: provider.models, source: "catalog", error: "error" in r ? r.error : "\u8A72\u5BB6\u6C92\u6709\u56DE\u4EFB\u4F55\u6A21\u578B" };
+  }
+  const chat = r.ids.filter((id) => !NON_CHAT_MODEL.test(id));
+  return { models: (chat.length ? chat : r.ids).sort().map((id) => ({ id })), source: "live" };
+}
+
+// cypher-executor/src/routes/portal.ts
+init_tenant();
+init_credentials();
+init_kbdb_caller();
+
+// cypher-executor/src/lib/ai-response.ts
+function pickChatContent(o) {
+  const choices = o.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return void 0;
+  const first = choices[0];
+  if (!first || typeof first !== "object") return void 0;
+  const msg = first.message;
+  if (!msg || typeof msg !== "object") return void 0;
+  const content = msg.content;
+  return typeof content === "string" && content.length > 0 ? content : void 0;
+}
+function pickResponseValue(out) {
+  if (out === null || out === void 0) return void 0;
+  if (typeof out === "string") return out;
+  if (typeof out !== "object") return out;
+  const o = out;
+  const chat = pickChatContent(o);
+  if (chat !== void 0) return chat;
+  if ("response" in o) return o.response;
+  const result = o.result;
+  if (result && typeof result === "object") {
+    const r = result;
+    const rc = pickChatContent(r);
+    if (rc !== void 0) return rc;
+    if ("response" in r) return r.response;
+  }
+  return void 0;
+}
+function normalizeAiText(out) {
+  const v = pickResponseValue(out);
+  if (v === null || v === void 0) return { text: "", kind: "empty" };
+  if (typeof v === "string") return { text: v.trim(), kind: v.trim() ? "string" : "empty" };
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
+    return { text: String(v), kind: "scalar" };
+  }
+  if (typeof v === "object") {
+    try {
+      const s = JSON.stringify(v);
+      if (typeof s !== "string") {
+        return { text: "", kind: "unrenderable", reason: "JSON.stringify \u56DE undefined" };
+      }
+      return { text: s, kind: "json" };
+    } catch (e) {
+      return {
+        text: "",
+        kind: "unrenderable",
+        reason: e instanceof Error ? e.message : "\u7121\u6CD5\u5E8F\u5217\u5316"
+      };
+    }
+  }
+  return { text: "", kind: "unrenderable", reason: `\u672A\u9810\u671F\u7684\u578B\u5225 ${typeof v}` };
+}
+function parseExpectShape(raw2, hasPrompt) {
+  const s = String(raw2 ?? "").trim();
+  if (s === "json_object" || s === "text") return s;
+  return hasPrompt ? "json_object" : "text";
+}
+function hasJsonObject(text) {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return { ok: false, reason: "\u6574\u6BB5\u56DE\u61C9\u88E1\u627E\u4E0D\u5230 JSON \u7269\u4EF6\uFF08\u6C92\u6709\u6210\u5C0D\u7684\u5927\u62EC\u865F\uFF09" };
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, reason: "\u5927\u62EC\u865F\u88E1\u7684\u5167\u5BB9\u4E0D\u662F JSON \u7269\u4EF6" };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: `JSON \u89E3\u6790\u5931\u6557\uFF1A${e instanceof Error ? e.message : "\u672A\u77E5\u932F\u8AA4"}` };
+  }
+}
+function snippetForError(text, max = 120) {
+  const one = text.replace(/\s+/g, " ").trim();
+  if (!one) return "\uFF08\u7A7A\u7684\uFF09";
+  return one.length <= max ? one : one.slice(0, max) + "\u2026";
+}
+
+// cypher-executor/src/lib/prompt-table.ts
+init_lib();
+
+// cypher-executor/src/lib/prompt-tables/extract_wiki.json
+var extract_wiki_default = {
+  kind: "prompt_table",
+  name: "extract_wiki",
+  description: "\u5C0F\u5E6B\u624B\u8403\u53D6\uFF1A\u4E00\u4EFD\u539F\u7A3F \u2192 \u6587\u4EF6\u7E3D\u89BD\uFF0BN \u500B\u539F\u5B50\u6982\u5FF5\uFF08JSON\uFF09\u3002\u6BCF\u584A\u4E00\u500B key\u3001\u4E00\u500B\u7248\u672C\uFF1Bkey \u7684\u524D\u7DB4\u662F common \u6216\u8B80\u6A94\u7279\u4F8B\u7DE8\u865F\uFF08arcrun-rag system-dev/wiki/cards/reading-edge-cases/\uFF09\u3002\u6CE8\u5165\u65B9\u5F0F\u7531 inject \u6C7A\u5B9A\uFF1Atext\uFF1D\u4F9D\u8868\u4E0A\u9806\u5E8F\u4EE5\u63DB\u884C\u63A5\u8D77\u4F86\uFF08\u8207 #299 \u524D\u5C0F\u5E6B\u624B\u90A3\u6BB5\u9010\u5B57\u76F8\u540C\uFF0C\u9810\u8A2D\uFF09\uFF1Bjson\uFF1D\u7D44\u6210 {key: value} \u7576 system \u8A0A\u606F\uFF08\u5BE6\u6E2C\u5728 llama-4-scout \u4E0A\u54C1\u8CEA\u6389\uFF0C\u898B ADR-299\uFF09\u3002\u6539\u4E00\u584A\uFF1D\u6539\u5B83\u7684 value\u3001\u628A\u5B83\u7684 v \u52A0\u4E00\uFF0C\u4E26\u540C\u6B65 cypher-executor/tests/fixtures/prompt-tables/extract_wiki.fixtures.json\u3002inkstone/Arcrun#299",
+  expect: "json_object",
+  inject: "text",
+  blocks: [
+    {
+      key: "common.role",
+      v: 1,
+      when: "always",
+      value: "\u4F60\u662F\u77E5\u8B58\u6574\u7406\u54E1\u3002\u8B80\u5B8C\u539F\u7A3F\u5F8C\uFF0C\u628A\u5B83\u6574\u7406\u6210\u300C\u4E00\u4EFD\u6587\u4EF6\u7684\u7E3D\u89BD\uFF0BN \u500B\u539F\u5B50\u6982\u5FF5\u300D\u3002\u53EA\u8F38\u51FA\u4E00\u500B JSON \u7269\u4EF6\uFF0C\u4E0D\u8981\u4EFB\u4F55\u8AAA\u660E\u3001markdown \u570D\u6B04\u6216\u601D\u8003\u904E\u7A0B\u3002"
+    },
+    {
+      key: "chunk-cliff.candidates",
+      v: 1,
+      when: "chunk-cliff",
+      attach: "labels",
+      value: "\n\u6A5F\u68B0\u6383\u51FA\u7684\u5019\u9078\u8B58\u5225\u78BC\u6E05\u55AE\uFF08\u539F\u7A3F\u88E1\u5075\u6E2C\u5230\u91CD\u8907\u7684\u6B04\u4F4D\u7D50\u69CB\uFF0C\u4EE5\u4E0B\u6BCF\u4E00\u500B\u90FD\u8981\u5728 entities \u88E1\u5404\u81EA\u5BEB\u4E00\u7B46\uFF0C\u9010\u5B57\u4F7F\u7528\u6E05\u55AE\u88E1\u7684\u539F\u6587\u7576 name\uFF1B\u4E0D\u51C6\u65B0\u589E\u6E05\u55AE\u5916\u7684\u78BC\uFF0C\u4E5F\u4E0D\u51C6\u6F0F\u6389\u6E05\u55AE\u88E1\u7684\u4EFB\u4F55\u4E00\u500B\uFF09\uFF1A"
+    },
+    {
+      key: "transcript.meaning",
+      v: 1,
+      when: "transcript",
+      value: "\n\u9010\u5B57\u7A3F\uFF1A\n- \u9019\u4EFD\u539F\u7A3F\u662F\u6703\u8B70\u6216\u8A2A\u8AC7\u7684\u9010\u5B57\u7A3F\u3002\u8981\u8403\u7684\u662F**\u610F\u601D**\uFF0C\u4E0D\u662F\u8AB0\u8AAA\u4E86\u54EA\u53E5\u8A71\uFF1A\u9019\u5834\u6703\u6C7A\u5B9A\u4E86\u4EC0\u9EBC\u3001\u5F85\u8FA6\u662F\u4EC0\u9EBC\uFF08\u8AB0\u8CA0\u8CAC\u3001\u505A\u4EC0\u9EBC\u3001\u671F\u9650\uFF09\u3001\u5404\u65B9\u7684\u7ACB\u5834\u8207\u7406\u7531\u3001\u9084\u6C92\u8AC7\u5B9A\u7684\u4E8B\u3002\n- \u4E0D\u7559\u539F\u53E5\u3001\u4E0D\u9010\u6BB5\u8F49\u8FF0\u5C0D\u8A71\uFF1B\u8981\u770B\u539F\u8A71\u7684\u4EBA\u6703\u7167\u5361\u4E0A\u7684\u51FA\u8655\u53BB\u958B\u539F\u6A94\uFF08\u51FA\u8655\u7531\u6A5F\u5668\u9644\u4E0A\uFF0C\u4F60\u4E0D\u5FC5\u6284\uFF09\u3002\n- \u6C7A\u5B9A\u8207\u5F85\u8FA6\u5BEB\u9032 points \u8207 facts\uFF08\u4F8B\uFF1A[\u67D0\u90E8\u9580,\u8CA0\u8CAC,\u67D0\u5F85\u8FA6]\uFF09\uFF1B\u8207\u6703\u8005\u5BEB\u9032 entities\uFF08type \u4EBA\u7269\u6216\u7D44\u7E54\uFF09\u3002"
+    },
+    {
+      key: "common.rules",
+      v: 2,
+      when: "always",
+      value: "\n\u898F\u5247\uFF08\u9055\u53CD\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\uFF09\uFF1A\n- \u7528\u6B63\u9AD4\u4E2D\u6587\u5BEB\uFF0C\u8B1B\u539F\u7A3F\u7684**\u5167\u5BB9**\uFF1A\u5B83\u8AAA\u4E86\u4EC0\u9EBC\u3001\u898F\u5B9A\u4EC0\u9EBC\u3001\u5217\u4E86\u54EA\u4E9B\u9805\u76EE\u3001\u7D50\u8AD6\u662F\u4EC0\u9EBC\u3002\u4E0D\u662F\u6539\u5BEB\u6210\u7A7A\u6CDB\u7684\u8A55\u8A9E\uFF0C\u4E5F\u4E0D\u662F\u6574\u6BB5\u7167\u6284\u539F\u7A3F\u3002"
+    },
+    {
+      key: "common.keep-verbatim",
+      v: 1,
+      when: "always",
+      value: "- \u5C08\u6709\u540D\u8A5E\u3001\u4EBA\u540D\u3001\u516C\u53F8\u540D\u3001\u7522\u54C1\u540D\u3001\u578B\u865F\u3001\u932F\u8AA4\u78BC\uFF0F\u4EE3\u78BC\u3001\u53C3\u6578\u540D\u3001\u65E5\u671F\u3001\u91D1\u984D\u3001\u7248\u672C\u865F\u8207\u4E00\u5207\u6578\u5B57\uFF0C\u4E00\u5F8B**\u4FDD\u7559\u539F\u7A3F\u7684\u539F\u5B57\u4E32**\uFF1A\u4E0D\u610F\u8B6F\u3001\u4E0D\u63DB\u7B97\u3001\u4E0D\u7701\u7565\uFF0C\u4E5F\u4E0D\u7528\u300C\u591A\u7A2E\u300D\u300C\u82E5\u5E72\u300D\u300C\u76F8\u95DC\u300D\u9019\u985E\u8A5E\u6982\u62EC\u3002\u539F\u7A3F\u5217\u4E86\u5E7E\u500B\u9805\u76EE\uFF0C\u5361\u4E0A\u5C31\u5BEB\u51FA\u9019\u4E9B\u9805\u76EE\u7684\u540D\u7A31\u8207\u6578\u503C\uFF0C\u4E0D\u8981\u58D3\u6210\u4E00\u53E5\u300C\u5177\u6709\u591A\u7A2E\u529F\u80FD\u300D\u3002\n- gloss\u3001summary\u3001points \u90FD\u8B1B\u5167\u5BB9\u672C\u8EAB\uFF0C**\u4E0D\u51C6\u8B1B\u9019\u662F\u4EC0\u9EBC\u985E\u578B\u7684\u6A94\u6848**\uFF1A\u4E0D\u53EF\u5BEB\u300C\u9019\u662F\u4E00\u4EFD\u2026\u6587\u4EF6\uFF0F\u6A94\u6848\uFF0F\u624B\u518A\uFF0F\u7D00\u9304\u300D\u300C\u2026\u63CF\u8FF0\u6A94\u6848\u300D\u4E4B\u985E\u7684\u8A71\uFF0C\u4E5F\u4E0D\u53EF\u62FF\u6A94\u540D\u7576\u6982\u5FF5\u540D\u3002\u8B80\u8005\u4E0D\u770B\u539F\u7A3F\u3001\u53EA\u770B\u9019\u5F35\u5361\uFF0C\u5C31\u8981\u77E5\u9053\u539F\u7A3F\u5BEB\u4E86\u4EC0\u9EBC\u3002"
+    },
+    {
+      key: "thin-card.concept-count",
+      v: 2,
+      when: "always",
+      value: "- \u6982\u5FF5\u6578\u7531\u5167\u5BB9\u6C7A\u5B9A\uFF08\u591A\u6578\u6587\u4EF6 1-5 \u500B\uFF09\uFF1B\u6BCF\u500B\u6982\u5FF5\u8981\u80FD**\u96E2\u958B\u539F\u7A3F\u7368\u7ACB\u6210\u7ACB**\u3002\u5167\u5BB9\u53EA\u6709\u5E7E\u884C\u7684\u77ED\u7D00\u9304\uFF08\u4E00\u689D\u932F\u8AA4\u78BC\u3001\u4E00\u689D\u898F\u5247\u3001\u4E00\u5247\u516C\u544A\uFF09\u53EA\u958B 1 \u500B\u6982\u5FF5\uFF0C\u7528\u539F\u7A3F\u7684\u5C08\u540D\u6216\u4EE3\u78BC\u7576\u6982\u5FF5\u540D\uFF1B\u4E0D\u8981\u70BA\u4E86\u6E4A\u6578\u628A\u540C\u4E00\u4EF6\u4E8B\u62C6\u6210\u591A\u500B\uFF0C\u4E5F\u4E0D\u8981\u767C\u660E\u539F\u7A3F\u6C92\u8B1B\u7684\u6982\u5FF5\u3002"
+    },
+    {
+      key: "common.no-concept",
+      v: 1,
+      when: "always",
+      value: '- \u5831\u50F9\u55AE\u3001\u767C\u7968\u3001\u7D14\u5F85\u8FA6\u3001\u7D14\u6D41\u6C34\u5E33\uFF1D\u6C92\u6709\u53EF\u8403\u53D6\u6982\u5FF5\uFF1A\u56DE {"no_concept":true,"reason":"\u4E00\u53E5\u8A71\u7406\u7531"} \u5373\u53EF\u3002'
+    },
+    {
+      key: "common.fields",
+      v: 2,
+      when: "always",
+      value: "- gloss\uFF1D\u4E00\u53E5\u8A71\uFF0840 \u5B57\u5167\uFF09\uFF1A\u76F4\u63A5\u8B1B\u5167\u5BB9\uFF0C\u5E36\u4E0A\u6700\u95DC\u9375\u7684\u5C08\u540D\u6216\u6578\u5B57\u3002summary\uFF1D\u4E00\u5C0F\u6BB5\uFF0880-200 \u5B57\uFF09\uFF1A\u628A\u539F\u7A3F\u7684\u5177\u9AD4\u5167\u5BB9\uFF08\u9805\u76EE\u3001\u6578\u503C\u3001\u689D\u4EF6\u3001\u7D50\u8AD6\uFF09\u4EA4\u4EE3\u6E05\u695A\u3002points\uFF1D3-8 \u689D\u53E5\u5B50\uFF0C\u6BCF\u689D\u5E36\u5177\u9AD4\u7684\u5C08\u540D\u6216\u6578\u5B57\uFF0C\u4E0D\u662F\u689D\u5217\u8907\u8FF0\uFF1B\u539F\u7A3F\u5F88\u77ED\u6642\u6709\u5E7E\u4EF6\u4E8B\u5BEB\u5E7E\u689D\uFF0C\u4E0D\u5FC5\u6E4A\u6EFF\u3002\n- \u6587\u4EF6\u5C64\u7684 points \u6BCF\u689D\u8981\u628A\u76F8\u95DC\u6982\u5FF5\u540D\u7528 [[\u6982\u5FF5\u540D]] \u5D4C\u5728**\u53E5\u5B50\u4E2D\u9593**\uFF08\u4E0D\u53EF\u653E\u53E5\u9996\u7576\u6A19\u984C\uFF09\u3002\n- entities\uFF1A\u6BCF\u500B\u5BE6\u9AD4\u662F\u539F\u7A3F**\u5167\u5BB9\u88E1\u8B1B\u5230\u7684\u6771\u897F**\uFF0C\u5E36 type\uFF08\u4EBA\u7269/\u7D44\u7E54/\u5DE5\u5177/\u6982\u5FF5/\u5730\u9EDE/\u4E8B\u4EF6/\u6A94\u6848 \u64C7\u4E00\uFF09\u8207\u4E00\u53E5\u63CF\u8FF0\u3002\u539F\u7A3F\u9019\u4EFD\u6587\u4EF6\u672C\u8EAB\u3001\u5B83\u7684\u6A94\u540D\u3001\u526F\u6A94\u540D\u3001\u9801\u9762\u7DE8\u865F\u90FD\u4E0D\u662F\u5BE6\u9AD4\uFF1Btype \u9078\u300C\u6A94\u6848\u300D\u53EA\u9650\u539F\u7A3F\u5167\u5BB9\u660E\u78BA\u8AC7\u5230\u7684\u67D0\u500B\u6A94\u6848\u3002"
+    },
+    {
+      key: "common.cross-language-terms",
+      v: 1,
+      when: "always",
+      value: "- \u539F\u7A3F\u4E0D\u662F\u4E2D\u6587\u6642\uFF08\u82F1\u6587\u624B\u518A\u3001\u898F\u683C\u66F8\u3001\u65E5\u6587\u6587\u4EF6\u2026\uFF09\uFF0C\u8981\u8B93\u4EBA\u7528**\u4E2D\u6587\u767D\u8A71**\u6216\u7528**\u539F\u6587\u5B57\u4E32**\u90FD\u627E\u5F97\u5230\u9019\u5F35\u5361\uFF1A\u95DC\u9375\u53E5\u4FDD\u7559\u539F\u6587\u3001\u8853\u8A9E\u7528\u7D71\u4E00\u7684\u4E2D\u6587\u8B6F\u540D\uFF08\u683C\u5F0F\u898B\u6700\u5F8C\u63D0\u9192\uFF09\uFF1B\u539F\u7A3F\u5728\u8B1B\u4E00\u500B\u72C0\u6CC1\u3001\u75C7\u72C0\u6216\u554F\u984C\uFF08\u932F\u8AA4\u8A0A\u606F\u3001\u6545\u969C\u3001\u9650\u5236\u3001\u4E0D\u80FD\u505A\u4EC0\u9EBC\uFF09\u6642\uFF0Csummary \u8981\u7528\u4F7F\u7528\u8005\u6703\u8AAA\u7684\u767D\u8A71\u628A\u5B83\u8B1B\u51FA\u4F86\uFF08\u4F8B\uFF1A\u300C\u5E33\u865F\u88AB\u9396\u4F4F\u767B\u4E0D\u9032\u53BB\u300D\u300C\u6578\u503C\u8D85\u51FA\u7BC4\u570D\u5B58\u4E0D\u4E86\u300D\uFF09\uFF1B\u539F\u56E0\u8207\u8655\u7F6E\u4E5F\u7528\u767D\u8A71\u9010\u9805\u5BEB\u51FA\uFF0C\u4E0D\u8981\u53EA\u5BEB\u300C\u8AAA\u660E\u4E86\u539F\u56E0\u548C\u4FEE\u6B63\u65B9\u6CD5\u300D\u3002"
+    },
+    {
+      key: "chunk-cliff.count-first",
+      v: 1,
+      when: "always",
+      value: "- \u{1F534} **\u5148\u6578\u4E00\u904D\uFF1A\u539F\u7A3F\u88E1\u6709\u6C92\u6709\u91CD\u8907\u51FA\u73FE\u7684\u300C\u689D\u76EE\u300D\u7D50\u69CB**\u2014\u2014\u540C\u4E00\u7A2E\u77ED\u8B58\u5225\u78BC\uFF08\u578B\u865F\uFF0F\u4EE3\u78BC\uFF0F\n  \u55AE\u865F\uFF0F\u53C3\u6578\u540D\uFF0C\u4EFB\u4F55\u539F\u7A3F\u81EA\u5DF1\u7528\u4F86\u6A19\u793A\u6BCF\u4E00\u689D\u7684\u5B57\u4E32\uFF09\u5728\u539F\u7A3F\u88E1\u5404\u81EA\u5E36\u958B\u4E00\u6BB5\u8AAA\u660E\uFF0C\n  \u4E00\u6BB5\u63A5\u4E00\u6BB5\u5730\u91CD\u8907\u3002\u6709\u7684\u8A71\uFF1A\n  1. \u5148\u6578\u51FA\u539F\u7A3F\u88E1\u7E3D\u5171\u6709\u5E7E\u689D\u9019\u7A2E\u689D\u76EE\uFF0C\u5728\u5FC3\u88E1\u8A18\u4F4F\u9019\u500B\u6578\u5B57 N\u3002\n  2. entities \u9663\u5217\uFF08\u6240\u6709\u6982\u5FF5\u5408\u8A08\uFF09\u8981\u6B63\u597D\u5217\u51FA N \u7B46\uFF0C\u9010\u4E00\u5C0D\u61C9\u539F\u7A3F\u7684\u6BCF\u4E00\u689D\u2014\u2014\n     **\u4E0D\u662F\u8209\u5E7E\u500B\u4F8B\u5B50\u4EE3\u8868\u5176\u9918\u7684\uFF0C\u662F\u6BCF\u4E00\u689D\u90FD\u8981\u6709\u81EA\u5DF1\u7684\u4E00\u7B46**\u3002\u6F0F\u6389\u4EFB\u4F55\u4E00\u689D\u90FD\u7B97\u5931\u6557\u3002\n  3. \u958B\u5C11\u6578\u5E7E\u500B\u6982\u5FF5\uFF081-3 \u500B\uFF0C\u6309\u4E3B\u984C\u5206\u7D44\uFF09\u7576\u5BB9\u5668\uFF0C\u628A N \u7B46 entities \u5206\u88DD\u9032\u53BB\uFF1B\n     \u6BCF\u500B\u6982\u5FF5\u7684 entities \u9663\u5217\u53EF\u4EE5\u5F88\u9577\uFF08\u5341\u5E7E\u3001\u5E7E\u5341\u7B46\u90FD\u6B63\u5E38\uFF09\uFF0C**\u4E0D\u8981\u56E0\u70BA\u300C\u9019\u6A23\u770B\u8D77\u4F86\n     \u5F88\u9577\u300D\u5C31\u81EA\u5DF1\u622A\u65B7\u3001\u53EA\u6311\u524D\u9762\u5E7E\u7B46\u6216\u770B\u8D77\u4F86\u91CD\u8981\u7684\u5E7E\u7B46**\u2014\u2014\u4F60\u4E0D\u662F\u5728\u5BEB\u6458\u8981\u7D66\u4EBA\u700F\u89BD\uFF0C\n     \u662F\u5728\u5EFA\u4E00\u4EFD\u67E5\u627E\u7528\u7684\u7D22\u5F15\uFF0C\u7F3A\u4E00\u7B46\uFF0C\u90A3\u4E00\u689D\u5728\u7D22\u5F15\u88E1\u5C31\u6C38\u4E45\u627E\u4E0D\u5230\u3002\n  4. entity \u7684 name\uFF1D\u8B58\u5225\u78BC\u539F\u6587\uFF08\u9010\u5B57\uFF0C\u4E0D\u610F\u8B6F\uFF09\u3002desc \u8981\u628A\u8A72\u8B58\u5225\u78BC\u5E95\u4E0B**\u6BCF\u4E00\u500B\u5B50\u6B04\u4F4D**\n     \uFF08\u4F8B\u5982\u539F\u7A3F\u6A19\u7684\u300C\u8A0A\u606F\uFF0F\u539F\u56E0\uFF0F\u8655\u7F6E\u300D\uFF0C\u6216\u8A72\u683C\u5F0F\u5C0D\u61C9\u7684\u5176\u4ED6\u6B04\u4F4D\uFF09\u90FD\u6458\u8981\u9032\u540C\u4E00\u53E5\u8A71\uFF0C\n     \u4E0D\u662F\u53EA\u6284\u7B2C\u4E00\u500B\u6B04\u4F4D\u2014\u2014\u8B80\u8005\u8981\u80FD\u5149\u770B desc \u5C31\u77E5\u9053\u767C\u751F\u4EC0\u9EBC\u3001\u70BA\u4EC0\u9EBC\u3001\u600E\u9EBC\u8655\u7406\uFF0C\n     \u4E26\u4FDD\u7559\u539F\u78BC\u3001\u53C3\u6578\u540D\u3001\u6578\u5B57\u3002\n  \u539F\u7A3F\u6C92\u6709\u9019\u7A2E\u91CD\u8907\u689D\u76EE\u7D50\u69CB\uFF08\u4E00\u822C\u6563\u6587\uFF0F\u5831\u544A\uFF09\u5C31\u4E0D\u53D7\u672C\u689D\u7D04\u675F\uFF0C\u7167\u4E00\u822C\u5BEB\u6CD5\u6574\u7406\u3002"
+    },
+    {
+      key: "common.graph",
+      v: 1,
+      when: "always",
+      value: "- facts\uFF1D[\u4E3B\u8A5E,\u8FF0\u8A5E,\u53D7\u8A5E] \u4E09\u5143\u7D44\uFF0C\u7AEF\u9EDE\u76E1\u91CF\u7528 entities \u7684\u540D\u5B57\uFF1B\u4EFB\u4F55\u6B04\u4F4D\u4E0D\u5F97\u542B\u96D9\u7BAD\u982D\u7B26\u865F\u3002\n- relations\uFF1D\u6982\u5FF5\u4E4B\u9593\u7684\u95DC\u4FC2\uFF08to \u586B\u53E6\u4E00\u500B\u6982\u5FF5\u7684 name\uFF09\u3002"
+    },
+    {
+      key: "common.output-shape",
+      v: 1,
+      when: "always",
+      value: '\nJSON \u5F62\u72C0\uFF08\u7167\u9019\u500B\u7D50\u69CB\u586B\uFF09\uFF1A\n{"gloss":"","tags":[""],"summary":"","points":["\u2026\u53E5\u5B50\u4E2D\u9593\u5D4C [[\u6982\u5FF5\u540D]]\u2026"],\n "no_concept":false,"reason":"",\n "concepts":[{"name":"","gloss":"","tags":[""],"summary":"","points":[""],\n   "entities":[{"name":"","type":"","desc":""}],\n   "facts":[["","",""]],\n   "relations":[{"to":"","pred":""}]}]}'
+    },
+    {
+      key: "common.language-reminder",
+      v: 5,
+      when: "always",
+      place: "after",
+      value: "\n\u6700\u5F8C\u63D0\u9192\uFF1A\u6240\u6709\u6B04\u4F4D\u7684\u6587\u5B57\u4E00\u5F8B\u7528\u6B63\u9AD4\u4E2D\u6587\u3002\u5167\u5BB9\u662F\u82F1\u6587\uFF08\u6216\u65E5\u6587\u7B49\u5176\u4ED6\u8A9E\u8A00\uFF09\u4E5F\u8981\u7FFB\u6210\u4E2D\u6587\u518D\u5BEB\uFF1B\u53EA\u6709\u5C08\u6709\u540D\u8A5E\u3001\u578B\u865F\u3001\u4EE3\u78BC\u3001\u53C3\u6578\u540D\u8207\u6578\u5B57\u7167\u539F\u5B57\u4E32\u4FDD\u7559\u3002gloss \u8207 summary \u76F4\u63A5\u5BEB\u5167\u5BB9\u672C\u8EAB\uFF08\u4F8B\uFF1A\u300CCompactB-3020 \u7684\u884C\u7A0B\u3001\u4E3B\u8EF8\u8207\u63A7\u5236\u7CFB\u7D71\u898F\u683C\u300D\uFF09\uFF0C\u4E0D\u8981\u4EE5\u300C\u672C\u6587\u4EF6\u662F\u2026\u300D\u300C\u9019\u662F\u4E00\u4EFD\u2026\u300D\u958B\u982D\u3002\n\u539F\u7A3F\u662F\u5916\u8A9E\u6642\uFF0C\u9084\u8981\u505A\u5230\uFF1A\u2460points \u7684\u7B2C\u4E00\u689D\u8981\u653E\u539F\u7A3F\u6700\u95DC\u9375\u7684\u4E00\u53E5\u539F\u6587\uFF08\u7167\u6284\u539F\u5B57\u4E32\u3001\u4E0D\u7FFB\uFF09\uFF0C\u5F8C\u9762\u63A5\u300C\uFF1D\u300D\u518D\u5BEB\u4E2D\u6587\u610F\u601D\uFF0C\u4F8B\uFF1A\u300CBackup file '%1' cannot be restored.\uFF1D\u5099\u4EFD\u6A94 '%1' \u9084\u539F\u4E0D\u4E86\u300D\u3002\u2461\u540C\u4E00\u500B\u82F1\u6587\u8A5E\u5168\u5361\u53EA\u7528\u540C\u4E00\u500B\u4E2D\u6587\u8B6F\u540D\uFF0C\u7528\u8A72\u9818\u57DF\u901A\u884C\u7684\u8AAA\u6CD5\uFF0C\u4E26\u4FDD\u7559\u9650\u5B9A\u8A5E\uFF08\u4F8B\uFF1Asoftware license\uFF1D\u6388\u6B0A\uFF0C\u4E0D\u662F\u57F7\u7167\uFF1Bbackup file\uFF1D\u5099\u4EFD\u6A94\uFF0C\u4E0D\u662F\u6A94\u6848\uFF1B\u6A5F\u68B0\u52A0\u5DE5\u7684 tool\uFF1D\u5200\u5177\uFF0C\u4E0D\u662F\u5DE5\u5177\uFF1B\u6703\u8A08\u7684 invoice\uFF1D\u767C\u7968\uFF0C\u4E0D\u662F\u5E33\u55AE\uFF09\u3002\u2462tags \u540C\u6642\u653E\u4E2D\u6587\u8B6F\u540D\u8207\u82F1\u6587\u539F\u8A5E\u3002\u53EA\u8F38\u51FA\u90A3\u500B JSON \u7269\u4EF6\u3002"
+    }
+  ]
+};
+
+// cypher-executor/src/lib/prompt-tables/read_image.json
+var read_image_default = {
+  kind: "prompt_table",
+  name: "read_image",
+  description: "\u628A\u542B\u5716\u7684\u6587\u4EF6\u9801\u8B80\u6210\u6587\u5B57\uFF08inkstone/Arcrun#300\uFF09\uFF1A\u5C0F\u5E6B\u624B\u628A\u4E00\u9801\u756B\u6210\u5716\u9001\u4F86\uFF0C\u96F2\u7AEF\u7528\u80FD\u8B80\u5716\u7684\u6A21\u578B\u8B80\u3002\u6A21\u578B\u8207\u6307\u793A\u653E\u540C\u4E00\u5F35\u8868\u3002",
+  expect: "text",
+  inject: "text",
+  max_tokens: 3072,
+  models: {
+    primary: "@cf/meta/llama-4-scout-17b-16e-instruct",
+    check: "@cf/mistralai/mistral-small-3.1-24b-instruct"
+  },
+  blocks: [
+    { key: "common.role", v: 1, when: "always", value: "\u4F60\u662F\u6587\u4EF6\u95B1\u8B80\u54E1\u3002\u9019\u5F35\u5716\u662F\u4E00\u4EFD\u6587\u4EF6\u7684\u5176\u4E2D\u4E00\u9801\uFF0C\u8ACB\u628A\u9801\u9762\u4E0A\u770B\u5F97\u5230\u7684\u6587\u5B57\u8B80\u51FA\u4F86\uFF0C\u7167\u539F\u6A23\u6284\u5BEB\uFF0C\u7528\u539F\u6587\u7684\u8A9E\u8A00\u8207\u9806\u5E8F\u3002" },
+    { key: "common.rules", v: 1, when: "always", value: "\u53EA\u8F38\u51FA\u9801\u9762\u4E0A\u7684\u5167\u5BB9\uFF0C\u4E0D\u8981\u524D\u8A00\u3001\u8AAA\u660E\u3001\u8A55\u8AD6\u6216\u63A8\u6E2C\u3002\u770B\u4E0D\u6E05\u695A\u7684\u5B57\u5BEB\u300C[\u770B\u4E0D\u6E05]\u300D\uFF0C\u4E0D\u8981\u81EA\u5DF1\u88DC\u3002\u6BCF\u4E00\u6BB5\u5167\u5BB9\u53EA\u8B80\u4E00\u6B21\uFF0C\u4E0D\u8981\u91CD\u8907\u8F38\u51FA\u76F8\u540C\u7684\u53E5\u5B50\u6216\u9078\u9805\u3002" },
+    { key: "common.tables", v: 1, when: "always", value: "\u9047\u5230\u8868\u683C\uFF0C\u8F38\u51FA\u6210 markdown \u8868\u683C\uFF1A\u9010\u5217\u7167\u6284\uFF0C\u6B04\u4F4D\u6578\u8207\u8868\u982D\u5C0D\u9F4A\uFF0C\u7A7A\u767D\u5132\u5B58\u683C\u7559\u7A7A\u3002\u6578\u5B57\u3001\u55AE\u4F4D\u3001\u65E5\u671F\u3001\u4EBA\u540D\u9010\u5B57\u7167\u6284\uFF0C\u4E0D\u8981\u63DB\u7B97\u6216\u4FEE\u6B63\u3002" },
+    { key: "common.checkbox", v: 1, when: "always", value: "\u9047\u5230\u52FE\u9078\u6846\uFF0C\u5DF2\u52FE\u7684\u5BEB\u300C\u2611 \u9078\u9805\u6587\u5B57\u300D\uFF0C\u6C92\u52FE\u7684\u5BEB\u300C\u2610 \u9078\u9805\u6587\u5B57\u300D\uFF0C\u6BCF\u500B\u9078\u9805\u53EA\u5BEB\u4E00\u884C\u3002" },
+    { key: "common.caption", v: 1, when: "always", attach: "caption", value: "\u9019\u4E00\u9801\u5DF2\u77E5\u7684\u6A19\u984C\u6587\u5B57\u5982\u4E0B\uFF08\u53EA\u4F9B\u5C0D\u7167\u9801\u9762\u4F4D\u7F6E\uFF0C\u5167\u5BB9\u4ECD\u4EE5\u5716\u4E0A\u5BE6\u969B\u770B\u5230\u7684\u70BA\u6E96\uFF09\uFF1A" },
+    { key: "check.independent", v: 1, when: "check", value: "\u9019\u662F\u7B2C\u4E8C\u6B21\u7368\u7ACB\u95B1\u8B80\uFF0C\u7528\u4F86\u548C\u7B2C\u4E00\u6B21\u4EA4\u53C9\u6838\u5C0D\uFF1A\u8ACB\u91CD\u65B0\u9010\u5B57\u8B80\uFF0C\u4E0D\u8981\u6191\u5370\u8C61\u6216\u63A8\u6E2C\u88DC\u5B57\uFF0C\u6578\u5B57\u8207\u4EBA\u540D\u5C24\u5176\u8981\u9010\u5B57\u78BA\u8A8D\u3002" }
+  ]
+};
+
+// cypher-executor/src/lib/prompt-table.ts
+var KIND_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+var KEY_RE = /^[a-z0-9][a-z0-9-]{0,39}\.[a-z0-9][a-z0-9-]{0,39}$/;
+var PromptBlockSchema = z.object({
+  key: z.string().regex(KEY_RE, "key \u5FC5\u9808\u662F <\u524D\u7DB4>.<\u540D\u7A31>\uFF08\u5C0F\u5BEB\u82F1\u6578\u8207\u9023\u5B57\u865F\uFF09"),
+  v: z.number().int().positive(),
+  when: z.string().refine((w) => w === "always" || KIND_RE.test(w), "when \u5FC5\u9808\u662F always \u6216\u7279\u4F8B\u7DE8\u865F"),
+  attach: z.string().regex(/^[a-z_]{1,32}$/).optional(),
+  // 'after'＝text 注入時這一塊接在**原稿後面**（預設在原稿前面）。要放「最後再提醒一次」的規則用：
+  // 原稿很長（整本手冊）時，放在前面的規則離輸出太遠，模型會跟著原稿的語言走（inkstone/Arcrun#317）。
+  place: z.enum(["before", "after"]).optional(),
+  value: z.union([z.string().min(1), z.array(z.string().min(1)).min(1), z.record(z.unknown())])
+});
+var PromptTableSchema = z.object({
+  kind: z.literal("prompt_table"),
+  name: z.string().regex(/^[a-z][a-z0-9_]*$/),
+  description: z.string().optional(),
+  expect: z.enum(["json_object", "text"]).default("json_object"),
+  inject: z.enum(["text", "json"]).default("text"),
+  // 讀圖表（inkstone/Arcrun#300）才用：用哪個模型讀、最多吐多少字——「模型與指示放同一張表」，
+  // 換模型＝換表，不改程式。沒填＝這台雲端萃取 AI 設定的預設。
+  models: z.object({ primary: z.string().min(1).optional(), check: z.string().min(1).optional() }).optional(),
+  max_tokens: z.number().int().min(256).max(8192).optional(),
+  blocks: z.array(PromptBlockSchema).min(1)
+}).superRefine((t, ctx) => {
+  const seen = /* @__PURE__ */ new Set();
+  for (const b of t.blocks) {
+    if (seen.has(b.key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `key \u91CD\u8907\uFF1A${b.key}` });
+    seen.add(b.key);
+  }
+});
+var BUILTIN_PROMPT_TABLES = {
+  extract_wiki: PromptTableSchema.parse(extract_wiki_default),
+  read_image: PromptTableSchema.parse(read_image_default)
+};
+function validatePromptTable(raw2) {
+  const r = PromptTableSchema.safeParse(raw2);
+  if (r.success) return { ok: true, table: r.data };
+  return { ok: false, error: r.error.issues.map((i) => `${i.path.join(".") || "(\u8868)"}\uFF1A${i.message}`).join("\uFF1B") };
+}
+var promptTableKey = (name) => `prompt_recipe:${name}`;
+async function loadPromptTable(recipes, name) {
+  const builtin = BUILTIN_PROMPT_TABLES[name] ?? null;
+  if (!recipes) return builtin ? { table: builtin, source: "builtin" } : null;
+  let raw2;
+  try {
+    raw2 = await recipes.get(promptTableKey(name));
+  } catch (e) {
+    if (!builtin) throw e;
+    return { table: builtin, source: "builtin_fallback", note: `\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u88DD\u7684\u8868\uFF0C\u7528\u5167\u5EFA\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (!raw2) return builtin ? { table: builtin, source: "builtin" } : null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw2);
+  } catch {
+    parsed = null;
+  }
+  const v = validatePromptTable(parsed);
+  if (v.ok) return { table: v.table, source: "installed" };
+  if (!builtin) return null;
+  return { table: builtin, source: "builtin_fallback", note: `\u9019\u53F0\u96F2\u7AEF\u88DD\u7684\u8868\u4E0D\u5408\u683C\uFF0C\u7528\u5167\u5EFA\uFF1A${v.error}` };
+}
+function sanitizeTableInput(rawKinds, rawHints) {
+  const kinds = Array.isArray(rawKinds) ? [...new Set(rawKinds.filter((k) => typeof k === "string" && KIND_RE.test(k)))].slice(0, 16) : [];
+  const hints = {};
+  if (rawHints && typeof rawHints === "object" && !Array.isArray(rawHints)) {
+    for (const [k, v] of Object.entries(rawHints)) {
+      if (!/^[a-z_]{1,32}$/.test(k)) continue;
+      if (Array.isArray(v)) {
+        const items = v.filter((x) => typeof x === "string" && x.trim() !== "").map((x) => x.slice(0, 120)).slice(0, 500);
+        if (items.length > 0) hints[k] = items;
+      }
+    }
+  }
+  return { kinds, hints };
+}
+function blockText(value) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.join("\n");
+  return JSON.stringify(value);
+}
+function assemblePromptTable(table, input, source) {
+  const obj = {};
+  const lines = [];
+  const tail = [];
+  const used = [];
+  const known = /* @__PURE__ */ new Set();
+  for (const b of table.blocks) {
+    if (b.when !== "always") known.add(b.when);
+    if (b.when !== "always" && !input.kinds.includes(b.when)) continue;
+    if (b.attach) {
+      const data = input.hints[b.attach];
+      if (!Array.isArray(data) || data.length === 0) continue;
+      obj[b.key] = { \u6307\u793A: b.value, [b.attach]: data };
+      (b.place === "after" ? tail : lines).push(`${blockText(b.value)}
+- ${data.join("\n- ")}`);
+    } else {
+      obj[b.key] = b.value;
+      (b.place === "after" ? tail : lines).push(blockText(b.value));
+    }
+    used.push(`${b.key}@${b.v}`);
+  }
+  const src = promptTableUserMessage(source.pageName, source.text);
+  const unknownKinds = input.kinds.filter((k) => !known.has(k));
+  if (table.inject === "json") {
+    return { system: JSON.stringify(obj, null, 1), user: src, used, unknownKinds };
+  }
+  return { user: `${lines.join("\n")}
+
+${src}${tail.length ? `
+${tail.join("\n")}` : ""}`, used, unknownKinds };
+}
+function promptTableUserMessage(pageName, text) {
+  return `\u539F\u7A3F\uFF08\u6A94\u540D\uFF1A${pageName}\uFF09\uFF1A
+${text}`;
+}
+
+// cypher-executor/src/lib/portal-error-catalog.ts
+var PORTAL_ERRORS = {
+  config_not_loaded: {
+    http_status: 500,
+    title: "\u9019\u500B\u9801\u9762\u8F09\u5165\u4E0D\u5230\u5B83\u7684\u8A2D\u5B9A",
+    message: "\u9019\u500B\u9801\u9762\u6C92\u6709\u8F09\u5165\u5230\u9023\u7DDA\u8A2D\u5B9A\uFF0C\u6240\u4EE5\u9023\u4E0D\u5230\u4F60\u7684\u670D\u52D9\u3002\u8ACB\u5148\u91CD\u65B0\u6574\u7406\u4E00\u6B21\uFF1B\u5982\u679C\u9084\u662F\u4E00\u6A23\uFF0C\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "\u524D\u7AEF\u8F09\u5165\u4E0D\u5230 config.js \u7684 apiBase\uFF08window.ARCRUN_CONFIG.apiBase \u7A7A\u503C\uFF09\u2014\u2014\u901A\u5E38\u662F UI worker \u7F3A WORKER_SUBDOMAIN\uFF0FapiBase \u6C92\u88AB\u6CE8\u5165\u3002",
+    why: "Portal \u7DB2\u9801\u9700\u8981\u4E00\u4EFD\u8A2D\u5B9A\u6A94\uFF08config.js\uFF09\u624D\u77E5\u9053\u8981\u9023\u5230\u54EA\u4E00\u53F0 cypher \u670D\u52D9\u3002\u9019\u4EFD\u8A2D\u5B9A\u662F\u5B89\u88DD\uFF0F\u90E8\u7F72 UI \u6642\u7522\u751F\u7684\uFF1B\u5982\u679C\u5B83\u7F3A\u4E86\uFF0C\u7DB2\u9801\u5C31\u6703\u9023\u4E0D\u5230\u5F8C\u7AEF\u2014\u2014\u9019\u6642\u5B83\u6703\u660E\u767D\u5730\u8AAA\u51FA\u4F86\uFF0C\u800C\u4E0D\u662F\u975C\u9ED8\u5730\u7576\u6389\u3002",
+    operator: "\u78BA\u8A8D UI worker \u6709\u8A2D WORKER_SUBDOMAIN\u3001\u4E14 config.js \u7684 apiBase \u6307\u5230\u6B63\u78BA\u7684 cypher-executor \u4F4D\u5740\uFF0C\u91CD\u65B0\u90E8\u7F72 UI \u5F8C\u91CD\u65B0\u6574\u7406\u3002"
+  },
+  tenant_unresolved: {
+    http_status: 500,
+    title: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u8A2D\u5B9A\u597D\u77E5\u8B58\u7684\u5B58\u653E\u4F4D\u7F6E",
+    message: "\u9019\u53F0 Arcrun \u5BE6\u4F8B\u9084\u4E0D\u77E5\u9053\u8981\u53BB\u54EA\u88E1\u627E\u4F60\u7684\u77E5\u8B58\u8CC7\u6599\uFF0C\u6240\u4EE5\u66AB\u6642\u6253\u4E0D\u958B\u3002\u9019\u901A\u5E38\u662F\u5B89\u88DD\u6216\u66F4\u65B0\u6C92\u6709\u5B8C\u5168\u8DD1\u5B8C\u9020\u6210\u7684\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u3002\u8ACB\u628A\u4E0B\u9762\u7684\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\uFF0C\u4F9D\u8AAA\u660E\u9801\u8655\u7406\u5373\u53EF\u3002",
+    advanced: "\u9019\u500B\u90E8\u7F72\u6C92\u6709\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08\u74B0\u5883\u8B8A\u6578 ARCRUN_NAMESPACE / CONSOLE_TENANT \u90FD\u6C92\u8A2D\uFF09\uFF0C\u56E0\u6B64\u7121\u6CD5\u6C7A\u5B9A\u8981\u7528\u54EA\u500B owner_id \u53BB KBDB \u53D6\u8CC7\u6599\u3002",
+    why: "Arcrun \u7528\u4E00\u500B\u300C\u547D\u540D\u7A7A\u9593\u300D\u628A\u4F60\u7684\u77E5\u8B58\u8CC7\u6599\u5708\u5728\u4E00\u8D77\u3002\u5B89\u88DD\uFF0F\u66F4\u65B0\u6642\uFF0C\u9019\u500B\u503C\u6703\u5F9E\u4F60\u7684 ~/.arcrun/config.yaml \u81EA\u52D5\u6CE8\u5165\u5230\u5BE6\u4F8B\u4E0A\u3002\u5982\u679C\u5B89\u88DD\u6216\u66F4\u65B0\u6C92\u8DD1\u5B8C\uFF0C\u9019\u500B\u503C\u5C31\u6703\u7F3A\uFF0C\u5BE6\u4F8B\u5C31\u4E0D\u77E5\u9053\u8A72\u53BB\u54EA\u4E00\u683C\u627E\u8CC7\u6599\u2014\u2014\u9019\u6642\u5B83\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u6253\u4E0D\u958B\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u4F60\u6C92\u6709\u8CC7\u6599\u3002",
+    operator: "\u5728\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u6A5F\u5668\u4E0A\u91CD\u8DD1\u4E00\u6B21 `acr update`\uFF0C\u5B83\u6703\u5F9E ~/.arcrun/config.yaml \u7684 api_key \u628A ARCRUN_NAMESPACE \u91CD\u65B0\u6CE8\u5165\u5230 cypher-executor\u3002\u8DD1\u5B8C\u5F8C\u91CD\u65B0\u6574\u7406\u9801\u9762\u5373\u53EF\u3002"
+  },
+  missing_api_key: {
+    http_status: 400,
+    title: "\u9019\u500B\u8ACB\u6C42\u6C92\u6709\u5E36\u8EAB\u5206",
+    message: "\u9019\u500B\u8ACB\u6C42\u6C92\u6709\u5E36\u4E0A\u53EF\u4EE5\u6C7A\u5B9A\u67E5\u8A62\u7BC4\u570D\u7684\u8EAB\u5206\u8CC7\u8A0A\uFF0C\u6240\u4EE5\u7121\u6CD5\u8655\u7406\u3002\u5982\u679C\u4F60\u662F\u900F\u904E App \u6216\u5DE5\u5177\u9023\u9032\u4F86\u7684\uFF0C\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u8005\u6216\u4F60\u7684 AI \u52A9\u624B\u3002",
+    advanced: "\u8ACB\u6C42\u7F3A\u5C11 X-Arcrun-API-Key \u6A19\u982D\uFF0C\u7121\u6CD5\u6C7A\u5B9A\u67E5\u8A62\u7684 owner_id \u7BC4\u570D\u3002",
+    why: "\u900F\u904E API\uFF0FMCP \u76F4\u63A5\u547C\u53EB\u9019\u53F0\u5BE6\u4F8B\u6642\uFF0C\u9700\u8981\u7528 X-Arcrun-API-Key \u6A19\u982D\u8868\u660E\u300C\u6211\u662F\u8AB0\u300D\uFF0C\u5BE6\u4F8B\u624D\u77E5\u9053\u8A72\u56DE\u54EA\u500B\u7BC4\u570D\u7684\u8CC7\u6599\u3002\u5F9E Portal \u7DB2\u9801\u767B\u5165\u7684\u4E00\u822C\u7528\u6236\u4E0D\u6703\u9047\u5230\u9019\u500B\u3002",
+    operator: "\u547C\u53EB\u7AEF\u8981\u5728\u8ACB\u6C42\u6A19\u982D\u5E36\u4E0A X-Arcrun-API-Key\uFF08\uFF1D\u4F60 ~/.arcrun/config.yaml \u7684 api_key\uFF09\u3002\u82E5\u8D70\u7684\u662F\u5B98\u65B9 App\uFF0FMCP\uFF0C\u78BA\u8A8D\u5B83\u5DF2\u7528 `acr` \u8A2D\u5B9A\u904E\u5E33\u865F\u3002"
+  },
+  auth_store_not_writable: {
+    http_status: 502,
+    title: "\u9019\u53F0\u5BE6\u4F8B\u76EE\u524D\u7121\u6CD5\u5132\u5B58\u5E33\u865F\u8CC7\u6599",
+    message: "\u9019\u53F0 Arcrun \u5BE6\u4F8B\u73FE\u5728\u5BEB\u4E0D\u9032\u5E33\u865F\uFF0F\u5BC6\u78BC\u8CC7\u6599\uFF0C\u6240\u4EE5\u6C92\u8FA6\u6CD5\u5EFA\u7ACB\u6216\u4FEE\u6539\u5E33\u865F\u3002\u9019\u662F\u5E73\u53F0\u7AEF\u7684\u8A2D\u5B9A\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u2014\u2014\u76EE\u524D\u756B\u9762\u4E0A\u6C92\u6709\u4F60\u81EA\u5DF1\u80FD\u505A\u7684\u4E0B\u4E00\u6B65\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u3001\u4EE5\u53CA\u4F60\u525B\u624D\u5728\u505A\u7684\u4E8B\uFF08\u4F8B\u5982\uFF1A\u5EFA\u7ACB\u7B2C\u4E00\u500B\u5E33\u865F\u3001\u65B0\u589E\u4F7F\u7528\u8005\u3001\u4FEE\u6539\u5BC6\u78BC\uFF09\uFF0C\u4E00\u8D77\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "\u7F3A\u5C11\u53EF\u7528\u7684 Cloudflare \u5BEB\u5165\u6191\u8B49\uFF08CF_SECRETS_API_TOKEN\uFF09\u3002\u8A8D\u8B49\u5132\u5B58\u8D70 Workers per-script Secrets\uFF08D61 \u8A8D\u8B49\u8207\u8CC7\u6599\u5206\u96E2\uFF09\uFF0C\u5BEB\u5165\u9700\u8981\u9019\u628A token\uFF1B\u8B80\u53D6\u4E0D\u9700\u8981\uFF0C\u6240\u4EE5\u65E2\u6709\u5E33\u865F\u4ECD\u767B\u5F97\u9032\u53BB\uFF0C\u53EA\u662F\u4E0D\u80FD\u65B0\u589E\uFF0F\u4FEE\u6539\u3002",
+    why: "\u70BA\u4E86\u8B93\u300C\u91CD\u88DD\uFF0F\u63DB\u8CC7\u6599\u5EAB\u90FD\u4E0D\u6703\u628A\u4F60\u9396\u5728\u9580\u5916\u300D\uFF0C\u5E33\u865F\u5BC6\u78BC\u5B58\u5728 Cloudflare \u7684 Workers Secrets \uFF08\u8DDF\u77E5\u8B58\u8CC7\u6599\u5EAB\u5206\u958B\u7684\u5730\u65B9\uFF09\u3002\u5BEB\u9032\u90A3\u88E1\u9700\u8981\u4E00\u628A Cloudflare \u5BEB\u5165 token\uFF1B\u9019\u628A token \u4E0D\u6703\u88AB\u5B89\u88DD\uFF0F\u66F4\u65B0\u81EA\u52D5\u7A2E\u6210\u5E38\u99D0\u503C\uFF0C\u6240\u4EE5\u5728\u67D0\u4E9B\u5BE6\u4F8B\u4E0A\u6703\u7F3A\u2014\u2014\u7F3A\u7684\u6642\u5019\u5C31\u5BEB\u4E0D\u9032\u53BB\u3002",
+    operator: "\u9019\u9700\u8981\u4EBA\u5DE5\u5728\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684 Cloudflare \u5E33\u865F\u4E0A\u8655\u7406\uFF1A\u628A\u6709\u6548\u7684 CF_SECRETS_API_TOKEN \u8A2D\u9032 cypher-executor\uFF08wrangler secret put\uFF09\uFF0C\u6216\u7528\u5B89\u88DD\u7CBE\u9748\u7576\u4E0B\u624B\u4E0A\u4ECD\u6709\u6548\u7684 OAuth token \u5E36\u5165\u3002\u55AE\u7D14\u91CD\u8DD1\u5B89\u88DD\uFF0F\u66F4\u65B0**\u4E0D\u4FDD\u8B49**\u7A2E\u597D\u9019\u628A token\uFF0C\u6240\u4EE5\u8ACB\u4E0D\u8981\u53EA\u53EB\u7528\u6236\u91CD\u88DD\u3002"
+  },
+  ai_binding_missing: {
+    http_status: 501,
+    title: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u555F\u7528\u5167\u5EFA AI",
+    message: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u555F\u7528\u5167\u5EFA AI\uFF0C\u6240\u4EE5\u7121\u6CD5\u8655\u7406\u9019\u500B AI \u76F8\u95DC\u7684\u8ACB\u6C42\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "wrangler.toml \u7F3A [ai] binding\uFF08Workers AI \u672A\u7D81\u5B9A\u5230 cypher-executor\uFF09\u3002",
+    why: "\u6709\u4E9B\u529F\u80FD\uFF08\u4F8B\u5982\u628A\u539F\u7A3F\u6574\u7406\u6210\u77E5\u8B58\u5361\uFF09\u7528\u7684\u662F Cloudflare \u5167\u5EFA\u7684 Workers AI\u3002\u5982\u679C\u9019\u53F0\u5BE6\u4F8B\u90E8\u7F72\u7684\u7248\u672C\u6C92\u6709\u7D81\u5B9A\u5B83\uFF0C\u9019\u985E\u529F\u80FD\u5C31\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u6C92\u555F\u7528\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u6210\u529F\u3002",
+    operator: "\u66F4\u65B0\u5230\u542B Workers AI binding \u7684\u77E5\u8B58\u5EAB\u7248\u672C\u5F8C\u91CD\u65B0\u90E8\u7F72 cypher-executor\uFF08wrangler.toml \u9700\u6709 [ai] binding\uFF09\u3002"
+  },
+  ai_workflow_missing: {
+    http_status: 404,
+    title: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u5B89\u88DD AI \u554F\u7B54\u529F\u80FD",
+    message: "\u4F60\u60F3\u8A2D\u5B9A\u7684 AI \u554F\u7B54\u529F\u80FD\u9084\u6C92\u6709\u5B89\u88DD\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "\u627E\u4E0D\u5230 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\uFF08WEBHOOKS KV \u6C92\u6709\u9019\u53F0\u5BE6\u4F8B\u7684 rag_chat \u8A18\u9304\uFF09\u3002",
+    why: "AI \u554F\u7B54\u662F\u4E00\u689D\u53EF\u5B89\u88DD\u7684\u5DE5\u4F5C\u6D41\u3002\u8981\u5148\u628A\u5B83\u88DD\u5230\u5BE6\u4F8B\u4E0A\uFF0C\u624D\u80FD\u66FF\u5B83\u8A2D\u5B9A\u91D1\u9470\u6216\u4F7F\u7528\u5B83\u3002",
+    operator: "\u5728\u67B6\u8A2D\u8005\u7684\u6A5F\u5668\u4E0A\u5B89\u88DD\uFF0F\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\uFF08\u900F\u904E\u5B89\u88DD\u7CBE\u9748\u6216 `acr push`\uFF09\u5F8C\u518D\u8A66\u3002"
+  },
+  ai_workflow_corrupt: {
+    http_status: 500,
+    title: "AI \u554F\u7B54\u8A2D\u5B9A\u8CC7\u6599\u640D\u58DE",
+    message: "\u9019\u53F0\u5BE6\u4F8B\u7684 AI \u554F\u7B54\u8A2D\u5B9A\u8CC7\u6599\u8B80\u4E0D\u51FA\u4F86\uFF08\u683C\u5F0F\u58DE\u4E86\uFF09\uFF0C\u6240\u4EE5\u91D1\u9470\u6C92\u8FA6\u6CD5\u5B58\u9032\u53BB\u3002\u9019\u4E0D\u662F\u4F60\u64CD\u4F5C\u932F\u8AA4\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "rag_chat \u5DE5\u4F5C\u6D41\u8A18\u9304\u7684 JSON \u89E3\u6790\u5931\u6557\uFF08WEBHOOKS KV \u5167\u5BB9\u6BC0\u640D\uFF09\u3002",
+    why: "\u91D1\u9470\u662F\u5BEB\u9032\u300CAI \u554F\u7B54\u5DE5\u4F5C\u6D41\u300D\u9019\u7B46\u8A2D\u5B9A\u88E1\u7684\u3002\u5982\u679C\u90A3\u7B46\u8A2D\u5B9A\u7684\u5167\u5BB9\u58DE\u6389\u4E86\uFF0C\u5C31\u6C92\u6709\u4E00\u500B\u5B8C\u6574\u7684\u5730\u65B9\u53EF\u4EE5\u653E\u91D1\u9470\uFF0C\u6240\u4EE5\u6703\u8AA0\u5BE6\u5730\u64CB\u4E0B\u4F86\uFF0C\u800C\u4E0D\u662F\u628A\u91D1\u9470\u5BEB\u9032\u4E00\u7B46\u58DE\u8CC7\u6599\u3002",
+    operator: "\u91CD\u65B0\u5B89\u88DD\uFF0F\u91CD\u65B0\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\u4EE5\u9084\u539F\u4E00\u4EFD\u4E7E\u6DE8\u7684\u8A18\u9304\uFF0C\u7136\u5F8C\u518D\u8A2D\u5B9A\u91D1\u9470\u3002"
+  },
+  ai_workflow_no_key_field: {
+    http_status: 500,
+    title: "AI \u554F\u7B54\u8A2D\u5B9A\u627E\u4E0D\u5230\u53EF\u586B\u91D1\u9470\u7684\u4F4D\u7F6E",
+    message: "\u9019\u53F0\u5BE6\u4F8B\u7684 AI \u554F\u7B54\u8A2D\u5B9A\u88E1\u6C92\u6709\u53EF\u4EE5\u653E\u91D1\u9470\u7684\u6B04\u4F4D\uFF0C\u6240\u4EE5\u91D1\u9470\u6C92\u6709\u5B58\u9032\u53BB\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+    advanced: "rag_chat \u5DE5\u4F5C\u6D41\u7684 graph/config \u88E1\u627E\u4E0D\u5230 x-goog-api-key \u6B04\u4F4D\u53EF\u4F9B\u8986\u5BEB\u3002",
+    why: "\u8A2D\u5B9A\u91D1\u9470\u7684\u505A\u6CD5\uFF0C\u662F\u628A\u91D1\u9470\u503C\u586B\u9032 AI \u554F\u7B54\u5DE5\u4F5C\u6D41\u88E1\u653E\u91D1\u9470\u7684\u90A3\u500B\u6B04\u4F4D\u3002\u5982\u679C\u9019\u7B46\u8A2D\u5B9A\u7684\u7248\u672C\u8F03\u820A\u3001\u6C92\u6709\u90A3\u500B\u6B04\u4F4D\uFF0C\u5C31\u7121\u8655\u53EF\u586B\u2014\u2014\u9019\u6642\u5B83\u6703\u8AA0\u5BE6\u5730\u8AAA\u300C\u627E\u4E0D\u5230\u4F4D\u7F6E\u300D\uFF0C\u800C\u4E0D\u662F\u5047\u88DD\u5B58\u597D\u4E86\u3002",
+    operator: "\u66F4\u65B0\uFF0F\u91CD\u65B0\u63A8\u9001 rag_chat \u554F\u7B54\u5DE5\u4F5C\u6D41\u5230\u542B\u91D1\u9470\u6B04\u4F4D\u7684\u7248\u672C\u5F8C\u518D\u8A2D\u5B9A\u91D1\u9470\u3002"
+  }
+};
+var HELP_BASE_PATH = "/e";
+function normalizeOrigin(origin2) {
+  return origin2.replace(/\/+$/, "");
+}
+function helpUrl(origin2, code) {
+  return `${normalizeOrigin(origin2)}${HELP_BASE_PATH}/${code}`;
+}
+var UNKNOWN = {
+  http_status: 500,
+  title: "\u767C\u751F\u672A\u9810\u671F\u7684\u554F\u984C",
+  message: "\u9019\u53F0\u5BE6\u4F8B\u9047\u5230\u4E00\u500B\u672A\u9810\u671F\u7684\u554F\u984C\u3002\u8ACB\u628A\u9019\u500B\u932F\u8AA4\u78BC\u63D0\u4F9B\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA\uFF0C\u6216\u8CBC\u7D66\u4F60\u81EA\u5DF1\u7684 AI \u52A9\u624B\u3002",
+  why: "\u9019\u662F\u4E00\u500B\u76EE\u524D\u6C92\u6709\u5C08\u5C6C\u8AAA\u660E\u7684\u932F\u8AA4\u78BC\u3002",
+  operator: "\u628A\u932F\u8AA4\u78BC\u8207\u91CD\u73FE\u6B65\u9A5F\u63D0\u4F9B\u7D66\u67B6\u8A2D\u8005\uFF0C\u4E26\u6AA2\u67E5 cypher-executor \u7684\u57F7\u884C\u7D00\u9304\u3002"
+};
+function specFor(code) {
+  return PORTAL_ERRORS[code] ?? UNKNOWN;
+}
+function portalErrorBody(origin2, code, opts) {
+  const spec = specFor(code);
+  const parts = [spec.advanced, opts?.advanced].filter((s) => Boolean(s && s.trim()));
+  const body = {
+    error: spec.message,
+    code,
+    help_url: helpUrl(origin2, code)
+  };
+  if (parts.length > 0) body.advanced = parts.join("\n");
+  return { body, status: spec.http_status };
+}
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+var PAGE_HEAD = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arcrun \u932F\u8AA4\u78BC\u8AAA\u660E</title>
+<style>
+:root{color-scheme:light dark}
+body{margin:0;padding:32px 20px;font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.75;background:#faf9f6;color:#1e1b16}
+@media(prefers-color-scheme:dark){body{background:#16130e;color:#ece7dd}}
+main{max-width:680px;margin:0 auto}
+.code{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;padding:3px 10px;border-radius:6px;background:rgba(194,73,46,.12);color:#c2492e;margin-bottom:14px}
+h1{font-size:24px;margin:.2em 0 .6em}
+h2{font-size:16px;margin:1.8em 0 .4em;opacity:.75}
+.msg{font-size:17px}
+.op{border:1px dashed rgba(127,127,127,.4);border-radius:10px;padding:14px 16px;background:rgba(127,127,127,.06)}
+.op .tag{font-size:13px;opacity:.7;margin-bottom:6px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(127,127,127,.15);padding:1px 5px;border-radius:4px}
+a{color:#c2492e}
+ul{padding-left:1.2em}
+.foot{margin-top:2.5em;font-size:13px;opacity:.6}
+</style></head><body><main>`;
+var PAGE_FOOT = `</main></body></html>`;
+function renderFaqHtml(origin2, code) {
+  const known = code && PORTAL_ERRORS[code] ? code : null;
+  if (!known) {
+    const items = Object.entries(PORTAL_ERRORS).map(
+      ([c, s2]) => `<li><a href="${esc(helpUrl(origin2, c))}"><code>${esc(c)}</code></a> \u2014 ${esc(s2.title)}</li>`
+    ).join("");
+    return PAGE_HEAD + `<h1>Arcrun \u932F\u8AA4\u78BC\u8AAA\u660E</h1><p class="msg">\u4E0B\u9762\u662F\u9019\u53F0\u5BE6\u4F8B\u53EF\u80FD\u986F\u793A\u7684\u932F\u8AA4\u78BC\u3002\u9EDE\u9032\u53BB\u770B\u5B83\u7684\u610F\u601D\u3001\u70BA\u4EC0\u9EBC\u6703\u767C\u751F\u3001\u4EE5\u53CA\u600E\u9EBC\u89E3\u6C7A\u3002\u4F60\u4E5F\u53EF\u4EE5\u628A\u8A72\u9801\u7DB2\u5740\u76F4\u63A5\u8CBC\u7D66\u4F60\u7684 AI \u52A9\u624B\u3002</p><ul>${items}</ul>` + PAGE_FOOT;
+  }
+  const s = PORTAL_ERRORS[known];
+  return PAGE_HEAD + `<div class="code">${esc(known)}</div><h1>${esc(s.title)}</h1><p class="msg">${esc(s.message)}</p><h2>\u70BA\u4EC0\u9EBC\u6703\u9019\u6A23</h2><p>${esc(s.why)}</p>` + (s.advanced ? `<h2>\u6280\u8853\u7D30\u7BC0</h2><p>${esc(s.advanced)}</p>` : "") + `<h2>\u7D66\u67B6\u8A2D\u9019\u53F0\u5BE6\u4F8B\u7684\u4EBA</h2><div class="op"><div class="tag">\u9019\u4E00\u6BB5\u662F\u7D66\u67B6\u8A2D\u8005\uFF0F\u5DE5\u7A0B\u5E2B\u770B\u7684\uFF0C\u4E0D\u662F\u7D66\u4E00\u822C\u7528\u6236\u7684\u64CD\u4F5C\u6B65\u9A5F</div>${esc(s.operator)}</div><p class="foot">\u932F\u8AA4\u78BC <code>${esc(known)}</code> \xB7 <a href="${esc(helpUrl(origin2, ""))}">\u770B\u5168\u90E8\u932F\u8AA4\u78BC</a></p>` + PAGE_FOOT;
+}
+
+// cypher-executor/src/lib/instance-update.ts
+var DEFAULT_INSTALLER_ORIGIN = "https://install.arcrun.dev";
+async function requestInstanceUpdate(env, fetchImpl = fetch) {
+  const token = env.ARCRUN_UPDATE_TOKEN;
+  const accountId = env.CF_ACCOUNT_ID;
+  if (!token || !accountId) {
+    return {
+      status: 501,
+      body: {
+        ok: false,
+        state: "unavailable",
+        fallback_to_installer: true,
+        message: "\u9019\u53F0\u9084\u6C92\u6709\u4E00\u9375\u66F4\u65B0\u7684\u529F\u80FD\uFF0C\u9700\u8981\u5148\u7528\u5B89\u88DD\u9801\u66F4\u65B0\u4E00\u6B21\uFF0C\u4E4B\u5F8C\u5C31\u80FD\u76F4\u63A5\u5728\u9019\u88E1\u66F4\u65B0\u3002"
+      }
+    };
+  }
+  const origin2 = (env.INSTALLER_ORIGIN || DEFAULT_INSTALLER_ORIGIN).replace(/\/+$/, "");
+  let res;
+  try {
+    res = await fetchImpl(`${origin2}/api/instance/update`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      // body 只有 accountId——刻意沒有版本欄位。
+      body: JSON.stringify({ accountId })
+    });
+  } catch {
+    return {
+      status: 502,
+      body: { ok: false, state: "unavailable", message: "\u66AB\u6642\u9023\u4E0D\u4E0A\u66F4\u65B0\u670D\u52D9\uFF0C\u8ACB\u7A0D\u5F8C\u91CD\u65B0\u6574\u7406\u770B\u770B\u7248\u672C\u6709\u6C92\u6709\u8B8A\u3002" }
+    };
+  }
+  const j = await res.json().catch(() => null);
+  const message2 = typeof j?.message === "string" && j.message ? j.message : "";
+  if (!j || res.status >= 500) {
+    return {
+      status: 502,
+      body: { ok: false, state: "unavailable", message: message2 || "\u66F4\u65B0\u670D\u52D9\u66AB\u6642\u6C92\u6709\u56DE\u61C9\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u3002" }
+    };
+  }
+  if (res.status === 401 || res.status === 403) {
+    return { status: 200, body: { ok: false, state: "refused", message: message2 || "\u9019\u500B\u66F4\u65B0\u8981\u6C42\u6C92\u6709\u901A\u904E\u9A57\u8B49\u3002" } };
+  }
+  if (j.ok === true && j.state === "busy") {
+    return { status: 200, body: { ok: true, state: "busy", message: message2 || "\u6B63\u5728\u5E6B\u4F60\u66F4\u65B0\uFF0C\u8ACB\u7A0D\u5019\u518D\u91CD\u65B0\u6574\u7406\u3002" } };
+  }
+  if (j.ok === true) {
+    const deployed = typeof j.deployed === "number" ? j.deployed : 0;
+    return {
+      status: 200,
+      body: { ok: true, state: deployed > 0 ? "updated" : "up_to_date", deployed, message: message2 || "\u66F4\u65B0\u5B8C\u6210\u3002" }
+    };
+  }
+  return { status: 200, body: { ok: false, state: "refused", message: message2 || "\u9019\u6B21\u6C92\u8FA6\u6CD5\u5E6B\u4F60\u66F4\u65B0\u3002" } };
+}
+
 // cypher-executor/src/lib/update-center.ts
 var DEFAULT_INSTALLER_ORIGIN2 = "https://install.arcrun.dev";
 async function fetchInstallerLatest(env, fetchImpl = fetch) {
@@ -39250,7 +39337,9 @@ function buildUpdateCenter(input) {
     ...latest?.daemon?.downloads?.mac ? { mac: latest.daemon.downloads.mac } : {},
     ...latest?.daemon?.downloads?.win ? { win: latest.daemon.downloads.win } : {}
   };
-  const es = engineStatus(input.engineCurrent, latestRelease);
+  const lagging = input.laggingComponents ?? [];
+  const partial = lagging.length > 0 && engineStatus(input.engineCurrent, latestRelease) === "current";
+  const es = partial ? "update" : engineStatus(input.engineCurrent, latestRelease);
   items.push({
     kind: "engine",
     id: "engine",
@@ -39258,7 +39347,7 @@ function buildUpdateCenter(input) {
     current: input.engineCurrent,
     latest: latestRelease,
     status: es,
-    note: es === "update" ? "\u6709\u65B0\u7248\u3002\u6309\u300C\u66F4\u65B0\u300D\u5C31\u6703\u76F4\u63A5\u63DB\u6210\u6700\u65B0\u7248\uFF0C\u77E5\u8B58\u5EAB\u5167\u5BB9\u4E0D\u6703\u52D5\u5230\uFF0C\u4E0D\u7528\u518D\u767B\u5165 Cloudflare\u3002" : es === "current" ? "\u5DF2\u662F\u6700\u65B0\u7248\u3002" : !latestRelease ? "\u66AB\u6642\u67E5\u4E0D\u5230\u6700\u65B0\u7248\uFF0C\u7A0D\u5F8C\u518D\u8A66\u3002" : "\u8B80\u4E0D\u5230\u9019\u53F0\u76EE\u524D\u7684\u7248\u672C\uFF08\u670D\u52D9\u53EF\u80FD\u6B63\u5728\u555F\u52D5\uFF09\u3002",
+    note: partial ? `\u4E0A\u4E00\u6B21\u66F4\u65B0\u6C92\u6709\u63DB\u5B8C\uFF08${describeLagging(lagging)}\uFF09\u3002\u6309\u300C\u66F4\u65B0\u300D\u628A\u5269\u4E0B\u7684\u88DC\u5B8C\uFF0C\u77E5\u8B58\u5EAB\u5167\u5BB9\u4E0D\u6703\u52D5\u5230\u3002` : es === "update" ? "\u6709\u65B0\u7248\u3002\u6309\u300C\u66F4\u65B0\u300D\u5C31\u6703\u76F4\u63A5\u63DB\u6210\u6700\u65B0\u7248\uFF0C\u77E5\u8B58\u5EAB\u5167\u5BB9\u4E0D\u6703\u52D5\u5230\uFF0C\u4E0D\u7528\u518D\u767B\u5165 Cloudflare\u3002" : es === "current" ? "\u5DF2\u662F\u6700\u65B0\u7248\u3002" : !latestRelease ? "\u66AB\u6642\u67E5\u4E0D\u5230\u6700\u65B0\u7248\uFF0C\u7A0D\u5F8C\u518D\u8A66\u3002" : "\u8B80\u4E0D\u5230\u9019\u53F0\u76EE\u524D\u7684\u7248\u672C\uFF08\u670D\u52D9\u53EF\u80FD\u6B63\u5728\u555F\u52D5\uFF09\u3002",
     action: es === "update" ? { type: "instance_update", admin_only: true } : null
   });
   const machines = groupDaemonReports(input.daemonReports);
@@ -39661,11 +39750,12 @@ function toPublicUser(rec) {
     updated_at: v.updated_at ?? ""
   };
 }
-async function requirePortalUser(c) {
+async function requirePortalUser(c, onSessionFound) {
   const token = bearerToken(c);
   if (!token) return { ok: false, res: c.json({ error: "\u672A\u767B\u5165" }, 401) };
   const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
   if (!sess) return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
+  onSessionFound?.();
   const recordId = sess.record_id;
   if (!recordId) {
     await ephemeralDelete(c.env, { template: SESSION_TEMPLATE3, hashField: "token_hash", rawKey: token });
@@ -43316,12 +43406,15 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
-    const [latest, apps, daemonReports] = await Promise.all([
+    const engineCurrent = c.env.ARCRUN_BUNDLE_VERSION ?? "";
+    const [latest, apps, daemonReports, siblings] = await Promise.all([
       fetchInstallerLatest(c.env),
       listInstalledApps(c.env, tenant2),
-      listDaemonReports(c.env)
+      listDaemonReports(c.env),
+      probeSiblingVersions(c.env)
     ]);
     const center = buildUpdateCenter({
+      laggingComponents: assessConsistency(engineCurrent, siblings).lagging,
       engineCurrent: c.env.ARCRUN_BUNDLE_VERSION ?? "",
       latest,
       apps: apps.map((a) => ({ id: a.id, name: a.name, version: a.version, ...updateInfo(a.version, a.id) })),
@@ -43461,18 +43554,21 @@ portalDataRouter.get(
 portalDataRouter.post(
   "/portal/data/apps/:id/action",
   (c) => run(c, async () => {
-    const auth = await requirePortalUser(c);
-    if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
     const appId = c.req.param("id");
     const body = await c.req.json().catch(() => null);
     const action = typeof body?.action === "string" ? body.action : "";
+    let prefetch;
+    const auth = await requirePortalUser(c, () => {
+      if (action) prefetch = prefetchAppAction(c.env, tenant2, appId, action);
+    });
+    if (!auth.ok) return auth.res;
     if (!action) return c.json({ error: "action \u5FC5\u586B" }, 400);
     const payload = body?.payload && typeof body.payload === "object" ? { ...body.payload } : {};
     delete payload._portal_actor;
     const actor = await signPortalActor(c.env, tenant2, { login: auth.user.values.email, role: auth.user.values.role ?? "user" });
     if (actor) payload._portal_actor = actor;
-    const result = await runAppAction(c.env, tenant2, appId, action, payload, c.executionCtx);
+    const result = await runAppAction(c.env, tenant2, appId, action, payload, c.executionCtx, prefetch);
     if (!result.ok) return c.json({ error: result.error }, result.status);
     return c.json({ ok: true, result: result.result });
   })
