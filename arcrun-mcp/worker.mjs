@@ -24518,7 +24518,7 @@ function registerReportFeedback(server, env, orgNamespace) {
           return { content: [{ type: "text", text: "Error: KBDB service binding unavailable" }], isError: true };
         }
         const entryBody = {
-          entry_type: "agent-feedback",
+          template: "agent-feedback",
           owner_id: orgNamespace,
           content: description,
           metadata_json: JSON.stringify({
@@ -31488,10 +31488,10 @@ function kbdbFailure(e, searchHint, identity) {
     [searchHint, "\u7A0D\u5F8C\u91CD\u8A66", "\u{1F534} \u4E0D\u51C6\u628A\u5B83\u56DE\u5831\u6210\u300C\u6C92\u6709\u9019\u500B skill\uFF0Fexample\u300D"]
   );
 }
-async function kbdbList(env, entryType, limit = 100) {
-  const resp = await kbdbFetch(env, `/entries?entry_type=${encodeURIComponent(entryType)}&limit=${limit}`);
+async function kbdbList(env, template, limit = 100) {
+  const resp = await kbdbFetch(env, `/entries?template=${encodeURIComponent(template)}&limit=${limit}`);
   if (!resp.ok) {
-    throw new KbdbAccessError(resp.status, `list entry_type=${entryType}`, await resp.text().catch(() => ""));
+    throw new KbdbAccessError(resp.status, `list template=${template}`, await resp.text().catch(() => ""));
   }
   const data = await resp.json();
   return data.entries ?? [];

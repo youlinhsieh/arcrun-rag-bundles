@@ -2569,7 +2569,7 @@ var init_recipes = __esm({
       const kbdbBase3 = kbdbBaseUrl(c.env);
       const evidence = {
         content: canonicalId,
-        entry_type: "recipe_submission",
+        template: "recipe_submission",
         metadata_json: JSON.stringify({
           uuid: recipe.uuid,
           canonical_id: canonicalId,
@@ -2998,7 +2998,7 @@ async function kbdbFetch(env, path, init) {
   return fetch(`${base}${path}`, { ...init, headers: { ...headers, ...init?.headers } });
 }
 async function findSecretRow(env, apiKey, ref) {
-  const qs = new URLSearchParams({ owner_id: apiKey, entry_type: SECRET_ENTRY_TYPE, page_name: ref, limit: "1" });
+  const qs = new URLSearchParams({ owner_id: apiKey, template: SECRET_TEMPLATE, page_name: ref, limit: "1" });
   const res = await kbdbFetch(env, `/entries?${qs.toString()}`);
   if (!res.ok) throw new Error(`KBDB /entries \u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
   const body = await res.json().catch(() => null);
@@ -3019,7 +3019,7 @@ async function putLocalSecret(env, apiKey, ref, value) {
   const existing = await findSecretRow(env, apiKey, ref);
   const res = existing ? await kbdbFetch(env, `/entries/${encodeURIComponent(existing.id)}`, { method: "PATCH", body: JSON.stringify({ metadata_json }) }) : await kbdbFetch(env, `/entries`, {
     method: "POST",
-    body: JSON.stringify({ entry_type: SECRET_ENTRY_TYPE, owner_id: apiKey, page_name: ref, metadata_json })
+    body: JSON.stringify({ template: SECRET_TEMPLATE, owner_id: apiKey, page_name: ref, metadata_json })
   });
   if (!res.ok) throw new Error(`\u91D1\u9470\u4FDD\u7BA1\u5BEB\u5165\u5931\u6557\uFF1AHTTP ${res.status}`);
 }
@@ -3051,12 +3051,12 @@ async function getLocalSecretStrict(env, apiKey, ref) {
   if (v === null) throw new Error("\u91D1\u9470\u4FDD\u7BA1\u89E3\u4E0D\u958B\uFF08\u4E3B\u91D1\u9470\u4E0D\u7B26\u6216\u5BC6\u6587\u88AB\u6539\u52D5\uFF09");
   return v;
 }
-var SECRET_ENTRY_TYPE, HKDF_SALT, MIN_KEY_LEN, enc, dec;
+var SECRET_TEMPLATE, HKDF_SALT, MIN_KEY_LEN, enc, dec;
 var init_secret_backend = __esm({
   "cypher-executor/src/lib/secret-backend.ts"() {
     "use strict";
     init_kbdb_proxy();
-    SECRET_ENTRY_TYPE = "credential_secret";
+    SECRET_TEMPLATE = "credential_secret";
     HKDF_SALT = "arcrun-private-secret-v1";
     MIN_KEY_LEN = 32;
     enc = new TextEncoder();
@@ -9298,7 +9298,7 @@ var init_kbdb_proxy = __esm({
       const owner = tenant(c);
       if (!owner) return c.json(NEED_KEY, 401);
       const body = await c.req.json().catch(() => null);
-      if (!body || !body.entry_type) return c.json({ error: "entry_type \u5FC5\u586B" }, 400);
+      if (!body || !body.template) return c.json({ error: "template \u5FC5\u586B" }, 400);
       const { base, headers } = kbdbBase(c.env);
       const res = await fetch(`${base}/entries`, {
         method: "POST",
@@ -9526,7 +9526,7 @@ function invalidateCredentialCache(apiKey) {
   for (const k of Object.keys(dirCache)) delete dirCache[k];
 }
 async function fetchDirectoryRows(env, owner) {
-  const qs = new URLSearchParams({ owner_id: owner, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
+  const qs = new URLSearchParams({ owner_id: owner, template: CREDENTIAL_TEMPLATE, limit: "200" });
   const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
   if (!res.ok) {
     return { rows: [], error: `KBDB \u56DE HTTP ${res.status}` };
@@ -9596,7 +9596,7 @@ function touchLastUsed(env, apiKey, names) {
 async function findCredentialEntry(env, apiKey, name) {
   const qs = new URLSearchParams({
     owner_id: apiKey,
-    entry_type: CREDENTIAL_ENTRY_TYPE,
+    template: CREDENTIAL_TEMPLATE,
     page_name: name,
     limit: "1"
   });
@@ -9635,7 +9635,7 @@ async function upsertCredentialEntry(env, apiKey, name, service, sensitivity, se
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        entry_type: CREDENTIAL_ENTRY_TYPE,
+        template: CREDENTIAL_TEMPLATE,
         owner_id: apiKey,
         page_name: name,
         metadata_json: JSON.stringify(meta)
@@ -9647,7 +9647,7 @@ async function upsertCredentialEntry(env, apiKey, name, service, sensitivity, se
 }
 async function listCredentialRows(env, apiKey) {
   const fetchOwner = async (owner) => {
-    const qs = new URLSearchParams({ owner_id: owner, entry_type: CREDENTIAL_ENTRY_TYPE, limit: "200" });
+    const qs = new URLSearchParams({ owner_id: owner, template: CREDENTIAL_TEMPLATE, limit: "200" });
     const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
     if (!res.ok) throw new Error(`credential \u76EE\u9304\u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
     const body = await res.json().catch(() => null);
@@ -9740,7 +9740,7 @@ async function editCredential(env, apiKey, currentName, updates) {
   invalidateCredentialCache(apiKey);
   return { name: newName, service, sensitivity: meta.sensitivity };
 }
-var credentialsRouter, CYPHER_SCRIPT_NAME, SECRETS_NOT_READY_CODE, SecretsNotReadyError, CREDENTIAL_ENTRY_TYPE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
+var credentialsRouter, CYPHER_SCRIPT_NAME, SECRETS_NOT_READY_CODE, SecretsNotReadyError, CREDENTIAL_TEMPLATE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
 var init_credentials = __esm({
   "cypher-executor/src/routes/credentials.ts"() {
     "use strict";
@@ -9755,7 +9755,7 @@ var init_credentials = __esm({
     SecretsNotReadyError = class extends Error {
       code = SECRETS_NOT_READY_CODE;
     };
-    CREDENTIAL_ENTRY_TYPE = "credential";
+    CREDENTIAL_TEMPLATE = "credential";
     DIR_CACHE_TTL_MS = 6e4;
     dirCache = {};
     LAST_USED_MIN_INTERVAL_S = 300;
@@ -11003,7 +11003,7 @@ function listTarget(store2, prefix) {
       tpl: "app",
       owner: tenantAssetOwner(tenant2),
       toKey: (v, id) => `${tenant2}:app:${v.app_id || id.slice(`asset:app:${tenant2}:`.length)}`,
-      legacy: { entryType: "app_install", owner: tenant2, toKey: (page) => `${tenant2}:app:${page}` }
+      legacy: { template: "app_install", owner: tenant2, toKey: (page) => `${tenant2}:app:${page}` }
     };
   }
   return null;
@@ -11133,8 +11133,8 @@ async function getLegacyEnvelope(env, entryId) {
   const body = await res.json().catch(() => null);
   return envelopeValue(body?.entry?.metadata_json);
 }
-async function listLegacyEnvelopes(env, entryType, owner) {
-  const params = new URLSearchParams({ entry_type: entryType, owner_id: owner, limit: "1000" });
+async function listLegacyEnvelopes(env, template, owner) {
+  const params = new URLSearchParams({ template, owner_id: owner, limit: "1000" });
   const res = await kbdbFetch2(env, `/entries?${params}`, void 0, "list");
   if (!res.ok) return [];
   const body = await res.json().catch(() => null);
@@ -11285,7 +11285,7 @@ var KbdbAssetStore = class {
       }
     }
     if (target.legacy) {
-      for (const e of await listLegacyEnvelopes(this.env, target.legacy.entryType, target.legacy.owner)) {
+      for (const e of await listLegacyEnvelopes(this.env, target.legacy.template, target.legacy.owner)) {
         const k = target.legacy.toKey(e.page_name);
         if (names.has(k)) continue;
         names.add(k);
@@ -34833,7 +34833,7 @@ async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
     q,
     owner_id: apiKey,
     // 租戶隔離（只搜本租戶的 workflow）
-    entry_type: "workflow",
+    template: "workflow",
     // base 通用 filter（Q4），只回 workflow entry
     mode
   });
@@ -35652,7 +35652,7 @@ async function writeWorkflowSearchEntry(env, apiKey, name, description, workflow
     method: "POST",
     headers,
     body: JSON.stringify({
-      entry_type: "workflow",
+      template: "workflow",
       owner_id: apiKey,
       // 租戶隔離（與 kbdb-proxy 同身份）
       page_name: name,
@@ -39409,6 +39409,7 @@ var LOCK_LIMIT = 5;
 var LOCK_TTL_SECONDS = 15 * 60;
 var DEFAULT_SESSION_TTL = 604800;
 var USER_TEMPLATE = "portal_user";
+var USER_HEAD_TEMPLATE = "portal_user_head";
 var LIBRARY_TEMPLATE = "portal_library";
 function portalTenant(env) {
   return accountTenant(env);
@@ -39570,7 +39571,7 @@ async function findKbdbUserRecordId(env, email) {
   const ns = portalNamespace(env);
   const params = new URLSearchParams({
     page_name: email,
-    entry_type: USER_TEMPLATE,
+    template: USER_HEAD_TEMPLATE,
     owner_id: ns,
     limit: "1"
   });
@@ -39690,7 +39691,7 @@ async function createKbdbUserRecord(env, email, values) {
   if (!recordId) throw new KbdbError("POST /records \u56DE\u61C9\u7F3A record_id");
   const head = await kbdbFetch3(env, "/entries", {
     method: "POST",
-    body: JSON.stringify({ entry_type: USER_TEMPLATE, page_name: email, content: recordId, owner_id: ns })
+    body: JSON.stringify({ template: USER_HEAD_TEMPLATE, page_name: email, content: recordId, owner_id: ns })
   }, { essential: true });
   if (!head.ok) throw new KbdbError(`head entry \u5EFA\u7ACB\u5931\u6557\uFF08record ${recordId} \u5DF2\u5EFA\uFF0C\u9700\u4EBA\u5DE5\u6536\u62FE\uFF09\u2192 ${head.status}`);
   return recordId;
@@ -42356,9 +42357,9 @@ var STALE_MINUTES = 240;
 var JUDGE_START_HOUR = 9;
 var JUDGE_END_HOUR = 22;
 var STANDARD_TASK_STATUS = /* @__PURE__ */ new Set(["done", "doing", "todo", "blocked"]);
-async function fetchEntries(env, tenant2, entryType, limit) {
+async function fetchEntries(env, tenant2, template, limit) {
   const { base, headers } = kbdbBase(env);
-  const params = new URLSearchParams({ owner_id: tenant2, entry_type: entryType, limit: String(limit) });
+  const params = new URLSearchParams({ owner_id: tenant2, template, limit: String(limit) });
   try {
     const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
     if (!res.ok) return [];
@@ -42522,8 +42523,8 @@ consoleDashboardRouter.get("/console/dashboard-data", async (c) => {
     fetchTripletTotal(c.env, tenant2),
     // owner_id 一律鎖本租戶：原本不帶 owner 會混到別租戶（實測 459,137 vs leo 的 458,732）
     fetchEntryTotal(c.env, { owner_id: tenant2 }),
-    fetchEntryTotal(c.env, { entry_type: "wiki_card", owner_id: tenant2 }),
-    fetchEntryTotal(c.env, { entry_type: "workflow", owner_id: tenant2 })
+    fetchEntryTotal(c.env, { template: "wiki_card", owner_id: tenant2 }),
+    fetchEntryTotal(c.env, { template: "workflow", owner_id: tenant2 })
   ]);
   const beats = [];
   const seenActors = /* @__PURE__ */ new Set();
@@ -42646,7 +42647,7 @@ consoleDashboardRouter.get("/console/kb-scale-data", async (c) => {
   const [wikiCards, tripletTotal, embedStatus] = await Promise.all([
     // limit=1 順手拿最新一筆 created_at（list 為 created_at DESC）＝「最近寫入時間」
     fetchJson(
-      `${base}/entries?${new URLSearchParams({ owner_id: tenant2, entry_type: "wiki_card", limit: "1" }).toString()}`,
+      `${base}/entries?${new URLSearchParams({ owner_id: tenant2, template: "wiki_card", limit: "1" }).toString()}`,
       headers
     ),
     // #100：三元組數改讀 KBDB 真 COUNT，不再讀 graph-plugin 的分頁長度（見 fetchTripletTotal 註）
@@ -42699,7 +42700,7 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
   const entry = got?.entry;
   if (!entry) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u5F85\u8FA6\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09" }, 404);
   if (entry.owner_id !== tenant2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u5F85\u8FA6\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09" }, 404);
-  if (entry.entry_type !== "todo" && entry.entry_type !== "inbox") {
+  if (entry.template !== "todo" && entry.template !== "inbox") {
     return c.json({ error: "\u53EA\u6709\u5206\u6D41\u53F0\u9805\u76EE\uFF08todo/inbox\uFF09\u80FD\u5728\u9019\u88E1\u52FE\u6389" }, 400);
   }
   const newContent = applyTriageCheck(entry.content, action, (/* @__PURE__ */ new Date()).toISOString());
@@ -42831,10 +42832,11 @@ function entryLibrary(entry) {
 function canReadLibrary(userLibraries, library) {
   return userLibraries.includes("*") || userLibraries.includes(library);
 }
-var INTERNAL_ENTRY_TYPES = /* @__PURE__ */ new Set(["value", "workflow", "execution_log", "execution_log_usage"]);
+var INTERNAL_TEMPLATES = /* @__PURE__ */ new Set(["value", "workflow", "execution_log", "execution_log_usage"]);
 function filterDeprecatedEntries(entries) {
   return entries.filter((e) => {
-    if (e.entry_type && INTERNAL_ENTRY_TYPES.has(e.entry_type)) return false;
+    if (e.template && INTERNAL_TEMPLATES.has(e.template)) return false;
+    if (e.templates?.some((t) => INTERNAL_TEMPLATES.has(t))) return false;
     try {
       const meta = JSON.parse(e.metadata_json ?? "null");
       if (meta && meta.status === "deprecated") return false;
@@ -42927,8 +42929,8 @@ portalDataRouter.get(
       const msRaw = Number(c.req.query("min_score"));
       if (Number.isFinite(msRaw) && msRaw > 0 && msRaw < 1) params.set("min_score", String(msRaw));
     }
-    const entryType = c.req.query("entry_type");
-    if (entryType) params.set("entry_type", entryType);
+    const template = c.req.query("template");
+    if (template) params.set("template", template);
     const limit = c.req.query("limit");
     if (limit && /^\d{1,3}$/.test(limit)) params.set("limit", limit);
     const res = await kbdbFetch3(c.env, `/entries/search?${params.toString()}`);

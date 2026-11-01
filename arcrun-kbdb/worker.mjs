@@ -13,6 +13,122 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// kbdb/src/actions/kind.ts
+function belongsRowId(entryId, templateId) {
+  return `relb_${entryId}_${templateId}`;
+}
+function entryRowStatement(row, opts = {}) {
+  const cols = [LEGACY_COLUMN];
+  const params = [LEGACY_FILL];
+  for (const c of WRITABLE_COLUMNS) {
+    if (row[c] !== void 0) {
+      cols.push(c);
+      params.push(row[c]);
+    }
+  }
+  const verb = opts.ignore ? "INSERT OR IGNORE" : "INSERT";
+  return { sql: `${verb} INTO entries (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`, params };
+}
+async function insertEntryRow(db, row, opts = {}) {
+  const st = entryRowStatement(row, opts);
+  await db.run(st.sql, st.params);
+}
+function belongsStatement(entryId, templateId, ownerId) {
+  return {
+    sql: `INSERT OR IGNORE INTO entries (${LEGACY_COLUMN}, id, owner_id, src_id, rel_id, dst_id, created_at, updated_at)
+     SELECT ?, ?, ?, e.id, '${SYS_BELONGS}', ?, e.created_at, e.created_at FROM entries e WHERE e.id = ?`,
+    params: [LEGACY_FILL, belongsRowId(entryId, templateId), ownerId, templateId, entryId]
+  };
+}
+async function insertBelongs(db, entryId, templateId, ownerId) {
+  const st = belongsStatement(entryId, templateId, ownerId);
+  await db.run(st.sql, st.params);
+}
+function notStructureSql() {
+  return `(src_id IS NULL AND substr(id, 1, 4) <> 'sys_' AND (content IS NOT NULL OR metadata_json IS NOT NULL) AND (owner_id IS NOT NULL OR page_name IS NOT NULL OR metadata_json IS NOT NULL OR NOT EXISTS (SELECT 1 FROM entries st WHERE st.src_id = entries.id AND (st.rel_id = '${SYS_FIELD_OF}' OR st.dst_id = '${SYS_ROOT}'))))`;
+}
+function belongsToNamedSql(entryIdExpr = "entries.id") {
+  return `EXISTS (SELECT 1 FROM entries bt WHERE bt.src_id = ${entryIdExpr} AND +bt.rel_id = '${SYS_BELONGS}' AND +bt.dst_id IN (SELECT id FROM templates WHERE name = ?))`;
+}
+function belongsToSql(entryIdExpr = "entries.id") {
+  return `EXISTS (SELECT 1 FROM entries bt WHERE bt.src_id = ${entryIdExpr} AND +bt.rel_id = '${SYS_BELONGS}' AND +bt.dst_id = ?)`;
+}
+function membersOf(tplId, ownerId) {
+  const params = [tplId];
+  let ownerSql = "";
+  if (ownerId) {
+    ownerSql = " AND +owner_id = ?";
+    params.push(ownerId);
+  }
+  return {
+    from: `(SELECT src_id AS k_id, created_at AS k_created, rowid AS k_rowid FROM entries
+             WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}'${ownerSql}) m
+           JOIN entries ON entries.id = m.k_id`,
+    params
+  };
+}
+async function templateIdByName(db, name) {
+  return (await db.first("SELECT id FROM templates WHERE name = ?", [name]))?.id;
+}
+async function templateNamesOf(db, entryIds) {
+  const out = /* @__PURE__ */ new Map();
+  const ids = [...new Set(entryIds)];
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const res = await db.all(
+      `SELECT b.src_id AS src_id, t.name AS name
+         FROM entries b JOIN templates t ON t.id = b.dst_id
+        WHERE b.src_id IN (${chunk.map(() => "?").join(",")}) AND b.rel_id = '${SYS_BELONGS}'
+        ORDER BY b.rowid`,
+      [...chunk]
+    );
+    for (const r of res.results ?? []) {
+      const list = out.get(r.src_id) ?? [];
+      list.push(r.name);
+      out.set(r.src_id, list);
+    }
+  }
+  return out;
+}
+async function withTemplates(db, rows) {
+  const names = rows.length > 0 ? await templateNamesOf(db, rows.map((r) => String(r.id))) : /* @__PURE__ */ new Map();
+  return rows.map((r) => {
+    const rest = { ...r };
+    delete rest[LEGACY_COLUMN];
+    const all = names.get(String(r.id)) ?? [];
+    return { ...rest, template: all[0] ?? null, templates: all };
+  });
+}
+var SYS_ROOT, SYS_BELONGS, SYS_FIELD_OF, LEGACY_COLUMN, LEGACY_FILL, RETIRED_KIND_PARAM, WRITABLE_COLUMNS;
+var init_kind = __esm({
+  "kbdb/src/actions/kind.ts"() {
+    "use strict";
+    SYS_ROOT = "sys_root";
+    SYS_BELONGS = "sys_belongs";
+    SYS_FIELD_OF = "sys_field_of";
+    LEGACY_COLUMN = "entry_type";
+    LEGACY_FILL = "";
+    RETIRED_KIND_PARAM = LEGACY_COLUMN;
+    WRITABLE_COLUMNS = [
+      "id",
+      "content",
+      "owner_id",
+      "parent_id",
+      "page_name",
+      "refs_json",
+      "tags_json",
+      "task_status",
+      "confidence",
+      "metadata_json",
+      "src_id",
+      "rel_id",
+      "dst_id",
+      "created_at",
+      "updated_at"
+    ];
+  }
+});
+
 // kbdb/src/actions/library-predicate.ts
 function libraryOf(expr) {
   return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
@@ -106,12 +222,14 @@ __export(record_crud_exports, {
   createTemplate: () => createTemplate,
   deleteRecord: () => deleteRecord,
   derivedCellIds: () => derivedCellIds,
+  ensureKindTemplate: () => ensureKindTemplate,
   fieldEntryId: () => fieldEntryId,
   filterExistingRecordIds: () => filterExistingRecordIds,
   getRecord: () => getRecord,
   getRecords: () => getRecords,
   getTemplate: () => getTemplate,
   hydrateRecordValues: () => hydrateRecordValues,
+  kindTemplateId: () => kindTemplateId,
   listTemplates: () => listTemplates,
   memberRecordIds: () => memberRecordIds,
   searchByTemplate: () => searchByTemplate,
@@ -126,17 +244,16 @@ function fieldEntryId(templateId, slot) {
   return `fld_${templateId}_${slot}`;
 }
 async function ensureAnchors(db) {
-  await db.run(`INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES
-       ('${SYS_ROOT}', 'root', 'system', NULL),
-       ('${SYS_BELONGS}', 'belongs', 'system', NULL),
-       ('${SYS_FIELD_OF}', 'field_of', 'system', NULL)`);
+  await insertEntryRow(db, { id: SYS_ROOT, content: "root" }, { ignore: true });
+  await insertEntryRow(db, { id: SYS_BELONGS, content: "belongs" }, { ignore: true });
+  await insertEntryRow(db, { id: SYS_FIELD_OF, content: "field_of" }, { ignore: true });
 }
 function fieldEntryStatements(templateId, slots) {
   const out = [];
   for (const slot of slots) {
     const fid = fieldEntryId(templateId, slot);
-    out.push({ sql: `INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'field')`, params: [fid, slot] });
-    out.push({ sql: `INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_FIELD_OF}', ?)`, params: [`relf_${templateId}_${slot}`, fid, templateId] });
+    out.push(entryRowStatement({ id: fid, content: slot }, { ignore: true }));
+    out.push(entryRowStatement({ id: `relf_${templateId}_${slot}`, src_id: fid, rel_id: SYS_FIELD_OF, dst_id: templateId }, { ignore: true }));
   }
   return out;
 }
@@ -148,12 +265,43 @@ async function createTemplate(db, input) {
   const id = input.id ?? uid("tpl");
   await db.run(`INSERT INTO templates (id, name, description, slots_json, created_by) VALUES (?, ?, ?, ?, ?)`, [id, input.name, input.description ?? null, JSON.stringify(input.slots), input.created_by ?? null]);
   await ensureAnchors(db);
-  await db.run(`INSERT OR IGNORE INTO entries (id, content, entry_type) VALUES (?, ?, 'sheet')`, [id, input.name]);
-  await db.run(`INSERT OR IGNORE INTO entries (id, entry_type, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, '${SYS_BELONGS}', '${SYS_ROOT}')`, [`relb_${id}`, id]);
+  await insertEntryRow(db, { id, content: input.name }, { ignore: true });
+  await insertEntryRow(db, { id: `relb_${id}`, src_id: id, rel_id: SYS_BELONGS, dst_id: SYS_ROOT }, { ignore: true });
   await ensureFieldEntries(db, id, input.slots);
   const row = await getTemplate(db, id);
   if (!row) throw new Error("createTemplate: row not found after insert");
   return row;
+}
+function kindTemplateId(name) {
+  return `tpl-${name.replace(/_/g, "-")}`;
+}
+async function ensureKindTemplate(db, name) {
+  const key = name.trim();
+  if (!key) throw new Error("template name required");
+  let cache2 = kindTemplateIds.get(db);
+  if (!cache2) {
+    cache2 = /* @__PURE__ */ new Map();
+    kindTemplateIds.set(db, cache2);
+  }
+  const hit = cache2.get(key);
+  if (hit) return hit;
+  const found = await db.first("SELECT id FROM templates WHERE name = ?", [key]);
+  let id = found?.id;
+  if (!id) {
+    for (const candidate of [kindTemplateId(key), uid("tpl")]) {
+      try {
+        await createTemplate(db, { id: candidate, name: key, description: `\u5167\u5BB9\u7A2E\u985E\uFF1A${key}`, slots: [], created_by: "system" });
+        id = candidate;
+        break;
+      } catch {
+        id = (await db.first("SELECT id FROM templates WHERE name = ?", [key]))?.id;
+        if (id) break;
+      }
+    }
+    if (!id) throw new Error(`ensureKindTemplate failed: ${key}`);
+  }
+  cache2.set(key, id);
+  return id;
 }
 async function getTemplate(db, idOrName) {
   const row = await db.first("SELECT * FROM templates WHERE id = ? OR name = ? LIMIT 1", [idOrName, idOrName]);
@@ -224,7 +372,7 @@ async function filterExistingRecordIds(db, templateId, ids) {
   return ids.filter((id) => keep.has(id));
 }
 async function insertCellRelation(db, recordId, templateId, slot, dstEntryId, ownerId) {
-  await db.run(`INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, [uid("relv"), ownerId, recordId, fieldEntryId(templateId, slot), dstEntryId]);
+  await insertEntryRow(db, { id: uid("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(templateId, slot), dst_id: dstEntryId });
 }
 async function createRecord(db, input) {
   if (input.create_only && !input.record_id) throw new Error("create_only requires record_id");
@@ -243,7 +391,8 @@ async function createRecord(db, input) {
   const referenced = await loadReferencedEntries(db, entryIds, ownerId);
   const mapTracked = isMapTrackedTemplate(tpl.name);
   const mapBefore = mapTracked && input.record_id ? (await getRecord(db, input.record_id))?.values ?? null : null;
-  const claim = await db.run(`INSERT OR IGNORE INTO entries (id, entry_type, owner_id) VALUES (?, 'record', ?)`, [recordId, ownerId]);
+  const claimStmt = entryRowStatement({ id: recordId, owner_id: ownerId }, { ignore: true });
+  const claim = await db.run(claimStmt.sql, claimStmt.params);
   if (input.create_only && claim.meta?.changes !== 1) {
     if (claim.meta?.changes === void 0) throw new Error("create_only needs a storage driver that reports meta.changes");
     throw new RecordExistsError(recordId);
@@ -251,28 +400,24 @@ async function createRecord(db, input) {
   const writtenSlots = slots.filter((s) => s in entryIds || s in values);
   const stmts = [
     // 歸屬＝一條關係（舊 template_id 欄的下場）
-    { sql: `INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, '${SYS_BELONGS}', ?)`, params: [`relb_${recordId}_${tpl.id}`, ownerId, recordId, tpl.id] },
+    belongsStatement(recordId, tpl.id, ownerId),
     // 欄位謂詞自癒（決定性 id，冪等）——只補這次真的要寫的 slot
     ...fieldEntryStatements(tpl.id, writtenSlots)
   ];
   for (const slot of writtenSlots) {
     if (slot in entryIds) {
-      stmts.push({ sql: `INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, params: [uid("relv"), ownerId, recordId, fieldEntryId(tpl.id, slot), entryIds[slot]] });
+      stmts.push(entryRowStatement({ id: uid("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: entryIds[slot] }));
       continue;
     }
     if (input.derived_cell_ids) {
       const ids = derivedCellIds(recordId, slot);
-      stmts.push({ sql: `INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES (?, ?, 'value', ?)`, params: [ids.value, values[slot], ownerId] });
-      stmts.push({ sql: `INSERT OR IGNORE INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, params: [ids.relation, ownerId, recordId, fieldEntryId(tpl.id, slot), ids.value] });
+      stmts.push(entryRowStatement({ id: ids.value, content: values[slot], owner_id: ownerId }, { ignore: true }));
+      stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
       continue;
     }
     const valueId = uid("e");
-    stmts.push({
-      sql: `INSERT INTO entries (id, content, entry_type, owner_id, parent_id, page_name, refs_json, tags_json, task_status, confidence, metadata_json)
-       VALUES (?, ?, 'value', ?, NULL, NULL, '[]', '[]', NULL, NULL, NULL)`,
-      params: [valueId, values[slot], ownerId]
-    });
-    stmts.push({ sql: `INSERT INTO entries (id, entry_type, owner_id, src_id, rel_id, dst_id) VALUES (?, 'relation', ?, ?, ?, ?)`, params: [uid("relv"), ownerId, recordId, fieldEntryId(tpl.id, slot), valueId] });
+    stmts.push(entryRowStatement({ id: valueId, content: values[slot], owner_id: ownerId, refs_json: "[]", tags_json: "[]" }));
+    stmts.push(entryRowStatement({ id: uid("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: valueId }));
   }
   await db.batch(stmts);
   const out = { ...values };
@@ -318,7 +463,7 @@ async function updateRecord(db, recordId, values) {
       }
     } else {
       await ensureFieldEntries(db, templateId, [slot]);
-      const entry = await createEntry(db, { content, entry_type: "value", owner_id: recordOwnerId });
+      const entry = await createEntry(db, { content, template: null, owner_id: recordOwnerId });
       await insertCellRelation(db, recordId, templateId, slot, entry.id, recordOwnerId);
     }
   }
@@ -449,16 +594,17 @@ async function deleteRecord(db, recordId) {
   const mapBefore = mapTpl && isMapTrackedTemplate(mapTpl.name) ? await getRecord(db, recordId) : null;
   const cellRes = await db.all(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id != '${SYS_BELONGS}'`, [recordId]);
   const dsts = (cellRes.results ?? []).map((r) => r.dst_id);
-  await db.run(`DELETE FROM entries WHERE src_id = ?`, [recordId]);
+  await db.run(`DELETE FROM entries WHERE src_id = ?1 AND (rel_id != '${SYS_BELONGS}' OR dst_id = ?2)`, [recordId, belongs.dst_id]);
   await db.run(
-    `DELETE FROM entries WHERE id = ?1 AND entry_type = 'record'
-        AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)`,
+    `DELETE FROM entries WHERE id = ?1 AND content IS NULL AND metadata_json IS NULL AND src_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
+        AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`,
     [recordId]
   );
   for (const dst of dsts) {
     await db.run(
       `DELETE FROM entries WHERE id = ?1
-          AND entry_type NOT IN ('sheet', 'field', 'system')
+          AND substr(id, 1, 4) <> 'sys_'
           AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
           AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`,
       [dst]
@@ -467,16 +613,15 @@ async function deleteRecord(db, recordId) {
   if (mapTpl && mapBefore) await noteRecordWrite(db, mapTpl.name, mapBefore.owner_id, mapBefore.values, null);
   return true;
 }
-var SYS_ROOT, SYS_BELONGS, SYS_FIELD_OF, RecordExistsError;
+var kindTemplateIds, RecordExistsError;
 var init_record_crud = __esm({
   "kbdb/src/actions/record-crud.ts"() {
     "use strict";
     init_entry_crud();
+    init_kind();
     init_entity_canon();
     init_library_map_store();
-    SYS_ROOT = "sys_root";
-    SYS_BELONGS = "sys_belongs";
-    SYS_FIELD_OF = "sys_field_of";
+    kindTemplateIds = /* @__PURE__ */ new WeakMap();
     RecordExistsError = class extends Error {
       recordId;
       constructor(recordId) {
@@ -580,17 +725,22 @@ function parseMeta(raw2) {
 function countedLibraryOf(e) {
   if (!e) return null;
   if (e.src_id != null) return null;
-  if (NOT_KNOWLEDGE_ENTRY_TYPES.includes(e.entry_type)) return null;
+  if (!e.templates || e.templates.length === 0) return null;
+  if (e.templates.some((t) => NOT_KNOWLEDGE_TEMPLATES.includes(t))) return null;
+  if (e.content == null && e.metadata_json == null) return null;
   const meta = parseMeta(e.metadata_json);
-  if (e.entry_type === "block" && meta?.kind === "library_map") return null;
+  if (meta?.kind === "library_map") return null;
   const lib = meta?.library;
   return libraryOfValue(lib === void 0 || lib === null ? null : String(lib));
 }
 function countedEntrySql() {
-  const types = NOT_KNOWLEDGE_ENTRY_TYPES.map((t) => `'${t}'`).join(", ");
+  const names = NOT_KNOWLEDGE_TEMPLATES.map((t) => `'${t}'`).join(", ");
   return `src_id IS NULL
-         AND entry_type NOT IN (${types})
-         AND NOT (entry_type = 'block' AND COALESCE(json_extract(metadata_json, '$.kind'), '') = 'library_map')`;
+         AND (content IS NOT NULL OR metadata_json IS NOT NULL)
+         AND COALESCE(json_extract(metadata_json, '$.kind'), '') <> 'library_map'
+         AND EXISTS (SELECT 1 FROM entries kb WHERE kb.src_id = entries.id AND kb.rel_id = '${SYS_BELONGS}' AND kb.dst_id <> '${SYS_ROOT}')
+         AND NOT EXISTS (SELECT 1 FROM entries kn JOIN templates kt ON kt.id = kn.dst_id
+                          WHERE kn.src_id = entries.id AND kn.rel_id = '${SYS_BELONGS}' AND kt.name IN (${names}))`;
 }
 function tripletContribution(values) {
   if (!values) return null;
@@ -710,11 +860,13 @@ async function createMapRecord(db, owner, library, seed) {
   const ident = await mapIdentity(owner, library);
   const values = { ...defaultMapValues(library), ...seed };
   const top = entitiesToPairs(values.top_entities).slice(0, 3).map((p) => p[0]);
-  await db.run(
-    `INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id, page_name, metadata_json)
-       VALUES (?, ?, 'block', ?, ?, ?)`,
-    [ident.id, mapContent(library, values.narrative, top), owner, ident.pageName, JSON.stringify({ kind: "library_map", library })]
-  );
+  await insertEntryRow(db, {
+    id: ident.id,
+    content: mapContent(library, values.narrative, top),
+    owner_id: owner,
+    page_name: ident.pageName,
+    metadata_json: JSON.stringify({ kind: "library_map", library })
+  }, { ignore: true });
   await createRecord(db, {
     template: LIBRARY_MAP_TEMPLATE_NAME,
     record_id: ident.id,
@@ -937,11 +1089,11 @@ async function adoptOwner(db, owner) {
     await updateRecord(db, rid, { status: "superseded" });
     await db.run(
       `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'), updated_at = unixepoch()
-          WHERE id = ? AND entry_type = 'block'`,
+          WHERE id = ? AND content IS NOT NULL`,
       [rid]
     );
   }
-  await db.run(`INSERT OR IGNORE INTO entries (id, content, entry_type, owner_id) VALUES (?, 'library-map adopted', 'system', ?)`, [await adoptionMarkerId(owner), owner]);
+  await insertEntryRow(db, { id: await adoptionMarkerId(owner), owner_id: owner }, { ignore: true });
 }
 function logMapFailure(what, e) {
   console.error(`[library-map] ${what}\u6C92\u80FD\u8A18\u9032\u5730\u5716\uFF08\u5730\u5716\u6578\u5B57\u53EF\u80FD\u843D\u5F8C\uFF1BPOST /map/recompute?library= \u53EF\u6821\u6B63\uFF09`, e);
@@ -1052,7 +1204,7 @@ async function readStoredRows(db, owner) {
   const oh = owner === void 0 ? "" : await ownerHash(owner);
   const lo = owner === void 0 ? MAP_PAGE_PREFIX : `${MAP_PAGE_PREFIX}${oh}:`;
   const hi = owner === void 0 ? MAP_PAGE_UPPER_ALL : `${MAP_PAGE_PREFIX}${oh};`;
-  const res = await db.all("SELECT id, owner_id FROM entries WHERE page_name >= ? AND page_name < ? AND +entry_type = 'block'", [lo, hi]);
+  const res = await db.all("SELECT id, owner_id FROM entries WHERE page_name >= ? AND page_name < ?", [lo, hi]);
   const heads = (res.results ?? []).filter((r) => owner === void 0 || (r.owner_id ?? "") === owner);
   if (!heads.length) return [];
   const cells = await readCellsById(db, heads.flatMap((h) => LIBRARY_MAP_SLOTS.map((s) => cellId(h.id, s))));
@@ -1136,11 +1288,12 @@ async function readStoredMaps(db, owner) {
   const legacy = await readLegacyMaps(db, void 0);
   return legacyToStored(legacy.byLibrary.values(), null);
 }
-var LIBRARY_MAP_TEMPLATE_ID, LIBRARY_MAP_TEMPLATE_NAME, LIBRARY_MAP_SLOTS, DEFAULT_TRIPLET_TEMPLATE, PORTAL_LIBRARY_TEMPLATE, ENTITY_SKETCH_SIZE, PREDICATE_SKETCH_SIZE, LIBRARY_MAP_TEMPLATE_DESCRIPTION, NOT_KNOWLEDGE_ENTRY_TYPES, templateReady, adoptedOwners, knownMaps, adoptionJobs, writeSeqCounter, MAP_PAGE_PREFIX, MAP_PAGE_UPPER_ALL, LIBRARY_MAP_ID_PREFIX, NOT_LIBRARY_MAP_ROW, NOT_LIBRARY_MAP_CELL, cellId, TRIPLET_SUMMARY_SLOTS;
+var LIBRARY_MAP_TEMPLATE_ID, LIBRARY_MAP_TEMPLATE_NAME, LIBRARY_MAP_SLOTS, DEFAULT_TRIPLET_TEMPLATE, PORTAL_LIBRARY_TEMPLATE, ENTITY_SKETCH_SIZE, PREDICATE_SKETCH_SIZE, LIBRARY_MAP_TEMPLATE_DESCRIPTION, NOT_KNOWLEDGE_TEMPLATES, templateReady, adoptedOwners, knownMaps, adoptionJobs, writeSeqCounter, MAP_PAGE_PREFIX, MAP_PAGE_UPPER_ALL, LIBRARY_MAP_ID_PREFIX, NOT_LIBRARY_MAP_ROW, NOT_LIBRARY_MAP_CELL, cellId, TRIPLET_SUMMARY_SLOTS;
 var init_library_map_store = __esm({
   "kbdb/src/actions/library-map-store.ts"() {
     "use strict";
     init_record_crud();
+    init_kind();
     init_library_predicate();
     LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
     LIBRARY_MAP_TEMPLATE_NAME = "library_map";
@@ -1160,20 +1313,20 @@ var init_library_map_store = __esm({
     ENTITY_SKETCH_SIZE = 128;
     PREDICATE_SKETCH_SIZE = 100;
     LIBRARY_MAP_TEMPLATE_DESCRIPTION = "per-library map block\uFF08\u85CF\u66F8\u5730\u5716\uFF1Atop_entities\uFF0Frelation_profile\uFF0Fbridges\uFF0Ftriplet_count \u7531 graph \u6A5F\u68B0\u5C0E\u51FA\uFF1Bnarrative \u7531 LLM \u8457\u4F5C\uFF0C\u7B97\u4E0D\u51FA\u4F86\u3001\u4E1F\u4E86\u56DE\u4E0D\u4F86\uFF1BArcrun#39\uFF0F#44\uFF09";
-    NOT_KNOWLEDGE_ENTRY_TYPES = [
-      "value",
-      "record",
-      "sheet",
-      "field",
-      "system",
-      "relation",
+    NOT_KNOWLEDGE_TEMPLATES = [
       "execution_log",
       "execution_log_usage",
       "execution_log_retention_config",
       "credential",
       "embed_backfill_usage",
       "kbdb_maintenance_usage",
-      "recipe_stat"
+      "kbdb_entry_write_usage",
+      "kbdb_fts_migration_cutoff",
+      "recipe_stat",
+      // 登入用的 head entry 與私有雲金鑰保管的密文列：都是營運資料，沒有 library，舊版（種類欄時代）漏列了，
+      // 於是會被當成「一筆知識」算進 general。種類退場時順手補上（#301）。
+      "portal_user_head",
+      "credential_secret"
     ];
     templateReady = /* @__PURE__ */ new WeakMap();
     adoptedOwners = /* @__PURE__ */ new WeakMap();
@@ -1196,23 +1349,20 @@ function uid2(prefix) {
 }
 async function createEntry(db, input) {
   const id = input.id ?? uid2("e");
-  await db.run(
-    `INSERT INTO entries (id, content, entry_type, owner_id, parent_id, page_name, refs_json, tags_json, task_status, confidence, metadata_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      input.content ?? null,
-      input.entry_type,
-      input.owner_id ?? null,
-      input.parent_id ?? null,
-      input.page_name ?? null,
-      input.refs_json ?? "[]",
-      input.tags_json ?? "[]",
-      input.task_status ?? null,
-      input.confidence ?? null,
-      input.metadata_json ?? null
-    ]
-  );
+  const tplId = input.template ? await ensureKindTemplate(db, input.template) : null;
+  await insertEntryRow(db, {
+    id,
+    content: input.content ?? null,
+    owner_id: input.owner_id ?? null,
+    parent_id: input.parent_id ?? null,
+    page_name: input.page_name ?? null,
+    refs_json: input.refs_json ?? "[]",
+    tags_json: input.tags_json ?? "[]",
+    task_status: input.task_status ?? null,
+    confidence: input.confidence ?? null,
+    metadata_json: input.metadata_json ?? null
+  });
+  if (tplId) await insertBelongs(db, id, tplId, input.owner_id ?? null);
   const row = await getEntry(db, id);
   if (!row) throw new Error("createEntry: insert succeeded but row not found");
   await noteEntriesChanged(db, [{ before: null, after: row }]);
@@ -1220,7 +1370,8 @@ async function createEntry(db, input) {
 }
 async function getEntry(db, id) {
   const row = await db.first("SELECT * FROM entries WHERE id = ?", [id]);
-  return row ?? null;
+  if (!row) return null;
+  return (await withTemplates(db, [row]))[0];
 }
 function eqTerm(column, exactKeyPresent) {
   return exactKeyPresent ? `+${column} = ?` : `${column} = ?`;
@@ -1230,14 +1381,26 @@ async function listEntries(db, f = {}) {
   const params = [];
   const exactKey = Boolean(f.page_name || f.source);
   const exact = exactKey || Boolean(f.parent_id);
-  if (f.entry_type) {
-    conds.push(eqTerm("entry_type", exact));
-    params.push(f.entry_type);
+  let tplId;
+  if (f.template) {
+    tplId = await templateIdByName(db, f.template);
+    if (!tplId) return { entries: [], total: 0 };
+  }
+  const driveByRelation = Boolean(tplId) && !exact;
+  let fromSql = "entries";
+  const fromParams = [];
+  if (tplId && driveByRelation) {
+    const m = membersOf(tplId, f.owner_id);
+    fromSql = m.from;
+    fromParams.push(...m.params);
+  } else if (tplId) {
+    conds.push(belongsToSql());
+    params.push(tplId);
   } else {
-    conds.push(NOT_MACHINERY_PREDICATE);
+    conds.push(notStructureSql());
   }
   if (f.owner_id) {
-    conds.push(eqTerm("owner_id", exact));
+    conds.push(driveByRelation ? "owner_id = ?" : eqTerm("owner_id", exact));
     params.push(f.owner_id);
   }
   if (f.parent_id) {
@@ -1274,16 +1437,17 @@ async function listEntries(db, f = {}) {
     params.push(...m.params);
   }
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const orderBy = driveByRelation ? "ORDER BY m.k_created DESC, m.k_rowid DESC" : "ORDER BY created_at DESC, rowid DESC";
   const limit = Math.min(f.limit ?? 100, 1e3);
   const offset = f.offset ?? 0;
   const pageSizeKnown = Number.isFinite(limit) && limit > 0;
-  const rowsRes = await db.all(`SELECT ${f.view === "identity" ? IDENTITY_COLUMNS : "*"} FROM entries ${where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
-  const entries = rowsRes.results ?? [];
+  const rowsRes = await db.all(`SELECT ${f.view === "identity" ? IDENTITY_COLUMNS : "entries.*"} FROM ${fromSql} ${where} ${orderBy} LIMIT ? OFFSET ?`, [...fromParams, ...params, limit, offset]);
+  const entries = await withTemplates(db, rowsRes.results ?? []);
   let total;
   if (pageSizeKnown && entries.length > 0 && entries.length < limit) total = offset + entries.length;
   else if (pageSizeKnown && entries.length === 0 && offset === 0) total = 0;
   else {
-    const countRow = await db.first(`SELECT COUNT(*) as total FROM entries ${where}`, [...params]);
+    const countRow = await db.first(`SELECT COUNT(*) as total FROM ${fromSql} ${where}`, [...fromParams, ...params]);
     total = countRow?.total ?? 0;
   }
   return { entries, total };
@@ -1300,13 +1464,13 @@ async function blocksOfPages(db, pages, perPageLimit = 8) {
   const rows = await db.all(
     `SELECT * FROM entries
         WHERE (${pairs.join(" OR ")})
-          AND ${NOT_MACHINERY_PREDICATE}
+          AND ${notStructureSql()}
           AND ${NOT_DEPRECATED_PREDICATE}
         ORDER BY created_at ASC, rowid ASC
         LIMIT ?`,
     [...params, pages.length * perPageLimit]
   );
-  return rows.results ?? [];
+  return await withTemplates(db, rows.results ?? []);
 }
 async function updateEntry(db, id, patch) {
   const cols = [];
@@ -1339,13 +1503,12 @@ async function upsertEntry(db, id, input) {
   if (!existing) return createEntry(db, { ...input, id });
   await db.run(
     `UPDATE entries
-          SET content = ?, entry_type = ?, owner_id = ?, parent_id = ?, page_name = ?,
+          SET content = ?, owner_id = ?, parent_id = ?, page_name = ?,
               refs_json = ?, tags_json = ?, task_status = ?, confidence = ?, metadata_json = ?,
               updated_at = unixepoch()
         WHERE id = ?`,
     [
       input.content ?? null,
-      input.entry_type,
       input.owner_id ?? null,
       input.parent_id ?? null,
       input.page_name ?? null,
@@ -1357,6 +1520,11 @@ async function upsertEntry(db, id, input) {
       id
     ]
   );
+  if (input.template) {
+    const tplId = await ensureKindTemplate(db, input.template);
+    await db.run(`DELETE FROM entries WHERE src_id = ?1 AND rel_id = '${SYS_BELONGS}' AND dst_id <> ?2 AND dst_id <> 'sys_root'`, [id, tplId]);
+    await insertBelongs(db, id, tplId, input.owner_id ?? null);
+  }
   const row = await getEntry(db, id);
   if (!row) throw new Error("upsertEntry: update succeeded but row not found");
   await noteEntriesChanged(db, [{ before: existing, after: row }]);
@@ -1383,6 +1551,7 @@ async function deprecateEntriesByLibrary(db, ownerId, library) {
          SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
              updated_at = unixepoch()
        WHERE owner_id = ?
+         AND src_id IS NULL
          AND ${ENTRY_LIBRARY} = ?
          AND ${NOT_LIBRARY_MAP_ROW}
          AND (json_extract(metadata_json, '$.status') IS NULL
@@ -1599,7 +1768,12 @@ function isDeprecatedEntry(entry) {
     return false;
   }
 }
-async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, source, includeDeprecated = false, nowMs = Date.now()) {
+async function searchEntries(db, q, owner_id, template, limit = 50, library, source, includeDeprecated = false, nowMs = Date.now()) {
+  let tplId;
+  if (template) {
+    tplId = await templateIdByName(db, template);
+    if (!tplId) return [];
+  }
   const plan = buildSearchScore(q);
   const buildConds = (demoteOwnerIndex) => {
     const conds = [];
@@ -1608,11 +1782,11 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
       conds.push(demoteOwnerIndex ? "+owner_id = ?" : "owner_id = ?");
       params.push(owner_id);
     }
-    if (entry_type) {
-      conds.push("entry_type = ?");
-      params.push(entry_type);
+    if (tplId) {
+      conds.push(belongsToSql());
+      params.push(tplId);
     } else {
-      conds.push(NOT_MACHINERY_PREDICATE);
+      conds.push(notStructureSql());
     }
     if (source) {
       conds.push("json_extract(metadata_json, '$.source') = ?");
@@ -1644,7 +1818,7 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
   const ftsMatch = buildFtsCandidateMatch(q);
   if (!ftsMatch) {
     const res = await stmt("", []).all();
-    return applyRelativeCut(res.results ?? []);
+    return withTemplates(db, applyRelativeCut(res.results ?? []));
   }
   const { cutoffRowid, backfillCursor } = await readFtsMigrationState(db);
   const layers = buildFtsCandidateLayers(q);
@@ -1669,16 +1843,17 @@ async function searchEntries(db, q, owner_id, entry_type, limit = 50, library, s
     }
     hits.sort((a, b) => b.match_score - a.match_score || (b.updated_at ?? 0) - (a.updated_at ?? 0));
   }
-  return applyRelativeCut(hits.slice(0, capped));
+  return withTemplates(db, applyRelativeCut(hits.slice(0, capped)));
 }
-var NOT_MACHINERY_PREDICATE, IDENTITY_COLUMNS, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
+var IDENTITY_COLUMNS, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
 var init_entry_crud = __esm({
   "kbdb/src/actions/entry-crud.ts"() {
     "use strict";
     init_library_predicate();
     init_library_map_store();
-    NOT_MACHINERY_PREDICATE = "(src_id IS NULL AND entry_type <> 'record' AND entry_type <> 'sheet' AND entry_type <> 'field' AND entry_type <> 'system')";
-    IDENTITY_COLUMNS = "id, entry_type, owner_id, page_name, created_at, updated_at, json_object('source_path', json_extract(metadata_json, '$.source_path'), 'source', json_extract(metadata_json, '$.source'), 'machine', json_extract(metadata_json, '$.machine'), 'card_hash', json_extract(metadata_json, '$.card_hash'), 'card_blocks', json_extract(metadata_json, '$.card_blocks'), 'library', json_extract(metadata_json, '$.library'), 'card_rels', json_extract(metadata_json, '$.card_rels')) AS metadata_json";
+    init_kind();
+    init_record_crud();
+    IDENTITY_COLUMNS = "id, owner_id, page_name, created_at, updated_at, json_object('source_path', json_extract(metadata_json, '$.source_path'), 'source', json_extract(metadata_json, '$.source'), 'machine', json_extract(metadata_json, '$.machine'), 'card_hash', json_extract(metadata_json, '$.card_hash'), 'card_blocks', json_extract(metadata_json, '$.card_blocks'), 'library', json_extract(metadata_json, '$.library'), 'card_rels', json_extract(metadata_json, '$.card_rels')) AS metadata_json";
     MAX_LIKE_Q_BYTES = 48;
     MAX_LIKE_TERMS = 6;
     utf8Len = (s) => new TextEncoder().encode(s).length;
@@ -1782,6 +1957,41 @@ async function scanRelationOrphans(db, limit = 200) {
 var init_relation_orphans = __esm({
   "kbdb/src/actions/relation-orphans.ts"() {
     "use strict";
+  }
+});
+
+// kbdb/src/actions/kind-orphans.ts
+var kind_orphans_exports = {};
+__export(kind_orphans_exports, {
+  scanKindOrphans: () => scanKindOrphans
+});
+async function scanKindOrphans(db, opts = {}) {
+  const cap = Math.min(Math.max(opts.limit ?? 200, 1), 1e3);
+  const params = [];
+  let owner = "";
+  if (opts.owner_id) {
+    owner = "AND owner_id = ?";
+    params.push(opts.owner_id);
+  }
+  const res = await db.all(
+    `SELECT id, owner_id, page_name, created_at FROM entries
+        WHERE ${notStructureSql()}
+          ${owner}
+          AND NOT EXISTS (SELECT 1 FROM entries b WHERE b.src_id = entries.id AND b.rel_id = '${SYS_BELONGS}')
+          AND NOT EXISTS (SELECT 1 FROM entries d WHERE d.dst_id = entries.id)
+        ORDER BY created_at DESC
+        LIMIT ?`,
+    [...params, cap + 1]
+  );
+  const rows = res.results ?? [];
+  const truncated = rows.length > cap;
+  const orphans = truncated ? rows.slice(0, cap) : rows;
+  return { orphans, count: orphans.length, truncated };
+}
+var init_kind_orphans = __esm({
+  "kbdb/src/actions/kind-orphans.ts"() {
+    "use strict";
+    init_kind();
   }
 });
 
@@ -3859,6 +4069,7 @@ var Hono2 = class extends Hono {
 };
 
 // kbdb/src/routes/entries.ts
+init_kind();
 init_entry_crud();
 
 // kbdb/src/search-rank.ts
@@ -3925,6 +4136,7 @@ init_library_predicate();
 
 // kbdb/src/actions/library-index.ts
 init_library_predicate();
+init_kind();
 var DEFAULT_CARD_LIMIT = 200;
 var MAX_CARD_LIMIT = 500;
 var GLOSS_HEADINGS = ["## \u6458\u8981", "## \u4E00\u53E5\u8A71\u5B9A\u7FA9"];
@@ -3943,8 +4155,10 @@ async function listLibraryCards(db, f) {
   const limit = Math.min(Math.max(f.limit ?? DEFAULT_CARD_LIMIT, 1), MAX_CARD_LIMIT);
   const glossLike = GLOSS_HEADINGS.map(() => "content LIKE ?").join(" OR ");
   const glossParams = GLOSS_HEADINGS.map((h) => `${h}%`);
-  const where = `WHERE entry_type = 'block'
-       AND page_name IS NOT NULL AND page_name != ''
+  const blockTpl = await templateIdByName(db, "block");
+  if (!blockTpl) return { library, cards: [], total: 0, has_index_card: false };
+  const members = membersOf(blockTpl, f.owner_id);
+  const where = `WHERE page_name IS NOT NULL AND page_name != ''
        AND COALESCE(json_extract(metadata_json, '$.kind'), '') != 'library_map'
        AND (? = '' OR owner_id = ?)
        AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
@@ -3958,19 +4172,19 @@ async function listLibraryCards(db, f) {
            MAX(CASE WHEN ${glossLike} THEN content END) AS gloss_block,
            MAX(json_extract(metadata_json, '$.source_path')) AS source_path,
            MAX(updated_at) AS updated_at
-         FROM entries
+         FROM ${members.from}
          ${where}
          GROUP BY page_name
          ORDER BY MAX(updated_at) DESC, page_name ASC
          LIMIT ?`,
-      [...glossParams, ...whereParams, limit]
+      [...glossParams, ...members.params, ...whereParams, limit]
     ),
-    db.first(`SELECT COUNT(DISTINCT page_name) AS total FROM entries ${where}`, [...whereParams]),
+    db.first(`SELECT COUNT(DISTINCT page_name) AS total FROM ${members.from} ${where}`, [...members.params, ...whereParams]),
     // 🔴 目錄卡在不在，**不能靠掃上面那一頁**——它照 updated_at 排序，
     //    目錄卡很可能不在前 limit 名內 ⇒ 那樣會回報「沒有目錄」而其實有，
     //    而這個欄位正是呼叫端用來決定「要不要退回導出清單」的開關。
     //    它只有一張、名字固定，所以用卡名直接問一次（EXISTS，成本可忽略）。
-    db.first(`SELECT 1 AS hit FROM entries ${where} AND page_name = ? LIMIT 1`, [...whereParams, INDEX_CARD_NAME])
+    db.first(`SELECT 1 AS hit FROM ${members.from} ${where} AND page_name = ? LIMIT 1`, [...members.params, ...whereParams, INDEX_CARD_NAME])
   ]);
   const cards = (rowsRes.results ?? []).map((r) => ({
     page_name: r.page_name,
@@ -4095,7 +4309,7 @@ async function addMaintenanceUsage(db, by) {
     }
     await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay(), writes: prev + by }), id]);
   } else {
-    await db.run(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'kbdb_maintenance_usage', ?)`, [id, JSON.stringify({ day: utcDay(), writes: by })]);
+    await createEntry(db, { id, template: "kbdb_maintenance_usage", metadata_json: JSON.stringify({ day: utcDay(), writes: by }) });
   }
 }
 async function maintenanceBudgetToday(env, db) {
@@ -4156,7 +4370,7 @@ async function addEntryWriteUsage(db, by) {
     }
     await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay(), writes: prev + by }), id]);
   } else {
-    await db.run(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'kbdb_entry_write_usage', ?)`, [id, JSON.stringify({ day: utcDay(), writes: by })]);
+    await createEntry(db, { id, template: "kbdb_entry_write_usage", metadata_json: JSON.stringify({ day: utcDay(), writes: by }) });
   }
 }
 async function entryWriteBudgetToday(env, db) {
@@ -4226,6 +4440,8 @@ function withWriteTally(db, tally) {
 }
 
 // kbdb/src/embed.ts
+init_entry_crud();
+init_kind();
 init_library_predicate();
 
 // kbdb/src/storage/d1.ts
@@ -4279,6 +4495,22 @@ function dbOf(env) {
   }
   return p;
 }
+function execLogDbOf(env) {
+  if (env.__kbdbExecLogDb) return env.__kbdbExecLogDb;
+  if (!env.EXEC_LOG_DB) {
+    throw new Error(
+      "\u6C92\u6709 EXEC_LOG_DB \u7D81\u5B9A\uFF1A\u57F7\u884C\u7D00\u9304\u4F4F\u5728\u5C08\u5C6C\u7684\u5EAB\uFF08inkstone/Arcrun#222\uFF09\uFF0C\u8ACB\u5728 wrangler.toml \u7D81\u5B9A EXEC_LOG_DB\uFF08acr update\uFF0F\u5B89\u88DD\u5668\u6703\u81EA\u52D5\u5EFA\u7ACB\uFF09\uFF0CNode \u4E3B\u6A5F\u6A21\u5F0F\u8ACB\u8B93 host \u639B\u4E0A __kbdbExecLogDb\u3002"
+    );
+  }
+  const key = env.EXEC_LOG_DB;
+  if (typeof key !== "object" || key === null) return d1Port(env.EXEC_LOG_DB);
+  let p = cache.get(key);
+  if (!p) {
+    p = d1Port(env.EXEC_LOG_DB);
+    cache.set(key, p);
+  }
+  return p;
+}
 
 // kbdb/src/actions/graph-query.ts
 init_record_crud();
@@ -4294,7 +4526,7 @@ function chunkForD1(items, fixedParams) {
 }
 async function recordIdsByFieldValue(db, tplId, fields, value, owner_id) {
   if (!value || fields.length === 0) return [];
-  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND entry_type = 'value' AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ? AND entry_type = 'value'`;
+  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ?`;
   const valueParams = owner_id ? [value, owner_id] : [value];
   const valueRows = await db.all(valueSql, [...valueParams]);
   const valueIds = (valueRows.results ?? []).map((r) => r.id);
@@ -4434,9 +4666,9 @@ async function newestRecordIdsByFieldValue(db, tplId, fields, value, owner_id, n
   const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
   const relPh = fieldIds.map(() => "?").join(",");
   const valueSql = owner_id ? `SELECT rowid AS rid, id FROM entries
-       WHERE content = ? AND entry_type = 'value' AND (owner_id = ? OR owner_id IS NULL) AND rowid < ?
+       WHERE content = ? AND (owner_id = ? OR owner_id IS NULL) AND rowid < ?
        ORDER BY rowid DESC LIMIT ?` : `SELECT rowid AS rid, id FROM entries
-       WHERE content = ? AND entry_type = 'value' AND rowid < ?
+       WHERE content = ? AND rowid < ?
        ORDER BY rowid DESC LIMIT ?`;
   const relSql = (n2) => {
     const dstPh = Array.from({ length: n2 }, () => "?").join(",");
@@ -4609,6 +4841,7 @@ async function embedText(env, text) {
 }
 async function embedOnWrite(env, entry) {
   if (!embedEnabled(env)) return false;
+  if (!entry.templates) entry = (await withTemplates(dbOf(env), [entry]))[0];
   if (!isEmbeddable(entry)) return false;
   const vec = await embedText(env, await vectorTextOf(dbOf(env), entry));
   if (!vec) return false;
@@ -4616,13 +4849,13 @@ async function embedOnWrite(env, entry) {
     {
       id: entry.id,
       values: vec,
-      // metadata 走 indexed 範圍：owner_id（租戶隔離）、entry_type、source（#5.1 過濾與語義共用）、
-      // library（portal-auth P1「庫」filter）。library 在寫入端正規化：未標記＝'general'（design §3.2
+      // metadata 走 indexed 範圍：owner_id（租戶隔離）、source（#5.1 過濾與語義共用）、
+      // library（portal-auth P1「庫」filter）。種類（template）不進向量 metadata：種類住在歸屬關係裡，
+      // 語意搜尋要按種類篩時，等 hydrate 回 entry 之後用同一條關係判斷（#301，見 routes/entries.ts）。library 在寫入端正規化：未標記＝'general'（design §3.2
       // 「未蓋章的舊資料視同 general」——D1 側用查詢端 COALESCE fallback，Vectorize filter 做不了
       // COALESCE，故在 upsert 時蓋 'general'，查詢端單純 $in 即可）。
       metadata: {
         owner_id: entry.owner_id ?? "",
-        entry_type: entry.entry_type,
         source: readSource(entry) ?? "",
         library: readLibrary(entry) ?? "general"
       }
@@ -4633,18 +4866,19 @@ async function embedOnWrite(env, entry) {
 }
 var VECTOR_ENTRY_TYPES = ["entity", "predicate", "alias"];
 var VECTOR_ENTRY_TYPES_SQL = `(${VECTOR_ENTRY_TYPES.map((t) => `'${t}'`).join(",")})`;
-var ENTRY_TYPE_GATE = `+entry_type IN ${VECTOR_ENTRY_TYPES_SQL}`;
-function isVectorEntryType(entryType) {
-  return VECTOR_ENTRY_TYPES.includes(entryType);
+var IN_VECTOR_SCOPE_SQL = `EXISTS (SELECT 1 FROM entries vb WHERE vb.src_id = entries.id AND vb.rel_id = '${SYS_BELONGS}' AND vb.dst_id IN (SELECT id FROM templates WHERE name IN ${VECTOR_ENTRY_TYPES_SQL}))`;
+var ENTRY_TYPE_GATE = IN_VECTOR_SCOPE_SQL;
+function inVectorScope(entry) {
+  return (entry.templates ?? []).some((t) => VECTOR_ENTRY_TYPES.includes(t));
 }
 function isEmbeddable(entry) {
-  if (!isVectorEntryType(entry.entry_type)) return false;
+  if (!inVectorScope(entry)) return false;
   const meta = parseMeta2(entry.metadata_json);
   return meta?.embed === true;
 }
 async function vectorTextOf(db, entry) {
   const name = (entry.content ?? "").trim();
-  if (entry.entry_type !== "entity" || !name) return name;
+  if (!(entry.templates ?? []).includes("entity") || !name) return name;
   try {
     const hit = await recordsByFieldValuePage(db, "triplet", "subject", canonicalEntity(name), entry.owner_id ?? void 0, 50, 0);
     const desc = hit?.records.filter((r) => r.values.predicate === "description").map((r) => (r.values.object ?? "").trim()).find((o) => o !== "");
@@ -4709,7 +4943,7 @@ async function addBackfillUsage(db, by) {
     }
     await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay2(), embedded: prev + by }), id]);
   } else {
-    await db.run(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'embed_backfill_usage', ?)`, [id, JSON.stringify({ day: utcDay2(), embedded: by })]);
+    await createEntry(db, { id, template: "embed_backfill_usage", metadata_json: JSON.stringify({ day: utcDay2(), embedded: by }) });
   }
 }
 function selectionCriteriaPredicate(opts) {
@@ -4758,11 +4992,12 @@ async function backfillEmbeddings(env, opts = {}) {
   const params = [...sel.params];
   const where = conds.join(" AND ");
   const allOwners = !opts.owner_id && !opts.reindex;
-  const rows = allOwners ? mergeNewestFirst(
+  const rawRows = allOwners ? mergeNewestFirst(
     await Promise.all(OWNER_SEGMENTS.map((seg) => dbOf(env).all(`SELECT * FROM entries WHERE ${seg} AND ${where} ORDER BY created_at DESC LIMIT ?`, [...params, limit + offset]))),
     offset,
     limit
   ) : (await dbOf(env).all(`SELECT * FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset])).results ?? [];
+  const rows = await withTemplates(dbOf(env), rawRows);
   const scanned = rows.length;
   const dailyCap = backfillDailyLimit(env);
   let usedToday = 0;
@@ -4786,7 +5021,6 @@ async function backfillEmbeddings(env, opts = {}) {
       values: x.vec,
       metadata: {
         owner_id: x.e.owner_id ?? "",
-        entry_type: x.e.entry_type,
         source: readSource(x.e) ?? "",
         library: readLibrary(x.e) ?? "general"
         // 同 embedOnWrite：寫入端正規化（P1）
@@ -4924,7 +5158,7 @@ var SYNC_PROBE = 5;
 var SYNC_DEFAULT_LIMIT = 100;
 var SYNC_MAX_LIMIT = 200;
 var SYNC_ROW_WRITES = 2;
-var VECTOR_ENTRY_TYPES_IN = `entry_type IN ${VECTOR_ENTRY_TYPES_SQL}`;
+var VECTOR_ENTRY_TYPES_IN = IN_VECTOR_SCOPE_SQL;
 async function syncVectorIndex(env, opts = {}) {
   const off = { enabled: false, healthy: false, sweeping: false, checked: 0, reset_to_pending: 0, re_embedded: 0, more: false, quota_exceeded: false };
   const store = vectorsOf(env);
@@ -4982,7 +5216,8 @@ async function syncVectorIndex(env, opts = {}) {
   if (sweepDone) {
     await db.run("DELETE FROM entries WHERE id = ?", [SYNC_STATE_ID]);
   } else {
-    await db.run(`INSERT OR REPLACE INTO entries (id, entry_type, metadata_json) VALUES (?, 'system', ?)`, [SYNC_STATE_ID, JSON.stringify({ cursor: ids[ids.length - 1] })]);
+    await db.run("DELETE FROM entries WHERE id = ?", [SYNC_STATE_ID]);
+    await createEntry(db, { id: SYNC_STATE_ID, template: "embed_sync_state", metadata_json: JSON.stringify({ cursor: ids[ids.length - 1] }) });
   }
   const b = await backfillEmbeddings(env, { limit: 25 });
   return {
@@ -5067,7 +5302,6 @@ async function semanticSearch(env, q, opts = {}) {
   const filter = {};
   if (opts.owner_id) filter.owner_id = opts.owner_id;
   if (opts.source) filter.source = opts.source;
-  if (opts.entry_type) filter.entry_type = opts.entry_type;
   if (opts.library && opts.library.length > 0) filter.library = { $in: opts.library };
   const res = await vectorsOf(env).query(vec, {
     topK: Math.min(opts.topK ?? 20, 100),
@@ -5079,13 +5313,14 @@ async function semanticSearch(env, q, opts = {}) {
     id: m.id,
     score: m.score,
     owner_id: m.metadata?.owner_id,
-    entry_type: m.metadata?.entry_type,
     source: m.metadata?.source,
     library: m.metadata?.library
   }));
 }
 
 // kbdb/src/actions/credential-legacy-migration.ts
+init_entry_crud();
+init_record_crud();
 async function legacyCredentialsTableExists(db) {
   const row = await db.first(`SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'credentials'`);
   return row !== null;
@@ -5093,54 +5328,68 @@ async function legacyCredentialsTableExists(db) {
 async function migrateLegacyCredentialsForOwner(db, ownerId) {
   if (!ownerId) return 0;
   if (!await legacyCredentialsTableExists(db)) return 0;
-  const before = await db.first(`SELECT COUNT(*) AS n FROM entries WHERE entry_type = 'credential' AND owner_id = ?1`, [ownerId]);
-  await db.run(
-    `INSERT INTO entries (id, entry_type, owner_id, page_name, metadata_json, created_at, updated_at)
-       SELECT
-         'e_cred_' || lower(hex(randomblob(8))),
-         'credential',
-         c.api_key,
-         c.name,
-         json_object('service', c.service, 'sensitivity', c.sensitivity, 'secret_ref', c.secret_ref, 'last_used_at', c.last_used_at),
-         c.created_at,
-         unixepoch()
+  const tplId = await ensureKindTemplate(db, "credential");
+  const pending = await db.all(
+    `SELECT c.name, c.service, c.sensitivity, c.secret_ref, c.last_used_at, c.created_at
        FROM credentials c
-       WHERE c.api_key = ?1
-         AND NOT EXISTS (
-           SELECT 1 FROM entries e
-           WHERE e.entry_type = 'credential' AND e.owner_id = c.api_key AND e.page_name = c.name
-         )`,
-    [ownerId]
+      WHERE c.api_key = ?1
+        AND NOT EXISTS (
+          SELECT 1 FROM entries e
+           WHERE e.owner_id = c.api_key AND e.page_name = c.name
+             AND EXISTS (SELECT 1 FROM entries b WHERE b.src_id = e.id AND b.rel_id = 'sys_belongs' AND b.dst_id = ?2)
+        )`,
+    [ownerId, tplId]
   );
-  const after = await db.first(`SELECT COUNT(*) AS n FROM entries WHERE entry_type = 'credential' AND owner_id = ?1`, [ownerId]);
-  return (after?.n ?? 0) - (before?.n ?? 0);
+  let moved = 0;
+  for (const c of pending.results ?? []) {
+    const created = await createEntry(db, {
+      template: "credential",
+      owner_id: ownerId,
+      page_name: c.name,
+      metadata_json: JSON.stringify({ service: c.service, sensitivity: c.sensitivity, secret_ref: c.secret_ref, last_used_at: c.last_used_at })
+    });
+    if (c.created_at != null) {
+      await db.run(`UPDATE entries SET created_at = ?1 WHERE id = ?2 OR src_id = ?2`, [c.created_at, created.id]);
+    }
+    moved += 1;
+  }
+  return moved;
 }
 
 // kbdb/src/actions/library-backfill.ts
 init_library_predicate();
 init_library_map_store();
 init_record_crud();
+init_kind();
 
 // kbdb/src/actions/library-map.ts
 init_record_crud();
+init_kind();
 init_library_predicate();
 init_library_map_store();
 var DETAIL_TOP_ENTITIES = 10;
 async function deprecateStaleMapBlocks(db, library, keepId, owner_id) {
   const params = [library, keepId];
   if (owner_id) params.push(owner_id);
+  const kindIds = [];
+  for (const name of [LIBRARY_MAP_TEMPLATE_NAME, "block"]) {
+    const id = await templateIdByName(db, name);
+    if (id) kindIds.push(id);
+  }
+  if (kindIds.length === 0) return 0;
   const res = await db.run(
     `UPDATE entries
           SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
               updated_at = unixepoch()
-        WHERE entry_type = 'block'
+        WHERE id IN (SELECT src_id FROM entries WHERE rel_id = 'sys_belongs' AND dst_id IN (${kindIds.map(() => "?").join(",")})${owner_id ? " AND +owner_id = ?" : ""})
+          AND content IS NOT NULL
           AND json_extract(metadata_json, '$.kind') = 'library_map'
           AND json_extract(metadata_json, '$.library') = ?
           AND id != ?
           ${owner_id ? "AND owner_id = ?" : ""}
           AND (json_extract(metadata_json, '$.status') IS NULL
                OR json_extract(metadata_json, '$.status') != 'deprecated')`,
-    [...params]
+    [...kindIds, ...owner_id ? [owner_id] : [], ...params]
   );
   return res.meta?.changes ?? 0;
 }
@@ -5355,23 +5604,24 @@ async function rowsForLibraryMap(db, ids) {
   const out = /* @__PURE__ */ new Map();
   for (let i = 0; i < ids.length; i += 90) {
     const chunk = ids.slice(i, i + 90);
-    const res = await db.all(`SELECT id, owner_id, entry_type, src_id, metadata_json FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
-    for (const r of res.results ?? []) out.set(r.id, r);
+    const res = await db.all(`SELECT id, owner_id, content, src_id, metadata_json FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
+    const names = await templateNamesOf(db, (res.results ?? []).map((r) => r.id));
+    for (const r of res.results ?? []) out.set(r.id, { ...r, templates: names.get(r.id) ?? [] });
   }
   return out;
 }
 var MAX_PAGE_NAMES = 300;
 var HARD_LIMIT_CAP = 500;
 function criteriaPredicate(c) {
-  const conds = [ENTRY_UNLABELLED, NOT_LIBRARY_MAP_ROW];
+  const conds = ["src_id IS NULL", ENTRY_UNLABELLED, NOT_LIBRARY_MAP_ROW];
   const params = [];
   if (c.owner_id) {
     conds.push("owner_id = ?");
     params.push(c.owner_id);
   }
-  if (c.entry_type) {
-    conds.push("entry_type = ?");
-    params.push(c.entry_type);
+  if (c.template) {
+    conds.push(belongsToNamedSql());
+    params.push(c.template);
   }
   if (c.page_names && c.page_names.length > 0) {
     const names = c.page_names.slice(0, MAX_PAGE_NAMES);
@@ -5613,10 +5863,20 @@ function fireAndForget(c, p) {
   else void p.catch(() => {
   });
 }
+function retiredKindParam(source, isBody = false) {
+  const used = isBody ? !!source && typeof source === "object" && source[RETIRED_KIND_PARAM] !== void 0 : !!source && typeof source.query === "function" && source.query(RETIRED_KIND_PARAM) !== void 0;
+  if (!used) return null;
+  return new Response(JSON.stringify({
+    success: false,
+    error: `${RETIRED_KIND_PARAM} \u5DF2\u9000\u5834\uFF1A\u4E00\u7B46\u8CC7\u6599\u7684\u7A2E\u985E\u53EA\u7531\u5B83\u5C6C\u65BC\u54EA\u500B template \u6C7A\u5B9A\uFF0C\u8ACB\u628A ${RETIRED_KIND_PARAM} \u6539\u6210 template\uFF08\u503C\u7167\u820A\uFF0C\u4F8B\u5982 template=block\uFF09\u3002`
+  }), { status: 400, headers: { "Content-Type": "application/json" } });
+}
 var parseLibraryParam = parseLibraryList;
 entryRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body || !body.entry_type) return c.json({ success: false, error: "entry_type required" }, 400);
+  const retiredPost = retiredKindParam(body, true);
+  if (retiredPost) return retiredPost;
+  if (!body || typeof body.template !== "string" || !body.template.trim()) return c.json({ success: false, error: "template required\uFF08\u9019\u7B46\u8CC7\u6599\u5C6C\u65BC\u54EA\u500B template\uFF1B\u7A2E\u985E\u7531\u5B83\u6C7A\u5B9A\uFF09" }, 400);
   const budget = await entryWriteBudgetToday(c.env, dbOf(c.env));
   if (budget.remaining <= 0) {
     return c.json(writeBudgetExhaustedBody(budget), 429);
@@ -5631,21 +5891,21 @@ entryRoutes.post("/", async (c) => {
   }));
   return c.json({ success: true, entry });
 });
-function blockScopeOf(owner) {
-  return owner ? { sql: `owner_id = ?1 AND entry_type = 'block'`, params: [owner] } : { sql: `entry_type = 'block'`, params: [] };
+async function blockScopeOf(db, owner) {
+  const tplId = await templateIdByName(db, "block");
+  return tplId ? membersOf(tplId, owner || void 0) : null;
 }
 entryRoutes.get("/libraries", async (c) => {
-  const blockScope = blockScopeOf(c.req.query("owner_id") || "");
+  const blockScope = await blockScopeOf(dbOf(c.env), c.req.query("owner_id") || "");
+  if (!blockScope) return c.json({ success: true, libraries: [], count: 0 });
   const rows = await dbOf(c.env).all(
     `SELECT DISTINCT ${ENTRY_LIBRARY} AS library
-       FROM entries
-      WHERE ${blockScope.sql}
-        AND page_name IS NOT NULL
-        AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
-      ORDER BY library`,
+       FROM ${blockScope.from}
+      WHERE page_name IS NOT NULL
+        AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'`,
     blockScope.params
   );
-  const libraries = (rows.results ?? []).map((r) => r.library).filter(Boolean);
+  const libraries = (rows.results ?? []).map((r) => r.library).filter(Boolean).sort();
   return c.json({ success: true, libraries, count: libraries.length });
 });
 entryRoutes.get("/library-cards", async (c) => {
@@ -5662,31 +5922,31 @@ entryRoutes.get("/library-cards", async (c) => {
   return c.json({ success: true, ...result, count: result.cards.length });
 });
 entryRoutes.get("/library-stats", async (c) => {
-  const blockScope = blockScopeOf(c.req.query("owner_id") || "");
+  const blockScope = await blockScopeOf(dbOf(c.env), c.req.query("owner_id") || "");
+  if (!blockScope) return c.json({ success: true, stats: [] });
   const rows = await dbOf(c.env).all(
-    `SELECT
-       ${ENTRY_LIBRARY} AS library,
-       COUNT(DISTINCT page_name) AS card_count
-     FROM entries
-     WHERE ${blockScope.sql}
-       AND page_name IS NOT NULL
-       AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
-     GROUP BY library
-     ORDER BY library`,
+    `SELECT library, COUNT(*) AS card_count FROM (
+       SELECT DISTINCT ${ENTRY_LIBRARY} AS library, page_name
+         FROM ${blockScope.from}
+        WHERE page_name IS NOT NULL
+          AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
+     ) GROUP BY library`,
     blockScope.params
   );
-  const stats = (rows.results ?? []).map((r) => ({ library: r.library, card_count: r.card_count }));
+  const stats = (rows.results ?? []).map((r) => ({ library: r.library, card_count: r.card_count })).sort((a, b) => a.library < b.library ? -1 : a.library > b.library ? 1 : 0);
   return c.json({ success: true, stats });
 });
 entryRoutes.get("/", async (c) => {
-  const entryType = c.req.query("entry_type") || void 0;
+  const retiredList = retiredKindParam(c.req);
+  if (retiredList) return retiredList;
+  const template = c.req.query("template") || void 0;
   const ownerId = c.req.query("owner_id") || void 0;
-  if (entryType === "credential" && ownerId) {
+  if (template === "credential" && ownerId) {
     await migrateLegacyCredentialsForOwner(dbOf(c.env), ownerId).catch(() => {
     });
   }
   const { entries, total } = await listEntries(dbOf(c.env), {
-    entry_type: entryType,
+    template,
     owner_id: ownerId,
     parent_id: c.req.query("parent_id") || void 0,
     page_name: c.req.query("page_name") || void 0,
@@ -5707,11 +5967,13 @@ entryRoutes.get("/", async (c) => {
   return c.json({ success: true, entries, count: entries.length, total });
 });
 entryRoutes.get("/search", async (c) => {
+  const retiredSearch = retiredKindParam(c.req);
+  if (retiredSearch) return retiredSearch;
   const q = c.req.query("q");
   if (!q) return c.json({ success: false, error: "q required" }, 400);
   const owner_id = c.req.query("owner_id") || void 0;
   const source = c.req.query("source") || void 0;
-  const entry_type = c.req.query("entry_type") || void 0;
+  const template = c.req.query("template") || void 0;
   const library = parseLibraryParam(c.req.query("library"));
   const mode = c.req.query("mode") === "semantic" ? "semantic" : "keyword";
   const include_deprecated = c.req.query("include_deprecated") === "true";
@@ -5721,20 +5983,19 @@ entryRoutes.get("/search", async (c) => {
   const min_score = Number.isFinite(minScoreNum) && minScoreNum > 0 ? minScoreNum : void 0;
   if (mode === "semantic") {
     const requestedTopK = top_k ?? 20;
-    const fetchTopK = include_deprecated ? requestedTopK : Math.min(requestedTopK * 3, 100);
+    const fetchTopK = include_deprecated && !template ? requestedTopK : Math.min(requestedTopK * 3, 100);
     let hits;
     try {
       hits = await semanticSearch(c.env, q, {
         owner_id,
         source,
-        entry_type,
         library,
         topK: fetchTopK,
         min_score
       });
     } catch (e) {
       if (e instanceof EmbedQueryFailedError) {
-        const entries3 = await searchEntries(dbOf(c.env), q, owner_id, entry_type, void 0, library, source, include_deprecated);
+        const entries3 = await searchEntries(dbOf(c.env), q, owner_id, template, void 0, library, source, include_deprecated);
         return c.json({
           success: true,
           entries: entries3,
@@ -5749,7 +6010,7 @@ entryRoutes.get("/search", async (c) => {
       throw e;
     }
     if (hits === null) {
-      const entries3 = await searchEntries(dbOf(c.env), q, owner_id, entry_type, void 0, library, source, include_deprecated);
+      const entries3 = await searchEntries(dbOf(c.env), q, owner_id, template, void 0, library, source, include_deprecated);
       return c.json({
         success: true,
         entries: entries3,
@@ -5773,6 +6034,7 @@ entryRoutes.get("/search", async (c) => {
         return { ...e, score: h.score };
       })
     )).filter((e) => e !== null);
+    if (template) entries2 = entries2.filter((e) => e.templates.includes(template));
     if (!include_deprecated) {
       entries2 = entries2.filter((e) => {
         const dep = isDeprecatedEntry(e);
@@ -5856,7 +6118,7 @@ entryRoutes.get("/search", async (c) => {
     }
     return c.json({ success: true, entries: entries2, count: entries2.length, mode: "semantic" });
   }
-  const entries = await searchEntries(dbOf(c.env), q, owner_id, entry_type, void 0, library, source, include_deprecated);
+  const entries = await searchEntries(dbOf(c.env), q, owner_id, template, void 0, library, source, include_deprecated);
   const { cutoffRowid, backfillCursor } = await readFtsMigrationState(dbOf(c.env));
   const complete = isSearchCoverageComplete(q, backfillCursor, cutoffRowid);
   if (!complete) {
@@ -5904,7 +6166,7 @@ entryRoutes.post("/backfill-library", async (c) => {
     const result = await backfillEntryLibraryTags(dbOf(c.env), c.env, {
       library,
       owner_id: ownerId,
-      entry_type: body.entry_type || void 0,
+      template: body.template || void 0,
       page_names: Array.isArray(body.page_names) && body.page_names.length > 0 ? body.page_names : void 0,
       source_prefix: body.source_prefix || void 0,
       page_name_prefix: body.page_name_prefix || void 0,
@@ -5920,7 +6182,7 @@ entryRoutes.post("/backfill-library", async (c) => {
 entryRoutes.get("/backfill-library/status", async (c) => {
   const status = await libraryBackfillStatus(dbOf(c.env), {
     owner_id: c.req.query("owner_id") || void 0,
-    entry_type: c.req.query("entry_type") || void 0,
+    template: c.req.query("template") || void 0,
     source_prefix: c.req.query("source_prefix") || void 0,
     page_name_prefix: c.req.query("page_name_prefix") || void 0,
     since: c.req.query("since") ? Number(c.req.query("since")) : void 0,
@@ -5944,7 +6206,9 @@ entryRoutes.get("/fts-backfill/status", async (c) => {
 });
 entryRoutes.put("/:id", async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body || !body.entry_type) return c.json({ success: false, error: "entry_type required" }, 400);
+  const retiredPut = retiredKindParam(body, true);
+  if (retiredPut) return retiredPut;
+  if (!body || typeof body.template !== "string" || !body.template.trim()) return c.json({ success: false, error: "template required\uFF08\u9019\u7B46\u8CC7\u6599\u5C6C\u65BC\u54EA\u500B template\uFF1B\u7A2E\u985E\u7531\u5B83\u6C7A\u5B9A\uFF09" }, 400);
   const entry = await upsertEntry(dbOf(c.env), c.req.param("id"), body);
   if (embedEnabled(c.env)) c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
   }));
@@ -6828,6 +7092,7 @@ recordRoutes.delete("/:recordId", async (c) => {
 });
 
 // kbdb/src/actions/recipe-stat.ts
+init_entry_crud();
 function statId(canonicalId) {
   return `recipestat:${canonicalId}`;
 }
@@ -6853,7 +7118,7 @@ async function recordRecipeResult(db, canonicalId, ok, nowMs) {
       last_status: ok ? "success" : "failure",
       last_at: nowMs
     };
-    await db.run("INSERT INTO entries (id, content, entry_type, metadata_json) VALUES (?, ?, ?, ?)", [id, canonicalId, "recipe_stat", JSON.stringify(stat)]);
+    await createEntry(db, { id, content: canonicalId, template: "recipe_stat", metadata_json: JSON.stringify(stat) });
   }
   return stat;
 }
@@ -7152,6 +7417,7 @@ init_entry_crud();
 // kbdb/src/actions/card-lookup.ts
 init_entry_crud();
 init_library_predicate();
+init_kind();
 var MAX_CARDS = 5;
 var MAX_BLOCKS_PER_CARD = 60;
 var MAX_INDEX_CARDS = 12;
@@ -7283,14 +7549,14 @@ async function blocksOf(db, pageNames, owner, libraries, cardCount = pageNames.l
     `SELECT page_name, content, metadata_json, ${ENTRY_LIBRARY} AS lib
        FROM entries
       WHERE page_name IN (${ph}) AND page_name IS NOT NULL
-        AND entry_type = 'block'
+        AND ${belongsToNamedSql()}
         AND (? = '' OR +owner_id = ?)
         ${libFilter}
         AND ${NOT_DEPRECATED}
         AND ${NOT_MAP}
       ORDER BY created_at ASC, rowid ASC
       LIMIT ?`,
-    [...pageNames, owner, owner, ...libs, Math.max(1, cardCount) * MAX_BLOCKS_PER_CARD]
+    [...pageNames, "block", owner, owner, ...libs, Math.max(1, cardCount) * MAX_BLOCKS_PER_CARD]
   );
   const all = rows.results ?? [];
   return libraries ? all.filter((r) => libraries.has(libraryOfValue(r.lib))) : all;
@@ -7393,15 +7659,15 @@ async function matchCardNames(db, terms, owner, libSet) {
     for (const variant of [.../* @__PURE__ */ new Set([code, code.toUpperCase()])]) {
       const rows = await db.all(
         `SELECT page_name, lib FROM (
-           SELECT page_name, ${ENTRY_LIBRARY} AS lib, entry_type, owner_id, metadata_json
+           SELECT id AS eid, page_name, ${ENTRY_LIBRARY} AS lib, owner_id, metadata_json
              FROM entries
             WHERE page_name IS NOT NULL AND page_name >= ? AND page_name < ?
             LIMIT ?
          )
-         WHERE entry_type = 'block' AND (? = '' OR owner_id = ?) AND ${NOT_DEPRECATED} AND ${NOT_MAP}
+         WHERE ${belongsToNamedSql("eid")} AND (? = '' OR owner_id = ?) AND ${NOT_DEPRECATED} AND ${NOT_MAP}
          GROUP BY page_name, lib
          LIMIT 20`,
-        [variant, variant + "\uFFFF", NAME_SCAN_CAP, owner, owner]
+        [variant, variant + "\uFFFF", NAME_SCAN_CAP, "block", owner, owner]
       );
       for (const r of rows.results ?? []) {
         const library = libraryOfValue(r.lib);
@@ -7599,6 +7865,8 @@ retrieveRoutes.get("/", async (c) => {
 
 // kbdb/src/actions/execution-log.ts
 init_entry_crud();
+init_kind();
+init_record_crud();
 var SUCCESS_MESSAGE_MAX = 200;
 var FAILED_MESSAGE_MAX = 2e3;
 var TARGET_MAX = 300;
@@ -7616,33 +7884,29 @@ function truncate(s, max) {
   if (s.length <= max) return s;
   return s.slice(0, Math.max(0, max - 1)) + "\u2026";
 }
-async function checkUsage(db, limit) {
-  const id = `exlog-usage:${utcDay4()}`;
-  const existing = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [id]);
+function uid3() {
+  return `exlog_${crypto.randomUUID()}`;
+}
+async function checkUsage(execLogDb, limit) {
+  const day = utcDay4();
+  const existing = await execLogDb.first("SELECT writes FROM execution_log_usage WHERE day = ?", [day]);
   let count;
   if (existing) {
-    let prevWrites = 0;
-    try {
-      const prev = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
-      prevWrites = Number(prev.writes) || 0;
-    } catch {
-      prevWrites = 0;
-    }
-    count = prevWrites + 1;
-    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay4(), writes: count }), id]);
+    count = (existing.writes || 0) + 1;
+    await execLogDb.run("UPDATE execution_log_usage SET writes = ? WHERE day = ?", [count, day]);
   } else {
     count = 1;
-    await db.run(`INSERT INTO entries (id, entry_type, metadata_json) VALUES (?, 'execution_log_usage', ?)`, [id, JSON.stringify({ day: utcDay4(), writes: count })]);
+    await execLogDb.run("INSERT INTO execution_log_usage (day, writes) VALUES (?, ?)", [day, count]);
   }
   if (count > limit) return "skip";
   if (count > limit * DEGRADE_RATIO) return "log_failure_only";
   return "log";
 }
-async function recordExecutionLog(db, env, input) {
+async function recordExecutionLog(execLogDb, env, input) {
   const limit = dailyLimit(env);
   let mode;
   try {
-    mode = await checkUsage(db, limit);
+    mode = await checkUsage(execLogDb, limit);
   } catch {
     mode = "log";
   }
@@ -7650,89 +7914,141 @@ async function recordExecutionLog(db, env, input) {
   if (mode === "log_failure_only" && input.verdict !== "failed") return { written: false, mode };
   const maxLen = input.verdict === "failed" ? FAILED_MESSAGE_MAX : SUCCESS_MESSAGE_MAX;
   const target = input.target ? truncate(String(input.target), TARGET_MAX) : null;
-  await createEntry(db, {
-    entry_type: "execution_log",
-    owner_id: input.owner_id ?? null,
-    page_name: input.workflow_id,
-    // 索引欄位（idx_entries_page）＝查詢鍵，讀取端靠它篩單一 workflow
-    content: truncate(input.message ?? "", maxLen),
-    metadata_json: JSON.stringify({
-      verdict: input.verdict,
-      duration_ms: Math.max(0, Math.round(input.duration_ms)),
+  await execLogDb.run(
+    `INSERT INTO execution_log (id, workflow_id, owner_id, verdict, duration_ms, message, target, kbdb_rows_written, kbdb_rows_read, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())`,
+    [
+      uid3(),
+      input.workflow_id,
+      input.owner_id ?? null,
+      input.verdict,
+      Math.max(0, Math.round(input.duration_ms)),
+      truncate(input.message ?? "", maxLen),
       target,
-      // inkstone/InkStoneCo#147 ②：只在有帶的時候才存（undefined 就整格不出現，不假裝算過）。
-      ...typeof input.kbdb_rows_written === "number" ? { kbdb_rows_written: Math.max(0, Math.round(input.kbdb_rows_written)) } : {},
-      ...typeof input.kbdb_rows_read === "number" ? { kbdb_rows_read: Math.max(0, Math.round(input.kbdb_rows_read)) } : {}
-    })
-  });
+      // inkstone/InkStoneCo#147 ②：只在有帶的時候才存（NULL＝沒算過，不假裝是 0）。
+      typeof input.kbdb_rows_written === "number" ? Math.max(0, Math.round(input.kbdb_rows_written)) : null,
+      typeof input.kbdb_rows_read === "number" ? Math.max(0, Math.round(input.kbdb_rows_read)) : null
+    ]
+  );
   return { written: true, mode };
 }
-async function listExecutionLog(db, workflowId, ownerId, limit) {
-  const { entries } = await listEntries(db, {
-    entry_type: "execution_log",
-    page_name: workflowId,
-    owner_id: ownerId,
-    limit
-  });
-  return entries.map((e) => {
-    let meta = {};
-    try {
-      meta = e.metadata_json ? JSON.parse(e.metadata_json) : {};
-    } catch {
-    }
-    return {
-      workflow_id: workflowId,
-      verdict: meta.verdict ?? "unknown",
-      duration_ms: meta.duration_ms ?? 0,
-      message: e.content ?? "",
-      ...meta.target ? { target: meta.target } : {},
-      // inkstone/InkStoneCo#147 ②：舊資料沒有這兩格，維持不出現（不假裝有算過）。
-      ...typeof meta.kbdb_rows_written === "number" ? { kbdb_rows_written: meta.kbdb_rows_written } : {},
-      ...typeof meta.kbdb_rows_read === "number" ? { kbdb_rows_read: meta.kbdb_rows_read } : {},
-      recorded_at: e.created_at
-    };
-  });
+function fromExecLogRow(workflowId, r) {
+  return {
+    workflow_id: workflowId,
+    verdict: r.verdict,
+    duration_ms: r.duration_ms,
+    message: r.message ?? "",
+    ...r.target ? { target: r.target } : {},
+    ...typeof r.kbdb_rows_written === "number" ? { kbdb_rows_written: r.kbdb_rows_written } : {},
+    ...typeof r.kbdb_rows_read === "number" ? { kbdb_rows_read: r.kbdb_rows_read } : {},
+    recorded_at: r.created_at
+  };
 }
-async function latestExecutionLog(db, workflowId, ownerId) {
-  const rows = await listExecutionLog(db, workflowId, ownerId, 1);
+function fromLegacyRow(workflowId, r) {
+  let meta = {};
+  try {
+    meta = r.metadata_json ? JSON.parse(r.metadata_json) : {};
+  } catch {
+  }
+  return {
+    workflow_id: workflowId,
+    verdict: meta.verdict ?? "unknown",
+    duration_ms: meta.duration_ms ?? 0,
+    message: r.content ?? "",
+    ...meta.target ? { target: meta.target } : {},
+    ...typeof meta.kbdb_rows_written === "number" ? { kbdb_rows_written: meta.kbdb_rows_written } : {},
+    ...typeof meta.kbdb_rows_read === "number" ? { kbdb_rows_read: meta.kbdb_rows_read } : {},
+    recorded_at: r.created_at
+  };
+}
+async function listExecutionLog(execLogDb, legacyDb, workflowId, ownerId, limit) {
+  const newSql = ownerId ? `SELECT verdict, duration_ms, message, target, kbdb_rows_written, kbdb_rows_read, created_at FROM execution_log
+       WHERE workflow_id = ? AND owner_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?` : `SELECT verdict, duration_ms, message, target, kbdb_rows_written, kbdb_rows_read, created_at FROM execution_log
+       WHERE workflow_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`;
+  const newBinds = ownerId ? [workflowId, ownerId, limit] : [workflowId, limit];
+  const newRes = await execLogDb.all(newSql, newBinds);
+  const rows = (newRes.results ?? []).map((r) => fromExecLogRow(workflowId, r));
+  if (rows.length >= limit) return rows;
+  const remaining = limit - rows.length;
+  let legacyRows = [];
+  try {
+    const { entries } = await listEntries(legacyDb, {
+      template: "execution_log",
+      page_name: workflowId,
+      owner_id: ownerId,
+      limit: remaining
+    });
+    legacyRows = entries.map((e) => ({ content: e.content ?? null, metadata_json: e.metadata_json ?? null, created_at: e.created_at }));
+  } catch {
+    legacyRows = [];
+  }
+  return [...rows, ...legacyRows.map((r) => fromLegacyRow(workflowId, r))];
+}
+async function latestExecutionLog(execLogDb, legacyDb, workflowId, ownerId) {
+  const rows = await listExecutionLog(execLogDb, legacyDb, workflowId, ownerId, 1);
   return rows[0] ?? null;
 }
 var DEFAULT_RETENTION_DAYS = 90;
 var CLEANUP_BATCH_LIMIT = 500;
-function retentionConfigId(ownerId) {
+function legacyRetentionConfigId(ownerId) {
   return `exlog-retention:${ownerId}`;
 }
-async function getRetentionDays(db, ownerId) {
+async function getRetentionDays(execLogDb, legacyDb, ownerId) {
   if (!ownerId) return DEFAULT_RETENTION_DAYS;
-  const row = await db.first(`SELECT metadata_json FROM entries WHERE id = ?`, [retentionConfigId(ownerId)]);
-  if (!row) return DEFAULT_RETENTION_DAYS;
+  const row = await execLogDb.first("SELECT retention_days FROM execution_log_retention_config WHERE owner_id = ?", [ownerId]);
+  if (row) return row.retention_days;
+  let legacyRow = null;
   try {
-    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
-    if (parsed.retention_days === null) return null;
-    const n2 = Number(parsed.retention_days);
-    return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_RETENTION_DAYS;
+    legacyRow = await legacyDb.first("SELECT metadata_json FROM entries WHERE id = ?", [legacyRetentionConfigId(ownerId)]);
   } catch {
-    return DEFAULT_RETENTION_DAYS;
+    legacyRow = null;
   }
-}
-async function setRetentionDays(db, ownerId, days) {
-  const id = retentionConfigId(ownerId);
-  const metadata = JSON.stringify({ retention_days: days, updated_at: Math.floor(Date.now() / 1e3) });
-  const existing = await db.first(`SELECT id FROM entries WHERE id = ?`, [id]);
-  if (existing) {
-    await db.run(`UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?`, [metadata, id]);
-  } else {
-    await db.run(`INSERT INTO entries (id, entry_type, owner_id, metadata_json) VALUES (?, 'execution_log_retention_config', ?, ?)`, [id, ownerId, metadata]);
+  if (!legacyRow) return DEFAULT_RETENTION_DAYS;
+  let days = DEFAULT_RETENTION_DAYS;
+  try {
+    const parsed = legacyRow.metadata_json ? JSON.parse(legacyRow.metadata_json) : {};
+    if (parsed.retention_days === null) {
+      days = null;
+    } else {
+      const n2 = Number(parsed.retention_days);
+      days = Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_RETENTION_DAYS;
+    }
+  } catch {
+    days = DEFAULT_RETENTION_DAYS;
   }
+  try {
+    await execLogDb.run(`INSERT INTO execution_log_retention_config (owner_id, retention_days, updated_at)
+         VALUES (?, ?, unixepoch())
+         ON CONFLICT(owner_id) DO NOTHING`, [ownerId, days]);
+  } catch {
+  }
+  return days;
 }
-async function cleanupExpiredLogs(db) {
-  const nowSec = Math.floor(Date.now() / 1e3);
-  const overridesRes = await db.all(`SELECT owner_id, metadata_json FROM entries WHERE entry_type = 'execution_log_retention_config'`);
-  const overrides = overridesRes.results ?? [];
-  const neverDeleteOwners = [];
-  const customOwners = [];
-  for (const row of overrides) {
-    if (!row.owner_id) continue;
+async function setRetentionDays(execLogDb, ownerId, days) {
+  await execLogDb.run(`INSERT INTO execution_log_retention_config (owner_id, retention_days, updated_at)
+       VALUES (?, ?, unixepoch())
+       ON CONFLICT(owner_id) DO UPDATE SET retention_days = excluded.retention_days, updated_at = excluded.updated_at`, [ownerId, days]);
+}
+async function collectRetentionOverrides(execLogDb, legacyDb) {
+  const neverDelete = /* @__PURE__ */ new Set();
+  const custom = /* @__PURE__ */ new Map();
+  const newRes = await execLogDb.all("SELECT owner_id, retention_days FROM execution_log_retention_config");
+  for (const row of newRes.results ?? []) {
+    if (row.retention_days === null) neverDelete.add(row.owner_id);
+    else if (Number.isFinite(row.retention_days) && row.retention_days > 0) custom.set(row.owner_id, row.retention_days);
+  }
+  let legacyRes = {};
+  try {
+    const cfgTpl = await templateIdByName(legacyDb, "execution_log_retention_config");
+    if (cfgTpl) {
+      const m = membersOf(cfgTpl);
+      legacyRes = await legacyDb.all(`SELECT entries.owner_id AS owner_id, entries.metadata_json AS metadata_json FROM ${m.from}`, m.params);
+    }
+  } catch {
+    legacyRes = {};
+  }
+  for (const row of legacyRes.results ?? []) {
+    if (!row.owner_id || neverDelete.has(row.owner_id) || custom.has(row.owner_id)) continue;
     let parsed = {};
     try {
       parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
@@ -7740,38 +8056,89 @@ async function cleanupExpiredLogs(db) {
       continue;
     }
     if (parsed.retention_days === null) {
-      neverDeleteOwners.push(row.owner_id);
+      neverDelete.add(row.owner_id);
     } else {
       const n2 = Number(parsed.retention_days);
-      if (Number.isFinite(n2) && n2 > 0) customOwners.push({ owner_id: row.owner_id, days: n2 });
+      if (Number.isFinite(n2) && n2 > 0) custom.set(row.owner_id, n2);
     }
   }
+  return { neverDelete, custom };
+}
+async function cleanupExpiredLogs(execLogDb, legacyDb) {
+  const nowSec = Math.floor(Date.now() / 1e3);
+  const { neverDelete, custom } = await collectRetentionOverrides(execLogDb, legacyDb);
   let deleted = 0;
-  for (const { owner_id, days } of customOwners) {
+  for (const [ownerId, days] of custom) {
     const cutoff = nowSec - days * 86400;
-    const res = await db.run(
-      `DELETE FROM entries WHERE id IN (
-           SELECT id FROM entries WHERE entry_type = 'execution_log' AND owner_id = ? AND created_at < ?
-           LIMIT ?
-         )`,
-      [owner_id, cutoff, CLEANUP_BATCH_LIMIT]
-    );
+    const res = await execLogDb.run(`DELETE FROM execution_log WHERE id IN (
+           SELECT id FROM execution_log WHERE owner_id = ? AND created_at < ? LIMIT ?
+         )`, [ownerId, cutoff, CLEANUP_BATCH_LIMIT]);
     deleted += res.meta?.changes ?? 0;
   }
-  const defaultCutoff = nowSec - DEFAULT_RETENTION_DAYS * 86400;
-  const excluded = [...neverDeleteOwners, ...customOwners.map((o) => o.owner_id)];
-  const sql = excluded.length > 0 ? `DELETE FROM entries WHERE id IN (
-           SELECT id FROM entries WHERE entry_type = 'execution_log'
-             AND created_at < ?
-             AND (owner_id IS NULL OR owner_id NOT IN (${excluded.map(() => "?").join(",")}))
-           LIMIT ?
-         )` : `DELETE FROM entries WHERE id IN (
-           SELECT id FROM entries WHERE entry_type = 'execution_log' AND created_at < ? LIMIT ?
-         )`;
-  const binds = excluded.length > 0 ? [defaultCutoff, ...excluded, CLEANUP_BATCH_LIMIT] : [defaultCutoff, CLEANUP_BATCH_LIMIT];
-  const res2 = await db.run(sql, [...binds]);
-  deleted += res2.meta?.changes ?? 0;
-  return { deleted, checked_overrides: overrides.length };
+  {
+    const defaultCutoff = nowSec - DEFAULT_RETENTION_DAYS * 86400;
+    const excluded = [...neverDelete, ...custom.keys()];
+    const sql = excluded.length > 0 ? `DELETE FROM execution_log WHERE id IN (
+             SELECT id FROM execution_log WHERE created_at < ?
+               AND (owner_id IS NULL OR owner_id NOT IN (${excluded.map(() => "?").join(",")}))
+             LIMIT ?
+           )` : `DELETE FROM execution_log WHERE id IN (
+             SELECT id FROM execution_log WHERE created_at < ? LIMIT ?
+           )`;
+    const binds = excluded.length > 0 ? [defaultCutoff, ...excluded, CLEANUP_BATCH_LIMIT] : [defaultCutoff, CLEANUP_BATCH_LIMIT];
+    const res = await execLogDb.run(sql, binds);
+    deleted += res.meta?.changes ?? 0;
+  }
+  let legacyDeleted = 0;
+  const logTplId = await templateIdByName(legacyDb, "execution_log").catch(() => void 0);
+  if (logTplId) {
+    for (const [ownerId, days] of custom) {
+      const cutoff = nowSec - days * 86400;
+      const res = await legacyDb.run(`DELETE FROM entries WHERE id IN (
+             SELECT src_id FROM entries WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' AND created_at < ? AND +owner_id = ?
+             LIMIT ?
+           )`, [logTplId, cutoff, ownerId, CLEANUP_BATCH_LIMIT]);
+      legacyDeleted += res.meta?.changes ?? 0;
+    }
+    {
+      const defaultCutoff = nowSec - DEFAULT_RETENTION_DAYS * 86400;
+      const excluded = [...neverDelete, ...custom.keys()];
+      const sql = excluded.length > 0 ? `DELETE FROM entries WHERE id IN (
+               SELECT src_id FROM entries WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' AND created_at < ?
+                 AND (+owner_id IS NULL OR +owner_id NOT IN (${excluded.map(() => "?").join(",")}))
+               LIMIT ?
+             )` : `DELETE FROM entries WHERE id IN (
+               SELECT src_id FROM entries WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' AND created_at < ? LIMIT ?
+             )`;
+      const binds = excluded.length > 0 ? [logTplId, defaultCutoff, ...excluded, CLEANUP_BATCH_LIMIT] : [logTplId, defaultCutoff, CLEANUP_BATCH_LIMIT];
+      const res = await legacyDb.run(sql, binds);
+      legacyDeleted += res.meta?.changes ?? 0;
+    }
+  }
+  if (legacyDeleted > 0) {
+    await legacyDb.run(`DELETE FROM entries WHERE id IN (
+         SELECT r.id FROM entries r WHERE r.rel_id = '${SYS_BELONGS}'
+           AND r.dst_id IN (SELECT id FROM templates WHERE name IN ('execution_log'))
+           AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.id = r.src_id)
+         LIMIT ?
+       )`, [CLEANUP_BATCH_LIMIT]);
+  }
+  return { deleted, legacy_deleted: legacyDeleted, checked_overrides: neverDelete.size + custom.size };
+}
+var EXEC_LOG_TABLES = ["execution_log", "execution_log_usage", "execution_log_retention_config"];
+async function probeExecLogDb(getDb) {
+  try {
+    const db = getDb();
+    const r = await db.all(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${EXEC_LOG_TABLES.map(() => "?").join(",")})`,
+      EXEC_LOG_TABLES
+    );
+    const have = new Set((r.results ?? []).map((x) => x.name));
+    const missing = EXEC_LOG_TABLES.filter((t) => !have.has(t));
+    return missing.length === 0 ? { ok: true, missing } : { ok: false, missing, reason: "\u57F7\u884C\u7D00\u9304\u5EAB\u7F3A\u8868\uFF1A\u8CC7\u6599\u5C64\u5347\u7D1A\uFF08acr update\uFF0F\u5B89\u88DD\u5668\u300C\u66F4\u65B0\u300D\uFF09\u6703\u81EA\u52D5\u88DC\u4E0A" };
+  } catch (e) {
+    return { ok: false, missing: EXEC_LOG_TABLES, reason: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 // kbdb/src/routes/execution-log.ts
@@ -7781,7 +8148,7 @@ executionLogRoutes.post("/record", async (c) => {
   if (!body || !body.workflow_id || body.verdict !== "success" && body.verdict !== "failed") {
     return c.json({ success: false, error: 'workflow_id \u8207 verdict("success"|"failed") \u5FC5\u586B' }, 400);
   }
-  const result = await recordExecutionLog(dbOf(c.env), c.env, {
+  const result = await recordExecutionLog(execLogDbOf(c.env), c.env, {
     workflow_id: body.workflow_id,
     owner_id: body.owner_id ?? null,
     verdict: body.verdict,
@@ -7799,20 +8166,20 @@ executionLogRoutes.get("/", async (c) => {
   const ownerId = c.req.query("owner_id") || void 0;
   const limitParam = c.req.query("limit");
   const limit = Math.min(Math.max(parseInt(limitParam || "10", 10) || 10, 1), 100);
-  const executions = await listExecutionLog(dbOf(c.env), workflowId, ownerId, limit);
+  const executions = await listExecutionLog(execLogDbOf(c.env), dbOf(c.env), workflowId, ownerId, limit);
   return c.json({ success: true, executions });
 });
 executionLogRoutes.get("/latest", async (c) => {
   const workflowId = c.req.query("workflow_id");
   if (!workflowId) return c.json({ success: false, error: "workflow_id \u5FC5\u586B" }, 400);
   const ownerId = c.req.query("owner_id") || void 0;
-  const execution = await latestExecutionLog(dbOf(c.env), workflowId, ownerId);
+  const execution = await latestExecutionLog(execLogDbOf(c.env), dbOf(c.env), workflowId, ownerId);
   return c.json({ success: true, execution });
 });
 executionLogRoutes.get("/retention", async (c) => {
   const ownerId = c.req.query("owner_id");
   if (!ownerId) return c.json({ success: false, error: "owner_id \u5FC5\u586B" }, 400);
-  const retentionDays = await getRetentionDays(dbOf(c.env), ownerId);
+  const retentionDays = await getRetentionDays(execLogDbOf(c.env), dbOf(c.env), ownerId);
   return c.json({ success: true, owner_id: ownerId, retention_days: retentionDays, default_days: DEFAULT_RETENTION_DAYS });
 });
 executionLogRoutes.put("/retention", async (c) => {
@@ -7822,11 +8189,11 @@ executionLogRoutes.put("/retention", async (c) => {
   if (days !== null && (typeof days !== "number" || !Number.isFinite(days) || days <= 0)) {
     return c.json({ success: false, error: "retention_days \u5FC5\u9808\u662F\u6B63\u6574\u6578\uFF0C\u6216 null\uFF08\u4EE3\u8868\u4E0D\u522A\u9664\uFF09" }, 400);
   }
-  await setRetentionDays(dbOf(c.env), body.owner_id, days === null ? null : Math.round(days));
+  await setRetentionDays(execLogDbOf(c.env), body.owner_id, days === null ? null : Math.round(days));
   return c.json({ success: true, owner_id: body.owner_id, retention_days: days === null ? null : Math.round(days) });
 });
 executionLogRoutes.post("/cleanup", async (c) => {
-  const result = await cleanupExpiredLogs(dbOf(c.env));
+  const result = await cleanupExpiredLogs(execLogDbOf(c.env), dbOf(c.env));
   return c.json({ success: true, ...result });
 });
 
@@ -7844,8 +8211,9 @@ var GENERATIONS = [
       // 會被判成「連第 1 代都沒套」**，而 actual_generation 在第一個缺口就停
       // ⇒ /health 會把一台最新的實例報成落後十幾代。探針探的是「現在還在不在」，
       // 不是「歷史上曾經建過」——同 0002／0006 那段「套過又拆了與從沒套過分不出來」
-      // 的判準（判的是現在能不能用）。idx_entries_type 沒被 0012 動到，留著。
-      { kind: "index", name: "idx_entries_type" },
+      // 的判準（判的是現在能不能用）。
+      // 🔴 idx_entries_type 也一樣：0015（種類退場，Arcrun#301）把它拆了——它是為舊的種類欄建的，
+      // 欄退場後沒有查詢用它。繼續探它，套過 0015 的實例會被判成「連第 1 代都沒套」。
       { kind: "template", name: "recipe_stat" }
     ]
   },
@@ -7910,8 +8278,8 @@ var GENERATIONS = [
     n: 9,
     file: "0009_entries_list_indexes.sql",
     what: "entries \u5217\u8868\uFF0F\u5B58\u5728\u6027\u7D22\u5F15\u2014\u2014list \u7AEF\u9EDE\u4E0D\u518D\u6392\u5E8F\u6574\u500B owner\u3001\u300C\u9019\u5F35\u5361\u5728\u4E0D\u5728\u300D\u53EA\u8B80\u547D\u4E2D\u5217\uFF08Arcrun#210 D1 \u514D\u8CBB\u5C64\u4E09\u5929\u9023\u71D2\u7684\u6839\u56E0\u4FEE\u5FA9\uFF09",
+    // 🔴 原本還探 idx_entries_owner_type_created，0015 把它拆了（理由同第 1 代的 idx_entries_type）。
     checks: [
-      { kind: "index", name: "idx_entries_owner_type_created" },
       { kind: "index", name: "idx_entries_owner_created" },
       { kind: "index", name: "idx_entries_source" }
     ]
@@ -7967,6 +8335,21 @@ var GENERATIONS = [
     // card-rows-written-gate.test.ts「③ 現行」實測（6 段＋5 條的形狀）；同一支閘量第 12 代是 743。
     // 用 leo 舉的真卡量（card-upload-ledger.test.ts）：第一次送 699 → 615、改過再送 904 → 764。
     rows_per_card: 667
+  },
+  {
+    n: 15,
+    file: "0015_kind_is_template.sql",
+    what: "\u7A2E\u985E\u9000\u5834\u2014\u2014\u4E00\u7B46\u8CC7\u6599\u662F\u4EC0\u9EBC\uFF0C\u53EA\u7531\u5B83\u5C6C\u65BC\u54EA\u500B template \u6C7A\u5B9A\uFF1B\u820A\u7A2E\u985E\u6B04\u7684\u5169\u652F\u7D22\u5F15\u62C6\u6389\uFF08Arcrun#301\uFF09",
+    // 事實判準：搬遷標記在（最後一句才寫，所以它在＝每一視窗都跑完了）、兩支舊索引不在。
+    checks: [
+      { kind: "entry", id: "sys_kind_attached" },
+      { kind: "no_index", name: "idx_entries_type" },
+      { kind: "no_index", name: "idx_entries_owner_type_created" }
+    ],
+    // card-rows-written-gate.test.ts「③ 現行」實測（6 段＋5 條的形狀），第 14 代是 667。
+    // 變少的原因：拆掉兩支為舊種類欄而建的索引，每一列（卡段、值格、關係列）都少付兩筆索引寫入，
+    // 比每個內容 entry 多出來的那一條歸屬關係（6 段 ＝ 6 條）還多。
+    rows_per_card: 525
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
@@ -8182,7 +8565,8 @@ var speedometer = async (c, next) => {
       console.warn("[kbdb speedometer] brake lookup failed", e);
     }
   }
-  c.env = { ...c.env, __kbdbDb: meterDb(rawDb, t), __kbdbTally: t };
+  const execRaw = c.env.__kbdbExecLogDb || c.env.EXEC_LOG_DB ? execLogDbOf(c.env) : void 0;
+  c.env = { ...c.env, __kbdbDb: meterDb(rawDb, t), __kbdbTally: t, ...execRaw ? { __kbdbExecLogDb: meterDb(execRaw, t) } : {} };
   await next();
   if (!isExempt && (t.over || t.dailyBlocked)) {
     let brake = null;
@@ -8350,20 +8734,37 @@ var healthCache = null;
 app.get("/health", async (c) => {
   const now = Date.now();
   if (!healthCache || now - healthCache.at > HEALTH_CACHE_MS) {
-    healthCache = { at: now, report: await probeDataLayer(dbOf(c.env)) };
+    healthCache = {
+      at: now,
+      report: await probeDataLayer(dbOf(c.env)),
+      // 執行紀錄住在另一顆庫（inkstone/Arcrun#222）：那顆庫沒建／表沒套，寫入端吞錯、讀取端 500——
+      // 同 Arcrun#159，「伺服器活著」不等於「這台能用」，所以 /health 也要量它。
+      execLog: await probeExecLogDb(() => execLogDbOf(c.env))
+    };
   }
   const dataLayer = healthCache.report;
+  const execLog = healthCache.execLog;
+  const healthy = dataLayer.ok && execLog.ok;
   const i = dbOf(c.env).info;
   const info = { driver: i?.driver ?? "d1", billing: i?.billing ?? "metered", ...i?.engine_version ? { engine_version: i.engine_version } : {} };
   return c.json(
-    { ok: dataLayer.ok, status: dataLayer.ok ? "ok" : "degraded", storage: info, data_layer: dataLayer },
-    dataLayer.ok ? 200 : 503
+    { ok: healthy, status: healthy ? "ok" : "degraded", storage: info, data_layer: dataLayer, exec_log: execLog },
+    healthy ? 200 : 503
   );
 });
 app.get("/maintenance/relation-orphans", async (c) => {
   const { scanRelationOrphans: scanRelationOrphans2 } = await Promise.resolve().then(() => (init_relation_orphans(), relation_orphans_exports));
   const limit = Number(c.req.query("limit") ?? "200");
   const report = await scanRelationOrphans2(dbOf(c.env), Number.isFinite(limit) ? limit : 200);
+  return c.json({ success: true, ...report });
+});
+app.get("/maintenance/kind-orphans", async (c) => {
+  const { scanKindOrphans: scanKindOrphans2 } = await Promise.resolve().then(() => (init_kind_orphans(), kind_orphans_exports));
+  const limit = Number(c.req.query("limit") ?? "200");
+  const report = await scanKindOrphans2(dbOf(c.env), {
+    owner_id: c.req.query("owner_id") || void 0,
+    limit: Number.isFinite(limit) ? limit : 200
+  });
   return c.json({ success: true, ...report });
 });
 app.route("/entries", entryRoutes);
