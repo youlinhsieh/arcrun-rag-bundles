@@ -1806,7 +1806,7 @@
   }
  ],
  "installer": {
-  "version": "1.0.67"
+  "version": "1.0.68"
  },
  "payload_fingerprint": "f3d75c55a18a8ba7eb32b169a71ace21aafe81a67ce8f174619e147f301dcc66"
 }
