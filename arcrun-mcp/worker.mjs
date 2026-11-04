@@ -32746,10 +32746,10 @@ function registerKnowledgeSearch(server, env, identity) {
         let res;
         if (identity.kind === "portal") {
           res = await portalFetch(env, identity.portal.session, "/portal/data/retrieve", {
-            query: { q, pages_limit: 1 }
+            query: { q, pages_limit: 0 }
           });
         } else {
-          const qs = new URLSearchParams({ q, pages_limit: "1" });
+          const qs = new URLSearchParams({ q, pages_limit: "0" });
           if (owner_id) qs.set("owner_id", owner_id);
           res = await kbdbFetch(env, `/retrieve?${qs.toString()}`);
         }

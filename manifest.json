@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.129",
- "fingerprint": "07d884e59e1d1621b0cf8bdee2ac42e579c5abb872e74d34a99d8153f9efebc5",
+ "release": "1.4.130",
+ "fingerprint": "0279f0295f4b1e3e43a4c1bfa9145f5f532f66c61853ea25572a0681ee6c838c",
  "built": "2026-11-04",
- "source": "Arcrun@f80f179322c6",
+ "source": "Arcrun@f6be09a7e47b",
  "daemon": {
   "version": "0.18.118",
   "built": "20261101-0820",
@@ -459,7 +459,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 360872,
+   "js_bytes": 361148,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -483,10 +483,10 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "f80f179322c6203a5c2ceb0867b58132d5046689",
-   "source_content_sha256": "4b32d2979a407f5917f8c83c387ce7003520f0e0b4e7cc27164dc9899dbb1e27",
-   "sha256": "4b32d2979a407f5917f8c83c387ce7003520f0e0b4e7cc27164dc9899dbb1e27",
-   "bytes": 360872
+   "source_commit": "f6be09a7e47b5886eabfef09656571fd6c6c8f21",
+   "source_content_sha256": "04934239116ee2105cbcffaeab84acd1c106d5863a03152275e74269c90ac7f7",
+   "sha256": "04934239116ee2105cbcffaeab84acd1c106d5863a03152275e74269c90ac7f7",
+   "bytes": 361148
   },
   {
    "name": "arcrun-mcp",
@@ -505,9 +505,9 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "d487057d40f2859092dd065a133eebe3471c26af",
-   "source_content_sha256": "7e4615d74842eb317c4dc3458ff1bd25727833fba6151d7d38a584d7280eb4fb",
-   "sha256": "7e4615d74842eb317c4dc3458ff1bd25727833fba6151d7d38a584d7280eb4fb",
+   "source_commit": "f6be09a7e47b5886eabfef09656571fd6c6c8f21",
+   "source_content_sha256": "5e6ae1fade1183eef786945215abf327407d0ec52eb7185d81ccdafeb6902ecb",
+   "sha256": "5e6ae1fade1183eef786945215abf327407d0ec52eb7185d81ccdafeb6902ecb",
    "bytes": 1245605
   },
   {
@@ -1186,7 +1186,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 360872,
+   "js_bytes": 361148,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1210,8 +1210,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "f80f179322c6203a5c2ceb0867b58132d5046689",
-   "source_content_sha256": "4b32d2979a407f5917f8c83c387ce7003520f0e0b4e7cc27164dc9899dbb1e27",
+   "source_commit": "f6be09a7e47b5886eabfef09656571fd6c6c8f21",
+   "source_content_sha256": "04934239116ee2105cbcffaeab84acd1c106d5863a03152275e74269c90ac7f7",
    "first_install": true
   },
   {
@@ -1231,8 +1231,8 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "d487057d40f2859092dd065a133eebe3471c26af",
-   "source_content_sha256": "7e4615d74842eb317c4dc3458ff1bd25727833fba6151d7d38a584d7280eb4fb",
+   "source_commit": "f6be09a7e47b5886eabfef09656571fd6c6c8f21",
+   "source_content_sha256": "5e6ae1fade1183eef786945215abf327407d0ec52eb7185d81ccdafeb6902ecb",
    "first_install": true
   },
   {
@@ -1806,7 +1806,7 @@
   }
  ],
  "installer": {
-  "version": "1.0.71"
+  "version": "1.0.72"
  },
  "payload_fingerprint": "f3d75c55a18a8ba7eb32b169a71ace21aafe81a67ce8f174619e147f301dcc66"
 }

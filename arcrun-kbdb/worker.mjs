@@ -1444,7 +1444,8 @@ async function listEntries(db, f = {}) {
   const rowsRes = await db.all(`SELECT ${f.view === "identity" ? IDENTITY_COLUMNS : "entries.*"} FROM ${fromSql} ${where} ${orderBy} LIMIT ? OFFSET ?`, [...fromParams, ...params, limit, offset]);
   const entries = await withTemplates(db, rowsRes.results ?? []);
   let total;
-  if (pageSizeKnown && entries.length > 0 && entries.length < limit) total = offset + entries.length;
+  if (f.without_total) total = -1;
+  else if (pageSizeKnown && entries.length > 0 && entries.length < limit) total = offset + entries.length;
   else if (pageSizeKnown && entries.length === 0 && offset === 0) total = 0;
   else {
     const countRow = await db.first(`SELECT COUNT(*) as total FROM ${fromSql} ${where}`, [...fromParams, ...params]);
@@ -7919,11 +7920,15 @@ async function retrieveForQuestion(db, question, opts = {}) {
   const scopedIndexSet = new Set(scopedLibraries.map((l) => l.library));
   const scopedIndexes = allowed ? selection.indexes.filter((i) => allowed.has(i.library)).map((i) => ({ ...i, selected: scopedIndexSet.has(i.library) })) : selection.indexes;
   const route = allowed && selection.route !== "all" && scopedLibraries.length === 0 ? "all" : selection.route;
+  const pagesWanted = opts.pages_limit !== 0;
   const pagesLimit = clampInt(Number(opts.pages_limit), DEFAULT_PAGES, MAX_PAGES);
   const targetLibraries = route === "all" ? allowed ? [...allowed] : void 0 : scopedLibraries.map((l) => l.library);
   let pages;
   let pagesTruncated;
-  if (route === "all") {
+  if (!pagesWanted) {
+    pages = [];
+    pagesTruncated = false;
+  } else if (route === "all") {
     const hits = await searchEntries(db, q, opts.owner_id, void 0, pagesLimit + 1, targetLibraries);
     pagesTruncated = hits.length > pagesLimit;
     pages = hits.slice(0, pagesLimit);
@@ -7932,10 +7937,11 @@ async function retrieveForQuestion(db, question, opts = {}) {
       owner_id: opts.owner_id,
       library: targetLibraries,
       exclude_kind: ["library_map"],
-      limit: pagesLimit
+      limit: pagesLimit + 1,
+      without_total: true
     });
-    pagesTruncated = listed.total > listed.entries.length;
-    pages = listed.entries;
+    pagesTruncated = listed.entries.length > pagesLimit;
+    pages = listed.entries.slice(0, pagesLimit);
   }
   const entityNames = [];
   {
@@ -8008,8 +8014,9 @@ retrieveRoutes.get("/", async (c) => {
   const library = parseLibraryList(c.req.query("library"));
   const limitNum = Number(c.req.query("limit"));
   const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.floor(limitNum) : void 0;
-  const pagesLimitNum = Number(c.req.query("pages_limit"));
-  const pages_limit = Number.isFinite(pagesLimitNum) && pagesLimitNum > 0 ? Math.floor(pagesLimitNum) : void 0;
+  const pagesLimitRaw = c.req.query("pages_limit");
+  const pagesLimitNum = Number(pagesLimitRaw);
+  const pages_limit = pagesLimitRaw === "0" ? 0 : Number.isFinite(pagesLimitNum) && pagesLimitNum > 0 ? Math.floor(pagesLimitNum) : void 0;
   const graphDepthNum = Number(c.req.query("graph_depth"));
   const graph_depth = Number.isFinite(graphDepthNum) && graphDepthNum > 0 ? Math.floor(graphDepthNum) : void 0;
   try {
