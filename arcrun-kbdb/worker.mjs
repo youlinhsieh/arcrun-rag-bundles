@@ -4868,6 +4868,9 @@ var VECTOR_ENTRY_TYPES = ["entity", "predicate", "alias"];
 var VECTOR_ENTRY_TYPES_SQL = `(${VECTOR_ENTRY_TYPES.map((t) => `'${t}'`).join(",")})`;
 var IN_VECTOR_SCOPE_SQL = `EXISTS (SELECT 1 FROM entries vb WHERE vb.src_id = entries.id AND vb.rel_id = '${SYS_BELONGS}' AND vb.dst_id IN (SELECT id FROM templates WHERE name IN ${VECTOR_ENTRY_TYPES_SQL}))`;
 var ENTRY_TYPE_GATE = IN_VECTOR_SCOPE_SQL;
+var IN_SCOPE_IDS_SQL = `id IN (SELECT vb.src_id FROM entries vb WHERE vb.rel_id = '${SYS_BELONGS}' AND vb.dst_id IN (SELECT id FROM templates WHERE name IN ${VECTOR_ENTRY_TYPES_SQL}))`;
+var SCOPED_PENDING_PREDICATE = `${IN_SCOPE_IDS_SQL} AND +is_embedded = 0 AND length(content) > 0 AND json_extract(metadata_json, '$.embed') = 1`;
+var SCOPED_EMBEDDED_PREDICATE = `${IN_SCOPE_IDS_SQL} AND +is_embedded = 1`;
 function inVectorScope(entry) {
   return (entry.templates ?? []).some((t) => VECTOR_ENTRY_TYPES.includes(t));
 }
@@ -4986,17 +4989,13 @@ async function backfillEmbeddings(env, opts = {}) {
   }
   const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
   const offset = Math.max(opts.offset ?? 0, 0);
-  const basePredicate = opts.reindex ? `content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND ${ENTRY_TYPE_GATE}` : BACKFILL_PREDICATE;
+  const allOwners = !opts.owner_id && !opts.reindex;
+  const basePredicate = opts.reindex ? `content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND ${ENTRY_TYPE_GATE}` : allOwners ? SCOPED_PENDING_PREDICATE : BACKFILL_PREDICATE;
   const sel = selectionCriteriaPredicate(opts);
   const conds = [basePredicate, "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'", ...sel.conds];
   const params = [...sel.params];
   const where = conds.join(" AND ");
-  const allOwners = !opts.owner_id && !opts.reindex;
-  const rawRows = allOwners ? mergeNewestFirst(
-    await Promise.all(OWNER_SEGMENTS.map((seg) => dbOf(env).all(`SELECT * FROM entries WHERE ${seg} AND ${where} ORDER BY created_at DESC LIMIT ?`, [...params, limit + offset]))),
-    offset,
-    limit
-  ) : (await dbOf(env).all(`SELECT * FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset])).results ?? [];
+  const rawRows = (await dbOf(env).all(`SELECT * FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset])).results ?? [];
   const rows = await withTemplates(dbOf(env), rawRows);
   const scanned = rows.length;
   const dailyCap = backfillDailyLimit(env);
@@ -5038,7 +5037,7 @@ async function backfillEmbeddings(env, opts = {}) {
       }
     }
   }
-  const totalMatching = allOwners ? (await Promise.all(OWNER_SEGMENTS.map((seg) => dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${seg} AND ${where}`, [...params])))).reduce((n2, r) => n2 + (r?.c ?? 0), 0) : (await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${where}`, [...params]))?.c ?? 0;
+  const totalMatching = (await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${where}`, [...params]))?.c ?? 0;
   const remaining = opts.reindex ? Math.max(0, totalMatching - (offset + scanned)) : totalMatching;
   return {
     enabled: true,
@@ -5050,12 +5049,6 @@ async function backfillEmbeddings(env, opts = {}) {
     quota_used_today: usedToday + processed,
     quota_exceeded: quotaExceeded
   };
-}
-var OWNER_SEGMENTS = ["owner_id >= ''", "owner_id IS NULL"];
-function mergeNewestFirst(parts, offset, limit) {
-  const all = parts.flatMap((r) => r.results ?? []);
-  all.sort((a, b) => Number(b.created_at ?? 0) - Number(a.created_at ?? 0));
-  return all.slice(offset, offset + limit);
 }
 async function countPendingAllOwners(env, extra, params) {
   const db = dbOf(env);
@@ -5172,7 +5165,7 @@ async function syncVectorIndex(env, opts = {}) {
     cursor = typeof m?.cursor === "string" ? m.cursor : "";
   }
   if (cursor === null) {
-    const probe = await db.all(`SELECT id FROM entries WHERE is_embedded = 1 AND ${VECTOR_ENTRY_TYPES_IN} LIMIT ?`, [SYNC_PROBE]);
+    const probe = await db.all(`SELECT id FROM entries WHERE ${SCOPED_EMBEDDED_PREDICATE} LIMIT ?`, [SYNC_PROBE]);
     const ids2 = (probe.results ?? []).map((r) => r.id);
     if (ids2.length > 0) {
       const present = new Set((await store.getByIds(ids2)).map((v) => v.id));
@@ -5191,7 +5184,7 @@ async function syncVectorIndex(env, opts = {}) {
   if (affordable <= 0) return { ...off, enabled: true, sweeping: true, more: true, quota_exceeded: true };
   const take = Math.min(limit, affordable);
   const res = await db.all(
-    `SELECT id FROM entries WHERE is_embedded = 1 AND ${VECTOR_ENTRY_TYPES_IN} AND id > ? ORDER BY id LIMIT ?`,
+    `SELECT id FROM entries WHERE ${SCOPED_EMBEDDED_PREDICATE} AND id > ? ORDER BY id LIMIT ?`,
     [cursor, take]
   );
   const ids = (res.results ?? []).map((r) => r.id);

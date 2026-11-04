@@ -10524,36 +10524,6 @@ async function runFtsBackfillTick(env, log = console.log, logError = console.err
   return { calls: MAX_TICK_CALLS, totalScanned, stoppedBecause: "max_calls" };
 }
 
-// cypher-executor/src/lib/vector-sync-tick.ts
-init_kbdb_proxy();
-var MAX_SYNC_TICK_CALLS = 8;
-async function runVectorSyncTick(env, log = console.log, logError = console.error) {
-  const { base, headers } = kbdbBase(env);
-  let totalReset = 0;
-  let totalReEmbedded = 0;
-  for (let i = 0; i < MAX_SYNC_TICK_CALLS; i++) {
-    let status = 0;
-    let body = null;
-    try {
-      const res = await fetch(`${base}/embed/sync`, { method: "POST", headers, body: JSON.stringify({ limit: 100 }) });
-      status = res.status;
-      body = await res.json().catch(() => null);
-      log("[scheduled] vector-sync tick", i, status, JSON.stringify(body));
-    } catch (e) {
-      logError("[scheduled] vector-sync tick failed", i, e);
-      return { calls: i, totalReset, totalReEmbedded, stoppedBecause: "error" };
-    }
-    const s = (stoppedBecause) => ({ calls: i + 1, totalReset, totalReEmbedded, stoppedBecause });
-    if (status === 409) return s("embed_off");
-    if (!body?.success) return s("error");
-    totalReset += body.reset_to_pending ?? 0;
-    totalReEmbedded += body.re_embedded ?? 0;
-    if (body.quota_exceeded) return s("quota_exceeded");
-    if (!body.more) return s(body.healthy ? "healthy" : "done");
-  }
-  return { calls: MAX_SYNC_TICK_CALLS, totalReset, totalReEmbedded, stoppedBecause: "max_calls" };
-}
-
 // cypher-executor/src/lib/usage-brake-notify-tick.ts
 init_kbdb_proxy();
 var SKIPPED = { skipped: true, checked: 0, notified: 0, errors: 0 };
@@ -10669,14 +10639,6 @@ async function handleScheduled(controller, env, ctx) {
       runFtsBackfillTick(env).then(
         (summary) => console.log("[scheduled] fts-backfill tick summary", JSON.stringify(summary)),
         (e) => console.error("[scheduled] fts-backfill tick summary failed", e)
-      )
-    );
-  }
-  if (now2.getUTCMinutes() % 10 === 5) {
-    ctx.waitUntil(
-      runVectorSyncTick(env).then(
-        (summary) => console.log("[scheduled] vector-sync tick summary", JSON.stringify(summary)),
-        (e) => console.error("[scheduled] vector-sync tick summary failed", e)
       )
     );
   }
