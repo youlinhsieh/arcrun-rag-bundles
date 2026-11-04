@@ -4235,11 +4235,16 @@ var settingsCache = null;
 async function getBrakeSettings(db) {
   const now = Date.now();
   if (settingsCache && now - settingsCache.at <= SETTINGS_CACHE_MS) return settingsCache.settings;
-  await ensureSettingsTemplate(db);
-  const rec = await getRecord(db, SETTINGS_RECORD_ID);
-  const settings = toSettings(rec);
-  settingsCache = { at: now, settings };
-  return settings;
+  try {
+    await ensureSettingsTemplate(db);
+    const rec = await getRecord(db, SETTINGS_RECORD_ID);
+    const settings = toSettings(rec);
+    settingsCache = { at: now, settings };
+    return settings;
+  } catch (e) {
+    if (settingsCache) return settingsCache.settings;
+    throw e;
+  }
 }
 async function brakeEnabled(db) {
   return (await getBrakeSettings(db)).brake_enabled;
@@ -4514,6 +4519,149 @@ function execLogDbOf(env) {
 
 // kbdb/src/actions/graph-query.ts
 init_record_crud();
+
+// kbdb/src/actions/field-index.ts
+init_record_crud();
+var FIELD_INDEX_BACKFILL_PER_CALL = 1e3;
+var BACKFILL_CHUNK = 80;
+var FIELD_INDEX_MAX_RECORDS = 1e5;
+var FieldIndexTooLargeError = class extends Error {
+  constructor(template, limit) {
+    super(`template ${template} has more than ${limit} records; field index not enabled`);
+    this.template = template;
+    this.limit = limit;
+    this.name = "FieldIndexTooLargeError";
+  }
+  template;
+  limit;
+};
+function isMissingTable(err) {
+  return /no such table:\s*field_value_index/i.test(String(err?.message ?? err));
+}
+async function fieldIndexReady(db, relIds) {
+  if (relIds.length === 0) return false;
+  try {
+    const ph = relIds.map(() => "?").join(",");
+    const rows = await db.all(
+      `SELECT rel_id FROM field_value_index_spec WHERE rel_id IN (${ph}) AND state = 'ready'`,
+      [...relIds]
+    );
+    return new Set((rows.results ?? []).map((r) => r.rel_id)).size === new Set(relIds).size;
+  } catch (err) {
+    if (isMissingTable(err)) return false;
+    throw err;
+  }
+}
+async function fieldIndexRecordIds(db, relIds, value, owner, limit) {
+  const seen = /* @__PURE__ */ new Set();
+  const rows = [];
+  for (const relId of new Set(relIds)) {
+    const params = [relId, value];
+    let sql = `SELECT record_id, seq FROM field_value_index WHERE rel_id = ? AND value = ?`;
+    if (owner !== void 0) {
+      sql += ` AND owner = ?`;
+      params.push(owner);
+    }
+    sql += ` ORDER BY seq DESC`;
+    if (limit !== void 0) {
+      sql += ` LIMIT ?`;
+      params.push(limit + 1);
+    }
+    const res = await db.all(sql, params);
+    rows.push(...res.results ?? []);
+  }
+  rows.sort((a, b) => b.seq - a.seq);
+  const ids = [];
+  for (const r of rows) if (!seen.has(r.record_id)) {
+    seen.add(r.record_id);
+    ids.push(r.record_id);
+  }
+  if (limit === void 0 || ids.length <= limit) return { ids, exhausted: true };
+  return { ids: ids.slice(0, limit), exhausted: false };
+}
+async function enableFieldIndex(db, template, slots) {
+  const tpl = await getTemplate(db, template);
+  if (!tpl) return null;
+  const all = JSON.parse(tpl.slots_json);
+  const unknown = slots.filter((s) => !all.includes(s));
+  if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
+  const want = [...new Set(slots)];
+  if (want.length === 0) throw new Error("fields required");
+  const relOf = (s) => fieldEntryId(tpl.id, s);
+  const specRows = async () => {
+    const ph = want.map(() => "?").join(",");
+    const r = await db.all(
+      `SELECT rel_id, slot, state, cursor_created, cursor_rowid FROM field_value_index_spec WHERE rel_id IN (${ph})`,
+      want.map(relOf)
+    );
+    return r.results ?? [];
+  };
+  let spec = await specRows();
+  const missing = want.filter((s) => !spec.some((r) => r.slot === s));
+  if (missing.length > 0) {
+    const cnt = await db.first(
+      `SELECT COUNT(*) AS n FROM (SELECT 1 FROM entries WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' LIMIT ?)`,
+      [tpl.id, FIELD_INDEX_MAX_RECORDS + 1]
+    );
+    if ((cnt?.n ?? 0) > FIELD_INDEX_MAX_RECORDS) throw new FieldIndexTooLargeError(tpl.name, FIELD_INDEX_MAX_RECORDS);
+    for (const s of missing) {
+      await db.run(
+        `INSERT OR IGNORE INTO field_value_index_spec (rel_id, template_id, slot, state) VALUES (?, ?, ?, 'building')`,
+        [relOf(s), tpl.id, s]
+      );
+    }
+    spec = await specRows();
+  }
+  const building = spec.filter((r) => r.state !== "ready");
+  let backfilled = 0;
+  if (building.length > 0) {
+    const relIds = building.map((r) => r.rel_id);
+    const fresh = building.some((r) => r.cursor_created == null);
+    let cc = fresh ? -1 : Math.min(...building.map((r) => r.cursor_created));
+    let cr = fresh ? -1 : Math.min(...building.filter((r) => r.cursor_created === cc).map((r) => r.cursor_rowid));
+    let done = false;
+    while (backfilled < FIELD_INDEX_BACKFILL_PER_CALL) {
+      const members = await db.all(
+        `SELECT src_id, created_at, rowid AS rid FROM entries
+          WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' AND (created_at, rowid) > (?, ?)
+          ORDER BY created_at, rowid LIMIT ?`,
+        [tpl.id, cc, cr, BACKFILL_CHUNK]
+      );
+      const got = members.results ?? [];
+      if (got.length > 0) {
+        const ids = got.map((m) => m.src_id);
+        const idPh = ids.map(() => "?").join(",");
+        const relPh2 = relIds.map(() => "?").join(",");
+        await db.run(
+          `INSERT OR IGNORE INTO field_value_index (rel_row, rel_id, value, owner, seq, record_id, cell_id)
+           SELECT r.id, r.rel_id, v.content, COALESCE(r.owner_id, ''), COALESCE(rec.rowid, r.rowid), r.src_id, v.id
+             FROM entries r
+             JOIN entries v ON v.id = r.dst_id
+             LEFT JOIN entries rec ON rec.id = r.src_id
+            WHERE r.src_id IN (${idPh}) AND r.rel_id IN (${relPh2}) AND v.content IS NOT NULL`,
+          [...ids, ...relIds]
+        );
+        backfilled += got.length;
+        cc = got[got.length - 1].created_at;
+        cr = got[got.length - 1].rid;
+      }
+      if (got.length < BACKFILL_CHUNK) {
+        done = true;
+        break;
+      }
+    }
+    const relPh = relIds.map(() => "?").join(",");
+    await db.run(
+      done ? `UPDATE field_value_index_spec SET state = 'ready', ready_at = unixepoch(), cursor_created = ?, cursor_rowid = ? WHERE rel_id IN (${relPh})` : `UPDATE field_value_index_spec SET cursor_created = ?, cursor_rowid = ? WHERE rel_id IN (${relPh})`,
+      [cc, cr, ...relIds]
+    );
+    spec = await specRows();
+  }
+  const fields = want.map((s) => ({ slot: s, state: spec.find((r) => r.slot === s)?.state === "ready" ? "ready" : "building" }));
+  return { template: tpl.name, fields, backfilled, ready: fields.every((f) => f.state === "ready") };
+}
+
+// kbdb/src/actions/graph-query.ts
 init_library_predicate();
 init_entity_canon();
 var D1_MAX_BOUND_PARAMS = 90;
@@ -4526,6 +4674,8 @@ function chunkForD1(items, fixedParams) {
 }
 async function recordIdsByFieldValue(db, tplId, fields, value, owner_id) {
   if (!value || fields.length === 0) return [];
+  const indexed = fields.map((f) => fieldEntryId(tplId, f));
+  if (await fieldIndexReady(db, indexed)) return (await fieldIndexRecordIds(db, indexed, value, owner_id)).ids;
   const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ?`;
   const valueParams = owner_id ? [value, owner_id] : [value];
   const valueRows = await db.all(valueSql, [...valueParams]);
@@ -4664,6 +4814,7 @@ async function newestRecordIdsByFieldValue(db, tplId, fields, value, owner_id, n
   const seen = /* @__PURE__ */ new Set();
   if (!value || fields.length === 0) return { ids: out, exhausted: true };
   const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
+  if (await fieldIndexReady(db, fieldIds)) return fieldIndexRecordIds(db, fieldIds, value, owner_id, need + newestLookahead(need));
   const relPh = fieldIds.map(() => "?").join(",");
   const valueSql = owner_id ? `SELECT rowid AS rid, id FROM entries
        WHERE content = ? AND (owner_id = ? OR owner_id IS NULL) AND rowid < ?
@@ -6311,7 +6462,9 @@ var OP_CEILINGS = {
   "POST /entries/backfill-library": DECLARED_MAINTENANCE,
   "POST /embed/backfill": DECLARED_MAINTENANCE,
   "POST /embed/reconcile": DECLARED_MAINTENANCE,
-  "POST /embed/sync": DECLARED_MAINTENANCE
+  "POST /embed/sync": DECLARED_MAINTENANCE,
+  // 開欄位值索引（0016）：一次回填 ≤1000 筆 record × 開的格數 × 3 列（表＋兩支索引），AHub 一次開 ≤3 格 ⇒ ≤9,000 列
+  "POST /records/field-index": DECLARED_MAINTENANCE
 };
 function ceilingFor(op) {
   return OP_CEILINGS[op] ?? DEFAULT_CEILING;
@@ -6329,6 +6482,7 @@ var OP_LABELS = {
   "POST /embed/backfill": "\u88DC\u5411\u91CF",
   "POST /embed/reconcile": "\u5411\u91CF\u4E16\u4EE3\u6838\u5C0D",
   "POST /embed/sync": "\u63DB\u7D22\u5F15\u5F8C\u91CD\u5D4C\u5411\u91CF",
+  "POST /records/field-index": "\u958B\u6B04\u4F4D\u503C\u7D22\u5F15",
   "POST /map/recompute": "\u91CD\u7B97\u85CF\u66F8\u5730\u5716",
   "POST /graph/canonicalize-entities": "\u6574\u4F75\u5716\u4E0A\u7684\u540C\u540D\u7BC0\u9EDE",
   "POST /execution-log/cleanup": "\u6E05\u7406\u904E\u671F\u57F7\u884C\u7D00\u9304",
@@ -6379,7 +6533,8 @@ var LITERAL_SEGMENTS = /* @__PURE__ */ new Set([
   "by-template",
   "by-source",
   "relation-orphans",
-  "release"
+  "release",
+  "field-index"
 ]);
 function opKey(method, path) {
   const segs = path.split("/").filter(Boolean).map((s) => LITERAL_SEGMENTS.has(s) ? s : ":id");
@@ -6785,11 +6940,11 @@ async function findActiveBrake(db, op, caller) {
   return list.find((b) => b.kind === "brake" && b.op === op && b.caller === caller && !b.released_at && Date.parse(b.release_at) > now) ?? null;
 }
 async function dailyReleased(db) {
+  if (!await brakeEnabled(db)) return { writes: true, reads: true };
   const today = utcDay3();
   const list = await recentBrakes(db);
   const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
-  const disabled = !await brakeEnabled(db);
-  return { writes: rel("DAILY writes") || disabled, reads: rel("DAILY reads") || disabled };
+  return { writes: rel("DAILY writes"), reads: rel("DAILY reads") };
 }
 async function opBrakeSuspended(db, op) {
   if (!await brakeEnabled(db)) return true;
@@ -7025,6 +7180,22 @@ recordRoutes.get("/by-source/:template", async (c) => {
   all.sort();
   const page = all.slice(offset, offset + limit);
   return c.json({ success: true, record_ids: page, count: page.length, total: all.length, limit, offset });
+});
+recordRoutes.post("/field-index", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const template = String(body.template ?? "").trim();
+  const fields = Array.isArray(body.fields) ? body.fields.map((f) => String(f).trim()).filter(Boolean) : [];
+  if (!template || fields.length === 0) return c.json({ success: false, error: "template \u8207 fields \u5FC5\u586B" }, 400);
+  try {
+    const st = await enableFieldIndex(dbOf(c.env), template, fields);
+    if (!st) return c.json({ success: false, error: `template not found: ${template}` }, 404);
+    return c.json({ success: true, ...st });
+  } catch (err) {
+    if (err instanceof FieldIndexTooLargeError) return c.json({ success: false, error: err.message }, 422);
+    const msg = String(err?.message ?? err);
+    if (/^slot not in template|^fields required/.test(msg)) return c.json({ success: false, error: msg }, 400);
+    throw err;
+  }
 });
 recordRoutes.post("/backfill-library", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -8343,6 +8514,21 @@ var GENERATIONS = [
     // 變少的原因：拆掉兩支為舊種類欄而建的索引，每一列（卡段、值格、關係列）都少付兩筆索引寫入，
     // 比每個內容 entry 多出來的那一條歸屬關係（6 段 ＝ 6 條）還多。
     rows_per_card: 525
+  },
+  {
+    n: 16,
+    file: "0016_field_value_index.sql",
+    what: "\u6B04\u4F4D\u503C\u7D22\u5F15\u2014\u2014\u300C\u67D0 template \u7684\u67D0\u4E00\u683C\u7B49\u65BC X\u300D\u4E00\u53E5\u67E5\u5230\u90A3\u4E00\u9801\uFF0C\u4E0D\u518D\u7FFB\u5225\u7684 template \u7684\u540C\u503C\u683C\u5B50\uFF08AHub \u5217\u7968\uFF0Cleo 2026-11-04\uFF09",
+    // 衍生索引只收「開過」的欄位（POST /records/field-index），沒開的欄位寫入一列都不多付
+    // ⇒ 送一張卡的寫入不變（三元組沒開），rows_per_card 沿用第 15 代。
+    checks: [
+      { kind: "table", name: "field_value_index_spec" },
+      { kind: "table", name: "field_value_index" },
+      { kind: "trigger", name: "field_value_index_ai" },
+      { kind: "trigger", name: "field_value_index_au" },
+      { kind: "trigger", name: "field_value_index_ad" }
+    ],
+    rows_per_card: 525
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
@@ -8544,18 +8730,30 @@ var speedometer = async (c, next) => {
     t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
     t.dailyReleased = { writes: true, reads: true };
   } else {
+    let enabled = true;
     try {
-      const suspended = await opBrakeSuspended(self, op);
-      if (suspended) t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
-      const existing = suspended ? null : await findActiveBrake(self, op, caller);
-      if (existing) {
-        const res = c.json(brakeBody(existing), 429);
-        c.header("X-KBDB-Brake", existing.id);
-        return res;
-      }
-      t.dailyReleased = await dailyReleased(self);
+      enabled = (await getBrakeSettings(self)).brake_enabled;
     } catch (e) {
-      console.warn("[kbdb speedometer] brake lookup failed", e);
+      console.warn("[kbdb speedometer] brake settings lookup failed", e);
+    }
+    if (!enabled) {
+      t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
+      t.dailyReleased = { writes: true, reads: true };
+    } else {
+      try {
+        const suspended = await opBrakeSuspended(self, op);
+        if (suspended) t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
+        const existing = suspended ? null : await findActiveBrake(self, op, caller);
+        if (existing) {
+          const res = c.json(brakeBody(existing), 429);
+          c.header("X-KBDB-Brake", existing.id);
+          return res;
+        }
+        t.dailyReleased = await dailyReleased(self);
+      } catch (e) {
+        console.warn("[kbdb speedometer] brake lookup failed", e);
+        t.dailyReleased = { writes: true, reads: true };
+      }
     }
   }
   const execRaw = c.env.__kbdbExecLogDb || c.env.EXEC_LOG_DB ? execLogDbOf(c.env) : void 0;
