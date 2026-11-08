@@ -278,6 +278,7 @@ function kindTemplateId(name) {
 async function ensureKindTemplate(db, name) {
   const key = name.trim();
   if (!key) throw new Error("template name required");
+  if (/\{\{|\}\}|\$\{/.test(key)) throw new Error(`template name unresolved: ${key}`);
   let cache2 = kindTemplateIds.get(db);
   if (!cache2) {
     cache2 = /* @__PURE__ */ new Map();
@@ -436,17 +437,20 @@ async function updateRecord(db, recordId, values) {
   const tpl = await getTemplate(db, templateId);
   const mapBefore = tpl && isMapTrackedTemplate(tpl.name) ? await getRecord(db, recordId) : null;
   const cellRes = await db.all(
-    `SELECT f.content AS slot_name, r.dst_id AS entry_id
+    `SELECT f.content AS slot_name, r.dst_id AS entry_id, v.content AS cur
        FROM entries r JOIN entries f ON r.rel_id = f.id
+       LEFT JOIN entries v ON v.id = r.dst_id
        WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
     [recordId]
   );
   const cells = cellRes.results ?? [];
   const slotToEntries = /* @__PURE__ */ new Map();
+  const entryCurrent = /* @__PURE__ */ new Map();
   for (const c of cells) {
     const list = slotToEntries.get(c.slot_name) ?? [];
     list.push(c.entry_id);
     slotToEntries.set(c.slot_name, list);
+    entryCurrent.set(c.entry_id, c.cur ?? null);
   }
   const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
   const recordOwnerId = identity?.owner_id ?? null;
@@ -459,6 +463,7 @@ async function updateRecord(db, recordId, values) {
     const entryIds = slotToEntries.get(slot);
     if (entryIds && entryIds.length > 0) {
       for (const entryId of entryIds) {
+        if (entryCurrent.get(entryId) === content) continue;
         await db.run(`UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`, [content, entryId]);
       }
     } else {
@@ -551,7 +556,7 @@ async function memberRecordIds(db, tplId, owner_id, limit, offset) {
 }
 async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false) {
   const tpl = await getTemplate(db, template);
-  if (!tpl) return { records: [], total: 0, totalExact: true };
+  if (!tpl) return { records: [], total: 0, totalExact: true, templateExists: false };
   const cap = Math.min(Math.max(limit, 1), 500);
   const skip = Math.max(offset, 0);
   const ids = await memberRecordIds(db, tpl.id, owner_id, cap, skip);
@@ -4071,6 +4076,75 @@ var Hono2 = class extends Hono {
 
 // kbdb/src/routes/entries.ts
 init_kind();
+
+// kbdb/src/actions/template-guard.ts
+var TemplateNameError = class extends Error {
+  constructor(code, message, didYouMean = []) {
+    super(message);
+    this.code = code;
+    this.didYouMean = didYouMean;
+    this.name = "TemplateNameError";
+  }
+  code;
+  didYouMean;
+};
+var norm = (s) => s.trim().toLowerCase().replace(/[_\s-]+/g, "");
+function editDistance(a, b, cap) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function looksUnresolved(name) {
+  return /\{\{|\}\}|\$\{/.test(name);
+}
+async function similarTemplateNames(db, name) {
+  const res = await db.all("SELECT name FROM templates");
+  const target = norm(name);
+  const out = [];
+  for (const r of res.results ?? []) {
+    if (r.name === name) continue;
+    const n2 = norm(r.name);
+    if (n2 === target || target.length >= 4 && n2.length >= 4 && editDistance(n2, target, 2) <= 2) out.push(r.name);
+  }
+  return out.slice(0, 5);
+}
+async function assertKindTemplateWritable(db, name, allowCreate = false) {
+  const key = String(name ?? "").trim();
+  if (looksUnresolved(key)) {
+    throw new TemplateNameError(
+      "template_name_unresolved",
+      `template \u540D\u7A31 "${key}" \u542B\u6C92\u89E3\u958B\u7684\u53D6\u503C\u5F0F\uFF08{{\u2026}}\uFF09\u2014\u2014\u4E0A\u6E38\u6C92\u6709\u7D66\u51FA\u9019\u500B\u503C\u3002\u4E0D\u6703\u7528\u5B83\u5EFA\u7ACB\u65B0\u7684 template\u3002`
+    );
+  }
+  const hit = await db.first("SELECT id FROM templates WHERE name = ? OR id = ?", [key, key]);
+  if (hit || allowCreate) return;
+  const near = await similarTemplateNames(db, key);
+  if (near.length > 0) {
+    throw new TemplateNameError(
+      "template_name_suspect",
+      `template "${key}" \u4E0D\u5B58\u5728\uFF0C\u4F46\u6709\u5F88\u50CF\u7684\u65E2\u6709\u540D\u5B57\uFF1A${near.join("\u3001")}\u3002\u62FC\u932F\u5C31\u6539\u6210\u90A3\u500B\uFF1B\u771F\u7684\u8981\u65B0\u7A2E\u985E\u8ACB\u5728\u8ACB\u6C42\u5E36 create_template:true\u3002`,
+      near
+    );
+  }
+}
+async function templateMissingInfo(db, name) {
+  const near = await similarTemplateNames(db, name).catch(() => []);
+  return {
+    template_exists: false,
+    error_code: "template_not_found",
+    did_you_mean: near,
+    hint: `template "${name}" \u4E0D\u5B58\u5728\uFF08\u4E0D\u662F\u300C\u5B58\u5728\u4F46 0 \u7B46\u300D\uFF09\u3002${near.length ? `\u4F60\u662F\u4E0D\u662F\u8981\u627E\uFF1A${near.join("\u3001")}\uFF1F` : "\u6AA2\u67E5\u540D\u5B57\u62FC\u5BEB\uFF0C\u6216\u5148\u5BEB\u5165\u4E00\u7B46\u5EFA\u7ACB\u5B83\u3002"}`
+  };
+}
+
+// kbdb/src/routes/entries.ts
 init_entry_crud();
 
 // kbdb/src/search-rank.ts
@@ -4924,10 +4998,10 @@ function ollamaProvider(baseUrl, fetchImpl = fetch) {
 }
 
 // kbdb/src/vector/select.ts
-var norm = (v) => (v ?? "").trim().toLowerCase();
+var norm2 = (v) => (v ?? "").trim().toLowerCase();
 function embedProviderOf(env) {
   if (env.__kbdbEmbedder) return env.__kbdbEmbedder;
-  const p = norm(env.EMBED_PROVIDER);
+  const p = norm2(env.EMBED_PROVIDER);
   if (p === "" || p === "workers-ai") return env.AI ? workersAiProvider(env.AI) : null;
   if (p === "ollama") {
     const url = (env.OLLAMA_URL ?? "").trim();
@@ -4937,7 +5011,7 @@ function embedProviderOf(env) {
 }
 function vectorsOf(env) {
   if (env.__kbdbVectors) return env.__kbdbVectors;
-  const b = norm(env.VECTOR_BACKEND);
+  const b = norm2(env.VECTOR_BACKEND);
   if (b === "" || b === "vectorize") return env.VECTORIZE ?? null;
   if (b === "sqlite-vec") {
     const url = (env.SQLITE_VEC_URL ?? "").trim();
@@ -4947,7 +5021,7 @@ function vectorsOf(env) {
 }
 function embedConfigProblem(env) {
   const parts = [];
-  const p = norm(env.EMBED_PROVIDER);
+  const p = norm2(env.EMBED_PROVIDER);
   if (!env.__kbdbEmbedder) {
     if (p === "" || p === "workers-ai") {
       if (!env.AI) parts.push("\u7F3A AI binding\uFF08EMBED_PROVIDER=workers-ai\uFF09");
@@ -4957,7 +5031,7 @@ function embedConfigProblem(env) {
       parts.push(`EMBED_PROVIDER \u7121\u6CD5\u8FA8\u8B58\uFF1A\u300C${env.EMBED_PROVIDER}\u300D\uFF08\u53EA\u8A8D workers-ai\uFF0Follama\uFF09`);
     }
   }
-  const b = norm(env.VECTOR_BACKEND);
+  const b = norm2(env.VECTOR_BACKEND);
   if (!env.__kbdbVectors) {
     if (b === "" || b === "vectorize") {
       if (!env.VECTORIZE) parts.push("\u7F3A VECTORIZE binding\uFF08VECTOR_BACKEND=vectorize\uFF09");
@@ -6016,12 +6090,25 @@ function retiredKindParam(source, isBody = false) {
     error: `${RETIRED_KIND_PARAM} \u5DF2\u9000\u5834\uFF1A\u4E00\u7B46\u8CC7\u6599\u7684\u7A2E\u985E\u53EA\u7531\u5B83\u5C6C\u65BC\u54EA\u500B template \u6C7A\u5B9A\uFF0C\u8ACB\u628A ${RETIRED_KIND_PARAM} \u6539\u6210 template\uFF08\u503C\u7167\u820A\uFF0C\u4F8B\u5982 template=block\uFF09\u3002`
   }), { status: 400, headers: { "Content-Type": "application/json" } });
 }
+async function templateNameGate(c, body) {
+  try {
+    await assertKindTemplateWritable(dbOf(c.env), String(body.template ?? ""), body.create_template === true);
+    return null;
+  } catch (e) {
+    if (e instanceof TemplateNameError) {
+      return c.json({ success: false, error: e.message, error_code: e.code, did_you_mean: e.didYouMean }, 422);
+    }
+    throw e;
+  }
+}
 var parseLibraryParam = parseLibraryList;
 entryRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
   const retiredPost = retiredKindParam(body, true);
   if (retiredPost) return retiredPost;
   if (!body || typeof body.template !== "string" || !body.template.trim()) return c.json({ success: false, error: "template required\uFF08\u9019\u7B46\u8CC7\u6599\u5C6C\u65BC\u54EA\u500B template\uFF1B\u7A2E\u985E\u7531\u5B83\u6C7A\u5B9A\uFF09" }, 400);
+  const nameBad = await templateNameGate(c, body);
+  if (nameBad) return nameBad;
   const budget = await entryWriteBudgetToday(c.env, dbOf(c.env));
   if (budget.remaining <= 0) {
     return c.json(writeBudgetExhaustedBody(budget), 429);
@@ -6089,6 +6176,11 @@ entryRoutes.get("/", async (c) => {
   if (template === "credential" && ownerId) {
     await migrateLegacyCredentialsForOwner(dbOf(c.env), ownerId).catch(() => {
     });
+  }
+  if (template && !await templateIdByName(dbOf(c.env), template)) {
+    const info = await templateMissingInfo(dbOf(c.env), template);
+    if (c.req.query("strict") === "1" || c.req.query("strict") === "true") return c.json({ success: false, error: info.hint, ...info }, 404);
+    return c.json({ success: true, entries: [], count: 0, total: 0, ...info });
   }
   const { entries, total } = await listEntries(dbOf(c.env), {
     template,
@@ -6354,6 +6446,8 @@ entryRoutes.put("/:id", async (c) => {
   const retiredPut = retiredKindParam(body, true);
   if (retiredPut) return retiredPut;
   if (!body || typeof body.template !== "string" || !body.template.trim()) return c.json({ success: false, error: "template required\uFF08\u9019\u7B46\u8CC7\u6599\u5C6C\u65BC\u54EA\u500B template\uFF1B\u7A2E\u985E\u7531\u5B83\u6C7A\u5B9A\uFF09" }, 400);
+  const nameBadPut = await templateNameGate(c, body);
+  if (nameBadPut) return nameBadPut;
   const entry = await upsertEntry(dbOf(c.env), c.req.param("id"), body);
   if (embedEnabled(c.env)) c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
   }));
@@ -7078,6 +7172,13 @@ function brakeBody(b) {
 
 // kbdb/src/routes/records.ts
 var recordRoutes = new Hono2();
+async function templateMissing(c, template, emptyBody) {
+  const info = await templateMissingInfo(dbOf(c.env), template);
+  if (c.req.query("strict") === "1" || c.req.query("strict") === "true") {
+    return c.json({ success: false, error: info.hint, ...info }, 404);
+  }
+  return c.json({ success: true, ...emptyBody, ...info });
+}
 var isStringMap = (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
 recordRoutes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -7155,10 +7256,11 @@ recordRoutes.get("/by-template/:template", async (c) => {
       offset,
       exactTotal
     );
-    const { records: records2, total: total2, totalExact: totalExact2 } = filtered ?? { records: [], total: 0, totalExact: true };
+    if (!filtered) return templateMissing(c, c.req.param("template"), { records: [], count: 0, limit, offset, total: 0, total_exact: true });
+    const { records: records2, total: total2, totalExact: totalExact2 } = filtered;
     return c.json({ success: true, records: records2, count: records2.length, limit, offset, total: total2, total_exact: totalExact2 });
   }
-  const { records, total, totalExact } = await searchByTemplatePage(
+  const { records, total, totalExact, templateExists } = await searchByTemplatePage(
     dbOf(c.env),
     c.req.param("template"),
     c.req.query("owner_id") || void 0,
@@ -7166,6 +7268,7 @@ recordRoutes.get("/by-template/:template", async (c) => {
     offset,
     exactTotal
   );
+  if (templateExists === false) return templateMissing(c, c.req.param("template"), { records: [], count: 0, limit, offset, total: 0, total_exact: true });
   return c.json({ success: true, records, count: records.length, limit, offset, total, total_exact: totalExact });
 });
 recordRoutes.get("/by-source/:template", async (c) => {
@@ -7175,7 +7278,7 @@ recordRoutes.get("/by-source/:template", async (c) => {
   const limit = intParam(c.req.query("limit"), 1e3, 1, 1e3);
   const offset = intParam(c.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
   const tpl = await getTemplate(dbOf(c.env), c.req.param("template"));
-  if (!tpl) return c.json({ success: true, record_ids: [], count: 0, total: 0, limit, offset });
+  if (!tpl) return templateMissing(c, c.req.param("template"), { record_ids: [], count: 0, total: 0, limit, offset });
   const candidates = await recordIdsByFieldValue(dbOf(c.env), tpl.id, [field], value, c.req.query("owner_id") || void 0);
   const all = await filterExistingRecordIds(dbOf(c.env), tpl.id, candidates);
   all.sort();

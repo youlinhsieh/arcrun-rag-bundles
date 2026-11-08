@@ -31114,9 +31114,12 @@ function registerPushWorkflow(server, env, partnerToken) {
       name: external_exports.string().optional().describe(
         "workflow \u540D\u7A31\uFF08\u53EA\u80FD [a-zA-Z0-9_-]\uFF09\u3002\u82E5\u7D66 yaml_content \u6703\u5F9E yaml \u62BD name \u6B04"
       ),
-      description: external_exports.string().optional().describe("workflow \u63CF\u8FF0\uFF08\u9078\u586B\uFF09")
+      description: external_exports.string().optional().describe("workflow \u63CF\u8FF0\uFF08\u9078\u586B\uFF09"),
+      force: external_exports.boolean().optional().describe(
+        "\u63A8\u9001\u524D\u7CFB\u7D71\u6703\u6AA2\u67E5\uFF1A\u8B80\u7684 template \u6709\u6C92\u6709\u4EBA\u5BEB\u3001\u53EB\u7684\u5DE5\u4F5C\u6D41\u6709\u6C92\u6709\u88DD\u3001\u540D\u5B57\u6709\u6C92\u6709\u62FC\u932F\uFF08inkstone/Arcrun#339\uFF09\u3002\u6709\u932F\u9810\u8A2D\u4E0D\u5B58\uFF1B\u78BA\u5B9A\u8981\u63A8\uFF08\u4F8B\uFF1A\u5B83\u4F9D\u8CF4\u7684\u90A3\u652F\u7B49\u4E00\u4E0B\u624D\u63A8\uFF09\u624D\u5E36 true"
+      )
     },
-    async ({ yaml_content, graph, name, description }) => {
+    async ({ yaml_content, graph, name, description, force }) => {
       let workflowName = name;
       let workflowGraph = graph;
       let workflowConfig = void 0;
@@ -31161,10 +31164,22 @@ function registerPushWorkflow(server, env, partnerToken) {
             name: workflowName,
             graph: workflowGraph,
             config: workflowConfig,
-            description
+            description,
+            // Arcrun#339：AI 一支一支推的這條路要「有錯就不存」；檢查與判斷都在 API（薄殼，rule 07）
+            check: "strict",
+            ...force ? { force: true } : {}
           }
         });
         const body = await res.json().catch(() => ({}));
+        const apiNext = Array.isArray(body.next_actions) ? body.next_actions : [];
+        if (res.status === 422 && body.dataflow) {
+          return errorResponse(
+            "dataflow_check_failed",
+            String(body.error ?? "\u8B80\u5BEB\uFF0F\u547C\u53EB\u6AA2\u67E5\u6C92\u904E\uFF0C\u6C92\u6709\u5B58"),
+            [...apiNext, "\u78BA\u5B9A\u8981\u63A8\uFF08\u4F8B\uFF1A\u4F9D\u8CF4\u7684\u90A3\u652F\u7B49\u4E00\u4E0B\u624D\u63A8\uFF09\u2192 \u540C\u6A23\u7684\u53C3\u6578\u52A0 force: true"],
+            JSON.stringify(body.dataflow)
+          );
+        }
         if (!res.ok) {
           return errorResponse(
             "push_failed",
@@ -31177,6 +31192,12 @@ function registerPushWorkflow(server, env, partnerToken) {
           );
         }
         const result = body;
+        if (apiNext.length) {
+          return successResponse(result, [
+            `\u5DF2\u90E8\u7F72\uFF0C\u4F46\u8B80\u5BEB\uFF0F\u547C\u53EB\u6AA2\u67E5\u6709\u554F\u984C\uFF08\u5E36\u4E86 force\uFF09\uFF0C\u9019\u652F\u8DD1\u8D77\u4F86\u6703\u7A7A\u8F49\uFF1A`,
+            ...apiNext
+          ]);
+        }
         return successResponse(result, [
           `\u90E8\u7F72\u6210\u529F\uFF01webhook URL: ${result.webhook_url}`,
           `\u4E0B\u4E00\u6B65\uFF1Acall arcrun_run_workflow('${result.name}', {\u4F60\u7684 input}) \u6E2C\u8A66`,
@@ -32861,7 +32882,7 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
 }
 
 // mcp/src/tools/app_tools.ts
-var MCP_TOOLS_REGISTERED_PER_APP = 15;
+var MCP_TOOLS_REGISTERED_PER_APP = 21;
 var CATALOG_TTL_MS = 6e4;
 var catalogCache = /* @__PURE__ */ new Map();
 async function fetchAppCatalog(env, ns) {
