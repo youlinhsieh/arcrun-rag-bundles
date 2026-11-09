@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.134",
- "fingerprint": "aced61ae62a8a507d6dfb4c3dc5b07dd3110e600b362e82e779e47210529719e",
+ "release": "1.4.135",
+ "fingerprint": "01b535add26af5fb01c8f703590e9385a9726419e2e4ecdbb7152f549c662b5e",
  "built": "2026-11-09",
- "source": "Arcrun@b7245596558f",
+ "source": "Arcrun@478f57710582",
  "daemon": {
   "version": "0.18.118",
   "built": "20261101-0820",
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 4172048,
+   "js_bytes": 4450508,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -241,10 +241,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "b7245596558f912ad7bcb37a4c8164cb65638d5e",
-   "source_content_sha256": "b013ff47fde21943b31e86ef7532f28e99c476f7d1a0a37c6c0668a311b6ee8e",
-   "sha256": "b013ff47fde21943b31e86ef7532f28e99c476f7d1a0a37c6c0668a311b6ee8e",
-   "bytes": 4172048
+   "source_commit": "478f5771058252eb115dfa31c6942c03daac628e",
+   "source_content_sha256": "ea255f1a4880116df351688a6397d40dfef5080f4fe8c28258fb192560c15cd9",
+   "sha256": "ea255f1a4880116df351688a6397d40dfef5080f4fe8c28258fb192560c15cd9",
+   "bytes": 4450508
   },
   {
    "name": "arcrun-date-ops",
@@ -505,9 +505,9 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "3f64b4474e218545c3b1c779fad0ed2aafa0876f",
-   "source_content_sha256": "7f686944d128a0195feeffc93984c5efd2c425a52be97ecf624533bd6b5e6649",
-   "sha256": "7f686944d128a0195feeffc93984c5efd2c425a52be97ecf624533bd6b5e6649",
+   "source_commit": "478f5771058252eb115dfa31c6942c03daac628e",
+   "source_content_sha256": "209970441997f898bd9bd4c67340420fb0cd2241a2a0c96384f5f23d20a66928",
+   "sha256": "209970441997f898bd9bd4c67340420fb0cd2241a2a0c96384f5f23d20a66928",
    "bytes": 1247217
   },
   {
@@ -946,7 +946,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 4172048,
+   "js_bytes": 4450508,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -983,8 +983,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "b7245596558f912ad7bcb37a4c8164cb65638d5e",
-   "source_content_sha256": "b013ff47fde21943b31e86ef7532f28e99c476f7d1a0a37c6c0668a311b6ee8e",
+   "source_commit": "478f5771058252eb115dfa31c6942c03daac628e",
+   "source_content_sha256": "ea255f1a4880116df351688a6397d40dfef5080f4fe8c28258fb192560c15cd9",
    "first_install": true
   },
   {
@@ -1231,8 +1231,8 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "3f64b4474e218545c3b1c779fad0ed2aafa0876f",
-   "source_content_sha256": "7f686944d128a0195feeffc93984c5efd2c425a52be97ecf624533bd6b5e6649",
+   "source_commit": "478f5771058252eb115dfa31c6942c03daac628e",
+   "source_content_sha256": "209970441997f898bd9bd4c67340420fb0cd2241a2a0c96384f5f23d20a66928",
    "first_install": true
   },
   {
