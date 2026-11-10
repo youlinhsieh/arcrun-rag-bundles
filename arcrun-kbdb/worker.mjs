@@ -222,6 +222,7 @@ __export(record_crud_exports, {
   createTemplate: () => createTemplate,
   deleteRecord: () => deleteRecord,
   derivedCellIds: () => derivedCellIds,
+  editRelation: () => editRelation,
   ensureKindTemplate: () => ensureKindTemplate,
   fieldEntryId: () => fieldEntryId,
   filterExistingRecordIds: () => filterExistingRecordIds,
@@ -229,9 +230,11 @@ __export(record_crud_exports, {
   getRecords: () => getRecords,
   getTemplate: () => getTemplate,
   hydrateRecordValues: () => hydrateRecordValues,
+  isRelationSlot: () => isRelationSlot,
   kindTemplateId: () => kindTemplateId,
   listTemplates: () => listTemplates,
   memberRecordIds: () => memberRecordIds,
+  relationCellIds: () => relationCellIds,
   searchByTemplate: () => searchByTemplate,
   searchByTemplatePage: () => searchByTemplatePage,
   updateRecord: () => updateRecord,
@@ -332,6 +335,45 @@ async function updateTemplate(db, id, patch) {
 function derivedCellIds(recordId, slot) {
   return { value: `${recordId}~v~${slot}`, relation: `${recordId}~r~${slot}` };
 }
+function isRelationSlot(slot) {
+  return slot.length > 2 && slot.endsWith("[]");
+}
+function relKeyPart(fk) {
+  return encodeURIComponent(fk).replace(/~/g, "%7E");
+}
+function relationCellIds(recordId, slot, fk) {
+  const k = relKeyPart(fk);
+  return { value: `${recordId}~mv~${slot}~${k}`, relation: `${recordId}~mr~${slot}~${k}` };
+}
+function putCell(values, slot, content) {
+  if (!isRelationSlot(slot)) {
+    values[slot] = content;
+    return;
+  }
+  let arr = [];
+  try {
+    const cur = JSON.parse(values[slot] ?? "[]");
+    if (Array.isArray(cur)) arr = cur.map(String);
+  } catch {
+    arr = [];
+  }
+  if (!arr.includes(content)) arr.push(content);
+  arr.sort();
+  values[slot] = JSON.stringify(arr);
+}
+function parseRelationInput(slot, raw2) {
+  let list;
+  try {
+    list = JSON.parse(raw2);
+  } catch {
+    list = raw2;
+  }
+  const arr = Array.isArray(list) ? list : [list];
+  const out = [...new Set(arr.map((x) => String(x)).filter((x) => x !== ""))];
+  for (const fk of out) if (fk.length > RELATION_MAX_KEY_LEN) throw new Error(`relation slot ${slot}: key too long (>${RELATION_MAX_KEY_LEN})`);
+  if (out.length > RELATION_MAX_PER_CALL) throw new Error(`relation slot ${slot}: too many keys in one write (>${RELATION_MAX_PER_CALL})`);
+  return out;
+}
 async function loadReferencedEntries(db, entryIds, recordOwnerId) {
   const ids = [...new Set(Object.values(entryIds))];
   if (ids.length === 0) return /* @__PURE__ */ new Map();
@@ -410,6 +452,14 @@ async function createRecord(db, input) {
       stmts.push(entryRowStatement({ id: uid("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: entryIds[slot] }));
       continue;
     }
+    if (isRelationSlot(slot)) {
+      for (const fk of parseRelationInput(slot, values[slot])) {
+        const ids = relationCellIds(recordId, slot, fk);
+        stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId }, { ignore: true }));
+        stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
+      }
+      continue;
+    }
     if (input.derived_cell_ids) {
       const ids = derivedCellIds(recordId, slot);
       stmts.push(entryRowStatement({ id: ids.value, content: values[slot], owner_id: ownerId }, { ignore: true }));
@@ -460,6 +510,9 @@ async function updateRecord(db, recordId, values) {
     if (!allowed.includes(slot)) {
       throw new Error(`slot not in template: ${slot}`);
     }
+    if (isRelationSlot(slot)) {
+      throw new Error(`relation slot ${slot}: use POST /records/:id/relation (add/remove), not PATCH`);
+    }
     const entryIds = slotToEntries.get(slot);
     if (entryIds && entryIds.length > 0) {
       for (const entryId of entryIds) {
@@ -488,7 +541,7 @@ async function getRecord(db, recordId) {
     [recordId]
   );
   const values = {};
-  for (const r of res.results ?? []) values[r.slot] = r.content;
+  for (const r of res.results ?? []) putCell(values, r.slot, r.content);
   const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
   return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
 }
@@ -517,7 +570,7 @@ async function getRecords(db, recordIds, ownerId) {
     );
     for (const r of v.results ?? []) {
       const m = values.get(r.rid) ?? {};
-      m[r.slot] = r.content;
+      putCell(m, r.slot, r.content);
       values.set(r.rid, m);
     }
   }
@@ -585,7 +638,7 @@ async function hydrateRecordValues(db, tplId, ids, slots) {
     ]);
     for (const r of cellRes.results ?? []) {
       const rec = byId.get(r.record_id);
-      if (rec) rec.values[r.slot] = r.content;
+      if (rec) putCell(rec.values, r.slot, r.content);
     }
     for (const r of identRes.results ?? []) {
       const rec = byId.get(r.id);
@@ -620,7 +673,57 @@ async function deleteRecord(db, recordId) {
   if (mapTpl && mapBefore) await noteRecordWrite(db, mapTpl.name, mapBefore.owner_id, mapBefore.values, null);
   return true;
 }
-var kindTemplateIds, RecordExistsError;
+async function editRelation(db, recordId, slot, edit) {
+  const belongs = await recordBelongs(db, recordId);
+  if (!belongs) return null;
+  const tpl = await getTemplate(db, belongs.dst_id);
+  if (!tpl) return null;
+  if (!isRelationSlot(slot)) throw new Error(`not a relation slot (name must end with []): ${slot}`);
+  const slots = JSON.parse(tpl.slots_json);
+  if (!slots.includes(slot)) throw new Error(`slot not in template: ${slot}`);
+  const clean = (xs, what) => {
+    if (xs === void 0) return [];
+    if (!Array.isArray(xs)) throw new Error(`${what} must be an array of strings`);
+    const out = [...new Set(xs.map((x) => String(x)).filter((x) => x !== ""))];
+    for (const k of out) if (k.length > RELATION_MAX_KEY_LEN) throw new Error(`${what}: key too long (>${RELATION_MAX_KEY_LEN})`);
+    if (out.length > RELATION_MAX_PER_CALL) throw new Error(`${what}: too many keys in one call (>${RELATION_MAX_PER_CALL})`);
+    return out;
+  };
+  const add2 = clean(edit.add, "add");
+  const remove = clean(edit.remove, "remove").filter((k) => !add2.includes(k));
+  const relId = fieldEntryId(tpl.id, slot);
+  const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
+  const ownerId = identity?.owner_id ?? null;
+  const stmts = [];
+  if (remove.length > 0) {
+    const ph = remove.map(() => "?").join(",");
+    const found = await db.all(
+      `SELECT r.id AS rid, v.id AS vid FROM entries r JOIN entries v ON r.dst_id = v.id
+        WHERE r.src_id = ? AND r.rel_id = ? AND v.content IN (${ph})`,
+      [recordId, relId, ...remove]
+    );
+    for (const row of found.results ?? []) {
+      stmts.push({ sql: "DELETE FROM entries WHERE id = ?", params: [row.rid] });
+      stmts.push({ sql: "DELETE FROM entries WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1 AND id != ?2)", params: [row.vid, row.rid] });
+    }
+  }
+  if (add2.length > 0) {
+    stmts.push(...fieldEntryStatements(tpl.id, [slot]));
+    for (const fk of add2) {
+      const ids = relationCellIds(recordId, slot, fk);
+      stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId }, { ignore: true }));
+      stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: relId, dst_id: ids.value }, { ignore: true }));
+    }
+  }
+  if (stmts.length > 0) await db.batch(stmts);
+  const cur = await db.all(
+    `SELECT v.content AS content FROM entries r JOIN entries v ON r.dst_id = v.id WHERE r.src_id = ? AND r.rel_id = ?`,
+    [recordId, relId]
+  );
+  const keys = [...new Set((cur.results ?? []).map((r) => r.content))].sort();
+  return { record_id: recordId, slot, keys };
+}
+var kindTemplateIds, RecordExistsError, RELATION_MAX_PER_CALL, RELATION_MAX_KEY_LEN;
 var init_record_crud = __esm({
   "kbdb/src/actions/record-crud.ts"() {
     "use strict";
@@ -637,6 +740,8 @@ var init_record_crud = __esm({
         this.recordId = recordId;
       }
     };
+    RELATION_MAX_PER_CALL = 100;
+    RELATION_MAX_KEY_LEN = 512;
   }
 });
 
@@ -7371,6 +7476,22 @@ recordRoutes.patch("/:recordId", async (c) => {
     const rec = await updateRecord(dbOf(c.env), recordId, body.values);
     if (!rec) return c.json({ success: false, error: "not found" }, 404);
     return c.json({ success: true, record: rec });
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+recordRoutes.post("/:recordId/relation", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.slot !== "string" || !body.slot) {
+    return c.json({ success: false, error: "slot required" }, 400);
+  }
+  const recordId = c.req.param("recordId");
+  const existing = await getRecord(dbOf(c.env), recordId);
+  if (existing) releaseDailyWriteBrakeIfSystemOwner(c.env, existing.owner_id);
+  try {
+    const res = await editRelation(dbOf(c.env), recordId, body.slot, { add: body.add, remove: body.remove });
+    if (!res) return c.json({ success: false, error: "not found" }, 404);
+    return c.json({ success: true, ...res });
   } catch (e) {
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
