@@ -554,7 +554,7 @@ async function memberRecordIds(db, tplId, owner_id, limit, offset) {
   );
   return (res.results ?? []).map((r) => r.record_id);
 }
-async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false) {
+async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false, slots) {
   const tpl = await getTemplate(db, template);
   if (!tpl) return { records: [], total: 0, totalExact: true, templateExists: false };
   const cap = Math.min(Math.max(limit, 1), 500);
@@ -562,11 +562,13 @@ async function searchByTemplatePage(db, template, owner_id, limit = 100, offset 
   const ids = await memberRecordIds(db, tpl.id, owner_id, cap, skip);
   const { total, totalExact } = await resolveTotal(db, tpl.id, owner_id, skip, cap, ids.length, exactTotal);
   if (ids.length === 0) return { records: [], total, totalExact };
-  return { records: await hydrateRecordValues(db, tpl.id, ids), total, totalExact };
+  return { records: await hydrateRecordValues(db, tpl.id, ids, slots), total, totalExact };
 }
-async function hydrateRecordValues(db, tplId, ids) {
+async function hydrateRecordValues(db, tplId, ids, slots) {
   const byId = /* @__PURE__ */ new Map();
   for (const id of ids) byId.set(id, { record_id: id, template_id: tplId, values: {}, owner_id: null });
+  const only = slots && slots.length > 0 ? [...new Set(slots)].map((s) => fieldEntryId(tplId, s)) : null;
+  const onlyClause = only ? ` AND +r.rel_id IN (${only.map(() => "?").join(",")})` : "";
   for (let i = 0; i < ids.length; i += 90) {
     const chunk = ids.slice(i, i + 90);
     const placeholders = chunk.map(() => "?").join(",");
@@ -576,8 +578,8 @@ async function hydrateRecordValues(db, tplId, ids) {
            FROM entries r
            JOIN entries f ON r.rel_id = f.id
            JOIN entries v ON r.dst_id = v.id
-           WHERE r.src_id IN (${placeholders}) AND r.rel_id != '${SYS_BELONGS}'`,
-        [...chunk]
+           WHERE r.src_id IN (${placeholders}) AND r.rel_id != '${SYS_BELONGS}'${onlyClause}`,
+        [...chunk, ...only ?? []]
       ),
       db.all(`SELECT id, owner_id FROM entries WHERE id IN (${placeholders})`, [...chunk])
     ]);
@@ -4854,7 +4856,7 @@ async function graphNeighbors(db, start, opts = {}) {
   }
   return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
 }
-async function recordsByFieldValuePage(db, template, field, value, owner_id, limit, offset, exactTotal = false) {
+async function recordsByFieldValuePage(db, template, field, value, owner_id, limit, offset, exactTotal = false, slots) {
   const tpl = await getTemplate(db, template);
   if (!tpl) return null;
   let allIds;
@@ -4870,7 +4872,7 @@ async function recordsByFieldValuePage(db, template, field, value, owner_id, lim
   const meta = await identityMeta(db, allIds);
   const ordered = orderNewestFirst(allIds, meta);
   const page = ordered.slice(Math.max(offset, 0), Math.max(offset, 0) + Math.max(limit, 0));
-  const records = await hydrateRecordValues(db, tpl.id, page);
+  const records = await hydrateRecordValues(db, tpl.id, page, slots);
   if (exhausted) return { records, total: ordered.length, totalExact: true };
   return { records, total: Math.max(ordered.length, Math.max(offset, 0) + page.length) + 1, totalExact: false };
 }
@@ -7262,6 +7264,7 @@ recordRoutes.get("/by-template/:template", async (c) => {
   const exactTotal = c.req.query("total") === "exact";
   const field = c.req.query("field");
   const value = c.req.query("value");
+  const slots = (c.req.query("fields") ?? "").split(",").map((x) => x.trim()).filter((x) => x && x.length <= 64).slice(0, 20);
   if (field && !value || !field && value) {
     return c.json({ success: false, error: "field and value must be given together" }, 400);
   }
@@ -7274,7 +7277,8 @@ recordRoutes.get("/by-template/:template", async (c) => {
       c.req.query("owner_id") || void 0,
       limit,
       offset,
-      exactTotal
+      exactTotal,
+      slots
     );
     if (!filtered) return templateMissing(c, c.req.param("template"), { records: [], count: 0, limit, offset, total: 0, total_exact: true });
     const { records: records2, total: total2, totalExact: totalExact2 } = filtered;
@@ -7286,7 +7290,8 @@ recordRoutes.get("/by-template/:template", async (c) => {
     c.req.query("owner_id") || void 0,
     limit,
     offset,
-    exactTotal
+    exactTotal,
+    slots
   );
   if (templateExists === false) return templateMissing(c, c.req.param("template"), { records: [], count: 0, limit, offset, total: 0, total_exact: true });
   return c.json({ success: true, records, count: records.length, limit, offset, total, total_exact: totalExact });
