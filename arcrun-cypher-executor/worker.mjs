@@ -8644,7 +8644,9 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
         data: result.data,
         error: verdict.error,
         trace: result.trace,
-        duration_ms
+        duration_ms,
+        // inkstone/Arcrun#219：哪一步失敗（寫進執行紀錄，Portal 看工作流畫面標紅那一步）
+        ...verdict.failedNode ? { failed_node: verdict.failedNode } : {}
       };
     }
     return { success: true, data: result.data, trace: result.trace, duration_ms };
@@ -8677,11 +8679,13 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
         status: s.error ? "failed" : "success",
         ...s.error ? { error: s.error } : {}
       }));
+      const failedStep = [...err.trace].reverse().find((s) => s.error)?.nodeId;
       return {
         success: false,
         error: errMsg,
         trace: traceFormatted,
-        duration_ms
+        duration_ms,
+        ...failedStep ? { failed_node: failedStep } : {}
       };
     }
     return { success: false, error: errMsg, duration_ms };
@@ -10516,13 +10520,152 @@ init_webhook_handlers();
 // cypher-executor/src/actions/execution-logger.ts
 init_kbdb_proxy();
 init_kbdb_caller();
+
+// cypher-executor/src/lib/run-explain.ts
+var STEP_PREFIX_RE = /^步驟「([^」]{1,200})」失敗：/;
+var LEGACY_NODE_RES = [/^節點 ([\w.\-:]+) 回傳 success:false/, /^節點 ([\w.\-:]+) 缺少 componentId/];
+function messageWithFailedStep(message2, failedStep) {
+  const msg = message2 ?? "";
+  if (!failedStep) return msg;
+  if (STEP_PREFIX_RE.test(msg)) return msg;
+  return `\u6B65\u9A5F\u300C${failedStep}\u300D\u5931\u6557\uFF1A${msg}`;
+}
+function parseFailedStep(message2) {
+  const msg = String(message2 ?? "");
+  const m = STEP_PREFIX_RE.exec(msg);
+  if (m) return { step: m[1], error: msg.slice(m[0].length) };
+  for (const re of LEGACY_NODE_RES) {
+    const lm = re.exec(msg);
+    if (lm) return { step: lm[1], error: msg };
+  }
+  return { step: null, error: msg };
+}
+var RULES = [
+  { re: /workflow paused/i, say: "\u9084\u5728\u7B49\u5916\u90E8\u56DE\u8986\uFF0C\u66AB\u505C\u4E2D\uFF08\u4E0D\u662F\u58DE\u6389\uFF09" },
+  { re: /\b401\b|unauthori[sz]ed|invalid api key|invalid token|token (?:expired|invalid)/i, say: "\u5C0D\u65B9\u670D\u52D9\u4E0D\u8A8D\u9019\u628A\u91D1\u9470\uFF08\u53EF\u80FD\u904E\u671F\u6216\u586B\u932F\uFF09" },
+  { re: /\b403\b|forbidden|permission denied|沒有權限/i, say: "\u5C0D\u65B9\u670D\u52D9\u62D2\u7D55\uFF1A\u9019\u628A\u91D1\u9470\u6C92\u6709\u9019\u500B\u6B0A\u9650" },
+  { re: /\b404\b|not found|找不到/i, say: "\u5C0D\u65B9\u627E\u4E0D\u5230\u8981\u7684\u6771\u897F\uFF08\u7DB2\u5740\u6216\u8CC7\u6599\u4E0D\u5B58\u5728\uFF09" },
+  { re: /\b429\b|rate.?limit|too many requests|額度/i, say: "\u547C\u53EB\u592A\u983B\u7E41\u6216\u984D\u5EA6\u7528\u5B8C\uFF0C\u5C0D\u65B9\u66AB\u6642\u4E0D\u6536" },
+  { re: /\b5\d\d\b|bad gateway|service unavailable|internal server error/i, say: "\u5C0D\u65B9\u670D\u52D9\u81EA\u5DF1\u51FA\u932F\u4E86\uFF0C\u7A0D\u5F8C\u518D\u8DD1\u901A\u5E38\u6703\u597D" },
+  { re: /timeout|timed out|逾時|deadline/i, say: "\u5C0D\u65B9\u592A\u4E45\u6C92\u56DE\u61C9\uFF0C\u7B49\u4E0D\u5230\u5C31\u505C\u4E86" },
+  { re: /credential|缺少金鑰|missing key|secret.*(?:not|missing)|金鑰/i, say: "\u5C11\u4E86\u9700\u8981\u7684\u91D1\u9470\uFF0C\u8ACB\u5230\u91D1\u9470\u4E2D\u5FC3\u88DC\u4E0A" },
+  { re: /fetch failed|network|ECONN|ENOTFOUND|connection/i, say: "\u9023\u4E0D\u4E0A\u5C0D\u65B9\u670D\u52D9\uFF08\u7DB2\u8DEF\u6216\u7DB2\u5740\u6709\u554F\u984C\uFF09" },
+  { re: /JSON|parse|Unexpected token/i, say: "\u5C0D\u65B9\u56DE\u4F86\u7684\u8CC7\u6599\u683C\u5F0F\u770B\u4E0D\u61C2" },
+  { re: /圖定義已失效|工作流定義損毀|schema|invalid graph/i, say: "\u5DE5\u4F5C\u6D41\u672C\u8EAB\u7684\u5B9A\u7FA9\u6709\u554F\u984C\uFF0C\u9700\u8981\u91CD\u65B0\u5B89\u88DD\u6216\u4FEE\u6B63" }
+];
+function humanReason(error) {
+  const e = String(error ?? "").trim();
+  if (!e) return "\u6C92\u6709\u7559\u4E0B\u932F\u8AA4\u8A0A\u606F";
+  for (const r of RULES) if (r.re.test(e)) return r.say;
+  const first = e.split(/[\n。]/)[0].trim();
+  return first.length > 60 ? first.slice(0, 60) + "\u2026" : first;
+}
+var COMPONENT_LABELS = {
+  input: "\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09",
+  code: "\u6574\u7406\u8CC7\u6599",
+  http_request: "\u6253\u4E00\u500B\u7DB2\u5740",
+  if_control: "\u5224\u65B7\u689D\u4EF6",
+  switch: "\u5206\u6D41",
+  try_catch: "\u51FA\u932F\u6642\u6539\u8D70\u53E6\u4E00\u689D",
+  ahub_call: "\u8B80\u5BEB AHub",
+  kbdb_get: "\u8B80\u77E5\u8B58\u5EAB",
+  kbdb_query: "\u67E5\u77E5\u8B58\u5EAB",
+  kbdb_create_record: "\u5BEB\u9032\u77E5\u8B58\u5EAB",
+  claude_api: "\u8ACB AI \u8655\u7406"
+};
+function componentLabel(componentId) {
+  if (!componentId) return "\uFF08\u6C92\u6709\u6307\u5B9A\u96F6\u4EF6\uFF09";
+  return COMPONENT_LABELS[componentId] ?? componentId;
+}
+function edgeLabel(type, edge) {
+  switch (type) {
+    case "ON_SUCCESS":
+    case "PIPE":
+      return "\u6210\u529F\u5F8C";
+    case "ON_FAIL":
+      return "\u5931\u6557\u6642";
+    case "FOREACH":
+      return edge.iterator ? `\u5C0D\u6BCF\u500B ${edge.iterator}` : "\u5C0D\u6BCF\u4E00\u7B46";
+    case "ON_TRUE":
+      return "\u689D\u4EF6\u6210\u7ACB\u6642";
+    case "ON_FALSE":
+      return "\u689D\u4EF6\u4E0D\u6210\u7ACB\u6642";
+    case "ON_BRANCH":
+      return edge.branch ? `\u5206\u652F\u300C${edge.branch}\u300D` : "\u5206\u652F";
+    case "IF":
+      return edge.condition ? `\u5982\u679C ${edge.condition}` : "\u5982\u679C";
+    case "CONTINUE":
+      return "\u7E7C\u7E8C";
+    case "CALLS_SUBFLOW":
+      return "\u547C\u53EB\u5B50\u6D41\u7A0B";
+    default:
+      return type;
+  }
+}
+function buildFlowSteps(nodes, edges, lastRun) {
+  const order = topoOrder(nodes, edges);
+  const failed = lastRun?.verdict === "failed" ? lastRun.failed_step ?? null : null;
+  const downstream = failed ? reachableFrom(failed, edges) : /* @__PURE__ */ new Set();
+  const onFailTargets = new Set(edges.filter((e) => e.type === "ON_FAIL" && e.from === failed).map((e) => e.to));
+  return order.map((n) => {
+    let last = "unknown";
+    if (failed) {
+      if (n.id === failed) last = "failed";
+      else if (downstream.has(n.id) && !onFailTargets.has(n.id)) last = "not_reached";
+    }
+    return {
+      id: n.id,
+      component: n.componentId ?? (n.type === "Input" ? "input" : ""),
+      component_label: componentLabel(n.componentId ?? (n.type === "Input" ? "input" : void 0)),
+      params: Object.keys(n.data ?? {}).slice(0, 20),
+      next: edges.filter((e) => e.from === n.id).map((e) => ({ to: e.to, how: edgeLabel(e.type, e) })),
+      prev: edges.filter((e) => e.to === n.id).map((e) => ({ from: e.from, how: edgeLabel(e.type, e) })),
+      last
+    };
+  });
+}
+function topoOrder(nodes, edges) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const indeg = new Map(nodes.map((n) => [n.id, 0]));
+  for (const e of edges) if (indeg.has(e.to) && byId.has(e.from)) indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
+  const queue = nodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).sort((a, b) => Number(b.type === "Input") - Number(a.type === "Input"));
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  while (queue.length) {
+    const n = queue.shift();
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
+    for (const e of edges) {
+      if (e.from !== n.id || !byId.has(e.to)) continue;
+      const d = (indeg.get(e.to) ?? 0) - 1;
+      indeg.set(e.to, d);
+      if (d <= 0 && !seen.has(e.to)) queue.push(byId.get(e.to));
+    }
+  }
+  for (const n of nodes) if (!seen.has(n.id)) out.push(n);
+  return out;
+}
+function reachableFrom(start, edges) {
+  const seen = /* @__PURE__ */ new Set();
+  const stack = edges.filter((e) => e.from === start && e.type !== "ON_FAIL").map((e) => e.to);
+  while (stack.length) {
+    const id = stack.pop();
+    if (seen.has(id) || id === start) continue;
+    seen.add(id);
+    for (const e of edges) if (e.from === id) stack.push(e.to);
+  }
+  return seen;
+}
+
+// cypher-executor/src/actions/execution-logger.ts
 function extractTarget(input) {
   if (!input) return void 0;
   const raw2 = input.page_name ?? input.path;
   if (raw2 === void 0 || raw2 === null) return void 0;
   return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
 }
-async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message2, input, apiKey, kbdbUsage) {
+async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message2, input, apiKey, kbdbUsage, failedStep) {
   void nodes;
   try {
     const { base, headers } = kbdbBase(env);
@@ -10536,7 +10679,8 @@ async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs
         owner_id: apiKey ?? null,
         verdict,
         duration_ms: Math.max(0, Math.round(durationMs)),
-        message: message2 ?? "",
+        // inkstone/Arcrun#219：失敗那一步記在 message 開頭（不加欄位、不動資料層，見 lib/run-explain.ts）
+        message: verdict === "failed" ? messageWithFailedStep(message2 ?? "", failedStep) : message2 ?? "",
         target: extractTarget(input) ?? null,
         ...kbdbUsage ? { kbdb_rows_written: kbdbUsage.rowsWritten, kbdb_rows_read: kbdbUsage.rowsRead } : {}
       })
@@ -10686,7 +10830,9 @@ async function handleScheduled(controller, env, ctx) {
             r.duration_ms,
             r.error ?? "",
             triggerContext,
-            apiKey
+            apiKey,
+            void 0,
+            r.failed_node
           );
         },
         (e) => console.error("[scheduled] fail", name, e)
@@ -15798,8 +15944,8 @@ var ahub_app_default = {
   id: "ahub",
   name: "AHub",
   icon: "\u{1F9ED}",
-  version: "0.13.4",
-  changelog: "0.13.4\uFF1AAHub \u756B\u9762\u591A\u4E86\u300C\u767B\u8A18\u7C3F\u300D\u5206\u9801\u2014\u2014\u6BCF\u500B CC \u5C08\u6848\uFF08\u5DE5\u4F5C\u7AD9\uFF09\u5E95\u4E0B\u5217\u5B83\u7684\u5C0D\u8A71\uFF0C\u6BCF\u500B\u5C0D\u8A71\u770B\u5F97\u5230\u9818\u7684\u7968\u8207\u6240\u5C6C\u76EE\u6A19\uFF08\u7528\u73FE\u6709\u8CC7\u6599\u63A8\uFF1A\u5C0D\u8A71\u9818\u7684\u7968\u2192\u76EE\u6A19\u6A39\u6B65\u9A5F\u639B\u7684\u7968\u2192\u76EE\u6A19\uFF09\uFF0C\u63A8\u4E0D\u5230\u7684\u6A19\u300C\u6C92\u639B\u76EE\u6A19\u300D\uFF1B\u91CC\u7A0B\u7891\u9801\u7684\u9032\u5EA6 % \u6539\u6210\u548C\u7968\u5730\u5716\u540C\u4E00\u500B\u7B97\u6CD5\uFF08\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\uFF09\uFF0C\u9078\u300C\u5168\u90E8\u5C08\u6848\u300D\u6642\u5217\u51FA\u6240\u6709 repo \u7684\u91CC\u7A0B\u7891\uFF08\u6BCF\u5217\u6A19 repo\uFF0C\u7528\u641C\u5C0B\u6846\u7BE9\uFF09\u3002\u756B\u9762\u8B80\u53D6\u767D\u540D\u55AE\u591A\u653E sessions_list\u3001claim_list\uFF08\u90FD\u662F\u65E2\u6709\u7684\u552F\u8B80\u8DEF\u7531\uFF09\uFF1B\u4E0D\u65B0\u589E template\u3001\u6B04\u4F4D\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08inkstone/Arcrun#351\uFF09\u3002\n0.13.3\uFF1A\u76EE\u6A19\u53EF\u4EE5\u7D81\u91CC\u7A0B\u7891\u4E86\uFF08inkstone/Arcrun#353\uFF09\u2014\u2014\u76EE\u6A19\u5C6C\u65BC\u76EE\u6A19\u6A39\u3001milestone \u5C6C\u65BC\u7968\u7CFB\u7D71\uFF0C\u4E00\u500B\u76EE\u6A19\u7D81 0 \u5230\u591A\u500B milestone\uFF08\u53EF\u8DE8 repo\uFF1B\u4E00\u500B milestone \u4E5F\u53EF\u88AB\u597D\u5E7E\u500B\u76EE\u6A19\u5F15\u7528\uFF09\u3002\u76EE\u6A19\u53EA\u5B58\u300C\u9023\u5230\u54EA\u4E9B milestone\u300D\uFF0C\u9032\u5EA6 % \u5B8C\u5168\u7531 milestone \u5E95\u4E0B\u7684\u7968\u8207 release \u7B97\uFF08\u8207\u7968\u5730\u5716\u540C\u4E00\u5957\u7B97\u6CD5\uFF09\uFF0C\u4E0D\u53E6\u5916\u624B\u586B\uFF1Bgoal_set \u591A milestones\uFF0Funbind_milestones\uFF0Fmilestone_repo\uFF0Cgoals_report \u6BCF\u500B\u76EE\u6A19\u591A milestones\uFF0Fprogress\uFF0Fflags\uFF08\u53EF\u7528 milestone \u53CD\u67E5\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u5B83\uFF09\u3002\u5169\u7D44\u300C\u93C8\u65B7\u4E86\u300D\u65D7\u6A19\u5728\u5831\u544A\u8207\u770B\u677F\u90FD\u5217\uFF1A\u76EE\u6A19\u6A39\u6C92\u4EBA\u7DAD\u8B77\uFF08\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u5728\u52D5\u3001\u76EE\u6A19\u6A39\u537B\u4E45\u6C92\u66F4\u65B0\uFF0C\u6216 waiting \u6B65\u9A5F\u65E9\u8A72\u91CD\u770B\uFF09\u3001\u93C8\u689D\u6C92\u4EBA\u7DAD\u8B77\uFF08\u6C92\u7D81\u91CC\u7A0B\u7891\u537B\u6709\u7968\u5728\u8DD1\u3001\u6B65\u9A5F\u7968\u4E0D\u5728\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u3001\u91CC\u7A0B\u7891 100% \u6216\u5DF2\u95DC\u537B\u6C92\u6709 release\u3001\u904E\u671F\u6216\u627E\u4E0D\u5230\uFF09\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_goal_ms\uFF0C\u5171 24\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u30020.13.2\uFF1A\u756B\u9762\u8B80 AHub \u7684\u767D\u540D\u55AE\u591A\u653E\u4E00\u689D goals_report\uFF08\u76EE\u6A19\u6A39\u5831\u544A\uFF09\u2014\u2014\u7D66\u7968\u5730\u5716 0.7.0 \u7684\u300C\u672A\u4F86\u300D\u8996\u5716\u8B80\uFF08inkstone/Arcrun#351\uFF09\u3002\u53EA\u591A\u4E00\u689D\u552F\u8B80\u8DEF\u7531\u7684\u653E\u884C\uFF0C\u8CC7\u6599\u8207\u5DE5\u5177\u90FD\u6C92\u52D5\uFF0C\u6C92\u6709\u65B0 template\u3002\n0.13.0\uFF1A\u91CC\u7A0B\u7891\u9032\u5EA6\u628A\u524D\u7F6E\u7968\u7B97\u9032\u53BB\u4E86\uFF0C\u4E26\u6A19\u51FA\u93C8\u689D\u65B7\u5728\u54EA\uFF08inkstone/Arcrun#352\uFF09\u2014\u2014\u7968\u5730\u5716\u7684 % \u539F\u672C\u53EA\u7B97\u300C\u76F4\u63A5\u639B\u5728\u91CC\u7A0B\u7891\u4E0A\u300D\u7684\u8F09\u9AD4\u7968\uFF0C\u5225\u7684 repo \u7684\u57F7\u884C\u7968\u662F\u8F09\u9AD4\u7968\u7684\u524D\u7F6E\uFF0C\u5B8C\u5168\u6C92\u9032\u5206\u6BCD\uFF08\u4F8B\uFF1A\u505A\u5B8C\u4E86\u537B\u986F\u793A 33%\uFF09\u3002\u73FE\u5728 GET /ahub/milestones \u7684\u9032\u5EA6\uFF1D\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u905E\u79FB\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\u3001\u540C\u4E00\u5F35\u53EA\u7B97\u4E00\u6B21\uFF1B\u591A\u56DE direct\uFF0Fprerequisites\uFF0Fcarriers\uFF08\u542B\u5404\u8F09\u9AD4\u7684\u524D\u7F6E\u6578\uFF09\u3001\u93C8\u689D\u56DB\u6BB5 chain\uFF08\u8F09\u9AD4\u7968\uFF0F\u5DE5\u4F5C\u7968\uFF0Fmilestone\uFF0Frelease\uFF09\u3001\u65B7\u9EDE gaps \u8207 chain_state\uFF1Abroken\uFF1D\u93C8\u689D\u6C92\u63A5\u597D\uFF08\u6C92\u6709\u8F09\u9AD4\u3001\u8F09\u9AD4\u90FD\u6C92\u6709\u524D\u7F6E\uFF09\u3001unmaintained\uFF1D\u93C8\u689D\u63A5\u4E0A\u4E86\u4F46\u6C92\u4EBA\u7DAD\u8B77\uFF08\u524D\u7F6E\u5168\u95DC\u8F09\u9AD4\u9084\u958B\u8457\u3001100% \u91CC\u7A0B\u7891\u9084\u958B\u8457\u3001\u505A\u5B8C\u6C92 release\u3001\u91CC\u7A0B\u7891\u95DC\u4E86\u9084\u6709\u7968\u958B\u8457\uFF09\u3001moving\u3001shipped\uFF1B\u53E6\u6A19\u904E\u671F\u3002\u7968\u5730\u5716\u5361\u7247\u8207\u8A73\u60C5\u986F\u793A\u65B0 % \u8207\u65B7\u9EDE\u3002\u8B80\u53D6\u591A 2 \u683C\uFF08\u6574\u5F35\u76F8\u4F9D\u908A\u3001\u958B\u8457\u7684\u7968\uFF0C\u5404\u6700\u591A 2 \u9801\xD7500\uFF0C\u8B80\u6EFF\u6A19 truncated\uFF09\uFF1B\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.12.1\uFF1A\u6A19\u51FA\u300C\u4EA4\u8FA6\u4E86\u537B\u6C92\u4EBA\u52D5\u5DE5\u300D\uFF08inkstone/Arcrun#350\uFF09\u2014\u2014\u6B65\u9A5F\u5F85\u505A\u3001\u6C92\u4EBA\u5728\u505A\uFF08\u6C92\u6709\u7968\uFF0C\u6216\u7968\u6C92\u4EBA\u9818\u4E5F\u6C92\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF09\u3001\u524D\u7F6E\u90FD\u505A\u5B8C\uFF0C\u5F9E\u4EA4\u8FA6\u6642\u9593\u8D77\u8D85\u904E 24 \u5C0F\u6642\uFF08\u53EF\u8ABF\uFF0Cunstarted_hours\uFF09\uFF0C\u7E3D\u76E3\u5831\u544A goals_report\uFF08\u76EE\u6A19\u3001\u5C08\u6848\u7684 unstarted\uFF0Csummary.unstarted_steps\uFF09\u8207\u770B\u677F board\uFF08anomalies \u7684 unstarted_step\u3001unstarted_steps \u660E\u7D30\uFF09\u5C31\u6A19\u51FA\u4F86\uFF0C\u4E0D\u5FC5\u9760\u4EBA\u8A18\u5F97\u53BB\u8FFD\u554F\u3002\u4EA4\u8FA6\u6642\u9593\u7528 step_set \u7684\u65B0\u53C3\u6578 assigned_at \u8A18\uFF08\u4EA4\u8FA6\u5E38\u6BD4\u5BEB\u9032\u6A39\u65E9\uFF0C\u88DC\u5BEB\u820A\u7684\u4E5F\u884C\uFF1B\u6C92\u7D66\u5C31\u4EE5\u5BEB\u9032\u6A39\u7684\u6642\u9593\u7B97\uFF09\u3002\u53E6\u4FEE\uFF1A\u4EBA\u5BEB\u7684\u300C\u7B49\u5F85\u4E2D\u300D\u6B65\u9A5F\uFF0C\u524D\u7F6E\u90FD\u5B8C\u6210\u5F8C\uFF0C\u5831\u544A\u7684 needs \u8A72\u7B46\u5E36 review:true \u8207\u300C\u524D\u7F6E\u5DF2\u5B8C\u6210\uFF0C\u8A72\u91CD\u770B\u300D\uFF0C\u4E0D\u518D\u6C38\u9060\u986F\u793A\u5728\u7B49\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_step_assign\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u3002board \u8B80\u53D6\u683C\u6578 9\u219214\uFF08\u591A\u8B80\u76EE\u6A19\u6A39\u9032\u884C\u4E2D\u7684\u6B65\u9A5F\uFF09\u3002\n0.12.0\uFF1AAHub \u6709\u300C\u6BCF\u500B\u5C08\u6848\u7684\u76EE\u6A19\u6A39\u300D\u4E86\uFF08inkstone/Arcrun#349\uFF09\u2014\u2014\u8A18\u300C\u672A\u4F86 \u2212 \u73FE\u5728\u300D\uFF1A\u76EE\u6A19\uFF08\u4E00\u53E5\u8A71\u7684\u672A\u4F86\uFF0B\u9054\u6210\u6A19\u6E96\uFF0C\u53EF\u5206\u5C64\uFF0C\u76EE\u6A19\u6703\u8B8A\u3001\u6BCF\u6B21\u4FEE\u6539\u5FC5\u9644\u7406\u7531\u4E26\u81EA\u52D5\u7559\u8B8A\u66F4\u7D00\u9304\uFF09\u3001\u6B65\u9A5F\uFF08\u639B\u5728\u76EE\u6A19\u4E0B\uFF0C\u53EF\u4EE5\u9084\u6C92\u958B\u7968\uFF1B\u72C0\u614B done\uFF0Fdoing\uFF0Fpending\uFF0Fwaiting\uFF0Fneeds_user\uFF0C\u7B49\u5F85\u8207\u9700\u8981\u4F7F\u7528\u8005\u7684\u8981\u5BEB\u7B49\u4EC0\u9EBC\uFF1B\u524D\u7F6E\u6B65\u9A5F depends_on\uFF09\u3002\u6709\u639B\u7968\u7684\u6B65\u9A5F\u5F9E\u7968\u8207\u9818\u7968\u8B80\u72C0\u614B\uFF08\u7968\u95DC\u4E86\uFF1D\u5B8C\u6210\u3001\u9818\u7968\u5361\u4F4F\uFF1D\u7B49\u5F85\uFF09\u3002\u5BEB\u5165\u5DE5\u5177 goal_set\uFF0Fstep_set \u7528\u6A19\u984C\u6216 id \u90FD\u627E\u5F97\u5230\u3001\u540C\u4E00\u500B\u6A19\u984C\u91CD\u8907\u5BEB\u4E0D\u6703\u9577\u51FA\u91CD\u8907\uFF0C\u6A19\u984C\u76F8\u8FD1\u7684\u56DE 409 \u8207\u5019\u9078\uFF1B\u7E3D\u76E3\u7528 goals_report \u4E00\u6B21\u8B80\u5230\u6BCF\u500B\u5C08\u6848\u7684\u300C\u76EE\u6A19 A\uFF0F\u505A\u5230 B\uFF0F\u9700\u8981 C\u300D\uFF0C\u4E26\u6A19\u51FA\u88AB\u524D\u7F6E\u64CB\u4F4F\u7684\u76F8\u4F9D\u93C8\u8207\u6700\u524D\u9762\u7684\u5361\u9EDE\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u5C08\u6848\u76EE\u6A19\u6A39\u7684\u6700\u5F8C\u66F4\u65B0\u6642\u9593\uFF0C\u8D85\u904E goal_stale_hours\uFF08\u9810\u8A2D 168\uFF09\u6C92\u4EBA\u66F4\u65B0\u8A18 goal_stale\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_goal\u3001ahub_goal_log\u3001ahub_step\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 3 \u689D\u8DEF\u7531\u8207 3 \u652F MCP \u5DE5\u5177\uFF08goal_set\u3001step_set\u3001goals_report\uFF09\u30011 \u4EFD\u8AAA\u660E\uFF08goals\uFF09\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 23 \u63D0\u5230 26\u3002\n0.11.0\uFF1AAHub \u8A18\u5F97\u300C\u73FE\u5728\u6709\u54EA\u4E9B\u5C0D\u8A71\u958B\u8457\u300D\u4E86\uFF08inkstone/Arcrun#348\uFF09\u2014\u2014\u6BCF\u500B Claude \u5C0D\u8A71\u958B\u5DE5\u6642\u7528 checkin \u767B\u8A18\u4E00\u6B21\uFF08\u4E0D\u5FC5\u958B\u7968\uFF1A\u53EA\u662F\u53BB\u67E5\u67D0\u500B\u8A2D\u5B9A\u5728\u54EA\u7684\u5C0F\u5C0D\u8A71\u4E5F\u4E00\u6A23\uFF09\uFF0C\u7D50\u675F\u6642\u7528\u65B0\u7684 end_session \u6536\u5DE5\u3001\u53EF\u9644\u4E00\u53E5\u8A71\u7D50\u8AD6\uFF1B\u4E4B\u5F8C\u6BCF\u652F AHub \u5DE5\u5177\u5E36\u8457\u5C0D\u8A71\u8B58\u5225\uFF08session\uFF09\uFF0C\u5C31\u7B97\u4E00\u6B21\u6D3B\u52D5\u3001\u81EA\u52D5\u66F4\u65B0\u300C\u6700\u5F8C\u6D3B\u52D5\u300D\uFF0C\u4E0D\u5FC5\u518D\u5831\u5230\uFF1B\u540C\u4E00\u500B\u5C0D\u8A71\u91CD\u8907\u5831\u5230\u53EA\u662F\u66F4\u65B0\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u9032\u884C\u4E2D\uFF08\u6C92\u6536\u5DE5\uFF09\u7684\u5C0D\u8A71\u3001\u4F9D\u5DE5\u4F5C\u7AD9\u5206\u7D44\uFF0C\u9023\u5F97\u5230\u5B83\u9818\u7684\u7968\uFF1B\u4E45\u6C92\u6D3B\u52D5\u53C8\u6C92\u6536\u5DE5\u7684\u8A18 session_stale\uFF08\u9580\u6ABB session_stale_hours\uFF0C\u9810\u8A2D 12 \u5C0F\u6642\uFF09\uFF1B\u5DF2\u6536\u5DE5\u7684\u4E0D\u4F54\u7248\u9762\uFF0C\u7528\u65B0\u7684 list_sessions \u67E5\u5F97\u5230\u3002\u5DE5\u4F5C\u7AD9\u53EA\u8981\u9084\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF0C\u5C31\u4E0D\u518D\u5831\u300C\u5831\u5230\u4E86\u537B\u6C92\u9818\u7968\u300D\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_session\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 4 \u689D\u8DEF\u7531\u8207 2 \u652F MCP \u5DE5\u5177\uFF08end_session\u3001list_sessions\uFF09\uFF0Ccheckin \u591A\u6536 session\uFF0Ftitle\uFF0Fticket\uFF0C\u5176\u9918\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 session\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 21 \u63D0\u5230 23\u3002\n0.10.1\uFF1A\u4FEE\u6389\u300C\u66F4\u65B0\u5931\u6557\u30FB\u8CC7\u6599\u4F86\u81EA\u597D\u5E7E\u500B\u5C0F\u6642\u524D\u300D\u2014\u2014AHub \u756B\u9762\u8B80\u4E0D\u5230\u65B0\u8CC7\u6599\uFF08\u7968\u3001\u5168\u90E8\u5C08\u6848\u3001\u6A19\u7C64\u90FD\u505C\u5728\u820A\u7684\uFF09\u3002\u539F\u56E0\u662F\u5F15\u64CE\u6539\u4E86\u4E00\u500B\u7D30\u7BC0\uFF0C\u756B\u9762\u5728\u300C\u9019\u53F0\u5DF2\u7D93\u767B\u8A18\u904E\u300D\u7684\u60C5\u6CC1\u4E0B\u628A\u771F\u6B63\u7684\u56DE\u61C9\u4E1F\u6389\u4E86\uFF1B\u73FE\u5728\u6539\u597D\uFF0C\u6309\u300C\u66F4\u65B0\u300D\u5F8C\u756B\u9762\u6703\u62FF\u5230\u6700\u65B0\u7684\u7968\uFF08inkstone/Arcrun#347\uFF09\u3002\n0.10.0\uFF1AAHub \u8A18\u5F97\u300C\u54EA\u500B Claude \u5C08\u6848\u9818\u4E86\u54EA\u5F35\u7968\u3001\u505A\u5230\u54EA\u300D\u4E86\uFF08inkstone/Arcrun#346\uFF09\u2014\u2014\u5DE5\u4F5C\u7AD9\uFF08\uFF1D\u4E00\u500B Claude \u5C08\u6848\uFF09\u5831\u5230 checkin\u3001\u9818\u7968 claim\u3001\u56DE\u5831 report\u3001\u653E\u624B release\uFF1B\u7E3D\u76E3\u4E00\u6B21\u770B\u5168\u90E8\u7684\u770B\u677F board\uFF1B\u7E3D\u76E3\u5C0D\u88AB\u9818\u8D70\u7684\u7968\u958B\u300C\u8981\u6C42\u56DE\u5831\u300Drequest_report\uFF0C\u8A72\u5DE5\u4F5C\u7AD9\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55 AHub \u5DE5\u5177\u6642\u56DE\u61C9\u7684 next_actions \u5C31\u5E36\u51FA\u4F86\uFF0C\u56DE\u5831\u5F8C\u81EA\u52D5\u6D88\u6389\uFF1Bmy_queue \u53EF\u4F9D\u5DE5\u4F5C\u7AD9\u7BE9\u3002\u9818\u7968\u6642\u56DE\u61C9\u5E36\u9019\u5F35\u7968\u5C6C\u65BC\u54EA\u500B milestone\uFF08\u81EA\u5DF1\u639B\u7684\uFF0C\u6C92\u6709\u5C31\u770B\u64CB\u4F4F\u7684\u8F09\u9AD4\u7968\u639B\u7684\uFF09\uFF1B\u770B\u677F\u6293\u7570\u5E38\uFF1A\u5831\u5230\u537B\u6C92\u9818\u7968\u3001\u9818\u7684\u7968\u4E45\u6C92\u56DE\u5831\u3001\u4E0D\u5C6C\u65BC\u4EFB\u4F55 milestone\u3001\u56DE\u5831\u5B8C\u6210\u4F46 milestone \u6C92\u95DC\u6216\u6C92\u6709\u7248\u672C\uFF08\u53EA commit \u5C31\u653E\u8457\uFF09\u3001\u5DE5\u4F5C\u7AD9\u4E45\u6C92\u78B0 AHub\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_station\u3001ahub_claim\u3001ahub_report_ask\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08ahub_release_link \u53EA\u591A\u4E00\u500B\u7D22\u5F15\uFF09\uFF1B\u65B0\u589E 6 \u652F MCP \u5DE5\u5177\u8207 1 \u4EFD\u5831\u5230\u8AAA\u660E\uFF0C\u65E2\u6709\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 station \u53C3\u6578\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 15 \u63D0\u5230 21\u3002\n0.9.1\uFF1A\u5217\u7968\u3001\u5217\u7559\u8A00\u8B8A\u5FEB\uFF08leo 2026-11-04\uFF09\u2014\u2014\u539F\u672C\u5217\u4E00\u500B repo \u7684\u7968\uFF0C\u77E5\u8B58\u5EAB\u8981\u628A\u540C\u4E00\u500B repo \u5E95\u4E0B\u6240\u6709\u7559\u8A00\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u4E00\u8D77\u7FFB\u904E\u624D\u6E4A\u5F97\u51FA\u7968\uFF0C\u7559\u8A00\u8D8A\u591A\u8D8A\u6162\u3001\u8D8A\u5403\u984D\u5EA6\uFF1B\u73FE\u5728 AHub \u6703\u7528\u4F86\u67E5\u7684\u683C\u5B50\u90FD\u958B\u4E86\u77E5\u8B58\u5EAB\u7684\u300C\u6B04\u4F4D\u503C\u7D22\u5F15\u300D\uFF0C\u5217\u7968\u7684\u6210\u672C\u53EA\u8DDF\u8981\u5217\u7684\u7968\u6578\u6709\u95DC\u3002\u5B89\u88DD\u6216\u6309\u300C\u66F4\u65B0\u300D\u6642\u81EA\u52D5\u66FF\u65E2\u6709\u8CC7\u6599\u5EFA\u7D22\u5F15\uFF08\u8CC7\u6599\u591A\u6642\u5206\u5E7E\u6B21\u505A\u5B8C\uFF0C\u6C92\u5EFA\u597D\u4E4B\u524D\u7167\u820A\u53EF\u7528\u3001\u53EA\u662F\u9084\u6C92\u8B8A\u5FEB\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 kbdb migration 0016\u3002\n0.9.0\uFF1A\u7968\u53EF\u4EE5\u4E0D\u5206 repo \u641C\u4E86\uFF08inkstone/Arcrun#329\uFF09\u2014\u2014AHub \u756B\u9762\u7684\u5C08\u6848\u9078\u55AE\u591A\u4E86\u300C\u5168\u90E8\u5C08\u6848\u300D\uFF0C\u4E00\u6B21\u5217\u51FA\u6240\u6709 repo \u7684\u7968\u3001\u6BCF\u5217\u6A19\u660E repo\uFF1B\u641C\u5C0B\u6846\u8F38\u5165 298\u3001#298\u3001Arcrun#298\u3001inkstone/Arcrun#298 \u90FD\u627E\u5F97\u5230\uFF08\u540C\u865F\u78BC\u7684\u7968\u6BCF\u500B repo \u5404\u4E00\u5F35\uFF0C\u865F\u78BC\u76F8\u7B26\u6392\u6700\u524D\u9762\uFF09\uFF0CAI \u7684 list_issues \u540C\u4EAB\u3002\u6BCF\u5F35\u7968\u6709\u56FA\u5B9A\u9023\u7D50\uFF08\u7968\u8A73\u60C5\u7684\u300C\u8907\u88FD\u9023\u7D50\u300D\uFF0C\u5F62\u5982 \u2026#/app/ahub/inkstone/Arcrun/issues/298\uFF0C\u958B\u555F\u76F4\u9054\u90A3\u5F35\u7968\u7531 #326 \u7684\u7DB2\u5740\u76F4\u9054\u8CA0\u8CAC\uFF09\u3002\n0.8.0\uFF1AAHub \u81EA\u5DF1\u7D66 AI \u5DE5\u5177\u4E86\uFF08inkstone/Arcrun#328\uFF09\u2014\u2014Arcrun MCP \u9023\u7DDA\u6642\u81EA\u52D5\u639B\u4E0A 15 \u652F arcrun_ahub_* \u5DE5\u5177\u8207 4 \u4EFD\u8AAA\u660E\uFF08\u7968\u3001\u7C3D\u6838\u3001\u51FA\u8CA8\u3001\u932F\u53C8\u72AF\u4E86\uFF09\uFF0C\u4E0D\u5FC5\u53E6\u5916\u88DD plugin\u3002\u7C3D\u6838\u4EBA\u6539\u7531\u6BCF\u500B\u79DF\u6236\u5728 AHub \u756B\u9762\u7684\u300C\u8A2D\u5B9A\u300D\u586B\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\uFF1B\u53EA\u6709\u7C3D\u6838\u4EBA\u7C3D\u7684\u624D\u7B97\u3002AI \u6539\u7528\u300C\u767C\u7C3D\u6838\u8ACB\u6C42\u300D\u8207\u300C\u8B80\u7C3D\u6838\u7D50\u679C\u300D\u5169\u652F\u5DE5\u5177\uFF0C\u81EA\u5DF1\u5728\u7559\u8A00\u88E1\u5BEB ARM:\uFF0F\u7C3D\u6838\u884C\u6703\u88AB\u64CB\u3002\u95DC\u7968\u53EF\u9644\u4EA4\u4ED8\u7269\uFF1B\u540C\u4E00\u500B\u932F\u53C8\u72AF\u4E86\u53EF\u56DE\u5831\u5230\u6A5F\u5236\u7968\uFF08\u95DC\u4E86\u6703\u91CD\u958B\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#327\u30020.7.4\uFF1A\u4FEE\u6389 0.7.3 \u7684\u4E00\u500B\u932F\uFF1AAI \u91CD\u767C\u89E3\u9396\u78BC\u6642\uFF0C\u9078\u55AE\u6703\u8AA4\u6293\u7559\u8A00\u88E1\u63D0\u5230\u7684\u4E0A\u4E00\u7D44\uFF08\u5DF2\u904E\u671F\u7684\uFF09\u78BC\u30020.7.3\uFF1A\u7C3D\u6838\u9078\u55AE\u4E5F\u8A8D\u5F97 AI \u8981\u4F60\u8CBC\u7684\u4E00\u6B21\u6027\u89E3\u9396\u78BC\uFF08\u300C\u{1F510} ARM \u8ACB\u6C42\u300D\uFF0C\u63A8 GitHub \u6216\u78B0\u6B63\u5F0F\u74B0\u5883\u524D\u90A3\u7A2E\uFF09\uFF1A\u6309\u300C\u7C3D\u6838\u2026\u300D\u9078\u5B83\u3001\u6309\u540C\u610F\u5C31\u5E6B\u4F60\u628A\u78BC\u8CBC\u4E0A\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u6284\uFF1B\u4F60\u81EA\u5DF1\u6253\u904E\u78BC\u7684\u90A3\u5247\u6703\u6A19\u6210\u5DF2\u7C3D\uFF0C\u4E0D\u518D\u639B\u8457\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u30020.7.2\uFF1A\u4E00\u6B21\u7559\u8A00\u3001\u6539\u9032\u5EA6\u9019\u985E\u5BEB\u5165\u5C11\u4ED8\u4E00\u6574\u8D9F\u2014\u2014\u5EFA\u8207\u6539\u5408\u6210\u4E00\u500B\u8ACB\u6C42\u3001\u5728\u5F15\u64CE\u90A3\u7AEF\u540C\u6642\u5BEB\uFF08\u539F\u672C\u662F\u5169\u500B\u4F9D\u5E8F\u7684\u6B65\u9A5F\uFF0Cyoulin \u5BE6\u6E2C\u5404\u7D04 1.2\uFF5E1.6 \u79D2\uFF09\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#325\u30020.7.1\uFF1A\u6539\u9032\u5EA6\u3001\u91CC\u7A0B\u7891\u3001\u72C0\u614B\u3001\u6A19\u7C64\u6642\u756B\u9762\u7576\u4E0B\u5C31\u63DB\u6210\u65B0\u503C\u3001\u80CC\u666F\u5B58\u6A94\uFF0C\u5B58\u4E0D\u9032\u53BB\u624D\u63DB\u56DE\u539F\u6A23\uFF08\u4E0D\u518D\u5361\u8457\u7B49 4\uFF5E13 \u79D2\uFF09\u3002\u7C3D\u6838\u6539\u6210\u9078\u55AE\uFF08leo 2026-10-25\uFF09\uFF1A\u4E0D\u5FC5\u518D\u6253\u7248\u672C\u865F\u2014\u2014AI \u628A\u8981\u4F60\u7C3D\u7684\u5167\u5BB9\u5BEB\u6210\u4E00\u5247\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u7684\u7559\u8A00\uFF0C\u6309\u300C\u7C3D\u6838\u2026\u300D\u5F9E\u4E0B\u62C9\u9078\u5B83\u3001\u52FE\u540C\u610F\u6216\u4E0D\u540C\u610F\u3001\u53EF\u52A0\u610F\u898B\uFF0C\u7C3D\u6838\u8207\u88AB\u7C3D\u7684\u5167\u5BB9\u7D81\u5728\u4E00\u8D77\uFF1B\u540C\u610F\u51FA\u6B63\u5F0F\u7248\u7684\u8ACB\u6C42\u6642\u4E00\u4F75\u7559\u4E0B\u51FA\u8CA8\u7DDA\u8A8D\u5F97\u7684\u300CARM: <\u7248\u672C>\u300D\u3002\u4FEE\u6389\u820A\u7684\u7C3D ARM \u6846\u628A\u300CARM: 9.9.9\u300D\u5224\u6210\u683C\u5F0F\u4E0D\u5C0D\u30020.7.0\uFF1AAHub \u6709\u756B\u9762\u4E86\uFF08inkstone/Arcrun#323\uFF09\u2014\u2014\u5728 Portal \u6253\u958B AHub \u5C31\u80FD\u589E\u6539\u95DC\u7968\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u3001\u5C08\u6848\uFF1B\u9EDE\u7968\u5F9E\u53F3\u908A\u6ED1\u51FA\u8A73\u60C5\uFF0C\u7559\u8A00\u7528 Markdown \u5BEB\u3001\u53EF\u9810\u89BD\u3001\u7167\u683C\u5F0F\u986F\u793A\uFF0C\u80FD\u7C3D ARM\u3002\u5F9E\u756B\u9762\u5BEB\u7684\u4F5C\u8005\u662F Leo\uFF1A\u5BEB\u5165\u8DEF\u7531\u591A\u6536\u300CPortal \u4E3B\u4EBA\u6309\u7684\u300D\u65B7\u8A00\uFF08\u554F\u5F15\u64CE\u9A57\u904E\u3001\u662F\u7BA1\u7406\u54E1\u624D\u5BEB\uFF09\uFF1BAI \u8207 App \u7528 token \u7684\u5BEB\u6CD5\u5B8C\u5168\u4E0D\u8B8A\u30020.6.0\uFF1A\u88DC\u756B\u9762\u8981\u7BA1\u5B8C\u6574\u5354\u4F5C\u7684\u5F8C\u7AEF\u7F3A\u53E3\uFF08inkstone/Arcrun#320\uFF09\u2014\u2014\u5C08\u6848\uFF08repo\uFF09\u6E05\u55AE\u8207\u6539 description\uFF0Fprivate\uFF1Brelease \u9023\u5F97\u5230\u91CC\u7A0B\u7891\uFF08\u53EF\u8DE8 repo\uFF09\u4E26\u6A19\u6709\u6C92\u6709\u63A8 GitHub\uFF1B\u7559\u8A00\u53EF\u6539\u53EF\u522A\uFF08\u4F5C\u8005\u672C\u4EBA\uFF09\uFF1B\u76F8\u4F9D\u53EF\u79FB\u9664\uFF1B\u8DE8 repo \u7684\u91CC\u7A0B\u7891\u7E3D\u89BD\u4E00\u6B21\u7D66\u9032\u5EA6 %\u3001\u6700\u8FD1\u6D3B\u52D5\u3001\u8AB0\u5728\u63A8\u3001\u7522\u51FA\u7684 release\u3002\u65B0\u589E\u5169\u500B template\uFF08ahub_release_link\u3001ahub_comment_meta\uFF09\uFF0C\u820A\u8CC7\u6599\u4E0D\u5FC5\u91CD\u532F\uFF0C\u6C92\u8CC7\u6599\u5C31\u56DE\u7A7A\u503C\u30020.5.0\uFF1A\u5408\u4F75 0.4.0\uFF08release \u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u8207 0.3.2\uFF08Portal \u7559\u8A00\uFF09\uFF0C\u4E00\u500B App \u4E00\u500B\u7248\u672C\u865F\uFF1B\u5DF2\u88DD 0.3.x\uFF0F0.4.0 \u7684\u5BE6\u4F8B\u6309\u300C\u66F4\u65B0\u300D\u5C31\u5230\u4F4D\u30020.3.2\uFF1A\u65B0\u589E\u300CPortal \u7559\u8A00\u300D\u8DEF\u7531\u2014\u2014\u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u756B\u9762\u7559\u8A00\uFF0C\u4F5C\u8005\u662F Leo\uFF0C\u8EAB\u5206\u770B\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\u800C\u4E0D\u662F token\uFF1B\u516C\u958B\u7684 token \u767B\u8A18\u4E0D\u518D\u6536\u4EBA\u7684\u767B\u5165\u540D\uFF08Leo\uFF09\u8207 kind=human\uFF0CAI \u767B\u8A18\u4E0D\u51FA\u4E00\u500B Leo\uFF08inkstone/Arcrun#304 c22862\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 /portal/actor/verify\u30020.4.0\uFF1A\u52A0\u4E0A release\uFF08\u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u2014\u2014\u5EFA\uFF0F\u5217\uFF0F\u8B80\uFF0F\u7528 tag \u627E\uFF0F\u88DC\u9644\u4EF6\u6307\u6A19\uFF0CGitea \u5F62\u72C0\uFF1B\u8B80\u7684\u8DEF\u7531\u4E0D\u67E5 token\uFF08\u770B\u7248\u672C\u6E05\u55AE\u4E0D\u9700\u8981\u7F72\u540D\uFF09\uFF1B\u53E6\u6709 /ahub/releases \u6BCF\u500B repo \u4E00\u884C\u7D66\u7248\u672C\u9801\u7528\u3002\u532F\u5165\u7684\u820A release \u8207\u65B0\u5EFA\u7684\u662F\u540C\u4E00\u7A2E\u8CC7\u6599\uFF08ahub_release\u3001ahub_attachment \u5169\u500B template \u4F75\u5165\u5BA3\u544A\uFF09\uFF1B\u6C92\u6709 DELETE\uFF08\u4EE3\u8F49\u5C64\u6C92\u6709\u522A record \u7684\u53E3\uFF09\u3002inkstone/InkStoneCo#234 c22846\u30020.3.1\uFF1A\u4FEE\u958B\u7968\u7671\u7613\u2014\u2014\u4E00\u500B repo \u6700\u65B0\u5E7E\u7B46\u5168\u662F key \u4E0D\u50CF\u7968\u865F\u7684\u7D00\u9304\u6642\uFF0C\u958B\u7968\u5F9E #1 \u8D77\u6392\u7684\u516B\u500B\u5617\u8A66\u5168\u649E\u65E2\u6709\u7684\u7968\u800C 503\uFF1B\u73FE\u5728\u9019\u7A2E\u60C5\u6CC1\u6539\u5F9E\u7B46\u6578+1 \u8D77\u6392\uFF08inkstone/Arcrun#308 c20214\uFF09\u30020.3.0\uFF1A\u8B80\u53D6\u4E26\u884C\uFF08\u7B2C\u4E00\u6279\u8B80\u540C\u6642\u6253\uFF0C\u8EAB\u5206\u67E5\u8A62\u4F75\u9032\u7B2C\u4E00\u6279\uFF09\u3001\u7968\u865F\u7528 create_only \u6436\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u958B\u7968\u4E0D\u6703\u540C\u865F\uFF09\u3001\u76F8\u4F9D\u7968\u7528 batch-get \u4E00\u6B21\u8B80\u5B8C\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#305\uFF0B#307\u30020.2.0\uFF1A\u8CC7\u6599\u6539\u6210 template\uFF0Brecord\uFF08\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u5404\u4E00\u7A2E\uFF09\uFF0C\u7A2E\u985E\u53EA\u7531 template \u6C7A\u5B9A\uFF08inkstone/Arcrun#301\uFF09\u30020.1.0\uFF1A\u9AA8\u67B6\u3002\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u3001\u91CC\u7A0B\u7891\u3001\u8DE8 repo \u641C\u5C0B\u2014\u2014Gitea \u5F62\u72C0\u7684 API\uFF0C\u72C0\u614B\u4F4F KBDB\uFF08\u96F6 SQL\uFF09\u3002\u6C92\u6709\u756B\u9762\uFF1B\u756B\u9762\u662F\u7968\u770B\u677F App \u63DB\u8CC7\u6599\u4F86\u6E90\u3002",
+  version: "0.14.1",
+  changelog: "0.14.1\uFF1A\u5916\u90E8\u7DB2\u7AD9\u53EF\u4EE5\u76F4\u63A5\u628A\u8868\u55AE\u8B8A\u6210\u7968\u4E86\uFF08inkstone/Arcrun#359\uFF09\u2014\u2014\u6536\u4EF6\u91D1\u9470\u4F4F credential \u4E2D\u5FC3\uFF08CF Secret\uFF09\uFF0C\u4E0D\u518D\u6709 AHub \u81EA\u5DF1\u7684\u91D1\u9470\u8868\u3001\u4E5F\u4E0D\u9700\u8981\u53E6\u4E00\u628A\u4EBA\u985E token \u6216\u5167\u90E8\u91D1\u9470\u4F86\u7522\u751F\u5B83\uFF1A\u767C\u4E00\u628A\uFF1D\u5728 credential \u4E2D\u5FC3\u52A0\u4E00\u689D\u540D\u5B57 ahub_intake_<\u4F86\u6E90> \u7684\u91D1\u9470\uFF0C\u64A4\u92B7\uFF1D\u522A\u6389\u5B83\u3002\u4F86\u6E90\u6E05\u55AE\u5728 intake-sources.json\uFF08\u76EE\u524D uncle6_contact \u2192 inkstone/personal-brand\u3001\u6A19\u7C64\u300C\u6D3D\u8A62\u300D\uFF09\uFF0C\u6BCF\u500B\u4F86\u6E90\u4E00\u689D\u516C\u958B\u8DEF\u7531 POST /ahub/intake/<\u4F86\u6E90>\uFF1A\u5916\u90E8\u7DB2\u7AD9\u5728\u4FE1\u5C01\u7684 token \u6B04\u9001\u91D1\u9470\uFF0C\u8DEF\u7531\u6BD4\u5C0D credential \u4E2D\u5FC3\u7684\u503C\uFF08\u6046\u5B9A\u6642\u9593\uFF09\uFF1B\u6BD4\u5C0D\u4E0D\u4E0A 401\uFF0Cbody \u6307\u5B9A\u5225\u7684 repo 403\uFF0C\u6C92\u6709\u90A3\u689D credential\uFF08\u64A4\u92B7\uFF09\u6642\u6574\u689D\u5DE5\u4F5C\u6D41\u5931\u6557\u3001\u4E0D\u958B\u7968\u3002\u91D1\u9470\u53EA\u80FD\u958B\u5728\u6E05\u55AE\u6307\u5B9A\u7684\u90A3\u4E00\u500B repo\u3001\u6253\u4E0D\u4E86\u4EFB\u4F55\u4E00\u822C\u8DEF\u7531\uFF08\u4E00\u822C\u8DEF\u7531\u53EA\u8A8D ahub_token\uFF09\u3002\u4E00\u7B46\u6D3D\u8A62\uFF1D\u4E00\u5F35\u7968\uFF1A\u6A19\u984C\u3010\u6D3D\u8A62\u3011\u806F\u7D61\u76EE\u7684\uFF5C\u55AE\u4F4D\uFF0C\u5167\u6587\u5E36\u5168\u90E8\u6B04\u4F4D\uFF0C\u639B\u6A19\u7C64\u300C\u6D3D\u8A62\u300D\uFF0C\u7F72\u540D intake-<\u4F86\u6E90>\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u7684\u7BA1\u7406\u8DEF\u7531\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF080.14.0 \u7684 ahub_intake_key \u8207\u91D1\u9470\u7BA1\u7406\u8DEF\u7531\u6C92\u6709\u51FA\u904E prod\uFF0C\u9019\u4E00\u7248\u6574\u500B\u62FF\u6389\uFF09\u3002\n0.13.5\uFF1AAI \u53EF\u4EE5\u76F4\u63A5\u958B\u91CC\u7A0B\u7891\u3001\u6539\u671F\u9650\u4E86\uFF08inkstone/Arcrun#358\uFF09\u2014\u2014\u65B0\u5DE5\u5177 milestone\uFF08action\uFF1Dcreate\uFF0Fupdate\uFF0Fclose\uFF0Freopen\uFF09\uFF0C\u5305\u73FE\u6709\u7684\u5EFA\u91CC\u7A0B\u7891\u8207\u6539\u91CC\u7A0B\u7891\u8DEF\u7531\uFF0C\u4E0D\u53E6\u958B\u5BEB\u5165\u8DEF\u5F91\u3002\u5B88\u898F\u5247\uFF1A\u53EA\u51C6\u958B\u5728 inkstone/InkStoneCo\u3001\u540D\u7A31\u4E0D\u51C6\u7528\u7248\u672C\u865F\u958B\u982D\u3001\u671F\u9650\u5FC5\u586B\u4E14\u8981\u662F\u672A\u904E\u53BB\u7684\u771F\u65E5\u671F\uFF089999-01-01 \u9019\u985E\u5047\u671F\u9650\u64CB\u6389\uFF09\u3001\u6539\u671F\u9650\u4E0D\u80FD\u6E05\u7A7A\uFF1B\u540C\u540D 422\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 26 \u63D0\u5230 27\uFF08\u8981\u9023\u540C MCP worker \u4E00\u8D77\u66F4\u65B0\uFF09\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.13.4\uFF1AAHub \u756B\u9762\u591A\u4E86\u300C\u767B\u8A18\u7C3F\u300D\u5206\u9801\u2014\u2014\u6BCF\u500B CC \u5C08\u6848\uFF08\u5DE5\u4F5C\u7AD9\uFF09\u5E95\u4E0B\u5217\u5B83\u7684\u5C0D\u8A71\uFF0C\u6BCF\u500B\u5C0D\u8A71\u770B\u5F97\u5230\u9818\u7684\u7968\u8207\u6240\u5C6C\u76EE\u6A19\uFF08\u7528\u73FE\u6709\u8CC7\u6599\u63A8\uFF1A\u5C0D\u8A71\u9818\u7684\u7968\u2192\u76EE\u6A19\u6A39\u6B65\u9A5F\u639B\u7684\u7968\u2192\u76EE\u6A19\uFF09\uFF0C\u63A8\u4E0D\u5230\u7684\u6A19\u300C\u6C92\u639B\u76EE\u6A19\u300D\uFF1B\u91CC\u7A0B\u7891\u9801\u7684\u9032\u5EA6 % \u6539\u6210\u548C\u7968\u5730\u5716\u540C\u4E00\u500B\u7B97\u6CD5\uFF08\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\uFF09\uFF0C\u9078\u300C\u5168\u90E8\u5C08\u6848\u300D\u6642\u5217\u51FA\u6240\u6709 repo \u7684\u91CC\u7A0B\u7891\uFF08\u6BCF\u5217\u6A19 repo\uFF0C\u7528\u641C\u5C0B\u6846\u7BE9\uFF09\u3002\u756B\u9762\u8B80\u53D6\u767D\u540D\u55AE\u591A\u653E sessions_list\u3001claim_list\uFF08\u90FD\u662F\u65E2\u6709\u7684\u552F\u8B80\u8DEF\u7531\uFF09\uFF1B\u4E0D\u65B0\u589E template\u3001\u6B04\u4F4D\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08inkstone/Arcrun#351\uFF09\u3002\n0.13.3\uFF1A\u76EE\u6A19\u53EF\u4EE5\u7D81\u91CC\u7A0B\u7891\u4E86\uFF08inkstone/Arcrun#353\uFF09\u2014\u2014\u76EE\u6A19\u5C6C\u65BC\u76EE\u6A19\u6A39\u3001milestone \u5C6C\u65BC\u7968\u7CFB\u7D71\uFF0C\u4E00\u500B\u76EE\u6A19\u7D81 0 \u5230\u591A\u500B milestone\uFF08\u53EF\u8DE8 repo\uFF1B\u4E00\u500B milestone \u4E5F\u53EF\u88AB\u597D\u5E7E\u500B\u76EE\u6A19\u5F15\u7528\uFF09\u3002\u76EE\u6A19\u53EA\u5B58\u300C\u9023\u5230\u54EA\u4E9B milestone\u300D\uFF0C\u9032\u5EA6 % \u5B8C\u5168\u7531 milestone \u5E95\u4E0B\u7684\u7968\u8207 release \u7B97\uFF08\u8207\u7968\u5730\u5716\u540C\u4E00\u5957\u7B97\u6CD5\uFF09\uFF0C\u4E0D\u53E6\u5916\u624B\u586B\uFF1Bgoal_set \u591A milestones\uFF0Funbind_milestones\uFF0Fmilestone_repo\uFF0Cgoals_report \u6BCF\u500B\u76EE\u6A19\u591A milestones\uFF0Fprogress\uFF0Fflags\uFF08\u53EF\u7528 milestone \u53CD\u67E5\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u5B83\uFF09\u3002\u5169\u7D44\u300C\u93C8\u65B7\u4E86\u300D\u65D7\u6A19\u5728\u5831\u544A\u8207\u770B\u677F\u90FD\u5217\uFF1A\u76EE\u6A19\u6A39\u6C92\u4EBA\u7DAD\u8B77\uFF08\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u5728\u52D5\u3001\u76EE\u6A19\u6A39\u537B\u4E45\u6C92\u66F4\u65B0\uFF0C\u6216 waiting \u6B65\u9A5F\u65E9\u8A72\u91CD\u770B\uFF09\u3001\u93C8\u689D\u6C92\u4EBA\u7DAD\u8B77\uFF08\u6C92\u7D81\u91CC\u7A0B\u7891\u537B\u6709\u7968\u5728\u8DD1\u3001\u6B65\u9A5F\u7968\u4E0D\u5728\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u3001\u91CC\u7A0B\u7891 100% \u6216\u5DF2\u95DC\u537B\u6C92\u6709 release\u3001\u904E\u671F\u6216\u627E\u4E0D\u5230\uFF09\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_goal_ms\uFF0C\u5171 24\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u30020.13.2\uFF1A\u756B\u9762\u8B80 AHub \u7684\u767D\u540D\u55AE\u591A\u653E\u4E00\u689D goals_report\uFF08\u76EE\u6A19\u6A39\u5831\u544A\uFF09\u2014\u2014\u7D66\u7968\u5730\u5716 0.7.0 \u7684\u300C\u672A\u4F86\u300D\u8996\u5716\u8B80\uFF08inkstone/Arcrun#351\uFF09\u3002\u53EA\u591A\u4E00\u689D\u552F\u8B80\u8DEF\u7531\u7684\u653E\u884C\uFF0C\u8CC7\u6599\u8207\u5DE5\u5177\u90FD\u6C92\u52D5\uFF0C\u6C92\u6709\u65B0 template\u3002\n0.13.0\uFF1A\u91CC\u7A0B\u7891\u9032\u5EA6\u628A\u524D\u7F6E\u7968\u7B97\u9032\u53BB\u4E86\uFF0C\u4E26\u6A19\u51FA\u93C8\u689D\u65B7\u5728\u54EA\uFF08inkstone/Arcrun#352\uFF09\u2014\u2014\u7968\u5730\u5716\u7684 % \u539F\u672C\u53EA\u7B97\u300C\u76F4\u63A5\u639B\u5728\u91CC\u7A0B\u7891\u4E0A\u300D\u7684\u8F09\u9AD4\u7968\uFF0C\u5225\u7684 repo \u7684\u57F7\u884C\u7968\u662F\u8F09\u9AD4\u7968\u7684\u524D\u7F6E\uFF0C\u5B8C\u5168\u6C92\u9032\u5206\u6BCD\uFF08\u4F8B\uFF1A\u505A\u5B8C\u4E86\u537B\u986F\u793A 33%\uFF09\u3002\u73FE\u5728 GET /ahub/milestones \u7684\u9032\u5EA6\uFF1D\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u905E\u79FB\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\u3001\u540C\u4E00\u5F35\u53EA\u7B97\u4E00\u6B21\uFF1B\u591A\u56DE direct\uFF0Fprerequisites\uFF0Fcarriers\uFF08\u542B\u5404\u8F09\u9AD4\u7684\u524D\u7F6E\u6578\uFF09\u3001\u93C8\u689D\u56DB\u6BB5 chain\uFF08\u8F09\u9AD4\u7968\uFF0F\u5DE5\u4F5C\u7968\uFF0Fmilestone\uFF0Frelease\uFF09\u3001\u65B7\u9EDE gaps \u8207 chain_state\uFF1Abroken\uFF1D\u93C8\u689D\u6C92\u63A5\u597D\uFF08\u6C92\u6709\u8F09\u9AD4\u3001\u8F09\u9AD4\u90FD\u6C92\u6709\u524D\u7F6E\uFF09\u3001unmaintained\uFF1D\u93C8\u689D\u63A5\u4E0A\u4E86\u4F46\u6C92\u4EBA\u7DAD\u8B77\uFF08\u524D\u7F6E\u5168\u95DC\u8F09\u9AD4\u9084\u958B\u8457\u3001100% \u91CC\u7A0B\u7891\u9084\u958B\u8457\u3001\u505A\u5B8C\u6C92 release\u3001\u91CC\u7A0B\u7891\u95DC\u4E86\u9084\u6709\u7968\u958B\u8457\uFF09\u3001moving\u3001shipped\uFF1B\u53E6\u6A19\u904E\u671F\u3002\u7968\u5730\u5716\u5361\u7247\u8207\u8A73\u60C5\u986F\u793A\u65B0 % \u8207\u65B7\u9EDE\u3002\u8B80\u53D6\u591A 2 \u683C\uFF08\u6574\u5F35\u76F8\u4F9D\u908A\u3001\u958B\u8457\u7684\u7968\uFF0C\u5404\u6700\u591A 2 \u9801\xD7500\uFF0C\u8B80\u6EFF\u6A19 truncated\uFF09\uFF1B\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.12.1\uFF1A\u6A19\u51FA\u300C\u4EA4\u8FA6\u4E86\u537B\u6C92\u4EBA\u52D5\u5DE5\u300D\uFF08inkstone/Arcrun#350\uFF09\u2014\u2014\u6B65\u9A5F\u5F85\u505A\u3001\u6C92\u4EBA\u5728\u505A\uFF08\u6C92\u6709\u7968\uFF0C\u6216\u7968\u6C92\u4EBA\u9818\u4E5F\u6C92\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF09\u3001\u524D\u7F6E\u90FD\u505A\u5B8C\uFF0C\u5F9E\u4EA4\u8FA6\u6642\u9593\u8D77\u8D85\u904E 24 \u5C0F\u6642\uFF08\u53EF\u8ABF\uFF0Cunstarted_hours\uFF09\uFF0C\u7E3D\u76E3\u5831\u544A goals_report\uFF08\u76EE\u6A19\u3001\u5C08\u6848\u7684 unstarted\uFF0Csummary.unstarted_steps\uFF09\u8207\u770B\u677F board\uFF08anomalies \u7684 unstarted_step\u3001unstarted_steps \u660E\u7D30\uFF09\u5C31\u6A19\u51FA\u4F86\uFF0C\u4E0D\u5FC5\u9760\u4EBA\u8A18\u5F97\u53BB\u8FFD\u554F\u3002\u4EA4\u8FA6\u6642\u9593\u7528 step_set \u7684\u65B0\u53C3\u6578 assigned_at \u8A18\uFF08\u4EA4\u8FA6\u5E38\u6BD4\u5BEB\u9032\u6A39\u65E9\uFF0C\u88DC\u5BEB\u820A\u7684\u4E5F\u884C\uFF1B\u6C92\u7D66\u5C31\u4EE5\u5BEB\u9032\u6A39\u7684\u6642\u9593\u7B97\uFF09\u3002\u53E6\u4FEE\uFF1A\u4EBA\u5BEB\u7684\u300C\u7B49\u5F85\u4E2D\u300D\u6B65\u9A5F\uFF0C\u524D\u7F6E\u90FD\u5B8C\u6210\u5F8C\uFF0C\u5831\u544A\u7684 needs \u8A72\u7B46\u5E36 review:true \u8207\u300C\u524D\u7F6E\u5DF2\u5B8C\u6210\uFF0C\u8A72\u91CD\u770B\u300D\uFF0C\u4E0D\u518D\u6C38\u9060\u986F\u793A\u5728\u7B49\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_step_assign\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u3002board \u8B80\u53D6\u683C\u6578 9\u219214\uFF08\u591A\u8B80\u76EE\u6A19\u6A39\u9032\u884C\u4E2D\u7684\u6B65\u9A5F\uFF09\u3002\n0.12.0\uFF1AAHub \u6709\u300C\u6BCF\u500B\u5C08\u6848\u7684\u76EE\u6A19\u6A39\u300D\u4E86\uFF08inkstone/Arcrun#349\uFF09\u2014\u2014\u8A18\u300C\u672A\u4F86 \u2212 \u73FE\u5728\u300D\uFF1A\u76EE\u6A19\uFF08\u4E00\u53E5\u8A71\u7684\u672A\u4F86\uFF0B\u9054\u6210\u6A19\u6E96\uFF0C\u53EF\u5206\u5C64\uFF0C\u76EE\u6A19\u6703\u8B8A\u3001\u6BCF\u6B21\u4FEE\u6539\u5FC5\u9644\u7406\u7531\u4E26\u81EA\u52D5\u7559\u8B8A\u66F4\u7D00\u9304\uFF09\u3001\u6B65\u9A5F\uFF08\u639B\u5728\u76EE\u6A19\u4E0B\uFF0C\u53EF\u4EE5\u9084\u6C92\u958B\u7968\uFF1B\u72C0\u614B done\uFF0Fdoing\uFF0Fpending\uFF0Fwaiting\uFF0Fneeds_user\uFF0C\u7B49\u5F85\u8207\u9700\u8981\u4F7F\u7528\u8005\u7684\u8981\u5BEB\u7B49\u4EC0\u9EBC\uFF1B\u524D\u7F6E\u6B65\u9A5F depends_on\uFF09\u3002\u6709\u639B\u7968\u7684\u6B65\u9A5F\u5F9E\u7968\u8207\u9818\u7968\u8B80\u72C0\u614B\uFF08\u7968\u95DC\u4E86\uFF1D\u5B8C\u6210\u3001\u9818\u7968\u5361\u4F4F\uFF1D\u7B49\u5F85\uFF09\u3002\u5BEB\u5165\u5DE5\u5177 goal_set\uFF0Fstep_set \u7528\u6A19\u984C\u6216 id \u90FD\u627E\u5F97\u5230\u3001\u540C\u4E00\u500B\u6A19\u984C\u91CD\u8907\u5BEB\u4E0D\u6703\u9577\u51FA\u91CD\u8907\uFF0C\u6A19\u984C\u76F8\u8FD1\u7684\u56DE 409 \u8207\u5019\u9078\uFF1B\u7E3D\u76E3\u7528 goals_report \u4E00\u6B21\u8B80\u5230\u6BCF\u500B\u5C08\u6848\u7684\u300C\u76EE\u6A19 A\uFF0F\u505A\u5230 B\uFF0F\u9700\u8981 C\u300D\uFF0C\u4E26\u6A19\u51FA\u88AB\u524D\u7F6E\u64CB\u4F4F\u7684\u76F8\u4F9D\u93C8\u8207\u6700\u524D\u9762\u7684\u5361\u9EDE\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u5C08\u6848\u76EE\u6A19\u6A39\u7684\u6700\u5F8C\u66F4\u65B0\u6642\u9593\uFF0C\u8D85\u904E goal_stale_hours\uFF08\u9810\u8A2D 168\uFF09\u6C92\u4EBA\u66F4\u65B0\u8A18 goal_stale\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_goal\u3001ahub_goal_log\u3001ahub_step\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 3 \u689D\u8DEF\u7531\u8207 3 \u652F MCP \u5DE5\u5177\uFF08goal_set\u3001step_set\u3001goals_report\uFF09\u30011 \u4EFD\u8AAA\u660E\uFF08goals\uFF09\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 23 \u63D0\u5230 26\u3002\n0.11.0\uFF1AAHub \u8A18\u5F97\u300C\u73FE\u5728\u6709\u54EA\u4E9B\u5C0D\u8A71\u958B\u8457\u300D\u4E86\uFF08inkstone/Arcrun#348\uFF09\u2014\u2014\u6BCF\u500B Claude \u5C0D\u8A71\u958B\u5DE5\u6642\u7528 checkin \u767B\u8A18\u4E00\u6B21\uFF08\u4E0D\u5FC5\u958B\u7968\uFF1A\u53EA\u662F\u53BB\u67E5\u67D0\u500B\u8A2D\u5B9A\u5728\u54EA\u7684\u5C0F\u5C0D\u8A71\u4E5F\u4E00\u6A23\uFF09\uFF0C\u7D50\u675F\u6642\u7528\u65B0\u7684 end_session \u6536\u5DE5\u3001\u53EF\u9644\u4E00\u53E5\u8A71\u7D50\u8AD6\uFF1B\u4E4B\u5F8C\u6BCF\u652F AHub \u5DE5\u5177\u5E36\u8457\u5C0D\u8A71\u8B58\u5225\uFF08session\uFF09\uFF0C\u5C31\u7B97\u4E00\u6B21\u6D3B\u52D5\u3001\u81EA\u52D5\u66F4\u65B0\u300C\u6700\u5F8C\u6D3B\u52D5\u300D\uFF0C\u4E0D\u5FC5\u518D\u5831\u5230\uFF1B\u540C\u4E00\u500B\u5C0D\u8A71\u91CD\u8907\u5831\u5230\u53EA\u662F\u66F4\u65B0\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u9032\u884C\u4E2D\uFF08\u6C92\u6536\u5DE5\uFF09\u7684\u5C0D\u8A71\u3001\u4F9D\u5DE5\u4F5C\u7AD9\u5206\u7D44\uFF0C\u9023\u5F97\u5230\u5B83\u9818\u7684\u7968\uFF1B\u4E45\u6C92\u6D3B\u52D5\u53C8\u6C92\u6536\u5DE5\u7684\u8A18 session_stale\uFF08\u9580\u6ABB session_stale_hours\uFF0C\u9810\u8A2D 12 \u5C0F\u6642\uFF09\uFF1B\u5DF2\u6536\u5DE5\u7684\u4E0D\u4F54\u7248\u9762\uFF0C\u7528\u65B0\u7684 list_sessions \u67E5\u5F97\u5230\u3002\u5DE5\u4F5C\u7AD9\u53EA\u8981\u9084\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF0C\u5C31\u4E0D\u518D\u5831\u300C\u5831\u5230\u4E86\u537B\u6C92\u9818\u7968\u300D\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_session\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 4 \u689D\u8DEF\u7531\u8207 2 \u652F MCP \u5DE5\u5177\uFF08end_session\u3001list_sessions\uFF09\uFF0Ccheckin \u591A\u6536 session\uFF0Ftitle\uFF0Fticket\uFF0C\u5176\u9918\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 session\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 21 \u63D0\u5230 23\u3002\n0.10.1\uFF1A\u4FEE\u6389\u300C\u66F4\u65B0\u5931\u6557\u30FB\u8CC7\u6599\u4F86\u81EA\u597D\u5E7E\u500B\u5C0F\u6642\u524D\u300D\u2014\u2014AHub \u756B\u9762\u8B80\u4E0D\u5230\u65B0\u8CC7\u6599\uFF08\u7968\u3001\u5168\u90E8\u5C08\u6848\u3001\u6A19\u7C64\u90FD\u505C\u5728\u820A\u7684\uFF09\u3002\u539F\u56E0\u662F\u5F15\u64CE\u6539\u4E86\u4E00\u500B\u7D30\u7BC0\uFF0C\u756B\u9762\u5728\u300C\u9019\u53F0\u5DF2\u7D93\u767B\u8A18\u904E\u300D\u7684\u60C5\u6CC1\u4E0B\u628A\u771F\u6B63\u7684\u56DE\u61C9\u4E1F\u6389\u4E86\uFF1B\u73FE\u5728\u6539\u597D\uFF0C\u6309\u300C\u66F4\u65B0\u300D\u5F8C\u756B\u9762\u6703\u62FF\u5230\u6700\u65B0\u7684\u7968\uFF08inkstone/Arcrun#347\uFF09\u3002\n0.10.0\uFF1AAHub \u8A18\u5F97\u300C\u54EA\u500B Claude \u5C08\u6848\u9818\u4E86\u54EA\u5F35\u7968\u3001\u505A\u5230\u54EA\u300D\u4E86\uFF08inkstone/Arcrun#346\uFF09\u2014\u2014\u5DE5\u4F5C\u7AD9\uFF08\uFF1D\u4E00\u500B Claude \u5C08\u6848\uFF09\u5831\u5230 checkin\u3001\u9818\u7968 claim\u3001\u56DE\u5831 report\u3001\u653E\u624B release\uFF1B\u7E3D\u76E3\u4E00\u6B21\u770B\u5168\u90E8\u7684\u770B\u677F board\uFF1B\u7E3D\u76E3\u5C0D\u88AB\u9818\u8D70\u7684\u7968\u958B\u300C\u8981\u6C42\u56DE\u5831\u300Drequest_report\uFF0C\u8A72\u5DE5\u4F5C\u7AD9\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55 AHub \u5DE5\u5177\u6642\u56DE\u61C9\u7684 next_actions \u5C31\u5E36\u51FA\u4F86\uFF0C\u56DE\u5831\u5F8C\u81EA\u52D5\u6D88\u6389\uFF1Bmy_queue \u53EF\u4F9D\u5DE5\u4F5C\u7AD9\u7BE9\u3002\u9818\u7968\u6642\u56DE\u61C9\u5E36\u9019\u5F35\u7968\u5C6C\u65BC\u54EA\u500B milestone\uFF08\u81EA\u5DF1\u639B\u7684\uFF0C\u6C92\u6709\u5C31\u770B\u64CB\u4F4F\u7684\u8F09\u9AD4\u7968\u639B\u7684\uFF09\uFF1B\u770B\u677F\u6293\u7570\u5E38\uFF1A\u5831\u5230\u537B\u6C92\u9818\u7968\u3001\u9818\u7684\u7968\u4E45\u6C92\u56DE\u5831\u3001\u4E0D\u5C6C\u65BC\u4EFB\u4F55 milestone\u3001\u56DE\u5831\u5B8C\u6210\u4F46 milestone \u6C92\u95DC\u6216\u6C92\u6709\u7248\u672C\uFF08\u53EA commit \u5C31\u653E\u8457\uFF09\u3001\u5DE5\u4F5C\u7AD9\u4E45\u6C92\u78B0 AHub\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_station\u3001ahub_claim\u3001ahub_report_ask\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08ahub_release_link \u53EA\u591A\u4E00\u500B\u7D22\u5F15\uFF09\uFF1B\u65B0\u589E 6 \u652F MCP \u5DE5\u5177\u8207 1 \u4EFD\u5831\u5230\u8AAA\u660E\uFF0C\u65E2\u6709\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 station \u53C3\u6578\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 15 \u63D0\u5230 21\u3002\n0.9.1\uFF1A\u5217\u7968\u3001\u5217\u7559\u8A00\u8B8A\u5FEB\uFF08leo 2026-11-04\uFF09\u2014\u2014\u539F\u672C\u5217\u4E00\u500B repo \u7684\u7968\uFF0C\u77E5\u8B58\u5EAB\u8981\u628A\u540C\u4E00\u500B repo \u5E95\u4E0B\u6240\u6709\u7559\u8A00\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u4E00\u8D77\u7FFB\u904E\u624D\u6E4A\u5F97\u51FA\u7968\uFF0C\u7559\u8A00\u8D8A\u591A\u8D8A\u6162\u3001\u8D8A\u5403\u984D\u5EA6\uFF1B\u73FE\u5728 AHub \u6703\u7528\u4F86\u67E5\u7684\u683C\u5B50\u90FD\u958B\u4E86\u77E5\u8B58\u5EAB\u7684\u300C\u6B04\u4F4D\u503C\u7D22\u5F15\u300D\uFF0C\u5217\u7968\u7684\u6210\u672C\u53EA\u8DDF\u8981\u5217\u7684\u7968\u6578\u6709\u95DC\u3002\u5B89\u88DD\u6216\u6309\u300C\u66F4\u65B0\u300D\u6642\u81EA\u52D5\u66FF\u65E2\u6709\u8CC7\u6599\u5EFA\u7D22\u5F15\uFF08\u8CC7\u6599\u591A\u6642\u5206\u5E7E\u6B21\u505A\u5B8C\uFF0C\u6C92\u5EFA\u597D\u4E4B\u524D\u7167\u820A\u53EF\u7528\u3001\u53EA\u662F\u9084\u6C92\u8B8A\u5FEB\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 kbdb migration 0016\u3002\n0.9.0\uFF1A\u7968\u53EF\u4EE5\u4E0D\u5206 repo \u641C\u4E86\uFF08inkstone/Arcrun#329\uFF09\u2014\u2014AHub \u756B\u9762\u7684\u5C08\u6848\u9078\u55AE\u591A\u4E86\u300C\u5168\u90E8\u5C08\u6848\u300D\uFF0C\u4E00\u6B21\u5217\u51FA\u6240\u6709 repo \u7684\u7968\u3001\u6BCF\u5217\u6A19\u660E repo\uFF1B\u641C\u5C0B\u6846\u8F38\u5165 298\u3001#298\u3001Arcrun#298\u3001inkstone/Arcrun#298 \u90FD\u627E\u5F97\u5230\uFF08\u540C\u865F\u78BC\u7684\u7968\u6BCF\u500B repo \u5404\u4E00\u5F35\uFF0C\u865F\u78BC\u76F8\u7B26\u6392\u6700\u524D\u9762\uFF09\uFF0CAI \u7684 list_issues \u540C\u4EAB\u3002\u6BCF\u5F35\u7968\u6709\u56FA\u5B9A\u9023\u7D50\uFF08\u7968\u8A73\u60C5\u7684\u300C\u8907\u88FD\u9023\u7D50\u300D\uFF0C\u5F62\u5982 \u2026#/app/ahub/inkstone/Arcrun/issues/298\uFF0C\u958B\u555F\u76F4\u9054\u90A3\u5F35\u7968\u7531 #326 \u7684\u7DB2\u5740\u76F4\u9054\u8CA0\u8CAC\uFF09\u3002\n0.8.0\uFF1AAHub \u81EA\u5DF1\u7D66 AI \u5DE5\u5177\u4E86\uFF08inkstone/Arcrun#328\uFF09\u2014\u2014Arcrun MCP \u9023\u7DDA\u6642\u81EA\u52D5\u639B\u4E0A 15 \u652F arcrun_ahub_* \u5DE5\u5177\u8207 4 \u4EFD\u8AAA\u660E\uFF08\u7968\u3001\u7C3D\u6838\u3001\u51FA\u8CA8\u3001\u932F\u53C8\u72AF\u4E86\uFF09\uFF0C\u4E0D\u5FC5\u53E6\u5916\u88DD plugin\u3002\u7C3D\u6838\u4EBA\u6539\u7531\u6BCF\u500B\u79DF\u6236\u5728 AHub \u756B\u9762\u7684\u300C\u8A2D\u5B9A\u300D\u586B\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\uFF1B\u53EA\u6709\u7C3D\u6838\u4EBA\u7C3D\u7684\u624D\u7B97\u3002AI \u6539\u7528\u300C\u767C\u7C3D\u6838\u8ACB\u6C42\u300D\u8207\u300C\u8B80\u7C3D\u6838\u7D50\u679C\u300D\u5169\u652F\u5DE5\u5177\uFF0C\u81EA\u5DF1\u5728\u7559\u8A00\u88E1\u5BEB ARM:\uFF0F\u7C3D\u6838\u884C\u6703\u88AB\u64CB\u3002\u95DC\u7968\u53EF\u9644\u4EA4\u4ED8\u7269\uFF1B\u540C\u4E00\u500B\u932F\u53C8\u72AF\u4E86\u53EF\u56DE\u5831\u5230\u6A5F\u5236\u7968\uFF08\u95DC\u4E86\u6703\u91CD\u958B\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#327\u30020.7.4\uFF1A\u4FEE\u6389 0.7.3 \u7684\u4E00\u500B\u932F\uFF1AAI \u91CD\u767C\u89E3\u9396\u78BC\u6642\uFF0C\u9078\u55AE\u6703\u8AA4\u6293\u7559\u8A00\u88E1\u63D0\u5230\u7684\u4E0A\u4E00\u7D44\uFF08\u5DF2\u904E\u671F\u7684\uFF09\u78BC\u30020.7.3\uFF1A\u7C3D\u6838\u9078\u55AE\u4E5F\u8A8D\u5F97 AI \u8981\u4F60\u8CBC\u7684\u4E00\u6B21\u6027\u89E3\u9396\u78BC\uFF08\u300C\u{1F510} ARM \u8ACB\u6C42\u300D\uFF0C\u63A8 GitHub \u6216\u78B0\u6B63\u5F0F\u74B0\u5883\u524D\u90A3\u7A2E\uFF09\uFF1A\u6309\u300C\u7C3D\u6838\u2026\u300D\u9078\u5B83\u3001\u6309\u540C\u610F\u5C31\u5E6B\u4F60\u628A\u78BC\u8CBC\u4E0A\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u6284\uFF1B\u4F60\u81EA\u5DF1\u6253\u904E\u78BC\u7684\u90A3\u5247\u6703\u6A19\u6210\u5DF2\u7C3D\uFF0C\u4E0D\u518D\u639B\u8457\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u30020.7.2\uFF1A\u4E00\u6B21\u7559\u8A00\u3001\u6539\u9032\u5EA6\u9019\u985E\u5BEB\u5165\u5C11\u4ED8\u4E00\u6574\u8D9F\u2014\u2014\u5EFA\u8207\u6539\u5408\u6210\u4E00\u500B\u8ACB\u6C42\u3001\u5728\u5F15\u64CE\u90A3\u7AEF\u540C\u6642\u5BEB\uFF08\u539F\u672C\u662F\u5169\u500B\u4F9D\u5E8F\u7684\u6B65\u9A5F\uFF0Cyoulin \u5BE6\u6E2C\u5404\u7D04 1.2\uFF5E1.6 \u79D2\uFF09\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#325\u30020.7.1\uFF1A\u6539\u9032\u5EA6\u3001\u91CC\u7A0B\u7891\u3001\u72C0\u614B\u3001\u6A19\u7C64\u6642\u756B\u9762\u7576\u4E0B\u5C31\u63DB\u6210\u65B0\u503C\u3001\u80CC\u666F\u5B58\u6A94\uFF0C\u5B58\u4E0D\u9032\u53BB\u624D\u63DB\u56DE\u539F\u6A23\uFF08\u4E0D\u518D\u5361\u8457\u7B49 4\uFF5E13 \u79D2\uFF09\u3002\u7C3D\u6838\u6539\u6210\u9078\u55AE\uFF08leo 2026-10-25\uFF09\uFF1A\u4E0D\u5FC5\u518D\u6253\u7248\u672C\u865F\u2014\u2014AI \u628A\u8981\u4F60\u7C3D\u7684\u5167\u5BB9\u5BEB\u6210\u4E00\u5247\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u7684\u7559\u8A00\uFF0C\u6309\u300C\u7C3D\u6838\u2026\u300D\u5F9E\u4E0B\u62C9\u9078\u5B83\u3001\u52FE\u540C\u610F\u6216\u4E0D\u540C\u610F\u3001\u53EF\u52A0\u610F\u898B\uFF0C\u7C3D\u6838\u8207\u88AB\u7C3D\u7684\u5167\u5BB9\u7D81\u5728\u4E00\u8D77\uFF1B\u540C\u610F\u51FA\u6B63\u5F0F\u7248\u7684\u8ACB\u6C42\u6642\u4E00\u4F75\u7559\u4E0B\u51FA\u8CA8\u7DDA\u8A8D\u5F97\u7684\u300CARM: <\u7248\u672C>\u300D\u3002\u4FEE\u6389\u820A\u7684\u7C3D ARM \u6846\u628A\u300CARM: 9.9.9\u300D\u5224\u6210\u683C\u5F0F\u4E0D\u5C0D\u30020.7.0\uFF1AAHub \u6709\u756B\u9762\u4E86\uFF08inkstone/Arcrun#323\uFF09\u2014\u2014\u5728 Portal \u6253\u958B AHub \u5C31\u80FD\u589E\u6539\u95DC\u7968\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u3001\u5C08\u6848\uFF1B\u9EDE\u7968\u5F9E\u53F3\u908A\u6ED1\u51FA\u8A73\u60C5\uFF0C\u7559\u8A00\u7528 Markdown \u5BEB\u3001\u53EF\u9810\u89BD\u3001\u7167\u683C\u5F0F\u986F\u793A\uFF0C\u80FD\u7C3D ARM\u3002\u5F9E\u756B\u9762\u5BEB\u7684\u4F5C\u8005\u662F Leo\uFF1A\u5BEB\u5165\u8DEF\u7531\u591A\u6536\u300CPortal \u4E3B\u4EBA\u6309\u7684\u300D\u65B7\u8A00\uFF08\u554F\u5F15\u64CE\u9A57\u904E\u3001\u662F\u7BA1\u7406\u54E1\u624D\u5BEB\uFF09\uFF1BAI \u8207 App \u7528 token \u7684\u5BEB\u6CD5\u5B8C\u5168\u4E0D\u8B8A\u30020.6.0\uFF1A\u88DC\u756B\u9762\u8981\u7BA1\u5B8C\u6574\u5354\u4F5C\u7684\u5F8C\u7AEF\u7F3A\u53E3\uFF08inkstone/Arcrun#320\uFF09\u2014\u2014\u5C08\u6848\uFF08repo\uFF09\u6E05\u55AE\u8207\u6539 description\uFF0Fprivate\uFF1Brelease \u9023\u5F97\u5230\u91CC\u7A0B\u7891\uFF08\u53EF\u8DE8 repo\uFF09\u4E26\u6A19\u6709\u6C92\u6709\u63A8 GitHub\uFF1B\u7559\u8A00\u53EF\u6539\u53EF\u522A\uFF08\u4F5C\u8005\u672C\u4EBA\uFF09\uFF1B\u76F8\u4F9D\u53EF\u79FB\u9664\uFF1B\u8DE8 repo \u7684\u91CC\u7A0B\u7891\u7E3D\u89BD\u4E00\u6B21\u7D66\u9032\u5EA6 %\u3001\u6700\u8FD1\u6D3B\u52D5\u3001\u8AB0\u5728\u63A8\u3001\u7522\u51FA\u7684 release\u3002\u65B0\u589E\u5169\u500B template\uFF08ahub_release_link\u3001ahub_comment_meta\uFF09\uFF0C\u820A\u8CC7\u6599\u4E0D\u5FC5\u91CD\u532F\uFF0C\u6C92\u8CC7\u6599\u5C31\u56DE\u7A7A\u503C\u30020.5.0\uFF1A\u5408\u4F75 0.4.0\uFF08release \u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u8207 0.3.2\uFF08Portal \u7559\u8A00\uFF09\uFF0C\u4E00\u500B App \u4E00\u500B\u7248\u672C\u865F\uFF1B\u5DF2\u88DD 0.3.x\uFF0F0.4.0 \u7684\u5BE6\u4F8B\u6309\u300C\u66F4\u65B0\u300D\u5C31\u5230\u4F4D\u30020.3.2\uFF1A\u65B0\u589E\u300CPortal \u7559\u8A00\u300D\u8DEF\u7531\u2014\u2014\u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u756B\u9762\u7559\u8A00\uFF0C\u4F5C\u8005\u662F Leo\uFF0C\u8EAB\u5206\u770B\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\u800C\u4E0D\u662F token\uFF1B\u516C\u958B\u7684 token \u767B\u8A18\u4E0D\u518D\u6536\u4EBA\u7684\u767B\u5165\u540D\uFF08Leo\uFF09\u8207 kind=human\uFF0CAI \u767B\u8A18\u4E0D\u51FA\u4E00\u500B Leo\uFF08inkstone/Arcrun#304 c22862\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 /portal/actor/verify\u30020.4.0\uFF1A\u52A0\u4E0A release\uFF08\u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u2014\u2014\u5EFA\uFF0F\u5217\uFF0F\u8B80\uFF0F\u7528 tag \u627E\uFF0F\u88DC\u9644\u4EF6\u6307\u6A19\uFF0CGitea \u5F62\u72C0\uFF1B\u8B80\u7684\u8DEF\u7531\u4E0D\u67E5 token\uFF08\u770B\u7248\u672C\u6E05\u55AE\u4E0D\u9700\u8981\u7F72\u540D\uFF09\uFF1B\u53E6\u6709 /ahub/releases \u6BCF\u500B repo \u4E00\u884C\u7D66\u7248\u672C\u9801\u7528\u3002\u532F\u5165\u7684\u820A release \u8207\u65B0\u5EFA\u7684\u662F\u540C\u4E00\u7A2E\u8CC7\u6599\uFF08ahub_release\u3001ahub_attachment \u5169\u500B template \u4F75\u5165\u5BA3\u544A\uFF09\uFF1B\u6C92\u6709 DELETE\uFF08\u4EE3\u8F49\u5C64\u6C92\u6709\u522A record \u7684\u53E3\uFF09\u3002inkstone/InkStoneCo#234 c22846\u30020.3.1\uFF1A\u4FEE\u958B\u7968\u7671\u7613\u2014\u2014\u4E00\u500B repo \u6700\u65B0\u5E7E\u7B46\u5168\u662F key \u4E0D\u50CF\u7968\u865F\u7684\u7D00\u9304\u6642\uFF0C\u958B\u7968\u5F9E #1 \u8D77\u6392\u7684\u516B\u500B\u5617\u8A66\u5168\u649E\u65E2\u6709\u7684\u7968\u800C 503\uFF1B\u73FE\u5728\u9019\u7A2E\u60C5\u6CC1\u6539\u5F9E\u7B46\u6578+1 \u8D77\u6392\uFF08inkstone/Arcrun#308 c20214\uFF09\u30020.3.0\uFF1A\u8B80\u53D6\u4E26\u884C\uFF08\u7B2C\u4E00\u6279\u8B80\u540C\u6642\u6253\uFF0C\u8EAB\u5206\u67E5\u8A62\u4F75\u9032\u7B2C\u4E00\u6279\uFF09\u3001\u7968\u865F\u7528 create_only \u6436\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u958B\u7968\u4E0D\u6703\u540C\u865F\uFF09\u3001\u76F8\u4F9D\u7968\u7528 batch-get \u4E00\u6B21\u8B80\u5B8C\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#305\uFF0B#307\u30020.2.0\uFF1A\u8CC7\u6599\u6539\u6210 template\uFF0Brecord\uFF08\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u5404\u4E00\u7A2E\uFF09\uFF0C\u7A2E\u985E\u53EA\u7531 template \u6C7A\u5B9A\uFF08inkstone/Arcrun#301\uFF09\u30020.1.0\uFF1A\u9AA8\u67B6\u3002\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u3001\u91CC\u7A0B\u7891\u3001\u8DE8 repo \u641C\u5C0B\u2014\u2014Gitea \u5F62\u72C0\u7684 API\uFF0C\u72C0\u614B\u4F4F KBDB\uFF08\u96F6 SQL\uFF09\u3002\u6C92\u6709\u756B\u9762\uFF1B\u756B\u9762\u662F\u7968\u770B\u677F App \u63DB\u8CC7\u6599\u4F86\u6E90\u3002",
   requires: {
     recipes: [
       {
@@ -26611,6 +26757,687 @@ return prepOut(B, { name: name, url: url, task: task, reads: [rd(T.station, 'nam
           {
             from: "prep",
             to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "intake_uncle6_contact",
+      description: "\u5916\u90E8\u7DB2\u7AD9\u6536\u4EF6\uFF1A\u4E00\u7B46\u6D3D\u8A62\u8B8A\u6210\u4E00\u5F35\u7968\u3002\u6BCF\u500B\u4F86\u6E90\u4E00\u689D\u8DEF\u7531\uFF1A\u8EAB\u5206\u662F credential \u4E2D\u5FC3\u90A3\u4E00\u689D ahub_intake_uncle6_contact\uFF08\u4FE1\u5C01\u7684 token \u6B04\u8981\u7B49\u65BC\u5B83\uFF1B\u6BD4\u5C0D\u5728 prep\uFF0C\u6C92\u6709\u90A3\u689D credential\uFF1D\u64A4\u92B7\uFF1D\u6574\u689D\u5DE5\u4F5C\u6D41\u5931\u6557\u3001\u4E0D\u958B\u7968\uFF09\uFF0C\u7968\u53EA\u958B\u5728inkstone/personal-brand\u2014\u2014body \u88E1\u5BEB\u5225\u7684 repo \u4E00\u5F8B 403\u3002\u6A19\u984C\u3010\u6A19\u7C64\u3011\u806F\u7D61\u76EE\u7684\uFF5C\u55AE\u4F4D\uFF0C\u5167\u6587\u5E36\u5168\u90E8\u6B04\u4F4D\uFF0C\u639B\u6A19\u7C64\uFF08\u9810\u8A2D\u300C\u6D3D\u8A62\u300D\uFF0Crepo \u88E1\u6C92\u6709\u5C31\u5EFA\uFF09\uFF0C\u7F72\u540D intake-uncle6_contact\u3002\u56DE 201 {ok, issue}\u3002",
+      graph: {
+        id: "ahub__intake_uncle6_contact",
+        name: "ahub__intake_uncle6_contact",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: `function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
+function jparse(v) {
+  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }
+  return v === undefined ? null : v;
+}
+function isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+function utf8Bytes(str) {
+  var out = [];
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charCodeAt(i);
+    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }
+    if (c < 0x80) out.push(c);
+    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+  }
+  return out;
+}
+var SHA_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+function sha256hex(str) {
+  var m = utf8Bytes(String(str)), l = m.length * 8;
+  m.push(0x80);
+  while (m.length % 64 !== 56) m.push(0);
+  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);
+  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  var w = new Array(64);
+  for (var off = 0; off < m.length; off += 64) {
+    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;
+    for (t = 16; t < 64; t++) {
+      var x = w[t - 15], y = w[t - 2];
+      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;
+    }
+    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (t = 0; t < 64; t++) {
+      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      var ch = (e & f) ^ (~e & g);
+      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;
+      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      var mj = (a & b) ^ (a & c) ^ (b & c);
+      var t2 = (S0 + mj) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+  }
+  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');
+}
+
+// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C
+// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002
+var T = {
+  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',
+  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token',
+  rel: 'ahub_release', att: 'ahub_attachment',
+  rlink: 'ahub_release_link', cmeta: 'ahub_comment_meta', setting: 'ahub_setting',
+  station: 'ahub_station', claim: 'ahub_claim', ask: 'ahub_report_ask',
+  session: 'ahub_session',
+  goal: 'ahub_goal', glog: 'ahub_goal_log', step: 'ahub_step', sassign: 'ahub_step_assign', gms: 'ahub_goal_ms'
+};
+
+// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002
+// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002
+function qs(o) {
+  var out = [];
+  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });
+  return out.length ? '?' + out.join('&') : '';
+}
+var MAXPAGE = 500;
+function rd(tpl, field, value, limit, offset) {
+  var o = {};
+  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }
+  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;
+  return { path: '/' + tpl + qs(o) };
+}
+// \u8A72\u683C\u7528\u4E0D\u5230\u6642\u67E5\u9019\u500B\u2014\u2014\u8B80\u7684\u683C\u5B50\u6578\u662F\u5716\u7684\u5F62\u72C0\uFF0C\u4E0D\u80FD\u4F9D\u8ACB\u6C42\u589E\u6E1B\uFF0C\u7528\u4E0D\u5230\u7684\u683C\u5B50\u5C31\u8B80\u4E00\u500B\u5FC5\u5B9A\u7A7A\u7684 template
+var NOOP_READ = { path: '/ahub_none?limit=1' };
+
+// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09
+function parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }
+
+// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09
+function actorOf(x) {
+  // {{vact.data}} \u662F\u5F15\u64CE\u56DE\u7684\u672C\u9AD4 {valid,\u2026}\uFF1B\u4FDD\u96AA\u8D77\u898B\u4E5F\u8A8D\u591A\u5305\u4E00\u5C64 {data:{valid,\u2026}} \u7684\u5F62\u72C0
+  var d = jparse(x);
+  if (isObj(d) && d.valid === undefined && d.data !== undefined) d = jparse(d.data);
+  if (!isObj(d) || d.valid === undefined) return { valid: false, reason: 'no_answer' };
+  return { valid: d.valid === true, login: ph(d.login), role: ph(d.role), reason: ph(d.reason) };
+}
+function boot(input) {
+  var tok = ph(input.token);
+  // token \u6B04\u653E\u7684\u662F\u5F15\u64CE\u7C3D\u7684\u300CPortal \u4E3B\u4EBA\u6309\u7684\u300D\u65B7\u8A00\uFF08JSON\u3001\u6709 sig\uFF09\u21D2 \u8EAB\u5206\u770B\u65B7\u8A00\u4E0D\u770B token\uFF080.7.0\uFF0Cinkstone/Arcrun#323\uFF09\u3002
+  // \u65B7\u8A00\u7531 build.mjs \u7D66 actor:'opt' \u7684\u8DEF\u7531\u6392\u7684 vact \u7AD9\u5148\u554F\u5F15\u64CE\u9A57\u904E\uFF0C\u7B54\u6848\u5728 input.actor\uFF1B\u5225\u7684\u8DEF\u7531\u6C92\u6709 vact \u21D2 \u4E00\u5F8B\u4E0D\u5408\u683C\uFF08401\uFF09\u3002
+  var pj = tok && tok.charAt(0) === '{' ? jparse(tok) : null;
+  var isAct = isObj(pj) && typeof pj.sig === 'string' && pj.sig !== '';
+  return {
+    act: isAct ? actorOf(input.actor) : null,
+    q: isObj(jparse(input.query)) ? jparse(input.query) : {},
+    body: jparse(input.body),
+    params: isObj(jparse(input.params)) ? jparse(input.params) : {},
+    tokid: isAct ? 'actor' : (tok ? sha256hex(tok) : 'none'),
+    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09
+    // \u9023\u7D50\u7684\u4E3B\u6A5F\uFF08inkstone/Arcrun#326\uFF09\uFF1A\u5F15\u64CE\u6CE8\u5165\u7684\u300C\u9019\u9846 worker \u5C0D\u5916\u7684 origin\u300D\u512A\u5148\u2014\u2014\u90A3\u500B\u7DB2\u5740\u5C0D leo \u7684\u700F\u89BD\u5668\u6253\u5F97\u958B
+    // \uFF08\u5B83\u6703\u628A\u4EBA\u5E36\u9032 Portal\uFF09\uFF1B\u547C\u53EB\u7AEF\u81EA\u5831\u7684 base\uFF08\u672C\u6A5F\u6A4B\u662F 127.0.0.1\uFF09\u548C ahub.invalid \u90FD\u662F\u6253\u4E0D\u958B\u7684\uFF0C\u53EA\u5728\u5F15\u64CE\u6C92\u7D66\u6642\u624D\u7528\u3002
+    base: (ph(input.origin) || ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')
+  };
+}
+// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09
+function prepOut(B, o) {
+  o = o || {};
+  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null, act: B.act || null };
+  Object.keys(o).forEach(function (k) { r[k] = o[k]; });
+  var list = r.early ? [] : r.reads;
+  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');
+  r.nreads = list.length;
+  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahreads\u3001\u8FED\u4EE3\u5668\u53EB ahread\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09
+  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002
+  delete r.reads;
+  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80
+  if (!PUBLIC && r.act && !actOk(r.act)) { r.whon = 0; r.nreads = 0; r.ahreads = []; return r; }   // \u65B7\u8A00\u4E0D\u5408\u683C\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\uFF0Cdecide \u56DE 401\uFF0F403
+  // \u8EAB\u5206\u90A3\u4E00\u8B80\uFF1Atoken \u21D2 ahub_token\uFF1B\u65B7\u8A00 \u21D2 \u79DF\u6236\u8A2D\u5B9A\uFF08\u4E3B\u4EBA\u5728\u9019\u500B\u79DF\u6236\u7684\u7F72\u540D\uFF0Cinkstone/Arcrun#328\uFF09
+  r.whon = PUBLIC ? 0 : 1;
+  r.ahreads = (r.whon ? [r.act ? rdSetting() : rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);
+  return r;
+}
+function prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }
+// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A
+//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsreads\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09
+//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09
+function actOk(A) { return !!(A && A.valid === true && A.role === 'admin'); }
+// \u79DF\u6236\u8A2D\u5B9A\uFF08ahub_setting\uFF0Ckey=signoff\uFF1Binkstone/Arcrun#328\uFF09\u3002\u6C92\u8A2D\uFF1D{owner_name:'', approvers:[]}
+function rdSetting() { return rd(T.setting, 'key', 'signoff', 5); }
+function bodyObj(B) { return isObj(B.body) ? B.body : {}; }
+var REPO_SCAN = 500;
+
+// \u2500\u2500 \u6436\u865F\uFF08inkstone/Arcrun#307 \u7684 create_only\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// \u7968\u865F\u8981\u300C\u53EA\u6709\u4E00\u500B\u8ACB\u6C42\u62FF\u5F97\u5230\u300D\uFF1A\u7968\u7684 record id \u7531\u79DF\u6236\uFF0B\u7968\u7684\u9375\u6C7A\u5B9A\uFF08issueRid\uFF09\uFF0C\u5EFA\u7684\u6642\u5019\u5E36 create_only\u2014\u2014
+// KBDB \u7684\u4E3B\u9375\u8B93\u7B2C\u4E8C\u500B\u5EFA\u540C\u4E00\u500B id \u7684\u8ACB\u6C42\u62FF\u5230 409\uFF08\u4E0D\u662F\u975C\u9ED8\u6210\u529F\uFF09\uFF0C\u65BC\u662F\u5B83\u6539\u6436\u4E0B\u4E00\u865F\uFF08build.mjs \u628A CLAIM_TRIES \u500B\u5617\u8A66\u6392\u6210\u4E00\u4E32\uFF0CON_FAIL \u63A5\u4E0B\u4E00\u500B\uFF09\u3002
+// \u{1F534} id \u662F\u5168\u57DF\u7684\uFF08\u8DE8\u79DF\u6236\u5171\u7528\u4E00\u5F35\u8868\uFF09\uFF0C\u6240\u4EE5\u4E00\u5B9A\u8981\u5E36\u79DF\u6236\uFF1Bid \u6703\u9032 PATCH \u7684\u7DB2\u5740\uFF0C\u6240\u4EE5\u53EA\u7528\u7DB2\u5740\u5B89\u5168\u7684\u5B57\u5143\uFF08~ \u4E0D\u6703\u51FA\u73FE\u5728 owner\uFF0Frepo \u540D\u5B57\u88E1\uFF09\u3002
+var CLAIM_TRIES = 8;
+function issueRid(tenant, key) {
+  var p = parseKey(key);
+  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');
+  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;
+}
+function safeEq(got, expected) {
+  var a = typeof got === 'string' ? got : '', b = typeof expected === 'string' ? expected : '';
+  if (b.length < 32 || b.charAt(0) === '{') return false;
+  var d = a.length ^ b.length;
+  for (var i = 0; i < b.length; i++) d |= (a.length ? a.charCodeAt(i % a.length) : 0) ^ b.charCodeAt(i);
+  return d === 0;
+}
+
+var READS_N = 3;
+var PUBLIC = true;
+var INTAKE = {"source":"uncle6_contact","repo":"inkstone/personal-brand","label":"\u6D3D\u8A62"};
+
+var B = boot(input);
+if (!safeEq(input.token, input.expected)) return prepEarly(B, 401, 'intake key is not valid');
+var full = INTAKE.repo;
+return prepOut(B, { b: bodyObj(B), reads: [rd(T.repo, 'full_name', full, 5), rd(T.issue, 'repo', full, 5), rd(T.label, 'repo', full, REPO_SCAN)] });
+`,
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                origin: "{{input._public_origin}}",
+                tenant: "{{_tenant}}",
+                expected: "{{credential.ahub_intake_uncle6_contact}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_get",
+            label: "rdq",
+            data: {
+              _path: "{{ahread.path}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: `function jparse(v) {
+  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }
+  return v === undefined ? null : v;
+}
+function isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+function nowIso() { return new Date().toISOString().replace(/\\.\\d+Z$/, 'Z'); }
+function newNumId() { return Date.now() * 1000 + Math.floor(Math.random() * 1000); }
+function reply(status, body) { return { success: true, status: status, body: body }; }
+function fail(status, message) { return reply(status, { message: message, url: '' }); }
+
+// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+var T = {
+  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',
+  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token',
+  rel: 'ahub_release', att: 'ahub_attachment',
+  rlink: 'ahub_release_link', cmeta: 'ahub_comment_meta', setting: 'ahub_setting',
+  station: 'ahub_station', claim: 'ahub_claim', ask: 'ahub_report_ask',
+  session: 'ahub_session',
+  goal: 'ahub_goal', glog: 'ahub_goal_log', step: 'ahub_step', sassign: 'ahub_step_assign', gms: 'ahub_goal_ms'
+};
+
+// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002
+// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002
+function innerOf(r) {
+  if (!r) return null;
+  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4
+  if (r.success === false) return null;
+  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}
+}
+function rowsOf(r) {
+  var d = innerOf(r);
+  if (!d) return [];
+  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);
+  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });
+}
+// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D
+function totalOf(r) { var d = innerOf(r), t = d && typeof d.total === 'number' ? d.total : 0; return t > 0 ? t : 0; }
+function sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }
+function compact(v) {
+  var o = {};
+  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });
+  return o;
+}
+function issueKey(full, n) { return full + '#' + n; }
+function parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }
+
+// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09
+function isOn(R, k) { return sv(R, k) === '1'; }
+
+// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function labelDoc(R) {
+  return { rid: R.rid, id: parseInt(sv(R, 'lid'), 10), repo: sv(R, 'repo'), name: sv(R, 'name'), color: sv(R, 'color') || 'cccccc',
+    description: sv(R, 'description'), exclusive: isOn(R, 'exclusive'), deleted: isOn(R, 'deleted'), created_at: sv(R, 'created_at') };
+}
+function oldestBy(rows, pred) {
+  var hit = null;
+  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684
+  return hit;
+}
+function repoRowOf(result, full) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'full_name') === full; }); }
+function liveLabels(result) { return rowsOf(result).map(labelDoc).filter(function (L) { return !L.deleted; }); }
+// \u6A19\u7C64\u5F15\u7528\uFF08\u540D\u5B57\u6216 id\uFF09\u2192 \u6A19\u7C64\u6587\u4EF6\uFF1B\u627E\u4E0D\u5230\u56DE null
+function labelByRef(labels, ref) {
+  for (var i = 0; i < labels.length; i++) {
+    if (typeof ref === 'number' ? labels[i].id === ref : (String(labels[i].name) === String(ref) || String(labels[i].id) === String(ref))) return labels[i];
+  }
+  return null;
+}
+function readsBad(arr) {
+  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];
+  return null;
+}
+function done(final, posts, patches) {
+  var ps = posts || [], pt = (patches || []).filter(Boolean);
+  var ops = ps.map(function (p) { return { op: 'post', template: p.template, values: p.values }; })
+    .concat(pt.map(function (p) { return { op: 'patch', id: p.id, values: p.values }; }));
+  return { success: true, branch: 'skip', final: final, ahposts: ps, ahpatches: pt, ahbatches: ops.length ? [{ ops: ops }] : [] };
+}
+function notFound(what) { return fail(404, what + ' not found'); }
+// \u300C\u9019\u500B repo \u7684\u7968\uFF0F\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u300D\u4E00\u6B21\u6700\u591A\u770B\u591A\u5C11\u7B46\uFF08KBDB \u55AE\u9801\u4E0A\u9650 500\uFF09\u3002\u8B80\u6EFF\u4E86\u5C31\u662F\u53EF\u80FD\u88AB\u622A\u65B7\uFF0C\u898B README\u300C\u5DF2\u77E5\u4E0A\u9650\u300D
+var CLAIM_TRIES = 8;
+function issueRid(tenant, key) {
+  var p = parseKey(key);
+  if (!p || !tenant) throw new Error('issueRid \u9700\u8981 tenant \u8207\u5408\u6CD5\u7684\u7968\u9375');
+  return 'ahub~' + tenant + '~i~' + p.full.replace('/', '~') + '~' + p.n;
+}
+function claimOut(attempts, fin) { return { success: true, branch: 'claim', attempts: attempts, fin: fin }; }
+// \u8D0F\u7684\u90A3\u4E00\u7B46\uFF1Ak0..k3 \u4E4B\u4E2D\uFF0C\u56DE\u7684 record_id \u525B\u597D\u662F\u6211\u5011\u8981\u6436\u7684\u90A3\u500B id\u3002\u5C0D\u4E0D\u4E0A\uFF08\u5F15\u64CE\u6C92\u6709 #307\u3001\u628A record_id \u4E1F\u6389\u81EA\u5DF1\u767C\u4E86\u4E00\u500B\uFF09\uFF1D\u6436\u865F\u6C92\u751F\u6548\uFF0C\u4E0D\u80FD\u7576\u6210\u529F
+function clip(v, n) {
+  var s = String(v == null ? '' : v).replace(/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/g, '').replace(/\\r\\n?/g, '\\n').trim();
+  return s.length > n ? s.slice(0, n) + '\u2026' : s;
+}
+function oneLine(v, n) { return clip(v, n).replace(/\\s*\\n\\s*/g, ' '); }
+// \u6536\u4EF6\u91D1\u9470\u6BD4\u5C0D\uFF08inkstone/Arcrun#359 \u4FEE\u6B63\uFF09\uFF1A\u91D1\u9470\u4F4F credential \u4E2D\u5FC3\uFF08CF Secret\uFF09\uFF0C\u4E0D\u9032 KBDB\u3001\u4E5F\u6C92\u6709\u4EFB\u4F55\u96DC\u6E4A\u8868\u3002
+// \u8DEF\u7531\u7684 prep \u7BC0\u9EDE\u5728\u5B9A\u7FA9\u88E1\u4EE5 credential \u53C3\u7167\u5BEB\u4E0A ahub_intake_<\u4F86\u6E90> \u9019\u500B\u540D\u5B57\uFF0C\u5F15\u64CE\u57F7\u884C\u524D\u56DE\u586B\u771F\u8EAB\u5230 input.expected\uFF0C
+// \u9019\u88E1\u53EA\u505A\u300C\u5916\u90E8\u7DB2\u7AD9\u9001\u4F86\u7684 token \uFF1D \u56DE\u586B\u7684\u771F\u8EAB\u300D\u7684\u6046\u5B9A\u6642\u9593\u6BD4\u5C0D\u3002
+// \u6C92\u6709\u90A3\u689D credential\uFF08\u64A4\u92B7\uFF1D\u522A\u6389\u5B83\uFF09\u6642\u5F15\u64CE\u5728\u56DE\u586B\u90A3\u4E00\u6B65\u5C31\u8B93\u7BC0\u9EDE\u5931\u6557\u3001\u6574\u689D\u5DE5\u4F5C\u6D41\u4E0D\u5F80\u4E0B\u8D70\uFF0C\u7968\u958B\u4E0D\u51FA\u4F86\uFF1B
+// \u771F\u8EAB\u592A\u77ED\uFF08\u8A2D\u932F\uFF09\u6216\u6839\u672C\u6C92\u88AB\u56DE\u586B\uFF08\u9084\u662F\u53C3\u7167\u5B57\u9762\uFF09\u4E00\u5F8B\u7576\u4E0D\u5408\u683C\u2014\u2014\u5BE7\u53EF\u5168\u90E8\u62D2\u7D55\u3002
+var INTAKE_FIELDS = [['purpose', '\u806F\u7D61\u76EE\u7684'], ['name', '\u59D3\u540D'], ['org', '\u55AE\u4F4D'], ['title', '\u8077\u7A31'], ['email', 'Email'], ['phone', '\u96FB\u8A71'],
+  ['page', '\u4F86\u6E90\u9801\u9762'], ['country', '\u570B\u5BB6'], ['received_at', '\u8868\u55AE\u6536\u5230\u6642\u9593']];
+var INTAKE_KNOWN = { purpose: 1, name: 1, org: 1, title: 1, email: 1, phone: 1, message: 1, page: 1, country: 1, received_at: 1, repo: 1 };
+// \u6D3D\u8A62 \u2192 \u7968\u3002\u6A19\u984C\uFF1D\u3010\u6A19\u7C64\u3011\u806F\u7D61\u76EE\u7684\uFF5C\u55AE\u4F4D\uFF08\u6C92\u55AE\u4F4D\u7528\u59D3\u540D\uFF09\uFF1B\u5167\u6587\u5E36\u5168\u90E8\u6B04\u4F4D\uFF0C\u8A0A\u606F\u653E\u5728 code fence \u88E1\uFF08\u4E0D\u88AB\u7576\u6210 markdown\uFF0F\u7C3D\u6838\u683C\u5F0F\u8B80\uFF09\u3002
+function intakeTicket(b, label, source) {
+  var purpose = oneLine(b.purpose, 80), org = oneLine(b.org, 80), name = oneLine(b.name, 80);
+  var who = org || name;
+  var title = '\u3010' + label + '\u3011' + (purpose || '\uFF08\u672A\u586B\u76EE\u7684\uFF09') + (who ? '\uFF5C' + who : '');
+  var lines = ['\u4F86\u6E90\uFF1A' + source, ''];
+  INTAKE_FIELDS.forEach(function (f) { lines.push('- ' + f[1] + '\uFF1A' + (oneLine(b[f[0]], 300) || '\uFF08\u7A7A\uFF09')); });
+  var extra = Object.keys(b).filter(function (k) { return !INTAKE_KNOWN[k] && (typeof b[k] === 'string' || typeof b[k] === 'number' || typeof b[k] === 'boolean'); }).sort().slice(0, 20);
+  extra.forEach(function (k) { lines.push('- ' + oneLine(k, 40) + '\uFF1A' + (oneLine(b[k], 300) || '\uFF08\u7A7A\uFF09')); });
+  var msg = clip(b.message, 5000), fence = '\`\`\`';
+  while (msg.indexOf(fence) >= 0) fence += '\`';
+  lines.push('', '### \u8A0A\u606F', '', fence + 'text', msg || '\uFF08\u7A7A\uFF09', fence);
+  return { title: title.slice(0, 200), body: lines.join('\\n') };
+}
+
+var INTAKE = {"source":"uncle6_contact","repo":"inkstone/personal-brand","label":"\u6D3D\u8A62"};
+
+var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];
+if (P.early) return done(reply(P.early.status, P.early.body));
+var bad = readsBad(a);
+if (bad) return done(fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')'));
+if (!P.tenant) return done(fail(500, 'tenant unknown (the engine did not inject _tenant)'));
+var full = INTAKE.repo, b = isObj(P.b) ? P.b : {};
+// \u91D1\u9470\u901A\u904E\u4E4B\u5F8C\u624D\u9A57\u5167\u5BB9\uFF1A\u6C92\u6709\u6709\u6548\u91D1\u9470\u7684\u4EBA\u770B\u4E0D\u5230\u4EFB\u4F55\u6B04\u4F4D\u898F\u5247
+if (!clip(b.message, 10) && !clip(b.purpose, 10)) return done(fail(422, 'message or purpose is required'));
+// \u8DEF\u7531\u7D81\u6B7B\u4E00\u500B repo\uFF1Abody \u60F3\u6307\u5B9A\u5225\u7684 repo \uFF1D\u62D2\u7D55\uFF08\u4E0D\u662F\u9ED8\u9ED8\u6539\u5BEB\u6210\u8DEF\u7531\u7684 repo\uFF09
+if (b.repo !== undefined && b.repo !== null && String(b.repo) !== '' && String(b.repo) !== full) return done(fail(403, 'this intake key can only open tickets in its own repository'));
+if (!repoRowOf(a[0], full)) return done(notFound('repository'));
+var top = 0;
+rowsOf(a[1]).forEach(function (R) { var k = parseKey(sv(R, 'key')); if (k && k.n > top) top = k.n; });
+if (top === 0) top = totalOf(a[1]);
+var label = INTAKE.label, source = INTAKE.source;
+var L = labelByRef(liveLabels(a[2]), label), newLabel = null, lid;
+if (L) lid = L.id; else { lid = newNumId(); newLabel = { lid: lid, repo: full, name: label, color: '5319e7', description: '\u5916\u90E8\u7DB2\u7AD9\u6536\u4EF6\uFF08intake\uFF09\u958B\u51FA\u7684\u7968', created_at: nowIso() }; }
+var T2 = intakeTicket(b, label, source), now = nowIso(), attempts = [];
+for (var j = 0; j < CLAIM_TRIES; j++) {
+  var key = issueKey(full, top + 1 + j);
+  attempts.push({ template: T.issue, record_id: issueRid(P.tenant, key),
+    values: compact({ key: key, repo: full, title: T2.title, body: T2.body, state: 'open', author: 'intake-' + source, created_at: now }) });
+}
+return claimOut(attempts, { full: full, lid: String(lid), newLabel: newLabel });
+`,
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "wpost",
+            type: "Component",
+            componentId: "ahub_rec_post",
+            label: "wpost",
+            data: {
+              template: "{{ahpost.template}}",
+              values: "{{ahpost.values}}"
+            }
+          },
+          {
+            id: "wpatch",
+            type: "Component",
+            componentId: "ahub_rec_patch",
+            label: "wpatch",
+            data: {
+              id: "{{ahpatch.id}}",
+              values: "{{ahpatch.values}}"
+            }
+          },
+          {
+            id: "k0",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k0",
+            data: {
+              template: "{{decide.data.attempts.0.template}}",
+              record_id: "{{decide.data.attempts.0.record_id}}",
+              values: "{{decide.data.attempts.0.values}}"
+            }
+          },
+          {
+            id: "k1",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k1",
+            data: {
+              template: "{{decide.data.attempts.1.template}}",
+              record_id: "{{decide.data.attempts.1.record_id}}",
+              values: "{{decide.data.attempts.1.values}}"
+            }
+          },
+          {
+            id: "k2",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k2",
+            data: {
+              template: "{{decide.data.attempts.2.template}}",
+              record_id: "{{decide.data.attempts.2.record_id}}",
+              values: "{{decide.data.attempts.2.values}}"
+            }
+          },
+          {
+            id: "k3",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k3",
+            data: {
+              template: "{{decide.data.attempts.3.template}}",
+              record_id: "{{decide.data.attempts.3.record_id}}",
+              values: "{{decide.data.attempts.3.values}}"
+            }
+          },
+          {
+            id: "k4",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k4",
+            data: {
+              template: "{{decide.data.attempts.4.template}}",
+              record_id: "{{decide.data.attempts.4.record_id}}",
+              values: "{{decide.data.attempts.4.values}}"
+            }
+          },
+          {
+            id: "k5",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k5",
+            data: {
+              template: "{{decide.data.attempts.5.template}}",
+              record_id: "{{decide.data.attempts.5.record_id}}",
+              values: "{{decide.data.attempts.5.values}}"
+            }
+          },
+          {
+            id: "k6",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k6",
+            data: {
+              template: "{{decide.data.attempts.6.template}}",
+              record_id: "{{decide.data.attempts.6.record_id}}",
+              values: "{{decide.data.attempts.6.values}}"
+            }
+          },
+          {
+            id: "k7",
+            type: "Component",
+            componentId: "ahub_rec_claim",
+            label: "k7",
+            data: {
+              template: "{{decide.data.attempts.7.template}}",
+              record_id: "{{decide.data.attempts.7.record_id}}",
+              values: "{{decide.data.attempts.7.values}}"
+            }
+          },
+          {
+            id: "fin",
+            type: "Component",
+            componentId: "code",
+            label: "fin",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token',\n  rel: 'ahub_release', att: 'ahub_attachment',\n  rlink: 'ahub_release_link', cmeta: 'ahub_comment_meta', setting: 'ahub_setting',\n  station: 'ahub_station', claim: 'ahub_claim', ask: 'ahub_report_ask',\n  session: 'ahub_session',\n  goal: 'ahub_goal', glog: 'ahub_goal_log', step: 'ahub_step', sassign: 'ahub_step_assign', gms: 'ahub_goal_ms'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction compact(v) {\n  var o = {};\n  Object.keys(v).forEach(function (k) { var x = v[k]; if (x !== undefined && x !== null && String(x) !== '') o[k] = String(x); });\n  return o;\n}\nfunction postRec(tpl, v) { return { template: tpl, values: compact(v) }; }\n// \u6539\u5E7E\u683C\uFF1A\u53EA\u9001\u771F\u7684\u8B8A\u4E86\u7684\u683C\u5B50\uFF1B\u628A\u4E00\u500B\u672C\u4F86\u5C31\u662F\u7A7A\u7684\u683C\u5B50\u300C\u6539\u6210\u7A7A\u300D\u662F\u6C92\u4E8B\u505A\uFF0C\u4E0D\u9001\nfunction done(final, posts, patches) {\n  var ps = posts || [], pt = (patches || []).filter(Boolean);\n  var ops = ps.map(function (p) { return { op: 'post', template: p.template, values: p.values }; })\n    .concat(pt.map(function (p) { return { op: 'patch', id: p.id, values: p.values }; }));\n  return { success: true, branch: 'skip', final: final, ahposts: ps, ahpatches: pt, ahbatches: ops.length ? [{ ops: ops }] : [] };\n}\nfunction claimedOf(input, attempts) {\n  var names = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'];\n  for (var i = 0; i < names.length; i++) {\n    var d = innerOf({ data: input[names[i]] });\n    var rec = d && d.record ? d.record : null;\n    if (rec && attempts[i] && rec.record_id === attempts[i].record_id) return { rid: rec.record_id, n: i, v: attempts[i].values };\n  }\n  return null;\n}\n\nvar X = input.decide, F = X.fin, w = claimedOf(input, X.attempts);\nif (!w) return done(fail(500, 'issue number claim did not take effect: the engine ignored record_id/create_only (needs Arcrun#307)'));\nvar key = w.v.key, posts = [];\nif (F.newLabel) posts.push(postRec(T.label, F.newLabel));\nposts.push(postRec(T.ilabel, { issue: key, repo: F.full, lid: F.lid }));\nreturn done(reply(201, { ok: true, issue: key }), posts, []);\n",
+              input: {
+                decide: "{{decide.data}}",
+                k0: "{{k0.data}}",
+                k1: "{{k1.data}}",
+                k2: "{{k2.data}}",
+                k3: "{{k3.data}}",
+                k4: "{{k4.data}}",
+                k5: "{{k5.data}}",
+                k6: "{{k6.data}}",
+                k7: "{{k7.data}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "giveup",
+            type: "Component",
+            componentId: "code",
+            label: "giveup",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction done(final, posts, patches) {\n  var ps = posts || [], pt = (patches || []).filter(Boolean);\n  var ops = ps.map(function (p) { return { op: 'post', template: p.template, values: p.values }; })\n    .concat(pt.map(function (p) { return { op: 'patch', id: p.id, values: p.values }; }));\n  return { success: true, branch: 'skip', final: final, ahposts: ps, ahpatches: pt, ahbatches: ops.length ? [{ ops: ops }] : [] };\n}\nvar CLAIM_TRIES = 8;\n\nreturn done(fail(503, 'could not claim an issue number after ' + CLAIM_TRIES + ' attempts (too many concurrent creators or the store is failing); retry'));\n",
+              input: {
+                decide: "{{decide.data}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "respond",
+            type: "Component",
+            componentId: "code",
+            label: "respond",
+            data: {
+              code: "function reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nfunction failedCount(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { if (r && typeof r === 'object' && r.success === false) n++; });\n  return n;\n}\n// \u5408\u4F75\u5BEB\u5165\uFF08wbatch\uFF09\uFF1A\u4E00\u500B\u8ACB\u6C42\u56DE {ok, results:[{status}]}\uFF1BFOREACH \u6BCF\u5708\u7684\u7D50\u679C\u53EF\u80FD\u5305\u4E86\u597D\u5E7E\u5C64\uFF0C\u5F80\u5167\u627E\nfunction batchFailed(x) {\n  var n = 0;\n  if (Array.isArray(x)) x.forEach(function (r) { n += batchFailed(r); });\n  else if (x && typeof x === 'object') {\n    if (x.success === false) n++;\n    else if (Array.isArray(x.results) && x.ok !== undefined) x.results.forEach(function (r) { if (!r || r.status < 200 || r.status >= 300) n++; });\n    else if (x.data && typeof x.data === 'object') n += batchFailed(x.data);\n    else if (x.body && typeof x.body === 'object') n += batchFailed(x.body);\n  }\n  return n;\n}\nfunction partial(input) {\n  var bad = failedCount(input.wpost) + failedCount(input.wpatch) + batchFailed(input.wbatch);\n  return bad ? fail(502, 'partial write: ' + bad + ' of the record writes failed; the ticket may be half-written, retry the request') : null;\n}\n\nvar cands = [input.fin, input.giveup, input.skip];\nfor (var i = 0; i < cands.length; i++) {\n  var c = cands[i];\n  if (c && typeof c === 'object' && !Array.isArray(c) && c.final !== undefined) return partial(input) || c.final;\n}\nreturn fail(500, '\u6436\u865F\u6D41\u7A0B\u6C92\u6709\u7522\u51FA final');\n",
+              input: {
+                fin: "{{fin.data}}",
+                giveup: "{{giveup.data}}",
+                skip: "{{decide.data}}",
+                wpost: "{{wpost.results}}",
+                wpatch: "{{wpatch.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahread",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "decide",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "decide",
+            to: "respond",
+            type: "ON_BRANCH",
+            branch: "skip"
+          },
+          {
+            from: "decide",
+            to: "k0",
+            type: "ON_BRANCH",
+            branch: "claim"
+          },
+          {
+            from: "k0",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k0",
+            to: "k1",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k1",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k1",
+            to: "k2",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k2",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k2",
+            to: "k3",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k3",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k3",
+            to: "k4",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k4",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k4",
+            to: "k5",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k5",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k5",
+            to: "k6",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k6",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k6",
+            to: "k7",
+            type: "ON_FAIL"
+          },
+          {
+            from: "k7",
+            to: "fin",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "k7",
+            to: "giveup",
+            type: "ON_FAIL"
+          },
+          {
+            from: "fin",
+            to: "wpost",
+            type: "FOREACH",
+            iterator: "ahpost",
+            concurrency: 6
+          },
+          {
+            from: "fin",
+            to: "wpatch",
+            type: "FOREACH",
+            iterator: "ahpatch",
+            concurrency: 6
+          },
+          {
+            from: "fin",
+            to: "respond",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "giveup",
+            to: "respond",
             type: "ON_SUCCESS"
           }
         ]
@@ -42818,6 +43645,654 @@ return r;
           }
         ]
       }
+    },
+    {
+      name: "mcp_milestone",
+      description: "MCP \u5DE5\u5177 milestone\uFF08AI \u7528\uFF0C\u7F72\u540D claude-ai\uFF09\uFF1A\u958B\u91CC\u7A0B\u7891\u3001\u6539\u671F\u9650\uFF0F\u540D\u7A31\uFF0F\u63CF\u8FF0\u3001\u95DC\u9589\u6216\u91CD\u958B\uFF08inkstone/Arcrun#358\uFF09\u3002",
+      graph: {
+        id: "ahub__mcp_milestone",
+        name: "ahub__mcp_milestone",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: `
+function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
+function val(v) { if (v === null || v === undefined) return undefined; if (typeof v === 'string') { var s = ph(v); return s === '' ? undefined : s; } return v; }
+function str(v) { v = val(v); return v === undefined ? '' : String(v).trim(); }
+function num(v) { v = val(v); var n = typeof v === 'number' ? v : parseInt(v, 10); return isFinite(n) ? n : undefined; }
+function bool(v) { v = val(v); return v === true || v === 'true' || v === '1'; }
+function list(v) {
+  v = val(v); if (v === undefined) return undefined;
+  if (typeof v === 'string') { if (v.charAt(0) === '[') { try { v = JSON.parse(v); } catch (e) { return undefined; } } else return v.split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
+  return Array.isArray(v) ? v.map(String) : undefined;
+}
+function obj(v) { if (typeof v === 'string') { var s = ph(v); if (!s) return null; try { v = JSON.parse(s); } catch (e) { return null; } } return v && typeof v === 'object' ? v : null; }
+var NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+function repoOf(s) { var m = /^([^/\\s]+)\\/([^/\\s]+)$/.exec(str(s)); return m && NAME.test(m[1]) && NAME.test(m[2]) && m[1] !== '..' && m[2] !== '..' ? { owner: m[1], repo: m[2] } : null; }
+// MCP \u9019\u689D\u8DEF\u6C92\u6709\u756B\u9762\u7DB2\u5740\uFF08AHub \u7684\u756B\u9762\u5728 Portal \u88E1\uFF09\uFF0C\u8DEF\u7531\u88DC\u7684 https://ahub.invalid/... \u9EDE\u4E86\u5230\u4E0D\u4E86 \u21D2 \u62FF\u6389\uFF0C\u4E0D\u7D66 AI \u8F49\u4E00\u689D\u6B7B\u9023\u7D50
+function noDead(v) {
+  if (Array.isArray(v)) return v.map(noDead);
+  if (!v || typeof v !== 'object') return v;
+  var o = {};
+  Object.keys(v).forEach(function (k) { var x = v[k]; if (!(typeof x === 'string' && x.indexOf('https://ahub.invalid') === 0)) o[k] = noDead(x); });
+  return o;
+}
+// \u7E3D\u76E3\u8981\u9019\u500B\u5DE5\u4F5C\u7AD9\u56DE\u5831\u7684\u4E8B\uFF08asks_list / \u5404\u8DEF\u7531\u56DE\u7684 pending_asks\uFF09\uFF1A\u6BCF\u652F\u5DE5\u5177\u7684\u56DE\u61C9\u90FD\u5E36\uFF0C\u9019\u662F\u300C\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55\u5DE5\u5177\u5C31\u770B\u5F97\u5230\u300D\u7684\u505A\u6CD5
+var PENDING = [];
+function askLine(a) { return '\u7E3D\u76E3\u8981\u4F60\u56DE\u5831 ' + a.key + ' \u7684\u72C0\u614B' + (a.ask ? '\uFF1A' + a.ask : '') + '\uFF08\u7528 arcrun_ahub_report\uFF0C\u5E36 repo\u3001number\u3001station\uFF09'; }
+function pendLines(list) { return Array.isArray(list) ? list.map(askLine) : []; }
+function out(status, body, next) { return { success: true, status: status, body: noDead(body), next_actions: (next || []).concat(PENDING) }; }
+function bad(msg, next) { return out(422, { message: msg }, next); }
+// ahub_call \u7684\u56DE\u61C9 \u2192 {status, body}\uFF08\u8DEF\u7531\u56DE {success, status, body}\uFF0C\u5916\u9762\u53EF\u80FD\u591A\u5305\u4E00\u5169\u5C64 {success, data}\uFF09
+// \u5916\u6BBC\uFF08recipe \u7684 {success, status:<HTTP>, data}\uFF09\u4E5F\u5E36 status\uFF0C\u6240\u4EE5\u8981\u627E\u300C\u6709 status \u53C8\u6709 body\u300D\u7684\u90A3\u4E00\u5C64
+function env(v) {
+  if (v === undefined || v === null) return null;   // \u6C92\u8DD1\u5230\u7684\u7BC0\u9EDE\uFF08#338 \u8D77\uFF1D\u6C92\u6709\u503C\uFF1B\u820A\u5F15\u64CE\u7559\u5B57\u9762\uFF0C\u4E0B\u4E00\u884C\u8655\u7406\uFF09
+  if (typeof v === 'string') { var s = v.trim(); if (/^\\{\\{[^{}]*\\}\\}$/.test(s)) return null; try { v = JSON.parse(s); } catch (e) { return { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE JSON' } }; } }
+  for (var i = 0; i < 5 && v && typeof v === 'object'; i++) {
+    if (typeof v.status === 'number' && 'body' in v) return { status: v.status, body: v.body };
+    var d = v.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+    v = d;
+  }
+  return { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE {status, body}\uFF08AHub \u6C92\u88DD\u597D\u3001\u6216\u7248\u672C\u592A\u820A\uFF09' } };
+}
+// \u932F\u8AA4\u6642\u7D66 AI \u7684\u4E0B\u4E00\u6B65\uFF08\u7167 AHub \u56DE\u7684\u72C0\u614B\u78BC\uFF09
+function hints(r) {
+  var m = r && r.body && typeof r.body.message === 'string' ? r.body.message : '';
+  if (r.status === 409 && r.body && r.body.held_by) return ['\u9019\u5F35\u7968\u5DF2\u88AB\u5DE5\u4F5C\u7AD9\u300C' + r.body.held_by + '\u300D\u9818\u8457\uFF08' + (r.body.state || '') + '\uFF09\uFF1A\u8981\u63A5\u624B\u8ACB\u5148\u8ACB\u5C0D\u65B9 release\uFF0C\u6216\u8ACB\u7E3D\u76E3\u5354\u8ABF'];
+  if (r.status === 404 && /no claim|no active claim|holds no/.test(m)) return ['\u9019\u5F35\u7968\u6C92\u6709\u4F60\u7684\u9818\u7968\u7D00\u9304\uFF1A\u5148\u7528 arcrun_ahub_claim \u9818'];
+  if (r.status === 404 && /repository/i.test(m)) return ['\u5C08\u6848\uFF08repo\uFF09\u9084\u6C92\u958B\uFF1Aarcrun_ahub_create_project\uFF1B\u6216\u7528 arcrun_ahub_list_meta\uFF08what=repos\uFF09\u67E5\u6709\u54EA\u4E9B'];
+  if (r.status === 404) return ['repo \u6216\u7968\u865F\u4E0D\u5B58\u5728\uFF1A\u7528 arcrun_ahub_list_issues\u3001arcrun_ahub_list_meta\uFF08what=repos\uFF09\u67E5'];
+  if (r.status === 412) return ['\u9019\u5F35\u7968\u9084\u6709\u6C92\u95DC\u7684\u524D\u7F6E\u7968\uFF1A\u5148\u95DC\u524D\u7F6E\u7968\uFF08arcrun_ahub_dependency action=list \u770B\u662F\u54EA\u5E7E\u5F35\uFF09'];
+  if (r.status === 422 && /signoffs|sign-off/.test(m)) return ['\u8981\u4EBA\u7C3D\u6838\uFF1A\u7528 arcrun_ahub_request_signoff \u767C\u8ACB\u6C42\uFF0C\u7C3D\u6838\u4EBA\u5728 AHub \u756B\u9762\u7C3D\uFF1B\u7D50\u679C\u7528 arcrun_ahub_signoff_status \u8B80', '\u6D41\u7A0B\u8AAA\u660E\uFF1Aarcrun_app_tools({app:"ahub"}) \u7684 signoff guide'];
+  if (r.status === 422) return ['\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u5F97\u5148\u5B58\u5728\uFF1Aarcrun_ahub_list_meta\uFF08what=labels\uFF0Fmilestones\uFF09'];
+  if (r.status === 0) return ['\u9019\u53F0\u5BE6\u4F8B\u7684 AHub \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A\u5230 Portal \u7684 App \u5E02\u96C6\u66F4\u65B0 AHub'];
+  return [];
+}
+function pass(r, next) { return out(r.status, r.body, r.status >= 200 && r.status < 300 ? (next || []) : hints(r)); }
+// \u7D66 AI \u770B\u7684\u7968\u6E05\u55AE\uFF1A\u53EA\u7559\u8B80\u5F97\u61C2\u9032\u5EA6\u7684\u6B04\u4F4D\uFF08\u6574\u4EFD Gitea \u7269\u4EF6\u592A\u9577\uFF09
+function slim(it) {
+  var full = it.repository ? it.repository.full_name : undefined;
+  return { repo: full, ref: full ? full + '#' + it.number : undefined, url: it.html_url, number: it.number, title: it.title, state: it.state,
+    labels: (it.labels || []).map(function (l) { return l.name; }), assignees: (it.assignees || []).map(function (u) { return u.login; }),
+    milestone: it.milestone ? it.milestone.title : null, comments: it.comments, updated_at: it.updated_at };
+}
+function utf8Bytes(str) {
+  var out = [];
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charCodeAt(i);
+    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }
+    if (c < 0x80) out.push(c);
+    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+  }
+  return out;
+}
+var SHA_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+function sha256hex(str) {
+  var m = utf8Bytes(String(str)), l = m.length * 8;
+  m.push(0x80);
+  while (m.length % 64 !== 56) m.push(0);
+  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);
+  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  var w = new Array(64);
+  for (var off = 0; off < m.length; off += 64) {
+    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;
+    for (t = 16; t < 64; t++) {
+      var x = w[t - 15], y = w[t - 2];
+      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;
+    }
+    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (t = 0; t < 64; t++) {
+      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      var ch = (e & f) ^ (~e & g);
+      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;
+      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      var mj = (a & b) ^ (a & c) ^ (b & c);
+      var t2 = (S0 + mj) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+  }
+  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');
+}
+var A = input.a || {};
+var t = ph(input.tenant);
+if (!t) return { success: false, error: '\u627E\u4E0D\u5230\u9019\u53F0\u5BE6\u4F8B\u7684 namespace' };
+var TOK = 'ahubapp_' + sha256hex('claude-ai:' + t);
+function Q(wf, method, path, params, query, body) { return { wf: wf, method: method, path: path, params: params || {}, query: query || {}, body: body || {}, token: TOK }; }
+// \u5E36\u4E86 station \u7684\u547C\u53EB\u591A\u6253\u4E00\u500B asks_list\uFF08\u540C\u4E00\u6279\u4E26\u884C\uFF0C\u4E0D\u591A\u4E00\u8D9F\uFF09\uFF1A\u7E3D\u76E3\u5C0D\u9019\u500B\u5DE5\u4F5C\u7AD9\u958B\u7684\u300C\u8981\u6C42\u56DE\u5831\u300D\u9760\u5B83\u5E36\u9032\u56DE\u61C9\u7684 next_actions\uFF08inkstone/Arcrun#346\uFF09\u3002
+// pi\uFF1D\u5B83\u5728\u8ACB\u6C42\u9663\u5217\u88E1\u7684\u4F4D\u7F6E\uFF08mid \u628A\u5B83\u62FF\u51FA\u4F86\uFF0C\u4E0D\u8B93\u5DE5\u5177\u81EA\u5DF1\u7684 rs \u4E0B\u6A19\u932F\u4F4D\uFF09\uFF1B-1\uFF1D\u6C92\u6253
+var PENDING_ON = true;
+// \u5E36\u4E86 session\uFF08\u5C0D\u8A71\u8B58\u5225\uFF09\u7684\u547C\u53EB\u518D\u591A\u6253\u4E00\u500B session_touch\uFF08\u540C\u4E00\u6279\u4E26\u884C\uFF0C\u4E0D\u591A\u4E00\u8D9F\uFF09\uFF1A\u9019\u6B21\u547C\u53EB\u5C31\u7B97\u9019\u500B\u5C0D\u8A71\u7684\u4E00\u6B21\u6D3B\u52D5\uFF0C\u4E0D\u5FC5\u53E6\u5916\u5831\u5230\uFF08inkstone/Arcrun#348\uFF09\u3002
+// ti\uFF1D\u5B83\u7684\u4F4D\u7F6E\uFF0C\u540C pi\u3002checkin\uFF0Fend_session \u81EA\u5DF1\u8655\u7406\u5C0D\u8A71\uFF08TOUCH_ON\uFF1Dfalse\uFF09
+var TOUCH_ON = true;
+function go(reqs, ctx) {
+  var pi = -1, ti = -1, S = PENDING_ON ? str(A.station) : '', SS = TOUCH_ON ? str(A.session) : '';
+  if (S) { reqs = reqs.concat([Q('asks_list', 'GET', '/ahub/asks', {}, { station: S }, {})]); pi = reqs.length - 1; }
+  if (SS) { reqs = reqs.concat([Q('session_touch', 'POST', '/ahub/sessions/touch', {}, {}, { session: SS, station: str(A.station) })]); ti = reqs.length - 1; }
+  return { success: true, ahmqs: reqs, ctx: ctx || {}, early: null, tokhash: sha256hex(TOK), pi: pi, ti: ti };
+}
+function early(o) { return { success: true, ahmqs: [], ctx: {}, early: o, tokhash: '', pi: -1, ti: -1 }; }
+var act = str(A.action);
+if (act !== 'create' && act !== 'update' && act !== 'close' && act !== 'reopen') return early(bad('action \u53EA\u80FD\u662F create\uFF0Fupdate\uFF0Fclose\uFF0Freopen'));
+var DEF = 'inkstone/InkStoneCo';
+var R = repoOf(str(A.repo) || DEF); if (!R) return early(bad('repo \u8981\u5BEB\u6210 owner/repo\uFF0C\u6536\u5230\u300C' + str(A.repo) + '\u300D'));
+function checkTitle(t) {
+  if (!t) return '\u540D\u7A31\u4E0D\u80FD\u7A7A\u767D';
+  if (/^[vV]?\\d+\\.\\d+/.test(t)) return '\u540D\u7A31\u4E0D\u51C6\u7528\u7248\u672C\u865F\u958B\u982D\uFF08\u7248\u672C\u865F\u662F deliverable \u4E0D\u662F\u540D\u5B57\uFF09\uFF1A\u8981\u56DE\u7B54\u300C\u9019\u4E00\u8F2A\u8981\u8B93\u4EC0\u9EBC\u8B8A\u6210\u771F\u7684\u300D\uFF0C\u4F8B\u5982\u300C\u4E00\u88DD\u5C31\u80FD\u7528\u300D';
+  return '';
+}
+function checkDue(s) {
+  if (!/^\\d{4}-\\d{2}-\\d{2}(T[0-9:.]+Z?)?$/.test(s) || isNaN(Date.parse(s))) return '\u671F\u9650\u8981\u5BEB\u6210 YYYY-MM-DD\uFF0C\u6536\u5230\u300C' + s + '\u300D';
+  var y = parseInt(s.slice(0, 4), 10);
+  if (y >= 2100) return '\u671F\u9650 ' + s + ' \u662F\u5047\u671F\u9650\uFF08\u7B49\u65BC\u6C92\u6709\u671F\u9650\uFF09\uFF1A\u5BEB\u771F\u7684\u8981\u4EA4\u7684\u90A3\u5929';
+  return '';
+}
+var base = '/repos/' + R.owner + '/' + R.repo + '/milestones', p = { owner: R.owner, repo: R.repo };
+var b = {}, e;
+if (val(A.title) !== undefined) { e = checkTitle(str(A.title)); if (e) return early(bad(e)); b.title = str(A.title); }
+if (val(A.description) !== undefined) b.description = String(val(A.description));
+if (val(A.due_on) !== undefined) { e = checkDue(str(A.due_on)); if (e) return early(bad(e)); b.due_on = str(A.due_on).slice(0, 10) + 'T00:00:00Z'; }
+if (act === 'create') {
+  if (R.owner + '/' + R.repo !== DEF) return early(bad('\u91CC\u7A0B\u7891\u4E00\u5F8B\u958B\u5728 ' + DEF + '\uFF0C\u6536\u5230\u300C' + R.owner + '/' + R.repo + '\u300D', ['\u8981\u5728\u5225\u7684 repo \u505A\u7684\u4E8B\uFF1A\u958B\u7968\u7576\u8F09\u9AD4\u7968\u7684\u524D\u7F6E\uFF08arcrun_ahub_dependency\uFF09']));
+  if (!b.title) return early(bad('create \u8981\u6709 title'));
+  if (!b.due_on) return early(bad('create \u8981\u6709 due_on\uFF08YYYY-MM-DD\uFF09\uFF1A\u6C92\u6709\u671F\u9650\u7684\u91CC\u7A0B\u7891\u4E0D\u51C6\u958B'));
+  if (b.due_on.slice(0, 10) < new Date().toISOString().slice(0, 10)) return early(bad('\u671F\u9650 ' + b.due_on.slice(0, 10) + ' \u5DF2\u7D93\u904E\u4E86\uFF1A\u5BEB\u9084\u6C92\u5230\u7684\u90A3\u5929'));
+  return go([Q('ms_create', 'POST', base, p, {}, b)]);
+}
+if (act === 'update' && !Object.keys(b).length) return early(bad('update \u6C92\u6709\u8981\u6539\u7684\u6B04\u4F4D\uFF08title\uFF0Fdescription\uFF0Fdue_on\uFF09'));
+if (act !== 'update' && Object.keys(b).length) return early(bad(act + ' \u53EA\u6539\u72C0\u614B\uFF1B\u8981\u6539\u6B04\u4F4D\u7528 action=update'));
+var ms = str(A.milestone); if (!ms) return early(bad(act + ' \u8981\u7D66 milestone\uFF08id \u6216\u5B8C\u6574\u6A19\u984C\uFF09'));
+if (act === 'close') b.state = 'closed'; else if (act === 'reopen') b.state = 'open';
+if (/^\\d+$/.test(ms)) return go([Q('ms_patch', 'PATCH', base + '/' + ms, { owner: R.owner, repo: R.repo, id: ms }, {}, b)]);
+return go([Q('ms_list', 'GET', base, p, { state: 'all', limit: '200' }, {})], { b: b, ms: ms, base: base, R: R });
+`,
+              input: {
+                a: {
+                  action: "{{input.action}}",
+                  repo: "{{input.repo}}",
+                  milestone: "{{input.milestone}}",
+                  title: "{{input.title}}",
+                  description: "{{input.description}}",
+                  due_on: "{{input.due_on}}",
+                  station: "{{input.station}}",
+                  session: "{{input.session}}"
+                },
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "ca",
+            type: "Component",
+            componentId: "ahub_call",
+            label: "ca",
+            data: {
+              wf: "{{ahmq.wf}}",
+              method: "{{ahmq.method}}",
+              path: "{{ahmq.path}}",
+              query: "{{ahmq.query}}",
+              params: "{{ahmq.params}}",
+              body: "{{ahmq.body}}",
+              token: "{{ahmq.token}}"
+            }
+          },
+          {
+            id: "ga",
+            type: "Component",
+            componentId: "code",
+            label: "ga",
+            data: {
+              code: `
+function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
+function val(v) { if (v === null || v === undefined) return undefined; if (typeof v === 'string') { var s = ph(v); return s === '' ? undefined : s; } return v; }
+function str(v) { v = val(v); return v === undefined ? '' : String(v).trim(); }
+function num(v) { v = val(v); var n = typeof v === 'number' ? v : parseInt(v, 10); return isFinite(n) ? n : undefined; }
+function bool(v) { v = val(v); return v === true || v === 'true' || v === '1'; }
+function list(v) {
+  v = val(v); if (v === undefined) return undefined;
+  if (typeof v === 'string') { if (v.charAt(0) === '[') { try { v = JSON.parse(v); } catch (e) { return undefined; } } else return v.split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
+  return Array.isArray(v) ? v.map(String) : undefined;
+}
+function obj(v) { if (typeof v === 'string') { var s = ph(v); if (!s) return null; try { v = JSON.parse(s); } catch (e) { return null; } } return v && typeof v === 'object' ? v : null; }
+var NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+function repoOf(s) { var m = /^([^/\\s]+)\\/([^/\\s]+)$/.exec(str(s)); return m && NAME.test(m[1]) && NAME.test(m[2]) && m[1] !== '..' && m[2] !== '..' ? { owner: m[1], repo: m[2] } : null; }
+// MCP \u9019\u689D\u8DEF\u6C92\u6709\u756B\u9762\u7DB2\u5740\uFF08AHub \u7684\u756B\u9762\u5728 Portal \u88E1\uFF09\uFF0C\u8DEF\u7531\u88DC\u7684 https://ahub.invalid/... \u9EDE\u4E86\u5230\u4E0D\u4E86 \u21D2 \u62FF\u6389\uFF0C\u4E0D\u7D66 AI \u8F49\u4E00\u689D\u6B7B\u9023\u7D50
+function noDead(v) {
+  if (Array.isArray(v)) return v.map(noDead);
+  if (!v || typeof v !== 'object') return v;
+  var o = {};
+  Object.keys(v).forEach(function (k) { var x = v[k]; if (!(typeof x === 'string' && x.indexOf('https://ahub.invalid') === 0)) o[k] = noDead(x); });
+  return o;
+}
+// \u7E3D\u76E3\u8981\u9019\u500B\u5DE5\u4F5C\u7AD9\u56DE\u5831\u7684\u4E8B\uFF08asks_list / \u5404\u8DEF\u7531\u56DE\u7684 pending_asks\uFF09\uFF1A\u6BCF\u652F\u5DE5\u5177\u7684\u56DE\u61C9\u90FD\u5E36\uFF0C\u9019\u662F\u300C\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55\u5DE5\u5177\u5C31\u770B\u5F97\u5230\u300D\u7684\u505A\u6CD5
+var PENDING = [];
+function askLine(a) { return '\u7E3D\u76E3\u8981\u4F60\u56DE\u5831 ' + a.key + ' \u7684\u72C0\u614B' + (a.ask ? '\uFF1A' + a.ask : '') + '\uFF08\u7528 arcrun_ahub_report\uFF0C\u5E36 repo\u3001number\u3001station\uFF09'; }
+function pendLines(list) { return Array.isArray(list) ? list.map(askLine) : []; }
+function out(status, body, next) { return { success: true, status: status, body: noDead(body), next_actions: (next || []).concat(PENDING) }; }
+function bad(msg, next) { return out(422, { message: msg }, next); }
+// ahub_call \u7684\u56DE\u61C9 \u2192 {status, body}\uFF08\u8DEF\u7531\u56DE {success, status, body}\uFF0C\u5916\u9762\u53EF\u80FD\u591A\u5305\u4E00\u5169\u5C64 {success, data}\uFF09
+// \u5916\u6BBC\uFF08recipe \u7684 {success, status:<HTTP>, data}\uFF09\u4E5F\u5E36 status\uFF0C\u6240\u4EE5\u8981\u627E\u300C\u6709 status \u53C8\u6709 body\u300D\u7684\u90A3\u4E00\u5C64
+function env(v) {
+  if (v === undefined || v === null) return null;   // \u6C92\u8DD1\u5230\u7684\u7BC0\u9EDE\uFF08#338 \u8D77\uFF1D\u6C92\u6709\u503C\uFF1B\u820A\u5F15\u64CE\u7559\u5B57\u9762\uFF0C\u4E0B\u4E00\u884C\u8655\u7406\uFF09
+  if (typeof v === 'string') { var s = v.trim(); if (/^\\{\\{[^{}]*\\}\\}$/.test(s)) return null; try { v = JSON.parse(s); } catch (e) { return { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE JSON' } }; } }
+  for (var i = 0; i < 5 && v && typeof v === 'object'; i++) {
+    if (typeof v.status === 'number' && 'body' in v) return { status: v.status, body: v.body };
+    var d = v.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+    v = d;
+  }
+  return { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE {status, body}\uFF08AHub \u6C92\u88DD\u597D\u3001\u6216\u7248\u672C\u592A\u820A\uFF09' } };
+}
+// \u932F\u8AA4\u6642\u7D66 AI \u7684\u4E0B\u4E00\u6B65\uFF08\u7167 AHub \u56DE\u7684\u72C0\u614B\u78BC\uFF09
+function hints(r) {
+  var m = r && r.body && typeof r.body.message === 'string' ? r.body.message : '';
+  if (r.status === 409 && r.body && r.body.held_by) return ['\u9019\u5F35\u7968\u5DF2\u88AB\u5DE5\u4F5C\u7AD9\u300C' + r.body.held_by + '\u300D\u9818\u8457\uFF08' + (r.body.state || '') + '\uFF09\uFF1A\u8981\u63A5\u624B\u8ACB\u5148\u8ACB\u5C0D\u65B9 release\uFF0C\u6216\u8ACB\u7E3D\u76E3\u5354\u8ABF'];
+  if (r.status === 404 && /no claim|no active claim|holds no/.test(m)) return ['\u9019\u5F35\u7968\u6C92\u6709\u4F60\u7684\u9818\u7968\u7D00\u9304\uFF1A\u5148\u7528 arcrun_ahub_claim \u9818'];
+  if (r.status === 404 && /repository/i.test(m)) return ['\u5C08\u6848\uFF08repo\uFF09\u9084\u6C92\u958B\uFF1Aarcrun_ahub_create_project\uFF1B\u6216\u7528 arcrun_ahub_list_meta\uFF08what=repos\uFF09\u67E5\u6709\u54EA\u4E9B'];
+  if (r.status === 404) return ['repo \u6216\u7968\u865F\u4E0D\u5B58\u5728\uFF1A\u7528 arcrun_ahub_list_issues\u3001arcrun_ahub_list_meta\uFF08what=repos\uFF09\u67E5'];
+  if (r.status === 412) return ['\u9019\u5F35\u7968\u9084\u6709\u6C92\u95DC\u7684\u524D\u7F6E\u7968\uFF1A\u5148\u95DC\u524D\u7F6E\u7968\uFF08arcrun_ahub_dependency action=list \u770B\u662F\u54EA\u5E7E\u5F35\uFF09'];
+  if (r.status === 422 && /signoffs|sign-off/.test(m)) return ['\u8981\u4EBA\u7C3D\u6838\uFF1A\u7528 arcrun_ahub_request_signoff \u767C\u8ACB\u6C42\uFF0C\u7C3D\u6838\u4EBA\u5728 AHub \u756B\u9762\u7C3D\uFF1B\u7D50\u679C\u7528 arcrun_ahub_signoff_status \u8B80', '\u6D41\u7A0B\u8AAA\u660E\uFF1Aarcrun_app_tools({app:"ahub"}) \u7684 signoff guide'];
+  if (r.status === 422) return ['\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u5F97\u5148\u5B58\u5728\uFF1Aarcrun_ahub_list_meta\uFF08what=labels\uFF0Fmilestones\uFF09'];
+  if (r.status === 0) return ['\u9019\u53F0\u5BE6\u4F8B\u7684 AHub \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A\u5230 Portal \u7684 App \u5E02\u96C6\u66F4\u65B0 AHub'];
+  return [];
+}
+function pass(r, next) { return out(r.status, r.body, r.status >= 200 && r.status < 300 ? (next || []) : hints(r)); }
+// \u7D66 AI \u770B\u7684\u7968\u6E05\u55AE\uFF1A\u53EA\u7559\u8B80\u5F97\u61C2\u9032\u5EA6\u7684\u6B04\u4F4D\uFF08\u6574\u4EFD Gitea \u7269\u4EF6\u592A\u9577\uFF09
+function slim(it) {
+  var full = it.repository ? it.repository.full_name : undefined;
+  return { repo: full, ref: full ? full + '#' + it.number : undefined, url: it.html_url, number: it.number, title: it.title, state: it.state,
+    labels: (it.labels || []).map(function (l) { return l.name; }), assignees: (it.assignees || []).map(function (u) { return u.login; }),
+    milestone: it.milestone ? it.milestone.title : null, comments: it.comments, updated_at: it.updated_at };
+}
+
+var a = Array.isArray(input.first) ? input.first : [];
+return { success: true, branch: a.some(function (x) { var e = env(x); return e && e.status === 401; }) ? 'reg' : 'ok' };
+`,
+              input: {
+                first: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "reg",
+            type: "Component",
+            componentId: "ahub_call",
+            label: "reg",
+            data: {
+              wf: "token_register",
+              method: "POST",
+              path: "/ahub/tokens",
+              query: {},
+              params: {},
+              body: {
+                login: "claude-ai",
+                kind: "agent",
+                token_sha256: "{{prep.data.tokhash}}",
+                name: "arcrun-mcp"
+              },
+              token: ""
+            }
+          },
+          {
+            id: "pa2",
+            type: "Component",
+            componentId: "code",
+            label: "pa2",
+            data: {
+              code: "var q = input.q; if (typeof q === 'string') { try { q = JSON.parse(q); } catch (e) { q = []; } }\nreturn { success: true, ahmqs: Array.isArray(q) ? q : [] };\n",
+              input: {
+                q: "{{prep.data.ahmqs}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "ca2",
+            type: "Component",
+            componentId: "ahub_call",
+            label: "ca2",
+            data: {
+              wf: "{{ahmq.wf}}",
+              method: "{{ahmq.method}}",
+              path: "{{ahmq.path}}",
+              query: "{{ahmq.query}}",
+              params: "{{ahmq.params}}",
+              body: "{{ahmq.body}}",
+              token: "{{ahmq.token}}"
+            }
+          },
+          {
+            id: "mid",
+            type: "Component",
+            componentId: "code",
+            label: "mid",
+            data: {
+              code: `
+function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
+function val(v) { if (v === null || v === undefined) return undefined; if (typeof v === 'string') { var s = ph(v); return s === '' ? undefined : s; } return v; }
+function str(v) { v = val(v); return v === undefined ? '' : String(v).trim(); }
+function num(v) { v = val(v); var n = typeof v === 'number' ? v : parseInt(v, 10); return isFinite(n) ? n : undefined; }
+function bool(v) { v = val(v); return v === true || v === 'true' || v === '1'; }
+function list(v) {
+  v = val(v); if (v === undefined) return undefined;
+  if (typeof v === 'string') { if (v.charAt(0) === '[') { try { v = JSON.parse(v); } catch (e) { return undefined; } } else return v.split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
+  return Array.isArray(v) ? v.map(String) : undefined;
+}
+function obj(v) { if (typeof v === 'string') { var s = ph(v); if (!s) return null; try { v = JSON.parse(s); } catch (e) { return null; } } return v && typeof v === 'object' ? v : null; }
+var NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+function repoOf(s) { var m = /^([^/\\s]+)\\/([^/\\s]+)$/.exec(str(s)); return m && NAME.test(m[1]) && NAME.test(m[2]) && m[1] !== '..' && m[2] !== '..' ? { owner: m[1], repo: m[2] } : null; }
+// MCP \u9019\u689D\u8DEF\u6C92\u6709\u756B\u9762\u7DB2\u5740\uFF08AHub \u7684\u756B\u9762\u5728 Portal \u88E1\uFF09\uFF0C\u8DEF\u7531\u88DC\u7684 https://ahub.invalid/... \u9EDE\u4E86\u5230\u4E0D\u4E86 \u21D2 \u62FF\u6389\uFF0C\u4E0D\u7D66 AI \u8F49\u4E00\u689D\u6B7B\u9023\u7D50
+function noDead(v) {
+  if (Array.isArray(v)) return v.map(noDead);
+  if (!v || typeof v !== 'object') return v;
+  var o = {};
+  Object.keys(v).forEach(function (k) { var x = v[k]; if (!(typeof x === 'string' && x.indexOf('https://ahub.invalid') === 0)) o[k] = noDead(x); });
+  return o;
+}
+// \u7E3D\u76E3\u8981\u9019\u500B\u5DE5\u4F5C\u7AD9\u56DE\u5831\u7684\u4E8B\uFF08asks_list / \u5404\u8DEF\u7531\u56DE\u7684 pending_asks\uFF09\uFF1A\u6BCF\u652F\u5DE5\u5177\u7684\u56DE\u61C9\u90FD\u5E36\uFF0C\u9019\u662F\u300C\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55\u5DE5\u5177\u5C31\u770B\u5F97\u5230\u300D\u7684\u505A\u6CD5
+var PENDING = [];
+function askLine(a) { return '\u7E3D\u76E3\u8981\u4F60\u56DE\u5831 ' + a.key + ' \u7684\u72C0\u614B' + (a.ask ? '\uFF1A' + a.ask : '') + '\uFF08\u7528 arcrun_ahub_report\uFF0C\u5E36 repo\u3001number\u3001station\uFF09'; }
+function pendLines(list) { return Array.isArray(list) ? list.map(askLine) : []; }
+function out(status, body, next) { return { success: true, status: status, body: noDead(body), next_actions: (next || []).concat(PENDING) }; }
+function bad(msg, next) { return out(422, { message: msg }, next); }
+// ahub_call \u7684\u56DE\u61C9 \u2192 {status, body}\uFF08\u8DEF\u7531\u56DE {success, status, body}\uFF0C\u5916\u9762\u53EF\u80FD\u591A\u5305\u4E00\u5169\u5C64 {success, data}\uFF09
+// \u5916\u6BBC\uFF08recipe \u7684 {success, status:<HTTP>, data}\uFF09\u4E5F\u5E36 status\uFF0C\u6240\u4EE5\u8981\u627E\u300C\u6709 status \u53C8\u6709 body\u300D\u7684\u90A3\u4E00\u5C64
+function env(v) {
+  if (v === undefined || v === null) return null;   // \u6C92\u8DD1\u5230\u7684\u7BC0\u9EDE\uFF08#338 \u8D77\uFF1D\u6C92\u6709\u503C\uFF1B\u820A\u5F15\u64CE\u7559\u5B57\u9762\uFF0C\u4E0B\u4E00\u884C\u8655\u7406\uFF09
+  if (typeof v === 'string') { var s = v.trim(); if (/^\\{\\{[^{}]*\\}\\}$/.test(s)) return null; try { v = JSON.parse(s); } catch (e) { return { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE JSON' } }; } }
+  for (var i = 0; i < 5 && v && typeof v === 'object'; i++) {
+    if (typeof v.status === 'number' && 'body' in v) return { status: v.status, body: v.body };
+    var d = v.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+    v = d;
+  }
+  return { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE {status, body}\uFF08AHub \u6C92\u88DD\u597D\u3001\u6216\u7248\u672C\u592A\u820A\uFF09' } };
+}
+// \u932F\u8AA4\u6642\u7D66 AI \u7684\u4E0B\u4E00\u6B65\uFF08\u7167 AHub \u56DE\u7684\u72C0\u614B\u78BC\uFF09
+function hints(r) {
+  var m = r && r.body && typeof r.body.message === 'string' ? r.body.message : '';
+  if (r.status === 409 && r.body && r.body.held_by) return ['\u9019\u5F35\u7968\u5DF2\u88AB\u5DE5\u4F5C\u7AD9\u300C' + r.body.held_by + '\u300D\u9818\u8457\uFF08' + (r.body.state || '') + '\uFF09\uFF1A\u8981\u63A5\u624B\u8ACB\u5148\u8ACB\u5C0D\u65B9 release\uFF0C\u6216\u8ACB\u7E3D\u76E3\u5354\u8ABF'];
+  if (r.status === 404 && /no claim|no active claim|holds no/.test(m)) return ['\u9019\u5F35\u7968\u6C92\u6709\u4F60\u7684\u9818\u7968\u7D00\u9304\uFF1A\u5148\u7528 arcrun_ahub_claim \u9818'];
+  if (r.status === 404 && /repository/i.test(m)) return ['\u5C08\u6848\uFF08repo\uFF09\u9084\u6C92\u958B\uFF1Aarcrun_ahub_create_project\uFF1B\u6216\u7528 arcrun_ahub_list_meta\uFF08what=repos\uFF09\u67E5\u6709\u54EA\u4E9B'];
+  if (r.status === 404) return ['repo \u6216\u7968\u865F\u4E0D\u5B58\u5728\uFF1A\u7528 arcrun_ahub_list_issues\u3001arcrun_ahub_list_meta\uFF08what=repos\uFF09\u67E5'];
+  if (r.status === 412) return ['\u9019\u5F35\u7968\u9084\u6709\u6C92\u95DC\u7684\u524D\u7F6E\u7968\uFF1A\u5148\u95DC\u524D\u7F6E\u7968\uFF08arcrun_ahub_dependency action=list \u770B\u662F\u54EA\u5E7E\u5F35\uFF09'];
+  if (r.status === 422 && /signoffs|sign-off/.test(m)) return ['\u8981\u4EBA\u7C3D\u6838\uFF1A\u7528 arcrun_ahub_request_signoff \u767C\u8ACB\u6C42\uFF0C\u7C3D\u6838\u4EBA\u5728 AHub \u756B\u9762\u7C3D\uFF1B\u7D50\u679C\u7528 arcrun_ahub_signoff_status \u8B80', '\u6D41\u7A0B\u8AAA\u660E\uFF1Aarcrun_app_tools({app:"ahub"}) \u7684 signoff guide'];
+  if (r.status === 422) return ['\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u5F97\u5148\u5B58\u5728\uFF1Aarcrun_ahub_list_meta\uFF08what=labels\uFF0Fmilestones\uFF09'];
+  if (r.status === 0) return ['\u9019\u53F0\u5BE6\u4F8B\u7684 AHub \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A\u5230 Portal \u7684 App \u5E02\u96C6\u66F4\u65B0 AHub'];
+  return [];
+}
+function pass(r, next) { return out(r.status, r.body, r.status >= 200 && r.status < 300 ? (next || []) : hints(r)); }
+// \u7D66 AI \u770B\u7684\u7968\u6E05\u55AE\uFF1A\u53EA\u7559\u8B80\u5F97\u61C2\u9032\u5EA6\u7684\u6B04\u4F4D\uFF08\u6574\u4EFD Gitea \u7269\u4EF6\u592A\u9577\uFF09
+function slim(it) {
+  var full = it.repository ? it.repository.full_name : undefined;
+  return { repo: full, ref: full ? full + '#' + it.number : undefined, url: it.html_url, number: it.number, title: it.title, state: it.state,
+    labels: (it.labels || []).map(function (l) { return l.name; }), assignees: (it.assignees || []).map(function (u) { return u.login; }),
+    milestone: it.milestone ? it.milestone.title : null, comments: it.comments, updated_at: it.updated_at };
+}
+
+var A = input.a || {};
+var PD = input.prep && typeof input.prep === 'object' ? input.prep : {};
+var P = PD.ctx || {};
+var T = ph(input.tenant);
+function fin(o) { return { success: true, final: o, ahmbs: [] }; }
+if (PD.early) return fin(PD.early);
+var raw = Array.isArray(input.retry) ? input.retry : (Array.isArray(input.first) ? input.first : []);
+var rs = raw.map(function (x) { return env(x) || { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE\u61C9' } }; });
+if (!rs.length) return fin(out(0, { message: '\u6C92\u6709\u6253\u5230 AHub' }, ['\u5230 Portal \u7684 App \u5E02\u96C6\u66F4\u65B0 AHub']));
+// \u5148\u62FF\u4F4D\u7F6E\u5728\u5F8C\u9762\u7684\uFF08touch \u5728 asks \u5F8C\u9762\uFF09\uFF0C\u4E0D\u8B93\u524D\u4E00\u6B21 splice \u628A\u53E6\u4E00\u500B\u7684\u4E0B\u6A19\u63A8\u8D70
+var TOUCHED = null;
+if (typeof PD.ti === 'number' && PD.ti >= 0 && PD.ti > (typeof PD.pi === 'number' ? PD.pi : -1) && rs.length > PD.ti) TOUCHED = rs.splice(PD.ti, 1)[0];
+if (typeof PD.pi === 'number' && PD.pi >= 0 && rs.length > PD.pi) { var pe = rs.splice(PD.pi, 1)[0]; PENDING = pe && pe.status === 200 && pe.body ? pendLines((pe.body.asks || []).slice(0, 5)) : []; }
+// \u5C0D\u8A71\u6C92\u767B\u8A18\u904E\uFF08404\uFF09\uFF1A\u6BCF\u652F\u5DE5\u5177\u7684\u56DE\u61C9\u90FD\u63D0\u9192\u4E00\u6B21\u8981\u5148\u5831\u5230\uFF0C\u4E0D\u8B93\u5B83\u6084\u6084\u6C92\u88AB\u8A18\u5230
+if (TOUCHED && TOUCHED.status === 404) PENDING = PENDING.concat(['\u9019\u500B\u5C0D\u8A71\u9084\u6C92\u767B\u8A18\uFF08session \u4E0D\u8A8D\u5F97\uFF09\uFF1A\u5148 arcrun_ahub_checkin\uFF08station\u3001session\u3001title\uFF09\uFF0C\u505A\u5B8C arcrun_ahub_end_session']);
+var TOKN = PD.ahmqs && PD.ahmqs[0] ? PD.ahmqs[0].token : '';
+function Q(wf, method, path, params, query, body) { return { wf: wf, method: method, path: path, params: params || {}, query: query || {}, body: body || {}, token: TOKN }; }
+function next(reqs, ctx) { return { success: true, final: null, ahmbs: reqs, ctx: ctx || {}, pend: PENDING }; }
+
+function msFind(ms, ref) {
+  if (/^\\d+$/.test(String(ref))) return parseInt(ref, 10);
+  var hit = (Array.isArray(ms) ? ms : []).filter(function (m) { return String(m.title).trim() === String(ref).trim(); })[0];
+  return hit ? hit.id : null;
+}
+if (!P.ms) return fin(pass(rs[0], ['\u7528 arcrun_ahub_list_meta\uFF08what=milestones\uFF0Cstate=all\uFF09\u8B80\u56DE\u78BA\u8A8D']));
+if (rs[0].status !== 200) return fin(pass(rs[0]));
+var id = msFind(rs[0].body, P.ms);
+if (id === null) return fin(out(422, { message: P.R.owner + '/' + P.R.repo + ' \u6C92\u6709\u91CC\u7A0B\u7891\u300C' + P.ms + '\u300D' }, ['arcrun_ahub_list_meta\uFF08what=milestones\uFF0Cstate=all\uFF09\u770B\u6709\u54EA\u4E9B']));
+return next([Q('ms_patch', 'PATCH', P.base + '/' + id, { owner: P.R.owner, repo: P.R.repo, id: String(id) }, {}, P.b)]);
+`,
+              input: {
+                a: {
+                  action: "{{input.action}}",
+                  repo: "{{input.repo}}",
+                  milestone: "{{input.milestone}}",
+                  title: "{{input.title}}",
+                  description: "{{input.description}}",
+                  due_on: "{{input.due_on}}",
+                  station: "{{input.station}}",
+                  session: "{{input.session}}"
+                },
+                prep: "{{prep.data}}",
+                first: "{{prep.results}}",
+                retry: "{{pa2.results}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "cb",
+            type: "Component",
+            componentId: "ahub_call",
+            label: "cb",
+            data: {
+              wf: "{{ahmb.wf}}",
+              method: "{{ahmb.method}}",
+              path: "{{ahmb.path}}",
+              query: "{{ahmb.query}}",
+              params: "{{ahmb.params}}",
+              body: "{{ahmb.body}}",
+              token: "{{ahmb.token}}"
+            }
+          },
+          {
+            id: "shape",
+            type: "Component",
+            componentId: "code",
+            label: "shape",
+            data: {
+              code: `
+function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
+function val(v) { if (v === null || v === undefined) return undefined; if (typeof v === 'string') { var s = ph(v); return s === '' ? undefined : s; } return v; }
+function str(v) { v = val(v); return v === undefined ? '' : String(v).trim(); }
+function num(v) { v = val(v); var n = typeof v === 'number' ? v : parseInt(v, 10); return isFinite(n) ? n : undefined; }
+function bool(v) { v = val(v); return v === true || v === 'true' || v === '1'; }
+function list(v) {
+  v = val(v); if (v === undefined) return undefined;
+  if (typeof v === 'string') { if (v.charAt(0) === '[') { try { v = JSON.parse(v); } catch (e) { return undefined; } } else return v.split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
+  return Array.isArray(v) ? v.map(String) : undefined;
+}
+function obj(v) { if (typeof v === 'string') { var s = ph(v); if (!s) return null; try { v = JSON.parse(s); } catch (e) { return null; } } return v && typeof v === 'object' ? v : null; }
+var NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+function repoOf(s) { var m = /^([^/\\s]+)\\/([^/\\s]+)$/.exec(str(s)); return m && NAME.test(m[1]) && NAME.test(m[2]) && m[1] !== '..' && m[2] !== '..' ? { owner: m[1], repo: m[2] } : null; }
+// MCP \u9019\u689D\u8DEF\u6C92\u6709\u756B\u9762\u7DB2\u5740\uFF08AHub \u7684\u756B\u9762\u5728 Portal \u88E1\uFF09\uFF0C\u8DEF\u7531\u88DC\u7684 https://ahub.invalid/... \u9EDE\u4E86\u5230\u4E0D\u4E86 \u21D2 \u62FF\u6389\uFF0C\u4E0D\u7D66 AI \u8F49\u4E00\u689D\u6B7B\u9023\u7D50
+function noDead(v) {
+  if (Array.isArray(v)) return v.map(noDead);
+  if (!v || typeof v !== 'object') return v;
+  var o = {};
+  Object.keys(v).forEach(function (k) { var x = v[k]; if (!(typeof x === 'string' && x.indexOf('https://ahub.invalid') === 0)) o[k] = noDead(x); });
+  return o;
+}
+// \u7E3D\u76E3\u8981\u9019\u500B\u5DE5\u4F5C\u7AD9\u56DE\u5831\u7684\u4E8B\uFF08asks_list / \u5404\u8DEF\u7531\u56DE\u7684 pending_asks\uFF09\uFF1A\u6BCF\u652F\u5DE5\u5177\u7684\u56DE\u61C9\u90FD\u5E36\uFF0C\u9019\u662F\u300C\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55\u5DE5\u5177\u5C31\u770B\u5F97\u5230\u300D\u7684\u505A\u6CD5
+var PENDING = [];
+function askLine(a) { return '\u7E3D\u76E3\u8981\u4F60\u56DE\u5831 ' + a.key + ' \u7684\u72C0\u614B' + (a.ask ? '\uFF1A' + a.ask : '') + '\uFF08\u7528 arcrun_ahub_report\uFF0C\u5E36 repo\u3001number\u3001station\uFF09'; }
+function pendLines(list) { return Array.isArray(list) ? list.map(askLine) : []; }
+function out(status, body, next) { return { success: true, status: status, body: noDead(body), next_actions: (next || []).concat(PENDING) }; }
+function bad(msg, next) { return out(422, { message: msg }, next); }
+// ahub_call \u7684\u56DE\u61C9 \u2192 {status, body}\uFF08\u8DEF\u7531\u56DE {success, status, body}\uFF0C\u5916\u9762\u53EF\u80FD\u591A\u5305\u4E00\u5169\u5C64 {success, data}\uFF09
+// \u5916\u6BBC\uFF08recipe \u7684 {success, status:<HTTP>, data}\uFF09\u4E5F\u5E36 status\uFF0C\u6240\u4EE5\u8981\u627E\u300C\u6709 status \u53C8\u6709 body\u300D\u7684\u90A3\u4E00\u5C64
+function env(v) {
+  if (v === undefined || v === null) return null;   // \u6C92\u8DD1\u5230\u7684\u7BC0\u9EDE\uFF08#338 \u8D77\uFF1D\u6C92\u6709\u503C\uFF1B\u820A\u5F15\u64CE\u7559\u5B57\u9762\uFF0C\u4E0B\u4E00\u884C\u8655\u7406\uFF09
+  if (typeof v === 'string') { var s = v.trim(); if (/^\\{\\{[^{}]*\\}\\}$/.test(s)) return null; try { v = JSON.parse(s); } catch (e) { return { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE JSON' } }; } }
+  for (var i = 0; i < 5 && v && typeof v === 'object'; i++) {
+    if (typeof v.status === 'number' && 'body' in v) return { status: v.status, body: v.body };
+    var d = v.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+    v = d;
+  }
+  return { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE {status, body}\uFF08AHub \u6C92\u88DD\u597D\u3001\u6216\u7248\u672C\u592A\u820A\uFF09' } };
+}
+// \u932F\u8AA4\u6642\u7D66 AI \u7684\u4E0B\u4E00\u6B65\uFF08\u7167 AHub \u56DE\u7684\u72C0\u614B\u78BC\uFF09
+function hints(r) {
+  var m = r && r.body && typeof r.body.message === 'string' ? r.body.message : '';
+  if (r.status === 409 && r.body && r.body.held_by) return ['\u9019\u5F35\u7968\u5DF2\u88AB\u5DE5\u4F5C\u7AD9\u300C' + r.body.held_by + '\u300D\u9818\u8457\uFF08' + (r.body.state || '') + '\uFF09\uFF1A\u8981\u63A5\u624B\u8ACB\u5148\u8ACB\u5C0D\u65B9 release\uFF0C\u6216\u8ACB\u7E3D\u76E3\u5354\u8ABF'];
+  if (r.status === 404 && /no claim|no active claim|holds no/.test(m)) return ['\u9019\u5F35\u7968\u6C92\u6709\u4F60\u7684\u9818\u7968\u7D00\u9304\uFF1A\u5148\u7528 arcrun_ahub_claim \u9818'];
+  if (r.status === 404 && /repository/i.test(m)) return ['\u5C08\u6848\uFF08repo\uFF09\u9084\u6C92\u958B\uFF1Aarcrun_ahub_create_project\uFF1B\u6216\u7528 arcrun_ahub_list_meta\uFF08what=repos\uFF09\u67E5\u6709\u54EA\u4E9B'];
+  if (r.status === 404) return ['repo \u6216\u7968\u865F\u4E0D\u5B58\u5728\uFF1A\u7528 arcrun_ahub_list_issues\u3001arcrun_ahub_list_meta\uFF08what=repos\uFF09\u67E5'];
+  if (r.status === 412) return ['\u9019\u5F35\u7968\u9084\u6709\u6C92\u95DC\u7684\u524D\u7F6E\u7968\uFF1A\u5148\u95DC\u524D\u7F6E\u7968\uFF08arcrun_ahub_dependency action=list \u770B\u662F\u54EA\u5E7E\u5F35\uFF09'];
+  if (r.status === 422 && /signoffs|sign-off/.test(m)) return ['\u8981\u4EBA\u7C3D\u6838\uFF1A\u7528 arcrun_ahub_request_signoff \u767C\u8ACB\u6C42\uFF0C\u7C3D\u6838\u4EBA\u5728 AHub \u756B\u9762\u7C3D\uFF1B\u7D50\u679C\u7528 arcrun_ahub_signoff_status \u8B80', '\u6D41\u7A0B\u8AAA\u660E\uFF1Aarcrun_app_tools({app:"ahub"}) \u7684 signoff guide'];
+  if (r.status === 422) return ['\u6A19\u7C64\uFF0F\u91CC\u7A0B\u7891\u5F97\u5148\u5B58\u5728\uFF1Aarcrun_ahub_list_meta\uFF08what=labels\uFF0Fmilestones\uFF09'];
+  if (r.status === 0) return ['\u9019\u53F0\u5BE6\u4F8B\u7684 AHub \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A\u5230 Portal \u7684 App \u5E02\u96C6\u66F4\u65B0 AHub'];
+  return [];
+}
+function pass(r, next) { return out(r.status, r.body, r.status >= 200 && r.status < 300 ? (next || []) : hints(r)); }
+// \u7D66 AI \u770B\u7684\u7968\u6E05\u55AE\uFF1A\u53EA\u7559\u8B80\u5F97\u61C2\u9032\u5EA6\u7684\u6B04\u4F4D\uFF08\u6574\u4EFD Gitea \u7269\u4EF6\u592A\u9577\uFF09
+function slim(it) {
+  var full = it.repository ? it.repository.full_name : undefined;
+  return { repo: full, ref: full ? full + '#' + it.number : undefined, url: it.html_url, number: it.number, title: it.title, state: it.state,
+    labels: (it.labels || []).map(function (l) { return l.name; }), assignees: (it.assignees || []).map(function (u) { return u.login; }),
+    milestone: it.milestone ? it.milestone.title : null, comments: it.comments, updated_at: it.updated_at };
+}
+
+var A = input.a || {};
+var M = input.mid && typeof input.mid === 'object' ? input.mid : {};
+var PD = input.prep && typeof input.prep === 'object' ? input.prep : {};
+var P = PD.ctx || {}, ctx = M.ctx || {};
+var r;
+PENDING = Array.isArray(M.pend) ? M.pend : [];
+if (M.final) r = M.final;
+else {
+  var rb = (Array.isArray(input.b) ? input.b : []).map(function (x) { return env(x) || { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE\u61C9' } }; });
+  if (!rb.length) r = out(0, { message: '\u7B2C\u4E8C\u6BB5\u6C92\u6709\u6253\u5230 AHub' });
+  else r = (function () { return pass(rb[0], ['\u7528 arcrun_ahub_list_meta\uFF08what=milestones\uFF0Cstate=all\uFF09\u8B80\u56DE\u78BA\u8A8D']); })();
+}
+return r;
+`,
+              input: {
+                a: {
+                  action: "{{input.action}}",
+                  repo: "{{input.repo}}",
+                  milestone: "{{input.milestone}}",
+                  title: "{{input.title}}",
+                  description: "{{input.description}}",
+                  due_on: "{{input.due_on}}",
+                  station: "{{input.station}}",
+                  session: "{{input.session}}"
+                },
+                prep: "{{prep.data}}",
+                mid: "{{mid.data}}",
+                b: "{{mid.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "ca",
+            type: "FOREACH",
+            iterator: "ahmq",
+            concurrency: 6
+          },
+          {
+            from: "prep",
+            to: "ga",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "ga",
+            to: "mid",
+            type: "ON_BRANCH",
+            branch: "ok"
+          },
+          {
+            from: "ga",
+            to: "reg",
+            type: "ON_BRANCH",
+            branch: "reg"
+          },
+          {
+            from: "reg",
+            to: "pa2",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "pa2",
+            to: "ca2",
+            type: "FOREACH",
+            iterator: "ahmq",
+            concurrency: 6
+          },
+          {
+            from: "pa2",
+            to: "mid",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "mid",
+            to: "cb",
+            type: "FOREACH",
+            iterator: "ahmb",
+            concurrency: 1
+          },
+          {
+            from: "mid",
+            to: "shape",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
     }
   ],
   actions: [
@@ -43941,6 +45416,57 @@ return r;
         },
         workflow: "mcp_goals_report",
         read_only: true
+      },
+      {
+        name: "milestone",
+        description: "\u958B\u91CC\u7A0B\u7891\u3001\u6539\u671F\u9650\uFF0F\u540D\u7A31\uFF0F\u63CF\u8FF0\u3001\u95DC\u9589\u6216\u91CD\u958B\uFF08inkstone/Arcrun#358\uFF09\u3002action=create\uFF08title\u3001due_on \u5FC5\u586B\uFF1B\u53EA\u51C6\u958B\u5728 inkstone/InkStoneCo\uFF1B\u540C\u540D 422\uFF09\u3001update\uFF08milestone\uFF1Did \u6216\u5B8C\u6574\u6A19\u984C\uFF1B\u6539 title\uFF0Fdescription\uFF0Fdue_on\uFF09\u3001close\u3001reopen\u3002\u5B88\u898F\u5247\uFF1A\u540D\u7A31\u8981\u8AAA\u300C\u9019\u4E00\u8F2A\u8981\u8B93\u4EC0\u9EBC\u8B8A\u6210\u771F\u7684\u300D\uFF0C\u4E0D\u51C6\u7528\u7248\u672C\u865F\u958B\u982D\uFF08\u4F8B\uFF1A1.4.52 xxx\uFF09\uFF1B\u671F\u9650\u5FC5\u586B\u3001\u8981\u662F YYYY-MM-DD\uFF0C\u4E0D\u51C6\u904E\u53BB\u3001\u4E0D\u51C6 9999-01-01 \u90A3\u7A2E\u5047\u671F\u9650\uFF0C\u6539\u671F\u9650\u4E5F\u4E0D\u80FD\u6E05\u6389\u3002\u8B80\u56DE\u7528 list_meta\uFF08what=milestones\uFF0Cstate=all\uFF09\u3002",
+        input_schema: {
+          type: "object",
+          properties: {
+            action: {
+              type: "string",
+              enum: [
+                "create",
+                "update",
+                "close",
+                "reopen"
+              ]
+            },
+            repo: {
+              type: "string",
+              description: "owner/repo\uFF1Bcreate \u53EA\u51C6 inkstone/InkStoneCo\uFF08\u9810\u8A2D\u5C31\u662F\u5B83\uFF09\uFF1Bupdate\uFF0Fclose\uFF0Freopen \u7528\u8A72\u91CC\u7A0B\u7891\u6240\u5728\u7684 repo"
+            },
+            milestone: {
+              type: "string",
+              description: "update\uFF0Fclose\uFF0Freopen\uFF1A\u91CC\u7A0B\u7891 id \u6216\u5B8C\u6574\u6A19\u984C"
+            },
+            title: {
+              type: "string",
+              description: "create\uFF1A\u540D\u7A31\uFF08\u5FC5\u586B\uFF09\uFF1Bupdate\uFF1A\u65B0\u540D\u7A31"
+            },
+            description: {
+              type: "string",
+              description: "\u8AAA\u660E\uFF1A\u9019\u4E00\u8F2A\u8981\u9054\u6210\u4EC0\u9EBC"
+            },
+            due_on: {
+              type: "string",
+              description: "\u671F\u9650 YYYY-MM-DD\uFF08create \u5FC5\u586B\uFF09"
+            },
+            station: {
+              type: "string",
+              description: "\u4F60\u9019\u500B Claude \u5C08\u6848\u7684\u5DE5\u4F5C\u7AD9\u540D\uFF08checkin \u7528\u7684\u90A3\u500B\u540D\u5B57\uFF09\u3002\u5E36\u4E86\uFF0C\u7E3D\u76E3\u8981\u4F60\u56DE\u5831\u7684\u4E8B\u6703\u51FA\u73FE\u5728 next_actions"
+            },
+            session: {
+              type: "string",
+              description: "\u9019\u500B\u5C0D\u8A71\u7684\u8B58\u5225\uFF08checkin \u7528\u7684\u90A3\u500B session\uFF09\u3002\u5E36\u4E86\uFF0C\u9019\u6B21\u547C\u53EB\u5C31\u7B97\u9019\u500B\u5C0D\u8A71\u7684\u4E00\u6B21\u6D3B\u52D5"
+            }
+          },
+          required: [
+            "action"
+          ]
+        },
+        workflow: "mcp_milestone",
+        read_only: false
       }
     ],
     guides: [
@@ -46735,21 +48261,28 @@ var platform_io_generated_default = [
     "direction": "read",
     "kind": "entry",
     "template": "alias",
-    "note": "\u53EA\u6709\u9019\u4E09\u7A2E\u9032\u5411\u91CF\uFF08\u6392\u91CD normalize \u7528\uFF09"
+    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09"
   },
   {
     "owner": "kbdb/src/embed.ts",
     "direction": "read",
     "kind": "entry",
     "template": "entity",
-    "note": "\u53EA\u6709\u9019\u4E09\u7A2E\u9032\u5411\u91CF\uFF08\u6392\u91CD normalize \u7528\uFF09"
+    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09"
   },
   {
     "owner": "kbdb/src/embed.ts",
     "direction": "read",
     "kind": "entry",
     "template": "predicate",
-    "note": "\u53EA\u6709\u9019\u4E09\u7A2E\u9032\u5411\u91CF\uFF08\u6392\u91CD normalize \u7528\uFF09"
+    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09"
+  },
+  {
+    "owner": "kbdb/src/embed.ts",
+    "direction": "read",
+    "kind": "entry",
+    "template": "source_passage",
+    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09"
   }
 ];
 
@@ -47080,6 +48613,21 @@ async function getInstalledApp(env, tenant2, id) {
   if (!raw2) return null;
   try {
     return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function getAppWorkflowGraph(env, tenant2, wfKey) {
+  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfKey), "text");
+  if (!raw2) return null;
+  try {
+    const g = JSON.parse(raw2).graph;
+    if (!g) return null;
+    return {
+      ...typeof g.id === "string" ? { id: g.id } : {},
+      nodes: Array.isArray(g.nodes) ? g.nodes : [],
+      edges: Array.isArray(g.edges) ? g.edges : []
+    };
   } catch {
     return null;
   }
@@ -47424,7 +48972,9 @@ async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch)
     result.error ?? "",
     // 斷言（_portal_actor）不進執行紀錄：紀錄 AI 讀得到（inkstone/Arcrun#304 c22862）
     { ...payload, _portal_actor: void 0, _triggered_by: "app" },
-    String(tenant2)
+    String(tenant2),
+    void 0,
+    result.failed_node
   );
   if (ctx) ctx.waitUntil(verdict);
   else await verdict;
@@ -47545,7 +49095,8 @@ var APP_CATALOG = [
     // 取代 mcp/src/tools/ahub.ts。簽核人改由租戶在畫面「設定」填（ahub_setting），不再寫死 Leo；AI 的 token 寫不出簽核行。
     // 0.9.1（leo 2026-11-04）：宣告的 data 帶 index_fields，安裝／更新時替這些格子開 KBDB 欄位值索引（kbdb migration 0016），
     // 列票的成本只跟要列的票數有關（不再翻同 repo 的留言格子）。沒有 0016 的引擎照裝，只是不變快。
-    // 0.13.4（inkstone/Arcrun#351）：畫面多「登記簿」分頁（CC 專案→對話→領的票→目標）、里程碑頁 % 與票地圖同一算法並可列「全部專案」；畫面讀取白名單多 sessions_list／claim_list。沒有新 template／路由／工具。
+    // 0.14.1（inkstone/Arcrun#359）：外部網站收件——每個來源（intake-sources.json）一條公開路由 /ahub/intake/<來源>，金鑰住 credential 中心的 ahub_intake_<來源>，只能開在該來源綁定的那個 repo、掛指定標籤；AHub 不存金鑰。多 1 條路由，沒有新 template／工具。
+    // 0.13.4（inkstone/Arcrun#351）：畫面多「登記簿」分頁分頁（CC 專案→對話→領的票→目標）、里程碑頁 % 與票地圖同一算法並可列「全部專案」；畫面讀取白名單多 sessions_list／claim_list。沒有新 template／路由／工具。
     // 0.13.3（inkstone/Arcrun#353；0.13.1／0.13.2 已被 #351 的畫面白名單用掉）：目標綁 0..n 個 milestone（goal_set 的 milestones／unbind_milestones；進度從里程碑與 release 算、不另外手填）＋「目標樹沒人維護／鏈條沒人維護」兩組鏈斷旗標（goals_report、board）。1 個新 template（ahub_goal_ms，共 24），沒有新工具。
     // 0.13.0（inkstone/Arcrun#352）：里程碑進度含載體票的（遞移）前置票、跨 repo；多回鏈條四段與斷點（broken／unmaintained）。沒有新 template、沒有新工具。
     // 0.12.1（inkstone/Arcrun#350）：標出「交辦未動工」（待做、沒人在做、前置完成、超過 24 小時；step_set 多 assigned_at）＋ waiting 步驟前置完成後提示「該重看」（1 個新 template，沒有新工具）。
@@ -47554,7 +49105,7 @@ var APP_CATALOG = [
     // 0.10.1（inkstone/Arcrun#347）：畫面讀取在 App 身分已登記時拿不到回應（引擎 #338 之後沒跑到的節點＝沒有值）——修掉。
     // 0.10.0（inkstone/Arcrun#346）：記得「哪個 Claude 專案領了哪張票、做到哪」——工作站報到／領票／回報／放手／看板／要求回報（3 個新 template、6 支新 MCP 工具）。
     summary: "\u628A\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u76F8\u4F9D\u8207\u91CC\u7A0B\u7891\u5B58\u5728\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u88E1\uFF0C\u7528\u548C Gitea \u4E00\u6A23\u7684\u65B9\u5F0F\u8B80\u5BEB\uFF1B\u6253\u958B\u5C31\u80FD\u65B0\u589E\u3001\u4FEE\u6539\u3001\u95DC\u9589\u7968\u8207\u91CC\u7A0B\u7891\uFF0C\u7559\u8A00\u7528 Markdown\uFF0C\u7C3D\u6838\u4EBA\u7531\u4F60\u5728\u300C\u8A2D\u5B9A\u300D\u6307\u5B9A\u3002\u9023\u4E0A Arcrun MCP \u7684 AI \u81EA\u52D5\u62FF\u5230\u7BA1\u7968\u8207\u8ACB\u4F60\u7C3D\u6838\u7684\u5DE5\u5177\u3002\u9078\u88DD\uFF0C\u6C92\u88DD\u7684\u5BE6\u4F8B\u4E0D\u53D7\u5F71\u97FF\u3002",
-    version: "0.13.4",
+    version: "0.14.1",
     author: "Arcrun \u5167\u5EFA",
     declaration: ahub_app_default
   },
@@ -47795,7 +49346,8 @@ executeRouter.post("/execute", async (c) => {
         verdict.success ? "\u57F7\u884C\u5B8C\u6210" : (verdict.error ?? "\u7BC0\u9EDE\u5931\u6557").slice(0, 100),
         context,
         apiKey,
-        c.env.__kbdbTally
+        c.env.__kbdbTally,
+        verdict.failedNode
       )
     );
     if (!verdict.success) {
@@ -47813,7 +49365,18 @@ executeRouter.post("/execute", async (c) => {
     const duration_ms = Date.now() - start;
     const errMsg = err instanceof Error ? err.message : String(err);
     c.executionCtx.waitUntil(
-      writeExecutionVerdict(c.env, graph.id, graph.nodes, "failed", duration_ms, errMsg.slice(0, 100), context, apiKey, c.env.__kbdbTally)
+      writeExecutionVerdict(
+        c.env,
+        graph.id,
+        graph.nodes,
+        "failed",
+        duration_ms,
+        errMsg.slice(0, 100),
+        context,
+        apiKey,
+        c.env.__kbdbTally,
+        err instanceof ExecutionError ? [...err.trace].reverse().find((s) => s.error)?.nodeId : void 0
+      )
     );
     if (err instanceof ExecutionError) {
       const traceFormatted = err.trace.map((s) => ({
@@ -49155,7 +50718,7 @@ webhooksRouter.post("/webhooks/:token/trigger", async (c) => {
   const workflowId = graph.id ?? token;
   const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
   );
   return c.json(result, result.success ? 200 : 500);
 });
@@ -49551,7 +51114,7 @@ async function triggerNamed(c, apiKey, name) {
   if (c.req.query("async") === "1") {
     c.executionCtx.waitUntil(
       executeWebhookGraph(c.env, record.graph, triggerContext, name, apiKey, c.executionCtx, userAgent).then(
-        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
+        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "", triggerContext, apiKey, c.env.__kbdbTally, result2.failed_node)
       )
     );
     return c.json({ accepted: true }, 202);
@@ -49566,7 +51129,7 @@ async function triggerNamed(c, apiKey, name) {
     userAgent
   );
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
   );
   const full = wantsFullTrace((n) => c.req.query(n));
   return c.json(shapeTraceForResponse(result, full), result.success ? 200 : 500);
@@ -49604,7 +51167,7 @@ async function queryNamed(c, apiKey, name, triggerContext) {
     userAgent
   );
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
   );
   if (!result.success) {
     const paused = typeof result.error === "string" && /workflow paused/i.test(result.error);
@@ -50402,6 +51965,8 @@ var EXTRACT_AI_PROVIDERS = [
     group: "cloud",
     kind: "binding",
     key: "none",
+    live_binding: true,
+    // 精選清單只當後備：正常情況下選單是這個帳號此刻叫得到的全部文字模型（env.AI.models() 現場列，#357）
     models: [
       { id: "@cf/meta/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B\uFF08\u9810\u8A2D\uFF09" },
       { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", label: "Llama 3.3 70B" },
@@ -52237,6 +53802,9 @@ function validateExtractAiConfig(raw2) {
   const config = { recipe };
   const model = typeof o.model === "string" ? o.model.trim() : "";
   if (model) config.model = model;
+  if (provider.kind === "binding" && model && !/^@(cf|hf)\/[\w.\-/]+$/.test(model)) {
+    return { ok: false, error: `${provider.label} \u7684\u6A21\u578B\u540D\u7A31\u61C9\u8A72\u9577\u5F97\u50CF @cf/meta/llama-4-scout-17b-16e-instruct\uFF08\u5F9E\u9078\u55AE\u6311\uFF09` };
+  }
   if (provider.kind === "http" && !model) {
     return { ok: false, error: `${provider.label} \u5FC5\u9808\u5F9E\u9078\u55AE\u6311\u4E00\u500B\u6A21\u578B\uFF08model\uFF09` };
   }
@@ -52373,9 +53941,75 @@ async function fetchModelIds(url, headers) {
     return { error: `\u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
   }
 }
+var WORKERS_AI_TEXT_TASK = "Text Generation";
+var WORKERS_AI_FREE_NEURONS_PER_DAY = 1e4;
+var USD_PER_NEURON = 0.011 / 1e3;
+var ASK_IN_TOKENS = 2e3;
+var ASK_OUT_TOKENS = 500;
+var WORKERS_AI_LIST_TTL_MS = 60 * 60 * 1e3;
+var WORKERS_AI_PAGE = 100;
+var WORKERS_AI_MAX_PAGES = 5;
+function workersAiModelFromCatalog(m) {
+  if (typeof m?.name !== "string" || !m.name) return null;
+  if (m.task && typeof m.task.name === "string" && m.task.name !== WORKERS_AI_TEXT_TASK) return null;
+  const props = /* @__PURE__ */ new Map();
+  for (const p of m.properties ?? []) if (typeof p?.property_id === "string") props.set(p.property_id, p.value);
+  let inUsd = null;
+  let outUsd = null;
+  const price = props.get("price");
+  if (Array.isArray(price)) {
+    for (const x of price) {
+      if (typeof x?.price !== "number" || typeof x.unit !== "string") continue;
+      if (/^per M input tokens$/i.test(x.unit)) inUsd = x.price;
+      else if (/^per M output tokens$/i.test(x.unit)) outUsd = x.price;
+    }
+  }
+  const neurons = inUsd === null && outUsd === null ? null : Math.max(1, Math.round(((inUsd ?? 0) * ASK_IN_TOKENS + (outUsd ?? 0) * ASK_OUT_TOKENS) / 1e6 / USD_PER_NEURON));
+  const notes = [];
+  const truthy = (v) => v === true || v === "true";
+  if (truthy(props.get("require_workers_paid"))) notes.push("\u9700\u4ED8\u8CBB\u65B9\u6848");
+  const dep = props.get("planned_deprecation_date");
+  if (typeof dep === "string" && dep) notes.push(`${dep} \u4E0B\u67B6`);
+  if (truthy(props.get("beta"))) notes.push("\u6E2C\u8A66\u7248");
+  if (truthy(props.get("reasoning"))) notes.push("\u6703\u5148\u601D\u8003");
+  if (truthy(props.get("lora"))) notes.push("\u53EF\u639B LoRA");
+  return { id: m.name, neurons_per_ask: neurons, ...notes.length ? { notes } : {} };
+}
+var waiCache = null;
+async function listWorkersAiModels(env, fallback) {
+  if (waiCache && Date.now() - waiCache.at < WORKERS_AI_LIST_TTL_MS) return { models: waiCache.models, source: "live" };
+  const ai = env.AI;
+  if (!ai) {
+    return { models: fallback, source: "catalog", error: "\u9019\u53F0\u96F2\u7AEF\u6C92\u6709 Workers AI\uFF08\u4F01\u696D\u79C1\u6709\u96F2\u5E38\u898B\uFF09\uFF0C\u5148\u986F\u793A\u9810\u8A2D\u6E05\u55AE\uFF1B\u8981\u7528\u5225\u5BB6 AI \u8ACB\u5728\u4E0A\u9762\u6539\u9078" };
+  }
+  if (typeof ai.models !== "function") {
+    return { models: fallback, source: "catalog", error: "\u9019\u53F0\u96F2\u7AEF\u7684 Workers AI \u4E0D\u652F\u63F4\u5217\u51FA\u6A21\u578B\uFF0C\u5148\u986F\u793A\u9810\u8A2D\u6E05\u55AE" };
+  }
+  const seen = /* @__PURE__ */ new Map();
+  try {
+    for (let page = 1; page <= WORKERS_AI_MAX_PAGES; page++) {
+      const raw2 = await ai.models({ task: WORKERS_AI_TEXT_TASK, per_page: WORKERS_AI_PAGE, page });
+      const rows = Array.isArray(raw2) ? raw2 : [];
+      for (const r of rows) {
+        const m = workersAiModelFromCatalog(r);
+        if (m && !seen.has(m.id)) seen.set(m.id, m);
+      }
+      if (rows.length < WORKERS_AI_PAGE) break;
+    }
+  } catch (e) {
+    return { models: fallback, source: "catalog", error: `\u5411 Cloudflare \u5217\u6A21\u578B\u5931\u6557\uFF08${e instanceof Error ? e.message : String(e)}\uFF09\uFF0C\u5148\u986F\u793A\u9810\u8A2D\u6E05\u55AE` };
+  }
+  if (seen.size === 0) return { models: fallback, source: "catalog", error: "Cloudflare \u6C92\u6709\u56DE\u4EFB\u4F55\u6587\u5B57\u6A21\u578B\uFF0C\u5148\u986F\u793A\u9810\u8A2D\u6E05\u55AE" };
+  const labels = new Map(fallback.map((m) => [m.id, m.label]));
+  const def = fallback[0]?.id;
+  const models = [...seen.values()].map((m) => labels.get(m.id) ? { ...m, label: labels.get(m.id) } : m).sort((a, b) => a.id === def ? -1 : b.id === def ? 1 : a.id.localeCompare(b.id));
+  waiCache = { at: Date.now(), models };
+  return { models, source: "live" };
+}
 async function listProviderModels(env, tenant2, providerId, baseUrl) {
   const provider = findProvider(providerId);
   if (!provider) return { models: [], source: "none", error: `\u6C92\u6709\u9019\u500B\u63D0\u4F9B\u5546\uFF1A${providerId}` };
+  if (provider.live_binding) return listWorkersAiModels(env, provider.models);
   let key = "";
   if (provider.credential) {
     try {
@@ -54352,11 +55986,11 @@ ${srcText}`;
             );
           }
         }
-        return c.json({ success: true, output: raw2, output_kind: norm.kind, ...tableMode ? { prompt: tableMode.meta } : {} });
+        return c.json({ success: true, output: raw2, output_kind: norm.kind, model: ran.model, ...tableMode ? { prompt: tableMode.meta } : {} });
       }
       const marker = `# ${pageName}`;
       const idx = raw2.lastIndexOf(marker);
-      return c.json({ success: true, card: (idx >= 0 ? raw2.slice(idx) : raw2).trim() + "\n" });
+      return c.json({ success: true, card: (idx >= 0 ? raw2.slice(idx) : raw2).trim() + "\n", model: ran.model });
     } catch (e) {
       return c.json({ error: `Workers AI \u57F7\u884C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
     }
@@ -54752,7 +56386,7 @@ portalRouter.get(
       credential: p.credential ?? null,
       has_key: !!p.credential && have.has(p.credential),
       needs_base_url: !!p.needs_base_url,
-      live_models: !!p.models_url || !!p.needs_base_url,
+      live_models: !!p.models_url || !!p.needs_base_url || !!p.live_binding,
       default_base_url: p.default_base_url ?? null,
       models: p.models,
       description: p.description
@@ -54782,7 +56416,8 @@ portalRouter.get(
     const recipe = (c.req.query("recipe") ?? "").trim();
     if (!findProvider(recipe)) return c.json({ error: "\u4E0D\u8A8D\u5F97\u9019\u500B\u63D0\u4F9B\u5546" }, 400);
     const list = await listProviderModels(c.env, credentialOwner(c.env), recipe, c.req.query("base_url") ?? void 0);
-    return c.json({ success: true, recipe, ...list });
+    const quota = findProvider(recipe)?.live_binding ? { free_neurons_per_day: WORKERS_AI_FREE_NEURONS_PER_DAY } : {};
+    return c.json({ success: true, recipe, ...list, ...quota });
   })
 );
 portalRouter.put(
@@ -56742,7 +58377,7 @@ async function answerFromCards(env, tenant2, config, question, cards, history) {
   });
   if (!r.ok) return { ok: false, error: r.error, code: r.code };
   const text = normalizeAiText(r.out).text.trim();
-  if (!text) return { ok: false, error: "AI \u6C92\u6709\u56DE\u51FA\u4EFB\u4F55\u6587\u5B57", code: "ai_empty" };
+  if (!text) return { ok: false, error: `\u6A21\u578B ${r.model} \u6C92\u6709\u56DE\u51FA\u4EFB\u4F55\u6587\u5B57\uFF08\u300C\u6703\u5148\u601D\u8003\u300D\u7684\u6A21\u578B\u53EF\u80FD\u628A\u5B57\u6578\u90FD\u7528\u5728\u601D\u8003\u4E0A\uFF0C\u53EF\u5728 AI \u8A2D\u5B9A\u63DB\u4E00\u500B\u6A21\u578B\uFF09`, code: "ai_empty" };
   return { ok: true, answer: dropInvalidCitations(text, cards.length), model: r.model, provider: r.provider };
 }
 
@@ -57540,6 +59175,97 @@ portalDataRouter.get(
       return c.json({ ...detail, workflows: withLast });
     }
     return c.json(detail);
+  })
+);
+var FLOWS_PAGE = 20;
+async function latestRun(c, tenant2, workflowId) {
+  try {
+    const res = await kbdbFetch3(
+      c.env,
+      `/execution-log/latest?${new URLSearchParams({ workflow_id: workflowId, owner_id: ownerField(tenant2) }).toString()}`
+    );
+    const b = await res.json().catch(() => null);
+    if (!res.ok || !b?.success) return "unreadable";
+    if (!b.execution) return null;
+    const e = b.execution;
+    const failed = e.verdict === "failed";
+    const p = parseFailedStep(e.message);
+    return {
+      at: Number(e.recorded_at),
+      verdict: e.verdict,
+      duration_ms: Number(e.duration_ms ?? 0),
+      failed_step: failed ? p.step : null,
+      reason: failed ? humanReason(p.error) : null,
+      error: failed ? p.error || null : null
+    };
+  } catch {
+    return "unreadable";
+  }
+}
+function lastRunJson(r) {
+  if (r === "unreadable") return { last_run: null, last_run_unreadable: true };
+  return { last_run: r };
+}
+portalDataRouter.get(
+  "/portal/data/apps/:id/flows",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const app2 = await getInstalledApp(c.env, tenant2, c.req.param("id"));
+    if (!app2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B App" }, 404);
+    const detail = detailApp(app2);
+    const offset = Math.max(0, Math.floor(Number(c.req.query("offset") ?? 0)) || 0);
+    const page = detail.workflows.slice(offset, offset + FLOWS_PAGE);
+    const flows = await Promise.all(
+      page.map(async (w) => ({
+        name: w.name,
+        description: w.description,
+        trigger: w.trigger,
+        ...w.cron_expr ? { cron_expr: w.cron_expr } : {},
+        ...lastRunJson(await latestRun(c, tenant2, w.graph_id ?? `${app2.id}__${w.name}`))
+      }))
+    );
+    return c.json({
+      app: { id: app2.id, name: app2.name, icon: app2.icon, version: app2.version },
+      total: detail.workflows.length,
+      offset,
+      page_size: FLOWS_PAGE,
+      flows
+    });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/apps/:id/flows/:name",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const app2 = await getInstalledApp(c.env, tenant2, c.req.param("id"));
+    if (!app2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B App" }, 404);
+    const name = c.req.param("name");
+    const ref = app2.workflows.find((w2) => w2.name === name);
+    if (!ref) return c.json({ error: "\u9019\u500B App \u6C92\u6709\u9019\u689D\u5DE5\u4F5C\u6D41" }, 404);
+    const w = detailApp(app2).workflows.find((x) => x.name === name);
+    const graph = await getAppWorkflowGraph(c.env, tenant2, ref.wf_key);
+    if (!graph) return c.json({ error: "\u8B80\u4E0D\u5230\u9019\u689D\u5DE5\u4F5C\u6D41\u7684\u5167\u5BB9\uFF08\u5B89\u88DD\u8CC7\u6599\u907A\u5931\u6216\u640D\u6BC0\uFF09" }, 500);
+    const last = await latestRun(c, tenant2, w.graph_id ?? graph.id ?? ref.wf_key);
+    const steps = buildFlowSteps(
+      graph.nodes,
+      graph.edges,
+      last === "unreadable" ? null : last
+    );
+    return c.json({
+      app: { id: app2.id, name: app2.name, icon: app2.icon, version: app2.version },
+      flow: {
+        name: w.name,
+        description: w.description,
+        trigger: w.trigger,
+        ...w.cron_expr ? { cron_expr: w.cron_expr } : {}
+      },
+      steps,
+      ...lastRunJson(last)
+    });
   })
 );
 portalDataRouter.post(

@@ -32882,7 +32882,7 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
 }
 
 // mcp/src/tools/app_tools.ts
-var MCP_TOOLS_REGISTERED_PER_APP = 26;
+var MCP_TOOLS_REGISTERED_PER_APP = 27;
 var CATALOG_TTL_MS = 6e4;
 var catalogCache = /* @__PURE__ */ new Map();
 async function fetchAppCatalog(env, ns) {

@@ -1331,7 +1331,10 @@ var init_library_map_store = __esm({
       // 登入用的 head entry 與私有雲金鑰保管的密文列：都是營運資料，沒有 library，舊版（種類欄時代）漏列了，
       // 於是會被當成「一筆知識」算進 general。種類退場時順手補上（#301）。
       "portal_user_head",
-      "credential_secret"
+      "credential_secret",
+      // 正式 entity 與它的別名（inkstone/Arcrun#294 W2）：是圖上的節點，不是一筆知識卡。
+      "entity",
+      "alias"
     ];
     templateReady = /* @__PURE__ */ new WeakMap();
     adoptedOwners = /* @__PURE__ */ new WeakMap();
@@ -5065,11 +5068,11 @@ async function embedText(env, text) {
   const out = await provider.embed(embedModel(env), [t]);
   return out?.[0] ?? null;
 }
-async function embedOnWrite(env, entry) {
+async function embedOnWrite(env, entry, opts = {}) {
   if (!embedEnabled(env)) return false;
   if (!entry.templates) entry = (await withTemplates(dbOf(env), [entry]))[0];
   if (!isEmbeddable(entry)) return false;
-  const vec = await embedText(env, await vectorTextOf(dbOf(env), entry));
+  const vec = opts.vec ?? await embedText(env, await vectorTextOf(dbOf(env), entry));
   if (!vec) return false;
   await vectorsOf(env).upsert([
     {
@@ -5090,7 +5093,7 @@ async function embedOnWrite(env, entry) {
   await dbOf(env).run("UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id = ?", [embedModel(env), entry.id]);
   return true;
 }
-var VECTOR_ENTRY_TYPES = ["entity", "predicate", "alias"];
+var VECTOR_ENTRY_TYPES = ["entity", "predicate", "alias", "source_passage"];
 var VECTOR_ENTRY_TYPES_SQL = `(${VECTOR_ENTRY_TYPES.map((t) => `'${t}'`).join(",")})`;
 var IN_VECTOR_SCOPE_SQL = `EXISTS (SELECT 1 FROM entries vb WHERE vb.src_id = entries.id AND vb.rel_id = '${SYS_BELONGS}' AND vb.dst_id IN (SELECT id FROM templates WHERE name IN ${VECTOR_ENTRY_TYPES_SQL}))`;
 var ENTRY_TYPE_GATE = IN_VECTOR_SCOPE_SQL;
@@ -5109,6 +5112,9 @@ async function vectorTextOf(db, entry) {
   const name = (entry.content ?? "").trim();
   if (!(entry.templates ?? []).includes("entity") || !name) return name;
   try {
+    const cell = await db.first("SELECT content FROM entries WHERE id = ?", [`${entry.id}~v~description`]);
+    const cellDesc = (cell?.content ?? "").trim();
+    if (cellDesc) return `${name}\uFF1A${cellDesc}`;
     const hit = await recordsByFieldValuePage(db, "triplet", "subject", canonicalEntity(name), entry.owner_id ?? void 0, 50, 0);
     const desc = hit?.records.filter((r) => r.values.predicate === "description").map((r) => (r.values.object ?? "").trim()).find((o) => o !== "");
     return desc ? `${name}\uFF1A${desc}` : name;
@@ -5527,14 +5533,28 @@ async function semanticSearch(env, q, opts = {}) {
     returnMetadata: "indexed",
     ...Object.keys(filter).length ? { filter } : {}
   });
-  const minScore = opts.min_score ?? MIN_SCORE_ABS_FLOOR;
-  return (res.matches ?? []).filter((m) => m.score >= minScore).map((m) => ({
+  const minScore2 = opts.min_score ?? MIN_SCORE_ABS_FLOOR;
+  return (res.matches ?? []).filter((m) => m.score >= minScore2).map((m) => ({
     id: m.id,
     score: m.score,
     owner_id: m.metadata?.owner_id,
     source: m.metadata?.source,
     library: m.metadata?.library
   }));
+}
+async function embedForEntity(env, text) {
+  if (!embedEnabled(env)) return null;
+  return embedText(env, text);
+}
+async function nearestEntities(env, vec, owner, topK = 3) {
+  const store = vectorsOf(env);
+  if (!store) return [];
+  const res = await store.query(vec, {
+    topK: Math.min(Math.max(topK, 1), 10),
+    returnMetadata: "indexed",
+    filter: { owner_id: owner }
+  });
+  return (res.matches ?? []).map((m) => ({ id: m.id, score: m.score }));
 }
 
 // kbdb/src/actions/credential-legacy-migration.ts
@@ -7483,6 +7503,239 @@ embedRoutes.get("/selftest", async (c) => {
   return c.json({ success: true, ...result });
 });
 
+// kbdb/src/actions/entity-resolve.ts
+init_entity_canon();
+init_record_crud();
+init_kind();
+var TPL_ENTITY_ID = "tpl-entity";
+var TPL_ENTITY_NAME = "entity";
+var TPL_ALIAS_ID = "tpl-alias";
+var TPL_ALIAS_NAME = "alias";
+var ENTITY_SLOTS_DEF = ["name", "description", "alias"];
+var DEFAULT_NORMALIZE_MIN_SCORE = 0.8;
+var EntityError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+  status;
+};
+async function digest(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var entityIdOf = async (owner, canonical) => `ent_${await digest(`${owner}\0${canonical}`)}`;
+var aliasIdOf = async (owner, alias) => `als_${await digest(`${owner}\0${alias}`)}`;
+function minScore(env) {
+  const n2 = Number(env.ENTITY_NORMALIZE_MIN_SCORE);
+  return Number.isFinite(n2) && n2 > 0 && n2 <= 1 ? n2 : DEFAULT_NORMALIZE_MIN_SCORE;
+}
+async function ensureEntityTemplate(db) {
+  let tpl = await getTemplate(db, TPL_ENTITY_NAME);
+  if (!tpl) {
+    try {
+      tpl = await createTemplate(db, {
+        id: TPL_ENTITY_ID,
+        name: TPL_ENTITY_NAME,
+        description: "\u6B63\u5F0F entity\uFF1A\u540D\u5B57\u3001\u4E00\u53E5\u63CF\u8FF0\u3001\u5225\u540D\u3002\u6BCF\u500B\u5E33\u865F\u6BCF\u500B\u540D\u5B57\u53EA\u6709\u4E00\u7B46\u3002",
+        slots: [...ENTITY_SLOTS_DEF]
+      });
+    } catch {
+      tpl = await getTemplate(db, TPL_ENTITY_NAME);
+    }
+    if (!tpl) throw new Error("entity template \u5EFA\u7ACB\u5931\u6557");
+    return tpl.id;
+  }
+  let have = [];
+  try {
+    have = JSON.parse(tpl.slots_json);
+  } catch {
+    have = [];
+  }
+  const missing = ENTITY_SLOTS_DEF.filter((s) => !have.includes(s));
+  if (missing.length > 0) await updateTemplate(db, tpl.id, { slots: [...have, ...missing] });
+  return tpl.id;
+}
+async function ensureAliasTemplate(db) {
+  const tpl = await getTemplate(db, TPL_ALIAS_NAME);
+  if (tpl) return tpl.id;
+  try {
+    return (await createTemplate(db, { id: TPL_ALIAS_ID, name: TPL_ALIAS_NAME, description: "\u6B63\u5F0F entity \u7684\u5225\u540D\uFF08\u53EA\u6709\u4E00\u689D\u6B78\u5C6C\u8207\u4E00\u689D\u6307\u56DE\u6B63\u5F0F entity \u7684\u95DC\u4FC2\uFF0C\u81EA\u5DF1\u6C92\u6709\u5411\u91CF\uFF09\u3002", slots: ["name"] })).id;
+  } catch {
+    const again = await getTemplate(db, TPL_ALIAS_NAME);
+    if (!again) throw new Error("alias template \u5EFA\u7ACB\u5931\u6557");
+    return again.id;
+  }
+}
+var isEntityExpr = (idExpr) => `EXISTS (SELECT 1 FROM entries b WHERE b.id = 'relb_' || ${idExpr} || '_' || ?)`;
+async function findEntity(db, owner, rawName) {
+  const canon = canonicalEntity(rawName);
+  const id = await entityIdOf(owner, canon);
+  const tpl = await getTemplate(db, TPL_ENTITY_NAME);
+  if (!tpl) return null;
+  const hit = await db.first(`SELECT e.id AS id, e.content AS content FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [id, tpl.id]);
+  if (hit) return { id: hit.id, name: hit.content, matched_by: "canonical" };
+  const aid = await aliasIdOf(owner, canon);
+  const holder = await db.first(
+    `SELECT e.id AS id, e.content AS content FROM entries r JOIN entries e ON e.id = r.src_id
+      WHERE r.dst_id = ? AND r.rel_id = ? AND ${isEntityExpr("e.id")} LIMIT 1`,
+    [aid, fieldEntryId(tpl.id, "alias"), tpl.id]
+  );
+  return holder ? { id: holder.id, name: holder.content, matched_by: "alias" } : null;
+}
+async function attachAlias(db, tplId, owner, entityId, aliasName) {
+  const aid = await aliasIdOf(owner, aliasName);
+  const same = await db.first(`SELECT e.id AS id FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [await entityIdOf(owner, aliasName), tplId]);
+  if (same) return same.id === entityId;
+  const aliasTpl = await ensureAliasTemplate(db);
+  await insertEntryRow(db, { id: aid, content: aliasName, owner_id: owner }, { ignore: true });
+  await insertBelongs(db, aid, aliasTpl, owner);
+  await insertEntryRow(db, { id: fieldEntryId(tplId, "alias"), content: "alias" }, { ignore: true });
+  await insertEntryRow(db, { id: `rela_${entityId}~${aid}`, owner_id: owner, src_id: entityId, rel_id: fieldEntryId(tplId, "alias"), dst_id: aid }, { ignore: true });
+  return true;
+}
+async function resolveEntity(env, db, input) {
+  const owner = (input.owner_id ?? "").trim();
+  if (!owner) throw new EntityError("owner_id \u5FC5\u586B");
+  if (typeof input.name !== "string" || !input.name.trim()) throw new EntityError("name \u5FC5\u586B\uFF08\u975E\u7A7A\u5B57\u4E32\uFF09");
+  const canon = canonicalEntity(input.name);
+  const description = typeof input.description === "string" ? input.description.trim() : "";
+  const tplId = await ensureEntityTemplate(db);
+  const known = await findEntity(db, owner, canon);
+  if (known) {
+    if (description && await fillDescriptionIfEmpty(db, tplId, known.id, owner, description)) {
+      const row2 = await db.first("SELECT * FROM entries WHERE id = ?", [known.id]);
+      if (row2) await embedOnWrite(env, row2).catch(() => false);
+    }
+    return { entity_id: known.id, name: known.name, matched_by: known.matched_by, created: false, alias_added: false, vector: "skipped" };
+  }
+  let vec = null;
+  let vectorState = "no_description";
+  if (description) {
+    if (!embedEnabled(env)) {
+      vectorState = "unavailable";
+    } else {
+      try {
+        vec = await embedForEntity(env, `${canon}\uFF1A${description}`);
+        vectorState = vec ? "compared" : "failed";
+      } catch {
+        vectorState = "failed";
+      }
+    }
+  }
+  if (vec) {
+    const threshold = minScore(env);
+    let neighbors = [];
+    try {
+      neighbors = await nearestEntities(env, vec, owner, 3);
+    } catch {
+      vectorState = "failed";
+    }
+    for (const n2 of neighbors) {
+      if (n2.score < threshold) break;
+      const target = await db.first(
+        `SELECT e.id AS id, e.content AS content FROM entries e WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")}
+            AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'`,
+        [n2.id, owner, tplId]
+      );
+      if (!target) continue;
+      if (!await attachAlias(db, tplId, owner, target.id, canon)) continue;
+      return { entity_id: target.id, name: target.content, matched_by: "vector", created: false, alias_added: true, score: n2.score, vector: "compared" };
+    }
+  }
+  const id = await entityIdOf(owner, canon);
+  await insertEntryRow(db, { id, content: canon, owner_id: owner, metadata_json: JSON.stringify({ embed: true }) }, { ignore: true });
+  await createRecord(db, {
+    template: tplId,
+    record_id: id,
+    owner_id: owner,
+    values: description ? { name: canon, description } : { name: canon },
+    derived_cell_ids: true
+  });
+  const row = await db.first("SELECT * FROM entries WHERE id = ?", [id]);
+  if (row) await embedOnWrite(env, row, vec ? { vec } : {}).catch(() => false);
+  return { entity_id: id, name: canon, matched_by: "new", created: true, alias_added: false, vector: vectorState };
+}
+async function fillDescriptionIfEmpty(db, tplId, entityId, owner, description) {
+  const ids = derivedCellIds(entityId, "description");
+  const exists = await db.first("SELECT id FROM entries WHERE id = ?", [ids.value]);
+  if (exists) return false;
+  await insertEntryRow(db, { id: ids.value, content: description, owner_id: owner }, { ignore: true });
+  await insertEntryRow(db, { id: ids.relation, owner_id: owner, src_id: entityId, rel_id: fieldEntryId(tplId, "description"), dst_id: ids.value }, { ignore: true });
+  await insertEntryRow(db, { id: fieldEntryId(tplId, "description"), content: "description" }, { ignore: true });
+  await db.run(`UPDATE entries SET is_embedded = 0 WHERE id = ?`, [entityId]);
+  return true;
+}
+async function entityCatalog(db, owner, limit = 200, offset = 0) {
+  const n2 = Math.min(Math.max(Math.trunc(limit) || 200, 1), 500);
+  const o = Math.max(Math.trunc(offset) || 0, 0);
+  const tpl = await getTemplate(db, TPL_ENTITY_NAME);
+  if (!tpl) return [];
+  const res = await db.all(
+    `SELECT e.id AS id, e.content AS name, d.content AS description
+       FROM entries b JOIN entries e ON e.id = b.src_id LEFT JOIN entries d ON d.id = e.id || '~v~description'
+      WHERE b.dst_id = ? AND b.rel_id = '${SYS_BELONGS}' AND +b.owner_id = ?
+        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'
+      ORDER BY b.created_at DESC, e.id LIMIT ? OFFSET ?`,
+    [tpl.id, owner, n2, o]
+  );
+  return res.results ?? [];
+}
+
+// kbdb/src/routes/entities.ts
+var entityRoutes = new Hono2();
+var MAX_ITEMS = 50;
+entityRoutes.post("/resolve", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.owner_id !== "string" || !body.owner_id.trim()) {
+    return c.json({ success: false, error: "owner_id required" }, 400);
+  }
+  const owner = body.owner_id.trim();
+  const items = Array.isArray(body.items) ? body.items : body.name !== void 0 ? [{ name: body.name, description: body.description }] : [];
+  if (items.length === 0) return c.json({ success: false, error: "name (or items) required" }, 400);
+  if (items.length > MAX_ITEMS) return c.json({ success: false, error: `items \u6700\u591A ${MAX_ITEMS} \u7B46` }, 400);
+  if (!isSystemAssetOwner(owner)) {
+    const budget = await entryWriteBudgetToday(c.env, dbOf(c.env));
+    if (budget.remaining <= 0) return c.json(writeBudgetExhaustedBody(budget), 429);
+  }
+  const tally = { rowsWritten: 0 };
+  const db = withWriteTally(dbOf(c.env), tally);
+  const results = [];
+  try {
+    for (const it of items) {
+      try {
+        results.push(await resolveEntity(c.env, db, { owner_id: owner, name: String(it.name ?? ""), description: it.description }));
+      } catch (e) {
+        if (!(e instanceof EntityError)) throw e;
+        results.push({ error: e.message });
+      }
+    }
+  } catch (e) {
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+  } finally {
+    if (!isSystemAssetOwner(owner)) {
+      try {
+        await addEntryWriteUsage(dbOf(c.env), tally.rowsWritten);
+      } catch {
+      }
+    }
+  }
+  return c.json(Array.isArray(body.items) ? { success: true, results } : { success: true, ...results[0] });
+});
+entityRoutes.get("/lookup", async (c) => {
+  const owner = c.req.query("owner_id") ?? "";
+  const name = c.req.query("name") ?? "";
+  if (!owner.trim() || !name.trim()) return c.json({ success: false, error: "owner_id and name required" }, 400);
+  const found = await findEntity(dbOf(c.env), owner.trim(), name);
+  return c.json({ success: true, found: !!found, ...found ? { entity_id: found.id, name: found.name, matched_by: found.matched_by } : {} });
+});
+entityRoutes.get("/", async (c) => {
+  const owner = c.req.query("owner_id") ?? "";
+  if (!owner.trim()) return c.json({ success: false, error: "owner_id required" }, 400);
+  const entities = await entityCatalog(dbOf(c.env), owner.trim(), Number(c.req.query("limit") ?? 200), Number(c.req.query("offset") ?? 0));
+  return c.json({ success: true, count: entities.length, entities });
+});
+
 // kbdb/src/routes/map.ts
 var mapRoutes = new Hono2();
 mapRoutes.get("/select", async (c) => {
@@ -9075,6 +9328,7 @@ app.route("/records", recordRoutes);
 app.route("/recipe-stats", recipeStatRoutes);
 app.route("/execution-log", executionLogRoutes);
 app.route("/embed", embedRoutes);
+app.route("/entities", entityRoutes);
 app.route("/map", mapRoutes);
 app.route("/graph", graphRoutes);
 app.route("/retrieve", retrieveRoutes);
