@@ -1676,6 +1676,42 @@ async function deprecateEntriesByLibrary(db, ownerId, library) {
   );
   return result.meta?.changes ?? 0;
 }
+async function summarizeLiveEntriesBySource(db, ownerId, source) {
+  const agg = await db.first(
+    `SELECT COUNT(*) AS n,
+        COUNT(DISTINCT page_name) AS pages,
+        SUM(CASE WHEN page_name IS NULL OR page_name = '' THEN 1 ELSE 0 END) AS unnamed
+   FROM entries WHERE ${LIVE_BY_SOURCE}`,
+    [ownerId, source]
+  );
+  const names = await db.all(
+    `SELECT DISTINCT page_name FROM entries
+   WHERE ${LIVE_BY_SOURCE} AND page_name IS NOT NULL AND page_name != '' LIMIT 20`,
+    [ownerId, source]
+  );
+  return {
+    live_entries: Number(agg?.n ?? 0),
+    cards: Number(agg?.pages ?? 0) + Number(agg?.unnamed ?? 0),
+    page_names: (names.results ?? []).map((r) => r.page_name)
+  };
+}
+async function embeddedIdsBySource(db, ownerId, source) {
+  const rows = await db.all(
+    `SELECT id FROM entries WHERE ${LIVE_BY_SOURCE} AND is_embedded = 1`,
+    [ownerId, source]
+  );
+  return (rows.results ?? []).map((r) => r.id);
+}
+async function deprecateEntriesBySource(db, ownerId, source) {
+  const result = await db.run(
+    `UPDATE entries
+         SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'),
+             updated_at = unixepoch()
+       WHERE ${LIVE_BY_SOURCE}`,
+    [ownerId, source]
+  );
+  return result.meta?.changes ?? 0;
+}
 function escapeLikeLiteral(s) {
   return s.replace(/[\\%_]/g, (ch) => LIKE_ESCAPE + ch);
 }
@@ -1961,7 +1997,7 @@ async function searchEntries(db, q, owner_id, template, limit = 50, library, sou
   }
   return withTemplates(db, applyRelativeCut(hits.slice(0, capped)));
 }
-var IDENTITY_COLUMNS, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
+var IDENTITY_COLUMNS, LIVE_BY_SOURCE, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
 var init_entry_crud = __esm({
   "kbdb/src/actions/entry-crud.ts"() {
     "use strict";
@@ -1970,6 +2006,7 @@ var init_entry_crud = __esm({
     init_kind();
     init_record_crud();
     IDENTITY_COLUMNS = "id, owner_id, page_name, created_at, updated_at, json_object('source_path', json_extract(metadata_json, '$.source_path'), 'source', json_extract(metadata_json, '$.source'), 'machine', json_extract(metadata_json, '$.machine'), 'card_hash', json_extract(metadata_json, '$.card_hash'), 'card_blocks', json_extract(metadata_json, '$.card_blocks'), 'library', json_extract(metadata_json, '$.library'), 'card_rels', json_extract(metadata_json, '$.card_rels')) AS metadata_json";
+    LIVE_BY_SOURCE = `owner_id = ? AND src_id IS NULL AND json_extract(metadata_json, '$.source') = ? AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'`;
     MAX_LIKE_Q_BYTES = 48;
     MAX_LIKE_TERMS = 6;
     utf8Len = (s) => new TextEncoder().encode(s).length;
@@ -5106,6 +5143,40 @@ function ollamaProvider(baseUrl, fetchImpl = fetch) {
     }
   };
 }
+var WORKERS_AI_JUDGE_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+var OLLAMA_JUDGE_MODEL = "qwen2.5:7b";
+function workersAiJudge(ai) {
+  return {
+    name: "workers-ai",
+    defaultModel: WORKERS_AI_JUDGE_MODEL,
+    async complete(model, system, user) {
+      const res = await ai.run(model, {
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        max_tokens: 40,
+        temperature: 0
+      });
+      const out = res?.response ?? res?.choices?.[0]?.message?.content;
+      return typeof out === "string" ? out : out == null ? "" : JSON.stringify(out);
+    }
+  };
+}
+function ollamaJudge(baseUrl, fetchImpl = fetch) {
+  const base = baseUrl.replace(/\/+$/, "");
+  return {
+    name: "ollama",
+    defaultModel: OLLAMA_JUDGE_MODEL,
+    async complete(model, system, user) {
+      const res = await fetchImpl(`${base}/api/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, stream: false, options: { temperature: 0 }, messages: [{ role: "system", content: system }, { role: "user", content: user }] })
+      });
+      if (!res.ok) throw new Error(`Ollama /api/chat \u56DE ${res.status}`);
+      const j = await res.json();
+      return j.message?.content ?? "";
+    }
+  };
+}
 
 // kbdb/src/vector/select.ts
 var norm2 = (v) => (v ?? "").trim().toLowerCase();
@@ -5116,6 +5187,16 @@ function embedProviderOf(env) {
   if (p === "ollama") {
     const url = (env.OLLAMA_URL ?? "").trim();
     return url ? ollamaProvider(url) : null;
+  }
+  return null;
+}
+function judgeProviderOf(env) {
+  if (env.__kbdbJudge) return env.__kbdbJudge;
+  const p = norm2(env.EMBED_PROVIDER);
+  if (p === "" || p === "workers-ai") return env.AI ? workersAiJudge(env.AI) : null;
+  if (p === "ollama") {
+    const url = (env.OLLAMA_URL ?? "").trim();
+    return url ? ollamaJudge(url) : null;
   }
   return null;
 }
@@ -6498,6 +6579,13 @@ entryRoutes.get("/search", async (c) => {
   }
   return c.json({ success: true, entries, count: entries.length, mode: "keyword" });
 });
+entryRoutes.get("/source-summary", async (c) => {
+  const ownerId = String(c.req.query("owner_id") ?? "").trim();
+  const source = String(c.req.query("source") ?? "").trim();
+  if (!ownerId || !source) return c.json({ success: false, error: "owner_id \u8207 source \u5FC5\u586B" }, 400);
+  const summary = await summarizeLiveEntriesBySource(dbOf(c.env), ownerId, source);
+  return c.json({ success: true, source, ...summary });
+});
 entryRoutes.get("/:id", async (c) => {
   const entry = await getEntry(dbOf(c.env), c.req.param("id"));
   if (!entry) return c.json({ success: false, error: "not found" }, 404);
@@ -6520,6 +6608,25 @@ entryRoutes.patch("/deprecate-by-library", async (c) => {
     }
   }
   return c.json({ success: true, deprecated_count: count, vectors_deleted });
+});
+entryRoutes.patch("/deprecate-by-source", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const ownerId = String(body?.owner_id ?? "").trim();
+  const source = String(body?.source ?? "").trim();
+  if (!ownerId || !source) return c.json({ success: false, error: "owner_id \u8207 source \u5FC5\u586B" }, 400);
+  const ids = embedEnabled(c.env) ? await embeddedIdsBySource(dbOf(c.env), ownerId, source) : [];
+  const summary = await summarizeLiveEntriesBySource(dbOf(c.env), ownerId, source);
+  const count = await deprecateEntriesBySource(dbOf(c.env), ownerId, source);
+  let vectors_deleted = 0;
+  if (ids.length > 0) {
+    try {
+      await vectorsOf(c.env).deleteByIds(ids);
+      await markUnembedded(dbOf(c.env), ids);
+      vectors_deleted = ids.length;
+    } catch {
+    }
+  }
+  return c.json({ success: true, source, deprecated_count: count, cards: summary.cards, page_names: summary.page_names, vectors_deleted });
 });
 entryRoutes.post("/backfill-library", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -7639,6 +7746,8 @@ var TPL_ALIAS_ID = "tpl-alias";
 var TPL_ALIAS_NAME = "alias";
 var ENTITY_SLOTS_DEF = ["name", "description", "alias"];
 var DEFAULT_NORMALIZE_MIN_SCORE = 0.8;
+var DEFAULT_JUDGE_MIN_SCORE = 0.55;
+var MAX_JUDGE_CANDIDATES = 2;
 var EntityError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -7655,6 +7764,27 @@ var aliasIdOf = async (owner, alias) => `als_${await digest(`${owner}\0${alias}`
 function minScore(env) {
   const n2 = Number(env.ENTITY_NORMALIZE_MIN_SCORE);
   return Number.isFinite(n2) && n2 > 0 && n2 <= 1 ? n2 : DEFAULT_NORMALIZE_MIN_SCORE;
+}
+function judgeMinScore(env, threshold) {
+  const n2 = Number(env.ENTITY_JUDGE_MIN_SCORE);
+  const v = Number.isFinite(n2) && n2 > 0 && n2 < 1 ? n2 : DEFAULT_JUDGE_MIN_SCORE;
+  return Math.min(v, threshold);
+}
+var JUDGE_SYSTEM = "\u4F60\u5224\u65B7\u5169\u500B\u540D\u5B57\u662F\u4E0D\u662F\u5728\u6307\u300C\u540C\u4E00\u500B\u771F\u5BE6\u4E16\u754C\u7684\u6771\u897F\u300D\uFF08\u540C\u4E00\u500B\u4EBA\u3001\u540C\u4E00\u9593\u516C\u53F8\u3001\u540C\u4E00\u500B\u7522\u54C1\u2026\u2026\uFF09\u3002\u53EA\u770B\u63CF\u8FF0\u5BEB\u7684\u4E8B\u5BE6\uFF0C\u4E0D\u770B\u540D\u5B57\u50CF\u4E0D\u50CF\u3002\u540C\u4E00\u500B\u6771\u897F\u7684\u4E0D\u540C\u7A31\u547C\u3001\u66B1\u7A31\u3001\u5916\u865F\u3001\u8B6F\u540D \u21D2 same\uFF1B\u76F8\u95DC\u4F46\u4E0D\u662F\u540C\u4E00\u500B\uFF08\u4F8B\u5982\u5275\u8FA6\u4EBA\u8207\u4ED6\u7684\u516C\u53F8\u3001\u7522\u54C1\u8207\u88FD\u9020\u5546\u3001\u4E0A\u4E0B\u4F4D\u6982\u5FF5\uFF09\u21D2 different\uFF1B\u62FF\u4E0D\u6E96 \u21D2 different\u3002\u53EA\u56DE\u4E00\u500B\u5B57\uFF1Asame \u6216 different\u3002";
+async function judgeSame(env, name, description, cand) {
+  const judge = judgeProviderOf(env);
+  if (!judge) return "unavailable";
+  const user = `\u7532\uFF1A${name}
+\u7532\u7684\u63CF\u8FF0\uFF1A${description}
+\u4E59\uFF1A${cand.name}
+\u4E59\u7684\u63CF\u8FF0\uFF1A${cand.description ?? "\uFF08\u6C92\u6709\u63CF\u8FF0\uFF09"}
+\u7532\u548C\u4E59\u662F\u540C\u4E00\u500B\u55CE\uFF1F`;
+  try {
+    const out = (await judge.complete((env.ENTITY_JUDGE_MODEL ?? "").trim() || judge.defaultModel, JUDGE_SYSTEM, user)).trim().toLowerCase();
+    return /^same\b/.test(out) ? "same" : "different";
+  } catch {
+    return "failed";
+  }
 }
 async function ensureEntityTemplate(db) {
   let tpl = await getTemplate(db, TPL_ENTITY_NAME);
@@ -7737,6 +7867,8 @@ async function resolveEntity(env, db, input) {
   }
   let vec = null;
   let vectorState = "no_description";
+  let judgeState = "not_needed";
+  let judgeCalls = 0;
   if (description) {
     if (!embedEnabled(env)) {
       vectorState = "unavailable";
@@ -7766,7 +7898,24 @@ async function resolveEntity(env, db, input) {
       );
       if (!target) continue;
       if (!await attachAlias(db, tplId, owner, target.id, canon)) continue;
-      return { entity_id: target.id, name: target.content, matched_by: "vector", created: false, alias_added: true, score: n2.score, vector: "compared" };
+      return { entity_id: target.id, name: target.content, matched_by: "vector", created: false, alias_added: true, score: n2.score, vector: "compared", judge: "not_needed", judge_calls: 0 };
+    }
+    const gray = neighbors.filter((n2) => n2.score >= judgeMinScore(env, threshold) && n2.score < threshold).slice(0, MAX_JUDGE_CANDIDATES);
+    judgeState = gray.length ? "different" : "not_needed";
+    for (const n2 of gray) {
+      const cand = await db.first(
+        `SELECT e.id AS id, e.content AS content, d.content AS description FROM entries e LEFT JOIN entries d ON d.id = e.id || '~v~description'
+          WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")} AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'`,
+        [n2.id, owner, tplId]
+      );
+      if (!cand) continue;
+      judgeCalls++;
+      const verdict = await judgeSame(env, canon, description, { name: cand.content, description: cand.description });
+      judgeState = verdict;
+      if (verdict === "unavailable" || verdict === "failed") break;
+      if (verdict !== "same") continue;
+      if (!await attachAlias(db, tplId, owner, cand.id, canon)) continue;
+      return { entity_id: cand.id, name: cand.content, matched_by: "ai", created: false, alias_added: true, score: n2.score, vector: "compared", judge: "same", judge_calls: judgeCalls };
     }
   }
   const id = await entityIdOf(owner, canon);
@@ -7780,7 +7929,7 @@ async function resolveEntity(env, db, input) {
   });
   const row = await db.first("SELECT * FROM entries WHERE id = ?", [id]);
   if (row) await embedOnWrite(env, row, vec ? { vec } : {}).catch(() => false);
-  return { entity_id: id, name: canon, matched_by: "new", created: true, alias_added: false, vector: vectorState };
+  return { entity_id: id, name: canon, matched_by: "new", created: true, alias_added: false, vector: vectorState, judge: judgeState, judge_calls: judgeCalls };
 }
 async function fillDescriptionIfEmpty(db, tplId, entityId, owner, description) {
   const ids = derivedCellIds(entityId, "description");

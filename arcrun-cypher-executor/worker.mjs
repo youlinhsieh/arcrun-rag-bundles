@@ -9406,6 +9406,29 @@ var init_kbdb_proxy = __esm({
       const res = await fetch(`${base}/entries/library-cards?${params.toString()}`, { headers });
       return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
     });
+    kbdbProxyRouter.get("/kbdb/entries/source-summary", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const { base, headers } = kbdbBase(c.env);
+      const params = forwardQuery(c);
+      params.set("owner_id", owner);
+      const res = await fetch(`${base}/entries/source-summary?${params.toString()}`, { headers });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
+    kbdbProxyRouter.patch("/kbdb/entries/deprecate-by-source", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      const source = String(body?.source ?? "").trim();
+      if (!source) return c.json({ success: false, error: "source \u5FC5\u586B" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await fetch(`${base}/entries/deprecate-by-source`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ owner_id: owner, source })
+      });
+      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    });
     kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
@@ -11646,7 +11669,7 @@ var notes_default = {
   id: "notes",
   name: "\u7B46\u8A18",
   icon: "\u{1F4DD}",
-  version: "1.1.1",
+  version: "1.3.0",
   workflows: [
     {
       name: "create_note",
@@ -11691,12 +11714,29 @@ if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate)) {
 // \u6C92\u6709\u683C\u5F0F\u9650\u5236\uFF08record_id \u7684\u5F62\u72C0\u7531 KBDB \u6C7A\u5B9A\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u9A57\u8B49\u5B83\u7684\u9577\u76F8\uFF09\u2014\u2014
 // \u9019\u6A23\u524D\u7AEF\u4E0D\u7528\u5148\u77E5\u9053 record_id \u7684\u683C\u5F0F\u898F\u5247\uFF0C\u53EA\u8981\u300C\u539F\u6A23\u628A\u4E0A\u4E00\u6B65\u62FF\u5230\u7684 id \u50B3\u56DE\u4F86\u300D\u5C31\u5C0D\u3002
 const parentId = provided(input.parent_id) ? String(input.parent_id).trim() : '';
-return { success: true, content: content, date: rawDate, created_at: now.toISOString(), parent_id: parentId };
+// quote\uFF0Fquote_pos\uFF08arcrun-app-note#2\uFF09\uFF1A\u9019\u5247\u56DE\u8986\u5F15\u7528\u4E86\u539F\u6587\u54EA\u4E00\u6BB5\u3001\u90A3\u6BB5\u5728\u539F\u6587\u7B2C\u5E7E\u500B\u5B57\u3002
+// \u53EA\u6709\u56DE\u8986\u6703\u5E36\uFF1B\u7368\u7ACB\u7B46\u8A18\u4E00\u5F8B\u5B58\u7A7A\u5B57\u4E32\uFF08\u4E0D\u4FE1\u4EFB\u547C\u53EB\u7AEF\u5C0D\u7368\u7ACB\u7B46\u8A18\u5E36\u7684 quote\uFF09\u3002
+const quote = parentId && provided(input.quote) ? String(input.quote).trim().slice(0, 300) : '';
+// \u756B\u9762\u9001\u4F86\u7684\u662F\u6578\u5B57\uFF1B\u7D93 HTTP\uFF0F\u6A21\u677F\u4E5F\u53EF\u80FD\u8B8A\u5B57\u4E32\u2014\u2014\u5169\u7A2E\u90FD\u6536\uFF0C\u6C92\u7D66\u5C31\u662F\u7A7A\uFF08\u4E0D\u662F 0\uFF09\u3002
+const qp = typeof input.quote_pos === 'number' ? input.quote_pos : (provided(input.quote_pos) ? Number(input.quote_pos) : NaN);
+const quotePos = quote && isFinite(qp) && qp >= 0 ? String(Math.floor(qp)) : '';
+// author\uFF08arcrun-app-note#2\uFF09\uFF1A\u53EA\u8A8D\u5F15\u64CE\u7C3D\u7684 Portal \u65B7\u8A00\uFF08_portal_actor\uFF09\u88E1\u7684\u767B\u5165\u540D\u2014\u2014
+// \u547C\u53EB\u7AEF\u81EA\u5E36\u7684\u540C\u540D\u6B04\u4F4D\u5728 /portal/data/apps/:id/action \u90A3\u4E00\u95DC\u5C31\u88AB\u4E1F\u6389\u4E86\u3002\u6C92\u6709\u65B7\u8A00\uFF1D\u4F5C\u8005\u7559\u7A7A
+// \uFF08\u7A7A\u4F5C\u8005\uFF1D\u820A\u8CC7\u6599\uFF0F\u6C92\u7C3D\u7AE0\u91D1\u9470\u7684\u5BE6\u4F8B\uFF0C\u7DE8\u8F2F\u522A\u9664\u7684\u5224\u65B7\u628A\u5B83\u7576\u300C\u4EFB\u4F55\u767B\u5165\u8005\u90FD\u80FD\u52D5\u300D\uFF0C\u898B update_note\uFF09\u3002
+function loginOf(a) {
+  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }
+  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';
+}
+return { success: true, content: content, date: rawDate, created_at: now.toISOString(), parent_id: parentId,
+         author: loginOf(input.actor), quote: quote, quote_pos: quotePos };
 `,
               input: {
                 content: "{{input.content}}",
                 date: "{{input.date}}",
-                parent_id: "{{input.parent_id}}"
+                parent_id: "{{input.parent_id}}",
+                quote: "{{input.quote}}",
+                quote_pos: "{{input.quote_pos}}",
+                actor: "{{input._portal_actor}}"
               },
               limits: {
                 timeout_ms: 1e3,
@@ -11722,7 +11762,10 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
                   date: "{{prep.data.date}}",
                   content: "{{prep.data.content}}",
                   created_at: "{{prep.data.created_at}}",
-                  parent_id: "{{prep.data.parent_id}}"
+                  parent_id: "{{prep.data.parent_id}}",
+                  author: "{{prep.data.author}}",
+                  quote: "{{prep.data.quote}}",
+                  quote_pos: "{{prep.data.quote_pos}}"
                 }
               }
             }
@@ -11733,7 +11776,7 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
             label: "extract_note",
             componentId: "code",
             data: {
-              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u5BEB\u5165\u6C92\u6709\u56DE\u53EF\u7528\u7684 record' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n  parent_id: v.parent_id || '',\n};\n",
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u5BEB\u5165\u6C92\u6709\u56DE\u53EF\u7528\u7684 record' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n  parent_id: v.parent_id || '',\n  author: v.author || '',\n  quote: v.quote || '',\n  quote_pos: v.quote_pos || '',\n};\n",
               input: {
                 body: "{{write_note.data.body}}"
               },
@@ -11795,10 +11838,11 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
             label: "filter_sort",
             componentId: "code",
             data: {
-              code: "// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\u2014\u2014\n// \u4E0D\u52A0\u9019\u6BB5\u9632\u8B77\u6642\uFF0C\u300C\u4E0D\u5E36 date\uFF1D\u67E5\u5168\u90E8\u300D\u9019\u500B\u6700\u5E38\u7528\u7684\u9810\u8A2D\u8DEF\u5F91\u6703\u975C\u9ED8\u56DE\u50B3 0 \u7B46\uFF0C\n// \u8A73\u7D30\u6210\u56E0\u898B notes-create.yaml \u7684 prep \u7BC0\u9EDE\u540C\u6B3E\u8A3B\u89E3\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u8CBC\u4E00\u6B21\uFF09\u3002\nfunction provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst records = Array.isArray(body.records) ? body.records : [];\nconst wantDate = provided(input.date) ? String(input.date).trim() : '';\nconst all = records.map(function (r) {\n  const v = r.values || {};\n  return {\n    record_id: r.record_id,\n    date: v.date || '',\n    content: v.content || '',\n    created_at: v.created_at || '',\n    parent_id: v.parent_id || ''\n  };\n});\n// \u5206\u6210\u300C\u7368\u7ACB\u7B46\u8A18\u300D\uFF08parent_id \u7A7A\uFF09\u8207\u300C\u56DE\u8986\u300D\uFF08parent_id \u6307\u56DE\u67D0\u5247\uFF09\uFF0C\n// \u56DE\u8986\u6309 parent_id \u5206\u6876\uFF0C\u639B\u5230\u5C0D\u61C9\u90A3\u5247\u7684 replies[]\uFF08\u6CB3\u9053\u4E0D\u76F4\u63A5\u5217\u56DE\u8986\uFF09\u3002\nconst repliesByParent = {};\nall.forEach(function (n) {\n  if (!n.parent_id) return;\n  (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);\n});\nObject.keys(repliesByParent).forEach(function (pid) {\n  repliesByParent[pid].sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });\n});\nlet notes = all.filter(function (n) { return !n.parent_id; });\nif (wantDate) notes = notes.filter(function (n) { return n.date === wantDate; });\nnotes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });\nnotes = notes.map(function (n) {\n  return Object.assign({}, n, { replies: repliesByParent[n.record_id] || [] });\n});\nreturn { success: true, notes: notes, count: notes.length, date: wantDate || null };\n",
+              code: "// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\u2014\u2014\n// \u4E0D\u52A0\u9019\u6BB5\u9632\u8B77\u6642\uFF0C\u300C\u4E0D\u5E36 date\uFF1D\u67E5\u5168\u90E8\u300D\u9019\u500B\u6700\u5E38\u7528\u7684\u9810\u8A2D\u8DEF\u5F91\u6703\u975C\u9ED8\u56DE\u50B3 0 \u7B46\uFF0C\n// \u8A73\u7D30\u6210\u56E0\u898B notes-create.yaml \u7684 prep \u7BC0\u9EDE\u540C\u6B3E\u8A3B\u89E3\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u8CBC\u4E00\u6B21\uFF09\u3002\nfunction provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst body = parse(input.body) || {};\nconst records = Array.isArray(body.records) ? body.records : [];\nconst wantDate = provided(input.date) ? String(input.date).trim() : '';\nconst all = records.map(function (r) {\n  const v = r.values || {};\n  return {\n    record_id: r.record_id,\n    date: v.date || '',\n    content: v.content || '',\n    created_at: v.created_at || '',\n    edited_at: v.edited_at || '',\n    parent_id: v.parent_id || '',\n    author: v.author || '',\n    quote: v.quote || '',\n    quote_pos: v.quote_pos || '',\n    deleted: v.deleted === '1'\n  };\n});\n// \u5DF2\u522A\u9664\uFF08arcrun-app-note#2\uFF0C\u6A19\u8A18\u522A\u9664\u3001\u4E0D\u7269\u7406\u522A\u9664\uFF09\uFF1A\n//   \xB7 \u5DF2\u522A\u9664\u7684\u7368\u7ACB\u7B46\u8A18\u6574\u5247\u4E0D\u51FA\u73FE\uFF0C\u5B83\u5E95\u4E0B\u7684\u56DE\u8986\u8DDF\u8457\u4E0D\u51FA\u73FE\uFF1B\n//   \xB7 \u5DF2\u522A\u9664\u7684\u56DE\u8986\uFF1A\u5B83\u300C\u4E4B\u5F8C\u300D\u9084\u6709\u5225\u4EBA\u7684\u56DE\u8986\u6642\u7559\u4E00\u500B\u5360\u4F4D\uFF08deleted:true\uFF0C\u5167\u6587\u6E05\u7A7A\u2014\u2014\u522A\u6389\u7684\u5B57\u4E0D\u9001\u5230\u756B\u9762\uFF09\uFF0C\n//     \u4E4B\u5F8C\u6C92\u6709\u4EFB\u4F55\u56DE\u8986\u4E86\u5C31\u4E0D\u51FA\u73FE\u3002\u756B\u9762\u628A\u5360\u4F4D\u986F\u793A\u6210\u300C\u9019\u5247\u56DE\u8986\u5DF2\u522A\u9664\u300D\u3002\nconst deletedTop = {};\nall.forEach(function (n) { if (n.deleted && !n.parent_id) deletedTop[n.record_id] = true; });\nconst repliesByParent = {};\nall.forEach(function (n) {\n  if (!n.parent_id || deletedTop[n.parent_id]) return;\n  (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);\n});\nObject.keys(repliesByParent).forEach(function (pid) {\n  const list = repliesByParent[pid];\n  list.sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });\n  let lastLive = -1;\n  list.forEach(function (r, i) { if (!r.deleted) lastLive = i; });\n  repliesByParent[pid] = list.filter(function (r, i) { return !r.deleted || i < lastLive; }).map(function (r) {\n    return r.deleted ? { record_id: r.record_id, parent_id: r.parent_id, created_at: r.created_at, deleted: true, content: '', author: '', quote: '', quote_pos: '' } : r;\n  });\n});\nlet notes = all.filter(function (n) { return !n.parent_id && !n.deleted; });\nif (wantDate) notes = notes.filter(function (n) { return n.date === wantDate; });\nnotes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });\nnotes = notes.map(function (n) {\n  return Object.assign({}, n, { replies: repliesByParent[n.record_id] || [] });\n});\nreturn { success: true, notes: notes, count: notes.length, date: wantDate || null, me: loginOf(input.actor) };\n",
               input: {
                 body: "{{fetch_notes.data.body}}",
-                date: "{{input.date}}"
+                date: "{{input.date}}",
+                actor: "{{input._portal_actor}}"
               },
               limits: {
                 timeout_ms: 3e3,
@@ -11816,6 +11860,365 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
           {
             from: "fetch_notes",
             to: "filter_sort",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "update_note",
+      description: "\u6539\u4E00\u5247\u7B46\u8A18\u6216\u56DE\u8986\u7684\u5167\u6587\u3002\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\uFF08\u6216\u4F5C\u8005\u6B04\u70BA\u7A7A\u7684\u820A\u8CC7\u6599\uFF09\u80FD\u6539\uFF1B\u5DF2\u522A\u9664\u7684\u4E0D\u80FD\u6539\u3002\n",
+      graph: {
+        id: "update_note",
+        name: "update_note",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u6539\u54EA\u4E00\u5247\uFF09' };\nconst content = provided(input.content) ? String(input.content).trim() : '';\nif (!content) return { success: false, error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u8981\u6E05\u6389\u8ACB\u7528\u522A\u9664\uFF09' };\nreturn { success: true, record_id: recordId, content: content, edited_at: new Date().toISOString(), me: loginOf(input.actor) };\n",
+              input: {
+                record_id: "{{input.record_id}}",
+                content: "{{input.content}}",
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "read_note",
+            type: "Component",
+            label: "read_note",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/{{prep.data.record_id}}",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "guard",
+            type: "Component",
+            label: "guard",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst rec = body.record;\nconst v = rec && rec.values;\nif (!body.success || !v || typeof v.content !== 'string' || typeof v.date !== 'string') {\n  return { success: false, error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };\n}\nif (v.deleted === '1') return { success: false, error: '\u9019\u5247\u5DF2\u7D93\u522A\u9664\uFF0C\u4E0D\u80FD\u518D\u6539' };\nconst author = v.author || '';\nif (author && author !== input.me) return { success: false, error: '\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\u80FD\u6539\u9019\u5247' };\nreturn { success: true, record_id: input.record_id, content: input.content, edited_at: input.edited_at };\n",
+              input: {
+                body: "{{read_note.data.body}}",
+                me: "{{prep.data.me}}",
+                record_id: "{{prep.data.record_id}}",
+                content: "{{prep.data.content}}",
+                edited_at: "{{prep.data.edited_at}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "write_note",
+            type: "Component",
+            label: "write_note",
+            componentId: "http_request",
+            data: {
+              method: "PATCH",
+              url: "__CYPHER_BASE__/kbdb/records/{{guard.data.record_id}}",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                values: {
+                  content: "{{guard.data.content}}",
+                  edited_at: "{{guard.data.edited_at}}"
+                }
+              }
+            }
+          },
+          {
+            id: "extract_note",
+            type: "Component",
+            label: "extract_note",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u6C92\u6709\u78BA\u8A8D\u9019\u6B21\u4FEE\u6539' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n  edited_at: v.edited_at || '',\n  parent_id: v.parent_id || '',\n  author: v.author || '',\n  quote: v.quote || '',\n  quote_pos: v.quote_pos || '',\n};\n",
+              input: {
+                body: "{{write_note.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "read_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "read_note",
+            to: "guard",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "guard",
+            to: "write_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "write_note",
+            to: "extract_note",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "delete_note",
+      description: "\u628A\u4E00\u5247\u7B46\u8A18\u6216\u56DE\u8986\u6A19\u6210\u5DF2\u522A\u9664\uFF08\u4E0D\u7269\u7406\u522A\u9664\uFF09\u3002\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\uFF08\u6216\u4F5C\u8005\u6B04\u70BA\u7A7A\u7684\u820A\u8CC7\u6599\uFF09\u80FD\u522A\u3002\n",
+      graph: {
+        id: "delete_note",
+        name: "delete_note",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u522A\u54EA\u4E00\u5247\uFF09' };\nreturn { success: true, record_id: recordId, deleted_at: new Date().toISOString(), me: loginOf(input.actor) };\n",
+              input: {
+                record_id: "{{input.record_id}}",
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "read_note",
+            type: "Component",
+            label: "read_note",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/{{prep.data.record_id}}",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "guard",
+            type: "Component",
+            label: "guard",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst rec = body.record;\nconst v = rec && rec.values;\nif (!body.success || !v || typeof v.content !== 'string' || typeof v.date !== 'string') {\n  return { success: false, error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };\n}\nif (v.deleted === '1') return { success: false, error: '\u9019\u5247\u5DF2\u7D93\u522A\u9664\u4E86' };\nconst author = v.author || '';\nif (author && author !== input.me) return { success: false, error: '\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\u80FD\u522A\u9019\u5247' };\nreturn { success: true, record_id: input.record_id, deleted_at: input.deleted_at };\n",
+              input: {
+                body: "{{read_note.data.body}}",
+                me: "{{prep.data.me}}",
+                record_id: "{{prep.data.record_id}}",
+                deleted_at: "{{prep.data.deleted_at}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "take_down_cards",
+            type: "Component",
+            label: "take_down_cards",
+            componentId: "http_request",
+            data: {
+              method: "PATCH",
+              url: "__CYPHER_BASE__/kbdb/entries/deprecate-by-source",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                source: "note://{{guard.data.record_id}}"
+              }
+            }
+          },
+          {
+            id: "write_note",
+            type: "Component",
+            label: "write_note",
+            componentId: "http_request",
+            data: {
+              method: "PATCH",
+              url: "__CYPHER_BASE__/kbdb/records/{{guard.data.record_id}}",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                values: {
+                  deleted: "1",
+                  deleted_at: "{{guard.data.deleted_at}}"
+                }
+              }
+            }
+          },
+          {
+            id: "extract_note",
+            type: "Component",
+            label: "extract_note",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u6C92\u6709\u78BA\u8A8D\u9019\u6B21\u522A\u9664' };\n}\nconst v = body.record.values || {};\nconst td = parse(input.takedown) || {};\nreturn { success: true, record_id: body.record.record_id, deleted: v.deleted === '1', deleted_at: v.deleted_at || '',\n         cards_taken_down: Number(td.cards) || 0 };\n",
+              input: {
+                body: "{{write_note.data.body}}",
+                takedown: "{{take_down_cards.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "read_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "read_note",
+            to: "guard",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "guard",
+            to: "take_down_cards",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "take_down_cards",
+            to: "write_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "write_note",
+            to: "extract_note",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "note_cards",
+      description: "\u56DE\u50B3\u7531\u67D0\u5247\u7B46\u8A18\u6574\u7406\u51FA\u3001\u76EE\u524D\u9084\u5728\u73FE\u5F79\u7684\u77E5\u8B58\u5361\u5F35\u6578\u8207\u5361\u540D\uFF08\u522A\u7B46\u8A18\u524D\u7684\u63D0\u793A\u7528\uFF09\u3002\n",
+      graph: {
+        id: "note_cards",
+        name: "note_cards",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u67E5\u54EA\u4E00\u5247\uFF09' };\nreturn { success: true, record_id: recordId };\n",
+              input: {
+                record_id: "{{input.record_id}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "count_cards",
+            type: "Component",
+            label: "count_cards",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/entries/source-summary?source=note%3A%2F%2F{{prep.data.record_id}}",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "extract_cards",
+            type: "Component",
+            label: "extract_cards",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true) {\n  return { success: false, error: (body && body.error) || '\u67E5\u4E0D\u5230\u9019\u5247\u7B46\u8A18\u6574\u7406\u51FA\u7684\u5361' };\n}\nreturn { success: true, card_count: Number(body.cards) || 0, page_names: Array.isArray(body.page_names) ? body.page_names : [] };\n",
+              input: {
+                body: "{{count_cards.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 16384
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "count_cards",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "count_cards",
+            to: "extract_cards",
             type: "ON_SUCCESS"
           }
         ]
@@ -11980,37 +12383,15 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   }
 
   /*
-   * \u2500\u2500 \u56DE\u8986\uFF08leo 2026-08-24\uFF1A\u300C\u539F\u672C\u6BCF\u4E00\u5247\u7B46\u8A18\u90FD\u53EF\u4EE5\u56DE\u8986\u2026\u53EF\u4EE5\u81EA\u5DF1\u8A55\u8AD6\u5C31\u662F\u500B indented \u5167\u5BB9\u300D\uFF09\u2500\u2500
-   * \u540C Mira \u6CB3\u9053\u539F\u7A3F\u7684 .mira-reply-line\uFF0F.mira-reply-nested\uFF08landing/app/mira/mira.css\uFF09\uFF1A
-   * \u6BCF\u4E00\u5247\u56DE\u8986\u662F\u4E00\u9846\u6DE1\u5E95\u7684\u5713\u89D2\u6CE1\u6CE1\uFF0C\u6574\u7D44\u5F80\u53F3\u7E2E\u6392\u3001\u5DE6\u908A\u4E00\u689D\u7D30\u7DDA\u2014\u2014\u4E0D\u662F\u53E6\u4E00\u5F35\u5361\uFF0C
-   * \u9019\u6A23\u8996\u89BA\u4E0A\u4E00\u773C\u770B\u5F97\u51FA\u300C\u9019\u662F\u639B\u5728\u4E0A\u9762\u90A3\u5247\u5E95\u4E0B\u7684\u300D\uFF0C\u4E0D\u662F\u5E73\u884C\u7684\u7368\u7ACB\u7B46\u8A18\u3002
+   * \u2500\u2500 \u56DE\u8986\uFF08leo 2026-08-24\u300C\u6BCF\u4E00\u5247\u7B46\u8A18\u90FD\u53EF\u4EE5\u56DE\u8986\u300D\u2192 2026-11-11 \u6539\u6210\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684\u5143\u4EF6\uFF09\u2500\u2500
+   * \u56DE\u8986\u4E32\u3001\u56DE\u8986\u6846\u3001\u5DE5\u5177\u5217\u3001\u9078\u5B57\u5F15\u7528\u3001\u7DE8\u8F2F\u522A\u9664\u7684\u756B\u9762\u8207\u898F\u5247\u5168\u5728 ui/reply-kit.js\uFF08ReplyKit\uFF09\uFF0C
+   * \u6A23\u5F0F\u4E5F\u7531\u5B83\u81EA\u5DF1\u6CE8\u5165\u2014\u2014\u9019\u88E1\u53EA\u7559\u7B46\u8A18\u5361\u81EA\u5DF1\u7684\u7248\u9762\u3002
    */
-  .note-footer { display: flex; align-items: center; gap: 10px; padding-top: 6px; margin-top: 4px; }
-  .reply-toggle {
-    background: transparent; border: none; cursor: pointer; padding: 2px 0;
-    font-size: 13px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.55);
-  }
-  .reply-toggle:hover { color: var(--amber, #b04a2f); }
-  .replies { margin-top: 8px; margin-left: 16px; padding-left: 10px; border-left: 2px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12); }
-  .reply-line {
-    background: rgba(var(--ink-rgb, 23, 24, 26), 0.05); border-radius: 14px;
-    padding: 7px 12px; margin-bottom: 6px; font-size: 13.5px; line-height: 1.5;
-  }
-  .reply-line .meta { font-size: 11px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.45); margin-bottom: 2px; }
-  .reply-composer { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
-  .reply-composer textarea {
-    width: 100%; min-height: 44px; resize: vertical;
-    background: rgba(var(--ink-rgb, 23, 24, 26), 0.05); color: var(--ink, inherit);
-    border: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.2);
-    border-radius: 10px; padding: 8px 10px; font-size: 14px; font-family: inherit;
-  }
-  .reply-composer-row { display: flex; gap: 8px; justify-content: flex-end; }
-  .reply-composer-row button {
-    background: transparent; color: rgba(var(--ink-rgb, 23, 24, 26), 0.6); border: none;
-    border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
-  }
-  .reply-composer-row button.primary { background: var(--amber, #b04a2f); color: #fff; }
-  .reply-composer-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .note-card { position: relative; }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .card-top .meta { margin-bottom: 0; }
+  .note-card .content blockquote { margin: 0 0 8px; padding: 0 0 0 10px; border-left: 3px solid rgba(var(--ink-rgb, 23, 24, 26), 0.25); color: rgba(var(--ink-rgb, 23, 24, 26), 0.7); }
+  .note-card .content { user-select: text; -webkit-user-select: text; }
 </style>
 </head>
 <body>
@@ -12165,7 +12546,7 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   // \u2500\u2500 Markdown\uFF08\u6975\u7C21\u5B50\u96C6\uFF0C\u96F6\u4F9D\u8CF4\u2014\u2014design.md \u8981\u6C42\u55AE\u6A94\uFF0F\u5C11\u6A94\uFF0C\u4E0D\u63A5 CDN\uFF09 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   //
   // \u652F\u63F4\uFF1A\u8DF3\u812B HTML \u2192 \u6A19\u984C #~###### \u2192 **\u7C97\u9AD4** \u2192 *\u659C\u9AD4* \u2192 \`code\` \u2192 [text](url)
-  // \u2192 \u4E00\u822C\u6BB5\u843D\u63DB\u884C \u2192 \u958B\u982D \`- \` \u6216 \`* \` \u7684\u6E05\u55AE\u884C\u3002
+  // \u2192 \u4E00\u822C\u6BB5\u843D\u63DB\u884C \u2192 \u958B\u982D \`- \` \u6216 \`* \` \u7684\u6E05\u55AE\u884C \u2192 \u958B\u982D \`> \` \u7684\u5F15\u7528\u884C\uFF08arcrun-app-note#2 \u5DE5\u5177\u5217\u7684\u300C\u5F15\u7528\u300D\uFF09\u3002
   // \u4E0D\u652F\u63F4\uFF1A\u8868\u683C\u3001\u5DE2\u72C0\u6E05\u55AE\u3001\u5716\u7247\u3001fenced code block\u2014\u2014\u7B46\u8A18 App v0.1 \u4E0D\u9700\u8981\uFF0C
   // \u52A0\u4E86\u53EA\u6703\u8B93\u300C\u55AE\u4E00 HTML/JS \u6A94\u300D\u7684\u76EE\u6A19\u8B8A\u91CD\uFF0C\u4E14\u6C92\u6709 leo \u63D0\u51FA\u7684\u9700\u6C42\u6490\u9019\u500B\u8907\u96DC\u5EA6\u3002
 
@@ -12198,11 +12579,15 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       var line = lines[i];
       var heading = /^(#{1,6})\\s+(.*)$/.exec(line);
       var listItem = /^[-*]\\s+(.*)$/.exec(line);
+      var quoteLine = /^&gt;\\s?(.*)$/.exec(line); // escapeHtml \u4E4B\u5F8C ">" \u5DF2\u662F &gt;\uFF08\u5DE5\u5177\u5217\u7684\u300C\u5F15\u7528\u300D\u63D2\u7684\u5C31\u662F\u9019\u500B\uFF09
 
       if (heading) {
         closeList();
         var level = heading[1].length;
         html.push('<h' + level + '>' + renderInline(heading[2]) + '</h' + level + '>');
+      } else if (quoteLine) {
+        closeList();
+        html.push('<blockquote>' + renderInline(quoteLine[1]) + '</blockquote>');
       } else if (listItem) {
         if (!listOpen) { html.push('<ul>'); listOpen = true; }
         html.push('<li>' + renderInline(listItem[1]) + '</li>');
@@ -12246,6 +12631,8 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
     // \u56DE\u50B3 d \u672C\u8EAB\uFF08\u771F\u5951\u7D04\u88E1 window.arcrunApp.action() resolve \u51FA\u4F86\u7684 {ok,status,d} \u7684 d \u90A3\u5C64\uFF09\uFF1A
     //   \u6210\u529F \u2192 { ok: true, result: { success: true, data: {...} } }
     //   \u5931\u6557 \u2192 { error: "..." }\uFF08\u6C92\u6709 ok \u6B04\u4F4D\u2014\u2014\u7167\u771F\u7AEF\u9EDE\u7684\u5931\u6557\u56DE\u61C9\u5F62\u72C0\uFF09
+    var ME = 'mock-user'; // MOCK \u6A21\u5F0F\u4E0B\u300C\u6309\u7684\u4EBA\u300D\u56FA\u5B9A\u662F\u9019\u4E00\u500B\uFF1B\u771F\u5F8C\u7AEF\u662F Portal \u767B\u5165\u540D\uFF08\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\uFF09
+
     function createNote(params) {
       var content = (params && params.content != null) ? String(params.content).trim() : '';
       if (!content) return { error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u7B46\u8A18\u81F3\u5C11\u8981\u6709\u5167\u5BB9\uFF09' };
@@ -12254,12 +12641,20 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       // parent_id\uFF1A\u7701\u7565\uFF0F\u7A7A\u5B57\u4E32\uFF1D\u7368\u7ACB\u7B46\u8A18\uFF1B\u975E\u7A7A\uFF1D\u9019\u662F\u67D0\u5247\u7B46\u8A18\u7684\u56DE\u8986\uFF08\u540C\u771F\u5F8C\u7AEF notes-create.yaml
       // \u7684 prep \u7BC0\u9EDE\u5951\u7D04\u2014\u2014mock \u8DDF\u771F\u5F8C\u7AEF\u5FC5\u9808\u662F\u540C\u4E00\u4EFD\u5951\u7D04\uFF0C\u4E0D\u80FD\u5404\u81EA\u8868\u8FF0\uFF09\u3002
       var parentId = (params && params.parent_id != null) ? String(params.parent_id).trim() : '';
+      // quote\uFF0Fquote_pos\uFF1A\u53EA\u6709\u56DE\u8986\u5E36\uFF08\u540C\u771F\u5F8C\u7AEF\uFF1A\u7368\u7ACB\u7B46\u8A18\u4E00\u5F8B\u5B58\u7A7A\uFF09\u3002
+      var quote = parentId && params && params.quote != null ? String(params.quote).trim().slice(0, 300) : '';
+      var qp = Number(params && params.quote_pos != null ? params.quote_pos : '');
       var note = {
         record_id: idGen(),
         date: date,
         content: content,
         created_at: new Date().toISOString(),
+        edited_at: '',
         parent_id: parentId,
+        author: ME,
+        quote: quote,
+        quote_pos: quote && isFinite(qp) && qp >= 0 ? String(Math.floor(qp)) : '',
+        deleted: false
       };
       var notes = storage.load();
       notes.push(note);
@@ -12267,23 +12662,79 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       return { ok: true, result: { success: true, data: note } };
     }
 
+    // \u540C\u771F\u5F8C\u7AEF update_note\uFF0Fdelete_note \u7684\u5B88\u9580\uFF1A\u5B58\u5728\u3001\u6C92\u522A\u904E\u3001\u4F5C\u8005\u672C\u4EBA\uFF08\u4F5C\u8005\u7A7A\uFF1D\u820A\u8CC7\u6599\uFF0C\u4E0D\u9650\u4EBA\uFF09\u3002
+    function findMine(params, verb) {
+      var id = params && params.record_id != null ? String(params.record_id).trim() : '';
+      if (!id) return { error: 'record_id \u5FC5\u586B\uFF08\u8981' + verb + '\u54EA\u4E00\u5247\uFF09' };
+      var notes = storage.load();
+      var idx = -1;
+      for (var i = 0; i < notes.length; i++) if (notes[i] && notes[i].record_id === id) idx = i;
+      if (idx < 0 || !notes[idx].content) return { error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };
+      if (notes[idx].deleted) return { error: verb === '\u6539' ? '\u9019\u5247\u5DF2\u7D93\u522A\u9664\uFF0C\u4E0D\u80FD\u518D\u6539' : '\u9019\u5247\u5DF2\u7D93\u522A\u9664\u4E86' };
+      if (notes[idx].author && notes[idx].author !== ME) return { error: '\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\u80FD' + verb + '\u9019\u5247' };
+      return { notes: notes, idx: idx };
+    }
+
+    function updateNote(params) {
+      var content = params && params.content != null ? String(params.content).trim() : '';
+      if (!content) return { error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u8981\u6E05\u6389\u8ACB\u7528\u522A\u9664\uFF09' };
+      var f = findMine(params, '\u6539');
+      if (f.error) return f;
+      f.notes[f.idx].content = content;
+      f.notes[f.idx].edited_at = new Date().toISOString();
+      storage.save(f.notes);
+      return { ok: true, result: { success: true, data: f.notes[f.idx] } };
+    }
+
+    function deleteNote(params) {
+      var f = findMine(params, '\u522A');
+      if (f.error) return f;
+      f.notes[f.idx].deleted = true;
+      f.notes[f.idx].deleted_at = new Date().toISOString();
+      var taken = f.notes[f.idx].card_count > 0 ? f.notes[f.idx].card_count : 0;
+      f.notes[f.idx].card_count = 0; // \u540C\u771F\u5F8C\u7AEF\uFF1A\u522A\u7B46\u8A18\u9023\u5E36\u4E0B\u67B6\u5B83\u6574\u7406\u51FA\u7684\u5361\uFF0C\u518D\u6578\u5C31\u662F 0
+      storage.save(f.notes);
+      return { ok: true, result: { success: true, data: { record_id: f.notes[f.idx].record_id, deleted: true, deleted_at: f.notes[f.idx].deleted_at, cards_taken_down: taken } } };
+    }
+
+    // note_cards\uFF1A\u9019\u5247\u7B46\u8A18\u6574\u7406\u51FA\u5E7E\u5F35\u73FE\u5F79\u7684\u5361\uFF08\u522A\u9664\u524D\u7684\u63D0\u793A\u7528\uFF09\u3002mock \u88E1\u7B46\u8A18\u6C92\u6709\u771F\u7684\u5361\uFF0C
+    // \u4EE5\u7B46\u8A18\u4E0A\u7684 card_count \u6B04\u4EE3\u8868\uFF08\u6E2C\u8A66\uFF0F\u793A\u7BC4\u53EF\u585E\uFF09\uFF1B\u6C92\u6709\u5C31\u662F 0\u3002
+    function noteCards(params) {
+      var id = params && params.record_id != null ? String(params.record_id).trim() : '';
+      if (!id) return { error: 'record_id \u5FC5\u586B\uFF08\u8981\u67E5\u54EA\u4E00\u5247\uFF09' };
+      var notes = storage.load();
+      var n = null;
+      for (var i = 0; i < notes.length; i++) if (notes[i] && notes[i].record_id === id) n = notes[i];
+      var c = n && n.card_count > 0 ? n.card_count : 0;
+      return { ok: true, result: { success: true, data: { card_count: c, page_names: [] } } };
+    }
+
     function listNotes(params) {
       var wantDate = (params && params.date) ? String(params.date).trim() : '';
       var all = storage.load();
-      // \u540C\u771F\u5F8C\u7AEF notes-list.yaml \u7684 filter_sort\uFF1A\u5206\u7368\u7ACB\u7B46\u8A18\uFF0F\u56DE\u8986\uFF0C\u56DE\u8986\u639B\u5728\u5C0D\u61C9\u90A3\u5247\u7684
-      // replies[]\uFF08\u4F9D created_at \u7531\u820A\u5230\u65B0\uFF09\uFF0C\u6CB3\u9053\u53EA\u5217\u7368\u7ACB\u7B46\u8A18\u3002
+      // \u540C\u771F\u5F8C\u7AEF notes-list.yaml \u7684 filter_sort\uFF08\u5169\u908A\u5FC5\u9808\u540C\u4E00\u4EFD\u884C\u70BA\uFF0Ctest/test-list-parity.mjs \u6703\u62FF\u771F\u5DE5\u4F5C\u6D41\u7684\u7A0B\u5F0F\u78BC\u5C0D\u8DD1\uFF09\uFF1A
+      //   \u5DF2\u522A\u9664\u7684\u7368\u7ACB\u7B46\u8A18\u6574\u5247\u4E0D\u51FA\u73FE\u3001\u5E95\u4E0B\u7684\u56DE\u8986\u8DDF\u8457\u4E0D\u51FA\u73FE\uFF1B
+      //   \u5DF2\u522A\u9664\u7684\u56DE\u8986\u4E4B\u5F8C\u9084\u6709\u5225\u4EBA\u7684\u56DE\u8986\u6642\u7559\u5360\u4F4D\uFF08deleted:true\u3001\u5167\u6587\u6E05\u7A7A\uFF09\uFF0C\u4E4B\u5F8C\u6C92\u6709\u4E86\u5C31\u4E0D\u51FA\u73FE\u3002
+      var deletedTop = {};
+      all.forEach(function (n) { if (n && n.deleted && !n.parent_id) deletedTop[n.record_id] = true; });
       var repliesByParent = {};
       all.forEach(function (n) {
-        if (!n || !n.parent_id) return;
+        if (!n || !n.parent_id || deletedTop[n.parent_id]) return;
         (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);
       });
       Object.keys(repliesByParent).forEach(function (pid) {
-        repliesByParent[pid].sort(function (a, b) {
+        var list = repliesByParent[pid];
+        list.sort(function (a, b) {
           var ca = (a && a.created_at) || ''; var cb = (b && b.created_at) || '';
           return ca < cb ? -1 : (ca > cb ? 1 : 0);
         });
+        var lastLive = -1;
+        list.forEach(function (r, i) { if (!r.deleted) lastLive = i; });
+        repliesByParent[pid] = list.filter(function (r, i) { return !r.deleted || i < lastLive; }).map(function (r) {
+          return r.deleted ? { record_id: r.record_id, parent_id: r.parent_id, created_at: r.created_at, deleted: true, content: '', author: '', quote: '', quote_pos: '' } : r;
+        });
       });
-      var top = all.filter(function (n) { return n && !n.parent_id; });
+      var top = all.filter(function (n) { return n && !n.parent_id && !n.deleted; });
       var filtered = sortNotesDesc(filterByDate(top, wantDate)).map(function (n) {
         var copy = {};
         for (var k in n) if (Object.prototype.hasOwnProperty.call(n, k)) copy[k] = n[k];
@@ -12292,7 +12743,7 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       });
       return {
         ok: true,
-        result: { success: true, data: { notes: filtered, count: filtered.length, date: wantDate || null } },
+        result: { success: true, data: { notes: filtered, count: filtered.length, date: wantDate || null, me: ME } },
       };
     }
 
@@ -12303,6 +12754,9 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
         var d;
         if (action === 'create_note') d = createNote(params);
         else if (action === 'list_notes') d = listNotes(params);
+        else if (action === 'update_note') d = updateNote(params);
+        else if (action === 'delete_note') d = deleteNote(params);
+        else if (action === 'note_cards') d = noteCards(params);
         else d = { error: '\u672A\u77E5\u52D5\u4F5C\uFF08\u4E0D\u5728\u767D\u540D\u55AE\uFF09\uFF1A' + action };
         var ok = !!(d && d.ok === true);
         return Promise.resolve({ ok: ok, status: ok ? 200 : 400, d: d });
@@ -12365,6 +12819,421 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   } else {
     root.NotesCore = NotesCore;
   }
+})(typeof window !== 'undefined' ? window : this);
+
+<\/script>
+<script>
+/*
+ * reply-kit.js \u2014 \u7B46\u8A18\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684\u300C\u56DE\u8986\u300D\u5143\u4EF6\uFF08inkstone/arcrun-app-note#2\uFF1B\u898F\u683C docs/interaction-spec.html\uFF09
+ *
+ * \u70BA\u4EC0\u9EBC\u662F\u4E00\u500B\u7368\u7ACB\u6A94\uFF1Aleo 2026-11-08\u300C\u540C\u6A23\u529F\u80FD\u7528\u5728\u7B46\u8A18\u4E0A\uFF0C\u4E00\u7A2E\u754C\u9762\u5169\u908A\u90FD\u7528\u2026\u2026\u4E0D\u8981\u5728\u4E00\u500B\u8EDF\u9AD4\u88E1\u5169\u908A\u5DEE\u5F88\u591A\u300D\u3002
+ * \u7B46\u8A18 App \u8207\u770B\u5361\u756B\u9762\uFF08arcrun-rag#297 \u5C0F\u5E6B\u624B\u3001Arcrun#345 Portal\uFF09\u8F09\u5165**\u540C\u4E00\u4EFD**\u9019\u500B\u6A94\uFF0C
+ * \u5169\u908A\u53EA\u5DEE\u5169\u500B\u53C3\u6578\uFF1Amode\uFF08'note' \u7B46\u8A18\uFF0F'card' \u77E5\u8B58\u5361\uFF09\u8207\u6BCF\u4E00\u5247\u56DE\u8986\u7684 state\u3002
+ *
+ *   mode = 'note'  \u6309\u9215\u5BEB\u300C\u7559\u8A00\u300D\uFF0C\u4E00\u822C\u8A0E\u8AD6\uFF0C\u4E0D\u9078\u7406\u7531\uFF1B\u4F5C\u8005\u53EF\u6539\u53EF\u522A\u81EA\u5DF1\u7684\u7B46\u8A18\u8207\u56DE\u8986\u3002
+ *   mode = 'card'  \u6309\u9215\u5BEB\u300C\u5EFA\u8B70\u300D\uFF0C\u65C1\u908A\u6709\u7406\u7531\u4E0B\u62C9\uFF08\u88DC\u5145\uFF0F\u5167\u5BB9\u4E0D\u5C0D\uFF0F\u2026\uFF0F\u5176\u4ED6\uFF0C\u53EF\u81EA\u586B\uFF09\uFF1B\u6B63\u6587\u4EBA\u4E0D\u80FD\u6539\u4E0D\u80FD\u522A\uFF1B
+ *                  \u81EA\u5DF1\u7684\u5EFA\u8B70\u5728\u300C\u4EBA\u985E\u901A\u904E\u524D\u300D\u53EF\u6539\u53EF\u522A\uFF0C\u901A\u904E\u5F8C\u9396\u5B9A\uFF0C\u88AB\u99C1\u56DE\u53EA\u80FD\u5F9E\u81EA\u5DF1\u7684\u6E05\u55AE\u522A\u9664\u3002
+ *
+ * \u672C\u6A94\u5206\u5169\u5C64\uFF1A
+ *   \u2460 \u7D14\u908F\u8F2F\uFF08\u6B0A\u9650\u898F\u5247\u3001\u4E32\u6392\u5E8F\u3001\u5DE5\u5177\u5217\u63D2\u5165\u3001\u7406\u7531\u7D44\u5408\uFF09\u2014\u2014\u4E0D\u78B0 DOM\uFF0CNode \u53EF\u76F4\u63A5 require \u6E2C\uFF08test/test-reply-kit.mjs\uFF09\u3002
+ *   \u2461 \u756B\u9762\uFF08renderThread\uFF0FrenderComposer\uFF0FinstallSelection\uFF09\u2014\u2014\u5410 HTML \u5B57\u4E32\uFF0B\u639B\u4E8B\u4EF6\uFF0C\u547C\u53EB\u6642\u624D\u7528 document\u3002
+ * \u63A1\u7D0D\u3001\u99C1\u56DE\u3001\u8CA0\u8CAC\u4EBA\u300130 \u5929\u964D\u7D1A\u4E0D\u5728\u9019\u88E1\uFF08\u5C6C Arcrun#344\uFF09\uFF1B\u9019\u88E1\u53EA\u6709\u56DE\u8986\u4E32\u7684\u756B\u9762\u3001\u6B0A\u9650\u5224\u65B7\u8207\u9001\u51FA\u52D5\u4F5C\u3002
+ *
+ * \u4F9D\u8CF4\uFF1A\u540C\u9801\u5148\u8F09\u5165 notes-core.js\uFF08escapeHtml\uFF0FrenderMarkdown\uFF09\u3002\u96F6\u5916\u90E8\u4F9D\u8CF4\u3002
+ */
+(function (root) {
+  'use strict';
+
+  var NC = (typeof module !== 'undefined' && module.exports && typeof require === 'function')
+    ? require('./notes-core.js') : root.NotesCore;
+
+  function esc(s) { return NC.escapeHtml(String(s == null ? '' : s)); }
+
+  // \u2500\u2500 \u2460 \u7D14\u908F\u8F2F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  /** \u9001\u51FA\u9215\u7684\u5B57\uFF1A\u7B46\u8A18\u300C\u7559\u8A00\u300D\u3001\u5361\u300C\u5EFA\u8B70\u300D\uFF08leo 2026-11-10\uFF1A\u6309\u9215\u672C\u8EAB\u5C31\u8868\u793A\u300C\u4F60\u53EA\u80FD\u5EFA\u8B70\u4E0D\u662F\u7DE8\u8F2F\u300D\uFF0C\u4E0D\u653E\u8AAA\u660E\u6587\u5B57\uFF09\u3002 */
+  function sendLabel(mode) { return mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00'; }
+
+  /** \u7406\u7531\u6E05\u55AE\uFF08\u50CF\u5BA2\u670D\u8868\u55AE\uFF0C\u4E4B\u5F8C\u6703\u589E\u52A0\uFF1A\u6539\u9019\u500B\u9663\u5217\u6216\u7531\u547C\u53EB\u7AEF\u50B3 reasons \u9032\u4F86\uFF09\u3002\u6700\u5F8C\u4E00\u9805\u56FA\u5B9A\u662F\u300C\u5176\u4ED6\u300D\u3002 */
+  var DEFAULT_REASONS = ['\u88DC\u5145', '\u5167\u5BB9\u4E0D\u5C0D', '\u8CC7\u6599\u904E\u671F', '\u4F86\u6E90\u6709\u8AA4'];
+  var OTHER = '\u5176\u4ED6';
+
+  /**
+   * \u7D44\u51FA\u8981\u9001\u7684\u7406\u7531\u3002\u9078\u300C\u5176\u4ED6\u300D\u5FC5\u9808\u586B\u5B57\uFF08\u7A7A\u7684\u4E0D\u80FD\u9001\uFF09\uFF0C\u5B58\u6210 { kind:'\u5176\u4ED6\uFF1Axxx', reason_type:'\u5176\u4ED6', reason_text:'xxx' }\uFF1B
+   * \u5176\u4ED6\u7406\u7531 reason_type \u5C31\u662F\u7406\u7531\u672C\u8EAB\u3001reason_text \u7A7A\u3002reason_type \u662F\u4E4B\u5F8C\u4F9D\u7406\u7531\u7BE9\u9078\u300C\u5176\u4ED6\u300D\u539F\u6587\u7684\u9375\uFF08\u898F\u683C\u300C\u5176\u4ED6\u300D\u4E00\u7BC0\uFF09\u3002
+   */
+  function composeReason(selected, otherText) {
+    var sel = String(selected == null ? '' : selected);
+    if (sel === OTHER) {
+      var t = String(otherText == null ? '' : otherText).trim();
+      if (!t) return { ok: false, error: '\u9078\u4E86\u300C\u5176\u4ED6\u300D\uFF0C\u8ACB\u5BEB\u4E0B\u7406\u7531\u3002' };
+      return { ok: true, kind: OTHER + '\uFF1A' + t, reason_type: OTHER, reason_text: t.slice(0, 200) };
+    }
+    if (!sel) return { ok: false, error: '\u8ACB\u9078\u4E00\u500B\u7406\u7531\u3002' };
+    return { ok: true, kind: sel, reason_type: sel, reason_text: '' };
+  }
+
+  /**
+   * \u9019\u4E00\u5247\uFF08\u7B46\u8A18\uFF0F\u56DE\u8986\uFF0F\u5EFA\u8B70\uFF09\u73FE\u5728\u80FD\u505A\u4EC0\u9EBC\u3002\u5C0D\u61C9\u898F\u683C\u300C\u522A\u9664\u8207\u7DE8\u8F2F\u898F\u5247\u300D\u90A3\u5F35\u8868\uFF0C\u4E00\u683C\u4E00\u683C\u7167\u6284\uFF1A
+   *   ctx = { mode, kind, mine, state, supporters }
+   *     mode       'note' | 'card'
+   *     kind       'doc'\uFF08\u7B46\u8A18\u6216\u5361\u7684\u6B63\u6587\uFF09| 'reply'\uFF08\u56DE\u8986\uFF0F\u5EFA\u8B70\uFF09
+   *     mine       \u662F\u4E0D\u662F\u6211\u5BEB\u7684
+   *     state      \u7B46\u8A18\u5074\uFF1A'live' | 'deleted'
+   *                \u5361\u5074\u7684\u5EFA\u8B70\uFF1A'pending'\uFF08\u5F85\u78BA\u8A8D\uFF09| 'adopted'\uFF08\u5DF2\u7D0D\u5165\uFF09| 'rejected'\uFF08\u5DF2\u99C1\u56DE\uFF09| 'withdrawn'\uFF08\u5DF2\u64A4\u56DE\uFF09
+   *     supporters \u9644\u548C\u9019\u5247\u5EFA\u8B70\u7684\u4EBA\u6578\uFF08\u5361\u5074\uFF0C\u522A\u9664\u6642\u6C7A\u5B9A\u300C\u63A5\u7E8C\u300D\u9084\u662F\u300C\u6574\u5247\u64A4\u6389\u300D\uFF09
+   * \u56DE { edit, delete, outcome, note }
+   *   outcome\uFF1D\u522A\u9664\u4E4B\u5F8C\u767C\u751F\u4EC0\u9EBC\uFF1A'soft_delete'\uFF08\u6A19\u8A18\u522A\u9664\uFF09\uFF5C'handover'\uFF08\u53EA\u62FF\u6389\u4F60\u7684\u540D\u5B57\uFF0C\u7531\u9644\u548C\u7684\u4EBA\u63A5\u7E8C\uFF09
+   *            \uFF5C'withdraw'\uFF08\u6574\u5247\u64A4\u56DE\uFF0CAI \u64A4\u6A19\u793A\uFF0C\u7D00\u9304\u4FDD\u7559\uFF09\uFF5C'hide_own'\uFF08\u53EA\u5F9E\u81EA\u5DF1\u7684\u6E05\u55AE\u62FF\u6389\uFF09\uFF5Cnull
+   *   note\uFF1D\u4E0D\u80FD\u52D5\u6642\u756B\u9762\u8A72\u8AAA\u7684\u4E00\u53E5\u8A71\uFF08\u6C92\u6709\u5C31\u7A7A\u5B57\u4E32\uFF09
+   */
+  function can(ctx) {
+    var none = { edit: false, delete: false, outcome: null, note: '' };
+    var mode = ctx && ctx.mode === 'card' ? 'card' : 'note';
+    var kind = ctx && ctx.kind === 'doc' ? 'doc' : 'reply';
+    var mine = !!(ctx && ctx.mine);
+    var state = (ctx && ctx.state) || (mode === 'card' && kind === 'reply' ? 'pending' : 'live');
+    if (mode === 'note') {
+      if (state === 'deleted' || !mine) return none;
+      return { edit: true, delete: true, outcome: 'soft_delete', note: '' };
+    }
+    // mode === 'card'
+    if (kind === 'doc') return { edit: false, delete: false, outcome: null, note: '' }; // \u5361\u6B63\u6587\u53EA\u6709 LLM \u80FD\u6539
+    if (!mine) return { edit: false, delete: false, outcome: null, note: '\u5225\u4EBA\u7684\u5EFA\u8B70\uFF1A\u53EA\u6709\u8CA0\u8CAC\u4EBA\u80FD\u88C1\u6C7A' };
+    if (state === 'pending') {
+      return { edit: true, delete: true, outcome: ctx.supporters > 0 ? 'handover' : 'withdraw', note: '' };
+    }
+    if (state === 'adopted') return { edit: false, delete: false, outcome: null, note: '\u5DF2\u7D0D\u5165\uFF0C\u4E0D\u80FD\u6539\u6216\u522A\u3002\u8981\u6539\u53E3\u8ACB\u518D\u63D0\u4E00\u5247\u65B0\u5EFA\u8B70' };
+    if (state === 'rejected') return { edit: false, delete: true, outcome: 'hide_own', note: '' };
+    return none; // withdrawn\uFF1A\u5DF2\u4E0D\u986F\u793A
+  }
+
+  /** \u522A\u9664\u524D\u7684\u78BA\u8A8D\u6587\u5B57\uFF08\u898F\u683C\u8868\u300C\u756B\u9762\u884C\u70BA\u300D\u6B04\uFF09\u3002cardCount\uFF1D\u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210\u5E7E\u5F35\u5361\uFF08\u6709\u624D\u63D0\u793A\uFF09\u3002 */
+  function deleteWarning(ctx, extra) {
+    var o = can(ctx).outcome;
+    var cards = extra && extra.cardCount > 0 ? extra.cardCount : 0;
+    if (o === 'handover') return '\u522A\u9664\u53EA\u6703\u62FF\u6389\u4F60\u7684\u540D\u5B57\uFF0C\u5EFA\u8B70\u7531\u9644\u548C\u7684\u4EBA\u63A5\u7E8C\u3002';
+    if (o === 'withdraw') return '\u522A\u9664\u5F8C AI \u6703\u64A4\u6389\u90A3\u4E00\u6BB5\u7684\u6A19\u793A\uFF0C\u5361\u56DE\u5230\u539F\u6A23\u3002\u7D00\u9304\u6703\u4FDD\u7559\u3002';
+    if (o === 'hide_own') return '\u5F9E\u4F60\u7684\u6E05\u55AE\u522A\u9664\u3002\u8CA0\u8CAC\u4EBA\u7684\u88C1\u6C7A\u7D00\u9304\u6703\u4FDD\u7559\u3002';
+    if (ctx.kind === 'doc') {
+      return cards ? '\u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210 ' + cards + ' \u5F35\u5361\uFF0C\u522A\u9664\u5F8C\u9019\u4E9B\u5361\u6703\u4E0B\u67B6\u3002\u78BA\u5B9A\u522A\u9664\uFF1F' : '\u522A\u9664\u9019\u5247\u7B46\u8A18\uFF1F';
+    }
+    return '\u522A\u9664\u9019\u5247\u56DE\u8986\uFF1F';
+  }
+
+  /**
+   * \u56DE\u8986\u4E32\u6392\u5E8F\uFF08\u898F\u683C\uFF1A\u6309\u5728\u539F\u6587\u7684\u4F4D\u7F6E\u6392\u5E8F\uFF0C\u6574\u7BC7\u56DE\u8986\u6392\u6700\u524D\uFF09\u3002
+   * \u6574\u7BC7\u56DE\u8986\uFF08\u6C92\u6709\u5F15\u7528\uFF09\u5728\u524D\u3001\u4F9D\u6642\u9593\u820A\u5230\u65B0\uFF1B\u5F15\u7528\u7684\u4F9D quote_pos \u7531\u5C0F\u5230\u5927\uFF0C\u540C\u4E00\u4F4D\u7F6E\u4F9D\u6642\u9593\u3002\u56DE\u50B3\u65B0\u9663\u5217\u3002
+   */
+  function sortThread(replies) {
+    function pos(r) { var n = Number(r && r.quote_pos); return r && r.quote && isFinite(n) ? n : null; }
+    return (replies || []).slice().sort(function (a, b) {
+      var pa = pos(a), pb = pos(b);
+      if ((pa === null) !== (pb === null)) return pa === null ? -1 : 1;
+      if (pa !== null && pa !== pb) return pa - pb;
+      var ca = (a && a.created_at) || '', cb = (b && b.created_at) || '';
+      return ca < cb ? -1 : (ca > cb ? 1 : 0);
+    });
+  }
+
+  /** \u5DE5\u5177\u5217\uFF08\u4EE3\u66FF slash command \u8207 Markdown \u7B26\u865F\uFF09\u3002line:true\uFF1D\u52A0\u5728\u6BCF\u884C\u958B\u982D\uFF1B\u5426\u5247\u5305\u4F4F\u9078\u53D6\u7684\u5B57\u3002 */
+  var TOOLS = [
+    { id: 'bold', label: 'B', title: '\u7C97\u9AD4', open: '**', close: '**' },
+    { id: 'italic', label: 'I', title: '\u659C\u9AD4', open: '*', close: '*' },
+    { id: 'heading', label: 'H', title: '\u6A19\u984C', line: true, open: '## ' },
+    { id: 'list', label: '\u2022 \u6E05\u55AE', title: '\u6E05\u55AE', line: true, open: '- ' },
+    { id: 'quote', label: '\u275D \u5F15\u7528', title: '\u5F15\u7528', line: true, open: '> ' },
+    { id: 'link', label: '\u9023\u7D50', title: '\u9023\u7D50', open: '[', close: '](https://)' }
+  ];
+
+  /** \u628A\u5DE5\u5177\u5957\u5728 value \u7684 [s,e) \u9078\u53D6\u4E0A\uFF0C\u56DE { value, start, end }\uFF08\u65B0\u7684\u9078\u53D6\u7BC4\u570D\uFF09\u3002\u7D14\u51FD\u5F0F\uFF0C\u4E0D\u78B0 DOM\u3002 */
+  function applyTool(value, s, e, toolId) {
+    var t = TOOLS.filter(function (x) { return x.id === toolId; })[0];
+    value = String(value == null ? '' : value);
+    if (!t) return { value: value, start: s, end: e };
+    if (t.line) {
+      var ls = value.lastIndexOf('\\n', s - 1) + 1;
+      var head = value.slice(0, ls), body = value.slice(ls, e), tail = value.slice(e);
+      var lines = body.split('\\n').map(function (l) { return l.indexOf(t.open) === 0 ? l : t.open + l; });
+      var nb = lines.join('\\n');
+      return { value: head + nb + tail, start: s + (lines[0].length - body.split('\\n')[0].length), end: ls + nb.length };
+    }
+    var sel = value.slice(s, e);
+    var out = value.slice(0, s) + t.open + sel + t.close + value.slice(e);
+    if (sel) return { value: out, start: s + t.open.length, end: s + t.open.length + sel.length };
+    return { value: out, start: s + t.open.length, end: s + t.open.length };
+  }
+
+  // \u2500\u2500 \u2461 \u756B\u9762 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  var CSS = [
+    '.rk-bar{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:4px}',
+    '.rk-count{background:transparent;border:1px solid rgba(var(--ink-rgb,23,24,26),.25);color:inherit;border-radius:999px;padding:3px 12px;font-size:12.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}',
+    '.rk-count:hover,.rk-count[aria-expanded="true"]{border-color:var(--amber,#b04a2f);color:var(--amber,#b04a2f)}',
+    '.rk-badge{background:var(--amber,#b04a2f);color:#fff;border-radius:99px;font-size:11px;min-width:17px;padding:0 6px;text-align:center}',
+    '.rk-more{background:transparent;border:1px solid transparent;color:inherit;border-radius:8px;padding:2px 9px;font-size:16px;line-height:1.2;cursor:pointer}',
+    '.rk-more:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}',
+    '.rk-menu{position:absolute;right:10px;top:38px;z-index:20;background:var(--paper-a,#fff);color:var(--ink,inherit);border:1px solid rgba(var(--ink-rgb,23,24,26),.2);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18);min-width:120px;padding:4px}',
+    '.rk-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;font:inherit;font-size:14px;padding:7px 10px;border-radius:6px;cursor:pointer}',
+    '.rk-menu button:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}.rk-menu .rk-del{color:#c0392b}',
+    '.rk-pop{position:absolute;z-index:30;background:var(--ink,#222);color:var(--paper-a,#fff);border-radius:8px;padding:4px;box-shadow:0 4px 14px rgba(0,0,0,.3)}',
+    '.rk-pop button{border:0;background:transparent;color:inherit;font:inherit;font-size:13.5px;padding:6px 12px;cursor:pointer;border-radius:6px;white-space:nowrap}',
+    '.rk-hit{background:rgba(var(--amber-rgb,217,120,79),.3);border-radius:3px}',
+    '.rk-drawer{margin-top:8px;border-top:1px solid rgba(var(--ink-rgb,23,24,26),.12);padding-top:8px;display:flex;flex-direction:column;gap:8px}',
+    '.rk-thread{background:rgba(var(--ink-rgb,23,24,26),.05);border-radius:12px;padding:8px 12px;font-size:13.5px;line-height:1.5;min-width:0}',
+    '.rk-thread .rk-q{display:block;width:100%;text-align:left;background:transparent;border:0;border-left:3px solid var(--amber,#b04a2f);padding:0 0 0 8px;margin:0 0 4px;color:rgba(var(--ink-rgb,23,24,26),.6);font:inherit;font-size:12.5px;cursor:pointer}',
+    '.rk-thread .rk-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:rgba(var(--ink-rgb,23,24,26),.5);margin-bottom:2px}',
+    '.rk-pill{display:inline-block;font-size:11px;padding:0 8px;border-radius:99px;background:rgba(var(--amber-rgb,217,120,79),.15);color:var(--amber,#b04a2f)}',
+    '.rk-pill.rk-ok{background:rgba(40,150,90,.15);color:#1f7a4d}.rk-pill.rk-bad{background:rgba(192,57,43,.14);color:#c0392b}',
+    '.rk-gone{color:rgba(var(--ink-rgb,23,24,26),.45);font-size:12.5px;font-style:italic}',
+    '.rk-acts{display:flex;gap:12px;font-size:12px;margin-top:2px}',
+    '.rk-acts button{border:0;background:none;color:var(--amber,#b04a2f);font:inherit;cursor:pointer;padding:0}.rk-acts .rk-d{color:#c0392b}',
+    '.rk-acts .rk-note{color:rgba(var(--ink-rgb,23,24,26),.5)}',
+    '.rk-confirm{background:rgba(192,57,43,.1);color:#c0392b;border-radius:8px;padding:8px 10px;font-size:13px;display:flex;flex-direction:column;gap:6px;margin-top:6px}',
+    '.rk-confirm .rk-row button{border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 12px;font:inherit;font-size:12.5px;cursor:pointer;margin-right:8px}',
+    '.rk-composer{display:flex;flex-direction:column;gap:6px}',
+    '.rk-tools{display:flex;gap:4px;flex-wrap:wrap}',
+    '.rk-tools button{border:1px solid rgba(var(--ink-rgb,23,24,26),.2);background:transparent;color:inherit;border-radius:6px;min-width:32px;padding:3px 8px;font:inherit;font-size:13px;cursor:pointer}',
+    '.rk-tools button:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}',
+    '.rk-qchip{border-left:3px solid var(--amber,#b04a2f);padding:2px 0 2px 8px;font-size:12.5px;color:rgba(var(--ink-rgb,23,24,26),.65);display:flex;gap:8px;align-items:center}',
+    '.rk-qchip button{border:0;background:none;color:var(--amber,#b04a2f);cursor:pointer;font:inherit;font-size:12px;padding:0}',
+    '.rk-composer textarea,.rk-edit textarea{width:100%;min-height:56px;resize:vertical;background:rgba(var(--ink-rgb,23,24,26),.05);color:var(--ink,inherit);border:1px solid rgba(var(--ink-rgb,23,24,26),.2);border-radius:10px;padding:8px 10px;font-size:14px;font-family:inherit}',
+    '.rk-edit{display:flex;flex-direction:column;gap:6px}',
+    '.rk-row2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
+    '.rk-row2 select,.rk-row2 input[type=text]{border:1px solid rgba(var(--ink-rgb,23,24,26),.2);background:rgba(var(--ink-rgb,23,24,26),.05);color:inherit;border-radius:8px;padding:5px 8px;font:inherit;font-size:13px;min-width:0}',
+    '.rk-send{margin-left:auto;background:var(--amber,#b04a2f);color:#fff;border:0;border-radius:999px;padding:6px 18px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}',
+    '.rk-ghost{background:transparent;color:rgba(var(--ink-rgb,23,24,26),.6);border:0;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}',
+    '.rk-send:disabled{opacity:.5;cursor:not-allowed}',
+    '.rk-err{color:#c0392b;font-size:12.5px;min-height:1em}'
+  ].join('\\n');
+
+  function injectCss(anchorEl) {
+    if (typeof document === 'undefined') return;
+    var rn = (anchorEl && anchorEl.getRootNode && anchorEl.getRootNode()) || document;
+    var host = rn.head || rn;
+    if (host.querySelector && host.querySelector('style[data-reply-kit]')) return;
+    var st = document.createElement('style');
+    st.setAttribute('data-reply-kit', '1');
+    st.textContent = CSS;
+    host.appendChild(st);
+  }
+
+  function renderToolbar() {
+    return '<div class="rk-tools" role="toolbar" aria-label="\u683C\u5F0F\u5DE5\u5177\u5217">' + TOOLS.map(function (t) {
+      return '<button type="button" data-rk-tool="' + t.id + '" title="' + esc(t.title) + '" aria-label="' + esc(t.title) + '">' + esc(t.label) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  /** \u53F3\u4E0A\u89D2\u5165\u53E3\uFF1A\u7559\u8A00\uFF08\u56DE\u8986\uFF09\u6578\uFF0B\u5C55\u958B\u9215\uFF1BmenuItems \u662F\u300C\u22EF\u300D\u9078\u55AE\uFF08\u7B46\u8A18\uFF1A\u7DE8\u8F2F\uFF0F\u522A\u9664\uFF09\u3002 */
+  function renderBar(opts) {
+    var label = opts.mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00';
+    return '<div class="rk-bar">' +
+      '<button type="button" class="rk-count" data-rk-toggle="' + esc(opts.docId) + '" aria-expanded="' + (opts.open ? 'true' : 'false') + '">' +
+        esc(label) + ' <span class="rk-badge">' + (opts.count | 0) + '</span></button>' +
+      (opts.hasMenu ? '<button type="button" class="rk-more" data-rk-more="' + esc(opts.docId) + '" aria-haspopup="menu" aria-expanded="' + (opts.menuOpen ? 'true' : 'false') + '" aria-label="\u66F4\u591A">\u22EF</button>' : '') +
+      '</div>';
+  }
+
+  function renderMenu(opts) {
+    var items = [];
+    if (opts.canEdit) items.push('<button type="button" role="menuitem" data-rk-edit-doc="' + esc(opts.docId) + '">\u7DE8\u8F2F</button>');
+    if (opts.canDelete) items.push('<button type="button" role="menuitem" class="rk-del" data-rk-del-doc="' + esc(opts.docId) + '">\u522A\u9664</button>');
+    return '<div class="rk-menu" role="menu">' + items.join('') + '</div>';
+  }
+
+  function renderConfirm(text, yesAttr, id) {
+    return '<div class="rk-confirm" role="alertdialog"><div>' + esc(text) + '</div><div class="rk-row">' +
+      '<button type="button" data-rk-yes="' + esc(yesAttr) + '" data-id="' + esc(id) + '">\u78BA\u8A8D\u522A\u9664</button>' +
+      '<button type="button" data-rk-no="1">\u53D6\u6D88</button></div></div>';
+  }
+
+  /** \u884C\u5167\u7DE8\u8F2F\u6846\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u56DE\u8986\u5171\u7528\uFF09\u3002draft\uFF1D\u76EE\u524D\u8F38\u5165\u4E2D\u7684\u6587\u5B57\u3002 */
+  function renderEditor(opts) {
+    return '<div class="rk-edit">' + renderToolbar() +
+      '<textarea data-rk-edit-box="' + esc(opts.id) + '" aria-label="\u7DE8\u8F2F\u5167\u5BB9">' + esc(opts.draft) + '</textarea>' +
+      '<div class="rk-err" data-rk-err="' + esc(opts.id) + '"></div>' +
+      '<div class="rk-row2"><button type="button" class="rk-ghost" data-rk-edit-cancel="1">\u53D6\u6D88</button>' +
+      '<button type="button" class="rk-send" data-rk-edit-save="' + esc(opts.id) + '"' + (opts.busy ? ' disabled' : '') + '>' + (opts.busy ? '\u5132\u5B58\u4E2D\u2026' : '\u5132\u5B58') + '</button></div></div>';
+  }
+
+  /**
+   * \u56DE\u8986\u4E32\u3002opts = { mode, me, replies, editing, confirming, busyId, draft }
+   * \u6BCF\u5247 reply: { record_id, author, content, created_at, quote, quote_pos, deleted, state, kind, supporters, note }
+   */
+  function renderThread(opts) {
+    var mode = opts.mode === 'card' ? 'card' : 'note';
+    var list = sortThread(opts.replies);
+    var html = list.length ? '' : '<div class="rk-gone">\u9084\u6C92\u6709' + (mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00') + '\u3002</div>';
+    list.forEach(function (r) {
+      var id = r.record_id;
+      if (r.state === 'withdrawn') return;
+      if (r.deleted) { html += '<div class="rk-thread"><span class="rk-gone">\u9019\u5247\u56DE\u8986\u5DF2\u522A\u9664</span></div>'; return; }
+      var mine = !!opts.me && r.author === opts.me;
+      var legacyOpen = !r.author; // \u820A\u8CC7\u6599\uFF08\u6C92\u6709\u4F5C\u8005\u6B04\uFF09\uFF1A\u4EFB\u4F55\u767B\u5165\u8005\u90FD\u80FD\u52D5\uFF0C\u540C update_note\uFF0Fdelete_note \u7684\u5F8C\u7AEF\u5B88\u9580
+      var ctx = { mode: mode, kind: 'reply', mine: mine || (mode === 'note' && legacyOpen), state: r.state || (mode === 'card' ? 'pending' : 'live'), supporters: r.supporters | 0 };
+      var perm = can(ctx);
+      var pill = '';
+      if (mode === 'card') {
+        var cls = r.state === 'adopted' ? 'rk-ok' : (/^\u5167\u5BB9\u4E0D\u5C0D/.test(r.kind || '') ? 'rk-bad' : '');
+        pill = (r.state === 'adopted' ? '<span class="rk-pill rk-ok">\u5DF2\u7D0D\u5165</span>' : '') + (r.kind ? '<span class="rk-pill ' + cls + '">' + esc(r.kind) + '</span>' : '');
+      }
+      var head = '<div class="rk-h"><b>' + esc(r.author || '\uFF08\u672A\u7F72\u540D\uFF09') + '</b>' + pill + '<span>' + esc(formatTime(r.created_at)) + (r.edited_at ? '\u30FB\u5DF2\u7DE8\u8F2F' : '') + '</span></div>';
+      var q = r.quote ? '<button type="button" class="rk-q" data-rk-jump="' + esc(id) + '" title="\u8DF3\u5230\u539F\u6587">' + esc(r.quote.length > 80 ? r.quote.slice(0, 80) + '\u2026' : r.quote) + '</button>' : '';
+      var body;
+      if (opts.editing === id) {
+        body = renderEditor({ id: id, draft: opts.draft != null ? opts.draft : r.content, busy: opts.busyId === id });
+      } else {
+        body = '<div class="rk-body">' + NC.renderMarkdown(r.content) + '</div>';
+      }
+      var acts = '';
+      if (opts.editing !== id) {
+        var a = [];
+        if (perm.edit) a.push('<button type="button" data-rk-edit="' + esc(id) + '">\u7DE8\u8F2F</button>');
+        if (perm.delete) a.push('<button type="button" class="rk-d" data-rk-del="' + esc(id) + '">\u522A\u9664</button>');
+        if (perm.note) a.push('<span class="rk-note">' + esc(perm.note) + '</span>');
+        if (a.length) acts = '<div class="rk-acts">' + a.join('') + '</div>';
+      }
+      var conf = opts.confirming === id ? renderConfirm(deleteWarning(ctx), 'reply', id) : '';
+      html += '<div class="rk-thread" data-rk-thread="' + esc(id) + '">' + q + head + body + acts + conf + '</div>';
+    });
+    return html;
+  }
+
+  /** \u5E95\u90E8\u56DE\u8986\u6846\uFF08\u5C0D\u6574\u7BC7\u56DE\u8986\uFF1B\u6709 quote \u5C31\u662F\u5F15\u7528\u56DE\u8986\uFF09\u3002 */
+  function renderComposer(opts) {
+    var mode = opts.mode === 'card' ? 'card' : 'note';
+    var reasons = opts.reasons && opts.reasons.length ? opts.reasons : DEFAULT_REASONS;
+    var chip = opts.quote ? '<div class="rk-qchip"><span>\u5F15\u7528\uFF1A\u300C' + esc(opts.quote.text.length > 80 ? opts.quote.text.slice(0, 80) + '\u2026' : opts.quote.text) + '\u300D</span>' +
+      '<button type="button" data-rk-qclear="' + esc(opts.docId) + '">\u79FB\u9664</button></div>' : '';
+    var kinds = '';
+    if (mode === 'card') {
+      kinds = '<label>\u7406\u7531 <select data-rk-reason="' + esc(opts.docId) + '" aria-label="\u5EFA\u8B70\u7406\u7531">' +
+        reasons.concat([OTHER]).map(function (r) { return '<option value="' + esc(r) + '"' + (opts.reason === r ? ' selected' : '') + '>' + esc(r === OTHER ? '\u5176\u4ED6\uFF08\u81EA\u5DF1\u586B\uFF09' : r) + '</option>'; }).join('') +
+        '</select></label><input type="text" data-rk-other="' + esc(opts.docId) + '" placeholder="\u8ACB\u5BEB\u4E0B\u7406\u7531" aria-label="\u5176\u4ED6\u7406\u7531" value="' + esc(opts.otherText || '') + '"' + (opts.reason === OTHER ? '' : ' hidden') + '>';
+    }
+    return '<div class="rk-composer">' + renderToolbar() + chip +
+      '<textarea data-rk-box="' + esc(opts.docId) + '" aria-label="' + esc(sendLabel(mode)) + '\u5167\u5BB9" placeholder="' + (mode === 'card' ? '\u5C0D\u6574\u7BC7\u63D0\u51FA\u5EFA\u8B70\uFF0C\u6216\u5148\u9078\u4E00\u6BB5\u6587\u5B57\u5F15\u7528\u2026' : '\u5C0D\u6574\u7BC7\u7559\u8A00\uFF0C\u6216\u5148\u9078\u4E00\u6BB5\u6587\u5B57\u5F15\u7528\u2026') + '">' + esc(opts.draft || '') + '</textarea>' +
+      '<div class="rk-err" data-rk-err="' + esc(opts.docId) + '">' + esc(opts.error || '') + '</div>' +
+      '<div class="rk-row2">' + kinds + '<button type="button" class="rk-send" data-rk-send="' + esc(opts.docId) + '"' + (opts.busy ? ' disabled' : '') + '>' + (opts.busy ? '\u9001\u51FA\u4E2D\u2026' : esc(sendLabel(mode))) + '</button></div></div>';
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return String(d.getMonth() + 1) + '/' + String(d.getDate()) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  /**
+   * \u639B\u4E0A\u300C\u5DE5\u5177\u5217\u6309\u9215\u300D\u7684\u4E8B\u4EF6\uFF1A\u9EDE data-rk-tool \u6642\u628A\u5C0D\u61C9\u7684 Markdown \u63D2\u9032\u540C\u4E00\u500B container \u5167\u6700\u8FD1\u7684 textarea\u3002
+   * \u4E00\u500B container \u639B\u4E00\u6B21\uFF08\u4E8B\u4EF6\u59D4\u6D3E\uFF09\uFF0C\u91CD\u7E6A\u4E0D\u5FC5\u91CD\u639B\u3002
+   */
+  function installToolbar(container) {
+    container.addEventListener('mousedown', function (e) {
+      // \u4E0D\u8B93\u6309\u9215\u6436\u8D70 textarea \u7684\u7126\u9EDE\u8207\u9078\u53D6\u7BC4\u570D\u2014\u2014\u5426\u5247\u300C\u9078\u4E00\u6BB5\u5B57\u518D\u6309\u7C97\u9AD4\u300D\u6703\u5148\u5931\u53BB\u9078\u53D6\u3002
+      if (e.target.closest && e.target.closest('[data-rk-tool]')) e.preventDefault();
+    });
+    container.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-rk-tool]');
+      if (!b) return;
+      var scope = b.closest('.rk-composer,.rk-edit');
+      var ta = scope && scope.querySelector('textarea');
+      if (!ta) return;
+      var r = applyTool(ta.value, ta.selectionStart, ta.selectionEnd, b.getAttribute('data-rk-tool'));
+      ta.value = r.value;
+      ta.focus();
+      ta.setSelectionRange(r.start, r.end);
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  /**
+   * \u9078\u4E00\u6BB5\u6B63\u6587 \u2192 \u9078\u53D6\u8655\u4E0A\u65B9\u6D6E\u51FA\u300C\u5F15\u7528\u56DE\u8986\u300D\uFF08\u9760\u8FD1\u756B\u9762\u9802\u90E8\u6539\u5728\u4E0B\u65B9\uFF09\u3002
+   * \u684C\u6A5F\u653E\u958B\u6ED1\u9F20\u3001\u624B\u6A5F\u9577\u6309\u9078\u53D6\uFF08selectionchange\uFF09\u90FD\u6703\u89F8\u767C\u3002
+   * docSelector\uFF1A\u6B63\u6587\u5143\u7D20\u7684\u9078\u64C7\u5668\uFF0C\u4E14\u5B83\u8981\u6709 data-rk-doc="<docId>"\uFF1BpopupHost\uFF1Apopup \u8981\u5B9A\u4F4D\u5728\u54EA\u500B position:relative \u5143\u7D20\u88E1\u7684\u9078\u64C7\u5668\u3002
+   * onQuote(docId, text, pos)\uFF1A\u6309\u4E0B\u300C\u5F15\u7528\u56DE\u8986\u300D\u6642\u547C\u53EB\u3002
+   */
+  function installSelection(container, opts) {
+    var timer = null;
+    function clear() { var p = container.querySelector('.rk-pop'); if (p && p.parentNode) p.parentNode.removeChild(p); }
+    function check() {
+      clear();
+      var sel = (typeof window !== 'undefined' && window.getSelection) ? window.getSelection() : null;
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      var text = sel.toString().replace(/\\s+/g, ' ').trim();
+      if (!text) return;
+      var anchor = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+      var focus = sel.focusNode && (sel.focusNode.nodeType === 1 ? sel.focusNode : sel.focusNode.parentElement);
+      var doc = anchor && anchor.closest && anchor.closest(opts.docSelector);
+      if (!doc || !container.contains(doc) || !focus || !doc.contains(focus)) return; // \u53EA\u8A8D\u300C\u9078\u5728\u540C\u4E00\u5247\u6B63\u6587\u88E1\u300D
+      var host = doc.closest(opts.hostSelector);
+      if (!host) return;
+      var rc = sel.getRangeAt(0).getBoundingClientRect();
+      var hr = host.getBoundingClientRect();
+      var pop = document.createElement('div');
+      pop.className = 'rk-pop';
+      pop.innerHTML = '<button type="button">\u5F15\u7528\u56DE\u8986</button>';
+      host.appendChild(pop);
+      var left = Math.max(4, Math.min(rc.left - hr.left, hr.width - pop.offsetWidth - 4));
+      var above = rc.top - hr.top - pop.offsetHeight - 6;
+      pop.style.left = left + 'px';
+      pop.style.top = (above < 0 ? rc.bottom - hr.top + 6 : above) + 'px'; // \u9760\u8FD1\u9802\u90E8\u6539\u5728\u4E0B\u65B9
+      var plain = (doc.textContent || '').replace(/\\s+/g, ' ');
+      var idx = plain.indexOf(text);
+      var btn = pop.firstChild;
+      var fire = function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        var docId = doc.getAttribute('data-rk-doc');
+        clear();
+        sel.removeAllRanges();
+        opts.onQuote(docId, text.slice(0, 300), idx < 0 ? 0 : idx);
+      };
+      btn.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // \u4E0D\u8B93\u6309\u4E0B\u53BB\u6E05\u6389\u9078\u53D6
+      btn.addEventListener('click', fire);
+    }
+    function later() { clearTimeout(timer); timer = setTimeout(check, 180); }
+    container.addEventListener('mouseup', later);
+    container.addEventListener('touchend', later);
+    document.addEventListener('selectionchange', later);
+    return { clear: clear, destroy: function () { document.removeEventListener('selectionchange', later); clearTimeout(timer); } };
+  }
+
+  /** \u9EDE\u300C\u5F15\u7528\u7684\u90A3\u4E00\u884C\u300D\u2192 \u6372\u5230\u539F\u6587\u4E26\u6A19\u4EAE\u90A3\u4E00\u6BB5\uFF08\u7D04 2.5 \u79D2\uFF09\u3002\u627E\u4E0D\u5230\u6574\u6BB5\uFF08\u8DE8\u4E86\u683C\u5F0F\u908A\u754C\uFF09\u5C31\u53EA\u6372\u904E\u53BB\u3002 */
+  function flashQuote(docEl, text) {
+    if (!docEl || !text) return;
+    var done = false;
+    var walker = document.createTreeWalker(docEl, NodeFilter.SHOW_TEXT);
+    var n;
+    while ((n = walker.nextNode())) {
+      var i = n.nodeValue.indexOf(text);
+      if (i < 0) continue;
+      try {
+        var rg = document.createRange();
+        rg.setStart(n, i); rg.setEnd(n, i + text.length);
+        var m = document.createElement('mark');
+        m.className = 'rk-hit';
+        rg.surroundContents(m);
+        setTimeout(function () { if (m.parentNode) { var p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); p.normalize(); } }, 2500);
+        m.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        done = true;
+      } catch (e) { /* \u8DE8\u7BC0\u9EDE\u9078\u4E0D\u8D77\u4F86\u5C31\u9000\u56DE\u53EA\u6372\u52D5 */ }
+      break;
+    }
+    if (!done && docEl.scrollIntoView) docEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  var ReplyKit = {
+    // \u7D14\u908F\u8F2F
+    sendLabel: sendLabel, DEFAULT_REASONS: DEFAULT_REASONS, OTHER: OTHER, composeReason: composeReason,
+    can: can, deleteWarning: deleteWarning, sortThread: sortThread, TOOLS: TOOLS, applyTool: applyTool,
+    // \u756B\u9762
+    CSS: CSS, injectCss: injectCss, renderToolbar: renderToolbar, renderBar: renderBar, renderMenu: renderMenu,
+    renderConfirm: renderConfirm, renderEditor: renderEditor, renderThread: renderThread, renderComposer: renderComposer,
+    installToolbar: installToolbar, installSelection: installSelection, flashQuote: flashQuote, formatTime: formatTime
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = ReplyKit;
+  else root.ReplyKit = ReplyKit;
 })(typeof window !== 'undefined' ? window : this);
 
 <\/script>
@@ -12432,12 +13301,24 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   // \u2500\u2500 \u72C0\u614B \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   var state = {
     notes: [],          // \u76EE\u524D\u62FF\u5230\u7684\u5168\u90E8\u7B46\u8A18\uFF08\u672A\u904E\u6FFE\uFF0C\u6BCF\u5247\u5E36 replies[]\uFF0C\u898B notes-list.yaml\uFF09
+    me: '',             // \u6309\u7684\u4EBA\uFF08Portal \u767B\u5165\u540D\uFF1BMOCK \u662F\u56FA\u5B9A\u4E00\u500B\u540D\u5B57\uFF09\u2014\u2014\u6C7A\u5B9A\u54EA\u4E9B\u7B46\u8A18\uFF0F\u56DE\u8986\u986F\u793A\u300C\u7DE8\u8F2F\uFF0F\u522A\u9664\u300D\uFF0C\u771F\u6B63\u7684\u5B88\u9580\u5728\u5F8C\u7AEF
     selectedDate: null, // \u5C0F\u65E5\u66C6\u9078\u4E2D\u7684\u65E5\u671F\uFF1Bnull = \u986F\u793A\u5168\u90E8
     calYear: new Date().getFullYear(),
     calMonth: new Date().getMonth(),
     calendarOpen: false,
-    openReplyFor: null,   // \u76EE\u524D\u6253\u958B\u56DE\u8986\u8F38\u5165\u6846\u7684\u90A3\u5247 record_id\uFF1Bnull = \u90FD\u6C92\u958B
-    replySubmitting: false,
+    openThread: {},     // record_id -> true\uFF1A\u9019\u4E00\u5247\u7684\u7559\u8A00\u4E32\uFF08\u53F3\u4E0A\u89D2\u300C\u7559\u8A00\u300D\uFF09\u662F\u5C55\u958B\u7684
+    menuFor: null,      // \u300C\u22EF\u300D\u9078\u55AE\u958B\u5728\u54EA\u4E00\u5247
+    editing: null,      // \u6B63\u5728\u884C\u5167\u7DE8\u8F2F\u7684 record_id\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u67D0\u5247\u56DE\u8986\uFF0C\u5169\u8005\u5171\u7528\u540C\u4E00\u500B\u7DE8\u8F2F\u6846\uFF09
+    editDraft: '',      // \u7DE8\u8F2F\u6846\u76EE\u524D\u7684\u5B57\uFF08\u91CD\u7E6A\u6642\u4E0D\u4E1F\uFF09
+    confirmDoc: null,   // \u6B63\u5728\u78BA\u8A8D\u300C\u522A\u9664\u9019\u5247\u7B46\u8A18\u300D\u7684 record_id
+    cardCounts: {},     // record_id \u2192 \u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210\u5E7E\u5F35\u73FE\u5F79\u7684\u5361\uFF08\u522A\u9664\u524D\u554F note_cards \u5F97\u5230\uFF1B\u5931\u6557\u5C31\u6C92\u6709\u6578\u5B57\u3001\u4E0D\u4E82\u731C\uFF09
+    checkingDoc: null,  // \u6B63\u5728\u554F\u300C\u9019\u5247\u7B46\u8A18\u6574\u7406\u6210\u5E7E\u5F35\u5361\u300D\u7684 record_id\uFF08\u554F\u5B8C\u624D\u8DF3\u51FA\u78BA\u8A8D\u6846\uFF0C\u514D\u5F97\u63D0\u793A\u5C11\u4E86\u6578\u5B57\uFF09
+    confirmReply: null, // \u6B63\u5728\u78BA\u8A8D\u300C\u522A\u9664\u9019\u5247\u56DE\u8986\u300D\u7684 record_id
+    drafts: {},         // record_id -> \u9084\u6C92\u9001\u51FA\u7684\u7559\u8A00\u8349\u7A3F\uFF08\u91CD\u7E6A\u6642\u4E0D\u4E1F\uFF09
+    quote: {},          // record_id -> { text, pos }\uFF1A\u9078\u5B57\u5F8C\u6309\u300C\u5F15\u7528\u56DE\u8986\u300D\u66AB\u5B58\u7684\u5F15\u7528
+    errors: {},         // record_id -> \u9019\u4E00\u5247\u6700\u8FD1\u4E00\u6B21\u52D5\u4F5C\u7684\u932F\u8AA4\u8A0A\u606F
+    busy: null,         // \u6B63\u5728\u7B49\u5F8C\u7AEF\u56DE\u61C9\u7684\u90A3\u4E00\u5247\uFF08record_id\uFF09
+    focusBox: null,     // \u91CD\u7E6A\u5F8C\u8981\u628A\u6E38\u6A19\u653E\u9032\u54EA\u4E00\u5247\u7684\u7559\u8A00\u6846
   };
 
   // \u2500\u2500 DOM \u53C3\u7167 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -12465,7 +13346,8 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   // \u2500\u2500 \u6CB3\u9053\u6E32\u67D3 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
   // \u6CB3\u9053\u662F Facebook \u6CB3\u9053\u5F0F\uFF08leo 2026-08-24 \u53CD\u994B\uFF09\uFF1A\u6BCF\u4E00\u5247\u7B46\u8A18\u662F\u4E00\u5F35\u5361\u7247\uFF08\u898B\u4E0A\u65B9 CSS
-  // .note-card \u7684\u908A\u6846\uFF09\uFF0C\u56DE\u8986\u662F indented \u639B\u5728\u8A72\u5247\u5E95\u4E0B\uFF0C\u4E0D\u662F\u5E73\u884C\u7684\u7368\u7ACB\u5361\u7247\u3002
+  // .note-card \u7684\u908A\u6846\uFF09\u30022026-11-11\uFF08arcrun-app-note#2\uFF09\uFF1A\u56DE\u8986\u3001\u7DE8\u8F2F\u3001\u522A\u9664\u3001\u9078\u5B57\u5F15\u7528\u3001\u5DE5\u5177\u5217
+  // \u5168\u90E8\u6539\u7528\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684 ReplyKit\uFF0C\u9019\u88E1\u53EA\u8CA0\u8CAC\u628A\u72C0\u614B\u9935\u7D66\u5B83\u3001\u628A\u52D5\u4F5C\u9001\u5230\u5F8C\u7AEF\u3002
   function renderRiver() {
     var list = state.selectedDate ? NotesCore.filterByDate(state.notes, state.selectedDate) : state.notes.slice();
     list = NotesCore.sortNotesDesc(list);
@@ -12477,110 +13359,243 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       return;
     }
 
-    var html = list.map(renderNoteCard).join('');
-    river.innerHTML = html;
+    river.innerHTML = list.map(renderNoteCard).join('');
 
-    // \u56DE\u8986\u8F38\u5165\u6846\u6253\u958B\u6642\uFF0C\u5E36\u8457\u5B83\u4E00\u8D77\u91CD\u7E6A\uFF08renderRiver \u662F\u6BCF\u6B21 loadNotes/selectDate \u90FD\u6703\u547C\u53EB\u7684
-    // \u5168\u91CF\u91CD\u7E6A\uFF0C\u82E5\u4E0D\u5728\u9019\u88E1\u628A\u6E38\u6A19\u653E\u56DE\u53BB\uFF0C\u4F7F\u7528\u8005\u9EDE\u958B\u56DE\u8986\u6846\u5F8C\u6BCF\u6B21\u5217\u8868\u66F4\u65B0\u90FD\u6703\u5931\u7126\uFF09\u3002
-    if (state.openReplyFor) {
-      var box = river.querySelector('.reply-composer textarea[data-parent="' + state.openReplyFor + '"]');
-      if (box) box.focus();
+    // \u5168\u91CF\u91CD\u7E6A\u6703\u8B93\u6E38\u6A19\u6389\u51FA\u8F38\u5165\u6846\uFF1B\u8981\u6253\u5B57\u7684\u90A3\u4E00\u683C\u5728\u9019\u88E1\u63A5\u56DE\u53BB\u3002
+    if (state.focusBox) {
+      var box = river.querySelector('[data-rk-box="' + cssEsc(state.focusBox) + '"]');
+      if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+      state.focusBox = null;
+    } else if (state.editing) {
+      var eb = river.querySelector('[data-rk-edit-box="' + cssEsc(state.editing) + '"]');
+      if (eb && document.activeElement !== eb) { eb.focus(); eb.setSelectionRange(eb.value.length, eb.value.length); }
     }
   }
 
+  function cssEsc(s) { return String(s).replace(/["\\\\]/g, '\\\\$&'); }
+
+  /** \u9019\u4E00\u5247\u662F\u4E0D\u662F\u300C\u6211\u7684\u300D\uFF1A\u4F5C\u8005\u6B04\u7A7A\uFF1D\u820A\u8CC7\u6599\uFF081.2.0 \u4EE5\u524D\u5BEB\u7684\uFF09\uFF0C\u4EFB\u4F55\u767B\u5165\u8005\u90FD\u80FD\u52D5\uFF08\u540C\u5F8C\u7AEF\u5B88\u9580\u7684\u8AAA\u6CD5\uFF09\u3002 */
+  function isMine(n) { return !n.author || (!!state.me && n.author === state.me); }
+
   function renderNoteCard(n) {
-    var meta = n.date + '\u3000' + formatTime(n.created_at);
-    var replies = n.replies || [];
-    var repliesHtml = replies.length ? (
-      '<div class="replies">' + replies.map(renderReplyLine).join('') + '</div>'
-    ) : '';
-    var isOpen = state.openReplyFor === n.record_id;
-    var replyComposerHtml = isOpen ? renderReplyComposer(n.record_id) : '';
-    return '<div class="note-card" data-note-id="' + attr(n.record_id) + '">' +
-      '<div class="meta">' + NotesCore.escapeHtml(meta) + '</div>' +
-      '<div class="content">' + NotesCore.renderMarkdown(n.content) + '</div>' +
-      '<div class="note-footer">' +
-        '<button type="button" class="reply-toggle" data-reply-toggle="' + attr(n.record_id) + '">' +
-          (replies.length ? '\u56DE\u8986\uFF08' + replies.length + '\uFF09' : '\u56DE\u8986') +
-        '</button>' +
-      '</div>' +
-      repliesHtml +
-      replyComposerHtml +
-      '</div>';
-  }
+    var id = n.record_id;
+    var replies = (n.replies || []).filter(function (r) { return !r.deleted; });
+    var perm = ReplyKit.can({ mode: 'note', kind: 'doc', mine: isMine(n), state: 'live' });
+    var meta = n.date + '\u3000' + formatTime(n.created_at) + (n.edited_at ? '\u3000\u5DF2\u7DE8\u8F2F' : '');
+    var open = !!state.openThread[id];
 
-  function renderReplyLine(r) {
-    return '<div class="reply-line">' +
-      '<div class="meta">' + NotesCore.escapeHtml(formatTime(r.created_at)) + '</div>' +
-      '<div class="content">' + NotesCore.renderMarkdown(r.content) + '</div>' +
-      '</div>';
-  }
-
-  function renderReplyComposer(parentId) {
-    return '<div class="reply-composer">' +
-      '<textarea data-parent="' + attr(parentId) + '" placeholder="\u5BEB\u56DE\u8986\u2026\u2026\uFF08\u2318+Enter \u9001\u51FA\u3001Esc \u6536\u8D77\uFF09"></textarea>' +
-      '<div class="reply-composer-row">' +
-        '<button type="button" data-reply-cancel="' + attr(parentId) + '">\u53D6\u6D88</button>' +
-        '<button type="button" class="primary" data-reply-submit="' + attr(parentId) + '"' +
-          (state.replySubmitting ? ' disabled' : '') + '>' +
-          (state.replySubmitting ? '\u9001\u51FA\u4E2D\u2026' : '\u9001\u51FA') +
-        '</button>' +
-      '</div>' +
+    var body;
+    if (state.editing === id) {
+      body = ReplyKit.renderEditor({ id: id, draft: state.editDraft, busy: state.busy === id });
+    } else {
+      body = '<div class="content" data-rk-doc="' + attr(id) + '">' + NotesCore.renderMarkdown(n.content) + '</div>';
+    }
+    var confirm = state.confirmDoc === id
+      ? ReplyKit.renderConfirm(ReplyKit.deleteWarning({ mode: 'note', kind: 'doc', mine: true, state: 'live' }, { cardCount: state.cardCounts[id] }), 'doc', id)
+      : '';
+    var err = state.errors[id] ? '<div class="rk-err">' + NotesCore.escapeHtml(state.errors[id]) + '</div>' : '';
+    var drawer = '';
+    if (open) {
+      drawer = '<div class="rk-drawer">' +
+        ReplyKit.renderThread({
+          mode: 'note', me: state.me, replies: n.replies || [],
+          editing: state.editing, draft: state.editDraft, busyId: state.busy,
+          confirming: state.confirmReply
+        }) +
+        ReplyKit.renderComposer({
+          mode: 'note', docId: id, draft: state.drafts[id] || '', quote: state.quote[id] || null,
+          busy: state.busy === 'send:' + id, error: state.errors['send:' + id] || ''
+        }) +
+        '</div>';
+    }
+    return '<div class="note-card" data-note-id="' + attr(id) + '">' +
+      '<div class="card-top"><span class="meta">' + NotesCore.escapeHtml(meta) + '</span>' +
+        ReplyKit.renderBar({ mode: 'note', docId: id, count: replies.length, open: open,
+          hasMenu: perm.edit || perm.delete, menuOpen: state.menuFor === id }) + '</div>' +
+      (state.menuFor === id ? ReplyKit.renderMenu({ docId: id, canEdit: perm.edit, canDelete: perm.delete }) : '') +
+      body + err + confirm + drawer +
       '</div>';
   }
 
   function attr(s) { return NotesCore.escapeHtml(String(s == null ? '' : s)); }
 
+  function findNote(id) {
+    for (var i = 0; i < state.notes.length; i++) {
+      if (state.notes[i].record_id === id) return state.notes[i];
+      var rs = state.notes[i].replies || [];
+      for (var j = 0; j < rs.length; j++) if (rs[j].record_id === id) return rs[j];
+    }
+    return null;
+  }
+  function parentOfReply(id) {
+    for (var i = 0; i < state.notes.length; i++) {
+      var rs = state.notes[i].replies || [];
+      for (var j = 0; j < rs.length; j++) if (rs[j].record_id === id) return state.notes[i];
+    }
+    return null;
+  }
+
+  function resetTransient() {
+    state.menuFor = null; state.editing = null; state.editDraft = '';
+    state.confirmDoc = null; state.confirmReply = null; state.checkingDoc = null;
+  }
+
   river.addEventListener('click', function (e) {
-    var toggleBtn = e.target.closest('[data-reply-toggle]');
-    if (toggleBtn) {
-      var id = toggleBtn.getAttribute('data-reply-toggle');
-      state.openReplyFor = state.openReplyFor === id ? null : id;
-      renderRiver();
+    var t = e.target;
+    function hit(sel) { return t.closest ? t.closest(sel) : null; }
+    var b;
+    if ((b = hit('[data-rk-toggle]'))) {
+      var tid = b.getAttribute('data-rk-toggle');
+      state.openThread[tid] = !state.openThread[tid];
+      if (state.openThread[tid]) state.focusBox = tid;
+      state.menuFor = null;
+      renderRiver(); return;
+    }
+    if ((b = hit('[data-rk-more]'))) {
+      var mid = b.getAttribute('data-rk-more');
+      state.menuFor = state.menuFor === mid ? null : mid;
+      renderRiver(); return;
+    }
+    if ((b = hit('[data-rk-edit-doc]'))) {
+      var eid = b.getAttribute('data-rk-edit-doc');
+      resetTransient();
+      state.editing = eid; state.editDraft = (findNote(eid) || {}).content || '';
+      renderRiver(); return;
+    }
+    if ((b = hit('[data-rk-edit]'))) {
+      var rid = b.getAttribute('data-rk-edit');
+      resetTransient();
+      state.editing = rid; state.editDraft = (findNote(rid) || {}).content || '';
+      renderRiver(); return;
+    }
+    if (hit('[data-rk-edit-cancel]')) { resetTransient(); renderRiver(); return; }
+    if ((b = hit('[data-rk-edit-save]'))) { saveEdit(b.getAttribute('data-rk-edit-save')); return; }
+    if ((b = hit('[data-rk-del-doc]'))) { askDeleteDoc(b.getAttribute('data-rk-del-doc')); return; }
+    if ((b = hit('[data-rk-del]'))) { resetTransient(); state.confirmReply = b.getAttribute('data-rk-del'); renderRiver(); return; }
+    if (hit('[data-rk-no]')) { state.confirmDoc = null; state.confirmReply = null; renderRiver(); return; }
+    if ((b = hit('[data-rk-yes]'))) { doDelete(b.getAttribute('data-id')); return; }
+    if ((b = hit('[data-rk-send]'))) { sendReply(b.getAttribute('data-rk-send')); return; }
+    if ((b = hit('[data-rk-qclear]'))) { delete state.quote[b.getAttribute('data-rk-qclear')]; renderRiver(); return; }
+    if ((b = hit('[data-rk-jump]'))) {
+      var r = findNote(b.getAttribute('data-rk-jump'));
+      var card = hit('.note-card');
+      if (r && card) ReplyKit.flashQuote(card.querySelector('.content'), r.quote);
       return;
     }
-    var cancelBtn = e.target.closest('[data-reply-cancel]');
-    if (cancelBtn) {
-      state.openReplyFor = null;
-      renderRiver();
-      return;
-    }
-    var submitBtnEl = e.target.closest('[data-reply-submit]');
-    if (submitBtnEl) {
-      submitReply(submitBtnEl.getAttribute('data-reply-submit'));
-    }
+    // \u9EDE\u5230\u5361\u7247\u4EE5\u5916\uFF0F\u5225\u7684\u5730\u65B9\uFF1A\u6536\u8D77\u300C\u22EF\u300D\u9078\u55AE
+    if (state.menuFor) { state.menuFor = null; renderRiver(); }
+  });
+
+  // \u8349\u7A3F\u8DDF\u8457\u6253\u5B57\u5B58\u9032 state\u2014\u2014\u91CD\u7E6A\uFF08\u958B\u95DC\u9078\u55AE\u3001\u522A\u9664\u78BA\u8A8D\u2026\u2026\uFF09\u4E0D\u6703\u5403\u6389\u6253\u5230\u4E00\u534A\u7684\u5B57\u3002
+  river.addEventListener('input', function (e) {
+    var t = e.target;
+    var k = t.getAttribute && t.getAttribute('data-rk-box');
+    if (k) { state.drafts[k] = t.value; return; }
+    if (t.getAttribute && t.getAttribute('data-rk-edit-box')) state.editDraft = t.value;
   });
 
   river.addEventListener('keydown', function (e) {
-    var ta = e.target.closest('.reply-composer textarea');
-    if (!ta) return;
-    var parentId = ta.getAttribute('data-parent');
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); submitReply(parentId); return; }
-    if (e.key === 'Escape') { e.preventDefault(); state.openReplyFor = null; renderRiver(); }
+    var t = e.target;
+    var k = t.getAttribute && t.getAttribute('data-rk-box');
+    var ek = t.getAttribute && t.getAttribute('data-rk-edit-box');
+    if (k && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); sendReply(k); return; }
+    if (ek && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveEdit(ek); return; }
+    if (ek && e.key === 'Escape') { e.preventDefault(); resetTransient(); renderRiver(); return; }
+    if (k && e.key === 'Escape') { e.preventDefault(); state.openThread[k] = false; renderRiver(); }
   });
 
-  function submitReply(parentId) {
-    var ta = river.querySelector('.reply-composer textarea[data-parent="' + parentId + '"]');
-    var content = ta ? ta.value : '';
-    if (!content.trim()) return; // \u7A7A\u767D\u56DE\u8986\u4E0D\u9001\uFF0C\u975C\u9ED8\u64CB\u6389\uFF08\u540C\u4E3B composer \u7684\u300C\u4E0D\u80FD\u662F\u7A7A\u7684\u300D\u898F\u5247\uFF09
-    var parentNote = state.notes.filter(function (n) { return n.record_id === parentId; })[0];
-    var targetDate = (parentNote && parentNote.date) || NotesCore.todayISO();
-    state.replySubmitting = true;
+  ReplyKit.injectCss(river);
+  ReplyKit.installToolbar(river);
+  // \u9078\u4E00\u6BB5\u6B63\u6587 \u2192 \u9078\u53D6\u8655\u4E0A\u65B9\u6D6E\u51FA\u300C\u5F15\u7528\u56DE\u8986\u300D\uFF08\u684C\u6A5F\u653E\u958B\u6ED1\u9F20\u3001\u624B\u6A5F\u9577\u6309\u9078\u53D6\u90FD\u6703\u89F8\u767C\uFF09\u3002
+  ReplyKit.installSelection(river, {
+    docSelector: '[data-rk-doc]', hostSelector: '.note-card',
+    onQuote: function (docId, text, pos) {
+      state.quote[docId] = { text: text, pos: pos };
+      state.openThread[docId] = true;
+      state.focusBox = docId;
+      renderRiver();
+    }
+  });
+
+  /** \u9001\u51FA\u4E00\u5247\u7559\u8A00\uFF08\u5C0D\u6574\u7BC7\uFF0C\u6216\u5E36\u8457\u5F15\u7528\u7684\u90A3\u4E00\u6BB5\uFF09\u3002 */
+  function sendReply(docId) {
+    var content = (state.drafts[docId] || '').trim();
+    if (!content) { state.errors['send:' + docId] = '\u8ACB\u5148\u8F38\u5165\u7559\u8A00\u5167\u5BB9\u3002'; renderRiver(); return; }
+    var parent = findNote(docId);
+    var q = state.quote[docId];
+    var payload = { content: content, date: (parent && parent.date) || NotesCore.todayISO(), parent_id: docId };
+    if (q && q.text) { payload.quote = q.text; payload.quote_pos = q.pos; }
+    state.busy = 'send:' + docId; delete state.errors['send:' + docId];
     renderRiver();
-    callAction('create_note', { content: content, date: targetDate, parent_id: parentId }).then(function (resp) {
-      state.replySubmitting = false;
+    callAction('create_note', payload).then(function (resp) {
+      state.busy = null;
       var res = NotesCore.unwrapActionResult(resp);
       if (!res || !res.success) {
+        state.errors['send:' + docId] = '\u7559\u8A00\u9001\u51FA\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
         renderRiver();
-        window.alert('\u56DE\u8986\u9001\u51FA\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4'));
         return;
       }
-      state.openReplyFor = null;
       // \u5F8C\u7AEF\u56DE\u4F86\u7684 parent_id \u8DDF\u6211\u5011\u9001\u7684\u4E0D\u4E00\u81F4\uFF1D\u8CC7\u6599\u8868\u7F3A\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3001\u88AB\u975C\u9ED8\u4E1F\u6389\uFF08\u820A\u7248 note \u8CC7\u6599\u8868\u7684\u75C7\u72C0\uFF1A
       // \u56DE\u8986\u8B8A\u6210\u4E00\u5247\u9802\u5C64\u7B46\u8A18\uFF09\u3002\u4E0D\u5047\u88DD\u6210\u529F\uFF1A\u660E\u8B1B\uFF0C\u4E26\u6307\u51FA\u600E\u9EBC\u4FEE\uFF08inkstone/arcrun-app-note#1 c17811\uFF09\u3002
-      if (res.data && res.data.parent_id !== parentId) {
-        window.alert('\u9019\u5247\u56DE\u8986\u88AB\u5B58\u6210\u4E86\u7368\u7ACB\u7B46\u8A18\uFF1A\u9019\u53F0\u7684\u7B46\u8A18\u8CC7\u6599\u8868\u9084\u6C92\u6709\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3002\u8ACB\u5230 App \u5E02\u96C6\u628A\u300C\u7B46\u8A18\u300D\u66F4\u65B0\u5230\u6700\u65B0\u7248\uFF08\u6703\u81EA\u52D5\u88DC\u6B04\u4F4D\uFF09\uFF0C\u518D\u91CD\u65B0\u56DE\u8986\u4E00\u6B21\u3002');
+      if (res.data && res.data.parent_id !== docId) {
+        state.errors['send:' + docId] = '\u9019\u5247\u56DE\u8986\u88AB\u5B58\u6210\u4E86\u7368\u7ACB\u7B46\u8A18\uFF1A\u9019\u53F0\u7684\u7B46\u8A18\u8CC7\u6599\u8868\u9084\u6C92\u6709\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3002\u8ACB\u5230 App \u5E02\u96C6\u628A\u300C\u7B46\u8A18\u300D\u66F4\u65B0\u5230\u6700\u65B0\u7248\uFF08\u6703\u81EA\u52D5\u88DC\u6B04\u4F4D\uFF09\uFF0C\u518D\u91CD\u65B0\u56DE\u8986\u4E00\u6B21\u3002';
+      } else {
+        state.drafts[docId] = ''; delete state.quote[docId];
       }
+      loadNotes();
+    });
+  }
+
+  /** \u5B58\u4E0B\u884C\u5167\u7DE8\u8F2F\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u67D0\u5247\u56DE\u8986\uFF09\u3002 */
+  function saveEdit(id) {
+    var content = (state.editDraft || '').trim();
+    if (!content) { state.errors[id] = '\u5167\u5BB9\u4E0D\u80FD\u662F\u7A7A\u7684\uFF08\u8981\u6E05\u6389\u8ACB\u7528\u522A\u9664\uFF09\u3002'; renderRiver(); return; }
+    state.busy = id; delete state.errors[id];
+    renderRiver();
+    callAction('update_note', { record_id: id, content: content }).then(function (resp) {
+      state.busy = null;
+      var res = NotesCore.unwrapActionResult(resp);
+      if (!res || !res.success) {
+        state.errors[id] = '\u5132\u5B58\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
+        renderRiver();
+        return;
+      }
+      resetTransient();
+      loadNotes();
+    });
+  }
+
+  /** \u6309\u300C\u522A\u9664\u300D\uFF1A\u5148\u554F\u9019\u5247\u7B46\u8A18\u6574\u7406\u51FA\u5E7E\u5F35\u5361\uFF0C\u518D\u8DF3\u78BA\u8A8D\u6846\uFF08\u63D0\u793A\u300C\u5DF2\u6574\u7406\u6210 N \u5F35\u5361\uFF0C\u522A\u9664\u5F8C\u9019\u4E9B\u5361\u6703\u4E0B\u67B6\u300D\uFF09\u3002 */
+  function askDeleteDoc(id) {
+    resetTransient();
+    state.checkingDoc = id;
+    callAction('note_cards', { record_id: id }).then(function (resp) {
+      if (state.checkingDoc !== id) return; // \u4F7F\u7528\u8005\u5728\u7B49\u7684\u6642\u5019\u6309\u4E86\u5225\u7684\uFF0C\u4E0D\u8981\u628A\u820A\u7B54\u6848\u84CB\u4E0A\u53BB
+      state.checkingDoc = null;
+      var res = NotesCore.unwrapActionResult(resp);
+      // \u554F\u4E0D\u5230\uFF08\u7DB2\u8DEF\u3001\u6B0A\u9650\uFF09\u5C31\u4E0D\u986F\u793A\u6578\u5B57\uFF1A\u5BE7\u53EF\u53EA\u554F\u300C\u522A\u9664\u9019\u5247\u7B46\u8A18\uFF1F\u300D\uFF0C\u4E5F\u4E0D\u5047\u88DD\u77E5\u9053\u6709 0 \u5F35\u5361\u3002
+      if (res && res.success && res.data && res.data.card_count > 0) state.cardCounts[id] = res.data.card_count;
+      else delete state.cardCounts[id];
+      state.confirmDoc = id;
+      renderRiver();
+    });
+  }
+
+  /** \u78BA\u8A8D\u5F8C\u7684\u522A\u9664\uFF08\u7B46\u8A18\u6216\u56DE\u8986\uFF0C\u5F8C\u7AEF\u662F\u300C\u6A19\u8A18\u522A\u9664\u300D\uFF09\u3002 */
+  function doDelete(id) {
+    state.busy = id; delete state.errors[id];
+    callAction('delete_note', { record_id: id }).then(function (resp) {
+      state.busy = null;
+      var res = NotesCore.unwrapActionResult(resp);
+      var parent = parentOfReply(id);
+      var errKey = parent ? parent.record_id : id; // \u56DE\u8986\u522A\u5931\u6557\u7684\u8A0A\u606F\u986F\u793A\u5728\u5B83\u6240\u5C6C\u90A3\u5F35\u5361
+      if (!res || !res.success) {
+        state.errors[errKey] = '\u522A\u9664\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
+        state.confirmDoc = null; state.confirmReply = null;
+        renderRiver();
+        return;
+      }
+      resetTransient();
       loadNotes();
     });
   }
@@ -12735,6 +13750,7 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
         return;
       }
       state.notes = (res.data && res.data.notes) || [];
+      state.me = (res.data && res.data.me) || '';
       renderRiver();
       if (state.calendarOpen) renderCalendar();
     });
@@ -12763,13 +13779,22 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
         "date",
         "content",
         "created_at",
-        "parent_id"
+        "parent_id",
+        "author",
+        "quote",
+        "quote_pos",
+        "deleted",
+        "deleted_at",
+        "edited_at"
       ]
     }
   ],
   actions: [
     "create_note",
-    "list_notes"
+    "list_notes",
+    "update_note",
+    "delete_note",
+    "note_cards"
   ]
 };
 
@@ -52888,8 +53913,14 @@ var APP_CATALOG = [
     icon: "\u{1F4DD}",
     // 2026-09-26（arcrun-app-note#1 → c11600）：v0.2 加了 Facebook 河道式設計——
     // 卡片外框、回覆（indented）、全螢幕輸入，跟著 declaration 一起升版。
-    summary: "\u96A8\u624B\u5BEB\u4E00\u5247\u7B46\u8A18\uFF0C\u53EF\u4EE5\u56DE\u8986\uFF1B\u4F9D\u65E5\u671F\u6392\u6210\u6CB3\u9053\uFF0C\u5BEB\u4E0B\u53BB\u7684\u5167\u5BB9\u9032\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u3002",
-    version: "1.1.1",
+    // 1.2.0（inkstone/arcrun-app-note#2，leo 2026-11-11「照規格」）：筆記可編輯、可刪除；回覆可引用一段原文、可編輯刪除；
+    // 工具列代替 Markdown 語法；右上角「留言」列出回覆串。note 資料表補 author／quote／quote_pos／deleted／deleted_at／edited_at 六格
+    // （已裝的實例按「更新」，ensureTemplate 超集補欄位，不新建表）。
+    // 1.3.0（inkstone/arcrun-app-note#3，leo 11-11「照規格」第 2 點）：刪筆記時，由它整理出的知識卡一起下架
+    // （卡的 metadata.source ＝ note://<筆記 record_id>；KBDB 新端點 deprecate-by-source，沒有新表新欄）；
+    // 刪除前提示「已整理成 N 張卡」（新動作 note_cards）。
+    summary: "\u96A8\u624B\u5BEB\u4E00\u5247\u7B46\u8A18\uFF0C\u53EF\u4EE5\u7DE8\u8F2F\u3001\u522A\u9664\uFF08\u6574\u7406\u51FA\u7684\u77E5\u8B58\u5361\u6703\u4E00\u8D77\u4E0B\u67B6\uFF09\uFF0C\u4E5F\u53EF\u4EE5\u7559\u8A00\u6216\u9078\u4E00\u6BB5\u6587\u5B57\u5F15\u7528\u56DE\u8986\uFF1B\u4F9D\u65E5\u671F\u6392\u6210\u6CB3\u9053\uFF0C\u5BEB\u4E0B\u53BB\u7684\u5167\u5BB9\u9032\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u3002",
+    version: "1.3.0",
     author: "Arcrun \u5167\u5EFA",
     declaration: notes_default
   },
