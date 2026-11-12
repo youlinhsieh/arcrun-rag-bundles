@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.171",
- "fingerprint": "5ec5e40bbee3cc37189a6997edd952d9a94e8e5291be3008781cdd7d8160afea",
+ "release": "1.4.173",
+ "fingerprint": "2cbc7e3c5391f8022913509fcb1d84038786b9b0f84d5e30280897c62fecbc54",
  "built": "2026-11-12",
- "source": "Arcrun@504d9ca0c77d",
+ "source": "Arcrun@78dadfbe3294",
  "daemon": {
   "version": "0.18.118",
   "built": "20261101-0820",
@@ -459,7 +459,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 396065,
+   "js_bytes": 409376,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -483,10 +483,10 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "ba098ae60e310c118bda9ca05d0a1847bd6c19fe",
-   "source_content_sha256": "8274fdc18eca5c2a2a374f38e9ef83ea2921198a8fc896f69206fe505936aeb0",
-   "sha256": "8274fdc18eca5c2a2a374f38e9ef83ea2921198a8fc896f69206fe505936aeb0",
-   "bytes": 396065
+   "source_commit": "78dadfbe3294304b3e32c5d31bf371e55549b762",
+   "source_content_sha256": "0e89460ead8f4d7a338a2396784ef2a3abf07bab6df190cccd1dc6420a6b3dcb",
+   "sha256": "0e89460ead8f4d7a338a2396784ef2a3abf07bab6df190cccd1dc6420a6b3dcb",
+   "bytes": 409376
   },
   {
    "name": "arcrun-mcp",
@@ -1186,7 +1186,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 396065,
+   "js_bytes": 409376,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1210,8 +1210,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "ba098ae60e310c118bda9ca05d0a1847bd6c19fe",
-   "source_content_sha256": "8274fdc18eca5c2a2a374f38e9ef83ea2921198a8fc896f69206fe505936aeb0",
+   "source_commit": "78dadfbe3294304b3e32c5d31bf371e55549b762",
+   "source_content_sha256": "0e89460ead8f4d7a338a2396784ef2a3abf07bab6df190cccd1dc6420a6b3dcb",
    "first_install": true
   },
   {
@@ -1838,7 +1838,7 @@
   }
  ],
  "installer": {
-  "version": "1.0.74"
+  "version": "1.0.75"
  },
  "payload_fingerprint": "ba1b82abfbaa9431331d6ccd906cb4bf4b133b70bf9ea8c5c3cc935abf065d4c"
 }
