@@ -13,10 +13,10 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -62,21 +62,21 @@ var init_compose = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -107,7 +107,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -154,10 +154,10 @@ var init_body = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -210,11 +210,11 @@ var init_url = __esm({
       }
       return null;
     };
-    tryDecode = (str2, decoder) => {
+    tryDecode = (str3, decoder) => {
       try {
-        return decoder(str2);
+        return decoder(str3);
       } catch {
-        return str2.replace(/(?:%[0-9A-Fa-f]{2})+/g, (match2) => {
+        return str3.replace(/(?:%[0-9A-Fa-f]{2})+/g, (match2) => {
           try {
             return decoder(match2);
           } catch {
@@ -223,7 +223,7 @@ var init_url = __esm({
         });
       }
     };
-    tryDecodeURI = (str2) => tryDecode(str2, decodeURI);
+    tryDecodeURI = (str3) => tryDecode(str3, decodeURI);
     getPath = (request) => {
       const url = request.url;
       const start = url.indexOf("/", url.indexOf(":") + 4);
@@ -363,15 +363,15 @@ var init_url = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants();
     init_body();
     init_url();
-    tryDecodeURIComponent = (str2) => tryDecode(str2, decodeURIComponent_);
+    tryDecodeURIComponent = (str3) => tryDecode(str3, decodeURIComponent_);
     HonoRequest = class {
       /**
        * `.raw` can get the raw Request object.
@@ -640,10 +640,10 @@ var init_request = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -655,23 +655,23 @@ var init_html = __esm({
       escapedString.callbacks = callbacks;
       return escapedString;
     };
-    resolveCallback = async (str2, phase, preserveCallbacks, context, buffer) => {
-      if (typeof str2 === "object" && !(str2 instanceof String)) {
-        if (!(str2 instanceof Promise)) {
-          str2 = str2.toString();
+    resolveCallback = async (str3, phase, preserveCallbacks, context, buffer) => {
+      if (typeof str3 === "object" && !(str3 instanceof String)) {
+        if (!(str3 instanceof Promise)) {
+          str3 = str3.toString();
         }
-        if (str2 instanceof Promise) {
-          str2 = await str2;
+        if (str3 instanceof Promise) {
+          str3 = await str3;
         }
       }
-      const callbacks = str2.callbacks;
+      const callbacks = str3.callbacks;
       if (!callbacks?.length) {
-        return Promise.resolve(str2);
+        return Promise.resolve(str3);
       }
       if (buffer) {
-        buffer[0] += str2;
+        buffer[0] += str3;
       } else {
-        buffer = [str2];
+        buffer = [str3];
       }
       const resStr = Promise.all(callbacks.map((c) => c({ phase, buffer, context }))).then(
         (res) => Promise.all(
@@ -687,10 +687,10 @@ var init_html = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1101,10 +1101,10 @@ var init_context = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1114,18 +1114,18 @@ var init_router = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1503,7 +1503,7 @@ var init_hono_base = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1524,13 +1524,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1552,7 +1552,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1643,10 +1643,10 @@ var init_node = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1705,7 +1705,7 @@ var init_trie = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1787,7 +1787,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -1894,27 +1894,27 @@ var init_router2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -1972,17 +1972,17 @@ var init_router3 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2161,10 +2161,10 @@ var init_node2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2190,17 +2190,17 @@ var init_router4 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2221,9 +2221,9 @@ var init_hono = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
   }
 });
@@ -2276,6 +2276,61 @@ var init_kbdb_caller = __esm({
       telemetry: "cypher-telemetry"
     };
     KBDB_ESSENTIAL_HEADER = "X-Arcrun-Essential";
+  }
+});
+
+// cypher-executor/src/lib/failure-evidence.ts
+function oneLine(body) {
+  const raw2 = typeof body === "string" ? body : body === void 0 || body === null ? "" : safeJson(body);
+  return raw2.replace(/\s+/g, " ").trim().slice(0, BODY_MAX);
+}
+function safeJson(v) {
+  try {
+    return JSON.stringify(v) ?? "";
+  } catch {
+    return String(v);
+  }
+}
+function httpFailureEvidence(res, ms, body) {
+  const parts = [`${ms}ms`];
+  const ray = res.headers.get("cf-ray");
+  if (ray) parts.push(`cf-ray ${ray}`);
+  const upMs = res.headers.get("x-upstream-ms");
+  const upRay = res.headers.get("x-upstream-cf-ray");
+  const upTry = res.headers.get("x-upstream-attempts");
+  const up = [];
+  if (upMs) up.push(`\u4E0A\u6E38 ${upMs}ms`);
+  if (upRay) up.push(`cf-ray ${upRay}`);
+  if (upTry && upTry !== "1") up.push(`\u8A66 ${upTry} \u6B21`);
+  if (up.length) parts.push(up.join("\uFF0F"));
+  const text = oneLine(body);
+  const busy = res.status === 503 && res.headers.has("retry-after") ? "\u3010kbdb_busy\uFF1A\u77E5\u8B58\u5EAB\u904E\u8F09\uFF0C\u7A0D\u5F8C\u518D\u8A66\u3011" : "";
+  return `${busy}HTTP ${res.status}\uFF08${parts.join("\uFF1B")}\uFF09${text ? `\u300C${text}\u300D` : "\uFF08\u5C0D\u65B9\u6C92\u6709\u9644\u8AAA\u660E\uFF09"}`;
+}
+function describeFailedOutput(out) {
+  if (typeof out.evidence === "string" && out.evidence) return out.evidence;
+  const parts = [];
+  if (typeof out.error === "string" && out.error) parts.push(out.error);
+  if (typeof out.status === "number") parts.push(`HTTP ${out.status}`);
+  const data = out.data;
+  if (data && typeof data === "object" && typeof data.body === "string") {
+    const b = oneLine(data.body);
+    if (b) parts.push(b);
+  } else if (data !== void 0 && data !== null && typeof out.status === "number") {
+    const b = oneLine(data);
+    if (b) parts.push(`\u300C${b}\u300D`);
+  }
+  return parts.length ? parts.join("\uFF1B") : null;
+}
+function isKbdbBusyFailure(result) {
+  return !result.success && typeof result.error === "string" && result.error.includes(KBDB_BUSY_TAG);
+}
+var BODY_MAX, KBDB_BUSY_TAG;
+var init_failure_evidence = __esm({
+  "cypher-executor/src/lib/failure-evidence.ts"() {
+    "use strict";
+    BODY_MAX = 300;
+    KBDB_BUSY_TAG = "\u3010kbdb_busy";
   }
 });
 
@@ -3334,7 +3389,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3516,7 +3571,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "../Arcrun-374/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -7912,7 +7967,7 @@ function deriveExecutionVerdict(graph, trace) {
     }
     if (isFailure(step.output)) {
       const out = step.output;
-      const err = typeof out.error === "string" ? out.error : `\u7BC0\u9EDE ${step.nodeId} \u56DE\u50B3 success:false`;
+      const err = typeof out.error === "string" ? out.error : `\u7BC0\u9EDE ${step.nodeId} \u56DE\u50B3 success:false${describeFailedOutput(out) ? `\uFF1A${describeFailedOutput(out)}` : ""}`;
       return { success: false, failedNode: step.nodeId, error: err };
     }
   }
@@ -7967,6 +8022,7 @@ var GraphExecutor, MAX_FOREACH_CONCURRENCY;
 var init_graph_executor = __esm({
   "cypher-executor/src/graph-executor.ts"() {
     "use strict";
+    init_failure_evidence();
     init_types();
     init_auth_dispatcher();
     init_component_loader();
@@ -8382,15 +8438,8 @@ var init_graph_executor = __esm({
                 );
                 if (failures.length === iterResults.length) {
                   const first = failures[0];
-                  const errParts = [];
-                  if (first.error) errParts.push(String(first.error));
-                  if (typeof first.status === "number") errParts.push(`HTTP ${first.status}`);
-                  const bodyData = first.data;
-                  if (bodyData && typeof bodyData.body === "string" && bodyData.body) {
-                    errParts.push(bodyData.body.slice(0, 200));
-                  }
                   throw new Error(
-                    `FOREACH \u6240\u6709 ${iterResults.length} \u9805\u76EE\u5747\u5931\u6557\uFF08\u9996\u9805\uFF1A${errParts.join("\uFF1B") || "\u672A\u77E5\u932F\u8AA4"}\uFF09`
+                    `FOREACH \u6240\u6709 ${iterResults.length} \u9805\u76EE\u5747\u5931\u6557\uFF08\u9996\u9805\uFF1A${describeFailedOutput(first) || "\u672A\u77E5\u932F\u8AA4"}\uFF09`
                   );
                 }
               }
@@ -8907,17 +8956,26 @@ function makeRecipeRunner(recipe) {
       );
       bodyStr = JSON.stringify(bodyObj);
     }
-    const res = await fetch(interpolate2(recipe.endpoint), {
-      method,
-      headers,
-      body: bodyStr
-    });
+    const t0 = Date.now();
+    let res;
+    try {
+      res = await fetch(interpolate2(recipe.endpoint), {
+        method,
+        headers,
+        body: bodyStr
+      });
+    } catch (e) {
+      const what = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      throw new Error(`${method} ${interpolate2(recipe.endpoint).split("?")[0]} \u6C92\u6709\u6536\u5230\u56DE\u61C9\uFF08${Date.now() - t0}ms\uFF1B${what}\uFF09`);
+    }
+    const ms = Date.now() - t0;
     const data = await readBodyOnce(res);
+    const evidence = res.ok ? void 0 : httpFailureEvidence(res, ms, data);
     if (recipe.response_map) {
       const normalized = applyResponseMap(data, recipe.response_map);
-      return { success: res.ok, status: res.status, data, text: normalized.text };
+      return { success: res.ok, status: res.status, data, text: normalized.text, ...evidence ? { evidence } : {} };
     }
-    return { success: res.ok, status: res.status, data };
+    return { success: res.ok, status: res.status, data, ...evidence ? { evidence } : {} };
   };
 }
 function makeAuthRecipeRunner(recipe) {
@@ -8959,6 +9017,7 @@ var WASM_HTTP_RUNNER_IDS, LOGIC_BINDING_MAP, RUNTIME_NATIVE_COMPONENT_IDS;
 var init_component_loader = __esm({
   "cypher-executor/src/lib/component-loader.ts"() {
     "use strict";
+    init_failure_evidence();
     init_constants3();
     init_hash();
     init_recipes();
@@ -9106,12 +9165,40 @@ function kbdbBase(env) {
 function tenant(c) {
   return c.req.header("X-Arcrun-API-Key") ?? null;
 }
+function isKbdbBusy(res) {
+  return res.status === 503 && res.headers.has("retry-after");
+}
+async function timedFetch(url, init) {
+  const t0 = Date.now();
+  const res = await fetch(url, init);
+  upstreamMeta.set(res, { ms: Date.now() - t0, attempts: 1 });
+  return res;
+}
 async function fetchRead(url, init) {
-  const first = await fetch(url, init);
+  const t0 = Date.now();
+  const first = await timedFetch(url, init);
   if (first.status < 500) return first;
+  if (isKbdbBusy(first)) return first;
   await first.body?.cancel().catch(() => void 0);
   await new Promise((r) => setTimeout(r, READ_RETRY_MS));
-  return fetch(url, init);
+  const second = await timedFetch(url, init);
+  upstreamMeta.set(second, { ms: Date.now() - t0, attempts: 2 });
+  return second;
+}
+function relay(res) {
+  const headers = { "Content-Type": "application/json" };
+  if (!res.ok) {
+    const retryAfter = res.headers.get("retry-after");
+    if (retryAfter) headers["Retry-After"] = retryAfter;
+    const meta = upstreamMeta.get(res);
+    const ray = res.headers.get("cf-ray");
+    if (meta) {
+      headers["X-Upstream-Ms"] = String(meta.ms);
+      headers["X-Upstream-Attempts"] = String(meta.attempts);
+    }
+    if (ray) headers["X-Upstream-Cf-Ray"] = ray;
+  }
+  return new Response(res.body, { status: res.status, headers });
 }
 function forwardQuery(c) {
   const params = new URLSearchParams();
@@ -9121,7 +9208,7 @@ function forwardQuery(c) {
   }
   return params;
 }
-var kbdbProxyRouter, NEED_KEY, READ_RETRY_MS, BATCH_WRITE_MAX;
+var kbdbProxyRouter, NEED_KEY, READ_RETRY_MS, upstreamMeta, BATCH_WRITE_MAX;
 var init_kbdb_proxy = __esm({
   "cypher-executor/src/routes/kbdb-proxy.ts"() {
     "use strict";
@@ -9131,6 +9218,7 @@ var init_kbdb_proxy = __esm({
     kbdbProxyRouter = new Hono2();
     NEED_KEY = { error: "\u7F3A\u5C11 X-Arcrun-API-Key header" };
     READ_RETRY_MS = 300;
+    upstreamMeta = /* @__PURE__ */ new WeakMap();
     kbdbProxyRouter.post("/kbdb/templates", async (c) => {
       const owner = tenant(c);
       if (!owner) return c.json(NEED_KEY, 401);
@@ -9139,25 +9227,25 @@ var init_kbdb_proxy = __esm({
         return c.json({ error: "name \u8207 slots[] \u5FC5\u586B" }, 400);
       }
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/templates`, {
+      const res = await timedFetch(`${base}/templates`, {
         method: "POST",
         headers,
         // created_by 帶上租戶當溯源，但 template 本身全域可見可用
         body: JSON.stringify({ name: body.name, slots: body.slots, description: body.description, created_by: owner })
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/templates", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/templates`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/templates`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/templates/:idOrName", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/templates/${encodeURIComponent(c.req.param("idOrName"))}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/templates/${encodeURIComponent(c.req.param("idOrName"))}`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.post("/kbdb/records", async (c) => {
       const owner = tenant(c);
@@ -9179,7 +9267,7 @@ var init_kbdb_proxy = __esm({
         return c.json({ error: "create_only \u5FC5\u9808\u642D\u914D record_id" }, 400);
       }
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records`, {
+      const res = await timedFetch(`${base}/records`, {
         method: "POST",
         headers,
         // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
@@ -9191,7 +9279,7 @@ var init_kbdb_proxy = __esm({
           owner_id: owner
         })
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     kbdbProxyRouter.post("/kbdb/records/batch-get", async (c) => {
       const owner = tenant(c);
@@ -9204,7 +9292,7 @@ var init_kbdb_proxy = __esm({
         headers,
         body: JSON.stringify({ ids: body.ids, owner_id: owner })
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     BATCH_WRITE_MAX = 20;
     kbdbProxyRouter.post("/kbdb/records/batch-write", async (c) => {
@@ -9241,15 +9329,15 @@ var init_kbdb_proxy = __esm({
       const results = await Promise.all(
         body.ops.map(async (o) => {
           try {
-            const res = o.op === "relation" ? await fetch(`${base}/records/${encodeURIComponent(o.id)}/relation`, {
+            const res = o.op === "relation" ? await timedFetch(`${base}/records/${encodeURIComponent(o.id)}/relation`, {
               method: "POST",
               headers,
               body: JSON.stringify({ slot: o.slot, add: o.add, remove: o.remove })
-            }) : o.op === "post" ? await fetch(`${base}/records`, {
+            }) : o.op === "post" ? await timedFetch(`${base}/records`, {
               method: "POST",
               headers,
               body: JSON.stringify({ template: o.template, values: o.values, owner_id: owner })
-            }) : await fetch(`${base}/records/${encodeURIComponent(o.id)}`, {
+            }) : await timedFetch(`${base}/records/${encodeURIComponent(o.id)}`, {
               method: "PATCH",
               headers,
               body: JSON.stringify({ values: o.values })
@@ -9278,19 +9366,19 @@ var init_kbdb_proxy = __esm({
         `${base}/records/by-template/${encodeURIComponent(c.req.param("template"))}?${params.toString()}`,
         { headers }
       );
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     kbdbProxyRouter.post("/kbdb/records/field-index", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const body = await c.req.json().catch(() => null);
       if (!body || !body.template || !Array.isArray(body.fields)) return c.json({ error: "template \u8207 fields \u5FC5\u586B" }, 400);
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records/field-index`, {
+      const res = await timedFetch(`${base}/records/field-index`, {
         method: "POST",
         headers,
         body: JSON.stringify({ template: body.template, fields: body.fields })
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     kbdbProxyRouter.post("/kbdb/records/backfill-library", async (c) => {
       const owner = tenant(c);
@@ -9298,7 +9386,7 @@ var init_kbdb_proxy = __esm({
       const body = await c.req.json().catch(() => null);
       if (!body || !body.library) return c.json({ error: "library \u5FC5\u586B" }, 400);
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records/backfill-library`, {
+      const res = await timedFetch(`${base}/records/backfill-library`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -9309,7 +9397,7 @@ var init_kbdb_proxy = __esm({
           limit: body.limit
         })
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/records/backfill-library/status", async (c) => {
       const owner = tenant(c);
@@ -9320,14 +9408,14 @@ var init_kbdb_proxy = __esm({
         const v = c.req.query(k);
         if (v) params.set(k, v);
       }
-      const res = await fetch(`${base}/records/backfill-library/status?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/records/backfill-library/status?${params.toString()}`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/records/:recordId", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.patch("/kbdb/records/:recordId", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
@@ -9336,12 +9424,12 @@ var init_kbdb_proxy = __esm({
         return c.json({ error: "values \u5FC5\u586B\uFF08{slot\u540D: \u5167\u5BB9}\uFF09" }, 400);
       }
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, {
+      const res = await timedFetch(`${base}/records/${encodeURIComponent(c.req.param("recordId"))}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ values: body.values })
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/search", async (c) => {
       const owner = tenant(c);
@@ -9351,8 +9439,8 @@ var init_kbdb_proxy = __esm({
       const { base, headers } = kbdbBase(c.env);
       const params = forwardQuery(c);
       params.set("owner_id", owner);
-      const res = await fetch(`${base}/entries/search?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/entries/search?${params.toString()}`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/retrieve", async (c) => {
       const owner = tenant(c);
@@ -9365,8 +9453,8 @@ var init_kbdb_proxy = __esm({
       params.delete("question");
       params.set("owner_id", owner);
       try {
-        const res = await fetch(`${base}/retrieve?${params.toString()}`, { headers });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+        const res = await timedFetch(`${base}/retrieve?${params.toString()}`, { headers });
+        return relay(res);
       } catch (e) {
         return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
@@ -9377,13 +9465,13 @@ var init_kbdb_proxy = __esm({
       const body = await c.req.json().catch(() => null);
       if (!body || !body.template) return c.json({ error: "template \u5FC5\u586B" }, 400);
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/entries`, {
+      const res = await timedFetch(`${base}/entries`, {
         method: "POST",
         headers,
         // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
         body: JSON.stringify({ ...body, owner_id: owner })
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/entries", async (c) => {
       const owner = tenant(c);
@@ -9394,8 +9482,8 @@ var init_kbdb_proxy = __esm({
       if (search && !params.get("q")) params.set("q", search);
       params.delete("search");
       params.set("owner_id", owner);
-      const res = await fetch(`${base}/entries?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/entries?${params.toString()}`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/entries/library-cards", async (c) => {
       const owner = tenant(c);
@@ -9403,8 +9491,8 @@ var init_kbdb_proxy = __esm({
       const { base, headers } = kbdbBase(c.env);
       const params = forwardQuery(c);
       params.set("owner_id", owner);
-      const res = await fetch(`${base}/entries/library-cards?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/entries/library-cards?${params.toString()}`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/entries/source-summary", async (c) => {
       const owner = tenant(c);
@@ -9412,8 +9500,8 @@ var init_kbdb_proxy = __esm({
       const { base, headers } = kbdbBase(c.env);
       const params = forwardQuery(c);
       params.set("owner_id", owner);
-      const res = await fetch(`${base}/entries/source-summary?${params.toString()}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/entries/source-summary?${params.toString()}`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.patch("/kbdb/entries/deprecate-by-source", async (c) => {
       const owner = tenant(c);
@@ -9422,18 +9510,18 @@ var init_kbdb_proxy = __esm({
       const source = String(body?.source ?? "").trim();
       if (!source) return c.json({ success: false, error: "source \u5FC5\u586B" }, 400);
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/entries/deprecate-by-source`, {
+      const res = await timedFetch(`${base}/entries/deprecate-by-source`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ owner_id: owner, source })
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, { headers });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      const res = await timedFetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, { headers });
+      return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/graph/neighbors/:name", async (c) => {
       const owner = tenant(c);
@@ -9442,11 +9530,11 @@ var init_kbdb_proxy = __esm({
       const params = forwardQuery(c);
       params.set("owner_id", owner);
       try {
-        const res = await fetch(
+        const res = await timedFetch(
           `${base}/graph/neighbors/${encodeURIComponent(c.req.param("name"))}?${params.toString()}`,
           { headers }
         );
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+        return relay(res);
       } catch (e) {
         return c.json({ error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
@@ -9457,8 +9545,8 @@ var init_kbdb_proxy = __esm({
       const owner = c.req.query("owner_id");
       const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
       try {
-        const res = await fetch(`${base}/map${qs}`, { headers });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+        const res = await timedFetch(`${base}/map${qs}`, { headers });
+        return relay(res);
       } catch (e) {
         return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
@@ -9469,8 +9557,8 @@ var init_kbdb_proxy = __esm({
       const owner = c.req.query("owner_id");
       const qs = owner ? `?owner_id=${encodeURIComponent(owner)}` : "";
       try {
-        const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}${qs}`, { headers });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+        const res = await timedFetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}${qs}`, { headers });
+        return relay(res);
       } catch (e) {
         return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
@@ -9483,12 +9571,12 @@ var init_kbdb_proxy = __esm({
       const owner = (typeof body?.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
       const { base, headers } = kbdbBase(c.env);
       try {
-        const res = await fetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}/narrative`, {
+        const res = await timedFetch(`${base}/map/${encodeURIComponent(c.req.param("library"))}/narrative`, {
           method: "PUT",
           headers,
           body: JSON.stringify({ narrative, ...owner ? { owner_id: owner } : {} })
         });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+        return relay(res);
       } catch (e) {
         return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
@@ -9501,12 +9589,12 @@ var init_kbdb_proxy = __esm({
       const owner = (typeof body.owner_id === "string" ? body.owner_id : c.req.query("owner_id")) || void 0;
       const { base, headers } = kbdbBase(c.env);
       try {
-        const res = await fetch(`${base}/map/recompute`, {
+        const res = await timedFetch(`${base}/map/recompute`, {
           method: "POST",
           headers,
           body: JSON.stringify({ ...body, library, ...owner ? { owner_id: owner } : {} })
         });
-        return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+        return relay(res);
       } catch (e) {
         return c.json({ success: false, error: `KBDB \u4E0D\u53EF\u9054\uFF08${base}\uFF09\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
@@ -9514,14 +9602,14 @@ var init_kbdb_proxy = __esm({
     kbdbProxyRouter.patch("/kbdb/entries/:id", async (c) => {
       if (!tenant(c)) return c.json(NEED_KEY, 401);
       const body = await c.req.json().catch(() => ({}));
-      const { owner_id: _drop, ...patch } = body ?? {};
+      const { owner_id: _drop, ...patch2 } = body ?? {};
       const { base, headers } = kbdbBase(c.env);
-      const res = await fetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, {
+      const res = await timedFetch(`${base}/entries/${encodeURIComponent(c.req.param("id"))}`, {
         method: "PATCH",
         headers,
-        body: JSON.stringify(patch)
+        body: JSON.stringify(patch2)
       });
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relay(res);
     });
   }
 });
@@ -10006,6 +10094,39 @@ var init_credentials = __esm({
   }
 });
 
+// cypher-executor/src/lib/kbdb-busy.ts
+var KBDB_BUSY_RETRY_AFTER = "10";
+var KBDB_BUSY_MESSAGE = "\u77E5\u8B58\u5EAB\u5FD9\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u3002\u4F60\u7684\u8CC7\u6599\u6C92\u6709\u907A\u5931\uFF0C\u4E5F\u4E0D\u7528\u91CD\u65B0\u767B\u5165\u3002";
+var OVERLOAD_RE = /overloaded|too many resources|resource(s)? consumed|network connection lost|storage operation exceeded|internal error while starting up/i;
+function isKbdbBusyStatus(status) {
+  return status === void 0 || status === 429 || status >= 500;
+}
+function isOverloadText(text) {
+  return OVERLOAD_RE.test(text);
+}
+function kbdbBusyResponse() {
+  return new Response(
+    JSON.stringify({ success: false, error: "kbdb_busy", retryable: true, message: KBDB_BUSY_MESSAGE }),
+    { status: 503, headers: { "Content-Type": "application/json", "Retry-After": KBDB_BUSY_RETRY_AFTER } }
+  );
+}
+function kbdbBusyJson(c) {
+  c.header("Retry-After", KBDB_BUSY_RETRY_AFTER);
+  return c.json({ success: false, error: "kbdb_busy", retryable: true, message: KBDB_BUSY_MESSAGE }, 503);
+}
+async function relayKbdbFailure(res) {
+  if (isKbdbBusyStatus(res.status)) {
+    await res.body?.cancel().catch(() => void 0);
+    return kbdbBusyResponse();
+  }
+  if (res.status === 400) {
+    const text = await res.text().catch(() => "");
+    if (isOverloadText(text)) return kbdbBusyResponse();
+    return new Response(text, { status: 400, headers: { "Content-Type": "application/json" } });
+  }
+  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+}
+
 // cypher-executor/src/lib/portal-auth-store.ts
 init_credentials();
 
@@ -10066,15 +10187,19 @@ async function findByHash(env, template, hashField, hash) {
   );
   if (!res.ok) {
     releaseBody(res);
-    return null;
+    throw new EphemeralStoreError(`GET /records/by-source(${template}) \u2192 ${res.status}`, res.status);
   }
   const body = await res.json().catch(() => null);
   const id = body?.record_ids?.[0];
   if (!id) return null;
   const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
-  if (!rec.ok) {
+  if (rec.status === 404) {
     releaseBody(rec);
     return null;
+  }
+  if (!rec.ok) {
+    releaseBody(rec);
+    throw new EphemeralStoreError(`GET /records/:id(${template}) \u2192 ${rec.status}`, rec.status);
   }
   const recBody = await rec.json().catch(() => null);
   return recBody?.record ?? null;
@@ -10397,7 +10522,7 @@ async function migrateConsoleCredentials(env, record, tokenOverride) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// ../Arcrun-374/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const defaults = {
     origin: "*",
@@ -10712,6 +10837,33 @@ function reachableFrom(start, edges) {
 }
 
 // cypher-executor/src/actions/execution-logger.ts
+var SLOW_RUN_MS = 8e3;
+function runMessage(result) {
+  if (!result.success) return result.error ?? "";
+  if (result.duration_ms < SLOW_RUN_MS) return "";
+  const steps = (Array.isArray(result.trace) ? result.trace : []).filter((x) => typeof x?.nodeId === "string" && typeof x?.duration_ms === "number");
+  const by = /* @__PURE__ */ new Map();
+  for (const x of steps) {
+    const id = x.nodeId, ms = x.duration_ms;
+    const g = by.get(id) ?? { n: 0, max: -1, path: "" };
+    g.n++;
+    if (ms > g.max) {
+      g.max = ms;
+      g.path = readPathOf(x.input);
+    }
+    by.set(id, g);
+  }
+  const top = [...by.entries()].sort((a, b) => b[1].max - a[1].max).slice(0, 3).map(([id, g]) => `${id}${g.n > 1 ? `\xD7${g.n}` : ""} \u6700\u9577${g.max}ms${g.path ? `\uFF08${g.path}\uFF09` : ""}`);
+  const head = `\u6162\uFF1A\u6574\u9AD4 ${result.duration_ms}ms`;
+  return (top.length ? `${head}\uFF1B${top.join("\u3001")}` : head).slice(0, 190);
+}
+function readPathOf(input) {
+  if (!input || typeof input !== "object") return "";
+  const o = input;
+  const pick = (v) => v && typeof v === "object" && typeof v.path === "string" ? v.path : "";
+  const p = pick(o.ahread) || pick(o.ahsread) || (typeof o._path === "string" ? o._path : "");
+  return p.slice(0, 50);
+}
 function extractTarget(input) {
   if (!input) return void 0;
   const raw2 = input.page_name ?? input.path;
@@ -11253,17 +11405,21 @@ var ensuredTemplates2 = /* @__PURE__ */ new Set();
 async function kbdbFetch2(env, path, init, op) {
   const extra = init?.headers ?? {};
   noteSubrequest();
+  const t0 = Date.now();
   try {
     const method = (init?.method ?? "GET").toUpperCase();
     const essential = method !== "GET" || path.startsWith("/templates");
     const baseH = essential ? withEssential(kbdbHeaders(env)) : kbdbHeaders(env);
     const res = await fetch(`${kbdbBase2(env)}${path}`, { ...init, headers: { ...baseH, ...extra } });
     addKbdbResponse(env.__kbdbTally, res);
+    elapsedOf.set(res, Date.now() - t0);
     return res;
   } catch (e) {
-    throw new AssetStoreUnavailableError(op, e instanceof Error ? e.message : String(e));
+    const what = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    throw new AssetStoreUnavailableError(op, `${(init?.method ?? "GET").toUpperCase()} ${path} \u6C92\u6709\u6536\u5230\u56DE\u61C9\uFF08${Date.now() - t0}ms\uFF1B${what}\uFF09`);
   }
 }
+var elapsedOf = /* @__PURE__ */ new WeakMap();
 async function ensureTemplate2(env, spec) {
   if (ensuredTemplates2.has(spec.name)) return;
   const got = await kbdbFetch2(env, `/templates/${encodeURIComponent(spec.name)}`, void 0, "template");
@@ -11283,13 +11439,13 @@ async function ensureTemplate2(env, spec) {
           method: "PATCH",
           body: JSON.stringify({ slots: [...current, ...missing] })
         }, "template");
-        if (!patched.ok) throw new AssetStoreUnavailableError("template", `\u88DC\u6B04\u4F4D ${spec.name} \u2192 HTTP ${patched.status}`, patched.status);
+        if (!patched.ok) throw new AssetStoreUnavailableError("template", `\u88DC\u6B04\u4F4D ${spec.name} \u2192 HTTP ${patched.status}${await bodySnippet(patched)}`, patched.status);
       }
       ensuredTemplates2.add(spec.name);
       return;
     }
   } else if (got.status !== 404) {
-    throw new AssetStoreUnavailableError("template", `GET /templates/${spec.name} \u2192 HTTP ${got.status}`, got.status);
+    throw new AssetStoreUnavailableError("template", `GET /templates/${spec.name} \u2192 HTTP ${got.status}${await bodySnippet(got)}`, got.status);
   }
   const res = await kbdbFetch2(env, "/templates", {
     method: "POST",
@@ -11297,33 +11453,38 @@ async function ensureTemplate2(env, spec) {
   }, "template");
   if (!res.ok) {
     const again = await kbdbFetch2(env, `/templates/${encodeURIComponent(spec.name)}`, void 0, "template");
-    if (!again.ok) throw new AssetStoreUnavailableError("template", `POST /templates ${spec.name} \u2192 HTTP ${res.status}`, res.status);
+    if (!again.ok) throw new AssetStoreUnavailableError("template", `POST /templates ${spec.name} \u2192 HTTP ${res.status}${await bodySnippet(res)}`, res.status);
   }
   ensuredTemplates2.add(spec.name);
 }
 async function getRecord(env, recordId) {
   const path = `/records/${encodeURIComponent(recordId)}`;
   let res = await kbdbFetch2(env, path, void 0, "get");
-  if (res.status >= 500) {
-    await res.text().catch(() => "");
+  let first = "";
+  if (res.status >= 500 && !isBusy(res)) {
+    first = `\u7B2C\u4E00\u6B21 HTTP ${res.status}${await bodySnippet(res)}\uFF1B\u91CD\u8B80\u5F8C `;
     await sleep(250);
     res = await kbdbFetch2(env, path, void 0, "get");
   }
   if (res.status === 404) return null;
-  if (!res.ok) throw new AssetStoreUnavailableError("get", `GET /records/${recordId} \u2192 HTTP ${res.status}${await bodySnippet(res)}`, res.status);
+  if (!res.ok) throw new AssetStoreUnavailableError("get", `GET /records/${recordId} \u2192 ${first}HTTP ${res.status}${await bodySnippet(res)}`, res.status);
   const body = await res.json().catch(() => null);
   return body?.record ?? null;
 }
 async function bodySnippet(res) {
   const t = await res.text().catch(() => "");
-  const one = t.replace(/\s+/g, " ").trim().slice(0, 200);
+  const one = t.replace(/\s+/g, " ").trim().slice(0, 300);
   const ray = res.headers.get("cf-ray");
-  return `${one ? ` ${one}` : " \uFF08KBDB \u6C92\u6709\u9644\u8AAA\u660E\uFF09"}${ray ? ` [cf-ray ${ray}]` : ""}`;
+  const ms = elapsedOf.get(res);
+  const meta = [ms !== void 0 ? `${ms}ms` : null, ray ? `cf-ray ${ray}` : null].filter(Boolean).join("\uFF1B");
+  const busy = isBusy(res) ? "\u3010kbdb_busy\uFF1A\u77E5\u8B58\u5EAB\u8CC7\u6599\u5EAB\u904E\u8F09\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u3011" : "";
+  return `${busy}${meta ? `\uFF08${meta}\uFF09` : ""}${one ? `\u300C${one}\u300D` : "\uFF08KBDB \u6C92\u6709\u9644\u8AAA\u660E\uFF09"}`;
 }
+var isBusy = (res) => res.status === 503 && res.headers.has("retry-after");
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function kbdbWrite(env, path, init) {
   const first = await kbdbFetch2(env, path, init, "put");
-  if (first.status < 500) return first;
+  if (first.status < 500 || isBusy(first)) return first;
   await first.text().catch(() => "");
   await sleep(250);
   return kbdbFetch2(env, path, init, "put");
@@ -11331,16 +11492,16 @@ async function kbdbWrite(env, path, init) {
 async function upsertRecord(env, tpl, recordId, owner, values) {
   const path = `/records/${encodeURIComponent(recordId)}`;
   const patchInit = { method: "PATCH", body: JSON.stringify({ values }) };
-  const patch = await kbdbWrite(env, path, patchInit);
-  if (patch.ok) return;
-  if (patch.status === 400) {
+  const patch2 = await kbdbWrite(env, path, patchInit);
+  if (patch2.ok) return;
+  if (patch2.status === 400) {
     ensuredTemplates2.delete(tpl.name);
     await ensureTemplate2(env, tpl);
     const retry = await kbdbWrite(env, path, patchInit);
     if (retry.ok) return;
     if (retry.status !== 404) throw new AssetStoreUnavailableError("put", `PATCH ${path} \u2192 HTTP ${retry.status}${await bodySnippet(retry)}`, retry.status);
-  } else if (patch.status !== 404) {
-    throw new AssetStoreUnavailableError("put", `PATCH ${path} \u2192 HTTP ${patch.status}${await bodySnippet(patch)}`, patch.status);
+  } else if (patch2.status !== 404) {
+    throw new AssetStoreUnavailableError("put", `PATCH ${path} \u2192 HTTP ${patch2.status}${await bodySnippet(patch2)}`, patch2.status);
   }
   await ensureTemplate2(env, tpl);
   const created = await kbdbWrite(env, "/records", {
@@ -11353,7 +11514,7 @@ async function upsertRecord(env, tpl, recordId, owner, values) {
 }
 async function deleteRecord(env, recordId) {
   const res = await kbdbFetch2(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }, "delete");
-  if (!res.ok && res.status !== 404) throw new AssetStoreUnavailableError("delete", `DELETE /records/${recordId} \u2192 HTTP ${res.status}`, res.status);
+  if (!res.ok && res.status !== 404) throw new AssetStoreUnavailableError("delete", `DELETE /records/${recordId} \u2192 HTTP ${res.status}${await bodySnippet(res)}`, res.status);
 }
 async function listRecords(env, tpl, owner) {
   const out = [];
@@ -11362,7 +11523,7 @@ async function listRecords(env, tpl, owner) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (owner) params.set("owner_id", owner);
     const res = await kbdbFetch2(env, `/records/by-template/${encodeURIComponent(tpl.name)}?${params}`, void 0, "list");
-    if (!res.ok) throw new AssetStoreUnavailableError("list", `GET /records/by-template/${tpl.name} \u2192 HTTP ${res.status}`, res.status);
+    if (!res.ok) throw new AssetStoreUnavailableError("list", `GET /records/by-template/${tpl.name} \u2192 HTTP ${res.status}${await bodySnippet(res)}`, res.status);
     const body = await res.json().catch(() => null);
     const page = body?.records ?? [];
     out.push(...page);
@@ -11373,7 +11534,7 @@ async function listRecords(env, tpl, owner) {
 async function recordIdsBySource(env, tpl, field, value, owner) {
   const params = new URLSearchParams({ field, value, owner_id: owner });
   const res = await kbdbFetch2(env, `/records/by-source/${encodeURIComponent(tpl.name)}?${params}`, void 0, "lookup");
-  if (!res.ok) throw new AssetStoreUnavailableError("lookup", `GET /records/by-source/${tpl.name} \u2192 HTTP ${res.status}`, res.status);
+  if (!res.ok) throw new AssetStoreUnavailableError("lookup", `GET /records/by-source/${tpl.name} \u2192 HTTP ${res.status}${await bodySnippet(res)}`, res.status);
   const body = await res.json().catch(() => null);
   return body?.record_ids ?? [];
 }
@@ -14262,8 +14423,8 @@ var kanban_ahub_app_default = {
   id: "kanban",
   name: "\u7968\u5730\u5716",
   icon: "\u{1F5C2}\uFE0F",
-  version: "0.9.1",
-  changelog: "0.9.1\uFF1A\u7D50\u69CB\u9801\u4E0D\u518D\u4E00\u7247\u7A7A\u767D\uFF08\u8207 AHub 0.18.1 \u540C\u4E00\u4EFD\u756B\u9762\uFF09\uFF1A\u820A\u5F0F\u91CC\u7A0B\u7891\u9084\u6C92\u8F49\u6210\u6A39\u6642\u7167\u820A\u5217\u51FA\u4E26\u8AAA\u660E\uFF0C\u7A7A\u72C0\u614B\u6539\u767D\u8A71\u3002\n0.9.0\uFF1A\u7968\u5730\u5716\u4F75\u9032 AHub\uFF08inkstone/Arcrun#368\uFF09\u2014\u2014\u756B\u9762\u63DB\u6210\u548C AHub \u540C\u4E00\u4EFD\uFF1A\u300C\u7D50\u69CB\u300D\uFF08\u5C08\u6848\u25B8\u91CC\u7A0B\u7891\u25B8\u7968\uFF0C\u53EF\u5207\u770B\u677F\uFF09\u8207\u300C\u76EE\u6A19\u300D\u5169\u500B\u5165\u53E3\uFF0C\u8CC7\u6599\u4E0D\u8B8A\uFF1B\u5E02\u96C6\u4E0A\u53EA\u7559 AHub \u4E00\u500B\u5165\u53E3\uFF0C\u5DF2\u88DD 0.8.x \u7684\u6309\u66F4\u65B0\u5C31\u63DB\u6210\u9019\u4E00\u7248\u3002\u9700\u8981 AHub 0.16.0 \u4EE5\u4E0A\u3002\n0.8.2\uFF1A\u624B\u6A5F\u4E0A\u6309\u5F97\u5230\u7968\u8A73\u60C5\u8207\u7C3D\u6838\u6846\u6700\u5E95\u90A3\u6392\u4E86\uFF08inkstone/Arcrun#371\uFF09\u2014\u2014\u5C0D\u8A71\u6846\u8207\u5074\u6B04\u6539\u6210\u84CB\u5728 Portal \u7684\u5E95\u90E8\u5206\u9801\u5217\u8207\u53F3\u4E0B\u89D2\u6D6E\u52D5\u6309\u9215\u4E0A\u9762\u3002\u53EA\u6539\u756B\u9762\u6A23\u5F0F\u3002\n0.8.1\uFF1A\u7968\u8A73\u60C5\u591A\u4E00\u884C\u300Cstage \u73FE\u5728\u662F\u54EA\u4E00\u7248\u3001\u542B\u4E0D\u542B\u9019\u5F35\u7968\u300D\uFF08inkstone/Arcrun#365\uFF09\uFF1B\u9700\u8981 AHub 0.15.0 \u4EE5\u4E0A\uFF0C\u820A\u7248 AHub \u8B80\u4E0D\u5230\u5C31\u4E0D\u986F\u793A\u9019\u4E00\u884C\u3002\n0.8.0\uFF1A\u7968\u5730\u5716\u53EA\u7559\u4E00\u500B\u5100\u8868\u677F\uFF1D\u6574\u5408\u53EF\u647A\u758A\u5217\u8868\uFF08inkstone/Arcrun#351\uFF09\u2014\u2014\u5C08\u6848 \u25B8 \u76EE\u6A19 \u25B8 \u91CC\u7A0B\u7891\uFF08\u6A6B\u5F0F\u9032\u5EA6\u689D\u3001\u8AB0\u5728\u63A8\u3001\u88AB\u5E7E\u500B\u76EE\u6A19\u5F15\u7528\uFF09\u25B8 \u8F09\u9AD4\u7968 \u25B8 \u524D\u7F6E\u7968\uFF1B\u62FF\u6389\u74B0\u5F62\u5361\u7247\u5100\u8868\u677F\u8207\u7368\u7ACB\u7684\u300C\u5C08\u6848\u76EE\u6A19\u300D\u5206\u9801\uFF08\u4F75\u9032\u540C\u4E00\u5F35\u5217\u8868\uFF09\uFF0C\u770B\u677F\u4FDD\u7559\u3002\u91CC\u7A0B\u7891\u7684 % \u8207 AHub \u91CC\u7A0B\u7891\u9801\u540C\u4E00\u500B\u6578\u5B57\uFF1B\u6CBF\u7528\u300C\u958B\u8457\uFF0F\u5DF2\u95DC\uFF0F\u5168\u90E8\u300D\u8207\u6BCF\u500B\u91CC\u7A0B\u7891\u7684\u300C\u5B8C\u6210\u300D\u9215\uFF08\u7968\u505A\u5B8C\u6C92\u7248\u672C\u7684\u6A19\u51FA\u4F86\u3001\u6309\u5B8C\u6210\u6642\u660E\u8B1B\uFF09\uFF1B\u6C92\u639B\u76EE\u6A19\u7684\u91CC\u7A0B\u7891\u8207\u6C92\u639B\u91CC\u7A0B\u7891\u7684\u76EE\u6A19\u90FD\u6A19\u51FA\u4F86\u3002\u300C\u6B63\u5728\u52D5\u7684\u5C0D\u8A71\u300D\u79FB\u5230 AHub \u756B\u9762\u7684\u300C\u767B\u8A18\u7C3F\u300D\u5206\u9801\u3002\u9700\u8981 AHub 0.13.4 \u4EE5\u4E0A\uFF08\u8B80\u53D6\u767D\u540D\u55AE\uFF09\u3002\n0.7.2\uFF1A\u5DF2\u95DC\u7684\u91CC\u7A0B\u7891\u9810\u8A2D\u4E0D\u5217\u5728\u5100\u8868\u677F\u8207\u300C\u5C08\u6848\u76EE\u6A19\u300D\uFF1A\u91CC\u7A0B\u7891\u4E0A\u65B9\u591A\u4E00\u500B\u548C AHub \u7968\u6E05\u55AE\u4E00\u6A23\u7684\u300C\u958B\u8457\uFF0F\u5DF2\u95DC\uFF0F\u5168\u90E8\u300D\u5206\u6BB5\u5207\u63DB\uFF0C\u9810\u8A2D\u958B\u8457\u3001\u9078\u64C7\u8A18\u5F97\u4F4F\uFF1B\u6BCF\u5F35\u91CC\u7A0B\u7891\u5361\u591A\u4E00\u9846\u300C\u5B8C\u6210\u300D\uFF0C\u76F4\u63A5\u5728\u7968\u5730\u5716\u95DC\u91CC\u7A0B\u7891\uFF08\u8D70 AHub \u65E2\u6709\u7684\u5BEB\u5165\u3001Portal \u767B\u5165\u8005\u8EAB\u5206\uFF0C\u6309\u4E4B\u524D\u78BA\u8A8D\u4E00\u6B21\u3001\u5931\u6557\u7167\u5BE6\u8AAA\uFF09\uFF1B\u7968\u90FD\u505A\u5B8C\u537B\u6C92\u6709\u7248\u672C\u7684\u4E0D\u7B97\u5B8C\u6210\u3001\u4E0D\u81EA\u52D5\u85CF\u2014\u2014\u5361\u7247\u6A19\u300C\u7968\u505A\u5B8C\u4E86\uFF0C\u9084\u6C92\u51FA\u7248\u672C\u300D\uFF0C\u6309\u5B8C\u6210\u6642\u660E\u8B1B\u300C\u9019\u500B\u91CC\u7A0B\u7891\u6C92\u6709\u7248\u672C\uFF0C\u78BA\u5B9A\u8981\u76F4\u63A5\u95DC\uFF1F\u300D\uFF08inkstone/Arcrun#351\uFF09\u3002\n0.7.1\uFF1A\u91CC\u7A0B\u7891\u5074\u6B04\u5728\u6C92\u586B\u8AAA\u660E\u7684\u91CC\u7A0B\u7891\u4E0A\u4E0D\u518D\u591A\u51FA\u4E00\u884C\u300Cnull\u300D\uFF08inkstone/Arcrun#351\uFF09\u3002\n0.7.0\uFF1A\u7968\u5730\u5716\u591A\u4E00\u500B\u300C\u5C08\u6848\u76EE\u6A19\u300D\u8996\u5716\uFF08inkstone/Arcrun#351\uFF09\u2014\u2014\u5C08\u6848\uFF0F\u76EE\u6A19\uFF08\u672A\u4F86\uFF09\uFF0F\u9032\u5EA6\u689D\uFF0F\u6B65\u9A5F\u7684 outliner\uFF1A\u9EDE\u958B\u5C08\u6848\u770B\u6BCF\u500B\u672A\u4F86\u505A\u5230\u5E7E\u6210\u3001\u5361\u5728\u54EA\uFF08\u7B49\u5F85\u3001\u88AB\u524D\u7F6E\u64CB\u4F4F\u7684\u6700\u524D\u9762\u5361\u9EDE\u3001\u53EF\u4EE5\u958B\u5DE5\u7684\u3001\u4EA4\u8FA6\u672A\u52D5\u5DE5\u3001\u524D\u7F6E\u5DF2\u5B8C\u6210\u8A72\u91CD\u770B\uFF09\u3002\u76EE\u6A19\u5C6C\u65BC CC\uFF08AHub \u76EE\u6A19\u6A39\uFF09\u3001\u91CC\u7A0B\u7891\u5C6C\u65BC AHub\uFF0C\u5169\u8005\u662F\u9078\u64C7\u6027\u4E00\u5C0D\u591A\uFF1A\u76EE\u6A19\u53EF\u4EE5\u6C92\u6709\u91CC\u7A0B\u7891\uFF0C\u4E5F\u53EF\u4EE5\u6709\u597D\u5E7E\u500B\u2014\u2014\u756B\u9762\u4E0D\u65B0\u589E\u4EFB\u4F55\u8CC7\u6599\uFF0C\u7528\u6B65\u9A5F\u639B\u7684\u7968\u63A8\u9023\u7D50\uFF08\u7968\u81EA\u5DF1\u639B\u7684\u91CC\u7A0B\u7891\uFF1B\u6C92\u6709\u5C31\u770B\u5B83\u64CB\u4F4F\u7684\u8F09\u9AD4\u7968\u639B\u7684\uFF09\uFF0C\u6BCF\u500B\u63A8\u51FA\u4F86\u7684\u9023\u7D50\u90FD\u6A19\u660E\u300C\u63A8\u7684\u300D\u3002\u6BCF\u500B\u672A\u4F86\u756B\u51FA\u93C8\u689D\u300C\u76EE\u6A19\u2192\u8F09\u9AD4\u7968\u2192\u5DE5\u4F5C\u7968\u2192\u91CC\u7A0B\u7891\u2192release\u300D\uFF0C\u65B7\u5728\u54EA\u4E00\u6BB5\u5C31\u6A19\u54EA\u4E00\u6BB5\uFF0C\u5169\u7A2E\u65B7\u6CD5\u5206\u958B\u6A19\uFF1A\u300C\u93C8\u689D\u6C92\u63A5\u300D\uFF08\u67D0\u4E00\u6BB5\u6839\u672C\u7F3A\uFF09\u8207\u300C\u6C92\u4EBA\u7DAD\u8B77\u300D\uFF08\u6BCF\u6BB5\u90FD\u63A5\u4E0A\u4E86\u3001\u6574\u689D\u93C8\u5F88\u4E45\u6C92\u52D5\uFF09\u3002\u5100\u8868\u677F\u7684\u91CC\u7A0B\u7891\u5361\u7247\u591A\u4E00\u884C\u300C\u70BA\u4E86\u54EA\u500B\u76EE\u6A19\u300D\uFF0C\u6C92\u6709\u4EFB\u4F55\u76EE\u6A19\u6307\u8457\u7684\u6A19\u300C\u6C92\u6709\u76EE\u6A19\u6307\u8457\u300D\u3002\u552F\u8B80\u3002\u9700\u8981 AHub 0.12.0 \u4EE5\u4E0A\uFF08\u5EFA\u8B70 0.12.1\uFF0C\u624D\u6709\u300C\u4EA4\u8FA6\u672A\u52D5\u5DE5\u300D\uFF09\u3002\n0.6.2\uFF1A\u4FEE\u6389\u300C\u66F4\u65B0\u5931\u6557\u30FB\u8CC7\u6599\u4F86\u81EA\u597D\u5E7E\u500B\u5C0F\u6642\u524D\u300D\u2014\u2014\u7968\u5730\u5716\u8B80\u4E0D\u5230\u65B0\u8CC7\u6599\uFF0C\u73FE\u5728\u6309\u300C\u66F4\u65B0\u300D\u5F8C\u6703\u62FF\u5230\u6700\u65B0\u7684\u7968\u8207\u91CC\u7A0B\u7891\uFF08inkstone/Arcrun#347\uFF09\u3002AHub \u5EFA\u8B70\u540C\u6B65\u66F4\u65B0\u5230 0.10.1\u3002\n0.6.0\uFF1A\u7968\u8A73\u60C5\u7684\u7C3D\u6838\u53EA\u8A8D AHub\u300C\u8A2D\u5B9A\u300D\u88E1\u7684\u7C3D\u6838\u4EBA\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\uFF0C\u683C\u5F0F\u8207 AHub \u540C\u4E00\u4EFD\u7A0B\u5F0F\uFF1B\u9700\u8981 AHub 0.8.0 \u4EE5\u4E0A\uFF08inkstone/Arcrun#328\uFF09\u30020.5.3\uFF1A\u4FEE\u6389 0.7.3 \u7684\u4E00\u500B\u932F\uFF1AAI \u91CD\u767C\u89E3\u9396\u78BC\u6642\uFF0C\u9078\u55AE\u6703\u8AA4\u6293\u7559\u8A00\u88E1\u63D0\u5230\u7684\u4E0A\u4E00\u7D44\uFF08\u5DF2\u904E\u671F\u7684\uFF09\u78BC\u3002\u9700\u8981 AHub 0.7.4 \u4EE5\u4E0A\u30020.5.2\uFF1A\u7C3D\u6838\u9078\u55AE\u4E5F\u8A8D\u5F97 AI \u8981\u4F60\u8CBC\u7684\u4E00\u6B21\u6027\u89E3\u9396\u78BC\uFF08\u300C\u{1F510} ARM \u8ACB\u6C42\u300D\uFF0C\u63A8 GitHub \u6216\u78B0\u6B63\u5F0F\u74B0\u5883\u524D\u90A3\u7A2E\uFF09\uFF1A\u6309\u300C\u7C3D\u6838\u2026\u300D\u9078\u5B83\u3001\u6309\u540C\u610F\u5C31\u5E6B\u4F60\u628A\u78BC\u8CBC\u4E0A\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u6284\uFF1B\u4F60\u81EA\u5DF1\u6253\u904E\u78BC\u7684\u90A3\u5247\u6703\u6A19\u6210\u5DF2\u7C3D\uFF0C\u4E0D\u518D\u639B\u8457\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u3002\u9700\u8981 AHub 0.7.3 \u4EE5\u4E0A\uFF08\u540C\u4E00\u4EFD\u7968\u8A73\u60C5\uFF09\u30020.5.1\uFF1A\u7968\u8A73\u60C5\u6539\u6B04\u4F4D\u6642\u756B\u9762\u7576\u4E0B\u5C31\u63DB\u3001\u80CC\u666F\u5B58\u6A94\uFF1B\u7968\u8A73\u60C5\u7684\u7C3D\u6838\u6539\u6210\u9078\u55AE\uFF08leo 2026-10-25\uFF09\uFF1A\u4E0D\u5FC5\u518D\u6253\u7248\u672C\u865F\u2014\u2014AI \u628A\u8981\u4F60\u7C3D\u7684\u5167\u5BB9\u5BEB\u6210\u4E00\u5247\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u7684\u7559\u8A00\uFF0C\u6309\u300C\u7C3D\u6838\u2026\u300D\u5F9E\u4E0B\u62C9\u9078\u5B83\u3001\u52FE\u540C\u610F\u6216\u4E0D\u540C\u610F\u3001\u53EF\u52A0\u610F\u898B\uFF0C\u7C3D\u6838\u8207\u88AB\u7C3D\u7684\u5167\u5BB9\u7D81\u5728\u4E00\u8D77\uFF1B\u540C\u610F\u51FA\u6B63\u5F0F\u7248\u7684\u8ACB\u6C42\u6642\u4E00\u4F75\u7559\u4E0B\u51FA\u8CA8\u7DDA\u8A8D\u5F97\u7684\u300CARM: <\u7248\u672C>\u300D\u3002\u4FEE\u6389\u820A\u7684\u7C3D ARM \u6846\u628A\u300CARM: 9.9.9\u300D\u5224\u6210\u683C\u5F0F\u4E0D\u5C0D\u3002\u9700\u8981 AHub 0.7.1 \u4EE5\u4E0A\uFF08\u540C\u4E00\u4EFD\u7968\u8A73\u60C5\uFF09\u30020.5.0\uFF1A\u7968\u770B\u677F\u6539\u540D\u300C\u7968\u5730\u5716\u300D\u4E26\u91CD\u65B0\u8A2D\u8A08\uFF08inkstone/Arcrun#322\uFF09\u2014\u2014\u9996\u5C4F\u662F\u958B\u8457\u7684\u91CC\u7A0B\u7891\uFF08\u5B8C\u6210 %\u3001\u671F\u9650\u3001\u7968 \u2192 release \u2192 GitHub\u3001\u8AB0\u5728\u63A8\u3001\u6700\u8FD1\u6D3B\u52D5\uFF09\uFF0C\u53F3\u6B04\u662F\u6B63\u5728\u52D5\u7684\u5C0D\u8A71\u8207\u6700\u8FD1\u7684 release\uFF1B\u770B\u677F\u8DE8 repo\u3001\u62D6\u5361\u63DB\u9032\u5EA6\u3001\u53EF\u4F9D\u91CC\u7A0B\u7891\u7BE9\uFF1B\u9EDE\u7968\u6253\u958B\u7684\u662F\u548C AHub \u540C\u4E00\u500B\u7968\u8A73\u60C5\uFF08Markdown \u8A0E\u8AD6\u3001\u7C3D ARM\uFF09\u3002\u540C\u4E00\u500B App\uFF0C\u5DF2\u88DD\u7968\u770B\u677F\u7684\u6309\u66F4\u65B0\u5C31\u63DB\u904E\u4F86\uFF0C\u4E0D\u6703\u8B8A\u6210\u5169\u500B\u3002\u9700\u8981 AHub 0.7.0 \u4EE5\u4E0A\u30020.4.1\uFF1A\u518D\u9EDE\u958B\u6642\u5916\u6846\u8207\u4E0A\u6B21\u7684\u770B\u677F\u3001\u7968\u5167\u5BB9\u7ACB\u523B\u51FA\u73FE\uFF0C\u80CC\u666F\u63DB\u65B0\uFF1B\u66F4\u65B0\u5931\u6557\u6642\u4FDD\u7559\u4E0A\u6B21\u5167\u5BB9\u4E26\u6A19\u660E\uFF08inkstone/Arcrun#321\uFF09\u30020.4.0\uFF1A\u9EDE\u9032\u4E00\u5F35\u7968\u770B\u5F97\u5230\u5167\u6587\u8207\u7559\u8A00\uFF0C\u4E26\u80FD\u4EE5\u5BE6\u4F8B\u4E3B\u4EBA\uFF08Leo\uFF09\u7684\u8EAB\u5206\u7559\u8A00\u2014\u2014\u8EAB\u5206\u7531 Portal \u767B\u5165\u6C7A\u5B9A\uFF0C\u4E0D\u7528\u8CBC\u4EFB\u4F55 token\u3001\u4E0D\u958B\u7D42\u7AEF\u6A5F\uFF1B\u7559\u8A00\u6210\u529F\u5F8C\u6703\u901A\u77E5\u96F2\u7AEF\u4E26\u66F4\u65B0\u7E3D\u5716\uFF08\u9019\u53F0\u5BE6\u4F8B\u6709 ahub_ticket_bell \u624D\u6703\uFF09\u3002\u9700\u8981 AHub 0.3.2 \u4EE5\u4E0A\u8207\u5F15\u64CE\u6709 /portal/actor/verify\u30020.3.1\uFF1A\u4E0D\u518D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\u2014\u2014\u770B\u677F\u7528\u81EA\u5DF1\u7684\u8EAB\u5206\uFF08kanban-app\uFF09\u5C0D AHub \u7F72\u540D\uFF0C\u7B2C\u4E00\u6B21\u7528\u6642\u81EA\u52D5\u5411 AHub \u767B\u8A18\uFF0C\u88DD\u597D\u6216\u66F4\u65B0\u5F8C\u4EC0\u9EBC\u90FD\u4E0D\u7528\u586B\u30020.3.0\uFF1A\u7968\u7684\u4F86\u6E90\u5F9E Gitea \u6539\u6210 AHub\uFF08\u756B\u9762\u8207\u52D5\u4F5C\u4E0D\u8B8A\uFF0C\u53EA\u63DB\u8CC7\u6599\u4F86\u6E90\uFF09\uFF0C\u9700\u8981\u5148\u88DD AHub App\u30020.2.1 \u4EE5\u524D\u8B80 Gitea\u3002",
+  version: "0.9.3",
+  changelog: "0.9.3\uFF1A\uFF08\u8207 AHub 0.18.3 \u540C\u4E00\u4EFD\u756B\u9762\uFF09\u300C\u76EE\u6A19\u300D\u9801\uFF1A\u76EE\u6A19\u6307\u8457\u9084\u6C92\u8F49\u63DB\u7684\u820A\u5F0F\u91CC\u7A0B\u7891\u6642\uFF0C\u540D\u7A31\u548C\u9032\u5EA6\u689D\u8B80\u5F97\u51FA\u4F86\uFF08inkstone/Arcrun#383\uFF09\u3002\n0.9.2\uFF1A\uFF08\u8207 AHub 0.18.2 \u540C\u4E00\u4EFD\u756B\u9762\uFF09\u300C\u770B\u677F\u300D\u8CC7\u6599\u9084\u6C92\u8F49\u6210\u6A39\u6642\u4E5F\u662F\u770B\u677F\uFF08\u4F9D\u9032\u5EA6\u5206\u6B04\u3001\u5361\u7247\u662F\u7968\uFF09\uFF0C\u4E0D\u518D\u8DDF\u300C\u5927\u7DB1\u300D\u4E00\u6A23\uFF1B\u300C\u6A19\u7C64\u300D\u5206\u9801\u4E0D\u7528\u5148\u9078 repo\uFF0C\u5168\u90E8\u5C08\u6848\u5171\u7528\u4E00\u5957\u3001\u6539\u52D5\u4E00\u6B21\u5957\u5230\u6BCF\u500B\u5C08\u6848\uFF08inkstone/Arcrun#383\uFF09\u3002\n0.9.1\uFF1A\u7D50\u69CB\u9801\u4E0D\u518D\u4E00\u7247\u7A7A\u767D\uFF08\u8207 AHub 0.18.1 \u540C\u4E00\u4EFD\u756B\u9762\uFF09\uFF1A\u820A\u5F0F\u91CC\u7A0B\u7891\u9084\u6C92\u8F49\u6210\u6A39\u6642\u7167\u820A\u5217\u51FA\u4E26\u8AAA\u660E\uFF0C\u7A7A\u72C0\u614B\u6539\u767D\u8A71\u3002\n0.9.0\uFF1A\u7968\u5730\u5716\u4F75\u9032 AHub\uFF08inkstone/Arcrun#368\uFF09\u2014\u2014\u756B\u9762\u63DB\u6210\u548C AHub \u540C\u4E00\u4EFD\uFF1A\u300C\u7D50\u69CB\u300D\uFF08\u5C08\u6848\u25B8\u91CC\u7A0B\u7891\u25B8\u7968\uFF0C\u53EF\u5207\u770B\u677F\uFF09\u8207\u300C\u76EE\u6A19\u300D\u5169\u500B\u5165\u53E3\uFF0C\u8CC7\u6599\u4E0D\u8B8A\uFF1B\u5E02\u96C6\u4E0A\u53EA\u7559 AHub \u4E00\u500B\u5165\u53E3\uFF0C\u5DF2\u88DD 0.8.x \u7684\u6309\u66F4\u65B0\u5C31\u63DB\u6210\u9019\u4E00\u7248\u3002\u9700\u8981 AHub 0.16.0 \u4EE5\u4E0A\u3002\n0.8.2\uFF1A\u624B\u6A5F\u4E0A\u6309\u5F97\u5230\u7968\u8A73\u60C5\u8207\u7C3D\u6838\u6846\u6700\u5E95\u90A3\u6392\u4E86\uFF08inkstone/Arcrun#371\uFF09\u2014\u2014\u5C0D\u8A71\u6846\u8207\u5074\u6B04\u6539\u6210\u84CB\u5728 Portal \u7684\u5E95\u90E8\u5206\u9801\u5217\u8207\u53F3\u4E0B\u89D2\u6D6E\u52D5\u6309\u9215\u4E0A\u9762\u3002\u53EA\u6539\u756B\u9762\u6A23\u5F0F\u3002\n0.8.1\uFF1A\u7968\u8A73\u60C5\u591A\u4E00\u884C\u300Cstage \u73FE\u5728\u662F\u54EA\u4E00\u7248\u3001\u542B\u4E0D\u542B\u9019\u5F35\u7968\u300D\uFF08inkstone/Arcrun#365\uFF09\uFF1B\u9700\u8981 AHub 0.15.0 \u4EE5\u4E0A\uFF0C\u820A\u7248 AHub \u8B80\u4E0D\u5230\u5C31\u4E0D\u986F\u793A\u9019\u4E00\u884C\u3002\n0.8.0\uFF1A\u7968\u5730\u5716\u53EA\u7559\u4E00\u500B\u5100\u8868\u677F\uFF1D\u6574\u5408\u53EF\u647A\u758A\u5217\u8868\uFF08inkstone/Arcrun#351\uFF09\u2014\u2014\u5C08\u6848 \u25B8 \u76EE\u6A19 \u25B8 \u91CC\u7A0B\u7891\uFF08\u6A6B\u5F0F\u9032\u5EA6\u689D\u3001\u8AB0\u5728\u63A8\u3001\u88AB\u5E7E\u500B\u76EE\u6A19\u5F15\u7528\uFF09\u25B8 \u8F09\u9AD4\u7968 \u25B8 \u524D\u7F6E\u7968\uFF1B\u62FF\u6389\u74B0\u5F62\u5361\u7247\u5100\u8868\u677F\u8207\u7368\u7ACB\u7684\u300C\u5C08\u6848\u76EE\u6A19\u300D\u5206\u9801\uFF08\u4F75\u9032\u540C\u4E00\u5F35\u5217\u8868\uFF09\uFF0C\u770B\u677F\u4FDD\u7559\u3002\u91CC\u7A0B\u7891\u7684 % \u8207 AHub \u91CC\u7A0B\u7891\u9801\u540C\u4E00\u500B\u6578\u5B57\uFF1B\u6CBF\u7528\u300C\u958B\u8457\uFF0F\u5DF2\u95DC\uFF0F\u5168\u90E8\u300D\u8207\u6BCF\u500B\u91CC\u7A0B\u7891\u7684\u300C\u5B8C\u6210\u300D\u9215\uFF08\u7968\u505A\u5B8C\u6C92\u7248\u672C\u7684\u6A19\u51FA\u4F86\u3001\u6309\u5B8C\u6210\u6642\u660E\u8B1B\uFF09\uFF1B\u6C92\u639B\u76EE\u6A19\u7684\u91CC\u7A0B\u7891\u8207\u6C92\u639B\u91CC\u7A0B\u7891\u7684\u76EE\u6A19\u90FD\u6A19\u51FA\u4F86\u3002\u300C\u6B63\u5728\u52D5\u7684\u5C0D\u8A71\u300D\u79FB\u5230 AHub \u756B\u9762\u7684\u300C\u767B\u8A18\u7C3F\u300D\u5206\u9801\u3002\u9700\u8981 AHub 0.13.4 \u4EE5\u4E0A\uFF08\u8B80\u53D6\u767D\u540D\u55AE\uFF09\u3002\n0.7.2\uFF1A\u5DF2\u95DC\u7684\u91CC\u7A0B\u7891\u9810\u8A2D\u4E0D\u5217\u5728\u5100\u8868\u677F\u8207\u300C\u5C08\u6848\u76EE\u6A19\u300D\uFF1A\u91CC\u7A0B\u7891\u4E0A\u65B9\u591A\u4E00\u500B\u548C AHub \u7968\u6E05\u55AE\u4E00\u6A23\u7684\u300C\u958B\u8457\uFF0F\u5DF2\u95DC\uFF0F\u5168\u90E8\u300D\u5206\u6BB5\u5207\u63DB\uFF0C\u9810\u8A2D\u958B\u8457\u3001\u9078\u64C7\u8A18\u5F97\u4F4F\uFF1B\u6BCF\u5F35\u91CC\u7A0B\u7891\u5361\u591A\u4E00\u9846\u300C\u5B8C\u6210\u300D\uFF0C\u76F4\u63A5\u5728\u7968\u5730\u5716\u95DC\u91CC\u7A0B\u7891\uFF08\u8D70 AHub \u65E2\u6709\u7684\u5BEB\u5165\u3001Portal \u767B\u5165\u8005\u8EAB\u5206\uFF0C\u6309\u4E4B\u524D\u78BA\u8A8D\u4E00\u6B21\u3001\u5931\u6557\u7167\u5BE6\u8AAA\uFF09\uFF1B\u7968\u90FD\u505A\u5B8C\u537B\u6C92\u6709\u7248\u672C\u7684\u4E0D\u7B97\u5B8C\u6210\u3001\u4E0D\u81EA\u52D5\u85CF\u2014\u2014\u5361\u7247\u6A19\u300C\u7968\u505A\u5B8C\u4E86\uFF0C\u9084\u6C92\u51FA\u7248\u672C\u300D\uFF0C\u6309\u5B8C\u6210\u6642\u660E\u8B1B\u300C\u9019\u500B\u91CC\u7A0B\u7891\u6C92\u6709\u7248\u672C\uFF0C\u78BA\u5B9A\u8981\u76F4\u63A5\u95DC\uFF1F\u300D\uFF08inkstone/Arcrun#351\uFF09\u3002\n0.7.1\uFF1A\u91CC\u7A0B\u7891\u5074\u6B04\u5728\u6C92\u586B\u8AAA\u660E\u7684\u91CC\u7A0B\u7891\u4E0A\u4E0D\u518D\u591A\u51FA\u4E00\u884C\u300Cnull\u300D\uFF08inkstone/Arcrun#351\uFF09\u3002\n0.7.0\uFF1A\u7968\u5730\u5716\u591A\u4E00\u500B\u300C\u5C08\u6848\u76EE\u6A19\u300D\u8996\u5716\uFF08inkstone/Arcrun#351\uFF09\u2014\u2014\u5C08\u6848\uFF0F\u76EE\u6A19\uFF08\u672A\u4F86\uFF09\uFF0F\u9032\u5EA6\u689D\uFF0F\u6B65\u9A5F\u7684 outliner\uFF1A\u9EDE\u958B\u5C08\u6848\u770B\u6BCF\u500B\u672A\u4F86\u505A\u5230\u5E7E\u6210\u3001\u5361\u5728\u54EA\uFF08\u7B49\u5F85\u3001\u88AB\u524D\u7F6E\u64CB\u4F4F\u7684\u6700\u524D\u9762\u5361\u9EDE\u3001\u53EF\u4EE5\u958B\u5DE5\u7684\u3001\u4EA4\u8FA6\u672A\u52D5\u5DE5\u3001\u524D\u7F6E\u5DF2\u5B8C\u6210\u8A72\u91CD\u770B\uFF09\u3002\u76EE\u6A19\u5C6C\u65BC CC\uFF08AHub \u76EE\u6A19\u6A39\uFF09\u3001\u91CC\u7A0B\u7891\u5C6C\u65BC AHub\uFF0C\u5169\u8005\u662F\u9078\u64C7\u6027\u4E00\u5C0D\u591A\uFF1A\u76EE\u6A19\u53EF\u4EE5\u6C92\u6709\u91CC\u7A0B\u7891\uFF0C\u4E5F\u53EF\u4EE5\u6709\u597D\u5E7E\u500B\u2014\u2014\u756B\u9762\u4E0D\u65B0\u589E\u4EFB\u4F55\u8CC7\u6599\uFF0C\u7528\u6B65\u9A5F\u639B\u7684\u7968\u63A8\u9023\u7D50\uFF08\u7968\u81EA\u5DF1\u639B\u7684\u91CC\u7A0B\u7891\uFF1B\u6C92\u6709\u5C31\u770B\u5B83\u64CB\u4F4F\u7684\u8F09\u9AD4\u7968\u639B\u7684\uFF09\uFF0C\u6BCF\u500B\u63A8\u51FA\u4F86\u7684\u9023\u7D50\u90FD\u6A19\u660E\u300C\u63A8\u7684\u300D\u3002\u6BCF\u500B\u672A\u4F86\u756B\u51FA\u93C8\u689D\u300C\u76EE\u6A19\u2192\u8F09\u9AD4\u7968\u2192\u5DE5\u4F5C\u7968\u2192\u91CC\u7A0B\u7891\u2192release\u300D\uFF0C\u65B7\u5728\u54EA\u4E00\u6BB5\u5C31\u6A19\u54EA\u4E00\u6BB5\uFF0C\u5169\u7A2E\u65B7\u6CD5\u5206\u958B\u6A19\uFF1A\u300C\u93C8\u689D\u6C92\u63A5\u300D\uFF08\u67D0\u4E00\u6BB5\u6839\u672C\u7F3A\uFF09\u8207\u300C\u6C92\u4EBA\u7DAD\u8B77\u300D\uFF08\u6BCF\u6BB5\u90FD\u63A5\u4E0A\u4E86\u3001\u6574\u689D\u93C8\u5F88\u4E45\u6C92\u52D5\uFF09\u3002\u5100\u8868\u677F\u7684\u91CC\u7A0B\u7891\u5361\u7247\u591A\u4E00\u884C\u300C\u70BA\u4E86\u54EA\u500B\u76EE\u6A19\u300D\uFF0C\u6C92\u6709\u4EFB\u4F55\u76EE\u6A19\u6307\u8457\u7684\u6A19\u300C\u6C92\u6709\u76EE\u6A19\u6307\u8457\u300D\u3002\u552F\u8B80\u3002\u9700\u8981 AHub 0.12.0 \u4EE5\u4E0A\uFF08\u5EFA\u8B70 0.12.1\uFF0C\u624D\u6709\u300C\u4EA4\u8FA6\u672A\u52D5\u5DE5\u300D\uFF09\u3002\n0.6.2\uFF1A\u4FEE\u6389\u300C\u66F4\u65B0\u5931\u6557\u30FB\u8CC7\u6599\u4F86\u81EA\u597D\u5E7E\u500B\u5C0F\u6642\u524D\u300D\u2014\u2014\u7968\u5730\u5716\u8B80\u4E0D\u5230\u65B0\u8CC7\u6599\uFF0C\u73FE\u5728\u6309\u300C\u66F4\u65B0\u300D\u5F8C\u6703\u62FF\u5230\u6700\u65B0\u7684\u7968\u8207\u91CC\u7A0B\u7891\uFF08inkstone/Arcrun#347\uFF09\u3002AHub \u5EFA\u8B70\u540C\u6B65\u66F4\u65B0\u5230 0.10.1\u3002\n0.6.0\uFF1A\u7968\u8A73\u60C5\u7684\u7C3D\u6838\u53EA\u8A8D AHub\u300C\u8A2D\u5B9A\u300D\u88E1\u7684\u7C3D\u6838\u4EBA\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\uFF0C\u683C\u5F0F\u8207 AHub \u540C\u4E00\u4EFD\u7A0B\u5F0F\uFF1B\u9700\u8981 AHub 0.8.0 \u4EE5\u4E0A\uFF08inkstone/Arcrun#328\uFF09\u30020.5.3\uFF1A\u4FEE\u6389 0.7.3 \u7684\u4E00\u500B\u932F\uFF1AAI \u91CD\u767C\u89E3\u9396\u78BC\u6642\uFF0C\u9078\u55AE\u6703\u8AA4\u6293\u7559\u8A00\u88E1\u63D0\u5230\u7684\u4E0A\u4E00\u7D44\uFF08\u5DF2\u904E\u671F\u7684\uFF09\u78BC\u3002\u9700\u8981 AHub 0.7.4 \u4EE5\u4E0A\u30020.5.2\uFF1A\u7C3D\u6838\u9078\u55AE\u4E5F\u8A8D\u5F97 AI \u8981\u4F60\u8CBC\u7684\u4E00\u6B21\u6027\u89E3\u9396\u78BC\uFF08\u300C\u{1F510} ARM \u8ACB\u6C42\u300D\uFF0C\u63A8 GitHub \u6216\u78B0\u6B63\u5F0F\u74B0\u5883\u524D\u90A3\u7A2E\uFF09\uFF1A\u6309\u300C\u7C3D\u6838\u2026\u300D\u9078\u5B83\u3001\u6309\u540C\u610F\u5C31\u5E6B\u4F60\u628A\u78BC\u8CBC\u4E0A\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u6284\uFF1B\u4F60\u81EA\u5DF1\u6253\u904E\u78BC\u7684\u90A3\u5247\u6703\u6A19\u6210\u5DF2\u7C3D\uFF0C\u4E0D\u518D\u639B\u8457\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u3002\u9700\u8981 AHub 0.7.3 \u4EE5\u4E0A\uFF08\u540C\u4E00\u4EFD\u7968\u8A73\u60C5\uFF09\u30020.5.1\uFF1A\u7968\u8A73\u60C5\u6539\u6B04\u4F4D\u6642\u756B\u9762\u7576\u4E0B\u5C31\u63DB\u3001\u80CC\u666F\u5B58\u6A94\uFF1B\u7968\u8A73\u60C5\u7684\u7C3D\u6838\u6539\u6210\u9078\u55AE\uFF08leo 2026-10-25\uFF09\uFF1A\u4E0D\u5FC5\u518D\u6253\u7248\u672C\u865F\u2014\u2014AI \u628A\u8981\u4F60\u7C3D\u7684\u5167\u5BB9\u5BEB\u6210\u4E00\u5247\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u7684\u7559\u8A00\uFF0C\u6309\u300C\u7C3D\u6838\u2026\u300D\u5F9E\u4E0B\u62C9\u9078\u5B83\u3001\u52FE\u540C\u610F\u6216\u4E0D\u540C\u610F\u3001\u53EF\u52A0\u610F\u898B\uFF0C\u7C3D\u6838\u8207\u88AB\u7C3D\u7684\u5167\u5BB9\u7D81\u5728\u4E00\u8D77\uFF1B\u540C\u610F\u51FA\u6B63\u5F0F\u7248\u7684\u8ACB\u6C42\u6642\u4E00\u4F75\u7559\u4E0B\u51FA\u8CA8\u7DDA\u8A8D\u5F97\u7684\u300CARM: <\u7248\u672C>\u300D\u3002\u4FEE\u6389\u820A\u7684\u7C3D ARM \u6846\u628A\u300CARM: 9.9.9\u300D\u5224\u6210\u683C\u5F0F\u4E0D\u5C0D\u3002\u9700\u8981 AHub 0.7.1 \u4EE5\u4E0A\uFF08\u540C\u4E00\u4EFD\u7968\u8A73\u60C5\uFF09\u30020.5.0\uFF1A\u7968\u770B\u677F\u6539\u540D\u300C\u7968\u5730\u5716\u300D\u4E26\u91CD\u65B0\u8A2D\u8A08\uFF08inkstone/Arcrun#322\uFF09\u2014\u2014\u9996\u5C4F\u662F\u958B\u8457\u7684\u91CC\u7A0B\u7891\uFF08\u5B8C\u6210 %\u3001\u671F\u9650\u3001\u7968 \u2192 release \u2192 GitHub\u3001\u8AB0\u5728\u63A8\u3001\u6700\u8FD1\u6D3B\u52D5\uFF09\uFF0C\u53F3\u6B04\u662F\u6B63\u5728\u52D5\u7684\u5C0D\u8A71\u8207\u6700\u8FD1\u7684 release\uFF1B\u770B\u677F\u8DE8 repo\u3001\u62D6\u5361\u63DB\u9032\u5EA6\u3001\u53EF\u4F9D\u91CC\u7A0B\u7891\u7BE9\uFF1B\u9EDE\u7968\u6253\u958B\u7684\u662F\u548C AHub \u540C\u4E00\u500B\u7968\u8A73\u60C5\uFF08Markdown \u8A0E\u8AD6\u3001\u7C3D ARM\uFF09\u3002\u540C\u4E00\u500B App\uFF0C\u5DF2\u88DD\u7968\u770B\u677F\u7684\u6309\u66F4\u65B0\u5C31\u63DB\u904E\u4F86\uFF0C\u4E0D\u6703\u8B8A\u6210\u5169\u500B\u3002\u9700\u8981 AHub 0.7.0 \u4EE5\u4E0A\u30020.4.1\uFF1A\u518D\u9EDE\u958B\u6642\u5916\u6846\u8207\u4E0A\u6B21\u7684\u770B\u677F\u3001\u7968\u5167\u5BB9\u7ACB\u523B\u51FA\u73FE\uFF0C\u80CC\u666F\u63DB\u65B0\uFF1B\u66F4\u65B0\u5931\u6557\u6642\u4FDD\u7559\u4E0A\u6B21\u5167\u5BB9\u4E26\u6A19\u660E\uFF08inkstone/Arcrun#321\uFF09\u30020.4.0\uFF1A\u9EDE\u9032\u4E00\u5F35\u7968\u770B\u5F97\u5230\u5167\u6587\u8207\u7559\u8A00\uFF0C\u4E26\u80FD\u4EE5\u5BE6\u4F8B\u4E3B\u4EBA\uFF08Leo\uFF09\u7684\u8EAB\u5206\u7559\u8A00\u2014\u2014\u8EAB\u5206\u7531 Portal \u767B\u5165\u6C7A\u5B9A\uFF0C\u4E0D\u7528\u8CBC\u4EFB\u4F55 token\u3001\u4E0D\u958B\u7D42\u7AEF\u6A5F\uFF1B\u7559\u8A00\u6210\u529F\u5F8C\u6703\u901A\u77E5\u96F2\u7AEF\u4E26\u66F4\u65B0\u7E3D\u5716\uFF08\u9019\u53F0\u5BE6\u4F8B\u6709 ahub_ticket_bell \u624D\u6703\uFF09\u3002\u9700\u8981 AHub 0.3.2 \u4EE5\u4E0A\u8207\u5F15\u64CE\u6709 /portal/actor/verify\u30020.3.1\uFF1A\u4E0D\u518D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\u2014\u2014\u770B\u677F\u7528\u81EA\u5DF1\u7684\u8EAB\u5206\uFF08kanban-app\uFF09\u5C0D AHub \u7F72\u540D\uFF0C\u7B2C\u4E00\u6B21\u7528\u6642\u81EA\u52D5\u5411 AHub \u767B\u8A18\uFF0C\u88DD\u597D\u6216\u66F4\u65B0\u5F8C\u4EC0\u9EBC\u90FD\u4E0D\u7528\u586B\u30020.3.0\uFF1A\u7968\u7684\u4F86\u6E90\u5F9E Gitea \u6539\u6210 AHub\uFF08\u756B\u9762\u8207\u52D5\u4F5C\u4E0D\u8B8A\uFF0C\u53EA\u63DB\u8CC7\u6599\u4F86\u6E90\uFF09\uFF0C\u9700\u8981\u5148\u88DD AHub App\u30020.2.1 \u4EE5\u524D\u8B80 Gitea\u3002",
   requires: {
     recipes: [
       {
@@ -16092,7 +16253,7 @@ function hintOf(err) {
   return err;
 }
 // \u8B80\uFF1Aopts.swr\uFF1D\u6709\u4E0A\u6B21\u7684\u7D50\u679C\u5C31\u5148\u7D66\uFF08onUpdate \u6536\u65B0\u7684\uFF09\uFF1B\u56DE Promise<body>
-var READ_LABEL = { sessions_list: '\u5C0D\u8A71', claim_list: '\u9818\u7968', goals_report: '\u76EE\u6A19\u6A39', projects_index: '\u5C08\u6848\u6E05\u55AE', ms_overview: '\u91CC\u7A0B\u7891', ms_list: '\u91CC\u7A0B\u7891', issue_list: '\u7968\u6E05\u55AE', issue_search: '\u7968\u6E05\u55AE', board: '\u770B\u677F' };
+var READ_LABEL = { sessions_list: '\u5C0D\u8A71', claim_list: '\u9818\u7968', goals_report: '\u76EE\u6A19\u6A39', projects_index: '\u5C08\u6848\u6E05\u55AE', label_list: '\u6A19\u7C64', ms_overview: '\u91CC\u7A0B\u7891', ms_list: '\u91CC\u7A0B\u7891', issue_list: '\u7968\u6E05\u55AE', issue_search: '\u7968\u6E05\u55AE', board: '\u770B\u677F' };
 function aRead(route, params, query, opts) {
   var payload = { route: route, params: params || {}, query: query || {} };
   var o = opts && opts.swr ? { swr: true, label: READ_LABEL[route] || route, onUpdate: function (x2) { var u2 = unwrapAction(x2); if (!u2.error && opts.onUpdate) opts.onUpdate(u2.r.body); } } : undefined;
@@ -16664,6 +16825,7 @@ function emptyHelp() {
     closedOnly ? null : h('div', { class: 'ah-note', style: { marginTop: '8px' } }, '\u73FE\u5728\u9084\u6C92\u6709\u4EFB\u4F55\u6771\u897F\u3002\u6309\u300C\uFF0B \u65B0\u589E\u300D\u5EFA\u7B2C\u4E00\u500B\u5C08\u6848\uFF0C\u518D\u628A\u7968\u653E\u9032\u53BB\uFF1B\u4E5F\u53EF\u4EE5\u628A\u4E00\u500B\u968E\u6BB5\u6216\u4E00\u5F35\u7968\u540C\u6642\u653E\u9032\u597D\u5E7E\u500B\u5C08\u6848\u3002')));
 }
 function paintStructEmpty() {
+  if (ST.view === 'board') return paintLegacyBoard();
   var g = V.gen;
   viewEl.replaceChildren(h('div', { class: 'ah-note', style: { padding: '12px 20px' } }, '\u8B80\u53D6\u2026'));
   aRead('ms_overview', {}, { state: ST.state, limit: '40' }, { swr: false }).then(function (b) {
@@ -16806,6 +16968,34 @@ function addToParentDialog(n, done) {
     onSubmit: function (v) { if (!v.parent) throw new Error('\u5148\u9078\u4E00\u500B\u4E0A\u5C64'); return aWrite('member_add', {}, { parent: v.parent, child: n.ref }).then(done); } });
 }
 
+// \u2500\u2500 \u6A39\u9084\u662F\u7A7A\u7684\u3001\u53C8\u6309\u4E86\u300C\u770B\u677F\u300D\uFF1A\u4E0D\u80FD\u9000\u56DE\u6210\u8DDF\u5927\u7DB1\u4E00\u6A23\u7684\u756B\u9762\uFF08inkstone/Arcrun#383\uFF09\u3002
+//    \u7167\u820A\u5F0F\u91CC\u7A0B\u7891\u5206\u6A6B\u5217\u3001\u6B04\uFF1D\u9032\u5EA6\u6A19\u7C64\u3001\u5361\u7247\uFF1D\u7968\uFF08\u8DE8\u5C08\u6848\u8B80\u6700\u8FD1\u66F4\u65B0\u7684\u958B\u8457\u7684\u7968\uFF09\uFF1B\u9019\u6642\u9084\u6C92\u6709\u300C\u6B78\u5C6C\u300D\u53EF\u62D6\uFF0C\u6240\u4EE5\u53EA\u80FD\u62D6\u6B04\u6539\u9032\u5EA6 \u2500\u2500
+function paintLegacyBoard() {
+  var g = V.gen;
+  var bar = h('div', { class: 'ah-toolbar' }, h('span', { class: 'ah-note' }, '\u4F60\u7684\u5C08\u6848\u9084\u6C92\u6392\u9032\u6A39\u88E1\uFF0C\u6240\u4EE5\u5148\u7167\u91CC\u7A0B\u7891\u5206\u6A6B\u5217\u3001\u4F9D\u9032\u5EA6\u5206\u6B04\u5217\u51FA\u7968\u3002\u8981\u6392\u6210\u6A39\uFF0C\u8ACB AI \u52A9\u7406\u505A\u300C\u820A\u91CC\u7A0B\u7891\u8F49\u63DB\u300D\uFF08\u5B8C\u6210\u5EA6\u4E0D\u8B8A\uFF09\u3002\u62D6\u5230\u5225\u6B04\uFF1D\u6539\u9032\u5EA6\u3002'));
+  viewEl.replaceChildren(bar, h('div', { class: 'ah-note', style: { padding: '12px 20px' } }, '\u8B80\u53D6\u2026'));
+  var q = { state: ST.state === 'closed' ? 'closed' : 'open', limit: '100', type: 'issues' };
+  aRead('issue_search', {}, q, { swr: false }).then(function (list) {
+    if (g !== V.gen || ST.roots.length) return;
+    list = Array.isArray(list) ? list : [];
+    var lanes = {}, order = [];
+    ST.board.status = {};
+    list.forEach(function (it) {
+      var repo = (it.repository && it.repository.full_name) || '';
+      var card = { kind: 'issue', key: repo + '#' + it.number, repo: repo, number: it.number, title: it.title, state: it.state, parents: [] };
+      var s = statusOf(it.labels); ST.board.status[card.key] = s ? s.id : '';
+      var name = it.milestone ? it.milestone.title : '\uFF08\u6C92\u653E\u9032\u4EFB\u4F55\u91CC\u7A0B\u7891\uFF09';
+      if (!lanes[name]) { lanes[name] = { ref: '', title: name, items: [], legacy: true }; order.push(name); }
+      lanes[name].items.push(card);
+    });
+    order.sort(function (a, b) { return a.charAt(0) === '\uFF08' ? 1 : b.charAt(0) === '\uFF08' ? -1 : a < b ? -1 : 1; });
+    var arr = order.map(function (n) { return lanes[n]; });
+    viewEl.replaceChildren(bar, laneBoard(arr, {}));
+    if (!arr.length) viewEl.appendChild(h('div', { class: 'ah-empty' }, ST.state === 'closed' ? '\u6C92\u6709\u5DF2\u95DC\u7684\u7968\u3002' : '\u73FE\u5728\u6C92\u6709\u958B\u8457\u7684\u7968\u3002'));
+    else if (list.length >= 100) viewEl.appendChild(h('div', { class: 'ah-note', style: { padding: '0 20px' } }, '\u53EA\u5217\u4E86\u6700\u8FD1\u66F4\u65B0\u7684 100 \u5F35\u7968\u3002'));
+  }, function (e) { if (g === V.gen) viewEl.replaceChildren(bar, h('div', { class: 'ah-empty' }, '\u8B80\u4E0D\u5230\u7968\uFF0C\u6240\u4EE5\u756B\u4E0D\u51FA\u770B\u677F\uFF1A' + e.message)); });
+}
+
 // \u2500\u2500 \u770B\u677F\uFF1A\u9078\u4E00\u500B\u7BC0\u9EDE\uFF0C\u5361\u7247\uFF1D\u5E95\u4E0B\u6240\u6709\u8449\u5B50\u7968\u3001\u6B04\uFF1D\u9032\u5EA6\uFF0C\u6C34\u5E73\u5206\u7FA4\uFF1D\u76F4\u63A5\u5B69\u5B50 \u2500\u2500
 var DRAG = null;
 function leavesOf(n, acc) {
@@ -16846,6 +17036,13 @@ function drawBoard(N, leaves, bar) {
     Object.keys(lv).forEach(function (k) { if (!assigned[k]) { assigned[k] = L; L.items.push(lv[k]); } else if (assigned[k] !== L) (also[k] = also[k] || []).push(L.title); });
   });
   if (direct.items.length) lanes.push(direct);
+  var wrap = laneBoard(lanes, also);
+  var full = Object.keys(ST.board.status).filter(function (k) { return /#full$/.test(k) && ST.board.status[k]; }).length;
+  viewEl.replaceChildren(bar, wrap);
+  if (full) viewEl.appendChild(h('div', { class: 'ah-note', style: { padding: '0 20px' } }, '\u6709 repo \u7684\u958B\u8457\u7684\u7968\u8D85\u904E 50 \u5F35\uFF0C\u53EA\u8B80\u4E86\u6700\u8FD1\u66F4\u65B0\u7684 50 \u5F35\u7684\u9032\u5EA6\u6A19\u7C64\uFF1B\u5176\u9918\u6B78\u300C\u6C92\u6709\u9032\u5EA6\u6A19\u7C64\u300D\u3002'));
+  if (!lanes.length) viewEl.appendChild(h('div', { class: 'ah-empty' }, '\u9019\u500B\u7BC0\u9EDE\u5E95\u4E0B\u9084\u6C92\u6709\u7968\u3002'));
+}
+function laneBoard(lanes, also) {
   var cols = [{ id: '', title: '\u6C92\u6709\u9032\u5EA6\u6A19\u7C64', color: '#8C959F' }].concat(STATUS, [{ id: 'closed', title: '\u5DF2\u95DC', color: '#8250DF' }]);
   var wrap = h('div', { class: 'st-board' });
   lanes.forEach(function (L) {
@@ -16861,13 +17058,10 @@ function drawBoard(N, leaves, bar) {
       cards.forEach(function (it) { col.appendChild(boardCard(it, L, also[it.key])); });
       cs.appendChild(col);
     });
-    row.addEventListener('dragover', function (e) { if (DRAG && DRAG.lane !== L) e.preventDefault(); });
+    row.addEventListener('dragover', function (e) { if (DRAG && DRAG.lane !== L && !L.legacy) e.preventDefault(); });
     wrap.appendChild(row); row.appendChild(cs);
   });
-  var full = Object.keys(ST.board.status).filter(function (k) { return /#full$/.test(k) && ST.board.status[k]; }).length;
-  viewEl.replaceChildren(bar, wrap);
-  if (full) viewEl.appendChild(h('div', { class: 'ah-note', style: { padding: '0 20px' } }, '\u6709 repo \u7684\u958B\u8457\u7684\u7968\u8D85\u904E 50 \u5F35\uFF0C\u53EA\u8B80\u4E86\u6700\u8FD1\u66F4\u65B0\u7684 50 \u5F35\u7684\u9032\u5EA6\u6A19\u7C64\uFF1B\u5176\u9918\u6B78\u300C\u6C92\u6709\u9032\u5EA6\u6A19\u7C64\u300D\u3002'));
-  if (!lanes.length) viewEl.appendChild(h('div', { class: 'ah-empty' }, '\u9019\u500B\u7BC0\u9EDE\u5E95\u4E0B\u9084\u6C92\u6709\u7968\u3002'));
+  return wrap;
 }
 function boardCard(it, lane, alsoIn) {
   var c = tint(it.repo || '');
@@ -16893,7 +17087,8 @@ function dropCard(d, lane, col) {
       return withStatusLabels(it.repo, function () { return aWrite('issue_labels_set', repoParams(it.repo, { index: String(it.number) }), { labels: names }); });
     }).then(function () { ST.board.status[it.key] = col.id; msg.push('\u9032\u5EA6\u2192' + col.title); }));
   } else if (col.id !== cur) { err('\u5DF2\u95DC\u7684\u7968\u4E0D\u80FD\u7528\u62D6\u653E\u6539\u9032\u5EA6\uFF1A\u958B\u7968\u8A73\u60C5\u91CD\u65B0\u6253\u958B\u3002'); return; }
-  if (d.lane !== lane) {
+  if (d.lane !== lane && lane.legacy) { err('\u9084\u6C92\u6392\u9032\u6A39\u88E1\uFF0C\u6A6B\u5217\u53EA\u662F\u91CC\u7A0B\u7891\uFF0C\u62D6\u4E0D\u52D5\u6B78\u5C6C\uFF1B\u5148\u62D6\u6B04\u6539\u9032\u5EA6\u3002'); }
+  else if (d.lane !== lane) {
     var from = d.lane, to = lane;
     jobs.push(aWrite('member_add', {}, { parent: to.ref, child: it.key }).then(function () {
       var direct = (it.parents || []).some(function (p) { return p.ref === from.ref; });
@@ -16936,21 +17131,32 @@ function renderGoals() {
   return Promise.all(ps).then(function () { if (g !== V.gen) return; err(''); sync.ok(); }, function (e) { if (g !== V.gen) return; sync.bad(); err('\u8B80\u4E0D\u5230\u76EE\u6A19\uFF1A' + e.message); });
 }
 var GP = {};    // ref \u2192 \u8A72\u7BC0\u9EDE\u7684\u9032\u5EA6\uFF08tree_get root=ref\uFF09
-function refProgress(refs, again) {
+// \u9084\u6C92\u8F49\u6210\u6A39\u7684\u820A\u5F0F\u91CC\u7A0B\u7891\uFF08\u76EE\u6A19\u6307\u8457 m\uFF0B\u820A id\uFF09\uFF1Atree_get \u627E\u4E0D\u5230\u5B83\u6642\uFF0C\u6539\u7528\u300C\u76EE\u6A19\u5831\u544A\u300D\u81EA\u5DF1\u5E36\u7684\u91CC\u7A0B\u7891\u8CC7\u6599\uFF08\u540D\u7A31\u3001\u95DC\u6389\xF7\u5168\u90E8\uFF1D%\uFF0C\u8207\u8F49\u63DB\u5F8C\u7684\u7B97\u6CD5\u540C\u4E00\u4EFD\uFF09\uFF08inkstone/Arcrun#383\uFF09
+function legacyFromReport(d, ref) {
+  var id = parseInt(ref.slice(1), 10), found = null;
+  (function walkP(ps) { (ps || []).forEach(function (p) { (function walk(l) { (l || []).forEach(function (gl) {
+    (gl.milestones || []).forEach(function (m) { if (!found && m && String(m.id) === String(id) && m.known !== false) found = m; });
+    walk(gl.children); }); })(p.goals); }); })((d && d.goals && d.goals.projects) || []);
+  if (!found || found.total === undefined) return null;
+  var lv = {}, i = 0, cl = found.closed_issues || 0;
+  for (; i < found.total; i++) lv[ref + '#' + i] = { state: i < cl ? 'closed' : 'open', key: ref + '#' + i };
+  return { title: found.title, percent: found.percent, open: found.open_issues, closed: cl, total: found.total, role: '\u91CC\u7A0B\u7891', leaves: lv };
+}
+function refProgress(refs, again, d) {
   refs.filter(function (r) { return /^[^#\\s]+\\/[^#\\s]+#\\d+$/.test(r) && !GP[r]; }).slice(0, 12).forEach(function (r) {
     var m = /^(.+)#(\\d+)$/.exec(r); GP[r] = { loading: true };
     aRead('issue_get', repoParams(m[1], { index: m[2] }), {}).then(function (it) { var lv = {}; lv[r] = { state: it.state, key: r }; GP[r] = { title: m[1].split('/').pop() + '#' + m[2] + ' ' + (it.title || ''), percent: it.state === 'closed' ? 100 : 0, closed: it.state === 'closed' ? 1 : 0, total: 1, leaves: lv }; again(); }, function () { GP[r] = { missing: true }; again(); });
   });
   refs.filter(function (r) { return (NODE_ID.test(r) || LEGACY.test(r)) && !GP[r]; }).slice(0, 12).forEach(function (r) {
     GP[r] = { loading: true };
-    aRead('tree_get', {}, { root: r, state: 'all' }).then(function (b) { var n = b && b.roots && b.roots[0]; var lv = n ? leavesOf(n, {}) : {}; GP[r] = n ? { title: n.title, percent: n.percent, open: n.open, closed: n.closed, total: n.total, role: n.role, leaves: lv } : { missing: true }; again(); }, function () { GP[r] = { missing: true }; again(); });
+    aRead('tree_get', {}, { root: r, state: 'all' }).then(function (b) { var n = b && b.roots && b.roots[0]; var lv = n ? leavesOf(n, {}) : {}; GP[r] = n ? { title: n.title, percent: n.percent, open: n.open, closed: n.closed, total: n.total, role: n.role, leaves: lv } : (LEGACY.test(r) && legacyFromReport(d, r)) || { missing: true }; again(); }, function () { GP[r] = (LEGACY.test(r) && legacyFromReport(d, r)) || { missing: true }; again(); });
   });
 }
 function paintGoals(d) {
   var projects = (d.goals && d.goals.projects) || [], refsBy = {}, sessions = (d.sessions && d.sessions.sessions) || [];
   ((d.refs && d.refs.goals) || []).forEach(function (g) { refsBy[g.gid] = g.refs || []; });
   var all = []; projects.forEach(function (p) { (function walk(l) { l.forEach(function (gl) { (refsBy[gl.gid] || []).forEach(function (x) { all.push(x.ref); }); walk(gl.children || []); }); })(p.goals || []); });
-  refProgress(all, function () { if (V.tab === 'goals') paintGoals(d); });
+  refProgress(all, function () { if (V.tab === 'goals') paintGoals(d); }, d);
   if (!projects.length) { empty('\u9084\u6C92\u6709\u76EE\u6A19\u3002CC \u5C08\u6848\u7528 goal_set \u5EFA\u76EE\u6A19\uFF0C\u518D\u7528 node\uFF08bind_goal\uFF09\u8B93\u76EE\u6A19\u6307\u5411\u7D50\u69CB\u6A39\u7684\u7BC0\u9EDE\u6216\u7968\u3002'); return; }
   viewEl.replaceChildren();
   projects.forEach(function (p) {
@@ -17042,15 +17248,15 @@ function seg(opts, cur, on) {
 }
 function render() {
   Array.prototype.forEach.call(tabs.querySelectorAll('button'), function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-tab') === V.tab ? 'true' : 'false'); });
-  repoSel.hidden = V.tab === 'struct' || V.tab === 'goals';
+  repoSel.hidden = V.tab === 'struct' || V.tab === 'goals' || V.tab === 'labels'; // \u6A19\u7C64\u662F\u6574\u5957 AHub \u5171\u7528\u7684\uFF0C\u4E0D\u9078 repo\uFF08inkstone/Arcrun#383\uFF09
   repoSel.parentNode.hidden = repoSel.hidden;
   err('');
   if (V.tab === 'struct') return renderStruct();
   if (V.tab === 'goals') return renderGoals();
+  if (V.tab === 'labels') return renderLabels();
   if (!V.repo) { toolEl.replaceChildren(); empty('\u9084\u6C92\u6709\u4EFB\u4F55 repo\u3002\u5230\u53F3\u4E0A\u300C\u2699 \u8A2D\u5B9A\u300D\u65B0\u589E\u4E00\u500B\u3002'); return; }
   if (V.tab === 'issues') return renderIssues();
-  if (V.repo === ALL) { toolEl.replaceChildren(); empty('\u9019\u500B\u5206\u9801\u8981\u5148\u5728\u4E0A\u9762\u9078\u4E00\u500B repo\uFF08\u300C\u5168\u90E8\u300D\u53EA\u7528\u5728\u627E\u7968\uFF09\u3002'); return; }
-  return renderLabels();
+  return renderIssues();
 }
 
 // \u2500\u2500 \u7968 \u2500\u2500
@@ -17119,42 +17325,75 @@ function newIssue() {
   }
 }
 
-// \u2500\u2500 \u6A19\u7C64 \u2500\u2500
-function renderLabels() {
-  toolEl.replaceChildren(h('span', { class: 'ah-note' }, '\u300Cs/\u2026\u300D\u662F\u9032\u5EA6\u6A19\u7C64\uFF08\u4E92\u65A5\uFF09\uFF1A\u7968\u7684\u9032\u5EA6\u9760\u5B83\uFF0C\u770B\u677F\u7684\u6B04\u4F4D\u4E5F\u662F\u5B83\u3002'));
-  return show('label_list', repoParams(V.repo), { limit: '100' }, paintLabels);
+// \u2500\u2500 \u6A19\u7C64\uFF1A\u8DE8\u5168\u90E8\u5C08\u6848\u7684\u4E00\u5957\uFF08inkstone/Arcrun#383\uFF09\u2500\u2500
+// AHub \u628A\u6A19\u7C64\u5B58\u5728\u6BCF\u500B repo \u5E95\u4E0B\uFF1B\u756B\u9762\u628A\u300C\u5168\u90E8\u5C08\u6848\u300D\u540C\u540D\u7684\u6A19\u7C64\u5408\u6210\u4E00\u5217\uFF0C\u5EFA\uFF0F\u6539\uFF0F\u522A\u5C31\u662F\u5C0D\u6BCF\u500B\u5C08\u6848\u5404\u505A\u4E00\u6B21\uFF0C\u4F7F\u7528\u8005\u4E0D\u5FC5\u5148\u9078 repo\u3002
+function projectList() {
+  if (V.projects.length) return Promise.resolve(V.projects);
+  return aRead('projects_index', {}, {}, { swr: false }).then(function (b) { setProjects(b); return V.projects; });
 }
-function paintLabels(list) {
-  list = Array.isArray(list) ? list : [];
-  if (!list.length) { empty('\u9019\u500B\u5C08\u6848\u9084\u6C92\u6709\u6A19\u7C64\u3002'); return; }
+function renderLabels() {
+  toolEl.replaceChildren(h('span', { class: 'ah-note' }, '\u6A19\u7C64\u662F\u6240\u6709\u5C08\u6848\u5171\u7528\u7684\u4E00\u5957\uFF0C\u4E0D\u7528\u5148\u9078\u5C08\u6848\u3002\u6539\u540D\u3001\u63DB\u8272\u3001\u522A\u9664\u6703\u4E00\u6B21\u5957\u5230\u6BCF\u500B\u5C08\u6848\u3002\u300Cs/\u2026\u300D\u662F\u9032\u5EA6\u6A19\u7C64\uFF08\u4E92\u65A5\uFF09\uFF1A\u7968\u7684\u9032\u5EA6\u9760\u5B83\uFF0C\u770B\u677F\u7684\u6B04\u4F4D\u4E5F\u662F\u5B83\u3002'));
+  var g = ++V.gen; sync.busy();
+  viewEl.replaceChildren(h('div', { class: 'ah-note', style: { padding: '12px 20px' } }, '\u8B80\u53D6\u5404\u5C08\u6848\u7684\u6A19\u7C64\u2026'));
+  return projectList().then(function (ps) {
+    return Promise.all(ps.map(function (p) {
+      return aRead('label_list', repoParams(p.full_name), { limit: '100' }).then(function (a) { return { repo: p.full_name, list: Array.isArray(a) ? a : [] }; }, function () { return { repo: p.full_name, list: null }; });
+    }));
+  }).then(function (rs) {
+    if (g !== V.gen) return;
+    sync.ok(); err('');
+    paintLabels(mergeLabels(rs), rs);
+  }, function (e) { if (g !== V.gen) return; sync.bad(); err(e.message); });
+}
+function mergeLabels(rs) {
+  var by = {}, order = [], total = rs.filter(function (r) { return r.list; }).length;
+  rs.forEach(function (r) { (r.list || []).forEach(function (l) {
+    var G = by[l.name]; if (!G) { G = by[l.name] = { name: l.name, color: l.color, description: l.description || '', exclusive: !!l.exclusive, ids: {}, n: 0, total: total }; order.push(l.name); }
+    G.ids[r.repo] = l.id; G.n++;
+  }); });
+  return order.sort().map(function (n) { return by[n]; });
+}
+function paintLabels(groups, rs) {
   viewEl.replaceChildren();
-  list.forEach(function (l) {
-    viewEl.appendChild(h('button', { type: 'button', class: 'ah-item ah-lab-row', onclick: function () { labelDialog(V.repo, l); } },
-      labelChip(l), h('span', { class: 't ah-note' }, l.description || ''), l.exclusive ? h('span', { class: 'ah-chip' }, '\u4E92\u65A5') : null));
+  var bad = rs.filter(function (r) { return !r.list; }).map(function (r) { return r.repo; });
+  if (bad.length) err('\u9019\u6B21\u6709 ' + bad.length + ' \u500B\u5C08\u6848\u8B80\u4E0D\u5230\u6A19\u7C64\uFF08' + bad.join('\u3001') + '\uFF09\uFF0C\u4E0B\u9762\u6C92\u7B97\u9032\u53BB\u3002');
+  if (!groups.length) { empty('\u9084\u6C92\u6709\u4EFB\u4F55\u6A19\u7C64\u3002\u6309\u53F3\u4E0A\u300C\uFF0B \u65B0\u589E\u300D\u5EFA\u7B2C\u4E00\u500B\u3002'); return; }
+  groups.forEach(function (G) {
+    viewEl.appendChild(h('button', { type: 'button', class: 'ah-item ah-lab-row', onclick: function () { labelDialog(G, rs); } },
+      labelChip(G), h('span', { class: 't ah-note' }, G.description || ''), G.exclusive ? h('span', { class: 'ah-chip' }, '\u4E92\u65A5') : null,
+      G.n < G.total ? h('span', { class: 'ah-chip', title: '\u6709\u4E9B\u5C08\u6848\u9084\u6C92\u6709\u9019\u500B\u6A19\u7C64\uFF1B\u6309\u300C\u5132\u5B58\u300D\u6703\u4E00\u4F75\u88DC\u4E0A' }, G.n + '/' + G.total + ' \u500B\u5C08\u6848') : null));
   });
 }
-function labelDialog(repo, l) {
+function labelsDone(rs, jobs, what) {
+  return Promise.all(jobs.map(function (j) { return j.then(function () { return null; }, function (e) { return e; }); })).then(function (es) {
+    var bad = es.filter(Boolean);
+    if (bad.length) err(what + '\uFF1A' + bad.length + ' \u500B\u5C08\u6848\u6C92\u6210\u529F\uFF08' + bad[0].message + '\uFF09\u3002\u518D\u6309\u4E00\u6B21\u5132\u5B58\u6703\u88DC\u4E0A\u3002');
+    renderLabels();
+  });
+}
+// G\uFF1D\u5408\u4F75\u5F8C\u7684\u4E00\u500B\u6A19\u7C64\uFF08\u6539\uFF0F\u522A\uFF09\uFF0Cnull\uFF1D\u65B0\u589E\uFF1Brs\uFF1D\u5404\u5C08\u6848\u76EE\u524D\u7684\u6A19\u7C64\uFF08\u65B0\u589E\u6642\u53EA\u7528\u4F86\u77E5\u9053\u6709\u54EA\u4E9B\u5C08\u6848\uFF09
+function labelDialog(G, rs) {
   var extra = [];
-  if (l) {
-    var del = h('button', { type: 'button', class: 'danger' }, '\u522A\u9664\u6A19\u7C64');
-    extra.push(del);
-  }
-  var d = formDialog({ title: l ? '\u6539\u6A19\u7C64' : '\u5728 ' + repo + ' \u5EFA\u6A19\u7C64', submit: l ? '\u5132\u5B58' : '\u5EFA\u7ACB', extra: extra, fields: [
-    { name: 'name', label: '\u540D\u5B57', value: l ? l.name : '', required: true },
-    { name: 'color', label: '\u984F\u8272', type: 'color', value: '#' + String((l && l.color) || '1d4ed8').replace(/^#/, '') },
-    { name: 'description', label: '\u8AAA\u660E', value: l ? l.description : '' },
-    { name: 'exclusive', label: '\u4E92\u65A5\uFF08\u540C\u4E00\u500B\u300C/\u300D\u524D\u7DB4\u53EA\u80FD\u639B\u4E00\u500B\uFF0C\u4F8B\u5982 s/\u2026\uFF09', type: 'checkbox', value: l ? l.exclusive : false },
+  if (G) { var del = h('button', { type: 'button', class: 'danger' }, '\u522A\u9664\u6A19\u7C64'); extra.push(del); }
+  var d = formDialog({ title: G ? '\u6539\u6A19\u7C64\uFF08\u5957\u7528\u5230\u6240\u6709\u5C08\u6848\uFF09' : '\u5EFA\u6A19\u7C64\uFF08\u5EFA\u5728\u6240\u6709\u5C08\u6848\uFF09', submit: G ? '\u5132\u5B58' : '\u5EFA\u7ACB', extra: extra, fields: [
+    { name: 'name', label: '\u540D\u5B57', value: G ? G.name : '', required: true },
+    { name: 'color', label: '\u984F\u8272', type: 'color', value: '#' + String((G && G.color) || '1d4ed8').replace(/^#/, '') },
+    { name: 'description', label: '\u8AAA\u660E', value: G ? G.description : '' },
+    { name: 'exclusive', label: '\u4E92\u65A5\uFF08\u540C\u4E00\u500B\u300C/\u300D\u524D\u7DB4\u53EA\u80FD\u639B\u4E00\u500B\uFF0C\u4F8B\u5982 s/\u2026\uFF09', type: 'checkbox', value: G ? G.exclusive : false },
   ], onSubmit: function (v) {
     if (!v.name.trim()) throw new Error('\u540D\u5B57\u4E0D\u80FD\u662F\u7A7A\u7684');
     var body = { name: v.name.trim(), color: v.color, description: v.description, exclusive: !!v.exclusive };
-    var p = l ? aWrite('label_patch', repoParams(repo, { id: String(l.id) }), body) : aWrite('label_create', repoParams(repo), body);
-    return p.then(function () { if (V.tab === 'labels') renderLabels(); });
+    var jobs = (rs || []).filter(function (r) { return r.list; }).map(function (r) {
+      var id = G && G.ids[r.repo];
+      return id ? aWrite('label_patch', repoParams(r.repo, { id: String(id) }), body) : aWrite('label_create', repoParams(r.repo), body);
+    });
+    return labelsDone(rs, jobs, G ? '\u5132\u5B58' : '\u5EFA\u7ACB');
   } });
-  if (l) del.addEventListener('click', function () {
+  if (G) del.addEventListener('click', function () {
     d.close();
-    confirmDialog('\u522A\u9664\u300C' + l.name + '\u300D\uFF1F', '\u639B\u8457\u9019\u500B\u6A19\u7C64\u7684\u7968\u6703\u4E00\u8D77\u62FF\u6389\u5B83\u3002', '\u522A\u9664').then(function (yes) {
+    confirmDialog('\u522A\u9664\u300C' + G.name + '\u300D\uFF1F', '\u6703\u5F9E\u6240\u6709\u5C08\u6848\u62FF\u6389\u9019\u500B\u6A19\u7C64\uFF0C\u639B\u8457\u5B83\u7684\u7968\u4E5F\u6703\u4E00\u8D77\u62FF\u6389\u3002', '\u522A\u9664').then(function (yes) {
       if (!yes) return;
-      aWrite('label_delete', repoParams(repo, { id: String(l.id) }), {}).then(function () { renderLabels(); }, function (e) { err('\u522A\u9664\u5931\u6557\uFF1A' + e.message); });
+      labelsDone(rs, Object.keys(G.ids).map(function (repo) { return aWrite('label_delete', repoParams(repo, { id: String(G.ids[repo]) }), {}); }), '\u522A\u9664');
     });
   });
 }
@@ -17215,14 +17454,14 @@ document.getElementById('ah-projects').addEventListener('click', projectsDialog)
 document.getElementById('ah-new').addEventListener('click', function () {
   if (V.tab === 'struct') return nodeDialog(null);
   if (V.tab === 'goals') return err('\u76EE\u6A19\u7531 CC \u5C08\u6848\u7528 goal_set \u5EFA\u7ACB\uFF1B\u9019\u88E1\u53EA\u8B80\u3002\u8981\u8B93\u76EE\u6A19\u6307\u5411\u6771\u897F\uFF1Anode\uFF08bind_goal\uFF09\u3002');
+  if (V.tab === 'labels') return projectList().then(function (ps) { return Promise.all(ps.map(function (p) { return aRead('label_list', repoParams(p.full_name), { limit: '100' }).then(function (a) { return { repo: p.full_name, list: Array.isArray(a) ? a : [] }; }, function () { return { repo: p.full_name, list: null }; }); })); }).then(function (rs) { labelDialog(null, rs); }, function (e) { err(e.message); });
   if (!V.repo) return projectsDialog();
-  if (V.repo === ALL && V.tab !== 'issues') return err('\u5148\u5728\u4E0A\u9762\u9078\u4E00\u500B repo\u3002');
-  if (V.tab === 'labels') return labelDialog(V.repo, null);
+  if (V.repo === ALL) return err('\u5148\u5728\u4E0A\u9762\u9078\u4E00\u500B\u5C08\u6848\uFF0C\u518D\u65B0\u589E\u7968\u3002');
   return newIssue();
 });
 
 // \u8A18\u5F97\u4E0A\u6B21\u7684\u5C08\u6848\u5C31\u99AC\u4E0A\u756B\uFF08\u4E0D\u7B49\u5C08\u6848\u6E05\u55AE\uFF09\uFF1B\u7B2C\u4E00\u6B21\u6253\u958B\u624D\u7B49\u6E05\u55AE\u6C7A\u5B9A\u9810\u8A2D\u5C08\u6848
-var first = V.tab === 'struct' || V.tab === 'goals' || V.repo;
+var first = V.tab === 'struct' || V.tab === 'goals' || V.tab === 'labels' || V.repo;
 if (first) render();
 loadProjects().then(function () { if (!first) render(); });
 // \u7DB2\u5740\u76F4\u9054\u4E00\u5F35\u7968\uFF08inkstone/Arcrun#326\uFF09
@@ -17250,8 +17489,8 @@ var ahub_app_default = {
   id: "ahub",
   name: "AHub",
   icon: "\u{1F9ED}",
-  version: "0.18.1",
-  changelog: "0.18.1\uFF1A\u7D50\u69CB\u9801\u4E0D\u518D\u4E00\u7247\u7A7A\u767D\uFF08inkstone/Arcrun#368\uFF09\u2014\u2014\u8CC7\u6599\u9084\u6C92\u8F49\u6210\u6A39\u7684\u5BE6\u4F8B\uFF08\u820A\u5F0F\u91CC\u7A0B\u7891\u9084\u6C92\u8F49\u63DB\uFF09\u6253\u958B\u300C\u7D50\u69CB\u300D\uFF0C\u7167\u820A\u5217\u51FA\u73FE\u6709\u91CC\u7A0B\u7891\u8207\u5B8C\u6210\u5EA6\uFF0C\u4E26\u8AAA\u660E\u9019\u9801\u662F\u4EC0\u9EBC\u3001\u4E0B\u4E00\u6B65\u600E\u9EBC\u505A\uFF1B\u771F\u7684\u4EC0\u9EBC\u90FD\u6C92\u6709\u6642\uFF0C\u7A7A\u72C0\u614B\u6539\u7528\u767D\u8A71\u8AAA\u660E\u9019\u4E00\u9801\uFF08\u6240\u6709\u5DE5\u4F5C\u7531\u5927\u5230\u5C0F\u6392\u6210\u4E00\u68F5\u6A39\u3001\u6BCF\u5C64\u6709\u5B8C\u6210\u5EA6\uFF09\u8207\u4E0B\u4E00\u6B65\u3002\u53EA\u6539\u756B\u9762\uFF0C\u6C92\u6709\u65B0 template\u3001\u8DEF\u7531\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.18.0\uFF1A\u958B\u7968\u7684\u7576\u4E0B\u5C31\u64CB\u4F4F\u91CD\u8907\u7968\uFF08inkstone/Arcrun#377\uFF09\u3002\u2460 \u958B\u7968\uFF08POST /repos/:o/:r/issues\uFF0CMCP create_issue\u3001ISEP \u8173\u672C\u3001\u756B\u9762\u3001\u5C0F\u5E6B\u624B\u90FD\u8D70\u9019\u4E00\u689D\uFF09\u5148\u7531\u4F3A\u670D\u5668\u6BD4\u5C0D\u5168\u90E8 repo \u7684\u7968\u2014\u2014\u542B\u5DF2\u95DC\u3001\u4E0D\u9650\u6700\u8FD1 300 \u5F35\uFF08\u4E00\u9801 500 \u7B46\u7FFB\u9801\uFF0C\u6700\u591A 4000 \u5F35\uFF0C\u8B80\u4E0D\u5B8C\u6703\u6A19 truncated\uFF09\uFF1B\u6BD4\u5C0D\u770B\u300C\u540C\u4E00\u500B\u76EE\u6A19\u300D\uFF1A\u628A\u65B0\u7968\u7684\u6A19\u984C\uFF0B\u5167\u6587\u958B\u982D\u5207\u6210\u5B57\u8A5E\uFF0C\u7528\u5168\u90E8\u7968\u7B97\u51FA\u54EA\u4E9B\u8A5E\u6700\u80FD\u4EE3\u8868\u9019\u4EF6\u4E8B\uFF0C\u518D\u770B\u6BCF\u5F35\u820A\u7968\uFF08\u6A19\u984C\uFF0B\u5167\u6587\u958B\u982D\uFF09\u6DB5\u84CB\u591A\u5C11\uFF0C\u4E0D\u9760\u5B57\u9762\u4E00\u81F4\u3001\u4E0D\u7528\u5411\u91CF\u3002\u2461 \u6BD4\u5C0D\u5230\u53EF\u80FD\u662F\u540C\u4E00\u4EF6\u4E8B\u7684\uFF0C\u4E0D\u958B\u3001\u56DE 409\uFF0B\u5019\u9078\uFF08ref\uFF0F\u6A19\u984C\uFF0F\u72C0\u614B\uFF0F\u5167\u6587\u6458\u8981\uFF09\uFF0C\u8ACB\u5728\u90A3\u5F35\u7968\u7559\u8A00\uFF1B\u78BA\u5B9A\u662F\u65B0\u7684\u4E00\u689D\u7DDA\uFF0C\u540C\u6A23\u7684\u8ACB\u6C42\u52A0 compared:[{ref, reason}]\u2014\u2014\u6BCF\u4E00\u5F35\u5019\u9078\u90FD\u8981\u9EDE\u540D\u3001\u5404\u5BEB\u70BA\u4EC0\u9EBC\u4E0D\u662F\u540C\u4E00\u4EF6\u4E8B\uFF08\u226510 \u5B57\u3001\u4E0D\u80FD\u8907\u88FD\u6A19\u984C\u3001\u5404\u5F35\u4E0D\u540C\uFF09\uFF0C\u9019\u4EFD\u6BD4\u5C0D\u8A18\u9032\u65B0\u7968\u5167\u6587\uFF1B\u4E00\u53E5\u8A71\u7406\u7531\u6216\u65D7\u6A19\u904E\u4E0D\u4E86\uFF08\u820A\u7684 force \u5DF2\u7121\u6548\uFF09\u3002\u2462 \u81EA\u52D5\u56DE\u5831\uFF08\u4F8B\uFF1A\u5C0F\u5E6B\u624B\u300C\u56DE\u5831\u300D\uFF09\u8ACB\u5E36 event_key\uFF08\u540C\u5BE6\u4F8B\uFF0B\u540C\u6A94\uFF0F\u540C\u539F\u56E0\uFF09\uFF1A\u540C\u4E00\u4E8B\u4EF6\u7B2C\u4E8C\u6B21\u8D77\u4E0D\u958B\u65B0\u7968\uFF0C\u4F75\u9032\u7B2C\u4E00\u5F35\u7684\u7559\u8A00\uFF08\u591A 1 \u500B template ahub_issue_event\uFF0C\u5171 29\uFF09\u3002\u2463 \u591A POST /ahub/issues/similar\uFF08\u53EA\u67E5\u4E0D\u958B\uFF09\u8207 MCP list_issues \u7684 similar_to\u3002\u2464 \u8DE8 repo \u641C\u7968\uFF08\u756B\u9762\u300C\u5168\u90E8 repo\u300D\uFF09\u627E\u5F97\u5230\u4EFB\u4F55\u4E00\u5F35\u7968\uFF1A\u641C\u7968\u865F\uFF08184\u3001#184\u3001Arcrun#184\uFF09\u5148\u8B80 repo \u6E05\u55AE\u518D\u5C0D\u6BCF\u500B repo \u7CBE\u78BA\u8B80\u90A3\u4E00\u5F35\uFF0C\u6210\u672C\u53EA\u8DDF repo \u6578\u6210\u6B63\u6BD4\uFF1B\u641C\u95DC\u9375\u5B57\u4F9D\u7968\u6C60\u7E3D\u6578\u7FFB\u9801\u8B80\u5B8C\uFF08\u6700\u591A 18500 \u5F35\uFF09\u3002MCP \u5DE5\u5177\u6578\u4E0D\u8B8A\uFF0829\uFF09\uFF1B1 \u689D\u65B0\u8DEF\u7531\uFF08\u5171 75\uFF09\u3002\n0.17.0\uFF1A\u7D50\u69CB\u6A39\u8207\u76EE\u6A19\u6307\u5411\u3001\u7968\u5730\u5716\u4F75\u9032\u4F86\uFF08inkstone/Arcrun#368\uFF09\u3002\u2460 \u53EA\u6709\u5169\u7A2E\u6771\u897F\u2014\u2014\u7968\u8207\u7BC0\u9EDE\uFF1A\u4EFB\u4F55\u6771\u897F\u53EF\u4EE5\u639B\u5728\u4EFB\u4F55\u7BC0\u9EDE\u5E95\u4E0B\uFF0C\u7BC0\u9EDE\uFF08\u5C08\u6848\u3001\u91CC\u7A0B\u7891\u53EA\u662F\u89D2\u8272\u540D\uFF09\u53EF\u6709\u597D\u5E7E\u500B\u7238\u7238\u3001\u5C64\u6578\u4E0D\u9650\uFF0C\u5E95\u4E0B\u53EF\u76F4\u63A5\u653E\u4EFB\u4F55 repo \u7684\u7968\u3002\u300C\u4E0A\u5C64\u300D\u662F\u5B69\u5B50\u8EAB\u4E0A\u7684\u95DC\u806F\u683C parents[]\uFF08KBDB \u95DC\u806F\u683C #370\uFF09\uFF1A\u597D\u5E7E\u500B\u7238\u7238\u5404\u5360\u4E00\u5217\uFF0C\u5169\u500B\u4EBA\u4E26\u884C\u5404\u52A0\u4E0D\u540C\u7684\u7238\u7238\u4E0D\u6703\u4E92\u84CB\uFF0C\u53CD\u67E5\u300C\u8AB0\u5728\u9019\u500B\u7BC0\u9EDE\u5E95\u4E0B\u300D\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6709\u95DC\u3002\u300C\u6B78\u5C6C\u300D\u8207\u300C\u64CB\u4F4F\u300D\uFF08dependency\uFF09\u5206\u958B\u5B58\uFF0C\u9032\u5EA6\u3001\u770B\u677F\u5206\u7D44\u53EA\u770B\u6B78\u5C6C\uFF1B\u9032\u5EA6\u53EA\u7B97\u7968\u3001\u540C\u4E00\u5F35\u7968\u5728\u540C\u4E00\u68F5\u5E95\u4E0B\u53EA\u7B97\u4E00\u6B21\u3002\u2461 \u820A\u5F0F\u8F09\u9AD4\u7968\u91CC\u7A0B\u7891\uFF0824 \u500B\uFF09\u5BE6\u9AD4\u8F49\u6210\u7BC0\u9EDE\uFF08POST /ahub/convert-legacy\uFF0C\u4E00\u6B21\u6027\u3001\u51AA\u7B49\u3001\u53EF\u91CD\u8DD1\u3001\u9810\u8A2D\u53EA\u8A66\u7B97\uFF09\uFF1A\u7BC0\u9EDE\u8A18\u820A id \u5C0D\u7167\uFF08m\uFF0B\u820A id \u7576\u5225\u540D\u4ECD\u53EF\u7528\uFF09\uFF0C\u8F09\u9AD4\u7968\u8207\u5B83\u5011\uFF08\u905E\u79FB\uFF09\u7684\u524D\u7F6E\u7968\u90FD\u639B\u5230\u90A3\u500B\u7BC0\u9EDE\u5E95\u4E0B\uFF0C% \u8207\u8F49\u63DB\u524D\u9010\u500B\u4E00\u81F4\uFF1B\u820A\u7684\u6B78\u5C6C\u908A\uFF08ahub_member\uFF09\u4E00\u4F75\u642C\u904E\u53BB\u5F8C\u9000\u5F79\u3002\u2462 \u76EE\u6A19\u53EF\u4EE5\u6307\u5411\u7BC0\u9EDE\u6216\u7968\uFF0C\u9032\u5EA6\u7531\u6307\u5230\u7684\u6771\u897F\u7B97\u3001\u4E0D\u624B\u586B\uFF1B\u7BC0\u9EDE\u53EF\u53CD\u67E5\u300C\u88AB\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u300D\u3002\u2463 \u756B\u9762\uFF1A\u7968\u5730\u5716\u4F75\u9032 AHub\uFF0C\u53EA\u5269\u300C\u7D50\u69CB\u300D\uFF08\u5927\u7DB1\uFF0B\u770B\u677F\uFF09\u8207\u300C\u76EE\u6A19\u300D\u5169\u500B\u5165\u53E3\uFF0C\u767B\u8A18\u7C3F\u3001\u91CC\u7A0B\u7891\u9801\u3001\u5C08\u6848\u9801\u7531\u5B83\u5011\u53D6\u4EE3\uFF1B\u7968\u8207\u6A19\u7C64\u7167\u820A\uFF0Crepo\uFF08\u820A\u7A31 AHub \u5C08\u6848\uFF09\u6536\u5230\u53F3\u4E0A\u300Crepo\u300D\u3002\u2464 MCP \u591A node\uFF08\u5EFA\u7ACB\uFF0F\u4FEE\u6539\uFF0F\u653E\u9032\u4F86\uFF0F\u62FF\u6389\uFF0F\u8B93\u76EE\u6A19\u6307\u5411\uFF0Fconvert_legacy\uFF09\u8207 tree\uFF08\u8B80\u6A39\u3001\u53CD\u67E5\u3001\u76EE\u6A19\u9032\u5EA6\uFF09\u5169\u652F\u5DE5\u5177\uFF08\u5171 29\uFF09\u3002\u2465 \u5831\u5230\u96DC\u8A0A\uFF1A\u5DE5\u4EBA\u4EE3\u865F\uFF08*-hand\uFF09\u3001repo \u540D\u3001\u8CC7\u6599\u593E\u8DEF\u5F91\u4E0D\u518D\u767B\u8A18\u6210\u5DE5\u4F5C\u7AD9\u3002\u2466 release \u4E0D\u5728 AHub \u53E6\u5B58\u767B\u8A18\uFF1A\u7BC0\u9EDE\u7684 stage \u6B04\u53EA\u8B80\u51FA\u8CA8\u7DDA\u5E33\u672C\uFF08ahub_stage\uFF09\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_node\uFF0Fahub_member\uFF0Fahub_goal_ref\uFF0C\u5171 28\uFF1Bahub_member \u5DF2\u9000\u5F79\uFF0C\u53EA\u7559\u7D66\u642C\u5BB6\u7528\uFF09\u3001\u7968\u8207\u7BC0\u9EDE\u591A\u4E00\u683C parents[]\u30019 \u689D\u8DEF\u7531\uFF1B\u9700\u8981 KBDB \u95DC\u806F\u683C\uFF08#370\uFF09\u8207\u4EE3\u8F49\u5C64 batch-write \u7684 relation \u64CD\u4F5C\u3002\n0.16.1\uFF1A\u624B\u6A5F\u4E0A\u6309\u5F97\u5230\u300C\u9001\u51FA\u7C3D\u6838\u300D\u4E86\uFF08inkstone/Arcrun#371\uFF09\u2014\u2014AHub \u7684\u5C0D\u8A71\u6846\u8207\u7968\u5074\u6B04\u6539\u6210\u84CB\u5728 Portal \u7684\u5E95\u90E8\u5206\u9801\u5217\u3001\u53F3\u4E0B\u89D2\u300C?\u300D\u8207\u300C\u554F\u77E5\u8B58\u5EAB\u300D\u4E0A\u9762\uFF08\u539F\u672C\u88AB\u58D3\u5728\u5B83\u5011\u4E0B\u9762\uFF0C\u7C3D\u6838\u6846\u6700\u5E95\u90A3\u6392\u88AB\u84CB\u4F4F\u3001\u6372\u5230\u5E95\u4E5F\u9732\u4E0D\u51FA\u4F86\uFF09\uFF1B\u5C0D\u8A71\u6846\u9AD8\u5EA6\u6539\u7528\u5BE6\u969B\u53EF\u898B\u9AD8\u5EA6\uFF0C\u5167\u5BB9\u6BD4\u756B\u9762\u9AD8\u6642\u52D5\u4F5C\u9215\u90A3\u4E00\u6392\u91D8\u5728\u6846\u5E95\u3002\u53EA\u6539\u756B\u9762\u6A23\u5F0F\uFF0C\u6C92\u6709\u65B0 template\u3001\u8DEF\u7531\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.15.0\uFF1AAHub \u770B\u5F97\u5230 stage \u73FE\u5728\u662F\u54EA\u4E00\u7248\u4E86\uFF08inkstone/Arcrun#365\uFF09\u2014\u2014stage \u53EA\u6709\u4E00\u500B\u3001\u5404\u7DDA\u4E0A\u7248\u6703\u4E92\u76F8\u6D17\u6389\uFF0C\u51FA\u8CA8\u5165\u53E3\u5DF2\u52A0\u9598\uFF0C\u9019\u4E00\u7248\u88DC\u300C\u8B93\u5404\u7DDA\u770B\u5F97\u5230\u300D\uFF1A\u51FA\u8CA8\u90A3\u4E00\u6B21\u52D5\u4F5C\u5BEB\u4E00\u7B46\uFF08POST /ahub/stage\uFF1Acommit\u3001\u7248\u672C\u3001\u9019\u7248\u5F80\u56DE\u6700\u8FD1 N \u500B commit \u8207\u5176\u8A0A\u606F\u88E1\u7684\u7968\u3001\u8AB0\u51FA\u7684\u3001\u4EC0\u9EBC\u6642\u5019\uFF09\uFF0CGET /ahub/stage \u8B80\u73FE\u6CC1\u8207\u6700\u8FD1\u63DB\u7248\u6B77\u53F2\uFF1B\u4E00\u5F35\u7968\u6253\u958B\uFF08\u756B\u9762\u7968\u8A73\u60C5\u3001MCP get_issue \u591A\u56DE stage\uFF09\u5C31\u770B\u5F97\u5230\u300Cstage \u73FE\u5728\u662F X \u7248\uFF0C\u542B\uFF0F\u4E0D\u542B\u4F60\u7684\u6539\u52D5\u300D\u2014\u2014\u5728\u8B80\u7684\u6642\u5019\u7528\u51FA\u8CA8\u6642\u8A18\u7684\u6E05\u55AE\u7B97\uFF0C\u4E0D\u63A8\u64AD\u3001\u4E0D\u5C0D\u4EFB\u4F55\u7968\u7559\u8A00\u3001\u4E0D\u8F2A\u8A62\u3001\u4E0D\u6383\u7968\u6C60\uFF08\u53EA\u8B80 current \u4E00\u7B46\uFF09\u3002\u300C\u4E0D\u542B\u300D\u7684\u610F\u601D\u662F\u9019\u7248\u5F80\u56DE N \u500B commit \u7684\u8A0A\u606F\u88E1\u6C92\u6709\u9019\u5F35\u7968\u3002\u591A 1 \u500B template\uFF08ahub_stage\uFF0C\u5171 25\uFF09\u30013 \u689D\u8DEF\u7531\uFF08stage_record\uFF0Fstage_get\uFF0Fissue_stage\uFF09\uFF0C\u6C92\u6709\u65B0\u5DE5\u5177\uFF08\u4ECD 27 \u652F\uFF09\u3002\n0.14.1\uFF1A\u5916\u90E8\u7DB2\u7AD9\u53EF\u4EE5\u76F4\u63A5\u628A\u8868\u55AE\u8B8A\u6210\u7968\u4E86\uFF08inkstone/Arcrun#359\uFF09\u2014\u2014\u6536\u4EF6\u91D1\u9470\u4F4F credential \u4E2D\u5FC3\uFF08CF Secret\uFF09\uFF0C\u4E0D\u518D\u6709 AHub \u81EA\u5DF1\u7684\u91D1\u9470\u8868\u3001\u4E5F\u4E0D\u9700\u8981\u53E6\u4E00\u628A\u4EBA\u985E token \u6216\u5167\u90E8\u91D1\u9470\u4F86\u7522\u751F\u5B83\uFF1A\u767C\u4E00\u628A\uFF1D\u5728 credential \u4E2D\u5FC3\u52A0\u4E00\u689D\u540D\u5B57 ahub_intake_<\u4F86\u6E90> \u7684\u91D1\u9470\uFF0C\u64A4\u92B7\uFF1D\u522A\u6389\u5B83\u3002\u4F86\u6E90\u6E05\u55AE\u5728 intake-sources.json\uFF08\u76EE\u524D uncle6_contact \u2192 inkstone/personal-brand\u3001\u6A19\u7C64\u300C\u6D3D\u8A62\u300D\uFF09\uFF0C\u6BCF\u500B\u4F86\u6E90\u4E00\u689D\u516C\u958B\u8DEF\u7531 POST /ahub/intake/<\u4F86\u6E90>\uFF1A\u5916\u90E8\u7DB2\u7AD9\u5728\u4FE1\u5C01\u7684 token \u6B04\u9001\u91D1\u9470\uFF0C\u8DEF\u7531\u6BD4\u5C0D credential \u4E2D\u5FC3\u7684\u503C\uFF08\u6046\u5B9A\u6642\u9593\uFF09\uFF1B\u6BD4\u5C0D\u4E0D\u4E0A 401\uFF0Cbody \u6307\u5B9A\u5225\u7684 repo 403\uFF0C\u6C92\u6709\u90A3\u689D credential\uFF08\u64A4\u92B7\uFF09\u6642\u6574\u689D\u5DE5\u4F5C\u6D41\u5931\u6557\u3001\u4E0D\u958B\u7968\u3002\u91D1\u9470\u53EA\u80FD\u958B\u5728\u6E05\u55AE\u6307\u5B9A\u7684\u90A3\u4E00\u500B repo\u3001\u6253\u4E0D\u4E86\u4EFB\u4F55\u4E00\u822C\u8DEF\u7531\uFF08\u4E00\u822C\u8DEF\u7531\u53EA\u8A8D ahub_token\uFF09\u3002\u4E00\u7B46\u6D3D\u8A62\uFF1D\u4E00\u5F35\u7968\uFF1A\u6A19\u984C\u3010\u6D3D\u8A62\u3011\u806F\u7D61\u76EE\u7684\uFF5C\u55AE\u4F4D\uFF0C\u5167\u6587\u5E36\u5168\u90E8\u6B04\u4F4D\uFF0C\u639B\u6A19\u7C64\u300C\u6D3D\u8A62\u300D\uFF0C\u7F72\u540D intake-<\u4F86\u6E90>\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u7684\u7BA1\u7406\u8DEF\u7531\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF080.14.0 \u7684 ahub_intake_key \u8207\u91D1\u9470\u7BA1\u7406\u8DEF\u7531\u6C92\u6709\u51FA\u904E prod\uFF0C\u9019\u4E00\u7248\u6574\u500B\u62FF\u6389\uFF09\u3002\n0.13.5\uFF1AAI \u53EF\u4EE5\u76F4\u63A5\u958B\u91CC\u7A0B\u7891\u3001\u6539\u671F\u9650\u4E86\uFF08inkstone/Arcrun#358\uFF09\u2014\u2014\u65B0\u5DE5\u5177 milestone\uFF08action\uFF1Dcreate\uFF0Fupdate\uFF0Fclose\uFF0Freopen\uFF09\uFF0C\u5305\u73FE\u6709\u7684\u5EFA\u91CC\u7A0B\u7891\u8207\u6539\u91CC\u7A0B\u7891\u8DEF\u7531\uFF0C\u4E0D\u53E6\u958B\u5BEB\u5165\u8DEF\u5F91\u3002\u5B88\u898F\u5247\uFF1A\u53EA\u51C6\u958B\u5728 inkstone/InkStoneCo\u3001\u540D\u7A31\u4E0D\u51C6\u7528\u7248\u672C\u865F\u958B\u982D\u3001\u671F\u9650\u5FC5\u586B\u4E14\u8981\u662F\u672A\u904E\u53BB\u7684\u771F\u65E5\u671F\uFF089999-01-01 \u9019\u985E\u5047\u671F\u9650\u64CB\u6389\uFF09\u3001\u6539\u671F\u9650\u4E0D\u80FD\u6E05\u7A7A\uFF1B\u540C\u540D 422\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 26 \u63D0\u5230 27\uFF08\u8981\u9023\u540C MCP worker \u4E00\u8D77\u66F4\u65B0\uFF09\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.13.4\uFF1AAHub \u756B\u9762\u591A\u4E86\u300C\u767B\u8A18\u7C3F\u300D\u5206\u9801\u2014\u2014\u6BCF\u500B CC \u5C08\u6848\uFF08\u5DE5\u4F5C\u7AD9\uFF09\u5E95\u4E0B\u5217\u5B83\u7684\u5C0D\u8A71\uFF0C\u6BCF\u500B\u5C0D\u8A71\u770B\u5F97\u5230\u9818\u7684\u7968\u8207\u6240\u5C6C\u76EE\u6A19\uFF08\u7528\u73FE\u6709\u8CC7\u6599\u63A8\uFF1A\u5C0D\u8A71\u9818\u7684\u7968\u2192\u76EE\u6A19\u6A39\u6B65\u9A5F\u639B\u7684\u7968\u2192\u76EE\u6A19\uFF09\uFF0C\u63A8\u4E0D\u5230\u7684\u6A19\u300C\u6C92\u639B\u76EE\u6A19\u300D\uFF1B\u91CC\u7A0B\u7891\u9801\u7684\u9032\u5EA6 % \u6539\u6210\u548C\u7968\u5730\u5716\u540C\u4E00\u500B\u7B97\u6CD5\uFF08\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\uFF09\uFF0C\u9078\u300C\u5168\u90E8\u5C08\u6848\u300D\u6642\u5217\u51FA\u6240\u6709 repo \u7684\u91CC\u7A0B\u7891\uFF08\u6BCF\u5217\u6A19 repo\uFF0C\u7528\u641C\u5C0B\u6846\u7BE9\uFF09\u3002\u756B\u9762\u8B80\u53D6\u767D\u540D\u55AE\u591A\u653E sessions_list\u3001claim_list\uFF08\u90FD\u662F\u65E2\u6709\u7684\u552F\u8B80\u8DEF\u7531\uFF09\uFF1B\u4E0D\u65B0\u589E template\u3001\u6B04\u4F4D\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08inkstone/Arcrun#351\uFF09\u3002\n0.13.3\uFF1A\u76EE\u6A19\u53EF\u4EE5\u7D81\u91CC\u7A0B\u7891\u4E86\uFF08inkstone/Arcrun#353\uFF09\u2014\u2014\u76EE\u6A19\u5C6C\u65BC\u76EE\u6A19\u6A39\u3001milestone \u5C6C\u65BC\u7968\u7CFB\u7D71\uFF0C\u4E00\u500B\u76EE\u6A19\u7D81 0 \u5230\u591A\u500B milestone\uFF08\u53EF\u8DE8 repo\uFF1B\u4E00\u500B milestone \u4E5F\u53EF\u88AB\u597D\u5E7E\u500B\u76EE\u6A19\u5F15\u7528\uFF09\u3002\u76EE\u6A19\u53EA\u5B58\u300C\u9023\u5230\u54EA\u4E9B milestone\u300D\uFF0C\u9032\u5EA6 % \u5B8C\u5168\u7531 milestone \u5E95\u4E0B\u7684\u7968\u8207 release \u7B97\uFF08\u8207\u7968\u5730\u5716\u540C\u4E00\u5957\u7B97\u6CD5\uFF09\uFF0C\u4E0D\u53E6\u5916\u624B\u586B\uFF1Bgoal_set \u591A milestones\uFF0Funbind_milestones\uFF0Fmilestone_repo\uFF0Cgoals_report \u6BCF\u500B\u76EE\u6A19\u591A milestones\uFF0Fprogress\uFF0Fflags\uFF08\u53EF\u7528 milestone \u53CD\u67E5\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u5B83\uFF09\u3002\u5169\u7D44\u300C\u93C8\u65B7\u4E86\u300D\u65D7\u6A19\u5728\u5831\u544A\u8207\u770B\u677F\u90FD\u5217\uFF1A\u76EE\u6A19\u6A39\u6C92\u4EBA\u7DAD\u8B77\uFF08\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u5728\u52D5\u3001\u76EE\u6A19\u6A39\u537B\u4E45\u6C92\u66F4\u65B0\uFF0C\u6216 waiting \u6B65\u9A5F\u65E9\u8A72\u91CD\u770B\uFF09\u3001\u93C8\u689D\u6C92\u4EBA\u7DAD\u8B77\uFF08\u6C92\u7D81\u91CC\u7A0B\u7891\u537B\u6709\u7968\u5728\u8DD1\u3001\u6B65\u9A5F\u7968\u4E0D\u5728\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u3001\u91CC\u7A0B\u7891 100% \u6216\u5DF2\u95DC\u537B\u6C92\u6709 release\u3001\u904E\u671F\u6216\u627E\u4E0D\u5230\uFF09\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_goal_ms\uFF0C\u5171 24\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u30020.13.2\uFF1A\u756B\u9762\u8B80 AHub \u7684\u767D\u540D\u55AE\u591A\u653E\u4E00\u689D goals_report\uFF08\u76EE\u6A19\u6A39\u5831\u544A\uFF09\u2014\u2014\u7D66\u7968\u5730\u5716 0.7.0 \u7684\u300C\u672A\u4F86\u300D\u8996\u5716\u8B80\uFF08inkstone/Arcrun#351\uFF09\u3002\u53EA\u591A\u4E00\u689D\u552F\u8B80\u8DEF\u7531\u7684\u653E\u884C\uFF0C\u8CC7\u6599\u8207\u5DE5\u5177\u90FD\u6C92\u52D5\uFF0C\u6C92\u6709\u65B0 template\u3002\n0.13.0\uFF1A\u91CC\u7A0B\u7891\u9032\u5EA6\u628A\u524D\u7F6E\u7968\u7B97\u9032\u53BB\u4E86\uFF0C\u4E26\u6A19\u51FA\u93C8\u689D\u65B7\u5728\u54EA\uFF08inkstone/Arcrun#352\uFF09\u2014\u2014\u7968\u5730\u5716\u7684 % \u539F\u672C\u53EA\u7B97\u300C\u76F4\u63A5\u639B\u5728\u91CC\u7A0B\u7891\u4E0A\u300D\u7684\u8F09\u9AD4\u7968\uFF0C\u5225\u7684 repo \u7684\u57F7\u884C\u7968\u662F\u8F09\u9AD4\u7968\u7684\u524D\u7F6E\uFF0C\u5B8C\u5168\u6C92\u9032\u5206\u6BCD\uFF08\u4F8B\uFF1A\u505A\u5B8C\u4E86\u537B\u986F\u793A 33%\uFF09\u3002\u73FE\u5728 GET /ahub/milestones \u7684\u9032\u5EA6\uFF1D\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u905E\u79FB\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\u3001\u540C\u4E00\u5F35\u53EA\u7B97\u4E00\u6B21\uFF1B\u591A\u56DE direct\uFF0Fprerequisites\uFF0Fcarriers\uFF08\u542B\u5404\u8F09\u9AD4\u7684\u524D\u7F6E\u6578\uFF09\u3001\u93C8\u689D\u56DB\u6BB5 chain\uFF08\u8F09\u9AD4\u7968\uFF0F\u5DE5\u4F5C\u7968\uFF0Fmilestone\uFF0Frelease\uFF09\u3001\u65B7\u9EDE gaps \u8207 chain_state\uFF1Abroken\uFF1D\u93C8\u689D\u6C92\u63A5\u597D\uFF08\u6C92\u6709\u8F09\u9AD4\u3001\u8F09\u9AD4\u90FD\u6C92\u6709\u524D\u7F6E\uFF09\u3001unmaintained\uFF1D\u93C8\u689D\u63A5\u4E0A\u4E86\u4F46\u6C92\u4EBA\u7DAD\u8B77\uFF08\u524D\u7F6E\u5168\u95DC\u8F09\u9AD4\u9084\u958B\u8457\u3001100% \u91CC\u7A0B\u7891\u9084\u958B\u8457\u3001\u505A\u5B8C\u6C92 release\u3001\u91CC\u7A0B\u7891\u95DC\u4E86\u9084\u6709\u7968\u958B\u8457\uFF09\u3001moving\u3001shipped\uFF1B\u53E6\u6A19\u904E\u671F\u3002\u7968\u5730\u5716\u5361\u7247\u8207\u8A73\u60C5\u986F\u793A\u65B0 % \u8207\u65B7\u9EDE\u3002\u8B80\u53D6\u591A 2 \u683C\uFF08\u6574\u5F35\u76F8\u4F9D\u908A\u3001\u958B\u8457\u7684\u7968\uFF0C\u5404\u6700\u591A 2 \u9801\xD7500\uFF0C\u8B80\u6EFF\u6A19 truncated\uFF09\uFF1B\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.12.1\uFF1A\u6A19\u51FA\u300C\u4EA4\u8FA6\u4E86\u537B\u6C92\u4EBA\u52D5\u5DE5\u300D\uFF08inkstone/Arcrun#350\uFF09\u2014\u2014\u6B65\u9A5F\u5F85\u505A\u3001\u6C92\u4EBA\u5728\u505A\uFF08\u6C92\u6709\u7968\uFF0C\u6216\u7968\u6C92\u4EBA\u9818\u4E5F\u6C92\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF09\u3001\u524D\u7F6E\u90FD\u505A\u5B8C\uFF0C\u5F9E\u4EA4\u8FA6\u6642\u9593\u8D77\u8D85\u904E 24 \u5C0F\u6642\uFF08\u53EF\u8ABF\uFF0Cunstarted_hours\uFF09\uFF0C\u7E3D\u76E3\u5831\u544A goals_report\uFF08\u76EE\u6A19\u3001\u5C08\u6848\u7684 unstarted\uFF0Csummary.unstarted_steps\uFF09\u8207\u770B\u677F board\uFF08anomalies \u7684 unstarted_step\u3001unstarted_steps \u660E\u7D30\uFF09\u5C31\u6A19\u51FA\u4F86\uFF0C\u4E0D\u5FC5\u9760\u4EBA\u8A18\u5F97\u53BB\u8FFD\u554F\u3002\u4EA4\u8FA6\u6642\u9593\u7528 step_set \u7684\u65B0\u53C3\u6578 assigned_at \u8A18\uFF08\u4EA4\u8FA6\u5E38\u6BD4\u5BEB\u9032\u6A39\u65E9\uFF0C\u88DC\u5BEB\u820A\u7684\u4E5F\u884C\uFF1B\u6C92\u7D66\u5C31\u4EE5\u5BEB\u9032\u6A39\u7684\u6642\u9593\u7B97\uFF09\u3002\u53E6\u4FEE\uFF1A\u4EBA\u5BEB\u7684\u300C\u7B49\u5F85\u4E2D\u300D\u6B65\u9A5F\uFF0C\u524D\u7F6E\u90FD\u5B8C\u6210\u5F8C\uFF0C\u5831\u544A\u7684 needs \u8A72\u7B46\u5E36 review:true \u8207\u300C\u524D\u7F6E\u5DF2\u5B8C\u6210\uFF0C\u8A72\u91CD\u770B\u300D\uFF0C\u4E0D\u518D\u6C38\u9060\u986F\u793A\u5728\u7B49\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_step_assign\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u3002board \u8B80\u53D6\u683C\u6578 9\u219214\uFF08\u591A\u8B80\u76EE\u6A19\u6A39\u9032\u884C\u4E2D\u7684\u6B65\u9A5F\uFF09\u3002\n0.12.0\uFF1AAHub \u6709\u300C\u6BCF\u500B\u5C08\u6848\u7684\u76EE\u6A19\u6A39\u300D\u4E86\uFF08inkstone/Arcrun#349\uFF09\u2014\u2014\u8A18\u300C\u672A\u4F86 \u2212 \u73FE\u5728\u300D\uFF1A\u76EE\u6A19\uFF08\u4E00\u53E5\u8A71\u7684\u672A\u4F86\uFF0B\u9054\u6210\u6A19\u6E96\uFF0C\u53EF\u5206\u5C64\uFF0C\u76EE\u6A19\u6703\u8B8A\u3001\u6BCF\u6B21\u4FEE\u6539\u5FC5\u9644\u7406\u7531\u4E26\u81EA\u52D5\u7559\u8B8A\u66F4\u7D00\u9304\uFF09\u3001\u6B65\u9A5F\uFF08\u639B\u5728\u76EE\u6A19\u4E0B\uFF0C\u53EF\u4EE5\u9084\u6C92\u958B\u7968\uFF1B\u72C0\u614B done\uFF0Fdoing\uFF0Fpending\uFF0Fwaiting\uFF0Fneeds_user\uFF0C\u7B49\u5F85\u8207\u9700\u8981\u4F7F\u7528\u8005\u7684\u8981\u5BEB\u7B49\u4EC0\u9EBC\uFF1B\u524D\u7F6E\u6B65\u9A5F depends_on\uFF09\u3002\u6709\u639B\u7968\u7684\u6B65\u9A5F\u5F9E\u7968\u8207\u9818\u7968\u8B80\u72C0\u614B\uFF08\u7968\u95DC\u4E86\uFF1D\u5B8C\u6210\u3001\u9818\u7968\u5361\u4F4F\uFF1D\u7B49\u5F85\uFF09\u3002\u5BEB\u5165\u5DE5\u5177 goal_set\uFF0Fstep_set \u7528\u6A19\u984C\u6216 id \u90FD\u627E\u5F97\u5230\u3001\u540C\u4E00\u500B\u6A19\u984C\u91CD\u8907\u5BEB\u4E0D\u6703\u9577\u51FA\u91CD\u8907\uFF0C\u6A19\u984C\u76F8\u8FD1\u7684\u56DE 409 \u8207\u5019\u9078\uFF1B\u7E3D\u76E3\u7528 goals_report \u4E00\u6B21\u8B80\u5230\u6BCF\u500B\u5C08\u6848\u7684\u300C\u76EE\u6A19 A\uFF0F\u505A\u5230 B\uFF0F\u9700\u8981 C\u300D\uFF0C\u4E26\u6A19\u51FA\u88AB\u524D\u7F6E\u64CB\u4F4F\u7684\u76F8\u4F9D\u93C8\u8207\u6700\u524D\u9762\u7684\u5361\u9EDE\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u5C08\u6848\u76EE\u6A19\u6A39\u7684\u6700\u5F8C\u66F4\u65B0\u6642\u9593\uFF0C\u8D85\u904E goal_stale_hours\uFF08\u9810\u8A2D 168\uFF09\u6C92\u4EBA\u66F4\u65B0\u8A18 goal_stale\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_goal\u3001ahub_goal_log\u3001ahub_step\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 3 \u689D\u8DEF\u7531\u8207 3 \u652F MCP \u5DE5\u5177\uFF08goal_set\u3001step_set\u3001goals_report\uFF09\u30011 \u4EFD\u8AAA\u660E\uFF08goals\uFF09\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 23 \u63D0\u5230 26\u3002\n0.11.0\uFF1AAHub \u8A18\u5F97\u300C\u73FE\u5728\u6709\u54EA\u4E9B\u5C0D\u8A71\u958B\u8457\u300D\u4E86\uFF08inkstone/Arcrun#348\uFF09\u2014\u2014\u6BCF\u500B Claude \u5C0D\u8A71\u958B\u5DE5\u6642\u7528 checkin \u767B\u8A18\u4E00\u6B21\uFF08\u4E0D\u5FC5\u958B\u7968\uFF1A\u53EA\u662F\u53BB\u67E5\u67D0\u500B\u8A2D\u5B9A\u5728\u54EA\u7684\u5C0F\u5C0D\u8A71\u4E5F\u4E00\u6A23\uFF09\uFF0C\u7D50\u675F\u6642\u7528\u65B0\u7684 end_session \u6536\u5DE5\u3001\u53EF\u9644\u4E00\u53E5\u8A71\u7D50\u8AD6\uFF1B\u4E4B\u5F8C\u6BCF\u652F AHub \u5DE5\u5177\u5E36\u8457\u5C0D\u8A71\u8B58\u5225\uFF08session\uFF09\uFF0C\u5C31\u7B97\u4E00\u6B21\u6D3B\u52D5\u3001\u81EA\u52D5\u66F4\u65B0\u300C\u6700\u5F8C\u6D3B\u52D5\u300D\uFF0C\u4E0D\u5FC5\u518D\u5831\u5230\uFF1B\u540C\u4E00\u500B\u5C0D\u8A71\u91CD\u8907\u5831\u5230\u53EA\u662F\u66F4\u65B0\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u9032\u884C\u4E2D\uFF08\u6C92\u6536\u5DE5\uFF09\u7684\u5C0D\u8A71\u3001\u4F9D\u5DE5\u4F5C\u7AD9\u5206\u7D44\uFF0C\u9023\u5F97\u5230\u5B83\u9818\u7684\u7968\uFF1B\u4E45\u6C92\u6D3B\u52D5\u53C8\u6C92\u6536\u5DE5\u7684\u8A18 session_stale\uFF08\u9580\u6ABB session_stale_hours\uFF0C\u9810\u8A2D 12 \u5C0F\u6642\uFF09\uFF1B\u5DF2\u6536\u5DE5\u7684\u4E0D\u4F54\u7248\u9762\uFF0C\u7528\u65B0\u7684 list_sessions \u67E5\u5F97\u5230\u3002\u5DE5\u4F5C\u7AD9\u53EA\u8981\u9084\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF0C\u5C31\u4E0D\u518D\u5831\u300C\u5831\u5230\u4E86\u537B\u6C92\u9818\u7968\u300D\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_session\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 4 \u689D\u8DEF\u7531\u8207 2 \u652F MCP \u5DE5\u5177\uFF08end_session\u3001list_sessions\uFF09\uFF0Ccheckin \u591A\u6536 session\uFF0Ftitle\uFF0Fticket\uFF0C\u5176\u9918\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 session\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 21 \u63D0\u5230 23\u3002\n0.10.1\uFF1A\u4FEE\u6389\u300C\u66F4\u65B0\u5931\u6557\u30FB\u8CC7\u6599\u4F86\u81EA\u597D\u5E7E\u500B\u5C0F\u6642\u524D\u300D\u2014\u2014AHub \u756B\u9762\u8B80\u4E0D\u5230\u65B0\u8CC7\u6599\uFF08\u7968\u3001\u5168\u90E8\u5C08\u6848\u3001\u6A19\u7C64\u90FD\u505C\u5728\u820A\u7684\uFF09\u3002\u539F\u56E0\u662F\u5F15\u64CE\u6539\u4E86\u4E00\u500B\u7D30\u7BC0\uFF0C\u756B\u9762\u5728\u300C\u9019\u53F0\u5DF2\u7D93\u767B\u8A18\u904E\u300D\u7684\u60C5\u6CC1\u4E0B\u628A\u771F\u6B63\u7684\u56DE\u61C9\u4E1F\u6389\u4E86\uFF1B\u73FE\u5728\u6539\u597D\uFF0C\u6309\u300C\u66F4\u65B0\u300D\u5F8C\u756B\u9762\u6703\u62FF\u5230\u6700\u65B0\u7684\u7968\uFF08inkstone/Arcrun#347\uFF09\u3002\n0.10.0\uFF1AAHub \u8A18\u5F97\u300C\u54EA\u500B Claude \u5C08\u6848\u9818\u4E86\u54EA\u5F35\u7968\u3001\u505A\u5230\u54EA\u300D\u4E86\uFF08inkstone/Arcrun#346\uFF09\u2014\u2014\u5DE5\u4F5C\u7AD9\uFF08\uFF1D\u4E00\u500B Claude \u5C08\u6848\uFF09\u5831\u5230 checkin\u3001\u9818\u7968 claim\u3001\u56DE\u5831 report\u3001\u653E\u624B release\uFF1B\u7E3D\u76E3\u4E00\u6B21\u770B\u5168\u90E8\u7684\u770B\u677F board\uFF1B\u7E3D\u76E3\u5C0D\u88AB\u9818\u8D70\u7684\u7968\u958B\u300C\u8981\u6C42\u56DE\u5831\u300Drequest_report\uFF0C\u8A72\u5DE5\u4F5C\u7AD9\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55 AHub \u5DE5\u5177\u6642\u56DE\u61C9\u7684 next_actions \u5C31\u5E36\u51FA\u4F86\uFF0C\u56DE\u5831\u5F8C\u81EA\u52D5\u6D88\u6389\uFF1Bmy_queue \u53EF\u4F9D\u5DE5\u4F5C\u7AD9\u7BE9\u3002\u9818\u7968\u6642\u56DE\u61C9\u5E36\u9019\u5F35\u7968\u5C6C\u65BC\u54EA\u500B milestone\uFF08\u81EA\u5DF1\u639B\u7684\uFF0C\u6C92\u6709\u5C31\u770B\u64CB\u4F4F\u7684\u8F09\u9AD4\u7968\u639B\u7684\uFF09\uFF1B\u770B\u677F\u6293\u7570\u5E38\uFF1A\u5831\u5230\u537B\u6C92\u9818\u7968\u3001\u9818\u7684\u7968\u4E45\u6C92\u56DE\u5831\u3001\u4E0D\u5C6C\u65BC\u4EFB\u4F55 milestone\u3001\u56DE\u5831\u5B8C\u6210\u4F46 milestone \u6C92\u95DC\u6216\u6C92\u6709\u7248\u672C\uFF08\u53EA commit \u5C31\u653E\u8457\uFF09\u3001\u5DE5\u4F5C\u7AD9\u4E45\u6C92\u78B0 AHub\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_station\u3001ahub_claim\u3001ahub_report_ask\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08ahub_release_link \u53EA\u591A\u4E00\u500B\u7D22\u5F15\uFF09\uFF1B\u65B0\u589E 6 \u652F MCP \u5DE5\u5177\u8207 1 \u4EFD\u5831\u5230\u8AAA\u660E\uFF0C\u65E2\u6709\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 station \u53C3\u6578\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 15 \u63D0\u5230 21\u3002\n0.9.1\uFF1A\u5217\u7968\u3001\u5217\u7559\u8A00\u8B8A\u5FEB\uFF08leo 2026-11-04\uFF09\u2014\u2014\u539F\u672C\u5217\u4E00\u500B repo \u7684\u7968\uFF0C\u77E5\u8B58\u5EAB\u8981\u628A\u540C\u4E00\u500B repo \u5E95\u4E0B\u6240\u6709\u7559\u8A00\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u4E00\u8D77\u7FFB\u904E\u624D\u6E4A\u5F97\u51FA\u7968\uFF0C\u7559\u8A00\u8D8A\u591A\u8D8A\u6162\u3001\u8D8A\u5403\u984D\u5EA6\uFF1B\u73FE\u5728 AHub \u6703\u7528\u4F86\u67E5\u7684\u683C\u5B50\u90FD\u958B\u4E86\u77E5\u8B58\u5EAB\u7684\u300C\u6B04\u4F4D\u503C\u7D22\u5F15\u300D\uFF0C\u5217\u7968\u7684\u6210\u672C\u53EA\u8DDF\u8981\u5217\u7684\u7968\u6578\u6709\u95DC\u3002\u5B89\u88DD\u6216\u6309\u300C\u66F4\u65B0\u300D\u6642\u81EA\u52D5\u66FF\u65E2\u6709\u8CC7\u6599\u5EFA\u7D22\u5F15\uFF08\u8CC7\u6599\u591A\u6642\u5206\u5E7E\u6B21\u505A\u5B8C\uFF0C\u6C92\u5EFA\u597D\u4E4B\u524D\u7167\u820A\u53EF\u7528\u3001\u53EA\u662F\u9084\u6C92\u8B8A\u5FEB\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 kbdb migration 0016\u3002\n0.9.0\uFF1A\u7968\u53EF\u4EE5\u4E0D\u5206 repo \u641C\u4E86\uFF08inkstone/Arcrun#329\uFF09\u2014\u2014AHub \u756B\u9762\u7684\u5C08\u6848\u9078\u55AE\u591A\u4E86\u300C\u5168\u90E8\u5C08\u6848\u300D\uFF0C\u4E00\u6B21\u5217\u51FA\u6240\u6709 repo \u7684\u7968\u3001\u6BCF\u5217\u6A19\u660E repo\uFF1B\u641C\u5C0B\u6846\u8F38\u5165 298\u3001#298\u3001Arcrun#298\u3001inkstone/Arcrun#298 \u90FD\u627E\u5F97\u5230\uFF08\u540C\u865F\u78BC\u7684\u7968\u6BCF\u500B repo \u5404\u4E00\u5F35\uFF0C\u865F\u78BC\u76F8\u7B26\u6392\u6700\u524D\u9762\uFF09\uFF0CAI \u7684 list_issues \u540C\u4EAB\u3002\u6BCF\u5F35\u7968\u6709\u56FA\u5B9A\u9023\u7D50\uFF08\u7968\u8A73\u60C5\u7684\u300C\u8907\u88FD\u9023\u7D50\u300D\uFF0C\u5F62\u5982 \u2026#/app/ahub/inkstone/Arcrun/issues/298\uFF0C\u958B\u555F\u76F4\u9054\u90A3\u5F35\u7968\u7531 #326 \u7684\u7DB2\u5740\u76F4\u9054\u8CA0\u8CAC\uFF09\u3002\n0.8.0\uFF1AAHub \u81EA\u5DF1\u7D66 AI \u5DE5\u5177\u4E86\uFF08inkstone/Arcrun#328\uFF09\u2014\u2014Arcrun MCP \u9023\u7DDA\u6642\u81EA\u52D5\u639B\u4E0A 15 \u652F arcrun_ahub_* \u5DE5\u5177\u8207 4 \u4EFD\u8AAA\u660E\uFF08\u7968\u3001\u7C3D\u6838\u3001\u51FA\u8CA8\u3001\u932F\u53C8\u72AF\u4E86\uFF09\uFF0C\u4E0D\u5FC5\u53E6\u5916\u88DD plugin\u3002\u7C3D\u6838\u4EBA\u6539\u7531\u6BCF\u500B\u79DF\u6236\u5728 AHub \u756B\u9762\u7684\u300C\u8A2D\u5B9A\u300D\u586B\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\uFF1B\u53EA\u6709\u7C3D\u6838\u4EBA\u7C3D\u7684\u624D\u7B97\u3002AI \u6539\u7528\u300C\u767C\u7C3D\u6838\u8ACB\u6C42\u300D\u8207\u300C\u8B80\u7C3D\u6838\u7D50\u679C\u300D\u5169\u652F\u5DE5\u5177\uFF0C\u81EA\u5DF1\u5728\u7559\u8A00\u88E1\u5BEB ARM:\uFF0F\u7C3D\u6838\u884C\u6703\u88AB\u64CB\u3002\u95DC\u7968\u53EF\u9644\u4EA4\u4ED8\u7269\uFF1B\u540C\u4E00\u500B\u932F\u53C8\u72AF\u4E86\u53EF\u56DE\u5831\u5230\u6A5F\u5236\u7968\uFF08\u95DC\u4E86\u6703\u91CD\u958B\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#327\u30020.7.4\uFF1A\u4FEE\u6389 0.7.3 \u7684\u4E00\u500B\u932F\uFF1AAI \u91CD\u767C\u89E3\u9396\u78BC\u6642\uFF0C\u9078\u55AE\u6703\u8AA4\u6293\u7559\u8A00\u88E1\u63D0\u5230\u7684\u4E0A\u4E00\u7D44\uFF08\u5DF2\u904E\u671F\u7684\uFF09\u78BC\u30020.7.3\uFF1A\u7C3D\u6838\u9078\u55AE\u4E5F\u8A8D\u5F97 AI \u8981\u4F60\u8CBC\u7684\u4E00\u6B21\u6027\u89E3\u9396\u78BC\uFF08\u300C\u{1F510} ARM \u8ACB\u6C42\u300D\uFF0C\u63A8 GitHub \u6216\u78B0\u6B63\u5F0F\u74B0\u5883\u524D\u90A3\u7A2E\uFF09\uFF1A\u6309\u300C\u7C3D\u6838\u2026\u300D\u9078\u5B83\u3001\u6309\u540C\u610F\u5C31\u5E6B\u4F60\u628A\u78BC\u8CBC\u4E0A\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u6284\uFF1B\u4F60\u81EA\u5DF1\u6253\u904E\u78BC\u7684\u90A3\u5247\u6703\u6A19\u6210\u5DF2\u7C3D\uFF0C\u4E0D\u518D\u639B\u8457\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u30020.7.2\uFF1A\u4E00\u6B21\u7559\u8A00\u3001\u6539\u9032\u5EA6\u9019\u985E\u5BEB\u5165\u5C11\u4ED8\u4E00\u6574\u8D9F\u2014\u2014\u5EFA\u8207\u6539\u5408\u6210\u4E00\u500B\u8ACB\u6C42\u3001\u5728\u5F15\u64CE\u90A3\u7AEF\u540C\u6642\u5BEB\uFF08\u539F\u672C\u662F\u5169\u500B\u4F9D\u5E8F\u7684\u6B65\u9A5F\uFF0Cyoulin \u5BE6\u6E2C\u5404\u7D04 1.2\uFF5E1.6 \u79D2\uFF09\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#325\u30020.7.1\uFF1A\u6539\u9032\u5EA6\u3001\u91CC\u7A0B\u7891\u3001\u72C0\u614B\u3001\u6A19\u7C64\u6642\u756B\u9762\u7576\u4E0B\u5C31\u63DB\u6210\u65B0\u503C\u3001\u80CC\u666F\u5B58\u6A94\uFF0C\u5B58\u4E0D\u9032\u53BB\u624D\u63DB\u56DE\u539F\u6A23\uFF08\u4E0D\u518D\u5361\u8457\u7B49 4\uFF5E13 \u79D2\uFF09\u3002\u7C3D\u6838\u6539\u6210\u9078\u55AE\uFF08leo 2026-10-25\uFF09\uFF1A\u4E0D\u5FC5\u518D\u6253\u7248\u672C\u865F\u2014\u2014AI \u628A\u8981\u4F60\u7C3D\u7684\u5167\u5BB9\u5BEB\u6210\u4E00\u5247\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u7684\u7559\u8A00\uFF0C\u6309\u300C\u7C3D\u6838\u2026\u300D\u5F9E\u4E0B\u62C9\u9078\u5B83\u3001\u52FE\u540C\u610F\u6216\u4E0D\u540C\u610F\u3001\u53EF\u52A0\u610F\u898B\uFF0C\u7C3D\u6838\u8207\u88AB\u7C3D\u7684\u5167\u5BB9\u7D81\u5728\u4E00\u8D77\uFF1B\u540C\u610F\u51FA\u6B63\u5F0F\u7248\u7684\u8ACB\u6C42\u6642\u4E00\u4F75\u7559\u4E0B\u51FA\u8CA8\u7DDA\u8A8D\u5F97\u7684\u300CARM: <\u7248\u672C>\u300D\u3002\u4FEE\u6389\u820A\u7684\u7C3D ARM \u6846\u628A\u300CARM: 9.9.9\u300D\u5224\u6210\u683C\u5F0F\u4E0D\u5C0D\u30020.7.0\uFF1AAHub \u6709\u756B\u9762\u4E86\uFF08inkstone/Arcrun#323\uFF09\u2014\u2014\u5728 Portal \u6253\u958B AHub \u5C31\u80FD\u589E\u6539\u95DC\u7968\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u3001\u5C08\u6848\uFF1B\u9EDE\u7968\u5F9E\u53F3\u908A\u6ED1\u51FA\u8A73\u60C5\uFF0C\u7559\u8A00\u7528 Markdown \u5BEB\u3001\u53EF\u9810\u89BD\u3001\u7167\u683C\u5F0F\u986F\u793A\uFF0C\u80FD\u7C3D ARM\u3002\u5F9E\u756B\u9762\u5BEB\u7684\u4F5C\u8005\u662F Leo\uFF1A\u5BEB\u5165\u8DEF\u7531\u591A\u6536\u300CPortal \u4E3B\u4EBA\u6309\u7684\u300D\u65B7\u8A00\uFF08\u554F\u5F15\u64CE\u9A57\u904E\u3001\u662F\u7BA1\u7406\u54E1\u624D\u5BEB\uFF09\uFF1BAI \u8207 App \u7528 token \u7684\u5BEB\u6CD5\u5B8C\u5168\u4E0D\u8B8A\u30020.6.0\uFF1A\u88DC\u756B\u9762\u8981\u7BA1\u5B8C\u6574\u5354\u4F5C\u7684\u5F8C\u7AEF\u7F3A\u53E3\uFF08inkstone/Arcrun#320\uFF09\u2014\u2014\u5C08\u6848\uFF08repo\uFF09\u6E05\u55AE\u8207\u6539 description\uFF0Fprivate\uFF1Brelease \u9023\u5F97\u5230\u91CC\u7A0B\u7891\uFF08\u53EF\u8DE8 repo\uFF09\u4E26\u6A19\u6709\u6C92\u6709\u63A8 GitHub\uFF1B\u7559\u8A00\u53EF\u6539\u53EF\u522A\uFF08\u4F5C\u8005\u672C\u4EBA\uFF09\uFF1B\u76F8\u4F9D\u53EF\u79FB\u9664\uFF1B\u8DE8 repo \u7684\u91CC\u7A0B\u7891\u7E3D\u89BD\u4E00\u6B21\u7D66\u9032\u5EA6 %\u3001\u6700\u8FD1\u6D3B\u52D5\u3001\u8AB0\u5728\u63A8\u3001\u7522\u51FA\u7684 release\u3002\u65B0\u589E\u5169\u500B template\uFF08ahub_release_link\u3001ahub_comment_meta\uFF09\uFF0C\u820A\u8CC7\u6599\u4E0D\u5FC5\u91CD\u532F\uFF0C\u6C92\u8CC7\u6599\u5C31\u56DE\u7A7A\u503C\u30020.5.0\uFF1A\u5408\u4F75 0.4.0\uFF08release \u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u8207 0.3.2\uFF08Portal \u7559\u8A00\uFF09\uFF0C\u4E00\u500B App \u4E00\u500B\u7248\u672C\u865F\uFF1B\u5DF2\u88DD 0.3.x\uFF0F0.4.0 \u7684\u5BE6\u4F8B\u6309\u300C\u66F4\u65B0\u300D\u5C31\u5230\u4F4D\u30020.3.2\uFF1A\u65B0\u589E\u300CPortal \u7559\u8A00\u300D\u8DEF\u7531\u2014\u2014\u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u756B\u9762\u7559\u8A00\uFF0C\u4F5C\u8005\u662F Leo\uFF0C\u8EAB\u5206\u770B\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\u800C\u4E0D\u662F token\uFF1B\u516C\u958B\u7684 token \u767B\u8A18\u4E0D\u518D\u6536\u4EBA\u7684\u767B\u5165\u540D\uFF08Leo\uFF09\u8207 kind=human\uFF0CAI \u767B\u8A18\u4E0D\u51FA\u4E00\u500B Leo\uFF08inkstone/Arcrun#304 c22862\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 /portal/actor/verify\u30020.4.0\uFF1A\u52A0\u4E0A release\uFF08\u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u2014\u2014\u5EFA\uFF0F\u5217\uFF0F\u8B80\uFF0F\u7528 tag \u627E\uFF0F\u88DC\u9644\u4EF6\u6307\u6A19\uFF0CGitea \u5F62\u72C0\uFF1B\u8B80\u7684\u8DEF\u7531\u4E0D\u67E5 token\uFF08\u770B\u7248\u672C\u6E05\u55AE\u4E0D\u9700\u8981\u7F72\u540D\uFF09\uFF1B\u53E6\u6709 /ahub/releases \u6BCF\u500B repo \u4E00\u884C\u7D66\u7248\u672C\u9801\u7528\u3002\u532F\u5165\u7684\u820A release \u8207\u65B0\u5EFA\u7684\u662F\u540C\u4E00\u7A2E\u8CC7\u6599\uFF08ahub_release\u3001ahub_attachment \u5169\u500B template \u4F75\u5165\u5BA3\u544A\uFF09\uFF1B\u6C92\u6709 DELETE\uFF08\u4EE3\u8F49\u5C64\u6C92\u6709\u522A record \u7684\u53E3\uFF09\u3002inkstone/InkStoneCo#234 c22846\u30020.3.1\uFF1A\u4FEE\u958B\u7968\u7671\u7613\u2014\u2014\u4E00\u500B repo \u6700\u65B0\u5E7E\u7B46\u5168\u662F key \u4E0D\u50CF\u7968\u865F\u7684\u7D00\u9304\u6642\uFF0C\u958B\u7968\u5F9E #1 \u8D77\u6392\u7684\u516B\u500B\u5617\u8A66\u5168\u649E\u65E2\u6709\u7684\u7968\u800C 503\uFF1B\u73FE\u5728\u9019\u7A2E\u60C5\u6CC1\u6539\u5F9E\u7B46\u6578+1 \u8D77\u6392\uFF08inkstone/Arcrun#308 c20214\uFF09\u30020.3.0\uFF1A\u8B80\u53D6\u4E26\u884C\uFF08\u7B2C\u4E00\u6279\u8B80\u540C\u6642\u6253\uFF0C\u8EAB\u5206\u67E5\u8A62\u4F75\u9032\u7B2C\u4E00\u6279\uFF09\u3001\u7968\u865F\u7528 create_only \u6436\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u958B\u7968\u4E0D\u6703\u540C\u865F\uFF09\u3001\u76F8\u4F9D\u7968\u7528 batch-get \u4E00\u6B21\u8B80\u5B8C\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#305\uFF0B#307\u30020.2.0\uFF1A\u8CC7\u6599\u6539\u6210 template\uFF0Brecord\uFF08\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u5404\u4E00\u7A2E\uFF09\uFF0C\u7A2E\u985E\u53EA\u7531 template \u6C7A\u5B9A\uFF08inkstone/Arcrun#301\uFF09\u30020.1.0\uFF1A\u9AA8\u67B6\u3002\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u3001\u91CC\u7A0B\u7891\u3001\u8DE8 repo \u641C\u5C0B\u2014\u2014Gitea \u5F62\u72C0\u7684 API\uFF0C\u72C0\u614B\u4F4F KBDB\uFF08\u96F6 SQL\uFF09\u3002\u6C92\u6709\u756B\u9762\uFF1B\u756B\u9762\u662F\u7968\u770B\u677F App \u63DB\u8CC7\u6599\u4F86\u6E90\u3002",
+  version: "0.18.3",
+  changelog: "0.18.3\uFF1A\u76EE\u6A19\u6307\u8457\u9084\u6C92\u8F49\u63DB\u7684\u820A\u5F0F\u91CC\u7A0B\u7891\uFF08m\uFF0B\u820A id\uFF09\u6642\uFF0C\u540D\u7A31\u548C % \u8B80\u5F97\u51FA\u4F86\u4E86\uFF08inkstone/Arcrun#383\uFF09\u2014\u2014\u4EE5\u524D\u6A39\u88E1\u627E\u4E0D\u5230\u5B83\u5C31\u56DE 404\u3001\u756B\u9762\u7684\u9032\u5EA6\u689D\u662F\u7A7A\u7684\u3001MCP \u7684 tree goal_project \u53EA\u770B\u5230 id\u3002\u73FE\u5728\u627E\u4E0D\u5230\u7BC0\u9EDE\u6642\uFF0C\u6539\u5F9E\u76EE\u6A19\u5831\u544A\u5E36\u7684\u91CC\u7A0B\u7891\u8CC7\u6599\u8B80\uFF08\u540D\u7A31\u3001\u95DC\u6389\xF7\u5168\u90E8\uFF1D%\uFF0C\u8207\u8F49\u63DB\u5F8C\u540C\u4E00\u500B\u7B97\u6CD5\uFF09\uFF1B\u8F49\u63DB\u4E4B\u5F8C MCP \u4E5F\u7167\u7BC0\u9EDE\u8B80\uFF08\u4EE5\u524D\u7528\u820A id \u7576\u7D22\u5F15\u6703\u5C0D\u4E0D\u4E0A\uFF09\u3002\u8F49\u63DB\u524D\u5F8C\u8B80\u5230\u7684\u540D\u7A31\u8207 % \u76F8\u540C\uFF08\u6E2C\u8A66\u6DB5\u84CB\uFF09\u3002\u53EA\u6539\u756B\u9762\u8207 MCP \u6574\u5F62\uFF0C\u6C92\u6709\u65B0 template\u3001\u8DEF\u7531\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.18.2\uFF1A\u300C\u770B\u677F\u300D\u771F\u7684\u662F\u770B\u677F\u3001\u300C\u6A19\u7C64\u300D\u4E0D\u7528\u5148\u9078 repo\uFF08inkstone/Arcrun#383\uFF09\u2014\u2014\u2460 \u7D50\u69CB\u9801\u8CC7\u6599\u9084\u6C92\u8F49\u6210\u6A39\u6642\uFF0C\u6309\u300C\u770B\u677F\u300D\u4E0D\u518D\u9000\u56DE\u8DDF\u300C\u5927\u7DB1\u300D\u4E00\u6A23\u7684\u91CC\u7A0B\u7891\u9032\u5EA6\u689D\uFF1A\u6539\u6210\u4F9D\u9032\u5EA6\u5206\u6B04\u3001\u5361\u7247\u662F\u7968\uFF08\u7167\u91CC\u7A0B\u7891\u5206\u6A6B\u5217\uFF0C\u8DE8\u5C08\u6848\u8B80\u6700\u8FD1\u66F4\u65B0\u7684 100 \u5F35\uFF09\uFF1B\u5DF2\u8F49\u6210\u6A39\u7684\u7167\u820A\u3002\u2461 \u300C\u6A19\u7C64\u300D\u5206\u9801\u4E0D\u7528\u9078 repo\uFF1A\u5168\u90E8\u5C08\u6848\u7684\u6A19\u7C64\u5408\u6210\u4E00\u5957\uFF0C\u540C\u540D\u5408\u6210\u4E00\u5217\u3001\u6A19\u51FA\u6709\u5E7E\u500B\u5C08\u6848\u6709\u5B83\uFF1B\u65B0\u589E\u3001\u6539\u540D\u3001\u63DB\u8272\u3001\u522A\u9664\u4E00\u6B21\u5957\u5230\u6BCF\u500B\u5C08\u6848\uFF08\u5C11\u4E86\u7684\u5C08\u6848\u6703\u88DC\u4E0A\uFF09\u3002\u5176\u4ED6\u5206\u9801\u5DF2\u6AA2\u67E5\uFF1A\u7D50\u69CB\u3001\u76EE\u6A19\u672C\u4F86\u5C31\u4E0D\u7D81 repo\uFF0C\u7968\u5206\u9801\u6709\u300C\u5168\u90E8\u5C08\u6848\u300D\uFF0C\u53EA\u6709\u300C\u65B0\u589E\u7968\u300D\u9700\u8981\u9078\u5C08\u6848\uFF08\u7968\u4E00\u5B9A\u4F4F\u5728\u67D0\u500B repo\uFF09\u3002\u53EA\u6539\u756B\u9762\uFF0C\u6C92\u6709\u65B0 template\u3001\u8DEF\u7531\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.18.1\uFF1A\u7D50\u69CB\u9801\u4E0D\u518D\u4E00\u7247\u7A7A\u767D\uFF08inkstone/Arcrun#368\uFF09\u2014\u2014\u8CC7\u6599\u9084\u6C92\u8F49\u6210\u6A39\u7684\u5BE6\u4F8B\uFF08\u820A\u5F0F\u91CC\u7A0B\u7891\u9084\u6C92\u8F49\u63DB\uFF09\u6253\u958B\u300C\u7D50\u69CB\u300D\uFF0C\u7167\u820A\u5217\u51FA\u73FE\u6709\u91CC\u7A0B\u7891\u8207\u5B8C\u6210\u5EA6\uFF0C\u4E26\u8AAA\u660E\u9019\u9801\u662F\u4EC0\u9EBC\u3001\u4E0B\u4E00\u6B65\u600E\u9EBC\u505A\uFF1B\u771F\u7684\u4EC0\u9EBC\u90FD\u6C92\u6709\u6642\uFF0C\u7A7A\u72C0\u614B\u6539\u7528\u767D\u8A71\u8AAA\u660E\u9019\u4E00\u9801\uFF08\u6240\u6709\u5DE5\u4F5C\u7531\u5927\u5230\u5C0F\u6392\u6210\u4E00\u68F5\u6A39\u3001\u6BCF\u5C64\u6709\u5B8C\u6210\u5EA6\uFF09\u8207\u4E0B\u4E00\u6B65\u3002\u53EA\u6539\u756B\u9762\uFF0C\u6C92\u6709\u65B0 template\u3001\u8DEF\u7531\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.18.0\uFF1A\u958B\u7968\u7684\u7576\u4E0B\u5C31\u64CB\u4F4F\u91CD\u8907\u7968\uFF08inkstone/Arcrun#377\uFF09\u3002\u2460 \u958B\u7968\uFF08POST /repos/:o/:r/issues\uFF0CMCP create_issue\u3001ISEP \u8173\u672C\u3001\u756B\u9762\u3001\u5C0F\u5E6B\u624B\u90FD\u8D70\u9019\u4E00\u689D\uFF09\u5148\u7531\u4F3A\u670D\u5668\u6BD4\u5C0D\u5168\u90E8 repo \u7684\u7968\u2014\u2014\u542B\u5DF2\u95DC\u3001\u4E0D\u9650\u6700\u8FD1 300 \u5F35\uFF08\u4E00\u9801 500 \u7B46\u7FFB\u9801\uFF0C\u6700\u591A 4000 \u5F35\uFF0C\u8B80\u4E0D\u5B8C\u6703\u6A19 truncated\uFF09\uFF1B\u6BD4\u5C0D\u770B\u300C\u540C\u4E00\u500B\u76EE\u6A19\u300D\uFF1A\u628A\u65B0\u7968\u7684\u6A19\u984C\uFF0B\u5167\u6587\u958B\u982D\u5207\u6210\u5B57\u8A5E\uFF0C\u7528\u5168\u90E8\u7968\u7B97\u51FA\u54EA\u4E9B\u8A5E\u6700\u80FD\u4EE3\u8868\u9019\u4EF6\u4E8B\uFF0C\u518D\u770B\u6BCF\u5F35\u820A\u7968\uFF08\u6A19\u984C\uFF0B\u5167\u6587\u958B\u982D\uFF09\u6DB5\u84CB\u591A\u5C11\uFF0C\u4E0D\u9760\u5B57\u9762\u4E00\u81F4\u3001\u4E0D\u7528\u5411\u91CF\u3002\u2461 \u6BD4\u5C0D\u5230\u53EF\u80FD\u662F\u540C\u4E00\u4EF6\u4E8B\u7684\uFF0C\u4E0D\u958B\u3001\u56DE 409\uFF0B\u5019\u9078\uFF08ref\uFF0F\u6A19\u984C\uFF0F\u72C0\u614B\uFF0F\u5167\u6587\u6458\u8981\uFF09\uFF0C\u8ACB\u5728\u90A3\u5F35\u7968\u7559\u8A00\uFF1B\u78BA\u5B9A\u662F\u65B0\u7684\u4E00\u689D\u7DDA\uFF0C\u540C\u6A23\u7684\u8ACB\u6C42\u52A0 compared:[{ref, reason}]\u2014\u2014\u6BCF\u4E00\u5F35\u5019\u9078\u90FD\u8981\u9EDE\u540D\u3001\u5404\u5BEB\u70BA\u4EC0\u9EBC\u4E0D\u662F\u540C\u4E00\u4EF6\u4E8B\uFF08\u226510 \u5B57\u3001\u4E0D\u80FD\u8907\u88FD\u6A19\u984C\u3001\u5404\u5F35\u4E0D\u540C\uFF09\uFF0C\u9019\u4EFD\u6BD4\u5C0D\u8A18\u9032\u65B0\u7968\u5167\u6587\uFF1B\u4E00\u53E5\u8A71\u7406\u7531\u6216\u65D7\u6A19\u904E\u4E0D\u4E86\uFF08\u820A\u7684 force \u5DF2\u7121\u6548\uFF09\u3002\u2462 \u81EA\u52D5\u56DE\u5831\uFF08\u4F8B\uFF1A\u5C0F\u5E6B\u624B\u300C\u56DE\u5831\u300D\uFF09\u8ACB\u5E36 event_key\uFF08\u540C\u5BE6\u4F8B\uFF0B\u540C\u6A94\uFF0F\u540C\u539F\u56E0\uFF09\uFF1A\u540C\u4E00\u4E8B\u4EF6\u7B2C\u4E8C\u6B21\u8D77\u4E0D\u958B\u65B0\u7968\uFF0C\u4F75\u9032\u7B2C\u4E00\u5F35\u7684\u7559\u8A00\uFF08\u591A 1 \u500B template ahub_issue_event\uFF0C\u5171 29\uFF09\u3002\u2463 \u591A POST /ahub/issues/similar\uFF08\u53EA\u67E5\u4E0D\u958B\uFF09\u8207 MCP list_issues \u7684 similar_to\u3002\u2464 \u8DE8 repo \u641C\u7968\uFF08\u756B\u9762\u300C\u5168\u90E8 repo\u300D\uFF09\u627E\u5F97\u5230\u4EFB\u4F55\u4E00\u5F35\u7968\uFF1A\u641C\u7968\u865F\uFF08184\u3001#184\u3001Arcrun#184\uFF09\u5148\u8B80 repo \u6E05\u55AE\u518D\u5C0D\u6BCF\u500B repo \u7CBE\u78BA\u8B80\u90A3\u4E00\u5F35\uFF0C\u6210\u672C\u53EA\u8DDF repo \u6578\u6210\u6B63\u6BD4\uFF1B\u641C\u95DC\u9375\u5B57\u4F9D\u7968\u6C60\u7E3D\u6578\u7FFB\u9801\u8B80\u5B8C\uFF08\u6700\u591A 18500 \u5F35\uFF09\u3002MCP \u5DE5\u5177\u6578\u4E0D\u8B8A\uFF0829\uFF09\uFF1B1 \u689D\u65B0\u8DEF\u7531\uFF08\u5171 75\uFF09\u3002\n0.17.0\uFF1A\u7D50\u69CB\u6A39\u8207\u76EE\u6A19\u6307\u5411\u3001\u7968\u5730\u5716\u4F75\u9032\u4F86\uFF08inkstone/Arcrun#368\uFF09\u3002\u2460 \u53EA\u6709\u5169\u7A2E\u6771\u897F\u2014\u2014\u7968\u8207\u7BC0\u9EDE\uFF1A\u4EFB\u4F55\u6771\u897F\u53EF\u4EE5\u639B\u5728\u4EFB\u4F55\u7BC0\u9EDE\u5E95\u4E0B\uFF0C\u7BC0\u9EDE\uFF08\u5C08\u6848\u3001\u91CC\u7A0B\u7891\u53EA\u662F\u89D2\u8272\u540D\uFF09\u53EF\u6709\u597D\u5E7E\u500B\u7238\u7238\u3001\u5C64\u6578\u4E0D\u9650\uFF0C\u5E95\u4E0B\u53EF\u76F4\u63A5\u653E\u4EFB\u4F55 repo \u7684\u7968\u3002\u300C\u4E0A\u5C64\u300D\u662F\u5B69\u5B50\u8EAB\u4E0A\u7684\u95DC\u806F\u683C parents[]\uFF08KBDB \u95DC\u806F\u683C #370\uFF09\uFF1A\u597D\u5E7E\u500B\u7238\u7238\u5404\u5360\u4E00\u5217\uFF0C\u5169\u500B\u4EBA\u4E26\u884C\u5404\u52A0\u4E0D\u540C\u7684\u7238\u7238\u4E0D\u6703\u4E92\u84CB\uFF0C\u53CD\u67E5\u300C\u8AB0\u5728\u9019\u500B\u7BC0\u9EDE\u5E95\u4E0B\u300D\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6709\u95DC\u3002\u300C\u6B78\u5C6C\u300D\u8207\u300C\u64CB\u4F4F\u300D\uFF08dependency\uFF09\u5206\u958B\u5B58\uFF0C\u9032\u5EA6\u3001\u770B\u677F\u5206\u7D44\u53EA\u770B\u6B78\u5C6C\uFF1B\u9032\u5EA6\u53EA\u7B97\u7968\u3001\u540C\u4E00\u5F35\u7968\u5728\u540C\u4E00\u68F5\u5E95\u4E0B\u53EA\u7B97\u4E00\u6B21\u3002\u2461 \u820A\u5F0F\u8F09\u9AD4\u7968\u91CC\u7A0B\u7891\uFF0824 \u500B\uFF09\u5BE6\u9AD4\u8F49\u6210\u7BC0\u9EDE\uFF08POST /ahub/convert-legacy\uFF0C\u4E00\u6B21\u6027\u3001\u51AA\u7B49\u3001\u53EF\u91CD\u8DD1\u3001\u9810\u8A2D\u53EA\u8A66\u7B97\uFF09\uFF1A\u7BC0\u9EDE\u8A18\u820A id \u5C0D\u7167\uFF08m\uFF0B\u820A id \u7576\u5225\u540D\u4ECD\u53EF\u7528\uFF09\uFF0C\u8F09\u9AD4\u7968\u8207\u5B83\u5011\uFF08\u905E\u79FB\uFF09\u7684\u524D\u7F6E\u7968\u90FD\u639B\u5230\u90A3\u500B\u7BC0\u9EDE\u5E95\u4E0B\uFF0C% \u8207\u8F49\u63DB\u524D\u9010\u500B\u4E00\u81F4\uFF1B\u820A\u7684\u6B78\u5C6C\u908A\uFF08ahub_member\uFF09\u4E00\u4F75\u642C\u904E\u53BB\u5F8C\u9000\u5F79\u3002\u2462 \u76EE\u6A19\u53EF\u4EE5\u6307\u5411\u7BC0\u9EDE\u6216\u7968\uFF0C\u9032\u5EA6\u7531\u6307\u5230\u7684\u6771\u897F\u7B97\u3001\u4E0D\u624B\u586B\uFF1B\u7BC0\u9EDE\u53EF\u53CD\u67E5\u300C\u88AB\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u300D\u3002\u2463 \u756B\u9762\uFF1A\u7968\u5730\u5716\u4F75\u9032 AHub\uFF0C\u53EA\u5269\u300C\u7D50\u69CB\u300D\uFF08\u5927\u7DB1\uFF0B\u770B\u677F\uFF09\u8207\u300C\u76EE\u6A19\u300D\u5169\u500B\u5165\u53E3\uFF0C\u767B\u8A18\u7C3F\u3001\u91CC\u7A0B\u7891\u9801\u3001\u5C08\u6848\u9801\u7531\u5B83\u5011\u53D6\u4EE3\uFF1B\u7968\u8207\u6A19\u7C64\u7167\u820A\uFF0Crepo\uFF08\u820A\u7A31 AHub \u5C08\u6848\uFF09\u6536\u5230\u53F3\u4E0A\u300Crepo\u300D\u3002\u2464 MCP \u591A node\uFF08\u5EFA\u7ACB\uFF0F\u4FEE\u6539\uFF0F\u653E\u9032\u4F86\uFF0F\u62FF\u6389\uFF0F\u8B93\u76EE\u6A19\u6307\u5411\uFF0Fconvert_legacy\uFF09\u8207 tree\uFF08\u8B80\u6A39\u3001\u53CD\u67E5\u3001\u76EE\u6A19\u9032\u5EA6\uFF09\u5169\u652F\u5DE5\u5177\uFF08\u5171 29\uFF09\u3002\u2465 \u5831\u5230\u96DC\u8A0A\uFF1A\u5DE5\u4EBA\u4EE3\u865F\uFF08*-hand\uFF09\u3001repo \u540D\u3001\u8CC7\u6599\u593E\u8DEF\u5F91\u4E0D\u518D\u767B\u8A18\u6210\u5DE5\u4F5C\u7AD9\u3002\u2466 release \u4E0D\u5728 AHub \u53E6\u5B58\u767B\u8A18\uFF1A\u7BC0\u9EDE\u7684 stage \u6B04\u53EA\u8B80\u51FA\u8CA8\u7DDA\u5E33\u672C\uFF08ahub_stage\uFF09\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_node\uFF0Fahub_member\uFF0Fahub_goal_ref\uFF0C\u5171 28\uFF1Bahub_member \u5DF2\u9000\u5F79\uFF0C\u53EA\u7559\u7D66\u642C\u5BB6\u7528\uFF09\u3001\u7968\u8207\u7BC0\u9EDE\u591A\u4E00\u683C parents[]\u30019 \u689D\u8DEF\u7531\uFF1B\u9700\u8981 KBDB \u95DC\u806F\u683C\uFF08#370\uFF09\u8207\u4EE3\u8F49\u5C64 batch-write \u7684 relation \u64CD\u4F5C\u3002\n0.16.1\uFF1A\u624B\u6A5F\u4E0A\u6309\u5F97\u5230\u300C\u9001\u51FA\u7C3D\u6838\u300D\u4E86\uFF08inkstone/Arcrun#371\uFF09\u2014\u2014AHub \u7684\u5C0D\u8A71\u6846\u8207\u7968\u5074\u6B04\u6539\u6210\u84CB\u5728 Portal \u7684\u5E95\u90E8\u5206\u9801\u5217\u3001\u53F3\u4E0B\u89D2\u300C?\u300D\u8207\u300C\u554F\u77E5\u8B58\u5EAB\u300D\u4E0A\u9762\uFF08\u539F\u672C\u88AB\u58D3\u5728\u5B83\u5011\u4E0B\u9762\uFF0C\u7C3D\u6838\u6846\u6700\u5E95\u90A3\u6392\u88AB\u84CB\u4F4F\u3001\u6372\u5230\u5E95\u4E5F\u9732\u4E0D\u51FA\u4F86\uFF09\uFF1B\u5C0D\u8A71\u6846\u9AD8\u5EA6\u6539\u7528\u5BE6\u969B\u53EF\u898B\u9AD8\u5EA6\uFF0C\u5167\u5BB9\u6BD4\u756B\u9762\u9AD8\u6642\u52D5\u4F5C\u9215\u90A3\u4E00\u6392\u91D8\u5728\u6846\u5E95\u3002\u53EA\u6539\u756B\u9762\u6A23\u5F0F\uFF0C\u6C92\u6709\u65B0 template\u3001\u8DEF\u7531\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.15.0\uFF1AAHub \u770B\u5F97\u5230 stage \u73FE\u5728\u662F\u54EA\u4E00\u7248\u4E86\uFF08inkstone/Arcrun#365\uFF09\u2014\u2014stage \u53EA\u6709\u4E00\u500B\u3001\u5404\u7DDA\u4E0A\u7248\u6703\u4E92\u76F8\u6D17\u6389\uFF0C\u51FA\u8CA8\u5165\u53E3\u5DF2\u52A0\u9598\uFF0C\u9019\u4E00\u7248\u88DC\u300C\u8B93\u5404\u7DDA\u770B\u5F97\u5230\u300D\uFF1A\u51FA\u8CA8\u90A3\u4E00\u6B21\u52D5\u4F5C\u5BEB\u4E00\u7B46\uFF08POST /ahub/stage\uFF1Acommit\u3001\u7248\u672C\u3001\u9019\u7248\u5F80\u56DE\u6700\u8FD1 N \u500B commit \u8207\u5176\u8A0A\u606F\u88E1\u7684\u7968\u3001\u8AB0\u51FA\u7684\u3001\u4EC0\u9EBC\u6642\u5019\uFF09\uFF0CGET /ahub/stage \u8B80\u73FE\u6CC1\u8207\u6700\u8FD1\u63DB\u7248\u6B77\u53F2\uFF1B\u4E00\u5F35\u7968\u6253\u958B\uFF08\u756B\u9762\u7968\u8A73\u60C5\u3001MCP get_issue \u591A\u56DE stage\uFF09\u5C31\u770B\u5F97\u5230\u300Cstage \u73FE\u5728\u662F X \u7248\uFF0C\u542B\uFF0F\u4E0D\u542B\u4F60\u7684\u6539\u52D5\u300D\u2014\u2014\u5728\u8B80\u7684\u6642\u5019\u7528\u51FA\u8CA8\u6642\u8A18\u7684\u6E05\u55AE\u7B97\uFF0C\u4E0D\u63A8\u64AD\u3001\u4E0D\u5C0D\u4EFB\u4F55\u7968\u7559\u8A00\u3001\u4E0D\u8F2A\u8A62\u3001\u4E0D\u6383\u7968\u6C60\uFF08\u53EA\u8B80 current \u4E00\u7B46\uFF09\u3002\u300C\u4E0D\u542B\u300D\u7684\u610F\u601D\u662F\u9019\u7248\u5F80\u56DE N \u500B commit \u7684\u8A0A\u606F\u88E1\u6C92\u6709\u9019\u5F35\u7968\u3002\u591A 1 \u500B template\uFF08ahub_stage\uFF0C\u5171 25\uFF09\u30013 \u689D\u8DEF\u7531\uFF08stage_record\uFF0Fstage_get\uFF0Fissue_stage\uFF09\uFF0C\u6C92\u6709\u65B0\u5DE5\u5177\uFF08\u4ECD 27 \u652F\uFF09\u3002\n0.14.1\uFF1A\u5916\u90E8\u7DB2\u7AD9\u53EF\u4EE5\u76F4\u63A5\u628A\u8868\u55AE\u8B8A\u6210\u7968\u4E86\uFF08inkstone/Arcrun#359\uFF09\u2014\u2014\u6536\u4EF6\u91D1\u9470\u4F4F credential \u4E2D\u5FC3\uFF08CF Secret\uFF09\uFF0C\u4E0D\u518D\u6709 AHub \u81EA\u5DF1\u7684\u91D1\u9470\u8868\u3001\u4E5F\u4E0D\u9700\u8981\u53E6\u4E00\u628A\u4EBA\u985E token \u6216\u5167\u90E8\u91D1\u9470\u4F86\u7522\u751F\u5B83\uFF1A\u767C\u4E00\u628A\uFF1D\u5728 credential \u4E2D\u5FC3\u52A0\u4E00\u689D\u540D\u5B57 ahub_intake_<\u4F86\u6E90> \u7684\u91D1\u9470\uFF0C\u64A4\u92B7\uFF1D\u522A\u6389\u5B83\u3002\u4F86\u6E90\u6E05\u55AE\u5728 intake-sources.json\uFF08\u76EE\u524D uncle6_contact \u2192 inkstone/personal-brand\u3001\u6A19\u7C64\u300C\u6D3D\u8A62\u300D\uFF09\uFF0C\u6BCF\u500B\u4F86\u6E90\u4E00\u689D\u516C\u958B\u8DEF\u7531 POST /ahub/intake/<\u4F86\u6E90>\uFF1A\u5916\u90E8\u7DB2\u7AD9\u5728\u4FE1\u5C01\u7684 token \u6B04\u9001\u91D1\u9470\uFF0C\u8DEF\u7531\u6BD4\u5C0D credential \u4E2D\u5FC3\u7684\u503C\uFF08\u6046\u5B9A\u6642\u9593\uFF09\uFF1B\u6BD4\u5C0D\u4E0D\u4E0A 401\uFF0Cbody \u6307\u5B9A\u5225\u7684 repo 403\uFF0C\u6C92\u6709\u90A3\u689D credential\uFF08\u64A4\u92B7\uFF09\u6642\u6574\u689D\u5DE5\u4F5C\u6D41\u5931\u6557\u3001\u4E0D\u958B\u7968\u3002\u91D1\u9470\u53EA\u80FD\u958B\u5728\u6E05\u55AE\u6307\u5B9A\u7684\u90A3\u4E00\u500B repo\u3001\u6253\u4E0D\u4E86\u4EFB\u4F55\u4E00\u822C\u8DEF\u7531\uFF08\u4E00\u822C\u8DEF\u7531\u53EA\u8A8D ahub_token\uFF09\u3002\u4E00\u7B46\u6D3D\u8A62\uFF1D\u4E00\u5F35\u7968\uFF1A\u6A19\u984C\u3010\u6D3D\u8A62\u3011\u806F\u7D61\u76EE\u7684\uFF5C\u55AE\u4F4D\uFF0C\u5167\u6587\u5E36\u5168\u90E8\u6B04\u4F4D\uFF0C\u639B\u6A19\u7C64\u300C\u6D3D\u8A62\u300D\uFF0C\u7F72\u540D intake-<\u4F86\u6E90>\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u7684\u7BA1\u7406\u8DEF\u7531\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF080.14.0 \u7684 ahub_intake_key \u8207\u91D1\u9470\u7BA1\u7406\u8DEF\u7531\u6C92\u6709\u51FA\u904E prod\uFF0C\u9019\u4E00\u7248\u6574\u500B\u62FF\u6389\uFF09\u3002\n0.13.5\uFF1AAI \u53EF\u4EE5\u76F4\u63A5\u958B\u91CC\u7A0B\u7891\u3001\u6539\u671F\u9650\u4E86\uFF08inkstone/Arcrun#358\uFF09\u2014\u2014\u65B0\u5DE5\u5177 milestone\uFF08action\uFF1Dcreate\uFF0Fupdate\uFF0Fclose\uFF0Freopen\uFF09\uFF0C\u5305\u73FE\u6709\u7684\u5EFA\u91CC\u7A0B\u7891\u8207\u6539\u91CC\u7A0B\u7891\u8DEF\u7531\uFF0C\u4E0D\u53E6\u958B\u5BEB\u5165\u8DEF\u5F91\u3002\u5B88\u898F\u5247\uFF1A\u53EA\u51C6\u958B\u5728 inkstone/InkStoneCo\u3001\u540D\u7A31\u4E0D\u51C6\u7528\u7248\u672C\u865F\u958B\u982D\u3001\u671F\u9650\u5FC5\u586B\u4E14\u8981\u662F\u672A\u904E\u53BB\u7684\u771F\u65E5\u671F\uFF089999-01-01 \u9019\u985E\u5047\u671F\u9650\u64CB\u6389\uFF09\u3001\u6539\u671F\u9650\u4E0D\u80FD\u6E05\u7A7A\uFF1B\u540C\u540D 422\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 26 \u63D0\u5230 27\uFF08\u8981\u9023\u540C MCP worker \u4E00\u8D77\u66F4\u65B0\uFF09\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.13.4\uFF1AAHub \u756B\u9762\u591A\u4E86\u300C\u767B\u8A18\u7C3F\u300D\u5206\u9801\u2014\u2014\u6BCF\u500B CC \u5C08\u6848\uFF08\u5DE5\u4F5C\u7AD9\uFF09\u5E95\u4E0B\u5217\u5B83\u7684\u5C0D\u8A71\uFF0C\u6BCF\u500B\u5C0D\u8A71\u770B\u5F97\u5230\u9818\u7684\u7968\u8207\u6240\u5C6C\u76EE\u6A19\uFF08\u7528\u73FE\u6709\u8CC7\u6599\u63A8\uFF1A\u5C0D\u8A71\u9818\u7684\u7968\u2192\u76EE\u6A19\u6A39\u6B65\u9A5F\u639B\u7684\u7968\u2192\u76EE\u6A19\uFF09\uFF0C\u63A8\u4E0D\u5230\u7684\u6A19\u300C\u6C92\u639B\u76EE\u6A19\u300D\uFF1B\u91CC\u7A0B\u7891\u9801\u7684\u9032\u5EA6 % \u6539\u6210\u548C\u7968\u5730\u5716\u540C\u4E00\u500B\u7B97\u6CD5\uFF08\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\uFF09\uFF0C\u9078\u300C\u5168\u90E8\u5C08\u6848\u300D\u6642\u5217\u51FA\u6240\u6709 repo \u7684\u91CC\u7A0B\u7891\uFF08\u6BCF\u5217\u6A19 repo\uFF0C\u7528\u641C\u5C0B\u6846\u7BE9\uFF09\u3002\u756B\u9762\u8B80\u53D6\u767D\u540D\u55AE\u591A\u653E sessions_list\u3001claim_list\uFF08\u90FD\u662F\u65E2\u6709\u7684\u552F\u8B80\u8DEF\u7531\uFF09\uFF1B\u4E0D\u65B0\u589E template\u3001\u6B04\u4F4D\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08inkstone/Arcrun#351\uFF09\u3002\n0.13.3\uFF1A\u76EE\u6A19\u53EF\u4EE5\u7D81\u91CC\u7A0B\u7891\u4E86\uFF08inkstone/Arcrun#353\uFF09\u2014\u2014\u76EE\u6A19\u5C6C\u65BC\u76EE\u6A19\u6A39\u3001milestone \u5C6C\u65BC\u7968\u7CFB\u7D71\uFF0C\u4E00\u500B\u76EE\u6A19\u7D81 0 \u5230\u591A\u500B milestone\uFF08\u53EF\u8DE8 repo\uFF1B\u4E00\u500B milestone \u4E5F\u53EF\u88AB\u597D\u5E7E\u500B\u76EE\u6A19\u5F15\u7528\uFF09\u3002\u76EE\u6A19\u53EA\u5B58\u300C\u9023\u5230\u54EA\u4E9B milestone\u300D\uFF0C\u9032\u5EA6 % \u5B8C\u5168\u7531 milestone \u5E95\u4E0B\u7684\u7968\u8207 release \u7B97\uFF08\u8207\u7968\u5730\u5716\u540C\u4E00\u5957\u7B97\u6CD5\uFF09\uFF0C\u4E0D\u53E6\u5916\u624B\u586B\uFF1Bgoal_set \u591A milestones\uFF0Funbind_milestones\uFF0Fmilestone_repo\uFF0Cgoals_report \u6BCF\u500B\u76EE\u6A19\u591A milestones\uFF0Fprogress\uFF0Fflags\uFF08\u53EF\u7528 milestone \u53CD\u67E5\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u5B83\uFF09\u3002\u5169\u7D44\u300C\u93C8\u65B7\u4E86\u300D\u65D7\u6A19\u5728\u5831\u544A\u8207\u770B\u677F\u90FD\u5217\uFF1A\u76EE\u6A19\u6A39\u6C92\u4EBA\u7DAD\u8B77\uFF08\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u5728\u52D5\u3001\u76EE\u6A19\u6A39\u537B\u4E45\u6C92\u66F4\u65B0\uFF0C\u6216 waiting \u6B65\u9A5F\u65E9\u8A72\u91CD\u770B\uFF09\u3001\u93C8\u689D\u6C92\u4EBA\u7DAD\u8B77\uFF08\u6C92\u7D81\u91CC\u7A0B\u7891\u537B\u6709\u7968\u5728\u8DD1\u3001\u6B65\u9A5F\u7968\u4E0D\u5728\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u3001\u91CC\u7A0B\u7891 100% \u6216\u5DF2\u95DC\u537B\u6C92\u6709 release\u3001\u904E\u671F\u6216\u627E\u4E0D\u5230\uFF09\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_goal_ms\uFF0C\u5171 24\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u30020.13.2\uFF1A\u756B\u9762\u8B80 AHub \u7684\u767D\u540D\u55AE\u591A\u653E\u4E00\u689D goals_report\uFF08\u76EE\u6A19\u6A39\u5831\u544A\uFF09\u2014\u2014\u7D66\u7968\u5730\u5716 0.7.0 \u7684\u300C\u672A\u4F86\u300D\u8996\u5716\u8B80\uFF08inkstone/Arcrun#351\uFF09\u3002\u53EA\u591A\u4E00\u689D\u552F\u8B80\u8DEF\u7531\u7684\u653E\u884C\uFF0C\u8CC7\u6599\u8207\u5DE5\u5177\u90FD\u6C92\u52D5\uFF0C\u6C92\u6709\u65B0 template\u3002\n0.13.0\uFF1A\u91CC\u7A0B\u7891\u9032\u5EA6\u628A\u524D\u7F6E\u7968\u7B97\u9032\u53BB\u4E86\uFF0C\u4E26\u6A19\u51FA\u93C8\u689D\u65B7\u5728\u54EA\uFF08inkstone/Arcrun#352\uFF09\u2014\u2014\u7968\u5730\u5716\u7684 % \u539F\u672C\u53EA\u7B97\u300C\u76F4\u63A5\u639B\u5728\u91CC\u7A0B\u7891\u4E0A\u300D\u7684\u8F09\u9AD4\u7968\uFF0C\u5225\u7684 repo \u7684\u57F7\u884C\u7968\u662F\u8F09\u9AD4\u7968\u7684\u524D\u7F6E\uFF0C\u5B8C\u5168\u6C92\u9032\u5206\u6BCD\uFF08\u4F8B\uFF1A\u505A\u5B8C\u4E86\u537B\u986F\u793A 33%\uFF09\u3002\u73FE\u5728 GET /ahub/milestones \u7684\u9032\u5EA6\uFF1D\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u905E\u79FB\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\u3001\u540C\u4E00\u5F35\u53EA\u7B97\u4E00\u6B21\uFF1B\u591A\u56DE direct\uFF0Fprerequisites\uFF0Fcarriers\uFF08\u542B\u5404\u8F09\u9AD4\u7684\u524D\u7F6E\u6578\uFF09\u3001\u93C8\u689D\u56DB\u6BB5 chain\uFF08\u8F09\u9AD4\u7968\uFF0F\u5DE5\u4F5C\u7968\uFF0Fmilestone\uFF0Frelease\uFF09\u3001\u65B7\u9EDE gaps \u8207 chain_state\uFF1Abroken\uFF1D\u93C8\u689D\u6C92\u63A5\u597D\uFF08\u6C92\u6709\u8F09\u9AD4\u3001\u8F09\u9AD4\u90FD\u6C92\u6709\u524D\u7F6E\uFF09\u3001unmaintained\uFF1D\u93C8\u689D\u63A5\u4E0A\u4E86\u4F46\u6C92\u4EBA\u7DAD\u8B77\uFF08\u524D\u7F6E\u5168\u95DC\u8F09\u9AD4\u9084\u958B\u8457\u3001100% \u91CC\u7A0B\u7891\u9084\u958B\u8457\u3001\u505A\u5B8C\u6C92 release\u3001\u91CC\u7A0B\u7891\u95DC\u4E86\u9084\u6709\u7968\u958B\u8457\uFF09\u3001moving\u3001shipped\uFF1B\u53E6\u6A19\u904E\u671F\u3002\u7968\u5730\u5716\u5361\u7247\u8207\u8A73\u60C5\u986F\u793A\u65B0 % \u8207\u65B7\u9EDE\u3002\u8B80\u53D6\u591A 2 \u683C\uFF08\u6574\u5F35\u76F8\u4F9D\u908A\u3001\u958B\u8457\u7684\u7968\uFF0C\u5404\u6700\u591A 2 \u9801\xD7500\uFF0C\u8B80\u6EFF\u6A19 truncated\uFF09\uFF1B\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.12.1\uFF1A\u6A19\u51FA\u300C\u4EA4\u8FA6\u4E86\u537B\u6C92\u4EBA\u52D5\u5DE5\u300D\uFF08inkstone/Arcrun#350\uFF09\u2014\u2014\u6B65\u9A5F\u5F85\u505A\u3001\u6C92\u4EBA\u5728\u505A\uFF08\u6C92\u6709\u7968\uFF0C\u6216\u7968\u6C92\u4EBA\u9818\u4E5F\u6C92\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF09\u3001\u524D\u7F6E\u90FD\u505A\u5B8C\uFF0C\u5F9E\u4EA4\u8FA6\u6642\u9593\u8D77\u8D85\u904E 24 \u5C0F\u6642\uFF08\u53EF\u8ABF\uFF0Cunstarted_hours\uFF09\uFF0C\u7E3D\u76E3\u5831\u544A goals_report\uFF08\u76EE\u6A19\u3001\u5C08\u6848\u7684 unstarted\uFF0Csummary.unstarted_steps\uFF09\u8207\u770B\u677F board\uFF08anomalies \u7684 unstarted_step\u3001unstarted_steps \u660E\u7D30\uFF09\u5C31\u6A19\u51FA\u4F86\uFF0C\u4E0D\u5FC5\u9760\u4EBA\u8A18\u5F97\u53BB\u8FFD\u554F\u3002\u4EA4\u8FA6\u6642\u9593\u7528 step_set \u7684\u65B0\u53C3\u6578 assigned_at \u8A18\uFF08\u4EA4\u8FA6\u5E38\u6BD4\u5BEB\u9032\u6A39\u65E9\uFF0C\u88DC\u5BEB\u820A\u7684\u4E5F\u884C\uFF1B\u6C92\u7D66\u5C31\u4EE5\u5BEB\u9032\u6A39\u7684\u6642\u9593\u7B97\uFF09\u3002\u53E6\u4FEE\uFF1A\u4EBA\u5BEB\u7684\u300C\u7B49\u5F85\u4E2D\u300D\u6B65\u9A5F\uFF0C\u524D\u7F6E\u90FD\u5B8C\u6210\u5F8C\uFF0C\u5831\u544A\u7684 needs \u8A72\u7B46\u5E36 review:true \u8207\u300C\u524D\u7F6E\u5DF2\u5B8C\u6210\uFF0C\u8A72\u91CD\u770B\u300D\uFF0C\u4E0D\u518D\u6C38\u9060\u986F\u793A\u5728\u7B49\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_step_assign\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u3002board \u8B80\u53D6\u683C\u6578 9\u219214\uFF08\u591A\u8B80\u76EE\u6A19\u6A39\u9032\u884C\u4E2D\u7684\u6B65\u9A5F\uFF09\u3002\n0.12.0\uFF1AAHub \u6709\u300C\u6BCF\u500B\u5C08\u6848\u7684\u76EE\u6A19\u6A39\u300D\u4E86\uFF08inkstone/Arcrun#349\uFF09\u2014\u2014\u8A18\u300C\u672A\u4F86 \u2212 \u73FE\u5728\u300D\uFF1A\u76EE\u6A19\uFF08\u4E00\u53E5\u8A71\u7684\u672A\u4F86\uFF0B\u9054\u6210\u6A19\u6E96\uFF0C\u53EF\u5206\u5C64\uFF0C\u76EE\u6A19\u6703\u8B8A\u3001\u6BCF\u6B21\u4FEE\u6539\u5FC5\u9644\u7406\u7531\u4E26\u81EA\u52D5\u7559\u8B8A\u66F4\u7D00\u9304\uFF09\u3001\u6B65\u9A5F\uFF08\u639B\u5728\u76EE\u6A19\u4E0B\uFF0C\u53EF\u4EE5\u9084\u6C92\u958B\u7968\uFF1B\u72C0\u614B done\uFF0Fdoing\uFF0Fpending\uFF0Fwaiting\uFF0Fneeds_user\uFF0C\u7B49\u5F85\u8207\u9700\u8981\u4F7F\u7528\u8005\u7684\u8981\u5BEB\u7B49\u4EC0\u9EBC\uFF1B\u524D\u7F6E\u6B65\u9A5F depends_on\uFF09\u3002\u6709\u639B\u7968\u7684\u6B65\u9A5F\u5F9E\u7968\u8207\u9818\u7968\u8B80\u72C0\u614B\uFF08\u7968\u95DC\u4E86\uFF1D\u5B8C\u6210\u3001\u9818\u7968\u5361\u4F4F\uFF1D\u7B49\u5F85\uFF09\u3002\u5BEB\u5165\u5DE5\u5177 goal_set\uFF0Fstep_set \u7528\u6A19\u984C\u6216 id \u90FD\u627E\u5F97\u5230\u3001\u540C\u4E00\u500B\u6A19\u984C\u91CD\u8907\u5BEB\u4E0D\u6703\u9577\u51FA\u91CD\u8907\uFF0C\u6A19\u984C\u76F8\u8FD1\u7684\u56DE 409 \u8207\u5019\u9078\uFF1B\u7E3D\u76E3\u7528 goals_report \u4E00\u6B21\u8B80\u5230\u6BCF\u500B\u5C08\u6848\u7684\u300C\u76EE\u6A19 A\uFF0F\u505A\u5230 B\uFF0F\u9700\u8981 C\u300D\uFF0C\u4E26\u6A19\u51FA\u88AB\u524D\u7F6E\u64CB\u4F4F\u7684\u76F8\u4F9D\u93C8\u8207\u6700\u524D\u9762\u7684\u5361\u9EDE\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u5C08\u6848\u76EE\u6A19\u6A39\u7684\u6700\u5F8C\u66F4\u65B0\u6642\u9593\uFF0C\u8D85\u904E goal_stale_hours\uFF08\u9810\u8A2D 168\uFF09\u6C92\u4EBA\u66F4\u65B0\u8A18 goal_stale\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_goal\u3001ahub_goal_log\u3001ahub_step\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 3 \u689D\u8DEF\u7531\u8207 3 \u652F MCP \u5DE5\u5177\uFF08goal_set\u3001step_set\u3001goals_report\uFF09\u30011 \u4EFD\u8AAA\u660E\uFF08goals\uFF09\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 23 \u63D0\u5230 26\u3002\n0.11.0\uFF1AAHub \u8A18\u5F97\u300C\u73FE\u5728\u6709\u54EA\u4E9B\u5C0D\u8A71\u958B\u8457\u300D\u4E86\uFF08inkstone/Arcrun#348\uFF09\u2014\u2014\u6BCF\u500B Claude \u5C0D\u8A71\u958B\u5DE5\u6642\u7528 checkin \u767B\u8A18\u4E00\u6B21\uFF08\u4E0D\u5FC5\u958B\u7968\uFF1A\u53EA\u662F\u53BB\u67E5\u67D0\u500B\u8A2D\u5B9A\u5728\u54EA\u7684\u5C0F\u5C0D\u8A71\u4E5F\u4E00\u6A23\uFF09\uFF0C\u7D50\u675F\u6642\u7528\u65B0\u7684 end_session \u6536\u5DE5\u3001\u53EF\u9644\u4E00\u53E5\u8A71\u7D50\u8AD6\uFF1B\u4E4B\u5F8C\u6BCF\u652F AHub \u5DE5\u5177\u5E36\u8457\u5C0D\u8A71\u8B58\u5225\uFF08session\uFF09\uFF0C\u5C31\u7B97\u4E00\u6B21\u6D3B\u52D5\u3001\u81EA\u52D5\u66F4\u65B0\u300C\u6700\u5F8C\u6D3B\u52D5\u300D\uFF0C\u4E0D\u5FC5\u518D\u5831\u5230\uFF1B\u540C\u4E00\u500B\u5C0D\u8A71\u91CD\u8907\u5831\u5230\u53EA\u662F\u66F4\u65B0\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u9032\u884C\u4E2D\uFF08\u6C92\u6536\u5DE5\uFF09\u7684\u5C0D\u8A71\u3001\u4F9D\u5DE5\u4F5C\u7AD9\u5206\u7D44\uFF0C\u9023\u5F97\u5230\u5B83\u9818\u7684\u7968\uFF1B\u4E45\u6C92\u6D3B\u52D5\u53C8\u6C92\u6536\u5DE5\u7684\u8A18 session_stale\uFF08\u9580\u6ABB session_stale_hours\uFF0C\u9810\u8A2D 12 \u5C0F\u6642\uFF09\uFF1B\u5DF2\u6536\u5DE5\u7684\u4E0D\u4F54\u7248\u9762\uFF0C\u7528\u65B0\u7684 list_sessions \u67E5\u5F97\u5230\u3002\u5DE5\u4F5C\u7AD9\u53EA\u8981\u9084\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF0C\u5C31\u4E0D\u518D\u5831\u300C\u5831\u5230\u4E86\u537B\u6C92\u9818\u7968\u300D\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_session\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 4 \u689D\u8DEF\u7531\u8207 2 \u652F MCP \u5DE5\u5177\uFF08end_session\u3001list_sessions\uFF09\uFF0Ccheckin \u591A\u6536 session\uFF0Ftitle\uFF0Fticket\uFF0C\u5176\u9918\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 session\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 21 \u63D0\u5230 23\u3002\n0.10.1\uFF1A\u4FEE\u6389\u300C\u66F4\u65B0\u5931\u6557\u30FB\u8CC7\u6599\u4F86\u81EA\u597D\u5E7E\u500B\u5C0F\u6642\u524D\u300D\u2014\u2014AHub \u756B\u9762\u8B80\u4E0D\u5230\u65B0\u8CC7\u6599\uFF08\u7968\u3001\u5168\u90E8\u5C08\u6848\u3001\u6A19\u7C64\u90FD\u505C\u5728\u820A\u7684\uFF09\u3002\u539F\u56E0\u662F\u5F15\u64CE\u6539\u4E86\u4E00\u500B\u7D30\u7BC0\uFF0C\u756B\u9762\u5728\u300C\u9019\u53F0\u5DF2\u7D93\u767B\u8A18\u904E\u300D\u7684\u60C5\u6CC1\u4E0B\u628A\u771F\u6B63\u7684\u56DE\u61C9\u4E1F\u6389\u4E86\uFF1B\u73FE\u5728\u6539\u597D\uFF0C\u6309\u300C\u66F4\u65B0\u300D\u5F8C\u756B\u9762\u6703\u62FF\u5230\u6700\u65B0\u7684\u7968\uFF08inkstone/Arcrun#347\uFF09\u3002\n0.10.0\uFF1AAHub \u8A18\u5F97\u300C\u54EA\u500B Claude \u5C08\u6848\u9818\u4E86\u54EA\u5F35\u7968\u3001\u505A\u5230\u54EA\u300D\u4E86\uFF08inkstone/Arcrun#346\uFF09\u2014\u2014\u5DE5\u4F5C\u7AD9\uFF08\uFF1D\u4E00\u500B Claude \u5C08\u6848\uFF09\u5831\u5230 checkin\u3001\u9818\u7968 claim\u3001\u56DE\u5831 report\u3001\u653E\u624B release\uFF1B\u7E3D\u76E3\u4E00\u6B21\u770B\u5168\u90E8\u7684\u770B\u677F board\uFF1B\u7E3D\u76E3\u5C0D\u88AB\u9818\u8D70\u7684\u7968\u958B\u300C\u8981\u6C42\u56DE\u5831\u300Drequest_report\uFF0C\u8A72\u5DE5\u4F5C\u7AD9\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55 AHub \u5DE5\u5177\u6642\u56DE\u61C9\u7684 next_actions \u5C31\u5E36\u51FA\u4F86\uFF0C\u56DE\u5831\u5F8C\u81EA\u52D5\u6D88\u6389\uFF1Bmy_queue \u53EF\u4F9D\u5DE5\u4F5C\u7AD9\u7BE9\u3002\u9818\u7968\u6642\u56DE\u61C9\u5E36\u9019\u5F35\u7968\u5C6C\u65BC\u54EA\u500B milestone\uFF08\u81EA\u5DF1\u639B\u7684\uFF0C\u6C92\u6709\u5C31\u770B\u64CB\u4F4F\u7684\u8F09\u9AD4\u7968\u639B\u7684\uFF09\uFF1B\u770B\u677F\u6293\u7570\u5E38\uFF1A\u5831\u5230\u537B\u6C92\u9818\u7968\u3001\u9818\u7684\u7968\u4E45\u6C92\u56DE\u5831\u3001\u4E0D\u5C6C\u65BC\u4EFB\u4F55 milestone\u3001\u56DE\u5831\u5B8C\u6210\u4F46 milestone \u6C92\u95DC\u6216\u6C92\u6709\u7248\u672C\uFF08\u53EA commit \u5C31\u653E\u8457\uFF09\u3001\u5DE5\u4F5C\u7AD9\u4E45\u6C92\u78B0 AHub\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_station\u3001ahub_claim\u3001ahub_report_ask\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08ahub_release_link \u53EA\u591A\u4E00\u500B\u7D22\u5F15\uFF09\uFF1B\u65B0\u589E 6 \u652F MCP \u5DE5\u5177\u8207 1 \u4EFD\u5831\u5230\u8AAA\u660E\uFF0C\u65E2\u6709\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 station \u53C3\u6578\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 15 \u63D0\u5230 21\u3002\n0.9.1\uFF1A\u5217\u7968\u3001\u5217\u7559\u8A00\u8B8A\u5FEB\uFF08leo 2026-11-04\uFF09\u2014\u2014\u539F\u672C\u5217\u4E00\u500B repo \u7684\u7968\uFF0C\u77E5\u8B58\u5EAB\u8981\u628A\u540C\u4E00\u500B repo \u5E95\u4E0B\u6240\u6709\u7559\u8A00\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u4E00\u8D77\u7FFB\u904E\u624D\u6E4A\u5F97\u51FA\u7968\uFF0C\u7559\u8A00\u8D8A\u591A\u8D8A\u6162\u3001\u8D8A\u5403\u984D\u5EA6\uFF1B\u73FE\u5728 AHub \u6703\u7528\u4F86\u67E5\u7684\u683C\u5B50\u90FD\u958B\u4E86\u77E5\u8B58\u5EAB\u7684\u300C\u6B04\u4F4D\u503C\u7D22\u5F15\u300D\uFF0C\u5217\u7968\u7684\u6210\u672C\u53EA\u8DDF\u8981\u5217\u7684\u7968\u6578\u6709\u95DC\u3002\u5B89\u88DD\u6216\u6309\u300C\u66F4\u65B0\u300D\u6642\u81EA\u52D5\u66FF\u65E2\u6709\u8CC7\u6599\u5EFA\u7D22\u5F15\uFF08\u8CC7\u6599\u591A\u6642\u5206\u5E7E\u6B21\u505A\u5B8C\uFF0C\u6C92\u5EFA\u597D\u4E4B\u524D\u7167\u820A\u53EF\u7528\u3001\u53EA\u662F\u9084\u6C92\u8B8A\u5FEB\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 kbdb migration 0016\u3002\n0.9.0\uFF1A\u7968\u53EF\u4EE5\u4E0D\u5206 repo \u641C\u4E86\uFF08inkstone/Arcrun#329\uFF09\u2014\u2014AHub \u756B\u9762\u7684\u5C08\u6848\u9078\u55AE\u591A\u4E86\u300C\u5168\u90E8\u5C08\u6848\u300D\uFF0C\u4E00\u6B21\u5217\u51FA\u6240\u6709 repo \u7684\u7968\u3001\u6BCF\u5217\u6A19\u660E repo\uFF1B\u641C\u5C0B\u6846\u8F38\u5165 298\u3001#298\u3001Arcrun#298\u3001inkstone/Arcrun#298 \u90FD\u627E\u5F97\u5230\uFF08\u540C\u865F\u78BC\u7684\u7968\u6BCF\u500B repo \u5404\u4E00\u5F35\uFF0C\u865F\u78BC\u76F8\u7B26\u6392\u6700\u524D\u9762\uFF09\uFF0CAI \u7684 list_issues \u540C\u4EAB\u3002\u6BCF\u5F35\u7968\u6709\u56FA\u5B9A\u9023\u7D50\uFF08\u7968\u8A73\u60C5\u7684\u300C\u8907\u88FD\u9023\u7D50\u300D\uFF0C\u5F62\u5982 \u2026#/app/ahub/inkstone/Arcrun/issues/298\uFF0C\u958B\u555F\u76F4\u9054\u90A3\u5F35\u7968\u7531 #326 \u7684\u7DB2\u5740\u76F4\u9054\u8CA0\u8CAC\uFF09\u3002\n0.8.0\uFF1AAHub \u81EA\u5DF1\u7D66 AI \u5DE5\u5177\u4E86\uFF08inkstone/Arcrun#328\uFF09\u2014\u2014Arcrun MCP \u9023\u7DDA\u6642\u81EA\u52D5\u639B\u4E0A 15 \u652F arcrun_ahub_* \u5DE5\u5177\u8207 4 \u4EFD\u8AAA\u660E\uFF08\u7968\u3001\u7C3D\u6838\u3001\u51FA\u8CA8\u3001\u932F\u53C8\u72AF\u4E86\uFF09\uFF0C\u4E0D\u5FC5\u53E6\u5916\u88DD plugin\u3002\u7C3D\u6838\u4EBA\u6539\u7531\u6BCF\u500B\u79DF\u6236\u5728 AHub \u756B\u9762\u7684\u300C\u8A2D\u5B9A\u300D\u586B\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\uFF1B\u53EA\u6709\u7C3D\u6838\u4EBA\u7C3D\u7684\u624D\u7B97\u3002AI \u6539\u7528\u300C\u767C\u7C3D\u6838\u8ACB\u6C42\u300D\u8207\u300C\u8B80\u7C3D\u6838\u7D50\u679C\u300D\u5169\u652F\u5DE5\u5177\uFF0C\u81EA\u5DF1\u5728\u7559\u8A00\u88E1\u5BEB ARM:\uFF0F\u7C3D\u6838\u884C\u6703\u88AB\u64CB\u3002\u95DC\u7968\u53EF\u9644\u4EA4\u4ED8\u7269\uFF1B\u540C\u4E00\u500B\u932F\u53C8\u72AF\u4E86\u53EF\u56DE\u5831\u5230\u6A5F\u5236\u7968\uFF08\u95DC\u4E86\u6703\u91CD\u958B\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#327\u30020.7.4\uFF1A\u4FEE\u6389 0.7.3 \u7684\u4E00\u500B\u932F\uFF1AAI \u91CD\u767C\u89E3\u9396\u78BC\u6642\uFF0C\u9078\u55AE\u6703\u8AA4\u6293\u7559\u8A00\u88E1\u63D0\u5230\u7684\u4E0A\u4E00\u7D44\uFF08\u5DF2\u904E\u671F\u7684\uFF09\u78BC\u30020.7.3\uFF1A\u7C3D\u6838\u9078\u55AE\u4E5F\u8A8D\u5F97 AI \u8981\u4F60\u8CBC\u7684\u4E00\u6B21\u6027\u89E3\u9396\u78BC\uFF08\u300C\u{1F510} ARM \u8ACB\u6C42\u300D\uFF0C\u63A8 GitHub \u6216\u78B0\u6B63\u5F0F\u74B0\u5883\u524D\u90A3\u7A2E\uFF09\uFF1A\u6309\u300C\u7C3D\u6838\u2026\u300D\u9078\u5B83\u3001\u6309\u540C\u610F\u5C31\u5E6B\u4F60\u628A\u78BC\u8CBC\u4E0A\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u6284\uFF1B\u4F60\u81EA\u5DF1\u6253\u904E\u78BC\u7684\u90A3\u5247\u6703\u6A19\u6210\u5DF2\u7C3D\uFF0C\u4E0D\u518D\u639B\u8457\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u30020.7.2\uFF1A\u4E00\u6B21\u7559\u8A00\u3001\u6539\u9032\u5EA6\u9019\u985E\u5BEB\u5165\u5C11\u4ED8\u4E00\u6574\u8D9F\u2014\u2014\u5EFA\u8207\u6539\u5408\u6210\u4E00\u500B\u8ACB\u6C42\u3001\u5728\u5F15\u64CE\u90A3\u7AEF\u540C\u6642\u5BEB\uFF08\u539F\u672C\u662F\u5169\u500B\u4F9D\u5E8F\u7684\u6B65\u9A5F\uFF0Cyoulin \u5BE6\u6E2C\u5404\u7D04 1.2\uFF5E1.6 \u79D2\uFF09\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#325\u30020.7.1\uFF1A\u6539\u9032\u5EA6\u3001\u91CC\u7A0B\u7891\u3001\u72C0\u614B\u3001\u6A19\u7C64\u6642\u756B\u9762\u7576\u4E0B\u5C31\u63DB\u6210\u65B0\u503C\u3001\u80CC\u666F\u5B58\u6A94\uFF0C\u5B58\u4E0D\u9032\u53BB\u624D\u63DB\u56DE\u539F\u6A23\uFF08\u4E0D\u518D\u5361\u8457\u7B49 4\uFF5E13 \u79D2\uFF09\u3002\u7C3D\u6838\u6539\u6210\u9078\u55AE\uFF08leo 2026-10-25\uFF09\uFF1A\u4E0D\u5FC5\u518D\u6253\u7248\u672C\u865F\u2014\u2014AI \u628A\u8981\u4F60\u7C3D\u7684\u5167\u5BB9\u5BEB\u6210\u4E00\u5247\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u7684\u7559\u8A00\uFF0C\u6309\u300C\u7C3D\u6838\u2026\u300D\u5F9E\u4E0B\u62C9\u9078\u5B83\u3001\u52FE\u540C\u610F\u6216\u4E0D\u540C\u610F\u3001\u53EF\u52A0\u610F\u898B\uFF0C\u7C3D\u6838\u8207\u88AB\u7C3D\u7684\u5167\u5BB9\u7D81\u5728\u4E00\u8D77\uFF1B\u540C\u610F\u51FA\u6B63\u5F0F\u7248\u7684\u8ACB\u6C42\u6642\u4E00\u4F75\u7559\u4E0B\u51FA\u8CA8\u7DDA\u8A8D\u5F97\u7684\u300CARM: <\u7248\u672C>\u300D\u3002\u4FEE\u6389\u820A\u7684\u7C3D ARM \u6846\u628A\u300CARM: 9.9.9\u300D\u5224\u6210\u683C\u5F0F\u4E0D\u5C0D\u30020.7.0\uFF1AAHub \u6709\u756B\u9762\u4E86\uFF08inkstone/Arcrun#323\uFF09\u2014\u2014\u5728 Portal \u6253\u958B AHub \u5C31\u80FD\u589E\u6539\u95DC\u7968\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u3001\u5C08\u6848\uFF1B\u9EDE\u7968\u5F9E\u53F3\u908A\u6ED1\u51FA\u8A73\u60C5\uFF0C\u7559\u8A00\u7528 Markdown \u5BEB\u3001\u53EF\u9810\u89BD\u3001\u7167\u683C\u5F0F\u986F\u793A\uFF0C\u80FD\u7C3D ARM\u3002\u5F9E\u756B\u9762\u5BEB\u7684\u4F5C\u8005\u662F Leo\uFF1A\u5BEB\u5165\u8DEF\u7531\u591A\u6536\u300CPortal \u4E3B\u4EBA\u6309\u7684\u300D\u65B7\u8A00\uFF08\u554F\u5F15\u64CE\u9A57\u904E\u3001\u662F\u7BA1\u7406\u54E1\u624D\u5BEB\uFF09\uFF1BAI \u8207 App \u7528 token \u7684\u5BEB\u6CD5\u5B8C\u5168\u4E0D\u8B8A\u30020.6.0\uFF1A\u88DC\u756B\u9762\u8981\u7BA1\u5B8C\u6574\u5354\u4F5C\u7684\u5F8C\u7AEF\u7F3A\u53E3\uFF08inkstone/Arcrun#320\uFF09\u2014\u2014\u5C08\u6848\uFF08repo\uFF09\u6E05\u55AE\u8207\u6539 description\uFF0Fprivate\uFF1Brelease \u9023\u5F97\u5230\u91CC\u7A0B\u7891\uFF08\u53EF\u8DE8 repo\uFF09\u4E26\u6A19\u6709\u6C92\u6709\u63A8 GitHub\uFF1B\u7559\u8A00\u53EF\u6539\u53EF\u522A\uFF08\u4F5C\u8005\u672C\u4EBA\uFF09\uFF1B\u76F8\u4F9D\u53EF\u79FB\u9664\uFF1B\u8DE8 repo \u7684\u91CC\u7A0B\u7891\u7E3D\u89BD\u4E00\u6B21\u7D66\u9032\u5EA6 %\u3001\u6700\u8FD1\u6D3B\u52D5\u3001\u8AB0\u5728\u63A8\u3001\u7522\u51FA\u7684 release\u3002\u65B0\u589E\u5169\u500B template\uFF08ahub_release_link\u3001ahub_comment_meta\uFF09\uFF0C\u820A\u8CC7\u6599\u4E0D\u5FC5\u91CD\u532F\uFF0C\u6C92\u8CC7\u6599\u5C31\u56DE\u7A7A\u503C\u30020.5.0\uFF1A\u5408\u4F75 0.4.0\uFF08release \u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u8207 0.3.2\uFF08Portal \u7559\u8A00\uFF09\uFF0C\u4E00\u500B App \u4E00\u500B\u7248\u672C\u865F\uFF1B\u5DF2\u88DD 0.3.x\uFF0F0.4.0 \u7684\u5BE6\u4F8B\u6309\u300C\u66F4\u65B0\u300D\u5C31\u5230\u4F4D\u30020.3.2\uFF1A\u65B0\u589E\u300CPortal \u7559\u8A00\u300D\u8DEF\u7531\u2014\u2014\u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u756B\u9762\u7559\u8A00\uFF0C\u4F5C\u8005\u662F Leo\uFF0C\u8EAB\u5206\u770B\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\u800C\u4E0D\u662F token\uFF1B\u516C\u958B\u7684 token \u767B\u8A18\u4E0D\u518D\u6536\u4EBA\u7684\u767B\u5165\u540D\uFF08Leo\uFF09\u8207 kind=human\uFF0CAI \u767B\u8A18\u4E0D\u51FA\u4E00\u500B Leo\uFF08inkstone/Arcrun#304 c22862\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 /portal/actor/verify\u30020.4.0\uFF1A\u52A0\u4E0A release\uFF08\u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u2014\u2014\u5EFA\uFF0F\u5217\uFF0F\u8B80\uFF0F\u7528 tag \u627E\uFF0F\u88DC\u9644\u4EF6\u6307\u6A19\uFF0CGitea \u5F62\u72C0\uFF1B\u8B80\u7684\u8DEF\u7531\u4E0D\u67E5 token\uFF08\u770B\u7248\u672C\u6E05\u55AE\u4E0D\u9700\u8981\u7F72\u540D\uFF09\uFF1B\u53E6\u6709 /ahub/releases \u6BCF\u500B repo \u4E00\u884C\u7D66\u7248\u672C\u9801\u7528\u3002\u532F\u5165\u7684\u820A release \u8207\u65B0\u5EFA\u7684\u662F\u540C\u4E00\u7A2E\u8CC7\u6599\uFF08ahub_release\u3001ahub_attachment \u5169\u500B template \u4F75\u5165\u5BA3\u544A\uFF09\uFF1B\u6C92\u6709 DELETE\uFF08\u4EE3\u8F49\u5C64\u6C92\u6709\u522A record \u7684\u53E3\uFF09\u3002inkstone/InkStoneCo#234 c22846\u30020.3.1\uFF1A\u4FEE\u958B\u7968\u7671\u7613\u2014\u2014\u4E00\u500B repo \u6700\u65B0\u5E7E\u7B46\u5168\u662F key \u4E0D\u50CF\u7968\u865F\u7684\u7D00\u9304\u6642\uFF0C\u958B\u7968\u5F9E #1 \u8D77\u6392\u7684\u516B\u500B\u5617\u8A66\u5168\u649E\u65E2\u6709\u7684\u7968\u800C 503\uFF1B\u73FE\u5728\u9019\u7A2E\u60C5\u6CC1\u6539\u5F9E\u7B46\u6578+1 \u8D77\u6392\uFF08inkstone/Arcrun#308 c20214\uFF09\u30020.3.0\uFF1A\u8B80\u53D6\u4E26\u884C\uFF08\u7B2C\u4E00\u6279\u8B80\u540C\u6642\u6253\uFF0C\u8EAB\u5206\u67E5\u8A62\u4F75\u9032\u7B2C\u4E00\u6279\uFF09\u3001\u7968\u865F\u7528 create_only \u6436\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u958B\u7968\u4E0D\u6703\u540C\u865F\uFF09\u3001\u76F8\u4F9D\u7968\u7528 batch-get \u4E00\u6B21\u8B80\u5B8C\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#305\uFF0B#307\u30020.2.0\uFF1A\u8CC7\u6599\u6539\u6210 template\uFF0Brecord\uFF08\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u5404\u4E00\u7A2E\uFF09\uFF0C\u7A2E\u985E\u53EA\u7531 template \u6C7A\u5B9A\uFF08inkstone/Arcrun#301\uFF09\u30020.1.0\uFF1A\u9AA8\u67B6\u3002\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u3001\u91CC\u7A0B\u7891\u3001\u8DE8 repo \u641C\u5C0B\u2014\u2014Gitea \u5F62\u72C0\u7684 API\uFF0C\u72C0\u614B\u4F4F KBDB\uFF08\u96F6 SQL\uFF09\u3002\u6C92\u6709\u756B\u9762\uFF1B\u756B\u9762\u662F\u7968\u770B\u677F App \u63DB\u8CC7\u6599\u4F86\u6E90\u3002",
   requires: {
     recipes: [
       {
@@ -49016,9 +49255,12 @@ if (!P.gp) {
 var gs = (r.body && r.body.goals || []).filter(function (g) { return !P.goal || g.gid === P.goal || g.title === P.goal; });
 var refs = [], seen = {};
 gs.forEach(function (g) { (g.refs || []).slice(0, 8).forEach(function (x) { if (!seen[x.ref] && refs.length < 12) { seen[x.ref] = 1; refs.push(x.ref); } }); });
-var reqs = refs.filter(function (x) { return /^(n[0-9a-f]{10}|m\\d+)$/.test(x); }).map(function (x) { return Q('tree_get', 'GET', '/ahub/tree', {}, { root: x }, {}); });
+var trefs = refs.filter(function (x) { return /^(n[0-9a-f]{10}|m\\d+)$/.test(x); });
+var reqs = trefs.map(function (x) { return Q('tree_get', 'GET', '/ahub/tree', {}, { root: x }, {}); });
+// \u9084\u6C92\u8F49\u6210\u6A39\u7684\u820A\u5F0F\u91CC\u7A0B\u7891\uFF08m\uFF0Bid\uFF09tree_get \u627E\u4E0D\u5230\uFF1A\u591A\u8B80\u4E00\u6B21\u76EE\u6A19\u5831\u544A\uFF0C\u540D\u7A31\u8207 % \u7167\u820A\u5F9E\u91CC\u7A0B\u7891\u8B80\uFF08inkstone/Arcrun#383\uFF09
+if (trefs.some(function (x) { return x.charAt(0) === 'm'; })) reqs.push(Q('goals_report', 'GET', '/ahub/goals', {}, { project: A.goal_project }, {}));
 if (!reqs.length) return fin(out(200, { project: A.goal_project, goals: gs.map(function (g) { return { gid: g.gid, title: g.title, state: g.state, refs: g.refs, progress: null }; }) }, gs.length ? ['\u76EE\u6A19\u6307\u5230\u7684\u662F\u7968\uFF08\u4E0D\u662F\u7BC0\u9EDE\uFF09\uFF0C\u9032\u5EA6\u770B arcrun_ahub_get_issue'] : ['\u9019\u500B\u5C08\u6848\u9084\u6C92\u6709\u76EE\u6A19\u6307\u5230\u7D50\u69CB\u6A39\uFF1Aarcrun_ahub_node action=bind_goal']));
-return next(reqs, { gs: gs, refs: refs });
+return next(reqs, { gs: gs, refs: refs, trefs: trefs });
 `,
               input: {
                 a: {
@@ -49138,13 +49380,17 @@ else {
   var rb = (Array.isArray(input.b) ? input.b : []).map(function (x) { return env(x) || { status: 0, body: { message: 'AHub \u6C92\u6709\u56DE\u61C9' } }; });
   if (!rb.length) r = out(0, { message: '\u7B2C\u4E8C\u6BB5\u6C92\u6709\u6253\u5230 AHub' });
   else r = (function () { var by = {};
-rb.forEach(function (x) { var n = x.status === 200 && x.body && x.body.roots && x.body.roots[0]; if (n) by[n.ref] = n; });
+var legacy = {};
+rb.forEach(function (x, i) { var n = i < ctx.trefs.length && x.status === 200 && x.body && x.body.roots && x.body.roots[0]; if (n) by[ctx.trefs[i]] = n; });
+var rep = rb[ctx.trefs.length];
+if (rep && rep.status === 200 && rep.body) (function walkP(ps) { (ps || []).forEach(function (p) { (function walk(l) { (l || []).forEach(function (gl) { (gl.milestones || []).forEach(function (m) { if (m && m.known !== false && m.total !== undefined) legacy['m' + m.id] = m; }); walk(gl.children); }); })(p.goals); }); })(rep.body.projects);
 var goals = ctx.gs.map(function (g) {
-  var parts = (g.refs || []).map(function (x) { var n = by[x.ref]; return n ? { ref: n.ref, title: n.title, role: n.role, percent: n.percent, open: n.open, closed: n.closed, total: n.total, children: (n.children || []).slice(0, 12).map(function (c) { return { ref: c.ref, title: c.title, percent: c.percent == null ? (c.state === 'closed' ? 100 : 0) : c.percent, state: c.state }; }) } : { ref: x.ref, title: x.ref, percent: null }; });
+  var parts = (g.refs || []).map(function (x) { var n = by[x.ref], lm = !n && legacy[x.ref]; if (lm) return { ref: x.ref, title: lm.title, role: '\u91CC\u7A0B\u7891', percent: lm.percent, open: lm.open_issues, closed: lm.closed_issues, total: lm.total, children: [] }; return n ? { ref: n.ref, title: n.title, role: n.role, percent: n.percent, open: n.open, closed: n.closed, total: n.total, children: (n.children || []).slice(0, 12).map(function (c) { return { ref: c.ref, title: c.title, percent: c.percent == null ? (c.state === 'closed' ? 100 : 0) : c.percent, state: c.state }; }) } : { ref: x.ref, title: x.ref, percent: null }; });
   // \u76EE\u6A19\u6307\u5230\u597D\u5E7E\u500B\u6771\u897F\u6642\u540C\u4E00\u5F35\u7968\u53EA\u7B97\u4E00\u6B21\uFF1A\u53D6\u5404\u81EA\u5E95\u4E0B\u8449\u5B50\u7968\u7684\u806F\u96C6
   var seen = {}, tot = 0, cl = 0;
   function walk(ns) { (ns || []).forEach(function (c) { if (c.kind === 'issue') { if (!seen[c.key]) { seen[c.key] = 1; tot++; if (c.state === 'closed') cl++; } walk(c.children); } else walk(c.children); }); }
   (g.refs || []).forEach(function (x) { if (by[x.ref]) walk(by[x.ref].children); });
+  (g.refs || []).forEach(function (x) { if (!by[x.ref] && legacy[x.ref]) { tot += legacy[x.ref].total; cl += legacy[x.ref].closed_issues || 0; } });
   return { gid: g.gid, title: g.title, state: g.state, progress: tot ? { percent: Math.round(cl * 100 / tot), closed: cl, total: tot } : null, refs: parts };
 });
 return out(200, { project: A.goal_project, goals: goals }, ['\u76EE\u6A19\u9032\u5EA6\u5B8C\u5168\u7531\u6307\u5230\u7684\u7BC0\u9EDE\u5E95\u4E0B\u7684\u7968\u7B97\uFF1B\u8981\u6539\u6307\u5411\u7528 arcrun_ahub_node\uFF08bind_goal\uFF0Funbind_goal\uFF09']); })();
@@ -51157,7 +51403,7 @@ function hintOf(err) {
   return err;
 }
 // \u8B80\uFF1Aopts.swr\uFF1D\u6709\u4E0A\u6B21\u7684\u7D50\u679C\u5C31\u5148\u7D66\uFF08onUpdate \u6536\u65B0\u7684\uFF09\uFF1B\u56DE Promise<body>
-var READ_LABEL = { sessions_list: '\u5C0D\u8A71', claim_list: '\u9818\u7968', goals_report: '\u76EE\u6A19\u6A39', projects_index: '\u5C08\u6848\u6E05\u55AE', ms_overview: '\u91CC\u7A0B\u7891', ms_list: '\u91CC\u7A0B\u7891', issue_list: '\u7968\u6E05\u55AE', issue_search: '\u7968\u6E05\u55AE', board: '\u770B\u677F' };
+var READ_LABEL = { sessions_list: '\u5C0D\u8A71', claim_list: '\u9818\u7968', goals_report: '\u76EE\u6A19\u6A39', projects_index: '\u5C08\u6848\u6E05\u55AE', label_list: '\u6A19\u7C64', ms_overview: '\u91CC\u7A0B\u7891', ms_list: '\u91CC\u7A0B\u7891', issue_list: '\u7968\u6E05\u55AE', issue_search: '\u7968\u6E05\u55AE', board: '\u770B\u677F' };
 function aRead(route, params, query, opts) {
   var payload = { route: route, params: params || {}, query: query || {} };
   var o = opts && opts.swr ? { swr: true, label: READ_LABEL[route] || route, onUpdate: function (x2) { var u2 = unwrapAction(x2); if (!u2.error && opts.onUpdate) opts.onUpdate(u2.r.body); } } : undefined;
@@ -51729,6 +51975,7 @@ function emptyHelp() {
     closedOnly ? null : h('div', { class: 'ah-note', style: { marginTop: '8px' } }, '\u73FE\u5728\u9084\u6C92\u6709\u4EFB\u4F55\u6771\u897F\u3002\u6309\u300C\uFF0B \u65B0\u589E\u300D\u5EFA\u7B2C\u4E00\u500B\u5C08\u6848\uFF0C\u518D\u628A\u7968\u653E\u9032\u53BB\uFF1B\u4E5F\u53EF\u4EE5\u628A\u4E00\u500B\u968E\u6BB5\u6216\u4E00\u5F35\u7968\u540C\u6642\u653E\u9032\u597D\u5E7E\u500B\u5C08\u6848\u3002')));
 }
 function paintStructEmpty() {
+  if (ST.view === 'board') return paintLegacyBoard();
   var g = V.gen;
   viewEl.replaceChildren(h('div', { class: 'ah-note', style: { padding: '12px 20px' } }, '\u8B80\u53D6\u2026'));
   aRead('ms_overview', {}, { state: ST.state, limit: '40' }, { swr: false }).then(function (b) {
@@ -51871,6 +52118,34 @@ function addToParentDialog(n, done) {
     onSubmit: function (v) { if (!v.parent) throw new Error('\u5148\u9078\u4E00\u500B\u4E0A\u5C64'); return aWrite('member_add', {}, { parent: v.parent, child: n.ref }).then(done); } });
 }
 
+// \u2500\u2500 \u6A39\u9084\u662F\u7A7A\u7684\u3001\u53C8\u6309\u4E86\u300C\u770B\u677F\u300D\uFF1A\u4E0D\u80FD\u9000\u56DE\u6210\u8DDF\u5927\u7DB1\u4E00\u6A23\u7684\u756B\u9762\uFF08inkstone/Arcrun#383\uFF09\u3002
+//    \u7167\u820A\u5F0F\u91CC\u7A0B\u7891\u5206\u6A6B\u5217\u3001\u6B04\uFF1D\u9032\u5EA6\u6A19\u7C64\u3001\u5361\u7247\uFF1D\u7968\uFF08\u8DE8\u5C08\u6848\u8B80\u6700\u8FD1\u66F4\u65B0\u7684\u958B\u8457\u7684\u7968\uFF09\uFF1B\u9019\u6642\u9084\u6C92\u6709\u300C\u6B78\u5C6C\u300D\u53EF\u62D6\uFF0C\u6240\u4EE5\u53EA\u80FD\u62D6\u6B04\u6539\u9032\u5EA6 \u2500\u2500
+function paintLegacyBoard() {
+  var g = V.gen;
+  var bar = h('div', { class: 'ah-toolbar' }, h('span', { class: 'ah-note' }, '\u4F60\u7684\u5C08\u6848\u9084\u6C92\u6392\u9032\u6A39\u88E1\uFF0C\u6240\u4EE5\u5148\u7167\u91CC\u7A0B\u7891\u5206\u6A6B\u5217\u3001\u4F9D\u9032\u5EA6\u5206\u6B04\u5217\u51FA\u7968\u3002\u8981\u6392\u6210\u6A39\uFF0C\u8ACB AI \u52A9\u7406\u505A\u300C\u820A\u91CC\u7A0B\u7891\u8F49\u63DB\u300D\uFF08\u5B8C\u6210\u5EA6\u4E0D\u8B8A\uFF09\u3002\u62D6\u5230\u5225\u6B04\uFF1D\u6539\u9032\u5EA6\u3002'));
+  viewEl.replaceChildren(bar, h('div', { class: 'ah-note', style: { padding: '12px 20px' } }, '\u8B80\u53D6\u2026'));
+  var q = { state: ST.state === 'closed' ? 'closed' : 'open', limit: '100', type: 'issues' };
+  aRead('issue_search', {}, q, { swr: false }).then(function (list) {
+    if (g !== V.gen || ST.roots.length) return;
+    list = Array.isArray(list) ? list : [];
+    var lanes = {}, order = [];
+    ST.board.status = {};
+    list.forEach(function (it) {
+      var repo = (it.repository && it.repository.full_name) || '';
+      var card = { kind: 'issue', key: repo + '#' + it.number, repo: repo, number: it.number, title: it.title, state: it.state, parents: [] };
+      var s = statusOf(it.labels); ST.board.status[card.key] = s ? s.id : '';
+      var name = it.milestone ? it.milestone.title : '\uFF08\u6C92\u653E\u9032\u4EFB\u4F55\u91CC\u7A0B\u7891\uFF09';
+      if (!lanes[name]) { lanes[name] = { ref: '', title: name, items: [], legacy: true }; order.push(name); }
+      lanes[name].items.push(card);
+    });
+    order.sort(function (a, b) { return a.charAt(0) === '\uFF08' ? 1 : b.charAt(0) === '\uFF08' ? -1 : a < b ? -1 : 1; });
+    var arr = order.map(function (n) { return lanes[n]; });
+    viewEl.replaceChildren(bar, laneBoard(arr, {}));
+    if (!arr.length) viewEl.appendChild(h('div', { class: 'ah-empty' }, ST.state === 'closed' ? '\u6C92\u6709\u5DF2\u95DC\u7684\u7968\u3002' : '\u73FE\u5728\u6C92\u6709\u958B\u8457\u7684\u7968\u3002'));
+    else if (list.length >= 100) viewEl.appendChild(h('div', { class: 'ah-note', style: { padding: '0 20px' } }, '\u53EA\u5217\u4E86\u6700\u8FD1\u66F4\u65B0\u7684 100 \u5F35\u7968\u3002'));
+  }, function (e) { if (g === V.gen) viewEl.replaceChildren(bar, h('div', { class: 'ah-empty' }, '\u8B80\u4E0D\u5230\u7968\uFF0C\u6240\u4EE5\u756B\u4E0D\u51FA\u770B\u677F\uFF1A' + e.message)); });
+}
+
 // \u2500\u2500 \u770B\u677F\uFF1A\u9078\u4E00\u500B\u7BC0\u9EDE\uFF0C\u5361\u7247\uFF1D\u5E95\u4E0B\u6240\u6709\u8449\u5B50\u7968\u3001\u6B04\uFF1D\u9032\u5EA6\uFF0C\u6C34\u5E73\u5206\u7FA4\uFF1D\u76F4\u63A5\u5B69\u5B50 \u2500\u2500
 var DRAG = null;
 function leavesOf(n, acc) {
@@ -51911,6 +52186,13 @@ function drawBoard(N, leaves, bar) {
     Object.keys(lv).forEach(function (k) { if (!assigned[k]) { assigned[k] = L; L.items.push(lv[k]); } else if (assigned[k] !== L) (also[k] = also[k] || []).push(L.title); });
   });
   if (direct.items.length) lanes.push(direct);
+  var wrap = laneBoard(lanes, also);
+  var full = Object.keys(ST.board.status).filter(function (k) { return /#full$/.test(k) && ST.board.status[k]; }).length;
+  viewEl.replaceChildren(bar, wrap);
+  if (full) viewEl.appendChild(h('div', { class: 'ah-note', style: { padding: '0 20px' } }, '\u6709 repo \u7684\u958B\u8457\u7684\u7968\u8D85\u904E 50 \u5F35\uFF0C\u53EA\u8B80\u4E86\u6700\u8FD1\u66F4\u65B0\u7684 50 \u5F35\u7684\u9032\u5EA6\u6A19\u7C64\uFF1B\u5176\u9918\u6B78\u300C\u6C92\u6709\u9032\u5EA6\u6A19\u7C64\u300D\u3002'));
+  if (!lanes.length) viewEl.appendChild(h('div', { class: 'ah-empty' }, '\u9019\u500B\u7BC0\u9EDE\u5E95\u4E0B\u9084\u6C92\u6709\u7968\u3002'));
+}
+function laneBoard(lanes, also) {
   var cols = [{ id: '', title: '\u6C92\u6709\u9032\u5EA6\u6A19\u7C64', color: '#8C959F' }].concat(STATUS, [{ id: 'closed', title: '\u5DF2\u95DC', color: '#8250DF' }]);
   var wrap = h('div', { class: 'st-board' });
   lanes.forEach(function (L) {
@@ -51926,13 +52208,10 @@ function drawBoard(N, leaves, bar) {
       cards.forEach(function (it) { col.appendChild(boardCard(it, L, also[it.key])); });
       cs.appendChild(col);
     });
-    row.addEventListener('dragover', function (e) { if (DRAG && DRAG.lane !== L) e.preventDefault(); });
+    row.addEventListener('dragover', function (e) { if (DRAG && DRAG.lane !== L && !L.legacy) e.preventDefault(); });
     wrap.appendChild(row); row.appendChild(cs);
   });
-  var full = Object.keys(ST.board.status).filter(function (k) { return /#full$/.test(k) && ST.board.status[k]; }).length;
-  viewEl.replaceChildren(bar, wrap);
-  if (full) viewEl.appendChild(h('div', { class: 'ah-note', style: { padding: '0 20px' } }, '\u6709 repo \u7684\u958B\u8457\u7684\u7968\u8D85\u904E 50 \u5F35\uFF0C\u53EA\u8B80\u4E86\u6700\u8FD1\u66F4\u65B0\u7684 50 \u5F35\u7684\u9032\u5EA6\u6A19\u7C64\uFF1B\u5176\u9918\u6B78\u300C\u6C92\u6709\u9032\u5EA6\u6A19\u7C64\u300D\u3002'));
-  if (!lanes.length) viewEl.appendChild(h('div', { class: 'ah-empty' }, '\u9019\u500B\u7BC0\u9EDE\u5E95\u4E0B\u9084\u6C92\u6709\u7968\u3002'));
+  return wrap;
 }
 function boardCard(it, lane, alsoIn) {
   var c = tint(it.repo || '');
@@ -51958,7 +52237,8 @@ function dropCard(d, lane, col) {
       return withStatusLabels(it.repo, function () { return aWrite('issue_labels_set', repoParams(it.repo, { index: String(it.number) }), { labels: names }); });
     }).then(function () { ST.board.status[it.key] = col.id; msg.push('\u9032\u5EA6\u2192' + col.title); }));
   } else if (col.id !== cur) { err('\u5DF2\u95DC\u7684\u7968\u4E0D\u80FD\u7528\u62D6\u653E\u6539\u9032\u5EA6\uFF1A\u958B\u7968\u8A73\u60C5\u91CD\u65B0\u6253\u958B\u3002'); return; }
-  if (d.lane !== lane) {
+  if (d.lane !== lane && lane.legacy) { err('\u9084\u6C92\u6392\u9032\u6A39\u88E1\uFF0C\u6A6B\u5217\u53EA\u662F\u91CC\u7A0B\u7891\uFF0C\u62D6\u4E0D\u52D5\u6B78\u5C6C\uFF1B\u5148\u62D6\u6B04\u6539\u9032\u5EA6\u3002'); }
+  else if (d.lane !== lane) {
     var from = d.lane, to = lane;
     jobs.push(aWrite('member_add', {}, { parent: to.ref, child: it.key }).then(function () {
       var direct = (it.parents || []).some(function (p) { return p.ref === from.ref; });
@@ -52001,21 +52281,32 @@ function renderGoals() {
   return Promise.all(ps).then(function () { if (g !== V.gen) return; err(''); sync.ok(); }, function (e) { if (g !== V.gen) return; sync.bad(); err('\u8B80\u4E0D\u5230\u76EE\u6A19\uFF1A' + e.message); });
 }
 var GP = {};    // ref \u2192 \u8A72\u7BC0\u9EDE\u7684\u9032\u5EA6\uFF08tree_get root=ref\uFF09
-function refProgress(refs, again) {
+// \u9084\u6C92\u8F49\u6210\u6A39\u7684\u820A\u5F0F\u91CC\u7A0B\u7891\uFF08\u76EE\u6A19\u6307\u8457 m\uFF0B\u820A id\uFF09\uFF1Atree_get \u627E\u4E0D\u5230\u5B83\u6642\uFF0C\u6539\u7528\u300C\u76EE\u6A19\u5831\u544A\u300D\u81EA\u5DF1\u5E36\u7684\u91CC\u7A0B\u7891\u8CC7\u6599\uFF08\u540D\u7A31\u3001\u95DC\u6389\xF7\u5168\u90E8\uFF1D%\uFF0C\u8207\u8F49\u63DB\u5F8C\u7684\u7B97\u6CD5\u540C\u4E00\u4EFD\uFF09\uFF08inkstone/Arcrun#383\uFF09
+function legacyFromReport(d, ref) {
+  var id = parseInt(ref.slice(1), 10), found = null;
+  (function walkP(ps) { (ps || []).forEach(function (p) { (function walk(l) { (l || []).forEach(function (gl) {
+    (gl.milestones || []).forEach(function (m) { if (!found && m && String(m.id) === String(id) && m.known !== false) found = m; });
+    walk(gl.children); }); })(p.goals); }); })((d && d.goals && d.goals.projects) || []);
+  if (!found || found.total === undefined) return null;
+  var lv = {}, i = 0, cl = found.closed_issues || 0;
+  for (; i < found.total; i++) lv[ref + '#' + i] = { state: i < cl ? 'closed' : 'open', key: ref + '#' + i };
+  return { title: found.title, percent: found.percent, open: found.open_issues, closed: cl, total: found.total, role: '\u91CC\u7A0B\u7891', leaves: lv };
+}
+function refProgress(refs, again, d) {
   refs.filter(function (r) { return /^[^#\\s]+\\/[^#\\s]+#\\d+$/.test(r) && !GP[r]; }).slice(0, 12).forEach(function (r) {
     var m = /^(.+)#(\\d+)$/.exec(r); GP[r] = { loading: true };
     aRead('issue_get', repoParams(m[1], { index: m[2] }), {}).then(function (it) { var lv = {}; lv[r] = { state: it.state, key: r }; GP[r] = { title: m[1].split('/').pop() + '#' + m[2] + ' ' + (it.title || ''), percent: it.state === 'closed' ? 100 : 0, closed: it.state === 'closed' ? 1 : 0, total: 1, leaves: lv }; again(); }, function () { GP[r] = { missing: true }; again(); });
   });
   refs.filter(function (r) { return (NODE_ID.test(r) || LEGACY.test(r)) && !GP[r]; }).slice(0, 12).forEach(function (r) {
     GP[r] = { loading: true };
-    aRead('tree_get', {}, { root: r, state: 'all' }).then(function (b) { var n = b && b.roots && b.roots[0]; var lv = n ? leavesOf(n, {}) : {}; GP[r] = n ? { title: n.title, percent: n.percent, open: n.open, closed: n.closed, total: n.total, role: n.role, leaves: lv } : { missing: true }; again(); }, function () { GP[r] = { missing: true }; again(); });
+    aRead('tree_get', {}, { root: r, state: 'all' }).then(function (b) { var n = b && b.roots && b.roots[0]; var lv = n ? leavesOf(n, {}) : {}; GP[r] = n ? { title: n.title, percent: n.percent, open: n.open, closed: n.closed, total: n.total, role: n.role, leaves: lv } : (LEGACY.test(r) && legacyFromReport(d, r)) || { missing: true }; again(); }, function () { GP[r] = (LEGACY.test(r) && legacyFromReport(d, r)) || { missing: true }; again(); });
   });
 }
 function paintGoals(d) {
   var projects = (d.goals && d.goals.projects) || [], refsBy = {}, sessions = (d.sessions && d.sessions.sessions) || [];
   ((d.refs && d.refs.goals) || []).forEach(function (g) { refsBy[g.gid] = g.refs || []; });
   var all = []; projects.forEach(function (p) { (function walk(l) { l.forEach(function (gl) { (refsBy[gl.gid] || []).forEach(function (x) { all.push(x.ref); }); walk(gl.children || []); }); })(p.goals || []); });
-  refProgress(all, function () { if (V.tab === 'goals') paintGoals(d); });
+  refProgress(all, function () { if (V.tab === 'goals') paintGoals(d); }, d);
   if (!projects.length) { empty('\u9084\u6C92\u6709\u76EE\u6A19\u3002CC \u5C08\u6848\u7528 goal_set \u5EFA\u76EE\u6A19\uFF0C\u518D\u7528 node\uFF08bind_goal\uFF09\u8B93\u76EE\u6A19\u6307\u5411\u7D50\u69CB\u6A39\u7684\u7BC0\u9EDE\u6216\u7968\u3002'); return; }
   viewEl.replaceChildren();
   projects.forEach(function (p) {
@@ -52107,15 +52398,15 @@ function seg(opts, cur, on) {
 }
 function render() {
   Array.prototype.forEach.call(tabs.querySelectorAll('button'), function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-tab') === V.tab ? 'true' : 'false'); });
-  repoSel.hidden = V.tab === 'struct' || V.tab === 'goals';
+  repoSel.hidden = V.tab === 'struct' || V.tab === 'goals' || V.tab === 'labels'; // \u6A19\u7C64\u662F\u6574\u5957 AHub \u5171\u7528\u7684\uFF0C\u4E0D\u9078 repo\uFF08inkstone/Arcrun#383\uFF09
   repoSel.parentNode.hidden = repoSel.hidden;
   err('');
   if (V.tab === 'struct') return renderStruct();
   if (V.tab === 'goals') return renderGoals();
+  if (V.tab === 'labels') return renderLabels();
   if (!V.repo) { toolEl.replaceChildren(); empty('\u9084\u6C92\u6709\u4EFB\u4F55 repo\u3002\u5230\u53F3\u4E0A\u300C\u2699 \u8A2D\u5B9A\u300D\u65B0\u589E\u4E00\u500B\u3002'); return; }
   if (V.tab === 'issues') return renderIssues();
-  if (V.repo === ALL) { toolEl.replaceChildren(); empty('\u9019\u500B\u5206\u9801\u8981\u5148\u5728\u4E0A\u9762\u9078\u4E00\u500B repo\uFF08\u300C\u5168\u90E8\u300D\u53EA\u7528\u5728\u627E\u7968\uFF09\u3002'); return; }
-  return renderLabels();
+  return renderIssues();
 }
 
 // \u2500\u2500 \u7968 \u2500\u2500
@@ -52184,42 +52475,75 @@ function newIssue() {
   }
 }
 
-// \u2500\u2500 \u6A19\u7C64 \u2500\u2500
-function renderLabels() {
-  toolEl.replaceChildren(h('span', { class: 'ah-note' }, '\u300Cs/\u2026\u300D\u662F\u9032\u5EA6\u6A19\u7C64\uFF08\u4E92\u65A5\uFF09\uFF1A\u7968\u7684\u9032\u5EA6\u9760\u5B83\uFF0C\u770B\u677F\u7684\u6B04\u4F4D\u4E5F\u662F\u5B83\u3002'));
-  return show('label_list', repoParams(V.repo), { limit: '100' }, paintLabels);
+// \u2500\u2500 \u6A19\u7C64\uFF1A\u8DE8\u5168\u90E8\u5C08\u6848\u7684\u4E00\u5957\uFF08inkstone/Arcrun#383\uFF09\u2500\u2500
+// AHub \u628A\u6A19\u7C64\u5B58\u5728\u6BCF\u500B repo \u5E95\u4E0B\uFF1B\u756B\u9762\u628A\u300C\u5168\u90E8\u5C08\u6848\u300D\u540C\u540D\u7684\u6A19\u7C64\u5408\u6210\u4E00\u5217\uFF0C\u5EFA\uFF0F\u6539\uFF0F\u522A\u5C31\u662F\u5C0D\u6BCF\u500B\u5C08\u6848\u5404\u505A\u4E00\u6B21\uFF0C\u4F7F\u7528\u8005\u4E0D\u5FC5\u5148\u9078 repo\u3002
+function projectList() {
+  if (V.projects.length) return Promise.resolve(V.projects);
+  return aRead('projects_index', {}, {}, { swr: false }).then(function (b) { setProjects(b); return V.projects; });
 }
-function paintLabels(list) {
-  list = Array.isArray(list) ? list : [];
-  if (!list.length) { empty('\u9019\u500B\u5C08\u6848\u9084\u6C92\u6709\u6A19\u7C64\u3002'); return; }
+function renderLabels() {
+  toolEl.replaceChildren(h('span', { class: 'ah-note' }, '\u6A19\u7C64\u662F\u6240\u6709\u5C08\u6848\u5171\u7528\u7684\u4E00\u5957\uFF0C\u4E0D\u7528\u5148\u9078\u5C08\u6848\u3002\u6539\u540D\u3001\u63DB\u8272\u3001\u522A\u9664\u6703\u4E00\u6B21\u5957\u5230\u6BCF\u500B\u5C08\u6848\u3002\u300Cs/\u2026\u300D\u662F\u9032\u5EA6\u6A19\u7C64\uFF08\u4E92\u65A5\uFF09\uFF1A\u7968\u7684\u9032\u5EA6\u9760\u5B83\uFF0C\u770B\u677F\u7684\u6B04\u4F4D\u4E5F\u662F\u5B83\u3002'));
+  var g = ++V.gen; sync.busy();
+  viewEl.replaceChildren(h('div', { class: 'ah-note', style: { padding: '12px 20px' } }, '\u8B80\u53D6\u5404\u5C08\u6848\u7684\u6A19\u7C64\u2026'));
+  return projectList().then(function (ps) {
+    return Promise.all(ps.map(function (p) {
+      return aRead('label_list', repoParams(p.full_name), { limit: '100' }).then(function (a) { return { repo: p.full_name, list: Array.isArray(a) ? a : [] }; }, function () { return { repo: p.full_name, list: null }; });
+    }));
+  }).then(function (rs) {
+    if (g !== V.gen) return;
+    sync.ok(); err('');
+    paintLabels(mergeLabels(rs), rs);
+  }, function (e) { if (g !== V.gen) return; sync.bad(); err(e.message); });
+}
+function mergeLabels(rs) {
+  var by = {}, order = [], total = rs.filter(function (r) { return r.list; }).length;
+  rs.forEach(function (r) { (r.list || []).forEach(function (l) {
+    var G = by[l.name]; if (!G) { G = by[l.name] = { name: l.name, color: l.color, description: l.description || '', exclusive: !!l.exclusive, ids: {}, n: 0, total: total }; order.push(l.name); }
+    G.ids[r.repo] = l.id; G.n++;
+  }); });
+  return order.sort().map(function (n) { return by[n]; });
+}
+function paintLabels(groups, rs) {
   viewEl.replaceChildren();
-  list.forEach(function (l) {
-    viewEl.appendChild(h('button', { type: 'button', class: 'ah-item ah-lab-row', onclick: function () { labelDialog(V.repo, l); } },
-      labelChip(l), h('span', { class: 't ah-note' }, l.description || ''), l.exclusive ? h('span', { class: 'ah-chip' }, '\u4E92\u65A5') : null));
+  var bad = rs.filter(function (r) { return !r.list; }).map(function (r) { return r.repo; });
+  if (bad.length) err('\u9019\u6B21\u6709 ' + bad.length + ' \u500B\u5C08\u6848\u8B80\u4E0D\u5230\u6A19\u7C64\uFF08' + bad.join('\u3001') + '\uFF09\uFF0C\u4E0B\u9762\u6C92\u7B97\u9032\u53BB\u3002');
+  if (!groups.length) { empty('\u9084\u6C92\u6709\u4EFB\u4F55\u6A19\u7C64\u3002\u6309\u53F3\u4E0A\u300C\uFF0B \u65B0\u589E\u300D\u5EFA\u7B2C\u4E00\u500B\u3002'); return; }
+  groups.forEach(function (G) {
+    viewEl.appendChild(h('button', { type: 'button', class: 'ah-item ah-lab-row', onclick: function () { labelDialog(G, rs); } },
+      labelChip(G), h('span', { class: 't ah-note' }, G.description || ''), G.exclusive ? h('span', { class: 'ah-chip' }, '\u4E92\u65A5') : null,
+      G.n < G.total ? h('span', { class: 'ah-chip', title: '\u6709\u4E9B\u5C08\u6848\u9084\u6C92\u6709\u9019\u500B\u6A19\u7C64\uFF1B\u6309\u300C\u5132\u5B58\u300D\u6703\u4E00\u4F75\u88DC\u4E0A' }, G.n + '/' + G.total + ' \u500B\u5C08\u6848') : null));
   });
 }
-function labelDialog(repo, l) {
+function labelsDone(rs, jobs, what) {
+  return Promise.all(jobs.map(function (j) { return j.then(function () { return null; }, function (e) { return e; }); })).then(function (es) {
+    var bad = es.filter(Boolean);
+    if (bad.length) err(what + '\uFF1A' + bad.length + ' \u500B\u5C08\u6848\u6C92\u6210\u529F\uFF08' + bad[0].message + '\uFF09\u3002\u518D\u6309\u4E00\u6B21\u5132\u5B58\u6703\u88DC\u4E0A\u3002');
+    renderLabels();
+  });
+}
+// G\uFF1D\u5408\u4F75\u5F8C\u7684\u4E00\u500B\u6A19\u7C64\uFF08\u6539\uFF0F\u522A\uFF09\uFF0Cnull\uFF1D\u65B0\u589E\uFF1Brs\uFF1D\u5404\u5C08\u6848\u76EE\u524D\u7684\u6A19\u7C64\uFF08\u65B0\u589E\u6642\u53EA\u7528\u4F86\u77E5\u9053\u6709\u54EA\u4E9B\u5C08\u6848\uFF09
+function labelDialog(G, rs) {
   var extra = [];
-  if (l) {
-    var del = h('button', { type: 'button', class: 'danger' }, '\u522A\u9664\u6A19\u7C64');
-    extra.push(del);
-  }
-  var d = formDialog({ title: l ? '\u6539\u6A19\u7C64' : '\u5728 ' + repo + ' \u5EFA\u6A19\u7C64', submit: l ? '\u5132\u5B58' : '\u5EFA\u7ACB', extra: extra, fields: [
-    { name: 'name', label: '\u540D\u5B57', value: l ? l.name : '', required: true },
-    { name: 'color', label: '\u984F\u8272', type: 'color', value: '#' + String((l && l.color) || '1d4ed8').replace(/^#/, '') },
-    { name: 'description', label: '\u8AAA\u660E', value: l ? l.description : '' },
-    { name: 'exclusive', label: '\u4E92\u65A5\uFF08\u540C\u4E00\u500B\u300C/\u300D\u524D\u7DB4\u53EA\u80FD\u639B\u4E00\u500B\uFF0C\u4F8B\u5982 s/\u2026\uFF09', type: 'checkbox', value: l ? l.exclusive : false },
+  if (G) { var del = h('button', { type: 'button', class: 'danger' }, '\u522A\u9664\u6A19\u7C64'); extra.push(del); }
+  var d = formDialog({ title: G ? '\u6539\u6A19\u7C64\uFF08\u5957\u7528\u5230\u6240\u6709\u5C08\u6848\uFF09' : '\u5EFA\u6A19\u7C64\uFF08\u5EFA\u5728\u6240\u6709\u5C08\u6848\uFF09', submit: G ? '\u5132\u5B58' : '\u5EFA\u7ACB', extra: extra, fields: [
+    { name: 'name', label: '\u540D\u5B57', value: G ? G.name : '', required: true },
+    { name: 'color', label: '\u984F\u8272', type: 'color', value: '#' + String((G && G.color) || '1d4ed8').replace(/^#/, '') },
+    { name: 'description', label: '\u8AAA\u660E', value: G ? G.description : '' },
+    { name: 'exclusive', label: '\u4E92\u65A5\uFF08\u540C\u4E00\u500B\u300C/\u300D\u524D\u7DB4\u53EA\u80FD\u639B\u4E00\u500B\uFF0C\u4F8B\u5982 s/\u2026\uFF09', type: 'checkbox', value: G ? G.exclusive : false },
   ], onSubmit: function (v) {
     if (!v.name.trim()) throw new Error('\u540D\u5B57\u4E0D\u80FD\u662F\u7A7A\u7684');
     var body = { name: v.name.trim(), color: v.color, description: v.description, exclusive: !!v.exclusive };
-    var p = l ? aWrite('label_patch', repoParams(repo, { id: String(l.id) }), body) : aWrite('label_create', repoParams(repo), body);
-    return p.then(function () { if (V.tab === 'labels') renderLabels(); });
+    var jobs = (rs || []).filter(function (r) { return r.list; }).map(function (r) {
+      var id = G && G.ids[r.repo];
+      return id ? aWrite('label_patch', repoParams(r.repo, { id: String(id) }), body) : aWrite('label_create', repoParams(r.repo), body);
+    });
+    return labelsDone(rs, jobs, G ? '\u5132\u5B58' : '\u5EFA\u7ACB');
   } });
-  if (l) del.addEventListener('click', function () {
+  if (G) del.addEventListener('click', function () {
     d.close();
-    confirmDialog('\u522A\u9664\u300C' + l.name + '\u300D\uFF1F', '\u639B\u8457\u9019\u500B\u6A19\u7C64\u7684\u7968\u6703\u4E00\u8D77\u62FF\u6389\u5B83\u3002', '\u522A\u9664').then(function (yes) {
+    confirmDialog('\u522A\u9664\u300C' + G.name + '\u300D\uFF1F', '\u6703\u5F9E\u6240\u6709\u5C08\u6848\u62FF\u6389\u9019\u500B\u6A19\u7C64\uFF0C\u639B\u8457\u5B83\u7684\u7968\u4E5F\u6703\u4E00\u8D77\u62FF\u6389\u3002', '\u522A\u9664').then(function (yes) {
       if (!yes) return;
-      aWrite('label_delete', repoParams(repo, { id: String(l.id) }), {}).then(function () { renderLabels(); }, function (e) { err('\u522A\u9664\u5931\u6557\uFF1A' + e.message); });
+      labelsDone(rs, Object.keys(G.ids).map(function (repo) { return aWrite('label_delete', repoParams(repo, { id: String(G.ids[repo]) }), {}); }), '\u522A\u9664');
     });
   });
 }
@@ -52280,14 +52604,14 @@ document.getElementById('ah-projects').addEventListener('click', projectsDialog)
 document.getElementById('ah-new').addEventListener('click', function () {
   if (V.tab === 'struct') return nodeDialog(null);
   if (V.tab === 'goals') return err('\u76EE\u6A19\u7531 CC \u5C08\u6848\u7528 goal_set \u5EFA\u7ACB\uFF1B\u9019\u88E1\u53EA\u8B80\u3002\u8981\u8B93\u76EE\u6A19\u6307\u5411\u6771\u897F\uFF1Anode\uFF08bind_goal\uFF09\u3002');
+  if (V.tab === 'labels') return projectList().then(function (ps) { return Promise.all(ps.map(function (p) { return aRead('label_list', repoParams(p.full_name), { limit: '100' }).then(function (a) { return { repo: p.full_name, list: Array.isArray(a) ? a : [] }; }, function () { return { repo: p.full_name, list: null }; }); })); }).then(function (rs) { labelDialog(null, rs); }, function (e) { err(e.message); });
   if (!V.repo) return projectsDialog();
-  if (V.repo === ALL && V.tab !== 'issues') return err('\u5148\u5728\u4E0A\u9762\u9078\u4E00\u500B repo\u3002');
-  if (V.tab === 'labels') return labelDialog(V.repo, null);
+  if (V.repo === ALL) return err('\u5148\u5728\u4E0A\u9762\u9078\u4E00\u500B\u5C08\u6848\uFF0C\u518D\u65B0\u589E\u7968\u3002');
   return newIssue();
 });
 
 // \u8A18\u5F97\u4E0A\u6B21\u7684\u5C08\u6848\u5C31\u99AC\u4E0A\u756B\uFF08\u4E0D\u7B49\u5C08\u6848\u6E05\u55AE\uFF09\uFF1B\u7B2C\u4E00\u6B21\u6253\u958B\u624D\u7B49\u6E05\u55AE\u6C7A\u5B9A\u9810\u8A2D\u5C08\u6848
-var first = V.tab === 'struct' || V.tab === 'goals' || V.repo;
+var first = V.tab === 'struct' || V.tab === 'goals' || V.tab === 'labels' || V.repo;
 if (first) render();
 loadProjects().then(function () { if (!first) render(); });
 // \u7DB2\u5740\u76F4\u9054\u4E00\u5F35\u7968\uFF08inkstone/Arcrun#326\uFF09
@@ -52757,8 +53081,8 @@ var imbot_app_default = {
   id: "imbot",
   name: "IM \u6A5F\u5668\u4EBA",
   icon: "\u{1F4AC}",
-  version: "0.1.0",
-  changelog: "0.1.0\uFF1ALINE \u5B98\u65B9\u5E33\u865F\u7684\u4E00\u5C0D\u4E00\u6A5F\u5668\u4EBA\u300C\u5C0F\u516D\u300D\uFF08inkstone/InkStoneCo#3\uFF09\u3002\u5BA2\u4EBA\u50B3\u8A0A \u2192 \u5C0F\u516D\u5148\u56DE\uFF08LLM \u8D70\u672C\u5BE6\u4F8B\u7684 /portal/daemon/extract\uFF0C\u514D\u91D1\u9470\uFF1BLINE Reply \u514D\u8CBB\uFF09\uFF1BLeo \u5728 Portal\u300CIM \u6A5F\u5668\u4EBA\u300D\u9801\u63A5\u624B\uFF0C\u5169\u500B\u5206\u958B\u7684\u8F38\u5165\u6846\u2014\u2014\u300C\u4EA4\u4EE3\u5C0F\u516D\u300D\uFF08\u7ACB\u5834\u7531\u5C0F\u516D\u6539\u5BEB\u6210\u5F97\u9AD4\u7684\u8A71\u518D\u9001\uFF0C\u60C5\u7DD2\u5B57\u773C\u4E0D\u5916\u6D29\uFF09\u8207\u300C\u6211\u76F4\u63A5\u8AAA\u300D\uFF08\u539F\u53E5\u7167\u9001\uFF09\uFF1BLeo \u4E00\u4ECB\u5165\u5C31\u505C\u6B62\u81EA\u52D5\u56DE\uFF0C\u975C\u9ED8 3 \u5206\u9418\u6216\u6309\u300C\u4EA4\u9084\u5C0F\u516D\u300D\u5F8C\u5C0F\u516D\u63A5\u624B\uFF0C\u56DE\u8986\u6703\u5F15\u7528 Leo \u525B\u8AAA\u7684\u8A71\uFF1B\u5BA2\u4EBA\u63D0\u5230\u958B\u6703\uFF0F\u5831\u50F9\u5C31\u505C\u81EA\u52D5\u56DE\u4E26\u7528 Telegram \u901A\u77E5\u3002\u4E8B\u4EF6\u9A45\u52D5\uFF0C\u7121\u6392\u7A0B\u7121\u8F2A\u8A62\u30022 \u500B template\u30016 \u689D\u5DE5\u4F5C\u6D41\u3002",
+  version: "0.1.1",
+  changelog: "0.1.1\uFF1APortal \u7BA1\u7406\u54E1\u65B7\u8A00\u6539\u8F49\u6210 JSON \u5B57\u4E32\u518D\u554F\u5F15\u64CE\uFF08stage \u5BE6\u9EDE\u6293\u5230\uFF1A\u7269\u4EF6\u88AB\u6E32\u67D3\u6210 [object Object]\uFF0C\u9A57\u8B49\u7D50\u679C malformed\uFF0C\u63A5\u624B\u9801\u6240\u6709\u52D5\u4F5C\u90FD\u88AB\u64CB\uFF09\u30020.1.0\uFF1ALINE \u5B98\u65B9\u5E33\u865F\u7684\u4E00\u5C0D\u4E00\u6A5F\u5668\u4EBA\u300C\u5C0F\u516D\u300D\uFF08inkstone/InkStoneCo#3\uFF09\u3002\u5BA2\u4EBA\u50B3\u8A0A \u2192 \u5C0F\u516D\u5148\u56DE\uFF08LLM \u8D70\u672C\u5BE6\u4F8B\u7684 /portal/daemon/extract\uFF0C\u514D\u91D1\u9470\uFF1BLINE Reply \u514D\u8CBB\uFF09\uFF1BLeo \u5728 Portal\u300CIM \u6A5F\u5668\u4EBA\u300D\u9801\u63A5\u624B\uFF0C\u5169\u500B\u5206\u958B\u7684\u8F38\u5165\u6846\u2014\u2014\u300C\u4EA4\u4EE3\u5C0F\u516D\u300D\uFF08\u7ACB\u5834\u7531\u5C0F\u516D\u6539\u5BEB\u6210\u5F97\u9AD4\u7684\u8A71\u518D\u9001\uFF0C\u60C5\u7DD2\u5B57\u773C\u4E0D\u5916\u6D29\uFF09\u8207\u300C\u6211\u76F4\u63A5\u8AAA\u300D\uFF08\u539F\u53E5\u7167\u9001\uFF09\uFF1BLeo \u4E00\u4ECB\u5165\u5C31\u505C\u6B62\u81EA\u52D5\u56DE\uFF0C\u975C\u9ED8 3 \u5206\u9418\u6216\u6309\u300C\u4EA4\u9084\u5C0F\u516D\u300D\u5F8C\u5C0F\u516D\u63A5\u624B\uFF0C\u56DE\u8986\u6703\u5F15\u7528 Leo \u525B\u8AAA\u7684\u8A71\uFF1B\u5BA2\u4EBA\u63D0\u5230\u958B\u6703\uFF0F\u5831\u50F9\u5C31\u505C\u81EA\u52D5\u56DE\u4E26\u7528 Telegram \u901A\u77E5\u3002\u4E8B\u4EF6\u9A45\u52D5\uFF0C\u7121\u6392\u7A0B\u7121\u8F2A\u8A62\u30022 \u500B template\u30016 \u689D\u5DE5\u4F5C\u6D41\u3002",
   requires: {
     recipes: [
       {
@@ -53029,6 +53353,8 @@ function dupLine(input) {
 
 // \u8EAB\u5206\uFF1A\u5F15\u64CE\u5728 Portal \u52D5\u4F5C\u88E1\u7C3D\u7684\u65B7\u8A00\uFF08_portal_actor\uFF09\u2192 recipe imbot_actor_verify \u554F\u5F15\u64CE\u9A57 \u2192 \u53EA\u6709 Portal \u7BA1\u7406\u54E1\uFF08\u5BE6\u4F8B\u4E3B\u4EBA\uFF09\u653E\u884C\u3002
 // \u6C92\u6709\u65B7\u8A00\uFF08\u6709\u4EBA\u76F4\u63A5\u6253 webhook\uFF09\uFF1D\u4E0D\u5408\u683C\u3002\u8B80\u4E5F\u8981\u9A57\uFF1A\u5BA2\u4EBA\u7684\u5C0D\u8A71\u662F\u79C1\u4EBA\u5167\u5BB9\u3002
+// \u65B7\u8A00\uFF08_portal_actor\uFF09\u9032\u52D5\u4F5C\u6642\u662F\u7269\u4EF6\uFF1Brecipe \u7684 body \u6A21\u677F\u53EA\u80FD\u585E\u5B57\u4E32\uFF0C\u7269\u4EF6\u6703\u88AB\u6E32\u67D3\u6210 [object Object]\uFF0C
+// \u5F15\u64CE\u9A57\u4E0D\u51FA\uFF08stage 1.4.160 \u5BE6\u9EDE\uFF1A\u9A57\u8B49\u7D50\u679C malformed\uFF09\u3002\u6240\u4EE5\u5148\u5728\u9019\u88E1\u8F49\u6210 JSON \u5B57\u4E32\uFF08\u5F15\u64CE\u7684 /portal/actor/verify \u6536 proof \u5B57\u4E32\uFF09\u3002
 
 return dupLine(input);
 `,
@@ -53698,12 +54024,28 @@ return finalLine(input);
             label: "input"
           },
           {
+            id: "pa",
+            type: "Component",
+            componentId: "code",
+            label: "pa",
+            data: {
+              code: "function ph(v) {\n  if (v == null) return '';\n  if (typeof v !== 'string') return v;\n  return /^\\{\\{[^{}]*\\}\\}$/.test(v.trim()) ? '' : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction jparse(v) {\n  v = ph(v);\n  if (typeof v === 'string') { if (!v.trim()) return null; try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction actorProof(input) {\n  var a = jparse(input.actor);\n  return { success: true, proof: isObj(a) ? JSON.stringify(a) : '' };\n}\n\nreturn actorProof(input);\n",
+              input: {
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 3e3,
+                max_output_bytes: 262144
+              }
+            }
+          },
+          {
             id: "vact",
             type: "Component",
             componentId: "imbot_actor_verify",
             label: "vact",
             data: {
-              proof: "{{input._portal_actor}}"
+              proof: "{{pa.data.proof}}"
             }
           },
           {
@@ -53789,6 +54131,11 @@ return uiThreads(input);
         edges: [
           {
             from: "input",
+            to: "pa",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "pa",
             to: "vact",
             type: "ON_SUCCESS"
           },
@@ -53829,12 +54176,28 @@ return uiThreads(input);
             label: "input"
           },
           {
+            id: "pa",
+            type: "Component",
+            componentId: "code",
+            label: "pa",
+            data: {
+              code: "function ph(v) {\n  if (v == null) return '';\n  if (typeof v !== 'string') return v;\n  return /^\\{\\{[^{}]*\\}\\}$/.test(v.trim()) ? '' : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction jparse(v) {\n  v = ph(v);\n  if (typeof v === 'string') { if (!v.trim()) return null; try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction actorProof(input) {\n  var a = jparse(input.actor);\n  return { success: true, proof: isObj(a) ? JSON.stringify(a) : '' };\n}\n\nreturn actorProof(input);\n",
+              input: {
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 3e3,
+                max_output_bytes: 262144
+              }
+            }
+          },
+          {
             id: "vact",
             type: "Component",
             componentId: "imbot_actor_verify",
             label: "vact",
             data: {
-              proof: "{{input._portal_actor}}"
+              proof: "{{pa.data.proof}}"
             }
           },
           {
@@ -53955,6 +54318,11 @@ return uiThread(input);
         edges: [
           {
             from: "input",
+            to: "pa",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "pa",
             to: "vact",
             type: "ON_SUCCESS"
           },
@@ -54005,12 +54373,28 @@ return uiThread(input);
             label: "input"
           },
           {
+            id: "pa",
+            type: "Component",
+            componentId: "code",
+            label: "pa",
+            data: {
+              code: "function ph(v) {\n  if (v == null) return '';\n  if (typeof v !== 'string') return v;\n  return /^\\{\\{[^{}]*\\}\\}$/.test(v.trim()) ? '' : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction jparse(v) {\n  v = ph(v);\n  if (typeof v === 'string') { if (!v.trim()) return null; try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction actorProof(input) {\n  var a = jparse(input.actor);\n  return { success: true, proof: isObj(a) ? JSON.stringify(a) : '' };\n}\n\nreturn actorProof(input);\n",
+              input: {
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 3e3,
+                max_output_bytes: 262144
+              }
+            }
+          },
+          {
             id: "vact",
             type: "Component",
             componentId: "imbot_actor_verify",
             label: "vact",
             data: {
-              proof: "{{input._portal_actor}}"
+              proof: "{{pa.data.proof}}"
             }
           },
           {
@@ -54412,6 +54796,11 @@ return finalDirective(input);
         edges: [
           {
             from: "input",
+            to: "pa",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "pa",
             to: "vact",
             type: "ON_SUCCESS"
           },
@@ -54524,12 +54913,28 @@ return finalDirective(input);
             label: "input"
           },
           {
+            id: "pa",
+            type: "Component",
+            componentId: "code",
+            label: "pa",
+            data: {
+              code: "function ph(v) {\n  if (v == null) return '';\n  if (typeof v !== 'string') return v;\n  return /^\\{\\{[^{}]*\\}\\}$/.test(v.trim()) ? '' : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction jparse(v) {\n  v = ph(v);\n  if (typeof v === 'string') { if (!v.trim()) return null; try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction actorProof(input) {\n  var a = jparse(input.actor);\n  return { success: true, proof: isObj(a) ? JSON.stringify(a) : '' };\n}\n\nreturn actorProof(input);\n",
+              input: {
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 3e3,
+                max_output_bytes: 262144
+              }
+            }
+          },
+          {
             id: "vact",
             type: "Component",
             componentId: "imbot_actor_verify",
             label: "vact",
             data: {
-              proof: "{{input._portal_actor}}"
+              proof: "{{pa.data.proof}}"
             }
           },
           {
@@ -54756,6 +55161,11 @@ return finalDirect(input);
         edges: [
           {
             from: "input",
+            to: "pa",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "pa",
             to: "vact",
             type: "ON_SUCCESS"
           },
@@ -54843,12 +55253,28 @@ return finalDirect(input);
             label: "input"
           },
           {
+            id: "pa",
+            type: "Component",
+            componentId: "code",
+            label: "pa",
+            data: {
+              code: "function ph(v) {\n  if (v == null) return '';\n  if (typeof v !== 'string') return v;\n  return /^\\{\\{[^{}]*\\}\\}$/.test(v.trim()) ? '' : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\nfunction jparse(v) {\n  v = ph(v);\n  if (typeof v === 'string') { if (!v.trim()) return null; try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction actorProof(input) {\n  var a = jparse(input.actor);\n  return { success: true, proof: isObj(a) ? JSON.stringify(a) : '' };\n}\n\nreturn actorProof(input);\n",
+              input: {
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 3e3,
+                max_output_bytes: 262144
+              }
+            }
+          },
+          {
             id: "vact",
             type: "Component",
             componentId: "imbot_actor_verify",
             label: "vact",
             data: {
-              proof: "{{input._portal_actor}}"
+              proof: "{{pa.data.proof}}"
             }
           },
           {
@@ -54964,6 +55390,11 @@ return handbackPlan(input);
         edges: [
           {
             from: "input",
+            to: "pa",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "pa",
             to: "vact",
             type: "ON_SUCCESS"
           },
@@ -56599,18 +57030,18 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   const requestStart = subrequestCount();
   const spent = () => subrequestCount() - requestStart;
   if (existing && existing.content_hash === contentHash && existing.status === "active") {
-    const ensured = await ensureAppRecipes(env, wantedRecipes);
-    if (!ensured.ok) {
+    const ensured2 = await ensureAppRecipes(env, wantedRecipes);
+    if (!ensured2.ok) {
       return {
         ok: false,
         step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
-        errors: [ensured.error],
+        errors: [ensured2.error],
         hint: "\u9019\u500B App \u9700\u8981\u7684 recipe \u5BEB\u4E0D\u9032\u9019\u53F0\u5BE6\u4F8B\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
       };
     }
     const credCheck2 = await findMissingCredentials(env, tenant2, wantedCreds);
     const needs2 = {
-      recipes_installed: ensured.installed,
+      recipes_installed: ensured2.installed,
       missing_credentials: credCheck2.missing,
       ...credCheck2.checked ? {} : { credentials_check_failed: true }
     };
@@ -56638,9 +57069,9 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
       label: String(r.canonical_id ?? ""),
       cost: 3,
       run: async () => {
-        const ensured = await ensureAppRecipes(env, [r]);
-        if (!ensured.ok) throw new Error(ensured.error);
-        recipesInstalled = recipesInstalled.concat(ensured.installed);
+        const ensured2 = await ensureAppRecipes(env, [r]);
+        if (!ensured2.ok) throw new Error(ensured2.error);
+        recipesInstalled = recipesInstalled.concat(ensured2.installed);
       }
     });
   }
@@ -56937,7 +57368,7 @@ var APP_CATALOG = [
     summary: "\uFF08\u5DF2\u4F75\u5165 AHub\uFF09\u5C08\u6848\u3001\u91CC\u7A0B\u7891\u3001\u7968\u7684\u7D50\u69CB\u8207\u770B\u677F\uFF0C\u4EE5\u53CA\u76EE\u6A19\u6307\u5411\u7684\u9032\u5EA6\uFF0C\u73FE\u5728\u90FD\u5728 AHub \u4E00\u500B\u756B\u9762\u88E1\uFF1B\u5DF2\u88DD\u7684\u6309\u66F4\u65B0\u5C31\u63DB\u6210\u540C\u4E00\u500B\u756B\u9762\uFF0C\u8CC7\u6599\u4E0D\u8B8A\u3002",
     // 0.9.0（inkstone/Arcrun#368）：票地圖併進 AHub——畫面換成和 AHub 同一份（結構＋看板＋目標），舊的儀表板與看板拿掉；
     // 這個項目標 retired：還沒裝的實例市集上不再列它（只留 AHub 一個入口），已裝 0.8.x 的實例按「更新」就帶到新畫面、資料不變。
-    version: "0.9.1",
+    version: "0.9.3",
     retired: true,
     author: "Arcrun \u5167\u5EFA",
     declaration: kanban_ahub_app_default
@@ -56971,7 +57402,7 @@ var APP_CATALOG = [
     // 0.10.1（inkstone/Arcrun#347）：畫面讀取在 App 身分已登記時拿不到回應（引擎 #338 之後沒跑到的節點＝沒有值）——修掉。
     // 0.10.0（inkstone/Arcrun#346）：記得「哪個 Claude 專案領了哪張票、做到哪」——工作站報到／領票／回報／放手／看板／要求回報（3 個新 template、6 支新 MCP 工具）。
     summary: "\u628A\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u76F8\u4F9D\u8207\u91CC\u7A0B\u7891\u5B58\u5728\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u88E1\uFF0C\u7528\u548C Gitea \u4E00\u6A23\u7684\u65B9\u5F0F\u8B80\u5BEB\uFF1B\u6253\u958B\u5C31\u80FD\u65B0\u589E\u3001\u4FEE\u6539\u3001\u95DC\u9589\u7968\u8207\u91CC\u7A0B\u7891\uFF0C\u7559\u8A00\u7528 Markdown\uFF0C\u7C3D\u6838\u4EBA\u7531\u4F60\u5728\u300C\u8A2D\u5B9A\u300D\u6307\u5B9A\u3002\u9023\u4E0A Arcrun MCP \u7684 AI \u81EA\u52D5\u62FF\u5230\u7BA1\u7968\u8207\u8ACB\u4F60\u7C3D\u6838\u7684\u5DE5\u5177\u3002\u9078\u88DD\uFF0C\u6C92\u88DD\u7684\u5BE6\u4F8B\u4E0D\u53D7\u5F71\u97FF\u3002",
-    version: "0.18.1",
+    version: "0.18.3",
     author: "Arcrun \u5167\u5EFA",
     declaration: ahub_app_default
   },
@@ -56996,7 +57427,7 @@ var APP_CATALOG = [
     // 金鑰只放 credential 中心：line_channel_access_token（必要）、telegram_bot_token＋telegram_chat_id（選填，客人要開會／談價錢時通知）。
     // 沒有 LINE 金鑰時小六照收照記帳，但不送出並寫明原因。不輪詢（靜默交還在客人訊息進來時才判斷）。資料用 App 宣告的兩個 template（imbot_conv、imbot_msg）。
     summary: "\u5BA2\u4EBA\u5728 LINE \u5B98\u65B9\u5E33\u865F\u50B3\u8A0A\u606F\uFF0C\u7531 AI \u52A9\u7406\u300C\u5C0F\u516D\u300D\u5148\u56DE\uFF1B\u4F60\u96A8\u6642\u80FD\u5728\u9019\u4E00\u9801\u63A5\u624B\uFF08\u4EA4\u4EE3\u5C0F\u516D\u6539\u5BEB\uFF0C\u6216\u539F\u53E5\u76F4\u63A5\u8AAA\uFF09\uFF0C\u63A5\u624B\u7684\u8A71\u5C0F\u516D\u4E4B\u5F8C\u90FD\u8A18\u5F97\u3002\u8AC7\u50F9\u9322\u3001\u7D04\u958B\u6703\u6703\u505C\u4E0B\u4F86\u7B49\u4F60\u3002\u9700\u8981\u586B LINE \u91D1\u9470\u3002",
-    version: "0.1.0",
+    version: "0.1.1",
     author: "Arcrun \u5167\u5EFA",
     declaration: imbot_app_default
   }
@@ -58550,6 +58981,7 @@ async function resolveWebhookGraph(body, description, env) {
 }
 
 // cypher-executor/src/routes/webhooks.ts
+init_failure_evidence();
 var webhooksRouter = new Hono2();
 webhooksRouter.post("/webhooks", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -58597,8 +59029,12 @@ webhooksRouter.post("/webhooks/:token/trigger", async (c) => {
   const workflowId = graph.id ?? token;
   const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, runMessage(result), triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
   );
+  if (isKbdbBusyFailure(result)) {
+    c.header("Retry-After", "10");
+    return c.json(result, 503);
+  }
   return c.json(result, result.success ? 200 : 500);
 });
 
@@ -58694,6 +59130,7 @@ init_credentials();
 init_dist();
 init_webhook_handlers();
 init_schemas();
+init_failure_evidence();
 init_telemetry();
 init_endpoints();
 
@@ -58993,7 +59430,7 @@ async function triggerNamed(c, apiKey, name) {
   if (c.req.query("async") === "1") {
     c.executionCtx.waitUntil(
       executeWebhookGraph(c.env, record.graph, triggerContext, name, apiKey, c.executionCtx, userAgent).then(
-        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, result2.error ?? "", triggerContext, apiKey, c.env.__kbdbTally, result2.failed_node)
+        (result2) => writeExecutionVerdict(c.env, workflowId, nodes, result2.success ? "success" : "failed", result2.duration_ms, runMessage(result2), triggerContext, apiKey, c.env.__kbdbTally, result2.failed_node)
       )
     );
     return c.json({ accepted: true }, 202);
@@ -59008,9 +59445,13 @@ async function triggerNamed(c, apiKey, name) {
     userAgent
   );
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, runMessage(result), triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
   );
   const full = wantsFullTrace((n) => c.req.query(n));
+  if (isKbdbBusyFailure(result)) {
+    c.header("Retry-After", "10");
+    return c.json(shapeTraceForResponse(result, full), 503);
+  }
   return c.json(shapeTraceForResponse(result, full), result.success ? 200 : 500);
 }
 var MAX_QUERY_OUTPUT_BYTES = 5 * 1024 * 1024;
@@ -59046,10 +59487,11 @@ async function queryNamed(c, apiKey, name, triggerContext) {
     userAgent
   );
   c.executionCtx.waitUntil(
-    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, result.error ?? "", triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
+    writeExecutionVerdict(c.env, workflowId, nodes, result.success ? "success" : "failed", result.duration_ms, runMessage(result), triggerContext, apiKey, c.env.__kbdbTally, result.failed_node)
   );
   if (!result.success) {
     const paused = typeof result.error === "string" && /workflow paused/i.test(result.error);
+    if (isKbdbBusyFailure(result)) c.header("Retry-After", "10");
     return c.json(
       {
         success: false,
@@ -59057,7 +59499,7 @@ async function queryNamed(c, apiKey, name, triggerContext) {
         trace: wantsFullTrace((n) => c.req.query(n)) ? result.trace : summarizeTrace(result.trace),
         ...paused ? { paused: true, hint: "\u6B64\u5DE5\u4F5C\u6D41\u6703\u66AB\u505C\u7B49\u5F85\u975E\u540C\u6B65 callback\uFF0C\u7121\u6CD5\u7576\u540C\u6B65\u67E5\u8A62\u7AEF\u9EDE\uFF1B\u6539\u7528 /webhooks/named/:name/trigger?async=1 + /workflows/resume\u3002" } : {}
       },
-      paused ? 409 : 500
+      paused ? 409 : isKbdbBusyFailure(result) ? 503 : 500
     );
   }
   const serialized = JSON.stringify(result.data ?? null);
@@ -59212,12 +59654,13 @@ function toUser(recordId, v) {
 }
 async function findByHash2(env, field, hash) {
   const res = await kFetch2(env, `/records/by-source/${TEMPLATE}?field=${encodeURIComponent(field)}&value=${encodeURIComponent(hash)}`);
-  if (!res.ok) return null;
+  if (!res.ok) throw new EphemeralStoreError(`GET /records/by-source(${TEMPLATE}) \u2192 ${res.status}`, res.status);
   const body = await res.json().catch(() => null);
   const id = body?.record_ids?.[0];
   if (!id) return null;
   const rec = await kFetch2(env, `/records/${encodeURIComponent(id)}`);
-  if (!rec.ok) return null;
+  if (rec.status === 404) return null;
+  if (!rec.ok) throw new EphemeralStoreError(`GET /records/:id(${TEMPLATE}) \u2192 ${rec.status}`, rec.status);
   const recBody = await rec.json().catch(() => null);
   return recBody?.record ?? null;
 }
@@ -59252,15 +59695,15 @@ async function createPlatformUser(env, input) {
   if (!recordId) throw new PlatformUserStoreError("POST /records \u56DE\u61C9\u7F3A record_id");
   return { ...input, record_id: recordId, created_at: values.created_at, revoked: false };
 }
-async function updatePlatformUser(env, recordId, patch) {
+async function updatePlatformUser(env, recordId, patch2) {
   const values = {};
-  if (patch.display_name !== void 0) values.display_name = patch.display_name;
-  if (patch.avatar_url !== void 0) values.avatar_url = patch.avatar_url ?? "";
-  if (patch.api_key !== void 0) {
-    values.api_key = patch.api_key;
-    values.api_key_hash = await sha256Hex3(patch.api_key);
+  if (patch2.display_name !== void 0) values.display_name = patch2.display_name;
+  if (patch2.avatar_url !== void 0) values.avatar_url = patch2.avatar_url ?? "";
+  if (patch2.api_key !== void 0) {
+    values.api_key = patch2.api_key;
+    values.api_key_hash = await sha256Hex3(patch2.api_key);
   }
-  if (patch.revoked !== void 0) values.revoked = String(patch.revoked);
+  if (patch2.revoked !== void 0) values.revoked = String(patch2.revoked);
   if (Object.keys(values).length === 0) return;
   const res = await kFetch2(env, `/records/${encodeURIComponent(recordId)}`, { method: "PATCH", body: JSON.stringify({ values }) });
   if (!res.ok) throw new PlatformUserStoreError(`PATCH /records/${recordId} \u2192 ${res.status}`);
@@ -62735,6 +63178,13 @@ function bearerToken(c) {
   return auth.match(/^Bearer\s+(\S+)/i)?.[1] ?? null;
 }
 var KbdbError = class extends Error {
+  /** 訊息尾端「→ 503」這種 KBDB 狀態碼；抓不到（連線失敗等）＝undefined，一律當「忙」。 */
+  status;
+  constructor(message2) {
+    super(message2);
+    const m = message2.match(/→\s*(\d{3})\b/);
+    this.status = m ? Number(m[1]) : /失敗|不可達|沒有收到回應/.test(message2) ? void 0 : 0;
+  }
 };
 async function kbdbFetch3(env, path, init, opts) {
   const { base, headers } = kbdbBase(env);
@@ -62767,7 +63217,13 @@ async function run(c, fn) {
       const { body, status } = portalErrorBody(origin2, e.code, { advanced: e.message });
       return c.json(body, status);
     }
-    if (e instanceof KbdbError) return c.json({ error: `KBDB \u4E0D\u53EF\u9054\u6216\u56DE\u932F\uFF1A${e.message}` }, 502);
+    if (e instanceof KbdbError) {
+      if (e.status !== 0 && isKbdbBusyStatus(e.status)) {
+        console.warn("[portal] kbdb busy:", e.message);
+        return kbdbBusyJson(c);
+      }
+      return c.json({ error: `KBDB \u4E0D\u53EF\u9054\u6216\u56DE\u932F\uFF1A${e.message}` }, 502);
+    }
     throw e;
   }
 }
@@ -63611,26 +64067,26 @@ portalRouter.patch(
     if (!rec) return c.json({ error: "\u7528\u6236\u4E0D\u5B58\u5728" }, 404);
     const body = await c.req.json().catch(() => null);
     if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
-    const patch = {};
+    const patch2 = {};
     if (body.status !== void 0) {
       if (body.status !== "active" && body.status !== "disabled") {
         return c.json({ error: "status \u53EA\u80FD\u662F active / disabled" }, 400);
       }
-      patch.status = body.status;
+      patch2.status = body.status;
     }
     if (body.role !== void 0) {
       if (body.role !== "user" && body.role !== "admin") return c.json({ error: "role \u53EA\u80FD\u662F user / admin" }, 400);
-      patch.role = body.role;
+      patch2.role = body.role;
     }
     if (body.libraries !== void 0) {
       if (!validLibrariesInput(body.libraries)) {
         return c.json({ error: 'libraries \u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u5EAB\u540D\u9650 A-Za-z0-9_- \u6216 "*"\uFF09' }, 400);
       }
-      patch.libraries = JSON.stringify(body.libraries);
+      patch2.libraries = JSON.stringify(body.libraries);
     }
-    if (Object.keys(patch).length === 0) return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08status/role/libraries\uFF09" }, 400);
+    if (Object.keys(patch2).length === 0) return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08status/role/libraries\uFF09" }, 400);
     const isActiveAdmin = (rec.values.role ?? "") === "admin" && (rec.values.status ?? "") === "active";
-    const wouldLoseAdmin = patch.status === "disabled" || patch.role === "user";
+    const wouldLoseAdmin = patch2.status === "disabled" || patch2.role === "user";
     if (isActiveAdmin && wouldLoseAdmin) {
       const all = await listRecordsByTemplate(c.env, USER_TEMPLATE);
       const otherActiveAdmins = all.filter(
@@ -63640,8 +64096,8 @@ portalRouter.patch(
         return c.json({ error: "\u4E0D\u53EF\u505C\u7528\u6216\u964D\u7D1A\u6700\u5F8C\u4E00\u500B\u7BA1\u7406\u54E1\u2014\u2014\u7CFB\u7D71\u81F3\u5C11\u8981\u4FDD\u7559\u4E00\u500B active admin" }, 409);
       }
     }
-    patch.updated_at = (/* @__PURE__ */ new Date()).toISOString();
-    const updated = await patchRecordValues(c.env, recordId, patch);
+    patch2.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+    const updated = await patchRecordValues(c.env, recordId, patch2);
     return c.json({ success: true, user: toPublicUser(updated) });
   })
 );
@@ -63828,11 +64284,11 @@ portalRouter.post(
       if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF0C\u8CC7\u6599\u593E\u6A39\u767B\u8A18\uFF09\u2192 ${res.status}`);
       registered = true;
     } else {
-      const patch = {};
-      if ((mine.values.root ?? "") !== root) patch.root = root;
-      if ((mine.values.mode ?? "") !== mode) patch.mode = mode;
-      if ((mine.values.reason ?? "") !== reason) patch.reason = reason;
-      if (Object.keys(patch).length > 0) await patchRecordValues(c.env, mine.record_id, patch);
+      const patch2 = {};
+      if ((mine.values.root ?? "") !== root) patch2.root = root;
+      if ((mine.values.mode ?? "") !== mode) patch2.mode = mode;
+      if ((mine.values.reason ?? "") !== reason) patch2.reason = reason;
+      if (Object.keys(patch2).length > 0) await patchRecordValues(c.env, mine.record_id, patch2);
     }
     const stored = {
       library,
@@ -64332,25 +64788,25 @@ portalRouter.patch(
     if (!libs.some((l) => l.record_id === recordId)) return c.json({ error: "\u5EAB\u4E0D\u5B58\u5728" }, 404);
     const body = await c.req.json().catch(() => null);
     if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
-    const patch = {};
-    if (body.display_name !== void 0) patch.display_name = String(body.display_name).trim();
-    if (body.description !== void 0) patch.description = String(body.description).trim();
+    const patch2 = {};
+    if (body.display_name !== void 0) patch2.display_name = String(body.display_name).trim();
+    if (body.description !== void 0) patch2.description = String(body.description).trim();
     if (body.status !== void 0) {
       if (body.status !== "active" && body.status !== "disabled") {
         return c.json({ error: "status \u53EA\u80FD\u662F active / disabled" }, 400);
       }
-      patch.status = body.status;
+      patch2.status = body.status;
     }
     if (body.graph_source !== void 0) {
       if (typeof body.graph_source !== "boolean") {
         return c.json({ error: "graph_source \u53EA\u80FD\u662F true / false" }, 400);
       }
-      patch.graph_source = body.graph_source ? "true" : "false";
+      patch2.graph_source = body.graph_source ? "true" : "false";
     }
-    if (Object.keys(patch).length === 0) {
+    if (Object.keys(patch2).length === 0) {
       return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08display_name/description/status/graph_source\uFF09" }, 400);
     }
-    const updated = await patchRecordValues(c.env, recordId, patch);
+    const updated = await patchRecordValues(c.env, recordId, patch2);
     return c.json({ success: true, library: toPublicLibrary(updated) });
   })
 );
@@ -66327,6 +66783,664 @@ async function connectByLogin(baseUrl, email, password, from, timeoutMs = 2e4) {
   return { ok: true, key: out.key, account: typeof out.account === "string" ? out.account : "" };
 }
 
+// cypher-executor/src/lib/proofread-store.ts
+init_kbdb_proxy();
+init_tenant();
+
+// cypher-executor/src/lib/proofread.ts
+var DEFAULT_SETTINGS = { supportMin: 2, fadeDays: 30, probeDailyCap: 3, probeStopVotes: 6 };
+function mergeSettings(raw2) {
+  const num2 = (v, d, min, max) => {
+    const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
+    return Number.isFinite(n) && n >= min && n <= max ? Math.floor(n) : d;
+  };
+  return {
+    supportMin: num2(raw2?.supportMin, DEFAULT_SETTINGS.supportMin, 1, 20),
+    fadeDays: num2(raw2?.fadeDays, DEFAULT_SETTINGS.fadeDays, 1, 365),
+    probeDailyCap: num2(raw2?.probeDailyCap, DEFAULT_SETTINGS.probeDailyCap, 0, 50),
+    probeStopVotes: num2(raw2?.probeStopVotes, DEFAULT_SETTINGS.probeStopVotes, 2, 100)
+  };
+}
+var MAX_PARAGRAPH = 600;
+var MAX_CLAIM = 1e3;
+function normalizeParagraph(s) {
+  return s.replace(/\s+/g, " ").trim().slice(0, MAX_PARAGRAPH);
+}
+function normalizeClaim(s) {
+  return s.replace(/\s+/g, " ").trim().slice(0, MAX_CLAIM);
+}
+function sameClaim(a, b) {
+  const k = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+  return k(a) !== "" && k(a) === k(b);
+}
+function cardKeyOf(library, pageName) {
+  return `${library}\u241F${pageName}`;
+}
+function fmtMD(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t + 8 * 36e5);
+  return `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+function dayKey(now2) {
+  return new Date(now2 + 8 * 36e5).toISOString().slice(0, 10);
+}
+function voteWeight(v, track) {
+  let w = v.basis.trim() ? 1 : 0.2;
+  if (v.channel === "mcp") w *= 0.6;
+  if (track && track.total >= 3) w *= Math.min(1.5, Math.max(0.5, 0.5 + track.agree / track.total));
+  return Math.round(w * 100) / 100;
+}
+function latestVotes(votes) {
+  const m = /* @__PURE__ */ new Map();
+  for (const v of [...votes].sort((x, y) => x.created_at.localeCompare(y.created_at))) m.set(v.voter_id, v);
+  return [...m.values()];
+}
+function evaluateObjection(o, votesRaw, otherFlaggers, settings, now2) {
+  const votes = latestVotes(votesRaw).filter((v) => v.voter_id !== o.author_id);
+  const bV = votes.filter((v) => v.choice === "b");
+  const aV = votes.filter((v) => v.choice === "a");
+  const sum2 = (xs) => xs.reduce((s, v) => s + v.weight, 0);
+  const hasSource = o.source.trim() !== "";
+  const bWeight = sum2(bV) + (hasSource ? 1 : 0.6);
+  const aWeight = sum2(aV);
+  const bWithBasis = bV.filter((v) => v.basis.trim()).length + (hasSource ? 1 : 0);
+  const aWithBasis = aV.filter((v) => v.basis.trim()).length;
+  const bPeople = 1 + bV.length + Math.max(0, otherFlaggers);
+  const base = {
+    b_people: bPeople,
+    a_people: aV.length,
+    unsure: votes.filter((v) => v.choice === "unsure").length,
+    b_with_basis: bWithBasis,
+    a_with_basis: aWithBasis,
+    b_weight: Math.round(bWeight * 100) / 100,
+    a_weight: Math.round(aWeight * 100) / 100
+  };
+  if (o.status === "adopted") return { ...base, state: "corrected", reason: "owner_adopted", majority: false };
+  if (o.status === "rejected") return { ...base, state: "trusted", reason: "owner_rejected", majority: false };
+  if (hasSource && aV.length === 0 && bWithBasis >= settings.supportMin) {
+    return { ...base, state: "corrected", reason: "majority_corrected", majority: true };
+  }
+  if (aWithBasis >= settings.supportMin && aWeight > bWeight) {
+    return { ...base, state: "trusted", reason: "majority_kept_a", majority: true };
+  }
+  const ageDays = (now2 - Date.parse(o.created_at)) / 864e5;
+  const expired = Number.isFinite(ageDays) && ageDays >= settings.fadeDays;
+  const disputed = hasSource || bPeople >= settings.supportMin;
+  if (disputed) {
+    return { ...base, state: expired ? "degraded" : "disputed", reason: expired ? "expired_undecided" : hasSource ? "has_source" : "many_people", majority: false };
+  }
+  if (expired) return { ...base, state: "trusted", reason: "faded", majority: false };
+  return { ...base, state: "raised", reason: "unconfirmed", majority: false };
+}
+var STATE_RANK = { trusted: 0, raised: 1, degraded: 2, disputed: 3, corrected: 4 };
+function viewOf(o, ev) {
+  const base = { paragraph_id: o.paragraph_id, paragraph: o.paragraph, state: ev.state, objection_id: o.id };
+  if (ev.state === "corrected") {
+    return {
+      ...base,
+      use: "b",
+      corrected_text: o.claim_b,
+      caveat: ev.majority ? "\u4F9D\u591A\u6578\u6821\u6B63\uFF0C\u8CA0\u8CAC\u4EBA\u53EF\u63A8\u7FFB" : null
+    };
+  }
+  if (ev.state === "degraded") return { ...base, use: "a", caveat: "\u9019\u6BB5\u5C1A\u672A\u78BA\u8A8D" };
+  return { ...base, use: "a", caveat: null };
+}
+function applyCorrections(content, views) {
+  let out = content;
+  const applied = [];
+  for (const v of views) {
+    if (v.use === "b" && v.corrected_text && out.includes(v.paragraph)) {
+      const tag = v.caveat ? `\uFF08${v.caveat}\uFF09` : "";
+      out = out.replace(v.paragraph, `${v.corrected_text}${tag}`);
+      applied.push(v.paragraph_id);
+    } else if (v.state === "degraded" && out.includes(v.paragraph)) {
+      out = out.replace(v.paragraph, `${v.paragraph}\uFF08\u6B64\u6BB5\u5C1A\u672A\u78BA\u8A8D\uFF09`);
+      applied.push(v.paragraph_id);
+    }
+  }
+  return { content: out, applied };
+}
+function buildProbe(o) {
+  const date = fmtMD(o.created_at);
+  return {
+    objection_id: o.id,
+    library: o.library,
+    page_name: o.page_name,
+    paragraph: o.paragraph,
+    a: o.paragraph,
+    b: o.claim_b,
+    asked_by: o.author_name,
+    asked_at: o.created_at,
+    ask: `${o.author_name}${date ? ` \u5728 ${date} ` : ""}\u63D0\u51FA\u300C${o.paragraph}\u300D\u9019\u6BB5\u61C9\u70BA\u300C${o.claim_b}\u300D\uFF0C\u60F3\u8ACB\u4F60\u5E6B\u5FD9\u78BA\u8A8D\u3002`,
+    options: [{ id: "a", label: "A \u5C0D\uFF08\u539F\u7A3F\u7684\u8AAA\u6CD5\uFF09" }, { id: "b", label: "B \u5C0D\uFF08\u63D0\u51FA\u7684\u8AAA\u6CD5\uFF09" }, { id: "unsure", label: "\u4E0D\u78BA\u5B9A" }],
+    follow_up: "\u9078\u5B8C\u8ACB\u7C21\u55AE\u8AAA\u4F60\u600E\u9EBC\u77E5\u9053\u7684\uFF08\u6587\u4EF6\u3001\u7D93\u9A57\u3001\u6216\u4F60\u8CA0\u8CAC\u9019\u4EF6\u4E8B\uFF09\u3002\u6C92\u6709\u4F9D\u64DA\u4E5F\u53EF\u4EE5\uFF0C\u53EA\u662F\u9019\u4E00\u7968\u7684\u4EFD\u91CF\u6703\u5C0F\u5F88\u591A\u3002"
+  };
+}
+function pickProbe(cands, settings) {
+  const open = cands.filter((c) => !c.excludedForUser && c.evaluation.state !== "trusted" && c.evaluation.state !== "corrected" && c.voted < settings.probeStopVotes);
+  if (open.length === 0) return null;
+  const score = (c) => (c.likelyKnows ? 4 : 0) + (c.evaluation.state === "disputed" ? 2 : c.evaluation.state === "degraded" ? 1 : 0);
+  open.sort((x, y) => score(y) - score(x) || x.objection.created_at.localeCompare(y.objection.created_at));
+  return open[0].objection;
+}
+function folderOf(sourcePath) {
+  if (!sourcePath) return "";
+  const parts = sourcePath.split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
+}
+function folderScope(library, folder) {
+  return `folder:${library}:${folder}`;
+}
+function libraryScope(library) {
+  return `lib:${library}`;
+}
+function machineScope(machine) {
+  return `machine:${machine}`;
+}
+function resolveOwner(assignments, ctx, root, activeUserIds) {
+  const live = assignments.filter((a) => a.active && activeUserIds.has(a.owner_id));
+  const byScope = new Map(live.map((a) => [a.scope, a]));
+  const folder = folderOf(ctx.sourcePath);
+  if (folder) {
+    const segs = folder.split("/");
+    for (let n = segs.length; n >= 1; n--) {
+      const hit = byScope.get(folderScope(ctx.library, segs.slice(0, n).join("/")));
+      if (hit) return { id: hit.owner_id, name: hit.owner_name, via: "folder" };
+    }
+  }
+  const lib = byScope.get(libraryScope(ctx.library));
+  if (lib) return { id: lib.owner_id, name: lib.owner_name, via: "library" };
+  if (ctx.machine) {
+    const m = byScope.get(machineScope(ctx.machine));
+    if (m) return { id: m.owner_id, name: m.owner_name, via: "machine" };
+  }
+  return root ? { id: root.id, name: root.name, via: "root" } : null;
+}
+function digestItem(o, ev, votes, asked) {
+  const lv = latestVotes(votes).filter((v) => v.voter_id !== o.author_id);
+  const b = lv.filter((v) => v.choice === "b").length;
+  const a = lv.filter((v) => v.choice === "a").length;
+  const unsure = lv.filter((v) => v.choice === "unsure").length;
+  const answered = lv.length;
+  const noReply = Math.max(0, asked - answered);
+  const withBasis = lv.filter((v) => v.basis.trim()).length;
+  const total = Math.max(asked, answered);
+  const decided = a + b;
+  const agreement = decided === 0 ? 0 : Math.max(a, b) / decided;
+  const priority = Math.round(total * agreement * 100) / 100;
+  const date = fmtMD(o.created_at);
+  const line = `${o.author_name}${date ? ` ${date} ` : " "}\u63D0\u51FA\u300C${o.paragraph.slice(0, 60)}${o.paragraph.length > 60 ? "\u2026" : ""}\u300D\u61C9\u70BA\u300C${o.claim_b.slice(0, 60)}${o.claim_b.length > 60 ? "\u2026" : ""}\u300D\u3002` + (total > 0 ? `\u4E4B\u5F8C ${total} \u4EBA\u554F\u5230\u76F8\u540C\u554F\u984C\uFF1A${b} \u4EBA\u8AAA B\u3001${a} \u4EBA\u8AAA A\u3001${unsure} \u4EBA\u4E0D\u77E5\u9053\u3001${noReply} \u4EBA\u6C92\u56DE\u8986\u3002\u9644\u4F9D\u64DA\u7684\u6709 ${withBasis} \u5247\u3002` : "\u9084\u6C92\u6709\u5225\u4EBA\u88AB\u554F\u5230\u9019\u4E00\u984C\u3002");
+  return { objection_id: o.id, library: o.library, page_name: o.page_name, state: ev.state, line, priority, asked: total, b, a, unsure, no_reply: noReply, with_basis: withBasis };
+}
+function sortDigest(items, createdAt) {
+  return [...items].sort((x, y) => y.priority - x.priority || STATE_RANK[y.state] - STATE_RANK[x.state] || (createdAt.get(x.objection_id) ?? "").localeCompare(createdAt.get(y.objection_id) ?? ""));
+}
+
+// cypher-executor/src/lib/proofread-store.ts
+var T_OBJECTION = "proofread_objection";
+var T_VOTE = "proofread_vote";
+var T_SIGNAL = "proofread_signal";
+var T_ASSIGN = "proofread_assignment";
+var T_SUPP = "proofread_supplement";
+var T_VOTER = "proofread_voter";
+var T_INDEX = "proofread_open_index";
+var T_SETTING = "proofread_setting";
+var T_PROBE = "proofread_probe";
+var T_PROBE_DAY = "proofread_probe_day";
+var SLOTS2 = {
+  [T_OBJECTION]: ["card_key", "library", "page_name", "paragraph", "paragraph_id", "claim_b", "source", "author_id", "author_name", "created_at", "status", "card_version", "question", "decided_by", "decided_at", "decision_reason", "source_path", "machine"],
+  [T_VOTE]: ["objection_id", "voter_id", "voter_name", "choice", "basis", "quote", "channel", "weight", "created_at"],
+  [T_SIGNAL]: ["card_key", "kind", "user_id", "question", "created_at"],
+  [T_ASSIGN]: ["scope", "library", "owner_id", "owner_name", "active", "assigned_by", "created_at"],
+  [T_SUPP]: ["objection_id", "card_key", "library", "page_name", "paragraph", "corrected", "basis", "adopted_by", "created_at", "reextract", "reextract_note", "reextracted_at", "entry_id"],
+  [T_VOTER]: ["voter_id", "agree", "total"],
+  [T_INDEX]: ["library", "cards"],
+  [T_SETTING]: ["library", "support_min", "fade_days", "probe_daily_cap", "probe_stop_votes"],
+  [T_PROBE]: ["objection_id", "user_id", "shown_at"],
+  [T_PROBE_DAY]: ["user_id", "day", "count"]
+};
+var ProofreadStoreError = class extends Error {
+  constructor(message2, status) {
+    super(message2);
+    this.status = status;
+    this.name = "ProofreadStoreError";
+  }
+  status;
+};
+async function kFetch3(env, path, init) {
+  const { base, headers } = kbdbBase(env);
+  try {
+    return await fetch(`${base}${path}`, { ...init, headers: { ...headers, ...init?.headers } });
+  } catch (e) {
+    throw new ProofreadStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+async function sha256Hex6(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function shortHash(input) {
+  return (await sha256Hex6(input)).slice(0, 16);
+}
+var ensured = /* @__PURE__ */ new Set();
+async function ensureTemplate5(env, name) {
+  if (ensured.has(name)) return;
+  const got = await kFetch3(env, `/templates/${encodeURIComponent(name)}`);
+  releaseBody(got);
+  if (!got.ok) {
+    releaseBody(await kFetch3(env, "/templates", {
+      method: "POST",
+      body: JSON.stringify({ name, slots: [...SLOTS2[name], "k"] })
+    }).catch(() => void 0));
+  }
+  ensured.add(name);
+}
+async function getRec(env, id) {
+  const res = await kFetch3(env, `/records/${encodeURIComponent(id)}`);
+  if (!res.ok) {
+    releaseBody(res);
+    return null;
+  }
+  const b = await res.json().catch(() => null);
+  return b?.record ?? null;
+}
+async function idsBy(env, template, field, value) {
+  const res = await kFetch3(env, `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(field)}&value=${encodeURIComponent(value)}`);
+  if (!res.ok) {
+    releaseBody(res);
+    return [];
+  }
+  const b = await res.json().catch(() => null);
+  return b?.record_ids ?? [];
+}
+async function getMany(env, ids) {
+  if (ids.length === 0) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const res = await kFetch3(env, "/records/batch-get", { method: "POST", body: JSON.stringify({ ids: ids.slice(i, i + 200) }) });
+    if (!res.ok) {
+      releaseBody(res);
+      throw new ProofreadStoreError(`POST /records/batch-get \u2192 ${res.status}`, res.status);
+    }
+    const b = await res.json().catch(() => null);
+    out.push(...b?.records ?? []);
+  }
+  return out;
+}
+async function listBy(env, template, field, value) {
+  return getMany(env, await idsBy(env, template, field, value));
+}
+async function create(env, template, values) {
+  await ensureTemplate5(env, template);
+  const res = await kFetch3(env, "/records", { method: "POST", body: JSON.stringify({ template, values }) });
+  if (!res.ok) {
+    releaseBody(res);
+    throw new ProofreadStoreError(`POST /records(${template}) \u2192 ${res.status}`, res.status);
+  }
+  const b = await res.json().catch(() => null);
+  const id = b?.record?.record_id;
+  if (!id) throw new ProofreadStoreError(`POST /records(${template}) \u6C92\u6709\u56DE record_id`);
+  return id;
+}
+async function patch(env, id, values) {
+  const res = await kFetch3(env, `/records/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ values }) });
+  releaseBody(res);
+  if (!res.ok) throw new ProofreadStoreError(`PATCH /records \u2192 ${res.status}`, res.status);
+}
+async function upsertByKey(env, template, key, values) {
+  await ensureTemplate5(env, template);
+  const k = await sha256Hex6(`${template}:${key}`);
+  const ids = await idsBy(env, template, "k", k);
+  if (ids[0]) {
+    await patch(env, ids[0], values);
+    return ids[0];
+  }
+  return create(env, template, { ...values, k });
+}
+async function getByKey(env, template, key) {
+  const k = await sha256Hex6(`${template}:${key}`);
+  const ids = await idsBy(env, template, "k", k);
+  return ids[0] ? getRec(env, ids[0]) : null;
+}
+var str2 = (v) => typeof v === "string" ? v : "";
+function toObjection(r) {
+  const v = r.values;
+  const status = ["pending", "held", "adopted", "rejected"].find((s) => s === v.status) ?? "pending";
+  return {
+    id: r.record_id,
+    card_key: str2(v.card_key),
+    library: str2(v.library),
+    page_name: str2(v.page_name),
+    paragraph: str2(v.paragraph),
+    paragraph_id: str2(v.paragraph_id),
+    claim_b: str2(v.claim_b),
+    source: str2(v.source),
+    author_id: str2(v.author_id),
+    author_name: str2(v.author_name),
+    created_at: str2(v.created_at),
+    status,
+    card_version: str2(v.card_version),
+    question: str2(v.question),
+    decided_by: str2(v.decided_by),
+    decided_at: str2(v.decided_at),
+    decision_reason: str2(v.decision_reason),
+    source_path: str2(v.source_path),
+    machine: str2(v.machine)
+  };
+}
+function toVote(r) {
+  const v = r.values;
+  const choice = v.choice === "a" || v.choice === "b" ? v.choice : "unsure";
+  const channel = v.channel === "mcp" || v.channel === "helper" ? v.channel : "portal";
+  return {
+    objection_id: str2(v.objection_id),
+    voter_id: str2(v.voter_id),
+    voter_name: str2(v.voter_name),
+    choice,
+    basis: str2(v.basis),
+    quote: str2(v.quote),
+    channel,
+    weight: Number(v.weight) || 0,
+    created_at: str2(v.created_at)
+  };
+}
+async function getSettings(env, library) {
+  const r = await getByKey(env, T_SETTING, library).catch(() => null);
+  if (!r) return DEFAULT_SETTINGS;
+  return mergeSettings({
+    supportMin: r.values.support_min,
+    fadeDays: r.values.fade_days,
+    probeDailyCap: r.values.probe_daily_cap,
+    probeStopVotes: r.values.probe_stop_votes
+  });
+}
+async function putSettings(env, library, s) {
+  const cur = await getSettings(env, library);
+  const defined = Object.fromEntries(Object.entries(s).filter(([, v]) => v !== void 0));
+  const next = mergeSettings({ ...cur, ...defined });
+  await upsertByKey(env, T_SETTING, library, {
+    library,
+    support_min: String(next.supportMin),
+    fade_days: String(next.fadeDays),
+    probe_daily_cap: String(next.probeDailyCap),
+    probe_stop_votes: String(next.probeStopVotes)
+  });
+  return next;
+}
+var idxCache = /* @__PURE__ */ new Map();
+var IDX_TTL_MS = 2e4;
+async function openCardKeys(env, library, now2 = Date.now()) {
+  const hit = idxCache.get(library);
+  if (hit && now2 - hit.at < IDX_TTL_MS) return hit.cards;
+  const r = await getByKey(env, T_INDEX, library).catch(() => null);
+  let cards = /* @__PURE__ */ new Set();
+  try {
+    cards = new Set(r?.values.cards ? JSON.parse(r.values.cards) : []);
+  } catch {
+  }
+  idxCache.set(library, { at: now2, cards });
+  return cards;
+}
+async function writeIndex2(env, library, mutate) {
+  idxCache.delete(library);
+  const r = await getByKey(env, T_INDEX, library).catch(() => null);
+  let cards = /* @__PURE__ */ new Set();
+  try {
+    cards = new Set(r?.values.cards ? JSON.parse(r.values.cards) : []);
+  } catch {
+  }
+  mutate(cards);
+  await upsertByKey(env, T_INDEX, library, { library, cards: JSON.stringify([...cards].slice(0, 500)) });
+  idxCache.delete(library);
+}
+async function loadCardProofs(env, library, pageName, now2 = Date.now()) {
+  const objs = (await listBy(env, T_OBJECTION, "card_key", cardKeyOf(library, pageName))).map(toObjection);
+  if (objs.length === 0) return [];
+  const settings = await getSettings(env, library);
+  const votesByObj = /* @__PURE__ */ new Map();
+  await Promise.all(objs.map(async (o) => {
+    votesByObj.set(o.id, (await listBy(env, T_VOTE, "objection_id", o.id)).map(toVote));
+  }));
+  return objs.map((o) => {
+    const others = new Set(objs.filter((x) => x.id !== o.id && x.paragraph_id === o.paragraph_id && x.author_id !== o.author_id && x.status === "pending").map((x) => x.author_id));
+    return { objection: o, votes: votesByObj.get(o.id) ?? [], evaluation: evaluateObjection(o, votesByObj.get(o.id) ?? [], others.size, settings, now2) };
+  });
+}
+function viewsOf(proofs) {
+  return proofs.filter((p) => p.evaluation.state !== "trusted").map((p) => viewOf(p.objection, p.evaluation));
+}
+async function listAssignments(env, library) {
+  return (await listBy(env, T_ASSIGN, "library", library)).map((r) => ({
+    scope: str2(r.values.scope),
+    library: str2(r.values.library),
+    owner_id: str2(r.values.owner_id),
+    owner_name: str2(r.values.owner_name),
+    active: r.values.active !== "false"
+  }));
+}
+async function putAssignment(env, a) {
+  await upsertByKey(env, T_ASSIGN, a.scope, { ...a, active: "true", created_at: (/* @__PURE__ */ new Date()).toISOString() });
+}
+async function revokeAssignment(env, scope, by) {
+  const r = await getByKey(env, T_ASSIGN, scope);
+  if (!r) return false;
+  await patch(env, r.record_id, { active: "false", assigned_by: by });
+  return true;
+}
+async function createObjection(env, input, now2 = Date.now()) {
+  const paragraph = normalizeParagraph(input.paragraph);
+  const claim = normalizeClaim(input.claim_b);
+  const paragraphId = await shortHash(paragraph);
+  const cardKey = cardKeyOf(input.library, input.page_name);
+  const existing = (await listBy(env, T_OBJECTION, "card_key", cardKey)).map(toObjection).filter((o) => o.paragraph_id === paragraphId && (o.status === "pending" || o.status === "held"));
+  const mine = existing.find((o) => o.author_id === input.actor.id);
+  if (mine) return { kind: "duplicate", objection_id: mine.id };
+  for (const o of existing) {
+    const voted = (await listBy(env, T_VOTE, "objection_id", o.id)).map(toVote).some((v) => v.voter_id === input.actor.id);
+    if (voted) return { kind: "duplicate", objection_id: o.id };
+  }
+  const same = existing.find((o) => sameClaim(o.claim_b, claim));
+  if (same) {
+    const vote = await castVote(env, { objection_id: same.id, actor: input.actor, choice: "b", basis: input.source, quote: claim }, now2);
+    return { kind: "merged", objection_id: same.id, vote };
+  }
+  const iso = new Date(now2).toISOString();
+  const id = await create(env, T_OBJECTION, {
+    card_key: cardKey,
+    library: input.library,
+    page_name: input.page_name,
+    paragraph,
+    paragraph_id: paragraphId,
+    claim_b: claim,
+    source: input.source.trim().slice(0, 500),
+    author_id: input.actor.id,
+    author_name: input.actor.name,
+    created_at: iso,
+    status: "pending",
+    card_version: input.card_version,
+    question: input.question.slice(0, 300),
+    decided_by: "",
+    decided_at: "",
+    decision_reason: "",
+    source_path: input.source_path,
+    machine: input.machine
+  });
+  await writeIndex2(env, input.library, (s) => {
+    s.add(cardKey);
+  });
+  const rec = await getRec(env, id);
+  return { kind: "created", objection: toObjection(rec ?? { record_id: id, values: {} }) };
+}
+async function getTrack(env, voterId) {
+  const r = await getByKey(env, T_VOTER, voterId).catch(() => null);
+  if (!r) return null;
+  return { agree: Number(r.values.agree) || 0, total: Number(r.values.total) || 0 };
+}
+async function castVote(env, input, now2 = Date.now()) {
+  const basis = input.basis.trim().slice(0, 500);
+  const track = await getTrack(env, input.actor.id);
+  const vote = {
+    objection_id: input.objection_id,
+    voter_id: input.actor.id,
+    voter_name: input.actor.name,
+    choice: input.choice,
+    basis,
+    quote: input.quote.trim().slice(0, 500),
+    channel: input.actor.channel,
+    weight: voteWeight({ basis, channel: input.actor.channel }, track),
+    created_at: new Date(now2).toISOString()
+  };
+  await upsertByKey(env, T_VOTE, `${input.objection_id}:${input.actor.id}`, {
+    objection_id: vote.objection_id,
+    voter_id: vote.voter_id,
+    voter_name: vote.voter_name,
+    choice: vote.choice,
+    basis: vote.basis,
+    quote: vote.quote,
+    channel: vote.channel,
+    weight: String(vote.weight),
+    created_at: vote.created_at
+  });
+  return vote;
+}
+async function getObjection(env, id) {
+  const r = await getRec(env, id);
+  if (!r || !r.values.card_key) return null;
+  return toObjection({ ...r, values: r.values });
+}
+async function decide(env, o, by, decision, reason, now2 = Date.now()) {
+  const iso = new Date(now2).toISOString();
+  const status = decision === "adopt" ? "adopted" : decision === "reject" ? "rejected" : "held";
+  await patch(env, o.id, { status, decided_by: `${by.name}\uFF08${by.id}\uFF09`, decided_at: iso, decision_reason: reason.slice(0, 500) });
+  let supplementId;
+  if (decision === "adopt") {
+    supplementId = await create(env, T_SUPP, {
+      objection_id: o.id,
+      card_key: o.card_key,
+      library: o.library,
+      page_name: o.page_name,
+      paragraph: o.paragraph,
+      corrected: o.claim_b,
+      basis: o.source,
+      adopted_by: by.name,
+      created_at: iso,
+      reextract: "requested"
+    });
+    await reextractSupplement(env, supplementId, now2).catch(() => void 0);
+  }
+  if (decision !== "hold") {
+    if (decision === "reject") {
+      const rest = (await listBy(env, T_OBJECTION, "card_key", o.card_key)).map(toObjection).filter((x) => x.id !== o.id && x.status !== "rejected");
+      if (rest.length === 0) await writeIndex2(env, o.library, (s) => {
+        s.delete(o.card_key);
+      });
+    } else {
+      idxCache.delete(o.library);
+    }
+    await updateTracks(env, o, decision);
+  }
+  return { status, supplement_id: supplementId };
+}
+async function reextractSupplement(env, supplementId, now2 = Date.now()) {
+  const s = await getRec(env, supplementId);
+  if (!s) return { status: "failed", reason: "\u627E\u4E0D\u5230\u88DC\u5145\u539F\u7A3F" };
+  if (s.values.reextract === "done") return { status: "skipped", reason: "\u5DF2\u7D93\u91CD\u8403\u904E" };
+  const { library, page_name: pageName, paragraph, corrected } = s.values;
+  const mark = (reextract, note, entryId = "") => patch(env, supplementId, { reextract, reextract_note: note.slice(0, 300), reextracted_at: new Date(now2).toISOString(), entry_id: entryId });
+  if (!library || !pageName || !paragraph || !corrected) {
+    await mark("failed", "\u88DC\u5145\u539F\u7A3F\u7F3A\u6B04\u4F4D");
+    return { status: "failed", reason: "\u88DC\u5145\u539F\u7A3F\u7F3A\u6B04\u4F4D" };
+  }
+  const params = new URLSearchParams({ library, page_name: pageName, owner_id: String(knowledgeOwner(env)), limit: "200" });
+  const res = await kFetch3(env, `/entries?${params.toString()}`);
+  if (!res.ok) {
+    releaseBody(res);
+    return { status: "failed", reason: `\u8B80\u5361\u5931\u6557 HTTP ${res.status}` };
+  }
+  const body = await res.json().catch(() => null);
+  const hit = (body?.entries ?? []).find((e) => e.id && typeof e.content === "string" && e.content.includes(paragraph));
+  if (!hit || !hit.id || typeof hit.content !== "string") {
+    await mark("no_match", "\u5361\u4E0A\u5DF2\u627E\u4E0D\u5230\u539F\u6BB5\u843D\uFF08\u53EF\u80FD\u5DF2\u88AB\u91CD\u65B0\u8403\u53D6\uFF09");
+    return { status: "no_match", reason: "\u5361\u4E0A\u5DF2\u627E\u4E0D\u5230\u539F\u6BB5\u843D" };
+  }
+  const next = hit.content.split(paragraph).join(corrected);
+  const up = await kFetch3(env, `/entries/${encodeURIComponent(hit.id)}`, { method: "PATCH", body: JSON.stringify({ content: next }) });
+  releaseBody(up);
+  if (!up.ok) return { status: "failed", reason: `\u6539\u5361\u5931\u6557 HTTP ${up.status}` };
+  await mark("done", "\u5DF2\u5C31\u5730\u6539\u5BEB\u8A72\u6BB5", hit.id);
+  return { status: "done", entry_id: hit.id };
+}
+async function updateTracks(env, o, decision) {
+  const votes = latestVotes((await listBy(env, T_VOTE, "objection_id", o.id)).map(toVote)).filter((v) => v.choice !== "unsure");
+  const outcome = decision === "adopt" ? "b" : "a";
+  for (const v of votes) {
+    const cur = await getTrack(env, v.voter_id) ?? { agree: 0, total: 0 };
+    await upsertByKey(env, T_VOTER, v.voter_id, {
+      voter_id: v.voter_id,
+      agree: String(cur.agree + (v.choice === outcome ? 1 : 0)),
+      total: String(cur.total + 1)
+    });
+  }
+}
+async function probeFor(env, user, cards, now2 = Date.now()) {
+  const views = /* @__PURE__ */ new Map();
+  const cands = [];
+  const byLib = /* @__PURE__ */ new Map();
+  for (const c of cards) byLib.set(c.library, [...byLib.get(c.library) ?? [], c.page_name]);
+  let settingsFor = DEFAULT_SETTINGS;
+  for (const [library, pages] of byLib) {
+    const open = await openCardKeys(env, library, now2);
+    const hits = pages.filter((p) => open.has(cardKeyOf(library, p)));
+    if (hits.length === 0) continue;
+    settingsFor = await getSettings(env, library);
+    const likely = (await listAssignments(env, library)).some((a) => a.active && a.owner_id === user.id);
+    for (const page of hits) {
+      const proofs = await loadCardProofs(env, library, page, now2);
+      views.set(cardKeyOf(library, page), viewsOf(proofs));
+      for (const p of proofs) {
+        const voted = latestVotes(p.votes).filter((v) => v.choice !== "unsure").length;
+        const already = p.objection.author_id === user.id || latestVotes(p.votes).some((v) => v.voter_id === user.id) || !!await getByKey(env, T_PROBE, `${p.objection.id}:${user.id}`);
+        cands.push({ objection: p.objection, evaluation: p.evaluation, voted, excludedForUser: already, likelyKnows: likely });
+      }
+    }
+  }
+  if (cands.length === 0) return { probe: null, views };
+  const chosen = pickProbe(cands, settingsFor);
+  if (!chosen) return { probe: null, views };
+  const today = dayKey(now2);
+  const dayRec = await getByKey(env, T_PROBE_DAY, `${user.id}:${today}`);
+  const count2 = Number(dayRec?.values.count) || 0;
+  if (count2 >= settingsFor.probeDailyCap) return { probe: null, views };
+  await upsertByKey(env, T_PROBE_DAY, `${user.id}:${today}`, { user_id: user.id, day: today, count: String(count2 + 1) });
+  await upsertByKey(env, T_PROBE, `${chosen.id}:${user.id}`, { objection_id: chosen.id, user_id: user.id, shown_at: new Date(now2).toISOString() });
+  return { probe: buildProbe(chosen), views };
+}
+async function digestFor(env, library, now2 = Date.now()) {
+  const open = [...await openCardKeys(env, library, now2)];
+  const items = [];
+  const created = /* @__PURE__ */ new Map();
+  for (const key of open) {
+    const objs = (await listBy(env, T_OBJECTION, "card_key", key)).map(toObjection).filter((o) => o.status === "pending" || o.status === "held");
+    const settings = await getSettings(env, library);
+    for (const o of objs) {
+      const votes = (await listBy(env, T_VOTE, "objection_id", o.id)).map(toVote);
+      const asked = (await idsBy(env, T_PROBE, "objection_id", o.id)).length;
+      const others = new Set(objs.filter((x) => x.id !== o.id && x.paragraph_id === o.paragraph_id && x.author_id !== o.author_id).map((x) => x.author_id));
+      const ev = evaluateObjection(o, votes, others.size, settings, now2);
+      if (ev.state === "trusted") continue;
+      items.push(digestItem(o, ev, votes, asked));
+      created.set(o.id, o.created_at);
+    }
+  }
+  return sortDigest(items, created);
+}
+async function recordSignal(env, kind, library, pageName, userId, question, now2 = Date.now()) {
+  await create(env, T_SIGNAL, { card_key: cardKeyOf(library, pageName), kind, user_id: userId, question: question.slice(0, 300), created_at: new Date(now2).toISOString() });
+}
+
 // cypher-executor/src/lib/chat-answer.ts
 var MAX_CARDS_IN_PROMPT = 8;
 var MAX_CARD_CHARS = 2500;
@@ -66600,7 +67714,7 @@ portalDataRouter.get(
     if (limit && /^\d{1,3}$/.test(limit)) params.set("limit", limit);
     const res = await kbdbFetch3(c.env, `/entries/search?${params.toString()}`);
     if (!res.ok) {
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relayKbdbFailure(res);
     }
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.entries)) {
@@ -66610,6 +67724,19 @@ portalDataRouter.get(
     return c.json({ ...body, entries, count: entries.length });
   })
 );
+async function proofreadOverlay(env, userId, cards) {
+  if (cards.length === 0) return { cards, probe: null, unavailable: false };
+  try {
+    const { probe, views } = await probeFor(env, { id: userId }, cards.map((c) => ({ library: c.library, page_name: c.page_name })));
+    const out = cards.map((c) => {
+      const v = views.get(cardKeyOf(c.library, c.page_name));
+      return v && v.length > 0 ? { ...c, content: applyCorrections(c.content, v).content } : c;
+    });
+    return { cards: out, probe, unavailable: false };
+  } catch {
+    return { cards, probe: null, unavailable: true };
+  }
+}
 portalDataRouter.get(
   "/portal/data/retrieve",
   (c) => run(c, async () => {
@@ -66646,7 +67773,8 @@ portalDataRouter.get(
       graph_depth: graphDepth && /^\d{1,2}$/.test(graphDepth) ? graphDepth : void 0
     });
     if (!r.ok) return r.res;
-    return c.json(r.body);
+    const ov = await proofreadOverlay(c.env, auth.user.recordId, r.body.cards);
+    return c.json({ ...r.body, cards: ov.cards, probe: ov.probe, ...ov.unavailable ? { proofread_unavailable: true } : {} });
   })
 );
 async function retrieveForLibraries(env, libraries, q, opts = {}) {
@@ -66657,7 +67785,7 @@ async function retrieveForLibraries(env, libraries, q, opts = {}) {
   if (opts.graph_depth) params.set("graph_depth", opts.graph_depth);
   const res = await kbdbFetch3(env, `/retrieve?${params.toString()}`);
   if (!res.ok) {
-    return { ok: false, res: new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } }) };
+    return { ok: false, res: await relayKbdbFailure(res) };
   }
   const body = await res.json().catch(() => null);
   if (!body || !Array.isArray(body.pages)) {
@@ -66777,7 +67905,7 @@ portalDataRouter.get(
     ]);
     const tripletsTotal = census.owned;
     if (!res.ok) {
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relayKbdbFailure(res);
     }
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.records)) {
@@ -67472,7 +68600,7 @@ portalDataRouter.get(
     const tenant2 = knowledgeOwner(c.env);
     const res = await kbdbFetch3(c.env, `/map?${ownerQuery(tenant2)}`);
     if (!res.ok) {
-      return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+      return relayKbdbFailure(res);
     }
     const body = await res.json().catch(() => null);
     if (!body || !Array.isArray(body.libraries)) {
@@ -67572,7 +68700,7 @@ portalDataRouter.post(
         created_by: knowledgeOwner(c.env)
       })
     });
-    return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    return res.ok ? new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } }) : relayKbdbFailure(res);
   })
 );
 portalDataRouter.get(
@@ -67664,7 +68792,7 @@ portalDataRouter.post(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ template: body.template, values, owner_id: ownerField(knowledgeOwner(c.env)) })
     });
-    return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+    return res.ok ? new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } }) : relayKbdbFailure(res);
   })
 );
 portalDataRouter.get(
@@ -67739,7 +68867,11 @@ portalDataRouter.post(
         accounts.push({ id: link.link_id, label, ok: false, count: 0, reason: r.reason, detail: r.detail });
       }
     }
-    const cards = mergeCards(perAccount);
+    const merged = mergeCards(perAccount);
+    const selfCards = merged.filter((cd) => cd.account_id === "self");
+    const ov = await proofreadOverlay(c.env, auth.user.recordId, selfCards);
+    const corrected = new Map(ov.cards.map((cd) => [`${cd.library}\u241F${cd.page_name}`, cd.content]));
+    const cards = merged.map((cd) => cd.account_id === "self" ? { ...cd, content: corrected.get(`${cd.library}\u241F${cd.page_name}`) ?? cd.content } : cd);
     const publicCards = (cited) => cards.map((cd, i) => ({
       n: i + 1,
       account: cd.account,
@@ -67762,7 +68894,9 @@ portalDataRouter.post(
       answer: ans.answer,
       model: ans.model,
       cards: publicCards(new Set(citedNumbers(ans.answer, cards.length))),
-      accounts
+      accounts,
+      probe: ov.probe,
+      ...ov.unavailable ? { proofread_unavailable: true } : {}
     });
   })
 );
@@ -67908,6 +69042,348 @@ portalDataRouter.get(
     const r = await retrieveForLibraries(c.env, a.libraries, normalizeCjkQuery(qRaw.slice(0, 600)));
     if (!r.ok) return r.res;
     return c.json({ account: a.account, cards: r.body.cards });
+  })
+);
+
+// cypher-executor/src/routes/portal-proofread.ts
+init_dist();
+init_tenant();
+var portalProofreadRouter = new Hono2();
+var notFound2 = (c) => c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u8CC7\u6599" }, 404);
+function nameOf(values) {
+  const n = (values.display_name ?? "").trim();
+  if (n) return n;
+  const e = (values.email ?? "").trim();
+  return e ? e.split("@")[0] : "\uFF08\u672A\u5177\u540D\uFF09";
+}
+function channelOf(raw2) {
+  return raw2 === "mcp" || raw2 === "helper" ? raw2 : "portal";
+}
+function actorOf(auth, rawChannel) {
+  return { id: auth.recordId, name: nameOf(auth.values), channel: channelOf(rawChannel) };
+}
+async function loadPeople(env) {
+  const recs = await listRecordsByTemplate(env, "portal_user");
+  const live = recs.filter((r) => (r.values.status ?? "") === "active");
+  const admins = live.filter((r) => (r.values.role ?? "") === "admin").sort((a, b) => (a.values.created_at ?? "").localeCompare(b.values.created_at ?? ""));
+  const root = admins[0] ? { id: admins[0].record_id, name: nameOf(admins[0].values) } : null;
+  return {
+    active: new Set(live.map((r) => r.record_id)),
+    root,
+    byEmail: new Map(live.map((r) => [(r.values.email ?? "").toLowerCase(), { id: r.record_id, name: nameOf(r.values) }]))
+  };
+}
+async function ownerOf(env, people, library, sourcePath, machine) {
+  const assignments = await listAssignments(env, library);
+  return resolveOwner(assignments, { library, sourcePath, machine }, people.root, people.active);
+}
+async function readCard(env, library, pageName) {
+  const params = new URLSearchParams({ library, page_name: pageName, limit: "200" });
+  params.set("owner_id", ownerField(knowledgeOwner(env)));
+  const res = await kbdbFetch3(env, `/entries?${params.toString()}`);
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => null);
+  const entries = filterDeprecatedEntries(Array.isArray(body?.entries) ? body.entries : []);
+  if (entries.length === 0) return null;
+  const content = entries.map((e) => String(e.content ?? "")).join("\n");
+  let source_path = "";
+  let machine = "";
+  for (const e of entries) {
+    try {
+      const m = JSON.parse(e.metadata_json ?? "null");
+      if (!m) continue;
+      if (!source_path && typeof m.source_path === "string") source_path = m.source_path;
+      if (!machine) machine = typeof m.machine_label === "string" && m.machine_label ? m.machine_label : typeof m.machine === "string" ? m.machine : "";
+    } catch {
+    }
+  }
+  return { content, version: await shortHash(content), source_path, machine };
+}
+var strField = (b, k, max) => typeof b?.[k] === "string" ? b[k].trim().slice(0, max) : "";
+function publicObjection(o, ev) {
+  return {
+    objection_id: o.id,
+    paragraph: o.paragraph,
+    claim_b: o.claim_b,
+    has_source: o.source.trim() !== "",
+    raised_by: o.author_name,
+    raised_at: o.created_at,
+    status: o.status,
+    state: ev.state,
+    reason: ev.reason,
+    majority: ev.majority,
+    support_b: ev.b_people,
+    support_a: ev.a_people,
+    unsure: ev.unsure,
+    card_version: o.card_version,
+    ...o.status === "adopted" || o.status === "rejected" ? { decided_by: o.decided_by, decided_at: o.decided_at, decision_reason: o.decision_reason } : {}
+  };
+}
+portalProofreadRouter.post(
+  "/portal/data/proofread/feedback",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const b = await c.req.json().catch(() => null);
+    const kind = b?.kind;
+    const library = strField(b, "library", 200);
+    const pageName = strField(b, "page_name", 300);
+    if (kind !== "like" && kind !== "not_wanted" && kind !== "wrong") return c.json({ error: "kind \u53EA\u80FD\u662F like\uFF0Fnot_wanted\uFF0Fwrong" }, 400);
+    if (!library || !pageName) return c.json({ error: "\u7F3A\u5C11 library \u6216 page_name" }, 400);
+    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    const actor = actorOf(auth.user, b?.channel);
+    if (kind !== "wrong") {
+      await recordSignal(c.env, kind, library, pageName, actor.id, strField(b, "question", 300));
+      return c.json({
+        ok: true,
+        kind,
+        reply: kind === "like" ? "\u8B1D\u8B1D\uFF0C\u5DF2\u8A18\u4E0B\u9019\u500B\u7B54\u6848\u6709\u5E6B\u5230\u4F60\u3002" : "\u4E86\u89E3\uFF0C\u9019\u6B21\u662F\u554F\u6CD5\u548C\u4F60\u8981\u7684\u5C0D\u4E0D\u4E0A\uFF0C\u5DF2\u8A18\u4E0B\u4F86\uFF1B\u4E0D\u6703\u7576\u6210\u77E5\u8B58\u6709\u932F\u3002"
+      });
+    }
+    const paragraph = normalizeParagraph(strField(b, "paragraph", 2e3));
+    const suggestion = strField(b, "suggestion", 1e3);
+    const source = strField(b, "source", 500);
+    const quote = strField(b, "quote", 500);
+    if (!paragraph || !suggestion) return c.json({ error: "\u8ACB\u6307\u51FA\u662F\u54EA\u4E00\u6BB5\uFF08paragraph\uFF09\u3001\u4EE5\u53CA\u4F60\u8A8D\u70BA\u61C9\u8A72\u662F\u4EC0\u9EBC\uFF08suggestion\uFF09" }, 400);
+    if (actor.channel === "mcp" && !quote) {
+      return c.json({ error: "\u7D93 MCP \u56DE\u994B\u8981\u9644\u4E0A\u4F7F\u7528\u8005\u7684\u539F\u8A71\uFF08quote\uFF09\u2014\u2014\u53EA\u6536\u4F7F\u7528\u8005\u672C\u4EBA\u7684\u5224\u65B7\uFF0CAI \u81EA\u5DF1\u7684\u5224\u65B7\u4E0D\u7B97\u7968", code: "quote_required" }, 400);
+    }
+    const card = await readCard(c.env, library, pageName);
+    if (!card) return notFound2(c);
+    if (!card.content.replace(/\s+/g, " ").includes(paragraph)) {
+      return c.json({ error: "\u9019\u6BB5\u6587\u5B57\u4E0D\u5728\u9019\u5F35\u5361\u88E1\uFF08\u5361\u53EF\u80FD\u5DF2\u7D93\u66F4\u65B0\uFF09\uFF0C\u8ACB\u91CD\u65B0\u6253\u958B\u5361\u518D\u9078\u4E00\u6B21", code: "paragraph_not_in_card" }, 422);
+    }
+    const people = await loadPeople(c.env);
+    const owner = await ownerOf(c.env, people, library, card.source_path, card.machine);
+    const r = await createObjection(c.env, {
+      library,
+      page_name: pageName,
+      paragraph,
+      claim_b: suggestion,
+      source,
+      question: strField(b, "question", 300),
+      card_version: card.version,
+      source_path: card.source_path,
+      machine: card.machine,
+      actor
+    });
+    if (r.kind === "duplicate") {
+      return c.json({ ok: true, kind: "wrong", result: "duplicate", objection_id: r.objection_id, reply: "\u4F60\u5DF2\u7D93\u5C31\u9019\u4E00\u6BB5\u63D0\u904E\u610F\u898B\u4E86\uFF0C\u540C\u4E00\u500B\u4EBA\u91CD\u8907\u6A19\u53EA\u7B97\u4E00\u7968\u3002" });
+    }
+    if (r.kind === "merged") {
+      return c.json({ ok: true, kind: "wrong", result: "merged", objection_id: r.objection_id, reply: "\u5DF2\u6709\u4EBA\u5C31\u9019\u4E00\u6BB5\u63D0\u51FA\u540C\u6A23\u7684\u8AAA\u6CD5\uFF0C\u4F60\u7684\u610F\u898B\u8A18\u6210\u9644\u548C\u3002" });
+    }
+    const o = r.objection;
+    if (owner && owner.id === actor.id) {
+      const d = await decide(c.env, o, { id: actor.id, name: actor.name }, "adopt", "\u8CA0\u8CAC\u4EBA\u81EA\u5DF1\u63D0\u51FA\uFF0C\u76F4\u63A5\u63A1\u7D0D");
+      return c.json({
+        ok: true,
+        kind: "wrong",
+        result: "adopted",
+        objection_id: o.id,
+        supplement_id: d.supplement_id,
+        owner: { name: owner.name, via: owner.via },
+        reply: `\u4F60\u662F\u9019\u4EFD\u539F\u7A3F\u7684\u8CA0\u8CAC\u4EBA\uFF0C\u5DF2\u76F4\u63A5\u63A1\u7D0D\uFF1A\u300C${paragraph}\u300D\u6539\u70BA\u300C${suggestion}\u300D\uFF0C\u4E26\u8A18\u6210\u88DC\u5145\u539F\u7A3F\uFF0C\u7B49\u91CD\u8403\u66F4\u65B0\u9019\u5F35\u5361\u3002`
+      });
+    }
+    return c.json({
+      ok: true,
+      kind: "wrong",
+      result: "recorded",
+      objection_id: o.id,
+      state: "raised",
+      owner: owner ? { name: owner.name, via: owner.via } : null,
+      reply: `\u5DF2\u8A18\u4E0B\uFF1A${actor.name} \u5728 ${o.created_at.slice(0, 10)} \u8868\u793A\u300C${paragraph}\u300D\u4E0D\u5C0D\uFF0C\u61C9\u70BA\u300C${suggestion}\u300D\u3002\u5361\u9084\u6C92\u6709\u6539\uFF1B${owner ? `\u8CA0\u8CAC\u4EBA\u662F ${owner.name}\uFF0C` : ""}\u6703\u7531\u8CA0\u8CAC\u4EBA\u88C1\u6C7A\uFF0C\u9019\u6BB5\u5728\u78BA\u8A8D\u524D\u4ECD\u4EE5\u539F\u7A3F\u70BA\u6E96\u3002`
+    });
+  })
+);
+portalProofreadRouter.post(
+  "/portal/data/proofread/vote",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const b = await c.req.json().catch(() => null);
+    const id = strField(b, "objection_id", 200);
+    const choice = b?.choice;
+    if (!id || choice !== "a" && choice !== "b" && choice !== "unsure") return c.json({ error: "\u9700\u8981 objection_id \u8207 choice\uFF08a\uFF0Fb\uFF0Funsure\uFF09" }, 400);
+    const o = await getObjection(c.env, id);
+    if (!o || !canReadLibrary(libraries, o.library)) return notFound2(c);
+    if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u7570\u8B70\u5DF2\u7D93\u7D50\u6848\u4E86", code: "closed", status: o.status }, 409);
+    const actor = actorOf(auth.user, b?.channel);
+    if (actor.id === o.author_id) return c.json({ error: "\u9019\u662F\u4F60\u81EA\u5DF1\u63D0\u7684\u7570\u8B70\uFF0C\u540C\u4E00\u500B\u4EBA\u53EA\u7B97\u4E00\u7968", code: "own_objection" }, 409);
+    const quote = strField(b, "quote", 500);
+    if (actor.channel === "mcp" && !quote) {
+      return c.json({ error: "\u7D93 MCP \u56DE\u994B\u8981\u9644\u4E0A\u4F7F\u7528\u8005\u7684\u539F\u8A71\uFF08quote\uFF09\u2014\u2014\u53EA\u6536\u4F7F\u7528\u8005\u672C\u4EBA\u7684\u5224\u65B7", code: "quote_required" }, 400);
+    }
+    await castVote(c.env, { objection_id: id, actor, choice, basis: strField(b, "basis", 500), quote });
+    const proofs = await loadCardProofs(c.env, o.library, o.page_name);
+    const mine = proofs.find((p) => p.objection.id === id);
+    return c.json({
+      ok: true,
+      state: mine?.evaluation.state ?? "raised",
+      majority: mine?.evaluation.majority ?? false,
+      reply: choice === "unsure" ? "\u597D\uFF0C\u4E0D\u78BA\u5B9A\u4E5F\u6C92\u95DC\u4FC2\uFF0C\u8B1D\u8B1D\u4F60\u770B\u904E\u3002" : "\u8B1D\u8B1D\u4F60\u5E6B\u5FD9\u78BA\u8A8D\uFF0C\u5DF2\u8A18\u4E0B\u4F60\u7684\u5224\u65B7\u3002"
+    });
+  })
+);
+portalProofreadRouter.get(
+  "/portal/data/proofread/state",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const library = c.req.query("library") ?? "";
+    const pageName = c.req.query("page_name") ?? "";
+    if (!library || !pageName) return c.json({ error: "\u7F3A\u5C11 library \u6216 page_name" }, 400);
+    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    const proofs = await loadCardProofs(c.env, library, pageName);
+    return c.json({
+      success: true,
+      library,
+      page_name: pageName,
+      objections: proofs.map((p) => publicObjection(p.objection, p.evaluation)),
+      paragraphs: viewsOf(proofs)
+    });
+  })
+);
+async function requireOwnerOf(env, auth, library, sourcePath, machine) {
+  const people = await loadPeople(env);
+  const owner = await ownerOf(env, people, library, sourcePath, machine);
+  const isRoot = people.root?.id === auth.recordId;
+  return owner?.id === auth.recordId || isRoot ? { ok: true, people } : { ok: false };
+}
+portalProofreadRouter.post(
+  "/portal/data/proofread/decide",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const b = await c.req.json().catch(() => null);
+    const id = strField(b, "objection_id", 200);
+    const decision = b?.decision;
+    if (!id || decision !== "adopt" && decision !== "reject" && decision !== "hold") return c.json({ error: "\u9700\u8981 objection_id \u8207 decision\uFF08adopt\uFF0Freject\uFF0Fhold\uFF09" }, 400);
+    const o = await getObjection(c.env, id);
+    if (!o || !canReadLibrary(libraries, o.library)) return notFound2(c);
+    if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u7570\u8B70\u5DF2\u7D93\u88C1\u6C7A\u904E\u4E86", code: "closed", status: o.status }, 409);
+    const gate = await requireOwnerOf(c.env, auth.user, o.library, o.source_path, o.machine);
+    if (!gate.ok) return c.json({ error: "\u53EA\u6709\u9019\u4EFD\u539F\u7A3F\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u88C1\u6C7A", code: "not_owner" }, 403);
+    const reason = strField(b, "reason", 500);
+    const d = await decide(c.env, o, { id: auth.user.recordId, name: nameOf(auth.user.values) }, decision, reason);
+    return c.json({
+      ok: true,
+      status: d.status,
+      supplement_id: d.supplement_id,
+      reply: decision === "adopt" ? "\u5DF2\u63A1\u7D0D\uFF1A\u8A18\u6210\u88DC\u5145\u539F\u7A3F\uFF0C\u7B54\u6848\u6703\u5148\u6539\u7528\u65B0\u8AAA\u6CD5\uFF0C\u7B49\u91CD\u8403\u66F4\u65B0\u9019\u5F35\u5361\u3002\u7559\u75D5\uFF1A\u8AB0\u63D0\u3001\u8AB0\u88C1\u3001\u4F9D\u64DA\u90FD\u67E5\u5F97\u5230\u3002" : decision === "reject" ? "\u5DF2\u99C1\u56DE\uFF1A\u9019\u6BB5\u56DE\u5230\u53EF\u4FE1\uFF0C\u7570\u8B70\u7559\u5728\u7D00\u9304\u88E1\u3002" : "\u5148\u653E\u8457\uFF1A\u4E0D\u6703\u5361\u4F4F\u7CFB\u7D71\uFF0C\u8D85\u904E\u671F\u9650\u7167\u964D\u7D1A\u898F\u5247\u8D70\u3002"
+    });
+  })
+);
+portalProofreadRouter.get(
+  "/portal/data/proofread/inbox",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const library = c.req.query("library") ?? "";
+    if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
+    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    const people = await loadPeople(c.env);
+    const assignments = await listAssignments(c.env, library);
+    const mine = people.root?.id === auth.user.recordId || assignments.some((a) => a.active && a.owner_id === auth.user.recordId && people.active.has(a.owner_id));
+    if (!mine) return c.json({ error: "\u53EA\u6709\u9019\u500B\u5EAB\uFF08\u6216\u5176\u4E2D\u8CC7\u6599\u593E\uFF09\u7684\u8CA0\u8CAC\u4EBA\u770B\u5F97\u5230\u5F85\u8655\u7406\u6E05\u55AE", code: "not_owner" }, 403);
+    const items = await digestFor(c.env, library);
+    return c.json({ success: true, library, count: items.length, items });
+  })
+);
+function scopeFrom(library, folder, machine) {
+  if (folder) return folderScope(library, folder.replace(/^\/+|\/+$/g, ""));
+  if (machine) return machineScope(machine);
+  return library ? libraryScope(library) : null;
+}
+portalProofreadRouter.put(
+  "/portal/data/proofread/owner",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const b = await c.req.json().catch(() => null);
+    const library = strField(b, "library", 200);
+    const folder = strField(b, "folder", 300);
+    const machine = strField(b, "machine", 200);
+    const email = strField(b, "user_email", 254).toLowerCase();
+    if (!library || !email) return c.json({ error: "\u9700\u8981 library \u8207 user_email" }, 400);
+    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    const scope = scopeFrom(library, folder, machine);
+    const gate = await requireOwnerOf(c.env, auth.user, library, folder ? `${folder}/x` : "", machine);
+    if (!gate.ok) return c.json({ error: "\u53EA\u6709\u76EE\u524D\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u6307\u6D3E\u65B0\u7684\u8CA0\u8CAC\u4EBA", code: "not_owner" }, 403);
+    const target = gate.people.byEmail.get(email);
+    if (!target) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B\u5E33\u865F\uFF08\u6216\u5E33\u865F\u5DF2\u505C\u7528\uFF09" }, 404);
+    await putAssignment(c.env, { scope, library, owner_id: target.id, owner_name: target.name, assigned_by: auth.user.recordId });
+    return c.json({ ok: true, scope, owner: target });
+  })
+);
+portalProofreadRouter.delete(
+  "/portal/data/proofread/owner",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const library = c.req.query("library") ?? "";
+    const folder = c.req.query("folder") ?? "";
+    const machine = c.req.query("machine") ?? "";
+    if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
+    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    const gate = await requireOwnerOf(c.env, auth.user, library, folder ? `${folder}/x` : "", machine);
+    if (!gate.ok) return c.json({ error: "\u53EA\u6709\u76EE\u524D\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u53D6\u6D88\u6307\u6D3E", code: "not_owner" }, 403);
+    const done = await revokeAssignment(c.env, scopeFrom(library, folder, machine), auth.user.recordId);
+    return c.json({ ok: done });
+  })
+);
+portalProofreadRouter.get(
+  "/portal/data/proofread/owner",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const library = c.req.query("library") ?? "";
+    if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
+    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    const folder = c.req.query("folder") ?? "";
+    const people = await loadPeople(c.env);
+    const owner = await ownerOf(c.env, people, library, folder ? `${folder}/x` : "", c.req.query("machine") ?? "");
+    return c.json({ success: true, library, folder: folder || folderOf(""), owner });
+  })
+);
+portalProofreadRouter.get(
+  "/portal/data/proofread/settings",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const library = c.req.query("library") ?? "";
+    if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
+    if (!canReadLibrary(parseLibraries(auth.user.values.libraries), library)) return notFound2(c);
+    return c.json({ success: true, library, settings: await getSettings(c.env, library), defaults: DEFAULT_SETTINGS });
+  })
+);
+portalProofreadRouter.put(
+  "/portal/data/proofread/settings",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const b = await c.req.json().catch(() => null);
+    const library = strField(b, "library", 200);
+    if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
+    if (!canReadLibrary(parseLibraries(auth.user.values.libraries), library)) return notFound2(c);
+    const gate = await requireOwnerOf(c.env, auth.user, library, "", "");
+    if (!gate.ok) return c.json({ error: "\u53EA\u6709\u5EAB\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u8ABF\u6574\u9580\u6ABB", code: "not_owner" }, 403);
+    const s = await putSettings(c.env, library, {
+      supportMin: b?.support_min,
+      fadeDays: b?.fade_days,
+      probeDailyCap: b?.probe_daily_cap,
+      probeStopVotes: b?.probe_stop_votes
+    });
+    return c.json({ success: true, library, settings: s });
   })
 );
 
@@ -69459,10 +70935,12 @@ app.use("*", cors({
 app.onError((err, c) => {
   if (err instanceof AssetStoreUnavailableError) {
     const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 503;
+    if (err.status === void 0 || err.status >= 500) return kbdbBusyJson(c);
     return c.json({ success: false, error: "kbdb_unavailable", message: err.message }, status);
   }
   if (err instanceof EphemeralStoreError) {
-    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 503;
+    const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 503;
+    if (status === 503) return kbdbBusyJson(c);
     return c.json({ success: false, error: "kbdb_unavailable", message: `\u77E5\u8B58\u5EAB\u66AB\u6642\u8B80\u5BEB\u4E0D\u5230\uFF08${err.message}\uFF09\u3002\u9019\u4E0D\u662F\u7A0B\u5F0F\u58DE\u4E86\uFF0C\u4E5F\u4E0D\u662F\u5BC6\u78BC\u932F\u3002` }, status);
   }
   if (err instanceof EndpointConfigError) {
@@ -69504,6 +70982,7 @@ app.route("/", consoleAuthRouter);
 app.route("/", consoleDashboardRouter);
 app.route("/", portalRouter);
 app.route("/", portalActorRouter);
+app.route("/", portalProofreadRouter);
 app.route("/", portalDataRouter);
 app.route("/", storageRouter);
 app.route("/", appsRouter);

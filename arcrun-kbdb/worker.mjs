@@ -1969,7 +1969,7 @@ async function searchEntries(db, q, owner_id, template, limit = 50, library, sou
   };
   const ftsMatch = buildFtsCandidateMatch(q);
   if (!ftsMatch) {
-    const res = await stmt("", []).all();
+    const res = owner_id ? await stmt("rowid IN (SELECT rowid FROM entries WHERE owner_id = ? ORDER BY created_at DESC LIMIT ?) /* bounded-owner-window */", [owner_id, SHORT_QUERY_OWNER_CAP], true).all() : await stmt("rowid > (SELECT MAX(rowid) FROM entries) - ?", [SHORT_QUERY_SCAN_CAP], true).all();
     return withTemplates(db, applyRelativeCut(res.results ?? []));
   }
   const { cutoffRowid, backfillCursor } = await readFtsMigrationState(db);
@@ -1997,7 +1997,7 @@ async function searchEntries(db, q, owner_id, template, limit = 50, library, sou
   }
   return withTemplates(db, applyRelativeCut(hits.slice(0, capped)));
 }
-var IDENTITY_COLUMNS, LIVE_BY_SOURCE, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
+var IDENTITY_COLUMNS, LIVE_BY_SOURCE, MAX_LIKE_Q_BYTES, MAX_LIKE_TERMS, utf8Len, LIKE_ESCAPE, CONTENT_LIKE, likeBytes, likePattern, MAX_SEARCH_TERMS, MAX_TERM_WEIGHT, KEYWORD_RELATIVE_CUT, CJK_STOP_CHARS, ASCII_STOP_WORDS, isCjkChar, isWordChar, FTS_WINDOW, MAX_FTS_WINDOWS, FTS_CANDIDATE_LIMIT, SHORT_QUERY_SCAN_CAP, SHORT_QUERY_OWNER_CAP, RESIDUAL_SCAN_CAP, RESIDUAL_SWEEP_ROTATION_PERIOD_MS, FTS_MIGRATION_CUTOFF_ID, NOT_DEPRECATED_PREDICATE;
 var init_entry_crud = __esm({
   "kbdb/src/actions/entry-crud.ts"() {
     "use strict";
@@ -2072,6 +2072,8 @@ var init_entry_crud = __esm({
     FTS_WINDOW = 3;
     MAX_FTS_WINDOWS = 48;
     FTS_CANDIDATE_LIMIT = 5e3;
+    SHORT_QUERY_SCAN_CAP = 1e4;
+    SHORT_QUERY_OWNER_CAP = Math.floor(SHORT_QUERY_SCAN_CAP / 3);
     RESIDUAL_SCAN_CAP = 1e4;
     RESIDUAL_SWEEP_ROTATION_PERIOD_MS = 1e3;
     FTS_MIGRATION_CUTOFF_ID = "kbdb-fts-migration-cutoff";
@@ -2148,7 +2150,7 @@ var init_kind_orphans = __esm({
   }
 });
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
     let index = -1;
@@ -2192,10 +2194,43 @@ var compose = (middleware, onError, onNotFound) => {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/http-exception.js
+var HTTPException = class extends Error {
+  res;
+  status;
+  /**
+   * Creates an instance of `HTTPException`.
+   * @param status - HTTP status code for the exception. Defaults to 500.
+   * @param options - Additional options for the exception.
+   */
+  constructor(status = 500, options) {
+    super(options?.message, { cause: options?.cause });
+    this.res = options?.res;
+    this.status = status;
+  }
+  /**
+   * Returns the response object associated with the exception.
+   * If a response object is not provided, a new response is created with the error message and status code.
+   * @returns The response object.
+   */
+  getResponse() {
+    if (this.res) {
+      const newResponse = new Response(this.res.body, {
+        status: this.status,
+        headers: this.res.headers
+      });
+      return newResponse;
+    }
+    return new Response(this.message, {
+      status: this.status
+    });
+  }
+};
+
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
 var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
@@ -2267,7 +2302,7 @@ var handleParsingNestedValues = (form, key, value) => {
   });
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
 var splitPath = (path) => {
   const paths = path.split("/");
   if (paths[0] === "") {
@@ -2471,7 +2506,7 @@ var getQueryParams = (url, key) => {
 };
 var decodeURIComponent_ = decodeURIComponent;
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
 var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
 var HonoRequest = class {
   /**
@@ -2754,7 +2789,7 @@ var HonoRequest = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
   Stringify: 1,
   BeforeStream: 2,
@@ -2796,7 +2831,7 @@ var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => 
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
 var setDefaultContentType = (contentType, headers) => {
   return {
@@ -3203,7 +3238,7 @@ var Context = class {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -3211,10 +3246,10 @@ var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is
 var UnsupportedPathError = class extends Error {
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
 var notFoundHandler = (c) => {
   return c.text("404 Not Found", 404);
 };
@@ -3590,7 +3625,7 @@ var Hono = class _Hono {
   };
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
@@ -3611,7 +3646,7 @@ function match(method, path) {
   return match2(method, path);
 }
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
 var LABEL_REG_EXP_STR = "[^/]+";
 var ONLY_WILDCARD_REG_EXP_STR = ".*";
 var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -3719,7 +3754,7 @@ var Node = class _Node {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie = class {
   #context = { varIndex: 0 };
   #root = new Node();
@@ -3775,7 +3810,7 @@ var Trie = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
 var nullMatcher = [/^$/, [], /* @__PURE__ */ Object.create(null)];
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
 function buildWildcardRegExp(path) {
@@ -3954,7 +3989,7 @@ var RegExpRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter = class {
   name = "SmartRouter";
   #routers = [];
@@ -4009,7 +4044,7 @@ var SmartRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var hasChildren = (children) => {
   for (const _ in children) {
@@ -4184,7 +4219,7 @@ var Node2 = class _Node2 {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter = class {
   name = "TrieRouter";
   #node;
@@ -4206,7 +4241,7 @@ var TrieRouter = class {
   }
 };
 
-// kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
+// ../Arcrun-374/kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
 var Hono2 = class extends Hono {
   /**
    * Creates an instance of the Hono class.
@@ -4220,6 +4255,12 @@ var Hono2 = class extends Hono {
     });
   }
 };
+
+// kbdb/src/transient-error.ts
+function isTransientD1Error(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /overloaded|too many resources|resource(s)? consumed|timed? ?out|network connection lost|connection (reset|closed)|temporarily unavailable|storage operation exceeded|internal error while starting up/i.test(msg);
+}
 
 // kbdb/src/routes/entries.ts
 init_kind();
@@ -6564,6 +6605,17 @@ entryRoutes.get("/search", async (c) => {
     return c.json({ success: true, entries: entries2, count: entries2.length, mode: "semantic" });
   }
   const entries = await searchEntries(dbOf(c.env), q, owner_id, template, void 0, library, source, include_deprecated);
+  if (!buildFtsCandidateMatch(q)) {
+    return c.json({
+      success: true,
+      entries,
+      count: entries.length,
+      mode: "keyword",
+      index_coverage: "partial",
+      capability_hint: "\u4F60\u8F38\u5165\u7684\u95DC\u9375\u5B57\u592A\u77ED\uFF08\u9023\u7E8C\u4E0D\u5230 3 \u500B\u5B57\uFF09\uFF0C\u7CFB\u7D71\u53EA\u641C\u4E86\u6700\u8FD1\u5BEB\u5165\u7684\u4E00\u5C0F\u6BB5\uFF0C\u6C92\u6709\u641C\u5168\u5EAB\u3002\u627E\u4E0D\u5230\u7684\u8A71\uFF0C\u8ACB\u6539\u7528 3 \u500B\u5B57\u4EE5\u4E0A\u7684\u8A5E\uFF0C\u6216\u76F4\u63A5\u554F\u5B8C\u6574\u7684\u554F\u984C\u3002",
+      admin_hint: `\u77ED\u67E5\u8A62\uFF08\u7121 trigram \u5019\u9078\u7A97\uFF09\u53EA\u6383\u6700\u65B0 ${SHORT_QUERY_SCAN_CAP} \u5217\uFF0C\u898B entry-crud.ts searchEntries\u3002`
+    });
+  }
   const { cutoffRowid, backfillCursor } = await readFtsMigrationState(dbOf(c.env));
   const complete = isSearchCoverageComplete(q, backfillCursor, cutoffRowid);
   if (!complete) {
@@ -6647,6 +6699,7 @@ entryRoutes.post("/backfill-library", async (c) => {
     });
     return c.json({ success: true, ...result });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -7553,6 +7606,7 @@ recordRoutes.post("/backfill-library", async (c) => {
     });
     return c.json({ success: true, ...result });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -7584,6 +7638,7 @@ recordRoutes.patch("/:recordId", async (c) => {
     if (!rec) return c.json({ success: false, error: "not found" }, 404);
     return c.json({ success: true, record: rec });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -7600,6 +7655,7 @@ recordRoutes.post("/:recordId/relation", async (c) => {
     if (!res) return c.json({ success: false, error: "not found" }, 404);
     return c.json({ success: true, ...res });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -8027,6 +8083,7 @@ mapRoutes.get("/select", async (c) => {
     });
     return c.json({ success: true, ...selection });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -8046,6 +8103,7 @@ mapRoutes.post("/recompute", async (c) => {
     });
     return c.json({ success: true, ...result });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -8059,6 +8117,7 @@ mapRoutes.put("/:library/narrative", async (c) => {
     const map = await setLibraryNarrative(dbOf(c.env), library, narrative, owner);
     return c.json({ success: true, map });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -8186,6 +8245,7 @@ graphRoutes.post("/canonicalize-entities", async (c) => {
     });
     return c.json({ success: true, ...result });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -8531,6 +8591,7 @@ async function lookupCards(db, question, opts) {
 }
 
 // kbdb/src/actions/retrieve.ts
+var SHORT_QUERY_COVERAGE_HINT = "\u4F60\u8F38\u5165\u7684\u95DC\u9375\u5B57\u592A\u77ED\uFF08\u9023\u7E8C\u4E0D\u5230 3 \u500B\u5B57\uFF09\uFF0C\u9019\u6B21\u53EA\u67E5\u4E86\u6700\u8FD1\u5BEB\u5165\u7684\u4E00\u90E8\u5206\uFF0C\u6C92\u6709\u67E5\u5168\u5EAB\uFF0C\u6240\u4EE5\u300C\u6C92\u627E\u5230\u300D\u4E0D\u4EE3\u8868\u8CC7\u6599\u4E0D\u5B58\u5728\u3002\u8ACB\u6539\u7528 3 \u500B\u5B57\u4EE5\u4E0A\u7684\u8A5E\u518D\u67E5\u4E00\u6B21\u3002";
 var MAX_PAGES = 200;
 var DEFAULT_PAGES = 50;
 var MAX_GRAPH_ENTITIES = 20;
@@ -8631,7 +8692,9 @@ async function retrieveForQuestion(db, question, opts = {}) {
     pages_truncated: pagesTruncated,
     cards: found.cards,
     cards_found_by: found.found_by,
-    index_trail: found.index_trail
+    index_trail: found.index_trail,
+    // 只有真的走到「關鍵字掃描」那一步才算 partial（目錄卡／卡名命中是精確路徑，不受短查詢窗口影響）
+    ...!buildFtsCandidateMatch(q) && (found.found_by === "none" || found.found_by === "keyword_fallback" || route === "all") ? { index_coverage: "partial", coverage_hint: SHORT_QUERY_COVERAGE_HINT } : {}
   };
 }
 
@@ -8661,6 +8724,7 @@ retrieveRoutes.get("/", async (c) => {
     });
     return c.json({ success: true, ...result });
   } catch (e) {
+    if (isTransientD1Error(e)) throw e;
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -9557,6 +9621,22 @@ app.use("*", async (c, next) => {
   return next();
 });
 app.use("*", speedometer);
+app.onError((err, c) => {
+  if (err instanceof HTTPException) return err.getResponse();
+  if (isTransientD1Error(err)) {
+    console.warn("[kbdb] transient D1 error \u2192 503", err instanceof Error ? err.message : err);
+    c.header("Retry-After", "2");
+    return c.json({
+      success: false,
+      error: "kbdb_busy",
+      reason: /overloaded|too many resources/i.test(err instanceof Error ? err.message : String(err)) ? "d1_overloaded" : "transient",
+      retryable: true,
+      message: "\u77E5\u8B58\u5EAB\u7684\u8CC7\u6599\u5EAB\u9019\u4E00\u523B\u592A\u5FD9\uFF0C\u66AB\u6642\u8B80\u5BEB\u4E0D\u5230\u3002\u9019\u4E0D\u662F\u8CC7\u6599\u4E0D\u5B58\u5728\uFF0C\u4E5F\u4E0D\u662F\u767B\u5165\u904E\u671F\uFF1B\u8ACB\u5E7E\u79D2\u5F8C\u518D\u8A66\u3002"
+    }, 503);
+  }
+  console.error("[kbdb] unhandled error", err);
+  return c.json({ success: false, error: "internal_error", message: err instanceof Error ? err.message : String(err) }, 500);
+});
 app.get("/", (c) => c.json({ service: "arcrun-kbdb", tier: "base", status: "ok" }));
 var HEALTH_CACHE_MS = 1e4;
 var healthCache = null;
@@ -9610,5 +9690,6 @@ app.route("/retrieve", retrieveRoutes);
 app.route("/usage-brakes", usageBrakeRoutes);
 var index_default = app;
 export {
-  index_default as default
+  index_default as default,
+  isTransientD1Error
 };
