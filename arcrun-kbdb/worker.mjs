@@ -2324,6 +2324,1412 @@ var init_library_map_store = __esm({
   }
 });
 
+// kbdb/src/actions/brake-settings.ts
+async function ensureSettingsTemplate(db) {
+  const tpl = await getTemplate(db, SETTINGS_TEMPLATE_ID);
+  if (tpl) {
+    const have = JSON.parse(tpl.slots_json);
+    if (SETTINGS_SLOTS.every((s) => have.includes(s))) return;
+    await updateTemplate(db, SETTINGS_TEMPLATE_ID, { slots: [.../* @__PURE__ */ new Set([...have, ...SETTINGS_SLOTS])] });
+    return;
+  }
+  await createTemplate(db, {
+    id: SETTINGS_TEMPLATE_ID,
+    name: "kbdb_settings",
+    description: "\u9019\u53F0 KBDB \u7684\u71DF\u904B\u8A2D\u5B9A\uFF08inkstone/arcrun-rag#207\uFF09\uFF1A\u76EE\u524D\u53EA\u6709 brake_enabled \u4E00\u683C\u2014\u2014\u5E33\u865F\u4E3B\u4EBA\u81EA\u5DF1\u80FD\u4E0D\u80FD\u95DC\u6389\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u3002\u4E00\u500B\u5BE6\u4F8B\u4E00\u7B46\uFF0C\u4E0D\u639B owner\u3002",
+    slots: SETTINGS_SLOTS,
+    created_by: "kbdb-speedometer"
+  });
+}
+function toSettings(rec) {
+  const v = rec?.values ?? {};
+  return {
+    brake_enabled: v.brake_enabled !== "false",
+    updated_at: v.updated_at || null,
+    updated_by: v.updated_by || null
+  };
+}
+async function getBrakeSettings(db) {
+  const now = Date.now();
+  if (settingsCache && now - settingsCache.at <= SETTINGS_CACHE_MS) return settingsCache.settings;
+  try {
+    await ensureSettingsTemplate(db);
+    const rec = await getRecord(db, SETTINGS_RECORD_ID);
+    const settings = toSettings(rec);
+    settingsCache = { at: now, settings };
+    return settings;
+  } catch (e) {
+    if (settingsCache) return settingsCache.settings;
+    throw e;
+  }
+}
+async function brakeEnabled(db) {
+  return (await getBrakeSettings(db)).brake_enabled;
+}
+async function setBrakeEnabled(db, enabled, by, now = Date.now()) {
+  await ensureSettingsTemplate(db);
+  const values = {
+    brake_enabled: String(enabled),
+    updated_at: new Date(now).toISOString(),
+    updated_by: (by || "manual").slice(0, 120)
+  };
+  const existing = await getRecord(db, SETTINGS_RECORD_ID);
+  const rec = existing ? await updateRecord(db, SETTINGS_RECORD_ID, values) : await createRecord(db, { template: SETTINGS_TEMPLATE_ID, record_id: SETTINGS_RECORD_ID, values, owner_id: null, derived_cell_ids: true });
+  settingsCache = null;
+  return toSettings(rec);
+}
+var SETTINGS_TEMPLATE_ID, SETTINGS_SLOTS, SETTINGS_RECORD_ID, SETTINGS_CACHE_MS, settingsCache;
+var init_brake_settings = __esm({
+  "kbdb/src/actions/brake-settings.ts"() {
+    "use strict";
+    init_record_crud();
+    SETTINGS_TEMPLATE_ID = "tpl-kbdb-settings";
+    SETTINGS_SLOTS = ["brake_enabled", "updated_at", "updated_by"];
+    SETTINGS_RECORD_ID = "kbdb_settings";
+    SETTINGS_CACHE_MS = 3e4;
+    settingsCache = null;
+  }
+});
+
+// kbdb/src/storage/port.ts
+function isSqlPort(x) {
+  return typeof x === "object" && x !== null && x[SQL_PORT] === true;
+}
+var SQL_PORT;
+var init_port = __esm({
+  "kbdb/src/storage/port.ts"() {
+    "use strict";
+    SQL_PORT = /* @__PURE__ */ Symbol.for("arcrun.kbdb.SqlPort");
+  }
+});
+
+// kbdb/src/actions/maintenance-quota.ts
+function maintenanceDailyLimit(env) {
+  const raw2 = env.KBDB_MAINTENANCE_DAILY_WRITE_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT;
+}
+function ftsBuildDailyLimit(env) {
+  const raw2 = env.KBDB_FTS_BUILD_DAILY_WRITE_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT;
+}
+function utcDay() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function maintenanceUsageId() {
+  return `kbdb-maintenance-usage:${utcDay()}`;
+}
+async function getMaintenanceUsageToday(db) {
+  const row = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [maintenanceUsageId()]);
+  if (!row) return 0;
+  try {
+    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    return Number(parsed.writes) || 0;
+  } catch {
+    return 0;
+  }
+}
+async function addMaintenanceUsage(db, by) {
+  if (by <= 0) return;
+  const id = maintenanceUsageId();
+  const existing = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [id]);
+  let prev = 0;
+  if (existing) {
+    try {
+      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
+      prev = Number(parsed.writes) || 0;
+    } catch {
+      prev = 0;
+    }
+    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay(), writes: prev + by }), id]);
+  } else {
+    await createEntry(db, { id, template: "kbdb_maintenance_usage", metadata_json: JSON.stringify({ day: utcDay(), writes: by }) });
+  }
+}
+async function maintenanceBudgetToday(env, db) {
+  return budgetAgainst(maintenanceDailyLimit(env), db);
+}
+async function ftsBuildBudgetToday(env, db) {
+  return budgetAgainst(ftsBuildDailyLimit(env), db);
+}
+async function budgetAgainst(limit, db) {
+  let used = 0;
+  try {
+    used = await getMaintenanceUsageToday(db);
+  } catch {
+    used = 0;
+  }
+  return { limit, used, remaining: Math.max(0, limit - used) };
+}
+function instanceDailyWriteLimit(env) {
+  const raw2 = env.KBDB_INSTANCE_DAILY_WRITE_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_INSTANCE_DAILY_WRITE_LIMIT;
+}
+function ftsBackfillReserve(env) {
+  const raw2 = env.KBDB_FTS_BACKFILL_RESERVE;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 >= 0 ? n2 : DEFAULT_FTS_BACKFILL_RESERVE;
+}
+function isSystemAssetOwner(ownerId) {
+  if (ownerId === null || ownerId === void 0 || ownerId === "") return true;
+  return ownerId.endsWith("::assets") || ownerId.endsWith("::runs") || ownerId.endsWith("::portal");
+}
+function entryWriteUsageId() {
+  return `kbdb-entry-write-usage:${utcDay()}`;
+}
+async function getEntryWriteUsageToday(db) {
+  const row = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [entryWriteUsageId()]);
+  if (!row) return 0;
+  try {
+    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    return Number(parsed.writes) || 0;
+  } catch {
+    return 0;
+  }
+}
+async function addEntryWriteUsage(db, by) {
+  if (by <= 0) return;
+  const id = entryWriteUsageId();
+  const existing = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [id]);
+  let prev = 0;
+  if (existing) {
+    try {
+      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
+      prev = Number(parsed.writes) || 0;
+    } catch {
+      prev = 0;
+    }
+    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay(), writes: prev + by }), id]);
+  } else {
+    await createEntry(db, { id, template: "kbdb_entry_write_usage", metadata_json: JSON.stringify({ day: utcDay(), writes: by }) });
+  }
+}
+async function entryWriteBudgetToday(env, db) {
+  let disabled = false;
+  try {
+    disabled = !await brakeEnabled(db);
+  } catch {
+    disabled = false;
+  }
+  if (disabled) {
+    const limit2 = instanceDailyWriteLimit(env);
+    let used2 = 0;
+    try {
+      used2 = await getEntryWriteUsageToday(db);
+    } catch {
+      used2 = 0;
+    }
+    return { limit: limit2, used: used2, remaining: Number.MAX_SAFE_INTEGER };
+  }
+  let ftsDone = false;
+  try {
+    ftsDone = (await readFtsMigrationState(db)).cutoffRowid === 0;
+  } catch {
+    ftsDone = false;
+  }
+  const reserve = ftsDone ? 0 : ftsBackfillReserve(env);
+  const limit = Math.max(0, instanceDailyWriteLimit(env) - reserve);
+  let used = 0;
+  try {
+    used = await getEntryWriteUsageToday(db);
+  } catch {
+    used = 0;
+  }
+  return { limit, used, remaining: Math.max(0, limit - used) };
+}
+function writeBudgetExhaustedBody(budget) {
+  return {
+    success: false,
+    error: "daily_write_budget_reserved_for_indexing",
+    message: WRITE_BUDGET_QUOTA_MARKER,
+    capability_hint: "\u4ECA\u5929\u7684\u5BEB\u5165\u984D\u5EA6\u5DF2\u7D93\u7528\u5B8C\uFF08\u5176\u4E2D\u4E00\u90E8\u5206\u56FA\u5B9A\u7559\u7D66\u77E5\u8B58\u5EAB\u7684\u7D22\u5F15\u7DAD\u8B77\uFF0C\u78BA\u4FDD\u641C\u5C0B\u7D50\u679C\u4E0D\u6703\u56E0\u70BA\u7D22\u5F15\u8DDF\u4E0D\u4E0A\u800C\u6F0F\u6389\u6771\u897F\uFF09\u3002\u8ACB\u7A0D\u5F8C\u518D\u8A66\uFF0C\u984D\u5EA6\u6703\u5728 UTC \u5348\u591C\u91CD\u7F6E\uFF1B\u525B\u525B\u7684\u5167\u5BB9\u9084\u6C92\u9001\u51FA\uFF0C\u91CD\u8A66\u524D\u4E0D\u6703\u91CD\u8907\u9001\u51FA\u5169\u6B21\u3002",
+    admin_hint: `instance entry-write budget exhausted\uFF08today's normal-write usage ${budget.used}/${budget.limit}\uFF0Creserved for FTS backfill\uFF1A\u898B KBDB_FTS_BACKFILL_RESERVE\uFF09\u3002\u7B49 UTC \u65E5\u5207\u91CD\u7F6E\uFF0C\u6216\u8ABF\u9AD8 KBDB_INSTANCE_DAILY_WRITE_LIMIT\uFF0F\u8ABF\u4F4E KBDB_FTS_BACKFILL_RESERVE\uFF08\u82E5\u5224\u65B7\u9019\u500B\u5BE6\u4F8B\u771F\u7684\u9700\u8981\u66F4\u5BEC\u9B06\uFF09\u3002`
+  };
+}
+function withWriteTally(db, tally) {
+  const port = {
+    [SQL_PORT]: true,
+    async all(sql, params) {
+      const r = await db.all(sql, params);
+      tally.rowsWritten += Number(r.meta?.rows_written ?? 0);
+      return r;
+    },
+    first: (sql, params) => db.first(sql, params),
+    async run(sql, params) {
+      const r = await db.run(sql, params);
+      tally.rowsWritten += Number(r.meta?.rows_written ?? 0);
+      return r;
+    },
+    async batch(stmts) {
+      const r = await db.batch(stmts);
+      for (const x of r) tally.rowsWritten += Number(x.meta?.rows_written ?? 0);
+      return r;
+    }
+  };
+  return port;
+}
+var DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT, DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT, DEFAULT_INSTANCE_DAILY_WRITE_LIMIT, DEFAULT_FTS_BACKFILL_RESERVE, WRITE_BUDGET_QUOTA_MARKER;
+var init_maintenance_quota = __esm({
+  "kbdb/src/actions/maintenance-quota.ts"() {
+    "use strict";
+    init_brake_settings();
+    init_entry_crud();
+    init_port();
+    DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT = 2e4;
+    DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT = 1e5;
+    DEFAULT_INSTANCE_DAILY_WRITE_LIMIT = 1e5;
+    DEFAULT_FTS_BACKFILL_RESERVE = 10500;
+    WRITE_BUDGET_QUOTA_MARKER = "KBDB has reserved part of today's D1 free tier daily row write limit for search-index maintenance; normal writes are capped early so indexing keeps making real progress. This is not a transient error \u2014 please wait for tomorrow's reset (00:00 UTC) before retrying normal writes.";
+  }
+});
+
+// kbdb/src/storage/d1.ts
+function metaOf(m) {
+  return m ?? {};
+}
+function d1Port(d1) {
+  if (isSqlPort(d1)) return d1;
+  const raw2 = d1;
+  const stmt = (sql, params = []) => {
+    const s = raw2.prepare(sql);
+    return params.length === 0 && typeof s.bind !== "function" ? s : s.bind(...params);
+  };
+  const port = {
+    [SQL_PORT]: true,
+    info: D1_INFO,
+    async all(sql, params) {
+      const r = await stmt(sql, params).all();
+      return { results: r.results ?? [], meta: metaOf(r.meta) };
+    },
+    first(sql, params) {
+      return stmt(sql, params).first();
+    },
+    async run(sql, params) {
+      const r = await stmt(sql, params).run();
+      return { meta: metaOf(r.meta) };
+    },
+    async batch(stmts) {
+      const out = await raw2.batch(stmts.map((s) => stmt(s.sql, s.params)));
+      return out.map((r) => ({ results: r.results ?? [], meta: metaOf(r.meta) }));
+    }
+  };
+  return port;
+}
+function dbOf(env) {
+  if (env.__kbdbDb) return env.__kbdbDb;
+  if (env.KBDB_STORAGE && env.KBDB_STORAGE !== "d1") {
+    throw new Error(
+      `KBDB_STORAGE=${env.KBDB_STORAGE} \u4F46\u6C92\u6709\u5E95\u5EA7\u88AB\u639B\u4E0A\uFF1ASQLite \u6A94\u5E95\u5EA7\u53EA\u5728 Node \u4E3B\u6A5F\u6A21\u5F0F\u4E0B\u53EF\u7528\uFF08kbdb/src/node/server.ts\uFF09\uFF1BCloudflare Workers \u8ACB\u7528 KBDB_STORAGE=d1\uFF08\u9810\u8A2D\uFF09\u3002`
+    );
+  }
+  if (!env.DB) throw new Error("KBDB_STORAGE=d1 \u4F46\u6C92\u6709 DB \u7D81\u5B9A\uFF1A\u8ACB\u5728 wrangler.toml \u7D81\u5B9A D1\uFF0C\u6216\u6539\u7528 Node \u4E3B\u6A5F\u6A21\u5F0F\u7684 SQLite \u6A94\u5E95\u5EA7\u3002");
+  const key = env.DB;
+  if (typeof key !== "object" || key === null) return d1Port(env.DB);
+  let p = cache.get(key);
+  if (!p) {
+    p = d1Port(env.DB);
+    cache.set(key, p);
+  }
+  return p;
+}
+function execLogDbOf(env) {
+  if (env.__kbdbExecLogDb) return env.__kbdbExecLogDb;
+  if (!env.EXEC_LOG_DB) {
+    throw new Error(
+      "\u6C92\u6709 EXEC_LOG_DB \u7D81\u5B9A\uFF1A\u57F7\u884C\u7D00\u9304\u4F4F\u5728\u5C08\u5C6C\u7684\u5EAB\uFF08inkstone/Arcrun#222\uFF09\uFF0C\u8ACB\u5728 wrangler.toml \u7D81\u5B9A EXEC_LOG_DB\uFF08acr update\uFF0F\u5B89\u88DD\u5668\u6703\u81EA\u52D5\u5EFA\u7ACB\uFF09\uFF0CNode \u4E3B\u6A5F\u6A21\u5F0F\u8ACB\u8B93 host \u639B\u4E0A __kbdbExecLogDb\u3002"
+    );
+  }
+  const key = env.EXEC_LOG_DB;
+  if (typeof key !== "object" || key === null) return d1Port(env.EXEC_LOG_DB);
+  let p = cache.get(key);
+  if (!p) {
+    p = d1Port(env.EXEC_LOG_DB);
+    cache.set(key, p);
+  }
+  return p;
+}
+var D1_INFO, cache;
+var init_d1 = __esm({
+  "kbdb/src/storage/d1.ts"() {
+    "use strict";
+    init_port();
+    D1_INFO = { driver: "d1", billing: "metered" };
+    cache = /* @__PURE__ */ new WeakMap();
+  }
+});
+
+// kbdb/src/actions/field-index.ts
+function isMissingTable(err) {
+  return /no such table:\s*field_value_index/i.test(String(err?.message ?? err));
+}
+async function fieldIndexReady(db, relIds) {
+  if (relIds.length === 0) return false;
+  try {
+    const ph = relIds.map(() => "?").join(",");
+    const rows = await db.all(
+      `SELECT rel_id FROM field_value_index_spec WHERE rel_id IN (${ph}) AND state = 'ready'`,
+      [...relIds]
+    );
+    return new Set((rows.results ?? []).map((r) => r.rel_id)).size === new Set(relIds).size;
+  } catch (err) {
+    if (isMissingTable(err)) return false;
+    throw err;
+  }
+}
+async function fieldIndexRecordIds(db, relIds, value, owner, limit) {
+  const seen = /* @__PURE__ */ new Set();
+  const rows = [];
+  for (const relId of new Set(relIds)) {
+    const params = [relId, value];
+    let sql = `SELECT record_id, seq FROM field_value_index WHERE rel_id = ? AND value = ?`;
+    if (owner !== void 0) {
+      sql += ` AND owner = ?`;
+      params.push(owner);
+    }
+    sql += ` ORDER BY seq DESC`;
+    if (limit !== void 0) {
+      sql += ` LIMIT ?`;
+      params.push(limit + 1);
+    }
+    const res = await db.all(sql, params);
+    rows.push(...res.results ?? []);
+  }
+  rows.sort((a, b) => b.seq - a.seq);
+  const ids = [];
+  for (const r of rows) if (!seen.has(r.record_id)) {
+    seen.add(r.record_id);
+    ids.push(r.record_id);
+  }
+  if (limit === void 0 || ids.length <= limit) return { ids, exhausted: true };
+  return { ids: ids.slice(0, limit), exhausted: false };
+}
+async function enableFieldIndex(db, template, slots) {
+  const tpl = await getTemplate(db, template);
+  if (!tpl) return null;
+  const all = JSON.parse(tpl.slots_json);
+  const unknown = slots.filter((s) => !all.includes(s));
+  if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
+  const want = [...new Set(slots)];
+  if (want.length === 0) throw new Error("fields required");
+  const relOf = (s) => fieldEntryId(tpl.id, s);
+  const specRows = async () => {
+    const ph = want.map(() => "?").join(",");
+    const r = await db.all(
+      `SELECT rel_id, slot, state, cursor_created, cursor_rowid FROM field_value_index_spec WHERE rel_id IN (${ph})`,
+      want.map(relOf)
+    );
+    return r.results ?? [];
+  };
+  let spec = await specRows();
+  const missing = want.filter((s) => !spec.some((r) => r.slot === s));
+  if (missing.length > 0) {
+    const cnt = await db.first(
+      `SELECT COUNT(*) AS n FROM (SELECT 1 FROM entries WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' LIMIT ?)`,
+      [tpl.id, FIELD_INDEX_MAX_RECORDS + 1]
+    );
+    if ((cnt?.n ?? 0) > FIELD_INDEX_MAX_RECORDS) throw new FieldIndexTooLargeError(tpl.name, FIELD_INDEX_MAX_RECORDS);
+    for (const s of missing) {
+      await db.run(
+        `INSERT OR IGNORE INTO field_value_index_spec (rel_id, template_id, slot, state) VALUES (?, ?, ?, 'building')`,
+        [relOf(s), tpl.id, s]
+      );
+    }
+    spec = await specRows();
+  }
+  const building = spec.filter((r) => r.state !== "ready");
+  let backfilled = 0;
+  if (building.length > 0) {
+    const relIds = building.map((r) => r.rel_id);
+    const fresh = building.some((r) => r.cursor_created == null);
+    let cc = fresh ? -1 : Math.min(...building.map((r) => r.cursor_created));
+    let cr = fresh ? -1 : Math.min(...building.filter((r) => r.cursor_created === cc).map((r) => r.cursor_rowid));
+    let done = false;
+    while (backfilled < FIELD_INDEX_BACKFILL_PER_CALL) {
+      const members = await db.all(
+        `SELECT src_id, created_at, rowid AS rid FROM entries
+          WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' AND (created_at, rowid) > (?, ?)
+          ORDER BY created_at, rowid LIMIT ?`,
+        [tpl.id, cc, cr, BACKFILL_CHUNK]
+      );
+      const got = members.results ?? [];
+      if (got.length > 0) {
+        const ids = got.map((m) => m.src_id);
+        const idPh = ids.map(() => "?").join(",");
+        const relPh2 = relIds.map(() => "?").join(",");
+        await db.run(
+          `INSERT OR IGNORE INTO field_value_index (rel_row, rel_id, value, owner, seq, record_id, cell_id)
+           SELECT r.id, r.rel_id, v.content, COALESCE(r.owner_id, ''), COALESCE(rec.rowid, r.rowid), r.src_id, v.id
+             FROM entries r
+             JOIN entries v ON v.id = r.dst_id
+             LEFT JOIN entries rec ON rec.id = r.src_id
+            WHERE r.src_id IN (${idPh}) AND r.rel_id IN (${relPh2}) AND v.content IS NOT NULL`,
+          [...ids, ...relIds]
+        );
+        backfilled += got.length;
+        cc = got[got.length - 1].created_at;
+        cr = got[got.length - 1].rid;
+      }
+      if (got.length < BACKFILL_CHUNK) {
+        done = true;
+        break;
+      }
+    }
+    const relPh = relIds.map(() => "?").join(",");
+    await db.run(
+      done ? `UPDATE field_value_index_spec SET state = 'ready', ready_at = unixepoch(), cursor_created = ?, cursor_rowid = ? WHERE rel_id IN (${relPh})` : `UPDATE field_value_index_spec SET cursor_created = ?, cursor_rowid = ? WHERE rel_id IN (${relPh})`,
+      [cc, cr, ...relIds]
+    );
+    spec = await specRows();
+  }
+  const fields = want.map((s) => ({ slot: s, state: spec.find((r) => r.slot === s)?.state === "ready" ? "ready" : "building" }));
+  return { template: tpl.name, fields, backfilled, ready: fields.every((f) => f.state === "ready") };
+}
+var FIELD_INDEX_BACKFILL_PER_CALL, BACKFILL_CHUNK, FIELD_INDEX_MAX_RECORDS, FieldIndexTooLargeError;
+var init_field_index = __esm({
+  "kbdb/src/actions/field-index.ts"() {
+    "use strict";
+    init_record_crud();
+    FIELD_INDEX_BACKFILL_PER_CALL = 1e3;
+    BACKFILL_CHUNK = 80;
+    FIELD_INDEX_MAX_RECORDS = 1e5;
+    FieldIndexTooLargeError = class extends Error {
+      constructor(template, limit) {
+        super(`template ${template} has more than ${limit} records; field index not enabled`);
+        this.template = template;
+        this.limit = limit;
+        this.name = "FieldIndexTooLargeError";
+      }
+      template;
+      limit;
+    };
+  }
+});
+
+// kbdb/src/actions/graph-query.ts
+function chunkForD1(items, fixedParams) {
+  const size = Math.max(1, D1_MAX_BOUND_PARAMS - fixedParams);
+  if (items.length <= size) return [items];
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+async function recordIdsByFieldValue(db, tplId, fields, value, owner_id) {
+  if (!value || fields.length === 0) return [];
+  const indexed = fields.map((f) => fieldEntryId(tplId, f));
+  if (await fieldIndexReady(db, indexed)) return (await fieldIndexRecordIds(db, indexed, value, owner_id)).ids;
+  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ?`;
+  const valueParams = owner_id ? [value, owner_id] : [value];
+  const valueRows = await db.all(valueSql, [...valueParams]);
+  const valueIds = (valueRows.results ?? []).map((r) => r.id);
+  if (valueIds.length === 0) return [];
+  const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
+  const relPh = fieldIds.map(() => "?").join(",");
+  const recordIdSet = /* @__PURE__ */ new Set();
+  for (const idsChunk of chunkForD1(valueIds, fieldIds.length + (owner_id ? 1 : 0))) {
+    const dstPh = idsChunk.map(() => "?").join(",");
+    const relSql = owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
+         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
+    const relParams = owner_id ? [...idsChunk, ...fieldIds, owner_id] : [...idsChunk, ...fieldIds];
+    const relRows = await db.all(relSql, [...relParams]);
+    for (const r of relRows.results ?? []) recordIdSet.add(r.record_id);
+  }
+  return [...recordIdSet];
+}
+async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, owner_id, libraries) {
+  if (!nodeValue || fields.length === 0) return [];
+  const tpl = await getTemplate(db, templateIdOrName);
+  if (!tpl) return [];
+  const recordIds = await recordIdsByFieldValue(db, tpl.id, fields, nodeValue, owner_id);
+  if (recordIds.length === 0) return [];
+  const libFilter = libraries && libraries.length > 0 ? libraries : null;
+  const libAgg = "MAX(CASE WHEN r.rel_id = ? THEN v.content END)";
+  const pivotFixed = 5 + (libFilter ? 1 + libFilter.length : 0);
+  const rows = [];
+  for (const recChunk of chunkForD1(recordIds, pivotFixed)) {
+    const recPh = recChunk.map(() => "?").join(",");
+    const pivotSql = `
+      SELECT b.src_id AS record_id,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS subject,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS predicate,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS object,
+             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS status,
+             ${libAgg} AS library
+        FROM entries b
+        LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+        LEFT JOIN entries v ON v.id = r.dst_id
+       WHERE b.rel_id = 'sys_belongs' AND b.src_id IN (${recPh})
+       GROUP BY b.src_id${libFilter ? `
+      HAVING ${libraryOf(libAgg)} IN (${libFilter.map(() => "?").join(",")})` : ""}`;
+    const pivotParams = [
+      fieldEntryId(tpl.id, "subject"),
+      fieldEntryId(tpl.id, "predicate"),
+      fieldEntryId(tpl.id, "object"),
+      fieldEntryId(tpl.id, "status"),
+      fieldEntryId(tpl.id, "library"),
+      ...recChunk,
+      ...libFilter ? [fieldEntryId(tpl.id, "library"), ...libFilter] : []
+    ];
+    const pivotRows = await db.all(pivotSql, [...pivotParams]);
+    rows.push(...pivotRows.results ?? []);
+  }
+  return rows;
+}
+function neighborToEdge(n2) {
+  return n2.direction === "in" ? { subject: n2.node, predicate: n2.predicate, object: n2.from } : { subject: n2.from, predicate: n2.predicate, object: n2.node };
+}
+async function graphNeighbors(db, start, opts = {}) {
+  const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
+  const template = opts.template ?? "triplet";
+  const directed = !!opts.directed;
+  const owner_id = opts.owner_id;
+  const libraries = opts.library && opts.library.length > 0 ? opts.library : void 0;
+  const startNode = canonicalEntity(start);
+  const visited = /* @__PURE__ */ new Set([startNode]);
+  let frontier = [startNode];
+  const neighbors = [];
+  for (let d = 1; d <= depth; d++) {
+    if (frontier.length === 0) break;
+    const next = [];
+    for (const cur of frontier) {
+      const outgoing = await findTripletEdgesByNode(db, template, ["subject"], cur, owner_id, libraries);
+      for (const e of outgoing) {
+        if (e.status === "deprecated") continue;
+        const nb = e.object;
+        if (!nb || visited.has(nb)) continue;
+        visited.add(nb);
+        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "out" });
+        next.push(nb);
+      }
+      if (!directed) {
+        const incoming = await findTripletEdgesByNode(db, template, ["object"], cur, owner_id, libraries);
+        for (const e of incoming) {
+          if (e.status === "deprecated") continue;
+          const nb = e.subject;
+          if (!nb || visited.has(nb)) continue;
+          visited.add(nb);
+          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "in" });
+          next.push(nb);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
+}
+async function recordsByFieldValuePage(db, template, field, value, owner_id, limit, offset, exactTotal = false, slots) {
+  const tpl = await getTemplate(db, template);
+  if (!tpl) return null;
+  let allIds;
+  let exhausted = true;
+  if (exactTotal) {
+    allIds = await recordIdsByFieldValue(db, tpl.id, [field], value, owner_id);
+  } else {
+    const got = await newestRecordIdsByFieldValue(db, tpl.id, [field], value, owner_id, Math.max(offset, 0) + Math.max(limit, 0));
+    allIds = got.ids;
+    exhausted = got.exhausted;
+  }
+  if (allIds.length === 0) return { records: [], total: 0, totalExact: true };
+  const meta = await identityMeta(db, allIds);
+  const ordered = orderNewestFirst(allIds, meta);
+  const page = ordered.slice(Math.max(offset, 0), Math.max(offset, 0) + Math.max(limit, 0));
+  const records = await hydrateRecordValues(db, tpl.id, page, slots);
+  if (exhausted) return { records, total: ordered.length, totalExact: true };
+  return { records, total: Math.max(ordered.length, Math.max(offset, 0) + page.length) + 1, totalExact: false };
+}
+function orderNewestFirst(ids, meta) {
+  return [...ids].sort((a, b) => {
+    const ma = meta.get(a);
+    const mb = meta.get(b);
+    const ca = ma?.createdAt ?? 0;
+    const cb = mb?.createdAt ?? 0;
+    if (ca !== cb) return cb - ca;
+    return (mb?.rowid ?? 0) - (ma?.rowid ?? 0);
+  });
+}
+function newestLookahead(need) {
+  return Math.max(50, Math.ceil(need * 0.1));
+}
+async function newestRecordIdsByFieldValue(db, tplId, fields, value, owner_id, need) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  if (!value || fields.length === 0) return { ids: out, exhausted: true };
+  const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
+  if (await fieldIndexReady(db, fieldIds)) return fieldIndexRecordIds(db, fieldIds, value, owner_id, need + newestLookahead(need));
+  const relPh = fieldIds.map(() => "?").join(",");
+  const valueSql = owner_id ? `SELECT rowid AS rid, id FROM entries
+       WHERE content = ? AND (owner_id = ? OR owner_id IS NULL) AND rowid < ?
+       ORDER BY rowid DESC LIMIT ?` : `SELECT rowid AS rid, id FROM entries
+       WHERE content = ? AND rowid < ?
+       ORDER BY rowid DESC LIMIT ?`;
+  const relSql = (n2) => {
+    const dstPh = Array.from({ length: n2 }, () => "?").join(",");
+    return owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
+  };
+  const batch = Math.max(1, D1_MAX_BOUND_PARAMS - fieldIds.length - (owner_id ? 1 : 0));
+  let size = Math.min(batch, 30);
+  let cursor = Number.MAX_SAFE_INTEGER;
+  for (; ; ) {
+    const vp = owner_id ? [value, owner_id, cursor, size] : [value, cursor, size];
+    const vr = await db.all(valueSql, vp);
+    const rows = vr.results ?? [];
+    if (rows.length === 0) return { ids: out, exhausted: true };
+    cursor = rows[rows.length - 1].rid;
+    const dstIds = rows.map((r) => r.id);
+    const rp = owner_id ? [...dstIds, ...fieldIds, owner_id] : [...dstIds, ...fieldIds];
+    const rr = await db.all(relSql(dstIds.length), rp);
+    for (const r of rr.results ?? []) if (!seen.has(r.record_id)) {
+      seen.add(r.record_id);
+      out.push(r.record_id);
+    }
+    if (rows.length < size) return { ids: out, exhausted: true };
+    if (out.length >= need + newestLookahead(need)) return { ids: out, exhausted: false };
+    size = Math.min(batch, size * 2);
+  }
+}
+async function identityMeta(db, ids) {
+  const out = /* @__PURE__ */ new Map();
+  for (const chunk of chunkForD1(ids, 0)) {
+    const ph = chunk.map(() => "?").join(",");
+    const rows = await db.all(`SELECT id, created_at, rowid FROM entries WHERE id IN (${ph})`, [...chunk]);
+    for (const r of rows.results ?? []) out.set(r.id, { createdAt: r.created_at, rowid: r.rowid });
+  }
+  return out;
+}
+var D1_MAX_BOUND_PARAMS;
+var init_graph_query = __esm({
+  "kbdb/src/actions/graph-query.ts"() {
+    "use strict";
+    init_record_crud();
+    init_field_index();
+    init_library_predicate();
+    init_entity_canon();
+    D1_MAX_BOUND_PARAMS = 90;
+  }
+});
+
+// kbdb/src/vector/http.ts
+function httpVectorPort(baseUrl, token, fetchImpl = fetch) {
+  const base = baseUrl.replace(/\/+$/, "");
+  async function call(path, body) {
+    const res = await fetchImpl(`${base}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...token ? { authorization: `Bearer ${token}` } : {} },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => "")).slice(0, 200);
+      throw new Error(`\u5411\u91CF\u5E95\u5EA7 ${path} \u56DE ${res.status}${detail ? `\uFF1A${detail}` : ""}`);
+    }
+    return await res.json();
+  }
+  return {
+    upsert: (vectors) => call("/v1/upsert", { vectors }),
+    async query(vector, options = {}) {
+      const r = await call("/v1/query", { vector, topK: options.topK, filter: options.filter });
+      return { matches: r.matches ?? [] };
+    },
+    async getByIds(ids) {
+      const r = await call("/v1/get-by-ids", { ids });
+      return r.vectors ?? [];
+    },
+    deleteByIds: (ids) => call("/v1/delete-by-ids", { ids })
+  };
+}
+var init_http = __esm({
+  "kbdb/src/vector/http.ts"() {
+    "use strict";
+  }
+});
+
+// kbdb/src/vector/provider.ts
+function workersAiProvider(ai) {
+  return {
+    name: "workers-ai",
+    defaultModel: WORKERS_AI_DEFAULT_MODEL,
+    async embed(model, texts) {
+      const res = await ai.run(model, { text: texts });
+      return res?.data ?? [];
+    }
+  };
+}
+function ollamaProvider(baseUrl, fetchImpl = fetch) {
+  const base = baseUrl.replace(/\/+$/, "");
+  return {
+    name: "ollama",
+    defaultModel: OLLAMA_DEFAULT_MODEL,
+    async embed(model, texts) {
+      const res = await fetchImpl(`${base}/api/embed`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, input: texts })
+      });
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => "")).slice(0, 200);
+        throw new Error(`Ollama /api/embed \u56DE ${res.status}${detail ? `\uFF1A${detail}` : ""}`);
+      }
+      const j = await res.json();
+      return j.embeddings ?? [];
+    }
+  };
+}
+function workersAiJudge(ai) {
+  return {
+    name: "workers-ai",
+    defaultModel: WORKERS_AI_JUDGE_MODEL,
+    async complete(model, system, user) {
+      const res = await ai.run(model, {
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        max_tokens: 40,
+        temperature: 0
+      });
+      const out = res?.response ?? res?.choices?.[0]?.message?.content;
+      return typeof out === "string" ? out : out == null ? "" : JSON.stringify(out);
+    }
+  };
+}
+function ollamaJudge(baseUrl, fetchImpl = fetch) {
+  const base = baseUrl.replace(/\/+$/, "");
+  return {
+    name: "ollama",
+    defaultModel: OLLAMA_JUDGE_MODEL,
+    async complete(model, system, user) {
+      const res = await fetchImpl(`${base}/api/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, stream: false, options: { temperature: 0 }, messages: [{ role: "system", content: system }, { role: "user", content: user }] })
+      });
+      if (!res.ok) throw new Error(`Ollama /api/chat \u56DE ${res.status}`);
+      const j = await res.json();
+      return j.message?.content ?? "";
+    }
+  };
+}
+var WORKERS_AI_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, WORKERS_AI_JUDGE_MODEL, OLLAMA_JUDGE_MODEL;
+var init_provider = __esm({
+  "kbdb/src/vector/provider.ts"() {
+    "use strict";
+    WORKERS_AI_DEFAULT_MODEL = "@cf/baai/bge-m3";
+    OLLAMA_DEFAULT_MODEL = "bge-m3";
+    WORKERS_AI_JUDGE_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+    OLLAMA_JUDGE_MODEL = "qwen2.5:7b";
+  }
+});
+
+// kbdb/src/vector/select.ts
+var select_exports = {};
+__export(select_exports, {
+  embedConfigProblem: () => embedConfigProblem,
+  embedProviderOf: () => embedProviderOf,
+  judgeProviderOf: () => judgeProviderOf,
+  vectorsOf: () => vectorsOf
+});
+function embedProviderOf(env) {
+  if (env.__kbdbEmbedder) return env.__kbdbEmbedder;
+  const p = norm2(env.EMBED_PROVIDER);
+  if (p === "" || p === "workers-ai") return env.AI ? workersAiProvider(env.AI) : null;
+  if (p === "ollama") {
+    const url = (env.OLLAMA_URL ?? "").trim();
+    return url ? ollamaProvider(url) : null;
+  }
+  return null;
+}
+function judgeProviderOf(env) {
+  if (env.__kbdbJudge) return env.__kbdbJudge;
+  const p = norm2(env.EMBED_PROVIDER);
+  if (p === "" || p === "workers-ai") return env.AI ? workersAiJudge(env.AI) : null;
+  if (p === "ollama") {
+    const url = (env.OLLAMA_URL ?? "").trim();
+    return url ? ollamaJudge(url) : null;
+  }
+  return null;
+}
+function vectorsOf(env) {
+  if (env.__kbdbVectors) return env.__kbdbVectors;
+  const b = norm2(env.VECTOR_BACKEND);
+  if (b === "" || b === "vectorize") return env.VECTORIZE ?? null;
+  if (b === "sqlite-vec") {
+    const url = (env.SQLITE_VEC_URL ?? "").trim();
+    return url ? httpVectorPort(url, (env.SQLITE_VEC_TOKEN ?? "").trim() || void 0) : null;
+  }
+  return null;
+}
+function embedConfigProblem(env) {
+  const parts = [];
+  const p = norm2(env.EMBED_PROVIDER);
+  if (!env.__kbdbEmbedder) {
+    if (p === "" || p === "workers-ai") {
+      if (!env.AI) parts.push("\u7F3A AI binding\uFF08EMBED_PROVIDER=workers-ai\uFF09");
+    } else if (p === "ollama") {
+      if (!(env.OLLAMA_URL ?? "").trim()) parts.push("EMBED_PROVIDER=ollama \u4F46\u6C92\u8A2D OLLAMA_URL");
+    } else {
+      parts.push(`EMBED_PROVIDER \u7121\u6CD5\u8FA8\u8B58\uFF1A\u300C${env.EMBED_PROVIDER}\u300D\uFF08\u53EA\u8A8D workers-ai\uFF0Follama\uFF09`);
+    }
+  }
+  const b = norm2(env.VECTOR_BACKEND);
+  if (!env.__kbdbVectors) {
+    if (b === "" || b === "vectorize") {
+      if (!env.VECTORIZE) parts.push("\u7F3A VECTORIZE binding\uFF08VECTOR_BACKEND=vectorize\uFF09");
+    } else if (b === "sqlite-vec") {
+      if (!(env.SQLITE_VEC_URL ?? "").trim()) parts.push("VECTOR_BACKEND=sqlite-vec \u4F46\u6C92\u8A2D SQLITE_VEC_URL");
+    } else {
+      parts.push(`VECTOR_BACKEND \u7121\u6CD5\u8FA8\u8B58\uFF1A\u300C${env.VECTOR_BACKEND}\u300D\uFF08\u53EA\u8A8D vectorize\uFF0Fsqlite-vec\uFF09`);
+    }
+  }
+  return parts.length ? parts.join("\uFF1B") : null;
+}
+var norm2;
+var init_select = __esm({
+  "kbdb/src/vector/select.ts"() {
+    "use strict";
+    init_http();
+    init_provider();
+    norm2 = (v) => (v ?? "").trim().toLowerCase();
+  }
+});
+
+// kbdb/src/embed.ts
+var embed_exports = {};
+__export(embed_exports, {
+  EmbedQueryFailedError: () => EmbedQueryFailedError,
+  VECTOR_ENTRY_TYPES: () => VECTOR_ENTRY_TYPES,
+  backfillEmbeddings: () => backfillEmbeddings,
+  backfillStatus: () => backfillStatus,
+  embedEnabled: () => embedEnabled,
+  embedForEntity: () => embedForEntity,
+  embedOnWrite: () => embedOnWrite,
+  embedSelfTest: () => embedSelfTest,
+  expectedVectorCount: () => expectedVectorCount,
+  nearestEntities: () => nearestEntities,
+  reconcileEmbedGeneration: () => reconcileEmbedGeneration,
+  relativeMinScore: () => relativeMinScore,
+  semanticSearch: () => semanticSearch,
+  syncVectorIndex: () => syncVectorIndex
+});
+function relativeMinScore(topScore) {
+  return Math.max(MIN_SCORE_ABS_FLOOR, topScore * MIN_SCORE_TOP_RATIO);
+}
+function embedModel(env) {
+  const m = (env.EMBED_MODEL ?? "").trim();
+  return m || embedProviderOf(env)?.defaultModel || DEFAULT_EMBED_MODEL;
+}
+function embedEnabled(env) {
+  return !!(vectorsOf(env) && embedProviderOf(env));
+}
+async function embedText(env, text) {
+  const t = (text ?? "").trim();
+  const provider = embedProviderOf(env);
+  if (!t || !provider) return null;
+  const out = await provider.embed(embedModel(env), [t]);
+  return out?.[0] ?? null;
+}
+async function embedOnWrite(env, entry, opts = {}) {
+  if (!embedEnabled(env)) return false;
+  if (!entry.templates) entry = (await withTemplates(dbOf(env), [entry]))[0];
+  if (!isEmbeddable(entry)) return false;
+  const vec = opts.vec ?? await embedText(env, await vectorTextOf(dbOf(env), entry));
+  if (!vec) return false;
+  await vectorsOf(env).upsert([
+    {
+      id: entry.id,
+      values: vec,
+      // metadata 走 indexed 範圍：owner_id（租戶隔離）、source（#5.1 過濾與語義共用）、
+      // library（portal-auth P1「庫」filter）。種類（template）不進向量 metadata：種類住在歸屬關係裡，
+      // 語意搜尋要按種類篩時，等 hydrate 回 entry 之後用同一條關係判斷（#301，見 routes/entries.ts）。library 在寫入端正規化：未標記＝'general'（design §3.2
+      // 「未蓋章的舊資料視同 general」——D1 側用查詢端 COALESCE fallback，Vectorize filter 做不了
+      // COALESCE，故在 upsert 時蓋 'general'，查詢端單純 $in 即可）。
+      metadata: {
+        owner_id: entry.owner_id ?? "",
+        source: readSource(entry) ?? "",
+        library: readLibrary(entry) ?? "general"
+      }
+    }
+  ]);
+  await dbOf(env).run("UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id = ?", [embedModel(env), entry.id]);
+  return true;
+}
+function inVectorScope(entry) {
+  return (entry.templates ?? []).some((t) => VECTOR_ENTRY_TYPES.includes(t));
+}
+function isEmbeddable(entry) {
+  if (!inVectorScope(entry)) return false;
+  const meta = parseMeta2(entry.metadata_json);
+  return meta?.embed === true;
+}
+async function vectorTextOf(db, entry) {
+  const name = (entry.content ?? "").trim();
+  if (!(entry.templates ?? []).includes("entity") || !name) return name;
+  try {
+    const cell = await db.first("SELECT content FROM entries WHERE id = ?", [`${entry.id}~v~description`]);
+    const cellDesc = (cell?.content ?? "").trim();
+    if (cellDesc) return `${name}\uFF1A${cellDesc}`;
+    const hit = await recordsByFieldValuePage(db, "triplet", "subject", canonicalEntity(name), entry.owner_id ?? void 0, 50, 0);
+    const desc = hit?.records.filter((r) => r.values.predicate === "description").map((r) => (r.values.object ?? "").trim()).find((o) => o !== "");
+    return desc ? `${name}\uFF1A${desc}` : name;
+  } catch {
+    return name;
+  }
+}
+function readSource(entry) {
+  const meta = parseMeta2(entry.metadata_json);
+  const s = meta?.source;
+  return typeof s === "string" ? s : null;
+}
+function readLibrary(entry) {
+  const meta = parseMeta2(entry.metadata_json);
+  const l = meta?.library;
+  return typeof l === "string" && l.trim() !== "" ? l : null;
+}
+function parseMeta2(json) {
+  if (!json) return null;
+  try {
+    const p = JSON.parse(json);
+    return p && typeof p === "object" ? p : null;
+  } catch {
+    return null;
+  }
+}
+function backfillDailyLimit(env) {
+  const raw2 = env.EMBED_BACKFILL_DAILY_LIMIT;
+  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
+  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_BACKFILL_DAILY_LIMIT;
+}
+function utcDay2() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function backfillUsageId() {
+  return `embed-backfill-usage:${utcDay2()}`;
+}
+async function getBackfillUsageToday(db) {
+  const row = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [backfillUsageId()]);
+  if (!row) return 0;
+  try {
+    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
+    return Number(parsed.embedded) || 0;
+  } catch {
+    return 0;
+  }
+}
+async function addBackfillUsage(db, by) {
+  if (by <= 0) return;
+  const id = backfillUsageId();
+  const existing = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [id]);
+  let prev = 0;
+  if (existing) {
+    try {
+      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
+      prev = Number(parsed.embedded) || 0;
+    } catch {
+      prev = 0;
+    }
+    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay2(), embedded: prev + by }), id]);
+  } else {
+    await createEntry(db, { id, template: "embed_backfill_usage", metadata_json: JSON.stringify({ day: utcDay2(), embedded: by }) });
+  }
+}
+function selectionCriteriaPredicate(opts) {
+  const conds = [];
+  const params = [];
+  if (opts.owner_id) {
+    conds.push("owner_id = ?");
+    params.push(opts.owner_id);
+  }
+  if (opts.source) {
+    conds.push("json_extract(metadata_json, '$.source') = ?");
+    params.push(opts.source);
+  }
+  if (opts.library) {
+    conds.push(`${ENTRY_LIBRARY} = ?`);
+    params.push(opts.library);
+  }
+  if (typeof opts.since === "number") {
+    conds.push("created_at >= ?");
+    params.push(opts.since);
+  }
+  if (typeof opts.until === "number") {
+    conds.push("created_at < ?");
+    params.push(opts.until);
+  }
+  return { conds, params };
+}
+async function backfillEmbeddings(env, opts = {}) {
+  if (!embedEnabled(env)) {
+    return {
+      enabled: false,
+      processed: 0,
+      skipped: 0,
+      remaining: 0,
+      scanned: 0,
+      quota_limit: 0,
+      quota_used_today: 0,
+      quota_exceeded: false
+    };
+  }
+  const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
+  const offset = Math.max(opts.offset ?? 0, 0);
+  const allOwners = !opts.owner_id && !opts.reindex;
+  const basePredicate = opts.reindex ? `content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND ${ENTRY_TYPE_GATE}` : allOwners ? SCOPED_PENDING_PREDICATE : BACKFILL_PREDICATE;
+  const sel = selectionCriteriaPredicate(opts);
+  const conds = [basePredicate, "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'", ...sel.conds];
+  const params = [...sel.params];
+  const where = conds.join(" AND ");
+  const rawRows = (await dbOf(env).all(`SELECT * FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset])).results ?? [];
+  const rows = await withTemplates(dbOf(env), rawRows);
+  const scanned = rows.length;
+  const dailyCap = backfillDailyLimit(env);
+  let usedToday = 0;
+  try {
+    usedToday = await getBackfillUsageToday(dbOf(env));
+  } catch {
+    usedToday = 0;
+  }
+  const remainingQuota = Math.max(0, dailyCap - usedToday);
+  let processed = 0;
+  const candidates = rows.filter((e) => (e.content ?? "").trim().length > 0);
+  const embeddable = candidates.slice(0, remainingQuota);
+  const quotaExceeded = candidates.length > embeddable.length;
+  const provider = embedProviderOf(env);
+  const store = vectorsOf(env);
+  if (embeddable.length > 0 && provider && store) {
+    const texts = await Promise.all(embeddable.map((e) => vectorTextOf(dbOf(env), e)));
+    const data = await provider.embed(embedModel(env), texts) ?? [];
+    const vectors = embeddable.map((e, i) => ({ e, vec: data[i] })).filter((x) => Array.isArray(x.vec) && x.vec.length > 0).map((x) => ({
+      id: x.e.id,
+      values: x.vec,
+      metadata: {
+        owner_id: x.e.owner_id ?? "",
+        source: readSource(x.e) ?? "",
+        library: readLibrary(x.e) ?? "general"
+        // 同 embedOnWrite：寫入端正規化（P1）
+      }
+    }));
+    if (vectors.length > 0) {
+      await store.upsert(vectors);
+      const ids = vectors.map((v) => v.id);
+      const placeholders = ids.map(() => "?").join(",");
+      await dbOf(env).run(`UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id IN (${placeholders})`, [embedModel(env), ...ids]);
+      processed = vectors.length;
+      try {
+        await addBackfillUsage(dbOf(env), processed);
+      } catch {
+      }
+    }
+  }
+  const totalMatching = (await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${where}`, [...params]))?.c ?? 0;
+  const remaining = opts.reindex ? Math.max(0, totalMatching - (offset + scanned)) : totalMatching;
+  return {
+    enabled: true,
+    processed,
+    skipped: scanned - processed,
+    remaining,
+    scanned,
+    quota_limit: dailyCap,
+    quota_used_today: usedToday + processed,
+    quota_exceeded: quotaExceeded
+  };
+}
+async function countPendingAllOwners(env, extra, params) {
+  const db = dbOf(env);
+  const [named, nullOwner] = await Promise.all([
+    db.first(`SELECT COUNT(*) as c FROM entries WHERE owner_id >= '' AND ${BACKFILL_PREDICATE}${extra}`, [...params]),
+    db.first(`SELECT COUNT(*) as c FROM entries WHERE owner_id IS NULL AND ${BACKFILL_PREDICATE}${extra}`, [...params])
+  ]);
+  return (named?.c ?? 0) + (nullOwner?.c ?? 0);
+}
+async function backfillStatus(env, opts = {}) {
+  const conds = [];
+  const params = [];
+  if (opts.owner_id) {
+    conds.push("owner_id = ?");
+    params.push(opts.owner_id);
+  }
+  if (opts.source) {
+    conds.push("json_extract(metadata_json, '$.source') = ?");
+    params.push(opts.source);
+  }
+  const extra = conds.length ? ` AND ${conds.join(" AND ")}` : "";
+  const pendingRow = opts.owner_id ? await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${BACKFILL_PREDICATE}${extra}`, [...params]) : { c: await countPendingAllOwners(env, extra, params) };
+  const embeddedRow = await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE is_embedded = 1 AND json_extract(metadata_json, '$.embed') = 1${extra}`, [...params]);
+  return { enabled: embedEnabled(env), pending: pendingRow?.c ?? 0, embedded: embeddedRow?.c ?? 0 };
+}
+async function reconcileEmbedGeneration(env, opts = {}) {
+  if (!embedEnabled(env)) {
+    return {
+      enabled: false,
+      checked: 0,
+      confirmed_current: 0,
+      reset_to_pending: 0,
+      remaining: 0,
+      scanned: 0,
+      quota_limit: 0,
+      quota_used_today: 0,
+      quota_exceeded: false
+    };
+  }
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+  const currentModel = embedModel(env);
+  const sel = selectionCriteriaPredicate(opts);
+  const conds = [
+    "is_embedded = 1",
+    // 收錄範圍外的（舊的卡片向量）不在這裡核對——核對會把「不在 index」的重置回待補嵌，
+    // 而它們根本不該被補嵌；它們隨舊索引整個丟掉（安裝器換索引，c19183 A）。
+    ENTRY_TYPE_GATE,
+    "(content_hash IS NULL OR content_hash != ?)",
+    "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'",
+    ...sel.conds
+  ];
+  const params = [currentModel, ...sel.params];
+  const where = conds.join(" AND ");
+  const res = await dbOf(env).all(`SELECT id FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ?`, [...params, limit]);
+  const scannedIds = (res.results ?? []).map((r) => r.id);
+  const scanned = scannedIds.length;
+  const budget = await maintenanceBudgetToday(env, dbOf(env));
+  const ids = scannedIds.slice(0, budget.remaining);
+  const quotaExceeded = scanned > ids.length;
+  const checked = ids.length;
+  let confirmed_current = 0;
+  let reset_to_pending = 0;
+  const store = vectorsOf(env);
+  if (ids.length > 0 && store) {
+    const found = await store.getByIds(ids);
+    const foundIds = new Set(found.map((v) => v.id));
+    const presentIds = ids.filter((id) => foundIds.has(id));
+    const missingIds = ids.filter((id) => !foundIds.has(id));
+    if (presentIds.length > 0) {
+      const ph = presentIds.map(() => "?").join(",");
+      await dbOf(env).run(`UPDATE entries SET content_hash = ? WHERE id IN (${ph})`, [currentModel, ...presentIds]);
+      confirmed_current = presentIds.length;
+    }
+    if (missingIds.length > 0) {
+      const ph = missingIds.map(() => "?").join(",");
+      await dbOf(env).run(`UPDATE entries SET is_embedded = 0, content_hash = NULL WHERE id IN (${ph})`, [...missingIds]);
+      reset_to_pending = missingIds.length;
+    }
+  }
+  const remRow = await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${where}`, [...params]);
+  const written = confirmed_current + reset_to_pending;
+  try {
+    await addMaintenanceUsage(dbOf(env), written);
+  } catch {
+  }
+  return {
+    enabled: true,
+    checked,
+    confirmed_current,
+    reset_to_pending,
+    remaining: remRow?.c ?? 0,
+    scanned,
+    quota_limit: budget.limit,
+    quota_used_today: budget.used + written,
+    quota_exceeded: quotaExceeded
+  };
+}
+async function syncVectorIndex(env, opts = {}) {
+  const off = { enabled: false, healthy: false, sweeping: false, checked: 0, reset_to_pending: 0, re_embedded: 0, more: false, quota_exceeded: false };
+  const store = vectorsOf(env);
+  if (!embedEnabled(env) || !store) return off;
+  const db = dbOf(env);
+  const limit = Math.min(Math.max(Math.trunc(opts.limit ?? SYNC_DEFAULT_LIMIT) || SYNC_DEFAULT_LIMIT, 1), SYNC_MAX_LIMIT);
+  const state = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [SYNC_STATE_ID]);
+  let cursor = null;
+  if (state) {
+    const m = parseMeta2(state.metadata_json);
+    cursor = typeof m?.cursor === "string" ? m.cursor : "";
+  }
+  if (cursor === null) {
+    const probe = await db.all(`SELECT id FROM entries WHERE ${SCOPED_EMBEDDED_PREDICATE} LIMIT ?`, [SYNC_PROBE]);
+    const ids2 = (probe.results ?? []).map((r) => r.id);
+    if (ids2.length > 0) {
+      const present = new Set((await store.getByIds(ids2)).map((v) => v.id));
+      if (ids2.every((id) => present.has(id))) {
+        const b2 = await backfillEmbeddings(env, { limit: 25 });
+        return { ...off, enabled: true, healthy: true, re_embedded: b2.processed, more: b2.remaining > 0 && !b2.quota_exceeded, quota_exceeded: b2.quota_exceeded };
+      }
+      cursor = "";
+    } else {
+      const b2 = await backfillEmbeddings(env, { limit: 25 });
+      return { ...off, enabled: true, healthy: true, re_embedded: b2.processed, more: b2.remaining > 0 && !b2.quota_exceeded, quota_exceeded: b2.quota_exceeded };
+    }
+  }
+  const budget = await maintenanceBudgetToday(env, db);
+  const affordable = Math.floor(budget.remaining / SYNC_ROW_WRITES);
+  if (affordable <= 0) return { ...off, enabled: true, sweeping: true, more: true, quota_exceeded: true };
+  const take = Math.min(limit, affordable);
+  const res = await db.all(
+    `SELECT id FROM entries WHERE ${SCOPED_EMBEDDED_PREDICATE} AND id > ? ORDER BY id LIMIT ?`,
+    [cursor, take]
+  );
+  const ids = (res.results ?? []).map((r) => r.id);
+  let reset = 0;
+  if (ids.length > 0) {
+    const present = new Set((await store.getByIds(ids)).map((v) => v.id));
+    const missing = ids.filter((id) => !present.has(id));
+    for (let i = 0; i < missing.length; i += 90) {
+      const part = missing.slice(i, i + 90);
+      const ph = part.map(() => "?").join(",");
+      await db.run(`UPDATE entries SET is_embedded = 0, content_hash = NULL WHERE id IN (${ph})`, part);
+    }
+    reset = missing.length;
+    if (reset > 0) {
+      try {
+        await addMaintenanceUsage(db, reset * SYNC_ROW_WRITES);
+      } catch {
+      }
+    }
+  }
+  const sweepDone = ids.length < take;
+  if (sweepDone) {
+    await db.run("DELETE FROM entries WHERE id = ?", [SYNC_STATE_ID]);
+  } else {
+    await db.run("DELETE FROM entries WHERE id = ?", [SYNC_STATE_ID]);
+    await createEntry(db, { id: SYNC_STATE_ID, template: "embed_sync_state", metadata_json: JSON.stringify({ cursor: ids[ids.length - 1] }) });
+  }
+  const b = await backfillEmbeddings(env, { limit: 25 });
+  return {
+    enabled: true,
+    healthy: false,
+    sweeping: true,
+    checked: ids.length,
+    reset_to_pending: reset,
+    re_embedded: b.processed,
+    more: !sweepDone || b.remaining > 0 && !b.quota_exceeded,
+    quota_exceeded: b.quota_exceeded
+  };
+}
+async function expectedVectorCount(env, opts = {}) {
+  const params = [];
+  const own = opts.owner_id ? " AND +owner_id = ?" : "";
+  if (opts.owner_id) params.push(opts.owner_id);
+  const base = `${IN_SCOPE_IDS_SQL} AND length(content) > 0 AND json_extract(metadata_json, '$.embed') = 1 AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'${own}`;
+  const row = await dbOf(env).first(
+    `SELECT COUNT(*) AS expected, SUM(+is_embedded) AS marked FROM entries WHERE ${base}`,
+    [...params]
+  );
+  const expected = row?.expected ?? 0;
+  const marked = row?.marked ?? 0;
+  return { enabled: embedEnabled(env), expected, marked_embedded: marked, pending: Math.max(expected - marked, 0) };
+}
+async function embedSelfTest(env, opts = {}) {
+  if (!embedEnabled(env)) {
+    return { enabled: false, tested: false, passed: null, note: `embed \u6A21\u7D44\u672A\u958B\uFF08${embedConfigProblem(env) ?? "\u5D4C\u5165\u4F9B\u61C9\u8005\u6216\u5411\u91CF\u5E95\u5EA7\u6C92\u8A2D\u597D"}\uFF09\uFF0C\u8A9E\u7FA9\u641C\u5C0B\u9019\u689D\u8DEF\u76EE\u524D\u4E0D\u5B58\u5728` };
+  }
+  const conds = ["is_embedded = 1", "content IS NOT NULL AND content <> ''"];
+  const params = [];
+  if (opts.owner_id) {
+    conds.push("owner_id = ?");
+    params.push(opts.owner_id);
+  }
+  const where = conds.join(" AND ");
+  const row = await dbOf(env).first(`SELECT * FROM entries WHERE ${where} ORDER BY updated_at DESC LIMIT 1`, [...params]);
+  if (!row) {
+    return { enabled: true, tested: false, passed: null, note: "\u5C1A\u7121\u4EFB\u4F55\u5361\u7247\u88AB\u6A19\u8A18\u70BA\u300C\u5DF2\u5D4C\u5165\u300D\uFF0C\u7121\u6CD5\u81EA\u6211\u6AA2\u67E5\uFF08\u53EF\u80FD\u662F\u9084\u6C92\u5361\u7247\uFF0C\u4E5F\u53EF\u80FD\u662F\u5D4C\u5165\u5F9E\u672A\u6210\u529F\u904E\uFF09" };
+  }
+  const sample = (row.content ?? "").trim().slice(0, 200);
+  if (!sample) {
+    return { enabled: true, tested: false, passed: null, note: "\u53D6\u6A23\u5361\u7247\u5167\u5BB9\u70BA\u7A7A\uFF0C\u8DF3\u904E\u81EA\u6211\u6AA2\u67E5" };
+  }
+  let hits;
+  try {
+    hits = await semanticSearch(env, sample, { owner_id: opts.owner_id, topK: 10, min_score: 0 });
+  } catch (e) {
+    if (e instanceof EmbedQueryFailedError) {
+      return { enabled: true, tested: false, passed: null, note: `\u81EA\u6211\u6AA2\u67E5\u6C92\u8DD1\u6210\uFF1A${e.message}\uFF08\u8A9E\u7FA9\u641C\u5C0B\u6B64\u523B\u540C\u6A23\u6703\u6545\u969C\uFF0C\u591A\u534A\u662F Workers AI \u984D\u5EA6\u6216\u670D\u52D9\u554F\u984C\uFF09` };
+    }
+    throw e;
+  }
+  if (hits === null) {
+    return { enabled: false, tested: false, passed: null, note: "embed \u6A21\u7D44\u56DE\u5831\u672A\u958B\uFF08binding \u6AA2\u67E5\u671F\u9593\u6D88\u5931\uFF0C\u7F55\u898B\uFF09" };
+  }
+  const passed = hits.some((h) => h.id === row.id);
+  return {
+    enabled: true,
+    tested: true,
+    passed,
+    note: passed ? "\u62FF\u4E00\u5F35\u5DF2\u6A19\u8A18\u300C\u5DF2\u5D4C\u5165\u300D\u7684\u5361\u7247\u81EA\u6211\u67E5\u8A62\uFF0C\u80FD\u641C\u5230\u81EA\u5DF1\u2014\u2014\u8A9E\u7FA9\u641C\u5C0B\u9019\u689D\u8DEF\u662F\u901A\u7684" : "\u62FF\u4E00\u5F35\u5DF2\u6A19\u8A18\u300C\u5DF2\u5D4C\u5165\u300D\u7684\u5361\u7247\u81EA\u6211\u67E5\u8A62\uFF0C\u537B\u641C\u4E0D\u5230\u81EA\u5DF1\u2014\u2014\u50CF\u662F index \u6C92\u6536\u9304\u5230\u9019\u6279\u5411\u91CF\uFF08\u9700\u8981\u91CD\u65B0 reindex\uFF09"
+  };
+}
+async function semanticSearch(env, q, opts = {}) {
+  if (!embedEnabled(env)) return null;
+  if (!(q ?? "").trim()) return [];
+  let vec;
+  try {
+    vec = await embedText(env, q);
+  } catch (e) {
+    throw new EmbedQueryFailedError(e instanceof Error ? e.message : String(e));
+  }
+  if (!vec) throw new EmbedQueryFailedError(`${embedProviderOf(env)?.name ?? "\u5D4C\u5165\u4F9B\u61C9\u8005"} \u6C92\u6709\u56DE\u51FA\u5411\u91CF\uFF08\u56DE\u61C9\u5F62\u72C0\u7570\u5E38\u6216\u7A7A\u56DE\u61C9\uFF09`);
+  const filter = {};
+  if (opts.owner_id) filter.owner_id = opts.owner_id;
+  if (opts.source) filter.source = opts.source;
+  if (opts.library && opts.library.length > 0) filter.library = { $in: opts.library };
+  const res = await vectorsOf(env).query(vec, {
+    topK: Math.min(opts.topK ?? 20, 100),
+    returnMetadata: "indexed",
+    ...Object.keys(filter).length ? { filter } : {}
+  });
+  const minScore2 = opts.min_score ?? MIN_SCORE_ABS_FLOOR;
+  return (res.matches ?? []).filter((m) => m.score >= minScore2).map((m) => ({
+    id: m.id,
+    score: m.score,
+    owner_id: m.metadata?.owner_id,
+    source: m.metadata?.source,
+    library: m.metadata?.library
+  }));
+}
+async function embedForEntity(env, text) {
+  if (!embedEnabled(env)) return null;
+  return embedText(env, text);
+}
+async function nearestEntities(env, vec, owner, topK = 3) {
+  const store = vectorsOf(env);
+  if (!store) return [];
+  const res = await store.query(vec, {
+    topK: Math.min(Math.max(topK, 1), 10),
+    returnMetadata: "indexed",
+    filter: { owner_id: owner }
+  });
+  return (res.matches ?? []).map((m) => ({ id: m.id, score: m.score }));
+}
+var DEFAULT_EMBED_MODEL, MIN_SCORE_ABS_FLOOR, MIN_SCORE_TOP_RATIO, VECTOR_ENTRY_TYPES, VECTOR_ENTRY_TYPES_SQL, IN_VECTOR_SCOPE_SQL, ENTRY_TYPE_GATE, IN_SCOPE_IDS_SQL, SCOPED_PENDING_PREDICATE, SCOPED_EMBEDDED_PREDICATE, BACKFILL_PREDICATE, DEFAULT_BACKFILL_DAILY_LIMIT, SYNC_STATE_ID, SYNC_PROBE, SYNC_DEFAULT_LIMIT, SYNC_MAX_LIMIT, SYNC_ROW_WRITES, EmbedQueryFailedError;
+var init_embed = __esm({
+  "kbdb/src/embed.ts"() {
+    "use strict";
+    init_maintenance_quota();
+    init_entry_crud();
+    init_kind();
+    init_library_predicate();
+    init_d1();
+    init_graph_query();
+    init_entity_canon();
+    init_select();
+    DEFAULT_EMBED_MODEL = "@cf/baai/bge-m3";
+    MIN_SCORE_ABS_FLOOR = 0.45;
+    MIN_SCORE_TOP_RATIO = 0.8;
+    VECTOR_ENTRY_TYPES = ["entity", "predicate", "alias", "source_passage"];
+    VECTOR_ENTRY_TYPES_SQL = `(${VECTOR_ENTRY_TYPES.map((t) => `'${t}'`).join(",")})`;
+    IN_VECTOR_SCOPE_SQL = `EXISTS (SELECT 1 FROM entries vb WHERE vb.src_id = entries.id AND vb.rel_id = '${SYS_BELONGS}' AND vb.dst_id IN (SELECT id FROM templates WHERE name IN ${VECTOR_ENTRY_TYPES_SQL}))`;
+    ENTRY_TYPE_GATE = IN_VECTOR_SCOPE_SQL;
+    IN_SCOPE_IDS_SQL = `id IN (SELECT vb.src_id FROM entries vb WHERE vb.rel_id = '${SYS_BELONGS}' AND vb.dst_id IN (SELECT id FROM templates WHERE name IN ${VECTOR_ENTRY_TYPES_SQL}))`;
+    SCOPED_PENDING_PREDICATE = `${IN_SCOPE_IDS_SQL} AND +is_embedded = 0 AND length(content) > 0 AND json_extract(metadata_json, '$.embed') = 1`;
+    SCOPED_EMBEDDED_PREDICATE = `${IN_SCOPE_IDS_SQL} AND +is_embedded = 1`;
+    BACKFILL_PREDICATE = `is_embedded = 0 AND content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND ${ENTRY_TYPE_GATE}`;
+    DEFAULT_BACKFILL_DAILY_LIMIT = 1800;
+    SYNC_STATE_ID = "kbdb-embed-sync-state";
+    SYNC_PROBE = 5;
+    SYNC_DEFAULT_LIMIT = 100;
+    SYNC_MAX_LIMIT = 200;
+    SYNC_ROW_WRITES = 2;
+    EmbedQueryFailedError = class extends Error {
+      constructor(detail) {
+        super(`\u67E5\u8A62\u5411\u91CF\u5316\u5931\u6557\uFF1A${detail}`);
+        this.name = "EmbedQueryFailedError";
+      }
+    };
+  }
+});
+
 // kbdb/src/actions/relation-orphans.ts
 var relation_orphans_exports = {};
 __export(relation_orphans_exports, {
@@ -2390,6 +3796,72 @@ var init_kind_orphans = __esm({
   "kbdb/src/actions/kind-orphans.ts"() {
     "use strict";
     init_kind();
+  }
+});
+
+// kbdb/src/actions/orphan-purge.ts
+var orphan_purge_exports = {};
+__export(orphan_purge_exports, {
+  PURGE_MAX_IDS: () => PURGE_MAX_IDS,
+  PurgeInputError: () => PurgeInputError,
+  purgeKindOrphans: () => purgeKindOrphans
+});
+async function purgeKindOrphans(db, input) {
+  const ids = [...new Set(input.ids)];
+  if (ids.length === 0) throw new PurgeInputError("ids \u4E0D\u80FD\u662F\u7A7A\u7684\uFF1A\u5148\u7528 GET /maintenance/kind-orphans \u5DE1\u6AA2\uFF0C\u518D\u628A\u8981\u6E05\u7684 id \u5E36\u9032\u4F86");
+  if (ids.length > PURGE_MAX_IDS) throw new PurgeInputError(`\u4E00\u6B21\u6700\u591A ${PURGE_MAX_IDS} \u500B id\uFF08\u6536\u5230 ${ids.length}\uFF09\uFF1A\u5206\u6279\u9001`);
+  const confirm = input.confirm === true;
+  const items = [];
+  for (const id of ids) {
+    const params = [id];
+    let owner = "";
+    if (input.owner_id) {
+      owner = "AND owner_id = ?";
+      params.push(input.owner_id);
+    }
+    const row = await db.first(
+      `SELECT id, owner_id, page_name, metadata_json, is_embedded, created_at, length(content) AS content_length FROM entries
+        WHERE id = ?
+          ${owner}
+          AND ${notStructureSql()}
+          AND NOT EXISTS (SELECT 1 FROM entries b WHERE b.src_id = entries.id AND b.rel_id = '${SYS_BELONGS}')
+          AND NOT EXISTS (SELECT 1 FROM entries d WHERE d.dst_id = entries.id)`,
+      params
+    );
+    if (!row) {
+      items.push({ id, verdict: "skipped", reason: "not_orphan_or_missing", detail: "\u4E0D\u5B58\u5728\u3001\u4E0D\u5C6C\u65BC\u9019\u500B\u79DF\u6236\uFF0C\u6216\u73FE\u5728\u5DF2\u7D93\u4E0D\u662F\u5B64\u5152\uFF08\u639B\u4E0A\u4E86 template \u6216\u6709 record \u6307\u8457\u5B83\uFF09" });
+      continue;
+    }
+    const shape = (row.page_name == null || row.page_name === "") && row.metadata_json == null ? "value_cell" : "content";
+    const was_embedded = row.is_embedded === 1;
+    const audit = { owner_id: row.owner_id, created_at: row.created_at, content_length: row.content_length ?? 0 };
+    if (shape === "content" && input.include_content !== true) {
+      items.push({ id, shape, verdict: "skipped", reason: "content_shape_needs_include_content", detail: "\u5B83\u6709\u9801\u540D\u6216 metadata\uFF0C\u50CF\u4E00\u7B46\u771F\u7684\u5167\u5BB9\uFF1B\u78BA\u8A8D\u8981\u6E05\u8ACB\u660E\u8B1B include_content:true", was_embedded, audit });
+      continue;
+    }
+    if (!confirm) {
+      items.push({ id, shape, verdict: "would_delete", was_embedded, audit });
+      continue;
+    }
+    try {
+      await deleteEntry(db, id);
+      items.push({ id, shape, verdict: "deleted", was_embedded, audit });
+    } catch (e) {
+      items.push({ id, shape, verdict: "skipped", reason: "delete_failed", detail: e instanceof Error ? e.message : String(e), was_embedded, audit });
+    }
+  }
+  const count = (v) => items.filter((i) => i.verdict === v).length;
+  return { dry_run: !confirm, requested: ids.length, would_delete: count("would_delete"), deleted: count("deleted"), skipped: count("skipped"), items };
+}
+var PURGE_MAX_IDS, PurgeInputError;
+var init_orphan_purge = __esm({
+  "kbdb/src/actions/orphan-purge.ts"() {
+    "use strict";
+    init_kind();
+    init_entry_crud();
+    PURGE_MAX_IDS = 100;
+    PurgeInputError = class extends Error {
+    };
   }
 });
 
@@ -4720,1326 +6192,9 @@ async function listLibraryCards(db, f) {
   };
 }
 
-// kbdb/src/actions/brake-settings.ts
-init_record_crud();
-var SETTINGS_TEMPLATE_ID = "tpl-kbdb-settings";
-var SETTINGS_SLOTS = ["brake_enabled", "updated_at", "updated_by"];
-var SETTINGS_RECORD_ID = "kbdb_settings";
-async function ensureSettingsTemplate(db) {
-  const tpl = await getTemplate(db, SETTINGS_TEMPLATE_ID);
-  if (tpl) {
-    const have = JSON.parse(tpl.slots_json);
-    if (SETTINGS_SLOTS.every((s) => have.includes(s))) return;
-    await updateTemplate(db, SETTINGS_TEMPLATE_ID, { slots: [.../* @__PURE__ */ new Set([...have, ...SETTINGS_SLOTS])] });
-    return;
-  }
-  await createTemplate(db, {
-    id: SETTINGS_TEMPLATE_ID,
-    name: "kbdb_settings",
-    description: "\u9019\u53F0 KBDB \u7684\u71DF\u904B\u8A2D\u5B9A\uFF08inkstone/arcrun-rag#207\uFF09\uFF1A\u76EE\u524D\u53EA\u6709 brake_enabled \u4E00\u683C\u2014\u2014\u5E33\u865F\u4E3B\u4EBA\u81EA\u5DF1\u80FD\u4E0D\u80FD\u95DC\u6389\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u3002\u4E00\u500B\u5BE6\u4F8B\u4E00\u7B46\uFF0C\u4E0D\u639B owner\u3002",
-    slots: SETTINGS_SLOTS,
-    created_by: "kbdb-speedometer"
-  });
-}
-function toSettings(rec) {
-  const v = rec?.values ?? {};
-  return {
-    brake_enabled: v.brake_enabled !== "false",
-    updated_at: v.updated_at || null,
-    updated_by: v.updated_by || null
-  };
-}
-var SETTINGS_CACHE_MS = 3e4;
-var settingsCache = null;
-async function getBrakeSettings(db) {
-  const now = Date.now();
-  if (settingsCache && now - settingsCache.at <= SETTINGS_CACHE_MS) return settingsCache.settings;
-  try {
-    await ensureSettingsTemplate(db);
-    const rec = await getRecord(db, SETTINGS_RECORD_ID);
-    const settings = toSettings(rec);
-    settingsCache = { at: now, settings };
-    return settings;
-  } catch (e) {
-    if (settingsCache) return settingsCache.settings;
-    throw e;
-  }
-}
-async function brakeEnabled(db) {
-  return (await getBrakeSettings(db)).brake_enabled;
-}
-async function setBrakeEnabled(db, enabled, by, now = Date.now()) {
-  await ensureSettingsTemplate(db);
-  const values = {
-    brake_enabled: String(enabled),
-    updated_at: new Date(now).toISOString(),
-    updated_by: (by || "manual").slice(0, 120)
-  };
-  const existing = await getRecord(db, SETTINGS_RECORD_ID);
-  const rec = existing ? await updateRecord(db, SETTINGS_RECORD_ID, values) : await createRecord(db, { template: SETTINGS_TEMPLATE_ID, record_id: SETTINGS_RECORD_ID, values, owner_id: null, derived_cell_ids: true });
-  settingsCache = null;
-  return toSettings(rec);
-}
-
-// kbdb/src/actions/maintenance-quota.ts
-init_entry_crud();
-
-// kbdb/src/storage/port.ts
-var SQL_PORT = /* @__PURE__ */ Symbol.for("arcrun.kbdb.SqlPort");
-function isSqlPort(x) {
-  return typeof x === "object" && x !== null && x[SQL_PORT] === true;
-}
-
-// kbdb/src/actions/maintenance-quota.ts
-var DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT = 2e4;
-function maintenanceDailyLimit(env) {
-  const raw2 = env.KBDB_MAINTENANCE_DAILY_WRITE_LIMIT;
-  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT;
-}
-var DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT = 1e5;
-function ftsBuildDailyLimit(env) {
-  const raw2 = env.KBDB_FTS_BUILD_DAILY_WRITE_LIMIT;
-  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT;
-}
-function utcDay() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-}
-function maintenanceUsageId() {
-  return `kbdb-maintenance-usage:${utcDay()}`;
-}
-async function getMaintenanceUsageToday(db) {
-  const row = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [maintenanceUsageId()]);
-  if (!row) return 0;
-  try {
-    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
-    return Number(parsed.writes) || 0;
-  } catch {
-    return 0;
-  }
-}
-async function addMaintenanceUsage(db, by) {
-  if (by <= 0) return;
-  const id = maintenanceUsageId();
-  const existing = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [id]);
-  let prev = 0;
-  if (existing) {
-    try {
-      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
-      prev = Number(parsed.writes) || 0;
-    } catch {
-      prev = 0;
-    }
-    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay(), writes: prev + by }), id]);
-  } else {
-    await createEntry(db, { id, template: "kbdb_maintenance_usage", metadata_json: JSON.stringify({ day: utcDay(), writes: by }) });
-  }
-}
-async function maintenanceBudgetToday(env, db) {
-  return budgetAgainst(maintenanceDailyLimit(env), db);
-}
-async function ftsBuildBudgetToday(env, db) {
-  return budgetAgainst(ftsBuildDailyLimit(env), db);
-}
-async function budgetAgainst(limit, db) {
-  let used = 0;
-  try {
-    used = await getMaintenanceUsageToday(db);
-  } catch {
-    used = 0;
-  }
-  return { limit, used, remaining: Math.max(0, limit - used) };
-}
-var DEFAULT_INSTANCE_DAILY_WRITE_LIMIT = 1e5;
-var DEFAULT_FTS_BACKFILL_RESERVE = 10500;
-function instanceDailyWriteLimit(env) {
-  const raw2 = env.KBDB_INSTANCE_DAILY_WRITE_LIMIT;
-  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_INSTANCE_DAILY_WRITE_LIMIT;
-}
-function ftsBackfillReserve(env) {
-  const raw2 = env.KBDB_FTS_BACKFILL_RESERVE;
-  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n2) && n2 >= 0 ? n2 : DEFAULT_FTS_BACKFILL_RESERVE;
-}
-function isSystemAssetOwner(ownerId) {
-  if (ownerId === null || ownerId === void 0 || ownerId === "") return true;
-  return ownerId.endsWith("::assets") || ownerId.endsWith("::runs") || ownerId.endsWith("::portal");
-}
-function entryWriteUsageId() {
-  return `kbdb-entry-write-usage:${utcDay()}`;
-}
-async function getEntryWriteUsageToday(db) {
-  const row = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [entryWriteUsageId()]);
-  if (!row) return 0;
-  try {
-    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
-    return Number(parsed.writes) || 0;
-  } catch {
-    return 0;
-  }
-}
-async function addEntryWriteUsage(db, by) {
-  if (by <= 0) return;
-  const id = entryWriteUsageId();
-  const existing = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [id]);
-  let prev = 0;
-  if (existing) {
-    try {
-      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
-      prev = Number(parsed.writes) || 0;
-    } catch {
-      prev = 0;
-    }
-    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay(), writes: prev + by }), id]);
-  } else {
-    await createEntry(db, { id, template: "kbdb_entry_write_usage", metadata_json: JSON.stringify({ day: utcDay(), writes: by }) });
-  }
-}
-async function entryWriteBudgetToday(env, db) {
-  let disabled = false;
-  try {
-    disabled = !await brakeEnabled(db);
-  } catch {
-    disabled = false;
-  }
-  if (disabled) {
-    const limit2 = instanceDailyWriteLimit(env);
-    let used2 = 0;
-    try {
-      used2 = await getEntryWriteUsageToday(db);
-    } catch {
-      used2 = 0;
-    }
-    return { limit: limit2, used: used2, remaining: Number.MAX_SAFE_INTEGER };
-  }
-  let ftsDone = false;
-  try {
-    ftsDone = (await readFtsMigrationState(db)).cutoffRowid === 0;
-  } catch {
-    ftsDone = false;
-  }
-  const reserve = ftsDone ? 0 : ftsBackfillReserve(env);
-  const limit = Math.max(0, instanceDailyWriteLimit(env) - reserve);
-  let used = 0;
-  try {
-    used = await getEntryWriteUsageToday(db);
-  } catch {
-    used = 0;
-  }
-  return { limit, used, remaining: Math.max(0, limit - used) };
-}
-var WRITE_BUDGET_QUOTA_MARKER = "KBDB has reserved part of today's D1 free tier daily row write limit for search-index maintenance; normal writes are capped early so indexing keeps making real progress. This is not a transient error \u2014 please wait for tomorrow's reset (00:00 UTC) before retrying normal writes.";
-function writeBudgetExhaustedBody(budget) {
-  return {
-    success: false,
-    error: "daily_write_budget_reserved_for_indexing",
-    message: WRITE_BUDGET_QUOTA_MARKER,
-    capability_hint: "\u4ECA\u5929\u7684\u5BEB\u5165\u984D\u5EA6\u5DF2\u7D93\u7528\u5B8C\uFF08\u5176\u4E2D\u4E00\u90E8\u5206\u56FA\u5B9A\u7559\u7D66\u77E5\u8B58\u5EAB\u7684\u7D22\u5F15\u7DAD\u8B77\uFF0C\u78BA\u4FDD\u641C\u5C0B\u7D50\u679C\u4E0D\u6703\u56E0\u70BA\u7D22\u5F15\u8DDF\u4E0D\u4E0A\u800C\u6F0F\u6389\u6771\u897F\uFF09\u3002\u8ACB\u7A0D\u5F8C\u518D\u8A66\uFF0C\u984D\u5EA6\u6703\u5728 UTC \u5348\u591C\u91CD\u7F6E\uFF1B\u525B\u525B\u7684\u5167\u5BB9\u9084\u6C92\u9001\u51FA\uFF0C\u91CD\u8A66\u524D\u4E0D\u6703\u91CD\u8907\u9001\u51FA\u5169\u6B21\u3002",
-    admin_hint: `instance entry-write budget exhausted\uFF08today's normal-write usage ${budget.used}/${budget.limit}\uFF0Creserved for FTS backfill\uFF1A\u898B KBDB_FTS_BACKFILL_RESERVE\uFF09\u3002\u7B49 UTC \u65E5\u5207\u91CD\u7F6E\uFF0C\u6216\u8ABF\u9AD8 KBDB_INSTANCE_DAILY_WRITE_LIMIT\uFF0F\u8ABF\u4F4E KBDB_FTS_BACKFILL_RESERVE\uFF08\u82E5\u5224\u65B7\u9019\u500B\u5BE6\u4F8B\u771F\u7684\u9700\u8981\u66F4\u5BEC\u9B06\uFF09\u3002`
-  };
-}
-function withWriteTally(db, tally) {
-  const port = {
-    [SQL_PORT]: true,
-    async all(sql, params) {
-      const r = await db.all(sql, params);
-      tally.rowsWritten += Number(r.meta?.rows_written ?? 0);
-      return r;
-    },
-    first: (sql, params) => db.first(sql, params),
-    async run(sql, params) {
-      const r = await db.run(sql, params);
-      tally.rowsWritten += Number(r.meta?.rows_written ?? 0);
-      return r;
-    },
-    async batch(stmts) {
-      const r = await db.batch(stmts);
-      for (const x of r) tally.rowsWritten += Number(x.meta?.rows_written ?? 0);
-      return r;
-    }
-  };
-  return port;
-}
-
-// kbdb/src/embed.ts
-init_entry_crud();
-init_kind();
-init_library_predicate();
-
-// kbdb/src/storage/d1.ts
-var D1_INFO = { driver: "d1", billing: "metered" };
-function metaOf(m) {
-  return m ?? {};
-}
-function d1Port(d1) {
-  if (isSqlPort(d1)) return d1;
-  const raw2 = d1;
-  const stmt = (sql, params = []) => {
-    const s = raw2.prepare(sql);
-    return params.length === 0 && typeof s.bind !== "function" ? s : s.bind(...params);
-  };
-  const port = {
-    [SQL_PORT]: true,
-    info: D1_INFO,
-    async all(sql, params) {
-      const r = await stmt(sql, params).all();
-      return { results: r.results ?? [], meta: metaOf(r.meta) };
-    },
-    first(sql, params) {
-      return stmt(sql, params).first();
-    },
-    async run(sql, params) {
-      const r = await stmt(sql, params).run();
-      return { meta: metaOf(r.meta) };
-    },
-    async batch(stmts) {
-      const out = await raw2.batch(stmts.map((s) => stmt(s.sql, s.params)));
-      return out.map((r) => ({ results: r.results ?? [], meta: metaOf(r.meta) }));
-    }
-  };
-  return port;
-}
-var cache = /* @__PURE__ */ new WeakMap();
-function dbOf(env) {
-  if (env.__kbdbDb) return env.__kbdbDb;
-  if (env.KBDB_STORAGE && env.KBDB_STORAGE !== "d1") {
-    throw new Error(
-      `KBDB_STORAGE=${env.KBDB_STORAGE} \u4F46\u6C92\u6709\u5E95\u5EA7\u88AB\u639B\u4E0A\uFF1ASQLite \u6A94\u5E95\u5EA7\u53EA\u5728 Node \u4E3B\u6A5F\u6A21\u5F0F\u4E0B\u53EF\u7528\uFF08kbdb/src/node/server.ts\uFF09\uFF1BCloudflare Workers \u8ACB\u7528 KBDB_STORAGE=d1\uFF08\u9810\u8A2D\uFF09\u3002`
-    );
-  }
-  if (!env.DB) throw new Error("KBDB_STORAGE=d1 \u4F46\u6C92\u6709 DB \u7D81\u5B9A\uFF1A\u8ACB\u5728 wrangler.toml \u7D81\u5B9A D1\uFF0C\u6216\u6539\u7528 Node \u4E3B\u6A5F\u6A21\u5F0F\u7684 SQLite \u6A94\u5E95\u5EA7\u3002");
-  const key = env.DB;
-  if (typeof key !== "object" || key === null) return d1Port(env.DB);
-  let p = cache.get(key);
-  if (!p) {
-    p = d1Port(env.DB);
-    cache.set(key, p);
-  }
-  return p;
-}
-function execLogDbOf(env) {
-  if (env.__kbdbExecLogDb) return env.__kbdbExecLogDb;
-  if (!env.EXEC_LOG_DB) {
-    throw new Error(
-      "\u6C92\u6709 EXEC_LOG_DB \u7D81\u5B9A\uFF1A\u57F7\u884C\u7D00\u9304\u4F4F\u5728\u5C08\u5C6C\u7684\u5EAB\uFF08inkstone/Arcrun#222\uFF09\uFF0C\u8ACB\u5728 wrangler.toml \u7D81\u5B9A EXEC_LOG_DB\uFF08acr update\uFF0F\u5B89\u88DD\u5668\u6703\u81EA\u52D5\u5EFA\u7ACB\uFF09\uFF0CNode \u4E3B\u6A5F\u6A21\u5F0F\u8ACB\u8B93 host \u639B\u4E0A __kbdbExecLogDb\u3002"
-    );
-  }
-  const key = env.EXEC_LOG_DB;
-  if (typeof key !== "object" || key === null) return d1Port(env.EXEC_LOG_DB);
-  let p = cache.get(key);
-  if (!p) {
-    p = d1Port(env.EXEC_LOG_DB);
-    cache.set(key, p);
-  }
-  return p;
-}
-
-// kbdb/src/actions/graph-query.ts
-init_record_crud();
-
-// kbdb/src/actions/field-index.ts
-init_record_crud();
-var FIELD_INDEX_BACKFILL_PER_CALL = 1e3;
-var BACKFILL_CHUNK = 80;
-var FIELD_INDEX_MAX_RECORDS = 1e5;
-var FieldIndexTooLargeError = class extends Error {
-  constructor(template, limit) {
-    super(`template ${template} has more than ${limit} records; field index not enabled`);
-    this.template = template;
-    this.limit = limit;
-    this.name = "FieldIndexTooLargeError";
-  }
-  template;
-  limit;
-};
-function isMissingTable(err) {
-  return /no such table:\s*field_value_index/i.test(String(err?.message ?? err));
-}
-async function fieldIndexReady(db, relIds) {
-  if (relIds.length === 0) return false;
-  try {
-    const ph = relIds.map(() => "?").join(",");
-    const rows = await db.all(
-      `SELECT rel_id FROM field_value_index_spec WHERE rel_id IN (${ph}) AND state = 'ready'`,
-      [...relIds]
-    );
-    return new Set((rows.results ?? []).map((r) => r.rel_id)).size === new Set(relIds).size;
-  } catch (err) {
-    if (isMissingTable(err)) return false;
-    throw err;
-  }
-}
-async function fieldIndexRecordIds(db, relIds, value, owner, limit) {
-  const seen = /* @__PURE__ */ new Set();
-  const rows = [];
-  for (const relId of new Set(relIds)) {
-    const params = [relId, value];
-    let sql = `SELECT record_id, seq FROM field_value_index WHERE rel_id = ? AND value = ?`;
-    if (owner !== void 0) {
-      sql += ` AND owner = ?`;
-      params.push(owner);
-    }
-    sql += ` ORDER BY seq DESC`;
-    if (limit !== void 0) {
-      sql += ` LIMIT ?`;
-      params.push(limit + 1);
-    }
-    const res = await db.all(sql, params);
-    rows.push(...res.results ?? []);
-  }
-  rows.sort((a, b) => b.seq - a.seq);
-  const ids = [];
-  for (const r of rows) if (!seen.has(r.record_id)) {
-    seen.add(r.record_id);
-    ids.push(r.record_id);
-  }
-  if (limit === void 0 || ids.length <= limit) return { ids, exhausted: true };
-  return { ids: ids.slice(0, limit), exhausted: false };
-}
-async function enableFieldIndex(db, template, slots) {
-  const tpl = await getTemplate(db, template);
-  if (!tpl) return null;
-  const all = JSON.parse(tpl.slots_json);
-  const unknown = slots.filter((s) => !all.includes(s));
-  if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
-  const want = [...new Set(slots)];
-  if (want.length === 0) throw new Error("fields required");
-  const relOf = (s) => fieldEntryId(tpl.id, s);
-  const specRows = async () => {
-    const ph = want.map(() => "?").join(",");
-    const r = await db.all(
-      `SELECT rel_id, slot, state, cursor_created, cursor_rowid FROM field_value_index_spec WHERE rel_id IN (${ph})`,
-      want.map(relOf)
-    );
-    return r.results ?? [];
-  };
-  let spec = await specRows();
-  const missing = want.filter((s) => !spec.some((r) => r.slot === s));
-  if (missing.length > 0) {
-    const cnt = await db.first(
-      `SELECT COUNT(*) AS n FROM (SELECT 1 FROM entries WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' LIMIT ?)`,
-      [tpl.id, FIELD_INDEX_MAX_RECORDS + 1]
-    );
-    if ((cnt?.n ?? 0) > FIELD_INDEX_MAX_RECORDS) throw new FieldIndexTooLargeError(tpl.name, FIELD_INDEX_MAX_RECORDS);
-    for (const s of missing) {
-      await db.run(
-        `INSERT OR IGNORE INTO field_value_index_spec (rel_id, template_id, slot, state) VALUES (?, ?, ?, 'building')`,
-        [relOf(s), tpl.id, s]
-      );
-    }
-    spec = await specRows();
-  }
-  const building = spec.filter((r) => r.state !== "ready");
-  let backfilled = 0;
-  if (building.length > 0) {
-    const relIds = building.map((r) => r.rel_id);
-    const fresh = building.some((r) => r.cursor_created == null);
-    let cc = fresh ? -1 : Math.min(...building.map((r) => r.cursor_created));
-    let cr = fresh ? -1 : Math.min(...building.filter((r) => r.cursor_created === cc).map((r) => r.cursor_rowid));
-    let done = false;
-    while (backfilled < FIELD_INDEX_BACKFILL_PER_CALL) {
-      const members = await db.all(
-        `SELECT src_id, created_at, rowid AS rid FROM entries
-          WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' AND (created_at, rowid) > (?, ?)
-          ORDER BY created_at, rowid LIMIT ?`,
-        [tpl.id, cc, cr, BACKFILL_CHUNK]
-      );
-      const got = members.results ?? [];
-      if (got.length > 0) {
-        const ids = got.map((m) => m.src_id);
-        const idPh = ids.map(() => "?").join(",");
-        const relPh2 = relIds.map(() => "?").join(",");
-        await db.run(
-          `INSERT OR IGNORE INTO field_value_index (rel_row, rel_id, value, owner, seq, record_id, cell_id)
-           SELECT r.id, r.rel_id, v.content, COALESCE(r.owner_id, ''), COALESCE(rec.rowid, r.rowid), r.src_id, v.id
-             FROM entries r
-             JOIN entries v ON v.id = r.dst_id
-             LEFT JOIN entries rec ON rec.id = r.src_id
-            WHERE r.src_id IN (${idPh}) AND r.rel_id IN (${relPh2}) AND v.content IS NOT NULL`,
-          [...ids, ...relIds]
-        );
-        backfilled += got.length;
-        cc = got[got.length - 1].created_at;
-        cr = got[got.length - 1].rid;
-      }
-      if (got.length < BACKFILL_CHUNK) {
-        done = true;
-        break;
-      }
-    }
-    const relPh = relIds.map(() => "?").join(",");
-    await db.run(
-      done ? `UPDATE field_value_index_spec SET state = 'ready', ready_at = unixepoch(), cursor_created = ?, cursor_rowid = ? WHERE rel_id IN (${relPh})` : `UPDATE field_value_index_spec SET cursor_created = ?, cursor_rowid = ? WHERE rel_id IN (${relPh})`,
-      [cc, cr, ...relIds]
-    );
-    spec = await specRows();
-  }
-  const fields = want.map((s) => ({ slot: s, state: spec.find((r) => r.slot === s)?.state === "ready" ? "ready" : "building" }));
-  return { template: tpl.name, fields, backfilled, ready: fields.every((f) => f.state === "ready") };
-}
-
-// kbdb/src/actions/graph-query.ts
-init_library_predicate();
-init_entity_canon();
-var D1_MAX_BOUND_PARAMS = 90;
-function chunkForD1(items, fixedParams) {
-  const size = Math.max(1, D1_MAX_BOUND_PARAMS - fixedParams);
-  if (items.length <= size) return [items];
-  const out = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-async function recordIdsByFieldValue(db, tplId, fields, value, owner_id) {
-  if (!value || fields.length === 0) return [];
-  const indexed = fields.map((f) => fieldEntryId(tplId, f));
-  if (await fieldIndexReady(db, indexed)) return (await fieldIndexRecordIds(db, indexed, value, owner_id)).ids;
-  const valueSql = owner_id ? `SELECT id FROM entries WHERE content = ? AND (owner_id = ? OR owner_id IS NULL)` : `SELECT id FROM entries WHERE content = ?`;
-  const valueParams = owner_id ? [value, owner_id] : [value];
-  const valueRows = await db.all(valueSql, [...valueParams]);
-  const valueIds = (valueRows.results ?? []).map((r) => r.id);
-  if (valueIds.length === 0) return [];
-  const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
-  const relPh = fieldIds.map(() => "?").join(",");
-  const recordIdSet = /* @__PURE__ */ new Set();
-  for (const idsChunk of chunkForD1(valueIds, fieldIds.length + (owner_id ? 1 : 0))) {
-    const dstPh = idsChunk.map(() => "?").join(",");
-    const relSql = owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries
-         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries
-         WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
-    const relParams = owner_id ? [...idsChunk, ...fieldIds, owner_id] : [...idsChunk, ...fieldIds];
-    const relRows = await db.all(relSql, [...relParams]);
-    for (const r of relRows.results ?? []) recordIdSet.add(r.record_id);
-  }
-  return [...recordIdSet];
-}
-async function findTripletEdgesByNode(db, templateIdOrName, fields, nodeValue, owner_id, libraries) {
-  if (!nodeValue || fields.length === 0) return [];
-  const tpl = await getTemplate(db, templateIdOrName);
-  if (!tpl) return [];
-  const recordIds = await recordIdsByFieldValue(db, tpl.id, fields, nodeValue, owner_id);
-  if (recordIds.length === 0) return [];
-  const libFilter = libraries && libraries.length > 0 ? libraries : null;
-  const libAgg = "MAX(CASE WHEN r.rel_id = ? THEN v.content END)";
-  const pivotFixed = 5 + (libFilter ? 1 + libFilter.length : 0);
-  const rows = [];
-  for (const recChunk of chunkForD1(recordIds, pivotFixed)) {
-    const recPh = recChunk.map(() => "?").join(",");
-    const pivotSql = `
-      SELECT b.src_id AS record_id,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS subject,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS predicate,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS object,
-             MAX(CASE WHEN r.rel_id = ? THEN v.content END) AS status,
-             ${libAgg} AS library
-        FROM entries b
-        LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-        LEFT JOIN entries v ON v.id = r.dst_id
-       WHERE b.rel_id = 'sys_belongs' AND b.src_id IN (${recPh})
-       GROUP BY b.src_id${libFilter ? `
-      HAVING ${libraryOf(libAgg)} IN (${libFilter.map(() => "?").join(",")})` : ""}`;
-    const pivotParams = [
-      fieldEntryId(tpl.id, "subject"),
-      fieldEntryId(tpl.id, "predicate"),
-      fieldEntryId(tpl.id, "object"),
-      fieldEntryId(tpl.id, "status"),
-      fieldEntryId(tpl.id, "library"),
-      ...recChunk,
-      ...libFilter ? [fieldEntryId(tpl.id, "library"), ...libFilter] : []
-    ];
-    const pivotRows = await db.all(pivotSql, [...pivotParams]);
-    rows.push(...pivotRows.results ?? []);
-  }
-  return rows;
-}
-function neighborToEdge(n2) {
-  return n2.direction === "in" ? { subject: n2.node, predicate: n2.predicate, object: n2.from } : { subject: n2.from, predicate: n2.predicate, object: n2.node };
-}
-async function graphNeighbors(db, start, opts = {}) {
-  const depth = Math.max(1, Math.min(Math.floor(opts.depth ?? 1) || 1, 10));
-  const template = opts.template ?? "triplet";
-  const directed = !!opts.directed;
-  const owner_id = opts.owner_id;
-  const libraries = opts.library && opts.library.length > 0 ? opts.library : void 0;
-  const startNode = canonicalEntity(start);
-  const visited = /* @__PURE__ */ new Set([startNode]);
-  let frontier = [startNode];
-  const neighbors = [];
-  for (let d = 1; d <= depth; d++) {
-    if (frontier.length === 0) break;
-    const next = [];
-    for (const cur of frontier) {
-      const outgoing = await findTripletEdgesByNode(db, template, ["subject"], cur, owner_id, libraries);
-      for (const e of outgoing) {
-        if (e.status === "deprecated") continue;
-        const nb = e.object;
-        if (!nb || visited.has(nb)) continue;
-        visited.add(nb);
-        neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "out" });
-        next.push(nb);
-      }
-      if (!directed) {
-        const incoming = await findTripletEdgesByNode(db, template, ["object"], cur, owner_id, libraries);
-        for (const e of incoming) {
-          if (e.status === "deprecated") continue;
-          const nb = e.subject;
-          if (!nb || visited.has(nb)) continue;
-          visited.add(nb);
-          neighbors.push({ node: nb, predicate: e.predicate ?? "", from: cur, depth: d, direction: "in" });
-          next.push(nb);
-        }
-      }
-    }
-    frontier = next;
-  }
-  return { success: true, start: startNode, depth, directed, libraries: libraries ?? null, neighbors, count: neighbors.length };
-}
-async function recordsByFieldValuePage(db, template, field, value, owner_id, limit, offset, exactTotal = false, slots) {
-  const tpl = await getTemplate(db, template);
-  if (!tpl) return null;
-  let allIds;
-  let exhausted = true;
-  if (exactTotal) {
-    allIds = await recordIdsByFieldValue(db, tpl.id, [field], value, owner_id);
-  } else {
-    const got = await newestRecordIdsByFieldValue(db, tpl.id, [field], value, owner_id, Math.max(offset, 0) + Math.max(limit, 0));
-    allIds = got.ids;
-    exhausted = got.exhausted;
-  }
-  if (allIds.length === 0) return { records: [], total: 0, totalExact: true };
-  const meta = await identityMeta(db, allIds);
-  const ordered = orderNewestFirst(allIds, meta);
-  const page = ordered.slice(Math.max(offset, 0), Math.max(offset, 0) + Math.max(limit, 0));
-  const records = await hydrateRecordValues(db, tpl.id, page, slots);
-  if (exhausted) return { records, total: ordered.length, totalExact: true };
-  return { records, total: Math.max(ordered.length, Math.max(offset, 0) + page.length) + 1, totalExact: false };
-}
-function orderNewestFirst(ids, meta) {
-  return [...ids].sort((a, b) => {
-    const ma = meta.get(a);
-    const mb = meta.get(b);
-    const ca = ma?.createdAt ?? 0;
-    const cb = mb?.createdAt ?? 0;
-    if (ca !== cb) return cb - ca;
-    return (mb?.rowid ?? 0) - (ma?.rowid ?? 0);
-  });
-}
-function newestLookahead(need) {
-  return Math.max(50, Math.ceil(need * 0.1));
-}
-async function newestRecordIdsByFieldValue(db, tplId, fields, value, owner_id, need) {
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  if (!value || fields.length === 0) return { ids: out, exhausted: true };
-  const fieldIds = fields.map((f) => fieldEntryId(tplId, f));
-  if (await fieldIndexReady(db, fieldIds)) return fieldIndexRecordIds(db, fieldIds, value, owner_id, need + newestLookahead(need));
-  const relPh = fieldIds.map(() => "?").join(",");
-  const valueSql = owner_id ? `SELECT rowid AS rid, id FROM entries
-       WHERE content = ? AND (owner_id = ? OR owner_id IS NULL) AND rowid < ?
-       ORDER BY rowid DESC LIMIT ?` : `SELECT rowid AS rid, id FROM entries
-       WHERE content = ? AND rowid < ?
-       ORDER BY rowid DESC LIMIT ?`;
-  const relSql = (n2) => {
-    const dstPh = Array.from({ length: n2 }, () => "?").join(",");
-    return owner_id ? `SELECT DISTINCT src_id AS record_id FROM entries WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh}) AND +owner_id = ?` : `SELECT DISTINCT src_id AS record_id FROM entries WHERE dst_id IN (${dstPh}) AND rel_id IN (${relPh})`;
-  };
-  const batch = Math.max(1, D1_MAX_BOUND_PARAMS - fieldIds.length - (owner_id ? 1 : 0));
-  let size = Math.min(batch, 30);
-  let cursor = Number.MAX_SAFE_INTEGER;
-  for (; ; ) {
-    const vp = owner_id ? [value, owner_id, cursor, size] : [value, cursor, size];
-    const vr = await db.all(valueSql, vp);
-    const rows = vr.results ?? [];
-    if (rows.length === 0) return { ids: out, exhausted: true };
-    cursor = rows[rows.length - 1].rid;
-    const dstIds = rows.map((r) => r.id);
-    const rp = owner_id ? [...dstIds, ...fieldIds, owner_id] : [...dstIds, ...fieldIds];
-    const rr = await db.all(relSql(dstIds.length), rp);
-    for (const r of rr.results ?? []) if (!seen.has(r.record_id)) {
-      seen.add(r.record_id);
-      out.push(r.record_id);
-    }
-    if (rows.length < size) return { ids: out, exhausted: true };
-    if (out.length >= need + newestLookahead(need)) return { ids: out, exhausted: false };
-    size = Math.min(batch, size * 2);
-  }
-}
-async function identityMeta(db, ids) {
-  const out = /* @__PURE__ */ new Map();
-  for (const chunk of chunkForD1(ids, 0)) {
-    const ph = chunk.map(() => "?").join(",");
-    const rows = await db.all(`SELECT id, created_at, rowid FROM entries WHERE id IN (${ph})`, [...chunk]);
-    for (const r of rows.results ?? []) out.set(r.id, { createdAt: r.created_at, rowid: r.rowid });
-  }
-  return out;
-}
-
-// kbdb/src/embed.ts
-init_entity_canon();
-
-// kbdb/src/vector/http.ts
-function httpVectorPort(baseUrl, token, fetchImpl = fetch) {
-  const base = baseUrl.replace(/\/+$/, "");
-  async function call(path, body) {
-    const res = await fetchImpl(`${base}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...token ? { authorization: `Bearer ${token}` } : {} },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-      const detail = (await res.text().catch(() => "")).slice(0, 200);
-      throw new Error(`\u5411\u91CF\u5E95\u5EA7 ${path} \u56DE ${res.status}${detail ? `\uFF1A${detail}` : ""}`);
-    }
-    return await res.json();
-  }
-  return {
-    upsert: (vectors) => call("/v1/upsert", { vectors }),
-    async query(vector, options = {}) {
-      const r = await call("/v1/query", { vector, topK: options.topK, filter: options.filter });
-      return { matches: r.matches ?? [] };
-    },
-    async getByIds(ids) {
-      const r = await call("/v1/get-by-ids", { ids });
-      return r.vectors ?? [];
-    },
-    deleteByIds: (ids) => call("/v1/delete-by-ids", { ids })
-  };
-}
-
-// kbdb/src/vector/provider.ts
-var WORKERS_AI_DEFAULT_MODEL = "@cf/baai/bge-m3";
-var OLLAMA_DEFAULT_MODEL = "bge-m3";
-function workersAiProvider(ai) {
-  return {
-    name: "workers-ai",
-    defaultModel: WORKERS_AI_DEFAULT_MODEL,
-    async embed(model, texts) {
-      const res = await ai.run(model, { text: texts });
-      return res?.data ?? [];
-    }
-  };
-}
-function ollamaProvider(baseUrl, fetchImpl = fetch) {
-  const base = baseUrl.replace(/\/+$/, "");
-  return {
-    name: "ollama",
-    defaultModel: OLLAMA_DEFAULT_MODEL,
-    async embed(model, texts) {
-      const res = await fetchImpl(`${base}/api/embed`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, input: texts })
-      });
-      if (!res.ok) {
-        const detail = (await res.text().catch(() => "")).slice(0, 200);
-        throw new Error(`Ollama /api/embed \u56DE ${res.status}${detail ? `\uFF1A${detail}` : ""}`);
-      }
-      const j = await res.json();
-      return j.embeddings ?? [];
-    }
-  };
-}
-var WORKERS_AI_JUDGE_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-var OLLAMA_JUDGE_MODEL = "qwen2.5:7b";
-function workersAiJudge(ai) {
-  return {
-    name: "workers-ai",
-    defaultModel: WORKERS_AI_JUDGE_MODEL,
-    async complete(model, system, user) {
-      const res = await ai.run(model, {
-        messages: [{ role: "system", content: system }, { role: "user", content: user }],
-        max_tokens: 40,
-        temperature: 0
-      });
-      const out = res?.response ?? res?.choices?.[0]?.message?.content;
-      return typeof out === "string" ? out : out == null ? "" : JSON.stringify(out);
-    }
-  };
-}
-function ollamaJudge(baseUrl, fetchImpl = fetch) {
-  const base = baseUrl.replace(/\/+$/, "");
-  return {
-    name: "ollama",
-    defaultModel: OLLAMA_JUDGE_MODEL,
-    async complete(model, system, user) {
-      const res = await fetchImpl(`${base}/api/chat`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, stream: false, options: { temperature: 0 }, messages: [{ role: "system", content: system }, { role: "user", content: user }] })
-      });
-      if (!res.ok) throw new Error(`Ollama /api/chat \u56DE ${res.status}`);
-      const j = await res.json();
-      return j.message?.content ?? "";
-    }
-  };
-}
-
-// kbdb/src/vector/select.ts
-var norm2 = (v) => (v ?? "").trim().toLowerCase();
-function embedProviderOf(env) {
-  if (env.__kbdbEmbedder) return env.__kbdbEmbedder;
-  const p = norm2(env.EMBED_PROVIDER);
-  if (p === "" || p === "workers-ai") return env.AI ? workersAiProvider(env.AI) : null;
-  if (p === "ollama") {
-    const url = (env.OLLAMA_URL ?? "").trim();
-    return url ? ollamaProvider(url) : null;
-  }
-  return null;
-}
-function judgeProviderOf(env) {
-  if (env.__kbdbJudge) return env.__kbdbJudge;
-  const p = norm2(env.EMBED_PROVIDER);
-  if (p === "" || p === "workers-ai") return env.AI ? workersAiJudge(env.AI) : null;
-  if (p === "ollama") {
-    const url = (env.OLLAMA_URL ?? "").trim();
-    return url ? ollamaJudge(url) : null;
-  }
-  return null;
-}
-function vectorsOf(env) {
-  if (env.__kbdbVectors) return env.__kbdbVectors;
-  const b = norm2(env.VECTOR_BACKEND);
-  if (b === "" || b === "vectorize") return env.VECTORIZE ?? null;
-  if (b === "sqlite-vec") {
-    const url = (env.SQLITE_VEC_URL ?? "").trim();
-    return url ? httpVectorPort(url, (env.SQLITE_VEC_TOKEN ?? "").trim() || void 0) : null;
-  }
-  return null;
-}
-function embedConfigProblem(env) {
-  const parts = [];
-  const p = norm2(env.EMBED_PROVIDER);
-  if (!env.__kbdbEmbedder) {
-    if (p === "" || p === "workers-ai") {
-      if (!env.AI) parts.push("\u7F3A AI binding\uFF08EMBED_PROVIDER=workers-ai\uFF09");
-    } else if (p === "ollama") {
-      if (!(env.OLLAMA_URL ?? "").trim()) parts.push("EMBED_PROVIDER=ollama \u4F46\u6C92\u8A2D OLLAMA_URL");
-    } else {
-      parts.push(`EMBED_PROVIDER \u7121\u6CD5\u8FA8\u8B58\uFF1A\u300C${env.EMBED_PROVIDER}\u300D\uFF08\u53EA\u8A8D workers-ai\uFF0Follama\uFF09`);
-    }
-  }
-  const b = norm2(env.VECTOR_BACKEND);
-  if (!env.__kbdbVectors) {
-    if (b === "" || b === "vectorize") {
-      if (!env.VECTORIZE) parts.push("\u7F3A VECTORIZE binding\uFF08VECTOR_BACKEND=vectorize\uFF09");
-    } else if (b === "sqlite-vec") {
-      if (!(env.SQLITE_VEC_URL ?? "").trim()) parts.push("VECTOR_BACKEND=sqlite-vec \u4F46\u6C92\u8A2D SQLITE_VEC_URL");
-    } else {
-      parts.push(`VECTOR_BACKEND \u7121\u6CD5\u8FA8\u8B58\uFF1A\u300C${env.VECTOR_BACKEND}\u300D\uFF08\u53EA\u8A8D vectorize\uFF0Fsqlite-vec\uFF09`);
-    }
-  }
-  return parts.length ? parts.join("\uFF1B") : null;
-}
-
-// kbdb/src/embed.ts
-var DEFAULT_EMBED_MODEL = "@cf/baai/bge-m3";
-var MIN_SCORE_ABS_FLOOR = 0.45;
-var MIN_SCORE_TOP_RATIO = 0.8;
-function relativeMinScore(topScore) {
-  return Math.max(MIN_SCORE_ABS_FLOOR, topScore * MIN_SCORE_TOP_RATIO);
-}
-function embedModel(env) {
-  const m = (env.EMBED_MODEL ?? "").trim();
-  return m || embedProviderOf(env)?.defaultModel || DEFAULT_EMBED_MODEL;
-}
-function embedEnabled(env) {
-  return !!(vectorsOf(env) && embedProviderOf(env));
-}
-async function embedText(env, text) {
-  const t = (text ?? "").trim();
-  const provider = embedProviderOf(env);
-  if (!t || !provider) return null;
-  const out = await provider.embed(embedModel(env), [t]);
-  return out?.[0] ?? null;
-}
-async function embedOnWrite(env, entry, opts = {}) {
-  if (!embedEnabled(env)) return false;
-  if (!entry.templates) entry = (await withTemplates(dbOf(env), [entry]))[0];
-  if (!isEmbeddable(entry)) return false;
-  const vec = opts.vec ?? await embedText(env, await vectorTextOf(dbOf(env), entry));
-  if (!vec) return false;
-  await vectorsOf(env).upsert([
-    {
-      id: entry.id,
-      values: vec,
-      // metadata 走 indexed 範圍：owner_id（租戶隔離）、source（#5.1 過濾與語義共用）、
-      // library（portal-auth P1「庫」filter）。種類（template）不進向量 metadata：種類住在歸屬關係裡，
-      // 語意搜尋要按種類篩時，等 hydrate 回 entry 之後用同一條關係判斷（#301，見 routes/entries.ts）。library 在寫入端正規化：未標記＝'general'（design §3.2
-      // 「未蓋章的舊資料視同 general」——D1 側用查詢端 COALESCE fallback，Vectorize filter 做不了
-      // COALESCE，故在 upsert 時蓋 'general'，查詢端單純 $in 即可）。
-      metadata: {
-        owner_id: entry.owner_id ?? "",
-        source: readSource(entry) ?? "",
-        library: readLibrary(entry) ?? "general"
-      }
-    }
-  ]);
-  await dbOf(env).run("UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id = ?", [embedModel(env), entry.id]);
-  return true;
-}
-var VECTOR_ENTRY_TYPES = ["entity", "predicate", "alias", "source_passage"];
-var VECTOR_ENTRY_TYPES_SQL = `(${VECTOR_ENTRY_TYPES.map((t) => `'${t}'`).join(",")})`;
-var IN_VECTOR_SCOPE_SQL = `EXISTS (SELECT 1 FROM entries vb WHERE vb.src_id = entries.id AND vb.rel_id = '${SYS_BELONGS}' AND vb.dst_id IN (SELECT id FROM templates WHERE name IN ${VECTOR_ENTRY_TYPES_SQL}))`;
-var ENTRY_TYPE_GATE = IN_VECTOR_SCOPE_SQL;
-var IN_SCOPE_IDS_SQL = `id IN (SELECT vb.src_id FROM entries vb WHERE vb.rel_id = '${SYS_BELONGS}' AND vb.dst_id IN (SELECT id FROM templates WHERE name IN ${VECTOR_ENTRY_TYPES_SQL}))`;
-var SCOPED_PENDING_PREDICATE = `${IN_SCOPE_IDS_SQL} AND +is_embedded = 0 AND length(content) > 0 AND json_extract(metadata_json, '$.embed') = 1`;
-var SCOPED_EMBEDDED_PREDICATE = `${IN_SCOPE_IDS_SQL} AND +is_embedded = 1`;
-function inVectorScope(entry) {
-  return (entry.templates ?? []).some((t) => VECTOR_ENTRY_TYPES.includes(t));
-}
-function isEmbeddable(entry) {
-  if (!inVectorScope(entry)) return false;
-  const meta = parseMeta2(entry.metadata_json);
-  return meta?.embed === true;
-}
-async function vectorTextOf(db, entry) {
-  const name = (entry.content ?? "").trim();
-  if (!(entry.templates ?? []).includes("entity") || !name) return name;
-  try {
-    const cell = await db.first("SELECT content FROM entries WHERE id = ?", [`${entry.id}~v~description`]);
-    const cellDesc = (cell?.content ?? "").trim();
-    if (cellDesc) return `${name}\uFF1A${cellDesc}`;
-    const hit = await recordsByFieldValuePage(db, "triplet", "subject", canonicalEntity(name), entry.owner_id ?? void 0, 50, 0);
-    const desc = hit?.records.filter((r) => r.values.predicate === "description").map((r) => (r.values.object ?? "").trim()).find((o) => o !== "");
-    return desc ? `${name}\uFF1A${desc}` : name;
-  } catch {
-    return name;
-  }
-}
-function readSource(entry) {
-  const meta = parseMeta2(entry.metadata_json);
-  const s = meta?.source;
-  return typeof s === "string" ? s : null;
-}
-function readLibrary(entry) {
-  const meta = parseMeta2(entry.metadata_json);
-  const l = meta?.library;
-  return typeof l === "string" && l.trim() !== "" ? l : null;
-}
-function parseMeta2(json) {
-  if (!json) return null;
-  try {
-    const p = JSON.parse(json);
-    return p && typeof p === "object" ? p : null;
-  } catch {
-    return null;
-  }
-}
-var BACKFILL_PREDICATE = `is_embedded = 0 AND content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND ${ENTRY_TYPE_GATE}`;
-var DEFAULT_BACKFILL_DAILY_LIMIT = 1800;
-function backfillDailyLimit(env) {
-  const raw2 = env.EMBED_BACKFILL_DAILY_LIMIT;
-  const n2 = raw2 ? parseInt(raw2, 10) : NaN;
-  return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_BACKFILL_DAILY_LIMIT;
-}
-function utcDay2() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-}
-function backfillUsageId() {
-  return `embed-backfill-usage:${utcDay2()}`;
-}
-async function getBackfillUsageToday(db) {
-  const row = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [backfillUsageId()]);
-  if (!row) return 0;
-  try {
-    const parsed = row.metadata_json ? JSON.parse(row.metadata_json) : {};
-    return Number(parsed.embedded) || 0;
-  } catch {
-    return 0;
-  }
-}
-async function addBackfillUsage(db, by) {
-  if (by <= 0) return;
-  const id = backfillUsageId();
-  const existing = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [id]);
-  let prev = 0;
-  if (existing) {
-    try {
-      const parsed = existing.metadata_json ? JSON.parse(existing.metadata_json) : {};
-      prev = Number(parsed.embedded) || 0;
-    } catch {
-      prev = 0;
-    }
-    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay2(), embedded: prev + by }), id]);
-  } else {
-    await createEntry(db, { id, template: "embed_backfill_usage", metadata_json: JSON.stringify({ day: utcDay2(), embedded: by }) });
-  }
-}
-function selectionCriteriaPredicate(opts) {
-  const conds = [];
-  const params = [];
-  if (opts.owner_id) {
-    conds.push("owner_id = ?");
-    params.push(opts.owner_id);
-  }
-  if (opts.source) {
-    conds.push("json_extract(metadata_json, '$.source') = ?");
-    params.push(opts.source);
-  }
-  if (opts.library) {
-    conds.push(`${ENTRY_LIBRARY} = ?`);
-    params.push(opts.library);
-  }
-  if (typeof opts.since === "number") {
-    conds.push("created_at >= ?");
-    params.push(opts.since);
-  }
-  if (typeof opts.until === "number") {
-    conds.push("created_at < ?");
-    params.push(opts.until);
-  }
-  return { conds, params };
-}
-async function backfillEmbeddings(env, opts = {}) {
-  if (!embedEnabled(env)) {
-    return {
-      enabled: false,
-      processed: 0,
-      skipped: 0,
-      remaining: 0,
-      scanned: 0,
-      quota_limit: 0,
-      quota_used_today: 0,
-      quota_exceeded: false
-    };
-  }
-  const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
-  const offset = Math.max(opts.offset ?? 0, 0);
-  const allOwners = !opts.owner_id && !opts.reindex;
-  const basePredicate = opts.reindex ? `content IS NOT NULL AND content <> '' AND json_extract(metadata_json, '$.embed') = 1 AND ${ENTRY_TYPE_GATE}` : allOwners ? SCOPED_PENDING_PREDICATE : BACKFILL_PREDICATE;
-  const sel = selectionCriteriaPredicate(opts);
-  const conds = [basePredicate, "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'", ...sel.conds];
-  const params = [...sel.params];
-  const where = conds.join(" AND ");
-  const rawRows = (await dbOf(env).all(`SELECT * FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset])).results ?? [];
-  const rows = await withTemplates(dbOf(env), rawRows);
-  const scanned = rows.length;
-  const dailyCap = backfillDailyLimit(env);
-  let usedToday = 0;
-  try {
-    usedToday = await getBackfillUsageToday(dbOf(env));
-  } catch {
-    usedToday = 0;
-  }
-  const remainingQuota = Math.max(0, dailyCap - usedToday);
-  let processed = 0;
-  const candidates = rows.filter((e) => (e.content ?? "").trim().length > 0);
-  const embeddable = candidates.slice(0, remainingQuota);
-  const quotaExceeded = candidates.length > embeddable.length;
-  const provider = embedProviderOf(env);
-  const store = vectorsOf(env);
-  if (embeddable.length > 0 && provider && store) {
-    const texts = await Promise.all(embeddable.map((e) => vectorTextOf(dbOf(env), e)));
-    const data = await provider.embed(embedModel(env), texts) ?? [];
-    const vectors = embeddable.map((e, i) => ({ e, vec: data[i] })).filter((x) => Array.isArray(x.vec) && x.vec.length > 0).map((x) => ({
-      id: x.e.id,
-      values: x.vec,
-      metadata: {
-        owner_id: x.e.owner_id ?? "",
-        source: readSource(x.e) ?? "",
-        library: readLibrary(x.e) ?? "general"
-        // 同 embedOnWrite：寫入端正規化（P1）
-      }
-    }));
-    if (vectors.length > 0) {
-      await store.upsert(vectors);
-      const ids = vectors.map((v) => v.id);
-      const placeholders = ids.map(() => "?").join(",");
-      await dbOf(env).run(`UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id IN (${placeholders})`, [embedModel(env), ...ids]);
-      processed = vectors.length;
-      try {
-        await addBackfillUsage(dbOf(env), processed);
-      } catch {
-      }
-    }
-  }
-  const totalMatching = (await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${where}`, [...params]))?.c ?? 0;
-  const remaining = opts.reindex ? Math.max(0, totalMatching - (offset + scanned)) : totalMatching;
-  return {
-    enabled: true,
-    processed,
-    skipped: scanned - processed,
-    remaining,
-    scanned,
-    quota_limit: dailyCap,
-    quota_used_today: usedToday + processed,
-    quota_exceeded: quotaExceeded
-  };
-}
-async function countPendingAllOwners(env, extra, params) {
-  const db = dbOf(env);
-  const [named, nullOwner] = await Promise.all([
-    db.first(`SELECT COUNT(*) as c FROM entries WHERE owner_id >= '' AND ${BACKFILL_PREDICATE}${extra}`, [...params]),
-    db.first(`SELECT COUNT(*) as c FROM entries WHERE owner_id IS NULL AND ${BACKFILL_PREDICATE}${extra}`, [...params])
-  ]);
-  return (named?.c ?? 0) + (nullOwner?.c ?? 0);
-}
-async function backfillStatus(env, opts = {}) {
-  const conds = [];
-  const params = [];
-  if (opts.owner_id) {
-    conds.push("owner_id = ?");
-    params.push(opts.owner_id);
-  }
-  if (opts.source) {
-    conds.push("json_extract(metadata_json, '$.source') = ?");
-    params.push(opts.source);
-  }
-  const extra = conds.length ? ` AND ${conds.join(" AND ")}` : "";
-  const pendingRow = opts.owner_id ? await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${BACKFILL_PREDICATE}${extra}`, [...params]) : { c: await countPendingAllOwners(env, extra, params) };
-  const embeddedRow = await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE is_embedded = 1 AND json_extract(metadata_json, '$.embed') = 1${extra}`, [...params]);
-  return { enabled: embedEnabled(env), pending: pendingRow?.c ?? 0, embedded: embeddedRow?.c ?? 0 };
-}
-async function reconcileEmbedGeneration(env, opts = {}) {
-  if (!embedEnabled(env)) {
-    return {
-      enabled: false,
-      checked: 0,
-      confirmed_current: 0,
-      reset_to_pending: 0,
-      remaining: 0,
-      scanned: 0,
-      quota_limit: 0,
-      quota_used_today: 0,
-      quota_exceeded: false
-    };
-  }
-  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
-  const currentModel = embedModel(env);
-  const sel = selectionCriteriaPredicate(opts);
-  const conds = [
-    "is_embedded = 1",
-    // 收錄範圍外的（舊的卡片向量）不在這裡核對——核對會把「不在 index」的重置回待補嵌，
-    // 而它們根本不該被補嵌；它們隨舊索引整個丟掉（安裝器換索引，c19183 A）。
-    ENTRY_TYPE_GATE,
-    "(content_hash IS NULL OR content_hash != ?)",
-    "COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'",
-    ...sel.conds
-  ];
-  const params = [currentModel, ...sel.params];
-  const where = conds.join(" AND ");
-  const res = await dbOf(env).all(`SELECT id FROM entries WHERE ${where} ORDER BY created_at DESC LIMIT ?`, [...params, limit]);
-  const scannedIds = (res.results ?? []).map((r) => r.id);
-  const scanned = scannedIds.length;
-  const budget = await maintenanceBudgetToday(env, dbOf(env));
-  const ids = scannedIds.slice(0, budget.remaining);
-  const quotaExceeded = scanned > ids.length;
-  const checked = ids.length;
-  let confirmed_current = 0;
-  let reset_to_pending = 0;
-  const store = vectorsOf(env);
-  if (ids.length > 0 && store) {
-    const found = await store.getByIds(ids);
-    const foundIds = new Set(found.map((v) => v.id));
-    const presentIds = ids.filter((id) => foundIds.has(id));
-    const missingIds = ids.filter((id) => !foundIds.has(id));
-    if (presentIds.length > 0) {
-      const ph = presentIds.map(() => "?").join(",");
-      await dbOf(env).run(`UPDATE entries SET content_hash = ? WHERE id IN (${ph})`, [currentModel, ...presentIds]);
-      confirmed_current = presentIds.length;
-    }
-    if (missingIds.length > 0) {
-      const ph = missingIds.map(() => "?").join(",");
-      await dbOf(env).run(`UPDATE entries SET is_embedded = 0, content_hash = NULL WHERE id IN (${ph})`, [...missingIds]);
-      reset_to_pending = missingIds.length;
-    }
-  }
-  const remRow = await dbOf(env).first(`SELECT COUNT(*) as c FROM entries WHERE ${where}`, [...params]);
-  const written = confirmed_current + reset_to_pending;
-  try {
-    await addMaintenanceUsage(dbOf(env), written);
-  } catch {
-  }
-  return {
-    enabled: true,
-    checked,
-    confirmed_current,
-    reset_to_pending,
-    remaining: remRow?.c ?? 0,
-    scanned,
-    quota_limit: budget.limit,
-    quota_used_today: budget.used + written,
-    quota_exceeded: quotaExceeded
-  };
-}
-var SYNC_STATE_ID = "kbdb-embed-sync-state";
-var SYNC_PROBE = 5;
-var SYNC_DEFAULT_LIMIT = 100;
-var SYNC_MAX_LIMIT = 200;
-var SYNC_ROW_WRITES = 2;
-async function syncVectorIndex(env, opts = {}) {
-  const off = { enabled: false, healthy: false, sweeping: false, checked: 0, reset_to_pending: 0, re_embedded: 0, more: false, quota_exceeded: false };
-  const store = vectorsOf(env);
-  if (!embedEnabled(env) || !store) return off;
-  const db = dbOf(env);
-  const limit = Math.min(Math.max(Math.trunc(opts.limit ?? SYNC_DEFAULT_LIMIT) || SYNC_DEFAULT_LIMIT, 1), SYNC_MAX_LIMIT);
-  const state = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [SYNC_STATE_ID]);
-  let cursor = null;
-  if (state) {
-    const m = parseMeta2(state.metadata_json);
-    cursor = typeof m?.cursor === "string" ? m.cursor : "";
-  }
-  if (cursor === null) {
-    const probe = await db.all(`SELECT id FROM entries WHERE ${SCOPED_EMBEDDED_PREDICATE} LIMIT ?`, [SYNC_PROBE]);
-    const ids2 = (probe.results ?? []).map((r) => r.id);
-    if (ids2.length > 0) {
-      const present = new Set((await store.getByIds(ids2)).map((v) => v.id));
-      if (ids2.every((id) => present.has(id))) {
-        const b2 = await backfillEmbeddings(env, { limit: 25 });
-        return { ...off, enabled: true, healthy: true, re_embedded: b2.processed, more: b2.remaining > 0 && !b2.quota_exceeded, quota_exceeded: b2.quota_exceeded };
-      }
-      cursor = "";
-    } else {
-      const b2 = await backfillEmbeddings(env, { limit: 25 });
-      return { ...off, enabled: true, healthy: true, re_embedded: b2.processed, more: b2.remaining > 0 && !b2.quota_exceeded, quota_exceeded: b2.quota_exceeded };
-    }
-  }
-  const budget = await maintenanceBudgetToday(env, db);
-  const affordable = Math.floor(budget.remaining / SYNC_ROW_WRITES);
-  if (affordable <= 0) return { ...off, enabled: true, sweeping: true, more: true, quota_exceeded: true };
-  const take = Math.min(limit, affordable);
-  const res = await db.all(
-    `SELECT id FROM entries WHERE ${SCOPED_EMBEDDED_PREDICATE} AND id > ? ORDER BY id LIMIT ?`,
-    [cursor, take]
-  );
-  const ids = (res.results ?? []).map((r) => r.id);
-  let reset = 0;
-  if (ids.length > 0) {
-    const present = new Set((await store.getByIds(ids)).map((v) => v.id));
-    const missing = ids.filter((id) => !present.has(id));
-    for (let i = 0; i < missing.length; i += 90) {
-      const part = missing.slice(i, i + 90);
-      const ph = part.map(() => "?").join(",");
-      await db.run(`UPDATE entries SET is_embedded = 0, content_hash = NULL WHERE id IN (${ph})`, part);
-    }
-    reset = missing.length;
-    if (reset > 0) {
-      try {
-        await addMaintenanceUsage(db, reset * SYNC_ROW_WRITES);
-      } catch {
-      }
-    }
-  }
-  const sweepDone = ids.length < take;
-  if (sweepDone) {
-    await db.run("DELETE FROM entries WHERE id = ?", [SYNC_STATE_ID]);
-  } else {
-    await db.run("DELETE FROM entries WHERE id = ?", [SYNC_STATE_ID]);
-    await createEntry(db, { id: SYNC_STATE_ID, template: "embed_sync_state", metadata_json: JSON.stringify({ cursor: ids[ids.length - 1] }) });
-  }
-  const b = await backfillEmbeddings(env, { limit: 25 });
-  return {
-    enabled: true,
-    healthy: false,
-    sweeping: true,
-    checked: ids.length,
-    reset_to_pending: reset,
-    re_embedded: b.processed,
-    more: !sweepDone || b.remaining > 0 && !b.quota_exceeded,
-    quota_exceeded: b.quota_exceeded
-  };
-}
-async function expectedVectorCount(env, opts = {}) {
-  const params = [];
-  const own = opts.owner_id ? " AND +owner_id = ?" : "";
-  if (opts.owner_id) params.push(opts.owner_id);
-  const base = `${IN_SCOPE_IDS_SQL} AND length(content) > 0 AND json_extract(metadata_json, '$.embed') = 1 AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'${own}`;
-  const row = await dbOf(env).first(
-    `SELECT COUNT(*) AS expected, SUM(+is_embedded) AS marked FROM entries WHERE ${base}`,
-    [...params]
-  );
-  const expected = row?.expected ?? 0;
-  const marked = row?.marked ?? 0;
-  return { enabled: embedEnabled(env), expected, marked_embedded: marked, pending: Math.max(expected - marked, 0) };
-}
-async function embedSelfTest(env, opts = {}) {
-  if (!embedEnabled(env)) {
-    return { enabled: false, tested: false, passed: null, note: `embed \u6A21\u7D44\u672A\u958B\uFF08${embedConfigProblem(env) ?? "\u5D4C\u5165\u4F9B\u61C9\u8005\u6216\u5411\u91CF\u5E95\u5EA7\u6C92\u8A2D\u597D"}\uFF09\uFF0C\u8A9E\u7FA9\u641C\u5C0B\u9019\u689D\u8DEF\u76EE\u524D\u4E0D\u5B58\u5728` };
-  }
-  const conds = ["is_embedded = 1", "content IS NOT NULL AND content <> ''"];
-  const params = [];
-  if (opts.owner_id) {
-    conds.push("owner_id = ?");
-    params.push(opts.owner_id);
-  }
-  const where = conds.join(" AND ");
-  const row = await dbOf(env).first(`SELECT * FROM entries WHERE ${where} ORDER BY updated_at DESC LIMIT 1`, [...params]);
-  if (!row) {
-    return { enabled: true, tested: false, passed: null, note: "\u5C1A\u7121\u4EFB\u4F55\u5361\u7247\u88AB\u6A19\u8A18\u70BA\u300C\u5DF2\u5D4C\u5165\u300D\uFF0C\u7121\u6CD5\u81EA\u6211\u6AA2\u67E5\uFF08\u53EF\u80FD\u662F\u9084\u6C92\u5361\u7247\uFF0C\u4E5F\u53EF\u80FD\u662F\u5D4C\u5165\u5F9E\u672A\u6210\u529F\u904E\uFF09" };
-  }
-  const sample = (row.content ?? "").trim().slice(0, 200);
-  if (!sample) {
-    return { enabled: true, tested: false, passed: null, note: "\u53D6\u6A23\u5361\u7247\u5167\u5BB9\u70BA\u7A7A\uFF0C\u8DF3\u904E\u81EA\u6211\u6AA2\u67E5" };
-  }
-  let hits;
-  try {
-    hits = await semanticSearch(env, sample, { owner_id: opts.owner_id, topK: 10, min_score: 0 });
-  } catch (e) {
-    if (e instanceof EmbedQueryFailedError) {
-      return { enabled: true, tested: false, passed: null, note: `\u81EA\u6211\u6AA2\u67E5\u6C92\u8DD1\u6210\uFF1A${e.message}\uFF08\u8A9E\u7FA9\u641C\u5C0B\u6B64\u523B\u540C\u6A23\u6703\u6545\u969C\uFF0C\u591A\u534A\u662F Workers AI \u984D\u5EA6\u6216\u670D\u52D9\u554F\u984C\uFF09` };
-    }
-    throw e;
-  }
-  if (hits === null) {
-    return { enabled: false, tested: false, passed: null, note: "embed \u6A21\u7D44\u56DE\u5831\u672A\u958B\uFF08binding \u6AA2\u67E5\u671F\u9593\u6D88\u5931\uFF0C\u7F55\u898B\uFF09" };
-  }
-  const passed = hits.some((h) => h.id === row.id);
-  return {
-    enabled: true,
-    tested: true,
-    passed,
-    note: passed ? "\u62FF\u4E00\u5F35\u5DF2\u6A19\u8A18\u300C\u5DF2\u5D4C\u5165\u300D\u7684\u5361\u7247\u81EA\u6211\u67E5\u8A62\uFF0C\u80FD\u641C\u5230\u81EA\u5DF1\u2014\u2014\u8A9E\u7FA9\u641C\u5C0B\u9019\u689D\u8DEF\u662F\u901A\u7684" : "\u62FF\u4E00\u5F35\u5DF2\u6A19\u8A18\u300C\u5DF2\u5D4C\u5165\u300D\u7684\u5361\u7247\u81EA\u6211\u67E5\u8A62\uFF0C\u537B\u641C\u4E0D\u5230\u81EA\u5DF1\u2014\u2014\u50CF\u662F index \u6C92\u6536\u9304\u5230\u9019\u6279\u5411\u91CF\uFF08\u9700\u8981\u91CD\u65B0 reindex\uFF09"
-  };
-}
-var EmbedQueryFailedError = class extends Error {
-  constructor(detail) {
-    super(`\u67E5\u8A62\u5411\u91CF\u5316\u5931\u6557\uFF1A${detail}`);
-    this.name = "EmbedQueryFailedError";
-  }
-};
-async function semanticSearch(env, q, opts = {}) {
-  if (!embedEnabled(env)) return null;
-  if (!(q ?? "").trim()) return [];
-  let vec;
-  try {
-    vec = await embedText(env, q);
-  } catch (e) {
-    throw new EmbedQueryFailedError(e instanceof Error ? e.message : String(e));
-  }
-  if (!vec) throw new EmbedQueryFailedError(`${embedProviderOf(env)?.name ?? "\u5D4C\u5165\u4F9B\u61C9\u8005"} \u6C92\u6709\u56DE\u51FA\u5411\u91CF\uFF08\u56DE\u61C9\u5F62\u72C0\u7570\u5E38\u6216\u7A7A\u56DE\u61C9\uFF09`);
-  const filter = {};
-  if (opts.owner_id) filter.owner_id = opts.owner_id;
-  if (opts.source) filter.source = opts.source;
-  if (opts.library && opts.library.length > 0) filter.library = { $in: opts.library };
-  const res = await vectorsOf(env).query(vec, {
-    topK: Math.min(opts.topK ?? 20, 100),
-    returnMetadata: "indexed",
-    ...Object.keys(filter).length ? { filter } : {}
-  });
-  const minScore2 = opts.min_score ?? MIN_SCORE_ABS_FLOOR;
-  return (res.matches ?? []).filter((m) => m.score >= minScore2).map((m) => ({
-    id: m.id,
-    score: m.score,
-    owner_id: m.metadata?.owner_id,
-    source: m.metadata?.source,
-    library: m.metadata?.library
-  }));
-}
-async function embedForEntity(env, text) {
-  if (!embedEnabled(env)) return null;
-  return embedText(env, text);
-}
-async function nearestEntities(env, vec, owner, topK = 3) {
-  const store = vectorsOf(env);
-  if (!store) return [];
-  const res = await store.query(vec, {
-    topK: Math.min(Math.max(topK, 1), 10),
-    returnMetadata: "indexed",
-    filter: { owner_id: owner }
-  });
-  return (res.matches ?? []).map((m) => ({ id: m.id, score: m.score }));
-}
+// kbdb/src/routes/entries.ts
+init_embed();
+init_select();
 
 // kbdb/src/actions/credential-legacy-migration.ts
 init_entry_crud();
@@ -6080,6 +6235,7 @@ async function migrateLegacyCredentialsForOwner(db, ownerId) {
 }
 
 // kbdb/src/actions/library-backfill.ts
+init_maintenance_quota();
 init_library_predicate();
 init_library_map_store();
 init_record_crud();
@@ -6476,6 +6632,7 @@ async function tripletLibraryBackfillStatus(db, opts) {
 }
 
 // kbdb/src/actions/fts-backfill.ts
+init_maintenance_quota();
 init_entry_crud();
 var HARD_LIMIT_CAP2 = 1e4;
 var DEFAULT_LIMIT = 500;
@@ -6572,6 +6729,8 @@ async function ftsBackfillStatus(db, cursor) {
 }
 
 // kbdb/src/routes/entries.ts
+init_maintenance_quota();
+init_d1();
 var entryRoutes = new Hono2();
 var PAGE_EXPANSION_MAX_PAGES = 5;
 var PAGE_EXPANSION_PER_PAGE = 4;
@@ -7046,6 +7205,7 @@ entryRoutes.delete("/:id", async (c) => {
 
 // kbdb/src/routes/templates.ts
 init_record_crud();
+init_d1();
 function readFields(body) {
   if (!body) return void 0;
   const raw2 = Array.isArray(body.slots) ? body.slots : Array.isArray(body.fields) ? body.fields : void 0;
@@ -7083,9 +7243,16 @@ templateRoutes.patch("/:id", async (c) => {
 
 // kbdb/src/routes/records.ts
 init_record_crud();
+init_graph_query();
+init_field_index();
+init_maintenance_quota();
 
 // kbdb/src/actions/speedometer.ts
 init_record_crud();
+init_maintenance_quota();
+init_brake_settings();
+init_port();
+init_brake_settings();
 var FREE_TIER_DAILY_ROWS_WRITTEN = 1e5;
 var FREE_TIER_DAILY_ROWS_READ = 5e6;
 var OP_CEILING_FRACTION = 0.05;
@@ -7737,6 +7904,7 @@ function brakeBody(b) {
 }
 
 // kbdb/src/routes/records.ts
+init_d1();
 var recordRoutes = new Hono2();
 async function templateMissing(c, template, emptyBody) {
   const info = await templateMissingInfo(dbOf(c.env), template);
@@ -7988,6 +8156,7 @@ function emptyStat(canonicalId) {
 }
 
 // kbdb/src/routes/recipe-stats.ts
+init_d1();
 var recipeStatRoutes = new Hono2();
 recipeStatRoutes.post("/record", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -8004,6 +8173,8 @@ recipeStatRoutes.get("/:canonical_id", async (c) => {
 });
 
 // kbdb/src/routes/embed.ts
+init_embed();
+init_select();
 var embedRoutes = new Hono2();
 var OFF_HINT = "\u8A9E\u7FA9\u88DC\u5D4C\u9700\u5148\u958B embed \u6A21\u7D44\uFF08\u5D4C\u5165\u4F9B\u61C9\u8005\uFF0B\u5411\u91CF\u5E95\u5EA7\uFF09\u3002CF \u96F2\uFF1A\u53EB CC\u300C\u5E6B\u6211\u958B\u8A9E\u7FA9\u67E5\u8A62\u300D\uFF08\u8A2D kbdb_embed:true + redeploy \u6CE8\u5165 Vectorize+AI binding\uFF09\uFF1B\u4F01\u696D\u79C1\u6709\u96F2\uFF1A\u88DC\u9F4A EMBED_PROVIDER\uFF0FOLLAMA_URL\uFF0FVECTOR_BACKEND\uFF0FSQLITE_VEC_URL \u8A2D\u5B9A\u3002\u4E4B\u5F8C\u518D\u547C\u53EB\u672C\u7AEF\u9EDE\u3002";
 var offBody = (env) => {
@@ -8071,10 +8242,15 @@ embedRoutes.get("/selftest", async (c) => {
   return c.json({ success: true, ...result });
 });
 
+// kbdb/src/routes/entities.ts
+init_d1();
+
 // kbdb/src/actions/entity-resolve.ts
 init_entity_canon();
 init_record_crud();
 init_kind();
+init_embed();
+init_select();
 var TPL_ENTITY_ID = "tpl-entity";
 var TPL_ENTITY_NAME = "entity";
 var TPL_ALIAS_ID = "tpl-alias";
@@ -8293,6 +8469,7 @@ async function entityCatalog(db, owner, limit = 200, offset = 0) {
 }
 
 // kbdb/src/routes/entities.ts
+init_maintenance_quota();
 var entityRoutes = new Hono2();
 var MAX_ITEMS = 50;
 entityRoutes.post("/resolve", async (c) => {
@@ -8347,6 +8524,7 @@ entityRoutes.get("/", async (c) => {
 });
 
 // kbdb/src/routes/map.ts
+init_d1();
 var mapRoutes = new Hono2();
 mapRoutes.get("/select", async (c) => {
   const q = c.req.query("q") || c.req.query("question") || "";
@@ -8413,9 +8591,13 @@ mapRoutes.get("/:library", async (c) => {
   return c.json({ success: true, map });
 });
 
+// kbdb/src/routes/graph.ts
+init_graph_query();
+
 // kbdb/src/actions/entity-canon-backfill.ts
 init_record_crud();
 init_entity_canon();
+init_maintenance_quota();
 init_library_predicate();
 var HARD_LIMIT_CAP3 = 2e3;
 var DEFAULT_LIMIT2 = 500;
@@ -8521,6 +8703,7 @@ async function canonicalizeTripletEntities(db, env, opts = {}) {
 
 // kbdb/src/routes/graph.ts
 init_library_predicate();
+init_d1();
 var graphRoutes = new Hono2();
 graphRoutes.post("/canonicalize-entities", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -8558,6 +8741,7 @@ graphRoutes.get("/neighbors/:node", async (c) => {
 
 // kbdb/src/actions/retrieve.ts
 init_entry_crud();
+init_graph_query();
 
 // kbdb/src/actions/card-lookup.ts
 init_entry_crud();
@@ -8989,6 +9173,7 @@ async function retrieveForQuestion(db, question, opts = {}) {
 
 // kbdb/src/routes/retrieve.ts
 init_library_predicate();
+init_d1();
 var retrieveRoutes = new Hono2();
 retrieveRoutes.get("/", async (c) => {
   const q = c.req.query("q") || c.req.query("question") || "";
@@ -9297,6 +9482,7 @@ async function probeExecLogDb(getDb) {
 }
 
 // kbdb/src/routes/execution-log.ts
+init_d1();
 var executionLogRoutes = new Hono2();
 executionLogRoutes.post("/record", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -9663,6 +9849,7 @@ async function pluck(db, sql, binds, field) {
 
 // kbdb/src/routes/usage-brakes.ts
 init_record_crud();
+init_d1();
 function exempt(path) {
   return path === "/" || path === "/health" || path.startsWith("/usage-brakes");
 }
@@ -9895,6 +10082,7 @@ usageBrakeRoutes.post("/settings", async (c) => {
 });
 
 // kbdb/src/index.ts
+init_d1();
 var app = new Hono2();
 app.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
@@ -9965,6 +10153,38 @@ app.get("/maintenance/kind-orphans", async (c) => {
     limit: Number.isFinite(limit) ? limit : 200
   });
   return c.json({ success: true, ...report });
+});
+app.post("/maintenance/kind-orphans/purge", async (c) => {
+  const { purgeKindOrphans: purgeKindOrphans2, PurgeInputError: PurgeInputError2 } = await Promise.resolve().then(() => (init_orphan_purge(), orphan_purge_exports));
+  const body = await c.req.json().catch(() => null);
+  if (!body || !Array.isArray(body.ids) || !body.ids.every((x) => typeof x === "string")) {
+    return c.json({ success: false, error: "ids \u5FC5\u586B\uFF0C\u4E14\u8981\u662F\u5B57\u4E32\u9663\u5217\uFF08\u5148\u7528 GET /maintenance/kind-orphans \u5DE1\u6AA2\u518D\u5E36\u9032\u4F86\uFF09" }, 400);
+  }
+  try {
+    const report = await purgeKindOrphans2(dbOf(c.env), {
+      ids: body.ids,
+      owner_id: typeof body.owner_id === "string" && body.owner_id ? body.owner_id : void 0,
+      confirm: body.confirm === true,
+      include_content: body.include_content === true
+    });
+    let vectors_deleted = 0;
+    const embeddedIds = report.items.filter((i) => i.verdict === "deleted" && i.was_embedded).map((i) => i.id);
+    if (embeddedIds.length > 0) {
+      const { embedEnabled: embedEnabled2 } = await Promise.resolve().then(() => (init_embed(), embed_exports));
+      const { vectorsOf: vectorsOf2 } = await Promise.resolve().then(() => (init_select(), select_exports));
+      if (embedEnabled2(c.env)) {
+        try {
+          await vectorsOf2(c.env).deleteByIds(embeddedIds);
+          vectors_deleted = embeddedIds.length;
+        } catch {
+        }
+      }
+    }
+    return c.json({ success: true, ...report, vectors_deleted });
+  } catch (e) {
+    if (e instanceof PurgeInputError2) return c.json({ success: false, error: e.message }, 400);
+    throw e;
+  }
 });
 app.route("/entries", entryRoutes);
 app.route("/templates", templateRoutes);
