@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.192",
- "fingerprint": "45cc86ba6cd63d141d3b87a64b1d066ac3eca3dee911d068ab01e7e1e4a52001",
+ "release": "1.4.195",
+ "fingerprint": "0e94adc9bd1db6e34f05cb480c7e9241c3cb999d600e9b65e147d7da0db499a2",
  "built": "2026-11-14",
- "source": "Arcrun@d0d575bfe7c4",
+ "source": "Arcrun@0b25a67b45b8",
  "daemon": {
   "version": "0.18.118",
   "built": "20261101-0820",
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 6866476,
+   "js_bytes": 8473280,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -243,9 +243,9 @@
     "services": 13
    },
    "source_commit": "d0d575bfe7c4ea8a7f810da2616595fc0b6bd336",
-   "source_content_sha256": "a3ab48740daf0f6f03eb2fae7be3178ea24921dbc74bb70094350534e695ea69",
-   "sha256": "a3ab48740daf0f6f03eb2fae7be3178ea24921dbc74bb70094350534e695ea69",
-   "bytes": 6866476
+   "source_content_sha256": "585c6a997231a62096e3ff0226346aaa0aea3a29dfc9e6a1518c81ffd173b151",
+   "sha256": "585c6a997231a62096e3ff0226346aaa0aea3a29dfc9e6a1518c81ffd173b151",
+   "bytes": 8473280
   },
   {
    "name": "arcrun-date-ops",
@@ -484,7 +484,7 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "67f14cf37385ca9d99edeaff88f726bbeae2d024",
+   "source_commit": "7c19baf7fa81b2f493e65384abffec81de105f1e",
    "source_content_sha256": "f20e0ac6fd3eec3a154d2e0f5942e4c06fc87d64b2cf77b24ce4f36560a93476",
    "sha256": "f20e0ac6fd3eec3a154d2e0f5942e4c06fc87d64b2cf77b24ce4f36560a93476",
    "bytes": 421254
@@ -573,7 +573,7 @@
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 1486148,
+   "js_bytes": 1486874,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -584,10 +584,10 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "b0734d453beffb4dde22270ab900d95bc9052d8a",
-   "source_content_sha256": "16cdb9b2a7886fb8a6f809c74355919e0df12815d1139625590d432d6ee82e43",
-   "sha256": "16cdb9b2a7886fb8a6f809c74355919e0df12815d1139625590d432d6ee82e43",
-   "bytes": 1486148
+   "source_commit": "dc61173e17ad30eb245116e43c5d7b5a15d9d41f",
+   "source_content_sha256": "065300730f97e401ce331178bd33b3c0628dd5f984445a2d3af0cc3eb5d1eadd",
+   "sha256": "065300730f97e401ce331178bd33b3c0628dd5f984445a2d3af0cc3eb5d1eadd",
+   "bytes": 1486874
   },
   {
    "name": "arcrun-set",
@@ -947,7 +947,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 6866476,
+   "js_bytes": 8473280,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -986,7 +986,7 @@
     "services": 13
    },
    "source_commit": "d0d575bfe7c4ea8a7f810da2616595fc0b6bd336",
-   "source_content_sha256": "a3ab48740daf0f6f03eb2fae7be3178ea24921dbc74bb70094350534e695ea69",
+   "source_content_sha256": "585c6a997231a62096e3ff0226346aaa0aea3a29dfc9e6a1518c81ffd173b151",
    "first_install": true
   },
   {
@@ -1212,7 +1212,7 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "67f14cf37385ca9d99edeaff88f726bbeae2d024",
+   "source_commit": "7c19baf7fa81b2f493e65384abffec81de105f1e",
    "source_content_sha256": "f20e0ac6fd3eec3a154d2e0f5942e4c06fc87d64b2cf77b24ce4f36560a93476",
    "first_install": true
   },
@@ -1295,7 +1295,7 @@
    "name": "arcrun-rag-ui",
    "main_module": "index.js",
    "main_file": "tier2/ui/index.js",
-   "js_bytes": 1486148,
+   "js_bytes": 1486874,
    "modules": [],
    "compat_date": "2026-07-01",
    "compat_flags": [],
@@ -1306,8 +1306,8 @@
     "ai": false,
     "vars": {}
    },
-   "source_commit": "b0734d453beffb4dde22270ab900d95bc9052d8a",
-   "source_content_sha256": "16cdb9b2a7886fb8a6f809c74355919e0df12815d1139625590d432d6ee82e43",
+   "source_commit": "dc61173e17ad30eb245116e43c5d7b5a15d9d41f",
+   "source_content_sha256": "065300730f97e401ce331178bd33b3c0628dd5f984445a2d3af0cc3eb5d1eadd",
    "first_install": true
   },
   {

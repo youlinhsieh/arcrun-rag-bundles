@@ -31,7 +31,7 @@ Served via jsDelivr; fetched automatically during install — you never need to 
 - `arcrun-wait/` — **arcrun-wait**（首裝）
 - `daemon/` — 桌面 App（Mac／Windows）安裝檔
 
-Built from `Arcrun@d0d575bfe7c4` by `installer/scripts/ship.mjs`（arcrun-rag repo，release 1.4.192，built 2026-11-14）。
+Built from `Arcrun@0b25a67b45b8` by `installer/scripts/ship.mjs`（arcrun-rag repo，release 1.4.195，built 2026-11-14）。
 
 ⚠️ 這份檔案由出貨管線每次自動重寫（`installer/scripts/render-bundles-readme.mjs`）——
 不要手動改這裡列的零件清單——它是算出來的：公庫＝Arcrun 這一版編了什麼，
