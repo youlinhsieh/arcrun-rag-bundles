@@ -1273,10 +1273,12 @@ async function searchByTemplatePage(db, template, owner_id, limit = 100, offset 
 async function hydrateRecordValues(db, tplId, ids, slots) {
   const byId = /* @__PURE__ */ new Map();
   for (const id of ids) byId.set(id, { record_id: id, template_id: tplId, values: {}, owner_id: null });
-  const only = slots && slots.length > 0 ? [...new Set(slots)].map((s) => fieldEntryId(tplId, s)) : null;
+  const wanted = slots && slots.length > 0 ? [...new Set(slots)].map((s) => fieldEntryId(tplId, s)) : null;
+  const only = wanted && wanted.length <= D1_PARAM_CAP - 10 ? wanted : null;
   const onlyClause = only ? ` AND +r.rel_id IN (${only.map(() => "?").join(",")})` : "";
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
+  const batch = Math.max(1, Math.min(90, D1_PARAM_CAP - (only?.length ?? 0)));
+  for (let i = 0; i < ids.length; i += batch) {
+    const chunk = ids.slice(i, i + batch);
     const placeholders = chunk.map(() => "?").join(",");
     const [cellRes, identRes] = await Promise.all([
       db.all(
@@ -1376,7 +1378,7 @@ async function editRelation(db, recordId, slot, edit) {
   const keys = [...new Set((cur.results ?? []).map((r) => r.content))].sort();
   return { record_id: recordId, slot, keys };
 }
-var kindTemplateIds, RecordExistsError, RELATION_MAX_PER_CALL, RELATION_MAX_KEY_LEN;
+var kindTemplateIds, RecordExistsError, RELATION_MAX_PER_CALL, RELATION_MAX_KEY_LEN, D1_PARAM_CAP;
 var init_record_crud = __esm({
   "kbdb/src/actions/record-crud.ts"() {
     "use strict";
@@ -1395,6 +1397,7 @@ var init_record_crud = __esm({
     };
     RELATION_MAX_PER_CALL = 100;
     RELATION_MAX_KEY_LEN = 512;
+    D1_PARAM_CAP = 99;
   }
 });
 
@@ -3197,11 +3200,13 @@ __export(embed_exports, {
   VECTOR_ENTRY_TYPES: () => VECTOR_ENTRY_TYPES,
   backfillEmbeddings: () => backfillEmbeddings,
   backfillStatus: () => backfillStatus,
+  countPendingEmbeddings: () => countPendingEmbeddings,
   embedEnabled: () => embedEnabled,
   embedForEntity: () => embedForEntity,
   embedOnWrite: () => embedOnWrite,
   embedSelfTest: () => embedSelfTest,
   expectedVectorCount: () => expectedVectorCount,
+  isAiDailyQuotaError: () => isAiDailyQuotaError,
   nearestEntities: () => nearestEntities,
   reconcileEmbedGeneration: () => reconcileEmbedGeneration,
   relativeMinScore: () => relativeMinScore,
@@ -3437,6 +3442,23 @@ async function countPendingAllOwners(env, extra, params) {
     db.first(`SELECT COUNT(*) as c FROM entries WHERE owner_id IS NULL AND ${BACKFILL_PREDICATE}${extra}`, [...params])
   ]);
   return (named?.c ?? 0) + (nullOwner?.c ?? 0);
+}
+async function countPendingEmbeddings(env, owner_id) {
+  try {
+    if (owner_id) {
+      const row = await dbOf(env).first(
+        `SELECT COUNT(*) as c FROM entries WHERE ${BACKFILL_PREDICATE} AND owner_id = ?`,
+        [owner_id]
+      );
+      return row?.c ?? 0;
+    }
+    return await countPendingAllOwners(env, "", []);
+  } catch {
+    return null;
+  }
+}
+function isAiDailyQuotaError(message) {
+  return /\b4006\b|daily free allocation|used up your daily|neurons|daily limit/i.test(message);
 }
 async function backfillStatus(env, opts = {}) {
   const conds = [];
@@ -6916,6 +6938,22 @@ entryRoutes.get("/search", async (c) => {
     } catch (e) {
       if (e instanceof EmbedQueryFailedError) {
         const entries3 = await searchEntries(dbOf(c.env), q, owner_id, template, void 0, library, source, include_deprecated);
+        if (isAiDailyQuotaError(e.message)) {
+          const pending = await countPendingEmbeddings(c.env, owner_id);
+          return c.json({
+            success: true,
+            entries: entries3,
+            count: entries3.length,
+            mode: "keyword",
+            requested_mode: "semantic",
+            degraded_reason: "embed_query_failed",
+            degraded_cause: "ai_daily_quota",
+            known_phenomenon: true,
+            embed_pending: pending,
+            capability_hint: "\u8A9E\u610F\u641C\u5C0B\u4ECA\u5929\u7684 AI \u984D\u5EA6\u7528\u5B8C\u4E86\uFF0C\u5148\u7528\u95DC\u9375\u5B57\u5E6B\u4F60\u627E\u4E86\u4E0B\u9762\u7684\u7D50\u679C\u3002\u9019\u662F\u6211\u5011\u7CFB\u7D71\u7684\u554F\u984C\uFF08\u6BCF\u65E5\u984D\u5EA6\u9650\u5236\uFF09\uFF0C\u4E0D\u662F\u58DE\u6389\uFF0C\u4E5F\u4E0D\u662F\u4F60\u7684\u64CD\u4F5C\u554F\u984C\uFF1A\u984D\u5EA6\u6BCF\u5929\u53F0\u5317\u6642\u9593\u65E9\u4E0A 8 \u9EDE\u91CD\u7F6E\uFF0C\u91CD\u7F6E\u5F8C\u8A9E\u610F\u641C\u5C0B\u6703\u81EA\u5DF1\u6062\u5FA9\uFF0C\u4F60\u4E0D\u9700\u8981\u505A\u4EFB\u4F55\u4E8B\u3002",
+            admin_hint: `${e.message}\u3002\u9019\u662F\u5DF2\u77E5\u73FE\u8C61\uFF08Workers AI \u6BCF\u65E5\u514D\u8CBB\u984D\u5EA6\uFF1B\u67E5\u8A62\u5411\u91CF\u5316\u8207\u80CC\u666F\u88DC\u5D4C\u5171\u7528\u540C\u4E00\u4EFD\uFF09\uFF0C\u4E0D\u662F\u6545\u969C\uFF1A\u4E0D\u8981\u53BB\u4FEE\u3001\u4E5F\u4E0D\u5FC5\u5347\u7D1A\u4ED8\u8CBB\u65B9\u6848\u3002\u984D\u5EA6\u65BC UTC \u5348\u591C\uFF08\u53F0\u5317 08:00\uFF09\u91CD\u7F6E\u3002\u5F85\u88DC\u5411\u91CF ${pending === null ? "\uFF08\u9019\u6B21\u6C92\u6578\u5230\uFF09" : `${pending} \u7B46`}\u3002\u8CC7\u6599\u8207\u7D22\u5F15\u7686\u672A\u53D7\u5F71\u97FF\uFF0C\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\u3002`
+          });
+        }
         return c.json({
           success: true,
           entries: entries3,
@@ -6923,8 +6961,9 @@ entryRoutes.get("/search", async (c) => {
           mode: "keyword",
           requested_mode: "semantic",
           degraded_reason: "embed_query_failed",
+          degraded_cause: "ai_error",
           capability_hint: "\u8A9E\u610F\u641C\u5C0B\u66AB\u6642\u6545\u969C\uFF0C\u5148\u7528\u95DC\u9375\u5B57\u5E6B\u4F60\u627E\u4E86\u4E0B\u9762\u7684\u7D50\u679C\u3002\u9019\u662F\u6211\u5011\u7CFB\u7D71\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u7684\u64CD\u4F5C\u554F\u984C\uFF0C\u4F60\u4E0D\u9700\u8981\u505A\u4EFB\u4F55\u4E8B\uFF0C\u7A0D\u5F8C\u5B83\u6703\u81EA\u52D5\u6062\u5FA9\u3002",
-          admin_hint: `${e.message}\u3002\u5E38\u898B\u539F\u56E0\uFF1AWorkers AI \u7576\u65E5\u984D\u5EA6\u7528\u5B8C\u6216\u670D\u52D9\u66AB\u6642\u7570\u5E38\uFF1B\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\uFF0C\u8CC7\u6599\u8207\u7D22\u5F15\u7686\u672A\u53D7\u5F71\u97FF\u3002`
+          admin_hint: `${e.message}\u3002\u53EF\u80FD\u539F\u56E0\uFF1AWorkers AI \u670D\u52D9\u66AB\u6642\u7570\u5E38\uFF1B\u672C\u6B21\u5DF2\u964D\u7D1A\u95DC\u9375\u5B57\u641C\u5C0B\uFF0C\u8CC7\u6599\u8207\u7D22\u5F15\u7686\u672A\u53D7\u5F71\u97FF\u3002`
         });
       }
       throw e;
@@ -7953,6 +7992,17 @@ recordRoutes.post("/batch-get", async (c) => {
     return c.json({ success: false, error: "ids must be an array of record_id strings" }, 400);
   }
   if (body.ids.length > 200) return c.json({ success: false, error: "ids at most 200 per request" }, 400);
+  const wantFields = Array.isArray(body.fields) && body.fields.length > 0 && body.fields.length <= 50 && body.fields.every((x) => typeof x === "string" && x && x.length <= 64) ? body.fields : null;
+  const ownerId = typeof body.owner_id === "string" && body.owner_id ? body.owner_id : null;
+  if (wantFields && ownerId && typeof body.template === "string" && body.template) {
+    const tpl = await getTemplate(dbOf(c.env), body.template);
+    if (tpl) {
+      const ids = [...new Set(body.ids)];
+      const projected = (await hydrateRecordValues(dbOf(c.env), tpl.id, ids, wantFields)).filter((r) => r.owner_id === ownerId);
+      const have = new Set(projected.map((r) => r.record_id));
+      return c.json({ success: true, records: projected, missing: ids.filter((id) => !have.has(id)), count: projected.length });
+    }
+  }
   const records = await getRecords(dbOf(c.env), body.ids, typeof body.owner_id === "string" && body.owner_id ? body.owner_id : null);
   const got = new Set(records.map((r) => r.record_id));
   const missing = [...new Set(body.ids)].filter((id) => !got.has(id));
@@ -7976,7 +8026,7 @@ recordRoutes.get("/by-template/:template", async (c) => {
   const exactTotal = c.req.query("total") === "exact";
   const field = c.req.query("field");
   const value = c.req.query("value");
-  const slots = (c.req.query("fields") ?? "").split(",").map((x) => x.trim()).filter((x) => x && x.length <= 64).slice(0, 20);
+  const slots = (c.req.query("fields") ?? "").split(",").map((x) => x.trim()).filter((x) => x && x.length <= 64).slice(0, 200);
   if (field && !value || !field && value) {
     return c.json({ success: false, error: "field and value must be given together" }, 400);
   }

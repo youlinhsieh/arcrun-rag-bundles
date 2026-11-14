@@ -24086,6 +24086,70 @@ ${JSON.stringify(results, null, 2)}`
   );
 }
 
+// mcp/src/lib/cypher-client.ts
+async function deriveCypherKey(secret, tenant) {
+  const s = (secret ?? "").trim();
+  const t = (tenant ?? "").trim();
+  if (!s || !t) return null;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(s), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("kbdb-proxy-v1\n" + t));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function cypherAuthHeaders(env, tenant) {
+  const h = { "X-Arcrun-API-Key": tenant };
+  const key = await deriveCypherKey(env.KBDB_INTERNAL_TOKEN, tenant);
+  if (key) h["Authorization"] = `Bearer ${key}`;
+  return h;
+}
+async function cypherFetch(env, path, opts) {
+  if (!env.CYPHER_EXECUTOR) {
+    throw new Error("CYPHER_EXECUTOR service binding not configured");
+  }
+  const url = new URL(`http://cypher-executor${path}`);
+  if (opts.query) {
+    for (const [k, v] of Object.entries(opts.query)) {
+      url.searchParams.set(k, String(v));
+    }
+  }
+  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
+    method: opts.method ?? "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...await cypherAuthHeaders(env, opts.apiKey)
+    },
+    body: opts.body ? JSON.stringify(opts.body) : void 0
+  });
+}
+function errorResponse(error_code, human_message, next_actions, detail) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          { ok: false, error_code, human_message, next_actions, detail },
+          null,
+          2
+        )
+      }
+    ],
+    isError: true
+  };
+}
+function successResponse(data, hints) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          { ok: true, data, ...hints ? { hints } : {} },
+          null,
+          2
+        )
+      }
+    ]
+  };
+}
+
 // mcp/src/tools/arcrun_search_workflows.ts
 function registerSearchWorkflows(server, env, orgNamespace, partnerToken) {
   server.tool(
@@ -24104,7 +24168,7 @@ function registerSearchWorkflows(server, env, orgNamespace, partnerToken) {
         }
         const response = await env.CYPHER_EXECUTOR.fetch(
           `http://cypher-executor/workflows/search?q=${encodeURIComponent(query)}`,
-          { method: "GET", headers: { "X-Arcrun-API-Key": partnerToken } }
+          { method: "GET", headers: await cypherAuthHeaders(env, partnerToken) }
         );
         if (!response.ok) {
           const errorText = await response.text();
@@ -24603,56 +24667,6 @@ function registerReportFeedback(server, env, orgNamespace) {
       }
     }
   );
-}
-
-// mcp/src/lib/cypher-client.ts
-async function cypherFetch(env, path, opts) {
-  if (!env.CYPHER_EXECUTOR) {
-    throw new Error("CYPHER_EXECUTOR service binding not configured");
-  }
-  const url = new URL(`http://cypher-executor${path}`);
-  if (opts.query) {
-    for (const [k, v] of Object.entries(opts.query)) {
-      url.searchParams.set(k, String(v));
-    }
-  }
-  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
-    method: opts.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Arcrun-API-Key": opts.apiKey
-    },
-    body: opts.body ? JSON.stringify(opts.body) : void 0
-  });
-}
-function errorResponse(error_code, human_message, next_actions, detail) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(
-          { ok: false, error_code, human_message, next_actions, detail },
-          null,
-          2
-        )
-      }
-    ],
-    isError: true
-  };
-}
-function successResponse(data, hints) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(
-          { ok: true, data, ...hints ? { hints } : {} },
-          null,
-          2
-        )
-      }
-    ]
-  };
 }
 
 // mcp/src/tools/arcrun_introspection.ts
@@ -31115,11 +31129,12 @@ function registerPushWorkflow(server, env, partnerToken) {
         "workflow \u540D\u7A31\uFF08\u53EA\u80FD [a-zA-Z0-9_-]\uFF09\u3002\u82E5\u7D66 yaml_content \u6703\u5F9E yaml \u62BD name \u6B04"
       ),
       description: external_exports.string().optional().describe("workflow \u63CF\u8FF0\uFF08\u9078\u586B\uFF09"),
+      display_name: external_exports.string().optional().describe("\u986F\u793A\u540D\u7A31\uFF08\u9078\u586B\uFF0C\u7D66\u4EBA\u770B\u7684\u4E2D\u6587\u540D\uFF0C\u6700\u9577 60 \u5B57\uFF1BID \u4ECD\u662F name\uFF0C\u4E0D\u6703\u8B8A\uFF09"),
       force: external_exports.boolean().optional().describe(
         "\u63A8\u9001\u524D\u7CFB\u7D71\u6703\u6AA2\u67E5\uFF1A\u8B80\u7684 template \u6709\u6C92\u6709\u4EBA\u5BEB\u3001\u53EB\u7684\u5DE5\u4F5C\u6D41\u6709\u6C92\u6709\u88DD\u3001\u540D\u5B57\u6709\u6C92\u6709\u62FC\u932F\uFF08inkstone/Arcrun#339\uFF09\u3002\u6709\u932F\u9810\u8A2D\u4E0D\u5B58\uFF1B\u78BA\u5B9A\u8981\u63A8\uFF08\u4F8B\uFF1A\u5B83\u4F9D\u8CF4\u7684\u90A3\u652F\u7B49\u4E00\u4E0B\u624D\u63A8\uFF09\u624D\u5E36 true"
       )
     },
-    async ({ yaml_content, graph, name, description, force }) => {
+    async ({ yaml_content, graph, name, description, display_name, force }) => {
       let workflowName = name;
       let workflowGraph = graph;
       let workflowConfig = void 0;
@@ -31128,6 +31143,7 @@ function registerPushWorkflow(server, env, partnerToken) {
           const parsed = parse3(yaml_content);
           workflowName = workflowName ?? parsed.name;
           description = description ?? parsed.description;
+          display_name = display_name ?? parsed.display_name;
           workflowConfig = parsed.config;
           if (parsed.nodes && parsed.edges) {
             workflowGraph = { nodes: parsed.nodes, edges: parsed.edges };
@@ -31165,6 +31181,7 @@ function registerPushWorkflow(server, env, partnerToken) {
             graph: workflowGraph,
             config: workflowConfig,
             description,
+            ...display_name ? { display_name } : {},
             // Arcrun#339：AI 一支一支推的這條路要「有錯就不存」；檢查與判斷都在 API（薄殼，rule 07）
             check: "strict",
             ...force ? { force: true } : {}
@@ -31257,20 +31274,11 @@ function registerGetWorkflow(server, env, partnerToken) {
     },
     async ({ name }) => {
       try {
-        const res = await cypherFetch(env, "/webhooks/named", {
+        const res = await cypherFetch(env, `/webhooks/named/${encodeURIComponent(name)}/definition`, {
           apiKey: partnerToken
         });
         const body = await res.json().catch(() => null);
-        if (!res.ok || !body?.workflows) {
-          return errorResponse(
-            "fetch_failed",
-            `\u6488 workflow \u5217\u8868\u5931\u6557`,
-            ["\u7A0D\u5F8C\u91CD\u8A66"],
-            JSON.stringify(body)
-          );
-        }
-        const found = body.workflows.find((w) => w.name === name);
-        if (!found) {
+        if (res.status === 404) {
           return errorResponse(
             "not_found",
             `workflow "${name}" \u4E0D\u5B58\u5728\u6216\u4E0D\u5C6C\u65BC\u4F60`,
@@ -31280,17 +31288,14 @@ function registerGetWorkflow(server, env, partnerToken) {
             ]
           );
         }
-        return successResponse(
-          {
-            name: found.name,
-            webhook_url: found.webhook_url,
-            note: "\u76EE\u524D list endpoint \u4E0D\u56DE\u5B8C\u6574 graph\uFF0C\u672A\u4F86\u6703\u52A0 GET /webhooks/named/:name"
-          },
-          [
-            "\u53EF call arcrun_list_recent_executions \u770B\u57F7\u884C\u6B77\u53F2",
-            "\u53EF call arcrun_run_workflow \u89F8\u767C\u6E2C\u8A66"
-          ]
-        );
+        if (!res.ok || !body) {
+          return errorResponse("fetch_failed", `\u8B80 workflow \u5B9A\u7FA9\u5931\u6557 HTTP ${res.status}`, ["\u7A0D\u5F8C\u91CD\u8A66"], JSON.stringify(body));
+        }
+        return successResponse(body, [
+          "graph.nodes \u88E1\u6BCF\u500B\u7BC0\u9EDE\u7684 id \u5C31\u662F Portal \u4E0A\u770B\u5230\u7684\u7BC0\u9EDE ID\uFF08\u5DE5\u4F5C\u6D41/\u7BC0\u9EDE\uFF09",
+          "\u53EF call arcrun_list_recent_executions \u770B\u57F7\u884C\u6B77\u53F2",
+          "\u6539\u597D\u7528 arcrun_validate_yaml \u6AA2\u67E5\uFF0C\u518D arcrun_push_workflow \u63A8\u9001"
+        ]);
       } catch (e) {
         return errorResponse(
           "internal_error",
@@ -32210,6 +32215,17 @@ function registerQuery(server, env, identity) {
           return errorResponse("query_failed", `\u67E5\u8A62 record \u5931\u6557`, [`\u78BA\u8A8D template\u300C${template}\u300D\u5B58\u5728`], await res.text().catch(() => ""));
         }
         const data = await res.json();
+        if (data.template_exists === false) {
+          const near = data.did_you_mean ?? [];
+          return errorResponse(
+            "template_not_found",
+            data.hint ?? `template\u300C${template}\u300D\u4E0D\u5B58\u5728\uFF08\u4E0D\u662F\u300C\u5B58\u5728\u4F46 0 \u7B46\u300D\uFF09`,
+            [
+              ...near.length ? [`\u4F60\u662F\u4E0D\u662F\u8981\u627E\uFF1A${near.join("\u3001")}`] : [],
+              "\u7528 kbdb_list_templates \u770B\u5BE6\u4F8B\u4E0A\u771F\u6709\u54EA\u4E9B template\uFF0C\u6838\u5C0D\u540D\u5B57\u62FC\u5BEB"
+            ]
+          );
+        }
         const taken = (data.offset ?? 0) + (data.count ?? 0);
         const remaining = typeof data.total === "number" ? data.total - taken : 0;
         return successResponse(data, [
@@ -33014,7 +33030,7 @@ async function callAppTool(env, ns, app2, tool, args, caller) {
   try {
     res = await env.CYPHER_EXECUTOR.fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": "arcrun-mcp-app-tool/1.0" },
+      headers: { "Content-Type": "application/json", "User-Agent": "arcrun-mcp-app-tool/1.0", ...await cypherAuthHeaders(env, ns) },
       // 參數在前、_caller／_tool 在後：AI 在參數裡塞同名欄位會被蓋掉。
       body: JSON.stringify({ ...args, _caller: caller, _tool: `${app2.app_id}.${tool.name}` })
     });
