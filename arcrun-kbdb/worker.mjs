@@ -6805,6 +6805,334 @@ async function ftsBackfillStatus(db, cursor) {
   return { pending: row?.c ?? 0, cursor: effectiveCursor, done: false };
 }
 
+// kbdb/src/actions/card-passage-backfill.ts
+init_entry_crud();
+init_library_map_store();
+init_maintenance_quota();
+init_embed();
+init_select();
+
+// kbdb/src/lib/card-passages.ts
+var LAYERS = ["\u539F\u6587\u8868\u683C", "\u539F\u6587\u689D\u5217", "\u539F\u6587\u6BB5\u843D", "\u8B80\u5716\u539F\u6587"];
+var SECTION_H2 = /* @__PURE__ */ new Set([...LAYERS, "\u6458\u8981", "\u91CD\u9EDE", "\u5BE6\u9AD4", "\u95DC\u806F", "\u8B80\u4E0D\u5230\u7684\u5167\u5BB9", "\u4E00\u53E5\u8A71\u5B9A\u7FA9"]);
+var UNIT_RE = /^###\s+(.+?)\s*第\s*(\d+)\s*頁的(表格|條列|段落|圖片辨識文字)(?:（第\s*\d+\s*段）)?(?:：(.*))?\s*$/;
+var H2_RE = /^##\s+(.+?)\s*$/;
+var TARGET_RUNES = 350;
+var MAX_RUNES = 600;
+var MIN_RUNES = 80;
+var NOISE_RUNES = 24;
+var CARD_CHUNKER_REV = 102;
+var runes = (s) => Array.from(s).length;
+function extractUnits(cardMd) {
+  const lines = String(cardMd || "").replace(/\r\n?/g, "\n").split("\n");
+  const units = [];
+  let layer = null;
+  let cur = null;
+  const close = () => {
+    if (cur) {
+      cur.text = (cur.lines ?? []).join("\n").trim();
+      delete cur.lines;
+      if (cur.text) units.push(cur);
+    }
+    cur = null;
+  };
+  for (const ln of lines) {
+    const h2 = ln.match(H2_RE);
+    if (h2 && SECTION_H2.has(h2[1])) {
+      close();
+      layer = LAYERS.includes(h2[1]) ? h2[1] : null;
+      continue;
+    }
+    if (!layer) continue;
+    const u = ln.match(UNIT_RE);
+    if (!u && layer !== "\u8B80\u5716\u539F\u6587" && /^###\s/.test(ln)) {
+      close();
+      continue;
+    }
+    if (u) {
+      close();
+      cur = { layer, srcKind: u[1].trim(), page: Number(u[2]), kind: u[3], title: (u[4] || "").trim(), text: "", lines: [] };
+      continue;
+    }
+    if (cur) cur.lines.push(ln);
+  }
+  close();
+  return units;
+}
+function cleanRows(text) {
+  return text.split("\n").map((l) => l.replace(/^第\s*\d+\s*(?:項|段|列)｜/, "").trimEnd()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+function splitLong(s, max) {
+  const rs = Array.from(s);
+  if (rs.length <= max) return [s];
+  const out = [];
+  let buf = "";
+  let n2 = 0;
+  for (let i = 0; i < rs.length; i++) {
+    buf += rs[i];
+    n2++;
+    const c = rs[i];
+    const boundary = "\u3002\uFF01\uFF1F\uFF1B\n".includes(c) || ".!?".includes(c) && (i + 1 >= rs.length || rs[i + 1] === " " || rs[i + 1] === "\n");
+    if (boundary && n2 >= max * 2 / 3 || n2 >= max) {
+      out.push(buf.trim());
+      buf = "";
+      n2 = 0;
+    }
+  }
+  if (buf.trim()) out.push(buf.trim());
+  return out;
+}
+function buildPassages(pageName, cardMd) {
+  const units = extractUnits(cardMd);
+  const groups = /* @__PURE__ */ new Map();
+  for (const u of units) {
+    const k = `${u.layer}\0${u.srcKind}\0${u.page}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(u);
+  }
+  const out = [];
+  for (const us of groups.values()) {
+    const first = us[0];
+    const where = `${first.srcKind} \u7B2C ${first.page} \u9801`;
+    let buf = [];
+    let bufRunes = 0;
+    let bufTitle = "";
+    const emit = () => {
+      if (!buf.length) return;
+      const body = buf.join("\n\n");
+      buf = [];
+      bufRunes = 0;
+      const title = bufTitle;
+      bufTitle = "";
+      if (runes(body) < NOISE_RUNES) return;
+      const heading = [pageName, first.layer, where + (title ? `\uFF1A${title}` : "")].join(" \u203A ");
+      out.push({ idx: 0, layer: first.layer, page: first.page, heading, text: body, content: `${heading}
+${body}` });
+    };
+    for (const u of us) {
+      const body = cleanRows(u.text);
+      if (!body) continue;
+      for (const piece of splitLong(body, MAX_RUNES)) {
+        const n2 = runes(piece);
+        if (buf.length && (bufRunes + n2 > TARGET_RUNES || u.title !== bufTitle && bufRunes >= MIN_RUNES)) emit();
+        if (!buf.length) bufTitle = u.title;
+        buf.push(piece);
+        bufRunes += n2;
+      }
+    }
+    emit();
+  }
+  out.forEach((p, i) => {
+    p.idx = i;
+  });
+  return out;
+}
+async function sha1Hex(s) {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function passageIdPrefix(machine, library, pageName) {
+  const h = await sha1Hex(`card\0${machine}\0${library}\0${pageName}`);
+  return `psg-${h.slice(0, 16)}`;
+}
+async function withIds(passages, machine, library, pageName) {
+  const pre = await passageIdPrefix(machine, library, pageName);
+  return passages.map((p) => ({ ...p, id: `${pre}-${p.idx}` }));
+}
+async function layerHash(passages) {
+  let s = "";
+  for (const p of passages) s += p.content + "\0";
+  return (await sha1Hex(s)).slice(0, 24);
+}
+
+// kbdb/src/actions/card-passage-backfill.ts
+var BLOCKED_LIBRARIES = /* @__PURE__ */ new Set(["error_codes"]);
+var MAX_CARDS = 4;
+var MAX_PASSAGES = 120;
+var PAGE = 60;
+var ROWS_PER_PASSAGE = 6;
+var STATE_TEMPLATE = "kbdb_card_passage_state";
+var today = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+var stateId = (owner) => `kbdb-card-passage-state:${owner}`;
+function isIndexCard(name) {
+  return name === "00-INDEX" || /^資料夾總覽[：:]/.test(name) || /^00-INDEX@/.test(name);
+}
+function metaOf2(e) {
+  try {
+    return JSON.parse(e.metadata_json || "{}");
+  } catch {
+    return {};
+  }
+}
+function assembleCard(blocks) {
+  const idx = (b) => {
+    const s = String(metaOf2(b).source ?? "");
+    const m = s.match(/#(\d+)$/);
+    return m ? Number(m[1]) : 1e9;
+  };
+  return blocks.slice().sort((a, b) => idx(a) - idx(b)).map((b) => String(b.content ?? "")).join("\n\n");
+}
+async function readState(db, owner) {
+  const e = await getEntry(db, stateId(owner));
+  const m = e ? metaOf2(e) : {};
+  return {
+    lib_idx: Number(m.lib_idx) || 0,
+    card_idx: Number(m.card_idx) || 0,
+    done_day: String(m.done_day ?? ""),
+    rev: Number(m.rev) || 0
+  };
+}
+async function writeState(db, owner, s) {
+  await upsertEntry(db, stateId(owner), { template: STATE_TEMPLATE, owner_id: owner, metadata_json: JSON.stringify(s) });
+}
+async function readBlocks(db, owner, library, pageName) {
+  const out = [];
+  for (let off = 0; ; off += PAGE) {
+    const r = await listEntries(db, { template: "block", owner_id: owner, page_name: pageName, limit: PAGE, offset: off });
+    for (const e of r.entries) if (String(metaOf2(e).library ?? "") === library) out.push(e);
+    if (r.entries.length < PAGE) break;
+  }
+  return out;
+}
+async function deleteStale(env, db, owner, pageName, prefix, keep) {
+  const ex = await listEntries(db, { template: "source_passage", owner_id: owner, page_name: pageName, view: "identity", limit: 500 });
+  const stale = ex.entries.map((e) => e.id).filter((id) => id.startsWith(prefix + "-") && Number(id.split("-").pop()) >= keep).slice(0, 80);
+  for (const id of stale) {
+    if (embedEnabled(env)) {
+      try {
+        await vectorsOf(env).deleteByIds([id]);
+      } catch {
+      }
+    }
+    await deleteEntry(db, id);
+  }
+  return stale.length;
+}
+async function runCardPassageBackfill(env, db, input) {
+  const owner = (input.owner_id ?? "").trim();
+  const res = {
+    owner_id: owner,
+    skipped: null,
+    libraries: 0,
+    cards_checked: 0,
+    cards_filled: 0,
+    cards_up_to_date: 0,
+    cards_no_layer: [],
+    passages_written: 0,
+    passages_deleted: 0,
+    embed_failed: 0,
+    round_done: false
+  };
+  if (!owner) {
+    res.skipped = "no_owner";
+    return res;
+  }
+  if (!embedEnabled(env)) {
+    res.skipped = "no_embed";
+    return res;
+  }
+  const state = await readState(db, owner);
+  if (state.rev !== CARD_CHUNKER_REV) {
+    state.lib_idx = 0;
+    state.card_idx = 0;
+    state.done_day = "";
+    state.rev = CARD_CHUNKER_REV;
+  }
+  if (state.done_day === today()) {
+    res.skipped = "done_today";
+    return res;
+  }
+  const budget = await maintenanceBudgetToday(env, db);
+  if (budget.remaining < ROWS_PER_PASSAGE) {
+    res.skipped = "quota_exceeded";
+    return res;
+  }
+  const maxCards = Math.min(Math.max(input.max_cards ?? MAX_CARDS, 1), 20);
+  const maxPassages = Math.min(Math.max(input.max_passages ?? MAX_PASSAGES, 1), Math.floor(budget.remaining / ROWS_PER_PASSAGE));
+  const libs = [...(await readCardTallies(db, owner)).keys()].filter((l) => !BLOCKED_LIBRARIES.has(l)).sort();
+  res.libraries = libs.length;
+  let writes = 0;
+  outer: while (state.lib_idx < libs.length) {
+    const library = libs[state.lib_idx];
+    const dir = await listLibraryCards(db, { library, owner_id: owner, limit: 500 });
+    const cards = dir.cards.filter((c) => !isIndexCard(c.page_name));
+    while (state.card_idx < cards.length) {
+      if (res.cards_checked >= maxCards || res.passages_written >= maxPassages) break outer;
+      const card = cards[state.card_idx];
+      state.card_idx++;
+      res.cards_checked++;
+      const blocks = await readBlocks(db, owner, library, card.page_name);
+      if (!blocks.length) continue;
+      const meta = metaOf2(blocks[0]);
+      const machine = String(meta.machine ?? "");
+      const cardHash = String(meta.card_hash ?? "");
+      const prefix = await passageIdPrefix(machine, library, card.page_name);
+      if (cardHash) {
+        const first = await getEntry(db, `${prefix}-0`);
+        if (first) {
+          const fm = metaOf2(first);
+          if (Number(fm.chunker_rev) === CARD_CHUNKER_REV && String(fm.source_hash ?? "").startsWith(`card:${cardHash}:`)) {
+            res.cards_up_to_date++;
+            continue;
+          }
+        }
+      }
+      const ps = await withIds(buildPassages(card.page_name, assembleCard(blocks)), machine, library, card.page_name);
+      if (!ps.length) {
+        res.cards_no_layer.push(card.page_name);
+        continue;
+      }
+      const hash = await layerHash(ps);
+      const sourceHash = `card:${cardHash}:${hash}`;
+      const sourcePath = String(meta.source_path ?? card.source_path ?? card.page_name);
+      for (const p of ps) {
+        const e = await upsertEntry(db, p.id, {
+          template: "source_passage",
+          owner_id: owner,
+          page_name: card.page_name,
+          content: p.content,
+          metadata_json: JSON.stringify({
+            embed: true,
+            source: `kb://${sourcePath}#p${p.idx}`,
+            source_path: sourcePath,
+            source_hash: sourceHash,
+            library,
+            machine,
+            machine_label: String(meta.machine_label ?? machine),
+            chunk_idx: p.idx,
+            chunk_total: ps.length,
+            heading: p.heading,
+            chunker_rev: CARD_CHUNKER_REV
+          })
+        });
+        try {
+          await embedOnWrite(env, e);
+        } catch {
+          res.embed_failed++;
+        }
+        res.passages_written++;
+        writes += ROWS_PER_PASSAGE;
+      }
+      res.passages_deleted += await deleteStale(env, db, owner, card.page_name, prefix, ps.length);
+      res.cards_filled++;
+    }
+    state.lib_idx++;
+    state.card_idx = 0;
+  }
+  if (state.lib_idx >= libs.length) {
+    state.done_day = today();
+    state.lib_idx = 0;
+    state.card_idx = 0;
+    res.round_done = true;
+  }
+  await writeState(db, owner, state);
+  try {
+    await addMaintenanceUsage(db, writes);
+  } catch {
+  }
+  return res;
+}
+
 // kbdb/src/routes/entries.ts
 init_maintenance_quota();
 init_d1();
@@ -7254,6 +7582,15 @@ entryRoutes.post("/fts-backfill", async (c) => {
   });
   return c.json({ success: true, ...result });
 });
+entryRoutes.post("/card-passage-backfill", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const result = await runCardPassageBackfill(c.env, dbOf(c.env), {
+    owner_id: body.owner_id || c.req.query("owner_id") || void 0,
+    max_cards: body.max_cards !== void 0 ? Number(body.max_cards) : void 0,
+    max_passages: body.max_passages !== void 0 ? Number(body.max_passages) : void 0
+  });
+  return c.json({ success: true, ...result });
+});
 entryRoutes.get("/fts-backfill/status", async (c) => {
   const cursorParam = c.req.query("cursor");
   const cursor = cursorParam !== void 0 ? Number(cursorParam) : void 0;
@@ -7548,12 +7885,12 @@ function guard(t, sqls) {
     t.blocked = true;
     throw new UsageBrakeError(t);
   }
-  const today = todayUsage();
-  if (today.read >= FREE_TIER_DAILY_ROWS_READ && !t.dailyReleased.reads) {
+  const today2 = todayUsage();
+  if (today2.read >= FREE_TIER_DAILY_ROWS_READ && !t.dailyReleased.reads) {
     t.dailyBlocked = "reads";
     throw new UsageBrakeError(t);
   }
-  if (today.written >= FREE_TIER_DAILY_ROWS_WRITTEN && !t.dailyReleased.writes && sqls.some(isWriteSql)) {
+  if (today2.written >= FREE_TIER_DAILY_ROWS_WRITTEN && !t.dailyReleased.writes && sqls.some(isWriteSql)) {
     t.dailyBlocked = "writes";
     throw new UsageBrakeError(t);
   }
@@ -7811,9 +8148,9 @@ async function listBrakesSince(db, sinceIso, maxRecords = 100) {
 }
 async function recentBrakes(db) {
   const now = Date.now();
-  const today = utcDay3(now);
+  const today2 = utcDay3(now);
   if (activeCache && now - activeCache.at <= ACTIVE_CACHE_MS) return activeCache.brakes;
-  if (activeCache && activeCache.day === today && now - activeCache.fullAt < ACTIVE_FULL_RELOAD_MS) {
+  if (activeCache && activeCache.day === today2 && now - activeCache.fullAt < ACTIVE_FULL_RELOAD_MS) {
     const tpl2 = await getTemplate(db, BRAKE_TEMPLATE_ID);
     const [newest] = tpl2 ? await memberRecordIds(db, tpl2.id, void 0, 1, 0) : [];
     if ((newest ?? null) === activeCache.newestId) {
@@ -7823,13 +8160,13 @@ async function recentBrakes(db) {
   }
   const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
   const [newestNow] = tpl ? await memberRecordIds(db, tpl.id, void 0, 1, 0) : [];
-  const all = await listBrakesSince(db, `${today}T00:00:00.000Z`, 100);
+  const all = await listBrakesSince(db, `${today2}T00:00:00.000Z`, 100);
   activeCache = {
     at: now,
     fullAt: now,
-    day: today,
+    day: today2,
     newestId: newestNow ?? null,
-    brakes: all.filter((b) => b.active || (b.op.startsWith("DAILY") || !!b.released_at) && b.tripped_at.startsWith(today))
+    brakes: all.filter((b) => b.active || (b.op.startsWith("DAILY") || !!b.released_at) && b.tripped_at.startsWith(today2))
   };
   return activeCache.brakes;
 }
@@ -7863,16 +8200,16 @@ async function findActiveBrake(db, op, caller) {
 }
 async function dailyReleased(db) {
   if (!await brakeEnabled(db)) return { writes: true, reads: true };
-  const today = utcDay3();
+  const today2 = utcDay3();
   const list = await recentBrakes(db);
-  const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
+  const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today2) && !!b.released_at);
   return { writes: rel("DAILY writes"), reads: rel("DAILY reads") };
 }
 async function opBrakeSuspended(db, op) {
   if (!await brakeEnabled(db)) return true;
-  const today = utcDay3();
+  const today2 = utcDay3();
   const list = await recentBrakes(db);
-  return list.some((b) => b.kind === "brake" && b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
+  return list.some((b) => b.kind === "brake" && b.op === op && b.tripped_at.startsWith(today2) && !!b.released_at);
 }
 async function ensureBrakeTemplate(db) {
   await ensureTemplate(
@@ -7890,14 +8227,14 @@ async function recordBrake(db, t, caller, now = Date.now()) {
   const op = t.dailyBlocked ? `DAILY ${t.dailyBlocked}` : t.op;
   const who = t.dailyBlocked ? "*" : caller;
   const recordId = t.dailyBlocked ? `brake_daily_${t.dailyBlocked}_${utcDay3(now)}` : `brake_${crypto.randomUUID()}`;
-  const today = todayUsage(now);
+  const today2 = todayUsage(now);
   const values = {
     kind: "brake",
     op,
     op_label: opLabel(op),
     caller: who,
-    rows_written: String(t.dailyBlocked ? today.written : t.rowsWritten),
-    rows_read: String(t.dailyBlocked ? today.read : t.rowsRead),
+    rows_written: String(t.dailyBlocked ? today2.written : t.rowsWritten),
+    rows_read: String(t.dailyBlocked ? today2.read : t.rowsRead),
     statements: String(t.statements),
     ceiling_write: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_WRITTEN : t.ceiling.write),
     ceiling_read: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_READ : t.ceiling.read),
@@ -8852,7 +9189,7 @@ init_graph_query();
 init_entry_crud();
 init_library_predicate();
 init_kind();
-var MAX_CARDS = 5;
+var MAX_CARDS2 = 5;
 var MAX_BLOCKS_PER_CARD = 60;
 var MAX_INDEX_CARDS = 12;
 var MAX_BRANCH = 3;
@@ -9117,7 +9454,7 @@ async function matchCardNames(db, terms, owner, libSet) {
   return [...out.values()].sort((a, b) => b.score - a.score || a.page_name.localeCompare(b.page_name));
 }
 async function hydrate(db, refs, owner, foundBy) {
-  const take = refs.slice(0, MAX_CARDS);
+  const take = refs.slice(0, MAX_CARDS2);
   if (take.length === 0) return [];
   const libs = new Set(take.map((r) => r.library));
   const rows = await blocksOf(db, [...new Set(take.map((r) => r.page_name))], owner, libs);
@@ -9172,7 +9509,7 @@ async function lookupCards(db, question, opts) {
 init_embed();
 init_entry_crud();
 init_d1();
-var MAX_PASSAGES = 6;
+var MAX_PASSAGES2 = 6;
 var MAX_PASSAGE_CANDIDATES = 24;
 var VECTOR_TOP_K = 80;
 var RERANK_MIN_SCORE = 0.3;
@@ -9247,8 +9584,8 @@ async function recallPassages(env, q, scope, db = dbOf(env)) {
     stats.ms = Date.now() - t0;
     return { passages, stats };
   };
-  const limit = Math.min(Math.max(Math.floor(scope.limit ?? MAX_PASSAGES), 1), MAX_PASSAGE_CANDIDATES);
-  const reranking = limit > MAX_PASSAGES;
+  const limit = Math.min(Math.max(Math.floor(scope.limit ?? MAX_PASSAGES2), 1), MAX_PASSAGE_CANDIDATES);
+  const reranking = limit > MAX_PASSAGES2;
   let hits;
   try {
     stats.embed_calls = 1;
@@ -10121,13 +10458,13 @@ function exempt(path) {
 }
 function setMeterHeaders(c, t) {
   try {
-    const today = todayUsage();
+    const today2 = todayUsage();
     c.header("X-KBDB-Op", t.op);
     c.header("X-KBDB-Rows-Read", String(t.rowsRead));
     c.header("X-KBDB-Rows-Written", String(t.rowsWritten));
     c.header("X-KBDB-Statements", String(t.statements));
-    c.header("X-KBDB-Today-Rows-Written", `${today.written}/${FREE_TIER_DAILY_ROWS_WRITTEN}`);
-    c.header("X-KBDB-Today-Rows-Read", `${today.read}/${FREE_TIER_DAILY_ROWS_READ}`);
+    c.header("X-KBDB-Today-Rows-Written", `${today2.written}/${FREE_TIER_DAILY_ROWS_WRITTEN}`);
+    c.header("X-KBDB-Today-Rows-Read", `${today2.read}/${FREE_TIER_DAILY_ROWS_READ}`);
   } catch {
   }
 }

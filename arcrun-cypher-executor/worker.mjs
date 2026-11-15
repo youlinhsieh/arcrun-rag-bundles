@@ -11451,6 +11451,4797 @@ function mcpUrlFor(subdomain) {
 // cypher-executor/src/routes/portal.ts
 init_endpoints();
 
+// cypher-executor/src/lib/app-glyphs.ts
+var APP_GLYPH_IDS = ["doc", "note", "layers", "pin", "wrench", "box", "folder", "check", "bulb", "bell", "chart", "compass"];
+var APP_GLYPH_BODIES = {
+  doc: '<path d="M6 3h7l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M13 3v5h5"/>',
+  note: '<path d="M17 3a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M14.5 5.5 18.5 9.5"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>',
+  pin: '<path d="M8.5 3h7l-1 6 3.5 3v2H6v-2l3.5-3-1-6Z"/><path d="M12 14v7"/>',
+  wrench: '<path d="M15.5 3.4a5.2 5.2 0 0 0-6.4 6.4l-5.4 5.4a2 2 0 0 0 2.8 2.8l5.4-5.4a5.2 5.2 0 0 0 6.4-6.4l-3 3-2.8-.4-.4-2.8 3-3Z"/>',
+  box: '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/>',
+  folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h7A1.5 1.5 0 0 1 19 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
+  check: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.2 2.8 2.8L16 9.8"/>',
+  bulb: '<path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3Z"/><path d="M9.8 19h4.4M10.5 21.5h3"/>',
+  bell: '<path d="M18 8.5a6 6 0 1 0-12 0c0 5.5-2 7-2 7h16s-2-1.5-2-7Z"/><path d="M10.2 19a2.2 2.2 0 0 0 3.6 0"/>',
+  chart: '<path d="M4 4v16h16"/><path d="M8 20v-6.5M12.5 20V8.5M17 20v-4"/>',
+  compass: '<circle cx="12" cy="12" r="8.5"/><path d="m15.6 8.4-2.1 5.1-5.1 2.1 2.1-5.1 5.1-2.1Z"/>'
+};
+var EMOJI_GLYPH = {
+  "\u{1F4C4}": "doc",
+  "\u{1F5D2}\uFE0F": "note",
+  "\u{1F5D2}": "note",
+  "\u{1F4DD}": "note",
+  "\u{1F9E9}": "layers",
+  "\u{1F4CC}": "pin",
+  "\u{1F527}": "wrench",
+  "\u{1F6E0}\uFE0F": "wrench",
+  "\u{1F4E6}": "box",
+  "\u{1F5C2}\uFE0F": "folder",
+  "\u{1F5C2}": "folder",
+  "\u{1F4C1}": "folder",
+  "\u2705": "check",
+  "\u{1F4A1}": "bulb",
+  "\u{1F514}": "bell",
+  "\u{1F4CA}": "chart",
+  "\u{1F4C8}": "chart",
+  "\u{1F9ED}": "compass"
+};
+function appGlyph(icon, name) {
+  if (icon && EMOJI_GLYPH[icon]) return EMOJI_GLYPH[icon];
+  const seed = String(icon || name || "");
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h, 31) + seed.charCodeAt(i) >>> 0;
+  return APP_GLYPH_IDS[h % APP_GLYPH_IDS.length];
+}
+
+// cypher-executor/src/lib/app-system.ts
+init_kbdb_proxy();
+init_webhook_handlers();
+
+// cypher-executor/src/actions/execution-logger.ts
+init_kbdb_proxy();
+init_kbdb_caller();
+
+// cypher-executor/src/lib/run-explain.ts
+var STEP_PREFIX_RE = /^步驟「([^」]{1,200})」失敗：/;
+var LEGACY_NODE_RES = [/^節點 ([\w.\-:]+) 回傳 success:false/, /^節點 ([\w.\-:]+) 缺少 componentId/];
+function messageWithFailedStep(message2, failedStep) {
+  const msg = message2 ?? "";
+  if (!failedStep) return msg;
+  if (STEP_PREFIX_RE.test(msg)) return msg;
+  return `\u6B65\u9A5F\u300C${failedStep}\u300D\u5931\u6557\uFF1A${msg}`;
+}
+function parseFailedStep(message2) {
+  const msg = String(message2 ?? "");
+  const m = STEP_PREFIX_RE.exec(msg);
+  if (m) return { step: m[1], error: msg.slice(m[0].length) };
+  for (const re of LEGACY_NODE_RES) {
+    const lm = re.exec(msg);
+    if (lm) return { step: lm[1], error: msg };
+  }
+  return { step: null, error: msg };
+}
+var RULES = [
+  { re: /workflow paused/i, say: "\u9084\u5728\u7B49\u5916\u90E8\u56DE\u8986\uFF0C\u66AB\u505C\u4E2D\uFF08\u4E0D\u662F\u58DE\u6389\uFF09" },
+  { re: /\b401\b|unauthori[sz]ed|invalid api key|invalid token|token (?:expired|invalid)/i, say: "\u5C0D\u65B9\u670D\u52D9\u4E0D\u8A8D\u9019\u628A\u91D1\u9470\uFF08\u53EF\u80FD\u904E\u671F\u6216\u586B\u932F\uFF09" },
+  { re: /\b403\b|forbidden|permission denied|沒有權限/i, say: "\u5C0D\u65B9\u670D\u52D9\u62D2\u7D55\uFF1A\u9019\u628A\u91D1\u9470\u6C92\u6709\u9019\u500B\u6B0A\u9650" },
+  { re: /\b404\b|not found|找不到/i, say: "\u5C0D\u65B9\u627E\u4E0D\u5230\u8981\u7684\u6771\u897F\uFF08\u7DB2\u5740\u6216\u8CC7\u6599\u4E0D\u5B58\u5728\uFF09" },
+  { re: /\b429\b|rate.?limit|too many requests|額度/i, say: "\u547C\u53EB\u592A\u983B\u7E41\u6216\u984D\u5EA6\u7528\u5B8C\uFF0C\u5C0D\u65B9\u66AB\u6642\u4E0D\u6536" },
+  { re: /\b5\d\d\b|bad gateway|service unavailable|internal server error/i, say: "\u5C0D\u65B9\u670D\u52D9\u81EA\u5DF1\u51FA\u932F\u4E86\uFF0C\u7A0D\u5F8C\u518D\u8DD1\u901A\u5E38\u6703\u597D" },
+  { re: /timeout|timed out|逾時|deadline/i, say: "\u5C0D\u65B9\u592A\u4E45\u6C92\u56DE\u61C9\uFF0C\u7B49\u4E0D\u5230\u5C31\u505C\u4E86" },
+  { re: /credential|缺少金鑰|missing key|secret.*(?:not|missing)|金鑰/i, say: "\u5C11\u4E86\u9700\u8981\u7684\u91D1\u9470\uFF0C\u8ACB\u5230\u91D1\u9470\u4E2D\u5FC3\u88DC\u4E0A" },
+  { re: /fetch failed|network|ECONN|ENOTFOUND|connection/i, say: "\u9023\u4E0D\u4E0A\u5C0D\u65B9\u670D\u52D9\uFF08\u7DB2\u8DEF\u6216\u7DB2\u5740\u6709\u554F\u984C\uFF09" },
+  { re: /JSON|parse|Unexpected token/i, say: "\u5C0D\u65B9\u56DE\u4F86\u7684\u8CC7\u6599\u683C\u5F0F\u770B\u4E0D\u61C2" },
+  { re: /圖定義已失效|工作流定義損毀|schema|invalid graph/i, say: "\u5DE5\u4F5C\u6D41\u672C\u8EAB\u7684\u5B9A\u7FA9\u6709\u554F\u984C\uFF0C\u9700\u8981\u91CD\u65B0\u5B89\u88DD\u6216\u4FEE\u6B63" }
+];
+function humanReason(error) {
+  const e = String(error ?? "").trim();
+  if (!e) return "\u6C92\u6709\u7559\u4E0B\u932F\u8AA4\u8A0A\u606F";
+  for (const r of RULES) if (r.re.test(e)) return r.say;
+  const first = e.split(/[\n。]/)[0].trim();
+  return first.length > 60 ? first.slice(0, 60) + "\u2026" : first;
+}
+var BUILTIN_COMPONENTS2 = /* @__PURE__ */ new Set([
+  "input",
+  "code",
+  "http_request",
+  "if_control",
+  "switch",
+  "try_catch",
+  "trigger_workflow",
+  "kbdb_get",
+  "kbdb_query",
+  "kbdb_create_record",
+  "claude_api",
+  "workers_ai_chat"
+]);
+function isRecipeId(component) {
+  return !!component && /^[a-z][a-z0-9_]*$/.test(component) && !BUILTIN_COMPONENTS2.has(component);
+}
+function literalHost(data) {
+  const raw2 = data && (data.url ?? data.endpoint);
+  if (typeof raw2 !== "string" || raw2.includes("{{")) return void 0;
+  try {
+    const u = new URL(raw2);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.hostname : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function shownName(n) {
+  const v = n.display_name ?? n.data?.display_name;
+  return typeof v === "string" && v.trim() ? v.trim().slice(0, 60) : void 0;
+}
+var COMPONENT_LABELS = {
+  input: "\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09",
+  code: "\u6574\u7406\u8CC7\u6599",
+  http_request: "\u6253\u4E00\u500B\u7DB2\u5740",
+  if_control: "\u5224\u65B7\u689D\u4EF6",
+  switch: "\u5206\u6D41",
+  try_catch: "\u51FA\u932F\u6642\u6539\u8D70\u53E6\u4E00\u689D",
+  ahub_call: "\u8B80\u5BEB AHub",
+  kbdb_get: "\u8B80\u77E5\u8B58\u5EAB",
+  kbdb_query: "\u67E5\u77E5\u8B58\u5EAB",
+  kbdb_create_record: "\u5BEB\u9032\u77E5\u8B58\u5EAB",
+  claude_api: "\u8ACB AI \u8655\u7406",
+  workers_ai_chat: "\u8ACB AI \u56DE\u7B54",
+  trigger_workflow: "\u547C\u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41"
+};
+function componentLabel(componentId) {
+  if (!componentId) return "\uFF08\u6C92\u6709\u6307\u5B9A\u96F6\u4EF6\uFF09";
+  const w = /^https?:\/\/arcrun-([a-z0-9-]+)\./i.exec(componentId);
+  const ph = /^__([A-Z0-9_]+?)(?:_URL)?__$/.exec(componentId);
+  const id = w ? w[1].replace(/-/g, "_") : ph ? ph[1] === "HTTP_REQ" ? "http_request" : ph[1].toLowerCase() : componentId;
+  if (COMPONENT_LABELS[id]) return COMPONENT_LABELS[id];
+  return /^https?:\/\//i.test(componentId) ? "\u5916\u90E8\u670D\u52D9" : id;
+}
+function edgeLabel(type, edge) {
+  switch (type) {
+    case "ON_SUCCESS":
+    case "PIPE":
+      return "\u6210\u529F\u5F8C";
+    case "ON_FAIL":
+      return "\u5931\u6557\u6642";
+    case "FOREACH":
+      return edge.iterator ? `\u5C0D\u6BCF\u500B ${edge.iterator}` : "\u5C0D\u6BCF\u4E00\u7B46";
+    case "ON_TRUE":
+      return "\u689D\u4EF6\u6210\u7ACB\u6642";
+    case "ON_FALSE":
+      return "\u689D\u4EF6\u4E0D\u6210\u7ACB\u6642";
+    case "ON_BRANCH":
+      return edge.branch ? `\u5206\u652F\u300C${edge.branch}\u300D` : "\u5206\u652F";
+    case "IF":
+      return edge.condition ? `\u5982\u679C ${edge.condition}` : "\u5982\u679C";
+    case "CONTINUE":
+      return "\u7E7C\u7E8C";
+    case "CALLS_SUBFLOW":
+      return "\u547C\u53EB\u5B50\u6D41\u7A0B";
+    default:
+      return type;
+  }
+}
+function buildFlowSteps(nodes, edges, lastRun) {
+  const order = topoOrder(nodes, edges);
+  const failed = lastRun?.verdict === "failed" ? lastRun.failed_step ?? null : null;
+  const downstream = failed ? reachableFrom(failed, edges) : /* @__PURE__ */ new Set();
+  const onFailTargets = new Set(edges.filter((e) => e.type === "ON_FAIL" && e.from === failed).map((e) => e.to));
+  return order.map((n) => {
+    let last = "unknown";
+    if (failed) {
+      if (n.id === failed) last = "failed";
+      else if (downstream.has(n.id) && !onFailTargets.has(n.id)) last = "not_reached";
+    }
+    return {
+      id: n.id,
+      component: n.componentId ?? (n.type === "Input" ? "input" : ""),
+      component_label: componentLabel(n.componentId ?? (n.type === "Input" ? "input" : void 0)),
+      params: Object.keys(n.data ?? {}).slice(0, 20),
+      ...shownName(n) ? { display_name: shownName(n) } : {},
+      ...literalHost(n.data) ? { host: literalHost(n.data) } : {},
+      next: edges.filter((e) => e.from === n.id).map((e) => ({ to: e.to, how: edgeLabel(e.type, e) })),
+      prev: edges.filter((e) => e.to === n.id).map((e) => ({ from: e.from, how: edgeLabel(e.type, e) })),
+      last
+    };
+  });
+}
+function topoOrder(nodes, edges) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const indeg = new Map(nodes.map((n) => [n.id, 0]));
+  for (const e of edges) if (indeg.has(e.to) && byId.has(e.from)) indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
+  const queue = nodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).sort((a, b) => Number(b.type === "Input") - Number(a.type === "Input"));
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  while (queue.length) {
+    const n = queue.shift();
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
+    for (const e of edges) {
+      if (e.from !== n.id || !byId.has(e.to)) continue;
+      const d = (indeg.get(e.to) ?? 0) - 1;
+      indeg.set(e.to, d);
+      if (d <= 0 && !seen.has(e.to)) queue.push(byId.get(e.to));
+    }
+  }
+  for (const n of nodes) if (!seen.has(n.id)) out.push(n);
+  return out;
+}
+function reachableFrom(start, edges) {
+  const seen = /* @__PURE__ */ new Set();
+  const stack = edges.filter((e) => e.from === start && e.type !== "ON_FAIL").map((e) => e.to);
+  while (stack.length) {
+    const id = stack.pop();
+    if (seen.has(id) || id === start) continue;
+    seen.add(id);
+    for (const e of edges) if (e.from === id) stack.push(e.to);
+  }
+  return seen;
+}
+
+// cypher-executor/src/actions/execution-logger.ts
+var SLOW_RUN_MS = 8e3;
+function runMessage(result) {
+  if (!result.success) return result.error ?? "";
+  if (result.duration_ms < SLOW_RUN_MS) return "";
+  const steps = (Array.isArray(result.trace) ? result.trace : []).filter((x) => typeof x?.nodeId === "string" && typeof x?.duration_ms === "number");
+  const by = /* @__PURE__ */ new Map();
+  for (const x of steps) {
+    const id = x.nodeId, ms = x.duration_ms;
+    const g = by.get(id) ?? { n: 0, max: -1, path: "" };
+    g.n++;
+    if (ms > g.max) {
+      g.max = ms;
+      g.path = readPathOf(x.input);
+    }
+    by.set(id, g);
+  }
+  const top = [...by.entries()].sort((a, b) => b[1].max - a[1].max).slice(0, 3).map(([id, g]) => `${id}${g.n > 1 ? `\xD7${g.n}` : ""} \u6700\u9577${g.max}ms${g.path ? `\uFF08${g.path}\uFF09` : ""}`);
+  const head = `\u6162\uFF1A\u6574\u9AD4 ${result.duration_ms}ms`;
+  return (top.length ? `${head}\uFF1B${top.join("\u3001")}` : head).slice(0, 190);
+}
+function readPathOf(input) {
+  if (!input || typeof input !== "object") return "";
+  const o = input;
+  const pick = (v) => v && typeof v === "object" && typeof v.path === "string" ? v.path : "";
+  const p = pick(o.ahread) || pick(o.ahsread) || (typeof o._path === "string" ? o._path : "");
+  return p.slice(0, 50);
+}
+function extractTarget(input) {
+  if (!input) return void 0;
+  const raw2 = input.page_name ?? input.path;
+  if (raw2 === void 0 || raw2 === null) return void 0;
+  return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
+}
+async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message2, input, apiKey, kbdbUsage, failedStep) {
+  void nodes;
+  try {
+    const { base, headers } = kbdbBase(env);
+    const res = await fetch(`${base}/execution-log/record`, {
+      method: "POST",
+      // 這支自己也是一次 KBDB 呼叫——蓋掉 kbdbBase() 預設的 'cypher-kbdb-proxy'，
+      // 剎車紀錄點名時才不會誤指成 CLI 那條 proxy。
+      headers: withCaller(headers, KBDB_CALLERS.executionLog),
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        owner_id: apiKey ?? null,
+        verdict,
+        duration_ms: Math.max(0, Math.round(durationMs)),
+        // inkstone/Arcrun#219：失敗那一步記在 message 開頭（不加欄位、不動資料層，見 lib/run-explain.ts）
+        message: verdict === "failed" ? messageWithFailedStep(message2 ?? "", failedStep) : message2 ?? "",
+        target: extractTarget(input) ?? null,
+        ...kbdbUsage ? { kbdb_rows_written: kbdbUsage.rowsWritten, kbdb_rows_read: kbdbUsage.rowsRead } : {}
+      })
+    });
+    releaseBody(res);
+  } catch {
+  }
+}
+
+// cypher-executor/src/lib/cron-match.ts
+function matchField(expr, value, min, max) {
+  if (expr === "*") return true;
+  for (const part of expr.split(",")) {
+    if (matchPart(part.trim(), value, min, max)) return true;
+  }
+  return false;
+}
+function matchPart(part, value, min, max) {
+  if (part.startsWith("*/")) {
+    const step = parseInt(part.slice(2), 10);
+    if (!Number.isFinite(step) || step <= 0) return false;
+    return (value - min) % step === 0;
+  }
+  if (part.includes("-")) {
+    const [rangePart, stepStr] = part.split("/");
+    const [aStr, bStr] = rangePart.split("-");
+    const a = parseInt(aStr, 10);
+    const b = parseInt(bStr, 10);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+    if (value < a || value > b) return false;
+    if (stepStr === void 0) return true;
+    const step = parseInt(stepStr, 10);
+    if (!Number.isFinite(step) || step <= 0) return false;
+    return (value - a) % step === 0;
+  }
+  const n = parseInt(part, 10);
+  if (!Number.isFinite(n)) return false;
+  if (n < min || n > max) return false;
+  return value === n;
+}
+function cronMatch(expr, date) {
+  const fields = expr.trim().split(/\s+/);
+  if (fields.length !== 5) return false;
+  const [m, h, dom, mon, dow] = fields;
+  return matchField(m, date.getUTCMinutes(), 0, 59) && matchField(h, date.getUTCHours(), 0, 23) && matchField(dom, date.getUTCDate(), 1, 31) && matchField(mon, date.getUTCMonth() + 1, 1, 12) && matchField(dow, date.getUTCDay(), 0, 6);
+}
+function extractCronExpr(graph) {
+  if (!graph || typeof graph !== "object") return null;
+  const nodes = graph.nodes;
+  if (!Array.isArray(nodes)) return null;
+  for (const node of nodes) {
+    if (node.componentId !== "cron") continue;
+    const expr = node.data?.cron_expr;
+    if (typeof expr === "string" && expr.trim()) return expr.trim();
+  }
+  return null;
+}
+
+// cypher-executor/src/lib/cron-index.ts
+var CRON_INDEX_KEY = "cron-idx:_all";
+function cronEntryKey(apiKey, name) {
+  return `${apiKey}:${name}`;
+}
+function parseCronEntryKey(entryKey) {
+  const idx = entryKey.indexOf(":");
+  if (idx <= 0) return null;
+  return { apiKey: entryKey.slice(0, idx), name: entryKey.slice(idx + 1) };
+}
+async function readCronIndex(kv) {
+  const raw2 = await kv.get(CRON_INDEX_KEY, "text");
+  if (!raw2) return {};
+  try {
+    const parsed = JSON.parse(raw2);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
+  const index = await readCronIndex(kv);
+  const entryKey = cronEntryKey(apiKey, name);
+  if (cronExpr) {
+    if (index[entryKey] === cronExpr) return;
+    index[entryKey] = cronExpr;
+  } else {
+    if (!(entryKey in index)) return;
+    delete index[entryKey];
+  }
+  await kv.put(CRON_INDEX_KEY, JSON.stringify(index));
+}
+
+// cypher-executor/src/lib/app-ui-assets.ts
+var MAX_UI_ASSET_BYTES = 15e5;
+var MAX_UI_ASSET_COUNT = 64;
+var PATH_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+var MIME_BY_EXT = {
+  css: "text/css",
+  js: "text/javascript",
+  mjs: "text/javascript",
+  json: "application/json",
+  txt: "text/plain",
+  svg: "image/svg+xml",
+  html: "text/html",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  ico: "image/x-icon",
+  avif: "image/avif",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  ttf: "font/ttf",
+  otf: "font/otf"
+};
+function extOf(path) {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  const i = base.lastIndexOf(".");
+  return i < 0 ? "" : base.slice(i + 1).toLowerCase();
+}
+function localRefOf(ref, fromDir = "") {
+  let v = ref.trim();
+  if (!v) return null;
+  if (v.startsWith("#") || v.startsWith("/") || v.startsWith("\\")) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return null;
+  v = v.replace(/[?#].*$/, "");
+  const parts = (fromDir ? `${fromDir}/${v}` : v).split("/");
+  const out = [];
+  for (const seg of parts) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (out.length === 0) return null;
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return out.length ? out.join("/") : null;
+}
+function isAssetValue(v) {
+  if (typeof v === "string") return true;
+  return !!v && typeof v === "object" && typeof v.base64 === "string";
+}
+function validateUiAssets(assets) {
+  if (assets === void 0) return [];
+  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
+    return ["ui.assets \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u8DEF\u5F91 \u2192 \u5167\u5BB9\uFF09"];
+  }
+  const errors = [];
+  const entries = Object.entries(assets);
+  if (entries.length > MAX_UI_ASSET_COUNT) errors.push(`ui.assets \u6700\u591A ${MAX_UI_ASSET_COUNT} \u500B\u6A94\uFF08\u73FE\u5728 ${entries.length}\uFF09`);
+  let total = 0;
+  for (const [path, val] of entries) {
+    if (!PATH_RE.test(path) || path.split("/").includes("..")) {
+      errors.push(`ui.assets \u7684\u8DEF\u5F91\u300C${path}\u300D\u4E0D\u5408\u6CD5\uFF1A\u53EA\u80FD\u662F\u76F8\u5C0D\u8DEF\u5F91\uFF08\u82F1\u6578\u3001\u9EDE\u3001\u5E95\u7DDA\u3001\u9023\u5B57\u865F\uFF0C\u7528 / \u5206\u8CC7\u6599\u593E\uFF09\uFF0C\u4E0D\u53EF\u542B ..`);
+      continue;
+    }
+    if (!isAssetValue(val)) {
+      errors.push(`ui.assets["${path}"] \u5FC5\u9808\u662F\u5B57\u4E32\uFF08\u6587\u5B57\u6A94\uFF09\uFF0C\u6216 { "base64": "\u2026", "type": "image/png" }\uFF08\u4E8C\u9032\u4F4D\u6A94\uFF09`);
+      continue;
+    }
+    if (typeof val === "object" && val.type !== void 0 && (typeof val.type !== "string" || !/^[a-z]+\/[A-Za-z0-9.+-]+$/.test(val.type))) {
+      errors.push(`ui.assets["${path}"].type \u5FC5\u9808\u662F MIME \u683C\u5F0F\uFF08\u4F8B\uFF1Aimage/png\uFF09`);
+    }
+    total += typeof val === "string" ? val.length : val.base64.length;
+  }
+  if (total > MAX_UI_ASSET_BYTES) {
+    errors.push(`ui.assets \u5408\u8A08 ${total} \u5B57\u5143\uFF0C\u8D85\u904E\u4E0A\u9650 ${MAX_UI_ASSET_BYTES}\u3002\u756B\u9762\u5B58\u5728\u77E5\u8B58\u5EAB\u7684\u4E00\u7B46\u7D00\u9304\u88E1\uFF0C\u4E0D\u662F\u6A94\u6848\u4F3A\u670D\u5668\u2014\u2014\u5927\u5716\u8ACB\u7E2E\u5C0F\u6216\u63DB\u6210\u5916\u90E8\u4E0D\u4F9D\u8CF4\u7684\u683C\u5F0F`);
+  }
+  return errors;
+}
+function mimeOf(path, val) {
+  if (typeof val === "object" && val.type) return val.type;
+  return MIME_BY_EXT[extOf(path)] ?? "application/octet-stream";
+}
+function toDataUri(path, val) {
+  const mime = mimeOf(path, val);
+  if (typeof val === "string") return `data:${mime};charset=utf-8,${encodeURIComponent(val)}`;
+  return `data:${mime};base64,${val.base64.replace(/\s+/g, "")}`;
+}
+function textOf(path, val) {
+  if (typeof val === "string") return val;
+  void path;
+  return null;
+}
+function inlineCssUrls(css, cssPath, assets, used, errors) {
+  const dir = cssPath.includes("/") ? cssPath.slice(0, cssPath.lastIndexOf("/")) : "";
+  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (whole, _q, ref) => {
+    const key = localRefOf(ref, dir);
+    if (key === null) return whole;
+    if (!(key in assets)) {
+      errors.push(`\u6A23\u5F0F\u8868\u300C${cssPath}\u300D\u5F15\u7528\u4E86 url(${ref.trim()})\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
+      return whole;
+    }
+    used.add(key);
+    return `url("${toDataUri(key, assets[key])}")`;
+  });
+}
+var ATTR_RE = (name) => new RegExp(`(\\s${name}\\s*=\\s*)(?:"([^"]*)"|'([^']*)')`, "i");
+function bundleUiAssets(html, assets) {
+  if (!assets || Object.keys(assets).length === 0) return { ok: true, html, errors: [], used: [] };
+  const errors = [];
+  const used = /* @__PURE__ */ new Set();
+  const lookup = (ref, what) => {
+    const key = localRefOf(ref);
+    if (key === null) return null;
+    if (!(key in assets)) {
+      errors.push(`${what} \u5F15\u7528\u4E86\u300C${ref.trim()}\u300D\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
+      return null;
+    }
+    used.add(key);
+    return key;
+  };
+  const out = html.replace(/<(script|link|img|source|video|audio|track|input)\b([^>]*?)(\/?)>(?:\s*<\/script\s*>)?/gi, (whole, tagRaw, attrs, selfClose) => {
+    const tag = tagRaw.toLowerCase();
+    if (tag === "script") {
+      const m = ATTR_RE("src").exec(attrs);
+      if (!m) return whole;
+      const ref = m[2] ?? m[3] ?? "";
+      const key = lookup(ref, "<script src>");
+      if (key === null) return whole;
+      const body = textOf(key, assets[key]);
+      if (body === null) {
+        errors.push(`<script src="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u8173\u672C\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
+        return whole;
+      }
+      const rest = attrs.replace(ATTR_RE("src"), "").replace(/\s+$/, "");
+      return `<script${rest}>${body.replace(/<\/script/gi, "<\\/script")}<\/script>`;
+    }
+    if (tag === "link") {
+      const relM = ATTR_RE("rel").exec(attrs);
+      const hrefM = ATTR_RE("href").exec(attrs);
+      if (!hrefM) return whole;
+      const ref = hrefM[2] ?? hrefM[3] ?? "";
+      const isSheet = /(^|\s)stylesheet(\s|$)/i.test(relM ? relM[2] ?? relM[3] ?? "" : "");
+      const key = lookup(ref, isSheet ? '<link rel="stylesheet">' : "<link href>");
+      if (key === null) return whole;
+      if (isSheet) {
+        const css = textOf(key, assets[key]);
+        if (css === null) {
+          errors.push(`<link rel="stylesheet" href="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u6A23\u5F0F\u8868\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
+          return whole;
+        }
+        return `<style>${inlineCssUrls(css, key, assets, used, errors).replace(/<\/style/gi, "<\\/style")}</style>`;
+      }
+      return whole.replace(ATTR_RE("href"), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
+    }
+    let replaced = whole;
+    for (const name of tag === "video" ? ["src", "poster"] : ["src"]) {
+      const m = ATTR_RE(name).exec(replaced);
+      if (!m) continue;
+      const ref = m[2] ?? m[3] ?? "";
+      const key = lookup(ref, `<${tag} ${name}>`);
+      if (key === null) continue;
+      replaced = replaced.replace(ATTR_RE(name), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
+    }
+    void selfClose;
+    return replaced;
+  });
+  return { ok: errors.length === 0, html: out, errors, used: [...used] };
+}
+
+// cypher-executor/src/lib/ui-catalog.generated.json
+var ui_catalog_generated_default = {
+  _generated: "\u7531 console-ui/a2ui/build.mjs \u5F9E registry/ui-components/*/component.contract.yaml \u7522\u751F\u2014\u2014\u52FF\u624B\u6539\uFF0C\u6539\u539F\u7A3F\u5F8C\u91CD\u8DD1",
+  catalog_id: "arcrun:catalog/v0",
+  protocol_version: "v0.9",
+  components: [
+    {
+      canonical_id: "ui_button",
+      display_name: "\u6309\u9215",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Button",
+        implementation: "a2ui-basic"
+      },
+      description: "\u6309\u4E0B\u53BB\u9001\u51FA\u4E00\u500B\u4E8B\u4EF6\u540D\u7A31\uFF08\u53EF\u5E36\u53C3\u6578\uFF09\u3002\u6309\u9215\u672C\u8EAB\u4E0D\u542B\u908F\u8F2F\uFF1A\u8981\u89F8\u767C\u54EA\u500B\u5DE5\u4F5C\u6D41\uFF0C\u7531\u4F3A\u670D\u5668\u7AEF\u7684\u52D5\u4F5C\u767D\u540D\u55AE\u6C7A\u5B9A\u3002",
+      renders: "\u4E00\u9846\u6309\u9215\uFF0C\u4E0A\u9762\u7684\u5B57\u7531\u5B50\u5143\u4EF6\uFF08\u901A\u5E38\u662F\u4E00\u500B Text\uFF09\u6C7A\u5B9A\uFF1Bvariant \u70BA primary \u6642\u662F\u4E3B\u8981\u52D5\u4F5C\u7684\u6A23\u5F0F\u3002",
+      data_inputs: [
+        {
+          name: "child",
+          what: "\u6309\u9215\u4E0A\u986F\u793A\u7684\u5B50\u5143\u4EF6 id\uFF08\u901A\u5E38\u662F Text\uFF09"
+        },
+        {
+          name: "action",
+          what: '{"event": {"name": "\u4E8B\u4EF6\u540D\u7A31", "context": {"\u53C3\u6578": {"path": "/\u6B04\u4F4D"}}}}\u2014\u2014context \u7684\u503C\u53EF\u4EE5\u7D81\u8CC7\u6599'
+        }
+      ],
+      interactions: [
+        {
+          event: "action.event",
+          what: "\u6309\u4E0B\u6642\u9001\u51FA {name, context}\u3002Portal \u628A\u5B83\u8F49\u7D66\u5BBF\u4E3B\uFF08App \u7684\u52D5\u4F5C\u767D\u540D\u55AE\u7AEF\u9EDE\uFF09\uFF1B\u756B\u9762\u5B9A\u7FA9\u88E1\u4E0D\u51C6\u5BEB\u7DB2\u5740\u3001\u8DEF\u5F91\u6216\u6307\u4EE4"
+        }
+      ],
+      states: {
+        loading: "\u6309\u9215\u7ACB\u5373\u53EF\u6309\uFF1B\u9001\u51FA\u5F8C\u7684\u7B49\u5F85\u72C0\u614B\u7531\u5BBF\u4E3B\u986F\u793A",
+        empty: "\u6C92\u6709 child \u6642\u662F\u4E00\u9846\u6C92\u6709\u5B57\u7684\u6309\u9215\uFF08child \u5FC5\u586B\uFF0C\u9A57\u8B49\u6703\u64CB\uFF09",
+        error: "\u5BBF\u4E3B\u56DE\u932F\u8AA4\u6642\u7531\u5BBF\u4E3B\u986F\u793A\uFF0C\u6309\u9215\u672C\u8EAB\u4E0D\u8B8A",
+        disabled: "checks \u4E0D\u901A\u904E\u6642\u6309\u9215\u505C\u7528",
+        narrow: "\u6309\u9215\u5BEC\u5EA6\u8DDF\u8457\u5B57\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u6309\u9215\u4E0A\u7684\u5B57",
+          given: '{"components":[{"id":"root","component":"Button","child":"l","action":{"event":{"name":"refresh"}}},{"id":"l","component":"Text","text":"\u91CD\u65B0\u6574\u7406"}]}',
+          then_contains: "\u91CD\u65B0\u6574\u7406"
+        },
+        {
+          scenario: "\u4E3B\u8981\u52D5\u4F5C\u6A23\u5F0F\u7684\u6309\u9215",
+          given: '{"components":[{"id":"root","component":"Button","child":"l","variant":"primary","action":{"event":{"name":"run","context":{"id":{"path":"/id"}}}}},{"id":"l","component":"Text","text":"\u57F7\u884C"}],"data":{"id":"wf-1"}}',
+          then_contains: "\u57F7\u884C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "button",
+        "action",
+        "event"
+      ],
+      example: '{ "id": "refresh", "component": "Button", "child": "refresh-label", "action": { "event": { "name": "refresh" } } }\n',
+      source: "registry/ui-components/button/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "default",
+              "primary",
+              "borderless"
+            ],
+            default: "default",
+            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
+          },
+          action: {
+            $ref: "#/$defs/Action"
+          },
+          component: {
+            const: "Button"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "action",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_card",
+      display_name: "\u5361\u7247",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Card",
+        implementation: "a2ui-basic"
+      },
+      description: "\u6709\u5916\u6846\u7684\u5340\u584A\uFF0C\u628A\u4E00\u7D44\u76F8\u95DC\u5167\u5BB9\u6846\u5728\u4E00\u8D77\uFF08\u4E00\u5247\u5DE5\u4F5C\u6D41\u3001\u4E00\u5F35\u7968\u3001\u4E00\u7B46\u932F\u8AA4\uFF09\u3002",
+      renders: "\u4E00\u500B\u5E36\u5916\u6846\u8207\u5167\u8DDD\u7684\u65B9\u584A\uFF0C\u88E1\u9762\u653E\u4E00\u500B\u5B50\u5143\u4EF6\uFF1B\u8981\u653E\u591A\u500B\u6771\u897F\u6642\uFF0C\u5B50\u5143\u4EF6\u7528 Column \u6216 Row \u5305\u8D77\u4F86\u3002",
+      data_inputs: [
+        {
+          name: "child",
+          what: "\u8981\u6846\u8D77\u4F86\u7684\u90A3\u4E00\u500B\u5B50\u5143\u4EF6\u7684 id\uFF08\u4E0D\u662F\u8CC7\u6599\uFF0C\u662F\u7248\u9762\uFF09"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5916\u6846\u7167\u5E38\u51FA\u73FE\uFF0C\u88E1\u9762\u7531\u5B50\u5143\u4EF6\u81EA\u5DF1\u986F\u793A\u8F09\u5165\u4E2D",
+        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u5C31\u4E0D\u6703\u51FA\u73FE\uFF08child \u5FC5\u586B\uFF09",
+        error: "\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\uFF0C\u6E32\u67D3\u5668\u5728\u4E3B\u63A7\u53F0\u5831\u932F\u3001\u90A3\u4E00\u683C\u7559\u767D\uFF0C\u4E0D\u6703\u6574\u9801\u58DE\u6389",
+        disabled: "\u5361\u7247\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u7E2E\uFF0C\u5167\u5BB9\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5361\u7247\u6846\u4F4F\u4E00\u6BB5\u6587\u5B57",
+          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":"\u6846\u5728\u5361\u7247\u88E1"}]}',
+          then_contains: "\u6846\u5728\u5361\u7247\u88E1"
+        },
+        {
+          scenario: "\u5361\u7247\u88E1\u7684\u6587\u5B57\u53EF\u4EE5\u7D81\u8CC7\u6599",
+          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"/title"}}],"data":{"title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"}}',
+          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "container",
+        "card"
+      ],
+      example: '{ "id": "wf-card", "component": "Card", "child": "wf-body" }\n',
+      source: "registry/ui-components/card/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
+          },
+          component: {
+            const: "Card"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_check_box",
+      display_name: "\u52FE\u9078\u6846",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "CheckBox",
+        implementation: "a2ui-basic"
+      },
+      description: "\u8B93\u4EBA\u52FE\u9078\u662F\uFF0F\u5426\uFF08\u662F\u5426\u534A\u5929\u3001\u662F\u5426\u9700\u8981\u4EE3\u7406\u4EBA\uFF09\u3002\u7D50\u679C\u4EE5 true\uFF0Ffalse \u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+      renders: "\u4E00\u500B\u52FE\u9078\u6846\u52A0\u6A19\u7C64\u3002",
+      data_inputs: [
+        {
+          name: "label",
+          what: "\u52FE\u9078\u6846\u65C1\u7684\u5B57"
+        },
+        {
+          name: "value",
+          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u52FE\u4E86\u662F true\u3001\u6C92\u52FE\u662F false'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u7ACB\u5373\u53EF\u52FE",
+        empty: "\u6C92\u6709\u503C\u6642\u8996\u70BA\u6C92\u52FE\uFF08false\uFF09",
+        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u6A19\u7C64\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u52FE\u9078\u6846\u5E36\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"CheckBox","label":"\u534A\u5929","value":{"path":"/form/half"}}],"data":{"form":{"half":false}}}',
+          then_contains: "\u534A\u5929"
+        },
+        {
+          scenario: "\u52FE\u9078\u6846\u9810\u8A2D\u5DF2\u52FE",
+          given: '{"components":[{"id":"root","component":"CheckBox","label":"\u9700\u8981\u4EE3\u7406\u4EBA","value":{"path":"/form/proxy"}}],"data":{"form":{"proxy":true}}}',
+          then_contains: "\u9700\u8981\u4EE3\u7406\u4EBA"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "input",
+        "form",
+        "checkbox",
+        "\u52FE\u9078"
+      ],
+      example: '{ "id": "f-half", "component": "CheckBox", "label": "\u534A\u5929", "value": { "path": "/form/half" } }\n',
+      source: "registry/ui-components/check_box/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text to display next to the checkbox."
+          },
+          value: {
+            $ref: "#/$defs/DynamicBoolean",
+            description: "The current state of the checkbox (true for checked, false for unchecked)."
+          },
+          component: {
+            const: "CheckBox"
+          }
+        },
+        required: [
+          "id",
+          "label",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_choice_picker",
+      display_name: "\u9078\u55AE",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "ChoicePicker",
+        implementation: "a2ui-basic"
+      },
+      description: "\u8B93\u4EBA\u5F9E\u56FA\u5B9A\u9078\u9805\u88E1\u9078\u4E00\u500B\u6216\u591A\u500B\uFF08\u5047\u5225\u3001\u90E8\u9580\u3001\u512A\u5148\u7D1A\uFF09\u3002\u9078\u7684\u7D50\u679C\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\uFF08\u4E00\u5F8B\u662F\u5B57\u4E32\u9663\u5217\uFF09\u3002",
+      renders: "\u4E00\u7D44\u9078\u9805\u3002variant \u70BA mutuallyExclusive \u6642\u662F\u55AE\u9078\uFF0CmultipleSelection \u662F\u591A\u9078\uFF1BdisplayStyle \u6C7A\u5B9A\u9577\u6210\u52FE\u9078\u6E05\u55AE\u6216\u4E0B\u62C9\u6676\u7247\u3002",
+      data_inputs: [
+        {
+          name: "label",
+          what: "\u9078\u55AE\u7684\u6A19\u7C64"
+        },
+        {
+          name: "options",
+          what: '\u9078\u9805\u6E05\u55AE [{"label": "\u7D66\u4EBA\u770B\u7684\u5B57", "value": "\u5B58\u9032\u53BB\u7684\u503C"}]'
+        },
+        {
+          name: "value",
+          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u9078\u5230\u7684 value \u9663\u5217\u5BEB\u5230\u9019\u88E1\uFF08\u55AE\u9078\u6642\u9663\u5217\u53EA\u6709\u4E00\u500B\u5143\u7D20\uFF09'
+        },
+        {
+          name: "variant",
+          what: "mutuallyExclusive\uFF08\u55AE\u9078\uFF0C\u8868\u55AE\u6700\u5E38\u7528\uFF09\uFF0FmultipleSelection"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u9078\u9805\u7ACB\u5373\u986F\u793A\uFF08\u9078\u9805\u5BEB\u5728\u756B\u9762\u5B9A\u7FA9\u88E1\uFF0C\u4E0D\u7B49\u8CC7\u6599\uFF09",
+        empty: "\u6C92\u9078\u6642 value \u662F\u7A7A\u9663\u5217",
+        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u9078\u9805\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u55AE\u9078\u9078\u55AE\u986F\u793A\u9078\u9805",
+          given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u5047\u5225","variant":"mutuallyExclusive","options":[{"label":"\u7279\u4F11","value":"annual"},{"label":"\u75C5\u5047","value":"sick"}],"value":{"path":"/form/type"}}],"data":{"form":{"type":[]}}}',
+          then_contains: "\u75C5\u5047"
+        },
+        {
+          scenario: "\u591A\u9078\u9078\u55AE\u986F\u793A\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u6A19\u7C64","variant":"multipleSelection","options":[{"label":"\u6025","value":"urgent"}],"value":{"path":"/form/tags"}}],"data":{"form":{"tags":[]}}}',
+          then_contains: "\u6025"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "input",
+        "form",
+        "select",
+        "choice",
+        "\u9078\u55AE",
+        "\u4E0B\u62C9"
+      ],
+      example: '{ "id": "f-type", "component": "ChoicePicker", "label": "\u5047\u5225", "variant": "mutuallyExclusive", "options": [{ "label": "\u7279\u4F11", "value": "annual" }, { "label": "\u75C5\u5047", "value": "sick" }], "value": { "path": "/form/type" } }\n',
+      source: "registry/ui-components/choice_picker/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The label for the group of options."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "multipleSelection",
+              "mutuallyExclusive"
+            ],
+            default: "mutuallyExclusive",
+            description: "A hint for how the choice picker should be displayed and behave."
+          },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: {
+                  $ref: "#/$defs/DynamicString",
+                  description: "The text to display for this option."
+                },
+                value: {
+                  type: "string",
+                  description: "The stable value associated with this option."
+                }
+              },
+              required: [
+                "label",
+                "value"
+              ],
+              additionalProperties: false
+            },
+            description: "The list of available options to choose from."
+          },
+          value: {
+            $ref: "#/$defs/DynamicStringList",
+            description: "The list of currently selected values. This should be bound to a string array in the data model."
+          },
+          displayStyle: {
+            type: "string",
+            enum: [
+              "checkbox",
+              "chips"
+            ],
+            default: "checkbox",
+            description: "The display style of the component."
+          },
+          filterable: {
+            type: "boolean",
+            default: false,
+            description: "If true, displays a search input to filter the options."
+          },
+          component: {
+            const: "ChoicePicker"
+          }
+        },
+        required: [
+          "id",
+          "options",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_column",
+      display_name: "\u76F4\u6392",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Column",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u4E0A\u5F80\u4E0B\u6392\u3002\u6574\u500B\u756B\u9762\u7684\u9AA8\u67B6\u901A\u5E38\u662F\u4E00\u500B\u76F4\u6392\u3002",
+      renders: "\u4E00\u6B04\uFF0C\u5B50\u5143\u4EF6\u4F9D\u5E8F\u5F80\u4E0B\u5806\uFF0Cjustify\uFF0Falign \u63A7\u5236\u9593\u8DDD\u8207\u5C0D\u9F4A\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}\uFF0C\u8CC7\u6599\u9663\u5217\u6709\u5E7E\u7B46\u5C31\u9577\u5E7E\u500B'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
+        empty: "\u7D81\u5230\u7684\u6E05\u55AE\u662F\u7A7A\u9663\u5217\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u8981\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\u8ACB\u53E6\u653E\u4E00\u500B Text\uFF09",
+        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u672C\u4F86\u5C31\u662F\u55AE\u6B04\uFF0C\u7A84\u87A2\u5E55\u4E0D\u8B8A\u5F62"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5169\u6BB5\u6587\u5B57\u4E0A\u4E0B\u6392",
+          given: '{"components":[{"id":"root","component":"Column","children":["a","b"]},{"id":"a","component":"Text","text":"\u7B2C\u4E00\u884C"},{"id":"b","component":"Text","text":"\u7B2C\u4E8C\u884C"}]}',
+          then_contains: "\u7B2C\u4E8C\u884C"
+        },
+        {
+          scenario: "\u7528\u8CC7\u6599\u9663\u5217\u9577\u51FA\u5B50\u5143\u4EF6",
+          given: '{"components":[{"id":"root","component":"Column","children":{"componentId":"item","path":"/items"}},{"id":"item","component":"Text","text":{"path":"name"}}],"data":{"items":[{"name":"\u7532"},{"name":"\u4E59"}]}}',
+          then_contains: "\u4E59"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "column",
+        "stack"
+      ],
+      example: '{ "id": "page", "component": "Column", "children": ["title", "list"] }\n',
+      source: "registry/ui-components/column/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "spaceBetween",
+              "spaceAround",
+              "spaceEvenly",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "start",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
+          },
+          component: {
+            const: "Column"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_date_time_input",
+      display_name: "\u65E5\u671F\u6642\u9593\u8F38\u5165",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "DateTimeInput",
+        implementation: "a2ui-basic"
+      },
+      description: "\u8B93\u4EBA\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u65E5\u671F\u52A0\u6642\u9593\uFF08\u8ACB\u5047\u8D77\u8A16\u3001\u9810\u7D04\u6642\u6BB5\uFF09\u3002\u7D50\u679C\u4EE5 ISO 8601 \u5B57\u4E32\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+      renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u65E5\u671F\uFF0F\u6642\u9593\u6311\u9078\u6B04\u3002enableDate\uFF0FenableTime \u6C7A\u5B9A\u53EF\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u5169\u8005\u3002",
+      data_inputs: [
+        {
+          name: "label",
+          what: "\u6B04\u4F4D\u6A19\u7C64"
+        },
+        {
+          name: "value",
+          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u6311\u5230\u7684\u503C\uFF08ISO 8601 \u5B57\u4E32\uFF09\u5BEB\u5230\u9019\u88E1'
+        },
+        {
+          name: "enableDate",
+          what: "true \u624D\u80FD\u6311\u65E5\u671F\uFF08\u9810\u8A2D false\uFF0C\u8981\u65E5\u671F\u8ACB\u660E\u5BEB true\uFF09"
+        },
+        {
+          name: "enableTime",
+          what: "true \u624D\u80FD\u6311\u6642\u9593"
+        },
+        {
+          name: "min / max",
+          what: "\u53EF\u6311\u7BC4\u570D\u7684\u4E0B\u9650\uFF0F\u4E0A\u9650\uFF08ISO 8601\uFF09\uFF0C\u9078\u586B"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u7ACB\u5373\u53EF\u6311",
+        empty: "\u6C92\u6311\u6642 value \u662F\u7A7A\u5B57\u4E32",
+        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u65E5\u671F\u6B04\u5E36\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u958B\u59CB\u65E5\u671F","enableDate":true,"value":{"path":"/form/start"}}],"data":{"form":{"start":""}}}',
+          then_contains: "\u958B\u59CB\u65E5\u671F"
+        },
+        {
+          scenario: "\u65E5\u671F\u52A0\u6642\u9593\u6B04\u5E36\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u9810\u7D04\u6642\u6BB5","enableDate":true,"enableTime":true,"value":{"path":"/form/at"}}],"data":{"form":{"at":""}}}',
+          then_contains: "\u9810\u7D04\u6642\u6BB5"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "input",
+        "form",
+        "date",
+        "time",
+        "\u65E5\u671F",
+        "\u6642\u9593"
+      ],
+      example: '{ "id": "f-start", "component": "DateTimeInput", "label": "\u958B\u59CB\u65E5\u671F", "enableDate": true, "value": { "path": "/form/start" } }\n',
+      source: "registry/ui-components/date_time_input/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          value: {
+            $ref: "#/$defs/DynamicString",
+            description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
+          },
+          enableDate: {
+            type: "boolean",
+            default: false,
+            description: "If true, allows the user to select a date."
+          },
+          enableTime: {
+            type: "boolean",
+            default: false,
+            description: "If true, allows the user to select a time."
+          },
+          min: {
+            $ref: "#/$defs/DynamicString",
+            description: "The minimum allowed date/time in ISO 8601 format."
+          },
+          max: {
+            $ref: "#/$defs/DynamicString",
+            description: "The maximum allowed date/time in ISO 8601 format."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text label for the input field."
+          },
+          component: {
+            const: "DateTimeInput"
+          }
+        },
+        required: [
+          "id",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_list",
+      display_name: "\u6E05\u55AE",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "List",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u4E00\u500B\u8CC7\u6599\u9663\u5217\u5C55\u958B\u6210\u91CD\u8907\u7684\u9805\u76EE\uFF1A\u6BCF\u4E00\u7B46\u8CC7\u6599\u9577\u4E00\u500B\u540C\u6A23\u7684\u6A23\u677F\uFF08\u4F8B\u5982\u6BCF\u689D\u5DE5\u4F5C\u6D41\u4E00\u5F35\u5361\uFF09\u3002",
+      renders: "\u4E00\u4E32\u76F4\u5411\uFF08\u6216\u6A6B\u5411\uFF09\u6392\u5217\u7684\u9805\u76EE\uFF0C\u6BCF\u4E00\u9805\u90FD\u662F\u540C\u4E00\u500B\u6A23\u677F\u5143\u4EF6\uFF0C\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\u8B80\u90A3\u4E00\u7B46\u7684\u6B04\u4F4D\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u6A23\u677F {"componentId": "\u6BCF\u4E00\u9805\u7684\u5143\u4EF6 id", "path": "/\u8CC7\u6599\u9663\u5217"}\uFF1B\u6A23\u677F\u88E1\u7684 {"path": "name"} \u8B80\u7684\u662F\u90A3\u4E00\u7B46\u7684 name'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE",
+        empty: "\u7A7A\u9663\u5217\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE\uFF08\u300C\u6C92\u6709\u8CC7\u6599\u300D\u7684\u5B57\u8981\u53E6\u653E\u4E00\u500B Text\uFF0C\u756B\u9762\u5B9A\u7FA9\u81EA\u5DF1\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A\uFF09",
+        error: "\u67D0\u4E00\u7B46\u7F3A\u6B04\u4F4D\u6642\uFF0C\u90A3\u4E00\u7B46\u7684\u5C0D\u61C9\u6587\u5B57\u662F\u7A7A\u7684\uFF0C\u5176\u4ED6\u7B46\u7167\u5E38",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u76F4\u5411\u6E05\u55AE\u4E0D\u53D7\u5F71\u97FF\uFF1B\u6A6B\u5411\u6E05\u55AE\u6703\u51FA\u73FE\u6C34\u5E73\u6372\u52D5"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u6BCF\u7B46\u8CC7\u6599\u9577\u4E00\u9805",
+          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"row","path":"/workflows"}},{"id":"row","component":"Text","text":{"path":"name"}}],"data":{"workflows":[{"name":"notify_daily"},{"name":"ingest_docs"}]}}',
+          then_contains: "ingest_docs"
+        },
+        {
+          scenario: "\u6A23\u677F\u53EF\u4EE5\u662F\u4E00\u5F35\u5361",
+          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"card","path":"/items"}},{"id":"card","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"title"}}],"data":{"items":[{"title":"\u7B2C\u4E00\u5F35\u5361"}]}}',
+          then_contains: "\u7B2C\u4E00\u5F35\u5361"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "list",
+        "repeat",
+        "collection"
+      ],
+      example: '{ "id": "wf-list", "component": "List", "children": { "componentId": "wf-card", "path": "/workflows" } }\n',
+      source: "registry/ui-components/list/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
+          },
+          direction: {
+            type: "string",
+            enum: [
+              "vertical",
+              "horizontal"
+            ],
+            default: "vertical",
+            description: "The direction in which the list items are laid out."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis."
+          },
+          component: {
+            const: "List"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_row",
+      display_name: "\u6A6B\u6392",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Row",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u5DE6\u5F80\u53F3\u6392\uFF0C\u4F8B\u5982\u300C\u540D\u7A31\uFF5C\u6392\u7A0B\uFF5C\u6700\u8FD1\u4E00\u6B21\u7D50\u679C\u300D\u653E\u5728\u540C\u4E00\u884C\u3002",
+      renders: "\u4E00\u5217\uFF0C\u5B50\u5143\u4EF6\u5DE6\u53F3\u4E26\u6392\uFF0Cjustify \u6C7A\u5B9A\u64E0\u5728\u4E00\u8D77\u6216\u63A8\u5230\u5169\u7AEF\uFF08spaceBetween\uFF09\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
+        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u6642\u662F\u4E00\u689D\u7A7A\u5217",
+        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u5B50\u5143\u4EF6\u5BEC\u5EA6\u7E2E\u5C0F\uFF1B\u5167\u5BB9\u592A\u9577\u6642\u6587\u5B57\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u540D\u7A31\u8207\u72C0\u614B\u4E26\u6392",
+          given: '{"components":[{"id":"root","component":"Row","children":["n","s"],"justify":"spaceBetween"},{"id":"n","component":"Text","text":"\u6BCF\u65E5\u5F59\u6574"},{"id":"s","component":"Text","text":"success"}]}',
+          then_contains: "\u6BCF\u65E5\u5F59\u6574"
+        },
+        {
+          scenario: "\u4E26\u6392\u7684\u7B2C\u4E8C\u683C\u4E5F\u756B\u5F97\u51FA\u4F86",
+          given: '{"components":[{"id":"root","component":"Row","children":["n","s"]},{"id":"n","component":"Text","text":"A"},{"id":"s","component":"Text","text":"\u53F3\u908A\u90A3\u683C"}]}',
+          then_contains: "\u53F3\u908A\u90A3\u683C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "row",
+        "inline"
+      ],
+      example: '{ "id": "wf-head", "component": "Row", "children": ["wf-name", "wf-last"], "justify": "spaceBetween" }\n',
+      source: "registry/ui-components/row/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "spaceAround",
+              "spaceBetween",
+              "spaceEvenly",
+              "start",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
+          },
+          component: {
+            const: "Row"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_text",
+      display_name: "\u6587\u5B57",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Text",
+        implementation: "a2ui-basic"
+      },
+      description: "\u986F\u793A\u4E00\u6BB5\u6587\u5B57\uFF1A\u6A19\u984C\u3001\u5167\u6587\u3001\u6578\u5B57\u3001\u8A3B\u8A18\u3002\u5167\u5BB9\u53EF\u4EE5\u5BEB\u6B7B\uFF0C\u4E5F\u53EF\u4EE5\u7D81\u5230\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+      renders: "\u4E00\u884C\u6216\u4E00\u6BB5\u6587\u5B57\uFF0Cvariant \u6C7A\u5B9A\u5927\u5C0F\uFF08h1\u2013h5 \u6A19\u984C\u3001body \u5167\u6587\u3001caption \u5C0F\u5B57\u8A3B\u8A18\uFF09\u3002",
+      data_inputs: [
+        {
+          name: "text",
+          what: '\u8981\u986F\u793A\u7684\u5B57\u3002\u5BEB\u6B7B\u5C31\u662F\u5B57\u4E32\uFF1B\u8981\u5F9E\u8CC7\u6599\u4F86\u5C31\u5BEB {"path": "/\u6B04\u4F4D"}\uFF0C\u5728 List \u7684\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\uFF08\u4F8B {"path": "name"}\uFF09'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642\u986F\u793A\u7A7A\u5B57\u4E32\uFF0C\u4E0D\u986F\u793A undefined",
+        empty: "\u7D81\u5230\u7684\u6B04\u4F4D\u4E0D\u5B58\u5728\u6642\u986F\u793A\u7A7A\u5B57\u4E32",
+        error: "\u4E0D\u6703\u4E1F\u932F\uFF1B\u756B\u4E0D\u51FA\u4F86\u7684\u503C\u4E00\u5F8B\u7576\u7A7A\u5B57\u4E32",
+        disabled: "\u6587\u5B57\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5BEB\u6B7B\u7684\u6A19\u984C",
+          given: '{"components":[{"id":"root","component":"Text","text":"\u5DE5\u4F5C\u6D41","variant":"h2"}]}',
+          then_contains: "\u5DE5\u4F5C\u6D41"
+        },
+        {
+          scenario: "\u7D81\u8CC7\u6599\u7684\u6578\u5B57",
+          given: '{"components":[{"id":"root","component":"Text","text":{"path":"/count"}}],"data":{"count":"\u5171 3 \u689D"}}',
+          then_contains: "\u5171 3 \u689D"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "text",
+        "label",
+        "heading"
+      ],
+      example: '{ "id": "wf-name", "component": "Text", "text": { "path": "name" }, "variant": "h3" }\n',
+      source: "registry/ui-components/text/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          text: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "caption",
+              "body"
+            ],
+            default: "body",
+            description: "A hint for the base text style."
+          },
+          component: {
+            const: "Text"
+          }
+        },
+        required: [
+          "id",
+          "text",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_text_field",
+      display_name: "\u6587\u5B57\u8F38\u5165\u6846",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "TextField",
+        implementation: "a2ui-basic"
+      },
+      description: "\u8B93\u4EBA\u8F38\u5165\u4E00\u6BB5\u5B57\uFF08\u55AE\u884C\u3001\u591A\u884C\u3001\u6578\u5B57\u3001\u5BC6\u78BC\uFF09\u3002\u8F38\u5165\u7684\u503C\u76F4\u63A5\u5BEB\u9032\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\uFF0C\u9001\u51FA\u6642\u7531\u8868\u55AE\u7684 Button \u5E36\u8D70\u3002\u9019\u662F\u300C\u8868\u55AE\u300D\u7684\u57FA\u672C\u7A4D\u6728\u3002",
+      renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u8F38\u5165\u6846\u3002variant \u6C7A\u5B9A\u5F62\u72C0\uFF1AshortText \u55AE\u884C\u3001longText \u591A\u884C\u3001number \u6578\u5B57\u3001obscured \u5BC6\u78BC\u3002",
+      data_inputs: [
+        {
+          name: "label",
+          what: "\u8F38\u5165\u6846\u7684\u6A19\u7C64\uFF08\u6B04\u4F4D\u540D\u7A31\uFF0C\u7D66\u4EBA\u770B\u7684\u5B57\uFF09"
+        },
+        {
+          name: "value",
+          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u4EBA\u8F38\u5165\u7684\u5B57\u6703\u5BEB\u5230\u8CC7\u6599\u7684\u9019\u500B\u4F4D\u7F6E\uFF0CButton \u7684 action.context \u518D\u7528\u540C\u4E00\u500B path \u628A\u5B83\u5E36\u8D70\u3002\u5FC5\u9808\u7D81 path\uFF0C\u5BEB\u6B7B\u5B57\u4E32\u5C31\u8B8A\u6210\u4E0D\u80FD\u6539'
+        },
+        {
+          name: "variant",
+          what: "shortText\uFF08\u9810\u8A2D\uFF09\uFF0FlongText\uFF0Fnumber\uFF0Fobscured"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u8F38\u5165\u6846\u7ACB\u5373\u53EF\u8F38\u5165",
+        empty: "\u6C92\u6709\u503C\u6642\u986F\u793A\u6A19\u7C64\u7576\u63D0\u793A\uFF0C\u503C\u662F\u7A7A\u5B57\u4E32",
+        error: "validationRegexp \u6216 checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57\uFF0C\u9001\u51FA\u7531\u5BBF\u4E3B\u64CB",
+        disabled: "checks \u4E0D\u901A\u904E\u6642\u4E0D\u5F71\u97FF\u8F38\u5165\uFF0C\u53EA\u6A19\u932F\u8AA4",
+        narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u8F38\u5165\u6846\u5E36\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"TextField","label":"\u59D3\u540D","value":{"path":"/form/name"}}],"data":{"form":{"name":""}}}',
+          then_contains: "\u59D3\u540D"
+        },
+        {
+          scenario: "\u591A\u884C\u8F38\u5165\u6846",
+          given: '{"components":[{"id":"root","component":"TextField","label":"\u8ACB\u5047\u539F\u56E0","variant":"longText","value":{"path":"/form/reason"}}],"data":{"form":{"reason":""}}}',
+          then_contains: "\u8ACB\u5047\u539F\u56E0"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "input",
+        "form",
+        "text",
+        "textfield",
+        "\u8F38\u5165"
+      ],
+      example: '{ "id": "f-name", "component": "TextField", "label": "\u59D3\u540D", "value": { "path": "/form/name" } }\n',
+      source: "registry/ui-components/text_field/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text label for the input field."
+          },
+          value: {
+            $ref: "#/$defs/DynamicString",
+            description: "The value of the text field."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "longText",
+              "number",
+              "shortText",
+              "obscured"
+            ],
+            default: "shortText",
+            description: "The type of input field to display."
+          },
+          validationRegexp: {
+            type: "string",
+            description: "A regular expression used for client-side validation of the input."
+          },
+          component: {
+            const: "TextField"
+          }
+        },
+        required: [
+          "id",
+          "label",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_workflow_graph",
+      display_name: "\u7BC0\u9EDE\u8207\u9023\u7DDA\u5716",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "WorkflowGraph",
+        implementation: "arcrun"
+      },
+      description: "\u628A\u4E00\u7FA4\u7BC0\u9EDE\u548C\u5B83\u5011\u4E4B\u9593\u7684\u9023\u7DDA\u756B\u6210\u4E00\u5F35\u53EF\u9EDE\u3001\u53EF\u7E2E\u653E\u7684\u5716\uFF1A\u5168\u5C40\u5716\uFF08\u5DE5\u4F5C\u6D41\u8207\u5B83\u5011\u8B80\u5BEB\u7684\u8CC7\u6599\u3001\u8AB0\u53EB\u8AB0\uFF0C\u65B7\u7DDA\u4EAE\u7D05\uFF09\u548C\u55AE\u4E00\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u7BC0\u9EDE\u8207\u9023\u7DDA\uFF09\u5171\u7528\u9019\u4E00\u9846\u3002",
+      renders: "layout=columns\uFF08XMind \u5F0F\u7684 drill\uFF0C\u4EE5\u67D0\u500B\u7BC0\u9EDE\u70BA\u4E2D\u5FC3\uFF09\uFF1A\u4E2D\u6B04\u662F\u4E2D\u5FC3\uFF08kind=center\uFF09\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF08\u5927\u7DB1\u7E2E\u6392\u7DDA\uFF09\uFF0C\u5DE6\u6B04\u662F\u547C\u53EB\u904E\u4F86\uFF0F\u5BEB\u8CC7\u6599\u7D66\u5B83\u7684\u9130\u5C45\uFF0C\u53F3\u6B04\u662F\u5B83\u53EB\u7684\u9130\u5C45\uFF1B\u6C92\u6709\u4E2D\u5FC3\u5C31\u662F\u6700\u5916\u5C64\u4E00\u6392\u540C\u8F29\uFF1B\u9023\u7DDA\u6A19\u51FA\u300C\u54EA\u4E00\u6B65 \u2192 \u53EB\u8AB0\u300D\uFF0C\u540C\u6B04\u7684\u7DDA\u7E5E\u5F27\uFF0Cvertical=true \u6642\u5168\u90E8\u6392\u6210\u4E00\u76F4\u6B04\u3002layout=flow\uFF08Claude Design \u7684 Workflow Viewer \u7248\u578B\uFF09\uFF1A\u7BC0\u9EDE\u5361\uFF1D\u8272\u584A\u5716\u793A\uFF0B\u540D\u5B57\uFF08\u986F\u793A\u540D\u512A\u5148\uFF09\uFF0B\u985E\u578B\u6A19\u7C64\uFF08\u53EA\u6A19\u6709\u5340\u5225\u610F\u7FA9\u7684\u985E\u578B\uFF09\uFF0B\u4E00\u884C\u7C21\u77ED\u8AAA\u660E\uFF0C\u7DB2\u5740\u8207 worker \u540D\u4E0D\u653E\u5728\u5361\u4E0A\uFF0C\u8C9D\u8332\u66F2\u7DDA\u9023\u7DDA\uFF0C\u88AB\u9078\uFF08selected\uFF09\u7684\u7BC0\u9EDE\u8207\u5B83\u7684\u9023\u7DDA\u9AD8\u4EAE\uFF1Bminimap=true \u6642\u5DE6\u4E0B\u89D2\u6709\u7E2E\u5C0F\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF1B\u7BC0\u9EDE\u7167\u9806\u5E8F\u5206\u5C64\uFF0C\u5BEC\u87A2\u5E55\u7531\u5DE6\u5230\u53F3\u3001\u7A84\u87A2\u5E55\uFF08vertical=true\uFF09\u7531\u4E0A\u5230\u4E0B\uFF0C\u689D\u4EF6\uFF0F\u5931\u6557\u7684\u7DDA\u5E36\u6587\u5B57\u3002\u7BC0\u9EDE\u6709 bad\uFF08\u7D05\u6846\uFF09\u3001dim\uFF08\u6DE1\uFF09\u5169\u7A2E\u6A19\u8A18\uFF0C\u9023\u7DDA\u6709 bad\uFF08\u7C97\u7D05\u7DDA\uFF0C\u9EDE\u5B83\u8DF3\u5230 href\uFF09\uFF1B\u7D05\u4E0D\u7D05\u7531\u8CC7\u6599\u8AAA\u4E86\u7B97\uFF0C\u9019\u9846\u5143\u4EF6\u4E0D\u5224\u65B7\u4EFB\u4F55\u4E8B\u3002",
+      data_inputs: [
+        {
+          name: "nodes",
+          what: "\u7BC0\u9EDE\u6E05\u55AE\uFF1Aid\u3001title\uFF0C\u9078\u586B sub\uFF08\u7B2C\u4E8C\u884C\u5B57\uFF0Cflow \u7248\u578B\u653E\u96F6\u4EF6 id\uFF09\u3001line3\uFF08flow \u5361\u7247\u53F3\u4E0B\u7684\u77ED\u5B57\uFF09\u3001badge\uFF08flow \u5361\u7247\u53F3\u4E0A\u7684\u985E\u578B\u6A19\u7C64\uFF0C\u5982 API\u3001AI\uFF09\u3001tone\uFF08\u5716\u793A\u8272\u584A\uFF1Agreen\uFF0Fblue\uFF0Famber\uFF0Fpurple\uFF0Fslate\uFF0Fgray\uFF0Fpink\uFF09\u3001icon\uFF08\u8272\u584A\u88E1\u7684\u4E00\u500B\u5B57\uFF09\u3001num\uFF08\u756B\u9762\u4E0A\u7684\u6307\u7A31\u7DE8\u865F\uFF0C\u986F\u793A\u6210\u300CN \u865F\u300D\uFF0C\u53EA\u7528\u4F86\u8DDF\u4EBA\u6216 AI \u6307\u67D0\u4E00\u584A\uFF0C\u4E0D\u4EE3\u8868\u5148\u5F8C\uFF09\u3001shape\uFF08\u56FA\u5B9A\u985E\u578B\u7684\u5916\u6846\uFF1Atrigger \u8D77\u9EDE\uFF1D\u5DE6\u534A\u5713\u3001call \u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41\uFF1D\u96D9\u5C64\u6846\u3001ext \u5916\u90E8\u670D\u52D9\uFF1D\u865B\u7DDA\u6846\u3001branch \u5224\u65B7\uFF1D\u516D\u89D2\u3001read\uFF0Fwrite \u8B80\u5BEB\u8CC7\u6599\u8868\uFF1D\u5713\u7B52\u9802\uFF1B\u6C92\u7D66\u5C31\u662F\u4E00\u822C\u5713\u89D2\u65B9\u584A\uFF09\u3001side\uFF08left\uFF0Fmid\uFF0Fright\uFF0Ccolumns \u7528\uFF09\u3001kind\uFF08item\uFF0Fgroup\uFF0Fdata\uFF0Fplat\uFF0Fmiss\uFF0Fcenter\uFF0Ftable\uFF1Btable\uFF1DUML \u985E\u5225\u5F0F\u7BC0\u9EDE\uFF0C\u8868\u540D\u7576\u6A19\u984C\u3001fields \u9010\u884C\u5217\u6B04\u4F4D\u3001more\uFF1D\u5176\u9918\u5E7E\u6B04\u6C92\u5217\u51FA\uFF09\u3001fields\u3001more\u3001bad\u3001dim\u3001href\uFF08\u9EDE\u5B83\u53BB\u54EA\uFF0C\u53EA\u6536 #/ \u958B\u982D\u7684\u7AD9\u5167\u7DB2\u5740\uFF09"
+        },
+        {
+          name: "edges",
+          what: "\u9023\u7DDA\u6E05\u55AE\uFF1Afrom\u3001to\uFF08\u7BC0\u9EDE id\uFF09\uFF0C\u9078\u586B kind\uFF08call\uFF0Fwrite\uFF0Fread\uFF0Fnext\uFF0Ffail\uFF0Fchild\uFF1Bchild\uFF1D\u4E2D\u5FC3\u5230\u5B83\u4E0B\u4E00\u5C64\u7684\u7E2E\u6392\u7DDA\uFF09\u3001label\u3001bad\u3001href\u3001tip\uFF08\u6ED1\u904E\u53BB\u986F\u793A\u7684\u8AAA\u660E\uFF09"
+        },
+        {
+          name: "layout / vertical / selected / minimap / pan / headLeft / headRight / zoom",
+          what: "\u7248\u578B\u3001\u9078\u53D6\u3001\u5168\u8C8C\u5716\u8207\u6B04\u6A19\u984C\uFF1Bzoom \u662F\u5728\u300C\u525B\u597D\u653E\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF1Bpan=true\uFF08flow \u7248\u578B\uFF09\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF0COVERVIEW \u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\u4E14\u9EDE\u5B83\u53EF\u8DF3\u904E\u53BB"
+        }
+      ],
+      interactions: [
+        {
+          name: "\u9EDE\u7BC0\u9EDE\uFF0F\u9EDE\u7D05\u7DDA",
+          what: "\u8DF3\u5230\u8A72\u7BC0\u9EDE\u6216\u8A72\u65B7\u7DDA\u6240\u5728\u7BC0\u9EDE\u7684 href\uFF08\u7AD9\u5167\u7DB2\u5740\uFF0C\u4E0D\u958B\u5916\u7AD9\uFF09"
+        }
+      ],
+      states: {
+        loading: "\u5143\u4EF6\u672C\u8EAB\u6C92\u6709\u8F09\u5165\u72C0\u614B\uFF1A\u547C\u53EB\u7AEF\u8CC7\u6599\u9084\u6C92\u5230\u5C31\u5148\u4E0D\u639B\u9019\u9846\uFF0C\u6216\u639B\u7A7A\u6E05\u55AE",
+        empty: "\u6C92\u6709\u7BC0\u9EDE\u6642\u756B\u4E00\u5F35\u7A7A\u7684\u5716\uFF08\u53EA\u6709\u6B04\u6A19\u984C\uFF09\uFF0C\u4E0D\u5831\u932F",
+        error: "\u8CC7\u6599\u5F62\u72C0\u4E0D\u5C0D\u7684\u7BC0\u9EDE\uFF0F\u9023\u7DDA\uFF08\u6C92\u6709 id\u3001\u9023\u5230\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE\uFF09\u6574\u7B46\u7565\u904E\uFF0C\u4E0D\u6703\u6574\u5F35\u5716\u58DE\u6389",
+        disabled: "\u5716\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF1B\u552F\u8B80\u662F\u9810\u8A2D\uFF0C\u6C92\u6709\u4EFB\u4F55\u6539\u52D5\u8CC7\u6599\u7684\u4E92\u52D5",
+        narrow: "\u5BB9\u5668\u6BD4\u5716\u7A84\u5C31\u7E2E\u5230\u6700\u5C0F 0.62 \u500D\uFF0C\u518D\u7A84\u6539\u6210\u6A6B\u5411\u6372\u52D5\uFF1Bflow \u7248\u578B\u53EF\u6539\u6210\u7531\u4E0A\u5230\u4E0B\uFF1Bpan=true \u6642\u6700\u5C0F\u53EA\u7E2E\u5230 0.9 \u500D\uFF0C\u5176\u9918\u9760\u5E73\u79FB"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5168\u5C40\u5716\uFF1A\u5DE6\u6B04\u5DE5\u4F5C\u6D41\u3001\u53F3\u6B04\u8CC7\u6599\u3001\u4E00\u689D\u65B7\u7DDA\u4EAE\u7D05\u4E26\u5E36\u6587\u5B57",
+          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"columns","headLeft":"\u5DE5\u4F5C\u6D41","headRight":"\u8CC7\u6599","nodes":[{"id":"a","title":"rag_ingest_card","sub":"\u5DE5\u4F5C\u6D41","side":"left"},{"id":"m","title":"rag_cluster_auto","sub":"\u9019\u53F0\u6C92\u88DD\u9019\u689D\u5DE5\u4F5C\u6D41","side":"right","kind":"miss","bad":true}],"edges":[{"from":"a","to":"m","kind":"call","bad":true,"label":"\u2717 \u6C92\u88DD\u30FBtrigger_wiki_cluster","href":"#/flows/~w/rag_ingest_card/trigger_wiki_cluster"}]}]}',
+          then_contains: "rag_cluster_auto"
+        },
+        {
+          scenario: "\u6D41\u7A0B\u5716\uFF1A\u5169\u500B\u7BC0\u9EDE\u4E00\u689D\u7DDA\uFF0C\u7BC0\u9EDE\u5E36\u7DE8\u865F\u8207\u96F6\u4EF6\u540D",
+          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","minimap":true,"selected":"w","nodes":[{"id":"input","title":"input","sub":"\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09","num":1,"tone":"green","badge":"IN"},{"id":"w","title":"write_triplet","sub":"\u6253\u4E00\u500B\u7DB2\u5740","num":2,"line3":"\u5BEB triplet"}],"edges":[{"from":"input","to":"w","kind":"next","tip":"\u6210\u529F\u5F8C"}]}]}',
+          then_contains: "write_triplet"
+        },
+        {
+          scenario: "\u56FA\u5B9A\u985E\u578B\u7684\u7BC0\u9EDE\uFF1A\u8D77\u9EDE\u3001\u5916\u90E8\u670D\u52D9\u3001\u5224\u65B7\u5404\u6709\u81EA\u5DF1\u7684\u5916\u6846\u8207\u6A19\u7C64\uFF0C\u7DE8\u865F\u986F\u793A\u6210 N \u865F",
+          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":[{"id":"a","title":"\u6536\u5230\u7559\u8A00","sub":"\u8D77\u9EDE","num":1,"tone":"green","badge":"\u8D77\u9EDE","icon":"\u25B6","shape":"trigger"},{"id":"b","title":"\u767C Telegram","sub":"Telegram","num":2,"tone":"blue","badge":"\u5916\u90E8","icon":"A","shape":"ext"},{"id":"c","title":"\u6709\u6C92\u6709\u7968","sub":"\u5224\u65B7","num":3,"tone":"slate","badge":"\u5224\u65B7","icon":"?","shape":"branch"}],"edges":[{"from":"a","to":"b","kind":"next"},{"from":"b","to":"c","kind":"next"}]}]}',
+          then_contains: "2 \u865F"
+        },
+        {
+          scenario: "\u7BC0\u9EDE\u6E05\u55AE\u53EF\u4EE5\u7D81\u8CC7\u6599\u6A21\u578B",
+          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":{"path":"/n"},"edges":{"path":"/e"}}],"data":{"n":[{"id":"x","title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE","sub":"\u96F6\u4EF6"}],"e":[]}}',
+          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "graph",
+        "workflow",
+        "observer"
+      ],
+      example: '{ "id": "root", "component": "WorkflowGraph", "layout": "flow",\n  "nodes": { "path": "/nodes" }, "edges": { "path": "/edges" } }\n',
+      source: "registry/ui-components/workflow-graph/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          weight: {
+            type: "number"
+          },
+          layout: {
+            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          vertical: {
+            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
+            oneOf: [
+              {
+                type: "boolean"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          selected: {
+            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          minimap: {
+            type: "boolean",
+            description: "flow \u7248\u578B\uFF1A\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1\uFF1B\u9801\u9762\u5728\u756B\u5E03\u5916\u7559\u4E86 .df-mmslot \u5C31\u653E\u90A3\u88E1\uFF08\u4E0D\u84CB\u756B\u5E03\uFF09\uFF0C\u5426\u5247\u6D6E\u5728\u756B\u5E03\u5DE6\u4E0B\u89D2"
+          },
+          pan: {
+            type: "boolean",
+            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
+          },
+          headLeft: {
+            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          headMid: {
+            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          headRight: {
+            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          zoom: {
+            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
+            oneOf: [
+              {
+                type: "number"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          nodes: {
+            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: {
+                      type: "string"
+                    },
+                    title: {
+                      type: "string"
+                    },
+                    sub: {
+                      type: "string"
+                    },
+                    line3: {
+                      type: "string"
+                    },
+                    badge: {
+                      type: "string"
+                    },
+                    tone: {
+                      type: "string",
+                      enum: [
+                        "green",
+                        "blue",
+                        "amber",
+                        "purple",
+                        "slate",
+                        "gray",
+                        "pink"
+                      ]
+                    },
+                    icon: {
+                      type: "string"
+                    },
+                    num: {
+                      type: "number"
+                    },
+                    side: {
+                      type: "string",
+                      enum: [
+                        "left",
+                        "mid",
+                        "right"
+                      ]
+                    },
+                    kind: {
+                      type: "string",
+                      enum: [
+                        "item",
+                        "group",
+                        "data",
+                        "plat",
+                        "miss",
+                        "center",
+                        "table"
+                      ]
+                    },
+                    shape: {
+                      type: "string",
+                      enum: [
+                        "trigger",
+                        "call",
+                        "ext",
+                        "branch",
+                        "read",
+                        "write"
+                      ]
+                    },
+                    fields: {
+                      type: "array",
+                      items: {
+                        type: "string"
+                      }
+                    },
+                    more: {
+                      type: "number"
+                    },
+                    bad: {
+                      type: "boolean"
+                    },
+                    dim: {
+                      type: "boolean"
+                    },
+                    href: {
+                      type: "string"
+                    }
+                  },
+                  required: [
+                    "id",
+                    "title"
+                  ],
+                  additionalProperties: false,
+                  description: "\u4E00\u500B\u7BC0\u9EDE"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              }
+            ]
+          },
+          edges: {
+            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    from: {
+                      type: "string"
+                    },
+                    to: {
+                      type: "string"
+                    },
+                    kind: {
+                      type: "string",
+                      enum: [
+                        "call",
+                        "write",
+                        "read",
+                        "next",
+                        "fail",
+                        "child"
+                      ]
+                    },
+                    label: {
+                      type: "string"
+                    },
+                    bad: {
+                      type: "boolean"
+                    },
+                    href: {
+                      type: "string"
+                    },
+                    tip: {
+                      type: "string"
+                    }
+                  },
+                  required: [
+                    "from",
+                    "to"
+                  ],
+                  additionalProperties: false,
+                  description: "\u4E00\u689D\u9023\u7DDA"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              }
+            ]
+          },
+          component: {
+            const: "WorkflowGraph"
+          }
+        },
+        required: [
+          "id",
+          "nodes",
+          "edges",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    }
+  ],
+  a2ui_catalog: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    catalogId: "arcrun:catalog/v0",
+    components: {
+      Button: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "default",
+              "primary",
+              "borderless"
+            ],
+            default: "default",
+            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
+          },
+          action: {
+            $ref: "#/$defs/Action"
+          },
+          component: {
+            const: "Button"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "action",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Card: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
+          },
+          component: {
+            const: "Card"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      CheckBox: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text to display next to the checkbox."
+          },
+          value: {
+            $ref: "#/$defs/DynamicBoolean",
+            description: "The current state of the checkbox (true for checked, false for unchecked)."
+          },
+          component: {
+            const: "CheckBox"
+          }
+        },
+        required: [
+          "id",
+          "label",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      ChoicePicker: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The label for the group of options."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "multipleSelection",
+              "mutuallyExclusive"
+            ],
+            default: "mutuallyExclusive",
+            description: "A hint for how the choice picker should be displayed and behave."
+          },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: {
+                  $ref: "#/$defs/DynamicString",
+                  description: "The text to display for this option."
+                },
+                value: {
+                  type: "string",
+                  description: "The stable value associated with this option."
+                }
+              },
+              required: [
+                "label",
+                "value"
+              ],
+              additionalProperties: false
+            },
+            description: "The list of available options to choose from."
+          },
+          value: {
+            $ref: "#/$defs/DynamicStringList",
+            description: "The list of currently selected values. This should be bound to a string array in the data model."
+          },
+          displayStyle: {
+            type: "string",
+            enum: [
+              "checkbox",
+              "chips"
+            ],
+            default: "checkbox",
+            description: "The display style of the component."
+          },
+          filterable: {
+            type: "boolean",
+            default: false,
+            description: "If true, displays a search input to filter the options."
+          },
+          component: {
+            const: "ChoicePicker"
+          }
+        },
+        required: [
+          "id",
+          "options",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Column: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "spaceBetween",
+              "spaceAround",
+              "spaceEvenly",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "start",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
+          },
+          component: {
+            const: "Column"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      DateTimeInput: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          value: {
+            $ref: "#/$defs/DynamicString",
+            description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
+          },
+          enableDate: {
+            type: "boolean",
+            default: false,
+            description: "If true, allows the user to select a date."
+          },
+          enableTime: {
+            type: "boolean",
+            default: false,
+            description: "If true, allows the user to select a time."
+          },
+          min: {
+            $ref: "#/$defs/DynamicString",
+            description: "The minimum allowed date/time in ISO 8601 format."
+          },
+          max: {
+            $ref: "#/$defs/DynamicString",
+            description: "The maximum allowed date/time in ISO 8601 format."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text label for the input field."
+          },
+          component: {
+            const: "DateTimeInput"
+          }
+        },
+        required: [
+          "id",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      List: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
+          },
+          direction: {
+            type: "string",
+            enum: [
+              "vertical",
+              "horizontal"
+            ],
+            default: "vertical",
+            description: "The direction in which the list items are laid out."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis."
+          },
+          component: {
+            const: "List"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Row: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "spaceAround",
+              "spaceBetween",
+              "spaceEvenly",
+              "start",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
+          },
+          component: {
+            const: "Row"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Text: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          text: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "caption",
+              "body"
+            ],
+            default: "body",
+            description: "A hint for the base text style."
+          },
+          component: {
+            const: "Text"
+          }
+        },
+        required: [
+          "id",
+          "text",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      TextField: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text label for the input field."
+          },
+          value: {
+            $ref: "#/$defs/DynamicString",
+            description: "The value of the text field."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "longText",
+              "number",
+              "shortText",
+              "obscured"
+            ],
+            default: "shortText",
+            description: "The type of input field to display."
+          },
+          validationRegexp: {
+            type: "string",
+            description: "A regular expression used for client-side validation of the input."
+          },
+          component: {
+            const: "TextField"
+          }
+        },
+        required: [
+          "id",
+          "label",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      WorkflowGraph: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          weight: {
+            type: "number"
+          },
+          layout: {
+            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          vertical: {
+            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
+            oneOf: [
+              {
+                type: "boolean"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          selected: {
+            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          minimap: {
+            type: "boolean",
+            description: "flow \u7248\u578B\uFF1A\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1\uFF1B\u9801\u9762\u5728\u756B\u5E03\u5916\u7559\u4E86 .df-mmslot \u5C31\u653E\u90A3\u88E1\uFF08\u4E0D\u84CB\u756B\u5E03\uFF09\uFF0C\u5426\u5247\u6D6E\u5728\u756B\u5E03\u5DE6\u4E0B\u89D2"
+          },
+          pan: {
+            type: "boolean",
+            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
+          },
+          headLeft: {
+            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          headMid: {
+            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          headRight: {
+            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          zoom: {
+            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
+            oneOf: [
+              {
+                type: "number"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          nodes: {
+            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: {
+                      type: "string"
+                    },
+                    title: {
+                      type: "string"
+                    },
+                    sub: {
+                      type: "string"
+                    },
+                    line3: {
+                      type: "string"
+                    },
+                    badge: {
+                      type: "string"
+                    },
+                    tone: {
+                      type: "string",
+                      enum: [
+                        "green",
+                        "blue",
+                        "amber",
+                        "purple",
+                        "slate",
+                        "gray",
+                        "pink"
+                      ]
+                    },
+                    icon: {
+                      type: "string"
+                    },
+                    num: {
+                      type: "number"
+                    },
+                    side: {
+                      type: "string",
+                      enum: [
+                        "left",
+                        "mid",
+                        "right"
+                      ]
+                    },
+                    kind: {
+                      type: "string",
+                      enum: [
+                        "item",
+                        "group",
+                        "data",
+                        "plat",
+                        "miss",
+                        "center",
+                        "table"
+                      ]
+                    },
+                    shape: {
+                      type: "string",
+                      enum: [
+                        "trigger",
+                        "call",
+                        "ext",
+                        "branch",
+                        "read",
+                        "write"
+                      ]
+                    },
+                    fields: {
+                      type: "array",
+                      items: {
+                        type: "string"
+                      }
+                    },
+                    more: {
+                      type: "number"
+                    },
+                    bad: {
+                      type: "boolean"
+                    },
+                    dim: {
+                      type: "boolean"
+                    },
+                    href: {
+                      type: "string"
+                    }
+                  },
+                  required: [
+                    "id",
+                    "title"
+                  ],
+                  additionalProperties: false,
+                  description: "\u4E00\u500B\u7BC0\u9EDE"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              }
+            ]
+          },
+          edges: {
+            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    from: {
+                      type: "string"
+                    },
+                    to: {
+                      type: "string"
+                    },
+                    kind: {
+                      type: "string",
+                      enum: [
+                        "call",
+                        "write",
+                        "read",
+                        "next",
+                        "fail",
+                        "child"
+                      ]
+                    },
+                    label: {
+                      type: "string"
+                    },
+                    bad: {
+                      type: "boolean"
+                    },
+                    href: {
+                      type: "string"
+                    },
+                    tip: {
+                      type: "string"
+                    }
+                  },
+                  required: [
+                    "from",
+                    "to"
+                  ],
+                  additionalProperties: false,
+                  description: "\u4E00\u689D\u9023\u7DDA"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              }
+            ]
+          },
+          component: {
+            const: "WorkflowGraph"
+          }
+        },
+        required: [
+          "id",
+          "nodes",
+          "edges",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    $defs: {
+      anyComponent: {
+        oneOf: [
+          {
+            $ref: "#/components/Button"
+          },
+          {
+            $ref: "#/components/Card"
+          },
+          {
+            $ref: "#/components/CheckBox"
+          },
+          {
+            $ref: "#/components/ChoicePicker"
+          },
+          {
+            $ref: "#/components/Column"
+          },
+          {
+            $ref: "#/components/DateTimeInput"
+          },
+          {
+            $ref: "#/components/List"
+          },
+          {
+            $ref: "#/components/Row"
+          },
+          {
+            $ref: "#/components/Text"
+          },
+          {
+            $ref: "#/components/TextField"
+          },
+          {
+            $ref: "#/components/WorkflowGraph"
+          }
+        ],
+        discriminator: {
+          propertyName: "component"
+        }
+      },
+      ComponentId: {
+        type: "string",
+        description: "The unique identifier for a component, used for both definitions and references within the same surface."
+      },
+      AccessibilityAttributes: {
+        type: "object",
+        description: "Attributes to enhance accessibility when using assistive technologies like screen readers.",
+        properties: {
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "A short string, typically 1 to 3 words, used by assistive technologies to convey the purpose or intent of an element. For example, an input field might have an accessible label of 'User ID' or a button might be labeled 'Submit'."
+          },
+          description: {
+            $ref: "#/$defs/DynamicString",
+            description: "Additional information provided by assistive technologies about an element such as instructions, format requirements, or result of an action. For example, a mute button might have a label of 'Mute' and a description of 'Silences notifications about this conversation'."
+          }
+        }
+      },
+      CheckRule: {
+        type: "object",
+        description: "A single validation rule applied to an input component.",
+        properties: {
+          condition: {
+            $ref: "#/$defs/DynamicBoolean"
+          },
+          message: {
+            type: "string",
+            description: "The error message to display if the check fails."
+          }
+        },
+        required: [
+          "condition",
+          "message"
+        ],
+        additionalProperties: false
+      },
+      Action: {
+        description: "Defines an interaction handler that can either trigger a server-side event or execute a local client-side function.",
+        oneOf: [
+          {
+            type: "object",
+            description: "Triggers a server-side event.",
+            properties: {
+              event: {
+                type: "object",
+                description: "The event to dispatch to the server.",
+                properties: {
+                  name: {
+                    type: "string",
+                    description: "The name of the action to be dispatched to the server."
+                  },
+                  context: {
+                    type: "object",
+                    description: "A JSON object containing the key-value pairs for the action context. Values can be literals or paths. Use literal values unless the value must be dynamically bound to the data model. Do NOT use paths for static IDs.",
+                    additionalProperties: {
+                      $ref: "#/$defs/DynamicValue"
+                    }
+                  }
+                },
+                required: [
+                  "name"
+                ],
+                additionalProperties: false
+              }
+            },
+            required: [
+              "event"
+            ],
+            additionalProperties: false
+          },
+          {
+            type: "object",
+            description: "Executes a local client-side function.",
+            properties: {
+              functionCall: {
+                $ref: "#/$defs/FunctionCall"
+              }
+            },
+            required: [
+              "functionCall"
+            ],
+            additionalProperties: false
+          }
+        ]
+      },
+      DynamicString: {
+        description: "Represents a string",
+        oneOf: [
+          {
+            type: "string"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            allOf: [
+              {
+                $ref: "#/$defs/FunctionCall"
+              },
+              {
+                properties: {
+                  returnType: {
+                    const: "string"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      DynamicBoolean: {
+        description: "A boolean value that can be a literal, a path, or a function call returning a boolean.",
+        oneOf: [
+          {
+            type: "boolean"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            allOf: [
+              {
+                $ref: "#/$defs/FunctionCall"
+              },
+              {
+                properties: {
+                  returnType: {
+                    const: "boolean"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      DynamicStringList: {
+        description: "Represents a value that can be either a literal array of strings, a path to a string array in the data model, or a function call returning a string array.",
+        oneOf: [
+          {
+            type: "array",
+            items: {
+              type: "string"
+            }
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            allOf: [
+              {
+                $ref: "#/$defs/FunctionCall"
+              },
+              {
+                properties: {
+                  returnType: {
+                    const: "array"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      ChildList: {
+        oneOf: [
+          {
+            type: "array",
+            items: {
+              $ref: "#/$defs/ComponentId"
+            },
+            description: "A static list of child component IDs."
+          },
+          {
+            type: "object",
+            description: "A template for generating a dynamic list of children from a data model list. The `componentId` is the component to use as a template.",
+            properties: {
+              componentId: {
+                $ref: "#/$defs/ComponentId"
+              },
+              path: {
+                type: "string",
+                description: "The path to the list of component property objects in the data model."
+              }
+            },
+            required: [
+              "componentId",
+              "path"
+            ],
+            additionalProperties: false
+          }
+        ]
+      },
+      DataBinding: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "A JSON Pointer path to a value in the data model."
+          }
+        },
+        required: [
+          "path"
+        ],
+        additionalProperties: false
+      },
+      FunctionCall: {
+        type: "object",
+        description: "Invokes a named function on the client.",
+        properties: {
+          call: {
+            type: "string",
+            description: "The name of the function to call."
+          },
+          args: {
+            type: "object",
+            description: "Arguments passed to the function.",
+            additionalProperties: {
+              anyOf: [
+                {
+                  $ref: "#/$defs/DynamicValue"
+                },
+                {
+                  type: "object",
+                  description: "A literal object argument (e.g. configuration)."
+                }
+              ]
+            }
+          },
+          returnType: {
+            type: "string",
+            description: "The expected return type of the function call.",
+            enum: [
+              "string",
+              "number",
+              "boolean",
+              "array",
+              "object",
+              "any",
+              "void"
+            ],
+            default: "boolean"
+          }
+        },
+        required: [
+          "call"
+        ],
+        oneOf: [
+          {
+            $ref: "catalog.json#/$defs/anyFunction"
+          }
+        ]
+      },
+      DynamicValue: {
+        description: "A value that can be a literal, a path, or a function call returning any type.",
+        oneOf: [
+          {
+            type: "string"
+          },
+          {
+            type: "number"
+          },
+          {
+            type: "boolean"
+          },
+          {
+            type: "array"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            $ref: "#/$defs/FunctionCall"
+          }
+        ]
+      }
+    }
+  }
+};
+
+// cypher-executor/src/lib/ui-surface.ts
+var MAX_SURFACE_BYTES = 64 * 1024;
+var CATALOG_NAMES = new Set(ui_catalog_generated_default.components.map((c) => c.a2ui.component));
+function validateUiSurface(raw2, actions) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["ui.surface \u5FC5\u9808\u662F\u7269\u4EF6\uFF1A{ components: [...], data?: {...} }"];
+  const s = raw2;
+  if (!Array.isArray(s.components) || s.components.length === 0) return ["ui.surface.components \u5FC5\u9808\u662F\u975E\u7A7A\u9663\u5217"];
+  if (s.data !== void 0 && (typeof s.data !== "object" || s.data === null || Array.isArray(s.data))) errors.push("ui.surface.data \u5FC5\u9808\u662F\u7269\u4EF6");
+  const text = JSON.stringify(raw2);
+  if (text.length > MAX_SURFACE_BYTES) errors.push(`ui.surface \u592A\u5927\uFF08\u4E0A\u9650 ${MAX_SURFACE_BYTES / 1024} KB\uFF09`);
+  if (/openUrl|"call"\s*:|functionCall|javascript:|<script|https?:\/\//i.test(text)) {
+    errors.push("ui.surface \u4E0D\u53EF\u542B\u51FD\u5F0F\u547C\u53EB\u3001\u7DB2\u5740\u6216\u8173\u672C\uFF08\u53D7\u9650\u5143\u4EF6\u76EE\u9304\u53EA\u6536\u5143\u4EF6\uFF0C\u4E0D\u6536\u51FD\u5F0F\u8207\u4EFB\u610F\u9023\u7D50\uFF09");
+  }
+  const ids = /* @__PURE__ */ new Set();
+  const comps = s.components;
+  for (const [i, c] of comps.entries()) {
+    if (!c || typeof c !== "object" || typeof c.id !== "string" || !c.id) {
+      errors.push(`ui.surface.components[${i}] \u8981\u6709\u5B57\u4E32 id`);
+      continue;
+    }
+    if (ids.has(c.id)) errors.push(`ui.surface \u5143\u4EF6 id\u300C${c.id}\u300D\u91CD\u8907`);
+    ids.add(c.id);
+    if (typeof c.component !== "string" || !CATALOG_NAMES.has(c.component)) {
+      errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684 component\u300C${String(c.component)}\u300D\u4E0D\u5728\u756B\u9762\u5143\u4EF6\u76EE\u9304\u88E1\uFF08\u53EF\u7528\uFF1A${[...CATALOG_NAMES].join("\u3001")}\uFF1Barcrun_list_ui_components \u67E5\uFF09`);
+    }
+  }
+  if (!ids.has("root")) errors.push("ui.surface \u5FC5\u9808\u6709\u4E00\u500B id \u70BA root \u7684\u5143\u4EF6\uFF08\u756B\u9762\u7684\u6839\uFF09");
+  for (const c of comps) {
+    if (!c || typeof c.id !== "string") continue;
+    const kids = [];
+    if (Array.isArray(c.children)) kids.push(...c.children);
+    if (typeof c.child === "string") kids.push(c.child);
+    for (const k of kids) if (typeof k === "string" && !ids.has(k)) errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u6307\u5230\u4E0D\u5B58\u5728\u7684\u5B50\u5143\u4EF6\u300C${k}\u300D`);
+    const ev = c.action?.event;
+    if (ev) {
+      if (typeof ev.name !== "string" || !actions.includes(ev.name)) {
+        errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684\u6309\u9215\u4E8B\u4EF6\u300C${String(ev.name)}\u300D\u4E0D\u662F\u9019\u500B App \u7684\u52D5\u4F5C\uFF08\u53EF\u7528\uFF1A${actions.join("\u3001") || "\uFF08\u6C92\u6709\uFF09"}\uFF09\u2014\u2014\u756B\u9762\u53EA\u80FD\u89F8\u767C workflows\uFF0Factions \u5BA3\u544A\u904E\u7684\u52D5\u4F5C`);
+      }
+    }
+  }
+  return errors;
+}
+
+// cypher-executor/src/lib/app-system.ts
+init_recipes();
+init_credentials();
+
+// cypher-executor/src/lib/app-mcp.ts
+var MAX_APP_MCP_TOOLS = 42;
+var MAX_APP_MCP_GUIDES = 10;
+var MAX_DESCRIPTION = 2e3;
+var MAX_GUIDE_TEXT = 2e4;
+var NAME_RE = /^[a-z][a-z0-9_]{0,39}$/;
+var PROP_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
+var SCALAR_TYPES = ["string", "integer", "number", "boolean"];
+function validateToolInputSchema(schema, where) {
+  const errors = [];
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6\uFF08JSON Schema\uFF0Ctype: "object"\uFF09`];
+  const s = schema;
+  if (s.type !== "object") errors.push(`${where}.type \u5FC5\u9808\u662F "object"`);
+  const props = s.properties ?? {};
+  if (!props || typeof props !== "object" || Array.isArray(props)) {
+    errors.push(`${where}.properties \u5FC5\u9808\u662F\u7269\u4EF6`);
+    return errors;
+  }
+  for (const [k, v] of Object.entries(props)) {
+    if (!PROP_RE.test(k)) {
+      errors.push(`${where}.properties.${k}\uFF1A\u53C3\u6578\u540D\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u5E95\u7DDA\u958B\u982D\u7684 _caller\uFF0F_tool \u662F MCP \u81EA\u5DF1\u9644\u7684\uFF09`);
+      continue;
+    }
+    errors.push(...validateProp(v, `${where}.properties.${k}`, 0));
+  }
+  if (s.required !== void 0) {
+    if (!Array.isArray(s.required) || s.required.some((r) => typeof r !== "string")) {
+      errors.push(`${where}.required \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
+    } else {
+      for (const r of s.required) {
+        if (!(r in props)) errors.push(`${where}.required \u88E1\u7684\u300C${r}\u300D\u4E0D\u5728 properties`);
+      }
+    }
+  }
+  return errors;
+}
+function validateProp(v, where, depth) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6`];
+  const p = v;
+  const errors = [];
+  if (p.description !== void 0 && typeof p.description !== "string") errors.push(`${where}.description \u5FC5\u9808\u662F\u5B57\u4E32`);
+  if (p.type === "array") {
+    if (depth > 0) return [...errors, `${where}\uFF1A\u9663\u5217\u53EA\u80FD\u653E\u4E00\u5C64\uFF08\u9663\u5217\u88E1\u4E0D\u80FD\u518D\u653E\u9663\u5217\uFF09`];
+    if (!p.items || typeof p.items !== "object") return [...errors, `${where}.items \u5FC5\u586B`];
+    const it = p.items;
+    if (!SCALAR_TYPES.includes(String(it.type))) errors.push(`${where}.items.type \u53EA\u80FD\u662F ${SCALAR_TYPES.join("\uFF0F")}`);
+    if (it.enum !== void 0) errors.push(...validateEnum(it.enum, String(it.type), `${where}.items`));
+    return errors;
+  }
+  if (!SCALAR_TYPES.includes(String(p.type))) {
+    return [...errors, `${where}.type \u53EA\u80FD\u662F ${[...SCALAR_TYPES, "array"].join("\uFF0F")}\uFF08\u5DE2\u72C0\u7269\u4EF6\u8ACB\u6524\u5E73\u6210\u5E7E\u500B\u53C3\u6578\uFF09`];
+  }
+  if (p.enum !== void 0) errors.push(...validateEnum(p.enum, String(p.type), where));
+  return errors;
+}
+function validateEnum(e, type, where) {
+  if (type !== "string") return [`${where}.enum \u53EA\u652F\u63F4 string`];
+  if (!Array.isArray(e) || e.length === 0 || e.some((x) => typeof x !== "string")) return [`${where}.enum \u5FC5\u9808\u662F\u975E\u7A7A\u7684\u5B57\u4E32\u9663\u5217`];
+  return [];
+}
+function validateAppMcp(raw2, workflows) {
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["mcp \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 tools\u3001guides \u5169\u6B04\uFF09"];
+  const m = raw2;
+  const errors = [];
+  const wfNames = new Set(
+    (Array.isArray(workflows) ? workflows : []).map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
+  );
+  if (m.tools !== void 0) {
+    if (!Array.isArray(m.tools)) {
+      errors.push("mcp.tools \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      if (m.tools.length > MAX_APP_MCP_TOOLS) errors.push(`mcp.tools \u6700\u591A ${MAX_APP_MCP_TOOLS} \u652F\uFF08\u73FE\u5728 ${m.tools.length} \u652F\uFF09`);
+      const seen = /* @__PURE__ */ new Set();
+      m.tools.forEach((t, i) => {
+        const at = `mcp.tools[${i}]`;
+        if (!t || typeof t !== "object") {
+          errors.push(`${at} \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const tool = t;
+        const label = typeof tool.name === "string" ? `mcp.tools\u300C${tool.name}\u300D` : at;
+        if (typeof tool.name !== "string" || !NAME_RE.test(tool.name)) {
+          errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u226440 \u5B57\uFF09`);
+        } else if (seen.has(tool.name)) {
+          errors.push(`${label} \u91CD\u8907\u4E86`);
+        } else {
+          seen.add(tool.name);
+        }
+        if (typeof tool.description !== "string" || tool.description.trim() === "") {
+          errors.push(`${label}.description \u5FC5\u586B\u2014\u2014AI \u53EA\u770B\u9019\u4E00\u6BB5\u6C7A\u5B9A\u8981\u4E0D\u8981\u7528\u9019\u652F\u5DE5\u5177`);
+        } else if (tool.description.length > MAX_DESCRIPTION) {
+          errors.push(`${label}.description \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_DESCRIPTION} \u5B57\uFF09`);
+        }
+        if (typeof tool.workflow !== "string" || !wfNames.has(tool.workflow)) {
+          errors.push(
+            `${label}.workflow \u5FC5\u9808\u662F\u9019\u4EFD\u5BA3\u544A\u88E1\u7684\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
+          );
+        }
+        if (tool.read_only !== void 0 && typeof tool.read_only !== "boolean") errors.push(`${label}.read_only \u5FC5\u9808\u662F true\uFF0Ffalse`);
+        errors.push(...validateToolInputSchema(tool.input_schema, `${label}.input_schema`));
+      });
+    }
+  }
+  if (m.guides !== void 0) {
+    if (!Array.isArray(m.guides)) {
+      errors.push("mcp.guides \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      if (m.guides.length > MAX_APP_MCP_GUIDES) errors.push(`mcp.guides \u6700\u591A ${MAX_APP_MCP_GUIDES} \u4EFD`);
+      const seen = /* @__PURE__ */ new Set();
+      m.guides.forEach((g, i) => {
+        const at = `mcp.guides[${i}]`;
+        if (!g || typeof g !== "object") {
+          errors.push(`${at} \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const guide = g;
+        if (typeof guide.name !== "string" || !NAME_RE.test(guide.name)) errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D`);
+        else if (seen.has(guide.name)) errors.push(`${at}.name\u300C${guide.name}\u300D\u91CD\u8907\u4E86`);
+        else seen.add(guide.name);
+        if (typeof guide.description !== "string" || guide.description.trim() === "") errors.push(`${at}.description \u5FC5\u586B`);
+        if (typeof guide.text !== "string" || guide.text.trim() === "") errors.push(`${at}.text \u5FC5\u586B`);
+        else if (guide.text.length > MAX_GUIDE_TEXT) errors.push(`${at}.text \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_GUIDE_TEXT} \u5B57\uFF09`);
+      });
+    }
+  }
+  return errors;
+}
+function installedMcpOf(appId, mcp) {
+  const tools = (mcp?.tools ?? []).map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.input_schema,
+    wf_key: `${appId}__${t.workflow}`,
+    read_only: t.read_only === true
+  }));
+  const guides = (mcp?.guides ?? []).map((g) => ({ name: g.name, description: g.description, text: g.text }));
+  if (tools.length === 0 && guides.length === 0) return void 0;
+  return { tools, guides };
+}
+function mcpCatalogOf(apps) {
+  return apps.filter((a) => a.mcp && (a.status === void 0 || a.status === "active")).map((a) => ({ app_id: a.id, app_name: a.name, version: a.version, tools: a.mcp.tools, guides: a.mcp.guides })).sort((x, y) => x.app_id.localeCompare(y.app_id));
+}
+
+// cypher-executor/src/lib/subrequest-meter.ts
+var count = 0;
+function noteSubrequest() {
+  count++;
+}
+function subrequestCount() {
+  return count;
+}
+
+// shared/dataflow-graph/extract.mjs
+function normalizeWorkflow(input) {
+  const wf = input && typeof input === "object" ? input : {};
+  const name = String(wf.name ?? wf.graph?.name ?? wf.id ?? "");
+  const graph = wf.graph && typeof wf.graph === "object" ? wf.graph : wf;
+  const config = (wf.config && typeof wf.config === "object" ? wf.config : null) ?? (graph.config && typeof graph.config === "object" ? graph.config : null) ?? {};
+  if (Array.isArray(graph.nodes) && graph.nodes.some((n) => n && (n.data || n.componentId))) {
+    const nodes2 = graph.nodes.map((n) => {
+      const cfg = config[n.label] ?? config[n.id] ?? {};
+      const { component: cfgComponent, ...cfgRest } = cfg;
+      const data = { ...cfgRest, ...n.data ?? {} };
+      const component = String(
+        (n.componentId && n.componentId !== n.id ? n.componentId : void 0) ?? cfgComponent ?? n.componentId ?? ""
+      );
+      return { id: String(n.id), component, data };
+    });
+    const edges2 = (Array.isArray(graph.edges) ? graph.edges : []).map((e) => ({
+      from: String(e.from),
+      to: String(e.to),
+      type: String(e.type ?? ""),
+      branch: e.branch
+    }));
+    return { name, nodes: nodes2, edges: edges2 };
+  }
+  const flow = Array.isArray(graph.flow) ? graph.flow : [];
+  const ids = /* @__PURE__ */ new Set();
+  const edges = [];
+  for (const line of flow) {
+    const parts = String(line).split(">>").map((s) => s.trim());
+    if (parts.length !== 3) continue;
+    const [from, label, to] = parts;
+    ids.add(from);
+    ids.add(to);
+    edges.push({ from, to, type: edgeTypeOf(label), ...branchOf(label) ? { branch: branchOf(label) } : {} });
+  }
+  for (const k of Object.keys(config)) ids.add(k);
+  const nodes = [...ids].map((id) => {
+    const { component, ...data } = config[id] ?? {};
+    return { id, component: String(component ?? (id === "input" ? "input" : "")), data };
+  });
+  return { name, nodes, edges };
+}
+function edgeTypeOf(label) {
+  const l = String(label).trim();
+  if (/^(ON_FAIL|FAIL|失敗時)$/i.test(l)) return "ON_FAIL";
+  if (/^(ON_SUCCESS|成功後|SUCCESS)$/i.test(l)) return "ON_SUCCESS";
+  if (/^(ON_TRUE|TRUE)$/i.test(l)) return "ON_TRUE";
+  if (/^(ON_FALSE|FALSE|ELSE)$/i.test(l)) return "ON_FALSE";
+  if (/^(ON_BRANCH|分支)/i.test(l)) return "ON_BRANCH";
+  if (/^(對每個|FOREACH)/i.test(l)) return "FOREACH";
+  return l;
+}
+function branchOf(label) {
+  const m = String(label).match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
+  return m ? m[1] : void 0;
+}
+var DYNAMIC_RE = /\{\{[\s\S]*?\}\}/;
+var PLACEHOLDER_RE = /^__[A-Z0-9_]+__$/;
+var NAME_RE2 = /^[\w.:-]+$/;
+function classifyName(v) {
+  if (typeof v !== "string") return "dynamic";
+  const s = v.trim();
+  if (s === "") return "invalid";
+  if (DYNAMIC_RE.test(s)) return "dynamic";
+  if (PLACEHOLDER_RE.test(s)) return "placeholder";
+  if (!NAME_RE2.test(s)) return "invalid";
+  return "literal";
+}
+function isKbdbUrl(url) {
+  if (typeof url !== "string") return false;
+  return /__KBDB_BASE__/.test(url) || /\/\/[^/]*kbdb[^/]*\//i.test(url) || /\{\{[^}]*kbdb[^}]*\}\}/i.test(url) || /(^|[^\w])\/kbdb\//.test(url) || /__[A-Z0-9_]+__\/kbdb\//.test(url) || /^[a-z]+:\/\/[^/]+\/kbdb\//i.test(url);
+}
+function splitKbdbUrl(url) {
+  let rest = url.replace(/^\{\{[^}]*\}\}/, "").replace(/^__[A-Z0-9_]+__/, "").replace(/^[a-z]+:\/\/[^/]+/i, "");
+  rest = rest.replace(/^\/kbdb(?=\/)/, "");
+  const qi = rest.indexOf("?");
+  const path = qi >= 0 ? rest.slice(0, qi) : rest;
+  const query = {};
+  if (qi >= 0) {
+    for (const kv of rest.slice(qi + 1).split("&")) {
+      const [k, ...v] = kv.split("=");
+      if (k) query[decodeSafe(k)] = decodeSafe(v.join("="));
+    }
+  }
+  return { path, query };
+}
+function decodeSafe(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+function workflowCallOf(url, selfOrigins = []) {
+  if (typeof url !== "string") return null;
+  const m = url.match(/\/webhooks\/named\/(?:([^/?#]+)\/)?([^/?#]+)\/(trigger|query)(?:[?#]|$)/);
+  if (!m) return null;
+  const head = url.slice(0, m.index);
+  const local = head === "" || /^__[A-Z0-9_]+__$/.test(head) || /^\{\{[^}]*\}\}$/.test(head) || selfOrigins.some((o) => head === o.replace(/\/$/, ""));
+  if (!local) return { external: true, url };
+  const name = m[2];
+  return { workflow: name, kind: classifyName(name) };
+}
+function substitute(template, data) {
+  return String(template).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (all, key) => {
+    if (key.startsWith("_")) return all;
+    const v = data[key];
+    return typeof v === "string" && !DYNAMIC_RE.test(v) ? v : all;
+  });
+}
+function requestOf(node, recipes) {
+  const d = node.data ?? {};
+  const recipe = recipes?.get?.(String(node.component).toLowerCase());
+  if (recipe && typeof recipe.endpoint === "string") {
+    return {
+      method: String(recipe.method ?? "GET").toUpperCase(),
+      url: substitute(recipe.endpoint, d),
+      body: d.body_json ?? d.body ?? recipe.body_template,
+      via: `recipe:${recipe.canonical_id}`
+    };
+  }
+  if (typeof d.url !== "string") return null;
+  return { method: String(d.method ?? "GET").toUpperCase(), url: d.url, body: d.body_json ?? d.body, via: "http" };
+}
+function parseBody2(body) {
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return null;
+    }
+  }
+  return body && typeof body === "object" ? body : null;
+}
+function extractNodeIO(node, { recipes, selfOrigins } = {}) {
+  const out = { reads: [], writes: [], calls: [], dynamic: [] };
+  const d = node.data ?? {};
+  const comp = String(node.component ?? "");
+  if (comp === "trigger_workflow" || /\/trigger_workflow$/.test(comp)) {
+    const w = d.workflow_name;
+    const kind = classifyName(w);
+    if (kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
+    else out.calls.push({ workflow: String(w ?? ""), kind, node: node.id, via: "trigger_workflow" });
+    return out;
+  }
+  const req = requestOf(node, recipes);
+  if (!req) return out;
+  const call = workflowCallOf(req.url, selfOrigins);
+  if (call && !call.external) {
+    if (call.kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
+    else out.calls.push({ workflow: call.workflow, kind: call.kind, node: node.id, via: req.via });
+    return out;
+  }
+  if (!isKbdbUrl(req.url)) return out;
+  const { path, query } = splitKbdbUrl(req.url);
+  const body = parseBody2(req.body);
+  const push = (list, kind, template, fields) => {
+    const tk = classifyName(template);
+    if (tk === "dynamic") {
+      out.dynamic.push({ node: node.id, what: list === out.reads ? "read" : "write" });
+      return;
+    }
+    list.push({ kind, template: String(template ?? ""), template_kind: tk, ...fields?.length ? { fields } : {}, node: node.id, via: req.via });
+  };
+  const fieldOf = (q) => q.field && classifyName(q.field) === "literal" ? [q.field] : void 0;
+  let m;
+  if (m = path.match(/^\/records\/by-(template|source)\/([^/]+)$/)) {
+    push(out.reads, "record", decodeSafe(m[2]), fieldOf(query));
+  } else if (path === "/records" && req.method === "GET" && query.template) {
+    push(out.reads, "record", query.template, fieldOf(query));
+  } else if (path === "/records" && req.method === "POST" && body) {
+    const fields = [...Object.keys(body.values ?? {}), ...Object.keys(body.entry_ids ?? {})];
+    push(out.writes, "record", body.template, fields);
+  } else if (/^\/records\/[^/]+$/.test(path) && ["PATCH", "PUT"].includes(req.method)) {
+    if (body?.template) push(out.writes, "record", body.template, Object.keys(body.values ?? {}));
+    else out.dynamic.push({ node: node.id, what: "write" });
+  } else if (/^\/entries(\/search)?$/.test(path) && req.method === "GET" && query.template) {
+    push(out.reads, "entry", query.template);
+  } else if (path === "/entries" && req.method === "POST" && body && "template" in body) {
+    push(out.writes, "entry", body.template);
+  } else if (/^\/entries\/[^/]+$/.test(path) && ["PUT", "PATCH"].includes(req.method) && body && "template" in body) {
+    push(out.writes, "entry", body.template);
+  }
+  return out;
+}
+function codeLiterals(code) {
+  const found = /* @__PURE__ */ new Set();
+  if (typeof code !== "string") return found;
+  const re = /(['"`])([a-z][a-z0-9_]{2,63})\1/g;
+  let m;
+  while ((m = re.exec(code)) !== null) found.add(m[2]);
+  return found;
+}
+function swallowsFailure(node, fromId) {
+  const code = node?.data?.code;
+  if (typeof code !== "string") return false;
+  if (/\bthrow\b/.test(code)) return false;
+  if (!/\bsuccess\s*:\s*true\b/.test(code)) return false;
+  if (fromId) {
+    const { code: _c, ...rest } = node.data;
+    const esc2 = String(fromId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\{\\{\\s*${esc2}(\\.|\\s*\\}\\})`).test(JSON.stringify(rest))) return false;
+  }
+  return true;
+}
+function extractWorkflowIO(input, opts = {}) {
+  const wf = normalizeWorkflow(input);
+  const res = { name: wf.name, reads: [], writes: [], calls: [], dynamic: [], mentions: [], swallows: [] };
+  const byId = new Map(wf.nodes.map((n) => [n.id, n]));
+  const callNodes = /* @__PURE__ */ new Map();
+  for (const n of wf.nodes) {
+    const io = extractNodeIO(n, opts);
+    res.reads.push(...io.reads);
+    res.writes.push(...io.writes);
+    res.calls.push(...io.calls);
+    res.dynamic.push(...io.dynamic);
+    for (const c of io.calls) callNodes.set(n.id, c);
+    for (const lit of codeLiterals(n.data?.code)) res.mentions.push({ template: lit, node: n.id });
+  }
+  for (const e of wf.edges) {
+    const isFail = e.type === "ON_FAIL" || e.type === "ON_BRANCH" && e.branch === "catch";
+    if (!isFail) continue;
+    const call = callNodes.get(e.from);
+    const handler = byId.get(e.to);
+    if (call && handler && swallowsFailure(handler, e.from)) {
+      res.swallows.push({ node: e.to, from: e.from, workflow: call.workflow });
+    }
+  }
+  return res;
+}
+
+// shared/dataflow-graph/rules.mjs
+function slotsOf(t) {
+  if (Array.isArray(t?.slots)) return t.slots.map(String);
+  if (typeof t?.slots_json === "string") {
+    try {
+      const s = JSON.parse(t.slots_json);
+      return Array.isArray(s) ? s.map(String) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+function editDistance(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return dp[a.length][b.length];
+}
+function closest(name, pool) {
+  let best = null;
+  for (const c of pool) {
+    const d = editDistance(name, c);
+    if (d <= Math.max(1, Math.floor(name.length / 5)) && (!best || d < best.d)) best = { c, d };
+  }
+  return best?.c;
+}
+function addTo2(map, key, owner) {
+  if (!map.has(key)) map.set(key, /* @__PURE__ */ new Set());
+  map.get(key).add(owner);
+}
+function checkDataflow(input) {
+  const opts = {
+    recipes: new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r])),
+    selfOrigins: input.selfOrigins ?? []
+  };
+  const subjectIO = (input.subjects ?? []).map((w) => extractWorkflowIO(w, opts));
+  const subjectNames = new Set(subjectIO.map((w) => w.name));
+  const deployedIO = (input.deployed ?? []).map((w) => ({ name: normalizeWorkflow(w).name, w })).filter((x) => x.name && !subjectNames.has(x.name)).map((x) => extractWorkflowIO(x.w, opts));
+  const universe = [...deployedIO, ...subjectIO];
+  const installed = new Set(universe.map((w) => w.name));
+  const writers = /* @__PURE__ */ new Map();
+  const readers = /* @__PURE__ */ new Map();
+  const touchers = /* @__PURE__ */ new Map();
+  const slots = /* @__PURE__ */ new Map();
+  const existing = /* @__PURE__ */ new Set();
+  const recordable = /* @__PURE__ */ new Set();
+  const templatesKnown = Array.isArray(input.templates);
+  for (const t of input.templates ?? []) {
+    if (!t?.name) continue;
+    existing.add(t.name);
+    recordable.add(t.name);
+    const s = slotsOf(t);
+    if (s) slots.set(t.name, s);
+  }
+  for (const app2 of input.apps ?? []) {
+    for (const d of app2.data ?? []) {
+      if (!d?.name) continue;
+      existing.add(d.name);
+      recordable.add(d.name);
+      if (Array.isArray(d.slots)) slots.set(d.name, d.slots.map(String));
+      addTo2(touchers, d.name, `app:${app2.id}`);
+    }
+  }
+  for (const p of input.platform ?? []) {
+    addTo2(p.direction === "write" ? writers : readers, p.template, `platform:${p.owner}`);
+    if (p.direction === "write") existing.add(p.template);
+  }
+  for (const w of universe) {
+    const owner = `workflow:${w.name}`;
+    for (const x of w.writes) if (x.template_kind === "literal") {
+      addTo2(writers, x.template, owner);
+      if (x.kind === "entry") existing.add(x.template);
+    }
+    for (const x of w.reads) if (x.template_kind === "literal") addTo2(readers, x.template, owner);
+    for (const x of w.mentions) addTo2(touchers, x.template, owner);
+  }
+  const errors = [];
+  const warnings = [];
+  const uncertain = [];
+  const allTemplateNames = [.../* @__PURE__ */ new Set([...existing, ...writers.keys()])];
+  for (const w of subjectIO) {
+    const at = (node) => ({ workflow: w.name, node });
+    const seenRead = /* @__PURE__ */ new Set();
+    for (const r of w.reads) {
+      if (r.template_kind !== "literal") {
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D${r.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u628A\u5B83\u63DB\u6210\u9019\u53F0\u5BE6\u4F8B\u4E0A\u771F\u7684 template \u540D\u5B57\uFF08arcrun \u7684 /kbdb/templates \u5217\u5F97\u51FA\u4F86\uFF09\u3002"
+        });
+        continue;
+      }
+      const key = `${r.template}|${r.node}`;
+      if (seenRead.has(key)) continue;
+      seenRead.add(key);
+      const hasWriter = (writers.get(r.template)?.size ?? 0) > 0 || (touchers.get(r.template)?.size ?? 0) > 0;
+      if (!hasWriter) {
+        errors.push({
+          rule: "R1",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          missing: { writer_of: r.template },
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u5DF2\u90E8\u7F72\u7684\u5DE5\u4F5C\u6D41\u3001App \u6216\u5E73\u53F0\u7A0B\u5F0F\u5BEB\u5B83\u2014\u2014\u9019\u652F\u5DE5\u4F5C\u6D41\u8B80\u5230\u7684\u6C38\u9060\u662F\u7A7A\u7684\u3002`,
+          next_action: `\u5148\u90E8\u7F72\u6703\u5BEB\u300C${r.template}\u300D\u7684\u90A3\u652F\u5DE5\u4F5C\u6D41\uFF08\u6216 App\uFF09\uFF0C\u518D\u63A8\u9019\u652F\uFF1B\u78BA\u5B9A\u53EA\u662F\u66AB\u6642\u6C92\u4EBA\u5BEB\uFF0C\u53EF\u4EE5\u5E36 force \u5F37\u63A8\u3002`
+        });
+      }
+      if (templatesKnown && !existing.has(r.template)) {
+        const hint = closest(r.template, allTemplateNames);
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u4E0D\u5B58\u5728${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u518D\u63A8\u3002` : "\u78BA\u8A8D template \u540D\u5B57\uFF1B\u5B83\u8981\u5148\u88AB\u67D0\u652F\u5DE5\u4F5C\u6D41\u5BEB\u904E\u6216\u7531 App \u5BA3\u544A\u624D\u6703\u5B58\u5728\u3002"
+        });
+      }
+      const s = slots.get(r.template);
+      for (const f of r.fields ?? []) {
+        if (s && !s.includes(f)) {
+          const hint = closest(f, s);
+          errors.push({
+            rule: "R3",
+            level: "error",
+            ...at(r.node),
+            template: r.template,
+            field: f,
+            message: `\u7BC0\u9EDE ${r.node} \u7528\u6B04\u4F4D\u300C${f}\u300D\u67E5\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
+            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\u3002`
+          });
+        }
+      }
+    }
+    const seenWrite = /* @__PURE__ */ new Set();
+    for (const x of w.writes) {
+      if (x.template_kind !== "literal") {
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u7684 template\u300C${x.template}\u300D${x.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u628A\u5B83\u63DB\u6210\u771F\u7684 template \u540D\u5B57\u3002"
+        });
+        continue;
+      }
+      if (x.kind === "record" && templatesKnown && !recordable.has(x.template)) {
+        const hint = closest(x.template, [...recordable]);
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u8981\u5BEB\u4E00\u7B46\u300C${x.template}\u300Drecord\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u9019\u500B template\uFF08\u5BEB record \u4E0D\u6703\u81EA\u52D5\u5EFA template\uFF0CKBDB \u6703\u56DE template not found\uFF09${hint ? `\uFF1B\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F` : "\u3002"}`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : "\u5148\u7531 App \u7684 data \u5BA3\u544A\u5B83\uFF08\u6216 POST /kbdb/templates \u5EFA\u597D\uFF09\uFF0C\u518D\u63A8\u9019\u652F\u3002"
+        });
+      }
+      const s = slots.get(x.template);
+      for (const f of x.fields ?? []) {
+        if (s && !s.includes(f)) {
+          const hint = closest(f, s);
+          errors.push({
+            rule: "R3",
+            level: "error",
+            ...at(x.node),
+            template: x.template,
+            field: f,
+            message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\u7684\u6B04\u4F4D\u300C${f}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
+            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\uFF0C\u6216\u5148\u66FF template \u52A0\u6B04\u4F4D\u3002`
+          });
+        }
+      }
+      if (seenWrite.has(x.template)) continue;
+      seenWrite.add(x.template);
+      const hasReader = (readers.get(x.template)?.size ?? 0) > 0 || (touchers.get(x.template)?.size ?? 0) > 0;
+      if (!hasReader) {
+        warnings.push({
+          rule: "R4",
+          level: "warning",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u6771\u897F\u8B80\u5B83\u3002`,
+          next_action: "\u5982\u679C\u662F\u7D66\u4EBA\u6216\u4E4B\u5F8C\u7684\u5DE5\u4F5C\u6D41\u7528\u7684\uFF0C\u53EF\u4EE5\u4E0D\u7406\uFF1B\u5982\u679C\u672C\u4F86\u8A72\u6709\u4EBA\u8B80\uFF0C\u6AA2\u67E5\u8B80\u7684\u90A3\u652F\u662F\u4E0D\u662F\u6C92\u88DD\u6216\u540D\u5B57\u62FC\u932F\u3002"
+        });
+      }
+    }
+    const seenCall = /* @__PURE__ */ new Set();
+    for (const c of w.calls) {
+      const key = `${c.workflow}|${c.node}`;
+      if (seenCall.has(key)) continue;
+      seenCall.add(key);
+      if (c.kind !== "literal") {
+        errors.push({
+          rule: "R2",
+          level: "error",
+          ...at(c.node),
+          workflow_called: c.workflow,
+          message: `\u7BC0\u9EDE ${c.node} \u53EB\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u300C${c.workflow}\u300D${c.kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u63DB\u6210\u771F\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u3002"
+        });
+        continue;
+      }
+      if (!installed.has(c.workflow)) {
+        const hint = closest(c.workflow, [...installed]);
+        errors.push({
+          rule: "R2",
+          level: "error",
+          ...at(c.node),
+          workflow_called: c.workflow,
+          missing: { workflow: c.workflow },
+          message: `\u7BC0\u9EDE ${c.node} \u53EB\u5DE5\u4F5C\u6D41\u300C${c.workflow}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u88DD\u5B83${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\uFF0C\u6216\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u3002` : `\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u518D\u63A8\u9019\u652F\u3002`
+        });
+      }
+    }
+    for (const s of w.swallows) {
+      errors.push({
+        rule: "R5",
+        level: "error",
+        ...at(s.node),
+        workflow_called: s.workflow,
+        message: `\u7BC0\u9EDE ${s.from} \u53EB\u300C${s.workflow}\u300D\u5931\u6557\u6642\uFF08\u5305\u62EC\u5B83\u6839\u672C\u6C92\u88DD\uFF09\uFF0C\u7531 ${s.node} \u63A5\u624B\u4E26\u56DE success:true\u2014\u2014\u4F9D\u8CF4\u6C92\u88DD\u4E5F\u6703\u88AB\u8A18\u6210\u6210\u529F\uFF0C\u6C92\u6709\u4EBA\u6703\u77E5\u9053\u5B83\u4E00\u76F4\u5728\u7A7A\u8F49\u3002`,
+        next_action: `\u8B93 ${s.node} \u7528 throw \u7D50\u675F\uFF08\u7BC0\u9EDE\u5931\u6557\u624D\u6703\u88AB\u770B\u898B\uFF09\uFF0C\u6216\u62FF\u6389\u9019\u689D ON_FAIL\uFF1B\u771F\u7684\u8981\u5BB9\u5FCD\uFF0C\u56DE\u50B3\u7684\u7D50\u679C\u4E5F\u8981\u8B93\u547C\u53EB\u7AEF\u770B\u5F97\u51FA\u300C\u9019\u4E00\u6B65\u6C92\u505A\u300D\u4E26\u8A08\u5165 verdict\u3002`
+      });
+    }
+    if (w.dynamic.length) uncertain.push({ workflow: w.name, nodes: [...new Set(w.dynamic.map((d) => d.node))] });
+  }
+  const skipped = templatesKnown ? [] : [{ rule: "R3", reason: "\u6C92\u6709\u62FF\u5230 template \u6E05\u55AE\uFF0Ctemplate\uFF0F\u6B04\u4F4D\u5B58\u4E0D\u5B58\u5728\u9019\u6B21\u6C92\u6AA2\u67E5\u3002" }];
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    uncertain,
+    skipped,
+    graph: buildGraph({ universe, writers, readers, touchers, installed })
+  };
+}
+function buildGraph({ universe, writers, readers, touchers, installed }) {
+  const nodes = /* @__PURE__ */ new Map();
+  const edges = [];
+  const node = (id, type, extra = {}) => {
+    if (!nodes.has(id)) nodes.set(id, { id, type, ...extra });
+  };
+  for (const w of universe) node(`workflow:${w.name}`, "workflow");
+  const ownerNode = (o) => {
+    const [type] = o.split(":");
+    node(o, type);
+    return o;
+  };
+  for (const [t, set] of writers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "writes" });
+  }
+  for (const [t, set] of readers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: `template:${t}`, to: ownerNode(o), type: "reads" });
+  }
+  for (const [t, set] of touchers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "touches" });
+  }
+  for (const w of universe) {
+    for (const c of w.calls) {
+      if (c.kind !== "literal") continue;
+      const to = installed.has(c.workflow) ? `workflow:${c.workflow}` : `missing:${c.workflow}`;
+      if (!installed.has(c.workflow)) node(to, "missing");
+      edges.push({ from: `workflow:${w.name}`, to, type: "calls", node: c.node });
+    }
+  }
+  for (const n of nodes.values()) {
+    if (n.type !== "template") continue;
+    const t = n.id.slice("template:".length);
+    n.orphan_read = (readers.get(t)?.size ?? 0) > 0 && (writers.get(t)?.size ?? 0) === 0 && (touchers.get(t)?.size ?? 0) === 0;
+  }
+  return { nodes: [...nodes.values()], edges };
+}
+
+// shared/dataflow-graph/platform-io.generated.mjs
+var platform_io_generated_default = [
+  {
+    "owner": "cypher-executor/src/lib/workflow-search.ts",
+    "direction": "read",
+    "kind": "entry",
+    "template": "workflow",
+    "note": "\u641C\u5DE5\u4F5C\u6D41\uFF08\u5BEB\u5165\u8005\u662F webhooks-named.ts \u7684 push\uFF09"
+  },
+  {
+    "owner": "cypher-executor/src/routes/webhooks-named.ts",
+    "direction": "write",
+    "kind": "entry",
+    "template": "workflow",
+    "note": "\u6BCF\u652F push \u4E0A\u4F86\u7684\u5DE5\u4F5C\u6D41\u90FD\u5BEB\u4E00\u7B46\uFF0C\u4F9B /workflows/search"
+  },
+  {
+    "owner": "kbdb/src/actions/library-index.ts",
+    "direction": "read",
+    "kind": "entry",
+    "template": "block",
+    "note": "\u5B50\u5EAB\u76EE\u9304\u3001\u627E\u5361\uFF08card-lookup\uFF09\u3001retrieve \u90FD\u8B80\u5361\u7684\u6BB5\u843D\uFF08\u5BEB\u5165\u8005\u662F rag_ingest_card\uFF09"
+  },
+  {
+    "owner": "kbdb/src/actions/library-map-store.ts",
+    "direction": "read",
+    "kind": "record",
+    "template": "triplet",
+    "note": "\u5730\u5716\u91CD\u7B97\uFF0F\u5716\u67E5\u8A62\u8B80\u4E09\u5143\u7D44\uFF08\u5BEB\u5165\u8005\u662F ingest \u5DE5\u4F5C\u6D41\uFF09"
+  },
+  {
+    "owner": "kbdb/src/actions/library-map-store.ts",
+    "direction": "write",
+    "kind": "entry",
+    "template": "library_card_tally",
+    "note": "\u6BCF\u5EAB\u73FE\u5F79\u5361\u5F35\u6578\uFF08\u5BEB\u5165\u7AEF\u589E\u6E1B\u3001\u8B80\u7AEF\u53EA\u8B80\uFF1Binkstone/Arcrun#393\uFF09"
+  },
+  {
+    "owner": "kbdb/src/actions/library-map-store.ts",
+    "direction": "write",
+    "kind": "entry",
+    "template": "library_map",
+    "note": "\u85CF\u66F8\u5730\u5716\u7531 kbdb \u81EA\u5DF1\u91CD\u7B97\u5BEB\u5165\uFF08inkstone/Arcrun#339\uFF09"
+  },
+  {
+    "owner": "kbdb/src/actions/record-crud.ts",
+    "direction": "read",
+    "kind": "entry",
+    "template": "value",
+    "note": "record \u7684\u683C\u5B50\u53EF\u4EE5\u639B\u4E00\u9846\u65E2\u6709 entry\uFF08\u4F8B\uFF1Arag_ingest_card \u5148\u5BEB value \u5E38\u6578\u518D\u639B\u4E0A triplet\uFF09\uFF0C\u8B80 record \u6642\u4E00\u4F75\u8B80\u56DE"
+  },
+  {
+    "owner": "kbdb/src/embed.ts",
+    "direction": "read",
+    "kind": "entry",
+    "template": "alias",
+    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+    "const": "VECTOR_ENTRY_TYPES",
+    "constValues": [
+      "alias",
+      "entity",
+      "predicate",
+      "source_passage"
+    ]
+  },
+  {
+    "owner": "kbdb/src/embed.ts",
+    "direction": "read",
+    "kind": "entry",
+    "template": "entity",
+    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+    "const": "VECTOR_ENTRY_TYPES",
+    "constValues": [
+      "alias",
+      "entity",
+      "predicate",
+      "source_passage"
+    ]
+  },
+  {
+    "owner": "kbdb/src/embed.ts",
+    "direction": "read",
+    "kind": "entry",
+    "template": "predicate",
+    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+    "const": "VECTOR_ENTRY_TYPES",
+    "constValues": [
+      "alias",
+      "entity",
+      "predicate",
+      "source_passage"
+    ]
+  },
+  {
+    "owner": "kbdb/src/embed.ts",
+    "direction": "read",
+    "kind": "entry",
+    "template": "source_passage",
+    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+    "const": "VECTOR_ENTRY_TYPES",
+    "constValues": [
+      "alias",
+      "entity",
+      "predicate",
+      "source_passage"
+    ]
+  }
+];
+
+// cypher-executor/src/lib/dataflow-check.ts
+init_endpoints();
+async function loadInstance(env, tenant2) {
+  const store2 = env.WEBHOOKS;
+  const wfPrefix = `${tenant2}:wf:`;
+  const appPrefix = `${tenant2}:app:`;
+  const [wfList, appList] = await Promise.all([store2.list({ prefix: wfPrefix }), store2.list({ prefix: appPrefix })]);
+  const deployed = (await Promise.all(wfList.keys.map(async (k) => {
+    const raw2 = await store2.get(k.name, "text");
+    if (!raw2) return null;
+    try {
+      const rec = JSON.parse(raw2);
+      return { name: k.name.slice(wfPrefix.length), graph: rec.graph, config: rec.config };
+    } catch {
+      return null;
+    }
+  }))).filter((x) => x !== null);
+  const apps = (await Promise.all(appList.keys.map(async (k) => {
+    const raw2 = await store2.get(k.name, "text");
+    if (!raw2) return null;
+    try {
+      const rec = JSON.parse(raw2);
+      return { id: String(rec.id ?? k.name.slice(appPrefix.length)), data: (rec.data_templates ?? []).map((name) => ({ name })) };
+    } catch {
+      return null;
+    }
+  }))).filter((x) => x !== null);
+  let templates = null;
+  try {
+    const headers = {};
+    if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+    const res = await fetch(`${kbdbBaseUrl(env)}/templates`, { headers });
+    if (res.ok) {
+      const body = await res.json();
+      if (Array.isArray(body.templates)) templates = body.templates.map((t) => ({ name: t.name, slots_json: t.slots_json }));
+    }
+  } catch {
+  }
+  return { deployed, apps, templates };
+}
+async function runDataflowCheck(env, tenant2, subjects, extra = {}) {
+  let loaded;
+  try {
+    loaded = await loadInstance(env, tenant2);
+  } catch (e) {
+    return {
+      checked: false,
+      ok: true,
+      errors: [],
+      warnings: [],
+      uncertain: [],
+      skipped: [],
+      reason: `\u8B80\u4E0D\u5230\u9019\u53F0\u5BE6\u4F8B\u7684\u5DF2\u90E8\u7F72\u6E05\u55AE\uFF0C\u9019\u6B21\u6C92\u6709\u6AA2\u67E5\u8B80\u5BEB\u8207\u547C\u53EB\uFF08${e instanceof Error ? e.message : String(e)}\uFF09\u3002`
+    };
+  }
+  const extraIds = new Set((extra.apps ?? []).map((a) => a.id));
+  const r = checkDataflow({
+    subjects: subjects === "all-deployed" ? loaded.deployed : subjects,
+    deployed: loaded.deployed,
+    templates: loaded.templates,
+    platform: platform_io_generated_default,
+    apps: [...loaded.apps.filter((a) => !extraIds.has(a.id)), ...extra.apps ?? []],
+    recipes: extra.recipes ?? [],
+    selfOrigins: extra.selfOrigin ? [extra.selfOrigin] : []
+  });
+  return {
+    checked: true,
+    ok: r.ok,
+    errors: r.errors,
+    warnings: r.warnings,
+    uncertain: r.uncertain,
+    skipped: r.skipped,
+    against: {
+      deployed_workflows: loaded.deployed.length,
+      installed_apps: loaded.apps.length,
+      templates: loaded.templates ? loaded.templates.length : null
+    },
+    // 縮放視圖要知道哪些名字前綴是 App（工作流名字是 <App>__<名>）；只在要圖時帶，不多讀任何東西（App 清單本來就讀了）
+    // 清單頁每列的「幾個節點」：定義本來就整份讀進來了（讀取量不變），只數 graph.nodes 的長度，不另讀任何東西
+    ...extra.withGraph ? { graph: r.graph, app_ids: loaded.apps.map((a) => a.id), workflow_steps: stepCounts(loaded.deployed) } : {}
+  };
+}
+function stepCounts(deployed) {
+  const out = {};
+  for (const d of deployed) {
+    const nodes = d.graph?.nodes;
+    if (Array.isArray(nodes)) out[d.name] = nodes.length;
+  }
+  return out;
+}
+function dataflowNextActions(report) {
+  if (!report.checked) return report.reason ? [report.reason] : [];
+  return [...new Set(report.errors.map((e) => `${e.rule} ${e.workflow}\uFF0F${e.node}\uFF1A${e.next_action}`))];
+}
+
+// cypher-executor/src/lib/app-system.ts
+function appStore(env) {
+  return env.WEBHOOKS;
+}
+function kbdbBehindHint(e) {
+  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  if (!msg.includes("KbdbUnavailable")) return null;
+  return "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u6C92\u6709\u56DE\u61C9\uFF0C\u6216\u5B83\u7684\u7248\u672C\u6BD4\u76EE\u524D\u7684\u7A0B\u5F0F\u78BC\u820A\u2014\u2014\u5B89\u88DD\u9700\u8981\u77E5\u8B58\u5EAB\u63D0\u4F9B\u300C\u540C\u4E00\u4EFD\u8CC7\u7522\u6C38\u9060\u540C\u4E00\u5217\u300D\u7684\u5BEB\u5165\u80FD\u529B\u3002\u8ACB\u7BA1\u7406\u8005\u628A\u77E5\u8B58\u5EAB\u4E00\u8D77\u66F4\u65B0\u5230\u540C\u4E00\u7248\uFF1B\u5728\u90A3\u4E4B\u524D**\u5DF2\u7D93\u88DD\u597D\u7684 App \u4E0D\u53D7\u5F71\u97FF**\uFF0C\u7167\u5E38\u53EF\u7528\u3002";
+}
+var APP_WORKFLOW_TRIGGERS = ["manual", "schedule", "event"];
+function resolveWorkflowTrigger(wf) {
+  if (typeof wf.trigger === "string" && APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
+    return wf.trigger;
+  }
+  return extractCronExpr(wf.graph) ? "schedule" : "manual";
+}
+function normalizeRequiredCredentials(requires) {
+  return (requires?.credentials ?? []).map((c) => typeof c === "string" ? { name: c } : { name: c.name, ...c.purpose ? { purpose: c.purpose } : {} });
+}
+var APP_UI_STYLES = ["inherit", "own"];
+var DEFAULT_APP_UI_STYLE = "inherit";
+var ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
+function validateAppDeclaration(raw2) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) {
+    return { ok: false, errors: ["\u5BA3\u544A\u5FC5\u9808\u662F\u4E00\u500B JSON \u7269\u4EF6"] };
+  }
+  const d = raw2;
+  if (typeof d.id !== "string" || !ID_RE.test(d.id)) {
+    errors.push("id \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09");
+  }
+  if (typeof d.name !== "string" || d.name.trim() === "") {
+    errors.push("name \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32");
+  }
+  const hasWorkflows = Array.isArray(d.workflows) && d.workflows.length > 0;
+  const uiObj = d.ui && typeof d.ui === "object" ? d.ui : null;
+  const hasHtml = Boolean(uiObj && typeof uiObj.html === "string" && uiObj.html.trim() !== "");
+  const hasSurface = Boolean(uiObj && uiObj.surface !== void 0);
+  const hasUi = hasHtml || hasSurface;
+  if (!hasWorkflows && !hasUi) {
+    errors.push("workflows \u6216 ui \u81F3\u5C11\u8981\u6709\u4E00\u500B\uFF08\u6C92\u6709\u756B\u9762\u4E5F\u6C92\u6709\u5DE5\u4F5C\u6D41\u7684 App \u4E0D\u6210\u7ACB\uFF0Cdesign \xA7\u4E8C\uFF09");
+  }
+  if (d.workflows !== void 0) {
+    if (!Array.isArray(d.workflows)) {
+      errors.push("workflows \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      d.workflows.forEach((w, i) => {
+        if (!w || typeof w !== "object") {
+          errors.push(`workflows[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const wf = w;
+        if (typeof wf.name !== "string" || wf.name.trim() === "") errors.push(`workflows[${i}].name \u5FC5\u586B`);
+        if (!wf.graph || typeof wf.graph !== "object") {
+          errors.push(`workflows[${i}].graph \u5FC5\u586B\uFF08\u57F7\u884C\u5716\uFF09`);
+        } else {
+          const g = wf.graph;
+          if (typeof g.id !== "string" || g.id.trim() === "") errors.push(`workflows[${i}].graph.id \u5FC5\u586B`);
+          if (typeof g.name !== "string" || g.name.trim() === "") errors.push(`workflows[${i}].graph.name \u5FC5\u586B`);
+          if (!Array.isArray(g.nodes)) errors.push(`workflows[${i}].graph.nodes \u5FC5\u9808\u662F\u9663\u5217`);
+          if (!Array.isArray(g.edges)) errors.push(`workflows[${i}].graph.edges \u5FC5\u9808\u662F\u9663\u5217`);
+        }
+        if (wf.trigger !== void 0) {
+          const label = typeof wf.name === "string" ? `\u300C${wf.name}\u300D` : `workflows[${i}]`;
+          if (typeof wf.trigger !== "string" || !APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
+            errors.push(`workflows[${i}].trigger \u53EA\u80FD\u662F ${APP_WORKFLOW_TRIGGERS.join("\uFF0F")}\uFF08\u7701\u7565\uFF1D\u770B\u5716\uFF1A\u6709\u6392\u7A0B\u96F6\u4EF6\u662F schedule\uFF0C\u5426\u5247 manual\uFF09`);
+          } else {
+            const hasCron = Boolean(extractCronExpr(wf.graph));
+            if (wf.trigger === "manual" && hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u624B\u52D5\uFF08manual\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6703\u81EA\u5DF1\u7167\u6392\u7A0B\u8DD1\u3002\u62FF\u6389 cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A schedule`);
+            }
+            if (wf.trigger === "schedule" && !hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u6392\u7A0B\uFF08schedule\uFF09\uFF0C\u4F46\u5716\u88E1\u6C92\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6C38\u9060\u4E0D\u6703\u81EA\u5DF1\u8DD1\u3002\u88DC\u4E0A cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A manual\uFF0Fevent`);
+            }
+            if (wf.trigger === "event" && hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u5916\u90E8\u4E8B\u4EF6\uFF08event\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5169\u7A2E\u555F\u52D5\u65B9\u5F0F\u53EA\u80FD\u9078\u4E00\u7A2E`);
+            }
+          }
+        }
+      });
+    }
+  }
+  if (d.ui !== void 0 && !hasUi) {
+    errors.push("ui.html \u6216 ui.surface \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
+  }
+  if (hasHtml && hasSurface) errors.push("ui.html \u8207 ui.surface \u53EA\u80FD\u64C7\u4E00");
+  if (hasSurface) {
+    const wfNames = Array.isArray(d.workflows) ? d.workflows.map((w) => String(w?.name)) : [];
+    const acts = Array.isArray(d.actions) ? d.actions.map(String) : wfNames;
+    errors.push(...validateUiSurface(uiObj?.surface, acts));
+  }
+  if (d.ui && typeof d.ui === "object") {
+    const s = d.ui.style;
+    if (s !== void 0 && (typeof s !== "string" || !APP_UI_STYLES.includes(s))) {
+      errors.push(`ui.style \u53EA\u80FD\u662F ${APP_UI_STYLES.join(" \u6216 ")}\uFF08\u7701\u7565\uFF1D${DEFAULT_APP_UI_STYLE}\uFF0C\u8DDF\u96A8\u5168\u5C40\uFF09`);
+    }
+    const ui = d.ui;
+    const assetErrors = validateUiAssets(ui.assets);
+    errors.push(...assetErrors);
+    if (assetErrors.length === 0 && hasHtml) {
+      errors.push(...bundleUiAssets(ui.html, ui.assets).errors);
+    }
+  }
+  if (d.data !== void 0) {
+    if (!Array.isArray(d.data)) {
+      errors.push("data \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      d.data.forEach((dt, i) => {
+        if (!dt || typeof dt !== "object") {
+          errors.push(`data[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const decl = dt;
+        if (typeof decl.name !== "string" || decl.name.trim() === "") errors.push(`data[${i}].name \u5FC5\u586B`);
+        if (!Array.isArray(decl.slots) || decl.slots.some((s) => typeof s !== "string")) {
+          errors.push(`data[${i}].slots \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
+        }
+      });
+    }
+  }
+  if (d.requires !== void 0) errors.push(...validateRequires(d.requires));
+  if (d.mcp !== void 0) errors.push(...validateAppMcp(d.mcp, d.workflows));
+  if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
+    errors.push("actions \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217");
+  } else if (Array.isArray(d.actions) && Array.isArray(d.workflows)) {
+    const wfNames = new Set(
+      d.workflows.map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
+    );
+    for (const a of d.actions) {
+      if (!wfNames.has(a)) {
+        errors.push(
+          `actions \u88E1\u7684\u300C${a}\u300D\u627E\u4E0D\u5230\u540C\u540D\u7684 workflow\uFF08\u52D5\u4F5C\u540D\u5C31\u662F\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\uFF09\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
+        );
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+function validateRequires(raw2) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["requires \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 recipes\u3001credentials \u5169\u6B04\uFF09"];
+  const r = raw2;
+  for (const k of Object.keys(r)) {
+    if (k !== "recipes" && k !== "credentials") errors.push(`requires.${k} \u4E0D\u8A8D\u5F97\uFF08\u53EA\u6709 recipes\u3001credentials\uFF09`);
+  }
+  if (r.recipes !== void 0) {
+    if (!Array.isArray(r.recipes)) errors.push("requires.recipes \u5FC5\u9808\u662F\u9663\u5217");
+    else {
+      const seen = /* @__PURE__ */ new Set();
+      r.recipes.forEach((x, i) => {
+        if (!x || typeof x !== "object" || Array.isArray(x)) {
+          errors.push(`requires.recipes[${i}] \u5FC5\u9808\u662F\u7269\u4EF6\uFF08recipe \u5168\u6587\uFF09`);
+          return;
+        }
+        const rec = x;
+        const cid = typeof rec.canonical_id === "string" ? rec.canonical_id.trim().toLowerCase() : "";
+        if (!cid) errors.push(`requires.recipes[${i}].canonical_id \u5FC5\u586B`);
+        else if (seen.has(cid)) errors.push(`requires.recipes \u88E1\u300C${cid}\u300D\u91CD\u8907`);
+        else seen.add(cid);
+        if (typeof rec.endpoint !== "string" || rec.endpoint.trim() === "") errors.push(`requires.recipes[${i}].endpoint \u5FC5\u586B`);
+      });
+    }
+  }
+  if (r.credentials !== void 0) {
+    if (!Array.isArray(r.credentials)) errors.push("requires.credentials \u5FC5\u9808\u662F\u9663\u5217\uFF08\u91D1\u9470\u7684\u540D\u5B57\uFF09");
+    else {
+      const seen = /* @__PURE__ */ new Set();
+      r.credentials.forEach((x, i) => {
+        let name;
+        if (typeof x === "string") name = x;
+        else if (x && typeof x === "object" && !Array.isArray(x)) {
+          const o = x;
+          const extra = Object.keys(o).filter((k) => k !== "name" && k !== "purpose");
+          if (extra.length > 0) errors.push(`requires.credentials[${i}] \u53EA\u51C6 name\uFF0Fpurpose\uFF0C\u4E0D\u51C6\u6709\u300C${extra.join("\u3001")}\u300D\u2014\u2014\u91D1\u9470\u7684\u503C\u6C38\u9060\u53EA\u7531\u5BE6\u4F8B\u4E3B\u4EBA\u5728\u91D1\u9470\u756B\u9762\u586B\uFF08D36\uFF09`);
+          if (o.purpose !== void 0 && typeof o.purpose !== "string") errors.push(`requires.credentials[${i}].purpose \u5FC5\u9808\u662F\u5B57\u4E32`);
+          name = o.name;
+        } else name = void 0;
+        if (!validateName(name)) errors.push(`requires.credentials[${i}] \u7684\u540D\u5B57\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\uFF08\u9019\u662F\u91D1\u9470\u7684\u540D\u5B57\uFF0C\u4E0D\u662F\u503C\uFF09`);
+        else if (seen.has(name)) errors.push(`requires.credentials \u88E1\u300C${name}\u300D\u91CD\u8907`);
+        else seen.add(name);
+      });
+    }
+  }
+  return errors;
+}
+var ICON_SET = ["\u{1F4C4}", "\u{1F5D2}\uFE0F", "\u{1F9E9}", "\u{1F4CC}", "\u{1F527}", "\u{1F4E6}", "\u{1F5C2}\uFE0F", "\u2705", "\u{1F4A1}", "\u{1F514}", "\u{1F4CA}", "\u{1F9ED}"];
+function generateIcon(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
+  return ICON_SET[h % ICON_SET.length];
+}
+function applyDeclarationDefaults(raw2) {
+  const workflows = raw2.workflows ?? [];
+  const actions = raw2.actions ?? workflows.filter((w) => resolveWorkflowTrigger(w) === "manual").map((w) => w.name);
+  return {
+    ...raw2,
+    id: raw2.id,
+    name: raw2.name,
+    icon: raw2.icon ?? generateIcon(raw2.name),
+    version: raw2.version ?? "0.0.0",
+    workflows,
+    data: raw2.data ?? [],
+    actions,
+    keeps_data: raw2.remove?.keeps_data ?? true
+  };
+}
+var APP_PLACEHOLDERS = ["__NAMESPACE__", "__CYPHER_BASE__"];
+function resolveDeclarationPlaceholders(value, coords) {
+  const base = coords.cypherBase.replace(/\/+$/, "");
+  const swap = (s) => s.split("__NAMESPACE__").join(coords.namespace).split("__CYPHER_BASE__").join(base);
+  const walk = (v) => {
+    if (typeof v === "string") return swap(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out = {};
+      for (const [k, val] of Object.entries(v)) out[swap(k)] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  return walk(value);
+}
+function remainingPlaceholders(value) {
+  const text = JSON.stringify(value) ?? "";
+  return APP_PLACEHOLDERS.filter((p) => text.includes(p));
+}
+async function computeContentHash(raw2) {
+  const canonical = canonicalize(raw2);
+  const data = new TextEncoder().encode(canonical);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(value[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function appKey(tenant2, id) {
+  return `${tenant2}:app:${id}`;
+}
+function workflowKvKey(tenant2, wfKey2) {
+  return `${tenant2}:wf:${wfKey2}`;
+}
+var FLOW_CANVAS_APP_ID = "flow_canvas";
+async function isFlowCanvasInstalled(env, tenant2) {
+  return await getInstalledApp(env, tenant2, FLOW_CANVAS_APP_ID) !== null;
+}
+function flowCanvasNotInstalledBody() {
+  return {
+    error: "\u9019\u53F0\u9084\u6C92\u5B89\u88DD\u300C\u5DE5\u4F5C\u6D41\u756B\u5E03\u300D",
+    code: "flow_canvas_not_installed",
+    hint: "\u5DE5\u4F5C\u6D41\u756B\u5E03\u662F\u7D66\u958B\u767C\u7684\u4EBA\u7528\u7684 App\u3002\u8981\u958B\u767C\u7684\u8A71\uFF0C\u8ACB\u7BA1\u7406\u54E1\u5230\u300CApp \u5E02\u96C6\u300D\u5B89\u88DD\u300C\u5DE5\u4F5C\u6D41\u756B\u5E03\u300D\uFF0C\u518D\u8ACB AI \u5E6B\u4F60\u7522\u751F\u6216\u4FEE\u6539\u5DE5\u4F5C\u6D41\u3002",
+    install: { app: FLOW_CANVAS_APP_ID, where: "App \u5E02\u96C6" }
+  };
+}
+async function getInstalledApp(env, tenant2, id) {
+  const raw2 = await appStore(env).get(appKey(tenant2, id), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function getAppWorkflowGraph(env, tenant2, wfKey2) {
+  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfKey2), "text");
+  if (!raw2) return null;
+  try {
+    const g = JSON.parse(raw2).graph;
+    if (!g) return null;
+    return {
+      ...typeof g.id === "string" ? { id: g.id } : {},
+      nodes: Array.isArray(g.nodes) ? g.nodes : [],
+      edges: Array.isArray(g.edges) ? g.edges : []
+    };
+  } catch {
+    return null;
+  }
+}
+async function listInstalledApps(env, tenant2) {
+  const prefix = `${tenant2}:app:`;
+  const list = await appStore(env).list({ prefix });
+  const apps = await Promise.all(
+    list.keys.map(async (k) => {
+      const raw2 = await appStore(env).get(k.name, "text");
+      if (!raw2) return null;
+      try {
+        return JSON.parse(raw2);
+      } catch {
+        return null;
+      }
+    })
+  );
+  return apps.filter((a) => a !== null);
+}
+async function ensureTemplate2(env, name, slots, description) {
+  const { base, headers } = kbdbBase(env);
+  noteSubrequest();
+  const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
+  if (getRes.ok) {
+    const data = await getRes.json().catch(() => null);
+    if (data?.success && data.template) {
+      const tpl = data.template;
+      let current = [];
+      try {
+        const parsed = JSON.parse(tpl.slots_json ?? "[]");
+        if (Array.isArray(parsed)) current = parsed.filter((s) => typeof s === "string");
+      } catch {
+      }
+      const missing = slots.filter((s) => !current.includes(s));
+      if (missing.length > 0 && tpl.id) {
+        noteSubrequest();
+        const patched = await fetch(`${base}/templates/${encodeURIComponent(tpl.id)}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ slots: [...current, ...missing] })
+        });
+        if (!patched.ok) throw new Error(`\u88DC\u8CC7\u6599\u6B04\u4F4D ${name}\uFF08${missing.join("\u3001")}\uFF09\u5931\u6557\uFF1AHTTP ${patched.status}`);
+      }
+      return;
+    }
+  }
+  noteSubrequest();
+  await fetch(`${base}/templates`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name, slots, description })
+  });
+}
+var FIELD_INDEX_ROUNDS_PER_INSTALL = 12;
+async function ensureFieldIndexes(env, data, maxRounds = FIELD_INDEX_ROUNDS_PER_INSTALL) {
+  const { base, headers } = kbdbBase(env);
+  const pending = [];
+  let rounds = 0;
+  for (const dt of data) {
+    const fields = (dt.index_fields ?? []).filter((f) => dt.slots.includes(f));
+    if (fields.length === 0) continue;
+    let ready = false;
+    while (!ready && rounds < Math.min(maxRounds, FIELD_INDEX_ROUNDS_PER_INSTALL)) {
+      rounds += 1;
+      noteSubrequest();
+      try {
+        const res = await fetch(`${base}/records/field-index`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ template: dt.name, fields })
+        });
+        if (!res.ok) {
+          await res.body?.cancel();
+          break;
+        }
+        const body = await res.json().catch(() => null);
+        ready = body?.ready === true;
+        if (!ready && !(body?.backfilled && body.backfilled > 0)) break;
+      } catch {
+        break;
+      }
+    }
+    if (!ready) pending.push(dt.name);
+  }
+  return pending;
+}
+var RECIPE_BEHAVIOR_FIELDS = [
+  "endpoint",
+  "method",
+  "headers",
+  "body",
+  "body_template",
+  "response_map",
+  "auth",
+  "binding_name",
+  "auth_service",
+  "credentials_required"
+];
+function sameRecipeBehavior(a, b) {
+  const pick = (r) => {
+    const o = {};
+    for (const k of RECIPE_BEHAVIOR_FIELDS) {
+      const v = k === "method" ? (r.method ?? "POST").toUpperCase() : r[k];
+      if (v !== void 0) o[k] = v;
+    }
+    return o;
+  };
+  return canonicalize(pick(a)) === canonicalize(pick(b));
+}
+async function ensureAppRecipes(env, recipes) {
+  const installed = [];
+  for (const decl of recipes) {
+    const cid = String(decl.canonical_id ?? "").trim().toLowerCase();
+    const have = await resolveRecipe(cid, env.RECIPES);
+    if (have && sameRecipeBehavior(have, decl)) continue;
+    const r = await upsertPrivateRecipe(env.RECIPES, { ...decl, canonical_id: cid });
+    if (!r.ok) return { ok: false, error: `recipe\u300C${cid}\u300D\uFF1A${r.error}` };
+    installed.push(cid);
+  }
+  return { ok: true, installed };
+}
+async function findMissingCredentials(env, tenant2, wanted) {
+  if (wanted.length === 0) return { missing: [], checked: true };
+  try {
+    const have = new Set((await listCredentialRows(env, String(tenant2))).map((r) => r.name));
+    return { missing: wanted.filter((w) => !have.has(w.name)), checked: true };
+  } catch {
+    return { missing: [], checked: false };
+  }
+}
+var INSTALL_REQUEST_BUDGET = 32;
+var FINAL_RESERVE = 8;
+async function installApp(env, tenant2, rawDecl, opts = {}) {
+  let decl0 = rawDecl;
+  if (opts.coords) {
+    try {
+      decl0 = resolveDeclarationPlaceholders(rawDecl, opts.coords);
+    } catch (e) {
+      return {
+        ok: false,
+        step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
+        errors: [e instanceof Error ? e.message : String(e)],
+        hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u505A\u932F\u4E86\u3002\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u5373\u53EF\u3002"
+      };
+    }
+  }
+  const left = remainingPlaceholders(decl0);
+  if (left.length > 0) {
+    return {
+      ok: false,
+      step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
+      errors: [`\u9019\u4EFD\u5BA3\u544A\u88E1\u9084\u6709\u6C92\u586B\u7684\u4F4D\u7F6E\uFF1A${left.join("\u3001")}`],
+      hint: "\u9019\u500B App \u7684\u4F5C\u8005\u7559\u4E86\u8981\u7531\u5BE6\u4F8B\u586B\u7684\u6B04\u4F4D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u586B\u5F97\u8D77\u4F86\u3002\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+    };
+  }
+  const validation = validateAppDeclaration(decl0);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      step: "\u6AA2\u67E5\u9019\u500B App \u7684\u5BA3\u544A",
+      errors: validation.errors,
+      hint: "\u9019\u662F App \u4F5C\u8005\u90A3\u908A\u8981\u4FEE\u7684\uFF0C\u91CD\u8A66\u4E0D\u6703\u8B8A\u597D\u3002\u628A\u4E0A\u9762\u9019\u5E7E\u884C\u539F\u6587\u56DE\u5831\u7D66\u9019\u500B App \u7684\u4F5C\u8005\u3002"
+    };
+  }
+  const decl = applyDeclarationDefaults(decl0);
+  const contentHash = await computeContentHash(decl0);
+  const existing = await getInstalledApp(env, tenant2, decl.id);
+  const wantedCreds = normalizeRequiredCredentials(decl.requires);
+  const wantedRecipes = decl.requires?.recipes ?? [];
+  const requestStart = subrequestCount();
+  const spent = () => subrequestCount() - requestStart;
+  if (existing && existing.content_hash === contentHash && existing.status === "active") {
+    const ensured2 = await ensureAppRecipes(env, wantedRecipes);
+    if (!ensured2.ok) {
+      return {
+        ok: false,
+        step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
+        errors: [ensured2.error],
+        hint: "\u9019\u500B App \u9700\u8981\u7684 recipe \u5BEB\u4E0D\u9032\u9019\u53F0\u5BE6\u4F8B\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+      };
+    }
+    const credCheck2 = await findMissingCredentials(env, tenant2, wantedCreds);
+    const needs2 = {
+      recipes_installed: ensured2.installed,
+      missing_credentials: credCheck2.missing,
+      ...credCheck2.checked ? {} : { credentials_check_failed: true }
+    };
+    try {
+      for (const dt of decl.data) {
+        if (spent() >= INSTALL_REQUEST_BUDGET) break;
+        await ensureTemplate2(env, dt.name, dt.slots, dt.description);
+      }
+    } catch (e) {
+      return {
+        ok: false,
+        step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
+        errors: [e instanceof Error ? e.message : String(e)],
+        hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\u670D\u52D9\u6C92\u6709\u56DE\u61C9\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+      };
+    }
+    const pendingIdx2 = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
+    return { ok: true, changed: false, app: existing, ...needs2, ...pendingIdx2.length ? { field_index_pending: pendingIdx2 } : {} };
+  }
+  const units = [];
+  let recipesInstalled = [];
+  for (const r of wantedRecipes) {
+    units.push({
+      step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
+      label: String(r.canonical_id ?? ""),
+      cost: 3,
+      run: async () => {
+        const ensured2 = await ensureAppRecipes(env, [r]);
+        if (!ensured2.ok) throw new Error(ensured2.error);
+        recipesInstalled = recipesInstalled.concat(ensured2.installed);
+      }
+    });
+  }
+  for (const dt of decl.data) {
+    units.push({ step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225", label: dt.name, cost: 2, run: () => ensureTemplate2(env, dt.name, dt.slots, dt.description) });
+  }
+  const prepared = decl.workflows.map((wf) => {
+    const wfKey2 = `${decl.id}__${wf.name}`;
+    const trigger = resolveWorkflowTrigger(wf);
+    const cronExpr = trigger === "schedule" ? extractCronExpr(wf.graph) : null;
+    const graphId = typeof wf.graph.id === "string" ? wf.graph.id : void 0;
+    const ref = {
+      name: wf.name,
+      wf_key: wfKey2,
+      description: wf.description || "",
+      trigger,
+      ...cronExpr ? { cron_expr: cronExpr } : {},
+      ...graphId ? { graph_id: graphId } : {}
+    };
+    return { wf, wfKey: wfKey2, cronExpr, ref };
+  });
+  const workflowRefs = prepared.map((p) => p.ref);
+  const prevCron = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, Boolean(w.cron_expr)]));
+  for (const p of prepared) {
+    const touchCron = Boolean(p.cronExpr) || prevCron.get(p.wfKey) === true;
+    units.push({
+      step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
+      label: p.wf.name,
+      cost: touchCron ? 3 : 1,
+      run: async () => {
+        await appStore(env).put(
+          workflowKvKey(tenant2, p.wfKey),
+          JSON.stringify({
+            graph: p.wf.graph,
+            description: p.wf.description || `${decl.name}: ${p.wf.name}`,
+            created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+            ...p.cronExpr ? { cron_expr: p.cronExpr } : {}
+          })
+        );
+        if (touchCron) await updateCronIndexEntry(appStore(env), String(tenant2), p.wfKey, p.cronExpr);
+      }
+    });
+  }
+  const total = units.length;
+  const wantFrom = opts.resumeHash === contentHash ? Math.floor(opts.resumeFrom ?? 0) || 0 : 0;
+  let cursor = Math.min(Math.max(wantFrom, 0), total);
+  const from = cursor;
+  try {
+    while (cursor < total) {
+      if (cursor > from && spent() + units[cursor].cost > INSTALL_REQUEST_BUDGET) break;
+      await units[cursor].run();
+      cursor++;
+    }
+  } catch (e) {
+    const u = units[cursor];
+    const why = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      step: u?.step ?? "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
+      errors: [why],
+      resume_from: cursor,
+      resume_hash: contentHash,
+      hint: kbdbBehindHint(e) ?? `\u5DF2\u7D93\u5B8C\u6210 ${cursor}\uFF0F${total} \u500B\u6B65\u9A5F\uFF08\u5099\u9F4A recipe\u3001\u6E96\u5099\u8CC7\u6599\u578B\u5225\u3001\u5B89\u88DD\u5DE5\u4F5C\u6D41\uFF09\uFF0C\u5361\u5728\u300C${u?.label ?? ""}\u300D\u3002\u518D\u6309\u4E00\u6B21\u6703\u5F9E\u9019\u88E1\u63A5\u8457\u505A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\uFF1B\u5982\u679C\u6BCF\u6B21\u90FD\u5361\u5728\u540C\u4E00\u500B\u5730\u65B9\uFF0C\u91CD\u6309\u6C92\u6709\u7528\uFF0C\u8ACB\u628A\u4E0A\u9762\u90A3\u53E5\u539F\u56E0\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002`
+    };
+  }
+  if (cursor < total || spent() > INSTALL_REQUEST_BUDGET - FINAL_RESERVE) {
+    return { ok: true, in_progress: true, changed: true, progress: { done: cursor, total }, resume_from: cursor, resume_hash: contentHash };
+  }
+  const credCheck = await findMissingCredentials(env, tenant2, wantedCreds);
+  const needs = {
+    recipes_installed: recipesInstalled,
+    missing_credentials: credCheck.missing,
+    ...credCheck.checked ? {} : { credentials_check_failed: true }
+  };
+  const dataflow = await runDataflowCheck(
+    env,
+    tenant2,
+    decl.workflows.map((wf) => ({ name: `${decl.id}__${wf.name}`, graph: wf.graph })),
+    { apps: [{ id: decl.id, data: decl.data }], recipes: wantedRecipes }
+  );
+  if (existing) {
+    const keepKeys = new Set(workflowRefs.map((w) => w.wf_key));
+    for (const prev of existing.workflows) {
+      if (!keepKeys.has(prev.wf_key)) {
+        await appStore(env).delete(workflowKvKey(tenant2, prev.wf_key));
+        await updateCronIndexEntry(appStore(env), String(tenant2), prev.wf_key, null);
+      }
+    }
+  }
+  const uiHtml = decl.ui?.html ? bundleUiAssets(decl.ui.html, decl.ui.assets).html : void 0;
+  const uiSurface = decl.ui?.surface;
+  const mcp = installedMcpOf(decl.id, decl.mcp);
+  const record = {
+    id: decl.id,
+    name: decl.name,
+    icon: decl.icon,
+    version: decl.version,
+    content_hash: contentHash,
+    workflows: workflowRefs,
+    actions: decl.actions,
+    data_templates: decl.data.map((d) => d.name),
+    has_ui: Boolean(uiHtml || uiSurface),
+    ui_html: uiHtml,
+    ...uiSurface ? { ui_surface: uiSurface } : {},
+    ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
+    keeps_data: decl.keeps_data,
+    ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
+    ...mcp ? { mcp } : {},
+    installed_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+    updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+    status: "active"
+  };
+  try {
+    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
+  } catch (e) {
+    return {
+      ok: false,
+      step: "\u5BEB\u5165\u5B89\u88DD\u7D00\u9304",
+      errors: [e instanceof Error ? e.message : String(e)],
+      resume_from: total,
+      resume_hash: contentHash,
+      hint: kbdbBehindHint(e) ?? "\u5DE5\u4F5C\u6D41\u90FD\u5DF2\u7D93\u88DD\u597D\u4E86\uFF0C\u53EA\u5DEE\u6700\u5F8C\u9019\u4E00\u7B46\u7D00\u9304\u2014\u2014\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u6703\u76F4\u63A5\u88DC\u4E0A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\u3002"
+    };
+  }
+  const pendingIdx = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
+  return { ok: true, changed: true, app: record, ...needs, ...pendingIdx.length ? { field_index_pending: pendingIdx } : {}, dataflow };
+}
+async function uninstallApp(env, tenant2, id) {
+  const existing = await getInstalledApp(env, tenant2, id);
+  if (!existing) return { ok: false, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD\u7D00\u9304" };
+  try {
+    for (const wf of existing.workflows) {
+      await appStore(env).delete(workflowKvKey(tenant2, wf.wf_key));
+      await updateCronIndexEntry(appStore(env), String(tenant2), wf.wf_key, null);
+    }
+    await appStore(env).delete(appKey(tenant2, id));
+  } catch (e) {
+    return {
+      ok: false,
+      error: kbdbBehindHint(e) ?? `\u79FB\u9664\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
+    };
+  }
+  return { ok: true };
+}
+function prefetchAppAction(env, tenant2, appId, action) {
+  const guessedKey = `${appId}__${action}`;
+  const app2 = getInstalledApp(env, tenant2, appId);
+  const guessedRaw = appStore(env).get(workflowKvKey(tenant2, guessedKey), "text");
+  app2.catch(() => void 0);
+  guessedRaw.catch(() => void 0);
+  return { guessedKey, app: app2, guessedRaw };
+}
+async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch) {
+  const pre = prefetch ?? prefetchAppAction(env, tenant2, appId, action);
+  const guessedKey = pre.guessedKey;
+  const [app2, guessedRaw] = await Promise.all([pre.app, pre.guessedRaw]);
+  if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
+  if (!app2.actions.includes(action)) {
+    return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
+  }
+  const wfRef = app2.workflows.find((w) => w.name === action);
+  if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
+  const raw2 = wfRef.wf_key === guessedKey ? guessedRaw : await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
+  if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
+  let graph;
+  try {
+    const parsed = JSON.parse(raw2);
+    if (!parsed.graph) throw new Error("no graph");
+    graph = parsed.graph;
+  } catch {
+    return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
+  }
+  const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
+  const g = graph;
+  const verdict = writeExecutionVerdict(
+    env,
+    typeof g.id === "string" ? g.id : wfRef.wf_key,
+    Array.isArray(g.nodes) ? g.nodes : [],
+    result.success ? "success" : "failed",
+    result.duration_ms,
+    result.error ?? "",
+    // 斷言（_portal_actor）不進執行紀錄：紀錄 AI 讀得到（inkstone/Arcrun#304 c22862）
+    { ...payload, _portal_actor: void 0, _triggered_by: "app" },
+    String(tenant2),
+    void 0,
+    result.failed_node
+  );
+  if (ctx) ctx.waitUntil(verdict);
+  else await verdict;
+  if (!result.success) {
+    return { ok: false, status: 502, error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` };
+  }
+  return { ok: true, status: 200, result: result.data };
+}
+function refTrigger(w) {
+  return w.trigger ?? "manual";
+}
+function launchOf(app2) {
+  if (app2.has_ui) return { launch: "open" };
+  const runnable = app2.workflows.filter((w) => refTrigger(w) === "manual" && app2.actions.includes(w.name));
+  if (runnable.length === 0) return { launch: "auto" };
+  return runnable.length === 1 ? { launch: "run", run_action: runnable[0].name } : { launch: "run" };
+}
+function summarizeApp(app2) {
+  const l = launchOf(app2);
+  return {
+    id: app2.id,
+    name: app2.name,
+    icon: app2.icon,
+    glyph: appGlyph(app2.icon, app2.name),
+    has_ui: app2.has_ui,
+    version: app2.version,
+    launch: l.launch,
+    ...l.run_action ? { run_action: l.run_action } : {},
+    // 自動的那一格要說得出「它什麼時候會自己跑」，使用者才知道它在替他做事。
+    schedules: app2.workflows.map((w) => w.cron_expr).filter((x) => typeof x === "string")
+  };
+}
+function detailApp(app2) {
+  const l = launchOf(app2);
+  return {
+    id: app2.id,
+    name: app2.name,
+    icon: app2.icon,
+    version: app2.version,
+    has_ui: app2.has_ui,
+    ui_html: app2.ui_html,
+    ...app2.ui_surface ? { ui_surface: app2.ui_surface } : {},
+    // 舊安裝態（v0.1 裝的 App）沒有這一欄——一律當「跟隨全局」，不是「維持原樣」。
+    // 那正是 leo 抱怨的那個狀態，預設值要把它修好，不是把它保留下來。
+    ui_style: app2.ui_style ?? DEFAULT_APP_UI_STYLE,
+    workflows: app2.workflows.map((w) => ({
+      name: w.name,
+      description: w.description,
+      trigger: refTrigger(w),
+      ...w.cron_expr ? { cron_expr: w.cron_expr } : {},
+      ...w.graph_id ? { graph_id: w.graph_id } : {},
+      // 畫面只為「真的按得動」的那幾條長出鍵——白名單仍由 runAppAction 在伺服端把關。
+      runnable: app2.actions.includes(w.name)
+    })),
+    actions: app2.actions,
+    launch: l.launch,
+    ...l.run_action ? { run_action: l.run_action } : {}
+  };
+}
+
 // cypher-executor/src/lib/mcp-token-ttl.ts
 var NEVER_EXPIRES_SECONDS = 0;
 var DEFAULT_TOKEN_TTL_SECONDS = NEVER_EXPIRES_SECONDS;
@@ -12190,247 +16981,6 @@ async function listProviderModels(env, tenant2, providerId, baseUrl) {
 
 // cypher-executor/src/lib/reset-mail-workflow.ts
 init_webhook_handlers();
-
-// cypher-executor/src/actions/execution-logger.ts
-init_kbdb_proxy();
-init_kbdb_caller();
-
-// cypher-executor/src/lib/run-explain.ts
-var STEP_PREFIX_RE = /^步驟「([^」]{1,200})」失敗：/;
-var LEGACY_NODE_RES = [/^節點 ([\w.\-:]+) 回傳 success:false/, /^節點 ([\w.\-:]+) 缺少 componentId/];
-function messageWithFailedStep(message2, failedStep) {
-  const msg = message2 ?? "";
-  if (!failedStep) return msg;
-  if (STEP_PREFIX_RE.test(msg)) return msg;
-  return `\u6B65\u9A5F\u300C${failedStep}\u300D\u5931\u6557\uFF1A${msg}`;
-}
-function parseFailedStep(message2) {
-  const msg = String(message2 ?? "");
-  const m = STEP_PREFIX_RE.exec(msg);
-  if (m) return { step: m[1], error: msg.slice(m[0].length) };
-  for (const re of LEGACY_NODE_RES) {
-    const lm = re.exec(msg);
-    if (lm) return { step: lm[1], error: msg };
-  }
-  return { step: null, error: msg };
-}
-var RULES = [
-  { re: /workflow paused/i, say: "\u9084\u5728\u7B49\u5916\u90E8\u56DE\u8986\uFF0C\u66AB\u505C\u4E2D\uFF08\u4E0D\u662F\u58DE\u6389\uFF09" },
-  { re: /\b401\b|unauthori[sz]ed|invalid api key|invalid token|token (?:expired|invalid)/i, say: "\u5C0D\u65B9\u670D\u52D9\u4E0D\u8A8D\u9019\u628A\u91D1\u9470\uFF08\u53EF\u80FD\u904E\u671F\u6216\u586B\u932F\uFF09" },
-  { re: /\b403\b|forbidden|permission denied|沒有權限/i, say: "\u5C0D\u65B9\u670D\u52D9\u62D2\u7D55\uFF1A\u9019\u628A\u91D1\u9470\u6C92\u6709\u9019\u500B\u6B0A\u9650" },
-  { re: /\b404\b|not found|找不到/i, say: "\u5C0D\u65B9\u627E\u4E0D\u5230\u8981\u7684\u6771\u897F\uFF08\u7DB2\u5740\u6216\u8CC7\u6599\u4E0D\u5B58\u5728\uFF09" },
-  { re: /\b429\b|rate.?limit|too many requests|額度/i, say: "\u547C\u53EB\u592A\u983B\u7E41\u6216\u984D\u5EA6\u7528\u5B8C\uFF0C\u5C0D\u65B9\u66AB\u6642\u4E0D\u6536" },
-  { re: /\b5\d\d\b|bad gateway|service unavailable|internal server error/i, say: "\u5C0D\u65B9\u670D\u52D9\u81EA\u5DF1\u51FA\u932F\u4E86\uFF0C\u7A0D\u5F8C\u518D\u8DD1\u901A\u5E38\u6703\u597D" },
-  { re: /timeout|timed out|逾時|deadline/i, say: "\u5C0D\u65B9\u592A\u4E45\u6C92\u56DE\u61C9\uFF0C\u7B49\u4E0D\u5230\u5C31\u505C\u4E86" },
-  { re: /credential|缺少金鑰|missing key|secret.*(?:not|missing)|金鑰/i, say: "\u5C11\u4E86\u9700\u8981\u7684\u91D1\u9470\uFF0C\u8ACB\u5230\u91D1\u9470\u4E2D\u5FC3\u88DC\u4E0A" },
-  { re: /fetch failed|network|ECONN|ENOTFOUND|connection/i, say: "\u9023\u4E0D\u4E0A\u5C0D\u65B9\u670D\u52D9\uFF08\u7DB2\u8DEF\u6216\u7DB2\u5740\u6709\u554F\u984C\uFF09" },
-  { re: /JSON|parse|Unexpected token/i, say: "\u5C0D\u65B9\u56DE\u4F86\u7684\u8CC7\u6599\u683C\u5F0F\u770B\u4E0D\u61C2" },
-  { re: /圖定義已失效|工作流定義損毀|schema|invalid graph/i, say: "\u5DE5\u4F5C\u6D41\u672C\u8EAB\u7684\u5B9A\u7FA9\u6709\u554F\u984C\uFF0C\u9700\u8981\u91CD\u65B0\u5B89\u88DD\u6216\u4FEE\u6B63" }
-];
-function humanReason(error) {
-  const e = String(error ?? "").trim();
-  if (!e) return "\u6C92\u6709\u7559\u4E0B\u932F\u8AA4\u8A0A\u606F";
-  for (const r of RULES) if (r.re.test(e)) return r.say;
-  const first = e.split(/[\n。]/)[0].trim();
-  return first.length > 60 ? first.slice(0, 60) + "\u2026" : first;
-}
-var BUILTIN_COMPONENTS2 = /* @__PURE__ */ new Set([
-  "input",
-  "code",
-  "http_request",
-  "if_control",
-  "switch",
-  "try_catch",
-  "trigger_workflow",
-  "kbdb_get",
-  "kbdb_query",
-  "kbdb_create_record",
-  "claude_api",
-  "workers_ai_chat"
-]);
-function isRecipeId(component) {
-  return !!component && /^[a-z][a-z0-9_]*$/.test(component) && !BUILTIN_COMPONENTS2.has(component);
-}
-function literalHost(data) {
-  const raw2 = data && (data.url ?? data.endpoint);
-  if (typeof raw2 !== "string" || raw2.includes("{{")) return void 0;
-  try {
-    const u = new URL(raw2);
-    return u.protocol === "https:" || u.protocol === "http:" ? u.hostname : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function shownName(n) {
-  const v = n.display_name ?? n.data?.display_name;
-  return typeof v === "string" && v.trim() ? v.trim().slice(0, 60) : void 0;
-}
-var COMPONENT_LABELS = {
-  input: "\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09",
-  code: "\u6574\u7406\u8CC7\u6599",
-  http_request: "\u6253\u4E00\u500B\u7DB2\u5740",
-  if_control: "\u5224\u65B7\u689D\u4EF6",
-  switch: "\u5206\u6D41",
-  try_catch: "\u51FA\u932F\u6642\u6539\u8D70\u53E6\u4E00\u689D",
-  ahub_call: "\u8B80\u5BEB AHub",
-  kbdb_get: "\u8B80\u77E5\u8B58\u5EAB",
-  kbdb_query: "\u67E5\u77E5\u8B58\u5EAB",
-  kbdb_create_record: "\u5BEB\u9032\u77E5\u8B58\u5EAB",
-  claude_api: "\u8ACB AI \u8655\u7406",
-  workers_ai_chat: "\u8ACB AI \u56DE\u7B54",
-  trigger_workflow: "\u547C\u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41"
-};
-function componentLabel(componentId) {
-  if (!componentId) return "\uFF08\u6C92\u6709\u6307\u5B9A\u96F6\u4EF6\uFF09";
-  const w = /^https?:\/\/arcrun-([a-z0-9-]+)\./i.exec(componentId);
-  const ph = /^__([A-Z0-9_]+?)(?:_URL)?__$/.exec(componentId);
-  const id = w ? w[1].replace(/-/g, "_") : ph ? ph[1] === "HTTP_REQ" ? "http_request" : ph[1].toLowerCase() : componentId;
-  if (COMPONENT_LABELS[id]) return COMPONENT_LABELS[id];
-  return /^https?:\/\//i.test(componentId) ? "\u5916\u90E8\u670D\u52D9" : id;
-}
-function edgeLabel(type, edge) {
-  switch (type) {
-    case "ON_SUCCESS":
-    case "PIPE":
-      return "\u6210\u529F\u5F8C";
-    case "ON_FAIL":
-      return "\u5931\u6557\u6642";
-    case "FOREACH":
-      return edge.iterator ? `\u5C0D\u6BCF\u500B ${edge.iterator}` : "\u5C0D\u6BCF\u4E00\u7B46";
-    case "ON_TRUE":
-      return "\u689D\u4EF6\u6210\u7ACB\u6642";
-    case "ON_FALSE":
-      return "\u689D\u4EF6\u4E0D\u6210\u7ACB\u6642";
-    case "ON_BRANCH":
-      return edge.branch ? `\u5206\u652F\u300C${edge.branch}\u300D` : "\u5206\u652F";
-    case "IF":
-      return edge.condition ? `\u5982\u679C ${edge.condition}` : "\u5982\u679C";
-    case "CONTINUE":
-      return "\u7E7C\u7E8C";
-    case "CALLS_SUBFLOW":
-      return "\u547C\u53EB\u5B50\u6D41\u7A0B";
-    default:
-      return type;
-  }
-}
-function buildFlowSteps(nodes, edges, lastRun) {
-  const order = topoOrder(nodes, edges);
-  const failed = lastRun?.verdict === "failed" ? lastRun.failed_step ?? null : null;
-  const downstream = failed ? reachableFrom(failed, edges) : /* @__PURE__ */ new Set();
-  const onFailTargets = new Set(edges.filter((e) => e.type === "ON_FAIL" && e.from === failed).map((e) => e.to));
-  return order.map((n) => {
-    let last = "unknown";
-    if (failed) {
-      if (n.id === failed) last = "failed";
-      else if (downstream.has(n.id) && !onFailTargets.has(n.id)) last = "not_reached";
-    }
-    return {
-      id: n.id,
-      component: n.componentId ?? (n.type === "Input" ? "input" : ""),
-      component_label: componentLabel(n.componentId ?? (n.type === "Input" ? "input" : void 0)),
-      params: Object.keys(n.data ?? {}).slice(0, 20),
-      ...shownName(n) ? { display_name: shownName(n) } : {},
-      ...literalHost(n.data) ? { host: literalHost(n.data) } : {},
-      next: edges.filter((e) => e.from === n.id).map((e) => ({ to: e.to, how: edgeLabel(e.type, e) })),
-      prev: edges.filter((e) => e.to === n.id).map((e) => ({ from: e.from, how: edgeLabel(e.type, e) })),
-      last
-    };
-  });
-}
-function topoOrder(nodes, edges) {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const indeg = new Map(nodes.map((n) => [n.id, 0]));
-  for (const e of edges) if (indeg.has(e.to) && byId.has(e.from)) indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
-  const queue = nodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).sort((a, b) => Number(b.type === "Input") - Number(a.type === "Input"));
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  while (queue.length) {
-    const n = queue.shift();
-    if (seen.has(n.id)) continue;
-    seen.add(n.id);
-    out.push(n);
-    for (const e of edges) {
-      if (e.from !== n.id || !byId.has(e.to)) continue;
-      const d = (indeg.get(e.to) ?? 0) - 1;
-      indeg.set(e.to, d);
-      if (d <= 0 && !seen.has(e.to)) queue.push(byId.get(e.to));
-    }
-  }
-  for (const n of nodes) if (!seen.has(n.id)) out.push(n);
-  return out;
-}
-function reachableFrom(start, edges) {
-  const seen = /* @__PURE__ */ new Set();
-  const stack = edges.filter((e) => e.from === start && e.type !== "ON_FAIL").map((e) => e.to);
-  while (stack.length) {
-    const id = stack.pop();
-    if (seen.has(id) || id === start) continue;
-    seen.add(id);
-    for (const e of edges) if (e.from === id) stack.push(e.to);
-  }
-  return seen;
-}
-
-// cypher-executor/src/actions/execution-logger.ts
-var SLOW_RUN_MS = 8e3;
-function runMessage(result) {
-  if (!result.success) return result.error ?? "";
-  if (result.duration_ms < SLOW_RUN_MS) return "";
-  const steps = (Array.isArray(result.trace) ? result.trace : []).filter((x) => typeof x?.nodeId === "string" && typeof x?.duration_ms === "number");
-  const by = /* @__PURE__ */ new Map();
-  for (const x of steps) {
-    const id = x.nodeId, ms = x.duration_ms;
-    const g = by.get(id) ?? { n: 0, max: -1, path: "" };
-    g.n++;
-    if (ms > g.max) {
-      g.max = ms;
-      g.path = readPathOf(x.input);
-    }
-    by.set(id, g);
-  }
-  const top = [...by.entries()].sort((a, b) => b[1].max - a[1].max).slice(0, 3).map(([id, g]) => `${id}${g.n > 1 ? `\xD7${g.n}` : ""} \u6700\u9577${g.max}ms${g.path ? `\uFF08${g.path}\uFF09` : ""}`);
-  const head = `\u6162\uFF1A\u6574\u9AD4 ${result.duration_ms}ms`;
-  return (top.length ? `${head}\uFF1B${top.join("\u3001")}` : head).slice(0, 190);
-}
-function readPathOf(input) {
-  if (!input || typeof input !== "object") return "";
-  const o = input;
-  const pick = (v) => v && typeof v === "object" && typeof v.path === "string" ? v.path : "";
-  const p = pick(o.ahread) || pick(o.ahsread) || (typeof o._path === "string" ? o._path : "");
-  return p.slice(0, 50);
-}
-function extractTarget(input) {
-  if (!input) return void 0;
-  const raw2 = input.page_name ?? input.path;
-  if (raw2 === void 0 || raw2 === null) return void 0;
-  return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
-}
-async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message2, input, apiKey, kbdbUsage, failedStep) {
-  void nodes;
-  try {
-    const { base, headers } = kbdbBase(env);
-    const res = await fetch(`${base}/execution-log/record`, {
-      method: "POST",
-      // 這支自己也是一次 KBDB 呼叫——蓋掉 kbdbBase() 預設的 'cypher-kbdb-proxy'，
-      // 剎車紀錄點名時才不會誤指成 CLI 那條 proxy。
-      headers: withCaller(headers, KBDB_CALLERS.executionLog),
-      body: JSON.stringify({
-        workflow_id: workflowId,
-        owner_id: apiKey ?? null,
-        verdict,
-        duration_ms: Math.max(0, Math.round(durationMs)),
-        // inkstone/Arcrun#219：失敗那一步記在 message 開頭（不加欄位、不動資料層，見 lib/run-explain.ts）
-        message: verdict === "failed" ? messageWithFailedStep(message2 ?? "", failedStep) : message2 ?? "",
-        target: extractTarget(input) ?? null,
-        ...kbdbUsage ? { kbdb_rows_written: kbdbUsage.rowsWritten, kbdb_rows_read: kbdbUsage.rowsRead } : {}
-      })
-    });
-    releaseBody(res);
-  } catch {
-  }
-}
-
-// cypher-executor/src/lib/reset-mail-workflow.ts
 var RESET_MAIL_WORKFLOW = "portal_password_reset_mail";
 function wfKey(ns) {
   return `${ns}:wf:${RESET_MAIL_WORKFLOW}`;
@@ -13032,50 +17582,6 @@ async function requestInstanceUpdate(env, fetchImpl = fetch) {
 
 // cypher-executor/src/lib/update-center.ts
 init_endpoints();
-
-// cypher-executor/src/lib/app-glyphs.ts
-var APP_GLYPH_IDS = ["doc", "note", "layers", "pin", "wrench", "box", "folder", "check", "bulb", "bell", "chart", "compass"];
-var APP_GLYPH_BODIES = {
-  doc: '<path d="M6 3h7l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M13 3v5h5"/>',
-  note: '<path d="M17 3a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M14.5 5.5 18.5 9.5"/>',
-  layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>',
-  pin: '<path d="M8.5 3h7l-1 6 3.5 3v2H6v-2l3.5-3-1-6Z"/><path d="M12 14v7"/>',
-  wrench: '<path d="M15.5 3.4a5.2 5.2 0 0 0-6.4 6.4l-5.4 5.4a2 2 0 0 0 2.8 2.8l5.4-5.4a5.2 5.2 0 0 0 6.4-6.4l-3 3-2.8-.4-.4-2.8 3-3Z"/>',
-  box: '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/>',
-  folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h7A1.5 1.5 0 0 1 19 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
-  check: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.2 2.8 2.8L16 9.8"/>',
-  bulb: '<path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3Z"/><path d="M9.8 19h4.4M10.5 21.5h3"/>',
-  bell: '<path d="M18 8.5a6 6 0 1 0-12 0c0 5.5-2 7-2 7h16s-2-1.5-2-7Z"/><path d="M10.2 19a2.2 2.2 0 0 0 3.6 0"/>',
-  chart: '<path d="M4 4v16h16"/><path d="M8 20v-6.5M12.5 20V8.5M17 20v-4"/>',
-  compass: '<circle cx="12" cy="12" r="8.5"/><path d="m15.6 8.4-2.1 5.1-5.1 2.1 2.1-5.1 5.1-2.1Z"/>'
-};
-var EMOJI_GLYPH = {
-  "\u{1F4C4}": "doc",
-  "\u{1F5D2}\uFE0F": "note",
-  "\u{1F5D2}": "note",
-  "\u{1F4DD}": "note",
-  "\u{1F9E9}": "layers",
-  "\u{1F4CC}": "pin",
-  "\u{1F527}": "wrench",
-  "\u{1F6E0}\uFE0F": "wrench",
-  "\u{1F4E6}": "box",
-  "\u{1F5C2}\uFE0F": "folder",
-  "\u{1F5C2}": "folder",
-  "\u{1F4C1}": "folder",
-  "\u2705": "check",
-  "\u{1F4A1}": "bulb",
-  "\u{1F514}": "bell",
-  "\u{1F4CA}": "chart",
-  "\u{1F4C8}": "chart",
-  "\u{1F9ED}": "compass"
-};
-function appGlyph(icon, name) {
-  if (icon && EMOJI_GLYPH[icon]) return EMOJI_GLYPH[icon];
-  const seed = String(icon || name || "");
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = Math.imul(h, 31) + seed.charCodeAt(i) >>> 0;
-  return APP_GLYPH_IDS[h % APP_GLYPH_IDS.length];
-}
 
 // cypher-executor/src/lib/app-catalog/notes.json
 var notes_default = {
@@ -15452,6 +19958,17 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
     "note_cards",
     "organize_note"
   ]
+};
+
+// cypher-executor/src/lib/app-catalog/flow_canvas.json
+var flow_canvas_default = {
+  id: "flow_canvas",
+  name: "\u5DE5\u4F5C\u6D41\u756B\u5E03",
+  icon: "\u{1F6E0}\uFE0F",
+  version: "0.1.0",
+  ui: {
+    html: '<div style="padding:20px"><p>\u5DE5\u4F5C\u6D41\u756B\u5E03\u6703\u5728\u9019\u500B App \u88DD\u597D\u4E4B\u5F8C\uFF0C\u51FA\u73FE\u5728 Portal \u7684\u300C\u5DE5\u4F5C\u6D41\u300D\u5165\u53E3\u3002</p><p><a href="#/flows">\u958B\u555F\u5DE5\u4F5C\u6D41\u756B\u5E03</a></p></div>'
+  }
 };
 
 // workflows/global_index.app.json
@@ -80520,4502 +85037,6 @@ return handbackPlan(input);
   ]
 };
 
-// cypher-executor/src/lib/app-system.ts
-init_kbdb_proxy();
-init_webhook_handlers();
-
-// cypher-executor/src/lib/cron-match.ts
-function matchField(expr, value, min, max) {
-  if (expr === "*") return true;
-  for (const part of expr.split(",")) {
-    if (matchPart(part.trim(), value, min, max)) return true;
-  }
-  return false;
-}
-function matchPart(part, value, min, max) {
-  if (part.startsWith("*/")) {
-    const step = parseInt(part.slice(2), 10);
-    if (!Number.isFinite(step) || step <= 0) return false;
-    return (value - min) % step === 0;
-  }
-  if (part.includes("-")) {
-    const [rangePart, stepStr] = part.split("/");
-    const [aStr, bStr] = rangePart.split("-");
-    const a = parseInt(aStr, 10);
-    const b = parseInt(bStr, 10);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
-    if (value < a || value > b) return false;
-    if (stepStr === void 0) return true;
-    const step = parseInt(stepStr, 10);
-    if (!Number.isFinite(step) || step <= 0) return false;
-    return (value - a) % step === 0;
-  }
-  const n = parseInt(part, 10);
-  if (!Number.isFinite(n)) return false;
-  if (n < min || n > max) return false;
-  return value === n;
-}
-function cronMatch(expr, date) {
-  const fields = expr.trim().split(/\s+/);
-  if (fields.length !== 5) return false;
-  const [m, h, dom, mon, dow] = fields;
-  return matchField(m, date.getUTCMinutes(), 0, 59) && matchField(h, date.getUTCHours(), 0, 23) && matchField(dom, date.getUTCDate(), 1, 31) && matchField(mon, date.getUTCMonth() + 1, 1, 12) && matchField(dow, date.getUTCDay(), 0, 6);
-}
-function extractCronExpr(graph) {
-  if (!graph || typeof graph !== "object") return null;
-  const nodes = graph.nodes;
-  if (!Array.isArray(nodes)) return null;
-  for (const node of nodes) {
-    if (node.componentId !== "cron") continue;
-    const expr = node.data?.cron_expr;
-    if (typeof expr === "string" && expr.trim()) return expr.trim();
-  }
-  return null;
-}
-
-// cypher-executor/src/lib/cron-index.ts
-var CRON_INDEX_KEY = "cron-idx:_all";
-function cronEntryKey(apiKey, name) {
-  return `${apiKey}:${name}`;
-}
-function parseCronEntryKey(entryKey) {
-  const idx = entryKey.indexOf(":");
-  if (idx <= 0) return null;
-  return { apiKey: entryKey.slice(0, idx), name: entryKey.slice(idx + 1) };
-}
-async function readCronIndex(kv) {
-  const raw2 = await kv.get(CRON_INDEX_KEY, "text");
-  if (!raw2) return {};
-  try {
-    const parsed = JSON.parse(raw2);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
-  const index = await readCronIndex(kv);
-  const entryKey = cronEntryKey(apiKey, name);
-  if (cronExpr) {
-    if (index[entryKey] === cronExpr) return;
-    index[entryKey] = cronExpr;
-  } else {
-    if (!(entryKey in index)) return;
-    delete index[entryKey];
-  }
-  await kv.put(CRON_INDEX_KEY, JSON.stringify(index));
-}
-
-// cypher-executor/src/lib/app-ui-assets.ts
-var MAX_UI_ASSET_BYTES = 15e5;
-var MAX_UI_ASSET_COUNT = 64;
-var PATH_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
-var MIME_BY_EXT = {
-  css: "text/css",
-  js: "text/javascript",
-  mjs: "text/javascript",
-  json: "application/json",
-  txt: "text/plain",
-  svg: "image/svg+xml",
-  html: "text/html",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  ico: "image/x-icon",
-  avif: "image/avif",
-  woff: "font/woff",
-  woff2: "font/woff2",
-  ttf: "font/ttf",
-  otf: "font/otf"
-};
-function extOf(path) {
-  const base = path.slice(path.lastIndexOf("/") + 1);
-  const i = base.lastIndexOf(".");
-  return i < 0 ? "" : base.slice(i + 1).toLowerCase();
-}
-function localRefOf(ref, fromDir = "") {
-  let v = ref.trim();
-  if (!v) return null;
-  if (v.startsWith("#") || v.startsWith("/") || v.startsWith("\\")) return null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return null;
-  v = v.replace(/[?#].*$/, "");
-  const parts = (fromDir ? `${fromDir}/${v}` : v).split("/");
-  const out = [];
-  for (const seg of parts) {
-    if (seg === "" || seg === ".") continue;
-    if (seg === "..") {
-      if (out.length === 0) return null;
-      out.pop();
-      continue;
-    }
-    out.push(seg);
-  }
-  return out.length ? out.join("/") : null;
-}
-function isAssetValue(v) {
-  if (typeof v === "string") return true;
-  return !!v && typeof v === "object" && typeof v.base64 === "string";
-}
-function validateUiAssets(assets) {
-  if (assets === void 0) return [];
-  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
-    return ["ui.assets \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u8DEF\u5F91 \u2192 \u5167\u5BB9\uFF09"];
-  }
-  const errors = [];
-  const entries = Object.entries(assets);
-  if (entries.length > MAX_UI_ASSET_COUNT) errors.push(`ui.assets \u6700\u591A ${MAX_UI_ASSET_COUNT} \u500B\u6A94\uFF08\u73FE\u5728 ${entries.length}\uFF09`);
-  let total = 0;
-  for (const [path, val] of entries) {
-    if (!PATH_RE.test(path) || path.split("/").includes("..")) {
-      errors.push(`ui.assets \u7684\u8DEF\u5F91\u300C${path}\u300D\u4E0D\u5408\u6CD5\uFF1A\u53EA\u80FD\u662F\u76F8\u5C0D\u8DEF\u5F91\uFF08\u82F1\u6578\u3001\u9EDE\u3001\u5E95\u7DDA\u3001\u9023\u5B57\u865F\uFF0C\u7528 / \u5206\u8CC7\u6599\u593E\uFF09\uFF0C\u4E0D\u53EF\u542B ..`);
-      continue;
-    }
-    if (!isAssetValue(val)) {
-      errors.push(`ui.assets["${path}"] \u5FC5\u9808\u662F\u5B57\u4E32\uFF08\u6587\u5B57\u6A94\uFF09\uFF0C\u6216 { "base64": "\u2026", "type": "image/png" }\uFF08\u4E8C\u9032\u4F4D\u6A94\uFF09`);
-      continue;
-    }
-    if (typeof val === "object" && val.type !== void 0 && (typeof val.type !== "string" || !/^[a-z]+\/[A-Za-z0-9.+-]+$/.test(val.type))) {
-      errors.push(`ui.assets["${path}"].type \u5FC5\u9808\u662F MIME \u683C\u5F0F\uFF08\u4F8B\uFF1Aimage/png\uFF09`);
-    }
-    total += typeof val === "string" ? val.length : val.base64.length;
-  }
-  if (total > MAX_UI_ASSET_BYTES) {
-    errors.push(`ui.assets \u5408\u8A08 ${total} \u5B57\u5143\uFF0C\u8D85\u904E\u4E0A\u9650 ${MAX_UI_ASSET_BYTES}\u3002\u756B\u9762\u5B58\u5728\u77E5\u8B58\u5EAB\u7684\u4E00\u7B46\u7D00\u9304\u88E1\uFF0C\u4E0D\u662F\u6A94\u6848\u4F3A\u670D\u5668\u2014\u2014\u5927\u5716\u8ACB\u7E2E\u5C0F\u6216\u63DB\u6210\u5916\u90E8\u4E0D\u4F9D\u8CF4\u7684\u683C\u5F0F`);
-  }
-  return errors;
-}
-function mimeOf(path, val) {
-  if (typeof val === "object" && val.type) return val.type;
-  return MIME_BY_EXT[extOf(path)] ?? "application/octet-stream";
-}
-function toDataUri(path, val) {
-  const mime = mimeOf(path, val);
-  if (typeof val === "string") return `data:${mime};charset=utf-8,${encodeURIComponent(val)}`;
-  return `data:${mime};base64,${val.base64.replace(/\s+/g, "")}`;
-}
-function textOf(path, val) {
-  if (typeof val === "string") return val;
-  void path;
-  return null;
-}
-function inlineCssUrls(css, cssPath, assets, used, errors) {
-  const dir = cssPath.includes("/") ? cssPath.slice(0, cssPath.lastIndexOf("/")) : "";
-  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (whole, _q, ref) => {
-    const key = localRefOf(ref, dir);
-    if (key === null) return whole;
-    if (!(key in assets)) {
-      errors.push(`\u6A23\u5F0F\u8868\u300C${cssPath}\u300D\u5F15\u7528\u4E86 url(${ref.trim()})\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
-      return whole;
-    }
-    used.add(key);
-    return `url("${toDataUri(key, assets[key])}")`;
-  });
-}
-var ATTR_RE = (name) => new RegExp(`(\\s${name}\\s*=\\s*)(?:"([^"]*)"|'([^']*)')`, "i");
-function bundleUiAssets(html, assets) {
-  if (!assets || Object.keys(assets).length === 0) return { ok: true, html, errors: [], used: [] };
-  const errors = [];
-  const used = /* @__PURE__ */ new Set();
-  const lookup = (ref, what) => {
-    const key = localRefOf(ref);
-    if (key === null) return null;
-    if (!(key in assets)) {
-      errors.push(`${what} \u5F15\u7528\u4E86\u300C${ref.trim()}\u300D\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
-      return null;
-    }
-    used.add(key);
-    return key;
-  };
-  const out = html.replace(/<(script|link|img|source|video|audio|track|input)\b([^>]*?)(\/?)>(?:\s*<\/script\s*>)?/gi, (whole, tagRaw, attrs, selfClose) => {
-    const tag = tagRaw.toLowerCase();
-    if (tag === "script") {
-      const m = ATTR_RE("src").exec(attrs);
-      if (!m) return whole;
-      const ref = m[2] ?? m[3] ?? "";
-      const key = lookup(ref, "<script src>");
-      if (key === null) return whole;
-      const body = textOf(key, assets[key]);
-      if (body === null) {
-        errors.push(`<script src="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u8173\u672C\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
-        return whole;
-      }
-      const rest = attrs.replace(ATTR_RE("src"), "").replace(/\s+$/, "");
-      return `<script${rest}>${body.replace(/<\/script/gi, "<\\/script")}<\/script>`;
-    }
-    if (tag === "link") {
-      const relM = ATTR_RE("rel").exec(attrs);
-      const hrefM = ATTR_RE("href").exec(attrs);
-      if (!hrefM) return whole;
-      const ref = hrefM[2] ?? hrefM[3] ?? "";
-      const isSheet = /(^|\s)stylesheet(\s|$)/i.test(relM ? relM[2] ?? relM[3] ?? "" : "");
-      const key = lookup(ref, isSheet ? '<link rel="stylesheet">' : "<link href>");
-      if (key === null) return whole;
-      if (isSheet) {
-        const css = textOf(key, assets[key]);
-        if (css === null) {
-          errors.push(`<link rel="stylesheet" href="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u6A23\u5F0F\u8868\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
-          return whole;
-        }
-        return `<style>${inlineCssUrls(css, key, assets, used, errors).replace(/<\/style/gi, "<\\/style")}</style>`;
-      }
-      return whole.replace(ATTR_RE("href"), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
-    }
-    let replaced = whole;
-    for (const name of tag === "video" ? ["src", "poster"] : ["src"]) {
-      const m = ATTR_RE(name).exec(replaced);
-      if (!m) continue;
-      const ref = m[2] ?? m[3] ?? "";
-      const key = lookup(ref, `<${tag} ${name}>`);
-      if (key === null) continue;
-      replaced = replaced.replace(ATTR_RE(name), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
-    }
-    void selfClose;
-    return replaced;
-  });
-  return { ok: errors.length === 0, html: out, errors, used: [...used] };
-}
-
-// cypher-executor/src/lib/ui-catalog.generated.json
-var ui_catalog_generated_default = {
-  _generated: "\u7531 console-ui/a2ui/build.mjs \u5F9E registry/ui-components/*/component.contract.yaml \u7522\u751F\u2014\u2014\u52FF\u624B\u6539\uFF0C\u6539\u539F\u7A3F\u5F8C\u91CD\u8DD1",
-  catalog_id: "arcrun:catalog/v0",
-  protocol_version: "v0.9",
-  components: [
-    {
-      canonical_id: "ui_button",
-      display_name: "\u6309\u9215",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Button",
-        implementation: "a2ui-basic"
-      },
-      description: "\u6309\u4E0B\u53BB\u9001\u51FA\u4E00\u500B\u4E8B\u4EF6\u540D\u7A31\uFF08\u53EF\u5E36\u53C3\u6578\uFF09\u3002\u6309\u9215\u672C\u8EAB\u4E0D\u542B\u908F\u8F2F\uFF1A\u8981\u89F8\u767C\u54EA\u500B\u5DE5\u4F5C\u6D41\uFF0C\u7531\u4F3A\u670D\u5668\u7AEF\u7684\u52D5\u4F5C\u767D\u540D\u55AE\u6C7A\u5B9A\u3002",
-      renders: "\u4E00\u9846\u6309\u9215\uFF0C\u4E0A\u9762\u7684\u5B57\u7531\u5B50\u5143\u4EF6\uFF08\u901A\u5E38\u662F\u4E00\u500B Text\uFF09\u6C7A\u5B9A\uFF1Bvariant \u70BA primary \u6642\u662F\u4E3B\u8981\u52D5\u4F5C\u7684\u6A23\u5F0F\u3002",
-      data_inputs: [
-        {
-          name: "child",
-          what: "\u6309\u9215\u4E0A\u986F\u793A\u7684\u5B50\u5143\u4EF6 id\uFF08\u901A\u5E38\u662F Text\uFF09"
-        },
-        {
-          name: "action",
-          what: '{"event": {"name": "\u4E8B\u4EF6\u540D\u7A31", "context": {"\u53C3\u6578": {"path": "/\u6B04\u4F4D"}}}}\u2014\u2014context \u7684\u503C\u53EF\u4EE5\u7D81\u8CC7\u6599'
-        }
-      ],
-      interactions: [
-        {
-          event: "action.event",
-          what: "\u6309\u4E0B\u6642\u9001\u51FA {name, context}\u3002Portal \u628A\u5B83\u8F49\u7D66\u5BBF\u4E3B\uFF08App \u7684\u52D5\u4F5C\u767D\u540D\u55AE\u7AEF\u9EDE\uFF09\uFF1B\u756B\u9762\u5B9A\u7FA9\u88E1\u4E0D\u51C6\u5BEB\u7DB2\u5740\u3001\u8DEF\u5F91\u6216\u6307\u4EE4"
-        }
-      ],
-      states: {
-        loading: "\u6309\u9215\u7ACB\u5373\u53EF\u6309\uFF1B\u9001\u51FA\u5F8C\u7684\u7B49\u5F85\u72C0\u614B\u7531\u5BBF\u4E3B\u986F\u793A",
-        empty: "\u6C92\u6709 child \u6642\u662F\u4E00\u9846\u6C92\u6709\u5B57\u7684\u6309\u9215\uFF08child \u5FC5\u586B\uFF0C\u9A57\u8B49\u6703\u64CB\uFF09",
-        error: "\u5BBF\u4E3B\u56DE\u932F\u8AA4\u6642\u7531\u5BBF\u4E3B\u986F\u793A\uFF0C\u6309\u9215\u672C\u8EAB\u4E0D\u8B8A",
-        disabled: "checks \u4E0D\u901A\u904E\u6642\u6309\u9215\u505C\u7528",
-        narrow: "\u6309\u9215\u5BEC\u5EA6\u8DDF\u8457\u5B57\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u6309\u9215\u4E0A\u7684\u5B57",
-          given: '{"components":[{"id":"root","component":"Button","child":"l","action":{"event":{"name":"refresh"}}},{"id":"l","component":"Text","text":"\u91CD\u65B0\u6574\u7406"}]}',
-          then_contains: "\u91CD\u65B0\u6574\u7406"
-        },
-        {
-          scenario: "\u4E3B\u8981\u52D5\u4F5C\u6A23\u5F0F\u7684\u6309\u9215",
-          given: '{"components":[{"id":"root","component":"Button","child":"l","variant":"primary","action":{"event":{"name":"run","context":{"id":{"path":"/id"}}}}},{"id":"l","component":"Text","text":"\u57F7\u884C"}],"data":{"id":"wf-1"}}',
-          then_contains: "\u57F7\u884C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "button",
-        "action",
-        "event"
-      ],
-      example: '{ "id": "refresh", "component": "Button", "child": "refresh-label", "action": { "event": { "name": "refresh" } } }\n',
-      source: "registry/ui-components/button/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "default",
-              "primary",
-              "borderless"
-            ],
-            default: "default",
-            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
-          },
-          action: {
-            $ref: "#/$defs/Action"
-          },
-          component: {
-            const: "Button"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "action",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_card",
-      display_name: "\u5361\u7247",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Card",
-        implementation: "a2ui-basic"
-      },
-      description: "\u6709\u5916\u6846\u7684\u5340\u584A\uFF0C\u628A\u4E00\u7D44\u76F8\u95DC\u5167\u5BB9\u6846\u5728\u4E00\u8D77\uFF08\u4E00\u5247\u5DE5\u4F5C\u6D41\u3001\u4E00\u5F35\u7968\u3001\u4E00\u7B46\u932F\u8AA4\uFF09\u3002",
-      renders: "\u4E00\u500B\u5E36\u5916\u6846\u8207\u5167\u8DDD\u7684\u65B9\u584A\uFF0C\u88E1\u9762\u653E\u4E00\u500B\u5B50\u5143\u4EF6\uFF1B\u8981\u653E\u591A\u500B\u6771\u897F\u6642\uFF0C\u5B50\u5143\u4EF6\u7528 Column \u6216 Row \u5305\u8D77\u4F86\u3002",
-      data_inputs: [
-        {
-          name: "child",
-          what: "\u8981\u6846\u8D77\u4F86\u7684\u90A3\u4E00\u500B\u5B50\u5143\u4EF6\u7684 id\uFF08\u4E0D\u662F\u8CC7\u6599\uFF0C\u662F\u7248\u9762\uFF09"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5916\u6846\u7167\u5E38\u51FA\u73FE\uFF0C\u88E1\u9762\u7531\u5B50\u5143\u4EF6\u81EA\u5DF1\u986F\u793A\u8F09\u5165\u4E2D",
-        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u5C31\u4E0D\u6703\u51FA\u73FE\uFF08child \u5FC5\u586B\uFF09",
-        error: "\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\uFF0C\u6E32\u67D3\u5668\u5728\u4E3B\u63A7\u53F0\u5831\u932F\u3001\u90A3\u4E00\u683C\u7559\u767D\uFF0C\u4E0D\u6703\u6574\u9801\u58DE\u6389",
-        disabled: "\u5361\u7247\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u7E2E\uFF0C\u5167\u5BB9\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5361\u7247\u6846\u4F4F\u4E00\u6BB5\u6587\u5B57",
-          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":"\u6846\u5728\u5361\u7247\u88E1"}]}',
-          then_contains: "\u6846\u5728\u5361\u7247\u88E1"
-        },
-        {
-          scenario: "\u5361\u7247\u88E1\u7684\u6587\u5B57\u53EF\u4EE5\u7D81\u8CC7\u6599",
-          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"/title"}}],"data":{"title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"}}',
-          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "container",
-        "card"
-      ],
-      example: '{ "id": "wf-card", "component": "Card", "child": "wf-body" }\n',
-      source: "registry/ui-components/card/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
-          },
-          component: {
-            const: "Card"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_check_box",
-      display_name: "\u52FE\u9078\u6846",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "CheckBox",
-        implementation: "a2ui-basic"
-      },
-      description: "\u8B93\u4EBA\u52FE\u9078\u662F\uFF0F\u5426\uFF08\u662F\u5426\u534A\u5929\u3001\u662F\u5426\u9700\u8981\u4EE3\u7406\u4EBA\uFF09\u3002\u7D50\u679C\u4EE5 true\uFF0Ffalse \u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
-      renders: "\u4E00\u500B\u52FE\u9078\u6846\u52A0\u6A19\u7C64\u3002",
-      data_inputs: [
-        {
-          name: "label",
-          what: "\u52FE\u9078\u6846\u65C1\u7684\u5B57"
-        },
-        {
-          name: "value",
-          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u52FE\u4E86\u662F true\u3001\u6C92\u52FE\u662F false'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u7ACB\u5373\u53EF\u52FE",
-        empty: "\u6C92\u6709\u503C\u6642\u8996\u70BA\u6C92\u52FE\uFF08false\uFF09",
-        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u6A19\u7C64\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u52FE\u9078\u6846\u5E36\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"CheckBox","label":"\u534A\u5929","value":{"path":"/form/half"}}],"data":{"form":{"half":false}}}',
-          then_contains: "\u534A\u5929"
-        },
-        {
-          scenario: "\u52FE\u9078\u6846\u9810\u8A2D\u5DF2\u52FE",
-          given: '{"components":[{"id":"root","component":"CheckBox","label":"\u9700\u8981\u4EE3\u7406\u4EBA","value":{"path":"/form/proxy"}}],"data":{"form":{"proxy":true}}}',
-          then_contains: "\u9700\u8981\u4EE3\u7406\u4EBA"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "input",
-        "form",
-        "checkbox",
-        "\u52FE\u9078"
-      ],
-      example: '{ "id": "f-half", "component": "CheckBox", "label": "\u534A\u5929", "value": { "path": "/form/half" } }\n',
-      source: "registry/ui-components/check_box/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text to display next to the checkbox."
-          },
-          value: {
-            $ref: "#/$defs/DynamicBoolean",
-            description: "The current state of the checkbox (true for checked, false for unchecked)."
-          },
-          component: {
-            const: "CheckBox"
-          }
-        },
-        required: [
-          "id",
-          "label",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_choice_picker",
-      display_name: "\u9078\u55AE",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "ChoicePicker",
-        implementation: "a2ui-basic"
-      },
-      description: "\u8B93\u4EBA\u5F9E\u56FA\u5B9A\u9078\u9805\u88E1\u9078\u4E00\u500B\u6216\u591A\u500B\uFF08\u5047\u5225\u3001\u90E8\u9580\u3001\u512A\u5148\u7D1A\uFF09\u3002\u9078\u7684\u7D50\u679C\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\uFF08\u4E00\u5F8B\u662F\u5B57\u4E32\u9663\u5217\uFF09\u3002",
-      renders: "\u4E00\u7D44\u9078\u9805\u3002variant \u70BA mutuallyExclusive \u6642\u662F\u55AE\u9078\uFF0CmultipleSelection \u662F\u591A\u9078\uFF1BdisplayStyle \u6C7A\u5B9A\u9577\u6210\u52FE\u9078\u6E05\u55AE\u6216\u4E0B\u62C9\u6676\u7247\u3002",
-      data_inputs: [
-        {
-          name: "label",
-          what: "\u9078\u55AE\u7684\u6A19\u7C64"
-        },
-        {
-          name: "options",
-          what: '\u9078\u9805\u6E05\u55AE [{"label": "\u7D66\u4EBA\u770B\u7684\u5B57", "value": "\u5B58\u9032\u53BB\u7684\u503C"}]'
-        },
-        {
-          name: "value",
-          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u9078\u5230\u7684 value \u9663\u5217\u5BEB\u5230\u9019\u88E1\uFF08\u55AE\u9078\u6642\u9663\u5217\u53EA\u6709\u4E00\u500B\u5143\u7D20\uFF09'
-        },
-        {
-          name: "variant",
-          what: "mutuallyExclusive\uFF08\u55AE\u9078\uFF0C\u8868\u55AE\u6700\u5E38\u7528\uFF09\uFF0FmultipleSelection"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u9078\u9805\u7ACB\u5373\u986F\u793A\uFF08\u9078\u9805\u5BEB\u5728\u756B\u9762\u5B9A\u7FA9\u88E1\uFF0C\u4E0D\u7B49\u8CC7\u6599\uFF09",
-        empty: "\u6C92\u9078\u6642 value \u662F\u7A7A\u9663\u5217",
-        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u9078\u9805\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u55AE\u9078\u9078\u55AE\u986F\u793A\u9078\u9805",
-          given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u5047\u5225","variant":"mutuallyExclusive","options":[{"label":"\u7279\u4F11","value":"annual"},{"label":"\u75C5\u5047","value":"sick"}],"value":{"path":"/form/type"}}],"data":{"form":{"type":[]}}}',
-          then_contains: "\u75C5\u5047"
-        },
-        {
-          scenario: "\u591A\u9078\u9078\u55AE\u986F\u793A\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u6A19\u7C64","variant":"multipleSelection","options":[{"label":"\u6025","value":"urgent"}],"value":{"path":"/form/tags"}}],"data":{"form":{"tags":[]}}}',
-          then_contains: "\u6025"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "input",
-        "form",
-        "select",
-        "choice",
-        "\u9078\u55AE",
-        "\u4E0B\u62C9"
-      ],
-      example: '{ "id": "f-type", "component": "ChoicePicker", "label": "\u5047\u5225", "variant": "mutuallyExclusive", "options": [{ "label": "\u7279\u4F11", "value": "annual" }, { "label": "\u75C5\u5047", "value": "sick" }], "value": { "path": "/form/type" } }\n',
-      source: "registry/ui-components/choice_picker/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The label for the group of options."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "multipleSelection",
-              "mutuallyExclusive"
-            ],
-            default: "mutuallyExclusive",
-            description: "A hint for how the choice picker should be displayed and behave."
-          },
-          options: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                label: {
-                  $ref: "#/$defs/DynamicString",
-                  description: "The text to display for this option."
-                },
-                value: {
-                  type: "string",
-                  description: "The stable value associated with this option."
-                }
-              },
-              required: [
-                "label",
-                "value"
-              ],
-              additionalProperties: false
-            },
-            description: "The list of available options to choose from."
-          },
-          value: {
-            $ref: "#/$defs/DynamicStringList",
-            description: "The list of currently selected values. This should be bound to a string array in the data model."
-          },
-          displayStyle: {
-            type: "string",
-            enum: [
-              "checkbox",
-              "chips"
-            ],
-            default: "checkbox",
-            description: "The display style of the component."
-          },
-          filterable: {
-            type: "boolean",
-            default: false,
-            description: "If true, displays a search input to filter the options."
-          },
-          component: {
-            const: "ChoicePicker"
-          }
-        },
-        required: [
-          "id",
-          "options",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_column",
-      display_name: "\u76F4\u6392",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Column",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u4E0A\u5F80\u4E0B\u6392\u3002\u6574\u500B\u756B\u9762\u7684\u9AA8\u67B6\u901A\u5E38\u662F\u4E00\u500B\u76F4\u6392\u3002",
-      renders: "\u4E00\u6B04\uFF0C\u5B50\u5143\u4EF6\u4F9D\u5E8F\u5F80\u4E0B\u5806\uFF0Cjustify\uFF0Falign \u63A7\u5236\u9593\u8DDD\u8207\u5C0D\u9F4A\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}\uFF0C\u8CC7\u6599\u9663\u5217\u6709\u5E7E\u7B46\u5C31\u9577\u5E7E\u500B'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
-        empty: "\u7D81\u5230\u7684\u6E05\u55AE\u662F\u7A7A\u9663\u5217\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u8981\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\u8ACB\u53E6\u653E\u4E00\u500B Text\uFF09",
-        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u672C\u4F86\u5C31\u662F\u55AE\u6B04\uFF0C\u7A84\u87A2\u5E55\u4E0D\u8B8A\u5F62"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5169\u6BB5\u6587\u5B57\u4E0A\u4E0B\u6392",
-          given: '{"components":[{"id":"root","component":"Column","children":["a","b"]},{"id":"a","component":"Text","text":"\u7B2C\u4E00\u884C"},{"id":"b","component":"Text","text":"\u7B2C\u4E8C\u884C"}]}',
-          then_contains: "\u7B2C\u4E8C\u884C"
-        },
-        {
-          scenario: "\u7528\u8CC7\u6599\u9663\u5217\u9577\u51FA\u5B50\u5143\u4EF6",
-          given: '{"components":[{"id":"root","component":"Column","children":{"componentId":"item","path":"/items"}},{"id":"item","component":"Text","text":{"path":"name"}}],"data":{"items":[{"name":"\u7532"},{"name":"\u4E59"}]}}',
-          then_contains: "\u4E59"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "column",
-        "stack"
-      ],
-      example: '{ "id": "page", "component": "Column", "children": ["title", "list"] }\n',
-      source: "registry/ui-components/column/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "spaceBetween",
-              "spaceAround",
-              "spaceEvenly",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "start",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
-          },
-          component: {
-            const: "Column"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_date_time_input",
-      display_name: "\u65E5\u671F\u6642\u9593\u8F38\u5165",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "DateTimeInput",
-        implementation: "a2ui-basic"
-      },
-      description: "\u8B93\u4EBA\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u65E5\u671F\u52A0\u6642\u9593\uFF08\u8ACB\u5047\u8D77\u8A16\u3001\u9810\u7D04\u6642\u6BB5\uFF09\u3002\u7D50\u679C\u4EE5 ISO 8601 \u5B57\u4E32\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
-      renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u65E5\u671F\uFF0F\u6642\u9593\u6311\u9078\u6B04\u3002enableDate\uFF0FenableTime \u6C7A\u5B9A\u53EF\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u5169\u8005\u3002",
-      data_inputs: [
-        {
-          name: "label",
-          what: "\u6B04\u4F4D\u6A19\u7C64"
-        },
-        {
-          name: "value",
-          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u6311\u5230\u7684\u503C\uFF08ISO 8601 \u5B57\u4E32\uFF09\u5BEB\u5230\u9019\u88E1'
-        },
-        {
-          name: "enableDate",
-          what: "true \u624D\u80FD\u6311\u65E5\u671F\uFF08\u9810\u8A2D false\uFF0C\u8981\u65E5\u671F\u8ACB\u660E\u5BEB true\uFF09"
-        },
-        {
-          name: "enableTime",
-          what: "true \u624D\u80FD\u6311\u6642\u9593"
-        },
-        {
-          name: "min / max",
-          what: "\u53EF\u6311\u7BC4\u570D\u7684\u4E0B\u9650\uFF0F\u4E0A\u9650\uFF08ISO 8601\uFF09\uFF0C\u9078\u586B"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u7ACB\u5373\u53EF\u6311",
-        empty: "\u6C92\u6311\u6642 value \u662F\u7A7A\u5B57\u4E32",
-        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u65E5\u671F\u6B04\u5E36\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u958B\u59CB\u65E5\u671F","enableDate":true,"value":{"path":"/form/start"}}],"data":{"form":{"start":""}}}',
-          then_contains: "\u958B\u59CB\u65E5\u671F"
-        },
-        {
-          scenario: "\u65E5\u671F\u52A0\u6642\u9593\u6B04\u5E36\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u9810\u7D04\u6642\u6BB5","enableDate":true,"enableTime":true,"value":{"path":"/form/at"}}],"data":{"form":{"at":""}}}',
-          then_contains: "\u9810\u7D04\u6642\u6BB5"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "input",
-        "form",
-        "date",
-        "time",
-        "\u65E5\u671F",
-        "\u6642\u9593"
-      ],
-      example: '{ "id": "f-start", "component": "DateTimeInput", "label": "\u958B\u59CB\u65E5\u671F", "enableDate": true, "value": { "path": "/form/start" } }\n',
-      source: "registry/ui-components/date_time_input/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          value: {
-            $ref: "#/$defs/DynamicString",
-            description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
-          },
-          enableDate: {
-            type: "boolean",
-            default: false,
-            description: "If true, allows the user to select a date."
-          },
-          enableTime: {
-            type: "boolean",
-            default: false,
-            description: "If true, allows the user to select a time."
-          },
-          min: {
-            $ref: "#/$defs/DynamicString",
-            description: "The minimum allowed date/time in ISO 8601 format."
-          },
-          max: {
-            $ref: "#/$defs/DynamicString",
-            description: "The maximum allowed date/time in ISO 8601 format."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text label for the input field."
-          },
-          component: {
-            const: "DateTimeInput"
-          }
-        },
-        required: [
-          "id",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_list",
-      display_name: "\u6E05\u55AE",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "List",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u4E00\u500B\u8CC7\u6599\u9663\u5217\u5C55\u958B\u6210\u91CD\u8907\u7684\u9805\u76EE\uFF1A\u6BCF\u4E00\u7B46\u8CC7\u6599\u9577\u4E00\u500B\u540C\u6A23\u7684\u6A23\u677F\uFF08\u4F8B\u5982\u6BCF\u689D\u5DE5\u4F5C\u6D41\u4E00\u5F35\u5361\uFF09\u3002",
-      renders: "\u4E00\u4E32\u76F4\u5411\uFF08\u6216\u6A6B\u5411\uFF09\u6392\u5217\u7684\u9805\u76EE\uFF0C\u6BCF\u4E00\u9805\u90FD\u662F\u540C\u4E00\u500B\u6A23\u677F\u5143\u4EF6\uFF0C\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\u8B80\u90A3\u4E00\u7B46\u7684\u6B04\u4F4D\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u6A23\u677F {"componentId": "\u6BCF\u4E00\u9805\u7684\u5143\u4EF6 id", "path": "/\u8CC7\u6599\u9663\u5217"}\uFF1B\u6A23\u677F\u88E1\u7684 {"path": "name"} \u8B80\u7684\u662F\u90A3\u4E00\u7B46\u7684 name'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE",
-        empty: "\u7A7A\u9663\u5217\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE\uFF08\u300C\u6C92\u6709\u8CC7\u6599\u300D\u7684\u5B57\u8981\u53E6\u653E\u4E00\u500B Text\uFF0C\u756B\u9762\u5B9A\u7FA9\u81EA\u5DF1\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A\uFF09",
-        error: "\u67D0\u4E00\u7B46\u7F3A\u6B04\u4F4D\u6642\uFF0C\u90A3\u4E00\u7B46\u7684\u5C0D\u61C9\u6587\u5B57\u662F\u7A7A\u7684\uFF0C\u5176\u4ED6\u7B46\u7167\u5E38",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u76F4\u5411\u6E05\u55AE\u4E0D\u53D7\u5F71\u97FF\uFF1B\u6A6B\u5411\u6E05\u55AE\u6703\u51FA\u73FE\u6C34\u5E73\u6372\u52D5"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u6BCF\u7B46\u8CC7\u6599\u9577\u4E00\u9805",
-          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"row","path":"/workflows"}},{"id":"row","component":"Text","text":{"path":"name"}}],"data":{"workflows":[{"name":"notify_daily"},{"name":"ingest_docs"}]}}',
-          then_contains: "ingest_docs"
-        },
-        {
-          scenario: "\u6A23\u677F\u53EF\u4EE5\u662F\u4E00\u5F35\u5361",
-          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"card","path":"/items"}},{"id":"card","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"title"}}],"data":{"items":[{"title":"\u7B2C\u4E00\u5F35\u5361"}]}}',
-          then_contains: "\u7B2C\u4E00\u5F35\u5361"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "list",
-        "repeat",
-        "collection"
-      ],
-      example: '{ "id": "wf-list", "component": "List", "children": { "componentId": "wf-card", "path": "/workflows" } }\n',
-      source: "registry/ui-components/list/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
-          },
-          direction: {
-            type: "string",
-            enum: [
-              "vertical",
-              "horizontal"
-            ],
-            default: "vertical",
-            description: "The direction in which the list items are laid out."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis."
-          },
-          component: {
-            const: "List"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_row",
-      display_name: "\u6A6B\u6392",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Row",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u5DE6\u5F80\u53F3\u6392\uFF0C\u4F8B\u5982\u300C\u540D\u7A31\uFF5C\u6392\u7A0B\uFF5C\u6700\u8FD1\u4E00\u6B21\u7D50\u679C\u300D\u653E\u5728\u540C\u4E00\u884C\u3002",
-      renders: "\u4E00\u5217\uFF0C\u5B50\u5143\u4EF6\u5DE6\u53F3\u4E26\u6392\uFF0Cjustify \u6C7A\u5B9A\u64E0\u5728\u4E00\u8D77\u6216\u63A8\u5230\u5169\u7AEF\uFF08spaceBetween\uFF09\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
-        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u6642\u662F\u4E00\u689D\u7A7A\u5217",
-        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u5B50\u5143\u4EF6\u5BEC\u5EA6\u7E2E\u5C0F\uFF1B\u5167\u5BB9\u592A\u9577\u6642\u6587\u5B57\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u540D\u7A31\u8207\u72C0\u614B\u4E26\u6392",
-          given: '{"components":[{"id":"root","component":"Row","children":["n","s"],"justify":"spaceBetween"},{"id":"n","component":"Text","text":"\u6BCF\u65E5\u5F59\u6574"},{"id":"s","component":"Text","text":"success"}]}',
-          then_contains: "\u6BCF\u65E5\u5F59\u6574"
-        },
-        {
-          scenario: "\u4E26\u6392\u7684\u7B2C\u4E8C\u683C\u4E5F\u756B\u5F97\u51FA\u4F86",
-          given: '{"components":[{"id":"root","component":"Row","children":["n","s"]},{"id":"n","component":"Text","text":"A"},{"id":"s","component":"Text","text":"\u53F3\u908A\u90A3\u683C"}]}',
-          then_contains: "\u53F3\u908A\u90A3\u683C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "row",
-        "inline"
-      ],
-      example: '{ "id": "wf-head", "component": "Row", "children": ["wf-name", "wf-last"], "justify": "spaceBetween" }\n',
-      source: "registry/ui-components/row/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "spaceAround",
-              "spaceBetween",
-              "spaceEvenly",
-              "start",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
-          },
-          component: {
-            const: "Row"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_text",
-      display_name: "\u6587\u5B57",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Text",
-        implementation: "a2ui-basic"
-      },
-      description: "\u986F\u793A\u4E00\u6BB5\u6587\u5B57\uFF1A\u6A19\u984C\u3001\u5167\u6587\u3001\u6578\u5B57\u3001\u8A3B\u8A18\u3002\u5167\u5BB9\u53EF\u4EE5\u5BEB\u6B7B\uFF0C\u4E5F\u53EF\u4EE5\u7D81\u5230\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
-      renders: "\u4E00\u884C\u6216\u4E00\u6BB5\u6587\u5B57\uFF0Cvariant \u6C7A\u5B9A\u5927\u5C0F\uFF08h1\u2013h5 \u6A19\u984C\u3001body \u5167\u6587\u3001caption \u5C0F\u5B57\u8A3B\u8A18\uFF09\u3002",
-      data_inputs: [
-        {
-          name: "text",
-          what: '\u8981\u986F\u793A\u7684\u5B57\u3002\u5BEB\u6B7B\u5C31\u662F\u5B57\u4E32\uFF1B\u8981\u5F9E\u8CC7\u6599\u4F86\u5C31\u5BEB {"path": "/\u6B04\u4F4D"}\uFF0C\u5728 List \u7684\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\uFF08\u4F8B {"path": "name"}\uFF09'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642\u986F\u793A\u7A7A\u5B57\u4E32\uFF0C\u4E0D\u986F\u793A undefined",
-        empty: "\u7D81\u5230\u7684\u6B04\u4F4D\u4E0D\u5B58\u5728\u6642\u986F\u793A\u7A7A\u5B57\u4E32",
-        error: "\u4E0D\u6703\u4E1F\u932F\uFF1B\u756B\u4E0D\u51FA\u4F86\u7684\u503C\u4E00\u5F8B\u7576\u7A7A\u5B57\u4E32",
-        disabled: "\u6587\u5B57\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5BEB\u6B7B\u7684\u6A19\u984C",
-          given: '{"components":[{"id":"root","component":"Text","text":"\u5DE5\u4F5C\u6D41","variant":"h2"}]}',
-          then_contains: "\u5DE5\u4F5C\u6D41"
-        },
-        {
-          scenario: "\u7D81\u8CC7\u6599\u7684\u6578\u5B57",
-          given: '{"components":[{"id":"root","component":"Text","text":{"path":"/count"}}],"data":{"count":"\u5171 3 \u689D"}}',
-          then_contains: "\u5171 3 \u689D"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "text",
-        "label",
-        "heading"
-      ],
-      example: '{ "id": "wf-name", "component": "Text", "text": { "path": "name" }, "variant": "h3" }\n',
-      source: "registry/ui-components/text/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          text: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "h1",
-              "h2",
-              "h3",
-              "h4",
-              "h5",
-              "caption",
-              "body"
-            ],
-            default: "body",
-            description: "A hint for the base text style."
-          },
-          component: {
-            const: "Text"
-          }
-        },
-        required: [
-          "id",
-          "text",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_text_field",
-      display_name: "\u6587\u5B57\u8F38\u5165\u6846",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "TextField",
-        implementation: "a2ui-basic"
-      },
-      description: "\u8B93\u4EBA\u8F38\u5165\u4E00\u6BB5\u5B57\uFF08\u55AE\u884C\u3001\u591A\u884C\u3001\u6578\u5B57\u3001\u5BC6\u78BC\uFF09\u3002\u8F38\u5165\u7684\u503C\u76F4\u63A5\u5BEB\u9032\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\uFF0C\u9001\u51FA\u6642\u7531\u8868\u55AE\u7684 Button \u5E36\u8D70\u3002\u9019\u662F\u300C\u8868\u55AE\u300D\u7684\u57FA\u672C\u7A4D\u6728\u3002",
-      renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u8F38\u5165\u6846\u3002variant \u6C7A\u5B9A\u5F62\u72C0\uFF1AshortText \u55AE\u884C\u3001longText \u591A\u884C\u3001number \u6578\u5B57\u3001obscured \u5BC6\u78BC\u3002",
-      data_inputs: [
-        {
-          name: "label",
-          what: "\u8F38\u5165\u6846\u7684\u6A19\u7C64\uFF08\u6B04\u4F4D\u540D\u7A31\uFF0C\u7D66\u4EBA\u770B\u7684\u5B57\uFF09"
-        },
-        {
-          name: "value",
-          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u4EBA\u8F38\u5165\u7684\u5B57\u6703\u5BEB\u5230\u8CC7\u6599\u7684\u9019\u500B\u4F4D\u7F6E\uFF0CButton \u7684 action.context \u518D\u7528\u540C\u4E00\u500B path \u628A\u5B83\u5E36\u8D70\u3002\u5FC5\u9808\u7D81 path\uFF0C\u5BEB\u6B7B\u5B57\u4E32\u5C31\u8B8A\u6210\u4E0D\u80FD\u6539'
-        },
-        {
-          name: "variant",
-          what: "shortText\uFF08\u9810\u8A2D\uFF09\uFF0FlongText\uFF0Fnumber\uFF0Fobscured"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u8F38\u5165\u6846\u7ACB\u5373\u53EF\u8F38\u5165",
-        empty: "\u6C92\u6709\u503C\u6642\u986F\u793A\u6A19\u7C64\u7576\u63D0\u793A\uFF0C\u503C\u662F\u7A7A\u5B57\u4E32",
-        error: "validationRegexp \u6216 checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57\uFF0C\u9001\u51FA\u7531\u5BBF\u4E3B\u64CB",
-        disabled: "checks \u4E0D\u901A\u904E\u6642\u4E0D\u5F71\u97FF\u8F38\u5165\uFF0C\u53EA\u6A19\u932F\u8AA4",
-        narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u8F38\u5165\u6846\u5E36\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"TextField","label":"\u59D3\u540D","value":{"path":"/form/name"}}],"data":{"form":{"name":""}}}',
-          then_contains: "\u59D3\u540D"
-        },
-        {
-          scenario: "\u591A\u884C\u8F38\u5165\u6846",
-          given: '{"components":[{"id":"root","component":"TextField","label":"\u8ACB\u5047\u539F\u56E0","variant":"longText","value":{"path":"/form/reason"}}],"data":{"form":{"reason":""}}}',
-          then_contains: "\u8ACB\u5047\u539F\u56E0"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "input",
-        "form",
-        "text",
-        "textfield",
-        "\u8F38\u5165"
-      ],
-      example: '{ "id": "f-name", "component": "TextField", "label": "\u59D3\u540D", "value": { "path": "/form/name" } }\n',
-      source: "registry/ui-components/text_field/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text label for the input field."
-          },
-          value: {
-            $ref: "#/$defs/DynamicString",
-            description: "The value of the text field."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "longText",
-              "number",
-              "shortText",
-              "obscured"
-            ],
-            default: "shortText",
-            description: "The type of input field to display."
-          },
-          validationRegexp: {
-            type: "string",
-            description: "A regular expression used for client-side validation of the input."
-          },
-          component: {
-            const: "TextField"
-          }
-        },
-        required: [
-          "id",
-          "label",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_workflow_graph",
-      display_name: "\u7BC0\u9EDE\u8207\u9023\u7DDA\u5716",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "WorkflowGraph",
-        implementation: "arcrun"
-      },
-      description: "\u628A\u4E00\u7FA4\u7BC0\u9EDE\u548C\u5B83\u5011\u4E4B\u9593\u7684\u9023\u7DDA\u756B\u6210\u4E00\u5F35\u53EF\u9EDE\u3001\u53EF\u7E2E\u653E\u7684\u5716\uFF1A\u5168\u5C40\u5716\uFF08\u5DE5\u4F5C\u6D41\u8207\u5B83\u5011\u8B80\u5BEB\u7684\u8CC7\u6599\u3001\u8AB0\u53EB\u8AB0\uFF0C\u65B7\u7DDA\u4EAE\u7D05\uFF09\u548C\u55AE\u4E00\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u7BC0\u9EDE\u8207\u9023\u7DDA\uFF09\u5171\u7528\u9019\u4E00\u9846\u3002",
-      renders: "layout=columns\uFF08XMind \u5F0F\u7684 drill\uFF0C\u4EE5\u67D0\u500B\u7BC0\u9EDE\u70BA\u4E2D\u5FC3\uFF09\uFF1A\u4E2D\u6B04\u662F\u4E2D\u5FC3\uFF08kind=center\uFF09\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF08\u5927\u7DB1\u7E2E\u6392\u7DDA\uFF09\uFF0C\u5DE6\u6B04\u662F\u547C\u53EB\u904E\u4F86\uFF0F\u5BEB\u8CC7\u6599\u7D66\u5B83\u7684\u9130\u5C45\uFF0C\u53F3\u6B04\u662F\u5B83\u53EB\u7684\u9130\u5C45\uFF1B\u6C92\u6709\u4E2D\u5FC3\u5C31\u662F\u6700\u5916\u5C64\u4E00\u6392\u540C\u8F29\uFF1B\u9023\u7DDA\u6A19\u51FA\u300C\u54EA\u4E00\u6B65 \u2192 \u53EB\u8AB0\u300D\uFF0C\u540C\u6B04\u7684\u7DDA\u7E5E\u5F27\uFF0Cvertical=true \u6642\u5168\u90E8\u6392\u6210\u4E00\u76F4\u6B04\u3002layout=flow\uFF08Claude Design \u7684 Workflow Viewer \u7248\u578B\uFF09\uFF1A\u7BC0\u9EDE\u5361\uFF1D\u8272\u584A\u5716\u793A\uFF0B\u540D\u5B57\uFF08\u986F\u793A\u540D\u512A\u5148\uFF09\uFF0B\u985E\u578B\u6A19\u7C64\uFF08\u53EA\u6A19\u6709\u5340\u5225\u610F\u7FA9\u7684\u985E\u578B\uFF09\uFF0B\u4E00\u884C\u7C21\u77ED\u8AAA\u660E\uFF0C\u7DB2\u5740\u8207 worker \u540D\u4E0D\u653E\u5728\u5361\u4E0A\uFF0C\u8C9D\u8332\u66F2\u7DDA\u9023\u7DDA\uFF0C\u88AB\u9078\uFF08selected\uFF09\u7684\u7BC0\u9EDE\u8207\u5B83\u7684\u9023\u7DDA\u9AD8\u4EAE\uFF1Bminimap=true \u6642\u5DE6\u4E0B\u89D2\u6709\u7E2E\u5C0F\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF1B\u7BC0\u9EDE\u7167\u9806\u5E8F\u5206\u5C64\uFF0C\u5BEC\u87A2\u5E55\u7531\u5DE6\u5230\u53F3\u3001\u7A84\u87A2\u5E55\uFF08vertical=true\uFF09\u7531\u4E0A\u5230\u4E0B\uFF0C\u689D\u4EF6\uFF0F\u5931\u6557\u7684\u7DDA\u5E36\u6587\u5B57\u3002\u7BC0\u9EDE\u6709 bad\uFF08\u7D05\u6846\uFF09\u3001dim\uFF08\u6DE1\uFF09\u5169\u7A2E\u6A19\u8A18\uFF0C\u9023\u7DDA\u6709 bad\uFF08\u7C97\u7D05\u7DDA\uFF0C\u9EDE\u5B83\u8DF3\u5230 href\uFF09\uFF1B\u7D05\u4E0D\u7D05\u7531\u8CC7\u6599\u8AAA\u4E86\u7B97\uFF0C\u9019\u9846\u5143\u4EF6\u4E0D\u5224\u65B7\u4EFB\u4F55\u4E8B\u3002",
-      data_inputs: [
-        {
-          name: "nodes",
-          what: "\u7BC0\u9EDE\u6E05\u55AE\uFF1Aid\u3001title\uFF0C\u9078\u586B sub\uFF08\u7B2C\u4E8C\u884C\u5B57\uFF0Cflow \u7248\u578B\u653E\u96F6\u4EF6 id\uFF09\u3001line3\uFF08flow \u5361\u7247\u53F3\u4E0B\u7684\u77ED\u5B57\uFF09\u3001badge\uFF08flow \u5361\u7247\u53F3\u4E0A\u7684\u985E\u578B\u6A19\u7C64\uFF0C\u5982 API\u3001AI\uFF09\u3001tone\uFF08\u5716\u793A\u8272\u584A\uFF1Agreen\uFF0Fblue\uFF0Famber\uFF0Fpurple\uFF0Fslate\uFF0Fgray\uFF0Fpink\uFF09\u3001icon\uFF08\u8272\u584A\u88E1\u7684\u4E00\u500B\u5B57\uFF09\u3001num\uFF08\u756B\u9762\u4E0A\u7684\u6307\u7A31\u7DE8\u865F\uFF0C\u986F\u793A\u6210\u300CN \u865F\u300D\uFF0C\u53EA\u7528\u4F86\u8DDF\u4EBA\u6216 AI \u6307\u67D0\u4E00\u584A\uFF0C\u4E0D\u4EE3\u8868\u5148\u5F8C\uFF09\u3001shape\uFF08\u56FA\u5B9A\u985E\u578B\u7684\u5916\u6846\uFF1Atrigger \u8D77\u9EDE\uFF1D\u5DE6\u534A\u5713\u3001call \u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41\uFF1D\u96D9\u5C64\u6846\u3001ext \u5916\u90E8\u670D\u52D9\uFF1D\u865B\u7DDA\u6846\u3001branch \u5224\u65B7\uFF1D\u516D\u89D2\u3001read\uFF0Fwrite \u8B80\u5BEB\u8CC7\u6599\u8868\uFF1D\u5713\u7B52\u9802\uFF1B\u6C92\u7D66\u5C31\u662F\u4E00\u822C\u5713\u89D2\u65B9\u584A\uFF09\u3001side\uFF08left\uFF0Fmid\uFF0Fright\uFF0Ccolumns \u7528\uFF09\u3001kind\uFF08item\uFF0Fgroup\uFF0Fdata\uFF0Fplat\uFF0Fmiss\uFF0Fcenter\uFF0Ftable\uFF1Btable\uFF1DUML \u985E\u5225\u5F0F\u7BC0\u9EDE\uFF0C\u8868\u540D\u7576\u6A19\u984C\u3001fields \u9010\u884C\u5217\u6B04\u4F4D\u3001more\uFF1D\u5176\u9918\u5E7E\u6B04\u6C92\u5217\u51FA\uFF09\u3001fields\u3001more\u3001bad\u3001dim\u3001href\uFF08\u9EDE\u5B83\u53BB\u54EA\uFF0C\u53EA\u6536 #/ \u958B\u982D\u7684\u7AD9\u5167\u7DB2\u5740\uFF09"
-        },
-        {
-          name: "edges",
-          what: "\u9023\u7DDA\u6E05\u55AE\uFF1Afrom\u3001to\uFF08\u7BC0\u9EDE id\uFF09\uFF0C\u9078\u586B kind\uFF08call\uFF0Fwrite\uFF0Fread\uFF0Fnext\uFF0Ffail\uFF0Fchild\uFF1Bchild\uFF1D\u4E2D\u5FC3\u5230\u5B83\u4E0B\u4E00\u5C64\u7684\u7E2E\u6392\u7DDA\uFF09\u3001label\u3001bad\u3001href\u3001tip\uFF08\u6ED1\u904E\u53BB\u986F\u793A\u7684\u8AAA\u660E\uFF09"
-        },
-        {
-          name: "layout / vertical / selected / minimap / pan / headLeft / headRight / zoom",
-          what: "\u7248\u578B\u3001\u9078\u53D6\u3001\u5168\u8C8C\u5716\u8207\u6B04\u6A19\u984C\uFF1Bzoom \u662F\u5728\u300C\u525B\u597D\u653E\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF1Bpan=true\uFF08flow \u7248\u578B\uFF09\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF0COVERVIEW \u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\u4E14\u9EDE\u5B83\u53EF\u8DF3\u904E\u53BB"
-        }
-      ],
-      interactions: [
-        {
-          name: "\u9EDE\u7BC0\u9EDE\uFF0F\u9EDE\u7D05\u7DDA",
-          what: "\u8DF3\u5230\u8A72\u7BC0\u9EDE\u6216\u8A72\u65B7\u7DDA\u6240\u5728\u7BC0\u9EDE\u7684 href\uFF08\u7AD9\u5167\u7DB2\u5740\uFF0C\u4E0D\u958B\u5916\u7AD9\uFF09"
-        }
-      ],
-      states: {
-        loading: "\u5143\u4EF6\u672C\u8EAB\u6C92\u6709\u8F09\u5165\u72C0\u614B\uFF1A\u547C\u53EB\u7AEF\u8CC7\u6599\u9084\u6C92\u5230\u5C31\u5148\u4E0D\u639B\u9019\u9846\uFF0C\u6216\u639B\u7A7A\u6E05\u55AE",
-        empty: "\u6C92\u6709\u7BC0\u9EDE\u6642\u756B\u4E00\u5F35\u7A7A\u7684\u5716\uFF08\u53EA\u6709\u6B04\u6A19\u984C\uFF09\uFF0C\u4E0D\u5831\u932F",
-        error: "\u8CC7\u6599\u5F62\u72C0\u4E0D\u5C0D\u7684\u7BC0\u9EDE\uFF0F\u9023\u7DDA\uFF08\u6C92\u6709 id\u3001\u9023\u5230\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE\uFF09\u6574\u7B46\u7565\u904E\uFF0C\u4E0D\u6703\u6574\u5F35\u5716\u58DE\u6389",
-        disabled: "\u5716\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF1B\u552F\u8B80\u662F\u9810\u8A2D\uFF0C\u6C92\u6709\u4EFB\u4F55\u6539\u52D5\u8CC7\u6599\u7684\u4E92\u52D5",
-        narrow: "\u5BB9\u5668\u6BD4\u5716\u7A84\u5C31\u7E2E\u5230\u6700\u5C0F 0.62 \u500D\uFF0C\u518D\u7A84\u6539\u6210\u6A6B\u5411\u6372\u52D5\uFF1Bflow \u7248\u578B\u53EF\u6539\u6210\u7531\u4E0A\u5230\u4E0B\uFF1Bpan=true \u6642\u6700\u5C0F\u53EA\u7E2E\u5230 0.9 \u500D\uFF0C\u5176\u9918\u9760\u5E73\u79FB"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5168\u5C40\u5716\uFF1A\u5DE6\u6B04\u5DE5\u4F5C\u6D41\u3001\u53F3\u6B04\u8CC7\u6599\u3001\u4E00\u689D\u65B7\u7DDA\u4EAE\u7D05\u4E26\u5E36\u6587\u5B57",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"columns","headLeft":"\u5DE5\u4F5C\u6D41","headRight":"\u8CC7\u6599","nodes":[{"id":"a","title":"rag_ingest_card","sub":"\u5DE5\u4F5C\u6D41","side":"left"},{"id":"m","title":"rag_cluster_auto","sub":"\u9019\u53F0\u6C92\u88DD\u9019\u689D\u5DE5\u4F5C\u6D41","side":"right","kind":"miss","bad":true}],"edges":[{"from":"a","to":"m","kind":"call","bad":true,"label":"\u2717 \u6C92\u88DD\u30FBtrigger_wiki_cluster","href":"#/flows/~w/rag_ingest_card/trigger_wiki_cluster"}]}]}',
-          then_contains: "rag_cluster_auto"
-        },
-        {
-          scenario: "\u6D41\u7A0B\u5716\uFF1A\u5169\u500B\u7BC0\u9EDE\u4E00\u689D\u7DDA\uFF0C\u7BC0\u9EDE\u5E36\u7DE8\u865F\u8207\u96F6\u4EF6\u540D",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","minimap":true,"selected":"w","nodes":[{"id":"input","title":"input","sub":"\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09","num":1,"tone":"green","badge":"IN"},{"id":"w","title":"write_triplet","sub":"\u6253\u4E00\u500B\u7DB2\u5740","num":2,"line3":"\u5BEB triplet"}],"edges":[{"from":"input","to":"w","kind":"next","tip":"\u6210\u529F\u5F8C"}]}]}',
-          then_contains: "write_triplet"
-        },
-        {
-          scenario: "\u56FA\u5B9A\u985E\u578B\u7684\u7BC0\u9EDE\uFF1A\u8D77\u9EDE\u3001\u5916\u90E8\u670D\u52D9\u3001\u5224\u65B7\u5404\u6709\u81EA\u5DF1\u7684\u5916\u6846\u8207\u6A19\u7C64\uFF0C\u7DE8\u865F\u986F\u793A\u6210 N \u865F",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":[{"id":"a","title":"\u6536\u5230\u7559\u8A00","sub":"\u8D77\u9EDE","num":1,"tone":"green","badge":"\u8D77\u9EDE","icon":"\u25B6","shape":"trigger"},{"id":"b","title":"\u767C Telegram","sub":"Telegram","num":2,"tone":"blue","badge":"\u5916\u90E8","icon":"A","shape":"ext"},{"id":"c","title":"\u6709\u6C92\u6709\u7968","sub":"\u5224\u65B7","num":3,"tone":"slate","badge":"\u5224\u65B7","icon":"?","shape":"branch"}],"edges":[{"from":"a","to":"b","kind":"next"},{"from":"b","to":"c","kind":"next"}]}]}',
-          then_contains: "2 \u865F"
-        },
-        {
-          scenario: "\u7BC0\u9EDE\u6E05\u55AE\u53EF\u4EE5\u7D81\u8CC7\u6599\u6A21\u578B",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":{"path":"/n"},"edges":{"path":"/e"}}],"data":{"n":[{"id":"x","title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE","sub":"\u96F6\u4EF6"}],"e":[]}}',
-          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "graph",
-        "workflow",
-        "observer"
-      ],
-      example: '{ "id": "root", "component": "WorkflowGraph", "layout": "flow",\n  "nodes": { "path": "/nodes" }, "edges": { "path": "/edges" } }\n',
-      source: "registry/ui-components/workflow-graph/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          layout: {
-            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          vertical: {
-            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
-            oneOf: [
-              {
-                type: "boolean"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          selected: {
-            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          minimap: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1\uFF1B\u9801\u9762\u5728\u756B\u5E03\u5916\u7559\u4E86 .df-mmslot \u5C31\u653E\u90A3\u88E1\uFF08\u4E0D\u84CB\u756B\u5E03\uFF09\uFF0C\u5426\u5247\u6D6E\u5728\u756B\u5E03\u5DE6\u4E0B\u89D2"
-          },
-          pan: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
-          },
-          headLeft: {
-            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headMid: {
-            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headRight: {
-            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          zoom: {
-            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
-            oneOf: [
-              {
-                type: "number"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          nodes: {
-            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    id: {
-                      type: "string"
-                    },
-                    title: {
-                      type: "string"
-                    },
-                    sub: {
-                      type: "string"
-                    },
-                    line3: {
-                      type: "string"
-                    },
-                    badge: {
-                      type: "string"
-                    },
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "blue",
-                        "amber",
-                        "purple",
-                        "slate",
-                        "gray",
-                        "pink"
-                      ]
-                    },
-                    icon: {
-                      type: "string"
-                    },
-                    num: {
-                      type: "number"
-                    },
-                    side: {
-                      type: "string",
-                      enum: [
-                        "left",
-                        "mid",
-                        "right"
-                      ]
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "item",
-                        "group",
-                        "data",
-                        "plat",
-                        "miss",
-                        "center",
-                        "table"
-                      ]
-                    },
-                    shape: {
-                      type: "string",
-                      enum: [
-                        "trigger",
-                        "call",
-                        "ext",
-                        "branch",
-                        "read",
-                        "write"
-                      ]
-                    },
-                    fields: {
-                      type: "array",
-                      items: {
-                        type: "string"
-                      }
-                    },
-                    more: {
-                      type: "number"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    dim: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "id",
-                    "title"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u500B\u7BC0\u9EDE"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          edges: {
-            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    from: {
-                      type: "string"
-                    },
-                    to: {
-                      type: "string"
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "call",
-                        "write",
-                        "read",
-                        "next",
-                        "fail",
-                        "child"
-                      ]
-                    },
-                    label: {
-                      type: "string"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    },
-                    tip: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "from",
-                    "to"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u689D\u9023\u7DDA"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          component: {
-            const: "WorkflowGraph"
-          }
-        },
-        required: [
-          "id",
-          "nodes",
-          "edges",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    }
-  ],
-  a2ui_catalog: {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    catalogId: "arcrun:catalog/v0",
-    components: {
-      Button: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "default",
-              "primary",
-              "borderless"
-            ],
-            default: "default",
-            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
-          },
-          action: {
-            $ref: "#/$defs/Action"
-          },
-          component: {
-            const: "Button"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "action",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Card: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
-          },
-          component: {
-            const: "Card"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      CheckBox: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text to display next to the checkbox."
-          },
-          value: {
-            $ref: "#/$defs/DynamicBoolean",
-            description: "The current state of the checkbox (true for checked, false for unchecked)."
-          },
-          component: {
-            const: "CheckBox"
-          }
-        },
-        required: [
-          "id",
-          "label",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      ChoicePicker: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The label for the group of options."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "multipleSelection",
-              "mutuallyExclusive"
-            ],
-            default: "mutuallyExclusive",
-            description: "A hint for how the choice picker should be displayed and behave."
-          },
-          options: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                label: {
-                  $ref: "#/$defs/DynamicString",
-                  description: "The text to display for this option."
-                },
-                value: {
-                  type: "string",
-                  description: "The stable value associated with this option."
-                }
-              },
-              required: [
-                "label",
-                "value"
-              ],
-              additionalProperties: false
-            },
-            description: "The list of available options to choose from."
-          },
-          value: {
-            $ref: "#/$defs/DynamicStringList",
-            description: "The list of currently selected values. This should be bound to a string array in the data model."
-          },
-          displayStyle: {
-            type: "string",
-            enum: [
-              "checkbox",
-              "chips"
-            ],
-            default: "checkbox",
-            description: "The display style of the component."
-          },
-          filterable: {
-            type: "boolean",
-            default: false,
-            description: "If true, displays a search input to filter the options."
-          },
-          component: {
-            const: "ChoicePicker"
-          }
-        },
-        required: [
-          "id",
-          "options",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Column: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "spaceBetween",
-              "spaceAround",
-              "spaceEvenly",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "start",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
-          },
-          component: {
-            const: "Column"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      DateTimeInput: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          value: {
-            $ref: "#/$defs/DynamicString",
-            description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
-          },
-          enableDate: {
-            type: "boolean",
-            default: false,
-            description: "If true, allows the user to select a date."
-          },
-          enableTime: {
-            type: "boolean",
-            default: false,
-            description: "If true, allows the user to select a time."
-          },
-          min: {
-            $ref: "#/$defs/DynamicString",
-            description: "The minimum allowed date/time in ISO 8601 format."
-          },
-          max: {
-            $ref: "#/$defs/DynamicString",
-            description: "The maximum allowed date/time in ISO 8601 format."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text label for the input field."
-          },
-          component: {
-            const: "DateTimeInput"
-          }
-        },
-        required: [
-          "id",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      List: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
-          },
-          direction: {
-            type: "string",
-            enum: [
-              "vertical",
-              "horizontal"
-            ],
-            default: "vertical",
-            description: "The direction in which the list items are laid out."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis."
-          },
-          component: {
-            const: "List"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Row: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "spaceAround",
-              "spaceBetween",
-              "spaceEvenly",
-              "start",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
-          },
-          component: {
-            const: "Row"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Text: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          text: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "h1",
-              "h2",
-              "h3",
-              "h4",
-              "h5",
-              "caption",
-              "body"
-            ],
-            default: "body",
-            description: "A hint for the base text style."
-          },
-          component: {
-            const: "Text"
-          }
-        },
-        required: [
-          "id",
-          "text",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      TextField: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text label for the input field."
-          },
-          value: {
-            $ref: "#/$defs/DynamicString",
-            description: "The value of the text field."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "longText",
-              "number",
-              "shortText",
-              "obscured"
-            ],
-            default: "shortText",
-            description: "The type of input field to display."
-          },
-          validationRegexp: {
-            type: "string",
-            description: "A regular expression used for client-side validation of the input."
-          },
-          component: {
-            const: "TextField"
-          }
-        },
-        required: [
-          "id",
-          "label",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      WorkflowGraph: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          layout: {
-            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          vertical: {
-            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
-            oneOf: [
-              {
-                type: "boolean"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          selected: {
-            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          minimap: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1\uFF1B\u9801\u9762\u5728\u756B\u5E03\u5916\u7559\u4E86 .df-mmslot \u5C31\u653E\u90A3\u88E1\uFF08\u4E0D\u84CB\u756B\u5E03\uFF09\uFF0C\u5426\u5247\u6D6E\u5728\u756B\u5E03\u5DE6\u4E0B\u89D2"
-          },
-          pan: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
-          },
-          headLeft: {
-            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headMid: {
-            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headRight: {
-            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          zoom: {
-            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
-            oneOf: [
-              {
-                type: "number"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          nodes: {
-            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    id: {
-                      type: "string"
-                    },
-                    title: {
-                      type: "string"
-                    },
-                    sub: {
-                      type: "string"
-                    },
-                    line3: {
-                      type: "string"
-                    },
-                    badge: {
-                      type: "string"
-                    },
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "blue",
-                        "amber",
-                        "purple",
-                        "slate",
-                        "gray",
-                        "pink"
-                      ]
-                    },
-                    icon: {
-                      type: "string"
-                    },
-                    num: {
-                      type: "number"
-                    },
-                    side: {
-                      type: "string",
-                      enum: [
-                        "left",
-                        "mid",
-                        "right"
-                      ]
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "item",
-                        "group",
-                        "data",
-                        "plat",
-                        "miss",
-                        "center",
-                        "table"
-                      ]
-                    },
-                    shape: {
-                      type: "string",
-                      enum: [
-                        "trigger",
-                        "call",
-                        "ext",
-                        "branch",
-                        "read",
-                        "write"
-                      ]
-                    },
-                    fields: {
-                      type: "array",
-                      items: {
-                        type: "string"
-                      }
-                    },
-                    more: {
-                      type: "number"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    dim: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "id",
-                    "title"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u500B\u7BC0\u9EDE"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          edges: {
-            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    from: {
-                      type: "string"
-                    },
-                    to: {
-                      type: "string"
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "call",
-                        "write",
-                        "read",
-                        "next",
-                        "fail",
-                        "child"
-                      ]
-                    },
-                    label: {
-                      type: "string"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    },
-                    tip: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "from",
-                    "to"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u689D\u9023\u7DDA"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          component: {
-            const: "WorkflowGraph"
-          }
-        },
-        required: [
-          "id",
-          "nodes",
-          "edges",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    $defs: {
-      anyComponent: {
-        oneOf: [
-          {
-            $ref: "#/components/Button"
-          },
-          {
-            $ref: "#/components/Card"
-          },
-          {
-            $ref: "#/components/CheckBox"
-          },
-          {
-            $ref: "#/components/ChoicePicker"
-          },
-          {
-            $ref: "#/components/Column"
-          },
-          {
-            $ref: "#/components/DateTimeInput"
-          },
-          {
-            $ref: "#/components/List"
-          },
-          {
-            $ref: "#/components/Row"
-          },
-          {
-            $ref: "#/components/Text"
-          },
-          {
-            $ref: "#/components/TextField"
-          },
-          {
-            $ref: "#/components/WorkflowGraph"
-          }
-        ],
-        discriminator: {
-          propertyName: "component"
-        }
-      },
-      ComponentId: {
-        type: "string",
-        description: "The unique identifier for a component, used for both definitions and references within the same surface."
-      },
-      AccessibilityAttributes: {
-        type: "object",
-        description: "Attributes to enhance accessibility when using assistive technologies like screen readers.",
-        properties: {
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "A short string, typically 1 to 3 words, used by assistive technologies to convey the purpose or intent of an element. For example, an input field might have an accessible label of 'User ID' or a button might be labeled 'Submit'."
-          },
-          description: {
-            $ref: "#/$defs/DynamicString",
-            description: "Additional information provided by assistive technologies about an element such as instructions, format requirements, or result of an action. For example, a mute button might have a label of 'Mute' and a description of 'Silences notifications about this conversation'."
-          }
-        }
-      },
-      CheckRule: {
-        type: "object",
-        description: "A single validation rule applied to an input component.",
-        properties: {
-          condition: {
-            $ref: "#/$defs/DynamicBoolean"
-          },
-          message: {
-            type: "string",
-            description: "The error message to display if the check fails."
-          }
-        },
-        required: [
-          "condition",
-          "message"
-        ],
-        additionalProperties: false
-      },
-      Action: {
-        description: "Defines an interaction handler that can either trigger a server-side event or execute a local client-side function.",
-        oneOf: [
-          {
-            type: "object",
-            description: "Triggers a server-side event.",
-            properties: {
-              event: {
-                type: "object",
-                description: "The event to dispatch to the server.",
-                properties: {
-                  name: {
-                    type: "string",
-                    description: "The name of the action to be dispatched to the server."
-                  },
-                  context: {
-                    type: "object",
-                    description: "A JSON object containing the key-value pairs for the action context. Values can be literals or paths. Use literal values unless the value must be dynamically bound to the data model. Do NOT use paths for static IDs.",
-                    additionalProperties: {
-                      $ref: "#/$defs/DynamicValue"
-                    }
-                  }
-                },
-                required: [
-                  "name"
-                ],
-                additionalProperties: false
-              }
-            },
-            required: [
-              "event"
-            ],
-            additionalProperties: false
-          },
-          {
-            type: "object",
-            description: "Executes a local client-side function.",
-            properties: {
-              functionCall: {
-                $ref: "#/$defs/FunctionCall"
-              }
-            },
-            required: [
-              "functionCall"
-            ],
-            additionalProperties: false
-          }
-        ]
-      },
-      DynamicString: {
-        description: "Represents a string",
-        oneOf: [
-          {
-            type: "string"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            allOf: [
-              {
-                $ref: "#/$defs/FunctionCall"
-              },
-              {
-                properties: {
-                  returnType: {
-                    const: "string"
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      DynamicBoolean: {
-        description: "A boolean value that can be a literal, a path, or a function call returning a boolean.",
-        oneOf: [
-          {
-            type: "boolean"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            allOf: [
-              {
-                $ref: "#/$defs/FunctionCall"
-              },
-              {
-                properties: {
-                  returnType: {
-                    const: "boolean"
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      DynamicStringList: {
-        description: "Represents a value that can be either a literal array of strings, a path to a string array in the data model, or a function call returning a string array.",
-        oneOf: [
-          {
-            type: "array",
-            items: {
-              type: "string"
-            }
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            allOf: [
-              {
-                $ref: "#/$defs/FunctionCall"
-              },
-              {
-                properties: {
-                  returnType: {
-                    const: "array"
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      ChildList: {
-        oneOf: [
-          {
-            type: "array",
-            items: {
-              $ref: "#/$defs/ComponentId"
-            },
-            description: "A static list of child component IDs."
-          },
-          {
-            type: "object",
-            description: "A template for generating a dynamic list of children from a data model list. The `componentId` is the component to use as a template.",
-            properties: {
-              componentId: {
-                $ref: "#/$defs/ComponentId"
-              },
-              path: {
-                type: "string",
-                description: "The path to the list of component property objects in the data model."
-              }
-            },
-            required: [
-              "componentId",
-              "path"
-            ],
-            additionalProperties: false
-          }
-        ]
-      },
-      DataBinding: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "A JSON Pointer path to a value in the data model."
-          }
-        },
-        required: [
-          "path"
-        ],
-        additionalProperties: false
-      },
-      FunctionCall: {
-        type: "object",
-        description: "Invokes a named function on the client.",
-        properties: {
-          call: {
-            type: "string",
-            description: "The name of the function to call."
-          },
-          args: {
-            type: "object",
-            description: "Arguments passed to the function.",
-            additionalProperties: {
-              anyOf: [
-                {
-                  $ref: "#/$defs/DynamicValue"
-                },
-                {
-                  type: "object",
-                  description: "A literal object argument (e.g. configuration)."
-                }
-              ]
-            }
-          },
-          returnType: {
-            type: "string",
-            description: "The expected return type of the function call.",
-            enum: [
-              "string",
-              "number",
-              "boolean",
-              "array",
-              "object",
-              "any",
-              "void"
-            ],
-            default: "boolean"
-          }
-        },
-        required: [
-          "call"
-        ],
-        oneOf: [
-          {
-            $ref: "catalog.json#/$defs/anyFunction"
-          }
-        ]
-      },
-      DynamicValue: {
-        description: "A value that can be a literal, a path, or a function call returning any type.",
-        oneOf: [
-          {
-            type: "string"
-          },
-          {
-            type: "number"
-          },
-          {
-            type: "boolean"
-          },
-          {
-            type: "array"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            $ref: "#/$defs/FunctionCall"
-          }
-        ]
-      }
-    }
-  }
-};
-
-// cypher-executor/src/lib/ui-surface.ts
-var MAX_SURFACE_BYTES = 64 * 1024;
-var CATALOG_NAMES = new Set(ui_catalog_generated_default.components.map((c) => c.a2ui.component));
-function validateUiSurface(raw2, actions) {
-  const errors = [];
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["ui.surface \u5FC5\u9808\u662F\u7269\u4EF6\uFF1A{ components: [...], data?: {...} }"];
-  const s = raw2;
-  if (!Array.isArray(s.components) || s.components.length === 0) return ["ui.surface.components \u5FC5\u9808\u662F\u975E\u7A7A\u9663\u5217"];
-  if (s.data !== void 0 && (typeof s.data !== "object" || s.data === null || Array.isArray(s.data))) errors.push("ui.surface.data \u5FC5\u9808\u662F\u7269\u4EF6");
-  const text = JSON.stringify(raw2);
-  if (text.length > MAX_SURFACE_BYTES) errors.push(`ui.surface \u592A\u5927\uFF08\u4E0A\u9650 ${MAX_SURFACE_BYTES / 1024} KB\uFF09`);
-  if (/openUrl|"call"\s*:|functionCall|javascript:|<script|https?:\/\//i.test(text)) {
-    errors.push("ui.surface \u4E0D\u53EF\u542B\u51FD\u5F0F\u547C\u53EB\u3001\u7DB2\u5740\u6216\u8173\u672C\uFF08\u53D7\u9650\u5143\u4EF6\u76EE\u9304\u53EA\u6536\u5143\u4EF6\uFF0C\u4E0D\u6536\u51FD\u5F0F\u8207\u4EFB\u610F\u9023\u7D50\uFF09");
-  }
-  const ids = /* @__PURE__ */ new Set();
-  const comps = s.components;
-  for (const [i, c] of comps.entries()) {
-    if (!c || typeof c !== "object" || typeof c.id !== "string" || !c.id) {
-      errors.push(`ui.surface.components[${i}] \u8981\u6709\u5B57\u4E32 id`);
-      continue;
-    }
-    if (ids.has(c.id)) errors.push(`ui.surface \u5143\u4EF6 id\u300C${c.id}\u300D\u91CD\u8907`);
-    ids.add(c.id);
-    if (typeof c.component !== "string" || !CATALOG_NAMES.has(c.component)) {
-      errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684 component\u300C${String(c.component)}\u300D\u4E0D\u5728\u756B\u9762\u5143\u4EF6\u76EE\u9304\u88E1\uFF08\u53EF\u7528\uFF1A${[...CATALOG_NAMES].join("\u3001")}\uFF1Barcrun_list_ui_components \u67E5\uFF09`);
-    }
-  }
-  if (!ids.has("root")) errors.push("ui.surface \u5FC5\u9808\u6709\u4E00\u500B id \u70BA root \u7684\u5143\u4EF6\uFF08\u756B\u9762\u7684\u6839\uFF09");
-  for (const c of comps) {
-    if (!c || typeof c.id !== "string") continue;
-    const kids = [];
-    if (Array.isArray(c.children)) kids.push(...c.children);
-    if (typeof c.child === "string") kids.push(c.child);
-    for (const k of kids) if (typeof k === "string" && !ids.has(k)) errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u6307\u5230\u4E0D\u5B58\u5728\u7684\u5B50\u5143\u4EF6\u300C${k}\u300D`);
-    const ev = c.action?.event;
-    if (ev) {
-      if (typeof ev.name !== "string" || !actions.includes(ev.name)) {
-        errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684\u6309\u9215\u4E8B\u4EF6\u300C${String(ev.name)}\u300D\u4E0D\u662F\u9019\u500B App \u7684\u52D5\u4F5C\uFF08\u53EF\u7528\uFF1A${actions.join("\u3001") || "\uFF08\u6C92\u6709\uFF09"}\uFF09\u2014\u2014\u756B\u9762\u53EA\u80FD\u89F8\u767C workflows\uFF0Factions \u5BA3\u544A\u904E\u7684\u52D5\u4F5C`);
-      }
-    }
-  }
-  return errors;
-}
-
-// cypher-executor/src/lib/app-system.ts
-init_recipes();
-init_credentials();
-
-// cypher-executor/src/lib/app-mcp.ts
-var MAX_APP_MCP_TOOLS = 42;
-var MAX_APP_MCP_GUIDES = 10;
-var MAX_DESCRIPTION = 2e3;
-var MAX_GUIDE_TEXT = 2e4;
-var NAME_RE = /^[a-z][a-z0-9_]{0,39}$/;
-var PROP_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
-var SCALAR_TYPES = ["string", "integer", "number", "boolean"];
-function validateToolInputSchema(schema, where) {
-  const errors = [];
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6\uFF08JSON Schema\uFF0Ctype: "object"\uFF09`];
-  const s = schema;
-  if (s.type !== "object") errors.push(`${where}.type \u5FC5\u9808\u662F "object"`);
-  const props = s.properties ?? {};
-  if (!props || typeof props !== "object" || Array.isArray(props)) {
-    errors.push(`${where}.properties \u5FC5\u9808\u662F\u7269\u4EF6`);
-    return errors;
-  }
-  for (const [k, v] of Object.entries(props)) {
-    if (!PROP_RE.test(k)) {
-      errors.push(`${where}.properties.${k}\uFF1A\u53C3\u6578\u540D\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u5E95\u7DDA\u958B\u982D\u7684 _caller\uFF0F_tool \u662F MCP \u81EA\u5DF1\u9644\u7684\uFF09`);
-      continue;
-    }
-    errors.push(...validateProp(v, `${where}.properties.${k}`, 0));
-  }
-  if (s.required !== void 0) {
-    if (!Array.isArray(s.required) || s.required.some((r) => typeof r !== "string")) {
-      errors.push(`${where}.required \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
-    } else {
-      for (const r of s.required) {
-        if (!(r in props)) errors.push(`${where}.required \u88E1\u7684\u300C${r}\u300D\u4E0D\u5728 properties`);
-      }
-    }
-  }
-  return errors;
-}
-function validateProp(v, where, depth) {
-  if (!v || typeof v !== "object" || Array.isArray(v)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6`];
-  const p = v;
-  const errors = [];
-  if (p.description !== void 0 && typeof p.description !== "string") errors.push(`${where}.description \u5FC5\u9808\u662F\u5B57\u4E32`);
-  if (p.type === "array") {
-    if (depth > 0) return [...errors, `${where}\uFF1A\u9663\u5217\u53EA\u80FD\u653E\u4E00\u5C64\uFF08\u9663\u5217\u88E1\u4E0D\u80FD\u518D\u653E\u9663\u5217\uFF09`];
-    if (!p.items || typeof p.items !== "object") return [...errors, `${where}.items \u5FC5\u586B`];
-    const it = p.items;
-    if (!SCALAR_TYPES.includes(String(it.type))) errors.push(`${where}.items.type \u53EA\u80FD\u662F ${SCALAR_TYPES.join("\uFF0F")}`);
-    if (it.enum !== void 0) errors.push(...validateEnum(it.enum, String(it.type), `${where}.items`));
-    return errors;
-  }
-  if (!SCALAR_TYPES.includes(String(p.type))) {
-    return [...errors, `${where}.type \u53EA\u80FD\u662F ${[...SCALAR_TYPES, "array"].join("\uFF0F")}\uFF08\u5DE2\u72C0\u7269\u4EF6\u8ACB\u6524\u5E73\u6210\u5E7E\u500B\u53C3\u6578\uFF09`];
-  }
-  if (p.enum !== void 0) errors.push(...validateEnum(p.enum, String(p.type), where));
-  return errors;
-}
-function validateEnum(e, type, where) {
-  if (type !== "string") return [`${where}.enum \u53EA\u652F\u63F4 string`];
-  if (!Array.isArray(e) || e.length === 0 || e.some((x) => typeof x !== "string")) return [`${where}.enum \u5FC5\u9808\u662F\u975E\u7A7A\u7684\u5B57\u4E32\u9663\u5217`];
-  return [];
-}
-function validateAppMcp(raw2, workflows) {
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["mcp \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 tools\u3001guides \u5169\u6B04\uFF09"];
-  const m = raw2;
-  const errors = [];
-  const wfNames = new Set(
-    (Array.isArray(workflows) ? workflows : []).map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
-  );
-  if (m.tools !== void 0) {
-    if (!Array.isArray(m.tools)) {
-      errors.push("mcp.tools \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      if (m.tools.length > MAX_APP_MCP_TOOLS) errors.push(`mcp.tools \u6700\u591A ${MAX_APP_MCP_TOOLS} \u652F\uFF08\u73FE\u5728 ${m.tools.length} \u652F\uFF09`);
-      const seen = /* @__PURE__ */ new Set();
-      m.tools.forEach((t, i) => {
-        const at = `mcp.tools[${i}]`;
-        if (!t || typeof t !== "object") {
-          errors.push(`${at} \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const tool = t;
-        const label = typeof tool.name === "string" ? `mcp.tools\u300C${tool.name}\u300D` : at;
-        if (typeof tool.name !== "string" || !NAME_RE.test(tool.name)) {
-          errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u226440 \u5B57\uFF09`);
-        } else if (seen.has(tool.name)) {
-          errors.push(`${label} \u91CD\u8907\u4E86`);
-        } else {
-          seen.add(tool.name);
-        }
-        if (typeof tool.description !== "string" || tool.description.trim() === "") {
-          errors.push(`${label}.description \u5FC5\u586B\u2014\u2014AI \u53EA\u770B\u9019\u4E00\u6BB5\u6C7A\u5B9A\u8981\u4E0D\u8981\u7528\u9019\u652F\u5DE5\u5177`);
-        } else if (tool.description.length > MAX_DESCRIPTION) {
-          errors.push(`${label}.description \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_DESCRIPTION} \u5B57\uFF09`);
-        }
-        if (typeof tool.workflow !== "string" || !wfNames.has(tool.workflow)) {
-          errors.push(
-            `${label}.workflow \u5FC5\u9808\u662F\u9019\u4EFD\u5BA3\u544A\u88E1\u7684\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
-          );
-        }
-        if (tool.read_only !== void 0 && typeof tool.read_only !== "boolean") errors.push(`${label}.read_only \u5FC5\u9808\u662F true\uFF0Ffalse`);
-        errors.push(...validateToolInputSchema(tool.input_schema, `${label}.input_schema`));
-      });
-    }
-  }
-  if (m.guides !== void 0) {
-    if (!Array.isArray(m.guides)) {
-      errors.push("mcp.guides \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      if (m.guides.length > MAX_APP_MCP_GUIDES) errors.push(`mcp.guides \u6700\u591A ${MAX_APP_MCP_GUIDES} \u4EFD`);
-      const seen = /* @__PURE__ */ new Set();
-      m.guides.forEach((g, i) => {
-        const at = `mcp.guides[${i}]`;
-        if (!g || typeof g !== "object") {
-          errors.push(`${at} \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const guide = g;
-        if (typeof guide.name !== "string" || !NAME_RE.test(guide.name)) errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D`);
-        else if (seen.has(guide.name)) errors.push(`${at}.name\u300C${guide.name}\u300D\u91CD\u8907\u4E86`);
-        else seen.add(guide.name);
-        if (typeof guide.description !== "string" || guide.description.trim() === "") errors.push(`${at}.description \u5FC5\u586B`);
-        if (typeof guide.text !== "string" || guide.text.trim() === "") errors.push(`${at}.text \u5FC5\u586B`);
-        else if (guide.text.length > MAX_GUIDE_TEXT) errors.push(`${at}.text \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_GUIDE_TEXT} \u5B57\uFF09`);
-      });
-    }
-  }
-  return errors;
-}
-function installedMcpOf(appId, mcp) {
-  const tools = (mcp?.tools ?? []).map((t) => ({
-    name: t.name,
-    description: t.description,
-    input_schema: t.input_schema,
-    wf_key: `${appId}__${t.workflow}`,
-    read_only: t.read_only === true
-  }));
-  const guides = (mcp?.guides ?? []).map((g) => ({ name: g.name, description: g.description, text: g.text }));
-  if (tools.length === 0 && guides.length === 0) return void 0;
-  return { tools, guides };
-}
-function mcpCatalogOf(apps) {
-  return apps.filter((a) => a.mcp && (a.status === void 0 || a.status === "active")).map((a) => ({ app_id: a.id, app_name: a.name, version: a.version, tools: a.mcp.tools, guides: a.mcp.guides })).sort((x, y) => x.app_id.localeCompare(y.app_id));
-}
-
-// cypher-executor/src/lib/subrequest-meter.ts
-var count = 0;
-function noteSubrequest() {
-  count++;
-}
-function subrequestCount() {
-  return count;
-}
-
-// shared/dataflow-graph/extract.mjs
-function normalizeWorkflow(input) {
-  const wf = input && typeof input === "object" ? input : {};
-  const name = String(wf.name ?? wf.graph?.name ?? wf.id ?? "");
-  const graph = wf.graph && typeof wf.graph === "object" ? wf.graph : wf;
-  const config = (wf.config && typeof wf.config === "object" ? wf.config : null) ?? (graph.config && typeof graph.config === "object" ? graph.config : null) ?? {};
-  if (Array.isArray(graph.nodes) && graph.nodes.some((n) => n && (n.data || n.componentId))) {
-    const nodes2 = graph.nodes.map((n) => {
-      const cfg = config[n.label] ?? config[n.id] ?? {};
-      const { component: cfgComponent, ...cfgRest } = cfg;
-      const data = { ...cfgRest, ...n.data ?? {} };
-      const component = String(
-        (n.componentId && n.componentId !== n.id ? n.componentId : void 0) ?? cfgComponent ?? n.componentId ?? ""
-      );
-      return { id: String(n.id), component, data };
-    });
-    const edges2 = (Array.isArray(graph.edges) ? graph.edges : []).map((e) => ({
-      from: String(e.from),
-      to: String(e.to),
-      type: String(e.type ?? ""),
-      branch: e.branch
-    }));
-    return { name, nodes: nodes2, edges: edges2 };
-  }
-  const flow = Array.isArray(graph.flow) ? graph.flow : [];
-  const ids = /* @__PURE__ */ new Set();
-  const edges = [];
-  for (const line of flow) {
-    const parts = String(line).split(">>").map((s) => s.trim());
-    if (parts.length !== 3) continue;
-    const [from, label, to] = parts;
-    ids.add(from);
-    ids.add(to);
-    edges.push({ from, to, type: edgeTypeOf(label), ...branchOf(label) ? { branch: branchOf(label) } : {} });
-  }
-  for (const k of Object.keys(config)) ids.add(k);
-  const nodes = [...ids].map((id) => {
-    const { component, ...data } = config[id] ?? {};
-    return { id, component: String(component ?? (id === "input" ? "input" : "")), data };
-  });
-  return { name, nodes, edges };
-}
-function edgeTypeOf(label) {
-  const l = String(label).trim();
-  if (/^(ON_FAIL|FAIL|失敗時)$/i.test(l)) return "ON_FAIL";
-  if (/^(ON_SUCCESS|成功後|SUCCESS)$/i.test(l)) return "ON_SUCCESS";
-  if (/^(ON_TRUE|TRUE)$/i.test(l)) return "ON_TRUE";
-  if (/^(ON_FALSE|FALSE|ELSE)$/i.test(l)) return "ON_FALSE";
-  if (/^(ON_BRANCH|分支)/i.test(l)) return "ON_BRANCH";
-  if (/^(對每個|FOREACH)/i.test(l)) return "FOREACH";
-  return l;
-}
-function branchOf(label) {
-  const m = String(label).match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
-  return m ? m[1] : void 0;
-}
-var DYNAMIC_RE = /\{\{[\s\S]*?\}\}/;
-var PLACEHOLDER_RE = /^__[A-Z0-9_]+__$/;
-var NAME_RE2 = /^[\w.:-]+$/;
-function classifyName(v) {
-  if (typeof v !== "string") return "dynamic";
-  const s = v.trim();
-  if (s === "") return "invalid";
-  if (DYNAMIC_RE.test(s)) return "dynamic";
-  if (PLACEHOLDER_RE.test(s)) return "placeholder";
-  if (!NAME_RE2.test(s)) return "invalid";
-  return "literal";
-}
-function isKbdbUrl(url) {
-  if (typeof url !== "string") return false;
-  return /__KBDB_BASE__/.test(url) || /\/\/[^/]*kbdb[^/]*\//i.test(url) || /\{\{[^}]*kbdb[^}]*\}\}/i.test(url) || /(^|[^\w])\/kbdb\//.test(url) || /__[A-Z0-9_]+__\/kbdb\//.test(url) || /^[a-z]+:\/\/[^/]+\/kbdb\//i.test(url);
-}
-function splitKbdbUrl(url) {
-  let rest = url.replace(/^\{\{[^}]*\}\}/, "").replace(/^__[A-Z0-9_]+__/, "").replace(/^[a-z]+:\/\/[^/]+/i, "");
-  rest = rest.replace(/^\/kbdb(?=\/)/, "");
-  const qi = rest.indexOf("?");
-  const path = qi >= 0 ? rest.slice(0, qi) : rest;
-  const query = {};
-  if (qi >= 0) {
-    for (const kv of rest.slice(qi + 1).split("&")) {
-      const [k, ...v] = kv.split("=");
-      if (k) query[decodeSafe(k)] = decodeSafe(v.join("="));
-    }
-  }
-  return { path, query };
-}
-function decodeSafe(s) {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-}
-function workflowCallOf(url, selfOrigins = []) {
-  if (typeof url !== "string") return null;
-  const m = url.match(/\/webhooks\/named\/(?:([^/?#]+)\/)?([^/?#]+)\/(trigger|query)(?:[?#]|$)/);
-  if (!m) return null;
-  const head = url.slice(0, m.index);
-  const local = head === "" || /^__[A-Z0-9_]+__$/.test(head) || /^\{\{[^}]*\}\}$/.test(head) || selfOrigins.some((o) => head === o.replace(/\/$/, ""));
-  if (!local) return { external: true, url };
-  const name = m[2];
-  return { workflow: name, kind: classifyName(name) };
-}
-function substitute(template, data) {
-  return String(template).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (all, key) => {
-    if (key.startsWith("_")) return all;
-    const v = data[key];
-    return typeof v === "string" && !DYNAMIC_RE.test(v) ? v : all;
-  });
-}
-function requestOf(node, recipes) {
-  const d = node.data ?? {};
-  const recipe = recipes?.get?.(String(node.component).toLowerCase());
-  if (recipe && typeof recipe.endpoint === "string") {
-    return {
-      method: String(recipe.method ?? "GET").toUpperCase(),
-      url: substitute(recipe.endpoint, d),
-      body: d.body_json ?? d.body ?? recipe.body_template,
-      via: `recipe:${recipe.canonical_id}`
-    };
-  }
-  if (typeof d.url !== "string") return null;
-  return { method: String(d.method ?? "GET").toUpperCase(), url: d.url, body: d.body_json ?? d.body, via: "http" };
-}
-function parseBody2(body) {
-  if (typeof body === "string") {
-    try {
-      return JSON.parse(body);
-    } catch {
-      return null;
-    }
-  }
-  return body && typeof body === "object" ? body : null;
-}
-function extractNodeIO(node, { recipes, selfOrigins } = {}) {
-  const out = { reads: [], writes: [], calls: [], dynamic: [] };
-  const d = node.data ?? {};
-  const comp = String(node.component ?? "");
-  if (comp === "trigger_workflow" || /\/trigger_workflow$/.test(comp)) {
-    const w = d.workflow_name;
-    const kind = classifyName(w);
-    if (kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
-    else out.calls.push({ workflow: String(w ?? ""), kind, node: node.id, via: "trigger_workflow" });
-    return out;
-  }
-  const req = requestOf(node, recipes);
-  if (!req) return out;
-  const call = workflowCallOf(req.url, selfOrigins);
-  if (call && !call.external) {
-    if (call.kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
-    else out.calls.push({ workflow: call.workflow, kind: call.kind, node: node.id, via: req.via });
-    return out;
-  }
-  if (!isKbdbUrl(req.url)) return out;
-  const { path, query } = splitKbdbUrl(req.url);
-  const body = parseBody2(req.body);
-  const push = (list, kind, template, fields) => {
-    const tk = classifyName(template);
-    if (tk === "dynamic") {
-      out.dynamic.push({ node: node.id, what: list === out.reads ? "read" : "write" });
-      return;
-    }
-    list.push({ kind, template: String(template ?? ""), template_kind: tk, ...fields?.length ? { fields } : {}, node: node.id, via: req.via });
-  };
-  const fieldOf = (q) => q.field && classifyName(q.field) === "literal" ? [q.field] : void 0;
-  let m;
-  if (m = path.match(/^\/records\/by-(template|source)\/([^/]+)$/)) {
-    push(out.reads, "record", decodeSafe(m[2]), fieldOf(query));
-  } else if (path === "/records" && req.method === "GET" && query.template) {
-    push(out.reads, "record", query.template, fieldOf(query));
-  } else if (path === "/records" && req.method === "POST" && body) {
-    const fields = [...Object.keys(body.values ?? {}), ...Object.keys(body.entry_ids ?? {})];
-    push(out.writes, "record", body.template, fields);
-  } else if (/^\/records\/[^/]+$/.test(path) && ["PATCH", "PUT"].includes(req.method)) {
-    if (body?.template) push(out.writes, "record", body.template, Object.keys(body.values ?? {}));
-    else out.dynamic.push({ node: node.id, what: "write" });
-  } else if (/^\/entries(\/search)?$/.test(path) && req.method === "GET" && query.template) {
-    push(out.reads, "entry", query.template);
-  } else if (path === "/entries" && req.method === "POST" && body && "template" in body) {
-    push(out.writes, "entry", body.template);
-  } else if (/^\/entries\/[^/]+$/.test(path) && ["PUT", "PATCH"].includes(req.method) && body && "template" in body) {
-    push(out.writes, "entry", body.template);
-  }
-  return out;
-}
-function codeLiterals(code) {
-  const found = /* @__PURE__ */ new Set();
-  if (typeof code !== "string") return found;
-  const re = /(['"`])([a-z][a-z0-9_]{2,63})\1/g;
-  let m;
-  while ((m = re.exec(code)) !== null) found.add(m[2]);
-  return found;
-}
-function swallowsFailure(node, fromId) {
-  const code = node?.data?.code;
-  if (typeof code !== "string") return false;
-  if (/\bthrow\b/.test(code)) return false;
-  if (!/\bsuccess\s*:\s*true\b/.test(code)) return false;
-  if (fromId) {
-    const { code: _c, ...rest } = node.data;
-    const esc2 = String(fromId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`\\{\\{\\s*${esc2}(\\.|\\s*\\}\\})`).test(JSON.stringify(rest))) return false;
-  }
-  return true;
-}
-function extractWorkflowIO(input, opts = {}) {
-  const wf = normalizeWorkflow(input);
-  const res = { name: wf.name, reads: [], writes: [], calls: [], dynamic: [], mentions: [], swallows: [] };
-  const byId = new Map(wf.nodes.map((n) => [n.id, n]));
-  const callNodes = /* @__PURE__ */ new Map();
-  for (const n of wf.nodes) {
-    const io = extractNodeIO(n, opts);
-    res.reads.push(...io.reads);
-    res.writes.push(...io.writes);
-    res.calls.push(...io.calls);
-    res.dynamic.push(...io.dynamic);
-    for (const c of io.calls) callNodes.set(n.id, c);
-    for (const lit of codeLiterals(n.data?.code)) res.mentions.push({ template: lit, node: n.id });
-  }
-  for (const e of wf.edges) {
-    const isFail = e.type === "ON_FAIL" || e.type === "ON_BRANCH" && e.branch === "catch";
-    if (!isFail) continue;
-    const call = callNodes.get(e.from);
-    const handler = byId.get(e.to);
-    if (call && handler && swallowsFailure(handler, e.from)) {
-      res.swallows.push({ node: e.to, from: e.from, workflow: call.workflow });
-    }
-  }
-  return res;
-}
-
-// shared/dataflow-graph/rules.mjs
-function slotsOf(t) {
-  if (Array.isArray(t?.slots)) return t.slots.map(String);
-  if (typeof t?.slots_json === "string") {
-    try {
-      const s = JSON.parse(t.slots_json);
-      return Array.isArray(s) ? s.map(String) : null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-function editDistance(a, b) {
-  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
-  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-  }
-  return dp[a.length][b.length];
-}
-function closest(name, pool) {
-  let best = null;
-  for (const c of pool) {
-    const d = editDistance(name, c);
-    if (d <= Math.max(1, Math.floor(name.length / 5)) && (!best || d < best.d)) best = { c, d };
-  }
-  return best?.c;
-}
-function addTo2(map, key, owner) {
-  if (!map.has(key)) map.set(key, /* @__PURE__ */ new Set());
-  map.get(key).add(owner);
-}
-function checkDataflow(input) {
-  const opts = {
-    recipes: new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r])),
-    selfOrigins: input.selfOrigins ?? []
-  };
-  const subjectIO = (input.subjects ?? []).map((w) => extractWorkflowIO(w, opts));
-  const subjectNames = new Set(subjectIO.map((w) => w.name));
-  const deployedIO = (input.deployed ?? []).map((w) => ({ name: normalizeWorkflow(w).name, w })).filter((x) => x.name && !subjectNames.has(x.name)).map((x) => extractWorkflowIO(x.w, opts));
-  const universe = [...deployedIO, ...subjectIO];
-  const installed = new Set(universe.map((w) => w.name));
-  const writers = /* @__PURE__ */ new Map();
-  const readers = /* @__PURE__ */ new Map();
-  const touchers = /* @__PURE__ */ new Map();
-  const slots = /* @__PURE__ */ new Map();
-  const existing = /* @__PURE__ */ new Set();
-  const recordable = /* @__PURE__ */ new Set();
-  const templatesKnown = Array.isArray(input.templates);
-  for (const t of input.templates ?? []) {
-    if (!t?.name) continue;
-    existing.add(t.name);
-    recordable.add(t.name);
-    const s = slotsOf(t);
-    if (s) slots.set(t.name, s);
-  }
-  for (const app2 of input.apps ?? []) {
-    for (const d of app2.data ?? []) {
-      if (!d?.name) continue;
-      existing.add(d.name);
-      recordable.add(d.name);
-      if (Array.isArray(d.slots)) slots.set(d.name, d.slots.map(String));
-      addTo2(touchers, d.name, `app:${app2.id}`);
-    }
-  }
-  for (const p of input.platform ?? []) {
-    addTo2(p.direction === "write" ? writers : readers, p.template, `platform:${p.owner}`);
-    if (p.direction === "write") existing.add(p.template);
-  }
-  for (const w of universe) {
-    const owner = `workflow:${w.name}`;
-    for (const x of w.writes) if (x.template_kind === "literal") {
-      addTo2(writers, x.template, owner);
-      if (x.kind === "entry") existing.add(x.template);
-    }
-    for (const x of w.reads) if (x.template_kind === "literal") addTo2(readers, x.template, owner);
-    for (const x of w.mentions) addTo2(touchers, x.template, owner);
-  }
-  const errors = [];
-  const warnings = [];
-  const uncertain = [];
-  const allTemplateNames = [.../* @__PURE__ */ new Set([...existing, ...writers.keys()])];
-  for (const w of subjectIO) {
-    const at = (node) => ({ workflow: w.name, node });
-    const seenRead = /* @__PURE__ */ new Set();
-    for (const r of w.reads) {
-      if (r.template_kind !== "literal") {
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D${r.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u628A\u5B83\u63DB\u6210\u9019\u53F0\u5BE6\u4F8B\u4E0A\u771F\u7684 template \u540D\u5B57\uFF08arcrun \u7684 /kbdb/templates \u5217\u5F97\u51FA\u4F86\uFF09\u3002"
-        });
-        continue;
-      }
-      const key = `${r.template}|${r.node}`;
-      if (seenRead.has(key)) continue;
-      seenRead.add(key);
-      const hasWriter = (writers.get(r.template)?.size ?? 0) > 0 || (touchers.get(r.template)?.size ?? 0) > 0;
-      if (!hasWriter) {
-        errors.push({
-          rule: "R1",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          missing: { writer_of: r.template },
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u5DF2\u90E8\u7F72\u7684\u5DE5\u4F5C\u6D41\u3001App \u6216\u5E73\u53F0\u7A0B\u5F0F\u5BEB\u5B83\u2014\u2014\u9019\u652F\u5DE5\u4F5C\u6D41\u8B80\u5230\u7684\u6C38\u9060\u662F\u7A7A\u7684\u3002`,
-          next_action: `\u5148\u90E8\u7F72\u6703\u5BEB\u300C${r.template}\u300D\u7684\u90A3\u652F\u5DE5\u4F5C\u6D41\uFF08\u6216 App\uFF09\uFF0C\u518D\u63A8\u9019\u652F\uFF1B\u78BA\u5B9A\u53EA\u662F\u66AB\u6642\u6C92\u4EBA\u5BEB\uFF0C\u53EF\u4EE5\u5E36 force \u5F37\u63A8\u3002`
-        });
-      }
-      if (templatesKnown && !existing.has(r.template)) {
-        const hint = closest(r.template, allTemplateNames);
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u4E0D\u5B58\u5728${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u518D\u63A8\u3002` : "\u78BA\u8A8D template \u540D\u5B57\uFF1B\u5B83\u8981\u5148\u88AB\u67D0\u652F\u5DE5\u4F5C\u6D41\u5BEB\u904E\u6216\u7531 App \u5BA3\u544A\u624D\u6703\u5B58\u5728\u3002"
-        });
-      }
-      const s = slots.get(r.template);
-      for (const f of r.fields ?? []) {
-        if (s && !s.includes(f)) {
-          const hint = closest(f, s);
-          errors.push({
-            rule: "R3",
-            level: "error",
-            ...at(r.node),
-            template: r.template,
-            field: f,
-            message: `\u7BC0\u9EDE ${r.node} \u7528\u6B04\u4F4D\u300C${f}\u300D\u67E5\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
-            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\u3002`
-          });
-        }
-      }
-    }
-    const seenWrite = /* @__PURE__ */ new Set();
-    for (const x of w.writes) {
-      if (x.template_kind !== "literal") {
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u7684 template\u300C${x.template}\u300D${x.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u628A\u5B83\u63DB\u6210\u771F\u7684 template \u540D\u5B57\u3002"
-        });
-        continue;
-      }
-      if (x.kind === "record" && templatesKnown && !recordable.has(x.template)) {
-        const hint = closest(x.template, [...recordable]);
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u8981\u5BEB\u4E00\u7B46\u300C${x.template}\u300Drecord\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u9019\u500B template\uFF08\u5BEB record \u4E0D\u6703\u81EA\u52D5\u5EFA template\uFF0CKBDB \u6703\u56DE template not found\uFF09${hint ? `\uFF1B\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F` : "\u3002"}`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : "\u5148\u7531 App \u7684 data \u5BA3\u544A\u5B83\uFF08\u6216 POST /kbdb/templates \u5EFA\u597D\uFF09\uFF0C\u518D\u63A8\u9019\u652F\u3002"
-        });
-      }
-      const s = slots.get(x.template);
-      for (const f of x.fields ?? []) {
-        if (s && !s.includes(f)) {
-          const hint = closest(f, s);
-          errors.push({
-            rule: "R3",
-            level: "error",
-            ...at(x.node),
-            template: x.template,
-            field: f,
-            message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\u7684\u6B04\u4F4D\u300C${f}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
-            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\uFF0C\u6216\u5148\u66FF template \u52A0\u6B04\u4F4D\u3002`
-          });
-        }
-      }
-      if (seenWrite.has(x.template)) continue;
-      seenWrite.add(x.template);
-      const hasReader = (readers.get(x.template)?.size ?? 0) > 0 || (touchers.get(x.template)?.size ?? 0) > 0;
-      if (!hasReader) {
-        warnings.push({
-          rule: "R4",
-          level: "warning",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u6771\u897F\u8B80\u5B83\u3002`,
-          next_action: "\u5982\u679C\u662F\u7D66\u4EBA\u6216\u4E4B\u5F8C\u7684\u5DE5\u4F5C\u6D41\u7528\u7684\uFF0C\u53EF\u4EE5\u4E0D\u7406\uFF1B\u5982\u679C\u672C\u4F86\u8A72\u6709\u4EBA\u8B80\uFF0C\u6AA2\u67E5\u8B80\u7684\u90A3\u652F\u662F\u4E0D\u662F\u6C92\u88DD\u6216\u540D\u5B57\u62FC\u932F\u3002"
-        });
-      }
-    }
-    const seenCall = /* @__PURE__ */ new Set();
-    for (const c of w.calls) {
-      const key = `${c.workflow}|${c.node}`;
-      if (seenCall.has(key)) continue;
-      seenCall.add(key);
-      if (c.kind !== "literal") {
-        errors.push({
-          rule: "R2",
-          level: "error",
-          ...at(c.node),
-          workflow_called: c.workflow,
-          message: `\u7BC0\u9EDE ${c.node} \u53EB\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u300C${c.workflow}\u300D${c.kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u63DB\u6210\u771F\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u3002"
-        });
-        continue;
-      }
-      if (!installed.has(c.workflow)) {
-        const hint = closest(c.workflow, [...installed]);
-        errors.push({
-          rule: "R2",
-          level: "error",
-          ...at(c.node),
-          workflow_called: c.workflow,
-          missing: { workflow: c.workflow },
-          message: `\u7BC0\u9EDE ${c.node} \u53EB\u5DE5\u4F5C\u6D41\u300C${c.workflow}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u88DD\u5B83${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\uFF0C\u6216\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u3002` : `\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u518D\u63A8\u9019\u652F\u3002`
-        });
-      }
-    }
-    for (const s of w.swallows) {
-      errors.push({
-        rule: "R5",
-        level: "error",
-        ...at(s.node),
-        workflow_called: s.workflow,
-        message: `\u7BC0\u9EDE ${s.from} \u53EB\u300C${s.workflow}\u300D\u5931\u6557\u6642\uFF08\u5305\u62EC\u5B83\u6839\u672C\u6C92\u88DD\uFF09\uFF0C\u7531 ${s.node} \u63A5\u624B\u4E26\u56DE success:true\u2014\u2014\u4F9D\u8CF4\u6C92\u88DD\u4E5F\u6703\u88AB\u8A18\u6210\u6210\u529F\uFF0C\u6C92\u6709\u4EBA\u6703\u77E5\u9053\u5B83\u4E00\u76F4\u5728\u7A7A\u8F49\u3002`,
-        next_action: `\u8B93 ${s.node} \u7528 throw \u7D50\u675F\uFF08\u7BC0\u9EDE\u5931\u6557\u624D\u6703\u88AB\u770B\u898B\uFF09\uFF0C\u6216\u62FF\u6389\u9019\u689D ON_FAIL\uFF1B\u771F\u7684\u8981\u5BB9\u5FCD\uFF0C\u56DE\u50B3\u7684\u7D50\u679C\u4E5F\u8981\u8B93\u547C\u53EB\u7AEF\u770B\u5F97\u51FA\u300C\u9019\u4E00\u6B65\u6C92\u505A\u300D\u4E26\u8A08\u5165 verdict\u3002`
-      });
-    }
-    if (w.dynamic.length) uncertain.push({ workflow: w.name, nodes: [...new Set(w.dynamic.map((d) => d.node))] });
-  }
-  const skipped = templatesKnown ? [] : [{ rule: "R3", reason: "\u6C92\u6709\u62FF\u5230 template \u6E05\u55AE\uFF0Ctemplate\uFF0F\u6B04\u4F4D\u5B58\u4E0D\u5B58\u5728\u9019\u6B21\u6C92\u6AA2\u67E5\u3002" }];
-  return {
-    ok: errors.length === 0,
-    errors,
-    warnings,
-    uncertain,
-    skipped,
-    graph: buildGraph({ universe, writers, readers, touchers, installed })
-  };
-}
-function buildGraph({ universe, writers, readers, touchers, installed }) {
-  const nodes = /* @__PURE__ */ new Map();
-  const edges = [];
-  const node = (id, type, extra = {}) => {
-    if (!nodes.has(id)) nodes.set(id, { id, type, ...extra });
-  };
-  for (const w of universe) node(`workflow:${w.name}`, "workflow");
-  const ownerNode = (o) => {
-    const [type] = o.split(":");
-    node(o, type);
-    return o;
-  };
-  for (const [t, set] of writers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "writes" });
-  }
-  for (const [t, set] of readers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: `template:${t}`, to: ownerNode(o), type: "reads" });
-  }
-  for (const [t, set] of touchers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "touches" });
-  }
-  for (const w of universe) {
-    for (const c of w.calls) {
-      if (c.kind !== "literal") continue;
-      const to = installed.has(c.workflow) ? `workflow:${c.workflow}` : `missing:${c.workflow}`;
-      if (!installed.has(c.workflow)) node(to, "missing");
-      edges.push({ from: `workflow:${w.name}`, to, type: "calls", node: c.node });
-    }
-  }
-  for (const n of nodes.values()) {
-    if (n.type !== "template") continue;
-    const t = n.id.slice("template:".length);
-    n.orphan_read = (readers.get(t)?.size ?? 0) > 0 && (writers.get(t)?.size ?? 0) === 0 && (touchers.get(t)?.size ?? 0) === 0;
-  }
-  return { nodes: [...nodes.values()], edges };
-}
-
-// shared/dataflow-graph/platform-io.generated.mjs
-var platform_io_generated_default = [
-  {
-    "owner": "cypher-executor/src/lib/workflow-search.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "workflow",
-    "note": "\u641C\u5DE5\u4F5C\u6D41\uFF08\u5BEB\u5165\u8005\u662F webhooks-named.ts \u7684 push\uFF09"
-  },
-  {
-    "owner": "cypher-executor/src/routes/webhooks-named.ts",
-    "direction": "write",
-    "kind": "entry",
-    "template": "workflow",
-    "note": "\u6BCF\u652F push \u4E0A\u4F86\u7684\u5DE5\u4F5C\u6D41\u90FD\u5BEB\u4E00\u7B46\uFF0C\u4F9B /workflows/search"
-  },
-  {
-    "owner": "kbdb/src/actions/library-index.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "block",
-    "note": "\u5B50\u5EAB\u76EE\u9304\u3001\u627E\u5361\uFF08card-lookup\uFF09\u3001retrieve \u90FD\u8B80\u5361\u7684\u6BB5\u843D\uFF08\u5BEB\u5165\u8005\u662F rag_ingest_card\uFF09"
-  },
-  {
-    "owner": "kbdb/src/actions/library-map-store.ts",
-    "direction": "read",
-    "kind": "record",
-    "template": "triplet",
-    "note": "\u5730\u5716\u91CD\u7B97\uFF0F\u5716\u67E5\u8A62\u8B80\u4E09\u5143\u7D44\uFF08\u5BEB\u5165\u8005\u662F ingest \u5DE5\u4F5C\u6D41\uFF09"
-  },
-  {
-    "owner": "kbdb/src/actions/library-map-store.ts",
-    "direction": "write",
-    "kind": "entry",
-    "template": "library_card_tally",
-    "note": "\u6BCF\u5EAB\u73FE\u5F79\u5361\u5F35\u6578\uFF08\u5BEB\u5165\u7AEF\u589E\u6E1B\u3001\u8B80\u7AEF\u53EA\u8B80\uFF1Binkstone/Arcrun#393\uFF09"
-  },
-  {
-    "owner": "kbdb/src/actions/library-map-store.ts",
-    "direction": "write",
-    "kind": "entry",
-    "template": "library_map",
-    "note": "\u85CF\u66F8\u5730\u5716\u7531 kbdb \u81EA\u5DF1\u91CD\u7B97\u5BEB\u5165\uFF08inkstone/Arcrun#339\uFF09"
-  },
-  {
-    "owner": "kbdb/src/actions/record-crud.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "value",
-    "note": "record \u7684\u683C\u5B50\u53EF\u4EE5\u639B\u4E00\u9846\u65E2\u6709 entry\uFF08\u4F8B\uFF1Arag_ingest_card \u5148\u5BEB value \u5E38\u6578\u518D\u639B\u4E0A triplet\uFF09\uFF0C\u8B80 record \u6642\u4E00\u4F75\u8B80\u56DE"
-  },
-  {
-    "owner": "kbdb/src/embed.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "alias",
-    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-    "const": "VECTOR_ENTRY_TYPES",
-    "constValues": [
-      "alias",
-      "entity",
-      "predicate",
-      "source_passage"
-    ]
-  },
-  {
-    "owner": "kbdb/src/embed.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "entity",
-    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-    "const": "VECTOR_ENTRY_TYPES",
-    "constValues": [
-      "alias",
-      "entity",
-      "predicate",
-      "source_passage"
-    ]
-  },
-  {
-    "owner": "kbdb/src/embed.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "predicate",
-    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-    "const": "VECTOR_ENTRY_TYPES",
-    "constValues": [
-      "alias",
-      "entity",
-      "predicate",
-      "source_passage"
-    ]
-  },
-  {
-    "owner": "kbdb/src/embed.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "source_passage",
-    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-    "const": "VECTOR_ENTRY_TYPES",
-    "constValues": [
-      "alias",
-      "entity",
-      "predicate",
-      "source_passage"
-    ]
-  }
-];
-
-// cypher-executor/src/lib/dataflow-check.ts
-init_endpoints();
-async function loadInstance(env, tenant2) {
-  const store2 = env.WEBHOOKS;
-  const wfPrefix = `${tenant2}:wf:`;
-  const appPrefix = `${tenant2}:app:`;
-  const [wfList, appList] = await Promise.all([store2.list({ prefix: wfPrefix }), store2.list({ prefix: appPrefix })]);
-  const deployed = (await Promise.all(wfList.keys.map(async (k) => {
-    const raw2 = await store2.get(k.name, "text");
-    if (!raw2) return null;
-    try {
-      const rec = JSON.parse(raw2);
-      return { name: k.name.slice(wfPrefix.length), graph: rec.graph, config: rec.config };
-    } catch {
-      return null;
-    }
-  }))).filter((x) => x !== null);
-  const apps = (await Promise.all(appList.keys.map(async (k) => {
-    const raw2 = await store2.get(k.name, "text");
-    if (!raw2) return null;
-    try {
-      const rec = JSON.parse(raw2);
-      return { id: String(rec.id ?? k.name.slice(appPrefix.length)), data: (rec.data_templates ?? []).map((name) => ({ name })) };
-    } catch {
-      return null;
-    }
-  }))).filter((x) => x !== null);
-  let templates = null;
-  try {
-    const headers = {};
-    if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-    const res = await fetch(`${kbdbBaseUrl(env)}/templates`, { headers });
-    if (res.ok) {
-      const body = await res.json();
-      if (Array.isArray(body.templates)) templates = body.templates.map((t) => ({ name: t.name, slots_json: t.slots_json }));
-    }
-  } catch {
-  }
-  return { deployed, apps, templates };
-}
-async function runDataflowCheck(env, tenant2, subjects, extra = {}) {
-  let loaded;
-  try {
-    loaded = await loadInstance(env, tenant2);
-  } catch (e) {
-    return {
-      checked: false,
-      ok: true,
-      errors: [],
-      warnings: [],
-      uncertain: [],
-      skipped: [],
-      reason: `\u8B80\u4E0D\u5230\u9019\u53F0\u5BE6\u4F8B\u7684\u5DF2\u90E8\u7F72\u6E05\u55AE\uFF0C\u9019\u6B21\u6C92\u6709\u6AA2\u67E5\u8B80\u5BEB\u8207\u547C\u53EB\uFF08${e instanceof Error ? e.message : String(e)}\uFF09\u3002`
-    };
-  }
-  const extraIds = new Set((extra.apps ?? []).map((a) => a.id));
-  const r = checkDataflow({
-    subjects: subjects === "all-deployed" ? loaded.deployed : subjects,
-    deployed: loaded.deployed,
-    templates: loaded.templates,
-    platform: platform_io_generated_default,
-    apps: [...loaded.apps.filter((a) => !extraIds.has(a.id)), ...extra.apps ?? []],
-    recipes: extra.recipes ?? [],
-    selfOrigins: extra.selfOrigin ? [extra.selfOrigin] : []
-  });
-  return {
-    checked: true,
-    ok: r.ok,
-    errors: r.errors,
-    warnings: r.warnings,
-    uncertain: r.uncertain,
-    skipped: r.skipped,
-    against: {
-      deployed_workflows: loaded.deployed.length,
-      installed_apps: loaded.apps.length,
-      templates: loaded.templates ? loaded.templates.length : null
-    },
-    // 縮放視圖要知道哪些名字前綴是 App（工作流名字是 <App>__<名>）；只在要圖時帶，不多讀任何東西（App 清單本來就讀了）
-    // 清單頁每列的「幾個節點」：定義本來就整份讀進來了（讀取量不變），只數 graph.nodes 的長度，不另讀任何東西
-    ...extra.withGraph ? { graph: r.graph, app_ids: loaded.apps.map((a) => a.id), workflow_steps: stepCounts(loaded.deployed) } : {}
-  };
-}
-function stepCounts(deployed) {
-  const out = {};
-  for (const d of deployed) {
-    const nodes = d.graph?.nodes;
-    if (Array.isArray(nodes)) out[d.name] = nodes.length;
-  }
-  return out;
-}
-function dataflowNextActions(report) {
-  if (!report.checked) return report.reason ? [report.reason] : [];
-  return [...new Set(report.errors.map((e) => `${e.rule} ${e.workflow}\uFF0F${e.node}\uFF1A${e.next_action}`))];
-}
-
-// cypher-executor/src/lib/app-system.ts
-function appStore(env) {
-  return env.WEBHOOKS;
-}
-function kbdbBehindHint(e) {
-  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-  if (!msg.includes("KbdbUnavailable")) return null;
-  return "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u6C92\u6709\u56DE\u61C9\uFF0C\u6216\u5B83\u7684\u7248\u672C\u6BD4\u76EE\u524D\u7684\u7A0B\u5F0F\u78BC\u820A\u2014\u2014\u5B89\u88DD\u9700\u8981\u77E5\u8B58\u5EAB\u63D0\u4F9B\u300C\u540C\u4E00\u4EFD\u8CC7\u7522\u6C38\u9060\u540C\u4E00\u5217\u300D\u7684\u5BEB\u5165\u80FD\u529B\u3002\u8ACB\u7BA1\u7406\u8005\u628A\u77E5\u8B58\u5EAB\u4E00\u8D77\u66F4\u65B0\u5230\u540C\u4E00\u7248\uFF1B\u5728\u90A3\u4E4B\u524D**\u5DF2\u7D93\u88DD\u597D\u7684 App \u4E0D\u53D7\u5F71\u97FF**\uFF0C\u7167\u5E38\u53EF\u7528\u3002";
-}
-var APP_WORKFLOW_TRIGGERS = ["manual", "schedule", "event"];
-function resolveWorkflowTrigger(wf) {
-  if (typeof wf.trigger === "string" && APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
-    return wf.trigger;
-  }
-  return extractCronExpr(wf.graph) ? "schedule" : "manual";
-}
-function normalizeRequiredCredentials(requires) {
-  return (requires?.credentials ?? []).map((c) => typeof c === "string" ? { name: c } : { name: c.name, ...c.purpose ? { purpose: c.purpose } : {} });
-}
-var APP_UI_STYLES = ["inherit", "own"];
-var DEFAULT_APP_UI_STYLE = "inherit";
-var ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
-function validateAppDeclaration(raw2) {
-  const errors = [];
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) {
-    return { ok: false, errors: ["\u5BA3\u544A\u5FC5\u9808\u662F\u4E00\u500B JSON \u7269\u4EF6"] };
-  }
-  const d = raw2;
-  if (typeof d.id !== "string" || !ID_RE.test(d.id)) {
-    errors.push("id \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09");
-  }
-  if (typeof d.name !== "string" || d.name.trim() === "") {
-    errors.push("name \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32");
-  }
-  const hasWorkflows = Array.isArray(d.workflows) && d.workflows.length > 0;
-  const uiObj = d.ui && typeof d.ui === "object" ? d.ui : null;
-  const hasHtml = Boolean(uiObj && typeof uiObj.html === "string" && uiObj.html.trim() !== "");
-  const hasSurface = Boolean(uiObj && uiObj.surface !== void 0);
-  const hasUi = hasHtml || hasSurface;
-  if (!hasWorkflows && !hasUi) {
-    errors.push("workflows \u6216 ui \u81F3\u5C11\u8981\u6709\u4E00\u500B\uFF08\u6C92\u6709\u756B\u9762\u4E5F\u6C92\u6709\u5DE5\u4F5C\u6D41\u7684 App \u4E0D\u6210\u7ACB\uFF0Cdesign \xA7\u4E8C\uFF09");
-  }
-  if (d.workflows !== void 0) {
-    if (!Array.isArray(d.workflows)) {
-      errors.push("workflows \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      d.workflows.forEach((w, i) => {
-        if (!w || typeof w !== "object") {
-          errors.push(`workflows[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const wf = w;
-        if (typeof wf.name !== "string" || wf.name.trim() === "") errors.push(`workflows[${i}].name \u5FC5\u586B`);
-        if (!wf.graph || typeof wf.graph !== "object") {
-          errors.push(`workflows[${i}].graph \u5FC5\u586B\uFF08\u57F7\u884C\u5716\uFF09`);
-        } else {
-          const g = wf.graph;
-          if (typeof g.id !== "string" || g.id.trim() === "") errors.push(`workflows[${i}].graph.id \u5FC5\u586B`);
-          if (typeof g.name !== "string" || g.name.trim() === "") errors.push(`workflows[${i}].graph.name \u5FC5\u586B`);
-          if (!Array.isArray(g.nodes)) errors.push(`workflows[${i}].graph.nodes \u5FC5\u9808\u662F\u9663\u5217`);
-          if (!Array.isArray(g.edges)) errors.push(`workflows[${i}].graph.edges \u5FC5\u9808\u662F\u9663\u5217`);
-        }
-        if (wf.trigger !== void 0) {
-          const label = typeof wf.name === "string" ? `\u300C${wf.name}\u300D` : `workflows[${i}]`;
-          if (typeof wf.trigger !== "string" || !APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
-            errors.push(`workflows[${i}].trigger \u53EA\u80FD\u662F ${APP_WORKFLOW_TRIGGERS.join("\uFF0F")}\uFF08\u7701\u7565\uFF1D\u770B\u5716\uFF1A\u6709\u6392\u7A0B\u96F6\u4EF6\u662F schedule\uFF0C\u5426\u5247 manual\uFF09`);
-          } else {
-            const hasCron = Boolean(extractCronExpr(wf.graph));
-            if (wf.trigger === "manual" && hasCron) {
-              errors.push(`${label} \u5BA3\u544A\u6210\u624B\u52D5\uFF08manual\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6703\u81EA\u5DF1\u7167\u6392\u7A0B\u8DD1\u3002\u62FF\u6389 cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A schedule`);
-            }
-            if (wf.trigger === "schedule" && !hasCron) {
-              errors.push(`${label} \u5BA3\u544A\u6210\u6392\u7A0B\uFF08schedule\uFF09\uFF0C\u4F46\u5716\u88E1\u6C92\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6C38\u9060\u4E0D\u6703\u81EA\u5DF1\u8DD1\u3002\u88DC\u4E0A cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A manual\uFF0Fevent`);
-            }
-            if (wf.trigger === "event" && hasCron) {
-              errors.push(`${label} \u5BA3\u544A\u6210\u5916\u90E8\u4E8B\u4EF6\uFF08event\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5169\u7A2E\u555F\u52D5\u65B9\u5F0F\u53EA\u80FD\u9078\u4E00\u7A2E`);
-            }
-          }
-        }
-      });
-    }
-  }
-  if (d.ui !== void 0 && !hasUi) {
-    errors.push("ui.html \u6216 ui.surface \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
-  }
-  if (hasHtml && hasSurface) errors.push("ui.html \u8207 ui.surface \u53EA\u80FD\u64C7\u4E00");
-  if (hasSurface) {
-    const wfNames = Array.isArray(d.workflows) ? d.workflows.map((w) => String(w?.name)) : [];
-    const acts = Array.isArray(d.actions) ? d.actions.map(String) : wfNames;
-    errors.push(...validateUiSurface(uiObj?.surface, acts));
-  }
-  if (d.ui && typeof d.ui === "object") {
-    const s = d.ui.style;
-    if (s !== void 0 && (typeof s !== "string" || !APP_UI_STYLES.includes(s))) {
-      errors.push(`ui.style \u53EA\u80FD\u662F ${APP_UI_STYLES.join(" \u6216 ")}\uFF08\u7701\u7565\uFF1D${DEFAULT_APP_UI_STYLE}\uFF0C\u8DDF\u96A8\u5168\u5C40\uFF09`);
-    }
-    const ui = d.ui;
-    const assetErrors = validateUiAssets(ui.assets);
-    errors.push(...assetErrors);
-    if (assetErrors.length === 0 && hasHtml) {
-      errors.push(...bundleUiAssets(ui.html, ui.assets).errors);
-    }
-  }
-  if (d.data !== void 0) {
-    if (!Array.isArray(d.data)) {
-      errors.push("data \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      d.data.forEach((dt, i) => {
-        if (!dt || typeof dt !== "object") {
-          errors.push(`data[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const decl = dt;
-        if (typeof decl.name !== "string" || decl.name.trim() === "") errors.push(`data[${i}].name \u5FC5\u586B`);
-        if (!Array.isArray(decl.slots) || decl.slots.some((s) => typeof s !== "string")) {
-          errors.push(`data[${i}].slots \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
-        }
-      });
-    }
-  }
-  if (d.requires !== void 0) errors.push(...validateRequires(d.requires));
-  if (d.mcp !== void 0) errors.push(...validateAppMcp(d.mcp, d.workflows));
-  if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
-    errors.push("actions \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217");
-  } else if (Array.isArray(d.actions) && Array.isArray(d.workflows)) {
-    const wfNames = new Set(
-      d.workflows.map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
-    );
-    for (const a of d.actions) {
-      if (!wfNames.has(a)) {
-        errors.push(
-          `actions \u88E1\u7684\u300C${a}\u300D\u627E\u4E0D\u5230\u540C\u540D\u7684 workflow\uFF08\u52D5\u4F5C\u540D\u5C31\u662F\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\uFF09\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
-        );
-      }
-    }
-  }
-  return { ok: errors.length === 0, errors };
-}
-function validateRequires(raw2) {
-  const errors = [];
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["requires \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 recipes\u3001credentials \u5169\u6B04\uFF09"];
-  const r = raw2;
-  for (const k of Object.keys(r)) {
-    if (k !== "recipes" && k !== "credentials") errors.push(`requires.${k} \u4E0D\u8A8D\u5F97\uFF08\u53EA\u6709 recipes\u3001credentials\uFF09`);
-  }
-  if (r.recipes !== void 0) {
-    if (!Array.isArray(r.recipes)) errors.push("requires.recipes \u5FC5\u9808\u662F\u9663\u5217");
-    else {
-      const seen = /* @__PURE__ */ new Set();
-      r.recipes.forEach((x, i) => {
-        if (!x || typeof x !== "object" || Array.isArray(x)) {
-          errors.push(`requires.recipes[${i}] \u5FC5\u9808\u662F\u7269\u4EF6\uFF08recipe \u5168\u6587\uFF09`);
-          return;
-        }
-        const rec = x;
-        const cid = typeof rec.canonical_id === "string" ? rec.canonical_id.trim().toLowerCase() : "";
-        if (!cid) errors.push(`requires.recipes[${i}].canonical_id \u5FC5\u586B`);
-        else if (seen.has(cid)) errors.push(`requires.recipes \u88E1\u300C${cid}\u300D\u91CD\u8907`);
-        else seen.add(cid);
-        if (typeof rec.endpoint !== "string" || rec.endpoint.trim() === "") errors.push(`requires.recipes[${i}].endpoint \u5FC5\u586B`);
-      });
-    }
-  }
-  if (r.credentials !== void 0) {
-    if (!Array.isArray(r.credentials)) errors.push("requires.credentials \u5FC5\u9808\u662F\u9663\u5217\uFF08\u91D1\u9470\u7684\u540D\u5B57\uFF09");
-    else {
-      const seen = /* @__PURE__ */ new Set();
-      r.credentials.forEach((x, i) => {
-        let name;
-        if (typeof x === "string") name = x;
-        else if (x && typeof x === "object" && !Array.isArray(x)) {
-          const o = x;
-          const extra = Object.keys(o).filter((k) => k !== "name" && k !== "purpose");
-          if (extra.length > 0) errors.push(`requires.credentials[${i}] \u53EA\u51C6 name\uFF0Fpurpose\uFF0C\u4E0D\u51C6\u6709\u300C${extra.join("\u3001")}\u300D\u2014\u2014\u91D1\u9470\u7684\u503C\u6C38\u9060\u53EA\u7531\u5BE6\u4F8B\u4E3B\u4EBA\u5728\u91D1\u9470\u756B\u9762\u586B\uFF08D36\uFF09`);
-          if (o.purpose !== void 0 && typeof o.purpose !== "string") errors.push(`requires.credentials[${i}].purpose \u5FC5\u9808\u662F\u5B57\u4E32`);
-          name = o.name;
-        } else name = void 0;
-        if (!validateName(name)) errors.push(`requires.credentials[${i}] \u7684\u540D\u5B57\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\uFF08\u9019\u662F\u91D1\u9470\u7684\u540D\u5B57\uFF0C\u4E0D\u662F\u503C\uFF09`);
-        else if (seen.has(name)) errors.push(`requires.credentials \u88E1\u300C${name}\u300D\u91CD\u8907`);
-        else seen.add(name);
-      });
-    }
-  }
-  return errors;
-}
-var ICON_SET = ["\u{1F4C4}", "\u{1F5D2}\uFE0F", "\u{1F9E9}", "\u{1F4CC}", "\u{1F527}", "\u{1F4E6}", "\u{1F5C2}\uFE0F", "\u2705", "\u{1F4A1}", "\u{1F514}", "\u{1F4CA}", "\u{1F9ED}"];
-function generateIcon(name) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
-  return ICON_SET[h % ICON_SET.length];
-}
-function applyDeclarationDefaults(raw2) {
-  const workflows = raw2.workflows ?? [];
-  const actions = raw2.actions ?? workflows.filter((w) => resolveWorkflowTrigger(w) === "manual").map((w) => w.name);
-  return {
-    ...raw2,
-    id: raw2.id,
-    name: raw2.name,
-    icon: raw2.icon ?? generateIcon(raw2.name),
-    version: raw2.version ?? "0.0.0",
-    workflows,
-    data: raw2.data ?? [],
-    actions,
-    keeps_data: raw2.remove?.keeps_data ?? true
-  };
-}
-var APP_PLACEHOLDERS = ["__NAMESPACE__", "__CYPHER_BASE__"];
-function resolveDeclarationPlaceholders(value, coords) {
-  const base = coords.cypherBase.replace(/\/+$/, "");
-  const swap = (s) => s.split("__NAMESPACE__").join(coords.namespace).split("__CYPHER_BASE__").join(base);
-  const walk = (v) => {
-    if (typeof v === "string") return swap(v);
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === "object") {
-      const out = {};
-      for (const [k, val] of Object.entries(v)) out[swap(k)] = walk(val);
-      return out;
-    }
-    return v;
-  };
-  return walk(value);
-}
-function remainingPlaceholders(value) {
-  const text = JSON.stringify(value) ?? "";
-  return APP_PLACEHOLDERS.filter((p) => text.includes(p));
-}
-async function computeContentHash(raw2) {
-  const canonical = canonicalize(raw2);
-  const data = new TextEncoder().encode(canonical);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function canonicalize(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
-  if (value && typeof value === "object") {
-    const keys = Object.keys(value).sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(value[k])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-function appKey(tenant2, id) {
-  return `${tenant2}:app:${id}`;
-}
-function workflowKvKey(tenant2, wfKey2) {
-  return `${tenant2}:wf:${wfKey2}`;
-}
-async function getInstalledApp(env, tenant2, id) {
-  const raw2 = await appStore(env).get(appKey(tenant2, id), "text");
-  if (!raw2) return null;
-  try {
-    return JSON.parse(raw2);
-  } catch {
-    return null;
-  }
-}
-async function getAppWorkflowGraph(env, tenant2, wfKey2) {
-  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfKey2), "text");
-  if (!raw2) return null;
-  try {
-    const g = JSON.parse(raw2).graph;
-    if (!g) return null;
-    return {
-      ...typeof g.id === "string" ? { id: g.id } : {},
-      nodes: Array.isArray(g.nodes) ? g.nodes : [],
-      edges: Array.isArray(g.edges) ? g.edges : []
-    };
-  } catch {
-    return null;
-  }
-}
-async function listInstalledApps(env, tenant2) {
-  const prefix = `${tenant2}:app:`;
-  const list = await appStore(env).list({ prefix });
-  const apps = await Promise.all(
-    list.keys.map(async (k) => {
-      const raw2 = await appStore(env).get(k.name, "text");
-      if (!raw2) return null;
-      try {
-        return JSON.parse(raw2);
-      } catch {
-        return null;
-      }
-    })
-  );
-  return apps.filter((a) => a !== null);
-}
-async function ensureTemplate2(env, name, slots, description) {
-  const { base, headers } = kbdbBase(env);
-  noteSubrequest();
-  const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
-  if (getRes.ok) {
-    const data = await getRes.json().catch(() => null);
-    if (data?.success && data.template) {
-      const tpl = data.template;
-      let current = [];
-      try {
-        const parsed = JSON.parse(tpl.slots_json ?? "[]");
-        if (Array.isArray(parsed)) current = parsed.filter((s) => typeof s === "string");
-      } catch {
-      }
-      const missing = slots.filter((s) => !current.includes(s));
-      if (missing.length > 0 && tpl.id) {
-        noteSubrequest();
-        const patched = await fetch(`${base}/templates/${encodeURIComponent(tpl.id)}`, {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({ slots: [...current, ...missing] })
-        });
-        if (!patched.ok) throw new Error(`\u88DC\u8CC7\u6599\u6B04\u4F4D ${name}\uFF08${missing.join("\u3001")}\uFF09\u5931\u6557\uFF1AHTTP ${patched.status}`);
-      }
-      return;
-    }
-  }
-  noteSubrequest();
-  await fetch(`${base}/templates`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ name, slots, description })
-  });
-}
-var FIELD_INDEX_ROUNDS_PER_INSTALL = 12;
-async function ensureFieldIndexes(env, data, maxRounds = FIELD_INDEX_ROUNDS_PER_INSTALL) {
-  const { base, headers } = kbdbBase(env);
-  const pending = [];
-  let rounds = 0;
-  for (const dt of data) {
-    const fields = (dt.index_fields ?? []).filter((f) => dt.slots.includes(f));
-    if (fields.length === 0) continue;
-    let ready = false;
-    while (!ready && rounds < Math.min(maxRounds, FIELD_INDEX_ROUNDS_PER_INSTALL)) {
-      rounds += 1;
-      noteSubrequest();
-      try {
-        const res = await fetch(`${base}/records/field-index`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ template: dt.name, fields })
-        });
-        if (!res.ok) {
-          await res.body?.cancel();
-          break;
-        }
-        const body = await res.json().catch(() => null);
-        ready = body?.ready === true;
-        if (!ready && !(body?.backfilled && body.backfilled > 0)) break;
-      } catch {
-        break;
-      }
-    }
-    if (!ready) pending.push(dt.name);
-  }
-  return pending;
-}
-var RECIPE_BEHAVIOR_FIELDS = [
-  "endpoint",
-  "method",
-  "headers",
-  "body",
-  "body_template",
-  "response_map",
-  "auth",
-  "binding_name",
-  "auth_service",
-  "credentials_required"
-];
-function sameRecipeBehavior(a, b) {
-  const pick = (r) => {
-    const o = {};
-    for (const k of RECIPE_BEHAVIOR_FIELDS) {
-      const v = k === "method" ? (r.method ?? "POST").toUpperCase() : r[k];
-      if (v !== void 0) o[k] = v;
-    }
-    return o;
-  };
-  return canonicalize(pick(a)) === canonicalize(pick(b));
-}
-async function ensureAppRecipes(env, recipes) {
-  const installed = [];
-  for (const decl of recipes) {
-    const cid = String(decl.canonical_id ?? "").trim().toLowerCase();
-    const have = await resolveRecipe(cid, env.RECIPES);
-    if (have && sameRecipeBehavior(have, decl)) continue;
-    const r = await upsertPrivateRecipe(env.RECIPES, { ...decl, canonical_id: cid });
-    if (!r.ok) return { ok: false, error: `recipe\u300C${cid}\u300D\uFF1A${r.error}` };
-    installed.push(cid);
-  }
-  return { ok: true, installed };
-}
-async function findMissingCredentials(env, tenant2, wanted) {
-  if (wanted.length === 0) return { missing: [], checked: true };
-  try {
-    const have = new Set((await listCredentialRows(env, String(tenant2))).map((r) => r.name));
-    return { missing: wanted.filter((w) => !have.has(w.name)), checked: true };
-  } catch {
-    return { missing: [], checked: false };
-  }
-}
-var INSTALL_REQUEST_BUDGET = 32;
-var FINAL_RESERVE = 8;
-async function installApp(env, tenant2, rawDecl, opts = {}) {
-  let decl0 = rawDecl;
-  if (opts.coords) {
-    try {
-      decl0 = resolveDeclarationPlaceholders(rawDecl, opts.coords);
-    } catch (e) {
-      return {
-        ok: false,
-        step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
-        errors: [e instanceof Error ? e.message : String(e)],
-        hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u505A\u932F\u4E86\u3002\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u5373\u53EF\u3002"
-      };
-    }
-  }
-  const left = remainingPlaceholders(decl0);
-  if (left.length > 0) {
-    return {
-      ok: false,
-      step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
-      errors: [`\u9019\u4EFD\u5BA3\u544A\u88E1\u9084\u6709\u6C92\u586B\u7684\u4F4D\u7F6E\uFF1A${left.join("\u3001")}`],
-      hint: "\u9019\u500B App \u7684\u4F5C\u8005\u7559\u4E86\u8981\u7531\u5BE6\u4F8B\u586B\u7684\u6B04\u4F4D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u586B\u5F97\u8D77\u4F86\u3002\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
-    };
-  }
-  const validation = validateAppDeclaration(decl0);
-  if (!validation.ok) {
-    return {
-      ok: false,
-      step: "\u6AA2\u67E5\u9019\u500B App \u7684\u5BA3\u544A",
-      errors: validation.errors,
-      hint: "\u9019\u662F App \u4F5C\u8005\u90A3\u908A\u8981\u4FEE\u7684\uFF0C\u91CD\u8A66\u4E0D\u6703\u8B8A\u597D\u3002\u628A\u4E0A\u9762\u9019\u5E7E\u884C\u539F\u6587\u56DE\u5831\u7D66\u9019\u500B App \u7684\u4F5C\u8005\u3002"
-    };
-  }
-  const decl = applyDeclarationDefaults(decl0);
-  const contentHash = await computeContentHash(decl0);
-  const existing = await getInstalledApp(env, tenant2, decl.id);
-  const wantedCreds = normalizeRequiredCredentials(decl.requires);
-  const wantedRecipes = decl.requires?.recipes ?? [];
-  const requestStart = subrequestCount();
-  const spent = () => subrequestCount() - requestStart;
-  if (existing && existing.content_hash === contentHash && existing.status === "active") {
-    const ensured2 = await ensureAppRecipes(env, wantedRecipes);
-    if (!ensured2.ok) {
-      return {
-        ok: false,
-        step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
-        errors: [ensured2.error],
-        hint: "\u9019\u500B App \u9700\u8981\u7684 recipe \u5BEB\u4E0D\u9032\u9019\u53F0\u5BE6\u4F8B\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
-      };
-    }
-    const credCheck2 = await findMissingCredentials(env, tenant2, wantedCreds);
-    const needs2 = {
-      recipes_installed: ensured2.installed,
-      missing_credentials: credCheck2.missing,
-      ...credCheck2.checked ? {} : { credentials_check_failed: true }
-    };
-    try {
-      for (const dt of decl.data) {
-        if (spent() >= INSTALL_REQUEST_BUDGET) break;
-        await ensureTemplate2(env, dt.name, dt.slots, dt.description);
-      }
-    } catch (e) {
-      return {
-        ok: false,
-        step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
-        errors: [e instanceof Error ? e.message : String(e)],
-        hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\u670D\u52D9\u6C92\u6709\u56DE\u61C9\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
-      };
-    }
-    const pendingIdx2 = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
-    return { ok: true, changed: false, app: existing, ...needs2, ...pendingIdx2.length ? { field_index_pending: pendingIdx2 } : {} };
-  }
-  const units = [];
-  let recipesInstalled = [];
-  for (const r of wantedRecipes) {
-    units.push({
-      step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
-      label: String(r.canonical_id ?? ""),
-      cost: 3,
-      run: async () => {
-        const ensured2 = await ensureAppRecipes(env, [r]);
-        if (!ensured2.ok) throw new Error(ensured2.error);
-        recipesInstalled = recipesInstalled.concat(ensured2.installed);
-      }
-    });
-  }
-  for (const dt of decl.data) {
-    units.push({ step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225", label: dt.name, cost: 2, run: () => ensureTemplate2(env, dt.name, dt.slots, dt.description) });
-  }
-  const prepared = decl.workflows.map((wf) => {
-    const wfKey2 = `${decl.id}__${wf.name}`;
-    const trigger = resolveWorkflowTrigger(wf);
-    const cronExpr = trigger === "schedule" ? extractCronExpr(wf.graph) : null;
-    const graphId = typeof wf.graph.id === "string" ? wf.graph.id : void 0;
-    const ref = {
-      name: wf.name,
-      wf_key: wfKey2,
-      description: wf.description || "",
-      trigger,
-      ...cronExpr ? { cron_expr: cronExpr } : {},
-      ...graphId ? { graph_id: graphId } : {}
-    };
-    return { wf, wfKey: wfKey2, cronExpr, ref };
-  });
-  const workflowRefs = prepared.map((p) => p.ref);
-  const prevCron = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, Boolean(w.cron_expr)]));
-  for (const p of prepared) {
-    const touchCron = Boolean(p.cronExpr) || prevCron.get(p.wfKey) === true;
-    units.push({
-      step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
-      label: p.wf.name,
-      cost: touchCron ? 3 : 1,
-      run: async () => {
-        await appStore(env).put(
-          workflowKvKey(tenant2, p.wfKey),
-          JSON.stringify({
-            graph: p.wf.graph,
-            description: p.wf.description || `${decl.name}: ${p.wf.name}`,
-            created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
-            ...p.cronExpr ? { cron_expr: p.cronExpr } : {}
-          })
-        );
-        if (touchCron) await updateCronIndexEntry(appStore(env), String(tenant2), p.wfKey, p.cronExpr);
-      }
-    });
-  }
-  const total = units.length;
-  const wantFrom = opts.resumeHash === contentHash ? Math.floor(opts.resumeFrom ?? 0) || 0 : 0;
-  let cursor = Math.min(Math.max(wantFrom, 0), total);
-  const from = cursor;
-  try {
-    while (cursor < total) {
-      if (cursor > from && spent() + units[cursor].cost > INSTALL_REQUEST_BUDGET) break;
-      await units[cursor].run();
-      cursor++;
-    }
-  } catch (e) {
-    const u = units[cursor];
-    const why = e instanceof Error ? e.message : String(e);
-    return {
-      ok: false,
-      step: u?.step ?? "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
-      errors: [why],
-      resume_from: cursor,
-      resume_hash: contentHash,
-      hint: kbdbBehindHint(e) ?? `\u5DF2\u7D93\u5B8C\u6210 ${cursor}\uFF0F${total} \u500B\u6B65\u9A5F\uFF08\u5099\u9F4A recipe\u3001\u6E96\u5099\u8CC7\u6599\u578B\u5225\u3001\u5B89\u88DD\u5DE5\u4F5C\u6D41\uFF09\uFF0C\u5361\u5728\u300C${u?.label ?? ""}\u300D\u3002\u518D\u6309\u4E00\u6B21\u6703\u5F9E\u9019\u88E1\u63A5\u8457\u505A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\uFF1B\u5982\u679C\u6BCF\u6B21\u90FD\u5361\u5728\u540C\u4E00\u500B\u5730\u65B9\uFF0C\u91CD\u6309\u6C92\u6709\u7528\uFF0C\u8ACB\u628A\u4E0A\u9762\u90A3\u53E5\u539F\u56E0\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002`
-    };
-  }
-  if (cursor < total || spent() > INSTALL_REQUEST_BUDGET - FINAL_RESERVE) {
-    return { ok: true, in_progress: true, changed: true, progress: { done: cursor, total }, resume_from: cursor, resume_hash: contentHash };
-  }
-  const credCheck = await findMissingCredentials(env, tenant2, wantedCreds);
-  const needs = {
-    recipes_installed: recipesInstalled,
-    missing_credentials: credCheck.missing,
-    ...credCheck.checked ? {} : { credentials_check_failed: true }
-  };
-  const dataflow = await runDataflowCheck(
-    env,
-    tenant2,
-    decl.workflows.map((wf) => ({ name: `${decl.id}__${wf.name}`, graph: wf.graph })),
-    { apps: [{ id: decl.id, data: decl.data }], recipes: wantedRecipes }
-  );
-  if (existing) {
-    const keepKeys = new Set(workflowRefs.map((w) => w.wf_key));
-    for (const prev of existing.workflows) {
-      if (!keepKeys.has(prev.wf_key)) {
-        await appStore(env).delete(workflowKvKey(tenant2, prev.wf_key));
-        await updateCronIndexEntry(appStore(env), String(tenant2), prev.wf_key, null);
-      }
-    }
-  }
-  const uiHtml = decl.ui?.html ? bundleUiAssets(decl.ui.html, decl.ui.assets).html : void 0;
-  const uiSurface = decl.ui?.surface;
-  const mcp = installedMcpOf(decl.id, decl.mcp);
-  const record = {
-    id: decl.id,
-    name: decl.name,
-    icon: decl.icon,
-    version: decl.version,
-    content_hash: contentHash,
-    workflows: workflowRefs,
-    actions: decl.actions,
-    data_templates: decl.data.map((d) => d.name),
-    has_ui: Boolean(uiHtml || uiSurface),
-    ui_html: uiHtml,
-    ...uiSurface ? { ui_surface: uiSurface } : {},
-    ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
-    keeps_data: decl.keeps_data,
-    ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
-    ...mcp ? { mcp } : {},
-    installed_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
-    updated_at: (/* @__PURE__ */ new Date()).toISOString(),
-    status: "active"
-  };
-  try {
-    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
-  } catch (e) {
-    return {
-      ok: false,
-      step: "\u5BEB\u5165\u5B89\u88DD\u7D00\u9304",
-      errors: [e instanceof Error ? e.message : String(e)],
-      resume_from: total,
-      resume_hash: contentHash,
-      hint: kbdbBehindHint(e) ?? "\u5DE5\u4F5C\u6D41\u90FD\u5DF2\u7D93\u88DD\u597D\u4E86\uFF0C\u53EA\u5DEE\u6700\u5F8C\u9019\u4E00\u7B46\u7D00\u9304\u2014\u2014\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u6703\u76F4\u63A5\u88DC\u4E0A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\u3002"
-    };
-  }
-  const pendingIdx = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
-  return { ok: true, changed: true, app: record, ...needs, ...pendingIdx.length ? { field_index_pending: pendingIdx } : {}, dataflow };
-}
-async function uninstallApp(env, tenant2, id) {
-  const existing = await getInstalledApp(env, tenant2, id);
-  if (!existing) return { ok: false, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD\u7D00\u9304" };
-  try {
-    for (const wf of existing.workflows) {
-      await appStore(env).delete(workflowKvKey(tenant2, wf.wf_key));
-      await updateCronIndexEntry(appStore(env), String(tenant2), wf.wf_key, null);
-    }
-    await appStore(env).delete(appKey(tenant2, id));
-  } catch (e) {
-    return {
-      ok: false,
-      error: kbdbBehindHint(e) ?? `\u79FB\u9664\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
-    };
-  }
-  return { ok: true };
-}
-function prefetchAppAction(env, tenant2, appId, action) {
-  const guessedKey = `${appId}__${action}`;
-  const app2 = getInstalledApp(env, tenant2, appId);
-  const guessedRaw = appStore(env).get(workflowKvKey(tenant2, guessedKey), "text");
-  app2.catch(() => void 0);
-  guessedRaw.catch(() => void 0);
-  return { guessedKey, app: app2, guessedRaw };
-}
-async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch) {
-  const pre = prefetch ?? prefetchAppAction(env, tenant2, appId, action);
-  const guessedKey = pre.guessedKey;
-  const [app2, guessedRaw] = await Promise.all([pre.app, pre.guessedRaw]);
-  if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
-  if (!app2.actions.includes(action)) {
-    return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
-  }
-  const wfRef = app2.workflows.find((w) => w.name === action);
-  if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
-  const raw2 = wfRef.wf_key === guessedKey ? guessedRaw : await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
-  if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
-  let graph;
-  try {
-    const parsed = JSON.parse(raw2);
-    if (!parsed.graph) throw new Error("no graph");
-    graph = parsed.graph;
-  } catch {
-    return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
-  }
-  const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
-  const g = graph;
-  const verdict = writeExecutionVerdict(
-    env,
-    typeof g.id === "string" ? g.id : wfRef.wf_key,
-    Array.isArray(g.nodes) ? g.nodes : [],
-    result.success ? "success" : "failed",
-    result.duration_ms,
-    result.error ?? "",
-    // 斷言（_portal_actor）不進執行紀錄：紀錄 AI 讀得到（inkstone/Arcrun#304 c22862）
-    { ...payload, _portal_actor: void 0, _triggered_by: "app" },
-    String(tenant2),
-    void 0,
-    result.failed_node
-  );
-  if (ctx) ctx.waitUntil(verdict);
-  else await verdict;
-  if (!result.success) {
-    return { ok: false, status: 502, error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` };
-  }
-  return { ok: true, status: 200, result: result.data };
-}
-function refTrigger(w) {
-  return w.trigger ?? "manual";
-}
-function launchOf(app2) {
-  if (app2.has_ui) return { launch: "open" };
-  const runnable = app2.workflows.filter((w) => refTrigger(w) === "manual" && app2.actions.includes(w.name));
-  if (runnable.length === 0) return { launch: "auto" };
-  return runnable.length === 1 ? { launch: "run", run_action: runnable[0].name } : { launch: "run" };
-}
-function summarizeApp(app2) {
-  const l = launchOf(app2);
-  return {
-    id: app2.id,
-    name: app2.name,
-    icon: app2.icon,
-    glyph: appGlyph(app2.icon, app2.name),
-    has_ui: app2.has_ui,
-    version: app2.version,
-    launch: l.launch,
-    ...l.run_action ? { run_action: l.run_action } : {},
-    // 自動的那一格要說得出「它什麼時候會自己跑」，使用者才知道它在替他做事。
-    schedules: app2.workflows.map((w) => w.cron_expr).filter((x) => typeof x === "string")
-  };
-}
-function detailApp(app2) {
-  const l = launchOf(app2);
-  return {
-    id: app2.id,
-    name: app2.name,
-    icon: app2.icon,
-    version: app2.version,
-    has_ui: app2.has_ui,
-    ui_html: app2.ui_html,
-    ...app2.ui_surface ? { ui_surface: app2.ui_surface } : {},
-    // 舊安裝態（v0.1 裝的 App）沒有這一欄——一律當「跟隨全局」，不是「維持原樣」。
-    // 那正是 leo 抱怨的那個狀態，預設值要把它修好，不是把它保留下來。
-    ui_style: app2.ui_style ?? DEFAULT_APP_UI_STYLE,
-    workflows: app2.workflows.map((w) => ({
-      name: w.name,
-      description: w.description,
-      trigger: refTrigger(w),
-      ...w.cron_expr ? { cron_expr: w.cron_expr } : {},
-      ...w.graph_id ? { graph_id: w.graph_id } : {},
-      // 畫面只為「真的按得動」的那幾條長出鍵——白名單仍由 runAppAction 在伺服端把關。
-      runnable: app2.actions.includes(w.name)
-    })),
-    actions: app2.actions,
-    launch: l.launch,
-    ...l.run_action ? { run_action: l.run_action } : {}
-  };
-}
-
 // cypher-executor/src/lib/app-catalog.ts
 var APP_CATALOG = [
   {
@@ -85037,6 +85058,18 @@ var APP_CATALOG = [
     version: "1.4.0",
     author: "Arcrun \u5167\u5EFA",
     declaration: notes_default
+  },
+  {
+    id: "flow_canvas",
+    name: "\u5DE5\u4F5C\u6D41\u756B\u5E03",
+    icon: "\u{1F6E0}\uFE0F",
+    // inkstone/Arcrun#429（leo 2026-11-15：「一般人不用看到 AR 的工作流，但如果你要開發就可以安裝 App，叫 AI 幫你產生工作流」）：
+    // 原本內建在 Portal、人人看得到的工作流畫布（#341）改成可裝可卸的開發者 App：沒裝，Portal 的首頁／側欄／網址都看不到工作流；
+    // 裝了才出現工作流清單、全局圖、單一工作流畫布。畫布本身仍用 A2UI 零件「節點與連線圖」畫（畫面隨 Portal 出貨，App 是它的開關）。
+    summary: "\u7D66\u958B\u767C\u7684\u4EBA\u7528\uFF1A\u628A\u9019\u53F0\u5BE6\u4F8B\u4E0A\u7684\u5DE5\u4F5C\u6D41\u756B\u6210\u4E00\u689D\u4E32\u4E00\u689D\u7684\u7BC0\u9EDE\u8207\u9023\u7DDA\u5716\uFF0C\u770B\u5F97\u5230\u8AB0\u53EB\u8AB0\u3001\u8B80\u5BEB\u54EA\u4E9B\u8CC7\u6599\u3001\u4E0A\u6B21\u54EA\u4E00\u6B65\u5931\u6557\uFF1B\u518D\u8ACB AI \u5E6B\u4F60\u7522\u751F\u6216\u4FEE\u6539\u5DE5\u4F5C\u6D41\u3002\u4E00\u822C\u540C\u4E8B\u4E0D\u9700\u8981\uFF0C\u6C92\u88DD\u5C31\u5B8C\u5168\u770B\u4E0D\u5230\u5DE5\u4F5C\u6D41\u3002",
+    version: "0.1.0",
+    author: "Arcrun \u5167\u5EFA",
+    declaration: flow_canvas_default
   },
   {
     id: "global_index",
@@ -86167,6 +86200,9 @@ portalRouter.get(
       libraries,
       graph_allowed: await hasGraphAccess(c.env, libraries),
       workflows_visible: workflowsVisible(c.env, role),
+      // inkstone/Arcrun#429：工作流畫布是可裝可卸的開發者 App。角色看得到工作流、而且這台裝了它，前端才露出畫布入口；
+      // 一般成員（或沒裝）不查 KV、直接 false。同樣只是顯示提示——真閘在 /portal/data/* 路由。
+      flow_canvas: workflowsVisible(c.env, role) && await isFlowCanvasInstalled(c.env, knowledgeOwner(c.env)),
       // portal-demo-suite：上傳頁能力（bindings 齊全才 true；同上，只是顯示提示，真閘在路由層）
       upload_enabled: uploadEnabled(c.env)
     });
@@ -88355,6 +88391,37 @@ async function runFtsBackfillTick(env, log = console.log, logError = console.err
   return { calls: MAX_TICK_CALLS, totalScanned, stoppedBecause: "max_calls" };
 }
 
+// cypher-executor/src/lib/card-passage-backfill-tick.ts
+init_kbdb_proxy();
+init_tenant();
+async function runCardPassageBackfillTick(env, log = console.log) {
+  let owner;
+  try {
+    owner = knowledgeOwner(env);
+  } catch (e) {
+    log("[scheduled] card-passage-backfill \u7565\u904E\uFF1A\u79DF\u6236\u89E3\u6790\u4E0D\u5230", e?.message);
+    return { skipped: "tenant_unresolved" };
+  }
+  const { base, headers } = kbdbBase(env);
+  const MAX_CALLS = 6;
+  const total = { cards_filled: 0, passages_written: 0 };
+  for (let i = 0; i < MAX_CALLS; i++) {
+    const res = await fetch(`${base}/entries/card-passage-backfill`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ owner_id: owner })
+    });
+    const body = await res.json().catch(() => null);
+    total.status = res.status;
+    total.skipped = body?.skipped ?? void 0;
+    total.cards_filled = (total.cards_filled ?? 0) + (body?.cards_filled ?? 0);
+    total.passages_written = (total.passages_written ?? 0) + (body?.passages_written ?? 0);
+    total.round_done = body?.round_done;
+    if (!res.ok || !body || body.skipped || body.round_done || !(body.cards_checked ?? 0)) break;
+  }
+  return total;
+}
+
 // cypher-executor/src/lib/usage-brake-notify-tick.ts
 init_kbdb_proxy();
 var SKIPPED = { skipped: true, checked: 0, notified: 0, errors: 0 };
@@ -88472,6 +88539,14 @@ async function handleScheduled(controller, env, ctx) {
       runFtsBackfillTick(env).then(
         (summary) => console.log("[scheduled] fts-backfill tick summary", JSON.stringify(summary)),
         (e) => console.error("[scheduled] fts-backfill tick summary failed", e)
+      )
+    );
+  }
+  if (now2.getUTCMinutes() === 45) {
+    ctx.waitUntil(
+      runCardPassageBackfillTick(env).then(
+        (summary) => console.log("[scheduled] card-passage-backfill tick summary", JSON.stringify(summary)),
+        (e) => console.error("[scheduled] card-passage-backfill tick failed", e)
       )
     );
   }
@@ -95922,6 +95997,7 @@ portalDataRouter.get(
     if (!workflowsVisible(c.env, auth.user.values.role ?? "user")) {
       return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
     }
+    if (!await isFlowCanvasInstalled(c.env, knowledgeOwner(c.env))) return c.json(flowCanvasNotInstalledBody(), 404);
     const tenant2 = knowledgeOwner(c.env);
     const prefix = `${tenant2}:wf:`;
     const list = await c.env.WEBHOOKS.list({ prefix });
@@ -95962,6 +96038,7 @@ async function workflowsGate(c) {
   const setting = (c.env.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
   if (setting === "off") return notFound(c);
   if (!workflowsVisible(c.env, auth.user.values.role ?? "user")) return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
+  if (!await isFlowCanvasInstalled(c.env, knowledgeOwner(c.env))) return c.json(flowCanvasNotInstalledBody(), 404);
   return null;
 }
 portalDataRouter.get(
@@ -96339,8 +96416,8 @@ function lastRunJson(r) {
 portalDataRouter.get(
   "/portal/data/apps/:id/flows",
   (c) => run(c, async () => {
-    const auth = await requirePortalUser(c);
-    if (!auth.ok) return auth.res;
+    const denied = await workflowsGate(c);
+    if (denied) return denied;
     const tenant2 = knowledgeOwner(c.env);
     const app2 = await getInstalledApp(c.env, tenant2, c.req.param("id"));
     if (!app2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B App" }, 404);
@@ -96368,8 +96445,8 @@ portalDataRouter.get(
 portalDataRouter.get(
   "/portal/data/apps/:id/flows/:name",
   (c) => run(c, async () => {
-    const auth = await requirePortalUser(c);
-    if (!auth.ok) return auth.res;
+    const denied = await workflowsGate(c);
+    if (denied) return denied;
     const tenant2 = knowledgeOwner(c.env);
     const app2 = await getInstalledApp(c.env, tenant2, c.req.param("id"));
     if (!app2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B App" }, 404);
