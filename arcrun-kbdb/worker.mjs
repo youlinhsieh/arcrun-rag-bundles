@@ -3786,6 +3786,61 @@ var init_relation_orphans = __esm({
   }
 });
 
+// kbdb/src/actions/accelerator-indexes.ts
+var accelerator_indexes_exports = {};
+__export(accelerator_indexes_exports, {
+  ACCELERATOR_INDEX_SQL: () => ACCELERATOR_INDEX_SQL,
+  buildAcceleratorIndexes: () => buildAcceleratorIndexes
+});
+async function existingIndexes(db) {
+  const res = await db.all("SELECT name FROM sqlite_master WHERE type = 'index'");
+  return new Set((res.results ?? []).map((r) => r.name));
+}
+async function buildAcceleratorIndexes(db, opts) {
+  const have = await existingIndexes(db);
+  const items = [];
+  for (const name of Object.keys(ACCELERATOR_INDEX_SQL)) {
+    if (have.has(name)) {
+      items.push({ name, state: "present" });
+      continue;
+    }
+    if (!opts.confirm) {
+      items.push({ name, state: "missing" });
+      continue;
+    }
+    try {
+      const r = await db.run(ACCELERATOR_INDEX_SQL[name]);
+      items.push({ name, state: "built", rows_written: r?.meta?.rows_written, rows_read: r?.meta?.rows_read });
+    } catch (e) {
+      items.push({ name, state: "failed", error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  const missing = items.filter((i) => i.state === "missing").map((i) => i.name);
+  const failed = items.filter((i) => i.state === "failed");
+  const built = items.filter((i) => i.state === "built");
+  let message;
+  if (failed.length > 0) {
+    message = `\u6709 ${failed.length} \u652F\u52A0\u901F\u7D22\u5F15\u6C92\u5EFA\u6210\uFF08${failed.map((f) => `${f.name}\uFF1A${f.error}`).join("\uFF1B")}\uFF09\u3002\u9019\u662F\u53EF\u91CD\u8A66\u7684\uFF1A\u7D22\u5F15\u6C92\u5EFA\u597D\u4E0D\u5F71\u97FF\u8CC7\u6599\uFF0C\u904E\u4E00\u9663\u5B50\uFF08\u984D\u5EA6\u6216\u5FD9\u788C\u89E3\u9664\u5F8C\uFF09\u518D\u6309\u4E00\u6B21\u3002`;
+  } else if (missing.length > 0) {
+    message = `\u9084\u7F3A ${missing.length} \u652F\u52A0\u901F\u7D22\u5F15\uFF08${missing.join("\u3001")}\uFF09\u3002\u5EFA\u7ACB\u6642\u8981\u8B80\u4E00\u6B21\u6574\u5F35\u8868\u3001\u5BEB\u5165\u4E00\u4EFD\u7D22\u5F15\uFF0C\u6703\u7528\u6389\u7576\u5929\u7684\u4E00\u7B46\u984D\u5EA6\uFF1B\u78BA\u8A8D\u5F8C\u624D\u6703\u5EFA\u3002`;
+  } else if (built.length > 0) {
+    message = `\u5DF2\u5EFA\u597D ${built.length} \u652F\u52A0\u901F\u7D22\u5F15\uFF08${built.map((b) => b.name).join("\u3001")}\uFF09\u3002`;
+  } else {
+    message = "\u52A0\u901F\u7D22\u5F15\u90FD\u5DF2\u7D93\u5728\u4E86\uFF0C\u4E0D\u7528\u52D5\u4F5C\u3002";
+  }
+  return { confirmed: opts.confirm, items, message };
+}
+var ACCELERATOR_INDEX_SQL;
+var init_accelerator_indexes = __esm({
+  "kbdb/src/actions/accelerator-indexes.ts"() {
+    "use strict";
+    ACCELERATOR_INDEX_SQL = {
+      idx_entries_owner_library_created: "CREATE INDEX IF NOT EXISTS idx_entries_owner_library_created ON entries(owner_id, json_extract(metadata_json, '$.library'), created_at) WHERE json_extract(metadata_json, '$.library') IS NOT NULL"
+      // kbdb-sql-ok: 牆內，與 migrations/0009 逐字相同（Arcrun#406）
+    };
+  }
+});
+
 // kbdb/src/actions/kind-orphans.ts
 var kind_orphans_exports = {};
 __export(kind_orphans_exports, {
@@ -9817,17 +9872,27 @@ async function probeDataLayer(db) {
       actual_generation: -1,
       behind_by: -1,
       missing: [],
+      slow_only: false,
+      missing_indexes: [],
       legacy_tables: [],
       remedy: "\u78BA\u8A8D D1 binding\uFF08DB\uFF09\u6307\u5411\u6B63\u78BA\u7684 arcrun-kbdb\uFF0C\u4E26\u91CD\u8DD1\u5B89\u88DD\u5668\u6216 `acr update`\u3002",
       probe_error: detail
     };
   }
   const missing = [];
+  let onlyIndexesFailed = true;
+  const missingIndexes = [];
   for (const g of GENERATIONS) {
     if (g.unprobeable) continue;
+    const failed = g.checks.filter((c) => explain(c, facts) !== null);
     const evidence = g.checks.map((c) => explain(c, facts)).filter((e) => e !== null);
     if (evidence.length > 0) missing.push({ generation: g.n, migration: g.file, what: g.what, evidence });
+    for (const c of failed) {
+      if (c.kind === "index") missingIndexes.push(c.name);
+      else onlyIndexesFailed = false;
+    }
   }
+  const slowOnly = missing.length > 0 && onlyIndexesFailed;
   let actual = 0;
   for (const g of GENERATIONS) {
     if (missing.some((m) => m.generation === g.n)) break;
@@ -9839,11 +9904,17 @@ async function probeDataLayer(db) {
   return {
     ok,
     write_cost: writeCostFor(actual),
-    summary: ok ? `\u8CC7\u6599\u5C64\u8207\u7A0B\u5F0F\u78BC\u540C\u4EE3\uFF08\u7B2C ${actual} \u4EE3\uFF09\u3002` : `\u{1F534} \u8CC7\u6599\u5C64\u843D\u5F8C ${behind} \u4EE3\uFF1A\u9019\u53F0\u505C\u5728\u7B2C ${actual} \u4EE3\uFF0C\u9019\u4EFD\u7A0B\u5F0F\u78BC\u9700\u8981\u7B2C ${EXPECTED_GENERATION} \u4EE3\u3002\u7F3A ${missing.map((m) => m.migration).join("\u3001")}\u3002` + (legacy.length > 0 ? `\u820A\u8868\u9084\u5728\uFF1A${legacy.join("\u3001")}\u3002` : "") + "\u5728\u88DC\u9F4A\u4E4B\u524D\uFF0C\u51E1\u662F\u78B0\u5230\u9019\u5E7E\u4EE3\u65B0\u589E\u7D50\u69CB\u7684\u67E5\u8A62\u90FD\u6703\u5931\u6557\uFF08\u73FE\u8C61\uFF1D\u4E00\u5806 500\uFF09\u3002",
+    summary: ok ? `\u8CC7\u6599\u5C64\u8207\u7A0B\u5F0F\u78BC\u540C\u4EE3\uFF08\u7B2C ${actual} \u4EE3\uFF09\u3002` : slowOnly ? (
+      // inkstone/Arcrun#406：只缺加速索引＝服務可用、比較慢；不要說「落後 N 代」「會 500」
+      // （「連續滿足才算代數」會把一支索引放大成落後好幾代）。
+      `\u8CC7\u6599\u5C64\u5C11 ${missingIndexes.length} \u652F\u52A0\u901F\u7D22\u5F15\uFF08${missingIndexes.join("\u3001")}\uFF09\uFF1A\u670D\u52D9\u53EF\u7528\uFF0C\u53EA\u662F\u90E8\u5206\u67E5\u8A62\u6703\u6BD4\u8F03\u6162\u3002\u5B89\u88DD\u5668\u70BA\u4E86\u4E0D\u8D85\u904E\u6BCF\u65E5\u5BEB\u5165\u984D\u5EA6\uFF0C\u6703\u628A\u4F30\u8A08\u6210\u672C\u5927\u7684\u52A0\u901F\u7D22\u5F15\u5148\u8DF3\u904E\uFF1B\u88DC\u9F4A\u8981\u5728\u984D\u5EA6\u5920\u6642\u91CD\u8DD1\u4E00\u6B21\u66F4\u65B0\u3002`
+    ) : `\u{1F534} \u8CC7\u6599\u5C64\u843D\u5F8C ${behind} \u4EE3\uFF1A\u9019\u53F0\u505C\u5728\u7B2C ${actual} \u4EE3\uFF0C\u9019\u4EFD\u7A0B\u5F0F\u78BC\u9700\u8981\u7B2C ${EXPECTED_GENERATION} \u4EE3\u3002\u7F3A ${missing.map((m) => m.migration).join("\u3001")}\u3002` + (legacy.length > 0 ? `\u820A\u8868\u9084\u5728\uFF1A${legacy.join("\u3001")}\u3002` : "") + "\u5728\u88DC\u9F4A\u4E4B\u524D\uFF0C\u51E1\u662F\u78B0\u5230\u9019\u5E7E\u4EE3\u65B0\u589E\u7D50\u69CB\u7684\u67E5\u8A62\u90FD\u6703\u5931\u6557\uFF08\u73FE\u8C61\uFF1D\u4E00\u5806 500\uFF09\u3002",
     expected_generation: EXPECTED_GENERATION,
     actual_generation: actual,
     behind_by: behind,
     missing,
+    slow_only: slowOnly,
+    missing_indexes: uniq(missingIndexes),
     legacy_tables: legacy,
     remedy: ok ? "\u7121\u9700\u52D5\u4F5C\u3002" : (
       // 補救＝把 kbdb/migrations 每一支依序補跑（冪等）。用哪條路要看這台是怎麼裝的——
@@ -10194,6 +10265,13 @@ app.get("/maintenance/relation-orphans", async (c) => {
   const limit = Number(c.req.query("limit") ?? "200");
   const report = await scanRelationOrphans2(dbOf(c.env), Number.isFinite(limit) ? limit : 200);
   return c.json({ success: true, ...report });
+});
+app.post("/maintenance/accelerator-indexes", async (c) => {
+  const { buildAcceleratorIndexes: buildAcceleratorIndexes2 } = await Promise.resolve().then(() => (init_accelerator_indexes(), accelerator_indexes_exports));
+  const body = await c.req.json().catch(() => null);
+  const report = await buildAcceleratorIndexes2(dbOf(c.env), { confirm: body?.confirm === true });
+  healthCache = null;
+  return c.json({ success: !report.items.some((i) => i.state === "failed"), ...report });
 });
 app.get("/maintenance/kind-orphans", async (c) => {
   const { scanKindOrphans: scanKindOrphans2 } = await Promise.resolve().then(() => (init_kind_orphans(), kind_orphans_exports));
