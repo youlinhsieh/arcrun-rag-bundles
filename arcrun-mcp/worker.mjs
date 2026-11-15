@@ -32243,6 +32243,55 @@ function registerQuery(server, env, identity) {
   );
 }
 
+// mcp/src/tools/arcrun_create_form.ts
+var FIELD_TYPES = ["text", "longtext", "number", "date", "datetime", "select", "multiselect", "checkbox"];
+function registerAllCreateFormTools(server, env, identity) {
+  registerCreateForm(server, env, identity);
+}
+function registerCreateForm(server, env, identity) {
+  server.tool(
+    toolName("create_form"),
+    "\u505A\u4E00\u500B\u300C\u586B\u8868\u55AE\u300DApp\uFF08\u4F8B\uFF1A\u8ACB\u5047\u55AE\u3001\u5831\u4FEE\u55AE\u3001\u5831\u540D\u8868\uFF09\uFF1A\u4F60\u53EA\u8AAA\u8981\u54EA\u4E9B\u6B04\u4F4D\uFF0C\u7CFB\u7D71\u5C31\u88DD\u597D\u4E00\u500B App\uFF08\u51FA\u73FE\u5728 Portal \u7684 App \u555F\u52D5\u5668\uFF09\uFF0C\u756B\u9762\u662F\u5BA3\u544A\u5F0F\u8868\u55AE\uFF08\u8F38\u5165\u5143\u4EF6\u53D6\u81EA\u756B\u9762\u5143\u4EF6\u76EE\u9304 arcrun:catalog/v0\uFF0C\u5E95\u90E8\u81EA\u52D5\u5E36\u300C\u7531 Arcrun \u88FD\u4F5C\u300D\uFF09\uFF0C\u9001\u51FA\u5F8C\u5B58\u6210\u8CC7\u6599\u8868\u7684\u4E00\u5217\u3002\u4E0D\u7528\u5BEB HTML\u3001\u4E0D\u7528\u53E6\u5916\u5EFA\u8868\u6216\u4E32\u5DE5\u4F5C\u6D41\u3002\u6B04\u4F4D\u578B\u5225\uFF1Atext\uFF0Flongtext\uFF0Fnumber\uFF0Fdate\uFF0Fdatetime\uFF0Fselect\uFF0Fmultiselect\uFF0Fcheckbox\uFF08select \u8207 multiselect \u8981\u7D66 options\uFF09\u3002name \u662F App \u8207\u8CC7\u6599\u8868\u7684\u4EE3\u865F\uFF08\u5C0F\u5BEB\u82F1\u6587\u958B\u982D\uFF0C\u53EA\u80FD\u5C0F\u5BEB\u82F1\u6578\u5E95\u7DDA\uFF09\u3002\u505A\u5B8C\u5F8C\uFF1A\u8ACB\u4F7F\u7528\u8005\u958B Portal \u7684 App \u555F\u52D5\u5668\uFF08\u56DE\u50B3\u7684 portal_hash\uFF09\uFF0C\u586B\u4E00\u7B46\u9001\u51FA\uFF0C\u518D\u7528 kbdb_get_record \u6216 kbdb_query(template=\u2026) \u8B80\u56DE\u4F86\u6838\u5C0D\u3002\u53EA\u6709\u767B\u5165\u8EAB\u5206\uFF08Portal \u7BA1\u7406\u54E1\uFF09\u80FD\u7528\uFF1B\u60F3\u770B\u6709\u54EA\u4E9B\u756B\u9762\u5143\u4EF6 \u2192 arcrun_list_ui_components\u3002",
+    {
+      name: external_exports.string().min(1).describe("App\uFF0F\u8CC7\u6599\u8868\u4EE3\u865F\uFF0C\u5C0F\u5BEB\u82F1\u6587\u958B\u982D\uFF0C\u4F8B\uFF1Aleave_request"),
+      title: external_exports.string().min(1).describe("\u8868\u55AE\u6A19\u984C\uFF08\u7D66\u4EBA\u770B\uFF09\uFF0C\u4F8B\uFF1A\u8ACB\u5047\u55AE"),
+      description: external_exports.string().optional().describe("\u6A19\u984C\u4E0B\u7684\u4E00\u884C\u8AAA\u660E\uFF08\u9078\u586B\uFF09"),
+      submit_label: external_exports.string().optional().describe("\u9001\u51FA\u6309\u9215\u6587\u5B57\uFF08\u9078\u586B\uFF0C\u9810\u8A2D\u300C\u9001\u51FA\u300D\uFF09"),
+      fields: external_exports.array(
+        external_exports.object({
+          key: external_exports.string().min(1).describe("\u6B04\u4F4D\u4EE3\u865F\uFF0C\u5C0F\u5BEB\u82F1\u6587\u958B\u982D\uFF0C\u4F8B\uFF1Astart_date"),
+          label: external_exports.string().min(1).describe("\u6B04\u4F4D\u540D\u7A31\uFF08\u7D66\u4EBA\u770B\uFF09\uFF0C\u4F8B\uFF1A\u958B\u59CB\u65E5\u671F"),
+          type: external_exports.enum(FIELD_TYPES).describe("\u6B04\u4F4D\u578B\u5225"),
+          required: external_exports.boolean().optional().describe("\u662F\u5426\u5FC5\u586B"),
+          options: external_exports.array(external_exports.string()).optional().describe("\u9078\u9805\uFF08select\uFF0Fmultiselect \u7528\uFF09"),
+          placeholder: external_exports.string().optional().describe("\u63D0\u793A\u6587\u5B57\uFF08\u9078\u586B\uFF09")
+        })
+      ).min(1).describe("\u6B04\u4F4D\u6E05\u55AE\uFF0C\u4F9D\u5E8F\u5448\u73FE")
+    },
+    async (args) => {
+      if (identity.kind === "stale") return staleIdentityError();
+      if (identity.kind !== "portal") {
+        return errorResponse("login_required", "\u505A\u8868\u55AE App \u9700\u8981\u4EE5 Portal \u5E33\u865F\u767B\u5165\u7684 MCP \u9023\u7DDA", [
+          "\u7528 Portal \u5E33\u5BC6\u91CD\u65B0\u9023\u7DDA MCP \u5F8C\u518D\u8A66"
+        ]);
+      }
+      try {
+        const res = await portalFetch(env, identity.portal.session, "/portal/data/forms", {
+          method: "POST",
+          body: args
+        });
+        if (!res.ok) return portalError(res, `\u505A\u8868\u55AE App\u300C${args.name}\u300D`);
+        return successResponse(await res.json(), [
+          "\u8ACB\u4F7F\u7528\u8005\u958B Portal \u7684 App \u555F\u52D5\u5668\uFF08\u6216 portal_hash \u6307\u7684\u9801\u9762\uFF09\u770B\u8868\u55AE\u3001\u586B\u4E00\u7B46\u9001\u51FA",
+          "\u9001\u51FA\u5F8C\u7528 kbdb_query(template=<name>) \u6216 kbdb_get_record \u8B80\u56DE\u4F86\u6838\u5C0D\u6B04\u4F4D\u503C"
+        ]);
+      } catch (e) {
+        return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
+      }
+    }
+  );
+}
+
 // mcp/src/tools/kbdb_graph.ts
 var GRAPH_NEIGHBORS_WORKFLOW = "graph_neighbors";
 var INSTALL_HINTS = [
@@ -32773,6 +32822,19 @@ function sourceOf(card) {
   ].filter(Boolean);
   return parts.join("\u3001");
 }
+function passageSourceOf(p) {
+  const loc = p.location ?? null;
+  const path = loc?.full_path ?? loc?.source_path ?? p.source_path;
+  const parts = [
+    path ? `\u539F\u7A3F ${path}` : null,
+    p.heading ? `\u7BC0\u300C${p.heading}\u300D` : null,
+    p.page_hint != null ? `\u7B2C ${p.page_hint} \u9801` : null,
+    p.chunk_idx != null ? `\u7B2C ${p.chunk_idx + 1}${p.chunk_total ? `\uFF0F${p.chunk_total}` : ""} \u6BB5` : null,
+    `\u5EAB\u300C${p.library}\u300D`,
+    loc?.machine ?? p.machine ? `\u8A2D\u5099\u300C${loc?.machine ?? p.machine}\u300D` : null
+  ].filter(Boolean);
+  return parts.join("\u3001");
+}
 var FOUND_BY_HINT = {
   index: "\u9019\u4E9B\u5361\u662F\u7167\u77E5\u8B58\u5EAB\u7684\u76EE\u9304\uFF0800-INDEX \u8207\u5206\u5C64\u5B50\u76EE\u9304\uFF09\u4E00\u8DEF\u9EDE\u5230\u7684\u3002",
   card_name: "\u9019\u4E9B\u5361\u662F\u7167\u5361\u540D\uFF08\u76EE\u9304\u4E0A\u7684\u540D\u7A31\uFF09\u5C0D\u5230\u7684\uFF1B\u9019\u500B\u5EAB\u9084\u6C92\u6709\u76EE\u9304\u5361\uFF0C\u6216\u76EE\u9304\u6C92\u9EDE\u5230\u3002",
@@ -32781,7 +32843,7 @@ var FOUND_BY_HINT = {
 function registerKnowledgeSearch(server, env, identity) {
   server.tool(
     "kbdb_search",
-    "\u67E5\u4E3B\u4EBA\u7684\u77E5\u8B58\u5EAB\u2014\u2014**\u4EFB\u4F55\u77E5\u8B58\u554F\u984C\u90FD\u7528\u9019\u4E00\u652F**\uFF08\u932F\u8AA4\u78BC\u3001\u540D\u8A5E\u3001\u6C7A\u7B56\u3001\u505A\u6CD5\u3001\u67D0\u4EFD\u6587\u4EF6\u5728\u8B1B\u4EC0\u9EBC\uFF09\u3002\u76F4\u63A5\u628A\u554F\u984C\u6216\u95DC\u9375\u5B57\u4E1F\u9032 q\uFF1B\u5B83\u6703\u81EA\u5DF1\u7167\u77E5\u8B58\u5EAB\u7684\u76EE\u9304\u627E\uFF1A\u5716\u8B5C \u2192 \u9078\u5EAB \u2192 \u76EE\u9304 \u2192 \u5361\uFF0C\u56DE\u50B3**\u6574\u5F35\u77E5\u8B58\u5361**\uFF08content\uFF09\u548C\u6BCF\u5F35\u5361\u7684\u51FA\u8655\uFF08source\uFF09\u3002\u56DE\u7B54\u6642\u6839\u64DA cards \u7684 content \u4F5C\u7B54\uFF0C\u4E26\u9644\u4E0A\u5361\u540D\u8207\u51FA\u8655\u3002found_by='keyword_fallback' \u8868\u793A\u76EE\u9304\u6C92\u627E\u5230\u3001\u9000\u56DE\u5B57\u9762\u6BD4\u5C0D\uFF0C\u8981\u7167\u5BE6\u544A\u77E5\uFF1Bcards \u70BA\u7A7A\uFF1D\u77E5\u8B58\u5EAB\u88E1\u771F\u7684\u67E5\u4E0D\u5230\u3002",
+    "\u67E5\u4E3B\u4EBA\u7684\u77E5\u8B58\u5EAB\u2014\u2014**\u4EFB\u4F55\u77E5\u8B58\u554F\u984C\u90FD\u7528\u9019\u4E00\u652F**\uFF08\u932F\u8AA4\u78BC\u3001\u540D\u8A5E\u3001\u6C7A\u7B56\u3001\u505A\u6CD5\u3001\u67D0\u4EFD\u6587\u4EF6\u5728\u8B1B\u4EC0\u9EBC\uFF09\u3002\u76F4\u63A5\u628A\u554F\u984C\u6216\u95DC\u9375\u5B57\u4E1F\u9032 q\uFF1B\u5B83\u6703\u81EA\u5DF1\u7167\u77E5\u8B58\u5EAB\u7684\u76EE\u9304\u627E\uFF1A\u5716\u8B5C \u2192 \u9078\u5EAB \u2192 \u76EE\u9304 \u2192 \u5361\uFF0C\u56DE\u50B3**\u6574\u5F35\u77E5\u8B58\u5361**\uFF08content\uFF09\u548C\u6BCF\u5F35\u5361\u7684\u51FA\u8655\uFF08source\uFF09\u3002\u56DE\u7B54\u6642\u6839\u64DA cards \u7684 content \u4F5C\u7B54\uFF0C\u4E26\u9644\u4E0A\u5361\u540D\u8207\u51FA\u8655\u3002found_by='keyword_fallback' \u8868\u793A\u76EE\u9304\u6C92\u627E\u5230\u3001\u9000\u56DE\u5B57\u9762\u6BD4\u5C0D\uFF0C\u8981\u7167\u5BE6\u544A\u77E5\uFF1Bcards \u70BA\u7A7A\uFF1D\u77E5\u8B58\u5EAB\u88E1\u771F\u7684\u67E5\u4E0D\u5230\u3002\u5361\u4E0D\u5920\u56DE\u7B54\u6642\uFF08\u554F\u6CD5\u548C\u5361\u7684\u7528\u5B57\u5C0D\u4E0D\u4E0A\u3001\u4F8B\u5982\u7528\u4E2D\u6587\u554F\u82F1\u6587\u539F\u7A3F\uFF09\uFF0C\u7D50\u679C\u6703\u591A\u4E00\u683C passages\uFF1A\u5F9E\u539F\u7A3F\u627E\u5230\u7684\u539F\u6587\u6BB5\u843D\uFF0C\u9644\u539F\u7A3F\u8DEF\u5F91\u3001\u7BC0\u3001\u9801\u78BC\u8207\u6BB5\u5E8F\uFF1B\u5F15\u7528\u5B83\u6642\u8981\u8AAA\u660E\u9019\u662F\u539F\u7A3F\u7247\u6BB5\u4E26\u9644 source\u3002",
     {
       q: external_exports.string().min(1).describe("\u554F\u984C\u6216\u95DC\u9375\u5B57\uFF0C\u4F8B\uFF1A\u300E145-0010 \u662F\u4EC0\u9EBC\u932F\u8AA4\u300F\u3001\u300EAFTEE\u300F"),
       owner_id: external_exports.string().optional().describe("\u9650\u5B9A\u67D0\u6B78\u5C6C\u7BC4\u570D\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u4E0D\u751F\u6548\uFF0C\u7BC4\u570D\u7531\u4F60\u7684\u6B0A\u9650\u6C7A\u5B9A\uFF09")
@@ -32807,6 +32869,7 @@ function registerKnowledgeSearch(server, env, identity) {
         const cards = Array.isArray(data.cards) ? data.cards : [];
         const foundBy = data.cards_found_by ?? (cards.length > 0 ? "keyword_fallback" : "none");
         const facts = (data.graph_facts ?? []).slice(0, MAX_FACTS);
+        const passages = Array.isArray(data.passages) ? data.passages : [];
         const out = {
           found_by: foundBy,
           cards: cards.map((c) => ({
@@ -32816,6 +32879,16 @@ function registerKnowledgeSearch(server, env, identity) {
             content: c.content,
             ...c.location ? { location: c.location } : {}
           })),
+          ...passages.length > 0 ? {
+            passages: passages.map((p) => ({
+              heading: p.heading,
+              library: p.library,
+              source: passageSourceOf(p),
+              text: p.text,
+              ...p.page_hint != null ? { page: p.page_hint } : {},
+              ...p.location ? { location: p.location } : {}
+            }))
+          } : {},
           ...facts.length > 0 ? { graph_facts: facts } : {},
           ...data.probe ? { probe: data.probe } : {},
           ...data.index_trail && data.index_trail.length > 0 ? { index_trail: data.index_trail } : {},
@@ -32824,7 +32897,9 @@ function registerKnowledgeSearch(server, env, identity) {
         const hints = [];
         const partial2 = data.index_coverage === "partial";
         const partialHint = data.coverage_hint ?? "\u9019\u6B21\u53EA\u67E5\u4E86\u6700\u8FD1\u5BEB\u5165\u7684\u4E00\u90E8\u5206\uFF08\u95DC\u9375\u5B57\u592A\u77ED\uFF09\uFF0C\u6C92\u6709\u67E5\u5168\u5EAB\u3002\u8ACB\u6539\u7528 3 \u500B\u5B57\u4EE5\u4E0A\u7684\u8A5E\u518D\u67E5\u4E00\u6B21\u3002";
-        if (cards.length === 0 && partial2) {
+        if (cards.length === 0 && passages.length > 0) {
+          hints.push("\u5361\u88E1\u6C92\u6709\uFF0C\u4F46\u5F9E\u539F\u7A3F\u627E\u5230\u4E86\u4E0B\u9762 passages \u7684\u539F\u6587\u7247\u6BB5\uFF1A\u6839\u64DA\u5B83\u5011\u56DE\u7B54\uFF0C\u8AAA\u660E\u9019\u662F\u539F\u7A3F\u7247\u6BB5\uFF08\u4E0D\u662F\u6574\u7406\u597D\u7684\u77E5\u8B58\u5361\uFF09\uFF0C\u4E26\u9644\u4E0A\u6BCF\u6BB5\u7684 source\uFF08\u539F\u7A3F\u8DEF\u5F91\u3001\u7BC0\u3001\u9801\u78BC\uFF09\u3002\u7247\u6BB5\u6C92\u56DE\u7B54\u5230\u554F\u984C\u5C31\u7167\u5BE6\u8AAA\u67E5\u4E0D\u5230\uFF0C\u4E0D\u8981\u88DC\u3002");
+        } else if (cards.length === 0 && partial2) {
           hints.push(`\u9019\u6B21\u6C92\u627E\u5230\uFF0C\u4F46\u4E0D\u4EE3\u8868\u77E5\u8B58\u5EAB\u88E1\u6C92\u6709\uFF1A${partialHint} \u8ACB\u5148\u7167\u9019\u500B\u5EFA\u8B70\u63DB\u8A5E\u518D\u67E5\u4E00\u6B21\uFF0C\u4E0D\u8981\u76F4\u63A5\u544A\u8A34\u4F7F\u7528\u8005\u67E5\u4E0D\u5230\u3002`);
         } else if (cards.length === 0) {
           hints.push("\u77E5\u8B58\u5EAB\u88E1\u67E5\u4E0D\u5230\u9019\u500B\u554F\u984C\u7684\u5361\uFF08\u76EE\u9304\u3001\u5361\u540D\u3001\u5B57\u9762\u6BD4\u5C0D\u90FD\u6C92\u6709\u547D\u4E2D\uFF09\u2014\u2014\u9019\u4E0D\u662F\u67E5\u8A62\u5931\u6557\u3002\u8ACB\u7167\u5BE6\u544A\u8A34\u4F7F\u7528\u8005\u67E5\u4E0D\u5230\uFF0C\u4E0D\u8981\u81EA\u5DF1\u7DE8\u7B54\u6848\u3002");
@@ -32832,6 +32907,9 @@ function registerKnowledgeSearch(server, env, identity) {
           hints.push(FOUND_BY_HINT[foundBy] ?? "");
           hints.push("\u56DE\u7B54\u6642\u5F15\u7528\u5361\u7247\u5167\u5BB9\uFF0C\u4E26\u9644\u4E0A\u51FA\u8655\uFF08source \u6B04\u4F4D\uFF09\u3002\u4E0D\u8981\u5F15\u7528\u5361\u7247\u5167\u6587\u300C### \u51FA\u8655\u300D\u90A3\u6BB5\u7684\u76F8\u5C0D\u8DEF\u5F91\u3002");
           hints.push("cards \u7684 content \u5DF2\u662F\u5B8C\u6574\u7B54\u6848\uFF1A\u5361\u5167\u6587\u88E1\u7684 [[\u2026]] \u53EA\u662F\u6A19\u8A18\uFF0C\u591A\u534A\u4E0D\u662F\u53E6\u4E00\u5F35\u5361\uFF0C\u4E0D\u8981\u70BA\u5B83\u518D\u547C\u53EB\u5DE5\u5177\u3002");
+        }
+        if (passages.length > 0 && cards.length > 0) {
+          hints.push("passages \u662F\u5361\u4E0D\u5920\u6642\u56DE\u539F\u7A3F\u627E\u5230\u7684\u539F\u6587\u7247\u6BB5\uFF0C\u901A\u5E38\u6BD4 cards \u66F4\u8CBC\u8FD1\u554F\u984C\uFF1A\u512A\u5148\u7528\u5B83\u56DE\u7B54\uFF0C\u4E26\u9644 source\uFF08\u539F\u7A3F\u8DEF\u5F91\u3001\u7BC0\u3001\u9801\u78BC\uFF09\uFF1Bcards \u53EA\u5728\u5167\u5BB9\u771F\u7684\u76F8\u95DC\u6642\u624D\u5F15\u7528\u3002");
         }
         if (partial2 && cards.length > 0) hints.push(`\u6CE8\u610F\uFF1A${partialHint}`);
         if (data.note) hints.push(data.note);
@@ -32963,6 +33041,7 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
   registerAllRecipeTools(server, env, partnerToken);
   registerAllUiComponentTools(server, env, partnerToken);
   registerAllKbdbDataTools(server, env, identity);
+  registerAllCreateFormTools(server, env, identity);
   registerAllKbdbGraphTools(server, env, orgNamespace, identity);
   registerAllKbdbMapTools(server, env, identity);
   registerAllKbdbIndexTools(server, env, identity);

@@ -4147,11 +4147,11 @@ var getPattern = (label, next) => {
   }
   return null;
 };
-var tryDecode = (str, decoder) => {
+var tryDecode = (str2, decoder) => {
   try {
-    return decoder(str);
+    return decoder(str2);
   } catch {
-    return str.replace(/(?:%[0-9A-Fa-f]{2})+/g, (match2) => {
+    return str2.replace(/(?:%[0-9A-Fa-f]{2})+/g, (match2) => {
       try {
         return decoder(match2);
       } catch {
@@ -4160,7 +4160,7 @@ var tryDecode = (str, decoder) => {
     });
   }
 };
-var tryDecodeURI = (str) => tryDecode(str, decodeURI);
+var tryDecodeURI = (str2) => tryDecode(str2, decodeURI);
 var getPath = (request) => {
   const url = request.url;
   const start = url.indexOf("/", url.indexOf(":") + 4);
@@ -4299,7 +4299,7 @@ var getQueryParams = (url, key) => {
 var decodeURIComponent_ = decodeURIComponent;
 
 // kbdb/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
-var tryDecodeURIComponent = (str) => tryDecode(str, decodeURIComponent_);
+var tryDecodeURIComponent = (str2) => tryDecode(str2, decodeURIComponent_);
 var HonoRequest = class {
   /**
    * `.raw` can get the raw Request object.
@@ -4593,27 +4593,27 @@ var raw = (value, callbacks) => {
   escapedString.callbacks = callbacks;
   return escapedString;
 };
-var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => {
-  if (typeof str === "object" && !(str instanceof String)) {
-    if (!(str instanceof Promise)) {
-      str = str.toString();
+var resolveCallback = async (str2, phase, preserveCallbacks, context, buffer) => {
+  if (typeof str2 === "object" && !(str2 instanceof String)) {
+    if (!(str2 instanceof Promise)) {
+      str2 = str2.toString();
     }
-    if (str instanceof Promise) {
-      str = await str;
+    if (str2 instanceof Promise) {
+      str2 = await str2;
     }
   }
-  const callbacks = str.callbacks;
+  const callbacks = str2.callbacks;
   if (!callbacks?.length) {
-    return Promise.resolve(str);
+    return Promise.resolve(str2);
   }
   if (buffer) {
-    buffer[0] += str;
+    buffer[0] += str2;
   } else {
-    buffer = [str];
+    buffer = [str2];
   }
   const resStr = Promise.all(callbacks.map((c) => c({ phase, buffer, context }))).then(
     (res) => Promise.all(
-      res.filter(Boolean).map((str2) => resolveCallback(str2, phase, false, context, buffer))
+      res.filter(Boolean).map((str22) => resolveCallback(str22, phase, false, context, buffer))
     ).then(() => buffer[0])
   );
   if (preserveCallbacks) {
@@ -9168,6 +9168,124 @@ async function lookupCards(db, question, opts) {
   return { found_by: cards.length > 0 ? "keyword_fallback" : "none", cards, index_trail: trail };
 }
 
+// kbdb/src/actions/passage-recall.ts
+init_embed();
+init_entry_crud();
+init_d1();
+var MAX_PASSAGES = 6;
+var MAX_PASSAGE_CANDIDATES = 24;
+var VECTOR_TOP_K = 80;
+var RERANK_MIN_SCORE = 0.3;
+var hydrateCap = (limit) => Math.min(MAX_PASSAGE_CANDIDATES + 4, limit + 4);
+var COVERAGE_MIN = 0.6;
+function cardsSufficient(q, cards) {
+  if (cards.length === 0) return { sufficient: false, reason: "\u6C92\u6709\u627E\u5230\u4EFB\u4F55\u5361" };
+  const { codes, bigrams } = questionTerms(q);
+  const terms = [...codes, ...bigrams];
+  if (terms.length === 0) return { sufficient: true, reason: "\u554F\u53E5\u592A\u77ED\u3001\u62C6\u4E0D\u51FA\u53EF\u6BD4\u5C0D\u7684\u8A5E\uFF0C\u4E0D\u591A\u82B1\u67E5\u8A62" };
+  const strong = codes.filter((c) => /\d/.test(c));
+  let best = 0;
+  for (const card of cards) {
+    const text = `${card.page_name}
+${card.content}`.toLowerCase();
+    if (strong.length > 0 && strong.every((c) => text.includes(c))) {
+      return { sufficient: true, reason: `\u5361\u300C${card.page_name}\u300D\u542B\u554F\u53E5\u7684\u7DE8\u865F ${strong.join("\u3001")}` };
+    }
+    if (strong.length > 0) continue;
+    const hit = terms.filter((t) => text.includes(t)).length;
+    best = Math.max(best, hit / terms.length);
+  }
+  if (strong.length > 0) return { sufficient: false, reason: `\u6C92\u6709\u4EFB\u4F55\u4E00\u5F35\u5361\u542B\u554F\u53E5\u7684\u7DE8\u865F ${strong.join("\u3001")}` };
+  const pct = Math.round(best * 100);
+  return best >= COVERAGE_MIN ? { sufficient: true, reason: `\u6700\u76F8\u95DC\u7684\u5361\u8986\u84CB\u554F\u53E5\u8A5E ${pct}%\uFF08\u9580\u6ABB ${Math.round(COVERAGE_MIN * 100)}%\uFF09` } : { sufficient: false, reason: `\u6700\u76F8\u95DC\u7684\u5361\u53EA\u8986\u84CB\u554F\u53E5\u8A5E ${pct}%\uFF08\u9580\u6ABB ${Math.round(COVERAGE_MIN * 100)}%\uFF09` };
+}
+function parseMeta3(e) {
+  try {
+    const m = JSON.parse(e.metadata_json ?? "{}");
+    return m && typeof m === "object" ? m : {};
+  } catch {
+    return {};
+  }
+}
+var str = (v) => typeof v === "string" && v.trim() ? v : null;
+var num = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+function pageHintOf(text) {
+  const m = text.match(/第\s*(\d{1,4})\s*頁/) ?? text.match(/\bpage\s*(\d{1,4})\b/i) ?? text.match(/\bp\.?\s*(\d{1,4})\b/i);
+  return m ? Number(m[1]) : null;
+}
+function toPassage(e) {
+  const meta = parseMeta3(e);
+  const content = e.content ?? "";
+  const firstLine = content.split("\n", 1)[0] ?? "";
+  return {
+    id: e.id,
+    score: e.score,
+    library: str(meta.library) ?? "general",
+    heading: str(meta.heading) ?? firstLine,
+    text: content,
+    source_path: str(meta.source_path),
+    machine: str(meta.machine_label) ?? str(meta.machine),
+    source: str(meta.source),
+    chunk_idx: num(meta.chunk_idx),
+    chunk_total: num(meta.chunk_total),
+    page_hint: pageHintOf(content)
+  };
+}
+async function recallPassages(env, q, scope, db = dbOf(env)) {
+  const t0 = Date.now();
+  const stats = {
+    triggered: true,
+    reason: "",
+    embed_calls: 0,
+    vector_queries: 0,
+    rows_hydrated: 0,
+    kept: 0,
+    ms: 0
+  };
+  const done = (passages) => {
+    stats.kept = passages.length;
+    stats.ms = Date.now() - t0;
+    return { passages, stats };
+  };
+  const limit = Math.min(Math.max(Math.floor(scope.limit ?? MAX_PASSAGES), 1), MAX_PASSAGE_CANDIDATES);
+  const reranking = limit > MAX_PASSAGES;
+  let hits;
+  try {
+    stats.embed_calls = 1;
+    stats.vector_queries = 1;
+    hits = await semanticSearch(env, q, { owner_id: scope.owner_id, library: scope.libraries, topK: VECTOR_TOP_K, ...reranking ? { min_score: RERANK_MIN_SCORE } : {} });
+  } catch (e) {
+    if (e instanceof EmbedQueryFailedError) {
+      stats.error = "embed_query_failed";
+      stats.reason = e.message;
+      return done([]);
+    }
+    throw e;
+  }
+  if (hits === null) {
+    stats.embed_calls = 0;
+    stats.vector_queries = 0;
+    stats.error = "embed_off";
+    stats.reason = "\u9019\u53F0\u5BE6\u4F8B\u7684\u5411\u91CF\u5C64\u6C92\u958B";
+    return done([]);
+  }
+  const candidates = hits.filter((h) => h.id.startsWith("psg-")).slice(0, hydrateCap(limit));
+  const entries = [];
+  for (const h of candidates) {
+    stats.rows_hydrated++;
+    const e = await getEntry(db, h.id);
+    if (!e) continue;
+    if (!e.templates.includes("source_passage")) continue;
+    if (isDeprecatedEntry(e)) continue;
+    entries.push({ ...e, score: h.score });
+  }
+  entries.sort((a, b) => b.score - a.score);
+  const cut = entries.length > 1 && !reranking ? relativeMinScore(entries[0].score) : 0;
+  const kept = entries.filter((e) => e.score >= cut).slice(0, limit).map(toPassage);
+  stats.reason = kept.length > 0 ? `\u5411\u91CF\u5C64\u627E\u5230 ${kept.length} \u6BB5\u539F\u7A3F` : "\u5411\u91CF\u5C64\u6C92\u6709\u5C0D\u5F97\u4E0A\u7684\u539F\u7A3F\u6BB5\u843D";
+  return done(kept);
+}
+
 // kbdb/src/actions/retrieve.ts
 var SHORT_QUERY_COVERAGE_HINT = "\u4F60\u8F38\u5165\u7684\u95DC\u9375\u5B57\u592A\u77ED\uFF08\u9023\u7E8C\u4E0D\u5230 3 \u500B\u5B57\uFF09\uFF0C\u9019\u6B21\u53EA\u67E5\u4E86\u6700\u8FD1\u5BEB\u5165\u7684\u4E00\u90E8\u5206\uFF0C\u6C92\u6709\u67E5\u5168\u5EAB\uFF0C\u6240\u4EE5\u300C\u6C92\u627E\u5230\u300D\u4E0D\u4EE3\u8868\u8CC7\u6599\u4E0D\u5B58\u5728\u3002\u8ACB\u6539\u7528 3 \u500B\u5B57\u4EE5\u4E0A\u7684\u8A5E\u518D\u67E5\u4E00\u6B21\u3002";
 var MAX_PAGES = 200;
@@ -9258,9 +9376,28 @@ async function retrieveForQuestion(db, question, opts = {}) {
     for (const l of allowed) if (!candidateLibraries.includes(l)) candidateLibraries.push(l);
   }
   const found = await lookupCards(db, q, { owner_id: opts.owner_id, libraries: candidateLibraries, allowed });
+  const sufficiency = cardsSufficient(q, found.cards);
+  let passages = [];
+  let recallStats = {
+    triggered: false,
+    reason: sufficiency.reason,
+    embed_calls: 0,
+    vector_queries: 0,
+    rows_hydrated: 0,
+    kept: 0,
+    ms: 0
+  };
+  if (!sufficiency.sufficient && opts.recall) {
+    const libs = allowed ? [...allowed] : void 0;
+    const r = await opts.recall(q, { owner_id: opts.owner_id, libraries: libs, limit: opts.passage_candidates });
+    passages = r.passages;
+    recallStats = { ...r.stats, reason: `${sufficiency.reason}\uFF1B${r.stats.reason}` };
+  } else if (!sufficiency.sufficient) {
+    recallStats = { ...recallStats, reason: `${sufficiency.reason}\uFF1B\u9019\u500B\u74B0\u5883\u6C92\u6709\u539F\u7A3F\u6BB5\u843D\u53EC\u56DE\u5C64` };
+  }
   return {
     route,
-    vector_used: false,
+    vector_used: recallStats.triggered && recallStats.vector_queries > 0,
     libraries_considered: selection.libraries_considered,
     libraries: scopedLibraries,
     indexes: scopedIndexes,
@@ -9271,12 +9408,15 @@ async function retrieveForQuestion(db, question, opts = {}) {
     cards: found.cards,
     cards_found_by: found.found_by,
     index_trail: found.index_trail,
+    passages,
+    retrieval_stats: { cards_sufficient: sufficiency.sufficient, cards_reason: sufficiency.reason, passage_recall: recallStats },
     // 只有真的走到「關鍵字掃描」那一步才算 partial（目錄卡／卡名命中是精確路徑，不受短查詢窗口影響）
     ...!buildFtsCandidateMatch(q) && (found.found_by === "none" || found.found_by === "keyword_fallback" || route === "all") ? { index_coverage: "partial", coverage_hint: SHORT_QUERY_COVERAGE_HINT } : {}
   };
 }
 
 // kbdb/src/routes/retrieve.ts
+init_embed();
 init_library_predicate();
 init_d1();
 var retrieveRoutes = new Hono2();
@@ -9292,6 +9432,8 @@ retrieveRoutes.get("/", async (c) => {
   const pages_limit = pagesLimitRaw === "0" ? 0 : Number.isFinite(pagesLimitNum) && pagesLimitNum > 0 ? Math.floor(pagesLimitNum) : void 0;
   const graphDepthNum = Number(c.req.query("graph_depth"));
   const graph_depth = Number.isFinite(graphDepthNum) && graphDepthNum > 0 ? Math.floor(graphDepthNum) : void 0;
+  const candNum = Number(c.req.query("passage_candidates"));
+  const passage_candidates = Number.isFinite(candNum) && candNum > 0 ? Math.floor(candNum) : void 0;
   try {
     const result = await retrieveForQuestion(dbOf(c.env), q, {
       owner_id,
@@ -9299,7 +9441,10 @@ retrieveRoutes.get("/", async (c) => {
       limit,
       pages_limit,
       graph_depth,
-      triplet_template: c.req.query("triplet_template") || void 0
+      passage_candidates,
+      triplet_template: c.req.query("triplet_template") || void 0,
+      // 卡不夠才用；向量層沒開的實例不注入（回應照實標「沒有召回層」）
+      recall: embedEnabled(c.env) ? (qq, scope) => recallPassages(c.env, qq, scope) : void 0
     });
     return c.json({ success: true, ...result });
   } catch (e) {

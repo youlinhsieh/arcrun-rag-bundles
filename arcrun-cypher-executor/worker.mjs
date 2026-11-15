@@ -249,11 +249,11 @@ var init_url = __esm({
       }
       return null;
     };
-    tryDecode = (str3, decoder) => {
+    tryDecode = (str4, decoder) => {
       try {
-        return decoder(str3);
+        return decoder(str4);
       } catch {
-        return str3.replace(/(?:%[0-9A-Fa-f]{2})+/g, (match2) => {
+        return str4.replace(/(?:%[0-9A-Fa-f]{2})+/g, (match2) => {
           try {
             return decoder(match2);
           } catch {
@@ -262,7 +262,7 @@ var init_url = __esm({
         });
       }
     };
-    tryDecodeURI = (str3) => tryDecode(str3, decodeURI);
+    tryDecodeURI = (str4) => tryDecode(str4, decodeURI);
     getPath = (request) => {
       const url = request.url;
       const start = url.indexOf("/", url.indexOf(":") + 4);
@@ -410,7 +410,7 @@ var init_request = __esm({
     init_constants();
     init_body();
     init_url();
-    tryDecodeURIComponent = (str3) => tryDecode(str3, decodeURIComponent_);
+    tryDecodeURIComponent = (str4) => tryDecode(str4, decodeURIComponent_);
     HonoRequest = class {
       /**
        * `.raw` can get the raw Request object.
@@ -694,23 +694,23 @@ var init_html = __esm({
       escapedString.callbacks = callbacks;
       return escapedString;
     };
-    resolveCallback = async (str3, phase, preserveCallbacks, context, buffer) => {
-      if (typeof str3 === "object" && !(str3 instanceof String)) {
-        if (!(str3 instanceof Promise)) {
-          str3 = str3.toString();
+    resolveCallback = async (str4, phase, preserveCallbacks, context, buffer) => {
+      if (typeof str4 === "object" && !(str4 instanceof String)) {
+        if (!(str4 instanceof Promise)) {
+          str4 = str4.toString();
         }
-        if (str3 instanceof Promise) {
-          str3 = await str3;
+        if (str4 instanceof Promise) {
+          str4 = await str4;
         }
       }
-      const callbacks = str3.callbacks;
+      const callbacks = str4.callbacks;
       if (!callbacks?.length) {
-        return Promise.resolve(str3);
+        return Promise.resolve(str4);
       }
       if (buffer) {
-        buffer[0] += str3;
+        buffer[0] += str4;
       } else {
-        buffer = [str3];
+        buffer = [str4];
       }
       const resStr = Promise.all(callbacks.map((c) => c({ phase, buffer, context }))).then(
         (res) => Promise.all(
@@ -80767,6 +80767,2641 @@ function bundleUiAssets(html, assets) {
   return { ok: errors.length === 0, html: out, errors, used: [...used] };
 }
 
+// cypher-executor/src/lib/ui-catalog.generated.json
+var ui_catalog_generated_default = {
+  _generated: "\u7531 console-ui/a2ui/build.mjs \u5F9E registry/ui-components/*/component.contract.yaml \u7522\u751F\u2014\u2014\u52FF\u624B\u6539\uFF0C\u6539\u539F\u7A3F\u5F8C\u91CD\u8DD1",
+  catalog_id: "arcrun:catalog/v0",
+  protocol_version: "v0.9",
+  components: [
+    {
+      canonical_id: "ui_button",
+      display_name: "\u6309\u9215",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Button",
+        implementation: "a2ui-basic"
+      },
+      description: "\u6309\u4E0B\u53BB\u9001\u51FA\u4E00\u500B\u4E8B\u4EF6\u540D\u7A31\uFF08\u53EF\u5E36\u53C3\u6578\uFF09\u3002\u6309\u9215\u672C\u8EAB\u4E0D\u542B\u908F\u8F2F\uFF1A\u8981\u89F8\u767C\u54EA\u500B\u5DE5\u4F5C\u6D41\uFF0C\u7531\u4F3A\u670D\u5668\u7AEF\u7684\u52D5\u4F5C\u767D\u540D\u55AE\u6C7A\u5B9A\u3002",
+      renders: "\u4E00\u9846\u6309\u9215\uFF0C\u4E0A\u9762\u7684\u5B57\u7531\u5B50\u5143\u4EF6\uFF08\u901A\u5E38\u662F\u4E00\u500B Text\uFF09\u6C7A\u5B9A\uFF1Bvariant \u70BA primary \u6642\u662F\u4E3B\u8981\u52D5\u4F5C\u7684\u6A23\u5F0F\u3002",
+      data_inputs: [
+        {
+          name: "child",
+          what: "\u6309\u9215\u4E0A\u986F\u793A\u7684\u5B50\u5143\u4EF6 id\uFF08\u901A\u5E38\u662F Text\uFF09"
+        },
+        {
+          name: "action",
+          what: '{"event": {"name": "\u4E8B\u4EF6\u540D\u7A31", "context": {"\u53C3\u6578": {"path": "/\u6B04\u4F4D"}}}}\u2014\u2014context \u7684\u503C\u53EF\u4EE5\u7D81\u8CC7\u6599'
+        }
+      ],
+      interactions: [
+        {
+          event: "action.event",
+          what: "\u6309\u4E0B\u6642\u9001\u51FA {name, context}\u3002Portal \u628A\u5B83\u8F49\u7D66\u5BBF\u4E3B\uFF08App \u7684\u52D5\u4F5C\u767D\u540D\u55AE\u7AEF\u9EDE\uFF09\uFF1B\u756B\u9762\u5B9A\u7FA9\u88E1\u4E0D\u51C6\u5BEB\u7DB2\u5740\u3001\u8DEF\u5F91\u6216\u6307\u4EE4"
+        }
+      ],
+      states: {
+        loading: "\u6309\u9215\u7ACB\u5373\u53EF\u6309\uFF1B\u9001\u51FA\u5F8C\u7684\u7B49\u5F85\u72C0\u614B\u7531\u5BBF\u4E3B\u986F\u793A",
+        empty: "\u6C92\u6709 child \u6642\u662F\u4E00\u9846\u6C92\u6709\u5B57\u7684\u6309\u9215\uFF08child \u5FC5\u586B\uFF0C\u9A57\u8B49\u6703\u64CB\uFF09",
+        error: "\u5BBF\u4E3B\u56DE\u932F\u8AA4\u6642\u7531\u5BBF\u4E3B\u986F\u793A\uFF0C\u6309\u9215\u672C\u8EAB\u4E0D\u8B8A",
+        disabled: "checks \u4E0D\u901A\u904E\u6642\u6309\u9215\u505C\u7528",
+        narrow: "\u6309\u9215\u5BEC\u5EA6\u8DDF\u8457\u5B57\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u6309\u9215\u4E0A\u7684\u5B57",
+          given: '{"components":[{"id":"root","component":"Button","child":"l","action":{"event":{"name":"refresh"}}},{"id":"l","component":"Text","text":"\u91CD\u65B0\u6574\u7406"}]}',
+          then_contains: "\u91CD\u65B0\u6574\u7406"
+        },
+        {
+          scenario: "\u4E3B\u8981\u52D5\u4F5C\u6A23\u5F0F\u7684\u6309\u9215",
+          given: '{"components":[{"id":"root","component":"Button","child":"l","variant":"primary","action":{"event":{"name":"run","context":{"id":{"path":"/id"}}}}},{"id":"l","component":"Text","text":"\u57F7\u884C"}],"data":{"id":"wf-1"}}',
+          then_contains: "\u57F7\u884C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "button",
+        "action",
+        "event"
+      ],
+      example: '{ "id": "refresh", "component": "Button", "child": "refresh-label", "action": { "event": { "name": "refresh" } } }\n',
+      source: "registry/ui-components/button/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "default",
+              "primary",
+              "borderless"
+            ],
+            default: "default",
+            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
+          },
+          action: {
+            $ref: "#/$defs/Action"
+          },
+          component: {
+            const: "Button"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "action",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_card",
+      display_name: "\u5361\u7247",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Card",
+        implementation: "a2ui-basic"
+      },
+      description: "\u6709\u5916\u6846\u7684\u5340\u584A\uFF0C\u628A\u4E00\u7D44\u76F8\u95DC\u5167\u5BB9\u6846\u5728\u4E00\u8D77\uFF08\u4E00\u5247\u5DE5\u4F5C\u6D41\u3001\u4E00\u5F35\u7968\u3001\u4E00\u7B46\u932F\u8AA4\uFF09\u3002",
+      renders: "\u4E00\u500B\u5E36\u5916\u6846\u8207\u5167\u8DDD\u7684\u65B9\u584A\uFF0C\u88E1\u9762\u653E\u4E00\u500B\u5B50\u5143\u4EF6\uFF1B\u8981\u653E\u591A\u500B\u6771\u897F\u6642\uFF0C\u5B50\u5143\u4EF6\u7528 Column \u6216 Row \u5305\u8D77\u4F86\u3002",
+      data_inputs: [
+        {
+          name: "child",
+          what: "\u8981\u6846\u8D77\u4F86\u7684\u90A3\u4E00\u500B\u5B50\u5143\u4EF6\u7684 id\uFF08\u4E0D\u662F\u8CC7\u6599\uFF0C\u662F\u7248\u9762\uFF09"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5916\u6846\u7167\u5E38\u51FA\u73FE\uFF0C\u88E1\u9762\u7531\u5B50\u5143\u4EF6\u81EA\u5DF1\u986F\u793A\u8F09\u5165\u4E2D",
+        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u5C31\u4E0D\u6703\u51FA\u73FE\uFF08child \u5FC5\u586B\uFF09",
+        error: "\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\uFF0C\u6E32\u67D3\u5668\u5728\u4E3B\u63A7\u53F0\u5831\u932F\u3001\u90A3\u4E00\u683C\u7559\u767D\uFF0C\u4E0D\u6703\u6574\u9801\u58DE\u6389",
+        disabled: "\u5361\u7247\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u7E2E\uFF0C\u5167\u5BB9\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5361\u7247\u6846\u4F4F\u4E00\u6BB5\u6587\u5B57",
+          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":"\u6846\u5728\u5361\u7247\u88E1"}]}',
+          then_contains: "\u6846\u5728\u5361\u7247\u88E1"
+        },
+        {
+          scenario: "\u5361\u7247\u88E1\u7684\u6587\u5B57\u53EF\u4EE5\u7D81\u8CC7\u6599",
+          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"/title"}}],"data":{"title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"}}',
+          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "container",
+        "card"
+      ],
+      example: '{ "id": "wf-card", "component": "Card", "child": "wf-body" }\n',
+      source: "registry/ui-components/card/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
+          },
+          component: {
+            const: "Card"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_check_box",
+      display_name: "\u52FE\u9078\u6846",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "CheckBox",
+        implementation: "a2ui-basic"
+      },
+      description: "\u8B93\u4EBA\u52FE\u9078\u662F\uFF0F\u5426\uFF08\u662F\u5426\u534A\u5929\u3001\u662F\u5426\u9700\u8981\u4EE3\u7406\u4EBA\uFF09\u3002\u7D50\u679C\u4EE5 true\uFF0Ffalse \u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+      renders: "\u4E00\u500B\u52FE\u9078\u6846\u52A0\u6A19\u7C64\u3002",
+      data_inputs: [
+        {
+          name: "label",
+          what: "\u52FE\u9078\u6846\u65C1\u7684\u5B57"
+        },
+        {
+          name: "value",
+          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u52FE\u4E86\u662F true\u3001\u6C92\u52FE\u662F false'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u7ACB\u5373\u53EF\u52FE",
+        empty: "\u6C92\u6709\u503C\u6642\u8996\u70BA\u6C92\u52FE\uFF08false\uFF09",
+        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u6A19\u7C64\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u52FE\u9078\u6846\u5E36\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"CheckBox","label":"\u534A\u5929","value":{"path":"/form/half"}}],"data":{"form":{"half":false}}}',
+          then_contains: "\u534A\u5929"
+        },
+        {
+          scenario: "\u52FE\u9078\u6846\u9810\u8A2D\u5DF2\u52FE",
+          given: '{"components":[{"id":"root","component":"CheckBox","label":"\u9700\u8981\u4EE3\u7406\u4EBA","value":{"path":"/form/proxy"}}],"data":{"form":{"proxy":true}}}',
+          then_contains: "\u9700\u8981\u4EE3\u7406\u4EBA"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "input",
+        "form",
+        "checkbox",
+        "\u52FE\u9078"
+      ],
+      example: '{ "id": "f-half", "component": "CheckBox", "label": "\u534A\u5929", "value": { "path": "/form/half" } }\n',
+      source: "registry/ui-components/check_box/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text to display next to the checkbox."
+          },
+          value: {
+            $ref: "#/$defs/DynamicBoolean",
+            description: "The current state of the checkbox (true for checked, false for unchecked)."
+          },
+          component: {
+            const: "CheckBox"
+          }
+        },
+        required: [
+          "id",
+          "label",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_choice_picker",
+      display_name: "\u9078\u55AE",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "ChoicePicker",
+        implementation: "a2ui-basic"
+      },
+      description: "\u8B93\u4EBA\u5F9E\u56FA\u5B9A\u9078\u9805\u88E1\u9078\u4E00\u500B\u6216\u591A\u500B\uFF08\u5047\u5225\u3001\u90E8\u9580\u3001\u512A\u5148\u7D1A\uFF09\u3002\u9078\u7684\u7D50\u679C\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\uFF08\u4E00\u5F8B\u662F\u5B57\u4E32\u9663\u5217\uFF09\u3002",
+      renders: "\u4E00\u7D44\u9078\u9805\u3002variant \u70BA mutuallyExclusive \u6642\u662F\u55AE\u9078\uFF0CmultipleSelection \u662F\u591A\u9078\uFF1BdisplayStyle \u6C7A\u5B9A\u9577\u6210\u52FE\u9078\u6E05\u55AE\u6216\u4E0B\u62C9\u6676\u7247\u3002",
+      data_inputs: [
+        {
+          name: "label",
+          what: "\u9078\u55AE\u7684\u6A19\u7C64"
+        },
+        {
+          name: "options",
+          what: '\u9078\u9805\u6E05\u55AE [{"label": "\u7D66\u4EBA\u770B\u7684\u5B57", "value": "\u5B58\u9032\u53BB\u7684\u503C"}]'
+        },
+        {
+          name: "value",
+          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u9078\u5230\u7684 value \u9663\u5217\u5BEB\u5230\u9019\u88E1\uFF08\u55AE\u9078\u6642\u9663\u5217\u53EA\u6709\u4E00\u500B\u5143\u7D20\uFF09'
+        },
+        {
+          name: "variant",
+          what: "mutuallyExclusive\uFF08\u55AE\u9078\uFF0C\u8868\u55AE\u6700\u5E38\u7528\uFF09\uFF0FmultipleSelection"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u9078\u9805\u7ACB\u5373\u986F\u793A\uFF08\u9078\u9805\u5BEB\u5728\u756B\u9762\u5B9A\u7FA9\u88E1\uFF0C\u4E0D\u7B49\u8CC7\u6599\uFF09",
+        empty: "\u6C92\u9078\u6642 value \u662F\u7A7A\u9663\u5217",
+        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u9078\u9805\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u55AE\u9078\u9078\u55AE\u986F\u793A\u9078\u9805",
+          given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u5047\u5225","variant":"mutuallyExclusive","options":[{"label":"\u7279\u4F11","value":"annual"},{"label":"\u75C5\u5047","value":"sick"}],"value":{"path":"/form/type"}}],"data":{"form":{"type":[]}}}',
+          then_contains: "\u75C5\u5047"
+        },
+        {
+          scenario: "\u591A\u9078\u9078\u55AE\u986F\u793A\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u6A19\u7C64","variant":"multipleSelection","options":[{"label":"\u6025","value":"urgent"}],"value":{"path":"/form/tags"}}],"data":{"form":{"tags":[]}}}',
+          then_contains: "\u6025"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "input",
+        "form",
+        "select",
+        "choice",
+        "\u9078\u55AE",
+        "\u4E0B\u62C9"
+      ],
+      example: '{ "id": "f-type", "component": "ChoicePicker", "label": "\u5047\u5225", "variant": "mutuallyExclusive", "options": [{ "label": "\u7279\u4F11", "value": "annual" }, { "label": "\u75C5\u5047", "value": "sick" }], "value": { "path": "/form/type" } }\n',
+      source: "registry/ui-components/choice_picker/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The label for the group of options."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "multipleSelection",
+              "mutuallyExclusive"
+            ],
+            default: "mutuallyExclusive",
+            description: "A hint for how the choice picker should be displayed and behave."
+          },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: {
+                  $ref: "#/$defs/DynamicString",
+                  description: "The text to display for this option."
+                },
+                value: {
+                  type: "string",
+                  description: "The stable value associated with this option."
+                }
+              },
+              required: [
+                "label",
+                "value"
+              ],
+              additionalProperties: false
+            },
+            description: "The list of available options to choose from."
+          },
+          value: {
+            $ref: "#/$defs/DynamicStringList",
+            description: "The list of currently selected values. This should be bound to a string array in the data model."
+          },
+          displayStyle: {
+            type: "string",
+            enum: [
+              "checkbox",
+              "chips"
+            ],
+            default: "checkbox",
+            description: "The display style of the component."
+          },
+          filterable: {
+            type: "boolean",
+            default: false,
+            description: "If true, displays a search input to filter the options."
+          },
+          component: {
+            const: "ChoicePicker"
+          }
+        },
+        required: [
+          "id",
+          "options",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_column",
+      display_name: "\u76F4\u6392",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Column",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u4E0A\u5F80\u4E0B\u6392\u3002\u6574\u500B\u756B\u9762\u7684\u9AA8\u67B6\u901A\u5E38\u662F\u4E00\u500B\u76F4\u6392\u3002",
+      renders: "\u4E00\u6B04\uFF0C\u5B50\u5143\u4EF6\u4F9D\u5E8F\u5F80\u4E0B\u5806\uFF0Cjustify\uFF0Falign \u63A7\u5236\u9593\u8DDD\u8207\u5C0D\u9F4A\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}\uFF0C\u8CC7\u6599\u9663\u5217\u6709\u5E7E\u7B46\u5C31\u9577\u5E7E\u500B'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
+        empty: "\u7D81\u5230\u7684\u6E05\u55AE\u662F\u7A7A\u9663\u5217\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u8981\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\u8ACB\u53E6\u653E\u4E00\u500B Text\uFF09",
+        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u672C\u4F86\u5C31\u662F\u55AE\u6B04\uFF0C\u7A84\u87A2\u5E55\u4E0D\u8B8A\u5F62"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5169\u6BB5\u6587\u5B57\u4E0A\u4E0B\u6392",
+          given: '{"components":[{"id":"root","component":"Column","children":["a","b"]},{"id":"a","component":"Text","text":"\u7B2C\u4E00\u884C"},{"id":"b","component":"Text","text":"\u7B2C\u4E8C\u884C"}]}',
+          then_contains: "\u7B2C\u4E8C\u884C"
+        },
+        {
+          scenario: "\u7528\u8CC7\u6599\u9663\u5217\u9577\u51FA\u5B50\u5143\u4EF6",
+          given: '{"components":[{"id":"root","component":"Column","children":{"componentId":"item","path":"/items"}},{"id":"item","component":"Text","text":{"path":"name"}}],"data":{"items":[{"name":"\u7532"},{"name":"\u4E59"}]}}',
+          then_contains: "\u4E59"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "column",
+        "stack"
+      ],
+      example: '{ "id": "page", "component": "Column", "children": ["title", "list"] }\n',
+      source: "registry/ui-components/column/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "spaceBetween",
+              "spaceAround",
+              "spaceEvenly",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "start",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
+          },
+          component: {
+            const: "Column"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_date_time_input",
+      display_name: "\u65E5\u671F\u6642\u9593\u8F38\u5165",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "DateTimeInput",
+        implementation: "a2ui-basic"
+      },
+      description: "\u8B93\u4EBA\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u65E5\u671F\u52A0\u6642\u9593\uFF08\u8ACB\u5047\u8D77\u8A16\u3001\u9810\u7D04\u6642\u6BB5\uFF09\u3002\u7D50\u679C\u4EE5 ISO 8601 \u5B57\u4E32\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+      renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u65E5\u671F\uFF0F\u6642\u9593\u6311\u9078\u6B04\u3002enableDate\uFF0FenableTime \u6C7A\u5B9A\u53EF\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u5169\u8005\u3002",
+      data_inputs: [
+        {
+          name: "label",
+          what: "\u6B04\u4F4D\u6A19\u7C64"
+        },
+        {
+          name: "value",
+          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u6311\u5230\u7684\u503C\uFF08ISO 8601 \u5B57\u4E32\uFF09\u5BEB\u5230\u9019\u88E1'
+        },
+        {
+          name: "enableDate",
+          what: "true \u624D\u80FD\u6311\u65E5\u671F\uFF08\u9810\u8A2D false\uFF0C\u8981\u65E5\u671F\u8ACB\u660E\u5BEB true\uFF09"
+        },
+        {
+          name: "enableTime",
+          what: "true \u624D\u80FD\u6311\u6642\u9593"
+        },
+        {
+          name: "min / max",
+          what: "\u53EF\u6311\u7BC4\u570D\u7684\u4E0B\u9650\uFF0F\u4E0A\u9650\uFF08ISO 8601\uFF09\uFF0C\u9078\u586B"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u7ACB\u5373\u53EF\u6311",
+        empty: "\u6C92\u6311\u6642 value \u662F\u7A7A\u5B57\u4E32",
+        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u65E5\u671F\u6B04\u5E36\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u958B\u59CB\u65E5\u671F","enableDate":true,"value":{"path":"/form/start"}}],"data":{"form":{"start":""}}}',
+          then_contains: "\u958B\u59CB\u65E5\u671F"
+        },
+        {
+          scenario: "\u65E5\u671F\u52A0\u6642\u9593\u6B04\u5E36\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u9810\u7D04\u6642\u6BB5","enableDate":true,"enableTime":true,"value":{"path":"/form/at"}}],"data":{"form":{"at":""}}}',
+          then_contains: "\u9810\u7D04\u6642\u6BB5"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "input",
+        "form",
+        "date",
+        "time",
+        "\u65E5\u671F",
+        "\u6642\u9593"
+      ],
+      example: '{ "id": "f-start", "component": "DateTimeInput", "label": "\u958B\u59CB\u65E5\u671F", "enableDate": true, "value": { "path": "/form/start" } }\n',
+      source: "registry/ui-components/date_time_input/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          value: {
+            $ref: "#/$defs/DynamicString",
+            description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
+          },
+          enableDate: {
+            type: "boolean",
+            default: false,
+            description: "If true, allows the user to select a date."
+          },
+          enableTime: {
+            type: "boolean",
+            default: false,
+            description: "If true, allows the user to select a time."
+          },
+          min: {
+            $ref: "#/$defs/DynamicString",
+            description: "The minimum allowed date/time in ISO 8601 format."
+          },
+          max: {
+            $ref: "#/$defs/DynamicString",
+            description: "The maximum allowed date/time in ISO 8601 format."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text label for the input field."
+          },
+          component: {
+            const: "DateTimeInput"
+          }
+        },
+        required: [
+          "id",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_list",
+      display_name: "\u6E05\u55AE",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "List",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u4E00\u500B\u8CC7\u6599\u9663\u5217\u5C55\u958B\u6210\u91CD\u8907\u7684\u9805\u76EE\uFF1A\u6BCF\u4E00\u7B46\u8CC7\u6599\u9577\u4E00\u500B\u540C\u6A23\u7684\u6A23\u677F\uFF08\u4F8B\u5982\u6BCF\u689D\u5DE5\u4F5C\u6D41\u4E00\u5F35\u5361\uFF09\u3002",
+      renders: "\u4E00\u4E32\u76F4\u5411\uFF08\u6216\u6A6B\u5411\uFF09\u6392\u5217\u7684\u9805\u76EE\uFF0C\u6BCF\u4E00\u9805\u90FD\u662F\u540C\u4E00\u500B\u6A23\u677F\u5143\u4EF6\uFF0C\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\u8B80\u90A3\u4E00\u7B46\u7684\u6B04\u4F4D\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u6A23\u677F {"componentId": "\u6BCF\u4E00\u9805\u7684\u5143\u4EF6 id", "path": "/\u8CC7\u6599\u9663\u5217"}\uFF1B\u6A23\u677F\u88E1\u7684 {"path": "name"} \u8B80\u7684\u662F\u90A3\u4E00\u7B46\u7684 name'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE",
+        empty: "\u7A7A\u9663\u5217\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE\uFF08\u300C\u6C92\u6709\u8CC7\u6599\u300D\u7684\u5B57\u8981\u53E6\u653E\u4E00\u500B Text\uFF0C\u756B\u9762\u5B9A\u7FA9\u81EA\u5DF1\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A\uFF09",
+        error: "\u67D0\u4E00\u7B46\u7F3A\u6B04\u4F4D\u6642\uFF0C\u90A3\u4E00\u7B46\u7684\u5C0D\u61C9\u6587\u5B57\u662F\u7A7A\u7684\uFF0C\u5176\u4ED6\u7B46\u7167\u5E38",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u76F4\u5411\u6E05\u55AE\u4E0D\u53D7\u5F71\u97FF\uFF1B\u6A6B\u5411\u6E05\u55AE\u6703\u51FA\u73FE\u6C34\u5E73\u6372\u52D5"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u6BCF\u7B46\u8CC7\u6599\u9577\u4E00\u9805",
+          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"row","path":"/workflows"}},{"id":"row","component":"Text","text":{"path":"name"}}],"data":{"workflows":[{"name":"notify_daily"},{"name":"ingest_docs"}]}}',
+          then_contains: "ingest_docs"
+        },
+        {
+          scenario: "\u6A23\u677F\u53EF\u4EE5\u662F\u4E00\u5F35\u5361",
+          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"card","path":"/items"}},{"id":"card","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"title"}}],"data":{"items":[{"title":"\u7B2C\u4E00\u5F35\u5361"}]}}',
+          then_contains: "\u7B2C\u4E00\u5F35\u5361"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "list",
+        "repeat",
+        "collection"
+      ],
+      example: '{ "id": "wf-list", "component": "List", "children": { "componentId": "wf-card", "path": "/workflows" } }\n',
+      source: "registry/ui-components/list/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
+          },
+          direction: {
+            type: "string",
+            enum: [
+              "vertical",
+              "horizontal"
+            ],
+            default: "vertical",
+            description: "The direction in which the list items are laid out."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis."
+          },
+          component: {
+            const: "List"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_row",
+      display_name: "\u6A6B\u6392",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Row",
+        implementation: "a2ui-basic"
+      },
+      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u5DE6\u5F80\u53F3\u6392\uFF0C\u4F8B\u5982\u300C\u540D\u7A31\uFF5C\u6392\u7A0B\uFF5C\u6700\u8FD1\u4E00\u6B21\u7D50\u679C\u300D\u653E\u5728\u540C\u4E00\u884C\u3002",
+      renders: "\u4E00\u5217\uFF0C\u5B50\u5143\u4EF6\u5DE6\u53F3\u4E26\u6392\uFF0Cjustify \u6C7A\u5B9A\u64E0\u5728\u4E00\u8D77\u6216\u63A8\u5230\u5169\u7AEF\uFF08spaceBetween\uFF09\u3002",
+      data_inputs: [
+        {
+          name: "children",
+          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
+        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u6642\u662F\u4E00\u689D\u7A7A\u5217",
+        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
+        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u5B50\u5143\u4EF6\u5BEC\u5EA6\u7E2E\u5C0F\uFF1B\u5167\u5BB9\u592A\u9577\u6642\u6587\u5B57\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u540D\u7A31\u8207\u72C0\u614B\u4E26\u6392",
+          given: '{"components":[{"id":"root","component":"Row","children":["n","s"],"justify":"spaceBetween"},{"id":"n","component":"Text","text":"\u6BCF\u65E5\u5F59\u6574"},{"id":"s","component":"Text","text":"success"}]}',
+          then_contains: "\u6BCF\u65E5\u5F59\u6574"
+        },
+        {
+          scenario: "\u4E26\u6392\u7684\u7B2C\u4E8C\u683C\u4E5F\u756B\u5F97\u51FA\u4F86",
+          given: '{"components":[{"id":"root","component":"Row","children":["n","s"]},{"id":"n","component":"Text","text":"A"},{"id":"s","component":"Text","text":"\u53F3\u908A\u90A3\u683C"}]}',
+          then_contains: "\u53F3\u908A\u90A3\u683C"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "layout",
+        "row",
+        "inline"
+      ],
+      example: '{ "id": "wf-head", "component": "Row", "children": ["wf-name", "wf-last"], "justify": "spaceBetween" }\n',
+      source: "registry/ui-components/row/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "spaceAround",
+              "spaceBetween",
+              "spaceEvenly",
+              "start",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
+          },
+          component: {
+            const: "Row"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_text",
+      display_name: "\u6587\u5B57",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "Text",
+        implementation: "a2ui-basic"
+      },
+      description: "\u986F\u793A\u4E00\u6BB5\u6587\u5B57\uFF1A\u6A19\u984C\u3001\u5167\u6587\u3001\u6578\u5B57\u3001\u8A3B\u8A18\u3002\u5167\u5BB9\u53EF\u4EE5\u5BEB\u6B7B\uFF0C\u4E5F\u53EF\u4EE5\u7D81\u5230\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+      renders: "\u4E00\u884C\u6216\u4E00\u6BB5\u6587\u5B57\uFF0Cvariant \u6C7A\u5B9A\u5927\u5C0F\uFF08h1\u2013h5 \u6A19\u984C\u3001body \u5167\u6587\u3001caption \u5C0F\u5B57\u8A3B\u8A18\uFF09\u3002",
+      data_inputs: [
+        {
+          name: "text",
+          what: '\u8981\u986F\u793A\u7684\u5B57\u3002\u5BEB\u6B7B\u5C31\u662F\u5B57\u4E32\uFF1B\u8981\u5F9E\u8CC7\u6599\u4F86\u5C31\u5BEB {"path": "/\u6B04\u4F4D"}\uFF0C\u5728 List \u7684\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\uFF08\u4F8B {"path": "name"}\uFF09'
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642\u986F\u793A\u7A7A\u5B57\u4E32\uFF0C\u4E0D\u986F\u793A undefined",
+        empty: "\u7D81\u5230\u7684\u6B04\u4F4D\u4E0D\u5B58\u5728\u6642\u986F\u793A\u7A7A\u5B57\u4E32",
+        error: "\u4E0D\u6703\u4E1F\u932F\uFF1B\u756B\u4E0D\u51FA\u4F86\u7684\u503C\u4E00\u5F8B\u7576\u7A7A\u5B57\u4E32",
+        disabled: "\u6587\u5B57\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
+        narrow: "\u81EA\u52D5\u63DB\u884C"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5BEB\u6B7B\u7684\u6A19\u984C",
+          given: '{"components":[{"id":"root","component":"Text","text":"\u5DE5\u4F5C\u6D41","variant":"h2"}]}',
+          then_contains: "\u5DE5\u4F5C\u6D41"
+        },
+        {
+          scenario: "\u7D81\u8CC7\u6599\u7684\u6578\u5B57",
+          given: '{"components":[{"id":"root","component":"Text","text":{"path":"/count"}}],"data":{"count":"\u5171 3 \u689D"}}',
+          then_contains: "\u5171 3 \u689D"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "text",
+        "label",
+        "heading"
+      ],
+      example: '{ "id": "wf-name", "component": "Text", "text": { "path": "name" }, "variant": "h3" }\n',
+      source: "registry/ui-components/text/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          text: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "caption",
+              "body"
+            ],
+            default: "body",
+            description: "A hint for the base text style."
+          },
+          component: {
+            const: "Text"
+          }
+        },
+        required: [
+          "id",
+          "text",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_text_field",
+      display_name: "\u6587\u5B57\u8F38\u5165\u6846",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "TextField",
+        implementation: "a2ui-basic"
+      },
+      description: "\u8B93\u4EBA\u8F38\u5165\u4E00\u6BB5\u5B57\uFF08\u55AE\u884C\u3001\u591A\u884C\u3001\u6578\u5B57\u3001\u5BC6\u78BC\uFF09\u3002\u8F38\u5165\u7684\u503C\u76F4\u63A5\u5BEB\u9032\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\uFF0C\u9001\u51FA\u6642\u7531\u8868\u55AE\u7684 Button \u5E36\u8D70\u3002\u9019\u662F\u300C\u8868\u55AE\u300D\u7684\u57FA\u672C\u7A4D\u6728\u3002",
+      renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u8F38\u5165\u6846\u3002variant \u6C7A\u5B9A\u5F62\u72C0\uFF1AshortText \u55AE\u884C\u3001longText \u591A\u884C\u3001number \u6578\u5B57\u3001obscured \u5BC6\u78BC\u3002",
+      data_inputs: [
+        {
+          name: "label",
+          what: "\u8F38\u5165\u6846\u7684\u6A19\u7C64\uFF08\u6B04\u4F4D\u540D\u7A31\uFF0C\u7D66\u4EBA\u770B\u7684\u5B57\uFF09"
+        },
+        {
+          name: "value",
+          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u4EBA\u8F38\u5165\u7684\u5B57\u6703\u5BEB\u5230\u8CC7\u6599\u7684\u9019\u500B\u4F4D\u7F6E\uFF0CButton \u7684 action.context \u518D\u7528\u540C\u4E00\u500B path \u628A\u5B83\u5E36\u8D70\u3002\u5FC5\u9808\u7D81 path\uFF0C\u5BEB\u6B7B\u5B57\u4E32\u5C31\u8B8A\u6210\u4E0D\u80FD\u6539'
+        },
+        {
+          name: "variant",
+          what: "shortText\uFF08\u9810\u8A2D\uFF09\uFF0FlongText\uFF0Fnumber\uFF0Fobscured"
+        }
+      ],
+      interactions: [],
+      states: {
+        loading: "\u8F38\u5165\u6846\u7ACB\u5373\u53EF\u8F38\u5165",
+        empty: "\u6C92\u6709\u503C\u6642\u986F\u793A\u6A19\u7C64\u7576\u63D0\u793A\uFF0C\u503C\u662F\u7A7A\u5B57\u4E32",
+        error: "validationRegexp \u6216 checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57\uFF0C\u9001\u51FA\u7531\u5BBF\u4E3B\u64CB",
+        disabled: "checks \u4E0D\u901A\u904E\u6642\u4E0D\u5F71\u97FF\u8F38\u5165\uFF0C\u53EA\u6A19\u932F\u8AA4",
+        narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u8F38\u5165\u6846\u5E36\u6A19\u7C64",
+          given: '{"components":[{"id":"root","component":"TextField","label":"\u59D3\u540D","value":{"path":"/form/name"}}],"data":{"form":{"name":""}}}',
+          then_contains: "\u59D3\u540D"
+        },
+        {
+          scenario: "\u591A\u884C\u8F38\u5165\u6846",
+          given: '{"components":[{"id":"root","component":"TextField","label":"\u8ACB\u5047\u539F\u56E0","variant":"longText","value":{"path":"/form/reason"}}],"data":{"form":{"reason":""}}}',
+          then_contains: "\u8ACB\u5047\u539F\u56E0"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "input",
+        "form",
+        "text",
+        "textfield",
+        "\u8F38\u5165"
+      ],
+      example: '{ "id": "f-name", "component": "TextField", "label": "\u59D3\u540D", "value": { "path": "/form/name" } }\n',
+      source: "registry/ui-components/text_field/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text label for the input field."
+          },
+          value: {
+            $ref: "#/$defs/DynamicString",
+            description: "The value of the text field."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "longText",
+              "number",
+              "shortText",
+              "obscured"
+            ],
+            default: "shortText",
+            description: "The type of input field to display."
+          },
+          validationRegexp: {
+            type: "string",
+            description: "A regular expression used for client-side validation of the input."
+          },
+          component: {
+            const: "TextField"
+          }
+        },
+        required: [
+          "id",
+          "label",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    {
+      canonical_id: "ui_workflow_graph",
+      display_name: "\u7BC0\u9EDE\u8207\u9023\u7DDA\u5716",
+      kind: "ui",
+      category: "ui",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "browser"
+      ],
+      a2ui: {
+        component: "WorkflowGraph",
+        implementation: "arcrun"
+      },
+      description: "\u628A\u4E00\u7FA4\u7BC0\u9EDE\u548C\u5B83\u5011\u4E4B\u9593\u7684\u9023\u7DDA\u756B\u6210\u4E00\u5F35\u53EF\u9EDE\u3001\u53EF\u7E2E\u653E\u7684\u5716\uFF1A\u5168\u5C40\u5716\uFF08\u5DE5\u4F5C\u6D41\u8207\u5B83\u5011\u8B80\u5BEB\u7684\u8CC7\u6599\u3001\u8AB0\u53EB\u8AB0\uFF0C\u65B7\u7DDA\u4EAE\u7D05\uFF09\u548C\u55AE\u4E00\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u7BC0\u9EDE\u8207\u9023\u7DDA\uFF09\u5171\u7528\u9019\u4E00\u9846\u3002",
+      renders: "layout=columns\uFF08XMind \u5F0F\u7684 drill\uFF0C\u4EE5\u67D0\u500B\u7BC0\u9EDE\u70BA\u4E2D\u5FC3\uFF09\uFF1A\u4E2D\u6B04\u662F\u4E2D\u5FC3\uFF08kind=center\uFF09\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF08\u5927\u7DB1\u7E2E\u6392\u7DDA\uFF09\uFF0C\u5DE6\u6B04\u662F\u547C\u53EB\u904E\u4F86\uFF0F\u5BEB\u8CC7\u6599\u7D66\u5B83\u7684\u9130\u5C45\uFF0C\u53F3\u6B04\u662F\u5B83\u53EB\u7684\u9130\u5C45\uFF1B\u6C92\u6709\u4E2D\u5FC3\u5C31\u662F\u6700\u5916\u5C64\u4E00\u6392\u540C\u8F29\uFF1B\u9023\u7DDA\u6A19\u51FA\u300C\u54EA\u4E00\u6B65 \u2192 \u53EB\u8AB0\u300D\uFF0C\u540C\u6B04\u7684\u7DDA\u7E5E\u5F27\uFF0Cvertical=true \u6642\u5168\u90E8\u6392\u6210\u4E00\u76F4\u6B04\u3002layout=flow\uFF08Claude Design \u7684 Workflow Viewer \u7248\u578B\uFF09\uFF1A\u7BC0\u9EDE\u5361\uFF1D\u8272\u584A\u5716\u793A\uFF0B\u540D\u5B57\uFF08\u986F\u793A\u540D\u512A\u5148\uFF09\uFF0B\u985E\u578B\u6A19\u7C64\uFF08\u53EA\u6A19\u6709\u5340\u5225\u610F\u7FA9\u7684\u985E\u578B\uFF09\uFF0B\u4E00\u884C\u7C21\u77ED\u8AAA\u660E\uFF0C\u7DB2\u5740\u8207 worker \u540D\u4E0D\u653E\u5728\u5361\u4E0A\uFF0C\u8C9D\u8332\u66F2\u7DDA\u9023\u7DDA\uFF0C\u88AB\u9078\uFF08selected\uFF09\u7684\u7BC0\u9EDE\u8207\u5B83\u7684\u9023\u7DDA\u9AD8\u4EAE\uFF1Bminimap=true \u6642\u5DE6\u4E0B\u89D2\u6709\u7E2E\u5C0F\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF1B\u7BC0\u9EDE\u7167\u9806\u5E8F\u5206\u5C64\uFF0C\u5BEC\u87A2\u5E55\u7531\u5DE6\u5230\u53F3\u3001\u7A84\u87A2\u5E55\uFF08vertical=true\uFF09\u7531\u4E0A\u5230\u4E0B\uFF0C\u689D\u4EF6\uFF0F\u5931\u6557\u7684\u7DDA\u5E36\u6587\u5B57\u3002\u7BC0\u9EDE\u6709 bad\uFF08\u7D05\u6846\uFF09\u3001dim\uFF08\u6DE1\uFF09\u5169\u7A2E\u6A19\u8A18\uFF0C\u9023\u7DDA\u6709 bad\uFF08\u7C97\u7D05\u7DDA\uFF0C\u9EDE\u5B83\u8DF3\u5230 href\uFF09\uFF1B\u7D05\u4E0D\u7D05\u7531\u8CC7\u6599\u8AAA\u4E86\u7B97\uFF0C\u9019\u9846\u5143\u4EF6\u4E0D\u5224\u65B7\u4EFB\u4F55\u4E8B\u3002",
+      data_inputs: [
+        {
+          name: "nodes",
+          what: "\u7BC0\u9EDE\u6E05\u55AE\uFF1Aid\u3001title\uFF0C\u9078\u586B sub\uFF08\u7B2C\u4E8C\u884C\u5B57\uFF0Cflow \u7248\u578B\u653E\u96F6\u4EF6 id\uFF09\u3001line3\uFF08flow \u5361\u7247\u53F3\u4E0B\u7684\u77ED\u5B57\uFF09\u3001badge\uFF08flow \u5361\u7247\u53F3\u4E0A\u7684\u985E\u578B\u6A19\u7C64\uFF0C\u5982 API\u3001AI\uFF09\u3001tone\uFF08\u5716\u793A\u8272\u584A\uFF1Agreen\uFF0Fblue\uFF0Famber\uFF0Fpurple\uFF0Fslate\uFF0Fgray\uFF0Fpink\uFF09\u3001icon\uFF08\u8272\u584A\u88E1\u7684\u4E00\u500B\u5B57\uFF09\u3001num\uFF08\u756B\u9762\u4E0A\u7684\u6307\u7A31\u7DE8\u865F\uFF0C\u986F\u793A\u6210\u300CN \u865F\u300D\uFF0C\u53EA\u7528\u4F86\u8DDF\u4EBA\u6216 AI \u6307\u67D0\u4E00\u584A\uFF0C\u4E0D\u4EE3\u8868\u5148\u5F8C\uFF09\u3001shape\uFF08\u56FA\u5B9A\u985E\u578B\u7684\u5916\u6846\uFF1Atrigger \u8D77\u9EDE\uFF1D\u5DE6\u534A\u5713\u3001call \u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41\uFF1D\u96D9\u5C64\u6846\u3001ext \u5916\u90E8\u670D\u52D9\uFF1D\u865B\u7DDA\u6846\u3001branch \u5224\u65B7\uFF1D\u516D\u89D2\u3001read\uFF0Fwrite \u8B80\u5BEB\u8CC7\u6599\u8868\uFF1D\u5713\u7B52\u9802\uFF1B\u6C92\u7D66\u5C31\u662F\u4E00\u822C\u5713\u89D2\u65B9\u584A\uFF09\u3001side\uFF08left\uFF0Fmid\uFF0Fright\uFF0Ccolumns \u7528\uFF09\u3001kind\uFF08item\uFF0Fgroup\uFF0Fdata\uFF0Fplat\uFF0Fmiss\uFF0Fcenter\uFF0Ftable\uFF1Btable\uFF1DUML \u985E\u5225\u5F0F\u7BC0\u9EDE\uFF0C\u8868\u540D\u7576\u6A19\u984C\u3001fields \u9010\u884C\u5217\u6B04\u4F4D\u3001more\uFF1D\u5176\u9918\u5E7E\u6B04\u6C92\u5217\u51FA\uFF09\u3001fields\u3001more\u3001bad\u3001dim\u3001href\uFF08\u9EDE\u5B83\u53BB\u54EA\uFF0C\u53EA\u6536 #/ \u958B\u982D\u7684\u7AD9\u5167\u7DB2\u5740\uFF09"
+        },
+        {
+          name: "edges",
+          what: "\u9023\u7DDA\u6E05\u55AE\uFF1Afrom\u3001to\uFF08\u7BC0\u9EDE id\uFF09\uFF0C\u9078\u586B kind\uFF08call\uFF0Fwrite\uFF0Fread\uFF0Fnext\uFF0Ffail\uFF0Fchild\uFF1Bchild\uFF1D\u4E2D\u5FC3\u5230\u5B83\u4E0B\u4E00\u5C64\u7684\u7E2E\u6392\u7DDA\uFF09\u3001label\u3001bad\u3001href\u3001tip\uFF08\u6ED1\u904E\u53BB\u986F\u793A\u7684\u8AAA\u660E\uFF09"
+        },
+        {
+          name: "layout / vertical / selected / minimap / pan / headLeft / headRight / zoom",
+          what: "\u7248\u578B\u3001\u9078\u53D6\u3001\u5168\u8C8C\u5716\u8207\u6B04\u6A19\u984C\uFF1Bzoom \u662F\u5728\u300C\u525B\u597D\u653E\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF1Bpan=true\uFF08flow \u7248\u578B\uFF09\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF0COVERVIEW \u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\u4E14\u9EDE\u5B83\u53EF\u8DF3\u904E\u53BB"
+        }
+      ],
+      interactions: [
+        {
+          name: "\u9EDE\u7BC0\u9EDE\uFF0F\u9EDE\u7D05\u7DDA",
+          what: "\u8DF3\u5230\u8A72\u7BC0\u9EDE\u6216\u8A72\u65B7\u7DDA\u6240\u5728\u7BC0\u9EDE\u7684 href\uFF08\u7AD9\u5167\u7DB2\u5740\uFF0C\u4E0D\u958B\u5916\u7AD9\uFF09"
+        }
+      ],
+      states: {
+        loading: "\u5143\u4EF6\u672C\u8EAB\u6C92\u6709\u8F09\u5165\u72C0\u614B\uFF1A\u547C\u53EB\u7AEF\u8CC7\u6599\u9084\u6C92\u5230\u5C31\u5148\u4E0D\u639B\u9019\u9846\uFF0C\u6216\u639B\u7A7A\u6E05\u55AE",
+        empty: "\u6C92\u6709\u7BC0\u9EDE\u6642\u756B\u4E00\u5F35\u7A7A\u7684\u5716\uFF08\u53EA\u6709\u6B04\u6A19\u984C\uFF09\uFF0C\u4E0D\u5831\u932F",
+        error: "\u8CC7\u6599\u5F62\u72C0\u4E0D\u5C0D\u7684\u7BC0\u9EDE\uFF0F\u9023\u7DDA\uFF08\u6C92\u6709 id\u3001\u9023\u5230\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE\uFF09\u6574\u7B46\u7565\u904E\uFF0C\u4E0D\u6703\u6574\u5F35\u5716\u58DE\u6389",
+        disabled: "\u5716\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF1B\u552F\u8B80\u662F\u9810\u8A2D\uFF0C\u6C92\u6709\u4EFB\u4F55\u6539\u52D5\u8CC7\u6599\u7684\u4E92\u52D5",
+        narrow: "\u5BB9\u5668\u6BD4\u5716\u7A84\u5C31\u7E2E\u5230\u6700\u5C0F 0.62 \u500D\uFF0C\u518D\u7A84\u6539\u6210\u6A6B\u5411\u6372\u52D5\uFF1Bflow \u7248\u578B\u53EF\u6539\u6210\u7531\u4E0A\u5230\u4E0B\uFF1Bpan=true \u6642\u6700\u5C0F\u53EA\u7E2E\u5230 0.9 \u500D\uFF0C\u5176\u9918\u9760\u5E73\u79FB"
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5168\u5C40\u5716\uFF1A\u5DE6\u6B04\u5DE5\u4F5C\u6D41\u3001\u53F3\u6B04\u8CC7\u6599\u3001\u4E00\u689D\u65B7\u7DDA\u4EAE\u7D05\u4E26\u5E36\u6587\u5B57",
+          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"columns","headLeft":"\u5DE5\u4F5C\u6D41","headRight":"\u8CC7\u6599","nodes":[{"id":"a","title":"rag_ingest_card","sub":"\u5DE5\u4F5C\u6D41","side":"left"},{"id":"m","title":"rag_cluster_auto","sub":"\u9019\u53F0\u6C92\u88DD\u9019\u689D\u5DE5\u4F5C\u6D41","side":"right","kind":"miss","bad":true}],"edges":[{"from":"a","to":"m","kind":"call","bad":true,"label":"\u2717 \u6C92\u88DD\u30FBtrigger_wiki_cluster","href":"#/flows/~w/rag_ingest_card/trigger_wiki_cluster"}]}]}',
+          then_contains: "rag_cluster_auto"
+        },
+        {
+          scenario: "\u6D41\u7A0B\u5716\uFF1A\u5169\u500B\u7BC0\u9EDE\u4E00\u689D\u7DDA\uFF0C\u7BC0\u9EDE\u5E36\u7DE8\u865F\u8207\u96F6\u4EF6\u540D",
+          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","minimap":true,"selected":"w","nodes":[{"id":"input","title":"input","sub":"\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09","num":1,"tone":"green","badge":"IN"},{"id":"w","title":"write_triplet","sub":"\u6253\u4E00\u500B\u7DB2\u5740","num":2,"line3":"\u5BEB triplet"}],"edges":[{"from":"input","to":"w","kind":"next","tip":"\u6210\u529F\u5F8C"}]}]}',
+          then_contains: "write_triplet"
+        },
+        {
+          scenario: "\u56FA\u5B9A\u985E\u578B\u7684\u7BC0\u9EDE\uFF1A\u8D77\u9EDE\u3001\u5916\u90E8\u670D\u52D9\u3001\u5224\u65B7\u5404\u6709\u81EA\u5DF1\u7684\u5916\u6846\u8207\u6A19\u7C64\uFF0C\u7DE8\u865F\u986F\u793A\u6210 N \u865F",
+          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":[{"id":"a","title":"\u6536\u5230\u7559\u8A00","sub":"\u8D77\u9EDE","num":1,"tone":"green","badge":"\u8D77\u9EDE","icon":"\u25B6","shape":"trigger"},{"id":"b","title":"\u767C Telegram","sub":"Telegram","num":2,"tone":"blue","badge":"\u5916\u90E8","icon":"A","shape":"ext"},{"id":"c","title":"\u6709\u6C92\u6709\u7968","sub":"\u5224\u65B7","num":3,"tone":"slate","badge":"\u5224\u65B7","icon":"?","shape":"branch"}],"edges":[{"from":"a","to":"b","kind":"next"},{"from":"b","to":"c","kind":"next"}]}]}',
+          then_contains: "2 \u865F"
+        },
+        {
+          scenario: "\u7BC0\u9EDE\u6E05\u55AE\u53EF\u4EE5\u7D81\u8CC7\u6599\u6A21\u578B",
+          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":{"path":"/n"},"edges":{"path":"/e"}}],"data":{"n":[{"id":"x","title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE","sub":"\u96F6\u4EF6"}],"e":[]}}',
+          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE"
+        }
+      ],
+      tags: [
+        "ui",
+        "a2ui",
+        "graph",
+        "workflow",
+        "observer"
+      ],
+      example: '{ "id": "root", "component": "WorkflowGraph", "layout": "flow",\n  "nodes": { "path": "/nodes" }, "edges": { "path": "/edges" } }\n',
+      source: "registry/ui-components/workflow-graph/component.contract.yaml",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          weight: {
+            type: "number"
+          },
+          layout: {
+            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          vertical: {
+            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
+            oneOf: [
+              {
+                type: "boolean"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          selected: {
+            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          minimap: {
+            type: "boolean",
+            description: "flow \u7248\u578B\uFF1A\u5DE6\u4E0B\u89D2\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1"
+          },
+          pan: {
+            type: "boolean",
+            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
+          },
+          headLeft: {
+            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          headMid: {
+            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          headRight: {
+            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          zoom: {
+            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
+            oneOf: [
+              {
+                type: "number"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          nodes: {
+            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: {
+                      type: "string"
+                    },
+                    title: {
+                      type: "string"
+                    },
+                    sub: {
+                      type: "string"
+                    },
+                    line3: {
+                      type: "string"
+                    },
+                    badge: {
+                      type: "string"
+                    },
+                    tone: {
+                      type: "string",
+                      enum: [
+                        "green",
+                        "blue",
+                        "amber",
+                        "purple",
+                        "slate",
+                        "gray",
+                        "pink"
+                      ]
+                    },
+                    icon: {
+                      type: "string"
+                    },
+                    num: {
+                      type: "number"
+                    },
+                    side: {
+                      type: "string",
+                      enum: [
+                        "left",
+                        "mid",
+                        "right"
+                      ]
+                    },
+                    kind: {
+                      type: "string",
+                      enum: [
+                        "item",
+                        "group",
+                        "data",
+                        "plat",
+                        "miss",
+                        "center",
+                        "table"
+                      ]
+                    },
+                    shape: {
+                      type: "string",
+                      enum: [
+                        "trigger",
+                        "call",
+                        "ext",
+                        "branch",
+                        "read",
+                        "write"
+                      ]
+                    },
+                    fields: {
+                      type: "array",
+                      items: {
+                        type: "string"
+                      }
+                    },
+                    more: {
+                      type: "number"
+                    },
+                    bad: {
+                      type: "boolean"
+                    },
+                    dim: {
+                      type: "boolean"
+                    },
+                    href: {
+                      type: "string"
+                    }
+                  },
+                  required: [
+                    "id",
+                    "title"
+                  ],
+                  additionalProperties: false,
+                  description: "\u4E00\u500B\u7BC0\u9EDE"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              }
+            ]
+          },
+          edges: {
+            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    from: {
+                      type: "string"
+                    },
+                    to: {
+                      type: "string"
+                    },
+                    kind: {
+                      type: "string",
+                      enum: [
+                        "call",
+                        "write",
+                        "read",
+                        "next",
+                        "fail",
+                        "child"
+                      ]
+                    },
+                    label: {
+                      type: "string"
+                    },
+                    bad: {
+                      type: "boolean"
+                    },
+                    href: {
+                      type: "string"
+                    },
+                    tip: {
+                      type: "string"
+                    }
+                  },
+                  required: [
+                    "from",
+                    "to"
+                  ],
+                  additionalProperties: false,
+                  description: "\u4E00\u689D\u9023\u7DDA"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              }
+            ]
+          },
+          component: {
+            const: "WorkflowGraph"
+          }
+        },
+        required: [
+          "id",
+          "nodes",
+          "edges",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    }
+  ],
+  a2ui_catalog: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    catalogId: "arcrun:catalog/v0",
+    components: {
+      Button: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "default",
+              "primary",
+              "borderless"
+            ],
+            default: "default",
+            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
+          },
+          action: {
+            $ref: "#/$defs/Action"
+          },
+          component: {
+            const: "Button"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "action",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Card: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          child: {
+            $ref: "#/$defs/ComponentId",
+            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
+          },
+          component: {
+            const: "Card"
+          }
+        },
+        required: [
+          "id",
+          "child",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      CheckBox: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text to display next to the checkbox."
+          },
+          value: {
+            $ref: "#/$defs/DynamicBoolean",
+            description: "The current state of the checkbox (true for checked, false for unchecked)."
+          },
+          component: {
+            const: "CheckBox"
+          }
+        },
+        required: [
+          "id",
+          "label",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      ChoicePicker: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The label for the group of options."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "multipleSelection",
+              "mutuallyExclusive"
+            ],
+            default: "mutuallyExclusive",
+            description: "A hint for how the choice picker should be displayed and behave."
+          },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: {
+                  $ref: "#/$defs/DynamicString",
+                  description: "The text to display for this option."
+                },
+                value: {
+                  type: "string",
+                  description: "The stable value associated with this option."
+                }
+              },
+              required: [
+                "label",
+                "value"
+              ],
+              additionalProperties: false
+            },
+            description: "The list of available options to choose from."
+          },
+          value: {
+            $ref: "#/$defs/DynamicStringList",
+            description: "The list of currently selected values. This should be bound to a string array in the data model."
+          },
+          displayStyle: {
+            type: "string",
+            enum: [
+              "checkbox",
+              "chips"
+            ],
+            default: "checkbox",
+            description: "The display style of the component."
+          },
+          filterable: {
+            type: "boolean",
+            default: false,
+            description: "If true, displays a search input to filter the options."
+          },
+          component: {
+            const: "ChoicePicker"
+          }
+        },
+        required: [
+          "id",
+          "options",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Column: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "spaceBetween",
+              "spaceAround",
+              "spaceEvenly",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "start",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
+          },
+          component: {
+            const: "Column"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      DateTimeInput: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          value: {
+            $ref: "#/$defs/DynamicString",
+            description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
+          },
+          enableDate: {
+            type: "boolean",
+            default: false,
+            description: "If true, allows the user to select a date."
+          },
+          enableTime: {
+            type: "boolean",
+            default: false,
+            description: "If true, allows the user to select a time."
+          },
+          min: {
+            $ref: "#/$defs/DynamicString",
+            description: "The minimum allowed date/time in ISO 8601 format."
+          },
+          max: {
+            $ref: "#/$defs/DynamicString",
+            description: "The maximum allowed date/time in ISO 8601 format."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text label for the input field."
+          },
+          component: {
+            const: "DateTimeInput"
+          }
+        },
+        required: [
+          "id",
+          "value",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      List: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
+          },
+          direction: {
+            type: "string",
+            enum: [
+              "vertical",
+              "horizontal"
+            ],
+            default: "vertical",
+            description: "The direction in which the list items are laid out."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis."
+          },
+          component: {
+            const: "List"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Row: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          children: {
+            $ref: "#/$defs/ChildList",
+            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+          },
+          justify: {
+            type: "string",
+            enum: [
+              "center",
+              "end",
+              "spaceAround",
+              "spaceBetween",
+              "spaceEvenly",
+              "start",
+              "stretch"
+            ],
+            default: "start",
+            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
+          },
+          align: {
+            type: "string",
+            enum: [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ],
+            default: "stretch",
+            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
+          },
+          component: {
+            const: "Row"
+          }
+        },
+        required: [
+          "id",
+          "children",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      Text: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          text: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "caption",
+              "body"
+            ],
+            default: "body",
+            description: "A hint for the base text style."
+          },
+          component: {
+            const: "Text"
+          }
+        },
+        required: [
+          "id",
+          "text",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      TextField: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          accessibility: {
+            $ref: "#/$defs/AccessibilityAttributes"
+          },
+          weight: {
+            type: "number",
+            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+          },
+          checks: {
+            type: "array",
+            items: {
+              $ref: "#/$defs/CheckRule",
+              description: "A single validation rule applied to an input component."
+            },
+            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+          },
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "The text label for the input field."
+          },
+          value: {
+            $ref: "#/$defs/DynamicString",
+            description: "The value of the text field."
+          },
+          variant: {
+            type: "string",
+            enum: [
+              "longText",
+              "number",
+              "shortText",
+              "obscured"
+            ],
+            default: "shortText",
+            description: "The type of input field to display."
+          },
+          validationRegexp: {
+            type: "string",
+            description: "A regular expression used for client-side validation of the input."
+          },
+          component: {
+            const: "TextField"
+          }
+        },
+        required: [
+          "id",
+          "label",
+          "component"
+        ],
+        unevaluatedProperties: false
+      },
+      WorkflowGraph: {
+        type: "object",
+        properties: {
+          id: {
+            $ref: "#/$defs/ComponentId"
+          },
+          weight: {
+            type: "number"
+          },
+          layout: {
+            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          vertical: {
+            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
+            oneOf: [
+              {
+                type: "boolean"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          selected: {
+            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          minimap: {
+            type: "boolean",
+            description: "flow \u7248\u578B\uFF1A\u5DE6\u4E0B\u89D2\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1"
+          },
+          pan: {
+            type: "boolean",
+            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
+          },
+          headLeft: {
+            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          headMid: {
+            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          headRight: {
+            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          zoom: {
+            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
+            oneOf: [
+              {
+                type: "number"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall",
+                description: "Invokes a named function on the client."
+              }
+            ]
+          },
+          nodes: {
+            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: {
+                      type: "string"
+                    },
+                    title: {
+                      type: "string"
+                    },
+                    sub: {
+                      type: "string"
+                    },
+                    line3: {
+                      type: "string"
+                    },
+                    badge: {
+                      type: "string"
+                    },
+                    tone: {
+                      type: "string",
+                      enum: [
+                        "green",
+                        "blue",
+                        "amber",
+                        "purple",
+                        "slate",
+                        "gray",
+                        "pink"
+                      ]
+                    },
+                    icon: {
+                      type: "string"
+                    },
+                    num: {
+                      type: "number"
+                    },
+                    side: {
+                      type: "string",
+                      enum: [
+                        "left",
+                        "mid",
+                        "right"
+                      ]
+                    },
+                    kind: {
+                      type: "string",
+                      enum: [
+                        "item",
+                        "group",
+                        "data",
+                        "plat",
+                        "miss",
+                        "center",
+                        "table"
+                      ]
+                    },
+                    shape: {
+                      type: "string",
+                      enum: [
+                        "trigger",
+                        "call",
+                        "ext",
+                        "branch",
+                        "read",
+                        "write"
+                      ]
+                    },
+                    fields: {
+                      type: "array",
+                      items: {
+                        type: "string"
+                      }
+                    },
+                    more: {
+                      type: "number"
+                    },
+                    bad: {
+                      type: "boolean"
+                    },
+                    dim: {
+                      type: "boolean"
+                    },
+                    href: {
+                      type: "string"
+                    }
+                  },
+                  required: [
+                    "id",
+                    "title"
+                  ],
+                  additionalProperties: false,
+                  description: "\u4E00\u500B\u7BC0\u9EDE"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              }
+            ]
+          },
+          edges: {
+            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    from: {
+                      type: "string"
+                    },
+                    to: {
+                      type: "string"
+                    },
+                    kind: {
+                      type: "string",
+                      enum: [
+                        "call",
+                        "write",
+                        "read",
+                        "next",
+                        "fail",
+                        "child"
+                      ]
+                    },
+                    label: {
+                      type: "string"
+                    },
+                    bad: {
+                      type: "boolean"
+                    },
+                    href: {
+                      type: "string"
+                    },
+                    tip: {
+                      type: "string"
+                    }
+                  },
+                  required: [
+                    "from",
+                    "to"
+                  ],
+                  additionalProperties: false,
+                  description: "\u4E00\u689D\u9023\u7DDA"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              }
+            ]
+          },
+          component: {
+            const: "WorkflowGraph"
+          }
+        },
+        required: [
+          "id",
+          "nodes",
+          "edges",
+          "component"
+        ],
+        unevaluatedProperties: false
+      }
+    },
+    $defs: {
+      anyComponent: {
+        oneOf: [
+          {
+            $ref: "#/components/Button"
+          },
+          {
+            $ref: "#/components/Card"
+          },
+          {
+            $ref: "#/components/CheckBox"
+          },
+          {
+            $ref: "#/components/ChoicePicker"
+          },
+          {
+            $ref: "#/components/Column"
+          },
+          {
+            $ref: "#/components/DateTimeInput"
+          },
+          {
+            $ref: "#/components/List"
+          },
+          {
+            $ref: "#/components/Row"
+          },
+          {
+            $ref: "#/components/Text"
+          },
+          {
+            $ref: "#/components/TextField"
+          },
+          {
+            $ref: "#/components/WorkflowGraph"
+          }
+        ],
+        discriminator: {
+          propertyName: "component"
+        }
+      },
+      ComponentId: {
+        type: "string",
+        description: "The unique identifier for a component, used for both definitions and references within the same surface."
+      },
+      AccessibilityAttributes: {
+        type: "object",
+        description: "Attributes to enhance accessibility when using assistive technologies like screen readers.",
+        properties: {
+          label: {
+            $ref: "#/$defs/DynamicString",
+            description: "A short string, typically 1 to 3 words, used by assistive technologies to convey the purpose or intent of an element. For example, an input field might have an accessible label of 'User ID' or a button might be labeled 'Submit'."
+          },
+          description: {
+            $ref: "#/$defs/DynamicString",
+            description: "Additional information provided by assistive technologies about an element such as instructions, format requirements, or result of an action. For example, a mute button might have a label of 'Mute' and a description of 'Silences notifications about this conversation'."
+          }
+        }
+      },
+      CheckRule: {
+        type: "object",
+        description: "A single validation rule applied to an input component.",
+        properties: {
+          condition: {
+            $ref: "#/$defs/DynamicBoolean"
+          },
+          message: {
+            type: "string",
+            description: "The error message to display if the check fails."
+          }
+        },
+        required: [
+          "condition",
+          "message"
+        ],
+        additionalProperties: false
+      },
+      Action: {
+        description: "Defines an interaction handler that can either trigger a server-side event or execute a local client-side function.",
+        oneOf: [
+          {
+            type: "object",
+            description: "Triggers a server-side event.",
+            properties: {
+              event: {
+                type: "object",
+                description: "The event to dispatch to the server.",
+                properties: {
+                  name: {
+                    type: "string",
+                    description: "The name of the action to be dispatched to the server."
+                  },
+                  context: {
+                    type: "object",
+                    description: "A JSON object containing the key-value pairs for the action context. Values can be literals or paths. Use literal values unless the value must be dynamically bound to the data model. Do NOT use paths for static IDs.",
+                    additionalProperties: {
+                      $ref: "#/$defs/DynamicValue"
+                    }
+                  }
+                },
+                required: [
+                  "name"
+                ],
+                additionalProperties: false
+              }
+            },
+            required: [
+              "event"
+            ],
+            additionalProperties: false
+          },
+          {
+            type: "object",
+            description: "Executes a local client-side function.",
+            properties: {
+              functionCall: {
+                $ref: "#/$defs/FunctionCall"
+              }
+            },
+            required: [
+              "functionCall"
+            ],
+            additionalProperties: false
+          }
+        ]
+      },
+      DynamicString: {
+        description: "Represents a string",
+        oneOf: [
+          {
+            type: "string"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            allOf: [
+              {
+                $ref: "#/$defs/FunctionCall"
+              },
+              {
+                properties: {
+                  returnType: {
+                    const: "string"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      DynamicBoolean: {
+        description: "A boolean value that can be a literal, a path, or a function call returning a boolean.",
+        oneOf: [
+          {
+            type: "boolean"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            allOf: [
+              {
+                $ref: "#/$defs/FunctionCall"
+              },
+              {
+                properties: {
+                  returnType: {
+                    const: "boolean"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      DynamicStringList: {
+        description: "Represents a value that can be either a literal array of strings, a path to a string array in the data model, or a function call returning a string array.",
+        oneOf: [
+          {
+            type: "array",
+            items: {
+              type: "string"
+            }
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            allOf: [
+              {
+                $ref: "#/$defs/FunctionCall"
+              },
+              {
+                properties: {
+                  returnType: {
+                    const: "array"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      ChildList: {
+        oneOf: [
+          {
+            type: "array",
+            items: {
+              $ref: "#/$defs/ComponentId"
+            },
+            description: "A static list of child component IDs."
+          },
+          {
+            type: "object",
+            description: "A template for generating a dynamic list of children from a data model list. The `componentId` is the component to use as a template.",
+            properties: {
+              componentId: {
+                $ref: "#/$defs/ComponentId"
+              },
+              path: {
+                type: "string",
+                description: "The path to the list of component property objects in the data model."
+              }
+            },
+            required: [
+              "componentId",
+              "path"
+            ],
+            additionalProperties: false
+          }
+        ]
+      },
+      DataBinding: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "A JSON Pointer path to a value in the data model."
+          }
+        },
+        required: [
+          "path"
+        ],
+        additionalProperties: false
+      },
+      FunctionCall: {
+        type: "object",
+        description: "Invokes a named function on the client.",
+        properties: {
+          call: {
+            type: "string",
+            description: "The name of the function to call."
+          },
+          args: {
+            type: "object",
+            description: "Arguments passed to the function.",
+            additionalProperties: {
+              anyOf: [
+                {
+                  $ref: "#/$defs/DynamicValue"
+                },
+                {
+                  type: "object",
+                  description: "A literal object argument (e.g. configuration)."
+                }
+              ]
+            }
+          },
+          returnType: {
+            type: "string",
+            description: "The expected return type of the function call.",
+            enum: [
+              "string",
+              "number",
+              "boolean",
+              "array",
+              "object",
+              "any",
+              "void"
+            ],
+            default: "boolean"
+          }
+        },
+        required: [
+          "call"
+        ],
+        oneOf: [
+          {
+            $ref: "catalog.json#/$defs/anyFunction"
+          }
+        ]
+      },
+      DynamicValue: {
+        description: "A value that can be a literal, a path, or a function call returning any type.",
+        oneOf: [
+          {
+            type: "string"
+          },
+          {
+            type: "number"
+          },
+          {
+            type: "boolean"
+          },
+          {
+            type: "array"
+          },
+          {
+            $ref: "#/$defs/DataBinding"
+          },
+          {
+            $ref: "#/$defs/FunctionCall"
+          }
+        ]
+      }
+    }
+  }
+};
+
+// cypher-executor/src/lib/ui-surface.ts
+var MAX_SURFACE_BYTES = 64 * 1024;
+var CATALOG_NAMES = new Set(ui_catalog_generated_default.components.map((c) => c.a2ui.component));
+function validateUiSurface(raw2, actions) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["ui.surface \u5FC5\u9808\u662F\u7269\u4EF6\uFF1A{ components: [...], data?: {...} }"];
+  const s = raw2;
+  if (!Array.isArray(s.components) || s.components.length === 0) return ["ui.surface.components \u5FC5\u9808\u662F\u975E\u7A7A\u9663\u5217"];
+  if (s.data !== void 0 && (typeof s.data !== "object" || s.data === null || Array.isArray(s.data))) errors.push("ui.surface.data \u5FC5\u9808\u662F\u7269\u4EF6");
+  const text = JSON.stringify(raw2);
+  if (text.length > MAX_SURFACE_BYTES) errors.push(`ui.surface \u592A\u5927\uFF08\u4E0A\u9650 ${MAX_SURFACE_BYTES / 1024} KB\uFF09`);
+  if (/openUrl|"call"\s*:|functionCall|javascript:|<script|https?:\/\//i.test(text)) {
+    errors.push("ui.surface \u4E0D\u53EF\u542B\u51FD\u5F0F\u547C\u53EB\u3001\u7DB2\u5740\u6216\u8173\u672C\uFF08\u53D7\u9650\u5143\u4EF6\u76EE\u9304\u53EA\u6536\u5143\u4EF6\uFF0C\u4E0D\u6536\u51FD\u5F0F\u8207\u4EFB\u610F\u9023\u7D50\uFF09");
+  }
+  const ids = /* @__PURE__ */ new Set();
+  const comps = s.components;
+  for (const [i, c] of comps.entries()) {
+    if (!c || typeof c !== "object" || typeof c.id !== "string" || !c.id) {
+      errors.push(`ui.surface.components[${i}] \u8981\u6709\u5B57\u4E32 id`);
+      continue;
+    }
+    if (ids.has(c.id)) errors.push(`ui.surface \u5143\u4EF6 id\u300C${c.id}\u300D\u91CD\u8907`);
+    ids.add(c.id);
+    if (typeof c.component !== "string" || !CATALOG_NAMES.has(c.component)) {
+      errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684 component\u300C${String(c.component)}\u300D\u4E0D\u5728\u756B\u9762\u5143\u4EF6\u76EE\u9304\u88E1\uFF08\u53EF\u7528\uFF1A${[...CATALOG_NAMES].join("\u3001")}\uFF1Barcrun_list_ui_components \u67E5\uFF09`);
+    }
+  }
+  if (!ids.has("root")) errors.push("ui.surface \u5FC5\u9808\u6709\u4E00\u500B id \u70BA root \u7684\u5143\u4EF6\uFF08\u756B\u9762\u7684\u6839\uFF09");
+  for (const c of comps) {
+    if (!c || typeof c.id !== "string") continue;
+    const kids = [];
+    if (Array.isArray(c.children)) kids.push(...c.children);
+    if (typeof c.child === "string") kids.push(c.child);
+    for (const k of kids) if (typeof k === "string" && !ids.has(k)) errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u6307\u5230\u4E0D\u5B58\u5728\u7684\u5B50\u5143\u4EF6\u300C${k}\u300D`);
+    const ev = c.action?.event;
+    if (ev) {
+      if (typeof ev.name !== "string" || !actions.includes(ev.name)) {
+        errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684\u6309\u9215\u4E8B\u4EF6\u300C${String(ev.name)}\u300D\u4E0D\u662F\u9019\u500B App \u7684\u52D5\u4F5C\uFF08\u53EF\u7528\uFF1A${actions.join("\u3001") || "\uFF08\u6C92\u6709\uFF09"}\uFF09\u2014\u2014\u756B\u9762\u53EA\u80FD\u89F8\u767C workflows\uFF0Factions \u5BA3\u544A\u904E\u7684\u52D5\u4F5C`);
+      }
+    }
+  }
+  return errors;
+}
+
 // cypher-executor/src/lib/app-system.ts
 init_recipes();
 init_credentials();
@@ -80993,7 +83628,7 @@ function classifyName(v) {
 }
 function isKbdbUrl(url) {
   if (typeof url !== "string") return false;
-  return /__KBDB_BASE__/.test(url) || /\/\/[^/]*kbdb[^/]*\//i.test(url) || /\{\{[^}]*kbdb[^}]*\}\}/i.test(url) || /(^|[^\w])\/kbdb\//.test(url);
+  return /__KBDB_BASE__/.test(url) || /\/\/[^/]*kbdb[^/]*\//i.test(url) || /\{\{[^}]*kbdb[^}]*\}\}/i.test(url) || /(^|[^\w])\/kbdb\//.test(url) || /__[A-Z0-9_]+__\/kbdb\//.test(url) || /^[a-z]+:\/\/[^/]+\/kbdb\//i.test(url);
 }
 function splitKbdbUrl(url) {
   let rest = url.replace(/^\{\{[^}]*\}\}/, "").replace(/^__[A-Z0-9_]+__/, "").replace(/^[a-z]+:\/\/[^/]+/i, "");
@@ -81679,7 +84314,10 @@ function validateAppDeclaration(raw2) {
     errors.push("name \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32");
   }
   const hasWorkflows = Array.isArray(d.workflows) && d.workflows.length > 0;
-  const hasUi = d.ui && typeof d.ui === "object" && typeof d.ui.html === "string" && d.ui.html.trim() !== "";
+  const uiObj = d.ui && typeof d.ui === "object" ? d.ui : null;
+  const hasHtml = Boolean(uiObj && typeof uiObj.html === "string" && uiObj.html.trim() !== "");
+  const hasSurface = Boolean(uiObj && uiObj.surface !== void 0);
+  const hasUi = hasHtml || hasSurface;
   if (!hasWorkflows && !hasUi) {
     errors.push("workflows \u6216 ui \u81F3\u5C11\u8981\u6709\u4E00\u500B\uFF08\u6C92\u6709\u756B\u9762\u4E5F\u6C92\u6709\u5DE5\u4F5C\u6D41\u7684 App \u4E0D\u6210\u7ACB\uFF0Cdesign \xA7\u4E8C\uFF09");
   }
@@ -81724,7 +84362,13 @@ function validateAppDeclaration(raw2) {
     }
   }
   if (d.ui !== void 0 && !hasUi) {
-    errors.push("ui.html \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
+    errors.push("ui.html \u6216 ui.surface \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
+  }
+  if (hasHtml && hasSurface) errors.push("ui.html \u8207 ui.surface \u53EA\u80FD\u64C7\u4E00");
+  if (hasSurface) {
+    const wfNames = Array.isArray(d.workflows) ? d.workflows.map((w) => String(w?.name)) : [];
+    const acts = Array.isArray(d.actions) ? d.actions.map(String) : wfNames;
+    errors.push(...validateUiSurface(uiObj?.surface, acts));
   }
   if (d.ui && typeof d.ui === "object") {
     const s = d.ui.style;
@@ -81734,7 +84378,7 @@ function validateAppDeclaration(raw2) {
     const ui = d.ui;
     const assetErrors = validateUiAssets(ui.assets);
     errors.push(...assetErrors);
-    if (assetErrors.length === 0 && hasUi) {
+    if (assetErrors.length === 0 && hasHtml) {
       errors.push(...bundleUiAssets(ui.html, ui.assets).errors);
     }
   }
@@ -82205,7 +84849,8 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
       }
     }
   }
-  const uiHtml = decl.ui ? bundleUiAssets(decl.ui.html, decl.ui.assets).html : void 0;
+  const uiHtml = decl.ui?.html ? bundleUiAssets(decl.ui.html, decl.ui.assets).html : void 0;
+  const uiSurface = decl.ui?.surface;
   const mcp = installedMcpOf(decl.id, decl.mcp);
   const record = {
     id: decl.id,
@@ -82216,8 +84861,9 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     workflows: workflowRefs,
     actions: decl.actions,
     data_templates: decl.data.map((d) => d.name),
-    has_ui: Boolean(uiHtml),
+    has_ui: Boolean(uiHtml || uiSurface),
     ui_html: uiHtml,
+    ...uiSurface ? { ui_surface: uiSurface } : {},
     ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
     keeps_data: decl.keeps_data,
     ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
@@ -82341,6 +84987,7 @@ function detailApp(app2) {
     version: app2.version,
     has_ui: app2.has_ui,
     ui_html: app2.ui_html,
+    ...app2.ui_surface ? { ui_surface: app2.ui_surface } : {},
     // 舊安裝態（v0.1 裝的 App）沒有這一欄——一律當「跟隨全局」，不是「維持原樣」。
     // 那正是 leo 抱怨的那個狀態，預設值要把它修好，不是把它保留下來。
     ui_style: app2.ui_style ?? DEFAULT_APP_UI_STYLE,
@@ -92247,7 +94894,22 @@ var MAX_CARDS_IN_PROMPT = 8;
 var MAX_CARD_CHARS = 2500;
 var MAX_HISTORY_TURNS = 6;
 var MAX_TURN_CHARS = 800;
-var FOUND_BY_RANK = { index: 0, card_name: 1, keyword_fallback: 2 };
+var FOUND_BY_RANK = { passage: -1, index: 0, card_name: 1, keyword_fallback: 2 };
+function passageToChatCard(p, account, accountId) {
+  const place = [
+    p.page_hint != null ? `\u7B2C ${p.page_hint} \u9801` : null,
+    p.chunk_idx != null ? `\u7B2C ${p.chunk_idx + 1}${p.chunk_total ? `\uFF0F${p.chunk_total}` : ""} \u6BB5` : null
+  ].filter(Boolean).join("\u3001");
+  return {
+    account,
+    account_id: accountId,
+    library: p.library,
+    page_name: `\u539F\u7A3F\u6BB5\u843D\uFF1A${p.heading || p.source_path || p.id}${place ? `\uFF08${place}\uFF09` : ""}`,
+    found_by: "passage",
+    content: p.text,
+    location: p.location ?? null
+  };
+}
 function mergeCards(perAccount, max = MAX_CARDS_IN_PROMPT) {
   const queues = perAccount.map(
     (cards) => cards.map((c, i) => ({ c, i })).sort((a, b) => (FOUND_BY_RANK[a.c.found_by] ?? 3) - (FOUND_BY_RANK[b.c.found_by] ?? 3) || a.i - b.i).map((x) => x.c)
@@ -92298,7 +94960,7 @@ function sanitizeHistory(raw2) {
 var SYSTEM_PROMPT = [
   "\u4F60\u662F\u77E5\u8B58\u5EAB\u5C0F\u5E6B\u624B\uFF0C\u7528\u6B63\u9AD4\u4E2D\u6587\u56DE\u7B54\u3002",
   "\u898F\u5247\uFF1A",
-  "1. \u53EA\u6839\u64DA\u4E0B\u9762\u300C\u77E5\u8B58\u5361\u300D\u7684\u5167\u5BB9\u56DE\u7B54\uFF0C\u4E0D\u53EF\u4EE5\u7528\u5361\u4EE5\u5916\u7684\u77E5\u8B58\u88DC\u5145\u6216\u731C\u6E2C\u3002",
+  "1. \u53EA\u6839\u64DA\u4E0B\u9762\u300C\u77E5\u8B58\u5361\u300D\u7684\u5167\u5BB9\u56DE\u7B54\uFF0C\u4E0D\u53EF\u4EE5\u7528\u5361\u4EE5\u5916\u7684\u77E5\u8B58\u88DC\u5145\u6216\u731C\u6E2C\u3002\u540D\u53EB\u300C\u539F\u7A3F\u6BB5\u843D\uFF1A\u2026\u300D\u7684\u662F\u77E5\u8B58\u5EAB\u539F\u7A3F\u7684\u539F\u6587\u7247\u6BB5\uFF08\u53EF\u80FD\u662F\u82F1\u6587\uFF09\uFF0C\u53EF\u4EE5\u7167\u5B83\u56DE\u7B54\uFF0C\u7528\u4E2D\u6587\u8F49\u8FF0\u4F46\u578B\u865F\u3001\u6578\u5B57\u3001\u5C08\u6709\u540D\u8A5E\u7167\u539F\u6587\u3002",
   "2. \u6BCF\u4E00\u53E5\u7528\u5230\u5361\u5167\u5BB9\u7684\u8A71\uFF0C\u53E5\u5C3E\u6A19\u51FA\u5361\u7684\u7DE8\u865F\uFF0C\u4F8B\u5982 [1] \u6216 [2][3]\u3002",
   "3. \u5361\u88E1\u627E\u4E0D\u5230\u7B54\u6848\u6642\uFF0C\u76F4\u63A5\u8AAA\u300C\u77E5\u8B58\u5EAB\u88E1\u67E5\u4E0D\u5230\u9019\u500B\u554F\u984C\u7684\u7B54\u6848\u300D\uFF0C\u4E26\u5EFA\u8B70\u63DB\u500B\u8AAA\u6CD5\u6216\u88DC\u5145\u95DC\u9375\u5B57\uFF1B\u4E0D\u8981\u7DE8\u9020\u3002",
   "4. \u4E0D\u540C\u5361\u7684\u8AAA\u6CD5\u4E92\u76F8\u77DB\u76FE\u6642\uFF0C\u5169\u7A2E\u90FD\u5217\u51FA\u4F86\u4E26\u5404\u81EA\u6A19\u51FA\u8655\uFF0C\u4E0D\u8981\u81EA\u5DF1\u9078\u908A\u3002",
@@ -92352,8 +95014,303 @@ async function answerFromCards(env, tenant2, config, question, cards, history) {
   return { ok: true, answer: dropInvalidCitations(text, cards.length), model: r.model, provider: r.provider };
 }
 
+// cypher-executor/src/lib/passage-rerank.ts
+var MAX_RERANK_CANDIDATES = 16;
+var RERANK_PASSAGE_CHARS = 500;
+var RERANK_KEEP = 6;
+var RERANK_MIN_KEEP = 3;
+var RERANK_SYSTEM = [
+  "\u4F60\u662F\u6AA2\u7D22\u52A9\u624B\u3002\u7D66\u4F60\u4E00\u500B\u554F\u984C\u548C\u5E7E\u6BB5\u539F\u7A3F\u7247\u6BB5\uFF08\u7DE8\u865F [1]\u3001[2]\u2026\uFF0C\u53EF\u80FD\u662F\u82F1\u6587\uFF09\u3002",
+  "\u8ACB\u6311\u51FA\u300C\u771F\u7684\u5305\u542B\u7B54\u6848\u6216\u76F4\u63A5\u76F8\u95DC\u4E8B\u5BE6\u300D\u7684\u7247\u6BB5\u7DE8\u865F\uFF0C\u6700\u76F8\u95DC\u7684\u6392\u5728\u6700\u524D\u9762\uFF0C\u6700\u591A 6 \u500B\u3002",
+  "\u554F\u984C\u548C\u539F\u7A3F\u53EF\u80FD\u7528\u4E0D\u540C\u8A9E\u8A00\u3001\u4E0D\u540C\u8AAA\u6CD5\uFF08\u4F8B\u5982\u300C\u9632\u6B62\u5200\u5177\u649E\u5230\u5DE5\u4EF6\u300D\u5C0D\u61C9 anti-collision device\uFF09\uFF0C\u8ACB\u770B\u610F\u601D\uFF0C\u4E0D\u8981\u770B\u5B57\u9762\u3002",
+  '\u53EA\u8F38\u51FA\u4E00\u500B JSON\uFF0C\u683C\u5F0F\uFF1A{"relevant":[3,1]}\uFF1B\u6C92\u6709\u4EFB\u4F55\u7247\u6BB5\u76F8\u95DC\u5C31\u8F38\u51FA {"relevant":[]}\u3002\u4E0D\u8981\u8F38\u51FA\u5176\u4ED6\u6587\u5B57\u3002'
+].join("\n");
+function buildRerankPrompt(question, passages) {
+  const body = passages.map((p, i) => {
+    const text = p.text.length > RERANK_PASSAGE_CHARS ? `${p.text.slice(0, RERANK_PASSAGE_CHARS)}\u2026` : p.text;
+    return `[${i + 1}] ${p.heading ? `\uFF08${p.heading}\uFF09` : ""}
+${text}`;
+  }).join("\n\n---\n\n");
+  return `\uFF1D\uFF1D \u554F\u984C \uFF1D\uFF1D
+${question.trim()}
+
+\uFF1D\uFF1D \u539F\u7A3F\u7247\u6BB5 \uFF1D\uFF1D
+${body}`;
+}
+function parseRerankReply(text, count2) {
+  let nums = null;
+  const json = text.match(/\{[\s\S]*\}/);
+  if (json) {
+    try {
+      const v = JSON.parse(json[0]);
+      if (Array.isArray(v.relevant)) nums = v.relevant;
+    } catch {
+    }
+  }
+  if (!nums) {
+    const arr = text.match(/\[\s*(\d+(?:\s*,\s*\d+)*)?\s*\]/);
+    if (arr) nums = (arr[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean).map(Number);
+  }
+  if (!nums) return null;
+  const out = [];
+  for (const n of nums) {
+    const k = typeof n === "number" ? n : Number(n);
+    if (Number.isInteger(k) && k >= 1 && k <= count2 && !out.includes(k - 1)) out.push(k - 1);
+  }
+  return out;
+}
+function applyRerank(passages, chosen, keep = RERANK_KEEP, minKeep = RERANK_MIN_KEEP) {
+  const picked = chosen.map((i) => passages[i]).filter((p) => p !== void 0).slice(0, keep);
+  if (picked.length >= minKeep) return picked;
+  for (const p of passages) {
+    if (picked.length >= minKeep) break;
+    if (!picked.includes(p)) picked.push(p);
+  }
+  return picked;
+}
+async function rerankPassages(env, tenant2, config, question, passages) {
+  const t0 = Date.now();
+  const candidates = passages.slice(0, MAX_RERANK_CANDIDATES);
+  const base = { llm_calls: 0, candidates: candidates.length, kept: Math.min(candidates.length, RERANK_KEEP), chosen_vector_ranks: [], ms: 0 };
+  if (candidates.length <= 1) return { passages: candidates, stats: { ...base, ms: Date.now() - t0 } };
+  const r = await runExtractAi(env, tenant2, config, {
+    system: RERANK_SYSTEM,
+    prompt: buildRerankPrompt(question, candidates),
+    maxTokens: 80,
+    temperature: 0,
+    jsonObject: false
+  });
+  const fallback = (error) => ({
+    passages: candidates.slice(0, RERANK_KEEP),
+    stats: { ...base, llm_calls: 1, ms: Date.now() - t0, error }
+  });
+  if (!r.ok) return fallback(`${r.code}\uFF1A${r.error}`);
+  const chosen = parseRerankReply(normalizeAiText(r.out).text, candidates.length);
+  if (chosen === null) return fallback("\u6A21\u578B\u56DE\u8986\u8B80\u4E0D\u51FA\u7DE8\u865F");
+  const kept = applyRerank(candidates, chosen);
+  return {
+    passages: kept,
+    stats: { ...base, llm_calls: 1, kept: kept.length, chosen_vector_ranks: chosen.map((i) => i + 1), ms: Date.now() - t0, model: r.model }
+  };
+}
+
 // cypher-executor/src/routes/portal-data.ts
 init_kbdb_busy();
+
+// cypher-executor/src/lib/form-surface.ts
+var FORM_FIELD_TYPES = ["text", "longtext", "number", "date", "datetime", "select", "multiselect", "checkbox"];
+var NAME_RE3 = /^[a-z][a-z0-9_]{0,39}$/;
+var KEY_RE2 = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+var MAX_FIELDS = 30;
+var MAX_OPTIONS = 50;
+var MAX_TEXT = 4e3;
+function str3(v, max = 200) {
+  return typeof v === "string" ? v.trim().slice(0, max) : "";
+}
+function parseFormSpec(body) {
+  if (!body || typeof body !== "object") return { ok: false, error: "\u9700\u8981 JSON \u7269\u4EF6\uFF1A{ name, title, fields[] }" };
+  const b = body;
+  const name = str3(b.name, 40);
+  if (!NAME_RE3.test(name)) return { ok: false, error: "name \u5FC5\u9808\u662F\u5C0F\u5BEB\u82F1\u6587\u5B57\u6BCD\u958B\u982D\u3001\u53EA\u542B\u5C0F\u5BEB\u82F1\u6578\u8207\u5E95\u7DDA\u3001\u6700\u9577 40 \u5B57\uFF08\u4F8B\uFF1Aleave_request\uFF09" };
+  const title = str3(b.title, 80);
+  if (!title) return { ok: false, error: "title \u5FC5\u586B\uFF08\u8868\u55AE\u6A19\u984C\uFF0C\u7D66\u4EBA\u770B\u7684\u5B57\uFF09" };
+  const template = b.template === void 0 ? name : str3(b.template, 40);
+  if (!NAME_RE3.test(template)) {
+    return { ok: false, error: "template \u5FC5\u9808\u662F\u5C0F\u5BEB\u82F1\u6587\u5B57\u6BCD\u958B\u982D\u3001\u53EA\u542B\u5C0F\u5BEB\u82F1\u6578\u8207\u5E95\u7DDA\uFF08\u9810\u8A2D\u8207 name \u76F8\u540C\uFF09" };
+  }
+  if (!Array.isArray(b.fields) || b.fields.length === 0) return { ok: false, error: "fields \u5FC5\u586B\uFF0C\u4E14\u81F3\u5C11\u4E00\u500B\u6B04\u4F4D" };
+  if (b.fields.length > MAX_FIELDS) return { ok: false, error: `fields \u6700\u591A ${MAX_FIELDS} \u500B` };
+  const fields = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (let i = 0; i < b.fields.length; i++) {
+    const f = b.fields[i];
+    const at = `fields[${i}]`;
+    if (!f || typeof f !== "object") return { ok: false, error: `${at} \u5FC5\u9808\u662F\u7269\u4EF6` };
+    const key = str3(f.key, 40);
+    if (!KEY_RE2.test(key)) return { ok: false, error: `${at}.key \u5FC5\u9808\u662F\u82F1\u6587\u5B57\u6BCD\u958B\u982D\u3001\u53EA\u542B\u82F1\u6578\u8207\u5E95\u7DDA\u3001\u6700\u9577 40 \u5B57\uFF08\u8CC7\u6599\u8868\u6B04\u4F4D\u540D\uFF09` };
+    if (seen.has(key)) return { ok: false, error: `${at}.key\u300C${key}\u300D\u91CD\u8907` };
+    seen.add(key);
+    const label = str3(f.label, 80);
+    if (!label) return { ok: false, error: `${at}.label \u5FC5\u586B\uFF08\u6B04\u4F4D\u6A19\u7C64\uFF0C\u7D66\u4EBA\u770B\u7684\u5B57\uFF09` };
+    const type = f.type === void 0 ? "text" : f.type;
+    if (!FORM_FIELD_TYPES.includes(type)) return { ok: false, error: `${at}.type\u300C${String(f.type)}\u300D\u4E0D\u8A8D\u5F97\uFF0C\u53EF\u7528\uFF1A${FORM_FIELD_TYPES.join("\uFF0F")}` };
+    const field = { key, label, type };
+    if (f.required === true) field.required = true;
+    if (type === "select" || type === "multiselect") {
+      if (!Array.isArray(f.options) || f.options.length === 0) return { ok: false, error: `${at}\uFF08${type}\uFF09\u5FC5\u9808\u6709 options\uFF08\u81F3\u5C11\u4E00\u500B\u9078\u9805\uFF09` };
+      if (f.options.length > MAX_OPTIONS) return { ok: false, error: `${at}.options \u6700\u591A ${MAX_OPTIONS} \u500B` };
+      const opts = [];
+      const vals = /* @__PURE__ */ new Set();
+      for (const o of f.options) {
+        const opt = typeof o === "string" ? { label: str3(o, 80), value: str3(o, 80) } : { label: str3(o?.label, 80), value: str3(o?.value, 80) };
+        if (!opt.label || !opt.value) return { ok: false, error: `${at}.options \u6BCF\u500B\u9078\u9805\u8981\u6709 label \u8207 value\uFF08\u6216\u76F4\u63A5\u7D66\u5B57\u4E32\uFF09` };
+        if (vals.has(opt.value)) return { ok: false, error: `${at}.options \u7684 value\u300C${opt.value}\u300D\u91CD\u8907` };
+        vals.add(opt.value);
+        opts.push(opt);
+      }
+      field.options = opts;
+    }
+    fields.push(field);
+  }
+  return {
+    ok: true,
+    value: {
+      name,
+      title,
+      description: str3(b.description, 400),
+      submit_label: str3(b.submit_label, 20) || "\u9001\u51FA",
+      template,
+      fields
+    }
+  };
+}
+var slug = (s) => s.replace(/[^A-Za-z0-9_]/g, "_");
+function buildFormComponents(spec) {
+  const comps = [];
+  const kids = [];
+  comps.push({ id: "title", component: "Text", text: spec.title, variant: "h2" });
+  kids.push("title");
+  if (spec.description) {
+    comps.push({ id: "desc", component: "Text", text: spec.description, variant: "caption" });
+    kids.push("desc");
+  }
+  for (const f of spec.fields) {
+    const id = `f_${slug(f.key)}`;
+    const label = f.required ? `${f.label} *` : f.label;
+    const value = { path: `/form/${f.key}` };
+    switch (f.type) {
+      case "text":
+        comps.push({ id, component: "TextField", label, value, variant: "shortText" });
+        break;
+      case "longtext":
+        comps.push({ id, component: "TextField", label, value, variant: "longText" });
+        break;
+      case "number":
+        comps.push({ id, component: "TextField", label, value, variant: "number" });
+        break;
+      case "date":
+        comps.push({ id, component: "DateTimeInput", label, value, enableDate: true, enableTime: false });
+        break;
+      case "datetime":
+        comps.push({ id, component: "DateTimeInput", label, value, enableDate: true, enableTime: true });
+        break;
+      case "checkbox":
+        comps.push({ id, component: "CheckBox", label, value });
+        break;
+      case "select":
+      case "multiselect":
+        comps.push({
+          id,
+          component: "ChoicePicker",
+          label,
+          value,
+          variant: f.type === "select" ? "mutuallyExclusive" : "multipleSelection",
+          displayStyle: (f.options?.length ?? 0) > 5 ? "chips" : "checkbox",
+          options: f.options
+        });
+        break;
+    }
+    kids.push(id);
+  }
+  const context = {};
+  for (const f of spec.fields) context[f.key] = { path: `/form/${f.key}` };
+  comps.push({ id: "btn_label", component: "Text", text: spec.submit_label });
+  comps.push({ id: "btn", component: "Button", child: "btn_label", variant: "primary", action: { event: { name: "submit", context } } });
+  kids.push("btn");
+  comps.push({ id: "status", component: "Text", text: { path: "/status" }, variant: "body" });
+  kids.push("status");
+  comps.push({ id: "col", component: "Column", children: kids });
+  comps.push({ id: "root", component: "Card", child: "col" });
+  return comps;
+}
+function initialFormData(spec) {
+  const form = {};
+  for (const f of spec.fields) {
+    form[f.key] = f.type === "select" || f.type === "multiselect" ? [] : f.type === "checkbox" ? false : "";
+  }
+  return { form, status: "" };
+}
+function buildSubmitCode(fields) {
+  const blob = JSON.stringify({
+    fields,
+    T: { checkbox: "checkbox", select: "select", multi: "multiselect", num: "number", date: "date", dt: "datetime", str: "string", yes: "true", no: "false" }
+  });
+  return `var C = JSON.parse(${JSON.stringify(blob)}), FIELDS = C.fields, T = C.T;
+function provided(v) { if (typeof v !== T.str) return v !== undefined && v !== null; var t = v.trim(); return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t); }
+function list(v) {
+  if (Array.isArray(v)) return v.map(String);
+  if (typeof v === T.str && provided(v)) {
+    var t = v.trim();
+    if (t.charAt(0) === '[') { try { var a = JSON.parse(t); if (Array.isArray(a)) return a.map(String); } catch (e) {} }
+    return t.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+  return [];
+}
+var out = { success: true };
+for (var i = 0; i < FIELDS.length; i++) {
+  var f = FIELDS[i], v = input[f.key], s = '';
+  if (f.type === T.checkbox) {
+    s = (v === true || v === T.yes) ? T.yes : T.no;
+  } else if (f.type === T.select || f.type === T.multi) {
+    var arr = list(v), ok = (f.options || []).map(function (o) { return o.value; });
+    for (var j = 0; j < arr.length; j++) if (ok.indexOf(arr[j]) < 0) throw new Error('\u300C' + f.label + '\u300D\u7684\u9078\u9805\u300C' + arr[j] + '\u300D\u4E0D\u5728\u6E05\u55AE\u5167');
+    if (f.type === T.select && arr.length > 1) throw new Error('\u300C' + f.label + '\u300D\u53EA\u80FD\u9078\u4E00\u500B');
+    s = arr.join(',');
+  } else {
+    s = provided(v) ? String(v).trim().slice(0, ${MAX_TEXT}) : '';
+    if (s && f.type === T.num && !isFinite(Number(s))) throw new Error('\u300C' + f.label + '\u300D\u8981\u586B\u6578\u5B57');
+    if (s && f.type === T.date && !/^\\d{4}-\\d{2}-\\d{2}/.test(s)) throw new Error('\u300C' + f.label + '\u300D\u65E5\u671F\u683C\u5F0F\u4E0D\u5C0D\uFF08\u8981 YYYY-MM-DD\uFF09');
+    if (s && f.type === T.dt && !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}/.test(s)) throw new Error('\u300C' + f.label + '\u300D\u65E5\u671F\u6642\u9593\u683C\u5F0F\u4E0D\u5C0D');
+  }
+  if (f.required && (s === '' || (f.type === T.checkbox && s !== T.yes))) throw new Error('\u300C' + f.label + '\u300D\u5FC5\u586B');
+  out[f.key] = s;
+}
+return out;
+`;
+}
+function buildFormApp(spec) {
+  const prepInput = {};
+  const values = {};
+  for (const f of spec.fields) {
+    prepInput[f.key] = `{{input.${f.key}}}`;
+    values[f.key] = `{{prep.data.${f.key}}}`;
+  }
+  const graph = {
+    id: "submit",
+    name: "submit",
+    nodes: [
+      { id: "input", type: "Input", label: "input" },
+      { id: "prep", type: "Component", label: "prep", componentId: "code", data: { code: buildSubmitCode(spec.fields), input: prepInput, limits: { timeout_ms: 1e3, max_output_bytes: 8192 } } },
+      {
+        id: "write_record",
+        type: "Component",
+        label: "write_record",
+        componentId: "http_request",
+        data: {
+          method: "POST",
+          url: "__CYPHER_BASE__/kbdb/records",
+          headers: { "Content-Type": "application/json", "X-Arcrun-API-Key": "__NAMESPACE__" },
+          body_json: { template: spec.template, values }
+        }
+      }
+    ],
+    edges: [
+      { from: "input", to: "prep", type: "ON_SUCCESS" },
+      { from: "prep", to: "write_record", type: "ON_SUCCESS" }
+    ]
+  };
+  return {
+    id: spec.name,
+    name: spec.title,
+    version: "1.0.0",
+    data: [{ name: spec.template, slots: spec.fields.map((f) => f.key), description: `\u8868\u55AE\u300C${spec.title}\u300D\u6536\u5230\u7684\u8CC7\u6599` }],
+    workflows: [{ name: "submit", description: `\u628A\u300C${spec.title}\u300D\u586B\u7684\u5167\u5BB9\u5BEB\u9032\u8CC7\u6599\u8868\u300C${spec.template}\u300D`, trigger: "manual", graph }],
+    actions: ["submit"],
+    ui: { surface: { components: buildFormComponents(spec), data: initialFormData(spec) } }
+  };
+}
+
+// cypher-executor/src/routes/portal-data.ts
 var portalDataRouter = new Hono2();
 async function getTenantWorkflowGraph(env, name) {
   const raw2 = await env.WEBHOOKS.get(`${knowledgeOwner(env)}:wf:${name}`, "text");
@@ -92563,6 +95520,7 @@ portalDataRouter.get(
         cards: [],
         cards_found_by: "none",
         index_trail: [],
+        passages: [],
         note: "\u6B64\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002"
       });
     }
@@ -92585,6 +95543,7 @@ async function retrieveForLibraries(env, libraries, q, opts = {}) {
   if (opts.limit) params.set("limit", opts.limit);
   if (opts.pages_limit) params.set("pages_limit", opts.pages_limit);
   if (opts.graph_depth) params.set("graph_depth", opts.graph_depth);
+  params.set("passage_candidates", String(MAX_RERANK_CANDIDATES));
   const res = await kbdbFetch2(env, `/retrieve?${params.toString()}`);
   if (!res.ok) {
     return { ok: false, res: await relayKbdbFailure(res) };
@@ -92614,7 +95573,44 @@ async function retrieveForLibraries(env, libraries, q, opts = {}) {
       };
     });
   }
-  return { ok: true, body: { ...body, pages, pages_count: pages.length, cards: withLocation } };
+  const rawPassages = Array.isArray(body.passages) ? body.passages : [];
+  let passages = rawPassages.filter((p) => canReadLibrary(libraries, p.library));
+  let rerankStats = null;
+  if (passages.length > 1) {
+    const config = await readExtractAiConfig(env).catch(() => void 0);
+    if (config) {
+      const rr = await rerankPassages(env, knowledgeOwner(env), config, q, passages);
+      passages = rr.passages;
+      rerankStats = rr.stats;
+    } else {
+      passages = passages.slice(0, RERANK_KEEP);
+      rerankStats = { llm_calls: 0, candidates: passages.length, kept: passages.length, chosen_vector_ranks: [], ms: 0, error: "\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u7684 AI \u8A2D\u5B9A\uFF0C\u4FDD\u6301\u5411\u91CF\u539F\u9806\u5E8F" };
+    }
+  }
+  let passagesWithLocation = [];
+  if (passages.length > 0) {
+    const libRecords = await listRecordsByTemplate(env, LIBRARY_TEMPLATE).catch(() => []);
+    passagesWithLocation = passages.map((p) => {
+      const rootRaw = libRecords.find((r) => String(r.values.name ?? "") === p.library)?.values.root;
+      const meta = JSON.stringify({ source_path: p.source_path, machine_label: p.machine });
+      return {
+        ...p,
+        location: cardOriginalLocation([{ metadata_json: meta }], p.library, typeof rootRaw === "string" ? rootRaw : null)
+      };
+    });
+  }
+  const kstats = body.retrieval_stats;
+  return {
+    ok: true,
+    body: {
+      ...body,
+      pages,
+      pages_count: pages.length,
+      cards: withLocation,
+      passages: passagesWithLocation,
+      ...kstats ? { retrieval_stats: { ...kstats, ...rerankStats ? { rerank: rerankStats } : {} } } : {}
+    }
+  };
 }
 portalDataRouter.get(
   "/portal/data/entries/:id",
@@ -93739,6 +96735,37 @@ portalDataRouter.post(
     return res.ok ? new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } }) : relayKbdbFailure(res);
   })
 );
+portalDataRouter.post(
+  "/portal/data/forms",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") {
+      return c.json({ error: "\u53EA\u6709\u7BA1\u7406\u54E1\u53EF\u4EE5\u5EFA\u7ACB\u8868\u55AE App", step: "\u6AA2\u67E5\u6B0A\u9650", hint: "\u8868\u55AE\u6703\u9577\u6210\u4E00\u500B App\uFF0CApp \u6E05\u55AE\u662F\u5168\u7AD9\u5171\u7528\u7684\uFF0C\u8ACB\u7528\u7BA1\u7406\u54E1\u8EAB\u5206\u9023\u7DDA\u3002" }, 403);
+    }
+    const parsed = parseFormSpec(await c.req.json().catch(() => null));
+    if (!parsed.ok) return c.json({ error: parsed.error, step: "\u6AA2\u67E5\u8868\u55AE\u6B04\u4F4D\u5BA3\u544A" }, 400);
+    const spec = parsed.value;
+    const tenant2 = knowledgeOwner(c.env);
+    const before = await getInstalledApp(c.env, tenant2, spec.name);
+    if (before && !before.workflows.some((w) => w.name === "submit" && before.has_ui && before.ui_surface)) {
+      return c.json({ error: `\u5DF2\u7D93\u6709\u4E00\u500B\u53EB\u300C${spec.name}\u300D\u7684 App\uFF0C\u800C\u4E14\u4E0D\u662F\u7528\u9019\u500B\u5DE5\u5177\u5EFA\u7684\u8868\u55AE\uFF1B\u63DB\u4E00\u500B name`, step: "\u6AA2\u67E5\u540D\u7A31" }, 409);
+    }
+    const coords = { namespace: String(tenant2), cypherBase: new URL(c.req.url).origin };
+    const result = await installApp(c.env, tenant2, buildFormApp(spec), { coords });
+    if (!result.ok) {
+      return c.json({ error: (result.errors ?? ["\u5EFA\u7ACB\u5931\u6557"]).join("\uFF1B"), step: result.step ?? "\u5B89\u88DD", hint: result.hint }, result.step === "\u5B89\u88DD\u5DE5\u4F5C\u6D41" ? 502 : 400);
+    }
+    return c.json({
+      success: true,
+      installed: !result.in_progress,
+      ...result.in_progress ? { in_progress: true, resume_from: result.resume_from, resume_hash: result.resume_hash } : {},
+      app: { id: spec.name, name: spec.title, template: spec.template, fields: spec.fields.length },
+      portal_hash: `#/app/${spec.name}`,
+      next: `\u5728 Portal \u7684\u300CApp \u754C\u9762\u300D\u9EDE\u300C${spec.title}\u300D\u5C31\u662F\u9019\u5F35\u8868\u55AE\uFF1B\u586B\u5B8C\u9001\u51FA\u6703\u5BEB\u9032\u8CC7\u6599\u8868\u300C${spec.template}\u300D\uFF08Portal #/tables/${spec.template}\uFF0C\u6216 kbdb_query(template='${spec.template}')\uFF09\u3002\u5DE5\u4F5C\u6D41\u5168\u5C40\u5716\uFF08#/flows/~g/\uFF09\u770B\u5F97\u5230\u9019\u500B App \u8207\u5B83\u5BEB\u7684\u90A3\u5F35\u8868\u3002`
+    }, 201);
+  })
+);
 portalDataRouter.get(
   "/portal/data/diagnostics",
   (c) => run(c, async () => {
@@ -93760,8 +96787,8 @@ function accountLabelOf(values) {
   if (name && email) return `${name}\uFF08${email}\uFF09`;
   return name || email || "\u9019\u500B\u5E33\u865F";
 }
-function toChatCards(cards, account, accountId) {
-  return cards.map((c) => ({
+function toChatCards(cards, account, accountId, passages = []) {
+  return [...passages.map((p) => passageToChatCard(p, account, accountId)), ...cards.map((c) => ({
     account,
     account_id: accountId,
     library: c.library,
@@ -93769,7 +96796,7 @@ function toChatCards(cards, account, accountId) {
     found_by: c.found_by,
     content: String(c.content ?? ""),
     location: c.location ?? null
-  }));
+  }))];
 }
 portalDataRouter.post(
   "/portal/data/ask",
@@ -93783,7 +96810,7 @@ portalDataRouter.post(
     const q = normalizeCjkQuery(retrievalQuery(question, history));
     const libraries = parseLibraries(auth.user.values.libraries);
     const selfLabel = "\u672C\u5E33\u865F";
-    const selfP = libraries.length === 0 ? Promise.resolve({ ok: false, detail: "\u9019\u500B\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002" }) : retrieveForLibraries(c.env, libraries, q).then(async (r) => r.ok ? { ok: true, cards: toChatCards(r.body.cards, selfLabel, "self") } : { ok: false, detail: `\u672C\u5E33\u865F\u77E5\u8B58\u5EAB\u8B80\u53D6\u5931\u6557\uFF08HTTP ${r.res.status}\uFF09` });
+    const selfP = libraries.length === 0 ? Promise.resolve({ ok: false, detail: "\u9019\u500B\u5E33\u865F\u5C1A\u672A\u88AB\u6388\u6B0A\u4EFB\u4F55\u77E5\u8B58\u5EAB\uFF0C\u8ACB\u806F\u7D61\u7BA1\u7406\u54E1\u3002" }) : retrieveForLibraries(c.env, libraries, q).then(async (r) => r.ok ? { ok: true, cards: toChatCards(r.body.cards, selfLabel, "self", r.body.passages) } : { ok: false, detail: `\u672C\u5E33\u865F\u77E5\u8B58\u5EAB\u8B80\u53D6\u5931\u6557\uFF08HTTP ${r.res.status}\uFF09` });
     const links = await listStoredLinks(c.env, auth.user.recordId).catch(() => []);
     const remoteP = links.map(
       (l) => callLinkedAccount(
@@ -93805,8 +96832,9 @@ portalDataRouter.post(
       const label = link.label || link.remote_account || link.base_url;
       if (r.ok) {
         const cards2 = Array.isArray(r.body.cards) ? r.body.cards : [];
-        perAccount.push(toChatCards(cards2, label, link.link_id));
-        accounts.push({ id: link.link_id, label, ok: true, count: cards2.length });
+        const remotePassages = Array.isArray(r.body.passages) ? r.body.passages : [];
+        perAccount.push(toChatCards(cards2, label, link.link_id, remotePassages));
+        accounts.push({ id: link.link_id, label, ok: true, count: cards2.length + remotePassages.length });
       } else {
         accounts.push({ id: link.link_id, label, ok: false, count: 0, reason: r.reason, detail: r.detail });
       }
@@ -93985,7 +97013,7 @@ portalDataRouter.get(
     if (a.libraries.length === 0) return c.json({ account: a.account, cards: [] });
     const r = await retrieveForLibraries(c.env, a.libraries, normalizeCjkQuery(qRaw.slice(0, 600)));
     if (!r.ok) return r.res;
-    return c.json({ account: a.account, cards: r.body.cards });
+    return c.json({ account: a.account, cards: r.body.cards, passages: r.body.passages });
   })
 );
 
@@ -94580,1820 +97608,6 @@ internalCronRouter.post("/internal/cron/tick", async (c) => {
 
 // cypher-executor/src/routes/ui-components.ts
 init_dist();
-
-// cypher-executor/src/lib/ui-catalog.generated.json
-var ui_catalog_generated_default = {
-  _generated: "\u7531 console-ui/a2ui/build.mjs \u5F9E registry/ui-components/*/component.contract.yaml \u7522\u751F\u2014\u2014\u52FF\u624B\u6539\uFF0C\u6539\u539F\u7A3F\u5F8C\u91CD\u8DD1",
-  catalog_id: "arcrun:catalog/v0",
-  protocol_version: "v0.9",
-  components: [
-    {
-      canonical_id: "ui_button",
-      display_name: "\u6309\u9215",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Button",
-        implementation: "a2ui-basic"
-      },
-      description: "\u6309\u4E0B\u53BB\u9001\u51FA\u4E00\u500B\u4E8B\u4EF6\u540D\u7A31\uFF08\u53EF\u5E36\u53C3\u6578\uFF09\u3002\u6309\u9215\u672C\u8EAB\u4E0D\u542B\u908F\u8F2F\uFF1A\u8981\u89F8\u767C\u54EA\u500B\u5DE5\u4F5C\u6D41\uFF0C\u7531\u4F3A\u670D\u5668\u7AEF\u7684\u52D5\u4F5C\u767D\u540D\u55AE\u6C7A\u5B9A\u3002",
-      renders: "\u4E00\u9846\u6309\u9215\uFF0C\u4E0A\u9762\u7684\u5B57\u7531\u5B50\u5143\u4EF6\uFF08\u901A\u5E38\u662F\u4E00\u500B Text\uFF09\u6C7A\u5B9A\uFF1Bvariant \u70BA primary \u6642\u662F\u4E3B\u8981\u52D5\u4F5C\u7684\u6A23\u5F0F\u3002",
-      data_inputs: [
-        {
-          name: "child",
-          what: "\u6309\u9215\u4E0A\u986F\u793A\u7684\u5B50\u5143\u4EF6 id\uFF08\u901A\u5E38\u662F Text\uFF09"
-        },
-        {
-          name: "action",
-          what: '{"event": {"name": "\u4E8B\u4EF6\u540D\u7A31", "context": {"\u53C3\u6578": {"path": "/\u6B04\u4F4D"}}}}\u2014\u2014context \u7684\u503C\u53EF\u4EE5\u7D81\u8CC7\u6599'
-        }
-      ],
-      interactions: [
-        {
-          event: "action.event",
-          what: "\u6309\u4E0B\u6642\u9001\u51FA {name, context}\u3002Portal \u628A\u5B83\u8F49\u7D66\u5BBF\u4E3B\uFF08App \u7684\u52D5\u4F5C\u767D\u540D\u55AE\u7AEF\u9EDE\uFF09\uFF1B\u756B\u9762\u5B9A\u7FA9\u88E1\u4E0D\u51C6\u5BEB\u7DB2\u5740\u3001\u8DEF\u5F91\u6216\u6307\u4EE4"
-        }
-      ],
-      states: {
-        loading: "\u6309\u9215\u7ACB\u5373\u53EF\u6309\uFF1B\u9001\u51FA\u5F8C\u7684\u7B49\u5F85\u72C0\u614B\u7531\u5BBF\u4E3B\u986F\u793A",
-        empty: "\u6C92\u6709 child \u6642\u662F\u4E00\u9846\u6C92\u6709\u5B57\u7684\u6309\u9215\uFF08child \u5FC5\u586B\uFF0C\u9A57\u8B49\u6703\u64CB\uFF09",
-        error: "\u5BBF\u4E3B\u56DE\u932F\u8AA4\u6642\u7531\u5BBF\u4E3B\u986F\u793A\uFF0C\u6309\u9215\u672C\u8EAB\u4E0D\u8B8A",
-        disabled: "checks \u4E0D\u901A\u904E\u6642\u6309\u9215\u505C\u7528",
-        narrow: "\u6309\u9215\u5BEC\u5EA6\u8DDF\u8457\u5B57\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u6309\u9215\u4E0A\u7684\u5B57",
-          given: '{"components":[{"id":"root","component":"Button","child":"l","action":{"event":{"name":"refresh"}}},{"id":"l","component":"Text","text":"\u91CD\u65B0\u6574\u7406"}]}',
-          then_contains: "\u91CD\u65B0\u6574\u7406"
-        },
-        {
-          scenario: "\u4E3B\u8981\u52D5\u4F5C\u6A23\u5F0F\u7684\u6309\u9215",
-          given: '{"components":[{"id":"root","component":"Button","child":"l","variant":"primary","action":{"event":{"name":"run","context":{"id":{"path":"/id"}}}}},{"id":"l","component":"Text","text":"\u57F7\u884C"}],"data":{"id":"wf-1"}}',
-          then_contains: "\u57F7\u884C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "button",
-        "action",
-        "event"
-      ],
-      example: '{ "id": "refresh", "component": "Button", "child": "refresh-label", "action": { "event": { "name": "refresh" } } }\n',
-      source: "registry/ui-components/button/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "default",
-              "primary",
-              "borderless"
-            ],
-            default: "default",
-            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
-          },
-          action: {
-            $ref: "#/$defs/Action"
-          },
-          component: {
-            const: "Button"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "action",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_card",
-      display_name: "\u5361\u7247",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Card",
-        implementation: "a2ui-basic"
-      },
-      description: "\u6709\u5916\u6846\u7684\u5340\u584A\uFF0C\u628A\u4E00\u7D44\u76F8\u95DC\u5167\u5BB9\u6846\u5728\u4E00\u8D77\uFF08\u4E00\u5247\u5DE5\u4F5C\u6D41\u3001\u4E00\u5F35\u7968\u3001\u4E00\u7B46\u932F\u8AA4\uFF09\u3002",
-      renders: "\u4E00\u500B\u5E36\u5916\u6846\u8207\u5167\u8DDD\u7684\u65B9\u584A\uFF0C\u88E1\u9762\u653E\u4E00\u500B\u5B50\u5143\u4EF6\uFF1B\u8981\u653E\u591A\u500B\u6771\u897F\u6642\uFF0C\u5B50\u5143\u4EF6\u7528 Column \u6216 Row \u5305\u8D77\u4F86\u3002",
-      data_inputs: [
-        {
-          name: "child",
-          what: "\u8981\u6846\u8D77\u4F86\u7684\u90A3\u4E00\u500B\u5B50\u5143\u4EF6\u7684 id\uFF08\u4E0D\u662F\u8CC7\u6599\uFF0C\u662F\u7248\u9762\uFF09"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5916\u6846\u7167\u5E38\u51FA\u73FE\uFF0C\u88E1\u9762\u7531\u5B50\u5143\u4EF6\u81EA\u5DF1\u986F\u793A\u8F09\u5165\u4E2D",
-        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u5C31\u4E0D\u6703\u51FA\u73FE\uFF08child \u5FC5\u586B\uFF09",
-        error: "\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\uFF0C\u6E32\u67D3\u5668\u5728\u4E3B\u63A7\u53F0\u5831\u932F\u3001\u90A3\u4E00\u683C\u7559\u767D\uFF0C\u4E0D\u6703\u6574\u9801\u58DE\u6389",
-        disabled: "\u5361\u7247\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u7E2E\uFF0C\u5167\u5BB9\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5361\u7247\u6846\u4F4F\u4E00\u6BB5\u6587\u5B57",
-          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":"\u6846\u5728\u5361\u7247\u88E1"}]}',
-          then_contains: "\u6846\u5728\u5361\u7247\u88E1"
-        },
-        {
-          scenario: "\u5361\u7247\u88E1\u7684\u6587\u5B57\u53EF\u4EE5\u7D81\u8CC7\u6599",
-          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"/title"}}],"data":{"title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"}}',
-          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "container",
-        "card"
-      ],
-      example: '{ "id": "wf-card", "component": "Card", "child": "wf-body" }\n',
-      source: "registry/ui-components/card/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
-          },
-          component: {
-            const: "Card"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_column",
-      display_name: "\u76F4\u6392",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Column",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u4E0A\u5F80\u4E0B\u6392\u3002\u6574\u500B\u756B\u9762\u7684\u9AA8\u67B6\u901A\u5E38\u662F\u4E00\u500B\u76F4\u6392\u3002",
-      renders: "\u4E00\u6B04\uFF0C\u5B50\u5143\u4EF6\u4F9D\u5E8F\u5F80\u4E0B\u5806\uFF0Cjustify\uFF0Falign \u63A7\u5236\u9593\u8DDD\u8207\u5C0D\u9F4A\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}\uFF0C\u8CC7\u6599\u9663\u5217\u6709\u5E7E\u7B46\u5C31\u9577\u5E7E\u500B'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
-        empty: "\u7D81\u5230\u7684\u6E05\u55AE\u662F\u7A7A\u9663\u5217\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u8981\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\u8ACB\u53E6\u653E\u4E00\u500B Text\uFF09",
-        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u672C\u4F86\u5C31\u662F\u55AE\u6B04\uFF0C\u7A84\u87A2\u5E55\u4E0D\u8B8A\u5F62"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5169\u6BB5\u6587\u5B57\u4E0A\u4E0B\u6392",
-          given: '{"components":[{"id":"root","component":"Column","children":["a","b"]},{"id":"a","component":"Text","text":"\u7B2C\u4E00\u884C"},{"id":"b","component":"Text","text":"\u7B2C\u4E8C\u884C"}]}',
-          then_contains: "\u7B2C\u4E8C\u884C"
-        },
-        {
-          scenario: "\u7528\u8CC7\u6599\u9663\u5217\u9577\u51FA\u5B50\u5143\u4EF6",
-          given: '{"components":[{"id":"root","component":"Column","children":{"componentId":"item","path":"/items"}},{"id":"item","component":"Text","text":{"path":"name"}}],"data":{"items":[{"name":"\u7532"},{"name":"\u4E59"}]}}',
-          then_contains: "\u4E59"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "column",
-        "stack"
-      ],
-      example: '{ "id": "page", "component": "Column", "children": ["title", "list"] }\n',
-      source: "registry/ui-components/column/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "spaceBetween",
-              "spaceAround",
-              "spaceEvenly",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "start",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
-          },
-          component: {
-            const: "Column"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_list",
-      display_name: "\u6E05\u55AE",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "List",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u4E00\u500B\u8CC7\u6599\u9663\u5217\u5C55\u958B\u6210\u91CD\u8907\u7684\u9805\u76EE\uFF1A\u6BCF\u4E00\u7B46\u8CC7\u6599\u9577\u4E00\u500B\u540C\u6A23\u7684\u6A23\u677F\uFF08\u4F8B\u5982\u6BCF\u689D\u5DE5\u4F5C\u6D41\u4E00\u5F35\u5361\uFF09\u3002",
-      renders: "\u4E00\u4E32\u76F4\u5411\uFF08\u6216\u6A6B\u5411\uFF09\u6392\u5217\u7684\u9805\u76EE\uFF0C\u6BCF\u4E00\u9805\u90FD\u662F\u540C\u4E00\u500B\u6A23\u677F\u5143\u4EF6\uFF0C\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\u8B80\u90A3\u4E00\u7B46\u7684\u6B04\u4F4D\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u6A23\u677F {"componentId": "\u6BCF\u4E00\u9805\u7684\u5143\u4EF6 id", "path": "/\u8CC7\u6599\u9663\u5217"}\uFF1B\u6A23\u677F\u88E1\u7684 {"path": "name"} \u8B80\u7684\u662F\u90A3\u4E00\u7B46\u7684 name'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE",
-        empty: "\u7A7A\u9663\u5217\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE\uFF08\u300C\u6C92\u6709\u8CC7\u6599\u300D\u7684\u5B57\u8981\u53E6\u653E\u4E00\u500B Text\uFF0C\u756B\u9762\u5B9A\u7FA9\u81EA\u5DF1\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A\uFF09",
-        error: "\u67D0\u4E00\u7B46\u7F3A\u6B04\u4F4D\u6642\uFF0C\u90A3\u4E00\u7B46\u7684\u5C0D\u61C9\u6587\u5B57\u662F\u7A7A\u7684\uFF0C\u5176\u4ED6\u7B46\u7167\u5E38",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u76F4\u5411\u6E05\u55AE\u4E0D\u53D7\u5F71\u97FF\uFF1B\u6A6B\u5411\u6E05\u55AE\u6703\u51FA\u73FE\u6C34\u5E73\u6372\u52D5"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u6BCF\u7B46\u8CC7\u6599\u9577\u4E00\u9805",
-          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"row","path":"/workflows"}},{"id":"row","component":"Text","text":{"path":"name"}}],"data":{"workflows":[{"name":"notify_daily"},{"name":"ingest_docs"}]}}',
-          then_contains: "ingest_docs"
-        },
-        {
-          scenario: "\u6A23\u677F\u53EF\u4EE5\u662F\u4E00\u5F35\u5361",
-          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"card","path":"/items"}},{"id":"card","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"title"}}],"data":{"items":[{"title":"\u7B2C\u4E00\u5F35\u5361"}]}}',
-          then_contains: "\u7B2C\u4E00\u5F35\u5361"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "list",
-        "repeat",
-        "collection"
-      ],
-      example: '{ "id": "wf-list", "component": "List", "children": { "componentId": "wf-card", "path": "/workflows" } }\n',
-      source: "registry/ui-components/list/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
-          },
-          direction: {
-            type: "string",
-            enum: [
-              "vertical",
-              "horizontal"
-            ],
-            default: "vertical",
-            description: "The direction in which the list items are laid out."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis."
-          },
-          component: {
-            const: "List"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_row",
-      display_name: "\u6A6B\u6392",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Row",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u5DE6\u5F80\u53F3\u6392\uFF0C\u4F8B\u5982\u300C\u540D\u7A31\uFF5C\u6392\u7A0B\uFF5C\u6700\u8FD1\u4E00\u6B21\u7D50\u679C\u300D\u653E\u5728\u540C\u4E00\u884C\u3002",
-      renders: "\u4E00\u5217\uFF0C\u5B50\u5143\u4EF6\u5DE6\u53F3\u4E26\u6392\uFF0Cjustify \u6C7A\u5B9A\u64E0\u5728\u4E00\u8D77\u6216\u63A8\u5230\u5169\u7AEF\uFF08spaceBetween\uFF09\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
-        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u6642\u662F\u4E00\u689D\u7A7A\u5217",
-        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u5B50\u5143\u4EF6\u5BEC\u5EA6\u7E2E\u5C0F\uFF1B\u5167\u5BB9\u592A\u9577\u6642\u6587\u5B57\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u540D\u7A31\u8207\u72C0\u614B\u4E26\u6392",
-          given: '{"components":[{"id":"root","component":"Row","children":["n","s"],"justify":"spaceBetween"},{"id":"n","component":"Text","text":"\u6BCF\u65E5\u5F59\u6574"},{"id":"s","component":"Text","text":"success"}]}',
-          then_contains: "\u6BCF\u65E5\u5F59\u6574"
-        },
-        {
-          scenario: "\u4E26\u6392\u7684\u7B2C\u4E8C\u683C\u4E5F\u756B\u5F97\u51FA\u4F86",
-          given: '{"components":[{"id":"root","component":"Row","children":["n","s"]},{"id":"n","component":"Text","text":"A"},{"id":"s","component":"Text","text":"\u53F3\u908A\u90A3\u683C"}]}',
-          then_contains: "\u53F3\u908A\u90A3\u683C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "row",
-        "inline"
-      ],
-      example: '{ "id": "wf-head", "component": "Row", "children": ["wf-name", "wf-last"], "justify": "spaceBetween" }\n',
-      source: "registry/ui-components/row/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "spaceAround",
-              "spaceBetween",
-              "spaceEvenly",
-              "start",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
-          },
-          component: {
-            const: "Row"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_text",
-      display_name: "\u6587\u5B57",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Text",
-        implementation: "a2ui-basic"
-      },
-      description: "\u986F\u793A\u4E00\u6BB5\u6587\u5B57\uFF1A\u6A19\u984C\u3001\u5167\u6587\u3001\u6578\u5B57\u3001\u8A3B\u8A18\u3002\u5167\u5BB9\u53EF\u4EE5\u5BEB\u6B7B\uFF0C\u4E5F\u53EF\u4EE5\u7D81\u5230\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
-      renders: "\u4E00\u884C\u6216\u4E00\u6BB5\u6587\u5B57\uFF0Cvariant \u6C7A\u5B9A\u5927\u5C0F\uFF08h1\u2013h5 \u6A19\u984C\u3001body \u5167\u6587\u3001caption \u5C0F\u5B57\u8A3B\u8A18\uFF09\u3002",
-      data_inputs: [
-        {
-          name: "text",
-          what: '\u8981\u986F\u793A\u7684\u5B57\u3002\u5BEB\u6B7B\u5C31\u662F\u5B57\u4E32\uFF1B\u8981\u5F9E\u8CC7\u6599\u4F86\u5C31\u5BEB {"path": "/\u6B04\u4F4D"}\uFF0C\u5728 List \u7684\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\uFF08\u4F8B {"path": "name"}\uFF09'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642\u986F\u793A\u7A7A\u5B57\u4E32\uFF0C\u4E0D\u986F\u793A undefined",
-        empty: "\u7D81\u5230\u7684\u6B04\u4F4D\u4E0D\u5B58\u5728\u6642\u986F\u793A\u7A7A\u5B57\u4E32",
-        error: "\u4E0D\u6703\u4E1F\u932F\uFF1B\u756B\u4E0D\u51FA\u4F86\u7684\u503C\u4E00\u5F8B\u7576\u7A7A\u5B57\u4E32",
-        disabled: "\u6587\u5B57\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5BEB\u6B7B\u7684\u6A19\u984C",
-          given: '{"components":[{"id":"root","component":"Text","text":"\u5DE5\u4F5C\u6D41","variant":"h2"}]}',
-          then_contains: "\u5DE5\u4F5C\u6D41"
-        },
-        {
-          scenario: "\u7D81\u8CC7\u6599\u7684\u6578\u5B57",
-          given: '{"components":[{"id":"root","component":"Text","text":{"path":"/count"}}],"data":{"count":"\u5171 3 \u689D"}}',
-          then_contains: "\u5171 3 \u689D"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "text",
-        "label",
-        "heading"
-      ],
-      example: '{ "id": "wf-name", "component": "Text", "text": { "path": "name" }, "variant": "h3" }\n',
-      source: "registry/ui-components/text/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          text: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "h1",
-              "h2",
-              "h3",
-              "h4",
-              "h5",
-              "caption",
-              "body"
-            ],
-            default: "body",
-            description: "A hint for the base text style."
-          },
-          component: {
-            const: "Text"
-          }
-        },
-        required: [
-          "id",
-          "text",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_workflow_graph",
-      display_name: "\u7BC0\u9EDE\u8207\u9023\u7DDA\u5716",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "WorkflowGraph",
-        implementation: "arcrun"
-      },
-      description: "\u628A\u4E00\u7FA4\u7BC0\u9EDE\u548C\u5B83\u5011\u4E4B\u9593\u7684\u9023\u7DDA\u756B\u6210\u4E00\u5F35\u53EF\u9EDE\u3001\u53EF\u7E2E\u653E\u7684\u5716\uFF1A\u5168\u5C40\u5716\uFF08\u5DE5\u4F5C\u6D41\u8207\u5B83\u5011\u8B80\u5BEB\u7684\u8CC7\u6599\u3001\u8AB0\u53EB\u8AB0\uFF0C\u65B7\u7DDA\u4EAE\u7D05\uFF09\u548C\u55AE\u4E00\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u7BC0\u9EDE\u8207\u9023\u7DDA\uFF09\u5171\u7528\u9019\u4E00\u9846\u3002",
-      renders: "layout=columns\uFF08XMind \u5F0F\u7684 drill\uFF0C\u4EE5\u67D0\u500B\u7BC0\u9EDE\u70BA\u4E2D\u5FC3\uFF09\uFF1A\u4E2D\u6B04\u662F\u4E2D\u5FC3\uFF08kind=center\uFF09\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF08\u5927\u7DB1\u7E2E\u6392\u7DDA\uFF09\uFF0C\u5DE6\u6B04\u662F\u547C\u53EB\u904E\u4F86\uFF0F\u5BEB\u8CC7\u6599\u7D66\u5B83\u7684\u9130\u5C45\uFF0C\u53F3\u6B04\u662F\u5B83\u53EB\u7684\u9130\u5C45\uFF1B\u6C92\u6709\u4E2D\u5FC3\u5C31\u662F\u6700\u5916\u5C64\u4E00\u6392\u540C\u8F29\uFF1B\u9023\u7DDA\u6A19\u51FA\u300C\u54EA\u4E00\u6B65 \u2192 \u53EB\u8AB0\u300D\uFF0C\u540C\u6B04\u7684\u7DDA\u7E5E\u5F27\uFF0Cvertical=true \u6642\u5168\u90E8\u6392\u6210\u4E00\u76F4\u6B04\u3002layout=flow\uFF08Claude Design \u7684 Workflow Viewer \u7248\u578B\uFF09\uFF1A\u7BC0\u9EDE\u5361\uFF1D\u8272\u584A\u5716\u793A\uFF0B\u540D\u5B57\uFF08\u986F\u793A\u540D\u512A\u5148\uFF09\uFF0B\u985E\u578B\u6A19\u7C64\uFF08\u53EA\u6A19\u6709\u5340\u5225\u610F\u7FA9\u7684\u985E\u578B\uFF09\uFF0B\u4E00\u884C\u7C21\u77ED\u8AAA\u660E\uFF0C\u7DB2\u5740\u8207 worker \u540D\u4E0D\u653E\u5728\u5361\u4E0A\uFF0C\u8C9D\u8332\u66F2\u7DDA\u9023\u7DDA\uFF0C\u88AB\u9078\uFF08selected\uFF09\u7684\u7BC0\u9EDE\u8207\u5B83\u7684\u9023\u7DDA\u9AD8\u4EAE\uFF1Bminimap=true \u6642\u5DE6\u4E0B\u89D2\u6709\u7E2E\u5C0F\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF1B\u7BC0\u9EDE\u7167\u9806\u5E8F\u5206\u5C64\uFF0C\u5BEC\u87A2\u5E55\u7531\u5DE6\u5230\u53F3\u3001\u7A84\u87A2\u5E55\uFF08vertical=true\uFF09\u7531\u4E0A\u5230\u4E0B\uFF0C\u689D\u4EF6\uFF0F\u5931\u6557\u7684\u7DDA\u5E36\u6587\u5B57\u3002\u7BC0\u9EDE\u6709 bad\uFF08\u7D05\u6846\uFF09\u3001dim\uFF08\u6DE1\uFF09\u5169\u7A2E\u6A19\u8A18\uFF0C\u9023\u7DDA\u6709 bad\uFF08\u7C97\u7D05\u7DDA\uFF0C\u9EDE\u5B83\u8DF3\u5230 href\uFF09\uFF1B\u7D05\u4E0D\u7D05\u7531\u8CC7\u6599\u8AAA\u4E86\u7B97\uFF0C\u9019\u9846\u5143\u4EF6\u4E0D\u5224\u65B7\u4EFB\u4F55\u4E8B\u3002",
-      data_inputs: [
-        {
-          name: "nodes",
-          what: "\u7BC0\u9EDE\u6E05\u55AE\uFF1Aid\u3001title\uFF0C\u9078\u586B sub\uFF08\u7B2C\u4E8C\u884C\u5B57\uFF0Cflow \u7248\u578B\u653E\u96F6\u4EF6 id\uFF09\u3001line3\uFF08flow \u5361\u7247\u53F3\u4E0B\u7684\u77ED\u5B57\uFF09\u3001badge\uFF08flow \u5361\u7247\u53F3\u4E0A\u7684\u985E\u578B\u6A19\u7C64\uFF0C\u5982 API\u3001AI\uFF09\u3001tone\uFF08\u5716\u793A\u8272\u584A\uFF1Agreen\uFF0Fblue\uFF0Famber\uFF0Fpurple\uFF0Fslate\uFF0Fgray\uFF0Fpink\uFF09\u3001icon\uFF08\u8272\u584A\u88E1\u7684\u4E00\u500B\u5B57\uFF09\u3001num\uFF08\u756B\u9762\u4E0A\u7684\u6307\u7A31\u7DE8\u865F\uFF0C\u986F\u793A\u6210\u300CN \u865F\u300D\uFF0C\u53EA\u7528\u4F86\u8DDF\u4EBA\u6216 AI \u6307\u67D0\u4E00\u584A\uFF0C\u4E0D\u4EE3\u8868\u5148\u5F8C\uFF09\u3001shape\uFF08\u56FA\u5B9A\u985E\u578B\u7684\u5916\u6846\uFF1Atrigger \u8D77\u9EDE\uFF1D\u5DE6\u534A\u5713\u3001call \u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41\uFF1D\u96D9\u5C64\u6846\u3001ext \u5916\u90E8\u670D\u52D9\uFF1D\u865B\u7DDA\u6846\u3001branch \u5224\u65B7\uFF1D\u516D\u89D2\u3001read\uFF0Fwrite \u8B80\u5BEB\u8CC7\u6599\u8868\uFF1D\u5713\u7B52\u9802\uFF1B\u6C92\u7D66\u5C31\u662F\u4E00\u822C\u5713\u89D2\u65B9\u584A\uFF09\u3001side\uFF08left\uFF0Fmid\uFF0Fright\uFF0Ccolumns \u7528\uFF09\u3001kind\uFF08item\uFF0Fgroup\uFF0Fdata\uFF0Fplat\uFF0Fmiss\uFF0Fcenter\uFF0Ftable\uFF1Btable\uFF1DUML \u985E\u5225\u5F0F\u7BC0\u9EDE\uFF0C\u8868\u540D\u7576\u6A19\u984C\u3001fields \u9010\u884C\u5217\u6B04\u4F4D\u3001more\uFF1D\u5176\u9918\u5E7E\u6B04\u6C92\u5217\u51FA\uFF09\u3001fields\u3001more\u3001bad\u3001dim\u3001href\uFF08\u9EDE\u5B83\u53BB\u54EA\uFF0C\u53EA\u6536 #/ \u958B\u982D\u7684\u7AD9\u5167\u7DB2\u5740\uFF09"
-        },
-        {
-          name: "edges",
-          what: "\u9023\u7DDA\u6E05\u55AE\uFF1Afrom\u3001to\uFF08\u7BC0\u9EDE id\uFF09\uFF0C\u9078\u586B kind\uFF08call\uFF0Fwrite\uFF0Fread\uFF0Fnext\uFF0Ffail\uFF0Fchild\uFF1Bchild\uFF1D\u4E2D\u5FC3\u5230\u5B83\u4E0B\u4E00\u5C64\u7684\u7E2E\u6392\u7DDA\uFF09\u3001label\u3001bad\u3001href\u3001tip\uFF08\u6ED1\u904E\u53BB\u986F\u793A\u7684\u8AAA\u660E\uFF09"
-        },
-        {
-          name: "layout / vertical / selected / minimap / pan / headLeft / headRight / zoom",
-          what: "\u7248\u578B\u3001\u9078\u53D6\u3001\u5168\u8C8C\u5716\u8207\u6B04\u6A19\u984C\uFF1Bzoom \u662F\u5728\u300C\u525B\u597D\u653E\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF1Bpan=true\uFF08flow \u7248\u578B\uFF09\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF0COVERVIEW \u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\u4E14\u9EDE\u5B83\u53EF\u8DF3\u904E\u53BB"
-        }
-      ],
-      interactions: [
-        {
-          name: "\u9EDE\u7BC0\u9EDE\uFF0F\u9EDE\u7D05\u7DDA",
-          what: "\u8DF3\u5230\u8A72\u7BC0\u9EDE\u6216\u8A72\u65B7\u7DDA\u6240\u5728\u7BC0\u9EDE\u7684 href\uFF08\u7AD9\u5167\u7DB2\u5740\uFF0C\u4E0D\u958B\u5916\u7AD9\uFF09"
-        }
-      ],
-      states: {
-        loading: "\u5143\u4EF6\u672C\u8EAB\u6C92\u6709\u8F09\u5165\u72C0\u614B\uFF1A\u547C\u53EB\u7AEF\u8CC7\u6599\u9084\u6C92\u5230\u5C31\u5148\u4E0D\u639B\u9019\u9846\uFF0C\u6216\u639B\u7A7A\u6E05\u55AE",
-        empty: "\u6C92\u6709\u7BC0\u9EDE\u6642\u756B\u4E00\u5F35\u7A7A\u7684\u5716\uFF08\u53EA\u6709\u6B04\u6A19\u984C\uFF09\uFF0C\u4E0D\u5831\u932F",
-        error: "\u8CC7\u6599\u5F62\u72C0\u4E0D\u5C0D\u7684\u7BC0\u9EDE\uFF0F\u9023\u7DDA\uFF08\u6C92\u6709 id\u3001\u9023\u5230\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE\uFF09\u6574\u7B46\u7565\u904E\uFF0C\u4E0D\u6703\u6574\u5F35\u5716\u58DE\u6389",
-        disabled: "\u5716\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF1B\u552F\u8B80\u662F\u9810\u8A2D\uFF0C\u6C92\u6709\u4EFB\u4F55\u6539\u52D5\u8CC7\u6599\u7684\u4E92\u52D5",
-        narrow: "\u5BB9\u5668\u6BD4\u5716\u7A84\u5C31\u7E2E\u5230\u6700\u5C0F 0.62 \u500D\uFF0C\u518D\u7A84\u6539\u6210\u6A6B\u5411\u6372\u52D5\uFF1Bflow \u7248\u578B\u53EF\u6539\u6210\u7531\u4E0A\u5230\u4E0B\uFF1Bpan=true \u6642\u6700\u5C0F\u53EA\u7E2E\u5230 0.9 \u500D\uFF0C\u5176\u9918\u9760\u5E73\u79FB"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5168\u5C40\u5716\uFF1A\u5DE6\u6B04\u5DE5\u4F5C\u6D41\u3001\u53F3\u6B04\u8CC7\u6599\u3001\u4E00\u689D\u65B7\u7DDA\u4EAE\u7D05\u4E26\u5E36\u6587\u5B57",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"columns","headLeft":"\u5DE5\u4F5C\u6D41","headRight":"\u8CC7\u6599","nodes":[{"id":"a","title":"rag_ingest_card","sub":"\u5DE5\u4F5C\u6D41","side":"left"},{"id":"m","title":"rag_cluster_auto","sub":"\u9019\u53F0\u6C92\u88DD\u9019\u689D\u5DE5\u4F5C\u6D41","side":"right","kind":"miss","bad":true}],"edges":[{"from":"a","to":"m","kind":"call","bad":true,"label":"\u2717 \u6C92\u88DD\u30FBtrigger_wiki_cluster","href":"#/flows/~w/rag_ingest_card/trigger_wiki_cluster"}]}]}',
-          then_contains: "rag_cluster_auto"
-        },
-        {
-          scenario: "\u6D41\u7A0B\u5716\uFF1A\u5169\u500B\u7BC0\u9EDE\u4E00\u689D\u7DDA\uFF0C\u7BC0\u9EDE\u5E36\u7DE8\u865F\u8207\u96F6\u4EF6\u540D",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","minimap":true,"selected":"w","nodes":[{"id":"input","title":"input","sub":"\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09","num":1,"tone":"green","badge":"IN"},{"id":"w","title":"write_triplet","sub":"\u6253\u4E00\u500B\u7DB2\u5740","num":2,"line3":"\u5BEB triplet"}],"edges":[{"from":"input","to":"w","kind":"next","tip":"\u6210\u529F\u5F8C"}]}]}',
-          then_contains: "write_triplet"
-        },
-        {
-          scenario: "\u56FA\u5B9A\u985E\u578B\u7684\u7BC0\u9EDE\uFF1A\u8D77\u9EDE\u3001\u5916\u90E8\u670D\u52D9\u3001\u5224\u65B7\u5404\u6709\u81EA\u5DF1\u7684\u5916\u6846\u8207\u6A19\u7C64\uFF0C\u7DE8\u865F\u986F\u793A\u6210 N \u865F",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":[{"id":"a","title":"\u6536\u5230\u7559\u8A00","sub":"\u8D77\u9EDE","num":1,"tone":"green","badge":"\u8D77\u9EDE","icon":"\u25B6","shape":"trigger"},{"id":"b","title":"\u767C Telegram","sub":"Telegram","num":2,"tone":"blue","badge":"\u5916\u90E8","icon":"A","shape":"ext"},{"id":"c","title":"\u6709\u6C92\u6709\u7968","sub":"\u5224\u65B7","num":3,"tone":"slate","badge":"\u5224\u65B7","icon":"?","shape":"branch"}],"edges":[{"from":"a","to":"b","kind":"next"},{"from":"b","to":"c","kind":"next"}]}]}',
-          then_contains: "2 \u865F"
-        },
-        {
-          scenario: "\u7BC0\u9EDE\u6E05\u55AE\u53EF\u4EE5\u7D81\u8CC7\u6599\u6A21\u578B",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":{"path":"/n"},"edges":{"path":"/e"}}],"data":{"n":[{"id":"x","title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE","sub":"\u96F6\u4EF6"}],"e":[]}}',
-          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "graph",
-        "workflow",
-        "observer"
-      ],
-      example: '{ "id": "root", "component": "WorkflowGraph", "layout": "flow",\n  "nodes": { "path": "/nodes" }, "edges": { "path": "/edges" } }\n',
-      source: "registry/ui-components/workflow-graph/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          layout: {
-            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          vertical: {
-            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
-            oneOf: [
-              {
-                type: "boolean"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          selected: {
-            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          minimap: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u5DE6\u4E0B\u89D2\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1"
-          },
-          pan: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
-          },
-          headLeft: {
-            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headMid: {
-            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headRight: {
-            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          zoom: {
-            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
-            oneOf: [
-              {
-                type: "number"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          nodes: {
-            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    id: {
-                      type: "string"
-                    },
-                    title: {
-                      type: "string"
-                    },
-                    sub: {
-                      type: "string"
-                    },
-                    line3: {
-                      type: "string"
-                    },
-                    badge: {
-                      type: "string"
-                    },
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "blue",
-                        "amber",
-                        "purple",
-                        "slate",
-                        "gray",
-                        "pink"
-                      ]
-                    },
-                    icon: {
-                      type: "string"
-                    },
-                    num: {
-                      type: "number"
-                    },
-                    side: {
-                      type: "string",
-                      enum: [
-                        "left",
-                        "mid",
-                        "right"
-                      ]
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "item",
-                        "group",
-                        "data",
-                        "plat",
-                        "miss",
-                        "center",
-                        "table"
-                      ]
-                    },
-                    shape: {
-                      type: "string",
-                      enum: [
-                        "trigger",
-                        "call",
-                        "ext",
-                        "branch",
-                        "read",
-                        "write"
-                      ]
-                    },
-                    fields: {
-                      type: "array",
-                      items: {
-                        type: "string"
-                      }
-                    },
-                    more: {
-                      type: "number"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    dim: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "id",
-                    "title"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u500B\u7BC0\u9EDE"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          edges: {
-            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    from: {
-                      type: "string"
-                    },
-                    to: {
-                      type: "string"
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "call",
-                        "write",
-                        "read",
-                        "next",
-                        "fail",
-                        "child"
-                      ]
-                    },
-                    label: {
-                      type: "string"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    },
-                    tip: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "from",
-                    "to"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u689D\u9023\u7DDA"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          component: {
-            const: "WorkflowGraph"
-          }
-        },
-        required: [
-          "id",
-          "nodes",
-          "edges",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    }
-  ],
-  a2ui_catalog: {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    catalogId: "arcrun:catalog/v0",
-    components: {
-      Button: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "default",
-              "primary",
-              "borderless"
-            ],
-            default: "default",
-            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
-          },
-          action: {
-            $ref: "#/$defs/Action"
-          },
-          component: {
-            const: "Button"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "action",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Card: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
-          },
-          component: {
-            const: "Card"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Column: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "spaceBetween",
-              "spaceAround",
-              "spaceEvenly",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "start",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
-          },
-          component: {
-            const: "Column"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      List: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
-          },
-          direction: {
-            type: "string",
-            enum: [
-              "vertical",
-              "horizontal"
-            ],
-            default: "vertical",
-            description: "The direction in which the list items are laid out."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis."
-          },
-          component: {
-            const: "List"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Row: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "spaceAround",
-              "spaceBetween",
-              "spaceEvenly",
-              "start",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
-          },
-          component: {
-            const: "Row"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Text: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          text: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "h1",
-              "h2",
-              "h3",
-              "h4",
-              "h5",
-              "caption",
-              "body"
-            ],
-            default: "body",
-            description: "A hint for the base text style."
-          },
-          component: {
-            const: "Text"
-          }
-        },
-        required: [
-          "id",
-          "text",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      WorkflowGraph: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          layout: {
-            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          vertical: {
-            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
-            oneOf: [
-              {
-                type: "boolean"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          selected: {
-            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          minimap: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u5DE6\u4E0B\u89D2\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1"
-          },
-          pan: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
-          },
-          headLeft: {
-            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headMid: {
-            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headRight: {
-            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          zoom: {
-            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
-            oneOf: [
-              {
-                type: "number"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          nodes: {
-            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    id: {
-                      type: "string"
-                    },
-                    title: {
-                      type: "string"
-                    },
-                    sub: {
-                      type: "string"
-                    },
-                    line3: {
-                      type: "string"
-                    },
-                    badge: {
-                      type: "string"
-                    },
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "blue",
-                        "amber",
-                        "purple",
-                        "slate",
-                        "gray",
-                        "pink"
-                      ]
-                    },
-                    icon: {
-                      type: "string"
-                    },
-                    num: {
-                      type: "number"
-                    },
-                    side: {
-                      type: "string",
-                      enum: [
-                        "left",
-                        "mid",
-                        "right"
-                      ]
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "item",
-                        "group",
-                        "data",
-                        "plat",
-                        "miss",
-                        "center",
-                        "table"
-                      ]
-                    },
-                    shape: {
-                      type: "string",
-                      enum: [
-                        "trigger",
-                        "call",
-                        "ext",
-                        "branch",
-                        "read",
-                        "write"
-                      ]
-                    },
-                    fields: {
-                      type: "array",
-                      items: {
-                        type: "string"
-                      }
-                    },
-                    more: {
-                      type: "number"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    dim: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "id",
-                    "title"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u500B\u7BC0\u9EDE"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          edges: {
-            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    from: {
-                      type: "string"
-                    },
-                    to: {
-                      type: "string"
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "call",
-                        "write",
-                        "read",
-                        "next",
-                        "fail",
-                        "child"
-                      ]
-                    },
-                    label: {
-                      type: "string"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    },
-                    tip: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "from",
-                    "to"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u689D\u9023\u7DDA"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          component: {
-            const: "WorkflowGraph"
-          }
-        },
-        required: [
-          "id",
-          "nodes",
-          "edges",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    $defs: {
-      anyComponent: {
-        oneOf: [
-          {
-            $ref: "#/components/Button"
-          },
-          {
-            $ref: "#/components/Card"
-          },
-          {
-            $ref: "#/components/Column"
-          },
-          {
-            $ref: "#/components/List"
-          },
-          {
-            $ref: "#/components/Row"
-          },
-          {
-            $ref: "#/components/Text"
-          },
-          {
-            $ref: "#/components/WorkflowGraph"
-          }
-        ],
-        discriminator: {
-          propertyName: "component"
-        }
-      },
-      ComponentId: {
-        type: "string",
-        description: "The unique identifier for a component, used for both definitions and references within the same surface."
-      },
-      AccessibilityAttributes: {
-        type: "object",
-        description: "Attributes to enhance accessibility when using assistive technologies like screen readers.",
-        properties: {
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "A short string, typically 1 to 3 words, used by assistive technologies to convey the purpose or intent of an element. For example, an input field might have an accessible label of 'User ID' or a button might be labeled 'Submit'."
-          },
-          description: {
-            $ref: "#/$defs/DynamicString",
-            description: "Additional information provided by assistive technologies about an element such as instructions, format requirements, or result of an action. For example, a mute button might have a label of 'Mute' and a description of 'Silences notifications about this conversation'."
-          }
-        }
-      },
-      CheckRule: {
-        type: "object",
-        description: "A single validation rule applied to an input component.",
-        properties: {
-          condition: {
-            $ref: "#/$defs/DynamicBoolean"
-          },
-          message: {
-            type: "string",
-            description: "The error message to display if the check fails."
-          }
-        },
-        required: [
-          "condition",
-          "message"
-        ],
-        additionalProperties: false
-      },
-      Action: {
-        description: "Defines an interaction handler that can either trigger a server-side event or execute a local client-side function.",
-        oneOf: [
-          {
-            type: "object",
-            description: "Triggers a server-side event.",
-            properties: {
-              event: {
-                type: "object",
-                description: "The event to dispatch to the server.",
-                properties: {
-                  name: {
-                    type: "string",
-                    description: "The name of the action to be dispatched to the server."
-                  },
-                  context: {
-                    type: "object",
-                    description: "A JSON object containing the key-value pairs for the action context. Values can be literals or paths. Use literal values unless the value must be dynamically bound to the data model. Do NOT use paths for static IDs.",
-                    additionalProperties: {
-                      $ref: "#/$defs/DynamicValue"
-                    }
-                  }
-                },
-                required: [
-                  "name"
-                ],
-                additionalProperties: false
-              }
-            },
-            required: [
-              "event"
-            ],
-            additionalProperties: false
-          },
-          {
-            type: "object",
-            description: "Executes a local client-side function.",
-            properties: {
-              functionCall: {
-                $ref: "#/$defs/FunctionCall"
-              }
-            },
-            required: [
-              "functionCall"
-            ],
-            additionalProperties: false
-          }
-        ]
-      },
-      ChildList: {
-        oneOf: [
-          {
-            type: "array",
-            items: {
-              $ref: "#/$defs/ComponentId"
-            },
-            description: "A static list of child component IDs."
-          },
-          {
-            type: "object",
-            description: "A template for generating a dynamic list of children from a data model list. The `componentId` is the component to use as a template.",
-            properties: {
-              componentId: {
-                $ref: "#/$defs/ComponentId"
-              },
-              path: {
-                type: "string",
-                description: "The path to the list of component property objects in the data model."
-              }
-            },
-            required: [
-              "componentId",
-              "path"
-            ],
-            additionalProperties: false
-          }
-        ]
-      },
-      DynamicString: {
-        description: "Represents a string",
-        oneOf: [
-          {
-            type: "string"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            allOf: [
-              {
-                $ref: "#/$defs/FunctionCall"
-              },
-              {
-                properties: {
-                  returnType: {
-                    const: "string"
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      DataBinding: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "A JSON Pointer path to a value in the data model."
-          }
-        },
-        required: [
-          "path"
-        ],
-        additionalProperties: false
-      },
-      FunctionCall: {
-        type: "object",
-        description: "Invokes a named function on the client.",
-        properties: {
-          call: {
-            type: "string",
-            description: "The name of the function to call."
-          },
-          args: {
-            type: "object",
-            description: "Arguments passed to the function.",
-            additionalProperties: {
-              anyOf: [
-                {
-                  $ref: "#/$defs/DynamicValue"
-                },
-                {
-                  type: "object",
-                  description: "A literal object argument (e.g. configuration)."
-                }
-              ]
-            }
-          },
-          returnType: {
-            type: "string",
-            description: "The expected return type of the function call.",
-            enum: [
-              "string",
-              "number",
-              "boolean",
-              "array",
-              "object",
-              "any",
-              "void"
-            ],
-            default: "boolean"
-          }
-        },
-        required: [
-          "call"
-        ],
-        oneOf: [
-          {
-            $ref: "catalog.json#/$defs/anyFunction"
-          }
-        ]
-      },
-      DynamicBoolean: {
-        description: "A boolean value that can be a literal, a path, or a function call returning a boolean.",
-        oneOf: [
-          {
-            type: "boolean"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            allOf: [
-              {
-                $ref: "#/$defs/FunctionCall"
-              },
-              {
-                properties: {
-                  returnType: {
-                    const: "boolean"
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      DynamicValue: {
-        description: "A value that can be a literal, a path, or a function call returning any type.",
-        oneOf: [
-          {
-            type: "string"
-          },
-          {
-            type: "number"
-          },
-          {
-            type: "boolean"
-          },
-          {
-            type: "array"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            $ref: "#/$defs/FunctionCall"
-          }
-        ]
-      }
-    }
-  }
-};
 
 // cypher-executor/src/lib/ui-catalog.ts
 var CATALOG = ui_catalog_generated_default;
