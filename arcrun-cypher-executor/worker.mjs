@@ -88189,6 +88189,25 @@ portalRouter.post(
   })
 );
 portalRouter.post(
+  "/portal/admin/card-passage-backfill",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    let owner;
+    try {
+      owner = knowledgeOwner(c.env);
+    } catch (e) {
+      if (e instanceof TenantUnresolvedError) return c.json({ error: "\u8B80\u4E0D\u5230\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u547D\u540D\u7A7A\u9593\uFF08\u4E0D\u662F\u300C\u6C92\u6709\u5361\u300D\uFF09", code: "tenant_unresolved" }, 503);
+      throw e;
+    }
+    const res = await kbdbFetch2(c.env, "/entries/card-passage-backfill", {
+      method: "POST",
+      body: JSON.stringify({ owner_id: owner })
+    });
+    return new Response(await res.text(), { status: res.status, headers: { "Content-Type": "application/json" } });
+  })
+);
+portalRouter.post(
   "/portal/admin/accelerator-indexes",
   (c) => run(c, async () => {
     const auth = await requirePortalAdmin(c);
@@ -88419,6 +88438,7 @@ async function runCardPassageBackfillTick(env, log = console.log) {
     total.round_done = body?.round_done;
     if (!res.ok || !body || body.skipped || body.round_done || !(body.cards_checked ?? 0)) break;
   }
+  log("[scheduled] card-passage-backfill", JSON.stringify(total));
   return total;
 }
 

@@ -6979,7 +6979,8 @@ async function readState(db, owner) {
     lib_idx: Number(m.lib_idx) || 0,
     card_idx: Number(m.card_idx) || 0,
     done_day: String(m.done_day ?? ""),
-    rev: Number(m.rev) || 0
+    rev: Number(m.rev) || 0,
+    libs: Array.isArray(m.libs) ? m.libs.map(String) : void 0
   };
 }
 async function writeState(db, owner, s) {
@@ -7037,6 +7038,7 @@ async function runCardPassageBackfill(env, db, input) {
     state.card_idx = 0;
     state.done_day = "";
     state.rev = CARD_CHUNKER_REV;
+    state.libs = void 0;
   }
   if (state.done_day === today()) {
     res.skipped = "done_today";
@@ -7049,7 +7051,13 @@ async function runCardPassageBackfill(env, db, input) {
   }
   const maxCards = Math.min(Math.max(input.max_cards ?? MAX_CARDS, 1), 20);
   const maxPassages = Math.min(Math.max(input.max_passages ?? MAX_PASSAGES, 1), Math.floor(budget.remaining / ROWS_PER_PASSAGE));
-  const libs = [...(await readCardTallies(db, owner)).keys()].filter((l) => !BLOCKED_LIBRARIES.has(l)).sort();
+  let libs = state.libs;
+  if (!libs || !libs.length) {
+    const names = new Set((await readCardTallies(db, owner)).keys());
+    for (const m of await readStoredMaps(db, owner)) names.add(m.library);
+    libs = [...names].filter((l) => l && !BLOCKED_LIBRARIES.has(l)).sort();
+    state.libs = libs;
+  }
   res.libraries = libs.length;
   let writes = 0;
   outer: while (state.lib_idx < libs.length) {
@@ -7123,8 +7131,20 @@ async function runCardPassageBackfill(env, db, input) {
     state.done_day = today();
     state.lib_idx = 0;
     state.card_idx = 0;
+    state.libs = void 0;
     res.round_done = true;
   }
+  state.last = {
+    at: (/* @__PURE__ */ new Date()).toISOString(),
+    libraries: res.libraries,
+    checked: res.cards_checked,
+    filled: res.cards_filled,
+    up_to_date: res.cards_up_to_date,
+    no_layer: res.cards_no_layer.length,
+    written: res.passages_written,
+    deleted: res.passages_deleted,
+    embed_failed: res.embed_failed
+  };
   await writeState(db, owner, state);
   try {
     await addMaintenanceUsage(db, writes);
