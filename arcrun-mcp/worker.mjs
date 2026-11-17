@@ -32292,6 +32292,175 @@ function registerCreateForm(server, env, identity) {
   );
 }
 
+// mcp/src/tools/arcrun_app_crud.ts
+async function callPortal(env, identity, what, path, opts, hints) {
+  if (identity.kind === "stale") return staleIdentityError();
+  if (identity.kind !== "portal") {
+    return errorResponse("login_required", `${what}\u9700\u8981\u4EE5 Portal \u5E33\u865F\u767B\u5165\u7684 MCP \u9023\u7DDA`, [
+      "\u7528 Portal \u5E33\u5BC6\u91CD\u65B0\u9023\u7DDA MCP \u5F8C\u518D\u8A66"
+    ]);
+  }
+  try {
+    const res = await portalFetch(env, identity.portal.session, path, opts);
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 404 || res.status === 409) {
+        const detail = await res.text().catch(() => "");
+        let msg = detail;
+        try {
+          const j = JSON.parse(detail);
+          msg = [j.error, j.hint].filter(Boolean).join("\uFF1B") || detail;
+        } catch {
+        }
+        return errorResponse(`portal_${res.status}`, `${what}\u5931\u6557\uFF1A${msg}`, ["\u78BA\u8A8D\u540D\u7A31\u6216 id \u5F8C\u518D\u8A66"], detail);
+      }
+      return portalError(res, what);
+    }
+    return successResponse(await res.json(), hints);
+  } catch (e) {
+    return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
+  }
+}
+var appId = external_exports.string().min(1).describe("App id\uFF08arcrun_app_list \u56DE\u7684 id\uFF09\uFF0C\u4F8B\uFF1Aleave_request");
+function registerAllAppCrudTools(server, env, identity) {
+  server.tool(
+    toolName("app_list"),
+    "\u5217\u51FA\u9019\u500B\u5E33\u865F\u88DD\u4E86\u54EA\u4E9B App\uFF08Portal App \u555F\u52D5\u5668\u4E0A\u90A3\u4E9B\uFF09\uFF1Aid\u3001\u540D\u7A31\u3001\u7248\u672C\u3001\u6709\u6C92\u6709\u756B\u9762\u3001\u6709\u6C92\u6709\u65B0\u7248\u3002\u8981\u770B\u67D0\u4E00\u500B\u7684\u5DE5\u4F5C\u6D41\u8207\u756B\u9762 \u2192 arcrun_app_get\uFF1B\u8981\u522A \u2192 arcrun_app_delete\uFF1B\u8981\u5F9E\u5E02\u96C6\u88DD \u2192 arcrun_app_catalog\uFF0Barcrun_app_install\u3002",
+    {},
+    async () => callPortal(env, identity, "\u5217 App", "/portal/data/apps", {}, [
+      "\u8B80\u67D0\u4E00\u500B\uFF1Aarcrun_app_get(id)",
+      "\u522A\u67D0\u4E00\u500B\uFF1Aarcrun_app_delete(id, confirm_id=\u540C\u4E00\u500B id)"
+    ])
+  );
+  server.tool(
+    toolName("app_get"),
+    "\u8B80\u4E00\u500B\u5DF2\u88DD\u7684 App\uFF1A\u540D\u7A31\u3001\u7248\u672C\u3001\u5B83\u7684\u5DE5\u4F5C\u6D41\u3001\u6709\u6C92\u6709\u756B\u9762\u3001\u4F86\u6E90\uFF08\u81EA\u5DF1\u505A\u7684\uFF0F\u5E02\u96C6\u88DD\u7684\uFF09\u3002",
+    { id: appId },
+    async ({ id }) => callPortal(env, identity, `\u8B80 App\u300C${id}\u300D`, `/portal/data/apps/${encodeURIComponent(id)}`, {}, [
+      "\u8981\u6539\u8868\u55AE App\uFF1A\u7528\u540C\u4E00\u500B name \u518D\u547C\u53EB arcrun_create_form",
+      "\u8981\u6539\u5E02\u96C6 App \u7684\u7248\u672C\uFF1Aarcrun_app_install(id)"
+    ])
+  );
+  server.tool(
+    toolName("app_catalog"),
+    "\u5217\u51FA App \u5E02\u96C6\u88E1\u53EF\u4EE5\u88DD\u7684 App\uFF1Aid\u3001\u540D\u7A31\u3001\u7248\u672C\u3001\u9019\u53F0\u88DD\u4E86\u6C92\u3001\u9700\u8981\u54EA\u4E9B\u91D1\u9470\u3001\u9084\u7F3A\u54EA\u5E7E\u628A\u3002",
+    {},
+    async () => callPortal(env, identity, "\u5217 App \u5E02\u96C6", "/portal/data/apps/catalog", {}, [
+      "\u8981\u88DD\u6216\u66F4\u65B0\uFF1Aarcrun_app_install(id)",
+      "\u7F3A\u91D1\u9470\uFF1Aarcrun_credential_list \u770B\u540D\u5B57\uFF1B\u503C\u7531\u4EBA\u5230 Portal \u7684\u7BA1\u7406\u9801\u586B"
+    ])
+  );
+  server.tool(
+    toolName("app_install"),
+    "\u5F9E App \u5E02\u96C6\u5B89\u88DD\u4E00\u500B App\uFF1B\u5DF2\u7D93\u88DD\u4E86\u5C31\u66F4\u65B0\u5230\u5E02\u96C6\u90A3\u4E00\u7248\uFF08\u7248\u865F\u5012\u9000\u6703\u88AB\u64CB\uFF09\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002\u8868\u55AE App \u4E0D\u5728\u5E02\u96C6\uFF0C\u589E\uFF0F\u6539\u8ACB\u7528 arcrun_create_form\u3002",
+    { id: external_exports.string().min(1).describe("\u5E02\u96C6\u88E1\u7684 App id\uFF08arcrun_app_catalog \u56DE\u7684 id\uFF09") },
+    async ({ id }) => callPortal(env, identity, `\u5B89\u88DD App\u300C${id}\u300D`, `/portal/data/apps/catalog/${encodeURIComponent(id)}/install`, { method: "POST", body: {} }, [
+      "\u56DE\u61C9\u6709 in_progress\uFF1D\u5927 App \u9084\u6C92\u88DD\u5B8C\uFF0C\u540C\u4E00\u500B id \u518D\u547C\u53EB\u4E00\u6B21\u63A5\u8457\u88DD",
+      "\u88DD\u5B8C\uFF1Aarcrun_app_get(id) \u78BA\u8A8D\u7248\u672C"
+    ])
+  );
+  server.tool(
+    toolName("app_delete"),
+    "\u522A\u9664\uFF08\u5378\u8F09\uFF09\u4E00\u500B\u5DF2\u88DD\u7684 App\uFF1A\u5F9E App \u555F\u52D5\u5668\u62FF\u6389\uFF0C\u9023\u540C\u5B83\u7684\u5DE5\u4F5C\u6D41\u8207\u6392\u7A0B\u4E00\u8D77\u64A4\u6389\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002\u{1F534} \u5B83\u5BEB\u904E\u7684\u8CC7\u6599\u8868\u5217\u4E0D\u6703\u88AB\u522A\uFF08\u8CC7\u6599\u7559\u8457\uFF09\u3002confirm_id \u8981\u518D\u5BEB\u4E00\u6B21\u540C\u4E00\u500B id\uFF0C\u9632\u6B62\u522A\u932F\u3002\u522A\u5B8C\u7528 arcrun_app_list \u78BA\u8A8D\u4E0D\u898B\u4E86\u3002",
+    {
+      id: appId,
+      confirm_id: external_exports.string().min(1).describe("\u518D\u5BEB\u4E00\u6B21\u8981\u522A\u7684 App id\uFF08\u5FC5\u9808\u548C id \u4E00\u6A21\u4E00\u6A23\uFF09")
+    },
+    async ({ id, confirm_id }) => {
+      if (id !== confirm_id) {
+        return errorResponse("confirm_mismatch", `confirm_id\uFF08${confirm_id}\uFF09\u548C id\uFF08${id}\uFF09\u4E0D\u4E00\u6A23\uFF0C\u6C92\u6709\u522A\u4EFB\u4F55\u6771\u897F`, [
+          "\u78BA\u8A8D\u8981\u522A\u7684\u662F\u54EA\u4E00\u500B App\uFF0C\u5169\u683C\u5BEB\u540C\u4E00\u500B id \u518D\u547C\u53EB"
+        ]);
+      }
+      return callPortal(env, identity, `\u522A\u9664 App\u300C${id}\u300D`, `/portal/data/apps/${encodeURIComponent(id)}`, { method: "DELETE" }, [
+        "\u7528 arcrun_app_list \u78BA\u8A8D\u5B83\u5DF2\u4E0D\u5728\u6E05\u55AE\u4E0A",
+        "\u5B83\u5BEB\u904E\u7684\u8CC7\u6599\u8868\u5217\u9084\u5728\uFF1B\u8981\u6E05\u8CC7\u6599\u53E6\u5916\u8655\u7406"
+      ]);
+    }
+  );
+}
+
+// mcp/src/tools/arcrun_credential_crud.ts
+var NAME_RE = /^[A-Za-z0-9_]+$/;
+var credName = external_exports.string().regex(NAME_RE, "\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA").describe("\u91D1\u9470\u540D\u5B57\uFF08\u5DE5\u4F5C\u6D41\u88E1\u5BEB\u6210 {{credential.<\u540D\u5B57>}}\uFF09");
+var PORTAL_CRED_PAGE = "#/admin";
+function registerAllCredentialCrudTools(server, env, identity) {
+  server.tool(
+    toolName("credential_list"),
+    "\u5217\u51FA\u9019\u500B\u5E33\u865F\u5B58\u4E86\u54EA\u4E9B\u91D1\u9470\uFF1A\u540D\u5B57\u3001\u670D\u52D9\u3001\u5EFA\u7ACB\u6642\u9593\u3001\u6700\u5F8C\u4F7F\u7528\u6642\u9593\u3002\u{1F512} \u53EA\u6709\u540D\u5B57\uFF0C\u6C92\u6709\u503C\uFF08\u503C\u8AB0\u90FD\u8B80\u4E0D\u56DE\uFF09\u3002\u5DE5\u4F5C\u6D41\u5F15\u7528\u91D1\u9470\u4E00\u5F8B\u5BEB {{credential.<\u540D\u5B57>}}\uFF0C\u57F7\u884C\u6642\u5F15\u64CE\u624D\u56DE\u586B\u3002",
+    {},
+    async () => callPortal(env, identity, "\u5217\u91D1\u9470", "/portal/admin/credentials", {}, [
+      "\u7F3A\u67D0\u628A\uFF1Aarcrun_credential_create(name) \u53D6\u5F97\u586B\u503C\u7684\u4F4D\u7F6E\uFF0C\u4EA4\u7D66\u4EBA\u586B",
+      "\u6539\u540D\u6216\u6539\u670D\u52D9\uFF1Aarcrun_credential_update\uFF1B\u522A\uFF1Aarcrun_credential_delete"
+    ])
+  );
+  server.tool(
+    toolName("credential_create"),
+    "\u65B0\u589E\u4E00\u628A\u91D1\u9470\u3002\u{1F512} AI \u4E0D\u7D93\u624B\u91D1\u9470\u7684\u503C\uFF08D36\uFF09\uFF1A\u9019\u652F\u4E0D\u6536\u503C\u3001\u4E0D\u5BEB\u5165\uFF0C\u53EA\u78BA\u8A8D\u540D\u5B57\u53EF\u7528\uFF0C\u4E26\u56DE Portal \u586B\u503C\u7684\u4F4D\u7F6E\uFF0C\u8ACB\u4F7F\u7528\u8005\u672C\u4EBA\u5230\u90A3\u88E1\u8CBC\u4E0A\u503C\u3002\u586B\u597D\u5F8C\u7528 arcrun_credential_list \u78BA\u8A8D\u540D\u5B57\u51FA\u73FE\u3002",
+    {
+      name: credName,
+      service: external_exports.string().optional().describe("\u9019\u628A\u91D1\u9470\u5C6C\u65BC\u54EA\u500B\u670D\u52D9\uFF08\u9078\u586B\uFF0C\u4F8B\uFF1Agemini\u3001notion\uFF09")
+    },
+    async ({ name, service }) => {
+      if (identity.kind === "stale") return staleIdentityError();
+      if (identity.kind !== "portal") {
+        return errorResponse("login_required", "\u7BA1\u7406\u91D1\u9470\u9700\u8981\u4EE5 Portal \u5E33\u865F\u767B\u5165\u7684 MCP \u9023\u7DDA", ["\u7528 Portal \u5E33\u5BC6\u91CD\u65B0\u9023\u7DDA MCP \u5F8C\u518D\u8A66"]);
+      }
+      return successResponse(
+        {
+          written: false,
+          name,
+          service: service ?? null,
+          fill_in: { where: `Portal ${PORTAL_CRED_PAGE}\uFF08\u7BA1\u7406 \u25B8 \u91D1\u9470\u7BA1\u7406\uFF09`, portal_hash: PORTAL_CRED_PAGE },
+          why: "\u91D1\u9470\u7684\u503C\u53EA\u80FD\u7531\u4EBA\u586B\uFF08D36\uFF1AAI \u53EA\u78B0\u540D\u5B57\uFF09\u3002\u9019\u652F\u5DE5\u5177\u6C92\u6709\u5BEB\u5165\u4EFB\u4F55\u6771\u897F\u3002"
+        },
+        [
+          `\u8ACB\u4F7F\u7528\u8005\u958B Portal \u7684 ${PORTAL_CRED_PAGE}\u300C\u91D1\u9470\u7BA1\u7406\u300D\uFF0C\u65B0\u589E\u540D\u5B57\u300C${name}\u300D${service ? `\uFF08\u670D\u52D9 ${service}\uFF09` : ""}\u4E26\u8CBC\u4E0A\u503C`,
+          "\u586B\u597D\u5F8C arcrun_credential_list \u78BA\u8A8D\uFF1B\u5DE5\u4F5C\u6D41\u88E1\u5BEB {{credential." + name + "}}"
+        ]
+      );
+    }
+  );
+  server.tool(
+    toolName("credential_update"),
+    "\u6539\u4E00\u628A\u91D1\u9470\u7684\u540D\u5B57\u6216\u670D\u52D9\uFF08\u503C\u4E0D\u52D5\uFF09\u3002\u{1F512} \u63DB\u503C\u4E0D\u7D93\u904E AI\uFF1A\u8981\u63DB\u503C\u8ACB\u4F7F\u7528\u8005\u5230 Portal #/admin \u91D1\u9470\u7BA1\u7406\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002\u6539\u540D\u5F8C\uFF0C\u5F15\u7528\u820A\u540D\u5B57\u7684\u5DE5\u4F5C\u6D41\u8981\u4E00\u8D77\u6539\u3002",
+    {
+      name: credName.describe("\u73FE\u5728\u7684\u540D\u5B57"),
+      new_name: external_exports.string().regex(NAME_RE, "\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA").optional().describe("\u65B0\u540D\u5B57\uFF08\u9078\u586B\uFF09"),
+      service: external_exports.string().optional().describe("\u65B0\u7684\u670D\u52D9\u540D\uFF08\u9078\u586B\uFF09")
+    },
+    async ({ name, new_name, service }) => {
+      if (new_name === void 0 && service === void 0) {
+        return errorResponse("nothing_to_change", "new_name \u548C service \u90FD\u6C92\u7D66\uFF0C\u6C92\u6709\u6539\u4EFB\u4F55\u6771\u897F", ["\u81F3\u5C11\u7D66\u4E00\u500B\u8981\u6539\u7684\u6B04\u4F4D"]);
+      }
+      const body = {};
+      if (new_name !== void 0) body.new_name = new_name;
+      if (service !== void 0) body.service = service;
+      return callPortal(env, identity, `\u4FEE\u6539\u91D1\u9470\u300C${name}\u300D`, `/portal/admin/credentials/${encodeURIComponent(name)}`, { method: "PATCH", body }, [
+        "arcrun_credential_list \u78BA\u8A8D",
+        new_name ? `\u5F15\u7528 {{credential.${name}}} \u7684\u5DE5\u4F5C\u6D41\u8981\u6539\u6210 {{credential.${new_name}}}` : "\u503C\u6C92\u6709\u8B8A"
+      ]);
+    }
+  );
+  server.tool(
+    toolName("credential_delete"),
+    "\u522A\u9664\u4E00\u628A\u91D1\u9470\uFF08\u540D\u5B57\u8207\u503C\u4E00\u8D77\u522A\uFF0C\u4E0D\u80FD\u5FA9\u539F\uFF09\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002confirm_name \u8981\u518D\u5BEB\u4E00\u6B21\u540C\u4E00\u500B\u540D\u5B57\uFF0C\u9632\u6B62\u522A\u932F\u3002\u522A\u4E4B\u524D\u5148\u78BA\u8A8D\u6C92\u6709\u5DE5\u4F5C\u6D41\u9084\u5728\u7528\u5B83\u3002",
+    {
+      name: credName,
+      confirm_name: external_exports.string().min(1).describe("\u518D\u5BEB\u4E00\u6B21\u8981\u522A\u7684\u540D\u5B57\uFF08\u5FC5\u9808\u4E00\u6A21\u4E00\u6A23\uFF09")
+    },
+    async ({ name, confirm_name }) => {
+      if (name !== confirm_name) {
+        return errorResponse("confirm_mismatch", `confirm_name\uFF08${confirm_name}\uFF09\u548C name\uFF08${name}\uFF09\u4E0D\u4E00\u6A23\uFF0C\u6C92\u6709\u522A\u4EFB\u4F55\u6771\u897F`, [
+          "\u78BA\u8A8D\u8981\u522A\u54EA\u4E00\u628A\uFF0C\u5169\u683C\u5BEB\u540C\u4E00\u500B\u540D\u5B57\u518D\u547C\u53EB"
+        ]);
+      }
+      return callPortal(env, identity, `\u522A\u9664\u91D1\u9470\u300C${name}\u300D`, `/portal/admin/credentials/${encodeURIComponent(name)}`, { method: "DELETE" }, [
+        "arcrun_credential_list \u78BA\u8A8D\u5B83\u5DF2\u4E0D\u5728"
+      ]);
+    }
+  );
+}
+
 // mcp/src/tools/kbdb_graph.ts
 var GRAPH_NEIGHBORS_WORKFLOW = "graph_neighbors";
 var INSTALL_HINTS = [
@@ -33042,6 +33211,8 @@ function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
   registerAllUiComponentTools(server, env, partnerToken);
   registerAllKbdbDataTools(server, env, identity);
   registerAllCreateFormTools(server, env, identity);
+  registerAllAppCrudTools(server, env, identity);
+  registerAllCredentialCrudTools(server, env, identity);
   registerAllKbdbGraphTools(server, env, orgNamespace, identity);
   registerAllKbdbMapTools(server, env, identity);
   registerAllKbdbIndexTools(server, env, identity);
@@ -33141,8 +33312,8 @@ async function callAppTool(env, ns, app2, tool, args, caller) {
   }
   return successResponse(inner ?? null);
 }
-function findTool(apps, appId, name) {
-  const app2 = apps.find((a) => a.app_id === appId);
+function findTool(apps, appId2, name) {
+  const app2 = apps.find((a) => a.app_id === appId2);
   const tool = app2?.tools.find((t) => t.name === name);
   return app2 && tool ? { app: app2, tool } : null;
 }
