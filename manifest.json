@@ -7,7 +7,7 @@
  "daemon": {
   "version": "0.18.121",
   "built": "20261118-2018",
-  "notes": "從官網下載 Mac 小幫手，打開時不再跳「無法驗證開發者」",
+  "notes": "Mac 小幫手從官網下載後打開，不再跳「無法驗證開發者」",
   "mac": {
    "file": "daemon/Arcrun-0.18.121.dmg",
    "sha256": "278011b1f19e9fba994a384cc6f6822974c9a99c54d86f3ab1c9102b76fef364"
