@@ -24017,75 +24017,6 @@ var envPrefix = globalThis.process?.env?.ARCRUN_TOOL_PREFIX;
 var TOOL_PREFIX = envPrefix || "arcrun";
 var toolName = (suffix) => `${TOOL_PREFIX}_${suffix}`;
 
-// mcp/src/tools/arcrun_search_components.ts
-function registerSearchComponents(server, env, orgNamespace) {
-  server.tool(
-    toolName("search_components"),
-    "\u7528\u81EA\u7136\u8A9E\u8A00\u95DC\u9375\u5B57\u641C\u5C0B\u96F6\u4EF6\u5EAB\uFF0C\u627E\u51FA\u7B26\u5408\u9700\u6C42\u7684\u96F6\u4EF6\u3002\u4F8B\u5982\uFF1A\u300C\u67E5\u8A62 Google Sheets \u8CC7\u6599\u300D\u3001\u300C\u767C\u9001 LINE \u8A0A\u606F\u300D\u3001\u300C\u9A57\u8B49 JSON \u683C\u5F0F\u300D\u3002\u56DE\u50B3\u96F6\u4EF6\u6E05\u55AE\u542B canonical_id\u3001\u63CF\u8FF0\u3001\u8A55\u5206\u3002",
-    {
-      query: external_exports.string().describe("\u81EA\u7136\u8A9E\u8A00\u641C\u5C0B\u8A5E\uFF0C\u5982\u300C\u67E5\u8A62 Google Sheets \u8CC7\u6599\u300D")
-    },
-    async ({ query }) => {
-      try {
-        if (!env.COMPONENT_REGISTRY) {
-          return {
-            content: [{ type: "text", text: "Error: COMPONENT_REGISTRY service binding is not configured." }],
-            isError: true
-          };
-        }
-        const response = await env.COMPONENT_REGISTRY.fetch(
-          `http://component-registry/components/search?q=${encodeURIComponent(query)}`,
-          { method: "GET", headers: { "Content-Type": "application/json" } }
-        );
-        if (!response.ok) {
-          const errorText = await response.text();
-          return {
-            content: [{ type: "text", text: `Search failed: ${errorText}` }],
-            isError: true
-          };
-        }
-        const result = await response.json();
-        const results = result.data?.results ?? [];
-        const count = result.data?.count ?? 0;
-        if (count === 0) {
-          return {
-            content: [{
-              type: "text",
-              text: [
-                `registry \u88E1\u627E\u4E0D\u5230\u300C${query}\u300D\u2014\u2014\u4F46**\u5148\u5225\u6025\u8457\u9020\u96F6\u4EF6**\uFF08\u96F6\u4EF6\u8D70 PR\u3001\u5C08\u696D\u7B49\u7D1A\uFF09\u3002`,
-                ``,
-                `\u26A0\uFE0F registry \u76EE\u524D\u53EF\u80FD\u662F\u7A7A\u7684\uFF08\u5DF2\u77E5\u554F\u984C\uFF1A\u552F\u4E00\u5BEB\u5165\u89F8\u767C\u9EDE\u96A8 .github/workflows \u79FB\u9664\u800C\u84B8\u767C\uFF09\uFF0C`,
-                `   \u300C\u641C\u4E0D\u5230\u300D\u4E0D\u4EE3\u8868\u300C\u6C92\u6709\u9019\u500B\u80FD\u529B\u300D\u3002\u8ACB\u6539\u7528\u4E0B\u5217\u9806\u5E8F\u627E\uFF1A`,
-                ``,
-                `1. **\u641C\u5C0B\u77E5\u8B58\u5EAB**\uFF08\u7528\u4E00\u53E5\u8A71\u63CF\u8FF0\u60F3\u9054\u6210\u4EC0\u9EBC\uFF09\uFF1A`,
-                `   kbdb_search(q="\u6211\u60F3\u9054\u6210\u4EC0\u9EBC\uFF08\u7528\u4E00\u53E5\u8A71\u63CF\u8FF0\uFF09")`,
-                `2. **\u770B\u73FE\u6210\u7684\u670D\u52D9\u6574\u5408**\uFF1A\`acr auth-recipe list\`\uFF0826 \u500B\uFF1AGitHub/Notion/Gemini\u2026\uFF09`,
-                `   \u8981\u7528\u54EA\u500B \u2192 \`acr auth-recipe scaffold <\u670D\u52D9>\` \u76F4\u63A5\u5410 credentials \u7BC4\u672C\uFF0Bworkflow \u7BC4\u4F8B`,
-                `3. **\u770B\u96F6\u4EF6\u5168\u96C6**\uFF1A\`acr parts\`\uFF0821 \u9846\u901A\u7528\u96F6\u4EF6\uFF0C\u542B http_request \u53EF\u6253\u4EFB\u610F API\uFF09`,
-                `4. **\u770B\u6709\u6C92\u6709\u73FE\u6210 workflow \u53EF\u76F4\u63A5\u63A5**\uFF1A\`acr list\``,
-                ``,
-                `\u{1F4A1} \u591A\u6578\u9700\u6C42\u7684\u6B63\u89E3\u662F\u300C\u7528 recipe \u8A2D\u5B9A\u65E2\u6709\u96F6\u4EF6\u300D\u6216\u300C\u63A5\u65E2\u6709 workflow\u300D\uFF0C\u4E0D\u662F\u65B0\u9020\u96F6\u4EF6\u3002`
-              ].join("\n")
-            }]
-          };
-        }
-        return {
-          content: [{
-            type: "text",
-            text: `\u627E\u5230 ${count} \u500B\u96F6\u4EF6\uFF1A
-${JSON.stringify(results, null, 2)}`
-          }]
-        };
-      } catch (error2) {
-        return {
-          content: [{ type: "text", text: `Internal Error: ${error2 instanceof Error ? error2.message : String(error2)}` }],
-          isError: true
-        };
-      }
-    }
-  );
-}
-
 // mcp/src/lib/cypher-client.ts
 async function deriveCypherKey(secret, tenant) {
   const s = (secret ?? "").trim();
@@ -24150,6 +24081,34 @@ function successResponse(data, hints) {
   };
 }
 
+// mcp/src/tools/arcrun_search_components.ts
+var CATALOG_UNREADABLE = "\u8B80\u4E0D\u5230\u96F6\u4EF6\u5EAB\uFF08\u9019\u662F\u67E5\u8A62\u5931\u6557\uFF0C\u4E0D\u4EE3\u8868\u96F6\u4EF6\u4E0D\u5B58\u5728\uFF09";
+function registerSearchComponents(server, env, partnerToken) {
+  server.tool(
+    toolName("search_components"),
+    "\u7528\u81EA\u7136\u8A9E\u8A00\u95DC\u9375\u5B57\u641C\u5C0B\u96F6\u4EF6\u5EAB\uFF0C\u627E\u51FA\u7B26\u5408\u9700\u6C42\u7684\u96F6\u4EF6\u3002\u4F8B\u5982\uFF1A\u300C\u767C HTTP \u8ACB\u6C42\u53D6\u56DE JSON\u300D\u3001\u300C\u5224\u65B7\u689D\u4EF6\u300D\u3001\u300C\u8655\u7406\u5B57\u4E32\u300D\u3002\u56DE\u50B3\u96F6\u4EF6\u6E05\u55AE\uFF0C\u6BCF\u9846\u542B canonical_id\u3001\u63CF\u8FF0\u3001input_schema\uFF08\u600E\u9EBC\u586B payload\uFF09\u3002",
+    {
+      query: external_exports.string().describe("\u81EA\u7136\u8A9E\u8A00\u641C\u5C0B\u8A5E\uFF0C\u5982\u300C\u767C HTTP \u8ACB\u6C42\u300D")
+    },
+    async ({ query }) => {
+      try {
+        const res = await cypherFetch(env, "/components/search", { apiKey: partnerToken, query: { q: query } });
+        if (!res.ok) {
+          return errorResponse("catalog_unreadable", CATALOG_UNREADABLE, ["\u7A0D\u5F8C\u518D\u8A66\uFF1B\u4ECD\u5931\u6557\u8ACB\u56DE\u5831\u7D66\u7DAD\u904B\uFF08\u5F15\u64CE\u7684 GET /components/search \u56DE HTTP " + res.status + "\uFF09"], await res.text());
+        }
+        const body = await res.json();
+        const hints = (body.count ?? 0) === 0 ? [
+          "\u96F6\u4EF6\u76EE\u9304\u88E1\u6C92\u6709\u7B26\u5408\u7684\u96F6\u4EF6\uFF0C\u4F46\u5225\u6025\u8457\u5BEB code \u7BC0\u9EDE\uFF1A\u5916\u90E8\u670D\u52D9\u7684 API \u901A\u5E38\u662F recipe\uFF08http_request \u96F6\u4EF6\uFF0Brecipe \u8A2D\u5B9A\uFF09\u2014\u2014\u7528 arcrun_recipe_search \u627E",
+          "\u4E5F\u53EF\u6539\u7528 arcrun_list_components \u770B\u5168\u90E8\u96F6\u4EF6"
+        ] : ["\u8981\u67D0\u4E00\u9846\u7684\u5B8C\u6574\u5951\u7D04\uFF08output_schema\u3001\u6E2C\u8A66\u6848\u4F8B\uFF09\u2192 arcrun_get_component\uFF1Binput_schema \u5DF2\u9644\u5728\u6BCF\u7B46\u7D50\u679C\u88E1"];
+        return successResponse(body, hints);
+      } catch (e) {
+        return errorResponse("catalog_unreadable", CATALOG_UNREADABLE, ["\u7A0D\u5F8C\u518D\u8A66"], e instanceof Error ? e.message : String(e));
+      }
+    }
+  );
+}
+
 // mcp/src/tools/arcrun_search_workflows.ts
 function registerSearchWorkflows(server, env, orgNamespace, partnerToken) {
   server.tool(
@@ -24212,85 +24171,50 @@ ${JSON.stringify(entries, null, 2)}${hintLine}`
 }
 
 // mcp/src/tools/arcrun_list_components.ts
-function registerListComponents(server, env, orgNamespace) {
+function registerListComponents(server, env, partnerToken) {
   server.tool(
     toolName("list_components"),
-    "\u5217\u51FA\u7576\u524D\u547D\u540D\u7A7A\u9593\u4E0B\u6240\u6709\u5DF2\u767C\u4F48\u7684\u96F6\u4EF6\uFF0C\u53EF\u9078\u64C7\u6309 tag \u7BE9\u9078\u3002",
+    "\u5217\u51FA\u9019\u53F0\u5F15\u64CE\u7684\u5168\u90E8\u96F6\u4EF6\uFF08\u6BCF\u9846\u4E00\u884C\uFF1Acanonical_id\u3001\u8AAA\u660E\u3001\u5206\u985E\u3001tags\uFF09\uFF0C\u53EF\u9078\u64C7\u6309 tag \u7BE9\u9078\uFF08\u4F8B\uFF1Ahttp\u3001string\uFF09\u3002",
     { tag: external_exports.string().optional().describe("\u6309 tag \u540D\u7A31\u7BE9\u9078\uFF08\u9078\u586B\uFF09") },
     async ({ tag }) => {
       try {
-        if (!env.KBDB) {
-          return { content: [{ type: "text", text: "Error: KBDB service binding unavailable" }], isError: true };
+        const res = await cypherFetch(env, "/components", { apiKey: partnerToken, query: tag ? { tag } : void 0 });
+        if (!res.ok) {
+          return errorResponse("catalog_unreadable", CATALOG_UNREADABLE, ["\u7A0D\u5F8C\u518D\u8A66\uFF1B\u4ECD\u5931\u6557\u8ACB\u56DE\u5831\u7D66\u7DAD\u904B\uFF08\u5F15\u64CE\u7684 GET /components \u56DE HTTP " + res.status + "\uFF09"], await res.text());
         }
-        let componentIds = null;
-        if (tag) {
-          const tagResp = await kbdbFetch(env, `/records/search?template=resource_tag&user_id=${encodeURIComponent(orgNamespace)}&tag_name=${encodeURIComponent(tag)}&resource_type=component`);
-          if (!tagResp.ok) {
-            return { content: [{ type: "text", text: `Error querying tags: ${await tagResp.text()}` }], isError: true };
-          }
-          const tagData = await tagResp.json();
-          componentIds = tagData.records.map((r) => r.slots.resource_id);
-          if (componentIds.length === 0) return { content: [{ type: "text", text: JSON.stringify([], null, 2) }] };
-        }
-        const resp = await kbdbFetch(env, `/records/search?template=component_metadata&user_id=${encodeURIComponent(orgNamespace)}`);
-        if (!resp.ok) {
-          return { content: [{ type: "text", text: `Error querying components: ${await resp.text()}` }], isError: true };
-        }
-        const data = await resp.json();
-        let components = data.records.map((r) => r.slots);
-        if (componentIds !== null) components = components.filter((c) => componentIds.includes(c.component_id));
-        return { content: [{ type: "text", text: JSON.stringify(components, null, 2) }] };
-      } catch (error2) {
-        return { content: [{ type: "text", text: `Internal Error: ${error2 instanceof Error ? error2.message : String(error2)}` }], isError: true };
+        return successResponse(await res.json(), ["\u8981\u67D0\u4E00\u9846\u600E\u9EBC\u586B payload \u2192 arcrun_get_component\uFF1B\u7528\u4E00\u53E5\u8A71\u627E \u2192 arcrun_search_components"]);
+      } catch (e) {
+        return errorResponse("catalog_unreadable", CATALOG_UNREADABLE, ["\u7A0D\u5F8C\u518D\u8A66"], e instanceof Error ? e.message : String(e));
       }
     }
   );
 }
 
 // mcp/src/tools/arcrun_get_component.ts
-function registerGetComponent(server, env, orgNamespace) {
+function registerGetComponent(server, env, partnerToken) {
   server.tool(
     toolName("get_component"),
-    "\u53D6\u5F97\u6307\u5B9A\u96F6\u4EF6\u7684\u5B8C\u6574\u5408\u7D04\uFF0C\u5305\u542B canonical_id\u3001display_name\u3001category\u3001version\u3001stability\u3001input_schema\u3001output_schema\u3001gherkin_tests\u3001\u8A55\u5206\u7D71\u8A08\u7B49\u3002",
+    "\u53D6\u5F97\u6307\u5B9A\u96F6\u4EF6\u7684\u5B8C\u6574\u5408\u7D04\uFF1Acanonical_id\u3001display_name\u3001category\u3001version\u3001stability\u3001input_schema\uFF08\u600E\u9EBC\u586B payload\uFF09\u3001output_schema\u3001gherkin_tests\uFF1B\u6703\u5206\u5C94\u7684\u96F6\u4EF6\uFF08if_control\uFF0Fswitch\uFF0Ftry_catch\uFF09\u53E6\u9644 branch_hint\uFF08\u5169\u689D\u8DEF\u600E\u9EBC\u63A5\uFF09\u3002",
     {
-      canonical_id: external_exports.string().describe("\u96F6\u4EF6 canonical_id\uFF08\u5982 validate_json\uFF09")
+      canonical_id: external_exports.string().describe("\u96F6\u4EF6 canonical_id\uFF08\u5982 http_request\uFF09")
     },
     async ({ canonical_id }) => {
       try {
-        if (!env.COMPONENT_REGISTRY) {
-          return {
-            content: [{ type: "text", text: "Error: COMPONENT_REGISTRY service binding is not configured." }],
-            isError: true
-          };
+        const res = await cypherFetch(env, `/components/${encodeURIComponent(canonical_id)}`, { apiKey: partnerToken });
+        if (res.status === 404) {
+          return errorResponse(
+            "not_found",
+            `\u96F6\u4EF6\u76EE\u9304\u67E5\u5F97\u5230\uFF0C\u4F46\u6C92\u6709\u540D\u70BA\u300C${canonical_id}\u300D\u7684\u96F6\u4EF6\uFF08\u9019\u662F\u67E5\u904E\u76EE\u9304\u7684\u7D50\u679C\uFF0C\u4E0D\u662F\u8B80\u4E0D\u5230\uFF09`,
+            ["arcrun_search_components \u7528\u4E00\u53E5\u8A71\u627E\u76F8\u4F3C\u96F6\u4EF6\uFF0C\u6216 arcrun_list_components \u770B\u5168\u90E8", "\u5916\u90E8\u670D\u52D9\u7684 API \u901A\u5E38\u662F recipe\uFF0C\u4E0D\u662F\u96F6\u4EF6\uFF1Aarcrun_recipe_search"],
+            await res.text()
+          );
         }
-        const response = await env.COMPONENT_REGISTRY.fetch(
-          `http://component-registry/components/${encodeURIComponent(canonical_id)}`,
-          { method: "GET" }
-        );
-        if (response.status === 404) {
-          return {
-            content: [{ type: "text", text: `\u96F6\u4EF6 '${canonical_id}' \u4E0D\u5B58\u5728\u3002\u53EF\u7528 arcrun_search_components \u641C\u5C0B\u76F8\u4F3C\u96F6\u4EF6\u3002` }],
-            isError: true
-          };
+        if (!res.ok) {
+          return errorResponse("catalog_unreadable", CATALOG_UNREADABLE, ["\u7A0D\u5F8C\u518D\u8A66\uFF1B\u4ECD\u5931\u6557\u8ACB\u56DE\u5831\u7D66\u7DAD\u904B\uFF08\u5F15\u64CE\u7684 GET /components/:id \u56DE HTTP " + res.status + "\uFF09"], await res.text());
         }
-        if (!response.ok) {
-          return {
-            content: [{ type: "text", text: `Error: ${await response.text()}` }],
-            isError: true
-          };
-        }
-        const result = await response.json();
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(result.data ?? result, null, 2)
-          }]
-        };
-      } catch (error2) {
-        return {
-          content: [{ type: "text", text: `Internal Error: ${error2 instanceof Error ? error2.message : String(error2)}` }],
-          isError: true
-        };
+        return successResponse(await res.json(), ["\u7167 input_schema \u586B\u7BC0\u9EDE\u7684 config\uFF0Fpayload\uFF1Brequired \u6B04\u4F4D\u5FC5\u586B"]);
+      } catch (e) {
+        return errorResponse("catalog_unreadable", CATALOG_UNREADABLE, ["\u7A0D\u5F8C\u518D\u8A66"], e instanceof Error ? e.message : String(e));
       }
     }
   );
@@ -33365,10 +33289,10 @@ function json(obj) {
 
 // mcp/src/tools/registry.ts
 function registerAllTools(server, env, orgNamespace, partnerToken, identity) {
-  registerSearchComponents(server, env, orgNamespace);
+  registerSearchComponents(server, env, partnerToken);
   registerSearchWorkflows(server, env, orgNamespace, partnerToken);
-  registerListComponents(server, env, orgNamespace);
-  registerGetComponent(server, env, orgNamespace);
+  registerListComponents(server, env, partnerToken);
+  registerGetComponent(server, env, partnerToken);
   registerCreateTag(server, env, orgNamespace);
   registerListTags(server, env, orgNamespace);
   registerDeleteTag(server, env, orgNamespace);

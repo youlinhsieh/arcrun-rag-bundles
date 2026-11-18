@@ -8698,70 +8698,6 @@ var init_schemas = __esm({
   }
 });
 
-// cypher-executor/src/actions/execution-evaluator.ts
-function componentVerdictsFromTrace(nodes, trace) {
-  const componentByNodeId = /* @__PURE__ */ new Map();
-  for (const n of nodes) {
-    if (n.type === "Component" && n.componentId) componentByNodeId.set(n.id, n.componentId);
-  }
-  const verdicts = [];
-  for (const step of trace) {
-    const componentId = componentByNodeId.get(step.nodeId);
-    if (!componentId) continue;
-    const out = step.output;
-    const outputSaysFailed = typeof out === "object" && out !== null && !Array.isArray(out) && out.success === false;
-    verdicts.push({
-      component_id: componentId,
-      success: !step.error && !outputSaysFailed,
-      duration_ms: Math.max(0, Number(step.duration_ms) || 0)
-    });
-  }
-  return verdicts;
-}
-function aggregateVerdicts(verdicts) {
-  const byId = /* @__PURE__ */ new Map();
-  for (const v of verdicts) {
-    const a = byId.get(v.component_id) ?? { component_id: v.component_id, runs: 0, success_runs: 0, duration_ms: 0 };
-    a.runs += 1;
-    a.success_runs += v.success ? 1 : 0;
-    a.duration_ms += v.duration_ms;
-    byId.set(v.component_id, a);
-  }
-  return [...byId.values()];
-}
-async function recordComponentStats(env, nodes, trace) {
-  try {
-    const base = registryBaseUrl(env);
-    if (!base) return;
-    const verdicts = componentVerdictsFromTrace(nodes, trace);
-    if (verdicts.length === 0) return;
-    await Promise.all(
-      aggregateVerdicts(verdicts).map(
-        (a) => fetch(`${base}/analytics/record`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            canonical_id: a.component_id,
-            // 舊版 registry 不認 runs 時只會記 1 筆：給它「全部成功才算成功」的保守值
-            success: a.success_runs === a.runs,
-            duration_ms: a.duration_ms,
-            runs: a.runs,
-            success_runs: a.success_runs
-          })
-        }).catch(() => void 0)
-        // 統計失敗不影響執行
-      )
-    );
-  } catch {
-  }
-}
-var init_execution_evaluator = __esm({
-  "cypher-executor/src/actions/execution-evaluator.ts"() {
-    "use strict";
-    init_endpoints();
-  }
-});
-
 // cypher-executor/src/lib/run-scratch.ts
 function createRunScratch() {
   const m = /* @__PURE__ */ new Map();
@@ -8859,15 +8795,6 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
       agent_user_agent: userAgent
     }, ctx);
     recordRecipeStats(env, executor.usedRecipeKeys, verdict.success, Date.now(), ctx);
-    {
-      const statsPromise = recordComponentStats(
-        env,
-        parsed.data.nodes,
-        result.trace
-      );
-      if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
-      else void statsPromise;
-    }
     if (!verdict.success) {
       return {
         success: false,
@@ -8893,15 +8820,6 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
     }, ctx);
     if (!isPaused) {
       recordRecipeStats(env, executor.usedRecipeKeys, false, Date.now(), ctx);
-    }
-    if (!isPaused && err2 instanceof ExecutionError) {
-      const statsPromise = recordComponentStats(
-        env,
-        parsed.data.nodes,
-        err2.trace
-      );
-      if (ctx?.waitUntil) ctx.waitUntil(statsPromise);
-      else void statsPromise;
     }
     if (err2 instanceof ExecutionError) {
       const traceFormatted = err2.trace.map((s) => ({
@@ -8929,7 +8847,6 @@ var init_webhook_handlers = __esm({
     init_schemas();
     init_component_loader();
     init_telemetry();
-    init_execution_evaluator();
     init_run_scratch();
     init_kbdb_caller();
     init_endpoints();
@@ -9278,15 +9195,6 @@ function kbdbBaseUrl(env) {
   const v = String(env.KBDB_BASE_URL ?? "").trim();
   if (!v) throw new EndpointConfigError("KBDB_BASE_URL", "KBDB \u4F4D\u5740\u6C92\u6709\u9810\u8A2D\u503C\uFF0C\u5FC5\u9808\u660E\u8A2D");
   return trimSlash(v);
-}
-function registryBaseUrl(env) {
-  const v = String(env.REGISTRY_BASE_URL ?? "").trim();
-  if (v) return trimSlash(v);
-  try {
-    return componentUrl("registry", env);
-  } catch {
-    return void 0;
-  }
 }
 function publicBaseUrl(env) {
   const v = String(env.PUBLIC_BASE_URL ?? "").trim();
@@ -17063,6 +16971,7 @@ async function copyApp(env, tenant2, srcId, opts = {}) {
     ...src.ui_style ? { ui_style: src.ui_style } : {},
     keeps_data: src.keeps_data,
     ...src.requires ? { requires: src.requires } : {},
+    ...src.declared ? { declared: src.declared } : {},
     origin: "authored",
     ...opts.author ? { author: opts.author } : {},
     installed_at: now2,
@@ -17430,6 +17339,8 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     keeps_data: decl.keeps_data,
     ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
     ...mcp ? { mcp } : {},
+    declared: { data: decl.data, ...decl.engine_min ? { engine_min: decl.engine_min } : {} },
+    ...opts.source ?? existing?.source ? { source: opts.source ?? existing?.source } : {},
     ...opts.origin ?? existing?.origin ? { origin: opts.origin ?? existing?.origin } : {},
     ...opts.origin === "authored" && opts.author ? { author: opts.author } : existing?.author ? { author: existing.author } : {},
     installed_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
@@ -22538,7 +22449,7 @@ return { success: true, repo: repo, owner: repo.split('/')[0], name: repo.split(
             label: "prep",
             data: {
               code: `
-var ROUTES = {"setting_get":{"method":"GET","pattern":"/ahub/settings"},"projects_index":{"method":"GET","pattern":"/ahub/projects"},"ms_overview":{"method":"GET","pattern":"/ahub/milestones"},"issue_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues"},"issue_search":{"method":"GET","pattern":"/repos/issues/search"},"issue_page":{"method":"GET","pattern":"/ahub/issues"},"issue_get":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index"},"comment_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/comments"},"label_list":{"method":"GET","pattern":"/repos/:owner/:repo/labels"},"ms_list":{"method":"GET","pattern":"/repos/:owner/:repo/milestones"},"ms_get":{"method":"GET","pattern":"/repos/:owner/:repo/milestones/:id"},"goals_report":{"method":"GET","pattern":"/ahub/goals"},"repo_get":{"method":"GET","pattern":"/repos/:owner/:repo"},"release_list":{"method":"GET","pattern":"/repos/:owner/:repo/releases"},"release_index":{"method":"GET","pattern":"/ahub/releases"},"dep_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/dependencies"},"dep_blocks":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/blocks"},"sessions_list":{"method":"GET","pattern":"/ahub/sessions"},"claim_list":{"method":"GET","pattern":"/ahub/claims"},"issue_stage":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/stage"},"tree_get":{"method":"GET","pattern":"/ahub/tree"},"tree_of":{"method":"GET","pattern":"/ahub/tree/of"},"goal_refs_get":{"method":"GET","pattern":"/ahub/goal-refs"},"whos_doing":{"method":"GET","pattern":"/ahub/whos-doing"},"assignments":{"method":"GET","pattern":"/ahub/assignments"},"waiting":{"method":"GET","pattern":"/ahub/waiting"},"outline":{"method":"GET","pattern":"/ahub/outline"},"ledger":{"method":"GET","pattern":"/ahub/ledger"},"visa_list":{"method":"GET","pattern":"/ahub/visas"}};
+var ROUTES = {"setting_get":{"method":"GET","pattern":"/ahub/settings"},"projects_index":{"method":"GET","pattern":"/ahub/projects"},"ms_overview":{"method":"GET","pattern":"/ahub/milestones"},"issue_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues"},"issue_search":{"method":"GET","pattern":"/repos/issues/search"},"issue_page":{"method":"GET","pattern":"/ahub/issues"},"issue_get":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index"},"comment_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/comments"},"label_list":{"method":"GET","pattern":"/repos/:owner/:repo/labels"},"ms_list":{"method":"GET","pattern":"/repos/:owner/:repo/milestones"},"ms_get":{"method":"GET","pattern":"/repos/:owner/:repo/milestones/:id"},"goals_report":{"method":"GET","pattern":"/ahub/goals"},"repo_get":{"method":"GET","pattern":"/repos/:owner/:repo"},"release_list":{"method":"GET","pattern":"/repos/:owner/:repo/releases"},"release_index":{"method":"GET","pattern":"/ahub/releases"},"dep_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/dependencies"},"dep_blocks":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/blocks"},"sessions_list":{"method":"GET","pattern":"/ahub/sessions"},"claim_list":{"method":"GET","pattern":"/ahub/claims"},"issue_stage":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/stage"},"tree_get":{"method":"GET","pattern":"/ahub/tree"},"tree_of":{"method":"GET","pattern":"/ahub/tree/of"},"goal_refs_get":{"method":"GET","pattern":"/ahub/goal-refs"},"whos_doing":{"method":"GET","pattern":"/ahub/whos-doing"},"assignments":{"method":"GET","pattern":"/ahub/assignments"},"waiting":{"method":"GET","pattern":"/ahub/waiting"},"outline":{"method":"GET","pattern":"/ahub/outline"},"ledger":{"method":"GET","pattern":"/ahub/ledger"},"visa_list":{"method":"GET","pattern":"/ahub/visas"},"visa_tasks":{"method":"GET","pattern":"/ahub/visas/tasks"}};
 function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
 function obj(v) { if (typeof v === 'string') { var s = ph(v); if (!s) return {}; try { v = JSON.parse(s); } catch (e) { return null; } } return v && typeof v === 'object' && !Array.isArray(v) ? v : null; }
 var route = ph(input.route);
@@ -23040,6 +22951,19 @@ return { success: true, wf: route, method: R.method, path: path, params: P, quer
 /* \u6BCF\u5247\u7559\u8A00\u7684\u77ED\u7DE8\u865F\u300C#K\u300D\uFF08inkstone/Arcrun#448\uFF09\uFF1A\u770B\u5F97\u6E05\u695A\u3001\u9EDE\u4E86\u8907\u88FD\u300Cowner/repo#N \u7B2C K \u5247\u300D */
 .ah-ch button.ah-no { font-weight: 700; font-size: 13px; color: var(--ah-link); background: var(--ah-card); border: 1px solid var(--ah-line); border-radius: 999px; padding: 0 10px; font-variant-numeric: tabular-nums; }
 .ah-todo-t .ah-where { font-weight: 700; margin-left: 0; }
+/* \u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9\u6E05\u55AE\uFF08inkstone/Arcrun#457\uFF09\uFF1A\u7C3D\u8B49\u5361\u8207\u7C3D\u6838\u6846\u88E1\u300C\u5171 N \u500B\u4EFB\u52D9\uFF0F\u2713 \u6BCF\u4E00\u5F35\u300D */
+.ah-tasks { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 8px; background: var(--ah-soft, color-mix(in srgb, currentColor 5%, transparent)); }
+.ah-tasks-h { font-size: 14px; font-weight: 700; }
+.ah-tasks-h .ok { color: var(--ah-ok); }
+.ah-tasks-h .bad { color: var(--ah-bad); }
+.ah-tasks ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ah-task { display: flex; align-items: baseline; gap: 8px; font-size: 14px; line-height: 1.45; min-height: 28px; }
+.ah-task-mk { flex: 0 0 auto; width: 20px; text-align: center; font-weight: 700; }
+.ah-task.closed .ah-task-mk { color: var(--ah-ok); }
+.ah-task.open .ah-task-mk, .ah-task.open .ah-task-t { color: var(--ah-bad); }
+.ah-task.wontdo .ah-task-mk, .ah-task.wontdo .ah-task-t { color: var(--ah-muted); }
+.ah-task-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ah-task-k { flex: 0 0 auto; height: auto; min-height: 28px; padding: 0 4px; border: 0; background: transparent; color: var(--ah-link); font-family: ui-monospace, monospace; font-size: 12px; cursor: pointer; text-decoration: underline; }
 
 /* AHub \u7BA1\u7406\u756B\u9762\u81EA\u5DF1\u7684 */
 .ah-lab-row .ah-chip { font-size: 13px; padding: 6px 11px; }
@@ -24024,7 +23948,7 @@ var ASK_DONE = { read: '\u5DF2\u8B80\u5B8C', choose: '\u5DF2\u9078', answer: '\u
 function openTicket(repo, number, opts) {
   opts = opts || {};
   var P = repoParams(repo, { index: String(number) });
-  var S = { issue: null, comments: [], labels: [], milestones: [], stage: null, visas: [], tab: 'write', busy: false, replyTo: null };
+  var S = { issue: null, comments: [], labels: [], milestones: [], stage: null, visas: [], tasks: null, tab: 'write', busy: false, replyTo: null };
   var prevHref = null;   // \u7AD9\u5167\u8DF3\u8F49\u6539\u4E86\u7DB2\u5740\u5217 \u2192 \u95DC\u6389\u9019\u500B\u9762\u677F\u6642\u9084\u539F
   var sp = sidePanel({ ref: repo + '#' + number, title: '#' + number + ' \u8B80\u53D6\u4E2D\u2026', onClose: function () { if (prevHref != null) setUrlTo(prevHref); } });
   if (opts.syncUrl) { prevHref = String(window.location.href); setUrlTo(opts.comment ? commentLink(repo, number, opts.comment) : ticketLink(repo, number)); }
@@ -24076,7 +24000,7 @@ function openTicket(repo, number, opts) {
         (Array.isArray(b) ? b : []).forEach(function (c) { S.comments.push(c); });
         S.comments.sort(function (a, b) { return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0; });
       }, function () { return null; });
-    }).then(function () { paint(); return true; }, function (e) {
+    }).then(function () { paint(); loadTasks(); return true; }, function (e) {
       if (soft) return false;
       say(/AHub \u56DE 404|not found/.test(e.message) ? '\u627E\u4E0D\u5230\u9019\u5F35\u7968\uFF1A\u7968\u865F\u53EF\u80FD\u6253\u932F\u4E86\uFF0C\u6216\u5B83\u6240\u5728\u7684 repo \u5728\u9019\u500B\u5E33\u865F\u4E0A\u4E0D\u5B58\u5728\u3002' : '\u8B80\u4E0D\u5230\u9019\u5F35\u7968\uFF1A' + e.message, true);
       return false;
@@ -24096,6 +24020,44 @@ function openTicket(repo, number, opts) {
       });
     }
     return again(0);
+  }
+  // \u2500\u2500 \u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9\u6E05\u55AE\uFF08inkstone/Arcrun#457\uFF09\uFF1A\u53EA\u5728\u8981\u4EBA\u7C3D\u8B49\u6216\u7C3D\u6838\u6642\u624D\u8B80\uFF08GET /ahub/visas/tasks\uFF09\uFF0C\u5176\u4ED6\u7968\u4E0D\u591A\u82B1\u8B80 \u2500\u2500
+  function needTasks() { return (S.visas || []).some(function (v) { return v.state !== 'void'; }) || (S.issue && S.issue.state !== 'closed' && pendingReqs().length > 0); }
+  var tasksGen = 0;
+  function loadTasks() {
+    if (!needTasks()) return;
+    var g = ++tasksGen;
+    if (!S.tasks) { S.tasks = { loading: true }; paintTodo(); paintVisas(); }
+    aRead('visa_tasks', {}, { intent: repo + '#' + number }, null).then(function (b) {
+      if (g !== tasksGen) return;
+      S.tasks = b && Array.isArray(b.items) ? b : { error: '\u56DE\u61C9\u683C\u5F0F\u4E0D\u5C0D' };
+      paintTodo(); paintVisas();
+    }, function (e) { if (g !== tasksGen) return; if (!S.tasks || S.tasks.loading) S.tasks = { error: e && e.message || '\u8B80\u4E0D\u5230' }; paintTodo(); paintVisas(); });
+  }
+  var TASK_MK = { closed: '\u2713', open: '\u2610', wontdo: '\u2298' };
+  // \u300C\u5171 N \u500B\u4EFB\u52D9\u300D\uFF0B\u6BCF\u5F35\u4E00\u884C\uFF1B\u9EDE\u7968\u865F\u958B\u90A3\u5F35\u7968\u770B\u8B49\u64DA\u3002forSign\uFF1D\u7C3D\u6838\u6846\uFF08\u6C92\u6709\u4EFB\u4F55\u4EFB\u52D9\u7684\u7968\u4E0D\u756B\uFF0C\u4E0D\u662F\u610F\u5716\uFF09
+  function taskList(forSign) {
+    var T = S.tasks;
+    if (!T) return null;
+    if (T.loading) return h('div', { class: 'ah-tasks' }, h('div', { class: 'ah-note' }, '\u8B80\u53D6\u9019\u500B\u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9\u6E05\u55AE\u2026'));
+    if (T.error) return forSign ? null : h('div', { class: 'ah-tasks' }, h('div', { class: 'ah-note' }, '\u8B80\u4E0D\u5230\u4EFB\u52D9\u6E05\u55AE\uFF08' + T.error + '\uFF09\u3002\u4E0D\u5F71\u97FF\u78BA\u8A8D\uFF1B\u53EF\u4EE5\u91CD\u65B0\u6574\u7406\u518D\u770B\u4E00\u6B21\u3002'));
+    if (!T.total) return forSign ? null : h('div', { class: 'ah-tasks' }, h('div', { class: 'ah-note' }, '\u9019\u500B\u610F\u5716\u5E95\u4E0B\u76EE\u524D\u6C92\u6709\u639B\u4EFB\u4F55\u4EFB\u52D9\u7968\u3002'));
+    var head = h('div', { class: 'ah-tasks-h' }, '\u5171 ' + T.total + ' \u500B\u4EFB\u52D9',
+      T.open ? h('span', { class: 'bad' }, '\u30FB\u9084\u6709 ' + T.open + ' \u500B\u6C92\u505A\u5B8C') : h('span', { class: 'ok' }, '\u30FB\u5168\u90E8\u5B8C\u6210' + (T.wontdo ? '\uFF08\u5176\u4E2D ' + T.wontdo + ' \u500B\u6A19\u4E86\u4E0D\u505A\uFF09' : '')));
+    function row(x) {
+      var m = /^(.+)#(\\d+)$/.exec(x.key);
+      var k = h('button', { type: 'button', class: 'ah-task-k', title: '\u6253\u958B\u9019\u5F35\u7968\u770B\u505A\u4E86\u4EC0\u9EBC' }, m ? m[1].split('/').pop() + '#' + m[2] : x.key);
+      if (m) k.addEventListener('click', function () { openTicket(m[1], Number(m[2]), { syncUrl: true }); });
+      var tip = x.state === 'closed' ? '\u5DF2\u5B8C\u6210' : x.state === 'open' ? '\u9084\u6C92\u505A\u5B8C' + (x.executor ? '\uFF08' + x.executor + '\uFF09' : '') : '\u6A19\u4E86\u4E0D\u505A';
+      return h('li', { class: 'ah-task ' + x.state, title: tip },
+        h('span', { class: 'ah-task-mk', 'aria-label': tip }, TASK_MK[x.state] || '\u30FB'),
+        h('span', { class: 'ah-task-t' }, x.title + (x.state === 'open' ? '\uFF08\u9084\u6C92\u505A\u5B8C' + (x.executor ? '\uFF0C' + x.executor : '') + '\uFF09' : x.state === 'wontdo' ? '\uFF08\u4E0D\u505A\uFF09' : '')), k);
+    }
+    var first = T.items.slice(0, 10), rest = T.items.slice(10);
+    var box = h('div', { class: 'ah-tasks', 'aria-label': '\u9019\u500B\u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9' }, head, h('ul', null, first.map(row)));
+    if (rest.length) box.appendChild(h('details', { class: 'ah-todo-d' }, h('summary', null, '\u518D\u770B\u53E6\u5916 ' + rest.length + ' \u500B'), h('ul', null, rest.map(row))));
+    if (!T.complete) box.appendChild(h('div', { class: 'ah-note' }, '\u26A0 \u6E05\u55AE\u53EF\u80FD\u4E0D\u5B8C\u6574\uFF1A' + (T.unknown && T.unknown.length ? '\u5F15\u7528\u7684\u7968 ' + T.unknown.join('\u3001') + ' \u770B\u4E0D\u51FA\u958B\u6216\u95DC' : '') + (T.truncated && T.truncated.length ? T.truncated.join('\uFF1B') : '')));
+    return box;
   }
   function pick(key, b) { return key === 'issue' || key === 'stage' ? b : (Array.isArray(b) ? b : []); }
 
@@ -24232,9 +24194,12 @@ function openTicket(repo, number, opts) {
     var pending = v.state === 'pending';
     var stateText = pending ? '\u7B49\u4F60\u78BA\u8A8D' : v.state === 'confirmed' ? '\u5DF2\u78BA\u8A8D' : '\u5DF2\u4F5C\u5EE2';
     var card = cardShell((v.no ? '\u7C3D\u8B49\u7B2C ' + v.no + ' \u5F35' : '\u7C3D\u8B49') + '\u30FB\u51FA ' + v.version, (v.summary || '\uFF08\u6C92\u5BEB\u6458\u8981\uFF09') + '\u30FB' + stateText, null);
-    var meta = pending ? '\u5E95\u4E0B ' + v.closed_tickets + ' \u5F35\u7968\u958B\u7C3D\u8B49\u6642\u90FD\u5DF2\u641E\u5B9A' + (v.confirmer ? '\uFF1B\u6307\u5B9A\u7531 ' + v.confirmer + ' \u78BA\u8A8D' : '') + '\u3002'
+    var listed = S.tasks && S.tasks.total > 0;   // \u6E05\u55AE\u756B\u5F97\u51FA\u4F86\u5C31\u4E0D\u518D\u91CD\u8907\u8B1B\u300C\u5E95\u4E0B N \u5F35\u300D\uFF08inkstone/Arcrun#457\uFF09
+    var meta = pending ? (listed ? '\u78BA\u8A8D\u524D\u770B\u4E00\u4E0B\u5E95\u4E0B\u6BCF\u500B\u4EFB\u52D9' : '\u5E95\u4E0B ' + v.closed_tickets + ' \u5F35\u7968\u958B\u7C3D\u8B49\u6642\u90FD\u5DF2\u641E\u5B9A') + (v.confirmer ? '\uFF1B\u6307\u5B9A\u7531 ' + v.confirmer + ' \u78BA\u8A8D' : '') + '\u3002'
       : (v.state === 'confirmed' ? (v.confirmed_by || '') + ' \u78BA\u8A8D\u65BC ' + whenText(v.confirmed_at) + '\u3002' : '\u5DF2\u4F5C\u5EE2' + (v.note ? '\uFF1A' + v.note : '') + '\u3002');
     card.appendChild(h('p', { class: 'ah-note', style: { margin: '4px 0' } }, meta));
+    var tl = taskList(false); if (tl) card.appendChild(tl);
+    if (pending && S.tasks && S.tasks.open) card.appendChild(h('div', { class: 'ah-err', role: 'status' }, '\u958B\u7C3D\u8B49\u4E4B\u5F8C\u53C8\u6709 ' + S.tasks.open + ' \u5F35\u7968\u88AB\u91CD\u958B\u6216\u65B0\u639B\u4E0A\u4F86\uFF0C\u78BA\u8A8D\u4E86\u4E5F\u904E\u4E0D\u4E86 prod \u6D77\u95DC\uFF1B\u5EFA\u8B70\u5148\u9000\u56DE\u3002'));
     if (!pending) return card;
     var err = h('div', { class: 'ah-err', role: 'alert' });
     var nta = h('textarea', { rows: 2, 'aria-label': '\u610F\u898B\uFF08\u9000\u56DE\u8981\u5BEB\u7406\u7531\uFF09', placeholder: '\u610F\u898B\uFF08\u78BA\u8A8D\u53EF\u4E0D\u5BEB\uFF1B\u9000\u56DE\u8981\u5BEB\u7406\u7531\uFF09' });
@@ -24323,6 +24288,7 @@ function openTicket(repo, number, opts) {
   }
   function signCard(r) {
     var card = cardShell('\u7C3D\u6838' + (r.ver ? '\u30FB\u51FA ' + r.ver : ''), r.title, r.c);
+    var stl = taskList(true); if (stl) card.appendChild(stl);
     var b = h('button', { type: 'button', class: 'ah-big pri' }, '\u7C3D\u6838\u2026');
     b.addEventListener('click', function () { signDialog(r.id); });
     // \u62D2\u7D55\uFF1A\u76F4\u63A5\u5728\u5361\u4E0A\u6309\uFF0C\u4E0D\u7528\u5148\u958B\u7C3D\u6838\u6846\uFF08inkstone/Arcrun#434\uFF09\uFF1B\u7406\u7531\u53EF\u4E0D\u5BEB\uFF0CAI \u770B\u5F97\u5230\u3001\u7167\u8457\u6539
@@ -25529,8 +25495,8 @@ var ahub_app_default = {
   id: "ahub",
   name: "AHub",
   icon: "\u{1F9ED}",
-  version: "0.44.0",
-  changelog: "0.44.0\uFF1A\u958B\u7968\u7684\u91CD\u8907\u6BD4\u5C0D\u4E0D\u518D\u6BCF\u958B\u4E00\u5F35\u5C31\u91CD\u8B80\u6574\u500B\u7968\u6C60\uFF08inkstone/Arcrun#446 \u7B2C 7 \u9805\uFF09\u2014\u2014\u6BD4\u5C0D\u8B80\u7968\u6C60\u6642\u5E36 max_age=30\uFF0C\u77E5\u8B58\u5EAB\u6B63\u9580 30 \u79D2\u5167\u76F4\u63A5\u7528\u4E0A\u4E00\u4EFD\u7B54\u6848\uFF081,290 \u5F35\u6642\u4E00\u6B21\u958B\u7968 D1 \u8B80\u7D04 33k rows\uFF0C\u9023\u7E8C\u958B\u7968\u6642\u53EA\u6709\u7B2C\u4E00\u5F35\u4ED8\uFF09\uFF1B\u627E\u76F8\u8FD1\u7968\u7684\u7B97\u6CD5\u8207 409 \u5019\u9078\u898F\u5247\u4E0D\u8B8A\uFF0C\u53EA\u662F\u7968\u6C60\u5FEB\u7167\u6700\u591A\u820A 30 \u79D2\u3002\u9700\u8981\u5F15\u64CE 1.4.242 \u4EE5\u4E0A\uFF08\u820A\u5F15\u64CE\u5FFD\u7565\u9019\u500B\u53C3\u6578\uFF0C\u7167\u820A\u6BCF\u6B21\u8B80\uFF09\u3002\n0.43.0\uFF1A\u7C3D\u5B8C\u901A\u77E5\u7E3D\u76E3\uFF08inkstone/Arcrun#452\uFF09\u2014\u2014\u7C3D\u6838\u4EBA\u5728 Portal \u7C3D\u6838\uFF08\u540C\u610F\uFF0F\u4E0D\u540C\u610F\uFF09\u6216\u78BA\u8A8D\u7C3D\u8B49\uFF0C\u540C\u4E00\u7B46\u5BEB\u5165\u8A18\u4E00\u7B46\u7D66\u5DE5\u4F5C\u7AD9\u300C\u5C08\u6848\u7E3D\u76E3\u300D\u7684\u901A\u77E5\uFF08\u54EA\u5F35\u7968\u3001\u54EA\u5F35\u55AE\u3001\u7248\u672C\u3001\u540C\u610F\u8207\u5426\u3001\u6642\u9593\uFF09\uFF1A\u8D70\u65E2\u6709\u7684\u8981\u6C42\u56DE\u5831\u6A5F\u5236\uFF0C\u7E3D\u76E3\u4E0B\u6B21\u5E36 station \u547C\u53EB\u4EFB\u4F55 AHub \u5DE5\u5177\uFF0Cnext_actions \u5C31\u5E36\u51FA\uFF1B\u8B80\u90A3\u5F35\u7968\u7684\u7C3D\u6838\u7D50\u679C\uFF08signoff_status \u5E36 station\uFF09\u5F8C\u6D88\u6389\u3002\u53E6\u6253\u4E00\u6B21\u6392\u7A0B\u4EFB\u52D9\u300CAHub \u7C3D\u5B8C\u56DE\u5831\u300D\u7684 API \u53EB\u9192\u7E3D\u76E3\uFF1A\u6B0A\u6756\u53EA\u7528 credential \u540D\u5B57 ahub_signoff_wake\uFF08\u503C\u7531\u5BE6\u4F8B\u4E3B\u4EBA\u5728 Portal\u300C\u91D1\u9470\u7BA1\u7406\u300D\u586B\u4E00\u6B21\uFF09\uFF1B\u6C92\u8A2D\uFF1D\u53EA\u6709\u901A\u77E5\u3001\u7C3D\u6838\u7167\u5E38\uFF1B\u8A2D\u4E86\u4F46\u9001\u4E0D\u5230\uFF1D\u7C3D\u6838\u7167\u6A23\u6210\u529F\u3001\u7968\u4E0A\u7559\u4E00\u5247\u300C\u901A\u77E5\u6C92\u9001\u5230\uFF1A\u539F\u56E0\u300D\u3002\u65B0\u589E 2 \u689D\u8DEF\u7531\uFF08ask_ack\u3001signoff_wake\uFF09\u8207 1 \u652F recipe\uFF08ahub_signoff_wake\uFF09\uFF0C\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3002\u7C3D\u8B49\u78BA\u8A8D\u8DEF\u5F91\u9001\u4E0D\u5230\u6642\u53EA\u6709\u901A\u77E5\u3001\u7968\u4E0A\u4E0D\u7559\u8A00\uFF08\u90A3\u689D\u8DEF\u7531\u4E0D\u8B80\u7968\uFF09\u3002\n0.42.0\uFF1A\u7968\u4E0A\u6BCF\u5247\u7559\u8A00\u90FD\u6709\u77ED\u7DE8\u865F\u300C\u7B2C K \u5247\u300D\uFF08inkstone/Arcrun#448\uFF09\u2014\u2014\u7167\u7559\u8A00\u5148\u5F8C\u905E\u589E\uFF0C\u522A\u6389\u7684\u4E5F\u4F54\u865F\u3001\u5F8C\u9762\u7684\u4E0D\u91CD\u6392\uFF08\u7531\u7559\u8A00 id \u63A8\u7B97\uFF0C\u4E0D\u52A0\u683C\u5B50\u3001\u820A\u7968\u4E0D\u5FC5\u9077\u79FB\uFF09\u3002\u7968\u9801\u6BCF\u5247\u7559\u8A00\u5DE6\u4E0A\u89D2\u300C#K\u300D\uFF0C\u9EDE\u4E86\u8907\u88FD\u300Cowner/repo#N \u7B2C K \u5247\u300D\u8207\u9023\u7D50\uFF1B\u7B49\u4F60\u8655\u7406\u5361\u3001\u7C3D\u6838\u5361\u5BEB\u300C\u7B2C K \u5247 \u2193\u300D\uFF0C\u9996\u5C4F\u5361\u4E0A\u300CArcrun#445 \u7B2C 3 \u5247\u300D\u9EDE\u4E86\u76F4\u63A5\u843D\u5728\u90A3\u4E00\u5247\uFF1B\u7C3D\u8B49\u5361\u5BEB\u300C\u7C3D\u8B49\u7B2C K \u5F35\u300D\u3002\u8B80\u7559\u8A00\u3001\u7C3D\u6838\u770B\u677F\u3001\u8981\u6C42\u770B\u677F\u3001\u7B49\u4F60\u8655\u7406\u6E05\u55AE\u3001\u958B\u7C3D\u6838\u55AE\uFF0F\u8981\u6C42\u55AE\u3001\u958B\u7C3D\u8B49\u90FD\u56DE no \u8207 ref\uFF0C\u958B\u55AE\u6642\u8981\u8F49\u7D66\u7C3D\u6838\u4EBA\u7684\u90A3\u53E5\u8A71\u5BEB\u660E\u7C3D\u7B2C\u5E7E\u5247\uFF1BMCP get_issue \u53EF\u7528 comment_no \u8B80\u300C\u7B2C K \u5247\u300D\u3002\n0.41.0\uFF1A\u4E00\u5F35\u756B\u9762\u7684\u8B80\u53D6\u4E0D\u518D\u662F\u5E7E\u5341\u5230\u5E7E\u767E\u500B\u8ACB\u6C42\uFF08inkstone/Arcrun#446 \u7B2C 1 \u9805\uFF09\u2014\u2014\u6BCF\u4E00\u6279\u8B80\u6539\u6210\u4E00\u500B\u8ACB\u6C42\uFF08\u65B0 recipe ahub_rec_multi\uFF0CKBDB \u7684 POST /records/multi-read\uFF09\uFF0C\u77E5\u8B58\u5EAB\u628A\u9019\u4E00\u4E32\u8B80\u7684 SQL \u6536\u6210\u4E00\u8F2A\u4E00\u8D9F\u5F80\u8CC7\u6599\u5EAB\u9001\uFF1B\u8DEF\u7531\u4E00\u689D\u90FD\u6C92\u6539\uFF0C\u7B54\u6848\u4E0D\u8B8A\u3002\u9700\u8981\u5F15\u64CE 1.4.233 \u4EE5\u4E0A\u3002\n0.40.2\uFF1A\u5BEB\u6210\u529F\u5C31\u8AAA\u6210\u529F\uFF08inkstone/Arcrun#445\uFF09\u2014\u2014\u7968\u9801\u4E0A\u4EFB\u4F55\u5BEB\u5165\u9215\uFF08\u7C3D\u8B49\u78BA\u8A8D\uFF0F\u9000\u56DE\u3001\u7559\u8A00\u3001\u4FEE\u6539\u3001\u522A\u9664\u7559\u8A00\u3001\u7C3D\u6838\uFF09\uFF0C\u53EA\u8981\u4F3A\u670D\u5668\u56DE\u6210\u529F\uFF0C\u756B\u9762\u5148\u7167\u7D50\u679C\u6539\u597D\uFF08\u5361\u8B8A\u300C\u5DF2\u78BA\u8A8D\u300D\u3001\u6309\u9215\u6536\u6389\u3001\u7559\u8A00\u51FA\u73FE\uFF0F\u6D88\u5931\uFF09\u4E26\u8AAA\u300C\u5DF2\u78BA\u8A8D\u7C3D\u8B49\u300D\u4E4B\u985E\u7684\u6210\u529F\u5B57\uFF1B\u7DCA\u63A5\u7684\u91CD\u8B80\u649E\u77E5\u8B58\u5EAB\u5FD9\uFF0C\u53EA\u63D0\u793A\u300C\u756B\u9762\u7A0D\u5F8C\u81EA\u5DF1\u66F4\u65B0\uFF0C\u4E0D\u7528\u518D\u6309\u300D\uFF0C\u4E0D\u518D\u4EAE\u300C\u8B80\u4E0D\u5230\u9019\u5F35\u7968\u300D\u7D05\u5B57\u3001\u6309\u9215\u4E5F\u4E0D\u518D\u5361\u5728\u300C\u9001\u51FA\u4E2D\u2026\u300D\uFF0C\u4E26\u81EA\u5DF1\u9694 3\uFF0F6\uFF0F12\uFF0F24 \u79D2\u518D\u8B80\u4E00\u6B21\u5C0D\u9F4A\u3002\u8B80\u53D6\u7167\u820A\u4E0D\u91CD\u9001\uFF08#374\uFF09\uFF0C\u53EA\u662F\u756B\u9762\u665A\u9EDE\u518D\u554F\u4E00\u6B21\u3002\u6C92\u6709\u65B0\u8868\u3001\u6C92\u6709\u65B0\u67E5\u8A62\u3002\n0.39.1\uFF1A\u300C\u7B49\u4F60\u8655\u7406\u300D\u4E0D\u518D\u53EA\u8B80\u6700\u65B0 24 \u5F35\u639B Human \u7684\u7968\uFF08inkstone/Arcrun#440\uFF09\u2014\u2014\u4EE5\u524D\u7B2C 25 \u5F35\u4EE5\u5F8C\u958B\u8457\u7684\u7C3D\u6838\u55AE\u975C\u975C\u4E0D\u898B\uFF0C\u7E3D\u7BA1\u7167\u6E05\u55AE\u56DE\u5831\u5C31\u6F0F\u4E86\u4E00\u5F35\uFF08leo21c \u7684 ISEP#296 \u7C3D\u6838\u55AE\uFF09\u3002\u73FE\u5728\u5148\u7528\u4E00\u500B\u8ACB\u6C42\u770B\u5B8C\u6240\u6709\u639B Human \u7684\u7968\u958B\u8457\u9084\u662F\u95DC\u4E86\uFF08\u53EA\u56DE key\uFF0Ftitle\uFF0Fstate\uFF09\uFF0C\u53EA\u66FF\u958B\u8457\u7684\u7968\u8B80\u7559\u8A00\uFF08\u6BCF\u5F35 2 \u8B80\uFF0C\u4EE5\u524D 3 \u8B80\uFF09\uFF1B\u4E00\u9801\u6700\u591A\u8B80 45 \u5F35\u958B\u8457\u7684\u7968\uFF0C\u66F4\u591A\u7684\u7528 offset \u63A5\u8457\u8B80\uFF0C\u756B\u9762\u81EA\u5DF1\u628A\u5F8C\u9762\u5E7E\u9801\u8B80\u5B8C\u4F75\u8D77\u4F86\uFF0CMCP \u7684 assignments \u56DE waiting_unread\uFF0Fwaiting_next_offset \u4E26\u53EB\u547C\u53EB\u7684 AI \u5E36 waiting_offset \u8B80\u4E0B\u4E00\u9801\uFF1B\u771F\u7684\u6C92\u8B80\u5B8C\uFF0C\u756B\u9762\u8207 MCP \u90FD\u660E\u8B1B\u300C\u9084\u6709 N \u5F35\u6C92\u8B80\u5230\u300D\uFF0C\u4E0D\u5047\u88DD\u662F\u5168\u90E8\u3002\u8B80\u7684\u5217\u6578\u8DDF\u639B Human \u7684\u7968\u6578\u6210\u6B63\u6BD4\uFF0C\u4E0D\u8DDF\u6574\u500B\u7968\u6C60\u6210\u6B63\u6BD4\uFF08\u96E2\u7DDA\u91CF\uFF1A40 \u5F35\u639B Human \u7684\u7968\u4E00\u6B21\u8B80 164 \u5217\uFF09\u3002\u6C92\u6709\u65B0\u8868\u3001\u6C92\u6709\u65B0\u67E5\u8A62\u7A2E\u985E\uFF08\u65E2\u6709\u7684\u7968\u3001\u7559\u8A00\u3001\u7559\u8A00\u7570\u52D5\u4E09\u7A2E\u8B80\uFF09\u3002\n0.37.5\uFF1A\u7D50\u69CB\u9801\u7B2C\u4E00\u5C4F\u53EA\u6709\u958B\u8457\u7684\u610F\u5716\uFF08\u6700\u8FD1\u6709\u52D5\u7684\u5728\u524D\uFF0C\u4E00\u9801 44 \u500B\uFF0C\u300C\u518D\u591A\u770B\u4E00\u4E9B\u300D\u63A5\u8457\u8B80\uFF0C\u4E0D\u518D\u975C\u975C\u5207\u6389\uFF09\uFF0C\u505A\u5B8C\u7684\u6536\u5728\u53EF\u5C55\u958B\u7684\u4E00\u683C\uFF1B\u4F9D\u57F7\u884C\u8005\u591A\u4E00\u7FA4\u300C\u672A\u6307\u6D3E\u300D\uFF0C\u4F9D\u4EBA\uFF0F\u7BE9\u9078\u6E05\u55AE\u4E5F\u662F\u958B\u8457\u7684\u5728\u524D\u3001\u6700\u8FD1\u6709\u52D5\u7684\u5728\u524D\uFF1Bledger mode=outline \u591A offset\u3001state=closed\uFF08inkstone/Arcrun#430\uFF09\u3002\n0.37.4\uFF1A\u5C0D\u5E33\u7684\u300C\u5168\u6C60\u958B\u8457\u5E7E\u5F35\u300D\u6539\u6210\u7CBE\u78BA\u6578\uFF0CAR-Mira \u8B80\u5F97\u5230\u5927\u7DB1\uFF08inkstone/Arcrun#424\uFF09\u2014\u2014\u2460 \u4EE5\u524D ledger \u8B80\u7D22\u5F15\u7E3D\u6578\u53EA\u62FF\u5F15\u64CE\u9810\u8A2D\u7684\u300C\u4E0B\u754C\u300D\uFF08\u9801\u6C92\u8B80\u5B8C\u6642\u53EA\u56DE offset\uFF0B\u9019\u9801\uFF0B1\uFF0C\u800C\u4E14\u96A8\u8B80\u591A\u5C11\u800C\u8B8A\uFF09\uFF0C\u7968\u6C60\u4E00\u5927\u5C31\u5C11\u7B97\uFF1Aleo21c \u55AE\u4E00 repo \u5C31\u6709\u4E00\u767E\u591A\u5F35\u958B\u8457\uFF0C\u5168\u6C60\u537B\u53EA\u5831 52\u3001\u610F\u5716\u683C 80\uFF5E90 \u53C8\u6BD4\u5B83\u591A\uFF0Cbalanced \u6C38\u9060 false\u3001drift \u4E82\u5831\u3002\u73FE\u5728\u5C0D\u5E33\u7684\u7E3D\u6578\u8B80\u90FD\u5E36 total=exact\uFF08\u53EA\u5C0D\u5E33\u9019\u5E7E\u8B80\uFF0C\u4E0D\u6383\u7968\u6C60\uFF09\u3002\u2461 ledger \u5DE5\u5177\u52A0 mode=outline\uFF1AAR-Mira \u8B80\u5F97\u5230\u7D50\u69CB\u9801\u90A3\u4EFD\u5927\u7DB1\uFF08\u4E0D\u7D66 key\uFF1D\u6240\u6709\u8D77\u9EDE\u8207\u5152\u5B50\u9032\u5EA6\uFF1Bkey\uFF1D\u5F80\u4E0B\u4E09\u5C64\uFF1Bby\uFF0Fname\uFF0Fstate \u4F9D\u4EBA\u6216\u7BE9\u9078\uFF09\uFF0C\u4E0D\u53E6\u958B\u5DE5\u5177\u3002\n0.37.3\uFF1Aconvert_intent \u4E0D\u518D\u5361\u6B7B\u5728\u5927\u55AE\u4F4D\uFF08inkstone/Arcrun#424\uFF09\u2014\u2014\u4E00\u500B\u91CC\u7A0B\u7891\u81EA\u5DF1\u7684\u8F09\u9AD4\u7968\u52A0\u524D\u7F6E\u5C31\u8D85\u904E\u4E00\u9801\u6642\uFF0C\u5728\u55AE\u4F4D\u88E1\u5206\u6BB5\uFF08\u56DE next_from \u4E0D\u8B8A\uFF0Bnext_after\uFF0C\u4E0B\u4E00\u6B21\u5E36 from\uFF0Bafter\uFF09\uFF0C\u4E0D\u518D truncated \u6C38\u9060\u88DC\u4E0D\u5B8C\uFF0C\u4E5F\u4E0D\u518D\u56E0\u8B80\u53D6\u683C\u8D85\u904E 90 \u800C 500\uFF1B\u4E00\u9801\u6700\u591A\u78B0 30 \u5F35\u7968\u3002\n0.36.0\uFF1AHuman \u53EA\u5F9E\u8981\u6C42\u55AE\u4F86\u3001\u5F85\u7C3D\u6578\u4E00\u500B\u53E3\u5F91\uFF08D101 \u7B2C\u4E8C\u6B65\u4E4B\u4E00\uFF0Cinkstone/Arcrun#414\uFF09\u2014\u2014\u2460 \u540C\u4E00\u5F35\u7968\u4E0A\u4E0D\u540C\u7684\u55AE\u7D2F\u7A4D\uFF0C\u958B\u65B0\u55AE\uFF08request_signoff\uFF0Frequest_action\uFF09\u6642\u7968\u4E0A\u5DF2\u6709\u958B\u8457\u7684\u8981\u6C42\uFF0C\u8981\u7528 older \u5C0D\u6BCF\u4E00\u5F35\u660E\u793A withdraw\uFF08\u64A4\u56DE\uFF0C\u65B0\u55AE\u6DB5\u84CB\uFF09\u6216 keep\uFF08\u4FDD\u7559\uFF09\uFF0C\u6C92\u4EA4\u4EE3\u62D2\u7D55\u958B\u55AE\uFF08422 older_undecided\uFF0C\u5217\u51FA\u6C92\u4EA4\u4EE3\u7684\uFF09\u3002\u2461 \u300C\u7B49\u4F60\u8655\u7406\u300D\u4EF6\u6578\u8207\u6E05\u55AE\u540C\u4E00\u500B\u4F86\u6E90\uFF0C\u53E6\u56DE by_ticket\uFF08\u5206\u5C6C\u5E7E\u5F35\u7968\u3001\u6BCF\u5F35\u5E95\u4E0B\u9010\u9805\uFF09\uFF0C\u756B\u9762\u6A19\u984C\u5BEB\u300CN \u4EF6\uFF0C\u5206\u5C6C M \u5F35\u7968\u300D\u4E26\u6309\u7968\u5206\u7D44\uFF1B\u639B\u8457 Human \u537B\u6C92\u6709\u8981\u6C42\u7684\u820A\u7968\u4E0D\u7B97\u7B49\u4F60\uFF08\u5217\u5728 orphans\uFF09\u3002\u2462 convert_intent \u4E00\u9801\u6490\u7206\u5F35\u6578\u6642\uFF0C\u90A3\u500B\u55AE\u4F4D\u6574\u500B\u7559\u5230\u4E0B\u4E00\u9801\uFF08next_from \u6307\u56DE\u5B83\uFF09\uFF0C\u4E0D\u518D\u6F0F\u7968\u3002\n0.33.1\uFF1A\u7C3D\u6838\u770B\u677F\uFF08signoff_status\uFF09\u628A\u300C\u7B49\u7C3D\u3001\u4F46\u540C\u4E00\u5F35\u7968\u5DF2\u6709\u66F4\u65B0\u7248\u865F\u88AB\u540C\u610F\u300D\u7684\u8ACB\u6C42\u986F\u793A\u70BA\u5DF2\u53D6\u4EE3\uFF08state=superseded\uFF0Csuperseded_by \u5E36\u90A3\u500B\u7248\u865F\uFF09\uFF0C\u4E0D\u518D\u770B\u8D77\u4F86\u50CF\u8981\u7C3D\uFF08inkstone/Arcrun#373\uFF09\u3002\n0.33.0\uFF1A\u7C3D\u6838\u55AE\u53EA\u51FA\u73FE\u771F\u7684\u7C3D\u5F97\u51FA\u53BB\u7684\u7248\u865F\uFF08inkstone/Arcrun#373\u3001#375\u3001inkstone/InkStoneCo#301\uFF09\u2014\u2014\u2460 \u540C\u4E00\u500B\u7248\u865F\u53EA\u7559\u4E00\u5F35\u7B49\u7C3D\u7684\u55AE\uFF1A\u7B2C\u4E8C\u6B21\u958B\u540C\u865F\u88AB\u64CB\u4E26\u6307\u56DE\u7B2C\u4E00\u5F35\uFF08409 signoff_exists\uFF09\uFF1B\u5DF2\u88AB\u7C3D\u904E\u7684\u7248\u865F\u4E0D\u80FD\u518D\u958B\uFF08already_signed\uFF09\u3002\u2461 \u65B0\u7684\u7D2F\u8A08\u7248\u958B\u55AE\u6642\uFF0C\u540C\u7CFB\u5217\u820A\u7248\u865F\u9084\u5728\u7B49\u7C3D\u7684\u55AE\u81EA\u52D5\u4F5C\u5EE2\uFF08\u7559\u4E00\u5247\u4F5C\u5EE2\u7559\u8A00\u3001\u6536\u56DE\u9023\u52D5\u639B\u7684 Human\uFF0F\u6307\u6D3E\uFF09\uFF0C\u5DF2\u6709\u66F4\u65B0\u7248\u865F\u5728\u7B49\u7C3D\u6642\u820A\u7248\u958B\u4E0D\u4E86\uFF08superseded_by_newer\uFF09\u3002\u2462 \u53EA\u6709 stage \u51FA\u8CA8\u7D00\u9304\u88E1\u6709\u7684\u7248\u865F\u80FD\u958B\u55AE\uFF08version_not_on_stage\uFF09\u3002\u2463 \u7C3D\u6838\u4EBA\u624B\u6253\u7368\u7ACB\u4E00\u884C\u300CARM: \u7248\u865F\u300D\uFF0C\u90A3\u500B\u7248\u865F\u7684\u7B49\u7C3D\u8ACB\u6C42\u7B97\u5DF2\u7C3D\u3002\u2464 \u6309\u300C\u7C3D\u6838\u2026\u300D\u9001\u51FA\u524D\u5148\u91CD\u8B80\u6700\u65B0\u7559\u8A00\uFF1B\u4F5C\u5EE2\u3001\u88AB\u53D6\u4EE3\u3001\u5DF2\u7C3D\u904E\u7684\u8ACB\u6C42\u64CB\u4E0B\u4E26\u8AAA\u660E\uFF08\u4F3A\u670D\u5668\u7AEF\u540C\u6A23\u64CB\uFF0C409\uFF09\u3002\u8CC7\u6599\uFF1A\u53EA\u5728\u8A2D\u5B9A\u8868\u591A\u4E00\u7B46 key=open:<\u7CFB\u5217> \u7684\u7D22\u5F15\uFF0C\u4E0D\u52A0\u8868\u3001\u4E0D\u52A0\u6B04\u4F4D\u3002\n0.32.1\uFF1A\u756B\u9762\u8D70\u67E5\u88DC\u4FEE\uFF08inkstone/Arcrun#388\uFF09\u2014\u2014\u624B\u6A5F\u4E0A\u516D\u500B\u5206\u9801\u7684\u5B57\u4E0D\u518D\u88AB\u65B7\u6210\u5169\u884C\uFF08\u300C\u6211\u4EA4\u4EE3\u7684\u4E8B\u300D\u300C\u8AB0\u9818\u4E86\u4EC0\u9EBC\u300D\uFF09\uFF1B\u684C\u6A5F\u958B\u8457 Portal \u804A\u5929\u6B04\u6642\uFF0C\u300C\uFF0B \u65B0\u589E\u300D\u7559\u5728\u7B2C\u4E00\u884C\uFF08\u63A5\u5728\u5206\u9801\u5F8C\u9762\uFF09\uFF1B\u770B\u677F\u7684\u300C\u770B\u54EA\u4E00\u500B\u300D\u624B\u6A5F\u4E0A\u4E0D\u518D\u65B7\u884C\uFF1B\u6253\u958B\u4E0D\u5B58\u5728\u7684\u7968\uFF0C\u8AAA\u300C\u627E\u4E0D\u5230\u9019\u5F35\u7968\u300D\u800C\u4E0D\u662F\u300C\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\u300D\u3002\u6C92\u6709\u8CC7\u6599\u8B8A\u52D5\u3002\n0.32.0\uFF1A\u9996\u5C4F\u6700\u4E0A\u9762\u65B0\u589E\u300C\u7B49\u4F60\u8655\u7406\u300D\u2014\u2014\u53EA\u8A8D\u7968\u4E0A\u958B\u8457\u7684\u8981\u6C42\uFF08\u8B80\u5B8C\uFF0F\u9078\u4E00\u500B\uFF0F\u56DE\u7B54\uFF0F\u89AA\u624B\u505A\uFF0F\u7C3D\u6838\uFF09\uFF0C\u6BCF\u4EF6\u4E00\u5F35\u767D\u8A71\u5361\uFF0C\u5361\u4E0A\u76F4\u63A5\u6309\u5C31\u56DE\u5B8C\uFF0C\u56DE\u5B8C\u5361\u5C31\u6D88\u5931\uFF1B\u624B\u5BEB\u7684\u300C\u7B49 Leo\u300D\u5B57\u4E32\u4E0D\u518D\u7B97\u7B49\u4F60\uFF08\u6539\u5217\u70BA\u820A\u8A3B\u8A18\uFF09\u3002MCP \u7559\u8A00\u4E0D\u5E36 reply_to \u4E0D\u518D\u56DE 422\uFF1B\u9996\u5C4F\u8B80\u53D6\u9047\u77E5\u8B58\u5EAB\u4E00\u6642\u5FD9\u81EA\u52D5\u91CD\u8B80\uFF0C\u9801\u9996\u4E0D\u518D\u4EAE\u300C\u6C92\u66F4\u65B0\u5230\u300D\uFF08inkstone/Arcrun#414 \u7B2C\u4E8C\u8F2A\uFF09\u3002\n0.31.1\uFF1A\u7BC0\u9EDE\u8A73\u60C5\u300C\u88AB\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u300D\u6BCF\u5217\u53F3\u5074\u4E0D\u518D\u986F\u793A\u5167\u90E8\u76EE\u6A19\u7DE8\u865F\uFF0C\u6539\u8AAA\u300C\u770B\u9019\u500B\u5C08\u6848\u7684\u76EE\u6A19\u300D\uFF1B\u756B\u9762\u6700\u4E0B\u65B9\u591A\u4E00\u884C\u300C\u7531 Arcrun \u88FD\u4F5C\u300D\uFF08Portal \u5E36\uFF0Cinkstone/Arcrun#388\u3001#418\uFF09\u3002\n0.31.0\uFF1A\u4EBA\u6309\u4E0B\u53BB\u7684\u52D5\u4F5C\u9047\u5230\u77E5\u8B58\u5EAB\u4E00\u6642\u5FD9\uFF0C\u8981\u561B\u5728\u6642\u9650\u5167\u5BEB\u6210\u529F\u3001\u8981\u561B\u756B\u9762\u986F\u793A\u300C\u6392\u968A\u4E2D\u300D\u76F4\u5230\u5BEB\u5B8C\uFF0C\u4E0D\u518D\u53EB\u4EBA\u518D\u6309\u4E00\u6B21\uFF08inkstone/Arcrun#422 \u7B2C\u4E09\u8F2A\uFF09\u3002\u756B\u9762\u7684\u300C\u6392\u968A\u4E2D\u300D\u63D0\u793A\u6539\u639B\u5728\u756B\u9762\u81EA\u5DF1\u7684\u6839\uFF0C\u771F Portal \u4E0A\u770B\u5F97\u5230\uFF08\u4EE5\u524D\u639B\u5728 shadow \u5916\uFF0C\u6A23\u5F0F\u5957\u4E0D\u5230\u3001\u843D\u5728\u756B\u9762\u5916\uFF09\u3002\u4E00\u6B21\u52D5\u4F5C\u5BEB\u597D\u5E7E\u7B46\u6642\uFF0C\u53EA\u6709\u300C\u7559\u8A00\u6578\uFF0F\u66F4\u65B0\u6642\u9593\u300D\u9019\u985E\u7B97\u5F97\u51FA\u4F86\u7684\u5C0F\u6771\u897F\u6C92\u5BEB\u6210\uFF0C\u7167\u5E38\u56DE\u6210\u529F\u4E26\u8AAA\u6E05\u695A\u54EA\u4E00\u7B46\u6C92\u6210\uFF08\u4E0D\u518D\u56DE 502 \u8B93\u4EBA\u4EE5\u70BA\u7559\u8A00\u6C92\u9001\u51FA\uFF09\uFF1B\u5225\u7684\u6C92\u5BEB\u6210\u5C31\u660E\u8AAA\u5BEB\u6210\u4E86\u4EC0\u9EBC\u3001\u54EA\u4E00\u7B46\u6C92\u6210\uFF0C\u4E26\u63D0\u9192\u5148\u770B\u518D\u6C7A\u5B9A\u8981\u4E0D\u8981\u91CD\u505A\uFF0C\u4E0D\u8981\u76F4\u63A5\u91CD\u9001\u3002\u9700\u8981\u5F15\u64CE 1.4.201 \u4EE5\u4E0A\u3002\n0.30.0\uFF1A\u76F4\u9023\u6216\u7AD9\u5167\u8DF3\u5230\u67D0\u4E00\u5247\u7559\u8A00\u6642\uFF0C\u6A19\u4EAE\u5916\u6846\u4E0D\u518D\u88AB\u91CD\u756B\u6D17\u6389\uFF08\u4E00\u76F4\u7559\u5230\u8DF3\u53BB\u5225\u5247\uFF09\uFF1BA \u7968\u8DF3\u5230 B \u7968\u90A3\u4E00\u5247\u5F8C\uFF0C\u7DB2\u5740\u5217\u540C\u6B65\u63DB\u6210\u90A3\u4E00\u5247\u7684\u56FA\u5B9A\u9023\u7D50\uFF0C\u8907\u88FD\u7DB2\u5740\u62FF\u5230\u7684\u5C31\u662F\u76EE\u6A19\uFF08inkstone/Arcrun#414\uFF09\u30020.29.0\uFF1A\u5BEB\u5165\u8DEF\u7531\u300C\u958B\u982D\u7684\u8B80\u300D\u4E5F\u6490\u904E\u4E00\u6642\u5FD9\uFF08inkstone/Arcrun#422 \u7B2C\u4E8C\u8F2A\uFF09\u2014\u2014stage \u5BE6\u6E2C\u958B\u7968 14 \u6B21\u6709 6 \u6B21\u5931\u6557\uFF0C\u4E0D\u662F\u6B7B\u5728\u5BEB\u5165\uFF0C\u662F\u6B7B\u5728\u5BEB\u5165\u4E4B\u524D\u7684\u8B80\uFF08\u53D6 recipe\u3001\u53D6\u8CC7\u6599\u5217\uFF09\u3002\u73FE\u5728\u4EBA\u6309\u4E0B\u53BB\u7684\u5BEB\u5165\u8DEF\u7531\uFF08\u7C3D\u6838\u3001\u958B\u7968\u3001\u7559\u8A00\u3001\u6539\u7968\uFF09\u7684\u8B80\u6703\u5E36\u300C\u9019\u662F\u5BEB\u5165\u300D\u7684\u6A19\u8A18\uFF0C\u5F15\u64CE\u9047\u4E00\u6642\u5FD9\u6709\u754C\u91CD\u8B80\uFF08\u6700\u591A 4 \u500B\u8ACB\u6C42\u3001\u7B49\u5F85 \u2264 6.5 \u79D2\uFF09\uFF1B\u5217\u7968\u3001\u770B\u677F\u3001\u5831\u8868\u3001\u641C\u5C0B\u7684\u8B80\u4ECD\u662F\u300C\u5FD9\u4E0D\u91CD\u8B80\u300D\u3002\u5F15\u64CE\u53E6\u628A recipe \u8207\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u5728\u672C\u6A5F\u77ED\u66AB\u8A18\u8457\uFF0C\u4E0D\u5FC5\u6BCF\u6B21\u9EDE\u64CA\u90FD\u554F\u8CC7\u6599\u5EAB\u3002\u65B0\u589E 3 \u652F\u8B80 recipe\uFF08ahub_rec_get_w\u3001ahub_rec_batch_w\u3001ahub_rec_batch_f_w\uFF0C\u8207\u539F\u8B80 recipe \u76F8\u540C\u53EA\u591A\u4E00\u689D\u8868\u982D\uFF09\uFF0C\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3002\u9700\u8981\u5F15\u64CE 1.4.200 \u4EE5\u4E0A\u3002\n0.28.0\uFF1A\u4EBA\u6309\u4E0B\u53BB\u7684\u5BEB\u5165\uFF08\u7C3D\u6838\u3001\u958B\u7968\u3001\u7559\u8A00\u3001\u6539\u7968\uFF09\u9047\u5230\u77E5\u8B58\u5EAB\u4E00\u6642\u5FD9\uFF0C\u5F15\u64CE\u81EA\u5DF1\u9000\u907F\u91CD\u8A66\u3001\u6700\u5F8C\u78BA\u5B9A\u5BEB\u9032\u53BB\uFF0C\u756B\u9762\u4E0D\u518D\u5831\u5931\u6557\u53EB\u4F60\u518D\u6309\u4E00\u6B21\uFF1B\u7B49\u8D85\u904E\u5E7E\u79D2\u756B\u9762\u4E0B\u65B9\u986F\u793A\u300C\u6392\u968A\u4E2D\u300D\uFF08inkstone/Arcrun#422\uFF09\u3002\u8B80\u8207\u5217\u7968\u7DAD\u6301\u300C\u5FD9\u4E0D\u91CD\u8B80\u300D\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3002\u9700\u8981\u5F15\u64CE 1.4.198 \u4EE5\u4E0A\u624D\u6709\u91CD\u8A66\u3002\n0.27.0\uFF1Arepo \u7684\u8B80\u3001\u5BEB\u3001clone \u4E0D\u518D\u9700\u8981\u4F7F\u7528\u8005\u7D66\u4EFB\u4F55\u91D1\u9470\uFF08inkstone/Arcrun#416\uFF09\u2014\u2014\u5F15\u64CE\u76F4\u63A5\u7D81\u540C\u5E33\u865F\u7684 Cloudflare Artifacts\uFF0CAHub \u5361\u7247\u4E0D\u518D\u8981\u6C42 artifacts_read_token\uFF08\u91D1\u9470\u4E2D\u5FC3\u4E0D\u5FC5\u653E\u4EFB\u4F55\u6771\u897F\uFF09\u3002\u8B80\uFF08git_tree\uFF0Fgit_file\uFF0Fgit_commit \u7B49\uFF09\u6539\u8D70\u5F15\u64CE\u7684 /artifacts \u4EE3\u7406\uFF1B\u5E33\u865F\u6C92\u958B Artifacts \u6642\u56DE 424 \u4E26\u8AAA\u660E\u300C\u9019\u500B\u5E33\u865F\u6C92\u6709 Artifacts\u300D\uFF0C\u4E0D\u662F 500\u3001\u4E5F\u4E0D\u53EB\u4EBA\u88DC\u91D1\u9470\u3002\u65B0\u589E\u5BEB\u5165\uFF1A\u8DEF\u7531 git_write\uFF0BMCP \u5DE5\u5177 git_write\uFF0C\u4E00\u6B21\u4E00\u500B commit \u5BEB\u5230\u5206\u652F\uFF08\u4E0D\u5B58\u5728\u5C31\u5F9E main \u9577\u51FA\u4F86\uFF09\uFF0Cmain \u4E0D\u53D7\u4FDD\u8B77\u53EF\u76F4\u63A5\u5BEB\uFF1B\u6BCF\u500B commit \u7684\u8A0A\u606F\u5C3E\u5DF4\u8A18\u9023\u7DDA\u8EAB\u5206\u8207 session\uFF08AHub-Writer\uFF0FAHub-Session\uFF09\uFF0C\u53E6\u5BEB\u4E00\u7B46\u7A3D\u6838\uFF08\u65B0 template ahub_git_write\uFF0C\u5171 31 \u500B\uFF09\u3002\u65B0\u589E clone\uFF0Fpush\uFF1A\u8DEF\u7531\u8207 MCP \u5DE5\u5177 git_credential\uFF0C\u5F15\u64CE\u7576\u5834\u767C\u77ED\u6548\u6191\u8B49\uFF08\u9810\u8A2D 600 \u79D2\u3001\u6700\u9577 3600 \u79D2\u3001\u904E\u671F\u5373\u5931\u6548\uFF09\uFF0C\u6191\u8B49\u4E0D\u5B58\u3001\u4E0D\u9032\u7A3D\u6838\u3002prod \u8207\u51FA\u8CA8\u5230 GitHub \u4ECD\u8D70\u7C3D\u6838\uFF0C\u4E0D\u5728\u9019\u88E1\u3002\n0.26.0\uFF1A\u540C\u4E00\u500B\u300C\u7B49\u4F60\u8655\u7406\u300D\u6846\u80FD\u8655\u7406\u6240\u6709\u7B49 leo \u7684\u4E8B\uFF08inkstone/Arcrun#414\uFF09\u2014\u2014\u9664\u4E86\u300C\u7C3D\u6838\u4E0A prod\u300D\uFF0C\u65B0\u589E \u8B80\u5B8C\uFF08\u6309\u4E00\u4E0B\u5C31\u7B97\u8B80\u5B8C\uFF09\uFF0F\u9078\u4E00\u500B\uFF08\u9078\u9805\u5C31\u662F\u6309\u9215\uFF09\uFF0F\u56DE\u7B54\uFF08\u77ED\u6587\u5B57\uFF09\uFF0F\u89AA\u624B\u505A\uFF08\u505A\u597D\u4E86\uFF0F\u505A\u4E0D\u5230\uFF09\u3002AI \u7528\u65B0\u5DE5\u5177 request_action \u958B\u3001request_status \u8B80\u7D50\u679C\uFF1B\u7968\u81EA\u52D5\u639B Human \u4E26\u6307\u6D3E\u88AB\u6307\u5B9A\u7684\u4EBA\uFF0C\u5C0D\u65B9\u5728\u7968\u9801\u6700\u4E0A\u9762\u6309\u4E00\u4E0B\uFF0C\u7968\u4E0A\u7559\u4E0B\u8AB0\u3001\u4F55\u6642\u3001\u9078\u4E86\u4EC0\u9EBC\uFF0F\u7B54\u4E86\u4EC0\u9EBC\uFF0C\u8655\u7406\u5B8C\uFF08\u6216\u7968\u95DC\u9589\uFF1D\u81EA\u52D5\u4F5C\u5EE2\uFF09\u81EA\u52D5\u6536\u56DE\u3002\u4E0A prod \u90A3\u4E00\u7A2E\uFF08request_signoff\uFF0FARM\uFF0F\u51FA\u8CA8\u9598\uFF09\u884C\u70BA\u8207\u898F\u5247\u4E0D\u8B8A\uFF0C\u5176\u4ED6\u7A2E\u985E\u4E0D\u7522\u751F ARM\u3001\u56DE\u61C9\u88E1\u593E ARM \u6216\u7C3D\u6838\u884C\u6703\u88AB\u64CB\u3002\u639B Human \u5FC5\u9808\u5E36\u4E00\u4EF6\u958B\u8457\u7684\u8981\u6C42\uFF1Acreate_issue\u3001set_labels \u55AE\u7368\u52A0 Human \u56DE 422\uFF1B\u820A\u7684\u5B64\u5152 Human \u7531 signoff_sync \u7684 orphan_human \u5217\u51FA\uFF0C\u5728\u90A3\u5F35\u7968 request_action \u5373\u63A5\u624B\u3002\u53E6\uFF1A\u6BCF\u4E00\u5247\u7559\u8A00\u90FD\u80FD\u300C\u56DE\u8986\u9019\u4E00\u5247\u300D\uFF08comment \u5E36 reply_to\uFF1B\u5167\u6587\u7B2C\u4E00\u884C\u6A19\u660E\u56DE\u54EA\u4E00\u5247\uFF0C\u8B80\u56DE\u7684\u7559\u8A00\u5E36 reply_to\uFF1B\u820A\u7559\u8A00\u4E0D\u53D7\u5F71\u97FF\uFF09\uFF0C\u7B49\u4F60\u8655\u7406\u6846\u7684\u56DE\u61C9\u81EA\u52D5\u7D81\u5728\u90A3\u5247\u63D0\u554F\u4E0A\u3002\u6C92\u6709\u65B0 template\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.25.0\uFF1AAHub \u9996\u5C4F\u6539\u6210\u300C\u6211\u4EA4\u4EE3\u7684\u4E8B\u300D\uFF08inkstone/Arcrun#421\uFF09\u2014\u2014\u4E3B\u5217\u4E0D\u518D\u662F\u7968\uFF0C\u800C\u662F\u4F60\u8AAA\u904E\u7684\u6BCF\u4E00\u4EF6\u4E8B\uFF1A\u6BCF\u884C\u4E00\u53E5\u4F60\u7684\u539F\u8A71\uFF08\u592A\u9577\u5C31\u986F\u793A\u4E00\u53E5\u8A71\u6458\u8981\u3001\u53EF\u5C55\u958B\u770B\u539F\u8A71\uFF09\u3001\u4F60\u8AAA\u8A71\u7684\u6642\u9593\uFF0C\u72C0\u614B\u56DB\u9078\u4E00\uFF1A\u505A\u5B8C\u4E86\uFF08\u62C9\u9032\u4F86\u7684\u7968\u5168\u95DC\uFF09\u3001\u5728\u505A\uFF08\u6709\u6D3B\u7684\u5C0D\u8A71\u5728\u52D5\uFF09\u3001\u5361\u4F4F\uFF08\u5BEB\u660E\u5361\u5728\u8AB0\uFF1A\u7B49\u4F60\u6700\u9192\u76EE\u3001\u7B49\u5730\u7AEF Mac\u3001\u7B49\u5225\u689D\u7DDA\uFF09\u3001\u6C92\u4EBA\u63A5\uFF08\u6C92\u6709\u7968\u3001\u7968\u6C92\u4EBA\u9818\u3001\u6216\u9818\u7968\u7684\u5C0D\u8A71\u5DF2\u7D93\u4E0D\u5728\uFF09\uFF1B\u7B49\u4F60\u7684\u6392\u6700\u524D\u9762\u3002\u7968\u3001\u91CC\u7A0B\u7891\u3001\u5DE5\u4F5C\u7AD9\u53EA\u662F\u6BCF\u884C\u5E95\u4E0B\u7684\u5C0F\u5B57\u9644\u8A3B\uFF08\u53EF\u9EDE\uFF09\u3002\u4E00\u4EF6\u4EA4\u8FA6\u62C9\u4E86\u597D\u5E7E\u5F35\u7968\uFF08\u542B\u820A\u7968\uFF09\u6642\uFF0C\u72C0\u614B\u7531\u90A3\u4E9B\u7968\u5408\u7B97\uFF0C\u5168\u505A\u5B8C\u624D\u7B97\u505A\u5B8C\u3002\u4EA4\u8FA6\u600E\u9EBC\u9032\u4F86\uFF1A\u65B0\u589E MCP \u5DE5\u5177 arcrun_ahub_assign\uFF08\u8A18\u4E00\u500B\u4EA4\u8FA6\uFF0C\u4E00\u500B\u52D5\u4F5C\u5E36\u4F60\u7684\u539F\u8A71\u8207\u8AAA\u8A71\u6642\u9593\uFF0C\u53EF\u5E36\u7968\u3001\u6C92\u6709\u7968\u4E5F\u8A18\u5F97\u4E0B\u4F86\uFF09\u8207 arcrun_ahub_assignments\uFF08\u8B80\uFF09\uFF1B\u4EA4\u8FA6\u5C31\u662F\u76EE\u6A19\u6A39\u7684\u4E00\u500B\u6B65\u9A5F\uFF08\u6CBF\u7528\u76EE\u6A19\u6A39\uFF0C\u4E0D\u53E6\u9020\u5B58\u653E\u8655\uFF09\uFF0B\u4E00\u7B46 ahub_step_say \u8A18\u539F\u8A71\uFF0C\u72C0\u614B\u8B80\u7684\u7576\u4E0B\u5F9E\u7968\u3001\u9818\u7968\u3001\u5C0D\u8A71\u7B97\u3001\u4E0D\u5B58\uFF0C\u6240\u4EE5\u4E0D\u6703\u56E0\u6C92\u4EBA\u56DE\u982D\u6539\u800C\u8AAA\u8B0A\u3002\u8981\u8CBC\u9032\u5404\u5C08\u6848\u6307\u793A\u7684\u898F\u5247\u5BEB\u5728\u65B0\u7684 assign \u8AAA\u660E\u88E1\u3002\u65B0\u589E\u8DEF\u7531 assign_set\u3001assignments\uFF1B\u65B0\u589E 1 \u500B template\uFF08ahub_step_say\uFF0C\u5171 30 \u500B\uFF1B\u6C92\u6709\u65B0\u8868\u3001\u96F6 SQL\uFF09\u3002\u300C\u8AB0\u9818\u4E86\u4EC0\u9EBC\u300D\u9000\u70BA\u7B2C\u4E8C\u500B\u5206\u9801\u3002\n0.24.0\uFF1AAHub \u6253\u958B\u7B2C\u4E00\u500B\u770B\u5230\u7684\u662F\u300C\u8AB0\u9818\u4E86\u4EC0\u9EBC\u300D\uFF08inkstone/Arcrun#419\u3001#348\uFF09\u2014\u2014\u4F9D\u5DE5\u4F5C\u7AD9\uFF08\u7E3D\u76E3\u3001\u89E3\u6C7A\u554F\u984C\u8FF4\u5708\u3001\u81EA\u6211\u884C\u92B7\u2026\uFF09\u5206\u7D44\uFF0C\u6BCF\u5F35\u9818\u8D70\u7684\u7968\u4E00\u884C\uFF1A\u4EBA\u8A71\u6A19\u984C\u3001\u72C0\u614B\uFF08\u5728\u505A\uFF0F\u5361\u4F4F\uFF0F\u505A\u5B8C\u6C92\u6536\uFF09\u3001\u5361\u5728\u8AB0\uFF08\u7B49 Leo \u6700\u9192\u76EE\u3001\u7B49\u5730\u7AEF Mac\u3001\u7B49\u5225\u689D\u7DDA\uFF09\u3001\u591A\u4E45\u6C92\u52D5\uFF1B\u9818\u4E86\u4F46\u6C92\u4EBA\u5728\u505A\u7684\uFF08\u9818\u7968\u7684\u5C0D\u8A71\u5DF2\u6536\u5DE5\u3001\u6216\u5C0D\u8A71\u8207\u7968\u90FD\u4E45\u6C92\u52D5\uFF0C\u7968\u9084\u639B\u8457\u9032\u884C\u4E2D\uFF09\u6A19\u300C\u6C92\u4EBA\u5728\u505A\u300D\uFF1B\u6C92\u6307\u5230\u4EFB\u4F55\u91CC\u7A0B\u7891\u6216\u7968\u7684\u76EE\u6A19\u5217\u5728\u6700\u4E0A\u9762\u3002\u65B0\u589E\u552F\u8B80\u8DEF\u7531 whos_doing\u3002\u76EE\u6A19\u9801\u6BCF\u500B\u76EE\u6A19\u5217\u51FA\u5B83\u62C9\u9032\u4F86\u7684\u7968\u5404\u81EA\u8AB0\u9818\u3002\u5C0D\u8A71\uFF1A\u8D85\u904E 3 \u5929\u6C92\u6D3B\u52D5\u3001\u624B\u4E0A\u53C8\u6C92\u6709\u9032\u884C\u4E2D\u7684\u7968\u7684\u81EA\u52D5\u6A19\u300C\u505C\u6EEF\u300D\u4E26\u5F9E\u76EE\u6A19\u9801\u300C\u9032\u884C\u4E2D\u300D\u6536\u8D77\uFF08\u53EF\u5C55\u958B\uFF1B\u4E0D\u662F\u522A\u9664\uFF0C\u5C0D\u8A71\u518D\u5831\u5230\u6216\u5E36 session \u547C\u53EB\u5DE5\u5177\u5C31\u81EA\u52D5\u56DE\u4F86\uFF0C\u4E0D\u6392\u7A0B\u3001\u8B80\u7684\u7576\u4E0B\u7B97\uFF09\uFF0C\u5C08\u6848\u6A19\u984C\u7684\u300CN \u500B\u5C0D\u8A71\u9032\u884C\u4E2D\u300D\u53EA\u7B97\u771F\u7684\u5728\u52D5\u7684\uFF1B\u540C\u4E00\u500B\u5C0D\u8A71\u88AB\u5169\u500B\u5DE5\u4F5C\u7AD9\u5404\u767B\u8A18\u4E00\u6B21\u7684\u6BDB\u75C5\u4FEE\u6389\u2014\u2014\u6536\u5DE5\uFF08end_session\uFF09\u4E00\u6B21\u6536\u6389\u5168\u90E8\u767B\u8A18\u3001\u53EF\u7528 station \u53EA\u6536\u4E00\u7AD9\uFF0C\u5831\u5230\u6642\u540C sid \u5DF2\u5728\u5225\u7AD9\u958B\u8457\u5C31\u4F75\u6210\u4E00\u7B46\uFF0C\u5217\u8868\u4E5F\u4F75\u6210\u4E00\u7B46\u3002\u6C92\u6709\u65B0 template\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.22.0\uFF1Aclaude.ai \u7684\u5C0D\u8A71\uFF08\u53EA\u9023\u5F97\u5230 MCP\uFF09\u73FE\u5728\u8B80\u5F97\u5230 repo \u7684\u7A0B\u5F0F\u78BC\u4E86\uFF08inkstone/Arcrun#334\uFF09\u2014\u2014\u65B0\u589E\u552F\u8B80\u8DEF\u7531 git_read \u8207 7 \u652F MCP \u5DE5\u5177\uFF1A\u5217\u76EE\u9304\u3001\u8B80\u6A94\uFF08\u53EF\u6307\u5B9A\u884C\u7BC4\u570D\u3001\u5927\u6A94\u5206\u9801\uFF09\u3001\u95DC\u9375\u5B57\u641C\u5C0B\uFF08\u55AE\u4E00\u6216\u8DE8 repo\uFF09\u3001\u5206\u652F\u6E05\u55AE\u3001\u6700\u8FD1 commit\u3001\u55AE\u4E00 commit \u7684 diff\u3001\u5169\u500B ref \u7684\u6BD4\u8F03\uFF08\u53D6\u4EE3\u6C92\u6709 PR \u7684 PR diff\uFF09\u3002\u5167\u5BB9\u4F4F Cloudflare Artifacts\uFF0CAHub \u53EA\u5305\u4E00\u5C64 REST\uFF1A\u4E0D clone\u3001\u4E0D\u7559\u5FEB\u7167\uFF1B\u53EA\u8B80\u3001\u6BCF\u6B21\u56DE\u61C9\u6709\u5927\u5C0F\u4E0A\u9650\u4E14\u53EF\u5206\u9801\u3001\u91D1\u9470\u53EA\u4EE5\u540D\u5B57\u51FA\u73FE\uFF08\u9700\u8981\u91D1\u9470\u4E2D\u5FC3\u6709 artifacts_read_token\uFF09\u3002\u6B0A\u9650\u8DDF\u8457\u9023\u7DDA\u7684\u8EAB\u5206\uFF1A\u9019\u500B AHub \u6C92\u767B\u8A18\u7684 repo\uFF08\u6216\u9023\u7DDA\u8EAB\u5206\u6C92\u901A\u904E\u9A57\u8B49\uFF09\u4E00\u5F8B\u56DE\u300C\u6C92\u6B0A\u9650\u300D\uFF1B\u767B\u8A18\u4E86\u7684 repo\uFF08\u542B\u79C1\u6709\uFF09\u4EFB\u4F55\u901A\u904E\u9A57\u8B49\u7684\u9023\u7DDA\u90FD\u8B80\u5F97\u5230\uFF0C\u540C\u8B80\u7968\uFF0C\u4E0D\u8B1B\u300C\u4E0D\u5B58\u5728\u300D\u3002\u5927\u578B\u7522\u7269\uFF08.worker-builds\u3001node_modules\u3001ahub.app.json \u4E4B\u985E\u5E7E MB \u7684\u6A94\uFF09\u4E0D\u4E0B\u8F09\uFF0C\u56DE 413 \u8AAA\u660E\u539F\u56E0\u2014\u2014AHub \u8B80\u6A94\u662F\u6574\u500B\u6293\u9032\u5F15\u64CE\u3001Artifacts \u6C92\u6709\u5148\u554F\u5927\u5C0F\u7684\u8FA6\u6CD5\uFF1Bgit_commit\uFF0Fgit_compare \u9047\u5230\u5B83\u5011\u7167\u5217\u6A94\u540D\u4E26\u6A19 not_read\uFF0C\u53E6\u53EF\u7528 path \u53EA\u770B\u67D0\u500B\u76EE\u9304\u3002\u9806\u624B\u4FEE\uFF1Arepo \u8CC7\u6599\u88E1\u5047\u7684 clone_url\uFF08\u6253\u958B\u662F 404\uFF09\u6539\u6210 Artifacts \u7684\u771F\u7DB2\u5740\u3002\u6C92\u6709\u65B0 template\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.21.5\uFF1A\u76EE\u6A19\u6A39\u5831\u544A\u8B80\u6BCF\u500B\u91CC\u7A0B\u7891\u7684\u8F09\u9AD4\u7968\u6642\uFF0C\u53EA\u8B80 key \u8207 state \u5169\u683C\uFF08\u539F\u672C\u56DB\u683C\uFF09\uFF0C\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\u53EA\u8B80 ticket \u4E00\u683C\uFF1B\u9032\u5EA6\u3001\u93C8\u689D\u3001\u65B7\u9EDE\u7684\u7B54\u6848\u4E0D\u8B8A\uFF0C\u6BCF\u6B21\u8B80\u53D6\u7684\u5217\u6578\u518D\u964D\u3002\u526F\u4F5C\u7528\uFF1A\u76EE\u6A19\u6A39\u88E1\u6BCF\u500B\u91CC\u7A0B\u7891\u7684\u300C\u6700\u8FD1\u6D3B\u52D5\u300D\u4E0D\u518D\u7B97\u8F09\u9AD4\u7968\u81EA\u5DF1\u7684\u66F4\u65B0\u6642\u9593\uFF0C\u6539\u7531\u91CC\u7A0B\u7891\u3001release \u8207\u93C8\u689D\u4E0A\u958B\u8457\u7684\u524D\u7F6E\u7968\u7684\u6642\u9593\u6C7A\u5B9A\uFF08\u770B\u677F\u4E0D\u53D7\u5F71\u97FF\uFF0C\u4ECD\u8B80\u56DB\u683C\uFF09\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08inkstone/Arcrun#384\uFF09\u3002\n0.21.4\uFF1A\u8B80\u5F97\u5230\u4E00\u5F35\u7968\u7B2C 100 \u5247\u4EE5\u5F8C\u7684\u7559\u8A00\uFF08inkstone/Arcrun#410\uFF09\u2014\u2014\u4EE5\u524D get_issue\uFF08MCP\uFF09\u8207\u7559\u8A00\u5217\u8868\u53EA\u7D66\u6700\u820A\u7684 100 \u5247\uFF0C\u7559\u8A00\u8D85\u904E 100 \u5247\u7684\u9577\u7968\uFF08\u4F8B\u5982\u6BCF\u8F2A\u7ACB\u6703\u7684\u8F09\u9AD4\uFF09\u6700\u65B0\u7684\u7559\u8A00\u6C38\u9060\u8B80\u4E0D\u5230\uFF0C\u6D3E\u5DE5\u55AE\u6307\u5230\u7684 comment \u4E5F\u8B80\u4E0D\u5230\u3002\u73FE\u5728 get_issue \u9810\u8A2D\u56DE\u6700\u65B0 100 \u5247\uFF08\u4ECD\u820A\u2192\u65B0\u6392\uFF09\uFF1B\u7559\u8A00\u591A\u65BC\u9019\u500B\u6578\u6642\u56DE comments_window\uFF08total\uFF0Fshown\uFF0Folder_omitted\uFF09\u8207\u4E0B\u4E00\u6B65\u63D0\u793A\uFF1B\u65B0\u589E\u9078\u586B comment_id\uFF08\u53EA\u8B80\u6307\u5B9A id \u7684\u90A3\u4E00\u5247\uFF0C\u4E0D\u8AD6\u7B2C\u5E7E\u5247\uFF09\u8207 comments_page\uFF08\u5F9E\u6700\u820A\u8D77\u7FFB\u9801\uFF0C\u6BCF\u9801 100 \u5247\uFF09\u3002\u7559\u8A00\u4E0D\u5230 100 \u5247\u7684\u7968\u56DE\u50B3\u4E0D\u8B8A\u3002\u7559\u8A00\u5217\u8868\u8DEF\u7531\uFF08GET \u2026/issues/:index/comments\uFF09\u591A tail=1\uFF08\u53D6\u6700\u65B0 limit \u5247\uFF09\u8207 id=\uFF08\u53EA\u53D6\u90A3\u4E00\u5247\uFF09\u5169\u500B\u9078\u586B\u53C3\u6578\uFF0C\u4E0D\u7D66\uFF1D\u820A\u884C\u70BA\u3002\u6C92\u6709\u65B0 template\u3001\u8DEF\u7531\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.21.3\uFF1A\u7968\u9801\u4F9D\u6A19\u7C64\u5217\u7968\u4E0D\u518D\u6574\u6279\u56DE\u7A7A\uFF08inkstone/Arcrun#397 \u6B63\u5F0F\u7AD9\u5BE6\u649E\uFF09\u2014\u2014\u6A19\u7C64\u662F\u6BCF\u500B\u5C08\u6848\u5404\u5B58\u4E00\u4EFD\uFF0C\u904E\u53BB\u7968\u9801\u53EA\u8B80\u300C\u6700\u65B0 500 \u7B46\u6A19\u7C64\u300D\uFF0C\u6A19\u7C64\u4E00\u591A\uFF0C\u6700\u820A\u5C08\u6848\uFF08Arcrun\u3001InkStoneCo\uFF09\u7684\u6A19\u7C64\u5C31\u6574\u6279\u8B80\u4E0D\u5230\uFF0C\u9078 Human \u6216 s/doing \u7BE9\u51FA 0 \u5F35\u3001\u6E05\u55AE\u6BCF\u5F35\u7968\u7684 labels \u662F\u7A7A\u9663\u5217\u3002\u73FE\u5728\u9078\u4E86\u5C08\u6848\u53EA\u8B80\u90A3\u500B\u5C08\u6848\u7684\u6A19\u7C64\uFF08\u6BD4\u4EE5\u524D\u5C11\u8B80\uFF09\uFF1B\u6C92\u9078\u5C08\u6848\u8B80\u5168\u90E8\uFF0C\u6700\u591A 2 \u9801\uFF081000 \u7B46\uFF0C\u591A\u4E00\u6B21\u8B80\uFF09\uFF0C\u518D\u591A\u6703\u5728\u756B\u9762\u8AAA\u660E\u3002\u6A19\u7C64\u3001\u7968\u865F\u3001\u95DC\u9375\u5B57\u53D6\u4EA4\u96C6\u7167\u820A\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.21.3\uFF1A\u7968\u9801\u4F9D\u6A19\u7C64\u5217\u7968\u4E0D\u518D\u6574\u6279\u56DE\u7A7A\uFF08inkstone/Arcrun#397 \u6B63\u5F0F\u7AD9\u5BE6\u649E\uFF09\u2014\u2014\u6A19\u7C64\u662F\u6BCF\u500B\u5C08\u6848\u5404\u5B58\u4E00\u4EFD\uFF0C\u904E\u53BB\u7968\u9801\u53EA\u8B80\u300C\u6700\u65B0 500 \u7B46\u6A19\u7C64\u300D\uFF0C\u6A19\u7C64\u4E00\u591A\uFF0C\u6700\u820A\u5C08\u6848\uFF08Arcrun\u3001InkStoneCo\uFF09\u7684\u6A19\u7C64\u5C31\u6574\u6279\u8B80\u4E0D\u5230\uFF0C\u9078 Human \u6216 s/doing \u7BE9\u51FA 0 \u5F35\u3001\u6E05\u55AE\u6BCF\u5F35\u7968\u7684 labels \u662F\u7A7A\u9663\u5217\u3002\u73FE\u5728\u9078\u4E86\u5C08\u6848\u53EA\u8B80\u90A3\u500B\u5C08\u6848\u7684\u6A19\u7C64\uFF08\u6BD4\u4EE5\u524D\u5C11\u8B80\uFF09\uFF1B\u6C92\u9078\u5C08\u6848\u8B80\u5168\u90E8\uFF0C\u6700\u591A 2 \u9801\uFF081000 \u7B46\uFF0C\u591A\u4E00\u6B21\u8B80\uFF09\uFF0C\u518D\u591A\u6703\u5728\u756B\u9762\u8AAA\u660E\u3002\u6A19\u7C64\u3001\u7968\u865F\u3001\u95DC\u9375\u5B57\u53D6\u4EA4\u96C6\u7167\u820A\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.13.3\uFF1A\u76EE\u6A19\u53EF\u4EE5\u7D81\u91CC\u7A0B\u7891\u4E86\uFF08inkstone/Arcrun#353\uFF09\u2014\u2014\u76EE\u6A19\u5C6C\u65BC\u76EE\u6A19\u6A39\u3001milestone \u5C6C\u65BC\u7968\u7CFB\u7D71\uFF0C\u4E00\u500B\u76EE\u6A19\u7D81 0 \u5230\u591A\u500B milestone\uFF08\u53EF\u8DE8 repo\uFF1B\u4E00\u500B milestone \u4E5F\u53EF\u88AB\u597D\u5E7E\u500B\u76EE\u6A19\u5F15\u7528\uFF09\u3002\u76EE\u6A19\u53EA\u5B58\u300C\u9023\u5230\u54EA\u4E9B milestone\u300D\uFF0C\u9032\u5EA6 % \u5B8C\u5168\u7531 milestone \u5E95\u4E0B\u7684\u7968\u8207 release \u7B97\uFF08\u8207\u7968\u5730\u5716\u540C\u4E00\u5957\u7B97\u6CD5\uFF09\uFF0C\u4E0D\u53E6\u5916\u624B\u586B\uFF1Bgoal_set \u591A milestones\uFF0Funbind_milestones\uFF0Fmilestone_repo\uFF0Cgoals_report \u6BCF\u500B\u76EE\u6A19\u591A milestones\uFF0Fprogress\uFF0Fflags\uFF08\u53EF\u7528 milestone \u53CD\u67E5\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u5B83\uFF09\u3002\u5169\u7D44\u300C\u93C8\u65B7\u4E86\u300D\u65D7\u6A19\u5728\u5831\u544A\u8207\u770B\u677F\u90FD\u5217\uFF1A\u76EE\u6A19\u6A39\u6C92\u4EBA\u7DAD\u8B77\uFF08\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u5728\u52D5\u3001\u76EE\u6A19\u6A39\u537B\u4E45\u6C92\u66F4\u65B0\uFF0C\u6216 waiting \u6B65\u9A5F\u65E9\u8A72\u91CD\u770B\uFF09\u3001\u93C8\u689D\u6C92\u4EBA\u7DAD\u8B77\uFF08\u6C92\u7D81\u91CC\u7A0B\u7891\u537B\u6709\u7968\u5728\u8DD1\u3001\u6B65\u9A5F\u7968\u4E0D\u5728\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u3001\u91CC\u7A0B\u7891 100% \u6216\u5DF2\u95DC\u537B\u6C92\u6709 release\u3001\u904E\u671F\u6216\u627E\u4E0D\u5230\uFF09\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_goal_ms\uFF0C\u5171 24\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u30020.13.2\uFF1A\u756B\u9762\u8B80 AHub \u7684\u767D\u540D\u55AE\u591A\u653E\u4E00\u689D goals_report\uFF08\u76EE\u6A19\u6A39\u5831\u544A\uFF09\u2014\u2014\u7D66\u7968\u5730\u5716 0.7.0 \u7684\u300C\u672A\u4F86\u300D\u8996\u5716\u8B80\uFF08inkstone/Arcrun#351\uFF09\u3002\u53EA\u591A\u4E00\u689D\u552F\u8B80\u8DEF\u7531\u7684\u653E\u884C\uFF0C\u8CC7\u6599\u8207\u5DE5\u5177\u90FD\u6C92\u52D5\uFF0C\u6C92\u6709\u65B0 template\u3002\n0.13.0\uFF1A\u91CC\u7A0B\u7891\u9032\u5EA6\u628A\u524D\u7F6E\u7968\u7B97\u9032\u53BB\u4E86\uFF0C\u4E26\u6A19\u51FA\u93C8\u689D\u65B7\u5728\u54EA\uFF08inkstone/Arcrun#352\uFF09\u2014\u2014\u7968\u5730\u5716\u7684 % \u539F\u672C\u53EA\u7B97\u300C\u76F4\u63A5\u639B\u5728\u91CC\u7A0B\u7891\u4E0A\u300D\u7684\u8F09\u9AD4\u7968\uFF0C\u5225\u7684 repo \u7684\u57F7\u884C\u7968\u662F\u8F09\u9AD4\u7968\u7684\u524D\u7F6E\uFF0C\u5B8C\u5168\u6C92\u9032\u5206\u6BCD\uFF08\u4F8B\uFF1A\u505A\u5B8C\u4E86\u537B\u986F\u793A 33%\uFF09\u3002\u73FE\u5728 GET /ahub/milestones \u7684\u9032\u5EA6\uFF1D\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u905E\u79FB\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\u3001\u540C\u4E00\u5F35\u53EA\u7B97\u4E00\u6B21\uFF1B\u591A\u56DE direct\uFF0Fprerequisites\uFF0Fcarriers\uFF08\u542B\u5404\u8F09\u9AD4\u7684\u524D\u7F6E\u6578\uFF09\u3001\u93C8\u689D\u56DB\u6BB5 chain\uFF08\u8F09\u9AD4\u7968\uFF0F\u5DE5\u4F5C\u7968\uFF0Fmilestone\uFF0Frelease\uFF09\u3001\u65B7\u9EDE gaps \u8207 chain_state\uFF1Abroken\uFF1D\u93C8\u689D\u6C92\u63A5\u597D\uFF08\u6C92\u6709\u8F09\u9AD4\u3001\u8F09\u9AD4\u90FD\u6C92\u6709\u524D\u7F6E\uFF09\u3001unmaintained\uFF1D\u93C8\u689D\u63A5\u4E0A\u4E86\u4F46\u6C92\u4EBA\u7DAD\u8B77\uFF08\u524D\u7F6E\u5168\u95DC\u8F09\u9AD4\u9084\u958B\u8457\u3001100% \u91CC\u7A0B\u7891\u9084\u958B\u8457\u3001\u505A\u5B8C\u6C92 release\u3001\u91CC\u7A0B\u7891\u95DC\u4E86\u9084\u6709\u7968\u958B\u8457\uFF09\u3001moving\u3001shipped\uFF1B\u53E6\u6A19\u904E\u671F\u3002\u7968\u5730\u5716\u5361\u7247\u8207\u8A73\u60C5\u986F\u793A\u65B0 % \u8207\u65B7\u9EDE\u3002\u8B80\u53D6\u591A 2 \u683C\uFF08\u6574\u5F35\u76F8\u4F9D\u908A\u3001\u958B\u8457\u7684\u7968\uFF0C\u5404\u6700\u591A 2 \u9801\xD7500\uFF0C\u8B80\u6EFF\u6A19 truncated\uFF09\uFF1B\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.12.1\uFF1A\u6A19\u51FA\u300C\u4EA4\u8FA6\u4E86\u537B\u6C92\u4EBA\u52D5\u5DE5\u300D\uFF08inkstone/Arcrun#350\uFF09\u2014\u2014\u6B65\u9A5F\u5F85\u505A\u3001\u6C92\u4EBA\u5728\u505A\uFF08\u6C92\u6709\u7968\uFF0C\u6216\u7968\u6C92\u4EBA\u9818\u4E5F\u6C92\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF09\u3001\u524D\u7F6E\u90FD\u505A\u5B8C\uFF0C\u5F9E\u4EA4\u8FA6\u6642\u9593\u8D77\u8D85\u904E 24 \u5C0F\u6642\uFF08\u53EF\u8ABF\uFF0Cunstarted_hours\uFF09\uFF0C\u7E3D\u76E3\u5831\u544A goals_report\uFF08\u76EE\u6A19\u3001\u5C08\u6848\u7684 unstarted\uFF0Csummary.unstarted_steps\uFF09\u8207\u770B\u677F board\uFF08anomalies \u7684 unstarted_step\u3001unstarted_steps \u660E\u7D30\uFF09\u5C31\u6A19\u51FA\u4F86\uFF0C\u4E0D\u5FC5\u9760\u4EBA\u8A18\u5F97\u53BB\u8FFD\u554F\u3002\u4EA4\u8FA6\u6642\u9593\u7528 step_set \u7684\u65B0\u53C3\u6578 assigned_at \u8A18\uFF08\u4EA4\u8FA6\u5E38\u6BD4\u5BEB\u9032\u6A39\u65E9\uFF0C\u88DC\u5BEB\u820A\u7684\u4E5F\u884C\uFF1B\u6C92\u7D66\u5C31\u4EE5\u5BEB\u9032\u6A39\u7684\u6642\u9593\u7B97\uFF09\u3002\u53E6\u4FEE\uFF1A\u4EBA\u5BEB\u7684\u300C\u7B49\u5F85\u4E2D\u300D\u6B65\u9A5F\uFF0C\u524D\u7F6E\u90FD\u5B8C\u6210\u5F8C\uFF0C\u5831\u544A\u7684 needs \u8A72\u7B46\u5E36 review:true \u8207\u300C\u524D\u7F6E\u5DF2\u5B8C\u6210\uFF0C\u8A72\u91CD\u770B\u300D\uFF0C\u4E0D\u518D\u6C38\u9060\u986F\u793A\u5728\u7B49\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_step_assign\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u3002board \u8B80\u53D6\u683C\u6578 9\u219214\uFF08\u591A\u8B80\u76EE\u6A19\u6A39\u9032\u884C\u4E2D\u7684\u6B65\u9A5F\uFF09\u3002\n0.12.0\uFF1AAHub \u6709\u300C\u6BCF\u500B\u5C08\u6848\u7684\u76EE\u6A19\u6A39\u300D\u4E86\uFF08inkstone/Arcrun#349\uFF09\u2014\u2014\u8A18\u300C\u672A\u4F86 \u2212 \u73FE\u5728\u300D\uFF1A\u76EE\u6A19\uFF08\u4E00\u53E5\u8A71\u7684\u672A\u4F86\uFF0B\u9054\u6210\u6A19\u6E96\uFF0C\u53EF\u5206\u5C64\uFF0C\u76EE\u6A19\u6703\u8B8A\u3001\u6BCF\u6B21\u4FEE\u6539\u5FC5\u9644\u7406\u7531\u4E26\u81EA\u52D5\u7559\u8B8A\u66F4\u7D00\u9304\uFF09\u3001\u6B65\u9A5F\uFF08\u639B\u5728\u76EE\u6A19\u4E0B\uFF0C\u53EF\u4EE5\u9084\u6C92\u958B\u7968\uFF1B\u72C0\u614B done\uFF0Fdoing\uFF0Fpending\uFF0Fwaiting\uFF0Fneeds_user\uFF0C\u7B49\u5F85\u8207\u9700\u8981\u4F7F\u7528\u8005\u7684\u8981\u5BEB\u7B49\u4EC0\u9EBC\uFF1B\u524D\u7F6E\u6B65\u9A5F depends_on\uFF09\u3002\u6709\u639B\u7968\u7684\u6B65\u9A5F\u5F9E\u7968\u8207\u9818\u7968\u8B80\u72C0\u614B\uFF08\u7968\u95DC\u4E86\uFF1D\u5B8C\u6210\u3001\u9818\u7968\u5361\u4F4F\uFF1D\u7B49\u5F85\uFF09\u3002\u5BEB\u5165\u5DE5\u5177 goal_set\uFF0Fstep_set \u7528\u6A19\u984C\u6216 id \u90FD\u627E\u5F97\u5230\u3001\u540C\u4E00\u500B\u6A19\u984C\u91CD\u8907\u5BEB\u4E0D\u6703\u9577\u51FA\u91CD\u8907\uFF0C\u6A19\u984C\u76F8\u8FD1\u7684\u56DE 409 \u8207\u5019\u9078\uFF1B\u7E3D\u76E3\u7528 goals_report \u4E00\u6B21\u8B80\u5230\u6BCF\u500B\u5C08\u6848\u7684\u300C\u76EE\u6A19 A\uFF0F\u505A\u5230 B\uFF0F\u9700\u8981 C\u300D\uFF0C\u4E26\u6A19\u51FA\u88AB\u524D\u7F6E\u64CB\u4F4F\u7684\u76F8\u4F9D\u93C8\u8207\u6700\u524D\u9762\u7684\u5361\u9EDE\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u5C08\u6848\u76EE\u6A19\u6A39\u7684\u6700\u5F8C\u66F4\u65B0\u6642\u9593\uFF0C\u8D85\u904E goal_stale_hours\uFF08\u9810\u8A2D 168\uFF09\u6C92\u4EBA\u66F4\u65B0\u8A18 goal_stale\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_goal\u3001ahub_goal_log\u3001ahub_step\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 3 \u689D\u8DEF\u7531\u8207 3 \u652F MCP \u5DE5\u5177\uFF08goal_set\u3001step_set\u3001goals_report\uFF09\u30011 \u4EFD\u8AAA\u660E\uFF08goals\uFF09\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 23 \u63D0\u5230 26\u3002\n0.11.0\uFF1AAHub \u8A18\u5F97\u300C\u73FE\u5728\u6709\u54EA\u4E9B\u5C0D\u8A71\u958B\u8457\u300D\u4E86\uFF08inkstone/Arcrun#348\uFF09\u2014\u2014\u6BCF\u500B Claude \u5C0D\u8A71\u958B\u5DE5\u6642\u7528 checkin \u767B\u8A18\u4E00\u6B21\uFF08\u4E0D\u5FC5\u958B\u7968\uFF1A\u53EA\u662F\u53BB\u67E5\u67D0\u500B\u8A2D\u5B9A\u5728\u54EA\u7684\u5C0F\u5C0D\u8A71\u4E5F\u4E00\u6A23\uFF09\uFF0C\u7D50\u675F\u6642\u7528\u65B0\u7684 end_session \u6536\u5DE5\u3001\u53EF\u9644\u4E00\u53E5\u8A71\u7D50\u8AD6\uFF1B\u4E4B\u5F8C\u6BCF\u652F AHub \u5DE5\u5177\u5E36\u8457\u5C0D\u8A71\u8B58\u5225\uFF08session\uFF09\uFF0C\u5C31\u7B97\u4E00\u6B21\u6D3B\u52D5\u3001\u81EA\u52D5\u66F4\u65B0\u300C\u6700\u5F8C\u6D3B\u52D5\u300D\uFF0C\u4E0D\u5FC5\u518D\u5831\u5230\uFF1B\u540C\u4E00\u500B\u5C0D\u8A71\u91CD\u8907\u5831\u5230\u53EA\u662F\u66F4\u65B0\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u9032\u884C\u4E2D\uFF08\u6C92\u6536\u5DE5\uFF09\u7684\u5C0D\u8A71\u3001\u4F9D\u5DE5\u4F5C\u7AD9\u5206\u7D44\uFF0C\u9023\u5F97\u5230\u5B83\u9818\u7684\u7968\uFF1B\u4E45\u6C92\u6D3B\u52D5\u53C8\u6C92\u6536\u5DE5\u7684\u8A18 session_stale\uFF08\u9580\u6ABB session_stale_hours\uFF0C\u9810\u8A2D 12 \u5C0F\u6642\uFF09\uFF1B\u5DF2\u6536\u5DE5\u7684\u4E0D\u4F54\u7248\u9762\uFF0C\u7528\u65B0\u7684 list_sessions \u67E5\u5F97\u5230\u3002\u5DE5\u4F5C\u7AD9\u53EA\u8981\u9084\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF0C\u5C31\u4E0D\u518D\u5831\u300C\u5831\u5230\u4E86\u537B\u6C92\u9818\u7968\u300D\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_session\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 4 \u689D\u8DEF\u7531\u8207 2 \u652F MCP \u5DE5\u5177\uFF08end_session\u3001list_sessions\uFF09\uFF0Ccheckin \u591A\u6536 session\uFF0Ftitle\uFF0Fticket\uFF0C\u5176\u9918\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 session\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 21 \u63D0\u5230 23\u3002\n0.10.1\uFF1A\u4FEE\u6389\u300C\u66F4\u65B0\u5931\u6557\u30FB\u8CC7\u6599\u4F86\u81EA\u597D\u5E7E\u500B\u5C0F\u6642\u524D\u300D\u2014\u2014AHub \u756B\u9762\u8B80\u4E0D\u5230\u65B0\u8CC7\u6599\uFF08\u7968\u3001\u5168\u90E8\u5C08\u6848\u3001\u6A19\u7C64\u90FD\u505C\u5728\u820A\u7684\uFF09\u3002\u539F\u56E0\u662F\u5F15\u64CE\u6539\u4E86\u4E00\u500B\u7D30\u7BC0\uFF0C\u756B\u9762\u5728\u300C\u9019\u53F0\u5DF2\u7D93\u767B\u8A18\u904E\u300D\u7684\u60C5\u6CC1\u4E0B\u628A\u771F\u6B63\u7684\u56DE\u61C9\u4E1F\u6389\u4E86\uFF1B\u73FE\u5728\u6539\u597D\uFF0C\u6309\u300C\u66F4\u65B0\u300D\u5F8C\u756B\u9762\u6703\u62FF\u5230\u6700\u65B0\u7684\u7968\uFF08inkstone/Arcrun#347\uFF09\u3002\n0.10.0\uFF1AAHub \u8A18\u5F97\u300C\u54EA\u500B Claude \u5C08\u6848\u9818\u4E86\u54EA\u5F35\u7968\u3001\u505A\u5230\u54EA\u300D\u4E86\uFF08inkstone/Arcrun#346\uFF09\u2014\u2014\u5DE5\u4F5C\u7AD9\uFF08\uFF1D\u4E00\u500B Claude \u5C08\u6848\uFF09\u5831\u5230 checkin\u3001\u9818\u7968 claim\u3001\u56DE\u5831 report\u3001\u653E\u624B release\uFF1B\u7E3D\u76E3\u4E00\u6B21\u770B\u5168\u90E8\u7684\u770B\u677F board\uFF1B\u7E3D\u76E3\u5C0D\u88AB\u9818\u8D70\u7684\u7968\u958B\u300C\u8981\u6C42\u56DE\u5831\u300Drequest_report\uFF0C\u8A72\u5DE5\u4F5C\u7AD9\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55 AHub \u5DE5\u5177\u6642\u56DE\u61C9\u7684 next_actions \u5C31\u5E36\u51FA\u4F86\uFF0C\u56DE\u5831\u5F8C\u81EA\u52D5\u6D88\u6389\uFF1Bmy_queue \u53EF\u4F9D\u5DE5\u4F5C\u7AD9\u7BE9\u3002\u9818\u7968\u6642\u56DE\u61C9\u5E36\u9019\u5F35\u7968\u5C6C\u65BC\u54EA\u500B milestone\uFF08\u81EA\u5DF1\u639B\u7684\uFF0C\u6C92\u6709\u5C31\u770B\u64CB\u4F4F\u7684\u8F09\u9AD4\u7968\u639B\u7684\uFF09\uFF1B\u770B\u677F\u6293\u7570\u5E38\uFF1A\u5831\u5230\u537B\u6C92\u9818\u7968\u3001\u9818\u7684\u7968\u4E45\u6C92\u56DE\u5831\u3001\u4E0D\u5C6C\u65BC\u4EFB\u4F55 milestone\u3001\u56DE\u5831\u5B8C\u6210\u4F46 milestone \u6C92\u95DC\u6216\u6C92\u6709\u7248\u672C\uFF08\u53EA commit \u5C31\u653E\u8457\uFF09\u3001\u5DE5\u4F5C\u7AD9\u4E45\u6C92\u78B0 AHub\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_station\u3001ahub_claim\u3001ahub_report_ask\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08ahub_release_link \u53EA\u591A\u4E00\u500B\u7D22\u5F15\uFF09\uFF1B\u65B0\u589E 6 \u652F MCP \u5DE5\u5177\u8207 1 \u4EFD\u5831\u5230\u8AAA\u660E\uFF0C\u65E2\u6709\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 station \u53C3\u6578\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 15 \u63D0\u5230 21\u3002\n0.9.1\uFF1A\u5217\u7968\u3001\u5217\u7559\u8A00\u8B8A\u5FEB\uFF08leo 2026-11-04\uFF09\u2014\u2014\u539F\u672C\u5217\u4E00\u500B repo \u7684\u7968\uFF0C\u77E5\u8B58\u5EAB\u8981\u628A\u540C\u4E00\u500B repo \u5E95\u4E0B\u6240\u6709\u7559\u8A00\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u4E00\u8D77\u7FFB\u904E\u624D\u6E4A\u5F97\u51FA\u7968\uFF0C\u7559\u8A00\u8D8A\u591A\u8D8A\u6162\u3001\u8D8A\u5403\u984D\u5EA6\uFF1B\u73FE\u5728 AHub \u6703\u7528\u4F86\u67E5\u7684\u683C\u5B50\u90FD\u958B\u4E86\u77E5\u8B58\u5EAB\u7684\u300C\u6B04\u4F4D\u503C\u7D22\u5F15\u300D\uFF0C\u5217\u7968\u7684\u6210\u672C\u53EA\u8DDF\u8981\u5217\u7684\u7968\u6578\u6709\u95DC\u3002\u5B89\u88DD\u6216\u6309\u300C\u66F4\u65B0\u300D\u6642\u81EA\u52D5\u66FF\u65E2\u6709\u8CC7\u6599\u5EFA\u7D22\u5F15\uFF08\u8CC7\u6599\u591A\u6642\u5206\u5E7E\u6B21\u505A\u5B8C\uFF0C\u6C92\u5EFA\u597D\u4E4B\u524D\u7167\u820A\u53EF\u7528\u3001\u53EA\u662F\u9084\u6C92\u8B8A\u5FEB\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 kbdb migration 0016\u3002\n0.9.0\uFF1A\u7968\u53EF\u4EE5\u4E0D\u5206 repo \u641C\u4E86\uFF08inkstone/Arcrun#329\uFF09\u2014\u2014AHub \u756B\u9762\u7684\u5C08\u6848\u9078\u55AE\u591A\u4E86\u300C\u5168\u90E8\u5C08\u6848\u300D\uFF0C\u4E00\u6B21\u5217\u51FA\u6240\u6709 repo \u7684\u7968\u3001\u6BCF\u5217\u6A19\u660E repo\uFF1B\u641C\u5C0B\u6846\u8F38\u5165 298\u3001#298\u3001Arcrun#298\u3001inkstone/Arcrun#298 \u90FD\u627E\u5F97\u5230\uFF08\u540C\u865F\u78BC\u7684\u7968\u6BCF\u500B repo \u5404\u4E00\u5F35\uFF0C\u865F\u78BC\u76F8\u7B26\u6392\u6700\u524D\u9762\uFF09\uFF0CAI \u7684 list_issues \u540C\u4EAB\u3002\u6BCF\u5F35\u7968\u6709\u56FA\u5B9A\u9023\u7D50\uFF08\u7968\u8A73\u60C5\u7684\u300C\u8907\u88FD\u9023\u7D50\u300D\uFF0C\u5F62\u5982 \u2026#/app/ahub/inkstone/Arcrun/issues/298\uFF0C\u958B\u555F\u76F4\u9054\u90A3\u5F35\u7968\u7531 #326 \u7684\u7DB2\u5740\u76F4\u9054\u8CA0\u8CAC\uFF09\u3002\n0.8.0\uFF1AAHub \u81EA\u5DF1\u7D66 AI \u5DE5\u5177\u4E86\uFF08inkstone/Arcrun#328\uFF09\u2014\u2014Arcrun MCP \u9023\u7DDA\u6642\u81EA\u52D5\u639B\u4E0A 15 \u652F arcrun_ahub_* \u5DE5\u5177\u8207 4 \u4EFD\u8AAA\u660E\uFF08\u7968\u3001\u7C3D\u6838\u3001\u51FA\u8CA8\u3001\u932F\u53C8\u72AF\u4E86\uFF09\uFF0C\u4E0D\u5FC5\u53E6\u5916\u88DD plugin\u3002\u7C3D\u6838\u4EBA\u6539\u7531\u6BCF\u500B\u79DF\u6236\u5728 AHub \u756B\u9762\u7684\u300C\u8A2D\u5B9A\u300D\u586B\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\uFF1B\u53EA\u6709\u7C3D\u6838\u4EBA\u7C3D\u7684\u624D\u7B97\u3002AI \u6539\u7528\u300C\u767C\u7C3D\u6838\u8ACB\u6C42\u300D\u8207\u300C\u8B80\u7C3D\u6838\u7D50\u679C\u300D\u5169\u652F\u5DE5\u5177\uFF0C\u81EA\u5DF1\u5728\u7559\u8A00\u88E1\u5BEB ARM:\uFF0F\u7C3D\u6838\u884C\u6703\u88AB\u64CB\u3002\u95DC\u7968\u53EF\u9644\u4EA4\u4ED8\u7269\uFF1B\u540C\u4E00\u500B\u932F\u53C8\u72AF\u4E86\u53EF\u56DE\u5831\u5230\u6A5F\u5236\u7968\uFF08\u95DC\u4E86\u6703\u91CD\u958B\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#327\u30020.7.4\uFF1A\u4FEE\u6389 0.7.3 \u7684\u4E00\u500B\u932F\uFF1AAI \u91CD\u767C\u89E3\u9396\u78BC\u6642\uFF0C\u9078\u55AE\u6703\u8AA4\u6293\u7559\u8A00\u88E1\u63D0\u5230\u7684\u4E0A\u4E00\u7D44\uFF08\u5DF2\u904E\u671F\u7684\uFF09\u78BC\u30020.7.3\uFF1A\u7C3D\u6838\u9078\u55AE\u4E5F\u8A8D\u5F97 AI \u8981\u4F60\u8CBC\u7684\u4E00\u6B21\u6027\u89E3\u9396\u78BC\uFF08\u300C\u{1F510} ARM \u8ACB\u6C42\u300D\uFF0C\u63A8 GitHub \u6216\u78B0\u6B63\u5F0F\u74B0\u5883\u524D\u90A3\u7A2E\uFF09\uFF1A\u6309\u300C\u7C3D\u6838\u2026\u300D\u9078\u5B83\u3001\u6309\u540C\u610F\u5C31\u5E6B\u4F60\u628A\u78BC\u8CBC\u4E0A\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u6284\uFF1B\u4F60\u81EA\u5DF1\u6253\u904E\u78BC\u7684\u90A3\u5247\u6703\u6A19\u6210\u5DF2\u7C3D\uFF0C\u4E0D\u518D\u639B\u8457\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u30020.7.2\uFF1A\u4E00\u6B21\u7559\u8A00\u3001\u6539\u9032\u5EA6\u9019\u985E\u5BEB\u5165\u5C11\u4ED8\u4E00\u6574\u8D9F\u2014\u2014\u5EFA\u8207\u6539\u5408\u6210\u4E00\u500B\u8ACB\u6C42\u3001\u5728\u5F15\u64CE\u90A3\u7AEF\u540C\u6642\u5BEB\uFF08\u539F\u672C\u662F\u5169\u500B\u4F9D\u5E8F\u7684\u6B65\u9A5F\uFF0Cyoulin \u5BE6\u6E2C\u5404\u7D04 1.2\uFF5E1.6 \u79D2\uFF09\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#325\u30020.7.1\uFF1A\u6539\u9032\u5EA6\u3001\u91CC\u7A0B\u7891\u3001\u72C0\u614B\u3001\u6A19\u7C64\u6642\u756B\u9762\u7576\u4E0B\u5C31\u63DB\u6210\u65B0\u503C\u3001\u80CC\u666F\u5B58\u6A94\uFF0C\u5B58\u4E0D\u9032\u53BB\u624D\u63DB\u56DE\u539F\u6A23\uFF08\u4E0D\u518D\u5361\u8457\u7B49 4\uFF5E13 \u79D2\uFF09\u3002\u7C3D\u6838\u6539\u6210\u9078\u55AE\uFF08leo 2026-10-25\uFF09\uFF1A\u4E0D\u5FC5\u518D\u6253\u7248\u672C\u865F\u2014\u2014AI \u628A\u8981\u4F60\u7C3D\u7684\u5167\u5BB9\u5BEB\u6210\u4E00\u5247\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u7684\u7559\u8A00\uFF0C\u6309\u300C\u7C3D\u6838\u2026\u300D\u5F9E\u4E0B\u62C9\u9078\u5B83\u3001\u52FE\u540C\u610F\u6216\u4E0D\u540C\u610F\u3001\u53EF\u52A0\u610F\u898B\uFF0C\u7C3D\u6838\u8207\u88AB\u7C3D\u7684\u5167\u5BB9\u7D81\u5728\u4E00\u8D77\uFF1B\u540C\u610F\u51FA\u6B63\u5F0F\u7248\u7684\u8ACB\u6C42\u6642\u4E00\u4F75\u7559\u4E0B\u51FA\u8CA8\u7DDA\u8A8D\u5F97\u7684\u300CARM: <\u7248\u672C>\u300D\u3002\u4FEE\u6389\u820A\u7684\u7C3D ARM \u6846\u628A\u300CARM: 9.9.9\u300D\u5224\u6210\u683C\u5F0F\u4E0D\u5C0D\u30020.7.0\uFF1AAHub \u6709\u756B\u9762\u4E86\uFF08inkstone/Arcrun#323\uFF09\u2014\u2014\u5728 Portal \u6253\u958B AHub \u5C31\u80FD\u589E\u6539\u95DC\u7968\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u3001\u5C08\u6848\uFF1B\u9EDE\u7968\u5F9E\u53F3\u908A\u6ED1\u51FA\u8A73\u60C5\uFF0C\u7559\u8A00\u7528 Markdown \u5BEB\u3001\u53EF\u9810\u89BD\u3001\u7167\u683C\u5F0F\u986F\u793A\uFF0C\u80FD\u7C3D ARM\u3002\u5F9E\u756B\u9762\u5BEB\u7684\u4F5C\u8005\u662F Leo\uFF1A\u5BEB\u5165\u8DEF\u7531\u591A\u6536\u300CPortal \u4E3B\u4EBA\u6309\u7684\u300D\u65B7\u8A00\uFF08\u554F\u5F15\u64CE\u9A57\u904E\u3001\u662F\u7BA1\u7406\u54E1\u624D\u5BEB\uFF09\uFF1BAI \u8207 App \u7528 token \u7684\u5BEB\u6CD5\u5B8C\u5168\u4E0D\u8B8A\u30020.6.0\uFF1A\u88DC\u756B\u9762\u8981\u7BA1\u5B8C\u6574\u5354\u4F5C\u7684\u5F8C\u7AEF\u7F3A\u53E3\uFF08inkstone/Arcrun#320\uFF09\u2014\u2014\u5C08\u6848\uFF08repo\uFF09\u6E05\u55AE\u8207\u6539 description\uFF0Fprivate\uFF1Brelease \u9023\u5F97\u5230\u91CC\u7A0B\u7891\uFF08\u53EF\u8DE8 repo\uFF09\u4E26\u6A19\u6709\u6C92\u6709\u63A8 GitHub\uFF1B\u7559\u8A00\u53EF\u6539\u53EF\u522A\uFF08\u4F5C\u8005\u672C\u4EBA\uFF09\uFF1B\u76F8\u4F9D\u53EF\u79FB\u9664\uFF1B\u8DE8 repo \u7684\u91CC\u7A0B\u7891\u7E3D\u89BD\u4E00\u6B21\u7D66\u9032\u5EA6 %\u3001\u6700\u8FD1\u6D3B\u52D5\u3001\u8AB0\u5728\u63A8\u3001\u7522\u51FA\u7684 release\u3002\u65B0\u589E\u5169\u500B template\uFF08ahub_release_link\u3001ahub_comment_meta\uFF09\uFF0C\u820A\u8CC7\u6599\u4E0D\u5FC5\u91CD\u532F\uFF0C\u6C92\u8CC7\u6599\u5C31\u56DE\u7A7A\u503C\u30020.5.0\uFF1A\u5408\u4F75 0.4.0\uFF08release \u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u8207 0.3.2\uFF08Portal \u7559\u8A00\uFF09\uFF0C\u4E00\u500B App \u4E00\u500B\u7248\u672C\u865F\uFF1B\u5DF2\u88DD 0.3.x\uFF0F0.4.0 \u7684\u5BE6\u4F8B\u6309\u300C\u66F4\u65B0\u300D\u5C31\u5230\u4F4D\u30020.3.2\uFF1A\u65B0\u589E\u300CPortal \u7559\u8A00\u300D\u8DEF\u7531\u2014\u2014\u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u756B\u9762\u7559\u8A00\uFF0C\u4F5C\u8005\u662F Leo\uFF0C\u8EAB\u5206\u770B\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\u800C\u4E0D\u662F token\uFF1B\u516C\u958B\u7684 token \u767B\u8A18\u4E0D\u518D\u6536\u4EBA\u7684\u767B\u5165\u540D\uFF08Leo\uFF09\u8207 kind=human\uFF0CAI \u767B\u8A18\u4E0D\u51FA\u4E00\u500B Leo\uFF08inkstone/Arcrun#304 c22862\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 /portal/actor/verify\u30020.4.0\uFF1A\u52A0\u4E0A release\uFF08\u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u2014\u2014\u5EFA\uFF0F\u5217\uFF0F\u8B80\uFF0F\u7528 tag \u627E\uFF0F\u88DC\u9644\u4EF6\u6307\u6A19\uFF0CGitea \u5F62\u72C0\uFF1B\u8B80\u7684\u8DEF\u7531\u4E0D\u67E5 token\uFF08\u770B\u7248\u672C\u6E05\u55AE\u4E0D\u9700\u8981\u7F72\u540D\uFF09\uFF1B\u53E6\u6709 /ahub/releases \u6BCF\u500B repo \u4E00\u884C\u7D66\u7248\u672C\u9801\u7528\u3002\u532F\u5165\u7684\u820A release \u8207\u65B0\u5EFA\u7684\u662F\u540C\u4E00\u7A2E\u8CC7\u6599\uFF08ahub_release\u3001ahub_attachment \u5169\u500B template \u4F75\u5165\u5BA3\u544A\uFF09\uFF1B\u6C92\u6709 DELETE\uFF08\u4EE3\u8F49\u5C64\u6C92\u6709\u522A record \u7684\u53E3\uFF09\u3002inkstone/InkStoneCo#234 c22846\u30020.3.1\uFF1A\u4FEE\u958B\u7968\u7671\u7613\u2014\u2014\u4E00\u500B repo \u6700\u65B0\u5E7E\u7B46\u5168\u662F key \u4E0D\u50CF\u7968\u865F\u7684\u7D00\u9304\u6642\uFF0C\u958B\u7968\u5F9E #1 \u8D77\u6392\u7684\u516B\u500B\u5617\u8A66\u5168\u649E\u65E2\u6709\u7684\u7968\u800C 503\uFF1B\u73FE\u5728\u9019\u7A2E\u60C5\u6CC1\u6539\u5F9E\u7B46\u6578+1 \u8D77\u6392\uFF08inkstone/Arcrun#308 c20214\uFF09\u30020.3.0\uFF1A\u8B80\u53D6\u4E26\u884C\uFF08\u7B2C\u4E00\u6279\u8B80\u540C\u6642\u6253\uFF0C\u8EAB\u5206\u67E5\u8A62\u4F75\u9032\u7B2C\u4E00\u6279\uFF09\u3001\u7968\u865F\u7528 create_only \u6436\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u958B\u7968\u4E0D\u6703\u540C\u865F\uFF09\u3001\u76F8\u4F9D\u7968\u7528 batch-get \u4E00\u6B21\u8B80\u5B8C\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#305\uFF0B#307\u30020.2.0\uFF1A\u8CC7\u6599\u6539\u6210 template\uFF0Brecord\uFF08\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u5404\u4E00\u7A2E\uFF09\uFF0C\u7A2E\u985E\u53EA\u7531 template \u6C7A\u5B9A\uFF08inkstone/Arcrun#301\uFF09\u30020.1.0\uFF1A\u9AA8\u67B6\u3002\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u3001\u91CC\u7A0B\u7891\u3001\u8DE8 repo \u641C\u5C0B\u2014\u2014Gitea \u5F62\u72C0\u7684 API\uFF0C\u72C0\u614B\u4F4F KBDB\uFF08\u96F6 SQL\uFF09\u3002\u6C92\u6709\u756B\u9762\uFF1B\u756B\u9762\u662F\u7968\u770B\u677F App \u63DB\u8CC7\u6599\u4F86\u6E90\u3002",
+  version: "0.45.0",
+  changelog: "0.45.0\uFF1A\u7C3D\u8B49\u5361\u8207\u7C3D\u6838\u6846\u76F4\u63A5\u5217\u51FA\u4EFB\u52D9\u6E05\u55AE\uFF08inkstone/Arcrun#457\uFF09\u2014\u2014\u610F\u5716\u7968\u9801\u4E0A\u300C\u610F\u5716\u5B8C\u6210\u7C3D\u8B49\u300D\u5361\u8207\u300C\u7B49\u4F60\u8655\u7406\u300D\u7684\u7C3D\u6838\u6846\uFF0C\u591A\u4E00\u584A\u300C\u5171 N \u500B\u4EFB\u52D9\u30FB\u5168\u90E8\u5B8C\u6210\uFF0F\u9084\u6709 X \u500B\u6C92\u505A\u5B8C\u300D\uFF0C\u5E95\u4E0B\u6BCF\u5F35\u4E00\u884C\uFF1A\u2713 \u5DF2\u5B8C\u6210\u3001\u2610 \u9084\u958B\u8457\uFF08\u7D05\u5B57\uFF0C\u5BEB\u8AB0\u5728\u505A\uFF09\u3001\u2298 \u6A19\u4E86\u4E0D\u505A\uFF0C\u5F8C\u9762\u662F\u7968\u865F\uFF0C\u9EDE\u4E86\u6253\u958B\u90A3\u5F35\u7968\u770B\u505A\u4E86\u4EC0\u9EBC\uFF1B\u9084\u958B\u8457\u7684\u6392\u6700\u524D\u9762\uFF0C\u8D85\u904E 10 \u5F35\u5176\u9918\u6536\u5408\u3002\u7BC4\u570D\u8207\u7C3D\u8B49\u5224\u65B7\u300C\u5168\u95DC\u300D\u7528\u7684\u662F\u540C\u4E00\u4EFD\uFF08\u5152\u5B50\u3001\u5B6B\u5B50\u3001\u66FE\u5B6B\u3001\u5F15\u7528\u7684\u7968\uFF09\u3002\u7C3D\u8B49\u958B\u4E86\u4E4B\u5F8C\u53C8\u6709\u7968\u88AB\u91CD\u958B\uFF0C\u5361\u4E0A\u7D05\u5B57\u63D0\u9192\u300C\u78BA\u8A8D\u4E86\u4E5F\u904E\u4E0D\u4E86 prod \u6D77\u95DC\u300D\u3002\u53EA\u6709\u8981\u4EBA\u78BA\u8A8D\u7C3D\u8B49\u6216\u7C3D\u6838\u7684\u7968\u624D\u8B80\u9019\u4EFD\u6E05\u55AE\uFF08\u65B0\u552F\u8B80\u8DEF\u7531 GET /ahub/visas/tasks\uFF0C\u53EA\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u8207\u958B\u7C3D\u8B49\u540C\u4E00\u5957\u4E0A\u9650\uFF09\uFF1B\u5176\u4ED6\u7968\u4E0D\u591A\u8B80\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3002\n0.44.0\uFF1A\u958B\u7968\u7684\u91CD\u8907\u6BD4\u5C0D\u4E0D\u518D\u6BCF\u958B\u4E00\u5F35\u5C31\u91CD\u8B80\u6574\u500B\u7968\u6C60\uFF08inkstone/Arcrun#446 \u7B2C 7 \u9805\uFF09\u2014\u2014\u6BD4\u5C0D\u8B80\u7968\u6C60\u6642\u5E36 max_age=30\uFF0C\u77E5\u8B58\u5EAB\u6B63\u9580 30 \u79D2\u5167\u76F4\u63A5\u7528\u4E0A\u4E00\u4EFD\u7B54\u6848\uFF081,290 \u5F35\u6642\u4E00\u6B21\u958B\u7968 D1 \u8B80\u7D04 33k rows\uFF0C\u9023\u7E8C\u958B\u7968\u6642\u53EA\u6709\u7B2C\u4E00\u5F35\u4ED8\uFF09\uFF1B\u627E\u76F8\u8FD1\u7968\u7684\u7B97\u6CD5\u8207 409 \u5019\u9078\u898F\u5247\u4E0D\u8B8A\uFF0C\u53EA\u662F\u7968\u6C60\u5FEB\u7167\u6700\u591A\u820A 30 \u79D2\u3002\u9700\u8981\u5F15\u64CE 1.4.242 \u4EE5\u4E0A\uFF08\u820A\u5F15\u64CE\u5FFD\u7565\u9019\u500B\u53C3\u6578\uFF0C\u7167\u820A\u6BCF\u6B21\u8B80\uFF09\u3002\n0.43.0\uFF1A\u7C3D\u5B8C\u901A\u77E5\u7E3D\u76E3\uFF08inkstone/Arcrun#452\uFF09\u2014\u2014\u7C3D\u6838\u4EBA\u5728 Portal \u7C3D\u6838\uFF08\u540C\u610F\uFF0F\u4E0D\u540C\u610F\uFF09\u6216\u78BA\u8A8D\u7C3D\u8B49\uFF0C\u540C\u4E00\u7B46\u5BEB\u5165\u8A18\u4E00\u7B46\u7D66\u5DE5\u4F5C\u7AD9\u300C\u5C08\u6848\u7E3D\u76E3\u300D\u7684\u901A\u77E5\uFF08\u54EA\u5F35\u7968\u3001\u54EA\u5F35\u55AE\u3001\u7248\u672C\u3001\u540C\u610F\u8207\u5426\u3001\u6642\u9593\uFF09\uFF1A\u8D70\u65E2\u6709\u7684\u8981\u6C42\u56DE\u5831\u6A5F\u5236\uFF0C\u7E3D\u76E3\u4E0B\u6B21\u5E36 station \u547C\u53EB\u4EFB\u4F55 AHub \u5DE5\u5177\uFF0Cnext_actions \u5C31\u5E36\u51FA\uFF1B\u8B80\u90A3\u5F35\u7968\u7684\u7C3D\u6838\u7D50\u679C\uFF08signoff_status \u5E36 station\uFF09\u5F8C\u6D88\u6389\u3002\u53E6\u6253\u4E00\u6B21\u6392\u7A0B\u4EFB\u52D9\u300CAHub \u7C3D\u5B8C\u56DE\u5831\u300D\u7684 API \u53EB\u9192\u7E3D\u76E3\uFF1A\u6B0A\u6756\u53EA\u7528 credential \u540D\u5B57 ahub_signoff_wake\uFF08\u503C\u7531\u5BE6\u4F8B\u4E3B\u4EBA\u5728 Portal\u300C\u91D1\u9470\u7BA1\u7406\u300D\u586B\u4E00\u6B21\uFF09\uFF1B\u6C92\u8A2D\uFF1D\u53EA\u6709\u901A\u77E5\u3001\u7C3D\u6838\u7167\u5E38\uFF1B\u8A2D\u4E86\u4F46\u9001\u4E0D\u5230\uFF1D\u7C3D\u6838\u7167\u6A23\u6210\u529F\u3001\u7968\u4E0A\u7559\u4E00\u5247\u300C\u901A\u77E5\u6C92\u9001\u5230\uFF1A\u539F\u56E0\u300D\u3002\u65B0\u589E 2 \u689D\u8DEF\u7531\uFF08ask_ack\u3001signoff_wake\uFF09\u8207 1 \u652F recipe\uFF08ahub_signoff_wake\uFF09\uFF0C\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3002\u7C3D\u8B49\u78BA\u8A8D\u8DEF\u5F91\u9001\u4E0D\u5230\u6642\u53EA\u6709\u901A\u77E5\u3001\u7968\u4E0A\u4E0D\u7559\u8A00\uFF08\u90A3\u689D\u8DEF\u7531\u4E0D\u8B80\u7968\uFF09\u3002\n0.42.0\uFF1A\u7968\u4E0A\u6BCF\u5247\u7559\u8A00\u90FD\u6709\u77ED\u7DE8\u865F\u300C\u7B2C K \u5247\u300D\uFF08inkstone/Arcrun#448\uFF09\u2014\u2014\u7167\u7559\u8A00\u5148\u5F8C\u905E\u589E\uFF0C\u522A\u6389\u7684\u4E5F\u4F54\u865F\u3001\u5F8C\u9762\u7684\u4E0D\u91CD\u6392\uFF08\u7531\u7559\u8A00 id \u63A8\u7B97\uFF0C\u4E0D\u52A0\u683C\u5B50\u3001\u820A\u7968\u4E0D\u5FC5\u9077\u79FB\uFF09\u3002\u7968\u9801\u6BCF\u5247\u7559\u8A00\u5DE6\u4E0A\u89D2\u300C#K\u300D\uFF0C\u9EDE\u4E86\u8907\u88FD\u300Cowner/repo#N \u7B2C K \u5247\u300D\u8207\u9023\u7D50\uFF1B\u7B49\u4F60\u8655\u7406\u5361\u3001\u7C3D\u6838\u5361\u5BEB\u300C\u7B2C K \u5247 \u2193\u300D\uFF0C\u9996\u5C4F\u5361\u4E0A\u300CArcrun#445 \u7B2C 3 \u5247\u300D\u9EDE\u4E86\u76F4\u63A5\u843D\u5728\u90A3\u4E00\u5247\uFF1B\u7C3D\u8B49\u5361\u5BEB\u300C\u7C3D\u8B49\u7B2C K \u5F35\u300D\u3002\u8B80\u7559\u8A00\u3001\u7C3D\u6838\u770B\u677F\u3001\u8981\u6C42\u770B\u677F\u3001\u7B49\u4F60\u8655\u7406\u6E05\u55AE\u3001\u958B\u7C3D\u6838\u55AE\uFF0F\u8981\u6C42\u55AE\u3001\u958B\u7C3D\u8B49\u90FD\u56DE no \u8207 ref\uFF0C\u958B\u55AE\u6642\u8981\u8F49\u7D66\u7C3D\u6838\u4EBA\u7684\u90A3\u53E5\u8A71\u5BEB\u660E\u7C3D\u7B2C\u5E7E\u5247\uFF1BMCP get_issue \u53EF\u7528 comment_no \u8B80\u300C\u7B2C K \u5247\u300D\u3002\n0.41.0\uFF1A\u4E00\u5F35\u756B\u9762\u7684\u8B80\u53D6\u4E0D\u518D\u662F\u5E7E\u5341\u5230\u5E7E\u767E\u500B\u8ACB\u6C42\uFF08inkstone/Arcrun#446 \u7B2C 1 \u9805\uFF09\u2014\u2014\u6BCF\u4E00\u6279\u8B80\u6539\u6210\u4E00\u500B\u8ACB\u6C42\uFF08\u65B0 recipe ahub_rec_multi\uFF0CKBDB \u7684 POST /records/multi-read\uFF09\uFF0C\u77E5\u8B58\u5EAB\u628A\u9019\u4E00\u4E32\u8B80\u7684 SQL \u6536\u6210\u4E00\u8F2A\u4E00\u8D9F\u5F80\u8CC7\u6599\u5EAB\u9001\uFF1B\u8DEF\u7531\u4E00\u689D\u90FD\u6C92\u6539\uFF0C\u7B54\u6848\u4E0D\u8B8A\u3002\u9700\u8981\u5F15\u64CE 1.4.233 \u4EE5\u4E0A\u3002\n0.40.2\uFF1A\u5BEB\u6210\u529F\u5C31\u8AAA\u6210\u529F\uFF08inkstone/Arcrun#445\uFF09\u2014\u2014\u7968\u9801\u4E0A\u4EFB\u4F55\u5BEB\u5165\u9215\uFF08\u7C3D\u8B49\u78BA\u8A8D\uFF0F\u9000\u56DE\u3001\u7559\u8A00\u3001\u4FEE\u6539\u3001\u522A\u9664\u7559\u8A00\u3001\u7C3D\u6838\uFF09\uFF0C\u53EA\u8981\u4F3A\u670D\u5668\u56DE\u6210\u529F\uFF0C\u756B\u9762\u5148\u7167\u7D50\u679C\u6539\u597D\uFF08\u5361\u8B8A\u300C\u5DF2\u78BA\u8A8D\u300D\u3001\u6309\u9215\u6536\u6389\u3001\u7559\u8A00\u51FA\u73FE\uFF0F\u6D88\u5931\uFF09\u4E26\u8AAA\u300C\u5DF2\u78BA\u8A8D\u7C3D\u8B49\u300D\u4E4B\u985E\u7684\u6210\u529F\u5B57\uFF1B\u7DCA\u63A5\u7684\u91CD\u8B80\u649E\u77E5\u8B58\u5EAB\u5FD9\uFF0C\u53EA\u63D0\u793A\u300C\u756B\u9762\u7A0D\u5F8C\u81EA\u5DF1\u66F4\u65B0\uFF0C\u4E0D\u7528\u518D\u6309\u300D\uFF0C\u4E0D\u518D\u4EAE\u300C\u8B80\u4E0D\u5230\u9019\u5F35\u7968\u300D\u7D05\u5B57\u3001\u6309\u9215\u4E5F\u4E0D\u518D\u5361\u5728\u300C\u9001\u51FA\u4E2D\u2026\u300D\uFF0C\u4E26\u81EA\u5DF1\u9694 3\uFF0F6\uFF0F12\uFF0F24 \u79D2\u518D\u8B80\u4E00\u6B21\u5C0D\u9F4A\u3002\u8B80\u53D6\u7167\u820A\u4E0D\u91CD\u9001\uFF08#374\uFF09\uFF0C\u53EA\u662F\u756B\u9762\u665A\u9EDE\u518D\u554F\u4E00\u6B21\u3002\u6C92\u6709\u65B0\u8868\u3001\u6C92\u6709\u65B0\u67E5\u8A62\u3002\n0.39.1\uFF1A\u300C\u7B49\u4F60\u8655\u7406\u300D\u4E0D\u518D\u53EA\u8B80\u6700\u65B0 24 \u5F35\u639B Human \u7684\u7968\uFF08inkstone/Arcrun#440\uFF09\u2014\u2014\u4EE5\u524D\u7B2C 25 \u5F35\u4EE5\u5F8C\u958B\u8457\u7684\u7C3D\u6838\u55AE\u975C\u975C\u4E0D\u898B\uFF0C\u7E3D\u7BA1\u7167\u6E05\u55AE\u56DE\u5831\u5C31\u6F0F\u4E86\u4E00\u5F35\uFF08leo21c \u7684 ISEP#296 \u7C3D\u6838\u55AE\uFF09\u3002\u73FE\u5728\u5148\u7528\u4E00\u500B\u8ACB\u6C42\u770B\u5B8C\u6240\u6709\u639B Human \u7684\u7968\u958B\u8457\u9084\u662F\u95DC\u4E86\uFF08\u53EA\u56DE key\uFF0Ftitle\uFF0Fstate\uFF09\uFF0C\u53EA\u66FF\u958B\u8457\u7684\u7968\u8B80\u7559\u8A00\uFF08\u6BCF\u5F35 2 \u8B80\uFF0C\u4EE5\u524D 3 \u8B80\uFF09\uFF1B\u4E00\u9801\u6700\u591A\u8B80 45 \u5F35\u958B\u8457\u7684\u7968\uFF0C\u66F4\u591A\u7684\u7528 offset \u63A5\u8457\u8B80\uFF0C\u756B\u9762\u81EA\u5DF1\u628A\u5F8C\u9762\u5E7E\u9801\u8B80\u5B8C\u4F75\u8D77\u4F86\uFF0CMCP \u7684 assignments \u56DE waiting_unread\uFF0Fwaiting_next_offset \u4E26\u53EB\u547C\u53EB\u7684 AI \u5E36 waiting_offset \u8B80\u4E0B\u4E00\u9801\uFF1B\u771F\u7684\u6C92\u8B80\u5B8C\uFF0C\u756B\u9762\u8207 MCP \u90FD\u660E\u8B1B\u300C\u9084\u6709 N \u5F35\u6C92\u8B80\u5230\u300D\uFF0C\u4E0D\u5047\u88DD\u662F\u5168\u90E8\u3002\u8B80\u7684\u5217\u6578\u8DDF\u639B Human \u7684\u7968\u6578\u6210\u6B63\u6BD4\uFF0C\u4E0D\u8DDF\u6574\u500B\u7968\u6C60\u6210\u6B63\u6BD4\uFF08\u96E2\u7DDA\u91CF\uFF1A40 \u5F35\u639B Human \u7684\u7968\u4E00\u6B21\u8B80 164 \u5217\uFF09\u3002\u6C92\u6709\u65B0\u8868\u3001\u6C92\u6709\u65B0\u67E5\u8A62\u7A2E\u985E\uFF08\u65E2\u6709\u7684\u7968\u3001\u7559\u8A00\u3001\u7559\u8A00\u7570\u52D5\u4E09\u7A2E\u8B80\uFF09\u3002\n0.37.5\uFF1A\u7D50\u69CB\u9801\u7B2C\u4E00\u5C4F\u53EA\u6709\u958B\u8457\u7684\u610F\u5716\uFF08\u6700\u8FD1\u6709\u52D5\u7684\u5728\u524D\uFF0C\u4E00\u9801 44 \u500B\uFF0C\u300C\u518D\u591A\u770B\u4E00\u4E9B\u300D\u63A5\u8457\u8B80\uFF0C\u4E0D\u518D\u975C\u975C\u5207\u6389\uFF09\uFF0C\u505A\u5B8C\u7684\u6536\u5728\u53EF\u5C55\u958B\u7684\u4E00\u683C\uFF1B\u4F9D\u57F7\u884C\u8005\u591A\u4E00\u7FA4\u300C\u672A\u6307\u6D3E\u300D\uFF0C\u4F9D\u4EBA\uFF0F\u7BE9\u9078\u6E05\u55AE\u4E5F\u662F\u958B\u8457\u7684\u5728\u524D\u3001\u6700\u8FD1\u6709\u52D5\u7684\u5728\u524D\uFF1Bledger mode=outline \u591A offset\u3001state=closed\uFF08inkstone/Arcrun#430\uFF09\u3002\n0.37.4\uFF1A\u5C0D\u5E33\u7684\u300C\u5168\u6C60\u958B\u8457\u5E7E\u5F35\u300D\u6539\u6210\u7CBE\u78BA\u6578\uFF0CAR-Mira \u8B80\u5F97\u5230\u5927\u7DB1\uFF08inkstone/Arcrun#424\uFF09\u2014\u2014\u2460 \u4EE5\u524D ledger \u8B80\u7D22\u5F15\u7E3D\u6578\u53EA\u62FF\u5F15\u64CE\u9810\u8A2D\u7684\u300C\u4E0B\u754C\u300D\uFF08\u9801\u6C92\u8B80\u5B8C\u6642\u53EA\u56DE offset\uFF0B\u9019\u9801\uFF0B1\uFF0C\u800C\u4E14\u96A8\u8B80\u591A\u5C11\u800C\u8B8A\uFF09\uFF0C\u7968\u6C60\u4E00\u5927\u5C31\u5C11\u7B97\uFF1Aleo21c \u55AE\u4E00 repo \u5C31\u6709\u4E00\u767E\u591A\u5F35\u958B\u8457\uFF0C\u5168\u6C60\u537B\u53EA\u5831 52\u3001\u610F\u5716\u683C 80\uFF5E90 \u53C8\u6BD4\u5B83\u591A\uFF0Cbalanced \u6C38\u9060 false\u3001drift \u4E82\u5831\u3002\u73FE\u5728\u5C0D\u5E33\u7684\u7E3D\u6578\u8B80\u90FD\u5E36 total=exact\uFF08\u53EA\u5C0D\u5E33\u9019\u5E7E\u8B80\uFF0C\u4E0D\u6383\u7968\u6C60\uFF09\u3002\u2461 ledger \u5DE5\u5177\u52A0 mode=outline\uFF1AAR-Mira \u8B80\u5F97\u5230\u7D50\u69CB\u9801\u90A3\u4EFD\u5927\u7DB1\uFF08\u4E0D\u7D66 key\uFF1D\u6240\u6709\u8D77\u9EDE\u8207\u5152\u5B50\u9032\u5EA6\uFF1Bkey\uFF1D\u5F80\u4E0B\u4E09\u5C64\uFF1Bby\uFF0Fname\uFF0Fstate \u4F9D\u4EBA\u6216\u7BE9\u9078\uFF09\uFF0C\u4E0D\u53E6\u958B\u5DE5\u5177\u3002\n0.37.3\uFF1Aconvert_intent \u4E0D\u518D\u5361\u6B7B\u5728\u5927\u55AE\u4F4D\uFF08inkstone/Arcrun#424\uFF09\u2014\u2014\u4E00\u500B\u91CC\u7A0B\u7891\u81EA\u5DF1\u7684\u8F09\u9AD4\u7968\u52A0\u524D\u7F6E\u5C31\u8D85\u904E\u4E00\u9801\u6642\uFF0C\u5728\u55AE\u4F4D\u88E1\u5206\u6BB5\uFF08\u56DE next_from \u4E0D\u8B8A\uFF0Bnext_after\uFF0C\u4E0B\u4E00\u6B21\u5E36 from\uFF0Bafter\uFF09\uFF0C\u4E0D\u518D truncated \u6C38\u9060\u88DC\u4E0D\u5B8C\uFF0C\u4E5F\u4E0D\u518D\u56E0\u8B80\u53D6\u683C\u8D85\u904E 90 \u800C 500\uFF1B\u4E00\u9801\u6700\u591A\u78B0 30 \u5F35\u7968\u3002\n0.36.0\uFF1AHuman \u53EA\u5F9E\u8981\u6C42\u55AE\u4F86\u3001\u5F85\u7C3D\u6578\u4E00\u500B\u53E3\u5F91\uFF08D101 \u7B2C\u4E8C\u6B65\u4E4B\u4E00\uFF0Cinkstone/Arcrun#414\uFF09\u2014\u2014\u2460 \u540C\u4E00\u5F35\u7968\u4E0A\u4E0D\u540C\u7684\u55AE\u7D2F\u7A4D\uFF0C\u958B\u65B0\u55AE\uFF08request_signoff\uFF0Frequest_action\uFF09\u6642\u7968\u4E0A\u5DF2\u6709\u958B\u8457\u7684\u8981\u6C42\uFF0C\u8981\u7528 older \u5C0D\u6BCF\u4E00\u5F35\u660E\u793A withdraw\uFF08\u64A4\u56DE\uFF0C\u65B0\u55AE\u6DB5\u84CB\uFF09\u6216 keep\uFF08\u4FDD\u7559\uFF09\uFF0C\u6C92\u4EA4\u4EE3\u62D2\u7D55\u958B\u55AE\uFF08422 older_undecided\uFF0C\u5217\u51FA\u6C92\u4EA4\u4EE3\u7684\uFF09\u3002\u2461 \u300C\u7B49\u4F60\u8655\u7406\u300D\u4EF6\u6578\u8207\u6E05\u55AE\u540C\u4E00\u500B\u4F86\u6E90\uFF0C\u53E6\u56DE by_ticket\uFF08\u5206\u5C6C\u5E7E\u5F35\u7968\u3001\u6BCF\u5F35\u5E95\u4E0B\u9010\u9805\uFF09\uFF0C\u756B\u9762\u6A19\u984C\u5BEB\u300CN \u4EF6\uFF0C\u5206\u5C6C M \u5F35\u7968\u300D\u4E26\u6309\u7968\u5206\u7D44\uFF1B\u639B\u8457 Human \u537B\u6C92\u6709\u8981\u6C42\u7684\u820A\u7968\u4E0D\u7B97\u7B49\u4F60\uFF08\u5217\u5728 orphans\uFF09\u3002\u2462 convert_intent \u4E00\u9801\u6490\u7206\u5F35\u6578\u6642\uFF0C\u90A3\u500B\u55AE\u4F4D\u6574\u500B\u7559\u5230\u4E0B\u4E00\u9801\uFF08next_from \u6307\u56DE\u5B83\uFF09\uFF0C\u4E0D\u518D\u6F0F\u7968\u3002\n0.33.1\uFF1A\u7C3D\u6838\u770B\u677F\uFF08signoff_status\uFF09\u628A\u300C\u7B49\u7C3D\u3001\u4F46\u540C\u4E00\u5F35\u7968\u5DF2\u6709\u66F4\u65B0\u7248\u865F\u88AB\u540C\u610F\u300D\u7684\u8ACB\u6C42\u986F\u793A\u70BA\u5DF2\u53D6\u4EE3\uFF08state=superseded\uFF0Csuperseded_by \u5E36\u90A3\u500B\u7248\u865F\uFF09\uFF0C\u4E0D\u518D\u770B\u8D77\u4F86\u50CF\u8981\u7C3D\uFF08inkstone/Arcrun#373\uFF09\u3002\n0.33.0\uFF1A\u7C3D\u6838\u55AE\u53EA\u51FA\u73FE\u771F\u7684\u7C3D\u5F97\u51FA\u53BB\u7684\u7248\u865F\uFF08inkstone/Arcrun#373\u3001#375\u3001inkstone/InkStoneCo#301\uFF09\u2014\u2014\u2460 \u540C\u4E00\u500B\u7248\u865F\u53EA\u7559\u4E00\u5F35\u7B49\u7C3D\u7684\u55AE\uFF1A\u7B2C\u4E8C\u6B21\u958B\u540C\u865F\u88AB\u64CB\u4E26\u6307\u56DE\u7B2C\u4E00\u5F35\uFF08409 signoff_exists\uFF09\uFF1B\u5DF2\u88AB\u7C3D\u904E\u7684\u7248\u865F\u4E0D\u80FD\u518D\u958B\uFF08already_signed\uFF09\u3002\u2461 \u65B0\u7684\u7D2F\u8A08\u7248\u958B\u55AE\u6642\uFF0C\u540C\u7CFB\u5217\u820A\u7248\u865F\u9084\u5728\u7B49\u7C3D\u7684\u55AE\u81EA\u52D5\u4F5C\u5EE2\uFF08\u7559\u4E00\u5247\u4F5C\u5EE2\u7559\u8A00\u3001\u6536\u56DE\u9023\u52D5\u639B\u7684 Human\uFF0F\u6307\u6D3E\uFF09\uFF0C\u5DF2\u6709\u66F4\u65B0\u7248\u865F\u5728\u7B49\u7C3D\u6642\u820A\u7248\u958B\u4E0D\u4E86\uFF08superseded_by_newer\uFF09\u3002\u2462 \u53EA\u6709 stage \u51FA\u8CA8\u7D00\u9304\u88E1\u6709\u7684\u7248\u865F\u80FD\u958B\u55AE\uFF08version_not_on_stage\uFF09\u3002\u2463 \u7C3D\u6838\u4EBA\u624B\u6253\u7368\u7ACB\u4E00\u884C\u300CARM: \u7248\u865F\u300D\uFF0C\u90A3\u500B\u7248\u865F\u7684\u7B49\u7C3D\u8ACB\u6C42\u7B97\u5DF2\u7C3D\u3002\u2464 \u6309\u300C\u7C3D\u6838\u2026\u300D\u9001\u51FA\u524D\u5148\u91CD\u8B80\u6700\u65B0\u7559\u8A00\uFF1B\u4F5C\u5EE2\u3001\u88AB\u53D6\u4EE3\u3001\u5DF2\u7C3D\u904E\u7684\u8ACB\u6C42\u64CB\u4E0B\u4E26\u8AAA\u660E\uFF08\u4F3A\u670D\u5668\u7AEF\u540C\u6A23\u64CB\uFF0C409\uFF09\u3002\u8CC7\u6599\uFF1A\u53EA\u5728\u8A2D\u5B9A\u8868\u591A\u4E00\u7B46 key=open:<\u7CFB\u5217> \u7684\u7D22\u5F15\uFF0C\u4E0D\u52A0\u8868\u3001\u4E0D\u52A0\u6B04\u4F4D\u3002\n0.32.1\uFF1A\u756B\u9762\u8D70\u67E5\u88DC\u4FEE\uFF08inkstone/Arcrun#388\uFF09\u2014\u2014\u624B\u6A5F\u4E0A\u516D\u500B\u5206\u9801\u7684\u5B57\u4E0D\u518D\u88AB\u65B7\u6210\u5169\u884C\uFF08\u300C\u6211\u4EA4\u4EE3\u7684\u4E8B\u300D\u300C\u8AB0\u9818\u4E86\u4EC0\u9EBC\u300D\uFF09\uFF1B\u684C\u6A5F\u958B\u8457 Portal \u804A\u5929\u6B04\u6642\uFF0C\u300C\uFF0B \u65B0\u589E\u300D\u7559\u5728\u7B2C\u4E00\u884C\uFF08\u63A5\u5728\u5206\u9801\u5F8C\u9762\uFF09\uFF1B\u770B\u677F\u7684\u300C\u770B\u54EA\u4E00\u500B\u300D\u624B\u6A5F\u4E0A\u4E0D\u518D\u65B7\u884C\uFF1B\u6253\u958B\u4E0D\u5B58\u5728\u7684\u7968\uFF0C\u8AAA\u300C\u627E\u4E0D\u5230\u9019\u5F35\u7968\u300D\u800C\u4E0D\u662F\u300C\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\u300D\u3002\u6C92\u6709\u8CC7\u6599\u8B8A\u52D5\u3002\n0.32.0\uFF1A\u9996\u5C4F\u6700\u4E0A\u9762\u65B0\u589E\u300C\u7B49\u4F60\u8655\u7406\u300D\u2014\u2014\u53EA\u8A8D\u7968\u4E0A\u958B\u8457\u7684\u8981\u6C42\uFF08\u8B80\u5B8C\uFF0F\u9078\u4E00\u500B\uFF0F\u56DE\u7B54\uFF0F\u89AA\u624B\u505A\uFF0F\u7C3D\u6838\uFF09\uFF0C\u6BCF\u4EF6\u4E00\u5F35\u767D\u8A71\u5361\uFF0C\u5361\u4E0A\u76F4\u63A5\u6309\u5C31\u56DE\u5B8C\uFF0C\u56DE\u5B8C\u5361\u5C31\u6D88\u5931\uFF1B\u624B\u5BEB\u7684\u300C\u7B49 Leo\u300D\u5B57\u4E32\u4E0D\u518D\u7B97\u7B49\u4F60\uFF08\u6539\u5217\u70BA\u820A\u8A3B\u8A18\uFF09\u3002MCP \u7559\u8A00\u4E0D\u5E36 reply_to \u4E0D\u518D\u56DE 422\uFF1B\u9996\u5C4F\u8B80\u53D6\u9047\u77E5\u8B58\u5EAB\u4E00\u6642\u5FD9\u81EA\u52D5\u91CD\u8B80\uFF0C\u9801\u9996\u4E0D\u518D\u4EAE\u300C\u6C92\u66F4\u65B0\u5230\u300D\uFF08inkstone/Arcrun#414 \u7B2C\u4E8C\u8F2A\uFF09\u3002\n0.31.1\uFF1A\u7BC0\u9EDE\u8A73\u60C5\u300C\u88AB\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u300D\u6BCF\u5217\u53F3\u5074\u4E0D\u518D\u986F\u793A\u5167\u90E8\u76EE\u6A19\u7DE8\u865F\uFF0C\u6539\u8AAA\u300C\u770B\u9019\u500B\u5C08\u6848\u7684\u76EE\u6A19\u300D\uFF1B\u756B\u9762\u6700\u4E0B\u65B9\u591A\u4E00\u884C\u300C\u7531 Arcrun \u88FD\u4F5C\u300D\uFF08Portal \u5E36\uFF0Cinkstone/Arcrun#388\u3001#418\uFF09\u3002\n0.31.0\uFF1A\u4EBA\u6309\u4E0B\u53BB\u7684\u52D5\u4F5C\u9047\u5230\u77E5\u8B58\u5EAB\u4E00\u6642\u5FD9\uFF0C\u8981\u561B\u5728\u6642\u9650\u5167\u5BEB\u6210\u529F\u3001\u8981\u561B\u756B\u9762\u986F\u793A\u300C\u6392\u968A\u4E2D\u300D\u76F4\u5230\u5BEB\u5B8C\uFF0C\u4E0D\u518D\u53EB\u4EBA\u518D\u6309\u4E00\u6B21\uFF08inkstone/Arcrun#422 \u7B2C\u4E09\u8F2A\uFF09\u3002\u756B\u9762\u7684\u300C\u6392\u968A\u4E2D\u300D\u63D0\u793A\u6539\u639B\u5728\u756B\u9762\u81EA\u5DF1\u7684\u6839\uFF0C\u771F Portal \u4E0A\u770B\u5F97\u5230\uFF08\u4EE5\u524D\u639B\u5728 shadow \u5916\uFF0C\u6A23\u5F0F\u5957\u4E0D\u5230\u3001\u843D\u5728\u756B\u9762\u5916\uFF09\u3002\u4E00\u6B21\u52D5\u4F5C\u5BEB\u597D\u5E7E\u7B46\u6642\uFF0C\u53EA\u6709\u300C\u7559\u8A00\u6578\uFF0F\u66F4\u65B0\u6642\u9593\u300D\u9019\u985E\u7B97\u5F97\u51FA\u4F86\u7684\u5C0F\u6771\u897F\u6C92\u5BEB\u6210\uFF0C\u7167\u5E38\u56DE\u6210\u529F\u4E26\u8AAA\u6E05\u695A\u54EA\u4E00\u7B46\u6C92\u6210\uFF08\u4E0D\u518D\u56DE 502 \u8B93\u4EBA\u4EE5\u70BA\u7559\u8A00\u6C92\u9001\u51FA\uFF09\uFF1B\u5225\u7684\u6C92\u5BEB\u6210\u5C31\u660E\u8AAA\u5BEB\u6210\u4E86\u4EC0\u9EBC\u3001\u54EA\u4E00\u7B46\u6C92\u6210\uFF0C\u4E26\u63D0\u9192\u5148\u770B\u518D\u6C7A\u5B9A\u8981\u4E0D\u8981\u91CD\u505A\uFF0C\u4E0D\u8981\u76F4\u63A5\u91CD\u9001\u3002\u9700\u8981\u5F15\u64CE 1.4.201 \u4EE5\u4E0A\u3002\n0.30.0\uFF1A\u76F4\u9023\u6216\u7AD9\u5167\u8DF3\u5230\u67D0\u4E00\u5247\u7559\u8A00\u6642\uFF0C\u6A19\u4EAE\u5916\u6846\u4E0D\u518D\u88AB\u91CD\u756B\u6D17\u6389\uFF08\u4E00\u76F4\u7559\u5230\u8DF3\u53BB\u5225\u5247\uFF09\uFF1BA \u7968\u8DF3\u5230 B \u7968\u90A3\u4E00\u5247\u5F8C\uFF0C\u7DB2\u5740\u5217\u540C\u6B65\u63DB\u6210\u90A3\u4E00\u5247\u7684\u56FA\u5B9A\u9023\u7D50\uFF0C\u8907\u88FD\u7DB2\u5740\u62FF\u5230\u7684\u5C31\u662F\u76EE\u6A19\uFF08inkstone/Arcrun#414\uFF09\u30020.29.0\uFF1A\u5BEB\u5165\u8DEF\u7531\u300C\u958B\u982D\u7684\u8B80\u300D\u4E5F\u6490\u904E\u4E00\u6642\u5FD9\uFF08inkstone/Arcrun#422 \u7B2C\u4E8C\u8F2A\uFF09\u2014\u2014stage \u5BE6\u6E2C\u958B\u7968 14 \u6B21\u6709 6 \u6B21\u5931\u6557\uFF0C\u4E0D\u662F\u6B7B\u5728\u5BEB\u5165\uFF0C\u662F\u6B7B\u5728\u5BEB\u5165\u4E4B\u524D\u7684\u8B80\uFF08\u53D6 recipe\u3001\u53D6\u8CC7\u6599\u5217\uFF09\u3002\u73FE\u5728\u4EBA\u6309\u4E0B\u53BB\u7684\u5BEB\u5165\u8DEF\u7531\uFF08\u7C3D\u6838\u3001\u958B\u7968\u3001\u7559\u8A00\u3001\u6539\u7968\uFF09\u7684\u8B80\u6703\u5E36\u300C\u9019\u662F\u5BEB\u5165\u300D\u7684\u6A19\u8A18\uFF0C\u5F15\u64CE\u9047\u4E00\u6642\u5FD9\u6709\u754C\u91CD\u8B80\uFF08\u6700\u591A 4 \u500B\u8ACB\u6C42\u3001\u7B49\u5F85 \u2264 6.5 \u79D2\uFF09\uFF1B\u5217\u7968\u3001\u770B\u677F\u3001\u5831\u8868\u3001\u641C\u5C0B\u7684\u8B80\u4ECD\u662F\u300C\u5FD9\u4E0D\u91CD\u8B80\u300D\u3002\u5F15\u64CE\u53E6\u628A recipe \u8207\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u5728\u672C\u6A5F\u77ED\u66AB\u8A18\u8457\uFF0C\u4E0D\u5FC5\u6BCF\u6B21\u9EDE\u64CA\u90FD\u554F\u8CC7\u6599\u5EAB\u3002\u65B0\u589E 3 \u652F\u8B80 recipe\uFF08ahub_rec_get_w\u3001ahub_rec_batch_w\u3001ahub_rec_batch_f_w\uFF0C\u8207\u539F\u8B80 recipe \u76F8\u540C\u53EA\u591A\u4E00\u689D\u8868\u982D\uFF09\uFF0C\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3002\u9700\u8981\u5F15\u64CE 1.4.200 \u4EE5\u4E0A\u3002\n0.28.0\uFF1A\u4EBA\u6309\u4E0B\u53BB\u7684\u5BEB\u5165\uFF08\u7C3D\u6838\u3001\u958B\u7968\u3001\u7559\u8A00\u3001\u6539\u7968\uFF09\u9047\u5230\u77E5\u8B58\u5EAB\u4E00\u6642\u5FD9\uFF0C\u5F15\u64CE\u81EA\u5DF1\u9000\u907F\u91CD\u8A66\u3001\u6700\u5F8C\u78BA\u5B9A\u5BEB\u9032\u53BB\uFF0C\u756B\u9762\u4E0D\u518D\u5831\u5931\u6557\u53EB\u4F60\u518D\u6309\u4E00\u6B21\uFF1B\u7B49\u8D85\u904E\u5E7E\u79D2\u756B\u9762\u4E0B\u65B9\u986F\u793A\u300C\u6392\u968A\u4E2D\u300D\uFF08inkstone/Arcrun#422\uFF09\u3002\u8B80\u8207\u5217\u7968\u7DAD\u6301\u300C\u5FD9\u4E0D\u91CD\u8B80\u300D\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3002\u9700\u8981\u5F15\u64CE 1.4.198 \u4EE5\u4E0A\u624D\u6709\u91CD\u8A66\u3002\n0.27.0\uFF1Arepo \u7684\u8B80\u3001\u5BEB\u3001clone \u4E0D\u518D\u9700\u8981\u4F7F\u7528\u8005\u7D66\u4EFB\u4F55\u91D1\u9470\uFF08inkstone/Arcrun#416\uFF09\u2014\u2014\u5F15\u64CE\u76F4\u63A5\u7D81\u540C\u5E33\u865F\u7684 Cloudflare Artifacts\uFF0CAHub \u5361\u7247\u4E0D\u518D\u8981\u6C42 artifacts_read_token\uFF08\u91D1\u9470\u4E2D\u5FC3\u4E0D\u5FC5\u653E\u4EFB\u4F55\u6771\u897F\uFF09\u3002\u8B80\uFF08git_tree\uFF0Fgit_file\uFF0Fgit_commit \u7B49\uFF09\u6539\u8D70\u5F15\u64CE\u7684 /artifacts \u4EE3\u7406\uFF1B\u5E33\u865F\u6C92\u958B Artifacts \u6642\u56DE 424 \u4E26\u8AAA\u660E\u300C\u9019\u500B\u5E33\u865F\u6C92\u6709 Artifacts\u300D\uFF0C\u4E0D\u662F 500\u3001\u4E5F\u4E0D\u53EB\u4EBA\u88DC\u91D1\u9470\u3002\u65B0\u589E\u5BEB\u5165\uFF1A\u8DEF\u7531 git_write\uFF0BMCP \u5DE5\u5177 git_write\uFF0C\u4E00\u6B21\u4E00\u500B commit \u5BEB\u5230\u5206\u652F\uFF08\u4E0D\u5B58\u5728\u5C31\u5F9E main \u9577\u51FA\u4F86\uFF09\uFF0Cmain \u4E0D\u53D7\u4FDD\u8B77\u53EF\u76F4\u63A5\u5BEB\uFF1B\u6BCF\u500B commit \u7684\u8A0A\u606F\u5C3E\u5DF4\u8A18\u9023\u7DDA\u8EAB\u5206\u8207 session\uFF08AHub-Writer\uFF0FAHub-Session\uFF09\uFF0C\u53E6\u5BEB\u4E00\u7B46\u7A3D\u6838\uFF08\u65B0 template ahub_git_write\uFF0C\u5171 31 \u500B\uFF09\u3002\u65B0\u589E clone\uFF0Fpush\uFF1A\u8DEF\u7531\u8207 MCP \u5DE5\u5177 git_credential\uFF0C\u5F15\u64CE\u7576\u5834\u767C\u77ED\u6548\u6191\u8B49\uFF08\u9810\u8A2D 600 \u79D2\u3001\u6700\u9577 3600 \u79D2\u3001\u904E\u671F\u5373\u5931\u6548\uFF09\uFF0C\u6191\u8B49\u4E0D\u5B58\u3001\u4E0D\u9032\u7A3D\u6838\u3002prod \u8207\u51FA\u8CA8\u5230 GitHub \u4ECD\u8D70\u7C3D\u6838\uFF0C\u4E0D\u5728\u9019\u88E1\u3002\n0.26.0\uFF1A\u540C\u4E00\u500B\u300C\u7B49\u4F60\u8655\u7406\u300D\u6846\u80FD\u8655\u7406\u6240\u6709\u7B49 leo \u7684\u4E8B\uFF08inkstone/Arcrun#414\uFF09\u2014\u2014\u9664\u4E86\u300C\u7C3D\u6838\u4E0A prod\u300D\uFF0C\u65B0\u589E \u8B80\u5B8C\uFF08\u6309\u4E00\u4E0B\u5C31\u7B97\u8B80\u5B8C\uFF09\uFF0F\u9078\u4E00\u500B\uFF08\u9078\u9805\u5C31\u662F\u6309\u9215\uFF09\uFF0F\u56DE\u7B54\uFF08\u77ED\u6587\u5B57\uFF09\uFF0F\u89AA\u624B\u505A\uFF08\u505A\u597D\u4E86\uFF0F\u505A\u4E0D\u5230\uFF09\u3002AI \u7528\u65B0\u5DE5\u5177 request_action \u958B\u3001request_status \u8B80\u7D50\u679C\uFF1B\u7968\u81EA\u52D5\u639B Human \u4E26\u6307\u6D3E\u88AB\u6307\u5B9A\u7684\u4EBA\uFF0C\u5C0D\u65B9\u5728\u7968\u9801\u6700\u4E0A\u9762\u6309\u4E00\u4E0B\uFF0C\u7968\u4E0A\u7559\u4E0B\u8AB0\u3001\u4F55\u6642\u3001\u9078\u4E86\u4EC0\u9EBC\uFF0F\u7B54\u4E86\u4EC0\u9EBC\uFF0C\u8655\u7406\u5B8C\uFF08\u6216\u7968\u95DC\u9589\uFF1D\u81EA\u52D5\u4F5C\u5EE2\uFF09\u81EA\u52D5\u6536\u56DE\u3002\u4E0A prod \u90A3\u4E00\u7A2E\uFF08request_signoff\uFF0FARM\uFF0F\u51FA\u8CA8\u9598\uFF09\u884C\u70BA\u8207\u898F\u5247\u4E0D\u8B8A\uFF0C\u5176\u4ED6\u7A2E\u985E\u4E0D\u7522\u751F ARM\u3001\u56DE\u61C9\u88E1\u593E ARM \u6216\u7C3D\u6838\u884C\u6703\u88AB\u64CB\u3002\u639B Human \u5FC5\u9808\u5E36\u4E00\u4EF6\u958B\u8457\u7684\u8981\u6C42\uFF1Acreate_issue\u3001set_labels \u55AE\u7368\u52A0 Human \u56DE 422\uFF1B\u820A\u7684\u5B64\u5152 Human \u7531 signoff_sync \u7684 orphan_human \u5217\u51FA\uFF0C\u5728\u90A3\u5F35\u7968 request_action \u5373\u63A5\u624B\u3002\u53E6\uFF1A\u6BCF\u4E00\u5247\u7559\u8A00\u90FD\u80FD\u300C\u56DE\u8986\u9019\u4E00\u5247\u300D\uFF08comment \u5E36 reply_to\uFF1B\u5167\u6587\u7B2C\u4E00\u884C\u6A19\u660E\u56DE\u54EA\u4E00\u5247\uFF0C\u8B80\u56DE\u7684\u7559\u8A00\u5E36 reply_to\uFF1B\u820A\u7559\u8A00\u4E0D\u53D7\u5F71\u97FF\uFF09\uFF0C\u7B49\u4F60\u8655\u7406\u6846\u7684\u56DE\u61C9\u81EA\u52D5\u7D81\u5728\u90A3\u5247\u63D0\u554F\u4E0A\u3002\u6C92\u6709\u65B0 template\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.25.0\uFF1AAHub \u9996\u5C4F\u6539\u6210\u300C\u6211\u4EA4\u4EE3\u7684\u4E8B\u300D\uFF08inkstone/Arcrun#421\uFF09\u2014\u2014\u4E3B\u5217\u4E0D\u518D\u662F\u7968\uFF0C\u800C\u662F\u4F60\u8AAA\u904E\u7684\u6BCF\u4E00\u4EF6\u4E8B\uFF1A\u6BCF\u884C\u4E00\u53E5\u4F60\u7684\u539F\u8A71\uFF08\u592A\u9577\u5C31\u986F\u793A\u4E00\u53E5\u8A71\u6458\u8981\u3001\u53EF\u5C55\u958B\u770B\u539F\u8A71\uFF09\u3001\u4F60\u8AAA\u8A71\u7684\u6642\u9593\uFF0C\u72C0\u614B\u56DB\u9078\u4E00\uFF1A\u505A\u5B8C\u4E86\uFF08\u62C9\u9032\u4F86\u7684\u7968\u5168\u95DC\uFF09\u3001\u5728\u505A\uFF08\u6709\u6D3B\u7684\u5C0D\u8A71\u5728\u52D5\uFF09\u3001\u5361\u4F4F\uFF08\u5BEB\u660E\u5361\u5728\u8AB0\uFF1A\u7B49\u4F60\u6700\u9192\u76EE\u3001\u7B49\u5730\u7AEF Mac\u3001\u7B49\u5225\u689D\u7DDA\uFF09\u3001\u6C92\u4EBA\u63A5\uFF08\u6C92\u6709\u7968\u3001\u7968\u6C92\u4EBA\u9818\u3001\u6216\u9818\u7968\u7684\u5C0D\u8A71\u5DF2\u7D93\u4E0D\u5728\uFF09\uFF1B\u7B49\u4F60\u7684\u6392\u6700\u524D\u9762\u3002\u7968\u3001\u91CC\u7A0B\u7891\u3001\u5DE5\u4F5C\u7AD9\u53EA\u662F\u6BCF\u884C\u5E95\u4E0B\u7684\u5C0F\u5B57\u9644\u8A3B\uFF08\u53EF\u9EDE\uFF09\u3002\u4E00\u4EF6\u4EA4\u8FA6\u62C9\u4E86\u597D\u5E7E\u5F35\u7968\uFF08\u542B\u820A\u7968\uFF09\u6642\uFF0C\u72C0\u614B\u7531\u90A3\u4E9B\u7968\u5408\u7B97\uFF0C\u5168\u505A\u5B8C\u624D\u7B97\u505A\u5B8C\u3002\u4EA4\u8FA6\u600E\u9EBC\u9032\u4F86\uFF1A\u65B0\u589E MCP \u5DE5\u5177 arcrun_ahub_assign\uFF08\u8A18\u4E00\u500B\u4EA4\u8FA6\uFF0C\u4E00\u500B\u52D5\u4F5C\u5E36\u4F60\u7684\u539F\u8A71\u8207\u8AAA\u8A71\u6642\u9593\uFF0C\u53EF\u5E36\u7968\u3001\u6C92\u6709\u7968\u4E5F\u8A18\u5F97\u4E0B\u4F86\uFF09\u8207 arcrun_ahub_assignments\uFF08\u8B80\uFF09\uFF1B\u4EA4\u8FA6\u5C31\u662F\u76EE\u6A19\u6A39\u7684\u4E00\u500B\u6B65\u9A5F\uFF08\u6CBF\u7528\u76EE\u6A19\u6A39\uFF0C\u4E0D\u53E6\u9020\u5B58\u653E\u8655\uFF09\uFF0B\u4E00\u7B46 ahub_step_say \u8A18\u539F\u8A71\uFF0C\u72C0\u614B\u8B80\u7684\u7576\u4E0B\u5F9E\u7968\u3001\u9818\u7968\u3001\u5C0D\u8A71\u7B97\u3001\u4E0D\u5B58\uFF0C\u6240\u4EE5\u4E0D\u6703\u56E0\u6C92\u4EBA\u56DE\u982D\u6539\u800C\u8AAA\u8B0A\u3002\u8981\u8CBC\u9032\u5404\u5C08\u6848\u6307\u793A\u7684\u898F\u5247\u5BEB\u5728\u65B0\u7684 assign \u8AAA\u660E\u88E1\u3002\u65B0\u589E\u8DEF\u7531 assign_set\u3001assignments\uFF1B\u65B0\u589E 1 \u500B template\uFF08ahub_step_say\uFF0C\u5171 30 \u500B\uFF1B\u6C92\u6709\u65B0\u8868\u3001\u96F6 SQL\uFF09\u3002\u300C\u8AB0\u9818\u4E86\u4EC0\u9EBC\u300D\u9000\u70BA\u7B2C\u4E8C\u500B\u5206\u9801\u3002\n0.24.0\uFF1AAHub \u6253\u958B\u7B2C\u4E00\u500B\u770B\u5230\u7684\u662F\u300C\u8AB0\u9818\u4E86\u4EC0\u9EBC\u300D\uFF08inkstone/Arcrun#419\u3001#348\uFF09\u2014\u2014\u4F9D\u5DE5\u4F5C\u7AD9\uFF08\u7E3D\u76E3\u3001\u89E3\u6C7A\u554F\u984C\u8FF4\u5708\u3001\u81EA\u6211\u884C\u92B7\u2026\uFF09\u5206\u7D44\uFF0C\u6BCF\u5F35\u9818\u8D70\u7684\u7968\u4E00\u884C\uFF1A\u4EBA\u8A71\u6A19\u984C\u3001\u72C0\u614B\uFF08\u5728\u505A\uFF0F\u5361\u4F4F\uFF0F\u505A\u5B8C\u6C92\u6536\uFF09\u3001\u5361\u5728\u8AB0\uFF08\u7B49 Leo \u6700\u9192\u76EE\u3001\u7B49\u5730\u7AEF Mac\u3001\u7B49\u5225\u689D\u7DDA\uFF09\u3001\u591A\u4E45\u6C92\u52D5\uFF1B\u9818\u4E86\u4F46\u6C92\u4EBA\u5728\u505A\u7684\uFF08\u9818\u7968\u7684\u5C0D\u8A71\u5DF2\u6536\u5DE5\u3001\u6216\u5C0D\u8A71\u8207\u7968\u90FD\u4E45\u6C92\u52D5\uFF0C\u7968\u9084\u639B\u8457\u9032\u884C\u4E2D\uFF09\u6A19\u300C\u6C92\u4EBA\u5728\u505A\u300D\uFF1B\u6C92\u6307\u5230\u4EFB\u4F55\u91CC\u7A0B\u7891\u6216\u7968\u7684\u76EE\u6A19\u5217\u5728\u6700\u4E0A\u9762\u3002\u65B0\u589E\u552F\u8B80\u8DEF\u7531 whos_doing\u3002\u76EE\u6A19\u9801\u6BCF\u500B\u76EE\u6A19\u5217\u51FA\u5B83\u62C9\u9032\u4F86\u7684\u7968\u5404\u81EA\u8AB0\u9818\u3002\u5C0D\u8A71\uFF1A\u8D85\u904E 3 \u5929\u6C92\u6D3B\u52D5\u3001\u624B\u4E0A\u53C8\u6C92\u6709\u9032\u884C\u4E2D\u7684\u7968\u7684\u81EA\u52D5\u6A19\u300C\u505C\u6EEF\u300D\u4E26\u5F9E\u76EE\u6A19\u9801\u300C\u9032\u884C\u4E2D\u300D\u6536\u8D77\uFF08\u53EF\u5C55\u958B\uFF1B\u4E0D\u662F\u522A\u9664\uFF0C\u5C0D\u8A71\u518D\u5831\u5230\u6216\u5E36 session \u547C\u53EB\u5DE5\u5177\u5C31\u81EA\u52D5\u56DE\u4F86\uFF0C\u4E0D\u6392\u7A0B\u3001\u8B80\u7684\u7576\u4E0B\u7B97\uFF09\uFF0C\u5C08\u6848\u6A19\u984C\u7684\u300CN \u500B\u5C0D\u8A71\u9032\u884C\u4E2D\u300D\u53EA\u7B97\u771F\u7684\u5728\u52D5\u7684\uFF1B\u540C\u4E00\u500B\u5C0D\u8A71\u88AB\u5169\u500B\u5DE5\u4F5C\u7AD9\u5404\u767B\u8A18\u4E00\u6B21\u7684\u6BDB\u75C5\u4FEE\u6389\u2014\u2014\u6536\u5DE5\uFF08end_session\uFF09\u4E00\u6B21\u6536\u6389\u5168\u90E8\u767B\u8A18\u3001\u53EF\u7528 station \u53EA\u6536\u4E00\u7AD9\uFF0C\u5831\u5230\u6642\u540C sid \u5DF2\u5728\u5225\u7AD9\u958B\u8457\u5C31\u4F75\u6210\u4E00\u7B46\uFF0C\u5217\u8868\u4E5F\u4F75\u6210\u4E00\u7B46\u3002\u6C92\u6709\u65B0 template\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.22.0\uFF1Aclaude.ai \u7684\u5C0D\u8A71\uFF08\u53EA\u9023\u5F97\u5230 MCP\uFF09\u73FE\u5728\u8B80\u5F97\u5230 repo \u7684\u7A0B\u5F0F\u78BC\u4E86\uFF08inkstone/Arcrun#334\uFF09\u2014\u2014\u65B0\u589E\u552F\u8B80\u8DEF\u7531 git_read \u8207 7 \u652F MCP \u5DE5\u5177\uFF1A\u5217\u76EE\u9304\u3001\u8B80\u6A94\uFF08\u53EF\u6307\u5B9A\u884C\u7BC4\u570D\u3001\u5927\u6A94\u5206\u9801\uFF09\u3001\u95DC\u9375\u5B57\u641C\u5C0B\uFF08\u55AE\u4E00\u6216\u8DE8 repo\uFF09\u3001\u5206\u652F\u6E05\u55AE\u3001\u6700\u8FD1 commit\u3001\u55AE\u4E00 commit \u7684 diff\u3001\u5169\u500B ref \u7684\u6BD4\u8F03\uFF08\u53D6\u4EE3\u6C92\u6709 PR \u7684 PR diff\uFF09\u3002\u5167\u5BB9\u4F4F Cloudflare Artifacts\uFF0CAHub \u53EA\u5305\u4E00\u5C64 REST\uFF1A\u4E0D clone\u3001\u4E0D\u7559\u5FEB\u7167\uFF1B\u53EA\u8B80\u3001\u6BCF\u6B21\u56DE\u61C9\u6709\u5927\u5C0F\u4E0A\u9650\u4E14\u53EF\u5206\u9801\u3001\u91D1\u9470\u53EA\u4EE5\u540D\u5B57\u51FA\u73FE\uFF08\u9700\u8981\u91D1\u9470\u4E2D\u5FC3\u6709 artifacts_read_token\uFF09\u3002\u6B0A\u9650\u8DDF\u8457\u9023\u7DDA\u7684\u8EAB\u5206\uFF1A\u9019\u500B AHub \u6C92\u767B\u8A18\u7684 repo\uFF08\u6216\u9023\u7DDA\u8EAB\u5206\u6C92\u901A\u904E\u9A57\u8B49\uFF09\u4E00\u5F8B\u56DE\u300C\u6C92\u6B0A\u9650\u300D\uFF1B\u767B\u8A18\u4E86\u7684 repo\uFF08\u542B\u79C1\u6709\uFF09\u4EFB\u4F55\u901A\u904E\u9A57\u8B49\u7684\u9023\u7DDA\u90FD\u8B80\u5F97\u5230\uFF0C\u540C\u8B80\u7968\uFF0C\u4E0D\u8B1B\u300C\u4E0D\u5B58\u5728\u300D\u3002\u5927\u578B\u7522\u7269\uFF08.worker-builds\u3001node_modules\u3001ahub.app.json \u4E4B\u985E\u5E7E MB \u7684\u6A94\uFF09\u4E0D\u4E0B\u8F09\uFF0C\u56DE 413 \u8AAA\u660E\u539F\u56E0\u2014\u2014AHub \u8B80\u6A94\u662F\u6574\u500B\u6293\u9032\u5F15\u64CE\u3001Artifacts \u6C92\u6709\u5148\u554F\u5927\u5C0F\u7684\u8FA6\u6CD5\uFF1Bgit_commit\uFF0Fgit_compare \u9047\u5230\u5B83\u5011\u7167\u5217\u6A94\u540D\u4E26\u6A19 not_read\uFF0C\u53E6\u53EF\u7528 path \u53EA\u770B\u67D0\u500B\u76EE\u9304\u3002\u9806\u624B\u4FEE\uFF1Arepo \u8CC7\u6599\u88E1\u5047\u7684 clone_url\uFF08\u6253\u958B\u662F 404\uFF09\u6539\u6210 Artifacts \u7684\u771F\u7DB2\u5740\u3002\u6C92\u6709\u65B0 template\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.21.5\uFF1A\u76EE\u6A19\u6A39\u5831\u544A\u8B80\u6BCF\u500B\u91CC\u7A0B\u7891\u7684\u8F09\u9AD4\u7968\u6642\uFF0C\u53EA\u8B80 key \u8207 state \u5169\u683C\uFF08\u539F\u672C\u56DB\u683C\uFF09\uFF0C\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\u53EA\u8B80 ticket \u4E00\u683C\uFF1B\u9032\u5EA6\u3001\u93C8\u689D\u3001\u65B7\u9EDE\u7684\u7B54\u6848\u4E0D\u8B8A\uFF0C\u6BCF\u6B21\u8B80\u53D6\u7684\u5217\u6578\u518D\u964D\u3002\u526F\u4F5C\u7528\uFF1A\u76EE\u6A19\u6A39\u88E1\u6BCF\u500B\u91CC\u7A0B\u7891\u7684\u300C\u6700\u8FD1\u6D3B\u52D5\u300D\u4E0D\u518D\u7B97\u8F09\u9AD4\u7968\u81EA\u5DF1\u7684\u66F4\u65B0\u6642\u9593\uFF0C\u6539\u7531\u91CC\u7A0B\u7891\u3001release \u8207\u93C8\u689D\u4E0A\u958B\u8457\u7684\u524D\u7F6E\u7968\u7684\u6642\u9593\u6C7A\u5B9A\uFF08\u770B\u677F\u4E0D\u53D7\u5F71\u97FF\uFF0C\u4ECD\u8B80\u56DB\u683C\uFF09\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08inkstone/Arcrun#384\uFF09\u3002\n0.21.4\uFF1A\u8B80\u5F97\u5230\u4E00\u5F35\u7968\u7B2C 100 \u5247\u4EE5\u5F8C\u7684\u7559\u8A00\uFF08inkstone/Arcrun#410\uFF09\u2014\u2014\u4EE5\u524D get_issue\uFF08MCP\uFF09\u8207\u7559\u8A00\u5217\u8868\u53EA\u7D66\u6700\u820A\u7684 100 \u5247\uFF0C\u7559\u8A00\u8D85\u904E 100 \u5247\u7684\u9577\u7968\uFF08\u4F8B\u5982\u6BCF\u8F2A\u7ACB\u6703\u7684\u8F09\u9AD4\uFF09\u6700\u65B0\u7684\u7559\u8A00\u6C38\u9060\u8B80\u4E0D\u5230\uFF0C\u6D3E\u5DE5\u55AE\u6307\u5230\u7684 comment \u4E5F\u8B80\u4E0D\u5230\u3002\u73FE\u5728 get_issue \u9810\u8A2D\u56DE\u6700\u65B0 100 \u5247\uFF08\u4ECD\u820A\u2192\u65B0\u6392\uFF09\uFF1B\u7559\u8A00\u591A\u65BC\u9019\u500B\u6578\u6642\u56DE comments_window\uFF08total\uFF0Fshown\uFF0Folder_omitted\uFF09\u8207\u4E0B\u4E00\u6B65\u63D0\u793A\uFF1B\u65B0\u589E\u9078\u586B comment_id\uFF08\u53EA\u8B80\u6307\u5B9A id \u7684\u90A3\u4E00\u5247\uFF0C\u4E0D\u8AD6\u7B2C\u5E7E\u5247\uFF09\u8207 comments_page\uFF08\u5F9E\u6700\u820A\u8D77\u7FFB\u9801\uFF0C\u6BCF\u9801 100 \u5247\uFF09\u3002\u7559\u8A00\u4E0D\u5230 100 \u5247\u7684\u7968\u56DE\u50B3\u4E0D\u8B8A\u3002\u7559\u8A00\u5217\u8868\u8DEF\u7531\uFF08GET \u2026/issues/:index/comments\uFF09\u591A tail=1\uFF08\u53D6\u6700\u65B0 limit \u5247\uFF09\u8207 id=\uFF08\u53EA\u53D6\u90A3\u4E00\u5247\uFF09\u5169\u500B\u9078\u586B\u53C3\u6578\uFF0C\u4E0D\u7D66\uFF1D\u820A\u884C\u70BA\u3002\u6C92\u6709\u65B0 template\u3001\u8DEF\u7531\u3001\u5DE5\u5177\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.21.3\uFF1A\u7968\u9801\u4F9D\u6A19\u7C64\u5217\u7968\u4E0D\u518D\u6574\u6279\u56DE\u7A7A\uFF08inkstone/Arcrun#397 \u6B63\u5F0F\u7AD9\u5BE6\u649E\uFF09\u2014\u2014\u6A19\u7C64\u662F\u6BCF\u500B\u5C08\u6848\u5404\u5B58\u4E00\u4EFD\uFF0C\u904E\u53BB\u7968\u9801\u53EA\u8B80\u300C\u6700\u65B0 500 \u7B46\u6A19\u7C64\u300D\uFF0C\u6A19\u7C64\u4E00\u591A\uFF0C\u6700\u820A\u5C08\u6848\uFF08Arcrun\u3001InkStoneCo\uFF09\u7684\u6A19\u7C64\u5C31\u6574\u6279\u8B80\u4E0D\u5230\uFF0C\u9078 Human \u6216 s/doing \u7BE9\u51FA 0 \u5F35\u3001\u6E05\u55AE\u6BCF\u5F35\u7968\u7684 labels \u662F\u7A7A\u9663\u5217\u3002\u73FE\u5728\u9078\u4E86\u5C08\u6848\u53EA\u8B80\u90A3\u500B\u5C08\u6848\u7684\u6A19\u7C64\uFF08\u6BD4\u4EE5\u524D\u5C11\u8B80\uFF09\uFF1B\u6C92\u9078\u5C08\u6848\u8B80\u5168\u90E8\uFF0C\u6700\u591A 2 \u9801\uFF081000 \u7B46\uFF0C\u591A\u4E00\u6B21\u8B80\uFF09\uFF0C\u518D\u591A\u6703\u5728\u756B\u9762\u8AAA\u660E\u3002\u6A19\u7C64\u3001\u7968\u865F\u3001\u95DC\u9375\u5B57\u53D6\u4EA4\u96C6\u7167\u820A\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.21.3\uFF1A\u7968\u9801\u4F9D\u6A19\u7C64\u5217\u7968\u4E0D\u518D\u6574\u6279\u56DE\u7A7A\uFF08inkstone/Arcrun#397 \u6B63\u5F0F\u7AD9\u5BE6\u649E\uFF09\u2014\u2014\u6A19\u7C64\u662F\u6BCF\u500B\u5C08\u6848\u5404\u5B58\u4E00\u4EFD\uFF0C\u904E\u53BB\u7968\u9801\u53EA\u8B80\u300C\u6700\u65B0 500 \u7B46\u6A19\u7C64\u300D\uFF0C\u6A19\u7C64\u4E00\u591A\uFF0C\u6700\u820A\u5C08\u6848\uFF08Arcrun\u3001InkStoneCo\uFF09\u7684\u6A19\u7C64\u5C31\u6574\u6279\u8B80\u4E0D\u5230\uFF0C\u9078 Human \u6216 s/doing \u7BE9\u51FA 0 \u5F35\u3001\u6E05\u55AE\u6BCF\u5F35\u7968\u7684 labels \u662F\u7A7A\u9663\u5217\u3002\u73FE\u5728\u9078\u4E86\u5C08\u6848\u53EA\u8B80\u90A3\u500B\u5C08\u6848\u7684\u6A19\u7C64\uFF08\u6BD4\u4EE5\u524D\u5C11\u8B80\uFF09\uFF1B\u6C92\u9078\u5C08\u6848\u8B80\u5168\u90E8\uFF0C\u6700\u591A 2 \u9801\uFF081000 \u7B46\uFF0C\u591A\u4E00\u6B21\u8B80\uFF09\uFF0C\u518D\u591A\u6703\u5728\u756B\u9762\u8AAA\u660E\u3002\u6A19\u7C64\u3001\u7968\u865F\u3001\u95DC\u9375\u5B57\u53D6\u4EA4\u96C6\u7167\u820A\u3002\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u8DEF\u7531\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.13.3\uFF1A\u76EE\u6A19\u53EF\u4EE5\u7D81\u91CC\u7A0B\u7891\u4E86\uFF08inkstone/Arcrun#353\uFF09\u2014\u2014\u76EE\u6A19\u5C6C\u65BC\u76EE\u6A19\u6A39\u3001milestone \u5C6C\u65BC\u7968\u7CFB\u7D71\uFF0C\u4E00\u500B\u76EE\u6A19\u7D81 0 \u5230\u591A\u500B milestone\uFF08\u53EF\u8DE8 repo\uFF1B\u4E00\u500B milestone \u4E5F\u53EF\u88AB\u597D\u5E7E\u500B\u76EE\u6A19\u5F15\u7528\uFF09\u3002\u76EE\u6A19\u53EA\u5B58\u300C\u9023\u5230\u54EA\u4E9B milestone\u300D\uFF0C\u9032\u5EA6 % \u5B8C\u5168\u7531 milestone \u5E95\u4E0B\u7684\u7968\u8207 release \u7B97\uFF08\u8207\u7968\u5730\u5716\u540C\u4E00\u5957\u7B97\u6CD5\uFF09\uFF0C\u4E0D\u53E6\u5916\u624B\u586B\uFF1Bgoal_set \u591A milestones\uFF0Funbind_milestones\uFF0Fmilestone_repo\uFF0Cgoals_report \u6BCF\u500B\u76EE\u6A19\u591A milestones\uFF0Fprogress\uFF0Fflags\uFF08\u53EF\u7528 milestone \u53CD\u67E5\u54EA\u4E9B\u76EE\u6A19\u5F15\u7528\u5B83\uFF09\u3002\u5169\u7D44\u300C\u93C8\u65B7\u4E86\u300D\u65D7\u6A19\u5728\u5831\u544A\u8207\u770B\u677F\u90FD\u5217\uFF1A\u76EE\u6A19\u6A39\u6C92\u4EBA\u7DAD\u8B77\uFF08\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u5728\u52D5\u3001\u76EE\u6A19\u6A39\u537B\u4E45\u6C92\u66F4\u65B0\uFF0C\u6216 waiting \u6B65\u9A5F\u65E9\u8A72\u91CD\u770B\uFF09\u3001\u93C8\u689D\u6C92\u4EBA\u7DAD\u8B77\uFF08\u6C92\u7D81\u91CC\u7A0B\u7891\u537B\u6709\u7968\u5728\u8DD1\u3001\u6B65\u9A5F\u7968\u4E0D\u5728\u7D81\u5B9A\u7684\u91CC\u7A0B\u7891\u3001\u91CC\u7A0B\u7891 100% \u6216\u5DF2\u95DC\u537B\u6C92\u6709 release\u3001\u904E\u671F\u6216\u627E\u4E0D\u5230\uFF09\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_goal_ms\uFF0C\u5171 24\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u30020.13.2\uFF1A\u756B\u9762\u8B80 AHub \u7684\u767D\u540D\u55AE\u591A\u653E\u4E00\u689D goals_report\uFF08\u76EE\u6A19\u6A39\u5831\u544A\uFF09\u2014\u2014\u7D66\u7968\u5730\u5716 0.7.0 \u7684\u300C\u672A\u4F86\u300D\u8996\u5716\u8B80\uFF08inkstone/Arcrun#351\uFF09\u3002\u53EA\u591A\u4E00\u689D\u552F\u8B80\u8DEF\u7531\u7684\u653E\u884C\uFF0C\u8CC7\u6599\u8207\u5DE5\u5177\u90FD\u6C92\u52D5\uFF0C\u6C92\u6709\u65B0 template\u3002\n0.13.0\uFF1A\u91CC\u7A0B\u7891\u9032\u5EA6\u628A\u524D\u7F6E\u7968\u7B97\u9032\u53BB\u4E86\uFF0C\u4E26\u6A19\u51FA\u93C8\u689D\u65B7\u5728\u54EA\uFF08inkstone/Arcrun#352\uFF09\u2014\u2014\u7968\u5730\u5716\u7684 % \u539F\u672C\u53EA\u7B97\u300C\u76F4\u63A5\u639B\u5728\u91CC\u7A0B\u7891\u4E0A\u300D\u7684\u8F09\u9AD4\u7968\uFF0C\u5225\u7684 repo \u7684\u57F7\u884C\u7968\u662F\u8F09\u9AD4\u7968\u7684\u524D\u7F6E\uFF0C\u5B8C\u5168\u6C92\u9032\u5206\u6BCD\uFF08\u4F8B\uFF1A\u505A\u5B8C\u4E86\u537B\u986F\u793A 33%\uFF09\u3002\u73FE\u5728 GET /ahub/milestones \u7684\u9032\u5EA6\uFF1D\u8F09\u9AD4\u7968\uFF0B\u5B83\u5011\u905E\u79FB\u7684\u524D\u7F6E\u7968\uFF0C\u8DE8 repo\u3001\u540C\u4E00\u5F35\u53EA\u7B97\u4E00\u6B21\uFF1B\u591A\u56DE direct\uFF0Fprerequisites\uFF0Fcarriers\uFF08\u542B\u5404\u8F09\u9AD4\u7684\u524D\u7F6E\u6578\uFF09\u3001\u93C8\u689D\u56DB\u6BB5 chain\uFF08\u8F09\u9AD4\u7968\uFF0F\u5DE5\u4F5C\u7968\uFF0Fmilestone\uFF0Frelease\uFF09\u3001\u65B7\u9EDE gaps \u8207 chain_state\uFF1Abroken\uFF1D\u93C8\u689D\u6C92\u63A5\u597D\uFF08\u6C92\u6709\u8F09\u9AD4\u3001\u8F09\u9AD4\u90FD\u6C92\u6709\u524D\u7F6E\uFF09\u3001unmaintained\uFF1D\u93C8\u689D\u63A5\u4E0A\u4E86\u4F46\u6C92\u4EBA\u7DAD\u8B77\uFF08\u524D\u7F6E\u5168\u95DC\u8F09\u9AD4\u9084\u958B\u8457\u3001100% \u91CC\u7A0B\u7891\u9084\u958B\u8457\u3001\u505A\u5B8C\u6C92 release\u3001\u91CC\u7A0B\u7891\u95DC\u4E86\u9084\u6709\u7968\u958B\u8457\uFF09\u3001moving\u3001shipped\uFF1B\u53E6\u6A19\u904E\u671F\u3002\u7968\u5730\u5716\u5361\u7247\u8207\u8A73\u60C5\u986F\u793A\u65B0 % \u8207\u65B7\u9EDE\u3002\u8B80\u53D6\u591A 2 \u683C\uFF08\u6574\u5F35\u76F8\u4F9D\u908A\u3001\u958B\u8457\u7684\u7968\uFF0C\u5404\u6700\u591A 2 \u9801\xD7500\uFF0C\u8B80\u6EFF\u6A19 truncated\uFF09\uFF1B\u6C92\u6709\u65B0 template\u3001\u6C92\u6709\u65B0\u5DE5\u5177\u3001\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\u3002\n0.12.1\uFF1A\u6A19\u51FA\u300C\u4EA4\u8FA6\u4E86\u537B\u6C92\u4EBA\u52D5\u5DE5\u300D\uFF08inkstone/Arcrun#350\uFF09\u2014\u2014\u6B65\u9A5F\u5F85\u505A\u3001\u6C92\u4EBA\u5728\u505A\uFF08\u6C92\u6709\u7968\uFF0C\u6216\u7968\u6C92\u4EBA\u9818\u4E5F\u6C92\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF09\u3001\u524D\u7F6E\u90FD\u505A\u5B8C\uFF0C\u5F9E\u4EA4\u8FA6\u6642\u9593\u8D77\u8D85\u904E 24 \u5C0F\u6642\uFF08\u53EF\u8ABF\uFF0Cunstarted_hours\uFF09\uFF0C\u7E3D\u76E3\u5831\u544A goals_report\uFF08\u76EE\u6A19\u3001\u5C08\u6848\u7684 unstarted\uFF0Csummary.unstarted_steps\uFF09\u8207\u770B\u677F board\uFF08anomalies \u7684 unstarted_step\u3001unstarted_steps \u660E\u7D30\uFF09\u5C31\u6A19\u51FA\u4F86\uFF0C\u4E0D\u5FC5\u9760\u4EBA\u8A18\u5F97\u53BB\u8FFD\u554F\u3002\u4EA4\u8FA6\u6642\u9593\u7528 step_set \u7684\u65B0\u53C3\u6578 assigned_at \u8A18\uFF08\u4EA4\u8FA6\u5E38\u6BD4\u5BEB\u9032\u6A39\u65E9\uFF0C\u88DC\u5BEB\u820A\u7684\u4E5F\u884C\uFF1B\u6C92\u7D66\u5C31\u4EE5\u5BEB\u9032\u6A39\u7684\u6642\u9593\u7B97\uFF09\u3002\u53E6\u4FEE\uFF1A\u4EBA\u5BEB\u7684\u300C\u7B49\u5F85\u4E2D\u300D\u6B65\u9A5F\uFF0C\u524D\u7F6E\u90FD\u5B8C\u6210\u5F8C\uFF0C\u5831\u544A\u7684 needs \u8A72\u7B46\u5E36 review:true \u8207\u300C\u524D\u7F6E\u5DF2\u5B8C\u6210\uFF0C\u8A72\u91CD\u770B\u300D\uFF0C\u4E0D\u518D\u6C38\u9060\u986F\u793A\u5728\u7B49\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_step_assign\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u6C92\u6709\u65B0\u5DE5\u5177\u3002board \u8B80\u53D6\u683C\u6578 9\u219214\uFF08\u591A\u8B80\u76EE\u6A19\u6A39\u9032\u884C\u4E2D\u7684\u6B65\u9A5F\uFF09\u3002\n0.12.0\uFF1AAHub \u6709\u300C\u6BCF\u500B\u5C08\u6848\u7684\u76EE\u6A19\u6A39\u300D\u4E86\uFF08inkstone/Arcrun#349\uFF09\u2014\u2014\u8A18\u300C\u672A\u4F86 \u2212 \u73FE\u5728\u300D\uFF1A\u76EE\u6A19\uFF08\u4E00\u53E5\u8A71\u7684\u672A\u4F86\uFF0B\u9054\u6210\u6A19\u6E96\uFF0C\u53EF\u5206\u5C64\uFF0C\u76EE\u6A19\u6703\u8B8A\u3001\u6BCF\u6B21\u4FEE\u6539\u5FC5\u9644\u7406\u7531\u4E26\u81EA\u52D5\u7559\u8B8A\u66F4\u7D00\u9304\uFF09\u3001\u6B65\u9A5F\uFF08\u639B\u5728\u76EE\u6A19\u4E0B\uFF0C\u53EF\u4EE5\u9084\u6C92\u958B\u7968\uFF1B\u72C0\u614B done\uFF0Fdoing\uFF0Fpending\uFF0Fwaiting\uFF0Fneeds_user\uFF0C\u7B49\u5F85\u8207\u9700\u8981\u4F7F\u7528\u8005\u7684\u8981\u5BEB\u7B49\u4EC0\u9EBC\uFF1B\u524D\u7F6E\u6B65\u9A5F depends_on\uFF09\u3002\u6709\u639B\u7968\u7684\u6B65\u9A5F\u5F9E\u7968\u8207\u9818\u7968\u8B80\u72C0\u614B\uFF08\u7968\u95DC\u4E86\uFF1D\u5B8C\u6210\u3001\u9818\u7968\u5361\u4F4F\uFF1D\u7B49\u5F85\uFF09\u3002\u5BEB\u5165\u5DE5\u5177 goal_set\uFF0Fstep_set \u7528\u6A19\u984C\u6216 id \u90FD\u627E\u5F97\u5230\u3001\u540C\u4E00\u500B\u6A19\u984C\u91CD\u8907\u5BEB\u4E0D\u6703\u9577\u51FA\u91CD\u8907\uFF0C\u6A19\u984C\u76F8\u8FD1\u7684\u56DE 409 \u8207\u5019\u9078\uFF1B\u7E3D\u76E3\u7528 goals_report \u4E00\u6B21\u8B80\u5230\u6BCF\u500B\u5C08\u6848\u7684\u300C\u76EE\u6A19 A\uFF0F\u505A\u5230 B\uFF0F\u9700\u8981 C\u300D\uFF0C\u4E26\u6A19\u51FA\u88AB\u524D\u7F6E\u64CB\u4F4F\u7684\u76F8\u4F9D\u93C8\u8207\u6700\u524D\u9762\u7684\u5361\u9EDE\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u5C08\u6848\u76EE\u6A19\u6A39\u7684\u6700\u5F8C\u66F4\u65B0\u6642\u9593\uFF0C\u8D85\u904E goal_stale_hours\uFF08\u9810\u8A2D 168\uFF09\u6C92\u4EBA\u66F4\u65B0\u8A18 goal_stale\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_goal\u3001ahub_goal_log\u3001ahub_step\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 3 \u689D\u8DEF\u7531\u8207 3 \u652F MCP \u5DE5\u5177\uFF08goal_set\u3001step_set\u3001goals_report\uFF09\u30011 \u4EFD\u8AAA\u660E\uFF08goals\uFF09\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 23 \u63D0\u5230 26\u3002\n0.11.0\uFF1AAHub \u8A18\u5F97\u300C\u73FE\u5728\u6709\u54EA\u4E9B\u5C0D\u8A71\u958B\u8457\u300D\u4E86\uFF08inkstone/Arcrun#348\uFF09\u2014\u2014\u6BCF\u500B Claude \u5C0D\u8A71\u958B\u5DE5\u6642\u7528 checkin \u767B\u8A18\u4E00\u6B21\uFF08\u4E0D\u5FC5\u958B\u7968\uFF1A\u53EA\u662F\u53BB\u67E5\u67D0\u500B\u8A2D\u5B9A\u5728\u54EA\u7684\u5C0F\u5C0D\u8A71\u4E5F\u4E00\u6A23\uFF09\uFF0C\u7D50\u675F\u6642\u7528\u65B0\u7684 end_session \u6536\u5DE5\u3001\u53EF\u9644\u4E00\u53E5\u8A71\u7D50\u8AD6\uFF1B\u4E4B\u5F8C\u6BCF\u652F AHub \u5DE5\u5177\u5E36\u8457\u5C0D\u8A71\u8B58\u5225\uFF08session\uFF09\uFF0C\u5C31\u7B97\u4E00\u6B21\u6D3B\u52D5\u3001\u81EA\u52D5\u66F4\u65B0\u300C\u6700\u5F8C\u6D3B\u52D5\u300D\uFF0C\u4E0D\u5FC5\u518D\u5831\u5230\uFF1B\u540C\u4E00\u500B\u5C0D\u8A71\u91CD\u8907\u5831\u5230\u53EA\u662F\u66F4\u65B0\u3002\u770B\u677F board \u591A\u5217\u6BCF\u500B\u9032\u884C\u4E2D\uFF08\u6C92\u6536\u5DE5\uFF09\u7684\u5C0D\u8A71\u3001\u4F9D\u5DE5\u4F5C\u7AD9\u5206\u7D44\uFF0C\u9023\u5F97\u5230\u5B83\u9818\u7684\u7968\uFF1B\u4E45\u6C92\u6D3B\u52D5\u53C8\u6C92\u6536\u5DE5\u7684\u8A18 session_stale\uFF08\u9580\u6ABB session_stale_hours\uFF0C\u9810\u8A2D 12 \u5C0F\u6642\uFF09\uFF1B\u5DF2\u6536\u5DE5\u7684\u4E0D\u4F54\u7248\u9762\uFF0C\u7528\u65B0\u7684 list_sessions \u67E5\u5F97\u5230\u3002\u5DE5\u4F5C\u7AD9\u53EA\u8981\u9084\u6709\u9032\u884C\u4E2D\u7684\u5C0D\u8A71\uFF0C\u5C31\u4E0D\u518D\u5831\u300C\u5831\u5230\u4E86\u537B\u6C92\u9818\u7968\u300D\u3002\u65B0\u589E 1 \u500B template\uFF08ahub_session\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF1B\u65B0\u589E 4 \u689D\u8DEF\u7531\u8207 2 \u652F MCP \u5DE5\u5177\uFF08end_session\u3001list_sessions\uFF09\uFF0Ccheckin \u591A\u6536 session\uFF0Ftitle\uFF0Fticket\uFF0C\u5176\u9918\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 session\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 21 \u63D0\u5230 23\u3002\n0.10.1\uFF1A\u4FEE\u6389\u300C\u66F4\u65B0\u5931\u6557\u30FB\u8CC7\u6599\u4F86\u81EA\u597D\u5E7E\u500B\u5C0F\u6642\u524D\u300D\u2014\u2014AHub \u756B\u9762\u8B80\u4E0D\u5230\u65B0\u8CC7\u6599\uFF08\u7968\u3001\u5168\u90E8\u5C08\u6848\u3001\u6A19\u7C64\u90FD\u505C\u5728\u820A\u7684\uFF09\u3002\u539F\u56E0\u662F\u5F15\u64CE\u6539\u4E86\u4E00\u500B\u7D30\u7BC0\uFF0C\u756B\u9762\u5728\u300C\u9019\u53F0\u5DF2\u7D93\u767B\u8A18\u904E\u300D\u7684\u60C5\u6CC1\u4E0B\u628A\u771F\u6B63\u7684\u56DE\u61C9\u4E1F\u6389\u4E86\uFF1B\u73FE\u5728\u6539\u597D\uFF0C\u6309\u300C\u66F4\u65B0\u300D\u5F8C\u756B\u9762\u6703\u62FF\u5230\u6700\u65B0\u7684\u7968\uFF08inkstone/Arcrun#347\uFF09\u3002\n0.10.0\uFF1AAHub \u8A18\u5F97\u300C\u54EA\u500B Claude \u5C08\u6848\u9818\u4E86\u54EA\u5F35\u7968\u3001\u505A\u5230\u54EA\u300D\u4E86\uFF08inkstone/Arcrun#346\uFF09\u2014\u2014\u5DE5\u4F5C\u7AD9\uFF08\uFF1D\u4E00\u500B Claude \u5C08\u6848\uFF09\u5831\u5230 checkin\u3001\u9818\u7968 claim\u3001\u56DE\u5831 report\u3001\u653E\u624B release\uFF1B\u7E3D\u76E3\u4E00\u6B21\u770B\u5168\u90E8\u7684\u770B\u677F board\uFF1B\u7E3D\u76E3\u5C0D\u88AB\u9818\u8D70\u7684\u7968\u958B\u300C\u8981\u6C42\u56DE\u5831\u300Drequest_report\uFF0C\u8A72\u5DE5\u4F5C\u7AD9\u4E0B\u4E00\u6B21\u547C\u53EB\u4EFB\u4F55 AHub \u5DE5\u5177\u6642\u56DE\u61C9\u7684 next_actions \u5C31\u5E36\u51FA\u4F86\uFF0C\u56DE\u5831\u5F8C\u81EA\u52D5\u6D88\u6389\uFF1Bmy_queue \u53EF\u4F9D\u5DE5\u4F5C\u7AD9\u7BE9\u3002\u9818\u7968\u6642\u56DE\u61C9\u5E36\u9019\u5F35\u7968\u5C6C\u65BC\u54EA\u500B milestone\uFF08\u81EA\u5DF1\u639B\u7684\uFF0C\u6C92\u6709\u5C31\u770B\u64CB\u4F4F\u7684\u8F09\u9AD4\u7968\u639B\u7684\uFF09\uFF1B\u770B\u677F\u6293\u7570\u5E38\uFF1A\u5831\u5230\u537B\u6C92\u9818\u7968\u3001\u9818\u7684\u7968\u4E45\u6C92\u56DE\u5831\u3001\u4E0D\u5C6C\u65BC\u4EFB\u4F55 milestone\u3001\u56DE\u5831\u5B8C\u6210\u4F46 milestone \u6C92\u95DC\u6216\u6C92\u6709\u7248\u672C\uFF08\u53EA commit \u5C31\u653E\u8457\uFF09\u3001\u5DE5\u4F5C\u7AD9\u4E45\u6C92\u78B0 AHub\u3002\u65B0\u589E 3 \u500B template\uFF08ahub_station\u3001ahub_claim\u3001ahub_report_ask\uFF09\uFF0C\u820A\u8CC7\u6599\u4E00\u683C\u6C92\u52D5\uFF08ahub_release_link \u53EA\u591A\u4E00\u500B\u7D22\u5F15\uFF09\uFF1B\u65B0\u589E 6 \u652F MCP \u5DE5\u5177\u8207 1 \u4EFD\u5831\u5230\u8AAA\u660E\uFF0C\u65E2\u6709\u6BCF\u652F\u5DE5\u5177\u591A\u4E00\u500B\u9078\u586B\u7684 station \u53C3\u6578\u3002MCP \u6BCF\u500B App \u639B\u7684\u6B63\u5F0F\u5DE5\u5177\u4E0A\u9650\u5F9E 15 \u63D0\u5230 21\u3002\n0.9.1\uFF1A\u5217\u7968\u3001\u5217\u7559\u8A00\u8B8A\u5FEB\uFF08leo 2026-11-04\uFF09\u2014\u2014\u539F\u672C\u5217\u4E00\u500B repo \u7684\u7968\uFF0C\u77E5\u8B58\u5EAB\u8981\u628A\u540C\u4E00\u500B repo \u5E95\u4E0B\u6240\u6709\u7559\u8A00\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u4E00\u8D77\u7FFB\u904E\u624D\u6E4A\u5F97\u51FA\u7968\uFF0C\u7559\u8A00\u8D8A\u591A\u8D8A\u6162\u3001\u8D8A\u5403\u984D\u5EA6\uFF1B\u73FE\u5728 AHub \u6703\u7528\u4F86\u67E5\u7684\u683C\u5B50\u90FD\u958B\u4E86\u77E5\u8B58\u5EAB\u7684\u300C\u6B04\u4F4D\u503C\u7D22\u5F15\u300D\uFF0C\u5217\u7968\u7684\u6210\u672C\u53EA\u8DDF\u8981\u5217\u7684\u7968\u6578\u6709\u95DC\u3002\u5B89\u88DD\u6216\u6309\u300C\u66F4\u65B0\u300D\u6642\u81EA\u52D5\u66FF\u65E2\u6709\u8CC7\u6599\u5EFA\u7D22\u5F15\uFF08\u8CC7\u6599\u591A\u6642\u5206\u5E7E\u6B21\u505A\u5B8C\uFF0C\u6C92\u5EFA\u597D\u4E4B\u524D\u7167\u820A\u53EF\u7528\u3001\u53EA\u662F\u9084\u6C92\u8B8A\u5FEB\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 kbdb migration 0016\u3002\n0.9.0\uFF1A\u7968\u53EF\u4EE5\u4E0D\u5206 repo \u641C\u4E86\uFF08inkstone/Arcrun#329\uFF09\u2014\u2014AHub \u756B\u9762\u7684\u5C08\u6848\u9078\u55AE\u591A\u4E86\u300C\u5168\u90E8\u5C08\u6848\u300D\uFF0C\u4E00\u6B21\u5217\u51FA\u6240\u6709 repo \u7684\u7968\u3001\u6BCF\u5217\u6A19\u660E repo\uFF1B\u641C\u5C0B\u6846\u8F38\u5165 298\u3001#298\u3001Arcrun#298\u3001inkstone/Arcrun#298 \u90FD\u627E\u5F97\u5230\uFF08\u540C\u865F\u78BC\u7684\u7968\u6BCF\u500B repo \u5404\u4E00\u5F35\uFF0C\u865F\u78BC\u76F8\u7B26\u6392\u6700\u524D\u9762\uFF09\uFF0CAI \u7684 list_issues \u540C\u4EAB\u3002\u6BCF\u5F35\u7968\u6709\u56FA\u5B9A\u9023\u7D50\uFF08\u7968\u8A73\u60C5\u7684\u300C\u8907\u88FD\u9023\u7D50\u300D\uFF0C\u5F62\u5982 \u2026#/app/ahub/inkstone/Arcrun/issues/298\uFF0C\u958B\u555F\u76F4\u9054\u90A3\u5F35\u7968\u7531 #326 \u7684\u7DB2\u5740\u76F4\u9054\u8CA0\u8CAC\uFF09\u3002\n0.8.0\uFF1AAHub \u81EA\u5DF1\u7D66 AI \u5DE5\u5177\u4E86\uFF08inkstone/Arcrun#328\uFF09\u2014\u2014Arcrun MCP \u9023\u7DDA\u6642\u81EA\u52D5\u639B\u4E0A 15 \u652F arcrun_ahub_* \u5DE5\u5177\u8207 4 \u4EFD\u8AAA\u660E\uFF08\u7968\u3001\u7C3D\u6838\u3001\u51FA\u8CA8\u3001\u932F\u53C8\u72AF\u4E86\uFF09\uFF0C\u4E0D\u5FC5\u53E6\u5916\u88DD plugin\u3002\u7C3D\u6838\u4EBA\u6539\u7531\u6BCF\u500B\u79DF\u6236\u5728 AHub \u756B\u9762\u7684\u300C\u8A2D\u5B9A\u300D\u586B\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\uFF1B\u53EA\u6709\u7C3D\u6838\u4EBA\u7C3D\u7684\u624D\u7B97\u3002AI \u6539\u7528\u300C\u767C\u7C3D\u6838\u8ACB\u6C42\u300D\u8207\u300C\u8B80\u7C3D\u6838\u7D50\u679C\u300D\u5169\u652F\u5DE5\u5177\uFF0C\u81EA\u5DF1\u5728\u7559\u8A00\u88E1\u5BEB ARM:\uFF0F\u7C3D\u6838\u884C\u6703\u88AB\u64CB\u3002\u95DC\u7968\u53EF\u9644\u4EA4\u4ED8\u7269\uFF1B\u540C\u4E00\u500B\u932F\u53C8\u72AF\u4E86\u53EF\u56DE\u5831\u5230\u6A5F\u5236\u7968\uFF08\u95DC\u4E86\u6703\u91CD\u958B\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#327\u30020.7.4\uFF1A\u4FEE\u6389 0.7.3 \u7684\u4E00\u500B\u932F\uFF1AAI \u91CD\u767C\u89E3\u9396\u78BC\u6642\uFF0C\u9078\u55AE\u6703\u8AA4\u6293\u7559\u8A00\u88E1\u63D0\u5230\u7684\u4E0A\u4E00\u7D44\uFF08\u5DF2\u904E\u671F\u7684\uFF09\u78BC\u30020.7.3\uFF1A\u7C3D\u6838\u9078\u55AE\u4E5F\u8A8D\u5F97 AI \u8981\u4F60\u8CBC\u7684\u4E00\u6B21\u6027\u89E3\u9396\u78BC\uFF08\u300C\u{1F510} ARM \u8ACB\u6C42\u300D\uFF0C\u63A8 GitHub \u6216\u78B0\u6B63\u5F0F\u74B0\u5883\u524D\u90A3\u7A2E\uFF09\uFF1A\u6309\u300C\u7C3D\u6838\u2026\u300D\u9078\u5B83\u3001\u6309\u540C\u610F\u5C31\u5E6B\u4F60\u628A\u78BC\u8CBC\u4E0A\uFF0C\u4E0D\u5FC5\u81EA\u5DF1\u6284\uFF1B\u4F60\u81EA\u5DF1\u6253\u904E\u78BC\u7684\u90A3\u5247\u6703\u6A19\u6210\u5DF2\u7C3D\uFF0C\u4E0D\u518D\u639B\u8457\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u30020.7.2\uFF1A\u4E00\u6B21\u7559\u8A00\u3001\u6539\u9032\u5EA6\u9019\u985E\u5BEB\u5165\u5C11\u4ED8\u4E00\u6574\u8D9F\u2014\u2014\u5EFA\u8207\u6539\u5408\u6210\u4E00\u500B\u8ACB\u6C42\u3001\u5728\u5F15\u64CE\u90A3\u7AEF\u540C\u6642\u5BEB\uFF08\u539F\u672C\u662F\u5169\u500B\u4F9D\u5E8F\u7684\u6B65\u9A5F\uFF0Cyoulin \u5BE6\u6E2C\u5404\u7D04 1.2\uFF5E1.6 \u79D2\uFF09\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#325\u30020.7.1\uFF1A\u6539\u9032\u5EA6\u3001\u91CC\u7A0B\u7891\u3001\u72C0\u614B\u3001\u6A19\u7C64\u6642\u756B\u9762\u7576\u4E0B\u5C31\u63DB\u6210\u65B0\u503C\u3001\u80CC\u666F\u5B58\u6A94\uFF0C\u5B58\u4E0D\u9032\u53BB\u624D\u63DB\u56DE\u539F\u6A23\uFF08\u4E0D\u518D\u5361\u8457\u7B49 4\uFF5E13 \u79D2\uFF09\u3002\u7C3D\u6838\u6539\u6210\u9078\u55AE\uFF08leo 2026-10-25\uFF09\uFF1A\u4E0D\u5FC5\u518D\u6253\u7248\u672C\u865F\u2014\u2014AI \u628A\u8981\u4F60\u7C3D\u7684\u5167\u5BB9\u5BEB\u6210\u4E00\u5247\u300C\u7B49\u4F60\u7C3D\u6838\u300D\u7684\u7559\u8A00\uFF0C\u6309\u300C\u7C3D\u6838\u2026\u300D\u5F9E\u4E0B\u62C9\u9078\u5B83\u3001\u52FE\u540C\u610F\u6216\u4E0D\u540C\u610F\u3001\u53EF\u52A0\u610F\u898B\uFF0C\u7C3D\u6838\u8207\u88AB\u7C3D\u7684\u5167\u5BB9\u7D81\u5728\u4E00\u8D77\uFF1B\u540C\u610F\u51FA\u6B63\u5F0F\u7248\u7684\u8ACB\u6C42\u6642\u4E00\u4F75\u7559\u4E0B\u51FA\u8CA8\u7DDA\u8A8D\u5F97\u7684\u300CARM: <\u7248\u672C>\u300D\u3002\u4FEE\u6389\u820A\u7684\u7C3D ARM \u6846\u628A\u300CARM: 9.9.9\u300D\u5224\u6210\u683C\u5F0F\u4E0D\u5C0D\u30020.7.0\uFF1AAHub \u6709\u756B\u9762\u4E86\uFF08inkstone/Arcrun#323\uFF09\u2014\u2014\u5728 Portal \u6253\u958B AHub \u5C31\u80FD\u589E\u6539\u95DC\u7968\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u3001\u5C08\u6848\uFF1B\u9EDE\u7968\u5F9E\u53F3\u908A\u6ED1\u51FA\u8A73\u60C5\uFF0C\u7559\u8A00\u7528 Markdown \u5BEB\u3001\u53EF\u9810\u89BD\u3001\u7167\u683C\u5F0F\u986F\u793A\uFF0C\u80FD\u7C3D ARM\u3002\u5F9E\u756B\u9762\u5BEB\u7684\u4F5C\u8005\u662F Leo\uFF1A\u5BEB\u5165\u8DEF\u7531\u591A\u6536\u300CPortal \u4E3B\u4EBA\u6309\u7684\u300D\u65B7\u8A00\uFF08\u554F\u5F15\u64CE\u9A57\u904E\u3001\u662F\u7BA1\u7406\u54E1\u624D\u5BEB\uFF09\uFF1BAI \u8207 App \u7528 token \u7684\u5BEB\u6CD5\u5B8C\u5168\u4E0D\u8B8A\u30020.6.0\uFF1A\u88DC\u756B\u9762\u8981\u7BA1\u5B8C\u6574\u5354\u4F5C\u7684\u5F8C\u7AEF\u7F3A\u53E3\uFF08inkstone/Arcrun#320\uFF09\u2014\u2014\u5C08\u6848\uFF08repo\uFF09\u6E05\u55AE\u8207\u6539 description\uFF0Fprivate\uFF1Brelease \u9023\u5F97\u5230\u91CC\u7A0B\u7891\uFF08\u53EF\u8DE8 repo\uFF09\u4E26\u6A19\u6709\u6C92\u6709\u63A8 GitHub\uFF1B\u7559\u8A00\u53EF\u6539\u53EF\u522A\uFF08\u4F5C\u8005\u672C\u4EBA\uFF09\uFF1B\u76F8\u4F9D\u53EF\u79FB\u9664\uFF1B\u8DE8 repo \u7684\u91CC\u7A0B\u7891\u7E3D\u89BD\u4E00\u6B21\u7D66\u9032\u5EA6 %\u3001\u6700\u8FD1\u6D3B\u52D5\u3001\u8AB0\u5728\u63A8\u3001\u7522\u51FA\u7684 release\u3002\u65B0\u589E\u5169\u500B template\uFF08ahub_release_link\u3001ahub_comment_meta\uFF09\uFF0C\u820A\u8CC7\u6599\u4E0D\u5FC5\u91CD\u532F\uFF0C\u6C92\u8CC7\u6599\u5C31\u56DE\u7A7A\u503C\u30020.5.0\uFF1A\u5408\u4F75 0.4.0\uFF08release \u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u8207 0.3.2\uFF08Portal \u7559\u8A00\uFF09\uFF0C\u4E00\u500B App \u4E00\u500B\u7248\u672C\u865F\uFF1B\u5DF2\u88DD 0.3.x\uFF0F0.4.0 \u7684\u5BE6\u4F8B\u6309\u300C\u66F4\u65B0\u300D\u5C31\u5230\u4F4D\u30020.3.2\uFF1A\u65B0\u589E\u300CPortal \u7559\u8A00\u300D\u8DEF\u7531\u2014\u2014\u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u756B\u9762\u7559\u8A00\uFF0C\u4F5C\u8005\u662F Leo\uFF0C\u8EAB\u5206\u770B\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\u800C\u4E0D\u662F token\uFF1B\u516C\u958B\u7684 token \u767B\u8A18\u4E0D\u518D\u6536\u4EBA\u7684\u767B\u5165\u540D\uFF08Leo\uFF09\u8207 kind=human\uFF0CAI \u767B\u8A18\u4E0D\u51FA\u4E00\u500B Leo\uFF08inkstone/Arcrun#304 c22862\uFF09\u3002\u9700\u8981\u5F15\u64CE\u6709 /portal/actor/verify\u30020.4.0\uFF1A\u52A0\u4E0A release\uFF08\u7248\u672C\u767C\u4F48\u7D00\u9304\uFF09\u2014\u2014\u5EFA\uFF0F\u5217\uFF0F\u8B80\uFF0F\u7528 tag \u627E\uFF0F\u88DC\u9644\u4EF6\u6307\u6A19\uFF0CGitea \u5F62\u72C0\uFF1B\u8B80\u7684\u8DEF\u7531\u4E0D\u67E5 token\uFF08\u770B\u7248\u672C\u6E05\u55AE\u4E0D\u9700\u8981\u7F72\u540D\uFF09\uFF1B\u53E6\u6709 /ahub/releases \u6BCF\u500B repo \u4E00\u884C\u7D66\u7248\u672C\u9801\u7528\u3002\u532F\u5165\u7684\u820A release \u8207\u65B0\u5EFA\u7684\u662F\u540C\u4E00\u7A2E\u8CC7\u6599\uFF08ahub_release\u3001ahub_attachment \u5169\u500B template \u4F75\u5165\u5BA3\u544A\uFF09\uFF1B\u6C92\u6709 DELETE\uFF08\u4EE3\u8F49\u5C64\u6C92\u6709\u522A record \u7684\u53E3\uFF09\u3002inkstone/InkStoneCo#234 c22846\u30020.3.1\uFF1A\u4FEE\u958B\u7968\u7671\u7613\u2014\u2014\u4E00\u500B repo \u6700\u65B0\u5E7E\u7B46\u5168\u662F key \u4E0D\u50CF\u7968\u865F\u7684\u7D00\u9304\u6642\uFF0C\u958B\u7968\u5F9E #1 \u8D77\u6392\u7684\u516B\u500B\u5617\u8A66\u5168\u649E\u65E2\u6709\u7684\u7968\u800C 503\uFF1B\u73FE\u5728\u9019\u7A2E\u60C5\u6CC1\u6539\u5F9E\u7B46\u6578+1 \u8D77\u6392\uFF08inkstone/Arcrun#308 c20214\uFF09\u30020.3.0\uFF1A\u8B80\u53D6\u4E26\u884C\uFF08\u7B2C\u4E00\u6279\u8B80\u540C\u6642\u6253\uFF0C\u8EAB\u5206\u67E5\u8A62\u4F75\u9032\u7B2C\u4E00\u6279\uFF09\u3001\u7968\u865F\u7528 create_only \u6436\uFF08\u5169\u500B\u8ACB\u6C42\u540C\u6642\u958B\u7968\u4E0D\u6703\u540C\u865F\uFF09\u3001\u76F8\u4F9D\u7968\u7528 batch-get \u4E00\u6B21\u8B80\u5B8C\uFF1B\u9700\u8981\u5F15\u64CE\u6709 inkstone/Arcrun#305\uFF0B#307\u30020.2.0\uFF1A\u8CC7\u6599\u6539\u6210 template\uFF0Brecord\uFF08\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u91CC\u7A0B\u7891\u3001\u6A19\u7C64\u9023\u7D50\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u5404\u4E00\u7A2E\uFF09\uFF0C\u7A2E\u985E\u53EA\u7531 template \u6C7A\u5B9A\uFF08inkstone/Arcrun#301\uFF09\u30020.1.0\uFF1A\u9AA8\u67B6\u3002\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u6307\u6D3E\u3001\u76F8\u4F9D\u3001\u91CC\u7A0B\u7891\u3001\u8DE8 repo \u641C\u5C0B\u2014\u2014Gitea \u5F62\u72C0\u7684 API\uFF0C\u72C0\u614B\u4F4F KBDB\uFF08\u96F6 SQL\uFF09\u3002\u6C92\u6709\u756B\u9762\uFF1B\u756B\u9762\u662F\u7968\u770B\u677F App \u63DB\u8CC7\u6599\u4F86\u6E90\u3002",
   requires: {
     recipes: [
       {
@@ -47772,6 +47738,172 @@ return prepOut(B, { name: name, url: url, task: task, reads: [rd(T.station, 'nam
       }
     },
     {
+      name: "visa_tasks",
+      description: "\u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9\u6E05\u55AE\uFF08inkstone/Arcrun#457\uFF09\uFF1A\u7D66\u7C3D\u8B49\u5361\u8207\u7C3D\u6838\u6846\u756B\u300C\u5171 N \u500B\u4EFB\u52D9\uFF0F\u2713 \u6BCF\u4E00\u5F35\u300D\u7528\u3002query intent\uFF08\u610F\u5716\u7968\u7684\u9375 owner/repo#\u865F\u78BC\uFF09\u3002\u56DE total\uFF08\u5E7E\u5F35\uFF09\u3001done\uFF08\u5DF2\u95DC\uFF09\u3001open\uFF08\u9084\u958B\u8457\uFF09\u3001wontdo\uFF08\u6A19\u4E86\u4E0D\u505A\uFF09\u3001items\uFF08\u6BCF\u5F35\uFF1Akey\u3001title\u3014\u7968\u7684\u4E00\u53E5\u6458\u8981\uFF0C\u6C92\u6709\u53D6\u6A19\u984C\u3015\u3001state\uFF1Dclosed\uFF5Copen\uFF5Cwontdo\u3001level\u3001via\uFF1Dchild\uFF5Cref\u3001executor\u3001stalled\uFF09\uFF0C\u4EE5\u53CA unknown\uFF08\u5F15\u7528\u4E86\u4F46\u6C92\u5206\u8A3A\u3001\u770B\u4E0D\u51FA\u958B\u95DC\u7684\u7968\uFF09\u3001truncated\uFF08\u8B80\u4E0D\u5B8C\u7684\u5730\u65B9\uFF09\u3001complete\uFF08\u6C92\u6709\u8B80\u4E0D\u5B8C\u4E5F\u6C92\u6709\u770B\u4E0D\u51FA\u7684\uFF1D\u9019\u4EFD\u6E05\u55AE\u662F\u5168\u7684\uFF09\u3002\u7BC4\u570D\u8207\u7C3D\u8B49\u5B8C\u5168\u76F8\u540C\uFF08\u5152\u5B50\u3001\u5B6B\u5B50\u3001\u66FE\u5B6B\u3001\u5F15\u7528\u7684\u7968\uFF0C\u540C\u4E00\u5F35\u53EA\u7B97\u4E00\u6B21\uFF0CvisaScan\uFF09\uFF0C\u6240\u4EE5\u756B\u9762\u770B\u5230\u7684\u6E05\u55AE\u5C31\u662F\u7C3D\u8B49\u5224\u65B7\u300C\u5168\u95DC\u300D\u7528\u7684\u90A3\u4E00\u4EFD\u3002\u53EA\u8D70\u7D22\u5F15\uFF0C\u4E0D\u6383\u7968\u6C60\uFF1B\u4E0D\u5BEB\u4EFB\u4F55\u6771\u897F\u3002",
+      graph: {
+        id: "ahub__visa_tasks",
+        name: "ahub__visa_tasks",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            componentId: "input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            componentId: "code",
+            label: "prep",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\n// \u4E00\u6279\u8B80\u662F\u300C\u4E00\u500B\u8ACB\u6C42\u56DE\u4E00\u4E32\u300D\uFF08inkstone/Arcrun#446\uFF09\uFF1AFOREACH \u53EA\u6709\u4E00\u5708\uFF0Cresults \u662F [{success,status,data:{results:[\u6BCF\u500B\u8B80\u7684\u56DE\u61C9]}}]\u3002\n// \u9019\u88E1\u6524\u5E73\u56DE\u300C\u6BCF\u500B\u8B80\u4E00\u683C\u300D\u7684\u9663\u5217\uFF0C\u4E0B\u6E38\u7684 readsBad\uFF0FrowsOf\uFF0FallRows \u4E00\u5B57\u4E0D\u6539\u3002\u4E0D\u662F\u9019\u500B\u5F62\u72C0\uFF08\u4F8B\u5982\u6C92\u6709\u8981\u8B80\u7684 []\uFF09\u5C31\u539F\u6A23\u56DE\u3002\nfunction utf8Bytes(str) {\n  var out = [];\n  for (var i = 0; i < str.length; i++) {\n    var c = str.charCodeAt(i);\n    if (c >= 0xd800 && c < 0xdc00 && i + 1 < str.length) { c = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00); }\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return out;\n}\nvar SHA_K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\nfunction sha256hex(str) {\n  var m = utf8Bytes(String(str)), l = m.length * 8;\n  m.push(0x80);\n  while (m.length % 64 !== 56) m.push(0);\n  for (var s = 56; s >= 0; s -= 8) m.push(s >= 32 ? 0 : (l >>> s) & 0xff);\n  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  var w = new Array(64);\n  for (var off = 0; off < m.length; off += 64) {\n    for (var t = 0; t < 16; t++) w[t] = ((m[off + 4 * t] << 24) | (m[off + 4 * t + 1] << 16) | (m[off + 4 * t + 2] << 8) | m[off + 4 * t + 3]) | 0;\n    for (t = 16; t < 64; t++) {\n      var x = w[t - 15], y = w[t - 2];\n      var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);\n      var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];\n    for (t = 0; t < 64; t++) {\n      var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));\n      var ch = (e & f) ^ (~e & g);\n      var t1 = (h + S1 + ch + SHA_K[t] + w[t]) | 0;\n      var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));\n      var mj = (a & b) ^ (a & c) ^ (b & c);\n      var t2 = (S0 + mj) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map(function (v) { return ('00000000' + (v >>> 0).toString(16)).slice(-8); }).join('');\n}\n\n// \u2500\u2500 \u56DE\u61C9 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u6BCF\u652F\u8DEF\u7531\u6700\u5F8C\u90FD\u56DE { success:true, status, body }\uFF1Astatus \u662F\u300CGitea \u6703\u56DE\u7684 HTTP \u78BC\u300D\uFF0C\n// \u56E0\u70BA Arcrun \u7684\u5DE5\u4F5C\u6D41\u8F38\u51FA\u63A7\u5236\u4E0D\u4E86 HTTP \u72C0\u614B\u78BC\uFF08\u56DE\u994B\u7968\uFF1AArcrun \u7F3A\u53E3 \u2461\uFF09\uFF0C\u7531\u6A4B\uFF08bridge\uFF09\u9084\u539F\u3002\nvar NAME_RE = /^[A-Za-z0-9_.-]+$/;\nfunction fullOf(p) {\n  var o = ph(p && p.owner), r = ph(p && p.repo);\n  if (!NAME_RE.test(o) || !NAME_RE.test(r) || o === '..' || r === '..') return '';\n  return o + '/' + r;\n}\n\n\n// \u2500\u2500 template \u7684\u540D\u5B57\uFF08\uFF1D\u7A2E\u985E\uFF09\u3002\u6B04\u4F4D\u6E05\u55AE\u5728 templates.json\uFF08\u5B89\u88DD\u6642\u5EFA\uFF1B\u96E2\u7DDA\u6A21\u64EC\u5668\u4E5F\u62FF\u5B83\u9A57\u300C\u5BEB\u4E86\u4E0D\u5B58\u5728\u7684 slot\u300D\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token',\n  rel: 'ahub_release', att: 'ahub_attachment',\n  rlink: 'ahub_release_link', cmeta: 'ahub_comment_meta', setting: 'ahub_setting',\n  station: 'ahub_station', claim: 'ahub_claim', ask: 'ahub_report_ask',\n  session: 'ahub_session',\n  goal: 'ahub_goal', glog: 'ahub_goal_log', step: 'ahub_step', sassign: 'ahub_step_assign', gms: 'ahub_goal_ms', stage: 'ahub_stage', ssay: 'ahub_step_say',\n  node: 'ahub_node', member: 'ahub_member', gref: 'ahub_goal_ref', evt: 'ahub_issue_event',\n  gitw: 'ahub_git_write',\n  tmeta: 'ahub_tmeta', roster: 'ahub_roster', tref: 'ahub_tref', tlog: 'ahub_tlog', visa: 'ahub_visa'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\n// fields\uFF08\u9078\u586B\uFF0C\u9017\u865F\u5206\u9694\u7684\u683C\u540D\uFF09\uFF1D\u53EA\u8981\u9019\u5E7E\u683C\uFF08inkstone/Arcrun#367\uFF09\uFF1A\u5168\u91CF\u8B80\u53D6\u5E38\u5E38\u53EA\u7528\u5176\u4E2D\u5169\u4E09\u683C\uFF0C\n// \u5F15\u64CE\u53EA\u5C0D\u8981\u7684\u683C\u56DE\u8868\uFF0C\u6210\u672C\u8DDF\u8457\u683C\u6578\u8D70\uFF1B\u820A\u5F15\u64CE\u4E0D\u8A8D\u5F97\u9019\u500B\u53C3\u6578\u5C31\u5FFD\u7565\u3001\u56DE\u5168\u90E8\u683C\uFF08\u7D50\u679C\u4E00\u6A23\uFF0C\u53EA\u662F\u6C92\u7701\u5230\uFF09\u3002\nfunction rd(tpl, field, value, limit, offset, fields) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  if (fields) o.fields = fields;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u7CBE\u78BA\u7E3D\u6578\u7684\u8B80\uFF08inkstone/Arcrun#424\uFF09\uFF1A\u5E36 field/value \u7684 limit=1 \u8B80\uFF0C\u5F15\u64CE\u9810\u8A2D\u53EA\u56DE\u300C\u4E0B\u754C\u300D\uFF08total_exact:false\uFF0C\n// \u7D04\u662F offset+\u9019\u9801+1\uFF0C\u800C\u4E14\u96A8\u8B80\u5230\u591A\u5C11\u800C\u8B8A\uFF09\uFF0C\u62FF\u4F86\u7576\u300C\u5168\u6C60\u958B\u8457\u5E7E\u5F35\u300D\u6703\u5C11\u7B97\u3001\u6BCF\u6B21\u9084\u4E0D\u4E00\u6A23\u3002\u8981\u62FF total \u7576\u5E33\u5C31\u5E36 total=exact\n// \uFF08\u6210\u672C\uFF1D\u547D\u4E2D\u7B46\u6578\uFF0C\u7531\u8981\u5B83\u7684\u4EBA\u81EA\u5DF1\u627F\u64D4\uFF1B\u53EA\u7D66\u5C0D\u5E33\u9019\u985E\u5C11\u6578\u5E7E\u8B80\u7528\uFF09\u3002\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction allRows(results, from, to) {\n  var out = [];\n  for (var i = from || 0; i < (to === undefined ? results.length : to); i++) rowsOf(results[i]).forEach(function (x) { out.push(x); });\n  return out;\n}\n\n// \u2500\u2500 \u5BEB\uFF1APOST /kbdb/records\uFF08\u5EFA\u4E00\u7B46\uFF09\u3001PATCH /kbdb/records/<rid>\uFF08\u6539\u5E7E\u683C\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u503C\u4E00\u5F8B\u662F\u5B57\u4E32\uFF1B\u7A7A\u7684\u683C\u5B50\u4E0D\u5BEB\uFF08\u8B80\u56DE\u4F86\u5C31\u662F ''\uFF09\uFF0C\u7701\u5BEB\u5165\u2014\u2014\u4E00\u683C\u7D04\u5360\u5169\u5217\u3001\u7D04 0.5\uFF5E1 \u79D2\u3002\nfunction issueKey(full, n) { return full + '#' + n; }\nfunction parseKey(k) { var m = /^([^#]+)#(\\d+)$/.exec(String(k)); return m ? { full: m[1], n: parseInt(m[2], 10) } : null; }\n\n// 1/0 \u2194 \u5E03\u6797\uFF08slot \u88E1\u53EA\u6709\u5B57\u4E32\uFF09\nfunction actorOf(x) {\n  // {{vact.data}} \u662F\u5F15\u64CE\u56DE\u7684\u672C\u9AD4 {valid,\u2026}\uFF1B\u4FDD\u96AA\u8D77\u898B\u4E5F\u8A8D\u591A\u5305\u4E00\u5C64 {data:{valid,\u2026}} \u7684\u5F62\u72C0\n  var d = jparse(x);\n  if (isObj(d) && d.valid === undefined && d.data !== undefined) d = jparse(d.data);\n  if (!isObj(d) || d.valid === undefined) return { valid: false, reason: 'no_answer' };\n  return { valid: d.valid === true, login: ph(d.login), role: ph(d.role), reason: ph(d.reason) };\n}\nfunction boot(input) {\n  var tok = ph(input.token);\n  // token \u6B04\u653E\u7684\u662F\u5F15\u64CE\u7C3D\u7684\u300CPortal \u4E3B\u4EBA\u6309\u7684\u300D\u65B7\u8A00\uFF08JSON\u3001\u6709 sig\uFF09\u21D2 \u8EAB\u5206\u770B\u65B7\u8A00\u4E0D\u770B token\uFF080.7.0\uFF0Cinkstone/Arcrun#323\uFF09\u3002\n  // \u65B7\u8A00\u7531 build.mjs \u7D66 actor:'opt' \u7684\u8DEF\u7531\u6392\u7684 vact \u7AD9\u5148\u554F\u5F15\u64CE\u9A57\u904E\uFF0C\u7B54\u6848\u5728 input.actor\uFF1B\u5225\u7684\u8DEF\u7531\u6C92\u6709 vact \u21D2 \u4E00\u5F8B\u4E0D\u5408\u683C\uFF08401\uFF09\u3002\n  var pj = tok && tok.charAt(0) === '{' ? jparse(tok) : null;\n  var isAct = isObj(pj) && typeof pj.sig === 'string' && pj.sig !== '';\n  return {\n    act: isAct ? actorOf(input.actor) : null,\n    q: isObj(jparse(input.query)) ? jparse(input.query) : {},\n    body: jparse(input.body),\n    params: isObj(jparse(input.params)) ? jparse(input.params) : {},\n    tokid: isAct ? 'actor' : (tok ? sha256hex(tok) : 'none'),\n    tenant: ph(input.tenant).replace(/[^A-Za-z0-9_-]/g, '_'),     // \u5F15\u64CE\u6CE8\u5165\u7684 {{_tenant}}\uFF1B\u9032 record id\uFF08id \u662F\u8DE8\u79DF\u6236\u5168\u57DF\u7684\uFF09\n    // \u9023\u7D50\u7684\u4E3B\u6A5F\uFF08inkstone/Arcrun#326\uFF09\uFF1A\u5F15\u64CE\u6CE8\u5165\u7684\u300C\u9019\u9846 worker \u5C0D\u5916\u7684 origin\u300D\u512A\u5148\u2014\u2014\u90A3\u500B\u7DB2\u5740\u5C0D leo \u7684\u700F\u89BD\u5668\u6253\u5F97\u958B\n    // \uFF08\u5B83\u6703\u628A\u4EBA\u5E36\u9032 Portal\uFF09\uFF1B\u547C\u53EB\u7AEF\u81EA\u5831\u7684 base\uFF08\u672C\u6A5F\u6A4B\u662F 127.0.0.1\uFF09\u548C ahub.invalid \u90FD\u662F\u6253\u4E0D\u958B\u7684\uFF0C\u53EA\u5728\u5F15\u64CE\u6C92\u7D66\u6642\u624D\u7528\u3002\n    base: (ph(input.origin) || ph(input.base) || 'https://ahub.invalid').replace(/\\/+$/, '')\n  };\n}\n// \u5206\u9801\uFF08Gitea \u7684 limit\uFF0Fpage\uFF1B\u9810\u8A2D 30\uFF0C\u4E0A\u9650 100\uFF09\nfunction prepOut(B, o) {\n  o = o || {};\n  var r = { success: true, tokid: B.tokid, base: B.base, tenant: B.tenant, reads: [], early: null, act: B.act || null };\n  Object.keys(o).forEach(function (k) { r[k] = o[k]; });\n  var list = r.early ? [] : r.reads;\n  if (list.length > READS_N) throw new Error('reads ' + list.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS_N + ' \u683C');\n  r.nreads = list.length;\n  // \u8F38\u51FA\u6B04\u4F4D\u53EB ahmulti\u3001\u8FED\u4EE3\u5668\u4E5F\u53EB ahmulti\uFF1A\u5F15\u64CE\u7684 FOREACH \u5728\u672C\u7BC0\u9EDE\u8F38\u51FA\u88E1\u627E\u4E0D\u5230\u6E05\u55AE\u6642\uFF0C\u6703\u9000\u800C\u6383\u6574\u500B context\uFF08\u542B\u547C\u53EB\u7AEF\u9001\u4F86\u7684 body\uFF0Fquery\uFF09\n  // \u627E\u540C\u540D\u9663\u5217\u2014\u2014\u540D\u5B57\u53D6\u5F97\u4E0D\u5C0B\u5E38\uFF0C\u547C\u53EB\u7AEF\u5C31\u6C92\u6709\u6A5F\u6703\uFF08\u4E0D\u8AD6\u6545\u610F\u6216\u4E0D\u5C0F\u5FC3\uFF09\u7528\u81EA\u5DF1\u7684 body \u9935\u51FA\u4E00\u4E32\u8981\u57F7\u884C\u7684\u8B80\u5BEB\u3002\n  delete r.reads;\n  if (!PUBLIC && B.tokid === 'none') { r.whon = 0; r.nreads = 0; r.ahmulti = []; return r; }     // \u6C92\u5E36 token\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\n  if (!PUBLIC && r.act && !actOk(r.act)) { r.whon = 0; r.nreads = 0; r.ahmulti = []; return r; }   // \u65B7\u8A00\u4E0D\u5408\u683C\uFF1A\u4EC0\u9EBC\u90FD\u4E0D\u8B80\uFF0Cdecide \u56DE 401\uFF0F403\n  // \u8EAB\u5206\u90A3\u4E00\u8B80\uFF1Atoken \u21D2 ahub_token\uFF1B\u65B7\u8A00 \u21D2 \u79DF\u6236\u8A2D\u5B9A\uFF08\u4E3B\u4EBA\u5728\u9019\u500B\u79DF\u6236\u7684\u7F72\u540D\uFF0Cinkstone/Arcrun#328\uFF09\n  r.whon = PUBLIC ? 0 : 1;\n  var all = (r.whon ? [r.act ? rdSetting() : rd(T.token, 'token_sha256', B.tokid, 5)] : []).concat(list);\n  r.ahmulti = all.length ? [{ reads: all }] : [];   // \u4E00\u500B\u8ACB\u6C42\u505A\u5B8C\u9019\u4E00\u6279\uFF08inkstone/Arcrun#446\uFF09\uFF1B\u6C92\u6709\u8981\u8B80\u7684\uFF1DFOREACH \u4E0D\u8DD1\n  return r;\n}\nfunction prepEarly(B, status, msg) { return prepOut(B, { early: { status: status, body: { message: msg, url: '' } } }); }\n// \u7B2C\u4E8C\u6BB5\u8B80\uFF08prep2\uFF09\uFF1A\u7B2C\u4E00\u6BB5\u8B80\u5B8C\u624D\u77E5\u9053\u8981\u8B80\u4EC0\u9EBC\u7684\u6642\u5019\u7528\u3002\u5169\u7A2E\uFF1A\n//   list\uFF08\u8DEF\u7531\u6A19\u982D\u7684 reads2\uFF09\uFF1Aprep2 \u56DE ahsmulti\uFF08\u8981\u8B80\u7684 by-template \u6E05\u55AE\uFF0C\u5305\u6210\u4E00\u500B\u8ACB\u6C42\uFF09\uFF0C\u5F15\u64CE\u4E26\u884C\u8B80\u5B8C\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u9663\u5217\uFF09\n//   batch\uFF08\u8DEF\u7531\u6A19\u982D\u7684 batch2\uFF09\uFF1Aprep2 \u56DE ids\uFF08\u8981\u8B80\u7684 record id\uFF09\uFF0C\u4E00\u500B\u8ACB\u6C42\u8B80\u5B8C\uFF08inkstone/Arcrun#307 \u7684 batch-get\uFF09\uFF0C\u7D50\u679C\u5728 input.reads2\uFF08\u4E00\u500B\u7269\u4EF6\uFF09\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction actOk(A) { return !!(A && A.valid === true && A.role === 'admin'); }\n// \u79DF\u6236\u8A2D\u5B9A\uFF08ahub_setting\uFF0Ckey=signoff\uFF1Binkstone/Arcrun#328\uFF09\u3002\u6C92\u8A2D\uFF1D{owner_name:'', approvers:[]}\nfunction rdSetting() { return rd(T.setting, 'key', 'signoff', 5); }\n// \u5168\u90E8\u8A2D\u5B9A\u5217\uFF08\u542B\u300C\u67D0\u7248\u672C\u5DF2\u88AB\u7C3D\u6838\u4EBA\u540C\u610F\u300D\u7684\u7D00\u9304 key=approved:<\u7248\u672C>\uFF1Binkstone/Arcrun#387\uFF09\nfunction keyOf(v) {\n  var p = parseKey(ph(v));\n  if (!p) return '';\n  var a = p.full.split('/');\n  return a.length === 2 && fullOf({ owner: a[0], repo: a[1] }) && p.n > 0 ? issueKey(p.full, p.n) : '';\n}\nfunction visaReads1(key) { return [rd(T.tmeta, 'key', key, 5), rd(T.tmeta, 'parent', key, 200), rd(T.tref, 'intent', key, 200)]; }\n\nvar READS_N = 3;\nvar PUBLIC = false;\n\nvar B = boot(input);\nvar key = keyOf(B.q.intent);\nif (!key) return prepEarly(B, 422, 'intent \u8981\u5BEB\u6210 owner/repo#\u865F\u78BC\uFF08\u610F\u5716\u7968\u7684\u9375\uFF09');\nreturn prepOut(B, { key: key, reads: visaReads1(key) });\n",
+              input: {
+                method: "{{input.method}}",
+                path: "{{input.path}}",
+                query: "{{input.query}}",
+                body: "{{input.body}}",
+                token: "{{input.token}}",
+                params: "{{input.params}}",
+                base: "{{input.base}}",
+                origin: "{{input._public_origin}}",
+                tenant: "{{_tenant}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq",
+            type: "Component",
+            componentId: "ahub_rec_multi",
+            label: "rdq",
+            data: {
+              reads: "{{ahmulti.reads}}"
+            }
+          },
+          {
+            id: "prep2",
+            type: "Component",
+            componentId: "code",
+            label: "prep2",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\n// \u4E00\u6279\u8B80\u662F\u300C\u4E00\u500B\u8ACB\u6C42\u56DE\u4E00\u4E32\u300D\uFF08inkstone/Arcrun#446\uFF09\uFF1AFOREACH \u53EA\u6709\u4E00\u5708\uFF0Cresults \u662F [{success,status,data:{results:[\u6BCF\u500B\u8B80\u7684\u56DE\u61C9]}}]\u3002\n// \u9019\u88E1\u6524\u5E73\u56DE\u300C\u6BCF\u500B\u8B80\u4E00\u683C\u300D\u7684\u9663\u5217\uFF0C\u4E0B\u6E38\u7684 readsBad\uFF0FrowsOf\uFF0FallRows \u4E00\u5B57\u4E0D\u6539\u3002\u4E0D\u662F\u9019\u500B\u5F62\u72C0\uFF08\u4F8B\u5982\u6C92\u6709\u8981\u8B80\u7684 []\uFF09\u5C31\u539F\u6A23\u56DE\u3002\nfunction flatMulti(x) {\n  if (!Array.isArray(x) || x.length !== 1) return x;\n  var m = x[0], d = m && typeof m === 'object' ? jparse(m.data) : null;\n  return d && Array.isArray(d.results) ? d.results : x;\n}\nfunction uniq(a) { var s = {}, o = []; a.forEach(function (x) { if (!s[x]) { s[x] = 1; o.push(x); } }); return o; }\n\n// \u2500\u2500 SHA-256\uFF08\u7D14 JS\uFF1Btoken \u53EA\u5B58\u96DC\u6E4A\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token',\n  rel: 'ahub_release', att: 'ahub_attachment',\n  rlink: 'ahub_release_link', cmeta: 'ahub_comment_meta', setting: 'ahub_setting',\n  station: 'ahub_station', claim: 'ahub_claim', ask: 'ahub_report_ask',\n  session: 'ahub_session',\n  goal: 'ahub_goal', glog: 'ahub_goal_log', step: 'ahub_step', sassign: 'ahub_step_assign', gms: 'ahub_goal_ms', stage: 'ahub_stage', ssay: 'ahub_step_say',\n  node: 'ahub_node', member: 'ahub_member', gref: 'ahub_goal_ref', evt: 'ahub_issue_event',\n  gitw: 'ahub_git_write',\n  tmeta: 'ahub_tmeta', roster: 'ahub_roster', tref: 'ahub_tref', tlog: 'ahub_tlog', visa: 'ahub_visa'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\n// fields\uFF08\u9078\u586B\uFF0C\u9017\u865F\u5206\u9694\u7684\u683C\u540D\uFF09\uFF1D\u53EA\u8981\u9019\u5E7E\u683C\uFF08inkstone/Arcrun#367\uFF09\uFF1A\u5168\u91CF\u8B80\u53D6\u5E38\u5E38\u53EA\u7528\u5176\u4E2D\u5169\u4E09\u683C\uFF0C\n// \u5F15\u64CE\u53EA\u5C0D\u8981\u7684\u683C\u56DE\u8868\uFF0C\u6210\u672C\u8DDF\u8457\u683C\u6578\u8D70\uFF1B\u820A\u5F15\u64CE\u4E0D\u8A8D\u5F97\u9019\u500B\u53C3\u6578\u5C31\u5FFD\u7565\u3001\u56DE\u5168\u90E8\u683C\uFF08\u7D50\u679C\u4E00\u6A23\uFF0C\u53EA\u662F\u6C92\u7701\u5230\uFF09\u3002\nfunction rd(tpl, field, value, limit, offset, fields) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  if (fields) o.fields = fields;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u7CBE\u78BA\u7E3D\u6578\u7684\u8B80\uFF08inkstone/Arcrun#424\uFF09\uFF1A\u5E36 field/value \u7684 limit=1 \u8B80\uFF0C\u5F15\u64CE\u9810\u8A2D\u53EA\u56DE\u300C\u4E0B\u754C\u300D\uFF08total_exact:false\uFF0C\n// \u7D04\u662F offset+\u9019\u9801+1\uFF0C\u800C\u4E14\u96A8\u8B80\u5230\u591A\u5C11\u800C\u8B8A\uFF09\uFF0C\u62FF\u4F86\u7576\u300C\u5168\u6C60\u958B\u8457\u5E7E\u5F35\u300D\u6703\u5C11\u7B97\u3001\u6BCF\u6B21\u9084\u4E0D\u4E00\u6A23\u3002\u8981\u62FF total \u7576\u5E33\u5C31\u5E36 total=exact\n// \uFF08\u6210\u672C\uFF1D\u547D\u4E2D\u7B46\u6578\uFF0C\u7531\u8981\u5B83\u7684\u4EBA\u81EA\u5DF1\u627F\u64D4\uFF1B\u53EA\u7D66\u5C0D\u5E33\u9019\u985E\u5C11\u6578\u5E7E\u8B80\u7528\uFF09\u3002\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction allRows(results, from, to) {\n  var out = [];\n  for (var i = from || 0; i < (to === undefined ? results.length : to); i++) rowsOf(results[i]).forEach(function (x) { out.push(x); });\n  return out;\n}\n\n// \u2500\u2500 \u5BEB\uFF1APOST /kbdb/records\uFF08\u5EFA\u4E00\u7B46\uFF09\u3001PATCH /kbdb/records/<rid>\uFF08\u6539\u5E7E\u683C\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u503C\u4E00\u5F8B\u662F\u5B57\u4E32\uFF1B\u7A7A\u7684\u683C\u5B50\u4E0D\u5BEB\uFF08\u8B80\u56DE\u4F86\u5C31\u662F ''\uFF09\uFF0C\u7701\u5BEB\u5165\u2014\u2014\u4E00\u683C\u7D04\u5360\u5169\u5217\u3001\u7D04 0.5\uFF5E1 \u79D2\u3002\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction prep2Out(list) {\n  var r = (list || []).slice();\n  if (r.length > READS2_N) throw new Error('reads2 ' + r.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS2_N + ' \u683C');\n  return { success: true, nreads: r.length, ahsmulti: r.length ? [{ reads: r }] : [] };\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (P && P.act) return actOk(P.act) && P.whon ? ownerNameOf(settingsOf(a[0]), P.act) : '';\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u65B7\u8A00\u9A57\u904E\u3001\u800C\u4E14\u662F Portal \u7684\u7BA1\u7406\u54E1\uFF08\u5BE6\u4F8B\u4E3B\u4EBA\uFF09\u624D\u7B97\uFF1B\u4F5C\u8005\u540D\u7531 ownerNameOf \u6C7A\u5B9A\nfunction actOk(A) { return !!(A && A.valid === true && A.role === 'admin'); }\n// \u79DF\u6236\u8A2D\u5B9A\uFF08ahub_setting\uFF0Ckey=signoff\uFF1Binkstone/Arcrun#328\uFF09\u3002\u6C92\u8A2D\uFF1D{owner_name:'', approvers:[]}\nfunction settingsOf(r) {\n  var R = null;\n  rowsOf(r).forEach(function (x) { if (!R && sv(x, 'key') === 'signoff') R = x; });     // \u65B0\u2192\u820A\uFF0C\u53D6\u6700\u65B0\u4E00\u7B46\n  return { R: R, owner_name: sv(R, 'owner_name'), approvers: approverList(sv(R, 'approvers')) };\n}\n// \u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u5BEB\u5165\u6642\u7684\u7F72\u540D\uFF1A\u79DF\u6236\u8A2D\u5B9A\u7684 owner_name\uFF1B\u6C92\u8A2D\u5C31\u7528 Portal \u7684\u767B\u5165\u540D\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\nfunction ownerNameOf(S, A) { return (S && S.owner_name) || (A && A.login) || ''; }\n// \u65B7\u8A00\u4E0D\u5408\u683C\u6642\u56DE\u4EC0\u9EBC\uFF1A\u9A57\u4E0D\u904E 401\u3001\u4E0D\u662F\u4E3B\u4EBA 403\uFF08\u5148\u9A57\u8EAB\u5206\u2014\u2014\u6C92\u901A\u904E\u7684\u4EBA\u4E0D\u8A72\u5F9E\u932F\u8AA4\u8A0A\u606F\u5F97\u77E5\u6771\u897F\u5B58\u4E0D\u5B58\u5728\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction approverList(v) {\n  var a = Array.isArray(v) ? v : String(v == null ? '' : v).split(',');\n  var seen = {}, out = [];\n  a.forEach(function (x) { x = String(x == null ? '' : x).trim(); var k = x.toLowerCase(); if (x && !seen[k]) { seen[k] = 1; out.push(x); } });\n  return out;\n}\nvar VISA_KIDS_CAP = 22;      // \u7B2C\u4E00\u5C64\u5152\u5B50\u6700\u591A\u5F80\u4E0B\u8B80\u5E7E\u500B\nvar VISA_REFS_CAP = 22;      // \u5F15\u7528\u7684\u7968\u6700\u591A\u8B80\u5E7E\u5F35\nfunction visaKidKeys(kidsRes) { return uniq(rowsOf(kidsRes).map(function (R) { return sv(R, 'key'); }).filter(Boolean)); }\nfunction visaRefKeys(refsRes, skip) {\n  var s = {}; skip.forEach(function (k) { s[k] = 1; });\n  return uniq(rowsOf(refsRes).filter(function (R) { return !isOn(R, 'gone'); }).map(function (R) { return sv(R, 'key'); }).filter(function (k) { return k && !s[k]; }));\n}\n// \u7B2C\u4E8C\u6279\uFF1A\u6BCF\u500B\u5152\u5B50\u7684\u5152\u5B50\uFF08\u7238\u7238\u6B04\uFF09\uFF0B\u6BCF\u5F35\u5F15\u7528\u7684\u7968\u81EA\u5DF1\u7684 tmeta\nfunction visaReads2(kidsRes, refsRes, self) {\n  var kk = visaKidKeys(kidsRes).slice(0, VISA_KIDS_CAP), rk = visaRefKeys(refsRes, kk.concat([self])).slice(0, VISA_REFS_CAP);\n  return kk.map(function (k) { return rd(T.tmeta, 'parent', k, 200); }).concat(rk.map(function (k) { return rd(T.tmeta, 'key', k, 5); }));\n}\n// \u7B2C\u4E8C\u5C64\u7684\u7968\uFF08\u5152\u5B50\u7684\u5152\u5B50\uFF09\u7684\u9375\uFF0C\u4F9D\u8B80\u7684\u9806\u5E8F\u3001\u53BB\u6389\u5DF2\u7D93\u51FA\u73FE\u904E\u7684\uFF1B\u7B2C\u4E09\u6279\u5C31\u662F\u5B83\u5011\u5404\u81EA\u7684\u5152\u5B50\n\ninput.reads = flatMulti(input.reads);\nvar READS2_N = 44;\n\nvar P = input.prep, me = meIn(input);\nif (!me || P.early) return prep2Out([]);\nvar rs = readsOf(input);\nreturn prep2Out(visaReads2(rs[1], rs[2], P.key));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq2",
+            type: "Component",
+            componentId: "ahub_rec_multi",
+            label: "rdq2",
+            data: {
+              reads: "{{ahsmulti.reads}}"
+            }
+          },
+          {
+            id: "prep3",
+            type: "Component",
+            componentId: "code",
+            label: "prep3",
+            data: {
+              code: "function jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\n// \u4E00\u6279\u8B80\u662F\u300C\u4E00\u500B\u8ACB\u6C42\u56DE\u4E00\u4E32\u300D\uFF08inkstone/Arcrun#446\uFF09\uFF1AFOREACH \u53EA\u6709\u4E00\u5708\uFF0Cresults \u662F [{success,status,data:{results:[\u6BCF\u500B\u8B80\u7684\u56DE\u61C9]}}]\u3002\n// \u9019\u88E1\u6524\u5E73\u56DE\u300C\u6BCF\u500B\u8B80\u4E00\u683C\u300D\u7684\u9663\u5217\uFF0C\u4E0B\u6E38\u7684 readsBad\uFF0FrowsOf\uFF0FallRows \u4E00\u5B57\u4E0D\u6539\u3002\u4E0D\u662F\u9019\u500B\u5F62\u72C0\uFF08\u4F8B\u5982\u6C92\u6709\u8981\u8B80\u7684 []\uFF09\u5C31\u539F\u6A23\u56DE\u3002\nfunction flatMulti(x) {\n  if (!Array.isArray(x) || x.length !== 1) return x;\n  var m = x[0], d = m && typeof m === 'object' ? jparse(m.data) : null;\n  return d && Array.isArray(d.results) ? d.results : x;\n}\nfunction uniq(a) { var s = {}, o = []; a.forEach(function (x) { if (!s[x]) { s[x] = 1; o.push(x); } }); return o; }\n\n// \u2500\u2500 SHA-256\uFF08\u7D14 JS\uFF1Btoken \u53EA\u5B58\u96DC\u6E4A\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar T = {\n  repo: 'ahub_repo', issue: 'ahub_issue', comment: 'ahub_comment', label: 'ahub_label', ms: 'ahub_milestone',\n  ilabel: 'ahub_issue_label', iassign: 'ahub_issue_assignee', dep: 'ahub_dependency', user: 'ahub_user', token: 'ahub_token',\n  rel: 'ahub_release', att: 'ahub_attachment',\n  rlink: 'ahub_release_link', cmeta: 'ahub_comment_meta', setting: 'ahub_setting',\n  station: 'ahub_station', claim: 'ahub_claim', ask: 'ahub_report_ask',\n  session: 'ahub_session',\n  goal: 'ahub_goal', glog: 'ahub_goal_log', step: 'ahub_step', sassign: 'ahub_step_assign', gms: 'ahub_goal_ms', stage: 'ahub_stage', ssay: 'ahub_step_say',\n  node: 'ahub_node', member: 'ahub_member', gref: 'ahub_goal_ref', evt: 'ahub_issue_event',\n  gitw: 'ahub_git_write',\n  tmeta: 'ahub_tmeta', roster: 'ahub_roster', tref: 'ahub_tref', tlog: 'ahub_tlog', visa: 'ahub_visa'\n};\n\n// \u2500\u2500 \u8B80\uFF1AGET /kbdb/records/by-template/<template>?field=&value=&limit=&offset=\uFF08\u79DF\u6236\u7531\u4EE3\u8F49\u5C64\u6CE8\u5165\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// field\uFF0Fvalue \u662F\u300C\u67D0\u4E00\u683C\u7B49\u65BC\u67D0\u500B\u503C\u300D\u7684\u7CBE\u78BA\u6BD4\u5C0D\uFF08\u4F3A\u670D\u5668\u7AEF\u8D70\u7D22\u5F15\uFF0C\u6210\u672C\u53EA\u8DDF\u547D\u4E2D\u7B46\u6578\u6210\u6B63\u6BD4\uFF09\uFF1B\u4E00\u6B21\u53EA\u80FD\u6BD4\u4E00\u683C\u3002\n// \u65B0\u2192\u820A\u6392\u5E8F\uFF1B\u55AE\u9801\u4E0A\u9650 500\u3002\nfunction qs(o) {\n  var out = [];\n  Object.keys(o).forEach(function (k) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') out.push(k + '=' + encodeURIComponent(String(o[k]))); });\n  return out.length ? '?' + out.join('&') : '';\n}\nvar MAXPAGE = 500;\n// fields\uFF08\u9078\u586B\uFF0C\u9017\u865F\u5206\u9694\u7684\u683C\u540D\uFF09\uFF1D\u53EA\u8981\u9019\u5E7E\u683C\uFF08inkstone/Arcrun#367\uFF09\uFF1A\u5168\u91CF\u8B80\u53D6\u5E38\u5E38\u53EA\u7528\u5176\u4E2D\u5169\u4E09\u683C\uFF0C\n// \u5F15\u64CE\u53EA\u5C0D\u8981\u7684\u683C\u56DE\u8868\uFF0C\u6210\u672C\u8DDF\u8457\u683C\u6578\u8D70\uFF1B\u820A\u5F15\u64CE\u4E0D\u8A8D\u5F97\u9019\u500B\u53C3\u6578\u5C31\u5FFD\u7565\u3001\u56DE\u5168\u90E8\u683C\uFF08\u7D50\u679C\u4E00\u6A23\uFF0C\u53EA\u662F\u6C92\u7701\u5230\uFF09\u3002\nfunction rd(tpl, field, value, limit, offset, fields) {\n  var o = {};\n  if (field) { if (value === undefined || value === null || String(value) === '') return NOOP_READ; o.field = field; o.value = value; }\n  o.limit = Math.min(limit || 100, MAXPAGE); if (offset) o.offset = offset;\n  if (fields) o.fields = fields;\n  return { path: '/' + tpl + qs(o) };\n}\n// \u7CBE\u78BA\u7E3D\u6578\u7684\u8B80\uFF08inkstone/Arcrun#424\uFF09\uFF1A\u5E36 field/value \u7684 limit=1 \u8B80\uFF0C\u5F15\u64CE\u9810\u8A2D\u53EA\u56DE\u300C\u4E0B\u754C\u300D\uFF08total_exact:false\uFF0C\n// \u7D04\u662F offset+\u9019\u9801+1\uFF0C\u800C\u4E14\u96A8\u8B80\u5230\u591A\u5C11\u800C\u8B8A\uFF09\uFF0C\u62FF\u4F86\u7576\u300C\u5168\u6C60\u958B\u8457\u5E7E\u5F35\u300D\u6703\u5C11\u7B97\u3001\u6BCF\u6B21\u9084\u4E0D\u4E00\u6A23\u3002\u8981\u62FF total \u7576\u5E33\u5C31\u5E36 total=exact\n// \uFF08\u6210\u672C\uFF1D\u547D\u4E2D\u7B46\u6578\uFF0C\u7531\u8981\u5B83\u7684\u4EBA\u81EA\u5DF1\u627F\u64D4\uFF1B\u53EA\u7D66\u5C0D\u5E33\u9019\u985E\u5C11\u6578\u5E7E\u8B80\u7528\uFF09\u3002\nvar NOOP_READ = { path: '/ahub_none?limit=1' };\n\n// recipe \u7684\u8F38\u51FA\u5F62\u72C0\uFF1A{ success, status, data: { success, records:[{record_id, values}], total } }\uFF08data \u6709\u6642\u662F\u5B57\u4E32\uFF09\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction allRows(results, from, to) {\n  var out = [];\n  for (var i = from || 0; i < (to === undefined ? results.length : to); i++) rowsOf(results[i]).forEach(function (x) { out.push(x); });\n  return out;\n}\n\n// \u2500\u2500 \u5BEB\uFF1APOST /kbdb/records\uFF08\u5EFA\u4E00\u7B46\uFF09\u3001PATCH /kbdb/records/<rid>\uFF08\u6539\u5E7E\u683C\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u503C\u4E00\u5F8B\u662F\u5B57\u4E32\uFF1B\u7A7A\u7684\u683C\u5B50\u4E0D\u5BEB\uFF08\u8B80\u56DE\u4F86\u5C31\u662F ''\uFF09\uFF0C\u7701\u5BEB\u5165\u2014\u2014\u4E00\u683C\u7D04\u5360\u5169\u5217\u3001\u7D04 0.5\uFF5E1 \u79D2\u3002\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction prep2Out(list) {\n  var r = (list || []).slice();\n  if (r.length > READS2_N) throw new Error('reads2 ' + r.length + ' \u8D85\u904E\u9019\u689D\u8DEF\u7531\u7684 ' + READS2_N + ' \u683C');\n  return { success: true, nreads: r.length, ahsmulti: r.length ? [{ reads: r }] : [] };\n}\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (P && P.act) return actOk(P.act) && P.whon ? ownerNameOf(settingsOf(a[0]), P.act) : '';\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u65B7\u8A00\u9A57\u904E\u3001\u800C\u4E14\u662F Portal \u7684\u7BA1\u7406\u54E1\uFF08\u5BE6\u4F8B\u4E3B\u4EBA\uFF09\u624D\u7B97\uFF1B\u4F5C\u8005\u540D\u7531 ownerNameOf \u6C7A\u5B9A\nfunction actOk(A) { return !!(A && A.valid === true && A.role === 'admin'); }\n// \u79DF\u6236\u8A2D\u5B9A\uFF08ahub_setting\uFF0Ckey=signoff\uFF1Binkstone/Arcrun#328\uFF09\u3002\u6C92\u8A2D\uFF1D{owner_name:'', approvers:[]}\nfunction settingsOf(r) {\n  var R = null;\n  rowsOf(r).forEach(function (x) { if (!R && sv(x, 'key') === 'signoff') R = x; });     // \u65B0\u2192\u820A\uFF0C\u53D6\u6700\u65B0\u4E00\u7B46\n  return { R: R, owner_name: sv(R, 'owner_name'), approvers: approverList(sv(R, 'approvers')) };\n}\n// \u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u5BEB\u5165\u6642\u7684\u7F72\u540D\uFF1A\u79DF\u6236\u8A2D\u5B9A\u7684 owner_name\uFF1B\u6C92\u8A2D\u5C31\u7528 Portal \u7684\u767B\u5165\u540D\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\nfunction ownerNameOf(S, A) { return (S && S.owner_name) || (A && A.login) || ''; }\n// \u65B7\u8A00\u4E0D\u5408\u683C\u6642\u56DE\u4EC0\u9EBC\uFF1A\u9A57\u4E0D\u904E 401\u3001\u4E0D\u662F\u4E3B\u4EBA 403\uFF08\u5148\u9A57\u8EAB\u5206\u2014\u2014\u6C92\u901A\u904E\u7684\u4EBA\u4E0D\u8A72\u5F9E\u932F\u8AA4\u8A0A\u606F\u5F97\u77E5\u6771\u897F\u5B58\u4E0D\u5B58\u5728\uFF09\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction reads2Of(input) { return Array.isArray(input.reads2) ? input.reads2 : []; }\n// batch \u7248\u7B2C\u4E8C\u6BB5\u7684\u7D50\u679C\uFF08\u4E00\u500B\u7269\u4EF6 {records, missing}\uFF09\u3002\u6C92\u8B80\uFF08\u4E0D\u9700\u8981\uFF09\u56DE []\uFF0C\u8B80\u58DE\u4E86\u56DE null\u2014\u2014\u547C\u53EB\u7AEF\u8981\u5206\u5F97\u51FA\u4F86\nfunction approverList(v) {\n  var a = Array.isArray(v) ? v : String(v == null ? '' : v).split(',');\n  var seen = {}, out = [];\n  a.forEach(function (x) { x = String(x == null ? '' : x).trim(); var k = x.toLowerCase(); if (x && !seen[k]) { seen[k] = 1; out.push(x); } });\n  return out;\n}\nvar VISA_KIDS_CAP = 22;      // \u7B2C\u4E00\u5C64\u5152\u5B50\u6700\u591A\u5F80\u4E0B\u8B80\u5E7E\u500B\nvar VISA_REFS_CAP = 22;      // \u5F15\u7528\u7684\u7968\u6700\u591A\u8B80\u5E7E\u5F35\nvar VISA_L3_CAP = 44;        // \u7B2C\u4E8C\u5C64\u7684\u7968\u6700\u591A\u5F80\u4E0B\u8B80\u5E7E\u500B\nfunction visaKidKeys(kidsRes) { return uniq(rowsOf(kidsRes).map(function (R) { return sv(R, 'key'); }).filter(Boolean)); }\nfunction visaRefKeys(refsRes, skip) {\n  var s = {}; skip.forEach(function (k) { s[k] = 1; });\n  return uniq(rowsOf(refsRes).filter(function (R) { return !isOn(R, 'gone'); }).map(function (R) { return sv(R, 'key'); }).filter(function (k) { return k && !s[k]; }));\n}\n// \u7B2C\u4E8C\u6279\uFF1A\u6BCF\u500B\u5152\u5B50\u7684\u5152\u5B50\uFF08\u7238\u7238\u6B04\uFF09\uFF0B\u6BCF\u5F35\u5F15\u7528\u7684\u7968\u81EA\u5DF1\u7684 tmeta\nfunction visaL2Keys(kidsRes, refsRes, r2, self) {\n  var kkAll = visaKidKeys(kidsRes), kk = kkAll.slice(0, VISA_KIDS_CAP), rk = visaRefKeys(refsRes, kk.concat([self])).slice(0, VISA_REFS_CAP);\n  var seen = {}; seen[self] = 1; kkAll.concat(rk).forEach(function (k) { seen[k] = 1; });\n  var out = [];\n  kk.forEach(function (k, i) { rowsOf(r2[i]).forEach(function (R) { var c = sv(R, 'key'); if (c && !seen[c]) { seen[c] = 1; out.push(c); } }); });\n  return out;\n}\nfunction visaReads3(kidsRes, refsRes, r2, self) {\n  return visaL2Keys(kidsRes, refsRes, r2, self).slice(0, VISA_L3_CAP).map(function (k) { return rd(T.tmeta, 'parent', k, 200); });\n}\n// \u6383\u4E00\u904D\uFF1A\u56DE { tickets, open, unknown, truncated, levels, deeper }\n//   tickets\uFF1D\u5E95\u4E0B\u6BCF\u4E00\u5F35\u7968\uFF08\u5152\u5B50\u3001\u5B6B\u5B50\u3001\u66FE\u5B6B\u3001\u5F15\u7528\u7684\u7968\uFF0C\u540C\u4E00\u5F35\u53EA\u7B97\u4E00\u6B21\uFF09\uFF1Bopen\uFF1D\u9084\u958B\u8457\u7684\uFF08\u6C92\u95DC\u3001\u6C92\u6A19\u300C\u4E0D\u8981\u57F7\u884C\u300D\uFF09\n//   unknown\uFF1D\u5F15\u7528\u7684\u7968\u6C92\u6709 tmeta\uFF08\u6C92\u5206\u8A3A\uFF0C\u770B\u4E0D\u51FA\u958B\u6216\u95DC\uFF09\uFF1Btruncated\uFF1D\u54EA\u5E7E\u8655\u8B80\u4E0D\u5B8C\uFF08\u8D85\u904E\u4E0A\u9650\uFF09\n//   deeper\uFF1D\u7B2C\u4E09\u5C64\u7684\u7968\u6578\uFF08\u5B83\u5011\u81EA\u5DF1\u7684\u5152\u5B50\u9019\u6B21\u4E0D\u5F80\u4E0B\u8B80\uFF0C\u662F\u5DF2\u77E5\u7684\u908A\u754C\uFF09\n\ninput.reads = flatMulti(input.reads);\ninput.reads2 = flatMulti(input.reads2);\nvar READS2_N = 44;\n\nvar P = input.prep, me = meIn(input);\nif (!me || P.early) return prep2Out([]);\nvar rs = readsOf(input);\nreturn prep2Out(visaReads3(rs[1], rs[2], reads2Of(input), P.key));\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}",
+                reads2: "{{prep2.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          },
+          {
+            id: "rdq3",
+            type: "Component",
+            componentId: "ahub_rec_multi",
+            label: "rdq3",
+            data: {
+              reads: "{{ahsmulti.reads}}"
+            }
+          },
+          {
+            id: "decide",
+            type: "Component",
+            componentId: "code",
+            label: "decide",
+            data: {
+              code: "function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }\nfunction jparse(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return null; } }\n  return v === undefined ? null : v;\n}\nfunction isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }\n// \u4E00\u6279\u8B80\u662F\u300C\u4E00\u500B\u8ACB\u6C42\u56DE\u4E00\u4E32\u300D\uFF08inkstone/Arcrun#446\uFF09\uFF1AFOREACH \u53EA\u6709\u4E00\u5708\uFF0Cresults \u662F [{success,status,data:{results:[\u6BCF\u500B\u8B80\u7684\u56DE\u61C9]}}]\u3002\n// \u9019\u88E1\u6524\u5E73\u56DE\u300C\u6BCF\u500B\u8B80\u4E00\u683C\u300D\u7684\u9663\u5217\uFF0C\u4E0B\u6E38\u7684 readsBad\uFF0FrowsOf\uFF0FallRows \u4E00\u5B57\u4E0D\u6539\u3002\u4E0D\u662F\u9019\u500B\u5F62\u72C0\uFF08\u4F8B\u5982\u6C92\u6709\u8981\u8B80\u7684 []\uFF09\u5C31\u539F\u6A23\u56DE\u3002\nfunction flatMulti(x) {\n  if (!Array.isArray(x) || x.length !== 1) return x;\n  var m = x[0], d = m && typeof m === 'object' ? jparse(m.data) : null;\n  return d && Array.isArray(d.results) ? d.results : x;\n}\nfunction uniq(a) { var s = {}, o = []; a.forEach(function (x) { if (!s[x]) { s[x] = 1; o.push(x); } }); return o; }\n\n// \u2500\u2500 SHA-256\uFF08\u7D14 JS\uFF1Btoken \u53EA\u5B58\u96DC\u6E4A\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction reply(status, body) { return { success: true, status: status, body: body }; }\nfunction fail(status, message) { return reply(status, { message: message, url: '' }); }\n\n// \u2500\u2500 \u908A\u754C\u9A57\u8B49 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nvar MAXPAGE = 500;\n// fields\uFF08\u9078\u586B\uFF0C\u9017\u865F\u5206\u9694\u7684\u683C\u540D\uFF09\uFF1D\u53EA\u8981\u9019\u5E7E\u683C\uFF08inkstone/Arcrun#367\uFF09\uFF1A\u5168\u91CF\u8B80\u53D6\u5E38\u5E38\u53EA\u7528\u5176\u4E2D\u5169\u4E09\u683C\uFF0C\n// \u5F15\u64CE\u53EA\u5C0D\u8981\u7684\u683C\u56DE\u8868\uFF0C\u6210\u672C\u8DDF\u8457\u683C\u6578\u8D70\uFF1B\u820A\u5F15\u64CE\u4E0D\u8A8D\u5F97\u9019\u500B\u53C3\u6578\u5C31\u5FFD\u7565\u3001\u56DE\u5168\u90E8\u683C\uFF08\u7D50\u679C\u4E00\u6A23\uFF0C\u53EA\u662F\u6C92\u7701\u5230\uFF09\u3002\nfunction innerOf(r) {\n  if (!r) return null;\n  if (Array.isArray(r.records) || r.record) return r;       // \u5DF2\u7D93\u662F KBDB \u7684\u672C\u9AD4\n  if (r.success === false) return null;\n  return jparse(r.data);                                    // recipe \u7684\u5916\u6BBC {success, status, data}\n}\nfunction rowsOf(r) {\n  var d = innerOf(r);\n  if (!d) return [];\n  var a = Array.isArray(d.records) ? d.records : (d.record ? [d.record] : []);\n  return a.map(function (x) { return { rid: x.record_id, v: isObj(x.values) ? x.values : {} }; });\n}\n// \u8B80\u6EFF\u4E00\u6574\u9801\uFF1D\u53EF\u80FD\u9084\u6709\u66F4\u591A\uFF08KBDB \u7684 total \u5728\u9801\u6EFF\u6642\u53EA\u7D66\u4E0B\u754C\uFF09\u2014\u2014\u547C\u53EB\u7AEF\u64DA\u6B64\u6C7A\u5B9A\u8981\u4E0D\u8981\u8AAA\u300C\u9019\u88E1\u53EA\u770B\u4E86\u6700\u8FD1 N \u7B46\u300D\nfunction fullPage(r, limit) { return rowsOf(r).length >= Math.min(limit, MAXPAGE); }\n// \u9019\u4E00\u8B80\u300C\u7B26\u5408\u689D\u4EF6\u7684\u5168\u90E8\u7B46\u6578\u300D\uFF08KBDB \u56DE\u7684 total\uFF1B\u5E36 field/value \u7684\u8B80\u662F\u7CBE\u78BA\u503C\uFF0C\u9801\u6EFF\u7684\u672A\u904E\u6FFE\u8B80\u624D\u662F\u4E0B\u754C\uFF09\u3002\u6C92\u6709\u5C31 0\u3002\nfunction sv(R, k) { var x = R && R.v ? R.v[k] : ''; return x === undefined || x === null ? '' : String(x); }\nfunction allRows(results, from, to) {\n  var out = [];\n  for (var i = from || 0; i < (to === undefined ? results.length : to); i++) rowsOf(results[i]).forEach(function (x) { out.push(x); });\n  return out;\n}\n\n// \u2500\u2500 \u5BEB\uFF1APOST /kbdb/records\uFF08\u5EFA\u4E00\u7B46\uFF09\u3001PATCH /kbdb/records/<rid>\uFF08\u6539\u5E7E\u683C\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// \u503C\u4E00\u5F8B\u662F\u5B57\u4E32\uFF1B\u7A7A\u7684\u683C\u5B50\u4E0D\u5BEB\uFF08\u8B80\u56DE\u4F86\u5C31\u662F ''\uFF09\uFF0C\u7701\u5BEB\u5165\u2014\u2014\u4E00\u683C\u7D04\u5360\u5169\u5217\u3001\u7D04 0.5\uFF5E1 \u79D2\u3002\nfunction isOn(R, k) { return sv(R, k) === '1'; }\n\n// \u2500\u2500 \u6587\u4EF6\uFF1A\u5F9E record \u89E3\u51FA\u4F86\u7684\u6B04\u4F4D \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction meOf(who, tokid) {\n  if (!tokid || tokid === 'none') return '';\n  var rows = rowsOf(who);\n  for (var i = 0; i < rows.length; i++) {\n    if (sv(rows[i], 'token_sha256') === tokid && !isOn(rows[i], 'revoked')) return sv(rows[i], 'login');\n  }\n  return '';\n}\n// prep \u5171\u7528\u7684\u8D77\u624B\u5F0F\uFF1A\u89E3\u6790\u8ACB\u6C42\u4FE1\u5C01\u3002\u8DEF\u5F91\u53C3\u6578\u7531\u6A4B\u4F9D\u8DEF\u7531\u8868\u5207\u597D\u653E\u5728 params\u3002\nfunction oldestBy(rows, pred) {\n  var hit = null;\n  rows.forEach(function (R) { if (pred(R)) hit = R; });      // \u8B80\u56DE\u662F\u65B0\u2192\u820A\uFF0C\u6700\u5F8C\u4E00\u500B\u7B26\u5408\u7684\u5C31\u662F\u6700\u820A\u7684\n  return hit;\n}\nfunction csv(v) { v = ph(v); return v ? v.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : []; }\nfunction readsBad(arr) {\n  for (var i = 0; i < arr.length; i++) if (isObj(arr[i]) && arr[i].success === false) return arr[i];\n  return null;\n}\nfunction meIn(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (P && P.act) return actOk(P.act) && P.whon ? ownerNameOf(settingsOf(a[0]), P.act) : '';\n  return P && P.whon ? meOf(a[0], P.tokid) : '';\n}\n// \u65B7\u8A00\u9A57\u904E\u3001\u800C\u4E14\u662F Portal \u7684\u7BA1\u7406\u54E1\uFF08\u5BE6\u4F8B\u4E3B\u4EBA\uFF09\u624D\u7B97\uFF1B\u4F5C\u8005\u540D\u7531 ownerNameOf \u6C7A\u5B9A\nfunction actOk(A) { return !!(A && A.valid === true && A.role === 'admin'); }\n// \u79DF\u6236\u8A2D\u5B9A\uFF08ahub_setting\uFF0Ckey=signoff\uFF1Binkstone/Arcrun#328\uFF09\u3002\u6C92\u8A2D\uFF1D{owner_name:'', approvers:[]}\nfunction settingsOf(r) {\n  var R = null;\n  rowsOf(r).forEach(function (x) { if (!R && sv(x, 'key') === 'signoff') R = x; });     // \u65B0\u2192\u820A\uFF0C\u53D6\u6700\u65B0\u4E00\u7B46\n  return { R: R, owner_name: sv(R, 'owner_name'), approvers: approverList(sv(R, 'approvers')) };\n}\n// \u5BE6\u4F8B\u4E3B\u4EBA\u5F9E Portal \u5BEB\u5165\u6642\u7684\u7F72\u540D\uFF1A\u79DF\u6236\u8A2D\u5B9A\u7684 owner_name\uFF1B\u6C92\u8A2D\u5C31\u7528 Portal \u7684\u767B\u5165\u540D\uFF08\u4E0D\u518D\u5BEB\u6B7B Leo\uFF09\nfunction ownerNameOf(S, A) { return (S && S.owner_name) || (A && A.login) || ''; }\n// \u65B7\u8A00\u4E0D\u5408\u683C\u6642\u56DE\u4EC0\u9EBC\uFF1A\u9A57\u4E0D\u904E 401\u3001\u4E0D\u662F\u4E3B\u4EBA 403\uFF08\u5148\u9A57\u8EAB\u5206\u2014\u2014\u6C92\u901A\u904E\u7684\u4EBA\u4E0D\u8A72\u5F9E\u932F\u8AA4\u8A0A\u606F\u5F97\u77E5\u6771\u897F\u5B58\u4E0D\u5B58\u5728\uFF09\nfunction actFail(A) {\n  if (!A || A.valid !== true) return fail(401, 'portal actor is not valid' + (A && A.reason ? ' (' + A.reason + ')' : ''));\n  return fail(403, 'only the instance owner (portal admin) can write from the Portal');\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531 decide \u7684\u8D77\u624B\u5F0F\uFF1A\u9A57\u8EAB\u5206\u3001\u9A57\u8B80\u6709\u6C92\u6709\u5931\u6557\u3001\u9A57 prep \u6709\u6C92\u6709\u65E9\u9000\u3002\u56DE { stop: <\u56DE\u61C9> } \u6216 { P, me }\nfunction gate(input) {\n  var P = input.prep, a = Array.isArray(input.reads) ? input.reads : [];\n  if (P.act && !actOk(P.act)) return { stop: actFail(P.act) };\n  if (!P.whon && !P.act) return { stop: fail(401, 'token is required') };      // \u6C92\u5E36 token\uFF08prep \u4EC0\u9EBC\u90FD\u6C92\u8B80\uFF09\n  var bad = readsBad(a);\n  if (bad) return { stop: fail(502, 'KBDB read failed (HTTP ' + (bad.status || '?') + ')') };\n  var me = meIn(input);\n  if (!me) return { stop: fail(401, 'token is required') };\n  if (P.early) return { stop: reply(P.early.status, P.early.body) };\n  return { P: P, me: me };\n}\n// \u8B80\u53D6\u578B\u8DEF\u7531\u3001\u5141\u8A31\u300C\u67D0\u4E00\u584A\u8B80\u4E0D\u5230\u300D\u7684\u7248\u672C\uFF08inkstone/Arcrun#367\uFF09\u3002\n// \u70BA\u4EC0\u9EBC\uFF1A\u6574\u5F35\u8B80\u53D6\u4E00\u6B21\u6392\u5341\u5E7E\u689D\u8B80\uFF0C\u5BE6\u4F8B\u5FD9\u7684\u90A3\u5E7E\u79D2\u5076\u723E\u6709\u4E00\u689D\u56DE\u932F\uFF0Cgate \u4E00\u5F8B\u56DE 502 \u21D2 \u756B\u9762\u6574\u9801\u4EAE\u7D05\uFF0C\n// \u800C\u5176\u5BE6\u58DE\u7684\u53EA\u662F\u5176\u4E2D\u4E00\u584A\uFF08\u4F8B\uFF1A\u76EE\u6A19\u6A39\u8B80\u4E0D\u5230\uFF0C\u4F46\u5C0D\u8A71\u3001\u9818\u7968\u90FD\u8B80\u5230\u4E86\uFF09\u3002\n// parts\uFF1D[{ name, reads:[\u8DEF\u7531\u81EA\u5DF1\u7684\u8B80\u7684\u4E0B\u6A19\u2026], need:true\uFF08\u9019\u584A\u58DE\u4E86\u5C31\u6C92\u6709\u610F\u7FA9\uFF0C\u7167\u820A 502\uFF09, kinds:[\u9019\u584A\u58DE\u4E86\u5C31\u4E0D\u80FD\u4FE1\u7684\u7570\u5E38\u7A2E\u985E\u2026] }]\u3002\n// \u8EAB\u5206\u90A3\u4E00\u8B80\u58DE\u4E86\u6C38\u9060 502\uFF08\u9A57\u4E0D\u4E86 token \u5C31\u4E0D\u80FD\u4FE1\u4EFB\u4F55\u6771\u897F\uFF09\u3002\u56DE { P, me, rs, down:[{part, kinds}] } \u6216 { stop }\u3002\n// \u{1F534} \u58DE\u6389\u7684\u584A\u4E0D\u51C6\u88AB\u8B1B\u6210\u300C\u6C92\u6709\u8CC7\u6599\u300D\uFF1A\u547C\u53EB\u7AEF\u8981\u628A down \u653E\u9032\u56DE\u61C9\u7684 unavailable\uFF0C\u4E26\u4E14\u4E0D\u4F9D\u8CF4\u90A3\u584A\u7684\u7570\u5E38\uFF0F\u7D71\u8A08\u4E00\u5F8B\u4E0D\u4E0B\u5224\u65B7\u3002\nfunction done(final, posts, patches, rels) {\n  var ps = posts || [], pt = (patches || []).filter(Boolean), rl = (rels || []).filter(Boolean);\n  var ops = ps.map(function (p) { return { op: 'post', template: p.template, values: p.values }; })\n    .concat(pt.map(function (p) { return { op: 'patch', id: p.id, values: p.values }; }))\n    .concat(rl.map(function (r) { return { op: 'relation', id: r.id, slot: r.slot, add: r.add, remove: r.remove }; }));\n  // \u4EE3\u8F49\u5C64\u4E00\u6B21\u6700\u591A 20 \u7B46\uFF08inkstone/Arcrun#325\uFF09\uFF1B\u591A\u7684\u5206\u6279\uFF0C\u6279\u8207\u6279\u4F9D\u5E8F\uFF08FOREACH concurrency 1\uFF09\uFF0C\u6BCF\u6279\u5167\u4E26\u884C\n  var batches = [];\n  for (var i = 0; i < ops.length; i += 20) batches.push({ ops: ops.slice(i, i + 20) });\n  return { success: true, branch: 'skip', final: final, ahposts: ps, ahpatches: pt, ahbatches: batches };\n}\n// \u95DC\u806F\u683C\u7684\u4E00\u7B46\u5BEB\u5165\uFF08inkstone/Arcrun#368\uFF0C\u5EFA\u5728 KBDB \u95DC\u806F\u683C #370 \u4E0A\uFF09\uFF1A\u5F80\u8A18\u9304 id \u7684 slot \u52A0\uFF0F\u79FB\u5916\u9375\nfunction readsOf(input) { var a = Array.isArray(input.reads) ? input.reads : []; return a.slice(input.prep && input.prep.whon ? input.prep.whon : 0); }\nfunction reads3Of(input) { return Array.isArray(input.reads3) ? input.reads3 : []; }\nfunction reads2Of(input) { return Array.isArray(input.reads2) ? input.reads2 : []; }\n// batch \u7248\u7B2C\u4E8C\u6BB5\u7684\u7D50\u679C\uFF08\u4E00\u500B\u7269\u4EF6 {records, missing}\uFF09\u3002\u6C92\u8B80\uFF08\u4E0D\u9700\u8981\uFF09\u56DE []\uFF0C\u8B80\u58DE\u4E86\u56DE null\u2014\u2014\u547C\u53EB\u7AEF\u8981\u5206\u5F97\u51FA\u4F86\nfunction approverList(v) {\n  var a = Array.isArray(v) ? v : String(v == null ? '' : v).split(',');\n  var seen = {}, out = [];\n  a.forEach(function (x) { x = String(x == null ? '' : x).trim(); var k = x.toLowerCase(); if (x && !seen[k]) { seen[k] = 1; out.push(x); } });\n  return out;\n}\nfunction metaRowOf(result, key) { return oldestBy(rowsOf(result), function (R) { return sv(R, 'key') === key; }); }\nfunction metaDoc(R) {\n  return { rid: R.rid, key: sv(R, 'key'), parent: sv(R, 'parent'), proposer: sv(R, 'proposer'), executor: sv(R, 'executor'), due_at: sv(R, 'due_at'),\n    summary: sv(R, 'summary'), kind: sv(R, 'kind'), version: sv(R, 'version'), adr: sv(R, 'adr'), adr_status: sv(R, 'adr_status'), wontdo: sv(R, 'wontdo'), open: isOn(R, 'open'), resume: isOn(R, 'resume'), resume_on: sv(R, 'resume_on'), resume_note: sv(R, 'resume_note'),\n    resume_n: parseInt(sv(R, 'resume_n') || '0', 10) || 0, stalled: isOn(R, 'stalled'), path: csv(sv(R, 'path')), updated_at: sv(R, 'updated_at'), updated_by: sv(R, 'updated_by') };\n}\nvar VISA_KIDS_CAP = 22;      // \u7B2C\u4E00\u5C64\u5152\u5B50\u6700\u591A\u5F80\u4E0B\u8B80\u5E7E\u500B\nvar VISA_REFS_CAP = 22;      // \u5F15\u7528\u7684\u7968\u6700\u591A\u8B80\u5E7E\u5F35\nvar VISA_L3_CAP = 44;        // \u7B2C\u4E8C\u5C64\u7684\u7968\u6700\u591A\u5F80\u4E0B\u8B80\u5E7E\u500B\nfunction visaKidKeys(kidsRes) { return uniq(rowsOf(kidsRes).map(function (R) { return sv(R, 'key'); }).filter(Boolean)); }\nfunction visaRefKeys(refsRes, skip) {\n  var s = {}; skip.forEach(function (k) { s[k] = 1; });\n  return uniq(rowsOf(refsRes).filter(function (R) { return !isOn(R, 'gone'); }).map(function (R) { return sv(R, 'key'); }).filter(function (k) { return k && !s[k]; }));\n}\n// \u7B2C\u4E8C\u6279\uFF1A\u6BCF\u500B\u5152\u5B50\u7684\u5152\u5B50\uFF08\u7238\u7238\u6B04\uFF09\uFF0B\u6BCF\u5F35\u5F15\u7528\u7684\u7968\u81EA\u5DF1\u7684 tmeta\nfunction visaL2Keys(kidsRes, refsRes, r2, self) {\n  var kkAll = visaKidKeys(kidsRes), kk = kkAll.slice(0, VISA_KIDS_CAP), rk = visaRefKeys(refsRes, kk.concat([self])).slice(0, VISA_REFS_CAP);\n  var seen = {}; seen[self] = 1; kkAll.concat(rk).forEach(function (k) { seen[k] = 1; });\n  var out = [];\n  kk.forEach(function (k, i) { rowsOf(r2[i]).forEach(function (R) { var c = sv(R, 'key'); if (c && !seen[c]) { seen[c] = 1; out.push(c); } }); });\n  return out;\n}\nfunction visaScan(self, kidsRes, refsRes, r2, r3) {\n  var kkAll = visaKidKeys(kidsRes), kk = kkAll.slice(0, VISA_KIDS_CAP), rkAll = visaRefKeys(refsRes, kkAll.concat([self])), rk = rkAll.slice(0, VISA_REFS_CAP);\n  var seen = {}; seen[self] = 1;\n  var items = [], unknown = [], truncated = [];\n  function add(R, level, via) {\n    var d = metaDoc(R);\n    if (!d.key || seen[d.key]) return;\n    seen[d.key] = 1;\n    items.push({ key: d.key, level: level, via: via, state: d.wontdo ? 'wontdo' : (d.open ? 'open' : 'closed'), executor: d.executor || null, summary: d.summary || null, stalled: !!d.stalled, kind: d.kind || null });\n  }\n  rowsOf(kidsRes).forEach(function (R) { add(R, 1, 'child'); });\n  if (fullPage(kidsRes, 200)) truncated.push('\u7B2C\u4E00\u5C64\u5152\u5B50\u8B80\u6EFF\u4E00\u9801\uFF08\u8D85\u904E 200 \u5F35\uFF09');\n  if (kkAll.length > VISA_KIDS_CAP) truncated.push('\u5152\u5B50\u8D85\u904E ' + VISA_KIDS_CAP + ' \u5F35\uFF0C\u5E95\u4E0B\u7684\u7968\u53EA\u8B80\u524D ' + VISA_KIDS_CAP + ' \u500B');\n  if (fullPage(refsRes, 200)) truncated.push('\u5F15\u7528\u8B80\u6EFF\u4E00\u9801\uFF08\u8D85\u904E 200 \u7B46\uFF09');\n  if (rkAll.length > VISA_REFS_CAP) truncated.push('\u5F15\u7528\u7684\u7968\u8D85\u904E ' + VISA_REFS_CAP + ' \u5F35\uFF0C\u53EA\u8B80\u524D ' + VISA_REFS_CAP + ' \u5F35');\n  kk.forEach(function (k, i) {\n    rowsOf(r2[i]).forEach(function (R) { add(R, 2, 'child'); });\n    if (fullPage(r2[i], 200)) truncated.push(k + ' \u5E95\u4E0B\u8B80\u6EFF\u4E00\u9801\uFF08\u8D85\u904E 200 \u5F35\uFF09');\n  });\n  rk.forEach(function (k, j) {\n    var R = metaRowOf(r2[kk.length + j], k);\n    if (R) add(R, 1, 'ref'); else unknown.push(k);\n  });\n  var l2 = visaL2Keys(kidsRes, refsRes, r2, self);\n  if (l2.length > VISA_L3_CAP) truncated.push('\u7B2C\u4E8C\u5C64\u7684\u7968\u8D85\u904E ' + VISA_L3_CAP + ' \u5F35\uFF0C\u5E95\u4E0B\u7684\u7968\u53EA\u8B80\u524D ' + VISA_L3_CAP + ' \u500B');\n  var deeper = 0;\n  l2.slice(0, VISA_L3_CAP).forEach(function (k, i) {\n    rowsOf(r3[i]).forEach(function (R) { var n0 = items.length; add(R, 3, 'child'); if (items.length > n0) deeper++; });\n    if (fullPage(r3[i], 200)) truncated.push(k + ' \u5E95\u4E0B\u8B80\u6EFF\u4E00\u9801\uFF08\u8D85\u904E 200 \u5F35\uFF09');\n  });\n  return { tickets: items, open: items.filter(function (x) { return x.state === 'open'; }), unknown: unknown, truncated: truncated, levels: 3, deeper: deeper };\n}\n// \u9019\u500B\u610F\u5716\u73FE\u5728\u958B\u5F97\u51FA\u7C3D\u8B49\u55CE\uFF1F\u56DE null\uFF08\u53EF\u4EE5\uFF09\u6216 { status, code, message, \u2026 }\n\ninput.reads = flatMulti(input.reads);\ninput.reads2 = flatMulti(input.reads2);\ninput.reads3 = flatMulti(input.reads3);\n\nvar g = gate(input); if (g.stop) return g.stop;\nvar P = g.P, rs = readsOf(input), r2 = reads2Of(input), r3 = reads3Of(input);\nvar bad2 = readsBad(r2.concat(r3)); if (bad2) return fail(502, 'KBDB read failed (HTTP ' + (bad2.status || '?') + ')');\nvar M = metaRowOf(rs[0], P.key);\nvar scan = visaScan(P.key, rs[1], rs[2], r2, r3);\n// \u6392\u5E8F\uFF1A\u9084\u958B\u8457\u7684\u5728\u524D\uFF08\u8981\u4EBA\u6CE8\u610F\uFF09\uFF0C\u518D\u4F86\u5DF2\u95DC\u3001\u4E0D\u505A\uFF1B\u540C\u4E00\u985E\u7167 repo\u3001\u7968\u865F\nfunction rank(x) { return x.state === 'open' ? 0 : x.state === 'closed' ? 1 : 2; }\nfunction splitKey(k) { var m = /^(.*)#(\\d+)$/.exec(k); return m ? [m[1], Number(m[2])] : [k, 0]; }\nfunction byKey(a, b) { var A = splitKey(a.key), B2 = splitKey(b.key); return A[0] < B2[0] ? -1 : A[0] > B2[0] ? 1 : A[1] - B2[1]; }\nvar items = scan.tickets.map(function (x) {\n  return { key: x.key, title: x.summary || x.key, state: x.state, level: x.level, via: x.via, executor: x.executor, stalled: x.stalled };\n}).sort(function (a, b) { return rank(a) - rank(b) || byKey(a, b); });\nfunction cnt(s) { return items.filter(function (x) { return x.state === s; }).length; }\nreturn reply(200, { intent: P.key, kind: M ? (metaDoc(M).kind || null) : null, total: items.length, done: cnt('closed'), open: cnt('open'), wontdo: cnt('wontdo'),\n  items: items, unknown: scan.unknown, truncated: scan.truncated, complete: !scan.unknown.length && !scan.truncated.length, levels: scan.levels, deeper_unchecked: scan.deeper });\n",
+              input: {
+                prep: "{{prep.data}}",
+                reads: "{{prep.results}}",
+                prep2: "{{prep2.data}}",
+                reads2: "{{prep2.results}}",
+                prep3: "{{prep3.data}}",
+                reads3: "{{prep3.results}}"
+              },
+              limits: {
+                timeout_ms: 5e3,
+                max_output_bytes: 1048576
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "rdq",
+            type: "FOREACH",
+            iterator: "ahmulti",
+            concurrency: 1
+          },
+          {
+            from: "prep",
+            to: "prep2",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep2",
+            to: "rdq2",
+            type: "FOREACH",
+            iterator: "ahsmulti",
+            concurrency: 1
+          },
+          {
+            from: "prep2",
+            to: "prep3",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep3",
+            to: "rdq3",
+            type: "FOREACH",
+            iterator: "ahsmulti",
+            concurrency: 1
+          },
+          {
+            from: "prep3",
+            to: "decide",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
       name: "waiting",
       description: "\u7B49\u4F60\u8655\u7406\u7684\u4E8B\uFF08leo \u9996\u5C4F\u6700\u4E0A\u9762\uFF1Binkstone/Arcrun#414\uFF09\uFF1A\u5168\u79DF\u6236\u300C\u73FE\u5728\u771F\u7684\u958B\u8457\u300D\u7684\u8981\u6C42\uFF0C\u6BCF\u4EF6\u4E00\u5F35\u767D\u8A71\u5361\u2014\u2014request_action \u7684\u56DB\u7A2E\uFF08\u8B80\u5B8C\uFF0F\u9078\u4E00\u500B\uFF0F\u56DE\u7B54\uFF0F\u89AA\u624B\u505A\uFF09\u52A0\u4E0A\u7C3D\u6838\u55AE\uFF08summary.waiting\uFF1D\u4EF6\u6578\u3001summary.tickets\uFF1D\u5206\u5C6C\u5E7E\u5F35\u7968\u3001by_ticket\uFF1D\u6BCF\u5F35\u7968\u5E95\u4E0B\u9010\u9805\uFF1B\u6578\u5B57\u8207\u6E05\u55AE\u540C\u4E00\u500B\u4F86\u6E90\uFF0C\u4E0D\u53E6\u5B58\uFF09\u3002\u4F86\u6E90\u53EA\u6709\u4E00\u500B\uFF1A\u7968\u4E0A\u958B\u8457\u3001\u9084\u6C92\u4EBA\u56DE\u61C9\u4E5F\u6C92\u4F5C\u5EE2\u7684\u8981\u6C42\uFF08\u5F9E\u7968\u7684\u7559\u8A00\u5224\u8B80\uFF0C\u548C\u7968\u9801\u300C\u7B49\u4F60\u8655\u7406\u300D\u6846\u540C\u4E00\u4EFD\u5224\u65B7\uFF09\uFF1B\u4EBA\u5DE5\u624B\u5BEB\u7684 needs_user\uFF0Fblocked_on \u5B57\u4E32\u3001\u53EA\u639B\u4E86 Human \u537B\u6C92\u958B\u8981\u6C42\u7684\u7968\uFF0C\u4E00\u5F8B\u4E0D\u7B97\u300C\u7B49\u4F60\u300D\u3002\u56DE\u61C9\u5F8C\uFF08\u7559\u8A00\u4E00\u5BEB\u9032\u53BB\uFF09\u90A3\u4EF6\u5C31\u4E0D\u5728\u9019\u88E1\u4E86\u3002waiting\uFF1D\u5361\u7247\uFF08\u6BCF\u5F35\u5E36\u7968\u3001\u767D\u8A71\u6A19\u984C\u3001\u8981\u4F60\u505A\u4EC0\u9EBC\u3001\u9078\u9805\u3001\u5167\u5BB9\u3001\u8AB0\u958B\u7684\u3001\u591A\u4E45\u524D\u3001\u7AD9\u5167\u9023\u7D50\uFF09\uFF1Borphans\uFF1D\u639B\u8457 Human \u537B\u6C92\u6709\u958B\u8457\u8981\u6C42\u7684\u958B\u8457\u7684\u7968\uFF08\u820A\u7684\u4EBA\u5DE5\u639B\u6CD5\uFF0C\u8981\u88DC\u958B\u8981\u6C42\u6216\u6536\u56DE Human\uFF09\uFF1Bsummary\uFF1Bconfigured\uFF08\u6709\u6C92\u6709\u6307\u5B9A\u7C3D\u6838\u4EBA\uFF0C\u6C92\u6307\u5B9A\u5C31\u6C92\u4EBA\u80FD\u56DE\u61C9\uFF09\uFF1Btruncated\uFF08\u9084\u6709\u7968\u6C92\u8B80\u5230\u6642 true\uFF09\u3002\u{1F534} \u5168\u90E8\u958B\u8457\u7684\u8981\u6C42\u90FD\u5217\u5F97\u51FA\u4F86\uFF08inkstone/Arcrun#440\uFF09\uFF1A\u5148\u7528\u4E00\u500B\u8ACB\u6C42\u770B\u5B8C\u6240\u6709\u639B Human \u7684\u7968\u958B\u8457\u9084\u662F\u95DC\u4E86\uFF0C\u53EA\u66FF\u958B\u8457\u7684\u7968\u8B80\u7559\u8A00\uFF1B\u4E00\u9801\u6700\u591A\u8B80 45 \u5F35\u958B\u8457\u7684\u7968\uFF0C\u591A\u7684\u7528 offset\uFF08query\uFF0C\u9810\u8A2D 0\uFF09\u63A5\u8457\u8B80\u2014\u2014\u56DE next_offset\uFF08\u9084\u6709\u4E0B\u4E00\u9801\u624D\u6709\u503C\uFF0C\u5426\u5247 null\uFF09\u3001unread\uFF08\u9019\u9801\u4E4B\u5F8C\u9084\u6709\u5E7E\u5F35\u958B\u8457\u7684\u7968\u6C92\u8B80\uFF09\u3001tickets_total\uFF08\u958B\u8457\u7684\u639B Human \u7684\u7968\u5171\u5E7E\u5F35\uFF09\u3001unchecked\uFF08\u639B Human \u7684\u7968\u8D85\u904E\u4E00\u6B21\u80FD\u770B\u7684 200 \u5F35\u6642\uFF0C\u6C92\u88AB\u770B\u7684\u6709\u5E7E\u5F35\uFF09\u3002summary\uFF0Fwaiting\uFF0Fby_ticket\uFF0Forphans \u53EA\u7B97\u9019\u4E00\u9801\uFF0C\u547C\u53EB\u7AEF\u628A\u5404\u9801\u4F75\u8D77\u4F86\u3002\u53EA\u8B80\uFF0C\u4E0D\u63A8\u64AD\u3001\u4E0D\u8F2A\u8A62\u3002",
       graph: {
@@ -49332,7 +49464,7 @@ return claimOut(attempts, { full: full, lid: String(lid), newLabel: newLabel });
             label: "prep",
             data: {
               code: `
-var ROUTES = {"setting_get":{"method":"GET","pattern":"/ahub/settings"},"projects_index":{"method":"GET","pattern":"/ahub/projects"},"ms_overview":{"method":"GET","pattern":"/ahub/milestones"},"issue_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues"},"issue_search":{"method":"GET","pattern":"/repos/issues/search"},"issue_page":{"method":"GET","pattern":"/ahub/issues"},"issue_get":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index"},"comment_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/comments"},"label_list":{"method":"GET","pattern":"/repos/:owner/:repo/labels"},"ms_list":{"method":"GET","pattern":"/repos/:owner/:repo/milestones"},"ms_get":{"method":"GET","pattern":"/repos/:owner/:repo/milestones/:id"},"goals_report":{"method":"GET","pattern":"/ahub/goals"},"repo_get":{"method":"GET","pattern":"/repos/:owner/:repo"},"release_list":{"method":"GET","pattern":"/repos/:owner/:repo/releases"},"release_index":{"method":"GET","pattern":"/ahub/releases"},"dep_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/dependencies"},"dep_blocks":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/blocks"},"sessions_list":{"method":"GET","pattern":"/ahub/sessions"},"claim_list":{"method":"GET","pattern":"/ahub/claims"},"issue_stage":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/stage"},"tree_get":{"method":"GET","pattern":"/ahub/tree"},"tree_of":{"method":"GET","pattern":"/ahub/tree/of"},"goal_refs_get":{"method":"GET","pattern":"/ahub/goal-refs"},"whos_doing":{"method":"GET","pattern":"/ahub/whos-doing"},"assignments":{"method":"GET","pattern":"/ahub/assignments"},"waiting":{"method":"GET","pattern":"/ahub/waiting"},"outline":{"method":"GET","pattern":"/ahub/outline"},"ledger":{"method":"GET","pattern":"/ahub/ledger"},"visa_list":{"method":"GET","pattern":"/ahub/visas"}};
+var ROUTES = {"setting_get":{"method":"GET","pattern":"/ahub/settings"},"projects_index":{"method":"GET","pattern":"/ahub/projects"},"ms_overview":{"method":"GET","pattern":"/ahub/milestones"},"issue_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues"},"issue_search":{"method":"GET","pattern":"/repos/issues/search"},"issue_page":{"method":"GET","pattern":"/ahub/issues"},"issue_get":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index"},"comment_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/comments"},"label_list":{"method":"GET","pattern":"/repos/:owner/:repo/labels"},"ms_list":{"method":"GET","pattern":"/repos/:owner/:repo/milestones"},"ms_get":{"method":"GET","pattern":"/repos/:owner/:repo/milestones/:id"},"goals_report":{"method":"GET","pattern":"/ahub/goals"},"repo_get":{"method":"GET","pattern":"/repos/:owner/:repo"},"release_list":{"method":"GET","pattern":"/repos/:owner/:repo/releases"},"release_index":{"method":"GET","pattern":"/ahub/releases"},"dep_list":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/dependencies"},"dep_blocks":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/blocks"},"sessions_list":{"method":"GET","pattern":"/ahub/sessions"},"claim_list":{"method":"GET","pattern":"/ahub/claims"},"issue_stage":{"method":"GET","pattern":"/repos/:owner/:repo/issues/:index/stage"},"tree_get":{"method":"GET","pattern":"/ahub/tree"},"tree_of":{"method":"GET","pattern":"/ahub/tree/of"},"goal_refs_get":{"method":"GET","pattern":"/ahub/goal-refs"},"whos_doing":{"method":"GET","pattern":"/ahub/whos-doing"},"assignments":{"method":"GET","pattern":"/ahub/assignments"},"waiting":{"method":"GET","pattern":"/ahub/waiting"},"outline":{"method":"GET","pattern":"/ahub/outline"},"ledger":{"method":"GET","pattern":"/ahub/ledger"},"visa_list":{"method":"GET","pattern":"/ahub/visas"},"visa_tasks":{"method":"GET","pattern":"/ahub/visas/tasks"}};
 function ph(v) { v = String(v == null ? '' : v).trim(); return /^\\{\\{[^{}]*\\}\\}$/.test(v) ? '' : v; }
 function obj(v) { if (typeof v === 'string') { var s = ph(v); if (!s) return {}; try { v = JSON.parse(s); } catch (e) { return null; } } return v && typeof v === 'object' && !Array.isArray(v) ? v : null; }
 var route = ph(input.route);
@@ -89287,6 +89419,19 @@ return r;
 /* \u6BCF\u5247\u7559\u8A00\u7684\u77ED\u7DE8\u865F\u300C#K\u300D\uFF08inkstone/Arcrun#448\uFF09\uFF1A\u770B\u5F97\u6E05\u695A\u3001\u9EDE\u4E86\u8907\u88FD\u300Cowner/repo#N \u7B2C K \u5247\u300D */
 .ah-ch button.ah-no { font-weight: 700; font-size: 13px; color: var(--ah-link); background: var(--ah-card); border: 1px solid var(--ah-line); border-radius: 999px; padding: 0 10px; font-variant-numeric: tabular-nums; }
 .ah-todo-t .ah-where { font-weight: 700; margin-left: 0; }
+/* \u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9\u6E05\u55AE\uFF08inkstone/Arcrun#457\uFF09\uFF1A\u7C3D\u8B49\u5361\u8207\u7C3D\u6838\u6846\u88E1\u300C\u5171 N \u500B\u4EFB\u52D9\uFF0F\u2713 \u6BCF\u4E00\u5F35\u300D */
+.ah-tasks { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 8px; background: var(--ah-soft, color-mix(in srgb, currentColor 5%, transparent)); }
+.ah-tasks-h { font-size: 14px; font-weight: 700; }
+.ah-tasks-h .ok { color: var(--ah-ok); }
+.ah-tasks-h .bad { color: var(--ah-bad); }
+.ah-tasks ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ah-task { display: flex; align-items: baseline; gap: 8px; font-size: 14px; line-height: 1.45; min-height: 28px; }
+.ah-task-mk { flex: 0 0 auto; width: 20px; text-align: center; font-weight: 700; }
+.ah-task.closed .ah-task-mk { color: var(--ah-ok); }
+.ah-task.open .ah-task-mk, .ah-task.open .ah-task-t { color: var(--ah-bad); }
+.ah-task.wontdo .ah-task-mk, .ah-task.wontdo .ah-task-t { color: var(--ah-muted); }
+.ah-task-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ah-task-k { flex: 0 0 auto; height: auto; min-height: 28px; padding: 0 4px; border: 0; background: transparent; color: var(--ah-link); font-family: ui-monospace, monospace; font-size: 12px; cursor: pointer; text-decoration: underline; }
 
 /* AHub \u7BA1\u7406\u756B\u9762\u81EA\u5DF1\u7684 */
 .ah-lab-row .ah-chip { font-size: 13px; padding: 6px 11px; }
@@ -90271,7 +90416,7 @@ var ASK_DONE = { read: '\u5DF2\u8B80\u5B8C', choose: '\u5DF2\u9078', answer: '\u
 function openTicket(repo, number, opts) {
   opts = opts || {};
   var P = repoParams(repo, { index: String(number) });
-  var S = { issue: null, comments: [], labels: [], milestones: [], stage: null, visas: [], tab: 'write', busy: false, replyTo: null };
+  var S = { issue: null, comments: [], labels: [], milestones: [], stage: null, visas: [], tasks: null, tab: 'write', busy: false, replyTo: null };
   var prevHref = null;   // \u7AD9\u5167\u8DF3\u8F49\u6539\u4E86\u7DB2\u5740\u5217 \u2192 \u95DC\u6389\u9019\u500B\u9762\u677F\u6642\u9084\u539F
   var sp = sidePanel({ ref: repo + '#' + number, title: '#' + number + ' \u8B80\u53D6\u4E2D\u2026', onClose: function () { if (prevHref != null) setUrlTo(prevHref); } });
   if (opts.syncUrl) { prevHref = String(window.location.href); setUrlTo(opts.comment ? commentLink(repo, number, opts.comment) : ticketLink(repo, number)); }
@@ -90323,7 +90468,7 @@ function openTicket(repo, number, opts) {
         (Array.isArray(b) ? b : []).forEach(function (c) { S.comments.push(c); });
         S.comments.sort(function (a, b) { return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0; });
       }, function () { return null; });
-    }).then(function () { paint(); return true; }, function (e) {
+    }).then(function () { paint(); loadTasks(); return true; }, function (e) {
       if (soft) return false;
       say(/AHub \u56DE 404|not found/.test(e.message) ? '\u627E\u4E0D\u5230\u9019\u5F35\u7968\uFF1A\u7968\u865F\u53EF\u80FD\u6253\u932F\u4E86\uFF0C\u6216\u5B83\u6240\u5728\u7684 repo \u5728\u9019\u500B\u5E33\u865F\u4E0A\u4E0D\u5B58\u5728\u3002' : '\u8B80\u4E0D\u5230\u9019\u5F35\u7968\uFF1A' + e.message, true);
       return false;
@@ -90343,6 +90488,44 @@ function openTicket(repo, number, opts) {
       });
     }
     return again(0);
+  }
+  // \u2500\u2500 \u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9\u6E05\u55AE\uFF08inkstone/Arcrun#457\uFF09\uFF1A\u53EA\u5728\u8981\u4EBA\u7C3D\u8B49\u6216\u7C3D\u6838\u6642\u624D\u8B80\uFF08GET /ahub/visas/tasks\uFF09\uFF0C\u5176\u4ED6\u7968\u4E0D\u591A\u82B1\u8B80 \u2500\u2500
+  function needTasks() { return (S.visas || []).some(function (v) { return v.state !== 'void'; }) || (S.issue && S.issue.state !== 'closed' && pendingReqs().length > 0); }
+  var tasksGen = 0;
+  function loadTasks() {
+    if (!needTasks()) return;
+    var g = ++tasksGen;
+    if (!S.tasks) { S.tasks = { loading: true }; paintTodo(); paintVisas(); }
+    aRead('visa_tasks', {}, { intent: repo + '#' + number }, null).then(function (b) {
+      if (g !== tasksGen) return;
+      S.tasks = b && Array.isArray(b.items) ? b : { error: '\u56DE\u61C9\u683C\u5F0F\u4E0D\u5C0D' };
+      paintTodo(); paintVisas();
+    }, function (e) { if (g !== tasksGen) return; if (!S.tasks || S.tasks.loading) S.tasks = { error: e && e.message || '\u8B80\u4E0D\u5230' }; paintTodo(); paintVisas(); });
+  }
+  var TASK_MK = { closed: '\u2713', open: '\u2610', wontdo: '\u2298' };
+  // \u300C\u5171 N \u500B\u4EFB\u52D9\u300D\uFF0B\u6BCF\u5F35\u4E00\u884C\uFF1B\u9EDE\u7968\u865F\u958B\u90A3\u5F35\u7968\u770B\u8B49\u64DA\u3002forSign\uFF1D\u7C3D\u6838\u6846\uFF08\u6C92\u6709\u4EFB\u4F55\u4EFB\u52D9\u7684\u7968\u4E0D\u756B\uFF0C\u4E0D\u662F\u610F\u5716\uFF09
+  function taskList(forSign) {
+    var T = S.tasks;
+    if (!T) return null;
+    if (T.loading) return h('div', { class: 'ah-tasks' }, h('div', { class: 'ah-note' }, '\u8B80\u53D6\u9019\u500B\u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9\u6E05\u55AE\u2026'));
+    if (T.error) return forSign ? null : h('div', { class: 'ah-tasks' }, h('div', { class: 'ah-note' }, '\u8B80\u4E0D\u5230\u4EFB\u52D9\u6E05\u55AE\uFF08' + T.error + '\uFF09\u3002\u4E0D\u5F71\u97FF\u78BA\u8A8D\uFF1B\u53EF\u4EE5\u91CD\u65B0\u6574\u7406\u518D\u770B\u4E00\u6B21\u3002'));
+    if (!T.total) return forSign ? null : h('div', { class: 'ah-tasks' }, h('div', { class: 'ah-note' }, '\u9019\u500B\u610F\u5716\u5E95\u4E0B\u76EE\u524D\u6C92\u6709\u639B\u4EFB\u4F55\u4EFB\u52D9\u7968\u3002'));
+    var head = h('div', { class: 'ah-tasks-h' }, '\u5171 ' + T.total + ' \u500B\u4EFB\u52D9',
+      T.open ? h('span', { class: 'bad' }, '\u30FB\u9084\u6709 ' + T.open + ' \u500B\u6C92\u505A\u5B8C') : h('span', { class: 'ok' }, '\u30FB\u5168\u90E8\u5B8C\u6210' + (T.wontdo ? '\uFF08\u5176\u4E2D ' + T.wontdo + ' \u500B\u6A19\u4E86\u4E0D\u505A\uFF09' : '')));
+    function row(x) {
+      var m = /^(.+)#(\\d+)$/.exec(x.key);
+      var k = h('button', { type: 'button', class: 'ah-task-k', title: '\u6253\u958B\u9019\u5F35\u7968\u770B\u505A\u4E86\u4EC0\u9EBC' }, m ? m[1].split('/').pop() + '#' + m[2] : x.key);
+      if (m) k.addEventListener('click', function () { openTicket(m[1], Number(m[2]), { syncUrl: true }); });
+      var tip = x.state === 'closed' ? '\u5DF2\u5B8C\u6210' : x.state === 'open' ? '\u9084\u6C92\u505A\u5B8C' + (x.executor ? '\uFF08' + x.executor + '\uFF09' : '') : '\u6A19\u4E86\u4E0D\u505A';
+      return h('li', { class: 'ah-task ' + x.state, title: tip },
+        h('span', { class: 'ah-task-mk', 'aria-label': tip }, TASK_MK[x.state] || '\u30FB'),
+        h('span', { class: 'ah-task-t' }, x.title + (x.state === 'open' ? '\uFF08\u9084\u6C92\u505A\u5B8C' + (x.executor ? '\uFF0C' + x.executor : '') + '\uFF09' : x.state === 'wontdo' ? '\uFF08\u4E0D\u505A\uFF09' : '')), k);
+    }
+    var first = T.items.slice(0, 10), rest = T.items.slice(10);
+    var box = h('div', { class: 'ah-tasks', 'aria-label': '\u9019\u500B\u610F\u5716\u5E95\u4E0B\u7684\u4EFB\u52D9' }, head, h('ul', null, first.map(row)));
+    if (rest.length) box.appendChild(h('details', { class: 'ah-todo-d' }, h('summary', null, '\u518D\u770B\u53E6\u5916 ' + rest.length + ' \u500B'), h('ul', null, rest.map(row))));
+    if (!T.complete) box.appendChild(h('div', { class: 'ah-note' }, '\u26A0 \u6E05\u55AE\u53EF\u80FD\u4E0D\u5B8C\u6574\uFF1A' + (T.unknown && T.unknown.length ? '\u5F15\u7528\u7684\u7968 ' + T.unknown.join('\u3001') + ' \u770B\u4E0D\u51FA\u958B\u6216\u95DC' : '') + (T.truncated && T.truncated.length ? T.truncated.join('\uFF1B') : '')));
+    return box;
   }
   function pick(key, b) { return key === 'issue' || key === 'stage' ? b : (Array.isArray(b) ? b : []); }
 
@@ -90479,9 +90662,12 @@ function openTicket(repo, number, opts) {
     var pending = v.state === 'pending';
     var stateText = pending ? '\u7B49\u4F60\u78BA\u8A8D' : v.state === 'confirmed' ? '\u5DF2\u78BA\u8A8D' : '\u5DF2\u4F5C\u5EE2';
     var card = cardShell((v.no ? '\u7C3D\u8B49\u7B2C ' + v.no + ' \u5F35' : '\u7C3D\u8B49') + '\u30FB\u51FA ' + v.version, (v.summary || '\uFF08\u6C92\u5BEB\u6458\u8981\uFF09') + '\u30FB' + stateText, null);
-    var meta = pending ? '\u5E95\u4E0B ' + v.closed_tickets + ' \u5F35\u7968\u958B\u7C3D\u8B49\u6642\u90FD\u5DF2\u641E\u5B9A' + (v.confirmer ? '\uFF1B\u6307\u5B9A\u7531 ' + v.confirmer + ' \u78BA\u8A8D' : '') + '\u3002'
+    var listed = S.tasks && S.tasks.total > 0;   // \u6E05\u55AE\u756B\u5F97\u51FA\u4F86\u5C31\u4E0D\u518D\u91CD\u8907\u8B1B\u300C\u5E95\u4E0B N \u5F35\u300D\uFF08inkstone/Arcrun#457\uFF09
+    var meta = pending ? (listed ? '\u78BA\u8A8D\u524D\u770B\u4E00\u4E0B\u5E95\u4E0B\u6BCF\u500B\u4EFB\u52D9' : '\u5E95\u4E0B ' + v.closed_tickets + ' \u5F35\u7968\u958B\u7C3D\u8B49\u6642\u90FD\u5DF2\u641E\u5B9A') + (v.confirmer ? '\uFF1B\u6307\u5B9A\u7531 ' + v.confirmer + ' \u78BA\u8A8D' : '') + '\u3002'
       : (v.state === 'confirmed' ? (v.confirmed_by || '') + ' \u78BA\u8A8D\u65BC ' + whenText(v.confirmed_at) + '\u3002' : '\u5DF2\u4F5C\u5EE2' + (v.note ? '\uFF1A' + v.note : '') + '\u3002');
     card.appendChild(h('p', { class: 'ah-note', style: { margin: '4px 0' } }, meta));
+    var tl = taskList(false); if (tl) card.appendChild(tl);
+    if (pending && S.tasks && S.tasks.open) card.appendChild(h('div', { class: 'ah-err', role: 'status' }, '\u958B\u7C3D\u8B49\u4E4B\u5F8C\u53C8\u6709 ' + S.tasks.open + ' \u5F35\u7968\u88AB\u91CD\u958B\u6216\u65B0\u639B\u4E0A\u4F86\uFF0C\u78BA\u8A8D\u4E86\u4E5F\u904E\u4E0D\u4E86 prod \u6D77\u95DC\uFF1B\u5EFA\u8B70\u5148\u9000\u56DE\u3002'));
     if (!pending) return card;
     var err = h('div', { class: 'ah-err', role: 'alert' });
     var nta = h('textarea', { rows: 2, 'aria-label': '\u610F\u898B\uFF08\u9000\u56DE\u8981\u5BEB\u7406\u7531\uFF09', placeholder: '\u610F\u898B\uFF08\u78BA\u8A8D\u53EF\u4E0D\u5BEB\uFF1B\u9000\u56DE\u8981\u5BEB\u7406\u7531\uFF09' });
@@ -90570,6 +90756,7 @@ function openTicket(repo, number, opts) {
   }
   function signCard(r) {
     var card = cardShell('\u7C3D\u6838' + (r.ver ? '\u30FB\u51FA ' + r.ver : ''), r.title, r.c);
+    var stl = taskList(true); if (stl) card.appendChild(stl);
     var b = h('button', { type: 'button', class: 'ah-big pri' }, '\u7C3D\u6838\u2026');
     b.addEventListener('click', function () { signDialog(r.id); });
     // \u62D2\u7D55\uFF1A\u76F4\u63A5\u5728\u5361\u4E0A\u6309\uFF0C\u4E0D\u7528\u5148\u958B\u7C3D\u6838\u6846\uFF08inkstone/Arcrun#434\uFF09\uFF1B\u7406\u7531\u53EF\u4E0D\u5BEB\uFF0CAI \u770B\u5F97\u5230\u3001\u7167\u8457\u6539
@@ -95948,6 +96135,7 @@ var APP_CATALOG = [
     // 0.14.1（inkstone/Arcrun#359）：外部網站收件——每個來源（intake-sources.json）一條公開路由 /ahub/intake/<來源>，金鑰住 credential 中心的 ahub_intake_<來源>，只能開在該來源綁定的那個 repo、掛指定標籤；AHub 不存金鑰。多 1 條路由，沒有新 template／工具。
     // 0.13.4（inkstone/Arcrun#351）：畫面多「登記簿」分頁分頁（CC 專案→對話→領的票→目標）、里程碑頁 % 與票地圖同一算法並可列「全部專案」；畫面讀取白名單多 sessions_list／claim_list。沒有新 template／路由／工具。
     // 0.13.3（inkstone/Arcrun#353；0.13.1／0.13.2 已被 #351 的畫面白名單用掉）：目標綁 0..n 個 milestone（goal_set 的 milestones／unbind_milestones；進度從里程碑與 release 算、不另外手填）＋「目標樹沒人維護／鏈條沒人維護」兩組鏈斷旗標（goals_report、board）。1 個新 template（ahub_goal_ms，共 24），沒有新工具。
+    // 0.45.0（inkstone/Arcrun#457）：簽證卡與簽核框列出意圖底下每張票（✓／☐／⊘＋票號）；新唯讀路由 GET /ahub/visas/tasks，只在有簽證或等簽的票上讀。沒有新 template／工具。
     // 0.44.0（inkstone/Arcrun#446 第 7 項）：開票的重複比對讀票池帶 max_age=30，知識庫正門 30 秒內用上一份、不再每開一張重讀全池；算法與候選規則不變。需要引擎 1.4.242 以上。
     // 0.43.0（inkstone/Arcrun#452）：簽核人簽了（同意／不同意）或確認簽證，同一筆寫入記一筆給工作站「專案總監」的通知（走既有的要求回報機制，總監帶 station 呼叫任何工具就在 next_actions 看到，讀那張票的 signoff_status 後消掉），並打一次排程任務 API 叫醒總監（權杖只用 credential 名字 ahub_signoff_wake；沒設＝只有通知、不擋簽核；設了但送不到＝簽核照成功並在票上留「通知沒送到」）。新增 2 條路由（ask_ack、signoff_wake）、1 支 recipe（ahub_signoff_wake），沒有新 template、沒有新工具。
     // 0.42.0（inkstone/Arcrun#448）：票上每則留言有短編號「第 K 則」（刪掉的也佔號、後面不重排）；簽核單、要求單、等你處理、簽證都帶編號，MCP 回 no／ref、可用 comment_no 讀。沒有新 template／路由。
@@ -95959,7 +96147,7 @@ var APP_CATALOG = [
     // 0.10.1（inkstone/Arcrun#347）：畫面讀取在 App 身分已登記時拿不到回應（引擎 #338 之後沒跑到的節點＝沒有值）——修掉。
     // 0.10.0（inkstone/Arcrun#346）：記得「哪個 Claude 專案領了哪張票、做到哪」——工作站報到／領票／回報／放手／看板／要求回報（3 個新 template、6 支新 MCP 工具）。
     summary: "\u628A\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u76F8\u4F9D\u8207\u91CC\u7A0B\u7891\u5B58\u5728\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u88E1\uFF0C\u7528\u548C Gitea \u4E00\u6A23\u7684\u65B9\u5F0F\u8B80\u5BEB\uFF1B\u6253\u958B\u5C31\u80FD\u65B0\u589E\u3001\u4FEE\u6539\u3001\u95DC\u9589\u7968\u8207\u91CC\u7A0B\u7891\uFF0C\u7559\u8A00\u7528 Markdown\uFF0C\u7C3D\u6838\u4EBA\u7531\u4F60\u5728\u300C\u8A2D\u5B9A\u300D\u6307\u5B9A\u3002\u9023\u4E0A Arcrun MCP \u7684 AI \u81EA\u52D5\u62FF\u5230\u7BA1\u7968\u8207\u8ACB\u4F60\u7C3D\u6838\u7684\u5DE5\u5177\u3002\u9078\u88DD\uFF0C\u6C92\u88DD\u7684\u5BE6\u4F8B\u4E0D\u53D7\u5F71\u97FF\u3002",
-    version: "0.44.0",
+    version: "0.45.0",
     author: "Arcrun \u5167\u5EFA",
     declaration: ahub_app_default
   },
@@ -100303,7 +100491,6 @@ init_types();
 init_graph_executor();
 init_schemas();
 init_component_loader();
-init_execution_evaluator();
 
 // cypher-executor/src/actions/triplet-parser.ts
 init_constants3();
@@ -100348,8 +100535,1913 @@ function toEdgeType(label) {
 
 // cypher-executor/src/actions/search-nodes.ts
 init_component_loader();
-init_endpoints();
-init_recipes();
+
+// cypher-executor/src/lib/component-catalog.generated.json
+var component_catalog_generated_default = {
+  catalog_id: "arcrun:components/v1",
+  count: 21,
+  components: [
+    {
+      canonical_id: "array_ops",
+      display_name: "\u9663\u5217\u64CD\u4F5C",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u9663\u5217\u64CD\u4F5C\uFF1Acount/first/last/reverse/sum/average/min/max/sort/unique\u3002",
+      aliases: [
+        "\u9663\u5217",
+        "list",
+        "\u6E05\u55AE",
+        "\u5217\u8868"
+      ],
+      tags: [
+        "builtin",
+        "data",
+        "array",
+        "list",
+        "transform"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "operation",
+          "input"
+        ],
+        properties: {
+          operation: {
+            type: "string",
+            enum: [
+              "count",
+              "first",
+              "last",
+              "reverse",
+              "sum",
+              "average",
+              "min",
+              "max",
+              "sort",
+              "unique"
+            ]
+          },
+          input: {
+            type: "array",
+            description: "\u8F38\u5165\u9663\u5217\uFF08\u5143\u7D20\u70BA\u6578\u5B57\u6216\u5B57\u4E32\uFF09"
+          },
+          args: {
+            type: "object"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              result: {},
+              operation: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "sort \u6578\u5B57\u9663\u5217",
+          given: '{"operation":"sort","input":[3,1,2]}',
+          then_contains: '"result":[1,2,3]'
+        },
+        {
+          scenario: "sum \u64CD\u4F5C",
+          given: '{"operation":"sum","input":[1,2,3]}',
+          then_contains: '"result":6'
+        },
+        {
+          scenario: "\u7A7A\u9663\u5217 first",
+          given: '{"operation":"first","input":[]}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_array_op:                            # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "sort"                     # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Acount/first/last/reverse/sum/average/min/max/sort/unique\n  input: [3, 1, 4, 1, 5, 9, 2, 6]      # \u8F38\u5165\u9663\u5217\uFF0C\u5143\u7D20\u70BA\u6578\u5B57\u6216\u5B57\u4E32\uFF08\u5FC5\u586B\uFF09\n  args: {}                              # \u64CD\u4F5C\u53C3\u6578\uFF08\u9078\u586B\uFF0C\u76EE\u524D\u5404 operation \u4E0D\u9700\u984D\u5916\u53C3\u6578\uFF09\n',
+      source: "registry/components/array_ops/component.contract.yaml"
+    },
+    {
+      canonical_id: "auth_oauth2",
+      display_name: "Auth Primitive \u2014 OAuth2",
+      category: "auth",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "OAuth2 auth primitive\u3002\u8B80\u53D6 auth_recipe\uFF08\u542B token_endpoint\u3001client_id\u3001client_secret\uFF09\n+ \u89E3\u5BC6 refresh_token + \u547C\u53EB token endpoint \u63DB access_token + \u5C55\u958B {{runtime.access_token}}\u3002\n\u652F\u63F4 authenticate / needs_refresh / refresh \u4E09\u500B action\u3002\n\u900F\u904E host function kv_get + crypto_decrypt + http_request\uFF0Cplaintext \u6C38\u4E0D\u96E2\u958B WASM\u3002\n",
+      aliases: [],
+      tags: [
+        "auth",
+        "credential",
+        "primitive",
+        "oauth2"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "action",
+          "api_key",
+          "service"
+        ],
+        properties: {
+          action: {
+            type: "string",
+            enum: [
+              "authenticate",
+              "needs_refresh",
+              "refresh"
+            ],
+            description: "authenticate \u2014 \u7528 refresh_token \u63DB access_token\uFF0C\u5C55\u958B inject \u6A21\u677F\nneeds_refresh \u2014 \u6AA2\u67E5 token \u662F\u5426\u9700\u8981 refresh\uFF08expires_at < now+300s\uFF09\nrefresh \u2014 \u5F37\u5236\u91CD\u65B0 refresh\uFF0C\u66F4\u65B0 CREDENTIALS_KV \u4E2D\u7684 access_token/expires_at\n"
+          },
+          api_key: {
+            type: "string",
+            description: "\u79DF\u6236\u8B58\u5225\uFF1DArcrun namespace\uFF0C\u7528\u4F86\u7D44 {api_key}:cred:{name} KV key\u3002 \u26A0\uFE0F 2026-07-29 \u66F4\u6B63\uFF1A\u820A\u6558\u8FF0\u5BEB\u300Cak_ \u524D\u7DB4\u300D\uFF0C\u4F46\u73FE\u884C\u6C92\u6709\u767C API key \u7684\u6A5F\u5236 \uFF08leo 07-29 \u6307\u6B63\uFF09\u2014\u2014namespace \u5373\u8EAB\u5206\u5373\u6191\u8B49\u3002\u4E0B\u65B9 examples \u7684 ak_test/ak_nonexistent \u662F\u6E2C\u8A66\u7528\u5047\u503C\uFF0C\u4E0D\u4EE3\u8868\u771F\u5BE6\u683C\u5F0F\u3002"
+          },
+          service: {
+            type: "string",
+            description: "auth recipe \u540D\u7A31\uFF0C\u5C0D\u61C9 auth_recipe:{service} \u7684 KV \u8A18\u9304"
+          },
+          request: {
+            type: "object",
+            description: "\u4E0B\u6E38\u96F6\u4EF6\u7684 HTTP request \u4E0A\u4E0B\u6587\uFF08\u4FDD\u7559\uFF0Cauth_oauth2 \u7576\u524D\u4E0D\u4F7F\u7528\uFF09"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          needs_refresh: {
+            type: "boolean",
+            description: "action=needs_refresh \u6642\u6709\u6548"
+          },
+          auth_headers: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          auth_query: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          auth_body: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          runtime: {
+            type: "object",
+            description: "\u542B access_token\uFF08action=authenticate/refresh \u6642\u6709\u6548\uFF09"
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u7F3A\u5C11 api_key",
+          given: '{"action":"authenticate","service":"google"}',
+          then_contains: '{"success":false'
+        },
+        {
+          scenario: "\u627E\u4E0D\u5230 auth recipe",
+          given: '{"action":"authenticate","api_key":"ak_test","service":"nonexistent_oauth2_svc"}',
+          then_contains: '{"success":false'
+        },
+        {
+          scenario: "needs_refresh \u7121 expires_at",
+          given: '{"action":"needs_refresh","api_key":"ak_test","service":"google","recipe":{"primitive":"oauth2","oauth2":{"token_endpoint":"https://token.invalid/t"}}}',
+          then_contains: '"needs_refresh":true'
+        }
+      ],
+      config_example: 'auth_step:\n  component: "auth_oauth2"\n  action: "authenticate"\n  service: "google_drive"   # \u5C0D\u61C9 auth_recipe:google_drive \u7684 KV \u8A18\u9304\n',
+      source: "registry/components/auth_oauth2/component.contract.yaml"
+    },
+    {
+      canonical_id: "auth_service_account",
+      display_name: "Auth Primitive \u2014 Service Account (Google JWT)",
+      category: "auth",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "Service Account auth primitive (Google JWT \u65B9\u6848)\u3002\u8B80\u53D6 auth_recipe + \u89E3\u5BC6 service_account_json \u2192 \u89E3\u6790 PEM private key \u2192 \u7D44 JWT \u2192 crypto_sign_rs256 (host function) \u2192 token exchange endpoint \u2192 \u53D6 access_token \u2192 \u5C55\u958B {{runtime.access_token}} \u6A21\u677F\u3002\u900F\u904E host function crypto_sign_rs256,private key \u50C5\u4EE5 PKCS8 bytes \u50B3\u7D66 host,\u89E3\u5BC6\u5F8C plaintext \u4E0D\u96E2\u958B WASM\u3002",
+      aliases: [],
+      tags: [
+        "auth",
+        "credential",
+        "primitive",
+        "service_account",
+        "google"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "action",
+          "api_key",
+          "service"
+        ],
+        properties: {
+          action: {
+            type: "string",
+            enum: [
+              "authenticate"
+            ],
+            description: "\u76EE\u524D\u50C5\u652F\u63F4 authenticate"
+          },
+          api_key: {
+            type: "string",
+            description: "\u79DF\u6236\u8B58\u5225\uFF1DArcrun namespace\uFF0C\u7528\u4F86\u7D44 {api_key}:cred:{name} KV key\u3002 \u26A0\uFE0F 2026-07-29 \u66F4\u6B63\uFF1A\u820A\u6558\u8FF0\u5BEB\u300Cak_ \u524D\u7DB4\u300D\uFF0C\u4F46\u73FE\u884C\u6C92\u6709\u767C API key \u7684\u6A5F\u5236 \uFF08leo 07-29 \u6307\u6B63\uFF09\u2014\u2014namespace \u5373\u8EAB\u5206\u5373\u6191\u8B49\u3002\u4E0B\u65B9 examples \u7684 ak_test/ak_nonexistent \u662F\u6E2C\u8A66\u7528\u5047\u503C\uFF0C\u4E0D\u4EE3\u8868\u771F\u5BE6\u683C\u5F0F\u3002"
+          },
+          service: {
+            type: "string",
+            description: "auth recipe \u540D\u7A31,\u5C0D\u61C9 auth_recipe:{service} \u7684 KV \u8A18\u9304"
+          },
+          request: {
+            type: "object",
+            description: "(\u4FDD\u7559)\u4E0B\u6E38\u96F6\u4EF6\u7684 HTTP request \u4E0A\u4E0B\u6587"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          auth_headers: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          auth_query: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          auth_body: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          runtime: {
+            type: "object",
+            description: "\u5305\u542B access_token(token exchange \u5F8C\u53D6\u5F97)",
+            properties: {
+              access_token: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u7F3A\u5C11 api_key",
+          given: '{"action":"authenticate","service":"google_sheets_sa"}',
+          then_contains: '{"success":false'
+        },
+        {
+          scenario: "\u627E\u4E0D\u5230 auth recipe",
+          given: '{"action":"authenticate","api_key":"ak_nonexistent","service":"nonexistent"}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'auth_step:\n  component: "auth_service_account"\n  action: "authenticate"\n  service: "google_sheets_sa"\n',
+      source: "registry/components/auth_service_account/component.contract.yaml"
+    },
+    {
+      canonical_id: "auth_static_key",
+      display_name: "Auth Primitive \u2014 Static Key",
+      category: "auth",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "Static key auth primitive\u3002\u8B80\u53D6 auth_recipe + \u89E3\u5BC6 required_secrets + \u5C55\u958B {{secret.X}} \u6A21\u677F,\u56DE\u50B3 auth_headers / auth_query / auth_body\u3002\u6DB5\u84CB Bearer token / API key / Basic auth / \u81EA\u8A02 header \u7B49 80% \u670D\u52D9\u3002\u900F\u904E host function kv_get + crypto_decrypt,plaintext \u6C38\u4E0D\u96E2\u958B WASM\u3002",
+      aliases: [],
+      tags: [
+        "auth",
+        "credential",
+        "primitive",
+        "static_key"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "action",
+          "api_key",
+          "service"
+        ],
+        properties: {
+          action: {
+            type: "string",
+            enum: [
+              "authenticate"
+            ],
+            description: "\u76EE\u524D\u50C5\u652F\u63F4 authenticate;static_key \u7121 refresh \u6982\u5FF5"
+          },
+          api_key: {
+            type: "string",
+            description: "\u79DF\u6236\u8B58\u5225\uFF1DArcrun namespace\uFF0C\u7528\u4F86\u7D44 {api_key}:cred:{name} KV key\u3002 \u26A0\uFE0F 2026-07-29 \u66F4\u6B63\uFF1A\u820A\u6558\u8FF0\u5BEB\u300Cak_ \u524D\u7DB4\u300D\uFF0C\u4F46\u73FE\u884C\u6C92\u6709\u767C API key \u7684\u6A5F\u5236 \uFF08leo 07-29 \u6307\u6B63\uFF09\u2014\u2014namespace \u5373\u8EAB\u5206\u5373\u6191\u8B49\u3002\u4E0B\u65B9 examples \u7684 ak_test/ak_nonexistent \u662F\u6E2C\u8A66\u7528\u5047\u503C\uFF0C\u4E0D\u4EE3\u8868\u771F\u5BE6\u683C\u5F0F\u3002"
+          },
+          service: {
+            type: "string",
+            description: "auth recipe \u540D\u7A31,\u5C0D\u61C9 auth_recipe:{service} \u7684 KV \u8A18\u9304"
+          },
+          request: {
+            type: "object",
+            description: "(\u4FDD\u7559)\u4E0B\u6E38\u96F6\u4EF6\u7684 HTTP request \u4E0A\u4E0B\u6587;static_key \u7576\u524D\u4E0D\u4F7F\u7528"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          auth_headers: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          auth_query: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          auth_body: {
+            type: "object",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          runtime: {
+            type: "object",
+            description: "Static key \u4E0D\u4F7F\u7528;\u6B04\u4F4D\u4FDD\u7559\u4EE5\u5C0D\u9F4A\u5176\u4ED6 auth primitive"
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u7F3A\u5C11 api_key",
+          given: '{"action":"authenticate","service":"openai"}',
+          then_contains: '{"success":false'
+        },
+        {
+          scenario: "\u627E\u4E0D\u5230 auth recipe",
+          given: '{"action":"authenticate","api_key":"ak_nonexistent","service":"nonexistent"}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'auth_step:\n  component: "auth_static_key"\n  action: "authenticate"\n  service: "openai"      # \u5C0D\u61C9 auth_recipe:openai \u7684 KV \u8A18\u9304\n',
+      source: "registry/components/auth_static_key/component.contract.yaml"
+    },
+    {
+      canonical_id: "code",
+      display_name: "\u7A0B\u5F0F\u78BC\uFF08\u6C99\u7BB1 inline JS\uFF09",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd"
+      ],
+      description: "\u901A\u7528\u300C\u7A0B\u5F0F\u78BC\u9003\u751F\u53E3\u300D\u3002\u8DD1\u4E00\u6BB5 sandbox inline JS\uFF08n8n Code node \u5F0F\uFF09\uFF1A config \u5E36 `code`\uFF08inline JS \u51FD\u5F0F\u9AD4\uFF09\uFF0Cstdin \u5E36 `input`\uFF08\u4E0A\u6E38 JSON\uFF09\uFF0C stdout \u56DE `{success, data}` \u6216 `{success:false, error, error_type}`\u3002 user code \u5728 QuickJS-wasm \u6C99\u7BB1\u5167\u57F7\u884C\uFF0C\u53EA\u6709\u7D14 ECMAScript \u5167\u5EFA + host \u660E\u78BA\u6CE8\u5165\u7684 curated builtin\uFF08\u76EE\u524D\uFF1A\u7D14\u51FD\u5F0F sha256\uFF09\uFF0C\u78B0\u4E0D\u5230\u7DB2\u8DEF/\u6A94\u6848/env/secret/Worker \u7269\u4EF6\u5716\u3002 \u7528\u65BC\u4E00\u6B21\u6027/\u5C0F\u6BB5\u7A0B\u5F0F\u908F\u8F2F\uFF08\u5982\u5361\u7247\u2192envelope \u6587\u5B57\u8655\u7406\uFF09\uFF0C\u907F\u514D\u5404\u81EA\u9444 domain \u96F6\u4EF6\u3002\n",
+      aliases: [],
+      tags: [
+        "builtin",
+        "logic",
+        "code",
+        "sandbox",
+        "javascript",
+        "escape-hatch"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "code"
+        ],
+        properties: {
+          code: {
+            type: "string",
+            description: "\u4E00\u6BB5 inline JS\uFF08\u51FD\u5F0F\u9AD4\uFF09\u3002\u53EF\u8B80\u7D81\u5B9A\u7684 `input`\uFF0C\u4EE5 `return` \u56DE\u50B3\u4E00\u500B JSON-able \u503C\u3002\u78B0\u4E0D\u5230\u7DB2\u8DEF/\u6A94\u6848/env/secret\u3002"
+          },
+          input: {
+            description: "\u4E0A\u6E38\u8CC7\u6599\uFF08\u4EFB\u610F JSON\uFF09\uFF0C\u5728\u6C99\u7BB1\u5167\u7D81\u70BA\u5168\u57DF `input`\u3002"
+          },
+          limits: {
+            type: "object",
+            description: "\u9078\u586B\uFF0C\u8986\u84CB\u9810\u8A2D\u8CC7\u6E90\u4E0A\u9650\uFF08\u4E0D\u5F97\u8D85\u904E\u5951\u7D04 sandbox_limits \u786C\u4E0A\u9650\uFF09\u3002",
+            properties: {
+              timeout_ms: {
+                type: "number"
+              },
+              memory_bytes: {
+                type: "number"
+              },
+              max_output_bytes: {
+                type: "number"
+              }
+            }
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            description: "user code \u7684\u56DE\u50B3\u503C\uFF08success=true \u6642\uFF09\u3002"
+          },
+          error: {
+            type: "string",
+            description: "success=false \u6642\u7684\u932F\u8AA4\u8A0A\u606F\u3002"
+          },
+          error_type: {
+            type: "string",
+            enum: [
+              "UserCodeError",
+              "TimeoutError",
+              "ResourceError",
+              "ContractError",
+              "SandboxError"
+            ]
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u57FA\u672C sum",
+          given: '{"code":"return {sum: input.a + input.b};","input":{"a":2,"b":40}}',
+          then_contains: '"sum":42'
+        },
+        {
+          scenario: "\u6C99\u7BB1\u9694\u96E2\uFF1A\u78B0\u4E0D\u5230 fetch",
+          given: '{"code":"return typeof fetch;","input":{}}',
+          then_contains: '"data":"undefined"'
+        },
+        {
+          scenario: "user code \u62CB\u932F \u2192 \u7D50\u69CB\u5316 error",
+          given: '{"code":"throw new Error(\\"boom\\");","input":{}}',
+          then_contains: '"success":false'
+        }
+      ],
+      config_example: "my_code:                                # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  code: |                               # inline JS \u51FD\u5F0F\u9AD4\uFF08\u5FC5\u586B\uFF09\uFF1B\u8B80 input\u3001return \u4E00\u500B JSON-able \u503C\n    const doubled = input.items.map(x => x * 2);\n    return { doubled, count: doubled.length };\n  input:                                # \u4E0A\u6E38\u8CC7\u6599\uFF08\u9078\u586B\uFF1Bworkflow \u53EF\u7528\u5F15\u7528\u6CE8\u5165\uFF09\n    items: [1, 2, 3]\n  limits:                               # \u8CC7\u6E90\u4E0A\u9650\u8986\u84CB\uFF08\u9078\u586B\uFF09\n    timeout_ms: 2000\n",
+      source: "registry/components/code/component.contract.yaml"
+    },
+    {
+      canonical_id: "cron",
+      display_name: "\u5B9A\u6642\u6392\u7A0B",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u9A57\u8B49 cron expression \u683C\u5F0F\u4E26\u56DE\u50B3 cron_id\u3002\u5BE6\u969B\u6392\u7A0B\u7531 Cypher Executor \u8CA0\u8CAC\u3002",
+      aliases: [],
+      tags: [
+        "builtin",
+        "cron",
+        "schedule",
+        "trigger",
+        "timer"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "cron_expr"
+        ],
+        properties: {
+          cron_expr: {
+            type: "string",
+            description: "\u6A19\u6E96 5 \u6B04\u4F4D cron expression\uFF0C\u5982 0 9 * * *"
+          },
+          description: {
+            type: "string"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              cron_id: {
+                type: "string"
+              },
+              cron_expr: {
+                type: "string"
+              },
+              enabled: {
+                type: "boolean"
+              },
+              description: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u6709\u6548 cron expression",
+          given: '{"cron_expr":"0 9 * * *","description":"\u6BCF\u5929\u65E9\u4E0A9\u9EDE"}',
+          then_contains: '"enabled":true'
+        },
+        {
+          scenario: "\u7121\u6548 cron expression\uFF08\u6B04\u4F4D\u6578\u4E0D\u5C0D\uFF09",
+          given: '{"cron_expr":"0 9 * *"}',
+          then_contains: '{"success":false'
+        },
+        {
+          scenario: "\u7F3A\u5C11 cron_expr",
+          given: "{}",
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_cron:                                # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  cron_expr: "0 9 * * *"               # \u6A19\u6E96 5 \u6B04\u4F4D cron \u8868\u9054\u5F0F\uFF08\u5FC5\u586B\uFF09\uFF0C\u5982\uFF1A\u6BCF\u5929\u65E9\u4E0A 9 \u9EDE\n  description: "\u6BCF\u5929\u65E9\u4E0A9\u9EDE\u57F7\u884C"        # \u6392\u7A0B\u8AAA\u660E\u6587\u5B57\uFF08\u9078\u586B\uFF09\n',
+      source: "registry/components/cron/component.contract.yaml"
+    },
+    {
+      canonical_id: "date_ops",
+      display_name: "\u65E5\u671F\u64CD\u4F5C",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u65E5\u671F\u64CD\u4F5C\uFF1Anow\uFF08\u7576\u524D\u6642\u9593\uFF09\u3001format\uFF08\u683C\u5F0F\u5316\uFF09\u3001parse\uFF08\u89E3\u6790 ISO \u5B57\u4E32\uFF09\u3002",
+      aliases: [
+        "\u65E5\u671F",
+        "time",
+        "\u6642\u9593",
+        "datetime",
+        "timestamp"
+      ],
+      tags: [
+        "builtin",
+        "data",
+        "date",
+        "time",
+        "transform"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "operation"
+        ],
+        properties: {
+          operation: {
+            type: "string",
+            enum: [
+              "now",
+              "format",
+              "parse"
+            ]
+          },
+          input: {
+            type: "string",
+            description: "ISO \u65E5\u671F\u5B57\u4E32\uFF08now \u64CD\u4F5C\u53EF\u7701\u7565\uFF09"
+          },
+          args: {
+            type: "object",
+            properties: {
+              layout: {
+                type: "string",
+                description: "Go time layout\uFF08\u5982 2006-01-02\uFF09"
+              }
+            }
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              result: {},
+              operation: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "now \u64CD\u4F5C",
+          given: '{"operation":"now"}',
+          then_contains: '"success":true'
+        },
+        {
+          scenario: "parse \u64CD\u4F5C",
+          given: '{"operation":"parse","input":"2024-01-15T10:30:00Z"}',
+          then_contains: '"year":2024'
+        },
+        {
+          scenario: "\u7121\u6548\u65E5\u671F",
+          given: '{"operation":"parse","input":"not-a-date"}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_date_op:                             # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "format"                   # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Anow/format/parse\n  input: "2024-01-15T10:30:00Z"        # ISO \u65E5\u671F\u5B57\u4E32\uFF08now \u64CD\u4F5C\u53EF\u7701\u7565\uFF0C\u5176\u9918\u5FC5\u586B\uFF09\n  args:                                 # \u64CD\u4F5C\u53C3\u6578\uFF08\u9078\u586B\uFF09\n    layout: "2006-01-02"               # format \u7528\uFF1AGo time layout \u683C\u5F0F\u5B57\u4E32\n',
+      source: "registry/components/date_ops/component.contract.yaml"
+    },
+    {
+      canonical_id: "fetch_relay",
+      display_name: "\u4E32\u6D41\u8F49\u767C",
+      category: "api",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u628A source_url \u7684\u56DE\u61C9 body \u4E32\u6D41\u8F49\u767C\u6210 dest_url \u7684\u8ACB\u6C42 body\uFF0C\u5169\u7AEF\u4E4B\u9593\u7684\u8CC7\u6599\u5168\u7A0B\u4E0D\u9032 WASM \u7684 stdin/stdout JSON \u901A\u9053\uFF08host-to-host \u76F4\u63A5\u8F49\u767C\uFF0Cbyte \u4E0D\u843D\u5730\u5728\u96F6\u4EF6\u8A18\u61B6\u9AD4\uFF09\u3002 \u7528\u9014\uFF1A\u4EFB\u4F55\u300C\u628A\u4E00\u4EFD\u4E0D\u77E5\u9053\u5927\u5C0F\u7684\u9060\u7AEF\u5167\u5BB9\uFF0C\u539F\u5C01\u4E0D\u52D5\u9001\u5230\u53E6\u4E00\u500B\u7AEF\u9EDE\u300D\u7684\u5834\u666F\u2014\u2014\u4F8B\u5982 \u628A Gitea release asset / R2 \u516C\u958B\u7269\u4EF6\u7576\u6210 Cloudflare Workers Module Upload \u7684 multipart body\uFF0C\u90E8\u7F72\u4E00\u5305 Worker\uFF0C\u800C\u4E0D\u5FC5\u628A\u6574\u5305\u585E\u9032\u5C0D\u8A71\u4E0A\u4E0B\u6587\u6216 http_request \u7684 64KB \u8F38\u51FA\u4E0A\u9650\u3002\u9019\u662F\u901A\u7528\u539F\u8A9E\uFF0C\u4E0D\u7D81\u5B9A Cloudflare\uFF1A\u4EFB\u4F55\u300C\u4F86\u6E90\u7DB2\u5740\u2192\u76EE\u7684\u5730\u7DB2\u5740\u300D\u7684 \u8F49\u767C\u90FD\u80FD\u7528\u3002\u53D7 max_bytes\uFF0Ftimeout_ms \u9650\u5236\uFF0C\u4E0D\u662F\u7121\u754C\u4E32\u6D41\uFF08component-pr-review-standard \u5BE9\u6838\u689D\u4EF6 C\uFF0C2026-09-25\uFF09\u3002\n",
+      aliases: [],
+      tags: [
+        "integration",
+        "http",
+        "relay",
+        "deploy",
+        "streaming"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "source_url",
+          "dest_url"
+        ],
+        properties: {
+          source_url: {
+            type: "string",
+            description: "\u4F86\u6E90 URL\uFF08\u5FC5\u586B\uFF09\u3002host \u7AEF fetch \u9019\u500B\u7DB2\u5740\u53D6\u5F97\u56DE\u61C9 body\uFF0C\u4E32\u6D41\u8F49\u9001\u5230 dest_url\uFF0Cbody \u5927\u5C0F\u4E0D\u53D7 64KB \u8F38\u51FA\u4E0A\u9650\u9650\u5236\uFF08\u4F46\u53D7 max_bytes \u9650\u5236\uFF09"
+          },
+          source_headers: {
+            type: "object",
+            description: "\u4F86\u6E90\u8ACB\u6C42\u7684\u81EA\u8A02 headers\uFF08key-value \u7269\u4EF6\uFF09\uFF0C\u7528\u65BC\u8B80\u53D6\u9700\u8981\u8A8D\u8B49\u7684\u79C1\u6709\u4F86\u6E90\uFF08\u4F8B\u5982\u79C1\u6709 Gitea raw\uFF09\u3002 \u53EA\u51C6\u586B {{credential.<\u540D\u5B57>}} \u5F62\u5F0F\u7684\u503C\uFF08\u7E3D\u7BA1\u5BE9\u5B9A\uFF0CArcrun#242 comment 11042\uFF09\u2014\u2014\u4E0D\u6536\u660E\u6587\uFF0C \u5BEB workflow \u6642\u503C\u4E00\u5F8B\u7528 credential \u53C3\u7167\uFF0C\u57F7\u884C\u524D\u7531 graph-executor \u56DE\u586B\u6210\u660E\u6587\u3002\u66B4\u9732\u9762\u8207\u73FE\u6709 http_request \u5E36 credential \u6253\u4EFB\u610F\u7DB2\u5740\u540C\u7D1A\uFF0C\u4E0D\u53E6\u52A0\u9650\u5236\u3002\n",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          dest_url: {
+            type: "string",
+            description: "\u76EE\u7684\u5730 URL\uFF08\u5FC5\u586B\uFF09\u3002host \u7AEF\u628A source_url \u7684\u56DE\u61C9 body \u7576\u6210\u9019\u500B\u8ACB\u6C42\u7684 body \u9001\u51FA"
+          },
+          dest_method: {
+            type: "string",
+            description: "\u76EE\u7684\u5730\u8ACB\u6C42\u65B9\u6CD5\uFF0C\u9810\u8A2D PUT",
+            default: "PUT"
+          },
+          dest_headers: {
+            type: "object",
+            description: "\u76EE\u7684\u5730\u8ACB\u6C42\u7684\u81EA\u8A02 headers\uFF08key-value \u7269\u4EF6\uFF0C\u53EF\u542B {{credential.x}}\uFF09\u3002\u82E5\u672A\u6307\u5B9A Content-Type\uFF0Chost \u6703\u6CBF\u7528 source_url \u56DE\u61C9\u7684 content-type",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          max_bytes: {
+            type: "integer",
+            description: "\u50B3\u8F38\u5927\u5C0F\u4E0A\u9650\uFF08bytes\uFF09\uFF0C\u9810\u8A2D 26214400\uFF0825MB\uFF0C\u5C0D\u9F4A Cloudflare Workers \u8173\u672C\u4E0A\u50B3\u4E0A\u9650\uFF09\u3002\u8D85\u904E\u5373\u4E2D\u6B62\u8F49\u767C\uFF0C\u56DE\u7D50\u69CB\u5316\u932F\u8AA4\uFF0C\u4E0D\u8B93 worker \u639B",
+            default: 26214400
+          },
+          timeout_ms: {
+            type: "integer",
+            description: "\u903E\u6642\uFF08\u6BEB\u79D2\uFF09\uFF0C\u9810\u8A2D 30000\u3002source fetch \u8207 dest fetch \u5408\u8A08\u903E\u6642\u5373\u4E2D\u6B62\uFF0C\u56DE\u7D50\u69CB\u5316\u932F\u8AA4",
+            default: 3e4
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          error: {
+            type: "string",
+            description: "\u5931\u6557\u6642\u7684\u7D50\u69CB\u5316\u932F\u8AA4\u8A0A\u606F\uFF08size_exceeded / timeout / HTTP <code> / fetch failed \u7B49\uFF09"
+          },
+          data: {
+            type: "object",
+            properties: {
+              body: {
+                type: "string",
+                description: "dest_url \u56DE\u61C9\u7684\u7CBE\u7C21\u5167\u5BB9\uFF08JSON \u5B57\u4E32\uFF09\uFF0C\u4E0D\u542B\u8F49\u767C\u7684\u5927\u578B body"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u7F3A\u5C11 source_url",
+          given: '{"dest_url":"https://example.com"}',
+          then_contains: '{"success":false'
+        },
+        {
+          scenario: "\u7F3A\u5C11 dest_url",
+          given: '{"source_url":"https://example.com"}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'deploy_bundle:                          # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  component: fetch_relay\n  source_url: "{{bundle_url}}"          # \u6574\u5305 bundle \u7684\u7DB2\u5740\uFF08multipart/form-data \u683C\u5F0F\uFF0C\u542B boundary\uFF09\n  source_headers:                       # \u9078\u586B\uFF1A\u4F86\u6E90\u9700\u8981\u8A8D\u8B49\u6642\u586B\uFF08\u4F8B\u5982\u79C1\u6709 Gitea raw\uFF09\n    Authorization: "Bearer {{credential.gitea_read_token}}"\n  dest_url: "https://api.cloudflare.com/client/v4/accounts/{{account_id}}/workers/scripts/{{script_name}}"\n  dest_method: PUT\n  dest_headers:\n    Authorization: "Bearer {{credential.cf_deploy_token}}"\n  max_bytes: 26214400\n  timeout_ms: 30000\n',
+      source: "registry/components/fetch_relay/component.contract.yaml"
+    },
+    {
+      canonical_id: "filter",
+      display_name: "\u904E\u6FFE\u9663\u5217",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u4F9D\u689D\u4EF6\u904E\u6FFE\u9663\u5217\uFF0C\u56DE\u50B3\u7B26\u5408\u689D\u4EF6\u7684\u5143\u7D20\u3002\u652F\u63F4 eq/ne/gt/lt/contains \u904B\u7B97\u5B50\u3002",
+      aliases: [],
+      tags: [
+        "builtin",
+        "filter",
+        "array",
+        "condition"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "items",
+          "condition"
+        ],
+        properties: {
+          items: {
+            type: "array",
+            description: "\u8981\u904E\u6FFE\u7684\u9663\u5217"
+          },
+          condition: {
+            type: "object",
+            required: [
+              "key",
+              "op",
+              "value"
+            ],
+            properties: {
+              key: {
+                type: "string",
+                description: "\u8981\u6BD4\u8F03\u7684\u6B04\u4F4D\u540D\u7A31"
+              },
+              op: {
+                type: "string",
+                enum: [
+                  "eq",
+                  "ne",
+                  "gt",
+                  "lt",
+                  "contains"
+                ]
+              },
+              value: {
+                type: "string",
+                description: "\u6BD4\u8F03\u503C"
+              }
+            }
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array"
+              },
+              count: {
+                type: "number"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u904E\u6FFE status=active \u7684\u5143\u7D20",
+          given: '{"items":[{"status":"active"},{"status":"inactive"}],"condition":{"key":"status","op":"eq","value":"active"}}',
+          then_contains: '{"success":true'
+        },
+        {
+          scenario: "\u7A7A\u9663\u5217\u8F38\u5165",
+          given: '{"items":[],"condition":{"key":"status","op":"eq","value":"active"}}',
+          then_contains: '{"success":true'
+        },
+        {
+          scenario: "\u7F3A\u5C11 condition.key",
+          given: '{"items":[],"condition":{"op":"eq","value":"x"}}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_filter:                          # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  items: "{{upstream.results}}"     # \u8981\u904E\u6FFE\u7684\u9663\u5217\uFF08\u5FC5\u586B\uFF09\n  condition:                        # \u904E\u6FFE\u689D\u4EF6\uFF08\u5FC5\u586B\uFF09\n    key: status                     # \u8981\u6BD4\u8F03\u7684\u6B04\u4F4D\u540D\u7A31\uFF08\u5FC5\u586B\uFF09\n    op: eq                          # \u904B\u7B97\u5B50\uFF1Aeq / ne / gt / lt / contains\uFF08\u5FC5\u586B\uFF09\n    value: active                   # \u6BD4\u8F03\u503C\uFF08\u5FC5\u586B\uFF09\n',
+      source: "registry/components/filter/component.contract.yaml"
+    },
+    {
+      canonical_id: "foreach_control",
+      display_name: "\u8FF4\u5708\u63A7\u5236",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u8F38\u51FA\u7B2C\u4E00\u500B\u5143\u7D20\u4F9B Cypher Executor \u8FED\u4EE3\uFF0Ccurrent_index \u5F9E 0 \u958B\u59CB\u3002",
+      aliases: [
+        "\u8FF4\u5708",
+        "loop",
+        "iterate",
+        "\u904D\u6B77",
+        "each"
+      ],
+      tags: [
+        "builtin",
+        "control",
+        "foreach",
+        "loop",
+        "iteration"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "items"
+        ],
+        properties: {
+          items: {
+            type: "array",
+            description: "\u8981\u8FED\u4EE3\u7684\u9663\u5217"
+          },
+          item_key: {
+            type: "string",
+            description: "\u6BCF\u500B\u5143\u7D20\u6CE8\u5165\u7684\u8B8A\u6578\u540D\uFF0C\u9810\u8A2D item"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array"
+              },
+              count: {
+                type: "number"
+              },
+              current_index: {
+                type: "number"
+              },
+              current_item: {},
+              item_key: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u6B63\u5E38\u8FED\u4EE3",
+          given: '{"items":[1,2,3],"item_key":"item"}',
+          then_contains: '"current_index":0'
+        },
+        {
+          scenario: "\u7A7A\u9663\u5217",
+          given: '{"items":[]}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_loop:                         # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  items: "{{upstream.results}}"  # \u8981\u8FED\u4EE3\u7684\u9663\u5217\uFF08\u5FC5\u586B\uFF09\n  item_key: item                 # \u6BCF\u500B\u5143\u7D20\u6CE8\u5165\u7684\u8B8A\u6578\u540D\uFF0C\u9810\u8A2D item\uFF08\u9078\u586B\uFF09\n',
+      source: "registry/components/foreach_control/component.contract.yaml"
+    },
+    {
+      canonical_id: "hash",
+      display_name: "\u8A08\u7B97\u96DC\u6E4A",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u8A08\u7B97\u5167\u5BB9\u96DC\u6E4A\uFF08sha256/sha1/md5\uFF0C\u8F38\u51FA hex \u6216 base64\uFF09\u3002\u7D14\u8A08\u7B97\uFF0C\u7121\u7DB2\u8DEF/\u6A94\u6848 syscall\u3002 \u7528\u9014\uFF1A\u51FA\u8CA8\u7DDA\u7248\u672C\u865F\u6A5F\u5236\uFF08Leo/Arcrun#91\uFF09\u2014\u2014\u5167\u5BB9\u4E00\u8B8A\u96DC\u6E4A\u5FC5\u8B8A\uFF0C\u662F\u300C\u6539\u4E86\u6771\u897F\u7248\u672C\u6C92\u52D5\u300D\u5728\u7D50\u69CB\u4E0A \u4E0D\u53EF\u80FD\u767C\u751F\u7684\u6A5F\u5236\u4F86\u6E90\uFF1Bbuild \u7AD9\u6838\u5C0D\u5B98\u65B9\u6210\u54C1\u6307\u7D0B\u4E5F\u7528\u5B83\u3002",
+      aliases: [],
+      tags: [
+        "builtin",
+        "logic",
+        "hash",
+        "checksum",
+        "versioning"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "input"
+        ],
+        properties: {
+          algorithm: {
+            type: "string",
+            enum: [
+              "sha256",
+              "sha1",
+              "md5"
+            ],
+            description: "\u96DC\u6E4A\u6F14\u7B97\u6CD5\uFF0C\u9810\u8A2D sha256"
+          },
+          input: {
+            type: "string",
+            description: "\u8981\u7B97\u96DC\u6E4A\u7684\u5167\u5BB9"
+          },
+          encoding: {
+            type: "string",
+            enum: [
+              "hex",
+              "base64"
+            ],
+            description: "\u8F38\u51FA\u7DE8\u78BC\uFF0C\u9810\u8A2D hex"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              result: {
+                type: "string"
+              },
+              algorithm: {
+                type: "string"
+              },
+              encoding: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "sha256 hex\uFF08\u9810\u8A2D\uFF09",
+          given: '{"algorithm":"sha256","input":"hello"}',
+          then_contains: '"result":"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"'
+        },
+        {
+          scenario: "sha1",
+          given: '{"algorithm":"sha1","input":"hello"}',
+          then_contains: '"result":"aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"'
+        },
+        {
+          scenario: "md5",
+          given: '{"algorithm":"md5","input":"hello"}',
+          then_contains: '"result":"5d41402abc4b2a76b9719d911017c592"'
+        },
+        {
+          scenario: "base64 \u7DE8\u78BC",
+          given: '{"algorithm":"sha256","input":"hello","encoding":"base64"}',
+          then_contains: '"result":"LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ="'
+        },
+        {
+          scenario: "\u9810\u8A2D algorithm=sha256",
+          given: '{"input":"hello"}',
+          then_contains: '"algorithm":"sha256"'
+        },
+        {
+          scenario: "\u4E0D\u652F\u63F4\u7684 algorithm",
+          given: '{"algorithm":"crc32","input":"hello"}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'compute_hash:                         # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  algorithm: "sha256"                 # \u6F14\u7B97\u6CD5\uFF08\u9078\u586B\uFF0C\u9810\u8A2D sha256\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Asha256/sha1/md5\n  input: "{{ctx.bundle_content}}"     # \u8981\u7B97\u96DC\u6E4A\u7684\u5167\u5BB9\uFF08\u5FC5\u586B\uFF09\n  encoding: "hex"                     # \u8F38\u51FA\u7DE8\u78BC\uFF08\u9078\u586B\uFF0C\u9810\u8A2D hex\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Ahex/base64\n',
+      source: "registry/components/hash/component.contract.yaml"
+    },
+    {
+      canonical_id: "http_request",
+      display_name: "HTTP \u8ACB\u6C42",
+      category: "api",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u767C\u9001\u4EFB\u610F HTTP \u8ACB\u6C42\u4E26\u56DE\u50B3 status \u8207 body\u3002\u900F\u904E host function \u547C\u53EB\uFF0C.wasm \u672C\u8EAB\u4E0D\u542B\u7DB2\u8DEF syscall\u3002headers \u7531\u7528\u6236\u624B\u52D5\u586B\u5165\u3002",
+      aliases: [
+        "http",
+        "api call",
+        "fetch",
+        "rest",
+        "webhook",
+        "curl",
+        "\u5916\u90E8 api",
+        "\u547C\u53EB api"
+      ],
+      tags: [
+        "integration",
+        "http",
+        "request",
+        "api"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "url"
+        ],
+        properties: {
+          url: {
+            type: "string",
+            description: "\u76EE\u6A19 URL\uFF08\u5FC5\u586B\uFF09"
+          },
+          method: {
+            type: "string",
+            description: "HTTP \u65B9\u6CD5\uFF08GET / POST / PUT / DELETE \u7B49\uFF09\uFF0C\u9810\u8A2D GET",
+            default: "GET"
+          },
+          headers: {
+            type: "object",
+            description: "\u81EA\u8A02 HTTP headers\uFF08key-value \u7269\u4EF6\uFF09",
+            additionalProperties: {
+              type: "string"
+            }
+          },
+          body: {
+            type: "string",
+            description: "\u6A21\u5F0F A \u2014 body \u5B57\u4E32\uFF08\u81EA\u884C stringify \u5F8C\u50B3\uFF09"
+          },
+          body_json: {
+            type: "object",
+            description: "\u6A21\u5F0F B \u2014 body \u7269\u4EF6\uFF0C\u96F6\u4EF6\u5167\u90E8 JSON.stringify\uFF08yaml \u7AEF\u4E0D\u7528\u624B\u7D44\u5B57\u4E32\uFF09"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              body: {
+                type: "string",
+                description: "HTTP \u56DE\u61C9 body\uFF08\u5B57\u4E32\uFF09"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u7F3A\u5C11 url",
+          given: '{"method":"GET"}',
+          then_contains: '{"success":false'
+        },
+        {
+          scenario: "\u57FA\u672C GET \u8ACB\u6C42",
+          given: '{"url":"https://example.com"}',
+          then_contains: '{"success":true'
+        }
+      ],
+      config_example: 'http_call:                     # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  url: ""                      # \u76EE\u6A19 URL\uFF08\u5FC5\u586B\uFF09\n  method: "GET"                # HTTP \u65B9\u6CD5\uFF08\u9078\u586B\uFF0C\u9810\u8A2D GET\uFF09\n  headers:                     # \u81EA\u8A02 headers\uFF08\u9078\u586B\uFF0C\u7528\u6236\u624B\u52D5\u586B\u5165\uFF09\n    Content-Type: "application/json"\n    Authorization: "Bearer <your_token>"\n  body: {}                     # \u8ACB\u6C42 body\uFF08\u9078\u586B\uFF09\n',
+      source: "registry/components/http_request/component.contract.yaml"
+    },
+    {
+      canonical_id: "if_control",
+      display_name: "\u689D\u4EF6\u5224\u65B7",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u8A55\u4F30\u689D\u4EF6\u904B\u7B97\u5F0F\uFF0C\u4F9D\u7D50\u679C\u8DEF\u7531\u5230 true \u6216 false \u5206\u652F\u3002",
+      aliases: [
+        "\u689D\u4EF6",
+        "condition",
+        "\u5224\u65B7",
+        "branch",
+        "\u5206\u652F"
+      ],
+      tags: [
+        "builtin",
+        "control",
+        "if",
+        "condition",
+        "branch"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "condition"
+        ],
+        properties: {
+          condition: {
+            type: "string",
+            description: "\u689D\u4EF6\u904B\u7B97\u5F0F\uFF0C\u652F\u63F4 key\uFF08truthy\uFF09\u3001key == value\u3001key > number\u3001key < number"
+          },
+          input: {
+            type: "object",
+            description: "\u689D\u4EF6\u904B\u7B97\u5F0F\u4E2D\u53C3\u7167\u7684\u8B8A\u6578\u5B57\u5178"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              result: {
+                type: "boolean"
+              },
+              branch: {
+                type: "string",
+                enum: [
+                  "true",
+                  "false"
+                ]
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u689D\u4EF6\u6210\u7ACB\u8D70 true \u5206\u652F",
+          given: '{"condition":"status == active","input":{"status":"active"}}',
+          then_contains: '"branch":"true"'
+        },
+        {
+          scenario: "\u689D\u4EF6\u4E0D\u6210\u7ACB\u8D70 false \u5206\u652F",
+          given: '{"condition":"status == active","input":{"status":"inactive"}}',
+          then_contains: '"branch":"false"'
+        },
+        {
+          scenario: "\u7F3A\u5C11 condition",
+          given: '{"input":{"status":"active"}}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_if:                                    # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  condition: "status == active"           # \u689D\u4EF6\u904B\u7B97\u5F0F\uFF08\u5FC5\u586B\uFF09\n  input:                                  # \u689D\u4EF6\u904B\u7B97\u5F0F\u4E2D\u53C3\u7167\u7684\u8B8A\u6578\u5B57\u5178\uFF08\u9078\u586B\uFF09\n    status: "{{upstream.status}}"\n',
+      source: "registry/components/if_control/component.contract.yaml"
+    },
+    {
+      canonical_id: "merge",
+      display_name: "\u5408\u4F75\u7269\u4EF6",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u5C07\u591A\u500B\u7269\u4EF6\u5408\u4F75\u70BA\u4E00\u500B\uFF0C\u5F8C\u8005\u6B04\u4F4D\u8986\u84CB\u524D\u8005\u540C\u540D\u6B04\u4F4D\u3002",
+      aliases: [],
+      tags: [
+        "builtin",
+        "merge",
+        "combine",
+        "object",
+        "context"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "inputs"
+        ],
+        properties: {
+          inputs: {
+            type: "array",
+            description: "\u8981\u5408\u4F75\u7684\u7269\u4EF6\u9663\u5217\uFF0C\u5F8C\u8005\u6B04\u4F4D\u8986\u84CB\u524D\u8005",
+            items: {
+              type: "object"
+            }
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            description: "\u6240\u6709\u8F38\u5165\u7269\u4EF6\u5408\u4F75\u5F8C\u7684\u7D50\u679C"
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5408\u4F75\u5169\u500B\u7269\u4EF6",
+          given: '{"inputs":[{"a":1},{"b":2}]}',
+          then_contains: '"a":1'
+        },
+        {
+          scenario: "\u5F8C\u8005\u6B04\u4F4D\u8986\u84CB\u524D\u8005",
+          given: '{"inputs":[{"a":1},{"a":2}]}',
+          then_contains: '"a":2'
+        },
+        {
+          scenario: "inputs \u70BA\u7A7A\u9663\u5217\u6642\u5931\u6557",
+          given: '{"inputs":[]}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_merge:                               # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  inputs:                               # \u8981\u5408\u4F75\u7684\u7269\u4EF6\u9663\u5217\uFF08\u5FC5\u586B\uFF09\n    - "{{node_a.data}}"                 # \u7B2C\u4E00\u500B\u4F86\u6E90\u7269\u4EF6\n    - "{{node_b.data}}"                 # \u7B2C\u4E8C\u500B\u4F86\u6E90\u7269\u4EF6\uFF08\u5F8C\u8005\u8986\u84CB\u524D\u8005\u540C\u540D\u6B04\u4F4D\uFF09\n',
+      source: "registry/components/merge/component.contract.yaml"
+    },
+    {
+      canonical_id: "number_ops",
+      display_name: "\u6578\u5B57\u64CD\u4F5C",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u6578\u5B57\u64CD\u4F5C\uFF1Around/floor/ceil/abs/add/subtract/multiply/divide/mod/min/max/format\u3002",
+      aliases: [
+        "\u6578\u5B57",
+        "\u6578\u503C",
+        "numeric",
+        "math",
+        "\u8A08\u7B97"
+      ],
+      tags: [
+        "builtin",
+        "data",
+        "number",
+        "math",
+        "transform"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "operation",
+          "input"
+        ],
+        properties: {
+          operation: {
+            type: "string",
+            enum: [
+              "round",
+              "floor",
+              "ceil",
+              "abs",
+              "add",
+              "subtract",
+              "multiply",
+              "divide",
+              "mod",
+              "min",
+              "max",
+              "format"
+            ]
+          },
+          input: {
+            type: "number"
+          },
+          args: {
+            type: "object",
+            properties: {
+              value: {
+                type: "number"
+              },
+              decimals: {
+                type: "number"
+              }
+            }
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              result: {},
+              operation: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "round \u64CD\u4F5C",
+          given: '{"operation":"round","input":3.14}',
+          then_contains: '"result":3'
+        },
+        {
+          scenario: "add \u64CD\u4F5C",
+          given: '{"operation":"add","input":10,"args":{"value":5}}',
+          then_contains: '"result":15'
+        },
+        {
+          scenario: "\u9664\u4EE5\u96F6",
+          given: '{"operation":"divide","input":10,"args":{"value":0}}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_number_op:                           # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "add"                      # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Around/floor/ceil/abs/add/subtract/multiply/divide/mod/min/max/format\n  input: 10                             # \u8F38\u5165\u6578\u5B57\uFF08\u5FC5\u586B\uFF09\n  args:                                 # \u64CD\u4F5C\u53C3\u6578\uFF0C\u4F9D operation \u800C\u5B9A\uFF08\u9078\u586B\uFF09\n    value: 5                            # add/subtract/multiply/divide/mod/min/max \u7528\uFF1A\u7B2C\u4E8C\u500B\u904B\u7B97\u5143\n    decimals: 2                         # round/format \u7528\uFF1A\u5C0F\u6578\u4F4D\u6578\n',
+      source: "registry/components/number_ops/component.contract.yaml"
+    },
+    {
+      canonical_id: "set",
+      display_name: "\u8A2D\u5B9A\u8B8A\u6578",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u8A2D\u5B9A\u6216\u8986\u5BEB\u8B8A\u6578\uFF0C\u652F\u63F4 assignments \u9663\u5217\u6216 values \u7269\u4EF6\u5169\u7A2E\u683C\u5F0F\uFF0C\u7D50\u679C\u5408\u4F75\u81EA context\u3002",
+      aliases: [],
+      tags: [
+        "builtin",
+        "set",
+        "assign",
+        "variable",
+        "context"
+      ],
+      input_schema: {
+        type: "object",
+        properties: {
+          assignments: {
+            type: "array",
+            description: "\u8CE6\u503C\u6E05\u55AE\uFF0C\u6BCF\u7B46\u542B key \u8207 value\uFF08\u8207 values \u64C7\u4E00\u5FC5\u586B\uFF09",
+            items: {
+              type: "object",
+              required: [
+                "key",
+                "value"
+              ],
+              properties: {
+                key: {
+                  type: "string"
+                },
+                value: {}
+              }
+            }
+          },
+          values: {
+            type: "object",
+            description: "\u9375\u503C\u5C0D\u7269\u4EF6\uFF0C\u8207 assignments \u64C7\u4E00\u5FC5\u586B"
+          },
+          context: {
+            type: "object",
+            description: "\u4E0A\u6E38\u50B3\u5165\u7684\u4E0A\u4E0B\u6587\uFF0C\u8A2D\u5B9A\u7D50\u679C\u6703\u5408\u4F75\u8986\u5BEB"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            description: "context \u52A0\u4E0A\u6240\u6709\u8A2D\u5B9A\u5F8C\u7684\u8B8A\u6578"
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u7528 assignments \u8A2D\u5B9A\u8B8A\u6578",
+          given: '{"assignments":[{"key":"name","value":"Alice"}]}',
+          then_contains: '"name":"Alice"'
+        },
+        {
+          scenario: "\u7528 values \u8A2D\u5B9A\u8B8A\u6578",
+          given: '{"values":{"name":"Bob","age":30}}',
+          then_contains: '"name":"Bob"'
+        },
+        {
+          scenario: "\u672A\u63D0\u4F9B assignments \u6216 values \u6642\u5931\u6557",
+          given: '{"context":{"x":1}}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_set:                                 # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  assignments:                          # \u8CE6\u503C\u6E05\u55AE\uFF08\u8207 values \u64C7\u4E00\u5FC5\u586B\uFF09\n    - key: status\n      value: active\n    - key: count\n      value: 0\n  context:                              # \u4E0A\u6E38\u4E0A\u4E0B\u6587\uFF0C\u8A2D\u5B9A\u7D50\u679C\u6703\u5408\u4F75\u8986\u5BEB\uFF08\u9078\u586B\uFF09\n    payload: "{{upstream.data}}"\n',
+      source: "registry/components/set/component.contract.yaml"
+    },
+    {
+      canonical_id: "string_ops",
+      display_name: "\u5B57\u4E32\u64CD\u4F5C",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u5B57\u4E32\u64CD\u4F5C\uFF1Aupper/lower/trim/capitalize/replace/split/join/includes/starts_with/ends_with/length/substring\u3002",
+      aliases: [
+        "\u5B57\u4E32",
+        "text",
+        "\u6587\u5B57",
+        "str"
+      ],
+      tags: [
+        "builtin",
+        "data",
+        "string",
+        "transform",
+        "text"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "operation",
+          "input"
+        ],
+        properties: {
+          operation: {
+            type: "string",
+            enum: [
+              "upper",
+              "lower",
+              "trim",
+              "capitalize",
+              "replace",
+              "split",
+              "join",
+              "includes",
+              "starts_with",
+              "ends_with",
+              "length",
+              "substring"
+            ]
+          },
+          input: {
+            type: "string"
+          },
+          args: {
+            type: "object",
+            description: "\u64CD\u4F5C\u53C3\u6578\uFF08\u4F9D operation \u800C\u5B9A\uFF09"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              result: {},
+              operation: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "upper \u64CD\u4F5C",
+          given: '{"operation":"upper","input":"hello"}',
+          then_contains: '"result":"HELLO"'
+        },
+        {
+          scenario: "replace \u64CD\u4F5C",
+          given: '{"operation":"replace","input":"hello world","args":{"from":"world","to":"u6u"}}',
+          then_contains: '"result":"hello u6u"'
+        },
+        {
+          scenario: "\u4E0D\u652F\u63F4\u7684 operation",
+          given: '{"operation":"unknown","input":"test"}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_string_op:                           # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "replace"                  # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Aupper/lower/trim/capitalize/replace/split/join/includes/starts_with/ends_with/length/substring\n  input: "hello world"                  # \u8F38\u5165\u5B57\u4E32\uFF08\u5FC5\u586B\uFF09\n  args:                                 # \u64CD\u4F5C\u53C3\u6578\uFF0C\u4F9D operation \u800C\u5B9A\uFF08\u9078\u586B\uFF09\n    from: "world"                       # replace \u7528\uFF1A\u8981\u88AB\u53D6\u4EE3\u7684\u5B50\u5B57\u4E32\n    to: "arcrun"                        # replace \u7528\uFF1A\u53D6\u4EE3\u5F8C\u7684\u5B57\u4E32\n',
+      source: "registry/components/string_ops/component.contract.yaml"
+    },
+    {
+      canonical_id: "switch",
+      display_name: "\u689D\u4EF6\u8DEF\u7531",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u4F9D\u503C\u8DEF\u7531\u5230\u5C0D\u61C9\u5206\u652F\uFF0C\u652F\u63F4\u591A\u500B case \u548C default \u5206\u652F\u3002",
+      aliases: [
+        "\u591A\u8DEF\u7531",
+        "route",
+        "\u8DEF\u7531",
+        "case"
+      ],
+      tags: [
+        "builtin",
+        "switch",
+        "branch",
+        "route",
+        "condition"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "value",
+          "cases"
+        ],
+        properties: {
+          value: {
+            type: "string",
+            description: "\u8981\u6BD4\u5C0D\u7684\u503C"
+          },
+          cases: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                match: {
+                  type: "string"
+                },
+                branch: {
+                  type: "string"
+                }
+              }
+            }
+          },
+          default_branch: {
+            type: "string",
+            description: "\u7121\u5339\u914D\u6642\u7684\u9810\u8A2D\u5206\u652F"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              branch: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5339\u914D\u5230 case",
+          given: '{"value":"a","cases":[{"match":"a","branch":"branch_a"}],"default_branch":"default"}',
+          then_contains: '"branch":"branch_a"'
+        },
+        {
+          scenario: "\u8D70 default \u5206\u652F",
+          given: '{"value":"z","cases":[{"match":"a","branch":"branch_a"}],"default_branch":"fallback"}',
+          then_contains: '"branch":"fallback"'
+        },
+        {
+          scenario: "\u7121\u6548 JSON",
+          given: "not-json",
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_switch:                          # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  value: "{{upstream.status}}"      # \u8981\u6BD4\u5C0D\u7684\u503C\uFF08\u5FC5\u586B\uFF09\n  cases:                            # case \u6E05\u55AE\uFF08\u5FC5\u586B\uFF09\n    - match: active                 # \u6BD4\u5C0D\u503C\n      branch: branch_active         # \u5C0D\u61C9\u5206\u652F\u540D\u7A31\n    - match: inactive\n      branch: branch_inactive\n  default_branch: branch_default    # \u7121\u5339\u914D\u6642\u7684\u9810\u8A2D\u5206\u652F\uFF08\u9078\u586B\uFF09\n',
+      source: "registry/components/switch/component.contract.yaml"
+    },
+    {
+      canonical_id: "try_catch",
+      display_name: "\u932F\u8AA4\u8655\u7406",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u5224\u65B7\u4E0A\u6E38\u7D50\u679C\u662F\u5426\u6709 error\uFF0C\u6C7A\u5B9A\u8D70 try \u6216 catch \u5206\u652F\u3002",
+      aliases: [
+        "\u932F\u8AA4\u8655\u7406",
+        "error handling",
+        "fallback",
+        "\u4F8B\u5916"
+      ],
+      tags: [
+        "builtin",
+        "control",
+        "try",
+        "catch",
+        "error",
+        "handling"
+      ],
+      input_schema: {
+        type: "object",
+        properties: {
+          result: {},
+          error: {
+            type: "string",
+            description: "\u4E0A\u6E38\u932F\u8AA4\u8A0A\u606F\uFF0C\u975E\u7A7A\u5247\u8D70 catch \u5206\u652F"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            properties: {
+              branch: {
+                type: "string",
+                enum: [
+                  "try",
+                  "catch"
+                ]
+              },
+              result: {},
+              error: {
+                type: "string"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u7121\u932F\u8AA4\u8D70 try",
+          given: '{"result":{"value":42},"error":""}',
+          then_contains: '"branch":"try"'
+        },
+        {
+          scenario: "\u6709\u932F\u8AA4\u8D70 catch",
+          given: '{"result":null,"error":"something went wrong"}',
+          then_contains: '"branch":"catch"'
+        },
+        {
+          scenario: "\u7121\u6548 JSON",
+          given: "not-json",
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_try_catch:                       # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  result: "{{upstream.data}}"       # \u4E0A\u6E38\u56DE\u50B3\u7684\u7D50\u679C\uFF0C\u4EFB\u610F\u578B\u5225\uFF08\u9078\u586B\uFF09\n  error: "{{upstream.error}}"       # \u4E0A\u6E38\u932F\u8AA4\u8A0A\u606F\uFF0C\u975E\u7A7A\u5247\u8D70 catch \u5206\u652F\uFF08\u9078\u586B\uFF09\n',
+      source: "registry/components/try_catch/component.contract.yaml"
+    },
+    {
+      canonical_id: "validate_json",
+      display_name: "JSON \u683C\u5F0F\u9A57\u8B49\u5668",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u9A57\u8B49\u8F38\u5165\u5B57\u4E32\u662F\u5426\u70BA\u5408\u6CD5 JSON \u683C\u5F0F\u3002\u8F38\u5165 json_string \u6B04\u4F4D\uFF0C\u56DE\u50B3 valid\uFF08\u5E03\u6797\u503C\uFF09\u8207 error\uFF08\u5931\u6557\u6642\u7684\u932F\u8AA4\u8A0A\u606F\uFF09\u3002",
+      aliases: [],
+      tags: [
+        "validation",
+        "json",
+        "utility",
+        "logic"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "json_string"
+        ],
+        properties: {
+          json_string: {
+            type: "string",
+            description: "\u5F85\u9A57\u8B49\u7684 JSON \u5B57\u4E32"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        required: [
+          "valid"
+        ],
+        properties: {
+          valid: {
+            type: "boolean",
+            description: "\u662F\u5426\u70BA\u5408\u6CD5 JSON"
+          },
+          error: {
+            type: "string",
+            description: "\u9A57\u8B49\u5931\u6557\u6642\u7684\u932F\u8AA4\u8A0A\u606F\uFF08valid=false \u6642\u5B58\u5728\uFF09"
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5408\u6CD5 JSON \u7269\u4EF6\u901A\u904E\u9A57\u8B49",
+          given: '{"json_string":"{\\"key\\":\\"value\\"}"}',
+          then_contains: '{"valid":true}'
+        },
+        {
+          scenario: "\u5408\u6CD5 JSON \u9663\u5217\u901A\u904E\u9A57\u8B49",
+          given: '{"json_string":"[1,2,3]"}',
+          then_contains: '{"valid":true}'
+        },
+        {
+          scenario: "\u975E\u6CD5 JSON \u5B57\u4E32\u56DE\u50B3\u932F\u8AA4",
+          given: '{"json_string":"not-json"}',
+          then_contains: '{"valid":false,"error":'
+        },
+        {
+          scenario: "\u7A7A\u5B57\u4E32\u56DE\u50B3\u932F\u8AA4",
+          given: '{"json_string":""}',
+          then_contains: '{"valid":false,"error":"json_string is required"}'
+        },
+        {
+          scenario: "\u7F3A\u5C11 json_string \u6B04\u4F4D\u56DE\u50B3\u932F\u8AA4",
+          given: "{}",
+          then_contains: '{"valid":false,"error":"json_string is required"}'
+        }
+      ],
+      config_example: `my_validate_json:                       # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09
+  json_string: '{"key":"value"}'        # \u5F85\u9A57\u8B49\u7684 JSON \u5B57\u4E32\uFF08\u5FC5\u586B\uFF09
+`,
+      source: "registry/components/validate_json/component.contract.yaml"
+    },
+    {
+      canonical_id: "wait",
+      display_name: "\u7B49\u5F85\u5EF6\u9072",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u7B49\u5F85\u6307\u5B9A\u6BEB\u79D2\u6578\u5F8C\u7E7C\u7E8C\uFF0C\u6700\u9577 30 \u79D2\uFF0C\u4E26\u900F\u50B3 context \u8CC7\u6599\u3002",
+      aliases: [
+        "\u5EF6\u9072",
+        "delay",
+        "sleep",
+        "\u7B49\u5F85"
+      ],
+      tags: [
+        "builtin",
+        "wait",
+        "delay",
+        "sleep",
+        "timing"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "ms"
+        ],
+        properties: {
+          ms: {
+            type: "integer",
+            description: "\u7B49\u5F85\u6BEB\u79D2\u6578\uFF0C\u6700\u5927 30000\uFF0830 \u79D2\uFF09"
+          },
+          context: {
+            type: "object",
+            description: "\u900F\u50B3\u5230\u4E0B\u4E00\u500B\u7BC0\u9EDE\u7684\u4E0A\u4E0B\u6587\u8CC7\u6599"
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        properties: {
+          success: {
+            type: "boolean"
+          },
+          data: {
+            type: "object",
+            description: "\u900F\u50B3\u7684 context \u52A0\u4E0A waited_ms \u6B04\u4F4D",
+            properties: {
+              waited_ms: {
+                type: "integer"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u7B49\u5F85 100ms",
+          given: '{"ms":100}',
+          then_contains: '"waited_ms":100'
+        },
+        {
+          scenario: "\u8D85\u904E\u4E0A\u9650\u81EA\u52D5\u622A\u65B7\u70BA 30000ms",
+          given: '{"ms":99999}',
+          then_contains: '"waited_ms":30000'
+        },
+        {
+          scenario: "ms \u70BA 0 \u6642\u5931\u6557",
+          given: '{"ms":0}',
+          then_contains: '{"success":false'
+        }
+      ],
+      config_example: 'my_wait:                           # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  ms: 1000                         # \u7B49\u5F85\u6BEB\u79D2\u6578\uFF0C\u6700\u5927 30000\uFF08\u5FC5\u586B\uFF09\n  context:                         # \u900F\u50B3\u5230\u4E0B\u4E00\u500B\u7BC0\u9EDE\u7684\u8CC7\u6599\uFF08\u9078\u586B\uFF09\n    payload: "{{upstream.data}}"\n',
+      source: "registry/components/wait/component.contract.yaml"
+    }
+  ]
+};
 
 // cypher-executor/src/lib/branch-hints.ts
 var BRANCH_HINTS = {
@@ -100380,6 +102472,81 @@ function branchHintFor(componentId) {
   return BRANCH_HINTS[componentId.toLowerCase()];
 }
 
+// cypher-executor/src/lib/component-catalog.ts
+var CATALOG = component_catalog_generated_default;
+var COMPONENT_CATALOG_ID = CATALOG.catalog_id;
+function allComponents() {
+  return CATALOG.components;
+}
+function summarizeComponent(c) {
+  return {
+    canonical_id: c.canonical_id,
+    display_name: c.display_name,
+    category: c.category,
+    version: c.version,
+    stability: c.stability,
+    description: c.description,
+    tags: c.tags
+  };
+}
+function listComponents(opts = {}) {
+  const tag = opts.tag?.trim().toLowerCase();
+  const category = opts.category?.trim().toLowerCase();
+  return CATALOG.components.filter((c) => !tag || c.tags.some((t) => t.toLowerCase() === tag)).filter((c) => !category || c.category.toLowerCase() === category).map(summarizeComponent);
+}
+function getComponentDeclaration(id) {
+  const k = id.trim();
+  const c = CATALOG.components.find((x) => x.canonical_id === k || x.canonical_id === k.toLowerCase());
+  if (!c) return void 0;
+  const hint = branchHintFor(c.canonical_id);
+  return hint ? { ...c, branch_hint: hint } : c;
+}
+var ASCII_STOP = /* @__PURE__ */ new Set(["the", "and", "for", "with", "from", "into", "api"]);
+function queryTerms(q) {
+  const lower = q.toLowerCase();
+  const ascii = [...new Set((lower.match(/[a-z0-9]+/g) ?? []).filter((w) => w.length >= 2 && !ASCII_STOP.has(w)))];
+  const cjk = [];
+  for (const run2 of lower.match(/[぀-ヿ一-鿿]+/g) ?? []) {
+    if (run2.length >= 2) cjk.push(run2);
+    for (let i = 0; i + 2 <= run2.length; i++) cjk.push(run2.slice(i, i + 2));
+  }
+  return { ascii, cjk: [...new Set(cjk)] };
+}
+function words(s) {
+  return s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+}
+function scoreComponent(c, query, t) {
+  const id = c.canonical_id.toLowerCase();
+  const q = query.trim().toLowerCase();
+  const strong = `${c.canonical_id} ${c.display_name}`.toLowerCase();
+  const medium = [...c.aliases, ...c.tags].join(" ").toLowerCase();
+  const weak = c.description.toLowerCase();
+  const strongWords = new Set(words(strong));
+  const mediumWords = new Set(words(medium));
+  const weakWords = new Set(words(weak));
+  let score = 0;
+  if (q && (id === q || c.display_name.toLowerCase() === q)) score += 20;
+  else if (q && (strong.includes(q) || medium.includes(q))) score += 8;
+  for (const w of t.ascii) {
+    if (strongWords.has(w)) score += 4;
+    else if (mediumWords.has(w)) score += 3;
+    else if (weakWords.has(w)) score += 1;
+  }
+  for (const g of t.cjk) {
+    if (strong.includes(g)) score += 3;
+    else if (medium.includes(g)) score += 2;
+    else if (weak.includes(g)) score += 1;
+  }
+  return score;
+}
+function searchComponents(query, limit = 10) {
+  const t = queryTerms(query);
+  return CATALOG.components.map((c) => ({ c, s: scoreComponent(c, query, t) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s || a.c.canonical_id.localeCompare(b.c.canonical_id)).slice(0, limit).map(({ c, s }) => {
+    const hint = branchHintFor(c.canonical_id);
+    return { ...summarizeComponent(c), score: s, input_schema: c.input_schema, ...hint ? { branch_hint: hint } : {} };
+  });
+}
+
 // cypher-executor/src/actions/search-nodes.ts
 async function searchNodes(parsed, config, env, mode = "discover", target) {
   const nodeResults = {};
@@ -100400,16 +102567,14 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
     }
     return { nodeResults, missingNodes };
   }
-  const registryBase = env ? registryBaseUrl(env) : void 0;
   const wantComponents = target !== "recipe";
   const wantRecipes = target !== "component";
-  const catalog = !wantComponents ? { status: "ok", entries: [] } : registryBase ? await fetchCatalog(registryBase) : { status: "unreachable", entries: [] };
+  const catalog = { status: "ok", entries: wantComponents ? allComponents() : [] };
   const recipes = wantRecipes && env?.RECIPES ? await listAllRecipes2(env.RECIPES) : [];
   const byId = /* @__PURE__ */ new Map();
   for (const e of catalog.entries) {
     const prev = byId.get(e.canonical_id);
     if (!prev || (e.score ?? 0) > (prev.score ?? 0)) byId.set(e.canonical_id, e);
-    for (const a of e.aliases ?? []) if (!byId.has(a)) byId.set(a, e);
   }
   for (const nodeName of parsed.nodeNames) {
     const role = resolveNodeRole(nodeName, parsed);
@@ -100429,18 +102594,14 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
         componentId,
         type: role,
         source: "builtin",
+        // #460：內建零件一樣有合約——目錄在引擎裡，順手附上，AI 才知道 payload 怎麼填
+        // （舊版 http_request 這類最常用的零件反而是唯一拿不到 input_schema 的）。
+        ...byId.get(componentId) ? {
+          input_schema: byId.get(componentId).input_schema,
+          stability: typeof byId.get(componentId).stability === "string" ? byId.get(componentId).stability : void 0
+        } : {},
         branch_hint: branchHintFor(componentId)
       };
-      continue;
-    }
-    if (catalog.status === "unreachable") {
-      nodeResults[nodeName] = { status: "unknown", componentId, type: role };
-      continue;
-    }
-    if (catalog.status === "no_endpoint") {
-      const legacy = await legacyPerNodeLookup(registryBase, componentId, nodeName, role, env, recipes);
-      nodeResults[nodeName] = legacy.info;
-      if (legacy.missing) missingNodes.push(nodeName);
       continue;
     }
     const hit = byId.get(componentId);
@@ -100489,17 +102650,6 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
   }
   return { nodeResults, missingNodes };
 }
-async function fetchCatalog(registryBase) {
-  try {
-    const res = await fetch(`${registryBase}/components/catalog`, { signal: AbortSignal.timeout(1e4) });
-    if (res.status === 404) return { status: "no_endpoint", entries: [] };
-    if (!res.ok) return { status: "unreachable", entries: [] };
-    const body = await res.json();
-    return { status: "ok", entries: body.data?.components ?? [] };
-  } catch {
-    return { status: "unreachable", entries: [] };
-  }
-}
 async function listAllRecipes2(kv) {
   try {
     const list = await kv.list({ prefix: "recipe:" });
@@ -100538,53 +102688,6 @@ function similarFromRecipes(recipes, nodeName) {
     }
   }
   return matched.slice(0, 3);
-}
-async function legacyPerNodeLookup(registryBase, componentId, nodeName, role, env, recipes) {
-  const q = await fetchComponent(registryBase, componentId);
-  if (!q.ok) return { info: { status: "unknown", componentId, type: role }, missing: false };
-  if (q.entry) {
-    return {
-      info: {
-        status: "found",
-        componentId,
-        type: role,
-        source: "component",
-        input_schema: q.entry.input_schema,
-        success_rate: q.entry.success_rate,
-        stability: q.entry.stability,
-        branch_hint: branchHintFor(componentId)
-      },
-      missing: false
-    };
-  }
-  const recipe = recipes.find((r) => r.canonical_id === componentId) ?? (env?.RECIPES ? await resolveRecipe(componentId, env.RECIPES) : null);
-  if (recipe) {
-    return {
-      info: {
-        status: "found",
-        componentId: recipe.canonical_id,
-        type: role,
-        source: "recipe",
-        description: recipe.description,
-        endpoint: recipe.endpoint,
-        payload_hint: buildPayloadHint(recipe)
-      },
-      missing: false
-    };
-  }
-  const similarComponents = await searchSimilarComponents(registryBase, nodeName);
-  const similarRecipes = similarFromRecipes(recipes, nodeName);
-  return {
-    info: {
-      status: "not_found",
-      componentId,
-      type: role,
-      suggestion: buildSuggestion(componentId),
-      ...similarComponents.length > 0 ? { similar_components: similarComponents } : {},
-      ...similarRecipes.length > 0 ? { similar_recipes: similarRecipes } : {}
-    },
-    missing: true
-  };
 }
 function trySubstitution(nodeName, catalogEntries, recipes) {
   const lower = nodeName.toLowerCase();
@@ -100765,28 +102868,6 @@ function buildPayloadHint(recipe) {
     usage: parts.join("\uFF1B") + "\u3002"
   };
 }
-async function fetchComponent(registryBase, id) {
-  try {
-    const res = await fetch(`${registryBase}/components/${encodeURIComponent(id)}`, {
-      signal: AbortSignal.timeout(5e3)
-    });
-    if (res.status === 404) return { ok: true };
-    if (!res.ok) return { ok: false };
-    const body = await res.json();
-    if (body.success === false) return { ok: true };
-    const d = body.data ?? body;
-    return {
-      ok: true,
-      entry: {
-        input_schema: d.input_schema,
-        success_rate: typeof d.success_rate === "number" ? d.success_rate : void 0,
-        stability: typeof d.stability === "string" ? d.stability : void 0
-      }
-    };
-  } catch {
-    return { ok: false };
-  }
-}
 function extractTokens(name) {
   const tokens = [];
   const ascii = name.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
@@ -100796,30 +102877,6 @@ function extractTokens(name) {
     for (let i = 0; i + 2 <= run2.length; i++) tokens.push(run2.slice(i, i + 2));
   }
   return [...new Set(tokens)].slice(0, 8);
-}
-async function searchRegistryIds(registryBase, q) {
-  try {
-    const res = await fetch(`${registryBase}/components/search?q=${encodeURIComponent(q)}`, {
-      signal: AbortSignal.timeout(5e3)
-    });
-    if (!res.ok) return [];
-    const body = await res.json();
-    return (body.data?.results ?? []).map((r) => r.canonical_id).filter((s) => !!s);
-  } catch {
-    return [];
-  }
-}
-async function searchSimilarComponents(registryBase, nodeName) {
-  const direct = await searchRegistryIds(registryBase, nodeName);
-  if (direct.length > 0) return direct.slice(0, 3);
-  const tokens = extractTokens(nodeName);
-  if (tokens.length === 0) return [];
-  const hits = await Promise.all(tokens.map((t) => searchRegistryIds(registryBase, t)));
-  const count2 = /* @__PURE__ */ new Map();
-  for (const ids of hits) {
-    for (const id of ids) count2.set(id, (count2.get(id) ?? 0) + 1);
-  }
-  return [...count2.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id);
 }
 
 // cypher-executor/src/actions/graph-builder.ts
@@ -100899,7 +102956,6 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
   try {
     const result = await executor.execute(parseResult.data, context ?? {}, createRunScratch());
     const duration_ms = Date.now() - start;
-    waitUntil(recordComponentStats(env, graph.nodes, result.trace));
     const verdict = deriveExecutionVerdict(parseResult.data, result.trace);
     if (!verdict.success) {
       return {
@@ -100928,7 +102984,6 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
     }
     const errMsg = err2 instanceof Error ? err2.message : String(err2);
     if (err2 instanceof ExecutionError) {
-      waitUntil(recordComponentStats(env, graph.nodes, err2.trace));
       const traceFormatted = err2.trace.map((s) => ({
         node: s.nodeId,
         status: s.error ? "failed" : "success",
@@ -100946,9 +103001,6 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
     throw err2;
   }
 }
-
-// cypher-executor/src/actions/target-search.ts
-init_endpoints();
 
 // cypher-executor/src/lib/workflow-search.ts
 init_endpoints();
@@ -100971,33 +103023,8 @@ async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
 // cypher-executor/src/actions/target-search.ts
 async function searchByTarget(target, query, env, apiKey) {
   if (target === "component") {
-    const registryBase = registryBaseUrl(env);
-    if (!registryBase) return { ok: false, status: 502, error: "registry \u4F4D\u7F6E\u672A\u8A2D\u5B9A\uFF08REGISTRY_BASE_URL\uFF0FCOMPONENT_URL_TEMPLATE\uFF0FWORKER_SUBDOMAIN \u7686\u7F3A\uFF09" };
-    try {
-      const res2 = await fetch(
-        `${registryBase}/components/search?q=${encodeURIComponent(query)}`,
-        { signal: AbortSignal.timeout(1e4) }
-      );
-      if (!res2.ok) return { ok: false, status: 502, error: `registry \u641C\u5C0B\u5931\u6557\uFF08HTTP ${res2.status}\uFF09` };
-      const body2 = await res2.json();
-      const results = (body2.data?.results ?? []).map((r) => {
-        if (!r || typeof r !== "object") return r;
-        const rec = r;
-        const hint = branchHintFor(typeof rec.canonical_id === "string" ? rec.canonical_id : void 0);
-        return hint ? { ...rec, branch_hint: hint } : rec;
-      });
-      return {
-        ok: true,
-        body: {
-          target,
-          query,
-          results,
-          count: body2.data?.count ?? 0
-        }
-      };
-    } catch (e) {
-      return { ok: false, status: 502, error: `registry \u67E5\u4E0D\u901A\uFF1A${e instanceof Error ? e.message : String(e)}` };
-    }
+    const results = searchComponents(query);
+    return { ok: true, body: { target, query, results, count: results.length } };
   }
   if (target === "recipe") {
     if (!env.RECIPES) return { ok: false, status: 502, error: "RECIPES KV \u672A\u7D81\u5B9A" };
@@ -105011,6 +107038,375 @@ function scopeDataflowReport(report, scope) {
   return out;
 }
 
+// cypher-executor/src/lib/app-package.ts
+init_recipes();
+init_kbdb_proxy();
+var PACKAGE_FORMAT = "arcrun-app-package";
+var PACKAGE_FORMAT_VERSION = 1;
+var MAX_PACKAGE_CHARS = 8e6;
+function restorePlaceholders(value, coords) {
+  const base = coords.cypherBase.replace(/\/+$/, "");
+  const swap = (s) => {
+    let out = s;
+    if (base) out = out.split(base).join("__CYPHER_BASE__");
+    if (coords.namespace) out = out.split(coords.namespace).join("__NAMESPACE__");
+    return out;
+  };
+  const walk = (v) => {
+    if (typeof v === "string") return swap(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out = {};
+      for (const [k, val] of Object.entries(v)) out[swap(k)] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  return walk(value);
+}
+var SECRET_SHAPES = [
+  { re: /Bearer\s+(?!\{\{)[A-Za-z0-9._~+/=-]{24,}/, what: "\u5BEB\u6B7B\u7684 Bearer \u91D1\u9470" },
+  { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, what: "\u79C1\u9470" },
+  { re: /\bsk-[A-Za-z0-9_-]{20,}/, what: "sk- \u958B\u982D\u7684\u91D1\u9470" },
+  { re: /\bghp_[A-Za-z0-9]{30,}/, what: "GitHub token" },
+  { re: /\bAIza[0-9A-Za-z_-]{30,}/, what: "Google API \u91D1\u9470" },
+  { re: /\bxox[abprs]-[A-Za-z0-9-]{20,}/, what: "Slack token" }
+];
+function findSecretLikeStrings(value) {
+  const text = JSON.stringify(value) ?? "";
+  return SECRET_SHAPES.filter((s) => s.re.test(text)).map((s) => s.what);
+}
+function findInstanceLeaks(value, coords) {
+  const text = JSON.stringify(value) ?? "";
+  const base = coords.cypherBase.replace(/\/+$/, "");
+  const leaks = [];
+  if (base && text.includes(base)) leaks.push("\u9019\u53F0\u5BE6\u4F8B\u7684\u7DB2\u5740");
+  if (coords.namespace && text.includes(coords.namespace)) leaks.push("\u9019\u53F0\u5BE6\u4F8B\u7684\u5E33\u865F\u8B58\u5225\u5B57\u4E32");
+  return leaks;
+}
+var RECIPE_PACKAGE_FIELDS = [
+  "canonical_id",
+  "display_name",
+  "description",
+  "endpoint",
+  "method",
+  "headers",
+  "body",
+  "body_template",
+  "response_map",
+  "auth",
+  "binding_name",
+  "auth_service",
+  "credentials_required"
+];
+function recipeForPackage(r) {
+  const out = {};
+  for (const k of RECIPE_PACKAGE_FIELDS) {
+    const v = r[k];
+    if (v !== void 0) out[k] = v;
+  }
+  return out;
+}
+function mcpDeclFromInstalled(app2) {
+  const prefix = `${app2.id}__`;
+  return {
+    tools: (app2.mcp?.tools ?? []).map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema,
+      workflow: t.wf_key.startsWith(prefix) ? t.wf_key.slice(prefix.length) : t.wf_key,
+      ...t.read_only ? { read_only: true } : {}
+    })),
+    guides: app2.mcp?.guides ?? []
+  };
+}
+async function declarationFromInstalled(env, tenant2, app2, coords) {
+  const warnings = [];
+  const store2 = appStore(env);
+  if (app2.workflows.length > 0) await store2.list({ prefix: `${tenant2}:wf:` });
+  const workflows = [];
+  for (const ref of app2.workflows) {
+    const raw2 = await store2.get(workflowKvKey(tenant2, ref.wf_key), "text");
+    if (!raw2) {
+      return {
+        ok: false,
+        error: `\u8B80\u4E0D\u5230\u5DE5\u4F5C\u6D41\u300C${ref.name}\u300D\u7684\u5167\u5BB9\uFF08\u5B89\u88DD\u8CC7\u6599\u907A\u5931\uFF09`,
+        hint: "\u9019\u500B App \u7684\u5B89\u88DD\u8CC7\u6599\u4E0D\u5B8C\u6574\uFF0C\u532F\u51FA\u6703\u662F\u4E00\u4EFD\u7F3A\u4E86\u6771\u897F\u7684\u5305\uFF0C\u6240\u4EE5\u6C92\u6709\u532F\u51FA\u3002\u628A\u9019\u500B App \u91CD\u65B0\u5B89\u88DD\u4E00\u6B21\uFF0C\u518D\u532F\u51FA\u3002"
+      };
+    }
+    let rec;
+    try {
+      rec = JSON.parse(raw2);
+    } catch {
+      return { ok: false, error: `\u5DE5\u4F5C\u6D41\u300C${ref.name}\u300D\u7684\u5167\u5BB9\u58DE\u6389\u4E86\uFF0C\u8B80\u4E0D\u61C2` };
+    }
+    if (!rec.graph) return { ok: false, error: `\u5DE5\u4F5C\u6D41\u300C${ref.name}\u300D\u6C92\u6709\u57F7\u884C\u5716` };
+    workflows.push({
+      name: ref.name,
+      graph: rec.graph,
+      ...ref.description ? { description: ref.description } : {},
+      ...ref.trigger ? { trigger: ref.trigger } : {}
+    });
+  }
+  let data;
+  if (app2.declared?.data) {
+    data = app2.declared.data;
+  } else {
+    data = [];
+    const { base, headers } = kbdbBase(env);
+    for (const name of app2.data_templates) {
+      try {
+        noteSubrequest();
+        const res = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
+        const j = await res.json().catch(() => null);
+        const slots = j?.success && j.template ? JSON.parse(j.template.slots_json ?? "[]") : null;
+        if (Array.isArray(slots)) {
+          data.push({ name, slots: slots.filter((x) => typeof x === "string"), ...j?.template?.description ? { description: j.template.description } : {} });
+        } else {
+          warnings.push(`\u8CC7\u6599\u578B\u5225\u300C${name}\u300D\u7684\u6B04\u4F4D\u8B80\u4E0D\u5230\uFF0C\u5305\u88E1\u6C92\u6709\u5B83\uFF1B\u532F\u5165\u7AEF\u6703\u7F3A\u9019\u500B\u578B\u5225\u3002`);
+        }
+      } catch {
+        warnings.push(`\u8CC7\u6599\u578B\u5225\u300C${name}\u300D\u7684\u6B04\u4F4D\u8B80\u4E0D\u5230\uFF0C\u5305\u88E1\u6C92\u6709\u5B83\uFF1B\u532F\u5165\u7AEF\u6703\u7F3A\u9019\u500B\u578B\u5225\u3002`);
+      }
+    }
+  }
+  const recipes = [];
+  for (const cid of app2.requires?.recipes ?? []) {
+    const r = await resolveRecipe(cid, env.RECIPES);
+    if (!r) {
+      warnings.push(`recipe\u300C${cid}\u300D\u9019\u53F0\u5DF2\u7D93\u4E0D\u5728\u4E86\uFF0C\u5305\u88E1\u6C92\u6709\u5B83\uFF1B\u532F\u5165\u7AEF\u8981\u81EA\u5DF1\u5099\u3002`);
+      continue;
+    }
+    recipes.push(recipeForPackage(r));
+  }
+  const credentials = app2.requires?.credentials ?? [];
+  const decl = {
+    id: app2.id,
+    name: app2.name,
+    icon: app2.icon,
+    version: app2.version,
+    ...app2.declared?.engine_min ? { engine_min: app2.declared.engine_min } : {},
+    workflows,
+    actions: app2.actions,
+    ...data.length ? { data } : {},
+    ...recipes.length || credentials.length ? { requires: { ...recipes.length ? { recipes } : {}, ...credentials.length ? { credentials } : {} } } : {},
+    ...app2.mcp ? { mcp: mcpDeclFromInstalled(app2) } : {},
+    ...app2.ui_html || app2.ui_surface ? { ui: { ...app2.ui_html ? { html: app2.ui_html, ...app2.ui_style ? { style: app2.ui_style } : {} } : {}, ...app2.ui_surface ? { surface: app2.ui_surface } : {} } } : {},
+    ...app2.keeps_data === false ? { remove: { keeps_data: false } } : {}
+  };
+  return { ok: true, declaration: restorePlaceholders(decl, coords), warnings };
+}
+async function exportAppPackage(env, tenant2, appId, coords, engineVersion) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2) return { ok: false, code: "not_found", error: "\u627E\u4E0D\u5230\u9019\u500B App" };
+  const built = await declarationFromInstalled(env, tenant2, app2, coords);
+  if (!built.ok) return { ok: false, code: "unreadable", error: built.error, ...built.hint ? { hint: built.hint } : {} };
+  const secrets = findSecretLikeStrings(built.declaration);
+  if (secrets.length) {
+    return {
+      ok: false,
+      code: "blocked",
+      error: `\u9019\u500B App \u88E1\u6709\u770B\u8D77\u4F86\u50CF\u91D1\u9470\u771F\u8EAB\u7684\u6771\u897F\uFF08${secrets.join("\u3001")}\uFF09\uFF0C\u70BA\u4E86\u4E0D\u628A\u91D1\u9470\u5E36\u9032\u4E00\u500B\u6703\u88AB\u50B3\u4F86\u50B3\u53BB\u7684\u6A94\uFF0C\u6C92\u6709\u532F\u51FA`,
+      hint: "\u628A\u5B83\u6539\u6210\u300C{{credential.<\u540D\u5B57>}}\u300D\u7684\u5BEB\u6CD5\uFF08\u91D1\u9470\u503C\u653E\u9032\u91D1\u9470\u756B\u9762\uFF09\uFF0C\u518D\u532F\u51FA\u4E00\u6B21\u3002"
+    };
+  }
+  const leaks = findInstanceLeaks(built.declaration, coords);
+  if (leaks.length) {
+    return { ok: false, code: "blocked", error: `\u532F\u51FA\u6A94\u88E1\u9084\u7559\u8457${leaks.join("\u3001")}\uFF0C\u6C92\u6709\u532F\u51FA`, hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002" };
+  }
+  return {
+    ok: true,
+    warnings: built.warnings,
+    package: {
+      format: PACKAGE_FORMAT,
+      format_version: PACKAGE_FORMAT_VERSION,
+      exported_at: (/* @__PURE__ */ new Date()).toISOString(),
+      ...engineVersion ? { exported_from_engine: engineVersion } : {},
+      app: { id: app2.id, name: app2.name, icon: app2.icon, version: app2.version, workflow_count: app2.workflows.length },
+      declaration: built.declaration
+    }
+  };
+}
+function checkPackage(raw2) {
+  if ((JSON.stringify(raw2)?.length ?? 0) > MAX_PACKAGE_CHARS) {
+    return { ok: false, code: "too_big", error: "\u9019\u500B\u6A94\u592A\u5927\u4E86\uFF0C\u4E0D\u50CF\u662F\u4E00\u500B App \u5305", hint: "\u78BA\u8A8D\u9078\u5230\u7684\u662F\u5F9E\u300C\u532F\u51FA\u300D\u5F97\u5230\u7684\u90A3\u500B\u6A94\u3002" };
+  }
+  const p = raw2;
+  if (!p || typeof p !== "object" || p.format !== PACKAGE_FORMAT || !p.declaration || typeof p.declaration !== "object") {
+    return { ok: false, code: "not_a_package", error: "\u9019\u4E0D\u662F Arcrun \u7684 App \u5305", hint: '\u8ACB\u9078\u5F9E App \u5DE5\u4F5C\u5BA4\u300C\u532F\u51FA\u300D\u5F97\u5230\u7684\u90A3\u500B\u6A94\uFF08\u5167\u5BB9\u958B\u982D\u662F "format": "arcrun-app-package"\uFF09\u3002' };
+  }
+  if (typeof p.format_version !== "number" || p.format_version > PACKAGE_FORMAT_VERSION) {
+    return {
+      ok: false,
+      code: "newer_format",
+      error: `\u9019\u500B\u5305\u662F\u6BD4\u9019\u53F0\u65B0\u7684\u683C\u5F0F\uFF08\u7B2C ${String(p.format_version)} \u7248\uFF0C\u9019\u53F0\u53EA\u770B\u5F97\u61C2\u5230\u7B2C ${PACKAGE_FORMAT_VERSION} \u7248\uFF09`,
+      hint: "\u8ACB\u5148\u628A\u9019\u53F0\u7684 Arcrun \u66F4\u65B0\u5230\u65B0\u7248\uFF0C\u518D\u532F\u5165\u3002"
+    };
+  }
+  const secrets = findSecretLikeStrings(p.declaration);
+  if (secrets.length) {
+    return {
+      ok: false,
+      code: "carries_secret",
+      error: `\u9019\u500B\u5305\u88E1\u6709\u770B\u8D77\u4F86\u50CF\u91D1\u9470\u771F\u8EAB\u7684\u6771\u897F\uFF08${secrets.join("\u3001")}\uFF09\uFF0C\u70BA\u4E86\u5B89\u5168\u6C92\u6709\u5B89\u88DD`,
+      hint: "\u6B63\u5E38\u532F\u51FA\u7684\u5305\u53EA\u6703\u6709\u91D1\u9470\u7684\u540D\u5B57\u3002\u8ACB\u8DDF\u7D66\u4F60\u9019\u500B\u5305\u7684\u4EBA\u8AAA\uFF1A\u91D1\u9470\u8981\u653E\u5728\u91D1\u9470\u756B\u9762\uFF0C\u5305\u88E1\u53EA\u5BEB\u540D\u5B57\u3002"
+    };
+  }
+  const v = validateAppDeclaration(p.declaration);
+  if (!v.ok) {
+    return { ok: false, code: "invalid_declaration", error: "\u9019\u500B\u5305\u7684\u5167\u5BB9\u6709\u554F\u984C\uFF0C\u6C92\u8FA6\u6CD5\u5B89\u88DD", hint: "\u9019\u662F\u505A\u9019\u500B App \u7684\u4EBA\u90A3\u908A\u8981\u4FEE\u7684\uFF0C\u628A\u4E0B\u9762\u5E7E\u884C\u539F\u6587\u56DE\u5831\u7D66\u4ED6\u3002", details: v.errors };
+  }
+  return { ok: true, pkg: p };
+}
+async function importAppPackage(env, tenant2, raw2, opts) {
+  const checked = checkPackage(raw2);
+  if (!checked.ok) return { kind: "refused", refusal: checked };
+  const decl = checked.pkg.declaration;
+  if (decl.engine_min && opts.engineVersion && compareVersions(opts.engineVersion, decl.engine_min) === -1) {
+    return {
+      kind: "refused",
+      refusal: {
+        ok: false,
+        code: "engine_too_old",
+        error: `\u9019\u500B App \u9700\u8981\u5E73\u53F0 ${decl.engine_min} \u4EE5\u4E0A\uFF0C\u9019\u53F0\u662F ${opts.engineVersion}`,
+        hint: `\u8ACB\u5148\u628A\u9019\u53F0\u7684 Arcrun \u66F4\u65B0\u5230 ${decl.engine_min} \u4EE5\u4E0A\uFF0C\u518D\u532F\u5165\u4E00\u6B21\uFF1B\u8CC7\u6599\u8207\u8A2D\u5B9A\u4E0D\u6703\u52D5\u3002`,
+        extra: { needs: decl.engine_min, have: opts.engineVersion }
+      }
+    };
+  }
+  const before = await getInstalledApp(env, tenant2, decl.id);
+  if (before && !opts.allowDowngrade && compareVersions(decl.version, before.version) === -1) {
+    return {
+      kind: "refused",
+      refusal: {
+        ok: false,
+        code: "older_than_installed",
+        error: `\u9019\u500B\u5305\u7684\u300C${decl.name ?? decl.id}\u300D\u662F v${String(decl.version)}\uFF0C\u6BD4\u9019\u53F0\u5DF2\u88DD\u7684 v${before.version} \u9084\u820A\uFF0C\u4E0D\u662F\u65B0\u7248`,
+        hint: "\u70BA\u4E86\u4E0D\u628A\u4F60\u7684 App \u9000\u56DE\u820A\u8A2D\u8A08\uFF0C\u9019\u6B21\u6C92\u6709\u52D5\u5B83\u3002\u8981\u9000\u56DE\u53BB\u8ACB\u5148\u79FB\u9664\u518D\u532F\u5165\uFF1B\u4E0D\u78BA\u5B9A\u5C31\u7DAD\u6301\u73FE\u5728\u9019\u4E00\u7248\u3002",
+        extra: { installed_version: before.version, package_version: decl.version }
+      }
+    };
+  }
+  const source = {
+    kind: "package",
+    ...decl.version ? { package_version: decl.version } : {},
+    ...checked.pkg.exported_at ? { exported_at: checked.pkg.exported_at } : {},
+    ...checked.pkg.exported_from_engine ? { exported_from_engine: checked.pkg.exported_from_engine } : {},
+    imported_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  const result = await installApp(env, tenant2, decl, {
+    coords: opts.coords,
+    ...before ? {} : { origin: "imported" },
+    source,
+    resumeFrom: opts.resumeFrom,
+    resumeHash: opts.resumeHash
+  });
+  return {
+    kind: "install",
+    result,
+    updated: Boolean(before && result.changed),
+    ...before ? { from_version: before.version } : {},
+    ...decl.version ? { package_version: decl.version } : {}
+  };
+}
+var LOCAL_NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/;
+function slugId(name, fallbackPrefix = "app") {
+  const ascii = name.toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^[^a-z]+/, "").replace(/_+/g, "_").replace(/_$/, "").slice(0, 40);
+  if (ascii.length >= 2) return ascii;
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
+  return `${fallbackPrefix}_${h.toString(36)}`;
+}
+async function packWorkflowsAsApp(env, tenant2, input, coords) {
+  const name = String(input.name ?? "").trim();
+  if (!name || name.length > 60) return { ok: false, code: "bad_name", error: "App \u8981\u6709\u4E00\u500B\u540D\u5B57\uFF0860 \u5B57\u4EE5\u5167\uFF09" };
+  const keys = [...new Set((input.workflows ?? []).map((k) => String(k).trim()).filter(Boolean))];
+  if (keys.length === 0) return { ok: false, code: "no_workflows", error: "\u8ACB\u81F3\u5C11\u9078\u4E00\u689D\u5DE5\u4F5C\u6D41" };
+  if (keys.length > 20) return { ok: false, code: "too_many", error: "\u4E00\u6B21\u6700\u591A\u6253\u5305 20 \u689D\u5DE5\u4F5C\u6D41", hint: "\u5148\u9078\u5C11\u4E00\u9EDE\uFF0C\u4E4B\u5F8C\u5728 App \u88E1\u518D\u65B0\u589E\u3002" };
+  const id = input.id && /^[a-z][a-z0-9_-]{0,63}$/.test(input.id) ? input.id : slugId(name);
+  if (await getInstalledApp(env, tenant2, id)) {
+    return { ok: false, code: "id_taken", error: `\u5DF2\u7D93\u6709\u4E00\u500B\u53EB\u300C${id}\u300D\u7684 App`, hint: "\u63DB\u4E00\u500B\u540D\u5B57\uFF0C\u6216\u5230\u90A3\u500B App \u88E1\u65B0\u589E\u5DE5\u4F5C\u6D41\u3002" };
+  }
+  const store2 = appStore(env);
+  await store2.list({ prefix: `${tenant2}:wf:` });
+  const used = /* @__PURE__ */ new Set();
+  const workflows = [];
+  const notes = [];
+  for (const key of keys) {
+    const raw2 = await store2.get(workflowKvKey(tenant2, key), "text");
+    if (!raw2) return { ok: false, code: "workflow_not_found", error: `\u627E\u4E0D\u5230\u5DE5\u4F5C\u6D41\u300C${key}\u300D`, hint: "\u91CD\u65B0\u6574\u7406\u5DE5\u4F5C\u6D41\u6E05\u55AE\u518D\u9078\u4E00\u6B21\u3002" };
+    let rec;
+    try {
+      rec = JSON.parse(raw2);
+    } catch {
+      return { ok: false, code: "workflow_not_found", error: `\u5DE5\u4F5C\u6D41\u300C${key}\u300D\u7684\u5167\u5BB9\u58DE\u6389\u4E86\uFF0C\u8B80\u4E0D\u61C2` };
+    }
+    if (!rec.graph) return { ok: false, code: "workflow_not_found", error: `\u5DE5\u4F5C\u6D41\u300C${key}\u300D\u6C92\u6709\u57F7\u884C\u5716` };
+    let local = key.includes("__") ? key.slice(key.indexOf("__") + 2) : key;
+    if (!LOCAL_NAME_RE.test(local)) local = slugId(local, "wf");
+    const base = local;
+    let n = 2;
+    while (used.has(local)) local = `${base}_${n++}`.slice(0, 64);
+    used.add(local);
+    workflows.push({ name: local, graph: { ...rec.graph, name: typeof rec.graph.name === "string" && rec.graph.name ? rec.graph.name : local }, trigger: "manual", ...rec.description ? { description: rec.description } : {} });
+    if (rec.cron_expr) notes.push(`\u300C${key}\u300D\u539F\u672C\u6709\u6392\u7A0B\uFF1B\u6253\u5305\u51FA\u4F86\u7684\u9019\u4E00\u4EFD\u662F\u624B\u52D5\u555F\u52D5\uFF0C\u6392\u7A0B\u4ECD\u7559\u5728\u539F\u5DE5\u4F5C\u6D41\u3002`);
+  }
+  const decl = { id, name, ...input.icon ? { icon: input.icon } : {}, version: "0.1.0", workflows };
+  const r = await installApp(env, tenant2, decl, { coords, origin: "authored", ...input.author ? { author: input.author } : {} });
+  if (!r.ok) return { ok: false, code: "install_failed", error: (r.errors ?? ["\u6253\u5305\u5931\u6557"]).join("\uFF1B"), ...r.step ? { step: r.step } : {}, ...r.hint ? { hint: r.hint } : {} };
+  if (r.in_progress || !r.app) return { ok: false, code: "too_many", error: "\u5DE5\u4F5C\u6D41\u592A\u591A\uFF0C\u4E00\u6B21\u6253\u5305\u4E0D\u5B8C", hint: "\u5148\u5C11\u9078\u5E7E\u689D\uFF0C\u4E4B\u5F8C\u5728 App \u88E1\u518D\u65B0\u589E\u3002" };
+  return { ok: true, app: r.app, notes };
+}
+function bumpPatch(v) {
+  const m = /^(v?\d+\.\d+\.)(\d+)(.*)$/.exec(v.trim());
+  return m ? `${m[1]}${Number(m[2]) + 1}${m[3]}` : v;
+}
+async function addWorkflowToApp(env, tenant2, appId, input) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2) return { ok: false, code: "not_found", error: "\u627E\u4E0D\u5230\u9019\u500B App" };
+  if (app2.origin !== "authored") {
+    return { ok: false, code: "not_yours", error: "\u9019\u500B App \u4E0D\u662F\u4F60\u505A\u7684\uFF0C\u4E0D\u80FD\u76F4\u63A5\u52A0\u5DE5\u4F5C\u6D41", hint: "\u60F3\u6539\u5225\u4EBA\u505A\u7684 App\uFF0C\u5148\u5728 App \u5DE5\u4F5C\u5BA4\u300C\u8907\u88FD\u4E00\u4EFD\u300D\uFF0C\u518D\u5230\u4F60\u7684\u90A3\u4EFD\u65B0\u589E\u3002" };
+  }
+  const store2 = appStore(env);
+  let graph = input.graph;
+  let description = input.description;
+  let fromName = input.name;
+  if (!graph) {
+    if (!input.from) return { ok: false, code: "workflow_not_found", error: "\u8ACB\u6307\u5B9A\u8981\u52A0\u9032\u4F86\u7684\u5DE5\u4F5C\u6D41" };
+    const raw2 = await store2.get(workflowKvKey(tenant2, input.from), "text");
+    if (!raw2) return { ok: false, code: "workflow_not_found", error: `\u627E\u4E0D\u5230\u5DE5\u4F5C\u6D41\u300C${input.from}\u300D` };
+    try {
+      const rec = JSON.parse(raw2);
+      graph = rec.graph;
+      description = description ?? rec.description;
+    } catch {
+      return { ok: false, code: "workflow_not_found", error: `\u5DE5\u4F5C\u6D41\u300C${input.from}\u300D\u7684\u5167\u5BB9\u58DE\u6389\u4E86\uFF0C\u8B80\u4E0D\u61C2` };
+    }
+    if (!graph) return { ok: false, code: "workflow_not_found", error: `\u5DE5\u4F5C\u6D41\u300C${input.from}\u300D\u6C92\u6709\u57F7\u884C\u5716` };
+    fromName = fromName ?? (input.from.includes("__") ? input.from.slice(input.from.indexOf("__") + 2) : input.from);
+  }
+  const local = fromName && LOCAL_NAME_RE.test(fromName) ? fromName : slugId(String(fromName ?? ""), "wf");
+  if (!LOCAL_NAME_RE.test(local)) return { ok: false, code: "bad_name", error: "\u5DE5\u4F5C\u6D41\u7684\u540D\u5B57\u53EA\u80FD\u7528\u5C0F\u5BEB\u82F1\u6587\u3001\u6578\u5B57\u3001\u5E95\u7DDA\u3001\u9023\u5B57\u865F" };
+  if (app2.workflows.some((w) => w.name === local)) return { ok: false, code: "name_taken", error: `\u9019\u500B App \u5DF2\u7D93\u6709\u53EB\u300C${local}\u300D\u7684\u5DE5\u4F5C\u6D41`, hint: "\u63DB\u4E00\u500B\u540D\u5B57\u3002" };
+  graph = { ...graph, name: typeof graph.name === "string" && graph.name ? graph.name : local };
+  const wfKey2 = `${appId}__${local}`;
+  const ref = { name: local, wf_key: wfKey2, description: description ?? "", trigger: "manual", ...typeof graph.id === "string" ? { graph_id: graph.id } : {} };
+  const next = {
+    ...app2,
+    version: bumpPatch(app2.version),
+    workflows: [...app2.workflows, ref],
+    actions: app2.actions.includes(local) ? app2.actions : [...app2.actions, local],
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  try {
+    await store2.put(workflowKvKey(tenant2, wfKey2), JSON.stringify({ graph, description: description || `${app2.name}: ${local}`, created_at: (/* @__PURE__ */ new Date()).toISOString() }));
+    await store2.put(appKey(tenant2, appId), JSON.stringify(next));
+  } catch (e) {
+    return { ok: false, code: "write_failed", error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true, app: next, added: local };
+}
+
 // cypher-executor/src/lib/account-link.ts
 var LINK_KEY_TEMPLATE = "portal_link_key";
 var LINK_KEY_SLOTS = ["key_id", "label", "issued_by", "issued_by_name", "created_at"];
@@ -107518,6 +109914,102 @@ portalDataRouter.post(
     return c.json({ copied: true, app: summarizeApp(r.app) });
   })
 );
+portalDataRouter.get(
+  "/portal/data/apps/:id/export",
+  (c) => run(c, async () => {
+    const denied = await workflowsGate(c);
+    if (denied) return denied;
+    const tenant2 = knowledgeOwner(c.env);
+    const app2 = await getInstalledApp(c.env, tenant2, c.req.param("id"));
+    if (!app2) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B App" }, 404);
+    if (!isStudioVisibleApp(app2, showSystemOf(c))) return notYours(c);
+    const r = await exportAppPackage(c.env, String(tenant2), app2.id, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) }, c.env.ARCRUN_BUNDLE_VERSION);
+    if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {} }, r.code === "not_found" ? 404 : r.code === "blocked" ? 422 : 500);
+    return c.json({ package: r.package, warnings: r.warnings, filename: `${app2.id}-${app2.version}.arcrun-app.json` });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/import",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") {
+      return c.json({ error: "\u53EA\u6709\u7BA1\u7406\u54E1\u53EF\u4EE5\u532F\u5165 App", step: "\u6AA2\u67E5\u6B0A\u9650", hint: "\u9019\u53F0\u5BE6\u4F8B\u7684 App \u6E05\u55AE\u662F\u5168\u7AD9\u5171\u7528\u7684\uFF0C\u6240\u4EE5\u8981\u7BA1\u7406\u54E1\u4F86\u532F\u5165\u3002" }, 403);
+    }
+    const body = await c.req.json().catch(() => null);
+    const pkg = body && typeof body === "object" && "package" in body ? body.package : body;
+    if (!pkg) return c.json({ error: "\u6C92\u6709\u6536\u5230 App \u5305", code: "not_a_package", hint: "\u8ACB\u9078\u5F9E\u300C\u532F\u51FA\u300D\u5F97\u5230\u7684\u90A3\u500B\u6A94\u3002" }, 400);
+    const tenant2 = knowledgeOwner(c.env);
+    const r = await importAppPackage(c.env, String(tenant2), pkg, {
+      coords: { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) },
+      engineVersion: c.env.ARCRUN_BUNDLE_VERSION,
+      resumeFrom: Number(c.req.query("from") ?? "0") || 0,
+      resumeHash: c.req.query("h"),
+      allowDowngrade: c.req.query("allow_downgrade") === "1"
+    });
+    if (r.kind === "refused") {
+      const x = r.refusal;
+      return c.json({ error: x.error, code: x.code, hint: x.hint, ...x.details ? { details: x.details } : {}, ...x.extra ?? {} }, x.code === "older_than_installed" || x.code === "engine_too_old" ? 409 : 400);
+    }
+    const result = r.result;
+    if (!result.ok) {
+      return c.json({ error: (result.errors ?? ["\u5B89\u88DD\u5931\u6557"]).join("\uFF1B"), step: result.step ?? "\u5B89\u88DD", hint: result.hint ?? "\u518D\u8A66\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u6BB5\u8A0A\u606F\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002", ...result.resume_from !== void 0 ? { resume_from: result.resume_from, resume_hash: result.resume_hash } : {} }, 502);
+    }
+    if (result.in_progress) return c.json({ installed: false, in_progress: true, progress: result.progress, resume_from: result.resume_from, resume_hash: result.resume_hash });
+    return c.json({
+      installed: true,
+      changed: result.changed,
+      updated: r.updated,
+      from_version: r.from_version,
+      package_version: r.package_version,
+      app: result.app ? summarizeApp(result.app) : void 0,
+      recipes_installed: result.recipes_installed ?? [],
+      missing_credentials: result.missing_credentials ?? [],
+      ...result.credentials_check_failed ? { credentials_check_failed: true } : {}
+    });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/pack",
+  (c) => run(c, async () => {
+    const g = await workflowsGateAuth(c);
+    if (g.res) return g.res;
+    const body = await c.req.json().catch(() => null);
+    const tenant2 = knowledgeOwner(c.env);
+    const wfs = Array.isArray(body?.workflows) ? body.workflows.map(String) : [];
+    const scope = await studioScope(c.env, tenant2, showSystemOf(c));
+    const hidden = wfs.filter((k) => !scope.hasWf(k));
+    if (hidden.length) return notYours(c);
+    const r = await packWorkflowsAsApp(c.env, String(tenant2), {
+      name: String(body?.name ?? ""),
+      ...typeof body?.id === "string" ? { id: body.id } : {},
+      ...typeof body?.icon === "string" ? { icon: body.icon } : {},
+      workflows: wfs,
+      author: String(g.user.values.email ?? g.user.values.name ?? "") || void 0
+    }, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) });
+    if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {} }, r.code === "install_failed" ? 502 : r.code === "id_taken" ? 409 : r.code === "workflow_not_found" ? 404 : 400);
+    return c.json({ packed: true, app: summarizeApp(r.app), notes: r.notes });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/:id/workflows",
+  (c) => run(c, async () => {
+    const g = await workflowsGateAuth(c);
+    if (g.res) return g.res;
+    const body = await c.req.json().catch(() => null);
+    const tenant2 = knowledgeOwner(c.env);
+    const from = typeof body?.from === "string" ? body.from : void 0;
+    if (from && !(await studioScope(c.env, tenant2, showSystemOf(c))).hasWf(from)) return notYours(c);
+    const r = await addWorkflowToApp(c.env, String(tenant2), c.req.param("id"), {
+      ...from ? { from } : {},
+      ...body?.graph && typeof body.graph === "object" ? { graph: body.graph } : {},
+      ...typeof body?.name === "string" ? { name: body.name } : {},
+      ...typeof body?.description === "string" ? { description: body.description } : {}
+    });
+    if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {} }, r.code === "not_found" || r.code === "workflow_not_found" ? 404 : r.code === "not_yours" ? 403 : r.code === "name_taken" ? 409 : r.code === "write_failed" ? 502 : 400);
+    return c.json({ added: r.added, app: summarizeApp(r.app) });
+  })
+);
 portalDataRouter.post(
   "/portal/data/apps/:id/action",
   (c) => run(c, async () => {
@@ -108568,6 +111060,46 @@ appsRouter.post("/apps/install", async (c) => {
     ...warnings.length ? { warnings } : {}
   });
 });
+appsRouter.get("/apps/:id/export", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const r = await exportAppPackage(c.env, apiKey, c.req.param("id"), { namespace: apiKey, cypherBase: selfBaseFromRequest(c.env, c.req.url) }, c.env.ARCRUN_BUNDLE_VERSION);
+  if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {} }, r.code === "not_found" ? 404 : r.code === "blocked" ? 422 : 500);
+  return c.json({ ...r.package, ...r.warnings.length ? { _warnings: r.warnings } : {} });
+});
+appsRouter.post("/apps/import", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: "\u7121\u6548\u7684 JSON body", code: "not_a_package", hint: "\u8ACB\u9001\u5F9E\u300C\u532F\u51FA\u300D\u5F97\u5230\u7684\u90A3\u500B\u6A94\u3002" }, 400);
+  const r = await importAppPackage(c.env, apiKey, body, {
+    coords: { namespace: apiKey, cypherBase: selfBaseFromRequest(c.env, c.req.url) },
+    engineVersion: c.env.ARCRUN_BUNDLE_VERSION,
+    resumeFrom: Number(c.req.query("from") ?? "0") || 0,
+    resumeHash: c.req.query("h"),
+    allowDowngrade: c.req.query("allow_downgrade") === "1"
+  });
+  if (r.kind === "refused") {
+    const x = r.refusal;
+    return c.json({ error: x.error, code: x.code, hint: x.hint, ...x.details ? { details: x.details } : {}, ...x.extra ?? {} }, x.code === "older_than_installed" || x.code === "engine_too_old" ? 409 : 400);
+  }
+  const result = r.result;
+  if (!result.ok) {
+    return c.json({ error: "\u5B89\u88DD\u5931\u6557", step: result.step, hint: result.hint, details: result.errors, ...result.resume_from !== void 0 ? { resume_from: result.resume_from, resume_hash: result.resume_hash } : {} }, result.step === "\u5B89\u88DD\u5DE5\u4F5C\u6D41" ? 502 : 400);
+  }
+  if (result.in_progress) return c.json({ installed: false, in_progress: true, progress: result.progress, resume_from: result.resume_from, resume_hash: result.resume_hash });
+  return c.json({
+    installed: true,
+    changed: result.changed,
+    updated: r.updated,
+    from_version: r.from_version,
+    package_version: r.package_version,
+    app: result.app ? summarizeApp(result.app) : void 0,
+    recipes_installed: result.recipes_installed ?? [],
+    missing_credentials: result.missing_credentials ?? [],
+    ...result.credentials_check_failed ? { credentials_check_failed: true } : {}
+  });
+});
 appsRouter.delete("/apps/:id", async (c) => {
   const apiKey = requireApiKey(c);
   if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
@@ -108749,9 +111281,9 @@ internalCronRouter.post("/internal/cron/tick", async (c) => {
 init_dist();
 
 // cypher-executor/src/lib/ui-catalog.ts
-var CATALOG = ui_catalog_generated_default;
-var UI_CATALOG_ID = CATALOG.catalog_id;
-var UI_PROTOCOL_VERSION = CATALOG.protocol_version;
+var CATALOG2 = ui_catalog_generated_default;
+var UI_CATALOG_ID = CATALOG2.catalog_id;
+var UI_PROTOCOL_VERSION = CATALOG2.protocol_version;
 function summarize(c) {
   return {
     canonical_id: c.canonical_id,
@@ -108766,7 +111298,7 @@ function summarize(c) {
 }
 function listUiComponents(q) {
   const needle = (q ?? "").trim().toLowerCase();
-  const all = CATALOG.components;
+  const all = CATALOG2.components;
   const hit = needle ? all.filter(
     (c) => [c.canonical_id, c.a2ui.component, c.display_name, c.description, c.renders, ...c.tags].join(" ").toLowerCase().includes(needle)
   ) : all;
@@ -108774,12 +111306,12 @@ function listUiComponents(q) {
 }
 function getUiComponent(id) {
   const k = id.trim();
-  return CATALOG.components.find(
+  return CATALOG2.components.find(
     (c) => c.canonical_id === k || c.a2ui.component === k || c.a2ui.component.toLowerCase() === k.toLowerCase()
   );
 }
 function a2uiCatalog() {
-  return CATALOG.a2ui_catalog;
+  return CATALOG2.a2ui_catalog;
 }
 
 // cypher-executor/src/routes/ui-components.ts
@@ -108815,6 +111347,45 @@ uiComponentsRouter.post("/ui/surface/validate", async (c) => {
   const actions = Array.isArray(body.actions) && body.actions.every((a) => typeof a === "string") ? body.actions : ["reply"];
   const errors = validateUiSurface(body.surface, actions);
   return c.json({ success: errors.length === 0, ok: errors.length === 0, errors, actions }, errors.length === 0 ? 200 : 422);
+});
+
+// cypher-executor/src/routes/components.ts
+init_dist();
+var componentsRouter = new Hono2();
+componentsRouter.get("/components", (c) => {
+  const components = listComponents({ tag: c.req.query("tag"), category: c.req.query("category") });
+  return c.json({
+    success: true,
+    catalog_id: COMPONENT_CATALOG_ID,
+    count: components.length,
+    components,
+    next: "\u8981\u67D0\u4E00\u9846\u600E\u9EBC\u586B payload \u2192 GET /components/:id\uFF08input_schema\uFF09\uFF1B\u7528\u4E00\u53E5\u8A71\u627E \u2192 GET /components/search?q="
+  });
+});
+componentsRouter.get("/components/search", (c) => {
+  const q = (c.req.query("q") ?? "").trim();
+  if (!q) return c.json({ success: false, error: "\u7F3A\u5C11 q\uFF08\u8981\u627E\u4EC0\u9EBC\uFF09" }, 400);
+  const results = searchComponents(q);
+  return c.json({
+    success: true,
+    catalog_id: COMPONENT_CATALOG_ID,
+    query: q,
+    count: results.length,
+    results,
+    ...results.length === 0 ? { note: "\u96F6\u4EF6\u76EE\u9304\u88E1\u6C92\u6709\u7B26\u5408\u7684\u96F6\u4EF6\u3002\u5916\u90E8\u670D\u52D9\u7684 API \u901A\u5E38\u4E0D\u662F\u96F6\u4EF6\u800C\u662F recipe\uFF08\u7528 http_request \u96F6\u4EF6\uFF0Brecipe \u8A2D\u5B9A\u6253 API\uFF09\uFF0C\u53EF\u6539\u67E5 recipe\u3002" } : {}
+  });
+});
+componentsRouter.get("/components/:id", (c) => {
+  const id = c.req.param("id");
+  const component = getComponentDeclaration(id);
+  if (!component) {
+    return c.json({
+      success: false,
+      error: `\u96F6\u4EF6\u76EE\u9304\u88E1\u6C92\u6709\u540D\u70BA\u300C${id}\u300D\u7684\u96F6\u4EF6`,
+      available: listComponents().map((x) => x.canonical_id)
+    }, 404);
+  }
+  return c.json({ success: true, catalog_id: COMPONENT_CATALOG_ID, component });
 });
 
 // cypher-executor/src/index.ts
@@ -108950,6 +111521,7 @@ app.route("/", portalDataRouter);
 app.route("/", storageRouter);
 app.route("/", appsRouter);
 app.route("/", uiComponentsRouter);
+app.route("/", componentsRouter);
 app.route("/", openLinkRouter);
 var index_default = {
   fetch: (req, env, ctx) => {
