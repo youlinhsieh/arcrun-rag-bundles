@@ -13,6 +13,41 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// kbdb/src/transient-error.ts
+function isTransientD1Error(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /overloaded|too many resources|resource(s)? consumed|timed? ?out|network connection lost|connection (reset|closed)|temporarily unavailable|storage operation exceeded|internal error while starting up/i.test(msg);
+}
+var init_transient_error = __esm({
+  "kbdb/src/transient-error.ts"() {
+    "use strict";
+  }
+});
+
+// kbdb/src/actions/library-predicate.ts
+function libraryOf(expr) {
+  return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
+}
+function libraryOfValue(value) {
+  const v = (value ?? "").trim();
+  return v === "" ? UNLABELLED_LIBRARY : v;
+}
+function parseLibraryList(raw2) {
+  if (!raw2) return void 0;
+  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
+  return libs.length > 0 ? libs : void 0;
+}
+var UNLABELLED_LIBRARY, ENTRY_LIBRARY_EXPR, ENTRY_LIBRARY, ENTRY_UNLABELLED;
+var init_library_predicate = __esm({
+  "kbdb/src/actions/library-predicate.ts"() {
+    "use strict";
+    UNLABELLED_LIBRARY = "general";
+    ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
+    ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
+    ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
+  }
+});
+
 // kbdb/src/actions/kind.ts
 function belongsRowId(entryId, templateId) {
   return `relb_${entryId}_${templateId}`;
@@ -129,27 +164,929 @@ var init_kind = __esm({
   }
 });
 
-// kbdb/src/actions/library-predicate.ts
-function libraryOf(expr) {
-  return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
+// kbdb/src/actions/library-map-store.ts
+function mapContent(library, narrative, coreNames) {
+  const core = coreNames.length ? coreNames.join("\u3001") : "\uFF08\u5C1A\u7121 entities\uFF09";
+  const text = narrative?.trim();
+  if (!text) return `${library}\u3002\u6838\u5FC3\uFF1A${core}`;
+  const sep = /[。．.！!？?；;]$/.test(text) ? "" : "\u3002";
+  return `${library}\uFF1A${text}${sep}\u6838\u5FC3\uFF1A${core}`;
 }
-function libraryOfValue(value) {
-  const v = (value ?? "").trim();
-  return v === "" ? UNLABELLED_LIBRARY : v;
+async function ensureLibraryMapTemplate(db) {
+  const existing = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (existing) {
+    const slots = JSON.parse(existing.slots_json);
+    const missing = LIBRARY_MAP_SLOTS.filter((s) => !slots.includes(s));
+    const patch = {};
+    if (existing.description !== LIBRARY_MAP_TEMPLATE_DESCRIPTION) patch.description = LIBRARY_MAP_TEMPLATE_DESCRIPTION;
+    if (missing.length) patch.slots = [...slots, ...missing];
+    if (patch.description !== void 0 || patch.slots !== void 0) await updateTemplate(db, existing.id, patch);
+    return;
+  }
+  try {
+    await createTemplate(db, {
+      id: LIBRARY_MAP_TEMPLATE_ID,
+      name: LIBRARY_MAP_TEMPLATE_NAME,
+      description: LIBRARY_MAP_TEMPLATE_DESCRIPTION,
+      slots: LIBRARY_MAP_SLOTS,
+      created_by: "system"
+    });
+  } catch {
+    if (!await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME)) throw new Error("ensureLibraryMapTemplate failed");
+  }
 }
-function parseLibraryList(raw2) {
-  if (!raw2) return void 0;
-  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
-  return libs.length > 0 ? libs : void 0;
+async function ensureTripletLibrarySlot(db, tripletTemplate) {
+  const tpl = await getTemplate(db, tripletTemplate);
+  if (!tpl) throw new Error(`triplet template not found: ${tripletTemplate}`);
+  const slots = JSON.parse(tpl.slots_json);
+  if (slots.includes("library")) return false;
+  await updateTemplate(db, tpl.id, { slots: [...slots, "library"] });
+  return true;
 }
-var UNLABELLED_LIBRARY, ENTRY_LIBRARY_EXPR, ENTRY_LIBRARY, ENTRY_UNLABELLED;
-var init_library_predicate = __esm({
-  "kbdb/src/actions/library-predicate.ts"() {
+function setFor(store2, db) {
+  let s = store2.get(db);
+  if (!s) {
+    s = /* @__PURE__ */ new Set();
+    store2.set(db, s);
+  }
+  return s;
+}
+function ensureTemplateOnce(db) {
+  let p = templateReady.get(db);
+  if (!p) {
+    p = ensureLibraryMapTemplate(db).catch((e) => {
+      templateReady.delete(db);
+      throw e;
+    });
+    templateReady.set(db, p);
+  }
+  return p;
+}
+function nextWriteSeq() {
+  writeSeqCounter += 1;
+  return writeSeqCounter;
+}
+async function hexDigest(input, chars) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, chars);
+}
+function ownerKey(owner) {
+  return owner || "";
+}
+async function ownerHash(owner) {
+  return hexDigest(`owner ${ownerKey(owner)}`, 16);
+}
+async function mapIdentity(owner, library) {
+  const oh = await ownerHash(owner);
+  const mh = await hexDigest(`map ${ownerKey(owner)} ${library}`, 32);
+  return { id: `lmap_${mh}`, pageName: `${MAP_PAGE_PREFIX}${oh}:${library}` };
+}
+async function adoptionMarkerId(owner) {
+  return `lmapo_${await hexDigest(`adopted ${ownerKey(owner)}`, 32)}`;
+}
+function parseMeta(raw2) {
+  if (!raw2) return null;
+  try {
+    const v = JSON.parse(raw2);
+    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+function countedLibraryOf(e) {
+  if (!e) return null;
+  if (e.src_id != null) return null;
+  if (!e.templates || e.templates.length === 0) return null;
+  if (e.templates.some((t) => NOT_KNOWLEDGE_TEMPLATES.includes(t))) return null;
+  if (e.content == null && e.metadata_json == null) return null;
+  const meta = parseMeta(e.metadata_json);
+  if (meta?.kind === "library_map") return null;
+  const lib = meta?.library;
+  return libraryOfValue(lib === void 0 || lib === null ? null : String(lib));
+}
+function countedEntrySql() {
+  const names = NOT_KNOWLEDGE_TEMPLATES.map((t) => `'${t}'`).join(", ");
+  return `src_id IS NULL
+         AND (content IS NOT NULL OR metadata_json IS NOT NULL)
+         AND COALESCE(json_extract(metadata_json, '$.kind'), '') <> 'library_map'
+         AND EXISTS (SELECT 1 FROM entries kb WHERE kb.src_id = entries.id AND kb.rel_id = '${SYS_BELONGS}' AND kb.dst_id <> '${SYS_ROOT}')
+         AND NOT EXISTS (SELECT 1 FROM entries kn JOIN templates kt ON kt.id = kn.dst_id
+                          WHERE kn.src_id = entries.id AND kn.rel_id = '${SYS_BELONGS}' AND kt.name IN (${names}))`;
+}
+function tripletContribution(values) {
+  if (!values) return null;
+  const status = values.status;
+  if (status !== void 0 && status !== null && status !== "active") return null;
+  return {
+    library: libraryOfValue(values.library),
+    subject: values.subject ?? null,
+    object: values.object ?? null,
+    predicate: values.predicate ?? null
+  };
+}
+function sameContribution(a, b) {
+  return a.library === b.library && a.subject === b.subject && a.object === b.object && a.predicate === b.predicate;
+}
+function parseArray(raw2) {
+  if (!raw2) return [];
+  try {
+    const v = JSON.parse(raw2);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+function entitiesToPairs(raw2) {
+  const out = [];
+  for (const e of parseArray(raw2)) {
+    const r = e;
+    if (typeof r?.name === "string" && typeof r.degree === "number") out.push([r.name, r.degree]);
+  }
+  return out;
+}
+function relationsToPairs(raw2) {
+  const out = [];
+  for (const e of parseArray(raw2)) {
+    const r = e;
+    if (typeof r?.predicate === "string" && typeof r.count === "number") out.push([r.predicate, r.count]);
+  }
+  return out;
+}
+function sortPairs(pairs) {
+  pairs.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+function bump(pairs, key, delta, capacity) {
+  const i = pairs.findIndex((p) => p[0] === key);
+  if (i >= 0) {
+    pairs[i][1] += delta;
+    if (pairs[i][1] <= 0) pairs.splice(i, 1);
+    return;
+  }
+  if (delta <= 0) return;
+  if (pairs.length < capacity) {
+    pairs.push([key, delta]);
+    return;
+  }
+  let min = 0;
+  for (let j = 1; j < pairs.length; j++) {
+    if (pairs[j][1] < pairs[min][1] || pairs[j][1] === pairs[min][1] && pairs[j][0] > pairs[min][0]) min = j;
+  }
+  pairs[min] = [key, pairs[min][1] + delta];
+}
+function top3Key(raw2) {
+  return entitiesToPairs(raw2).slice(0, 3).map((p) => p[0]).join(" ");
+}
+async function bumpCounter(db, id, delta) {
+  await db.run(
+    `UPDATE entries
+          SET content = CAST(MAX(0, CAST(COALESCE(NULLIF(content, ''), '0') AS INTEGER) + ?) AS TEXT),
+              updated_at = unixepoch()
+        WHERE id = ?`,
+    [delta, id]
+  );
+}
+async function compareAndSetCell(db, id, mutate) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const row = await db.first("SELECT content FROM entries WHERE id = ?", [id]);
+    if (!row) return null;
+    const next = mutate(row.content);
+    if (next === row.content) return { before: row.content, after: next };
+    const res = await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS ?", [next, id, row.content]);
+    const changes = res?.meta?.changes;
+    if (changes === void 0 || changes > 0) return { before: row.content, after: next };
+  }
+  throw new Error(`library map cell stayed contended after 5 attempts: ${id}`);
+}
+async function readCellsById(db, ids) {
+  const out = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const res = await db.all(`SELECT id, content, updated_at FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
+    for (const r of res.results ?? []) out.set(r.id, { content: r.content, updated_at: r.updated_at });
+  }
+  return out;
+}
+async function refreshMapSentence(db, mapId, library) {
+  const cells = await readCellsById(db, [cellId(mapId, "narrative"), cellId(mapId, "top_entities")]);
+  const narrative = cells.get(cellId(mapId, "narrative"))?.content ?? "";
+  const top = entitiesToPairs(cells.get(cellId(mapId, "top_entities"))?.content ?? null).slice(0, 3).map((p) => p[0]);
+  const content = mapContent(library, narrative, top);
+  await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?", [content, mapId, content]);
+}
+function defaultMapValues(library) {
+  return {
+    library,
+    narrative: "",
+    top_entities: "[]",
+    relation_profile: "[]",
+    bridges: "[]",
+    triplet_count: "0",
+    commit_hash: "",
+    status: "active",
+    entry_count: "0"
+  };
+}
+async function createMapRecord(db, owner, library, seed) {
+  await ensureTemplateOnce(db);
+  const ident = await mapIdentity(owner, library);
+  const values = { ...defaultMapValues(library), ...seed };
+  const top = entitiesToPairs(values.top_entities).slice(0, 3).map((p) => p[0]);
+  await insertEntryRow(db, {
+    id: ident.id,
+    content: mapContent(library, values.narrative, top),
+    owner_id: owner,
+    page_name: ident.pageName,
+    metadata_json: JSON.stringify({ kind: "library_map", library })
+  }, { ignore: true });
+  await createRecord(db, {
+    template: LIBRARY_MAP_TEMPLATE_NAME,
+    record_id: ident.id,
+    values,
+    owner_id: owner,
+    derived_cell_ids: true
+  });
+  return ident.id;
+}
+async function ensureMapRecord(db, owner, library) {
+  const ident = await mapIdentity(owner, library);
+  const known = setFor(knownMaps, db);
+  if (known.has(ident.id)) return ident.id;
+  const lastSlot = LIBRARY_MAP_SLOTS[LIBRARY_MAP_SLOTS.length - 1];
+  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [cellId(ident.id, lastSlot)]);
+  if (!hit) await createMapRecord(db, owner, library, {});
+  known.add(ident.id);
+  return ident.id;
+}
+async function putStoredMap(db, owner, library, values) {
+  const mapId = await createMapRecord(db, owner, library, values);
+  for (const [slot, content] of Object.entries(values)) {
+    await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?", [content, cellId(mapId, slot), content]);
+  }
+  await refreshMapSentence(db, mapId, library);
+  setFor(knownMaps, db).add(mapId);
+  return mapId;
+}
+async function putNarrative(db, owner, library, narrative) {
+  await ensureOwnerAdopted(db, owner, nextWriteSeq());
+  const mapId = await ensureMapRecord(db, owner, library);
+  await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?", [narrative, cellId(mapId, "narrative")]);
+  await refreshMapSentence(db, mapId, library);
+}
+function ownerClause(column, owner) {
+  if (owner === void 0) return { sql: "", params: [] };
+  if (owner === null) return { sql: ` AND +${column} IS NULL`, params: [] };
+  return { sql: ` AND +${column} = ?`, params: [owner] };
+}
+function tripletCellsSql(ownerSql) {
+  const cols = TRIPLET_SUMMARY_SLOTS.map((s) => `MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_${s}' THEN v.content END) AS ${s}`).join(",\n            ");
+  const rels = TRIPLET_SUMMARY_SLOTS.map((s) => `'fld_' || b.dst_id || '_${s}'`).join(", ");
+  return `SELECT b.src_id AS rid,
+            ${cols}
+          FROM entries b
+          LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id IN (${rels})
+          LEFT JOIN entries v ON v.id = r.dst_id
+          WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerSql}
+          GROUP BY b.src_id`;
+}
+async function aggregateTripletSummaries(db, tripletTemplateId, owner, opts = {}) {
+  const oc = ownerClause("b.owner_id", owner);
+  const withPrefix = !!(opts.sourcePrefix && opts.library);
+  const labelled = withPrefix ? `CASE WHEN t.library IS NULL AND t.source_uri LIKE ? || '%' THEN ? ELSE ${libraryOf("t.library")} END` : libraryOf("t.library");
+  const labelParams = withPrefix ? [opts.sourcePrefix, opts.library] : [];
+  const filter = opts.library ? "WHERE library = ?" : "";
+  const filterParams = opts.library ? [opts.library] : [];
+  const head = `WITH t AS (${tripletCellsSql(oc.sql)}),
+      act AS (SELECT subject, object, predicate, ${labelled} AS library FROM t WHERE COALESCE(t.status, 'active') = 'active'),
+      lib AS (SELECT * FROM act ${filter})`;
+  const params = [tripletTemplateId, ...oc.params, ...labelParams, ...filterParams];
+  const [countRes, entRes, relRes] = await Promise.all([
+    db.all(`${head} SELECT library, COUNT(*) AS n FROM lib GROUP BY library`, [...params]),
+    db.all(
+      `${head},
+         ent AS (SELECT subject AS name, library FROM lib WHERE subject IS NOT NULL
+                 UNION ALL SELECT object AS name, library FROM lib WHERE object IS NOT NULL),
+         deg AS (SELECT library, name, COUNT(*) AS n FROM ent GROUP BY library, name),
+         ranked AS (SELECT library, name, n, ROW_NUMBER() OVER (PARTITION BY library ORDER BY n DESC, name ASC) AS rn FROM deg)
+         SELECT library, name, n FROM ranked WHERE rn <= ? ORDER BY library, rn`,
+      [...params, ENTITY_SKETCH_SIZE]
+    ),
+    db.all(
+      `${head},
+         deg AS (SELECT library, predicate AS name, COUNT(*) AS n FROM lib WHERE predicate IS NOT NULL GROUP BY library, predicate),
+         ranked AS (SELECT library, name, n, ROW_NUMBER() OVER (PARTITION BY library ORDER BY n DESC, name ASC) AS rn FROM deg)
+         SELECT library, name, n FROM ranked WHERE rn <= ? ORDER BY library, rn`,
+      [...params, PREDICATE_SKETCH_SIZE]
+    )
+  ]);
+  const out = /* @__PURE__ */ new Map();
+  const get = (library) => {
+    const key = String(library);
+    let s = out.get(key);
+    if (!s) {
+      s = { count: 0, entities: [], relations: [] };
+      out.set(key, s);
+    }
+    return s;
+  };
+  for (const r of countRes.results ?? []) get(r.library).count = r.n;
+  for (const r of entRes.results ?? []) get(r.library).entities.push({ name: r.name, degree: r.n });
+  for (const r of relRes.results ?? []) get(r.library).relations.push({ predicate: r.name, count: r.n });
+  return out;
+}
+async function aggregateEntryCounts(db, owner, library) {
+  const params = owner === null ? [] : [owner];
+  if (library) params.push(library);
+  const res = await db.all(
+    `SELECT ${ENTRY_LIBRARY} AS library, COUNT(*) AS n
+         FROM entries
+        WHERE ${owner === null ? "owner_id IS NULL" : "owner_id = ?"}
+          AND ${countedEntrySql()}
+          ${library ? `AND ${ENTRY_LIBRARY} = ?` : ""}
+        GROUP BY ${ENTRY_LIBRARY}`,
+    [...params]
+  );
+  const out = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) out.set(String(r.library), r.n);
+  return out;
+}
+async function portalLibraryNames(db, owner) {
+  const tpl = await getTemplate(db, PORTAL_LIBRARY_TEMPLATE);
+  if (!tpl) return [];
+  const oc = ownerClause("b.owner_id", owner);
+  const res = await db.all(
+    `SELECT MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_name' THEN v.content END) AS name
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id = 'fld_' || b.dst_id || '_name'
+         LEFT JOIN entries v ON v.id = r.dst_id
+        WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${oc.sql}
+        GROUP BY b.src_id`,
+    [tpl.id, ...oc.params]
+  );
+  return (res.results ?? []).map((r) => r.name?.trim() ?? "").filter(Boolean);
+}
+async function readLegacyMaps(db, owner) {
+  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
+  if (!tpl) return { byLibrary: /* @__PURE__ */ new Map(), activeIds: [] };
+  const oc = ownerClause("b.owner_id", owner);
+  const res = await db.all(
+    `WITH m AS (
+         SELECT b.src_id AS rid,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_narrative' THEN v.content END) AS narrative,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_top_entities' THEN v.content END) AS top_entities,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_relation_profile' THEN v.content END) AS relation_profile,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_triplet_count' THEN v.content END) AS triplet_count,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_commit_hash' THEN v.content END) AS commit_hash,
+           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
+           MAX(r.created_at) AS ts
+         FROM entries b
+         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
+         LEFT JOIN entries v ON v.id = r.dst_id
+         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${oc.sql}
+           AND substr(b.src_id, 1, 5) != 'lmap_'
+         GROUP BY b.src_id)
+       SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
+       ORDER BY m.ts DESC`,
+    [tpl.id, ...oc.params]
+  );
+  const byLibrary = /* @__PURE__ */ new Map();
+  const activeIds = [];
+  for (const r of res.results ?? []) {
+    activeIds.push(r.rid);
+    if (!byLibrary.has(r.library)) byLibrary.set(r.library, r);
+  }
+  return { byLibrary, activeIds };
+}
+async function isOwnerAdopted(db, owner) {
+  const key = ownerKey(owner);
+  const adopted = setFor(adoptedOwners, db);
+  if (adopted.has(key)) return true;
+  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [await adoptionMarkerId(owner)]);
+  if (hit) adopted.add(key);
+  return !!hit;
+}
+async function ensureOwnerAdopted(db, owner, writeSeq) {
+  if (await isOwnerAdopted(db, owner)) return { baselineIncludesWrite: false };
+  const key = ownerKey(owner);
+  let registry = adoptionJobs.get(db);
+  if (!registry) {
+    registry = /* @__PURE__ */ new Map();
+    adoptionJobs.set(db, registry);
+  }
+  const jobs = registry;
+  let job = jobs.get(key);
+  if (!job) {
+    const seq = nextWriteSeq();
+    const done = adoptOwner(db, owner).finally(() => jobs.delete(key));
+    job = { seq, done };
+    jobs.set(key, job);
+  }
+  await job.done;
+  setFor(adoptedOwners, db).add(key);
+  return { baselineIncludesWrite: job.seq > writeSeq };
+}
+async function adoptOwner(db, owner) {
+  await ensureTemplateOnce(db);
+  const tpl = await getTemplate(db, DEFAULT_TRIPLET_TEMPLATE);
+  const summaries = tpl ? await aggregateTripletSummaries(db, tpl.id, owner) : /* @__PURE__ */ new Map();
+  const entryCounts = await aggregateEntryCounts(db, owner);
+  const legacyOwn = await readLegacyMaps(db, owner);
+  const emptyLegacy = /* @__PURE__ */ new Map();
+  const legacyShared = owner !== null ? (await readLegacyMaps(db, null)).byLibrary : emptyLegacy;
+  const portalNames = await portalLibraryNames(db, owner);
+  const libraries = /* @__PURE__ */ new Set([
+    ...summaries.keys(),
+    ...entryCounts.keys(),
+    ...legacyOwn.byLibrary.keys(),
+    ...portalNames
+  ]);
+  for (const library of libraries) {
+    const s = summaries.get(library);
+    const values = {
+      triplet_count: String(s?.count ?? 0),
+      top_entities: JSON.stringify(s?.entities ?? []),
+      relation_profile: JSON.stringify(s?.relations ?? []),
+      entry_count: String(entryCounts.get(library) ?? 0)
+    };
+    const own = legacyOwn.byLibrary.get(library);
+    const shared = legacyShared.get(library);
+    const narrative = own?.narrative?.trim() || shared?.narrative?.trim();
+    if (narrative) values.narrative = narrative;
+    const commit = own?.commit_hash || shared?.commit_hash;
+    if (commit) values.commit_hash = commit;
+    await putStoredMap(db, owner, library, values);
+  }
+  for (const rid of legacyOwn.activeIds) {
+    await updateRecord(db, rid, { status: "superseded" });
+    await db.run(
+      `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'), updated_at = unixepoch()
+          WHERE id = ? AND content IS NOT NULL`,
+      [rid]
+    );
+  }
+  await insertEntryRow(db, { id: await adoptionMarkerId(owner), owner_id: owner }, { ignore: true });
+}
+function logMapFailure(what, e) {
+  console.error(`[library-map] ${what}\u6C92\u80FD\u8A18\u9032\u5730\u5716\uFF08\u5730\u5716\u6578\u5B57\u53EF\u80FD\u843D\u5F8C\uFF1BPOST /map/recompute?library= \u53EF\u6821\u6B63\uFF09`, e);
+}
+function isMapTrackedTemplate(templateName) {
+  return templateName === DEFAULT_TRIPLET_TEMPLATE || templateName === PORTAL_LIBRARY_TEMPLATE;
+}
+async function applyTripletContribution(db, owner, c, sign) {
+  const mapId = await ensureMapRecord(db, owner, c.library);
+  await bumpCounter(db, cellId(mapId, "triplet_count"), sign);
+  let sentenceStale = false;
+  const names = [c.subject, c.object].filter((n2) => n2 !== null);
+  if (names.length) {
+    const r = await compareAndSetCell(db, cellId(mapId, "top_entities"), (raw2) => {
+      const pairs = entitiesToPairs(raw2);
+      for (const n2 of names) bump(pairs, n2, sign, ENTITY_SKETCH_SIZE);
+      sortPairs(pairs);
+      return JSON.stringify(pairs.map(([name, degree]) => ({ name, degree })));
+    });
+    if (r && top3Key(r.before) !== top3Key(r.after)) sentenceStale = true;
+  }
+  if (c.predicate !== null) {
+    const predicate = c.predicate;
+    await compareAndSetCell(db, cellId(mapId, "relation_profile"), (raw2) => {
+      const pairs = relationsToPairs(raw2);
+      bump(pairs, predicate, sign, PREDICATE_SKETCH_SIZE);
+      sortPairs(pairs);
+      return JSON.stringify(pairs.map(([p, count]) => ({ predicate: p, count })));
+    });
+  }
+  if (sentenceStale) await refreshMapSentence(db, mapId, c.library);
+}
+async function noteRecordWrite(db, templateName, ownerId, before, after) {
+  if (!isMapTrackedTemplate(templateName)) return;
+  const owner = ownerId || null;
+  const writeSeq = nextWriteSeq();
+  try {
+    if (templateName === PORTAL_LIBRARY_TEMPLATE) {
+      const name = after?.name?.trim();
+      if (!name) return;
+      await ensureOwnerAdopted(db, owner, writeSeq);
+      await ensureMapRecord(db, owner, name);
+      return;
+    }
+    const b = tripletContribution(before);
+    const a = tripletContribution(after);
+    if (!b && !a) return;
+    if (b && a && sameContribution(b, a)) return;
+    const { baselineIncludesWrite } = await ensureOwnerAdopted(db, owner, writeSeq);
+    if (baselineIncludesWrite) return;
+    if (b) await applyTripletContribution(db, owner, b, -1);
+    if (a) await applyTripletContribution(db, owner, a, 1);
+  } catch (e) {
+    logMapFailure("\u4E09\u5143\u7D44\u7570\u52D5", e);
+  }
+}
+async function noteEntriesChanged(db, changes) {
+  const deltas = /* @__PURE__ */ new Map();
+  const add2 = (owner, library, delta) => {
+    const k = `${ownerKey(owner)} ${library}`;
+    const cur = deltas.get(k) ?? { owner, library, delta: 0 };
+    cur.delta += delta;
+    deltas.set(k, cur);
+  };
+  for (const { before, after } of changes) {
+    const bl = countedLibraryOf(before);
+    const al = countedLibraryOf(after);
+    const bo = before?.owner_id || null;
+    const ao = after?.owner_id || null;
+    if (bl !== null && al !== null && bl === al && bo === ao) continue;
+    if (bl !== null) add2(bo, bl, -1);
+    if (al !== null) add2(ao, al, 1);
+  }
+  const pending = [...deltas.values()].filter((d) => d.delta !== 0);
+  const cardChanges = changes.filter((ch) => cardPageChanged(ch.before, ch.after));
+  if (!pending.length && !cardChanges.length) return;
+  const writeSeq = nextWriteSeq();
+  if (pending.length) {
+    try {
+      const byOwner = /* @__PURE__ */ new Map();
+      for (const d of pending) {
+        const k = ownerKey(d.owner);
+        const g = byOwner.get(k) ?? { owner: d.owner, items: [] };
+        g.items.push(d);
+        byOwner.set(k, g);
+      }
+      for (const { owner, items } of byOwner.values()) {
+        const { baselineIncludesWrite } = await ensureOwnerAdopted(db, owner, writeSeq);
+        if (baselineIncludesWrite) continue;
+        for (const d of items) {
+          const mapId = await ensureMapRecord(db, owner, d.library);
+          await bumpCounter(db, cellId(mapId, "entry_count"), d.delta);
+        }
+      }
+    } catch (e) {
+      logMapFailure("\u5361\u7247\u7570\u52D5", e);
+    }
+  }
+  if (cardChanges.length) {
+    try {
+      await noteCardPagesChanged(db, cardChanges);
+    } catch (e) {
+      logMapFailure("\u5361\u5F35\u6578\u7570\u52D5", e);
+    }
+  }
+}
+async function tallyIdentity(owner, library) {
+  const oh = await ownerHash(owner);
+  const lh = await hexDigest(`card-tally ${ownerKey(owner)} ${library}`, 32);
+  return { id: `lmapt~${lh}`, pageName: `${CARD_TALLY_PAGE_PREFIX}${oh}:${library}` };
+}
+async function tallySeededMarkerId(owner) {
+  return `lmapt~seeded_${await hexDigest(`card-tally-seeded ${ownerKey(owner)}`, 32)}`;
+}
+function activeCardOf(e) {
+  if (!e) return null;
+  if (e.src_id != null) return null;
+  if (!e.templates || !e.templates.includes("block")) return null;
+  const page = e.page_name;
+  if (!page) return null;
+  const meta = parseMeta(e.metadata_json);
+  if (meta?.kind === "library_map") return null;
+  if (meta?.status === "deprecated") return null;
+  const lib = meta?.library;
+  return { owner: e.owner_id || null, library: libraryOfValue(lib === void 0 || lib === null ? null : String(lib)), page };
+}
+function cardPageChanged(before, after) {
+  return !sameCardKey(activeCardOf(before), activeCardOf(after));
+}
+function ownerFilter(owner) {
+  return owner === null ? { sql: " AND +owner_id IS NULL", params: [] } : { sql: " AND +owner_id = ?", params: [owner] };
+}
+async function aggregateCardCounts(db, owner, library) {
+  const out = /* @__PURE__ */ new Map();
+  const blockTpl = await templateIdByName(db, "block");
+  if (!blockTpl) return out;
+  const m = membersOf(blockTpl, owner);
+  const oc = owner === null ? " AND +owner_id IS NULL" : "";
+  const res = await db.all(
+    `SELECT library, COUNT(*) AS n FROM (
+         SELECT DISTINCT ${ENTRY_LIBRARY} AS library, page_name
+           FROM ${m.from}
+          WHERE ${CARD_ACTIVE_SQL}${oc}
+            ${library ? `AND ${ENTRY_LIBRARY} = ?` : ""}
+       ) GROUP BY library`,
+    [...m.params, ...library ? [library] : []]
+  );
+  for (const r of res.results ?? []) out.set(String(r.library), r.n);
+  return out;
+}
+async function activeBlocksOfPage(db, blockTpl, k) {
+  const oc = ownerFilter(k.owner);
+  const row = await db.first(
+    `SELECT COUNT(*) AS n FROM entries
+        WHERE page_name = ? AND src_id IS NULL${oc.sql}
+          AND ${ENTRY_LIBRARY} = ?
+          AND COALESCE(json_extract(metadata_json, '$.kind'), '') != 'library_map'
+          AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
+          AND ${belongsToSql()}`,
+    [k.page, ...oc.params, k.library, blockTpl]
+  );
+  return Number(row?.n ?? 0);
+}
+async function setTally(db, owner, library, n2) {
+  const ident = await tallyIdentity(owner, library);
+  const tpl = await ensureKindTemplate(db, CARD_TALLY_TEMPLATE);
+  await insertEntryRow(db, { id: ident.id, content: String(n2), owner_id: owner, page_name: ident.pageName }, { ignore: true });
+  await insertBelongs(db, ident.id, tpl, owner);
+  await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?", [String(n2), ident.id, String(n2)]);
+}
+async function bumpTally(db, owner, library, delta) {
+  const ident = await tallyIdentity(owner, library);
+  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [ident.id]);
+  if (!hit) {
+    await setTally(db, owner, library, (await aggregateCardCounts(db, owner, library)).get(library) ?? 0);
+    return;
+  }
+  await bumpCounter(db, ident.id, delta);
+}
+async function ensureCardTalliesSeeded(db, owner) {
+  const seeded = setFor(seededTallyOwners, db);
+  const key = ownerKey(owner);
+  if (seeded.has(key)) return false;
+  const markerId = await tallySeededMarkerId(owner);
+  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [markerId]);
+  if (hit) {
+    seeded.add(key);
+    return false;
+  }
+  const counts = await aggregateCardCounts(db, owner);
+  for (const [library, n2] of counts) await setTally(db, owner, library, n2);
+  await insertEntryRow(db, { id: markerId, owner_id: owner }, { ignore: true });
+  seeded.add(key);
+  return true;
+}
+async function readCardTallies(db, owner) {
+  await ensureCardTalliesSeeded(db, owner);
+  const oh = await ownerHash(owner);
+  const lo = `${CARD_TALLY_PAGE_PREFIX}${oh}:`;
+  const hi = `${CARD_TALLY_PAGE_PREFIX}${oh};`;
+  const res = await db.all(
+    "SELECT page_name, content, owner_id FROM entries WHERE page_name >= ? AND page_name < ?",
+    [lo, hi]
+  );
+  const out = /* @__PURE__ */ new Map();
+  for (const r of res.results ?? []) {
+    if ((r.owner_id ?? "") !== owner) continue;
+    const n2 = toInt(r.content);
+    if (n2 > 0) out.set(r.page_name.slice(lo.length), n2);
+  }
+  return out;
+}
+async function recomputeCardTally(db, owner, library) {
+  const n2 = (await aggregateCardCounts(db, owner, library)).get(library) ?? 0;
+  await setTally(db, owner, library, n2);
+  return n2;
+}
+async function noteLibraryDeprecated(db, owner, library) {
+  try {
+    if (!await isCardTallySeeded(db, owner)) return;
+    await setTally(db, owner, library, 0);
+  } catch (e) {
+    logMapFailure("\u6574\u5EAB\u4E0B\u67B6", e);
+  }
+}
+async function isCardTallySeeded(db, owner) {
+  const seeded = setFor(seededTallyOwners, db);
+  if (seeded.has(ownerKey(owner))) return true;
+  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [await tallySeededMarkerId(owner)]);
+  if (hit) seeded.add(ownerKey(owner));
+  return !!hit;
+}
+async function cardLibrariesOfPages(db, owner, pages) {
+  const out = /* @__PURE__ */ new Map();
+  const blockTpl = await templateIdByName(db, "block");
+  if (!blockTpl) return out;
+  for (const page of [...new Set(pages)]) {
+    const res = await db.all(
+      `SELECT DISTINCT ${ENTRY_LIBRARY} AS library FROM entries
+          WHERE page_name = ? AND src_id IS NULL AND +owner_id = ?
+            AND COALESCE(json_extract(metadata_json, '$.kind'), '') != 'library_map'
+            AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
+            AND ${belongsToSql()}`,
+      [page, owner, blockTpl]
+    );
+    out.set(page, new Set((res.results ?? []).map((r) => String(r.library))));
+  }
+  return out;
+}
+async function noteCardLibrariesDiff(db, owner, before, after) {
+  try {
+    if (!await isCardTallySeeded(db, owner)) return;
+    const d = /* @__PURE__ */ new Map();
+    for (const [page, libs] of before) {
+      const now = after.get(page) ?? /* @__PURE__ */ new Set();
+      for (const l of libs) if (!now.has(l)) d.set(l, (d.get(l) ?? 0) - 1);
+      for (const l of now) if (!libs.has(l)) d.set(l, (d.get(l) ?? 0) + 1);
+    }
+    for (const [library, delta] of d) if (delta !== 0) await bumpTally(db, owner, library, delta);
+  } catch (e) {
+    logMapFailure("\u4F9D\u4F86\u6E90\u4E0B\u67B6", e);
+  }
+}
+async function noteCardPagesChanged(db, changes) {
+  const net = /* @__PURE__ */ new Map();
+  const bump1 = (k, d) => {
+    if (!k) return;
+    const id = `${ownerKey(k.owner)}\0${k.library}\0${k.page}`;
+    const cur = net.get(id) ?? { key: k, blocks: 0 };
+    cur.blocks += d;
+    net.set(id, cur);
+  };
+  for (const { before, after } of changes) {
+    const b = activeCardOf(before);
+    const a = activeCardOf(after);
+    if (sameCardKey(b, a)) continue;
+    bump1(b, -1);
+    bump1(a, 1);
+  }
+  const touched = [...net.values()].filter((x) => x.blocks !== 0);
+  if (!touched.length) return;
+  const blockTpl = await templateIdByName(db, "block");
+  if (!blockTpl) return;
+  const owners = /* @__PURE__ */ new Map();
+  const delta = /* @__PURE__ */ new Map();
+  for (const { key, blocks } of touched) {
+    const ok = ownerKey(key.owner);
+    if (!owners.has(ok)) owners.set(ok, await ensureCardTalliesSeeded(db, key.owner));
+    if (owners.get(ok)) continue;
+    const nowBlocks = await activeBlocksOfPage(db, blockTpl, key);
+    const was = nowBlocks - blocks > 0;
+    const is = nowBlocks > 0;
+    if (was === is) continue;
+    const dk = `${ok}\0${key.library}`;
+    const cur = delta.get(dk) ?? { owner: key.owner, library: key.library, n: 0 };
+    cur.n += is ? 1 : -1;
+    delta.set(dk, cur);
+  }
+  for (const d of delta.values()) if (d.n !== 0) await bumpTally(db, d.owner, d.library, d.n);
+}
+function toInt(raw2) {
+  const n2 = Number(raw2 ?? 0);
+  return Number.isFinite(n2) ? Math.max(0, Math.floor(n2)) : 0;
+}
+function entitiesOf(raw2) {
+  return entitiesToPairs(raw2 ?? null).map(([name, degree]) => ({ name, degree }));
+}
+function relationsOf(raw2) {
+  return relationsToPairs(raw2 ?? null).map(([predicate, count]) => ({ predicate, count }));
+}
+async function readStoredRows(db, owner) {
+  const oh = owner === void 0 ? "" : await ownerHash(owner);
+  const lo = owner === void 0 ? MAP_PAGE_PREFIX : `${MAP_PAGE_PREFIX}${oh}:`;
+  const hi = owner === void 0 ? MAP_PAGE_UPPER_ALL : `${MAP_PAGE_PREFIX}${oh};`;
+  const res = await db.all("SELECT id, owner_id FROM entries WHERE page_name >= ? AND page_name < ?", [lo, hi]);
+  const heads = (res.results ?? []).filter((r) => owner === void 0 || (r.owner_id ?? "") === owner);
+  if (!heads.length) return [];
+  const cells = await readCellsById(db, heads.flatMap((h) => LIBRARY_MAP_SLOTS.map((s) => cellId(h.id, s))));
+  const out = [];
+  for (const h of heads) {
+    const get = (slot) => cells.get(cellId(h.id, slot));
+    const library = get("library")?.content;
+    if (!library) continue;
+    let updated = 0;
+    for (const s of LIBRARY_MAP_SLOTS) updated = Math.max(updated, get(s)?.updated_at ?? 0);
+    out.push({
+      record_id: h.id,
+      owner_id: h.owner_id,
+      library,
+      narrative: get("narrative")?.content?.trim() || null,
+      entities: entitiesOf(get("top_entities")?.content),
+      relations: relationsOf(get("relation_profile")?.content),
+      triplet_count: toInt(get("triplet_count")?.content),
+      entry_count: toInt(get("entry_count")?.content),
+      commit_hash: get("commit_hash")?.content || null,
+      updated_at: updated
+    });
+  }
+  return out;
+}
+function legacyToStored(rows, ownerId) {
+  return [...rows].map((r) => ({
+    record_id: r.rid,
+    owner_id: ownerId,
+    library: r.library,
+    narrative: r.narrative?.trim() || null,
+    entities: entitiesOf(r.top_entities),
+    relations: relationsOf(r.relation_profile),
+    triplet_count: toInt(r.triplet_count),
+    entry_count: null,
+    commit_hash: r.commit_hash || null,
+    updated_at: r.ts ?? 0
+  }));
+}
+function mergeByLibrary(maps) {
+  const byLib = /* @__PURE__ */ new Map();
+  for (const m of maps) {
+    const cur = byLib.get(m.library);
+    if (!cur) {
+      byLib.set(m.library, { ...m, entities: [...m.entities], relations: [...m.relations] });
+      continue;
+    }
+    cur.triplet_count += m.triplet_count;
+    cur.entry_count = cur.entry_count === null || m.entry_count === null ? null : cur.entry_count + m.entry_count;
+    cur.narrative = cur.narrative || m.narrative;
+    cur.commit_hash = cur.commit_hash || m.commit_hash;
+    cur.updated_at = Math.max(cur.updated_at, m.updated_at);
+    const ents = cur.entities.map((e) => [e.name, e.degree]);
+    for (const e of m.entities) {
+      const i = ents.findIndex((p) => p[0] === e.name);
+      if (i >= 0) ents[i][1] += e.degree;
+      else ents.push([e.name, e.degree]);
+    }
+    sortPairs(ents);
+    cur.entities = ents.slice(0, ENTITY_SKETCH_SIZE).map(([name, degree]) => ({ name, degree }));
+    const rels = cur.relations.map((r) => [r.predicate, r.count]);
+    for (const r of m.relations) {
+      const i = rels.findIndex((p) => p[0] === r.predicate);
+      if (i >= 0) rels[i][1] += r.count;
+      else rels.push([r.predicate, r.count]);
+    }
+    sortPairs(rels);
+    cur.relations = rels.slice(0, PREDICATE_SKETCH_SIZE).map(([predicate, count]) => ({ predicate, count }));
+  }
+  return [...byLib.values()];
+}
+async function readStoredMaps(db, owner) {
+  const scope = owner || void 0;
+  if (scope !== void 0) {
+    if (await isOwnerAdopted(db, scope)) return readStoredRows(db, scope);
+    const legacy2 = await readLegacyMaps(db, scope);
+    return legacyToStored(legacy2.byLibrary.values(), scope);
+  }
+  const all = await readStoredRows(db, void 0);
+  if (all.length) return mergeByLibrary(all);
+  const legacy = await readLegacyMaps(db, void 0);
+  return legacyToStored(legacy.byLibrary.values(), null);
+}
+var LIBRARY_MAP_TEMPLATE_ID, LIBRARY_MAP_TEMPLATE_NAME, LIBRARY_MAP_SLOTS, DEFAULT_TRIPLET_TEMPLATE, PORTAL_LIBRARY_TEMPLATE, ENTITY_SKETCH_SIZE, PREDICATE_SKETCH_SIZE, LIBRARY_MAP_TEMPLATE_DESCRIPTION, NOT_KNOWLEDGE_TEMPLATES, templateReady, adoptedOwners, knownMaps, adoptionJobs, writeSeqCounter, MAP_PAGE_PREFIX, MAP_PAGE_UPPER_ALL, LIBRARY_MAP_ID_PREFIX, NOT_LIBRARY_MAP_ROW, NOT_LIBRARY_MAP_CELL, cellId, TRIPLET_SUMMARY_SLOTS, CARD_TALLY_TEMPLATE, CARD_TALLY_PAGE_PREFIX, seededTallyOwners, sameCardKey, CARD_ACTIVE_SQL;
+var init_library_map_store = __esm({
+  "kbdb/src/actions/library-map-store.ts"() {
     "use strict";
-    UNLABELLED_LIBRARY = "general";
-    ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
-    ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
-    ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
+    init_record_crud();
+    init_kind();
+    init_library_predicate();
+    LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
+    LIBRARY_MAP_TEMPLATE_NAME = "library_map";
+    LIBRARY_MAP_SLOTS = [
+      "library",
+      "narrative",
+      "top_entities",
+      "relation_profile",
+      "bridges",
+      "triplet_count",
+      "commit_hash",
+      "status",
+      "entry_count"
+    ];
+    DEFAULT_TRIPLET_TEMPLATE = "triplet";
+    PORTAL_LIBRARY_TEMPLATE = "portal_library";
+    ENTITY_SKETCH_SIZE = 128;
+    PREDICATE_SKETCH_SIZE = 100;
+    LIBRARY_MAP_TEMPLATE_DESCRIPTION = "per-library map block\uFF08\u85CF\u66F8\u5730\u5716\uFF1Atop_entities\uFF0Frelation_profile\uFF0Fbridges\uFF0Ftriplet_count \u7531 graph \u6A5F\u68B0\u5C0E\u51FA\uFF1Bnarrative \u7531 LLM \u8457\u4F5C\uFF0C\u7B97\u4E0D\u51FA\u4F86\u3001\u4E1F\u4E86\u56DE\u4E0D\u4F86\uFF1BArcrun#39\uFF0F#44\uFF09";
+    NOT_KNOWLEDGE_TEMPLATES = [
+      "execution_log",
+      "execution_log_usage",
+      "execution_log_retention_config",
+      "credential",
+      "embed_backfill_usage",
+      "kbdb_maintenance_usage",
+      "kbdb_entry_write_usage",
+      "kbdb_fts_migration_cutoff",
+      "recipe_stat",
+      // 登入用的 head entry 與私有雲金鑰保管的密文列：都是營運資料，沒有 library，舊版（種類欄時代）漏列了，
+      // 於是會被當成「一筆知識」算進 general。種類退場時順手補上（#301）。
+      "portal_user_head",
+      "credential_secret",
+      // 正式 entity 與它的別名（inkstone/Arcrun#294 W2）：是圖上的節點，不是一筆知識卡。
+      "entity",
+      "alias",
+      // 每庫卡張數的存量計數列（inkstone/Arcrun#393）：維護用的機制列，不是一筆知識。
+      "library_card_tally"
+    ];
+    templateReady = /* @__PURE__ */ new WeakMap();
+    adoptedOwners = /* @__PURE__ */ new WeakMap();
+    knownMaps = /* @__PURE__ */ new WeakMap();
+    adoptionJobs = /* @__PURE__ */ new WeakMap();
+    writeSeqCounter = 0;
+    MAP_PAGE_PREFIX = "library-map@";
+    MAP_PAGE_UPPER_ALL = "library-mapA";
+    LIBRARY_MAP_ID_PREFIX = "lmap";
+    NOT_LIBRARY_MAP_ROW = `(substr(id, 1, 4) != '${LIBRARY_MAP_ID_PREFIX}' AND substr(id, 1, 9) != 'relb_${LIBRARY_MAP_ID_PREFIX}')`;
+    NOT_LIBRARY_MAP_CELL = `(substr(id, 1, 4) != '${LIBRARY_MAP_ID_PREFIX}' OR instr(id, '~') = 0)`;
+    cellId = (mapId, slot) => derivedCellIds(mapId, slot).value;
+    TRIPLET_SUMMARY_SLOTS = ["subject", "object", "predicate", "status", "library", "source_uri"];
+    CARD_TALLY_TEMPLATE = "library_card_tally";
+    CARD_TALLY_PAGE_PREFIX = "library-cards@";
+    seededTallyOwners = /* @__PURE__ */ new WeakMap();
+    sameCardKey = (a, b) => a === b || !!a && !!b && a.owner === b.owner && a.library === b.library && a.page === b.page;
+    CARD_ACTIVE_SQL = `page_name IS NOT NULL AND page_name != ''
+       AND COALESCE(json_extract(metadata_json, '$.kind'), '') != 'library_map'
+       AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'`;
   }
 });
 
@@ -1401,932 +2338,6 @@ var init_record_crud = __esm({
   }
 });
 
-// kbdb/src/actions/library-map-store.ts
-function mapContent(library, narrative, coreNames) {
-  const core = coreNames.length ? coreNames.join("\u3001") : "\uFF08\u5C1A\u7121 entities\uFF09";
-  const text = narrative?.trim();
-  if (!text) return `${library}\u3002\u6838\u5FC3\uFF1A${core}`;
-  const sep = /[。．.！!？?；;]$/.test(text) ? "" : "\u3002";
-  return `${library}\uFF1A${text}${sep}\u6838\u5FC3\uFF1A${core}`;
-}
-async function ensureLibraryMapTemplate(db) {
-  const existing = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
-  if (existing) {
-    const slots = JSON.parse(existing.slots_json);
-    const missing = LIBRARY_MAP_SLOTS.filter((s) => !slots.includes(s));
-    const patch = {};
-    if (existing.description !== LIBRARY_MAP_TEMPLATE_DESCRIPTION) patch.description = LIBRARY_MAP_TEMPLATE_DESCRIPTION;
-    if (missing.length) patch.slots = [...slots, ...missing];
-    if (patch.description !== void 0 || patch.slots !== void 0) await updateTemplate(db, existing.id, patch);
-    return;
-  }
-  try {
-    await createTemplate(db, {
-      id: LIBRARY_MAP_TEMPLATE_ID,
-      name: LIBRARY_MAP_TEMPLATE_NAME,
-      description: LIBRARY_MAP_TEMPLATE_DESCRIPTION,
-      slots: LIBRARY_MAP_SLOTS,
-      created_by: "system"
-    });
-  } catch {
-    if (!await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME)) throw new Error("ensureLibraryMapTemplate failed");
-  }
-}
-async function ensureTripletLibrarySlot(db, tripletTemplate) {
-  const tpl = await getTemplate(db, tripletTemplate);
-  if (!tpl) throw new Error(`triplet template not found: ${tripletTemplate}`);
-  const slots = JSON.parse(tpl.slots_json);
-  if (slots.includes("library")) return false;
-  await updateTemplate(db, tpl.id, { slots: [...slots, "library"] });
-  return true;
-}
-function setFor(store, db) {
-  let s = store.get(db);
-  if (!s) {
-    s = /* @__PURE__ */ new Set();
-    store.set(db, s);
-  }
-  return s;
-}
-function ensureTemplateOnce(db) {
-  let p = templateReady.get(db);
-  if (!p) {
-    p = ensureLibraryMapTemplate(db).catch((e) => {
-      templateReady.delete(db);
-      throw e;
-    });
-    templateReady.set(db, p);
-  }
-  return p;
-}
-function nextWriteSeq() {
-  writeSeqCounter += 1;
-  return writeSeqCounter;
-}
-async function hexDigest(input, chars) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, chars);
-}
-function ownerKey(owner) {
-  return owner || "";
-}
-async function ownerHash(owner) {
-  return hexDigest(`owner ${ownerKey(owner)}`, 16);
-}
-async function mapIdentity(owner, library) {
-  const oh = await ownerHash(owner);
-  const mh = await hexDigest(`map ${ownerKey(owner)} ${library}`, 32);
-  return { id: `lmap_${mh}`, pageName: `${MAP_PAGE_PREFIX}${oh}:${library}` };
-}
-async function adoptionMarkerId(owner) {
-  return `lmapo_${await hexDigest(`adopted ${ownerKey(owner)}`, 32)}`;
-}
-function parseMeta(raw2) {
-  if (!raw2) return null;
-  try {
-    const v = JSON.parse(raw2);
-    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
-function countedLibraryOf(e) {
-  if (!e) return null;
-  if (e.src_id != null) return null;
-  if (!e.templates || e.templates.length === 0) return null;
-  if (e.templates.some((t) => NOT_KNOWLEDGE_TEMPLATES.includes(t))) return null;
-  if (e.content == null && e.metadata_json == null) return null;
-  const meta = parseMeta(e.metadata_json);
-  if (meta?.kind === "library_map") return null;
-  const lib = meta?.library;
-  return libraryOfValue(lib === void 0 || lib === null ? null : String(lib));
-}
-function countedEntrySql() {
-  const names = NOT_KNOWLEDGE_TEMPLATES.map((t) => `'${t}'`).join(", ");
-  return `src_id IS NULL
-         AND (content IS NOT NULL OR metadata_json IS NOT NULL)
-         AND COALESCE(json_extract(metadata_json, '$.kind'), '') <> 'library_map'
-         AND EXISTS (SELECT 1 FROM entries kb WHERE kb.src_id = entries.id AND kb.rel_id = '${SYS_BELONGS}' AND kb.dst_id <> '${SYS_ROOT}')
-         AND NOT EXISTS (SELECT 1 FROM entries kn JOIN templates kt ON kt.id = kn.dst_id
-                          WHERE kn.src_id = entries.id AND kn.rel_id = '${SYS_BELONGS}' AND kt.name IN (${names}))`;
-}
-function tripletContribution(values) {
-  if (!values) return null;
-  const status = values.status;
-  if (status !== void 0 && status !== null && status !== "active") return null;
-  return {
-    library: libraryOfValue(values.library),
-    subject: values.subject ?? null,
-    object: values.object ?? null,
-    predicate: values.predicate ?? null
-  };
-}
-function sameContribution(a, b) {
-  return a.library === b.library && a.subject === b.subject && a.object === b.object && a.predicate === b.predicate;
-}
-function parseArray(raw2) {
-  if (!raw2) return [];
-  try {
-    const v = JSON.parse(raw2);
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-}
-function entitiesToPairs(raw2) {
-  const out = [];
-  for (const e of parseArray(raw2)) {
-    const r = e;
-    if (typeof r?.name === "string" && typeof r.degree === "number") out.push([r.name, r.degree]);
-  }
-  return out;
-}
-function relationsToPairs(raw2) {
-  const out = [];
-  for (const e of parseArray(raw2)) {
-    const r = e;
-    if (typeof r?.predicate === "string" && typeof r.count === "number") out.push([r.predicate, r.count]);
-  }
-  return out;
-}
-function sortPairs(pairs) {
-  pairs.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-}
-function bump(pairs, key, delta, capacity) {
-  const i = pairs.findIndex((p) => p[0] === key);
-  if (i >= 0) {
-    pairs[i][1] += delta;
-    if (pairs[i][1] <= 0) pairs.splice(i, 1);
-    return;
-  }
-  if (delta <= 0) return;
-  if (pairs.length < capacity) {
-    pairs.push([key, delta]);
-    return;
-  }
-  let min = 0;
-  for (let j = 1; j < pairs.length; j++) {
-    if (pairs[j][1] < pairs[min][1] || pairs[j][1] === pairs[min][1] && pairs[j][0] > pairs[min][0]) min = j;
-  }
-  pairs[min] = [key, pairs[min][1] + delta];
-}
-function top3Key(raw2) {
-  return entitiesToPairs(raw2).slice(0, 3).map((p) => p[0]).join(" ");
-}
-async function bumpCounter(db, id, delta) {
-  await db.run(
-    `UPDATE entries
-          SET content = CAST(MAX(0, CAST(COALESCE(NULLIF(content, ''), '0') AS INTEGER) + ?) AS TEXT),
-              updated_at = unixepoch()
-        WHERE id = ?`,
-    [delta, id]
-  );
-}
-async function compareAndSetCell(db, id, mutate) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const row = await db.first("SELECT content FROM entries WHERE id = ?", [id]);
-    if (!row) return null;
-    const next = mutate(row.content);
-    if (next === row.content) return { before: row.content, after: next };
-    const res = await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS ?", [next, id, row.content]);
-    const changes = res?.meta?.changes;
-    if (changes === void 0 || changes > 0) return { before: row.content, after: next };
-  }
-  throw new Error(`library map cell stayed contended after 5 attempts: ${id}`);
-}
-async function readCellsById(db, ids) {
-  const out = /* @__PURE__ */ new Map();
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
-    const res = await db.all(`SELECT id, content, updated_at FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
-    for (const r of res.results ?? []) out.set(r.id, { content: r.content, updated_at: r.updated_at });
-  }
-  return out;
-}
-async function refreshMapSentence(db, mapId, library) {
-  const cells = await readCellsById(db, [cellId(mapId, "narrative"), cellId(mapId, "top_entities")]);
-  const narrative = cells.get(cellId(mapId, "narrative"))?.content ?? "";
-  const top = entitiesToPairs(cells.get(cellId(mapId, "top_entities"))?.content ?? null).slice(0, 3).map((p) => p[0]);
-  const content = mapContent(library, narrative, top);
-  await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?", [content, mapId, content]);
-}
-function defaultMapValues(library) {
-  return {
-    library,
-    narrative: "",
-    top_entities: "[]",
-    relation_profile: "[]",
-    bridges: "[]",
-    triplet_count: "0",
-    commit_hash: "",
-    status: "active",
-    entry_count: "0"
-  };
-}
-async function createMapRecord(db, owner, library, seed) {
-  await ensureTemplateOnce(db);
-  const ident = await mapIdentity(owner, library);
-  const values = { ...defaultMapValues(library), ...seed };
-  const top = entitiesToPairs(values.top_entities).slice(0, 3).map((p) => p[0]);
-  await insertEntryRow(db, {
-    id: ident.id,
-    content: mapContent(library, values.narrative, top),
-    owner_id: owner,
-    page_name: ident.pageName,
-    metadata_json: JSON.stringify({ kind: "library_map", library })
-  }, { ignore: true });
-  await createRecord(db, {
-    template: LIBRARY_MAP_TEMPLATE_NAME,
-    record_id: ident.id,
-    values,
-    owner_id: owner,
-    derived_cell_ids: true
-  });
-  return ident.id;
-}
-async function ensureMapRecord(db, owner, library) {
-  const ident = await mapIdentity(owner, library);
-  const known = setFor(knownMaps, db);
-  if (known.has(ident.id)) return ident.id;
-  const lastSlot = LIBRARY_MAP_SLOTS[LIBRARY_MAP_SLOTS.length - 1];
-  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [cellId(ident.id, lastSlot)]);
-  if (!hit) await createMapRecord(db, owner, library, {});
-  known.add(ident.id);
-  return ident.id;
-}
-async function putStoredMap(db, owner, library, values) {
-  const mapId = await createMapRecord(db, owner, library, values);
-  for (const [slot, content] of Object.entries(values)) {
-    await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?", [content, cellId(mapId, slot), content]);
-  }
-  await refreshMapSentence(db, mapId, library);
-  setFor(knownMaps, db).add(mapId);
-  return mapId;
-}
-async function putNarrative(db, owner, library, narrative) {
-  await ensureOwnerAdopted(db, owner, nextWriteSeq());
-  const mapId = await ensureMapRecord(db, owner, library);
-  await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?", [narrative, cellId(mapId, "narrative")]);
-  await refreshMapSentence(db, mapId, library);
-}
-function ownerClause(column, owner) {
-  if (owner === void 0) return { sql: "", params: [] };
-  if (owner === null) return { sql: ` AND +${column} IS NULL`, params: [] };
-  return { sql: ` AND +${column} = ?`, params: [owner] };
-}
-function tripletCellsSql(ownerSql) {
-  const cols = TRIPLET_SUMMARY_SLOTS.map((s) => `MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_${s}' THEN v.content END) AS ${s}`).join(",\n            ");
-  const rels = TRIPLET_SUMMARY_SLOTS.map((s) => `'fld_' || b.dst_id || '_${s}'`).join(", ");
-  return `SELECT b.src_id AS rid,
-            ${cols}
-          FROM entries b
-          LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id IN (${rels})
-          LEFT JOIN entries v ON v.id = r.dst_id
-          WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${ownerSql}
-          GROUP BY b.src_id`;
-}
-async function aggregateTripletSummaries(db, tripletTemplateId, owner, opts = {}) {
-  const oc = ownerClause("b.owner_id", owner);
-  const withPrefix = !!(opts.sourcePrefix && opts.library);
-  const labelled = withPrefix ? `CASE WHEN t.library IS NULL AND t.source_uri LIKE ? || '%' THEN ? ELSE ${libraryOf("t.library")} END` : libraryOf("t.library");
-  const labelParams = withPrefix ? [opts.sourcePrefix, opts.library] : [];
-  const filter = opts.library ? "WHERE library = ?" : "";
-  const filterParams = opts.library ? [opts.library] : [];
-  const head = `WITH t AS (${tripletCellsSql(oc.sql)}),
-      act AS (SELECT subject, object, predicate, ${labelled} AS library FROM t WHERE COALESCE(t.status, 'active') = 'active'),
-      lib AS (SELECT * FROM act ${filter})`;
-  const params = [tripletTemplateId, ...oc.params, ...labelParams, ...filterParams];
-  const [countRes, entRes, relRes] = await Promise.all([
-    db.all(`${head} SELECT library, COUNT(*) AS n FROM lib GROUP BY library`, [...params]),
-    db.all(
-      `${head},
-         ent AS (SELECT subject AS name, library FROM lib WHERE subject IS NOT NULL
-                 UNION ALL SELECT object AS name, library FROM lib WHERE object IS NOT NULL),
-         deg AS (SELECT library, name, COUNT(*) AS n FROM ent GROUP BY library, name),
-         ranked AS (SELECT library, name, n, ROW_NUMBER() OVER (PARTITION BY library ORDER BY n DESC, name ASC) AS rn FROM deg)
-         SELECT library, name, n FROM ranked WHERE rn <= ? ORDER BY library, rn`,
-      [...params, ENTITY_SKETCH_SIZE]
-    ),
-    db.all(
-      `${head},
-         deg AS (SELECT library, predicate AS name, COUNT(*) AS n FROM lib WHERE predicate IS NOT NULL GROUP BY library, predicate),
-         ranked AS (SELECT library, name, n, ROW_NUMBER() OVER (PARTITION BY library ORDER BY n DESC, name ASC) AS rn FROM deg)
-         SELECT library, name, n FROM ranked WHERE rn <= ? ORDER BY library, rn`,
-      [...params, PREDICATE_SKETCH_SIZE]
-    )
-  ]);
-  const out = /* @__PURE__ */ new Map();
-  const get = (library) => {
-    const key = String(library);
-    let s = out.get(key);
-    if (!s) {
-      s = { count: 0, entities: [], relations: [] };
-      out.set(key, s);
-    }
-    return s;
-  };
-  for (const r of countRes.results ?? []) get(r.library).count = r.n;
-  for (const r of entRes.results ?? []) get(r.library).entities.push({ name: r.name, degree: r.n });
-  for (const r of relRes.results ?? []) get(r.library).relations.push({ predicate: r.name, count: r.n });
-  return out;
-}
-async function aggregateEntryCounts(db, owner, library) {
-  const params = owner === null ? [] : [owner];
-  if (library) params.push(library);
-  const res = await db.all(
-    `SELECT ${ENTRY_LIBRARY} AS library, COUNT(*) AS n
-         FROM entries
-        WHERE ${owner === null ? "owner_id IS NULL" : "owner_id = ?"}
-          AND ${countedEntrySql()}
-          ${library ? `AND ${ENTRY_LIBRARY} = ?` : ""}
-        GROUP BY ${ENTRY_LIBRARY}`,
-    [...params]
-  );
-  const out = /* @__PURE__ */ new Map();
-  for (const r of res.results ?? []) out.set(String(r.library), r.n);
-  return out;
-}
-async function portalLibraryNames(db, owner) {
-  const tpl = await getTemplate(db, PORTAL_LIBRARY_TEMPLATE);
-  if (!tpl) return [];
-  const oc = ownerClause("b.owner_id", owner);
-  const res = await db.all(
-    `SELECT MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_name' THEN v.content END) AS name
-         FROM entries b
-         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id = 'fld_' || b.dst_id || '_name'
-         LEFT JOIN entries v ON v.id = r.dst_id
-        WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${oc.sql}
-        GROUP BY b.src_id`,
-    [tpl.id, ...oc.params]
-  );
-  return (res.results ?? []).map((r) => r.name?.trim() ?? "").filter(Boolean);
-}
-async function readLegacyMaps(db, owner) {
-  const tpl = await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME);
-  if (!tpl) return { byLibrary: /* @__PURE__ */ new Map(), activeIds: [] };
-  const oc = ownerClause("b.owner_id", owner);
-  const res = await db.all(
-    `WITH m AS (
-         SELECT b.src_id AS rid,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_library' THEN v.content END) AS library,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_narrative' THEN v.content END) AS narrative,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_top_entities' THEN v.content END) AS top_entities,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_relation_profile' THEN v.content END) AS relation_profile,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_triplet_count' THEN v.content END) AS triplet_count,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_commit_hash' THEN v.content END) AS commit_hash,
-           MAX(CASE WHEN r.rel_id = 'fld_' || b.dst_id || '_status' THEN v.content END) AS status,
-           MAX(r.created_at) AS ts
-         FROM entries b
-         LEFT JOIN entries r ON r.src_id = b.src_id AND r.rel_id != 'sys_belongs'
-         LEFT JOIN entries v ON v.id = r.dst_id
-         WHERE b.rel_id = 'sys_belongs' AND b.dst_id = ?${oc.sql}
-           AND substr(b.src_id, 1, 5) != 'lmap_'
-         GROUP BY b.src_id)
-       SELECT * FROM m WHERE COALESCE(m.status, 'active') = 'active' AND m.library IS NOT NULL
-       ORDER BY m.ts DESC`,
-    [tpl.id, ...oc.params]
-  );
-  const byLibrary = /* @__PURE__ */ new Map();
-  const activeIds = [];
-  for (const r of res.results ?? []) {
-    activeIds.push(r.rid);
-    if (!byLibrary.has(r.library)) byLibrary.set(r.library, r);
-  }
-  return { byLibrary, activeIds };
-}
-async function isOwnerAdopted(db, owner) {
-  const key = ownerKey(owner);
-  const adopted = setFor(adoptedOwners, db);
-  if (adopted.has(key)) return true;
-  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [await adoptionMarkerId(owner)]);
-  if (hit) adopted.add(key);
-  return !!hit;
-}
-async function ensureOwnerAdopted(db, owner, writeSeq) {
-  if (await isOwnerAdopted(db, owner)) return { baselineIncludesWrite: false };
-  const key = ownerKey(owner);
-  let registry = adoptionJobs.get(db);
-  if (!registry) {
-    registry = /* @__PURE__ */ new Map();
-    adoptionJobs.set(db, registry);
-  }
-  const jobs = registry;
-  let job = jobs.get(key);
-  if (!job) {
-    const seq = nextWriteSeq();
-    const done = adoptOwner(db, owner).finally(() => jobs.delete(key));
-    job = { seq, done };
-    jobs.set(key, job);
-  }
-  await job.done;
-  setFor(adoptedOwners, db).add(key);
-  return { baselineIncludesWrite: job.seq > writeSeq };
-}
-async function adoptOwner(db, owner) {
-  await ensureTemplateOnce(db);
-  const tpl = await getTemplate(db, DEFAULT_TRIPLET_TEMPLATE);
-  const summaries = tpl ? await aggregateTripletSummaries(db, tpl.id, owner) : /* @__PURE__ */ new Map();
-  const entryCounts = await aggregateEntryCounts(db, owner);
-  const legacyOwn = await readLegacyMaps(db, owner);
-  const emptyLegacy = /* @__PURE__ */ new Map();
-  const legacyShared = owner !== null ? (await readLegacyMaps(db, null)).byLibrary : emptyLegacy;
-  const portalNames = await portalLibraryNames(db, owner);
-  const libraries = /* @__PURE__ */ new Set([
-    ...summaries.keys(),
-    ...entryCounts.keys(),
-    ...legacyOwn.byLibrary.keys(),
-    ...portalNames
-  ]);
-  for (const library of libraries) {
-    const s = summaries.get(library);
-    const values = {
-      triplet_count: String(s?.count ?? 0),
-      top_entities: JSON.stringify(s?.entities ?? []),
-      relation_profile: JSON.stringify(s?.relations ?? []),
-      entry_count: String(entryCounts.get(library) ?? 0)
-    };
-    const own = legacyOwn.byLibrary.get(library);
-    const shared = legacyShared.get(library);
-    const narrative = own?.narrative?.trim() || shared?.narrative?.trim();
-    if (narrative) values.narrative = narrative;
-    const commit = own?.commit_hash || shared?.commit_hash;
-    if (commit) values.commit_hash = commit;
-    await putStoredMap(db, owner, library, values);
-  }
-  for (const rid of legacyOwn.activeIds) {
-    await updateRecord(db, rid, { status: "superseded" });
-    await db.run(
-      `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.status', 'deprecated'), updated_at = unixepoch()
-          WHERE id = ? AND content IS NOT NULL`,
-      [rid]
-    );
-  }
-  await insertEntryRow(db, { id: await adoptionMarkerId(owner), owner_id: owner }, { ignore: true });
-}
-function logMapFailure(what, e) {
-  console.error(`[library-map] ${what}\u6C92\u80FD\u8A18\u9032\u5730\u5716\uFF08\u5730\u5716\u6578\u5B57\u53EF\u80FD\u843D\u5F8C\uFF1BPOST /map/recompute?library= \u53EF\u6821\u6B63\uFF09`, e);
-}
-function isMapTrackedTemplate(templateName) {
-  return templateName === DEFAULT_TRIPLET_TEMPLATE || templateName === PORTAL_LIBRARY_TEMPLATE;
-}
-async function applyTripletContribution(db, owner, c, sign) {
-  const mapId = await ensureMapRecord(db, owner, c.library);
-  await bumpCounter(db, cellId(mapId, "triplet_count"), sign);
-  let sentenceStale = false;
-  const names = [c.subject, c.object].filter((n2) => n2 !== null);
-  if (names.length) {
-    const r = await compareAndSetCell(db, cellId(mapId, "top_entities"), (raw2) => {
-      const pairs = entitiesToPairs(raw2);
-      for (const n2 of names) bump(pairs, n2, sign, ENTITY_SKETCH_SIZE);
-      sortPairs(pairs);
-      return JSON.stringify(pairs.map(([name, degree]) => ({ name, degree })));
-    });
-    if (r && top3Key(r.before) !== top3Key(r.after)) sentenceStale = true;
-  }
-  if (c.predicate !== null) {
-    const predicate = c.predicate;
-    await compareAndSetCell(db, cellId(mapId, "relation_profile"), (raw2) => {
-      const pairs = relationsToPairs(raw2);
-      bump(pairs, predicate, sign, PREDICATE_SKETCH_SIZE);
-      sortPairs(pairs);
-      return JSON.stringify(pairs.map(([p, count]) => ({ predicate: p, count })));
-    });
-  }
-  if (sentenceStale) await refreshMapSentence(db, mapId, c.library);
-}
-async function noteRecordWrite(db, templateName, ownerId, before, after) {
-  if (!isMapTrackedTemplate(templateName)) return;
-  const owner = ownerId || null;
-  const writeSeq = nextWriteSeq();
-  try {
-    if (templateName === PORTAL_LIBRARY_TEMPLATE) {
-      const name = after?.name?.trim();
-      if (!name) return;
-      await ensureOwnerAdopted(db, owner, writeSeq);
-      await ensureMapRecord(db, owner, name);
-      return;
-    }
-    const b = tripletContribution(before);
-    const a = tripletContribution(after);
-    if (!b && !a) return;
-    if (b && a && sameContribution(b, a)) return;
-    const { baselineIncludesWrite } = await ensureOwnerAdopted(db, owner, writeSeq);
-    if (baselineIncludesWrite) return;
-    if (b) await applyTripletContribution(db, owner, b, -1);
-    if (a) await applyTripletContribution(db, owner, a, 1);
-  } catch (e) {
-    logMapFailure("\u4E09\u5143\u7D44\u7570\u52D5", e);
-  }
-}
-async function noteEntriesChanged(db, changes) {
-  const deltas = /* @__PURE__ */ new Map();
-  const add2 = (owner, library, delta) => {
-    const k = `${ownerKey(owner)} ${library}`;
-    const cur = deltas.get(k) ?? { owner, library, delta: 0 };
-    cur.delta += delta;
-    deltas.set(k, cur);
-  };
-  for (const { before, after } of changes) {
-    const bl = countedLibraryOf(before);
-    const al = countedLibraryOf(after);
-    const bo = before?.owner_id || null;
-    const ao = after?.owner_id || null;
-    if (bl !== null && al !== null && bl === al && bo === ao) continue;
-    if (bl !== null) add2(bo, bl, -1);
-    if (al !== null) add2(ao, al, 1);
-  }
-  const pending = [...deltas.values()].filter((d) => d.delta !== 0);
-  const cardChanges = changes.filter((ch) => cardPageChanged(ch.before, ch.after));
-  if (!pending.length && !cardChanges.length) return;
-  const writeSeq = nextWriteSeq();
-  if (pending.length) {
-    try {
-      const byOwner = /* @__PURE__ */ new Map();
-      for (const d of pending) {
-        const k = ownerKey(d.owner);
-        const g = byOwner.get(k) ?? { owner: d.owner, items: [] };
-        g.items.push(d);
-        byOwner.set(k, g);
-      }
-      for (const { owner, items } of byOwner.values()) {
-        const { baselineIncludesWrite } = await ensureOwnerAdopted(db, owner, writeSeq);
-        if (baselineIncludesWrite) continue;
-        for (const d of items) {
-          const mapId = await ensureMapRecord(db, owner, d.library);
-          await bumpCounter(db, cellId(mapId, "entry_count"), d.delta);
-        }
-      }
-    } catch (e) {
-      logMapFailure("\u5361\u7247\u7570\u52D5", e);
-    }
-  }
-  if (cardChanges.length) {
-    try {
-      await noteCardPagesChanged(db, cardChanges);
-    } catch (e) {
-      logMapFailure("\u5361\u5F35\u6578\u7570\u52D5", e);
-    }
-  }
-}
-async function tallyIdentity(owner, library) {
-  const oh = await ownerHash(owner);
-  const lh = await hexDigest(`card-tally ${ownerKey(owner)} ${library}`, 32);
-  return { id: `lmapt~${lh}`, pageName: `${CARD_TALLY_PAGE_PREFIX}${oh}:${library}` };
-}
-async function tallySeededMarkerId(owner) {
-  return `lmapt~seeded_${await hexDigest(`card-tally-seeded ${ownerKey(owner)}`, 32)}`;
-}
-function activeCardOf(e) {
-  if (!e) return null;
-  if (e.src_id != null) return null;
-  if (!e.templates || !e.templates.includes("block")) return null;
-  const page = e.page_name;
-  if (!page) return null;
-  const meta = parseMeta(e.metadata_json);
-  if (meta?.kind === "library_map") return null;
-  if (meta?.status === "deprecated") return null;
-  const lib = meta?.library;
-  return { owner: e.owner_id || null, library: libraryOfValue(lib === void 0 || lib === null ? null : String(lib)), page };
-}
-function cardPageChanged(before, after) {
-  return !sameCardKey(activeCardOf(before), activeCardOf(after));
-}
-function ownerFilter(owner) {
-  return owner === null ? { sql: " AND +owner_id IS NULL", params: [] } : { sql: " AND +owner_id = ?", params: [owner] };
-}
-async function aggregateCardCounts(db, owner, library) {
-  const out = /* @__PURE__ */ new Map();
-  const blockTpl = await templateIdByName(db, "block");
-  if (!blockTpl) return out;
-  const m = membersOf(blockTpl, owner);
-  const oc = owner === null ? " AND +owner_id IS NULL" : "";
-  const res = await db.all(
-    `SELECT library, COUNT(*) AS n FROM (
-         SELECT DISTINCT ${ENTRY_LIBRARY} AS library, page_name
-           FROM ${m.from}
-          WHERE ${CARD_ACTIVE_SQL}${oc}
-            ${library ? `AND ${ENTRY_LIBRARY} = ?` : ""}
-       ) GROUP BY library`,
-    [...m.params, ...library ? [library] : []]
-  );
-  for (const r of res.results ?? []) out.set(String(r.library), r.n);
-  return out;
-}
-async function activeBlocksOfPage(db, blockTpl, k) {
-  const oc = ownerFilter(k.owner);
-  const row = await db.first(
-    `SELECT COUNT(*) AS n FROM entries
-        WHERE page_name = ? AND src_id IS NULL${oc.sql}
-          AND ${ENTRY_LIBRARY} = ?
-          AND COALESCE(json_extract(metadata_json, '$.kind'), '') != 'library_map'
-          AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
-          AND ${belongsToSql()}`,
-    [k.page, ...oc.params, k.library, blockTpl]
-  );
-  return Number(row?.n ?? 0);
-}
-async function setTally(db, owner, library, n2) {
-  const ident = await tallyIdentity(owner, library);
-  const tpl = await ensureKindTemplate(db, CARD_TALLY_TEMPLATE);
-  await insertEntryRow(db, { id: ident.id, content: String(n2), owner_id: owner, page_name: ident.pageName }, { ignore: true });
-  await insertBelongs(db, ident.id, tpl, owner);
-  await db.run("UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ? AND content IS NOT ?", [String(n2), ident.id, String(n2)]);
-}
-async function bumpTally(db, owner, library, delta) {
-  const ident = await tallyIdentity(owner, library);
-  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [ident.id]);
-  if (!hit) {
-    await setTally(db, owner, library, (await aggregateCardCounts(db, owner, library)).get(library) ?? 0);
-    return;
-  }
-  await bumpCounter(db, ident.id, delta);
-}
-async function ensureCardTalliesSeeded(db, owner) {
-  const seeded = setFor(seededTallyOwners, db);
-  const key = ownerKey(owner);
-  if (seeded.has(key)) return false;
-  const markerId = await tallySeededMarkerId(owner);
-  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [markerId]);
-  if (hit) {
-    seeded.add(key);
-    return false;
-  }
-  const counts = await aggregateCardCounts(db, owner);
-  for (const [library, n2] of counts) await setTally(db, owner, library, n2);
-  await insertEntryRow(db, { id: markerId, owner_id: owner }, { ignore: true });
-  seeded.add(key);
-  return true;
-}
-async function readCardTallies(db, owner) {
-  await ensureCardTalliesSeeded(db, owner);
-  const oh = await ownerHash(owner);
-  const lo = `${CARD_TALLY_PAGE_PREFIX}${oh}:`;
-  const hi = `${CARD_TALLY_PAGE_PREFIX}${oh};`;
-  const res = await db.all(
-    "SELECT page_name, content, owner_id FROM entries WHERE page_name >= ? AND page_name < ?",
-    [lo, hi]
-  );
-  const out = /* @__PURE__ */ new Map();
-  for (const r of res.results ?? []) {
-    if ((r.owner_id ?? "") !== owner) continue;
-    const n2 = toInt(r.content);
-    if (n2 > 0) out.set(r.page_name.slice(lo.length), n2);
-  }
-  return out;
-}
-async function recomputeCardTally(db, owner, library) {
-  const n2 = (await aggregateCardCounts(db, owner, library)).get(library) ?? 0;
-  await setTally(db, owner, library, n2);
-  return n2;
-}
-async function noteLibraryDeprecated(db, owner, library) {
-  try {
-    if (!await isCardTallySeeded(db, owner)) return;
-    await setTally(db, owner, library, 0);
-  } catch (e) {
-    logMapFailure("\u6574\u5EAB\u4E0B\u67B6", e);
-  }
-}
-async function isCardTallySeeded(db, owner) {
-  const seeded = setFor(seededTallyOwners, db);
-  if (seeded.has(ownerKey(owner))) return true;
-  const hit = await db.first("SELECT id FROM entries WHERE id = ?", [await tallySeededMarkerId(owner)]);
-  if (hit) seeded.add(ownerKey(owner));
-  return !!hit;
-}
-async function cardLibrariesOfPages(db, owner, pages) {
-  const out = /* @__PURE__ */ new Map();
-  const blockTpl = await templateIdByName(db, "block");
-  if (!blockTpl) return out;
-  for (const page of [...new Set(pages)]) {
-    const res = await db.all(
-      `SELECT DISTINCT ${ENTRY_LIBRARY} AS library FROM entries
-          WHERE page_name = ? AND src_id IS NULL AND +owner_id = ?
-            AND COALESCE(json_extract(metadata_json, '$.kind'), '') != 'library_map'
-            AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'
-            AND ${belongsToSql()}`,
-      [page, owner, blockTpl]
-    );
-    out.set(page, new Set((res.results ?? []).map((r) => String(r.library))));
-  }
-  return out;
-}
-async function noteCardLibrariesDiff(db, owner, before, after) {
-  try {
-    if (!await isCardTallySeeded(db, owner)) return;
-    const d = /* @__PURE__ */ new Map();
-    for (const [page, libs] of before) {
-      const now = after.get(page) ?? /* @__PURE__ */ new Set();
-      for (const l of libs) if (!now.has(l)) d.set(l, (d.get(l) ?? 0) - 1);
-      for (const l of now) if (!libs.has(l)) d.set(l, (d.get(l) ?? 0) + 1);
-    }
-    for (const [library, delta] of d) if (delta !== 0) await bumpTally(db, owner, library, delta);
-  } catch (e) {
-    logMapFailure("\u4F9D\u4F86\u6E90\u4E0B\u67B6", e);
-  }
-}
-async function noteCardPagesChanged(db, changes) {
-  const net = /* @__PURE__ */ new Map();
-  const bump1 = (k, d) => {
-    if (!k) return;
-    const id = `${ownerKey(k.owner)}\0${k.library}\0${k.page}`;
-    const cur = net.get(id) ?? { key: k, blocks: 0 };
-    cur.blocks += d;
-    net.set(id, cur);
-  };
-  for (const { before, after } of changes) {
-    const b = activeCardOf(before);
-    const a = activeCardOf(after);
-    if (sameCardKey(b, a)) continue;
-    bump1(b, -1);
-    bump1(a, 1);
-  }
-  const touched = [...net.values()].filter((x) => x.blocks !== 0);
-  if (!touched.length) return;
-  const blockTpl = await templateIdByName(db, "block");
-  if (!blockTpl) return;
-  const owners = /* @__PURE__ */ new Map();
-  const delta = /* @__PURE__ */ new Map();
-  for (const { key, blocks } of touched) {
-    const ok = ownerKey(key.owner);
-    if (!owners.has(ok)) owners.set(ok, await ensureCardTalliesSeeded(db, key.owner));
-    if (owners.get(ok)) continue;
-    const nowBlocks = await activeBlocksOfPage(db, blockTpl, key);
-    const was = nowBlocks - blocks > 0;
-    const is = nowBlocks > 0;
-    if (was === is) continue;
-    const dk = `${ok}\0${key.library}`;
-    const cur = delta.get(dk) ?? { owner: key.owner, library: key.library, n: 0 };
-    cur.n += is ? 1 : -1;
-    delta.set(dk, cur);
-  }
-  for (const d of delta.values()) if (d.n !== 0) await bumpTally(db, d.owner, d.library, d.n);
-}
-function toInt(raw2) {
-  const n2 = Number(raw2 ?? 0);
-  return Number.isFinite(n2) ? Math.max(0, Math.floor(n2)) : 0;
-}
-function entitiesOf(raw2) {
-  return entitiesToPairs(raw2 ?? null).map(([name, degree]) => ({ name, degree }));
-}
-function relationsOf(raw2) {
-  return relationsToPairs(raw2 ?? null).map(([predicate, count]) => ({ predicate, count }));
-}
-async function readStoredRows(db, owner) {
-  const oh = owner === void 0 ? "" : await ownerHash(owner);
-  const lo = owner === void 0 ? MAP_PAGE_PREFIX : `${MAP_PAGE_PREFIX}${oh}:`;
-  const hi = owner === void 0 ? MAP_PAGE_UPPER_ALL : `${MAP_PAGE_PREFIX}${oh};`;
-  const res = await db.all("SELECT id, owner_id FROM entries WHERE page_name >= ? AND page_name < ?", [lo, hi]);
-  const heads = (res.results ?? []).filter((r) => owner === void 0 || (r.owner_id ?? "") === owner);
-  if (!heads.length) return [];
-  const cells = await readCellsById(db, heads.flatMap((h) => LIBRARY_MAP_SLOTS.map((s) => cellId(h.id, s))));
-  const out = [];
-  for (const h of heads) {
-    const get = (slot) => cells.get(cellId(h.id, slot));
-    const library = get("library")?.content;
-    if (!library) continue;
-    let updated = 0;
-    for (const s of LIBRARY_MAP_SLOTS) updated = Math.max(updated, get(s)?.updated_at ?? 0);
-    out.push({
-      record_id: h.id,
-      owner_id: h.owner_id,
-      library,
-      narrative: get("narrative")?.content?.trim() || null,
-      entities: entitiesOf(get("top_entities")?.content),
-      relations: relationsOf(get("relation_profile")?.content),
-      triplet_count: toInt(get("triplet_count")?.content),
-      entry_count: toInt(get("entry_count")?.content),
-      commit_hash: get("commit_hash")?.content || null,
-      updated_at: updated
-    });
-  }
-  return out;
-}
-function legacyToStored(rows, ownerId) {
-  return [...rows].map((r) => ({
-    record_id: r.rid,
-    owner_id: ownerId,
-    library: r.library,
-    narrative: r.narrative?.trim() || null,
-    entities: entitiesOf(r.top_entities),
-    relations: relationsOf(r.relation_profile),
-    triplet_count: toInt(r.triplet_count),
-    entry_count: null,
-    commit_hash: r.commit_hash || null,
-    updated_at: r.ts ?? 0
-  }));
-}
-function mergeByLibrary(maps) {
-  const byLib = /* @__PURE__ */ new Map();
-  for (const m of maps) {
-    const cur = byLib.get(m.library);
-    if (!cur) {
-      byLib.set(m.library, { ...m, entities: [...m.entities], relations: [...m.relations] });
-      continue;
-    }
-    cur.triplet_count += m.triplet_count;
-    cur.entry_count = cur.entry_count === null || m.entry_count === null ? null : cur.entry_count + m.entry_count;
-    cur.narrative = cur.narrative || m.narrative;
-    cur.commit_hash = cur.commit_hash || m.commit_hash;
-    cur.updated_at = Math.max(cur.updated_at, m.updated_at);
-    const ents = cur.entities.map((e) => [e.name, e.degree]);
-    for (const e of m.entities) {
-      const i = ents.findIndex((p) => p[0] === e.name);
-      if (i >= 0) ents[i][1] += e.degree;
-      else ents.push([e.name, e.degree]);
-    }
-    sortPairs(ents);
-    cur.entities = ents.slice(0, ENTITY_SKETCH_SIZE).map(([name, degree]) => ({ name, degree }));
-    const rels = cur.relations.map((r) => [r.predicate, r.count]);
-    for (const r of m.relations) {
-      const i = rels.findIndex((p) => p[0] === r.predicate);
-      if (i >= 0) rels[i][1] += r.count;
-      else rels.push([r.predicate, r.count]);
-    }
-    sortPairs(rels);
-    cur.relations = rels.slice(0, PREDICATE_SKETCH_SIZE).map(([predicate, count]) => ({ predicate, count }));
-  }
-  return [...byLib.values()];
-}
-async function readStoredMaps(db, owner) {
-  const scope = owner || void 0;
-  if (scope !== void 0) {
-    if (await isOwnerAdopted(db, scope)) return readStoredRows(db, scope);
-    const legacy2 = await readLegacyMaps(db, scope);
-    return legacyToStored(legacy2.byLibrary.values(), scope);
-  }
-  const all = await readStoredRows(db, void 0);
-  if (all.length) return mergeByLibrary(all);
-  const legacy = await readLegacyMaps(db, void 0);
-  return legacyToStored(legacy.byLibrary.values(), null);
-}
-var LIBRARY_MAP_TEMPLATE_ID, LIBRARY_MAP_TEMPLATE_NAME, LIBRARY_MAP_SLOTS, DEFAULT_TRIPLET_TEMPLATE, PORTAL_LIBRARY_TEMPLATE, ENTITY_SKETCH_SIZE, PREDICATE_SKETCH_SIZE, LIBRARY_MAP_TEMPLATE_DESCRIPTION, NOT_KNOWLEDGE_TEMPLATES, templateReady, adoptedOwners, knownMaps, adoptionJobs, writeSeqCounter, MAP_PAGE_PREFIX, MAP_PAGE_UPPER_ALL, LIBRARY_MAP_ID_PREFIX, NOT_LIBRARY_MAP_ROW, NOT_LIBRARY_MAP_CELL, cellId, TRIPLET_SUMMARY_SLOTS, CARD_TALLY_TEMPLATE, CARD_TALLY_PAGE_PREFIX, seededTallyOwners, sameCardKey, CARD_ACTIVE_SQL;
-var init_library_map_store = __esm({
-  "kbdb/src/actions/library-map-store.ts"() {
-    "use strict";
-    init_record_crud();
-    init_kind();
-    init_library_predicate();
-    LIBRARY_MAP_TEMPLATE_ID = "tpl-library-map";
-    LIBRARY_MAP_TEMPLATE_NAME = "library_map";
-    LIBRARY_MAP_SLOTS = [
-      "library",
-      "narrative",
-      "top_entities",
-      "relation_profile",
-      "bridges",
-      "triplet_count",
-      "commit_hash",
-      "status",
-      "entry_count"
-    ];
-    DEFAULT_TRIPLET_TEMPLATE = "triplet";
-    PORTAL_LIBRARY_TEMPLATE = "portal_library";
-    ENTITY_SKETCH_SIZE = 128;
-    PREDICATE_SKETCH_SIZE = 100;
-    LIBRARY_MAP_TEMPLATE_DESCRIPTION = "per-library map block\uFF08\u85CF\u66F8\u5730\u5716\uFF1Atop_entities\uFF0Frelation_profile\uFF0Fbridges\uFF0Ftriplet_count \u7531 graph \u6A5F\u68B0\u5C0E\u51FA\uFF1Bnarrative \u7531 LLM \u8457\u4F5C\uFF0C\u7B97\u4E0D\u51FA\u4F86\u3001\u4E1F\u4E86\u56DE\u4E0D\u4F86\uFF1BArcrun#39\uFF0F#44\uFF09";
-    NOT_KNOWLEDGE_TEMPLATES = [
-      "execution_log",
-      "execution_log_usage",
-      "execution_log_retention_config",
-      "credential",
-      "embed_backfill_usage",
-      "kbdb_maintenance_usage",
-      "kbdb_entry_write_usage",
-      "kbdb_fts_migration_cutoff",
-      "recipe_stat",
-      // 登入用的 head entry 與私有雲金鑰保管的密文列：都是營運資料，沒有 library，舊版（種類欄時代）漏列了，
-      // 於是會被當成「一筆知識」算進 general。種類退場時順手補上（#301）。
-      "portal_user_head",
-      "credential_secret",
-      // 正式 entity 與它的別名（inkstone/Arcrun#294 W2）：是圖上的節點，不是一筆知識卡。
-      "entity",
-      "alias",
-      // 每庫卡張數的存量計數列（inkstone/Arcrun#393）：維護用的機制列，不是一筆知識。
-      "library_card_tally"
-    ];
-    templateReady = /* @__PURE__ */ new WeakMap();
-    adoptedOwners = /* @__PURE__ */ new WeakMap();
-    knownMaps = /* @__PURE__ */ new WeakMap();
-    adoptionJobs = /* @__PURE__ */ new WeakMap();
-    writeSeqCounter = 0;
-    MAP_PAGE_PREFIX = "library-map@";
-    MAP_PAGE_UPPER_ALL = "library-mapA";
-    LIBRARY_MAP_ID_PREFIX = "lmap";
-    NOT_LIBRARY_MAP_ROW = `(substr(id, 1, 4) != '${LIBRARY_MAP_ID_PREFIX}' AND substr(id, 1, 9) != 'relb_${LIBRARY_MAP_ID_PREFIX}')`;
-    NOT_LIBRARY_MAP_CELL = `(substr(id, 1, 4) != '${LIBRARY_MAP_ID_PREFIX}' OR instr(id, '~') = 0)`;
-    cellId = (mapId, slot) => derivedCellIds(mapId, slot).value;
-    TRIPLET_SUMMARY_SLOTS = ["subject", "object", "predicate", "status", "library", "source_uri"];
-    CARD_TALLY_TEMPLATE = "library_card_tally";
-    CARD_TALLY_PAGE_PREFIX = "library-cards@";
-    seededTallyOwners = /* @__PURE__ */ new WeakMap();
-    sameCardKey = (a, b) => a === b || !!a && !!b && a.owner === b.owner && a.library === b.library && a.page === b.page;
-    CARD_ACTIVE_SQL = `page_name IS NOT NULL AND page_name != ''
-       AND COALESCE(json_extract(metadata_json, '$.kind'), '') != 'library_map'
-       AND COALESCE(json_extract(metadata_json, '$.status'), '') != 'deprecated'`;
-  }
-});
-
 // kbdb/src/actions/brake-settings.ts
 async function ensureSettingsTemplate(db) {
   const tpl = await getTemplate(db, SETTINGS_TEMPLATE_ID);
@@ -2509,14 +2520,14 @@ async function addEntryWriteUsage(db, by) {
     await createEntry(db, { id, template: "kbdb_entry_write_usage", metadata_json: JSON.stringify({ day: utcDay(), writes: by }) });
   }
 }
-async function entryWriteBudgetToday(env, db) {
+async function entryWriteBudgetToday(env, db, paid = false) {
   let disabled = false;
   try {
     disabled = !await brakeEnabled(db);
   } catch {
     disabled = false;
   }
-  if (disabled) {
+  if (disabled || paid) {
     const limit2 = instanceDailyWriteLimit(env);
     let used2 = 0;
     try {
@@ -2592,7 +2603,33 @@ var init_maintenance_quota = __esm({
 function metaOf(m) {
   return m ?? {};
 }
-function d1Port(d1) {
+function isReadSql(sql) {
+  return READ_SQL.test(sql);
+}
+async function withReadRetry(fn, o) {
+  const timeoutMs = o.timeoutMs ?? D1_READ_TIMEOUT_MS;
+  const attempts = Math.max(1, o.attempts ?? D1_READ_ATTEMPTS);
+  const backoff = o.backoffMs ?? D1_RETRY_BACKOFF_MS;
+  const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  let last;
+  for (let i = 0; i < attempts; i++) {
+    let timer;
+    try {
+      const timeout = new Promise((_, rej) => {
+        timer = setTimeout(() => rej(new Error(`D1 query timed out after ${timeoutMs}ms`)), timeoutMs);
+      });
+      return await Promise.race([fn(), timeout]);
+    } catch (e) {
+      last = e;
+      if (!isTransientD1Error(e) || i === attempts - 1) throw e;
+      await sleep(backoff * (i + 1) + Math.floor(Math.random() * backoff));
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+    }
+  }
+  throw last;
+}
+function d1Port(d1, retry = {}) {
   if (isSqlPort(d1)) return d1;
   const raw2 = d1;
   const stmt = (sql, params = []) => {
@@ -2603,18 +2640,21 @@ function d1Port(d1) {
     [SQL_PORT]: true,
     info: D1_INFO,
     async all(sql, params) {
-      const r = await stmt(sql, params).all();
+      const run = () => stmt(sql, params).all();
+      const r = isReadSql(sql) ? await withReadRetry(run, retry) : await run();
       return { results: r.results ?? [], meta: metaOf(r.meta) };
     },
     first(sql, params) {
-      return stmt(sql, params).first();
+      const run = () => stmt(sql, params).first();
+      return isReadSql(sql) ? withReadRetry(run, retry) : run();
     },
     async run(sql, params) {
       const r = await stmt(sql, params).run();
       return { meta: metaOf(r.meta) };
     },
     async batch(stmts) {
-      const out = await raw2.batch(stmts.map((s) => stmt(s.sql, s.params)));
+      const run = () => raw2.batch(stmts.map((s) => stmt(s.sql, s.params)));
+      const out = stmts.length > 0 && stmts.every((s) => isReadSql(s.sql)) ? await withReadRetry(run, retry) : await run();
       return out.map((r) => ({ results: r.results ?? [], meta: metaOf(r.meta) }));
     }
   };
@@ -2653,12 +2693,17 @@ function execLogDbOf(env) {
   }
   return p;
 }
-var D1_INFO, cache;
+var D1_INFO, D1_READ_TIMEOUT_MS, D1_READ_ATTEMPTS, D1_RETRY_BACKOFF_MS, READ_SQL, cache;
 var init_d1 = __esm({
   "kbdb/src/storage/d1.ts"() {
     "use strict";
+    init_transient_error();
     init_port();
     D1_INFO = { driver: "d1", billing: "metered" };
+    D1_READ_TIMEOUT_MS = 1e4;
+    D1_READ_ATTEMPTS = 2;
+    D1_RETRY_BACKOFF_MS = 150;
+    READ_SQL = /^\s*select\b/i;
     cache = /* @__PURE__ */ new WeakMap();
   }
 });
@@ -3301,11 +3346,11 @@ function backfillDailyLimit(env) {
   const n2 = raw2 ? parseInt(raw2, 10) : NaN;
   return Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_BACKFILL_DAILY_LIMIT;
 }
-function utcDay2() {
+function utcDay3() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 }
 function backfillUsageId() {
-  return `embed-backfill-usage:${utcDay2()}`;
+  return `embed-backfill-usage:${utcDay3()}`;
 }
 async function getBackfillUsageToday(db) {
   const row = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [backfillUsageId()]);
@@ -3329,9 +3374,9 @@ async function addBackfillUsage(db, by) {
     } catch {
       prev = 0;
     }
-    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay2(), embedded: prev + by }), id]);
+    await db.run("UPDATE entries SET metadata_json = ?, updated_at = unixepoch() WHERE id = ?", [JSON.stringify({ day: utcDay3(), embedded: prev + by }), id]);
   } else {
-    await createEntry(db, { id, template: "embed_backfill_usage", metadata_json: JSON.stringify({ day: utcDay2(), embedded: by }) });
+    await createEntry(db, { id, template: "embed_backfill_usage", metadata_json: JSON.stringify({ day: utcDay3(), embedded: by }) });
   }
 }
 function selectionCriteriaPredicate(opts) {
@@ -3396,8 +3441,8 @@ async function backfillEmbeddings(env, opts = {}) {
   const embeddable = candidates.slice(0, remainingQuota);
   const quotaExceeded = candidates.length > embeddable.length;
   const provider = embedProviderOf(env);
-  const store = vectorsOf(env);
-  if (embeddable.length > 0 && provider && store) {
+  const store2 = vectorsOf(env);
+  if (embeddable.length > 0 && provider && store2) {
     const texts = await Promise.all(embeddable.map((e) => vectorTextOf(dbOf(env), e)));
     const data = await provider.embed(embedModel(env), texts) ?? [];
     const vectors = embeddable.map((e, i) => ({ e, vec: data[i] })).filter((x) => Array.isArray(x.vec) && x.vec.length > 0).map((x) => ({
@@ -3411,7 +3456,7 @@ async function backfillEmbeddings(env, opts = {}) {
       }
     }));
     if (vectors.length > 0) {
-      await store.upsert(vectors);
+      await store2.upsert(vectors);
       const ids = vectors.map((v) => v.id);
       const placeholders = ids.map(() => "?").join(",");
       await dbOf(env).run(`UPDATE entries SET is_embedded = 1, content_hash = ? WHERE id IN (${placeholders})`, [embedModel(env), ...ids]);
@@ -3513,9 +3558,9 @@ async function reconcileEmbedGeneration(env, opts = {}) {
   const checked = ids.length;
   let confirmed_current = 0;
   let reset_to_pending = 0;
-  const store = vectorsOf(env);
-  if (ids.length > 0 && store) {
-    const found = await store.getByIds(ids);
+  const store2 = vectorsOf(env);
+  if (ids.length > 0 && store2) {
+    const found = await store2.getByIds(ids);
     const foundIds = new Set(found.map((v) => v.id));
     const presentIds = ids.filter((id) => foundIds.has(id));
     const missingIds = ids.filter((id) => !foundIds.has(id));
@@ -3550,8 +3595,8 @@ async function reconcileEmbedGeneration(env, opts = {}) {
 }
 async function syncVectorIndex(env, opts = {}) {
   const off = { enabled: false, healthy: false, sweeping: false, checked: 0, reset_to_pending: 0, re_embedded: 0, more: false, quota_exceeded: false };
-  const store = vectorsOf(env);
-  if (!embedEnabled(env) || !store) return off;
+  const store2 = vectorsOf(env);
+  if (!embedEnabled(env) || !store2) return off;
   const db = dbOf(env);
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? SYNC_DEFAULT_LIMIT) || SYNC_DEFAULT_LIMIT, 1), SYNC_MAX_LIMIT);
   const state = await db.first("SELECT metadata_json FROM entries WHERE id = ?", [SYNC_STATE_ID]);
@@ -3564,7 +3609,7 @@ async function syncVectorIndex(env, opts = {}) {
     const probe = await db.all(`SELECT id FROM entries WHERE ${SCOPED_EMBEDDED_PREDICATE} LIMIT ?`, [SYNC_PROBE]);
     const ids2 = (probe.results ?? []).map((r) => r.id);
     if (ids2.length > 0) {
-      const present = new Set((await store.getByIds(ids2)).map((v) => v.id));
+      const present = new Set((await store2.getByIds(ids2)).map((v) => v.id));
       if (ids2.every((id) => present.has(id))) {
         const b2 = await backfillEmbeddings(env, { limit: 25 });
         return { ...off, enabled: true, healthy: true, re_embedded: b2.processed, more: b2.remaining > 0 && !b2.quota_exceeded, quota_exceeded: b2.quota_exceeded };
@@ -3586,7 +3631,7 @@ async function syncVectorIndex(env, opts = {}) {
   const ids = (res.results ?? []).map((r) => r.id);
   let reset = 0;
   if (ids.length > 0) {
-    const present = new Set((await store.getByIds(ids)).map((v) => v.id));
+    const present = new Set((await store2.getByIds(ids)).map((v) => v.id));
     const missing = ids.filter((id) => !present.has(id));
     for (let i = 0; i < missing.length; i += 90) {
       const part = missing.slice(i, i + 90);
@@ -3705,9 +3750,9 @@ async function embedForEntity(env, text) {
   return embedText(env, text);
 }
 async function nearestEntities(env, vec, owner, topK = 3) {
-  const store = vectorsOf(env);
-  if (!store) return [];
-  const res = await store.query(vec, {
+  const store2 = vectorsOf(env);
+  if (!store2) return [];
+  const res = await store2.query(vec, {
     topK: Math.min(Math.max(topK, 1), 10),
     returnMetadata: "indexed",
     filter: { owner_id: owner }
@@ -6048,10 +6093,757 @@ var Hono2 = class extends Hono {
   }
 };
 
-// kbdb/src/transient-error.ts
-function isTransientD1Error(err) {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /overloaded|too many resources|resource(s)? consumed|timed? ?out|network connection lost|connection (reset|closed)|temporarily unavailable|storage operation exceeded|internal error while starting up/i.test(msg);
+// kbdb/src/index.ts
+init_transient_error();
+
+// kbdb/src/actions/speedometer.ts
+init_record_crud();
+init_maintenance_quota();
+init_brake_settings();
+init_port();
+init_brake_settings();
+var FREE_TIER_DAILY_ROWS_WRITTEN = 1e5;
+var FREE_TIER_DAILY_ROWS_READ = 5e6;
+var PAID_MONTHLY_INCLUDED_ROWS_READ = 25e9;
+var PAID_MONTHLY_INCLUDED_ROWS_WRITTEN = 5e7;
+var OP_CEILING_FRACTION = 0.05;
+var OP_GLOBAL_WRITE_CEILING = FREE_TIER_DAILY_ROWS_WRITTEN * OP_CEILING_FRACTION;
+var OP_GLOBAL_READ_CEILING = FREE_TIER_DAILY_ROWS_READ * OP_CEILING_FRACTION;
+var SAFETY_FACTOR = 3;
+var CARD_WRITE_BUDGET = 800;
+var DEFAULT_CEILING = {
+  write: OP_GLOBAL_WRITE_CEILING,
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: OP_GLOBAL_WRITE_CEILING,
+  basis: "\u5168\u57DF\u4E0A\u9650\uFF1A\u514D\u8CBB\u65B9\u6848\u55AE\u65E5\u984D\u5EA6\u7684 5%"
+};
+var SINGLE_WRITE = {
+  write: CARD_WRITE_BUDGET * SAFETY_FACTOR,
+  // 2,400
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: CARD_WRITE_BUDGET,
+  basis: `\u4E00\u6B21\u5BEB\u5165\uFF1A\u4E00\u6574\u5F35\u5361\u7684\u91CF\uFF08${CARD_WRITE_BUDGET} \u5217\uFF0Ccard-rows-written-gate\uFF09\xD7 ${SAFETY_FACTOR}`
+};
+var DECLARED_MAINTENANCE = {
+  write: DEFAULT_FTS_BACKFILL_RESERVE,
+  // 10,500
+  read: OP_GLOBAL_READ_CEILING,
+  normalWrite: DEFAULT_FTS_BACKFILL_RESERVE,
+  basis: `\u80CC\u666F\u7DAD\u8B77\uFF1A\u55AE\u6B21\u6279\u91CF\u4E0A\u9650\uFF08FTS \u88DC\u7D22\u5F15\u4E00\u6279\uFF0Bbookkeeping\uFF1D${DEFAULT_FTS_BACKFILL_RESERVE} \u5217\uFF0Cmaintenance-quota.ts\uFF09`
+};
+var OP_CEILINGS = {
+  "POST /entries": SINGLE_WRITE,
+  "PUT /entries/:id": SINGLE_WRITE,
+  "PATCH /entries/:id": SINGLE_WRITE,
+  "POST /records": SINGLE_WRITE,
+  "PATCH /records/:id": SINGLE_WRITE,
+  "POST /entries/fts-backfill": DECLARED_MAINTENANCE,
+  "POST /entries/backfill-library": DECLARED_MAINTENANCE,
+  "POST /embed/backfill": DECLARED_MAINTENANCE,
+  "POST /embed/reconcile": DECLARED_MAINTENANCE,
+  "POST /embed/sync": DECLARED_MAINTENANCE,
+  // 開欄位值索引（0016）：一次回填 ≤1000 筆 record × 開的格數 × 3 列（表＋兩支索引），AHub 一次開 ≤3 格 ⇒ ≤9,000 列
+  "POST /records/field-index": DECLARED_MAINTENANCE
+};
+function ceilingFor(op) {
+  return OP_CEILINGS[op] ?? DEFAULT_CEILING;
+}
+var OP_LABELS = {
+  "POST /entries": "\u5BEB\u5165\u4E00\u6BB5\u77E5\u8B58",
+  "PUT /entries/:id": "\u8986\u5BEB\u4E00\u7B46\u8CC7\u6599",
+  "PATCH /entries/:id": "\u4FEE\u6539\u4E00\u7B46\u8CC7\u6599",
+  "POST /records": "\u5BEB\u5165\u4E00\u7B46\u8A18\u9304\uFF08\u4F8B\u5982\u95DC\u4FC2\uFF09",
+  "PATCH /records/:id": "\u4FEE\u6539\u4E00\u7B46\u8A18\u9304",
+  "GET /entries/search": "\u641C\u5C0B",
+  "PATCH /entries/deprecate-by-library": "\u4E0B\u67B6\u4E00\u6574\u500B\u5EAB",
+  "POST /entries/fts-backfill": "\u88DC\u641C\u5C0B\u7D22\u5F15",
+  "POST /entries/backfill-library": "\u88DC\u6A19\u5EAB",
+  "POST /embed/backfill": "\u88DC\u5411\u91CF",
+  "POST /embed/reconcile": "\u5411\u91CF\u4E16\u4EE3\u6838\u5C0D",
+  "POST /embed/sync": "\u63DB\u7D22\u5F15\u5F8C\u91CD\u5D4C\u5411\u91CF",
+  "POST /records/field-index": "\u958B\u6B04\u4F4D\u503C\u7D22\u5F15",
+  "POST /map/recompute": "\u91CD\u7B97\u85CF\u66F8\u5730\u5716",
+  "POST /graph/canonicalize-entities": "\u6574\u4F75\u5716\u4E0A\u7684\u540C\u540D\u7BC0\u9EDE",
+  "POST /execution-log/cleanup": "\u6E05\u7406\u904E\u671F\u57F7\u884C\u7D00\u9304",
+  [`DAILY writes`]: "\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165",
+  [`DAILY reads`]: "\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6"
+};
+function opLabel(op) {
+  return OP_LABELS[op] ?? op;
+}
+var LITERAL_SEGMENTS = /* @__PURE__ */ new Set([
+  "entries",
+  "templates",
+  "sheets",
+  "records",
+  "recipe-stats",
+  "execution-log",
+  "embed",
+  "map",
+  "graph",
+  "maintenance",
+  "usage-brakes",
+  "usage",
+  "health",
+  "notified",
+  "libraries",
+  "library-cards",
+  "library-stats",
+  "search",
+  "deprecate-by-library",
+  "backfill-library",
+  "status",
+  "fts-backfill",
+  "record",
+  "latest",
+  "retention",
+  "cleanup",
+  "backfill",
+  "reconcile",
+  "selftest",
+  "sync",
+  "expected",
+  "canonicalize-entities",
+  "neighbors",
+  "select",
+  "recompute",
+  "narrative",
+  "triplet-stats",
+  "by-template",
+  "by-source",
+  "relation-orphans",
+  "release",
+  "field-index"
+]);
+function opKey(method, path) {
+  const segs = path.split("/").filter(Boolean).map((s) => LITERAL_SEGMENTS.has(s) ? s : ":id");
+  return `${method.toUpperCase()} /${segs.join("/")}`;
+}
+function isWriteSql(sql) {
+  return /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test(sql);
+}
+var DAILY_WARN_PERCENTS = [20, 50, 80];
+function utcDay2(now = Date.now()) {
+  return new Date(now).toISOString().slice(0, 10);
+}
+var odo = { day: utcDay2(), written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
+var odoEnsuredDay = null;
+function rollDay(now = Date.now()) {
+  const d = utcDay2(now);
+  if (odo.day !== d) odo = { day: d, written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
+}
+function todayUsage(now = Date.now()) {
+  rollDay(now);
+  return { day: odo.day, written: odo.written + odo.pendingWritten, read: odo.read + odo.pendingRead };
+}
+var monthBase = null;
+var MONTH_BASE_CACHE_MS = 5 * 6e4;
+var planProof = null;
+var planProbing = null;
+var PLAN_PROBE_COOLDOWN_MS = 5 * 6e4;
+async function defaultPlanProbe(db) {
+  const r = await db.all("SELECT id FROM entries LIMIT 1");
+  return Array.isArray(r.results);
+}
+async function ensurePlanProof(db, probe, now = Date.now()) {
+  const today = todayUsage(now);
+  if (today.read < FREE_TIER_DAILY_ROWS_READ && today.written < FREE_TIER_DAILY_ROWS_WRITTEN) return;
+  const month = utcDay2(now).slice(0, 7);
+  if (planProof && planProof.month === month && (planProof.paid || now - planProof.at < PLAN_PROBE_COOLDOWN_MS)) return;
+  if (planProbing) return planProbing;
+  planProbing = (async () => {
+    let ok = false;
+    try {
+      ok = await (probe ? probe() : defaultPlanProbe(db));
+    } catch {
+      ok = false;
+    }
+    planProof = { month, paid: ok, at: now, usedRead: today.read, usedWritten: today.written };
+  })().finally(() => {
+    planProbing = null;
+  });
+  return planProbing;
+}
+function nextMonthStart(now) {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+}
+async function loadMonthBase(db, now = Date.now()) {
+  const day = utcDay2(now);
+  if (monthBase && monthBase.day === day && now - monthBase.at < MONTH_BASE_CACHE_MS) return monthBase;
+  const month = day.slice(0, 7);
+  const dom = Number(day.slice(8, 10));
+  const ids = Array.from({ length: dom - 1 }, (_, i) => usageDayRecordId(`${month}-${String(i + 1).padStart(2, "0")}`));
+  const recs = ids.length ? await getRecords(db, ids) : [];
+  let w = 0;
+  let r = 0;
+  let days = 0;
+  let exceeded = false;
+  for (const rec of recs) {
+    const dw = Number(rec.values.rows_written ?? 0);
+    const dr = Number(rec.values.rows_read ?? 0);
+    days += 1;
+    w += dw;
+    r += dr;
+    if (dw > FREE_TIER_DAILY_ROWS_WRITTEN || dr > FREE_TIER_DAILY_ROWS_READ) exceeded = true;
+  }
+  monthBase = { day, at: now, r, w, days, exceeded };
+  return monthBase;
+}
+function monthBaseSnapshot(now = Date.now()) {
+  return monthBase && monthBase.day === utcDay2(now) ? monthBase : null;
+}
+function judgePlan(now = Date.now()) {
+  const today = todayUsage(now);
+  const base = monthBaseSnapshot(now);
+  const proof = planProof && planProof.month === utcDay2(now).slice(0, 7) ? planProof : null;
+  if (proof?.paid) {
+    return {
+      plan: "paid",
+      period: "month",
+      limitRead: PAID_MONTHLY_INCLUDED_ROWS_READ,
+      limitWritten: PAID_MONTHLY_INCLUDED_ROWS_WRITTEN,
+      usedRead: (base?.r ?? 0) + today.read,
+      usedWritten: (base?.w ?? 0) + today.written,
+      reason: `\u4ED8\u8CBB\u65B9\u6848\u6BCF\u6708\u5167\u542B\u984D\u5EA6\uFF08\u8B80 ${n(PAID_MONTHLY_INCLUDED_ROWS_READ)}\uFF0F\u5BEB ${n(PAID_MONTHLY_INCLUDED_ROWS_WRITTEN)} \u5217\uFF09\uFF1A\u7528\u91CF\u5230\u4E86\u514D\u8CBB\u6BCF\u65E5\u7DDA\uFF08\u8B80 ${n(proof.usedRead)}\uFF0F\u5BEB ${n(proof.usedWritten)} \u5217\uFF0C\u7DDA\u662F\u8B80 ${n(FREE_TIER_DAILY_ROWS_READ)}\uFF0F\u5BEB ${n(FREE_TIER_DAILY_ROWS_WRITTEN)}\uFF09\u6642\uFF0C\u8CC7\u6599\u5EAB\u4ECD\u80AF\u670D\u52D9\u63A2\u6E2C\u67E5\u8A62\uFF08\u514D\u8CBB\u5E33\u865F Cloudflare \u6703\u62D2\u7D55\uFF09\uFF0C\u6240\u4EE5\u5224\u65B7\u662F\u4ED8\u8CBB\u65B9\u6848`,
+      resetAt: nextMonthStart(now).toISOString()
+    };
+  }
+  return {
+    plan: "free",
+    period: "day",
+    limitRead: FREE_TIER_DAILY_ROWS_READ,
+    limitWritten: FREE_TIER_DAILY_ROWS_WRITTEN,
+    usedRead: today.read,
+    usedWritten: today.written,
+    reason: `\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u5BEB\u5165 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF0F\u8B80\u53D6 ${n(FREE_TIER_DAILY_ROWS_READ)} \u5217\uFF09\uFF1A\u5224\u65B7\u4E0D\u51FA\u65B9\u6848\u2014\u2014` + (proof ? "\u7528\u91CF\u5230\u4E86\u514D\u8CBB\u6BCF\u65E5\u7DDA\u6642\uFF0C\u63A2\u6E2C\u67E5\u8A62\u88AB\u8CC7\u6599\u5EAB\u62D2\u7D55\u6216\u5931\u6557\uFF0C\u6C92\u6709\u8B49\u64DA\u53EF\u8B49\u660E\u662F\u4ED8\u8CBB\uFF0C\u6240\u4EE5\u7167\u514D\u8CBB\u7DDA\uFF085 \u5206\u9418\u5F8C\u518D\u63A2\u6E2C\uFF09" : "\u7528\u91CF\u9084\u6C92\u5230\u514D\u8CBB\u6BCF\u65E5\u7DDA\uFF0C\u6C92\u6709\u8B49\u64DA\u53EF\u8B49\u660E\u662F\u4ED8\u8CBB\uFF0C\u6240\u4EE5\u7167\u514D\u8CBB\u7DDA\uFF1B\u7528\u91CF\u5230\u7DDA\u6642\u6703\u81EA\u52D5\u63A2\u6E2C\u4E00\u6B21"),
+    resetAt: nextQuotaReset(now).toISOString()
+  };
+}
+var ESSENTIAL_HEADER = "X-Arcrun-Essential";
+var ESSENTIAL_DAILY_WRITES = 5e3;
+var ESSENTIAL_DAILY_READS = 15e4;
+var ESSENTIAL_PREFIXES = ["/records", "/templates", "/entries"];
+var essentialUse = { day: utcDay2(), written: 0, read: 0 };
+function rollEssential(now = Date.now()) {
+  const d = utcDay2(now);
+  if (essentialUse.day !== d) essentialUse = { day: d, written: 0, read: 0 };
+}
+function essentialReserveApplies(path, headerValue) {
+  if (headerValue !== "account") return false;
+  if (!ESSENTIAL_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) return false;
+  rollEssential();
+  return essentialUse.written < ESSENTIAL_DAILY_WRITES && essentialUse.read < ESSENTIAL_DAILY_READS;
+}
+function addEssentialUse(written, read) {
+  rollEssential();
+  essentialUse.written += written;
+  essentialUse.read += read;
+}
+function essentialUsageToday() {
+  rollEssential();
+  return { ...essentialUse, limit_written: ESSENTIAL_DAILY_WRITES, limit_read: ESSENTIAL_DAILY_READS };
+}
+function newTally(op) {
+  return {
+    op,
+    ceiling: ceilingFor(op),
+    rowsRead: 0,
+    rowsWritten: 0,
+    statements: 0,
+    top: null,
+    over: false,
+    blocked: false,
+    dailyBlocked: null,
+    dailyReleased: { writes: false, reads: false },
+    plan: null
+  };
+}
+var UsageBrakeError = class extends Error {
+  constructor(tally) {
+    super(`usage brake: ${tally.op} \u5DF2\u5BEB ${tally.rowsWritten} \u5217\uFF0F\u8B80 ${tally.rowsRead} \u5217`);
+    this.tally = tally;
+    this.name = "UsageBrakeError";
+  }
+  tally;
+};
+function isOver(t) {
+  return t.rowsWritten >= t.ceiling.write || t.rowsRead >= t.ceiling.read;
+}
+function add(t, sql, meta) {
+  const w = Number(meta?.rows_written ?? 0);
+  const r = Number(meta?.rows_read ?? 0);
+  t.rowsWritten += w;
+  t.rowsRead += r;
+  t.statements += 1;
+  rollDay();
+  odo.pendingWritten += w;
+  odo.pendingRead += r;
+  if (!t.top || w > t.top.rowsWritten || w === t.top.rowsWritten && r > t.top.rowsRead) {
+    t.top = { sql: sql.replace(/\s+/g, " ").trim().slice(0, 200), rowsWritten: w, rowsRead: r };
+  }
+  if (isOver(t)) t.over = true;
+}
+function guard(t, sqls) {
+  if (isOver(t)) {
+    t.over = true;
+    t.blocked = true;
+    throw new UsageBrakeError(t);
+  }
+  const j = judgePlan();
+  t.plan = j;
+  if (j.usedRead >= j.limitRead && !t.dailyReleased.reads) {
+    t.dailyBlocked = "reads";
+    throw new UsageBrakeError(t);
+  }
+  if (j.usedWritten >= j.limitWritten && !t.dailyReleased.writes && sqls.some(isWriteSql)) {
+    t.dailyBlocked = "writes";
+    throw new UsageBrakeError(t);
+  }
+}
+function releaseDailyWriteBrakeIfSystemOwner(env, ownerId) {
+  if (!isSystemAssetOwner(ownerId)) return;
+  const t = env.__kbdbTally;
+  if (t) t.dailyReleased.writes = true;
+}
+function meterDb(db, t) {
+  const port = {
+    [SQL_PORT]: true,
+    info: db.info,
+    async all(sql, params) {
+      guard(t, [sql]);
+      const r = await db.all(sql, params);
+      add(t, sql, r.meta);
+      return r;
+    },
+    async run(sql, params) {
+      guard(t, [sql]);
+      const r = await db.run(sql, params);
+      add(t, sql, r.meta);
+      return r;
+    },
+    async first(sql, params) {
+      guard(t, [sql]);
+      const r = await db.all(sql, params);
+      add(t, sql, r.meta);
+      return r.results?.[0] ?? null;
+    },
+    async batch(stmts) {
+      guard(t, stmts.map((x) => x.sql));
+      const results = await db.batch(stmts);
+      results.forEach((r, i) => add(t, stmts[i].sql, r.meta));
+      return results;
+    }
+  };
+  return port;
+}
+var USAGE_DAY_TEMPLATE_ID = "tpl-usage-day";
+var USAGE_DAY_SLOTS = ["day", "rows_written", "rows_read", "warned_percent"];
+function usageDayRecordId(day) {
+  return `usage_day_${day}`;
+}
+async function ensureTemplate(db, id, name, description, slots) {
+  const tpl = await getTemplate(db, id);
+  if (tpl) {
+    const have = JSON.parse(tpl.slots_json);
+    if (slots.every((s) => have.includes(s))) return;
+    await updateTemplate(db, id, { slots: [.../* @__PURE__ */ new Set([...have, ...slots])] });
+    return;
+  }
+  await createTemplate(db, { id, name, description, slots, created_by: "kbdb-speedometer" });
+}
+async function ensureUsageDay(db, day) {
+  if (odoEnsuredDay === day) return;
+  await ensureTemplate(
+    db,
+    USAGE_DAY_TEMPLATE_ID,
+    "usage_day",
+    "\u6BCF\u65E5\u7528\u91CF\u91CC\u7A0B\u8868\uFF08inkstone/InkStoneCo#147\uFF09\uFF1AKBDB \u9598\u53E3\u81EA\u5DF1\u7B97\u7684\u4ECA\u5929\u8B80\u5BEB\u5217\u6578\uFF0C\u5C0D\u7167\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u3002",
+    USAGE_DAY_SLOTS
+  );
+  await createRecord(db, {
+    template: USAGE_DAY_TEMPLATE_ID,
+    record_id: usageDayRecordId(day),
+    derived_cell_ids: true,
+    owner_id: null,
+    values: { day, rows_written: "0", rows_read: "0", warned_percent: "0" }
+  });
+  odoEnsuredDay = day;
+}
+async function flushOdometer(db, now = Date.now()) {
+  rollDay(now);
+  odo.lastFlushAt = now;
+  const day = odo.day;
+  const w = odo.pendingWritten;
+  const r = odo.pendingRead;
+  if (w === 0 && r === 0) return null;
+  odo.pendingWritten = 0;
+  odo.pendingRead = 0;
+  try {
+    await ensureUsageDay(db, day);
+    const rid = usageDayRecordId(day);
+    const wId = derivedCellIds(rid, "rows_written").value;
+    const rId = derivedCellIds(rid, "rows_read").value;
+    const res = await db.batch([
+      { sql: `UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`, params: [w, wId] },
+      { sql: `UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`, params: [r, rId] }
+    ]);
+    let selfW = 0;
+    let selfR = 0;
+    for (const x of res) {
+      selfW += Number(x.meta?.rows_written ?? 0);
+      selfR += Number(x.meta?.rows_read ?? 0);
+    }
+    odo.pendingWritten += selfW;
+    odo.pendingRead += selfR;
+    odo.written = Number(res[0].results?.[0]?.content ?? odo.written + w);
+    odo.read = Number(res[1].results?.[0]?.content ?? odo.read + r);
+    const pct = judgePlan(now).plan === "paid" ? 0 : Math.floor(Math.max(odo.written / FREE_TIER_DAILY_ROWS_WRITTEN, odo.read / FREE_TIER_DAILY_ROWS_READ) * 100);
+    const level = [...DAILY_WARN_PERCENTS, 100].filter((p) => pct >= p).pop() ?? null;
+    let crossed = null;
+    if (level !== null) {
+      const warnId = derivedCellIds(rid, "warned_percent").value;
+      const u = await db.run(`UPDATE entries SET content = ? WHERE id = ? AND CAST(content AS INTEGER) < ?`, [String(level), warnId, level]);
+      odo.pendingWritten += Number(u.meta?.rows_written ?? 0);
+      odo.pendingRead += Number(u.meta?.rows_read ?? 0);
+      if (Number(u.meta?.changes ?? 0) > 0) crossed = level;
+    }
+    return { day, written: odo.written, read: odo.read, crossedPercent: crossed, selfWritten: selfW, selfRead: selfR };
+  } catch (e) {
+    odo.pendingWritten += w;
+    odo.pendingRead += r;
+    console.warn("[kbdb speedometer] odometer flush failed", e);
+    return null;
+  }
+}
+var ODOMETER_FLUSH_DELAY_MS = 72e5;
+var ODOMETER_MAX_PENDING_WRITTEN = 2e3;
+var ODOMETER_MAX_PENDING_READ = 1e5;
+function odometerDueForFlush(now = Date.now()) {
+  if (odo.pendingWritten <= 0 && odo.pendingRead <= 0) return false;
+  if (odo.pendingWritten >= ODOMETER_MAX_PENDING_WRITTEN) return true;
+  if (odo.pendingRead >= ODOMETER_MAX_PENDING_READ) return true;
+  return now - odo.lastFlushAt >= ODOMETER_FLUSH_DELAY_MS;
+}
+function projectExhaustion(used, limit, now = Date.now()) {
+  const dayStart = Date.parse(`${utcDay2(now)}T00:00:00Z`);
+  const elapsed = Math.max(6e4, now - dayStart);
+  if (used <= 0) return null;
+  if (used >= limit) return new Date(now).toISOString();
+  const eta = dayStart + limit / used * elapsed;
+  return eta < nextQuotaReset(now).getTime() ? new Date(eta).toISOString() : null;
+}
+var BRAKE_TEMPLATE_ID = "tpl-usage-brake";
+var BRAKE_SLOTS = [
+  "kind",
+  // brake（剎住了）／warning（今天用量過門檻，只提醒）
+  "op",
+  // 操作代號，例如 POST /entries；每日那種是 DAILY writes／DAILY reads
+  "op_label",
+  // 人話
+  "caller",
+  // 誰打的（X-Arcrun-Caller；執行器帶 workflow:<名字>）
+  "rows_written",
+  "rows_read",
+  "statements",
+  "ceiling_write",
+  "ceiling_read",
+  "basis",
+  // 上限的依據
+  "top_sql",
+  // 寫最多的那一句（只有 SQL 樣式，不含綁定值）
+  "blocked",
+  // 'true'＝有語句被擋下沒送出；'false'＝越線的那一句已經做完
+  "tripped_at",
+  // ISO
+  "release_at",
+  // ISO：自動放行（下一次 00:00 UTC＝台北 08:00）
+  "released_at",
+  // ISO：手動放行
+  "released_by",
+  "notified_at",
+  // ISO：通知已送出（執行器 tick 填）
+  "message"
+  // 給人看的整句話
+];
+function toBrake(r, now) {
+  const v = r.values;
+  const releasedAt = v.released_at || null;
+  const releaseAt = v.release_at || "";
+  const kind = v.kind === "warning" ? "warning" : "brake";
+  const active = kind === "brake" && !releasedAt && (!releaseAt || Date.parse(releaseAt) > now);
+  return {
+    id: r.record_id,
+    kind,
+    op: v.op ?? "",
+    op_label: v.op_label ?? "",
+    caller: v.caller ?? "",
+    rows_written: Number(v.rows_written ?? 0),
+    rows_read: Number(v.rows_read ?? 0),
+    ceiling_write: Number(v.ceiling_write ?? 0),
+    ceiling_read: Number(v.ceiling_read ?? 0),
+    basis: v.basis ?? "",
+    top_sql: v.top_sql ?? "",
+    blocked: v.blocked === "true",
+    tripped_at: v.tripped_at ?? "",
+    release_at: releaseAt,
+    released_at: releasedAt,
+    released_by: v.released_by || null,
+    notified_at: v.notified_at || null,
+    message: v.message ?? "",
+    active
+  };
+}
+function nextQuotaReset(now) {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
+}
+function taipeiClock(iso) {
+  const d = new Date(Date.parse(iso) + 8 * 36e5);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${mm}/${dd} ${hh}:${mi}\uFF08\u53F0\u5317\uFF09`;
+}
+var n = (x) => x.toLocaleString("en-US");
+function brakeMessage(t, caller, releaseAt, id) {
+  const release = `\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\uFF0C\u6216\u547C\u53EB POST /usage-brakes/${id}/release`;
+  if (t.dailyBlocked) {
+    const j = t.plan ?? judgePlan();
+    const stops = t.dailyBlocked === "writes" ? "\u5BEB\u5165\u5148\u505C\u3001\u8B80\u53D6\u7167\u5E38" : "\u8B80\u5BEB\u90FD\u5148\u505C";
+    if (j.plan === "paid") {
+      const what3 = t.dailyBlocked === "writes" ? `\u672C\u6708\u5168\u90E8\u7684\u5BEB\u5165\u5DF2\u7D93\u5230 ${n(j.limitWritten)} \u5217\uFF08\u4ED8\u8CBB\u65B9\u6848\u4E00\u500B\u6708\u7684\u5167\u542B\u984D\u5EA6\uFF09` : `\u672C\u6708\u5168\u90E8\u7684\u8B80\u53D6\u5DF2\u7D93\u5230 ${n(j.limitRead)} \u5217\uFF08\u4ED8\u8CBB\u65B9\u6848\u4E00\u500B\u6708\u7684\u5167\u542B\u984D\u5EA6\uFF09`;
+      return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A${what3}\u3002\u9019\u500B\u5E33\u865F\u5224\u65B7\u662F\u4ED8\u8CBB\u65B9\u6848\uFF0C\u524E\u8ECA\u7DDA\u7167\u4ED8\u8CBB\u5167\u542B\u984D\u5EA6\u8D70\uFF0C\u518D\u7528\u4E0B\u53BB\u5C31\u958B\u59CB\u8A08\u8CBB\uFF0C${stops}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF08\u63A5\u53D7\u8D85\u51FA\u7684\u90E8\u5206\u8A08\u8CBB\uFF09\uFF0C${release}\u3002`;
+    }
+    const what2 = t.dailyBlocked === "writes" ? `\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09` : `\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_READ)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09`;
+    return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A${what2}\u3002\u5224\u65B7\u4E0D\u51FA\u9019\u500B\u5E33\u865F\u662F\u4ED8\u8CBB\u65B9\u6848\uFF08\u7528\u91CF\u5230\u514D\u8CBB\u6BCF\u65E5\u7DDA\u6642\u81EA\u52D5\u63A2\u6E2C\u8CC7\u6599\u5EAB\uFF0C\u6C92\u6709\u8B49\u64DA\u53EF\u8B49\u660E\u662F\u4ED8\u8CBB\uFF09\uFF0C\u6240\u4EE5\u7167\u514D\u8CBB\u984D\u5EA6\u505C\u4E0B\u4F86\uFF0C${stops}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF0C${release}\u3002`;
+  }
+  const what = t.rowsWritten >= t.ceiling.write ? t.ceiling.normalWrite < t.ceiling.write ? `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u9019\u985E\u64CD\u4F5C\u6B63\u5E38\u4E0D\u8D85\u904E ${n(t.ceiling.normalWrite)} \u5217\uFF0C\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.write)}\uFF09` : `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u4EFB\u4F55\u55AE\u4E00\u64CD\u4F5C\u7684\u4E0A\u9650\u662F ${n(t.ceiling.write)} \u5217\uFF1D\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684 5%\uFF09` : `\u9019\u4E00\u6B21\u8B80\u4E86 ${n(t.rowsRead)} \u5217\uFF08\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.read)}\uFF09`;
+  const stopped = t.blocked ? "\u5F8C\u9762\u7684\u6B65\u9A5F\u5DF2\u7D93\u505C\u4E0B\u6C92\u6709\u9001\u51FA" : "\u9019\u4E00\u6B21\u5DF2\u7D93\u505A\u5B8C\uFF0C\u4F46\u540C\u6A23\u7684\u64CD\u4F5C\u5148\u505C\u4F4F";
+  return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u300C${opLabel(t.op)}\u300D${what}\u3002${stopped}\uFF0C\u514D\u5F97\u628A\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6\uFF08\u5BEB\u5165 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF0F\u5929\uFF09\u71D2\u5149\u3002\u4F86\u6E90\u300C${caller}\u300D\u7684\u9019\u500B\u64CD\u4F5C\u6703\u505C\u5230 ${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u653E\u884C\uFF1B\u8981\u63D0\u65E9\u653E\u884C\uFF0C${release}\u3002`;
+}
+function warningMessage(percent, written, read, now = Date.now()) {
+  const wEta = projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now);
+  const rEta = projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now);
+  const eta = wEta ?? rEta;
+  const speed = eta ? `\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C${taipeiClock(eta)} \u6703\u7528\u5B8C` : "\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C\u4ECA\u5929\u7528\u4E0D\u5B8C";
+  return `\u7528\u91CF\u63D0\u9192\uFF1A\u4ECA\u5929\u5DF2\u7528\u6389\u514D\u8CBB\u984D\u5EA6\u7684 ${percent}%\uFF08\u5BEB\u5165 ${n(written)}/${n(FREE_TIER_DAILY_ROWS_WRITTEN)}\u3001\u8B80\u53D6 ${n(read)}/${n(FREE_TIER_DAILY_ROWS_READ)}\uFF09\u3002${speed}\uFF1B\u5230 100% \u6703\u81EA\u52D5\u524E\u4F4F\u5BEB\u5165\uFF0C${taipeiClock(nextQuotaReset(now).toISOString())} \u91CD\u7F6E\u3002`;
+}
+var ACTIVE_CACHE_MS = 3e4;
+var ACTIVE_FULL_RELOAD_MS = 5 * 6e4;
+var activeCache = null;
+async function listBrakes(db, limit = 100) {
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  if (!tpl) return [];
+  const now = Date.now();
+  const recs = await searchByTemplate(db, BRAKE_TEMPLATE_ID, void 0, limit, 0);
+  return recs.map((r) => toBrake(r, now));
+}
+var BRAKE_PAGE = 5;
+async function listBrakesSince(db, sinceIso, maxRecords = 100) {
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  if (!tpl) return [];
+  const now = Date.now();
+  const out = [];
+  for (let offset = 0; out.length < maxRecords; offset += BRAKE_PAGE) {
+    const ids = await memberRecordIds(db, tpl.id, void 0, BRAKE_PAGE, offset);
+    if (ids.length === 0) break;
+    const recs = await hydrateRecordValues(db, tpl.id, ids);
+    const page = recs.map((r) => toBrake(r, now));
+    out.push(...page);
+    if (ids.length < BRAKE_PAGE) break;
+    const oldest = page[page.length - 1]?.tripped_at ?? "";
+    if (oldest && oldest < sinceIso) break;
+  }
+  return out;
+}
+async function recentBrakes(db) {
+  const now = Date.now();
+  const today = utcDay2(now);
+  if (activeCache && now - activeCache.at <= ACTIVE_CACHE_MS) return activeCache.brakes;
+  if (activeCache && activeCache.day === today && now - activeCache.fullAt < ACTIVE_FULL_RELOAD_MS) {
+    const tpl2 = await getTemplate(db, BRAKE_TEMPLATE_ID);
+    const [newest] = tpl2 ? await memberRecordIds(db, tpl2.id, void 0, 1, 0) : [];
+    if ((newest ?? null) === activeCache.newestId) {
+      activeCache = { ...activeCache, at: now };
+      return activeCache.brakes;
+    }
+  }
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  const [newestNow] = tpl ? await memberRecordIds(db, tpl.id, void 0, 1, 0) : [];
+  const all = await listBrakesSince(db, `${today}T00:00:00.000Z`, 100);
+  activeCache = {
+    at: now,
+    fullAt: now,
+    day: today,
+    newestId: newestNow ?? null,
+    brakes: all.filter((b) => b.active || (b.op.startsWith("DAILY") || !!b.released_at) && b.tripped_at.startsWith(today))
+  };
+  return activeCache.brakes;
+}
+var NOTIFY_WINDOW_MS = 24 * 36e5;
+var NOTIFY_CLEAN_TTL_MS = 10 * 6e4;
+var notifyClean = null;
+async function listPendingNotifyBrakes(db, now = Date.now()) {
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
+  if (!tpl) return [];
+  const [newest] = await memberRecordIds(db, tpl.id, void 0, 1, 0);
+  if (!newest) return [];
+  if (notifyClean && notifyClean.newestId === newest && now - notifyClean.at < NOTIFY_CLEAN_TTL_MS) return [];
+  const since = new Date(now - NOTIFY_WINDOW_MS).toISOString();
+  const pending = [];
+  for (let offset = 0; pending.length < 100; offset += BRAKE_PAGE) {
+    const ids = await memberRecordIds(db, tpl.id, void 0, BRAKE_PAGE, offset);
+    if (ids.length === 0) break;
+    const page = (await hydrateRecordValues(db, tpl.id, ids)).map((r) => toBrake(r, now));
+    const fresh = page.filter((b) => b.tripped_at >= since);
+    const pendingHere = fresh.filter((b) => !b.notified_at);
+    pending.push(...pendingHere);
+    if (ids.length < BRAKE_PAGE || pendingHere.length === 0 || fresh.length < page.length) break;
+  }
+  notifyClean = pending.length === 0 ? { newestId: newest, at: now } : null;
+  return pending;
+}
+async function findActiveBrake(db, op, caller) {
+  const now = Date.now();
+  const list = await recentBrakes(db);
+  return list.find((b) => b.kind === "brake" && b.op === op && b.caller === caller && !b.released_at && Date.parse(b.release_at) > now) ?? null;
+}
+async function dailyReleased(db) {
+  if (!await brakeEnabled(db)) return { writes: true, reads: true };
+  const today = utcDay2();
+  const list = await recentBrakes(db);
+  const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
+  return { writes: rel("DAILY writes"), reads: rel("DAILY reads") };
+}
+async function opBrakeSuspended(db, op) {
+  if (!await brakeEnabled(db)) return true;
+  const today = utcDay2();
+  const list = await recentBrakes(db);
+  return list.some((b) => b.kind === "brake" && b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
+}
+async function ensureBrakeTemplate(db) {
+  await ensureTemplate(
+    db,
+    BRAKE_TEMPLATE_ID,
+    "usage_brake",
+    "\u7528\u91CF\u524E\u8ECA\u7D00\u9304\uFF08inkstone/InkStoneCo#147\uFF09\uFF1A\u67D0\u500B\u64CD\u4F5C\u55AE\u6B21\u82B1\u8CBB\u8D85\u904E\u4E0A\u9650\u3001\u6216\u4ECA\u5929\u7528\u91CF\u904E\u9580\u6ABB\u6642\uFF0C\u9598\u53E3\u81EA\u52D5\u8A18\u5728\u9019\u88E1\u3002",
+    BRAKE_SLOTS
+  );
+}
+async function recordBrake(db, t, caller, now = Date.now()) {
+  await ensureBrakeTemplate(db);
+  const trippedAt = new Date(now).toISOString();
+  const plan = t.dailyBlocked ? t.plan ?? judgePlan(now) : null;
+  const releaseAt = (plan?.plan === "paid" ? nextMonthStart(now) : nextQuotaReset(now)).toISOString();
+  const op = t.dailyBlocked ? `DAILY ${t.dailyBlocked}` : t.op;
+  const who = t.dailyBlocked ? "*" : caller;
+  const recordId = t.dailyBlocked ? `brake_daily_${t.dailyBlocked}_${utcDay2(now)}` : `brake_${crypto.randomUUID()}`;
+  const values = {
+    kind: "brake",
+    op,
+    op_label: opLabel(op),
+    caller: who,
+    rows_written: String(plan ? plan.usedWritten : t.rowsWritten),
+    rows_read: String(plan ? plan.usedRead : t.rowsRead),
+    statements: String(t.statements),
+    ceiling_write: String(plan ? plan.limitWritten : t.ceiling.write),
+    ceiling_read: String(plan ? plan.limitRead : t.ceiling.read),
+    basis: plan ? plan.reason : t.ceiling.basis,
+    top_sql: t.top?.sql ?? "",
+    blocked: t.blocked || t.dailyBlocked ? "true" : "false",
+    tripped_at: trippedAt,
+    release_at: releaseAt,
+    message: brakeMessage(t, caller, releaseAt, recordId)
+  };
+  const rec = await createRecord(db, {
+    template: BRAKE_TEMPLATE_ID,
+    record_id: recordId,
+    values,
+    owner_id: null,
+    derived_cell_ids: Boolean(t.dailyBlocked)
+  });
+  const trueRec = t.dailyBlocked ? await getRecord(db, recordId) : null;
+  const brake = trueRec ? toBrake(trueRec, now) : toBrake(rec, now);
+  if (activeCache) activeCache = { ...activeCache, newestId: brake.id, brakes: [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)] };
+  return brake;
+}
+async function recordWarning(db, percent, written, read, now = Date.now()) {
+  await ensureBrakeTemplate(db);
+  const day = utcDay2(now);
+  const recordId = `warn_${day}_${percent}`;
+  const values = {
+    kind: "warning",
+    op: "DAILY usage",
+    op_label: "\u4ECA\u5929\u7684\u7528\u91CF",
+    caller: "*",
+    rows_written: String(written),
+    rows_read: String(read),
+    ceiling_write: String(FREE_TIER_DAILY_ROWS_WRITTEN),
+    ceiling_read: String(FREE_TIER_DAILY_ROWS_READ),
+    basis: `\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u7684 ${percent}%`,
+    tripped_at: new Date(now).toISOString(),
+    release_at: nextQuotaReset(now).toISOString(),
+    message: warningMessage(percent, written, read, now)
+  };
+  const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
+  return toBrake(rec, now);
+}
+var METERED_ITEMS = ["ai"];
+var METERED_LABELS = {
+  ai: { label: "\u4ECA\u5929\u7684 Workers AI \u7528\u91CF", unit: "neurons", what: "Workers AI", stopped: "\u96F2\u7AEF\u8403\u53D6\u5148\u66AB\u505C" }
+};
+async function recordMeteredBrake(db, input, now = Date.now()) {
+  await ensureBrakeTemplate(db);
+  const meta = METERED_LABELS[input.item];
+  const op = `DAILY ${input.item}`;
+  const recordId = `brake_daily_${input.item}_${utcDay2(now)}`;
+  const releaseAt = nextQuotaReset(now).toISOString();
+  const values = {
+    kind: "brake",
+    op,
+    op_label: meta.label,
+    caller: "*",
+    rows_written: "0",
+    rows_read: "0",
+    statements: "0",
+    ceiling_write: "0",
+    ceiling_read: "0",
+    basis: `${meta.what} \u514D\u8CBB\u984D\u5EA6\u6BCF\u65E5 ${n(input.limit)} ${meta.unit}\uFF08\u4ECA\u5929\u5DF2\u7528 ${n(input.used)}\uFF09`,
+    top_sql: "",
+    blocked: "true",
+    tripped_at: new Date(now).toISOString(),
+    release_at: releaseAt,
+    message: `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u4ECA\u5929\u7684 ${meta.what} \u5DF2\u7528 ${n(input.used)} ${meta.unit}\uFF0C\u5230\u4E86\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650 ${n(input.limit)}\u3002\u518D\u7528\u4E0B\u53BB\u5C31\u958B\u59CB\u8A08\u8CBB\uFF0C\u6240\u4EE5${meta.stopped}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF08\u63A5\u53D7\u8D85\u51FA\u7684\u90E8\u5206\u8A08\u8CBB\uFF09\uFF0C\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\uFF0C\u6216\u547C\u53EB POST /usage-brakes/${recordId}/release\u3002`
+  };
+  const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
+  const trueRec = await getRecord(db, recordId);
+  const brake = toBrake(trueRec ?? rec, now);
+  if (activeCache) activeCache = { ...activeCache, newestId: brake.id, brakes: [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)] };
+  return brake;
+}
+async function getBrake(db, id) {
+  const { getRecord: getRecord2 } = await Promise.resolve().then(() => (init_record_crud(), record_crud_exports));
+  const rec = await getRecord2(db, id);
+  if (!rec || rec.template_id !== BRAKE_TEMPLATE_ID) return null;
+  return toBrake(rec, Date.now());
+}
+async function releaseBrake(db, id, by) {
+  const existing = await getBrake(db, id);
+  if (!existing) return null;
+  const updated = await updateRecord(db, id, { released_at: (/* @__PURE__ */ new Date()).toISOString(), released_by: by || "manual" });
+  activeCache = null;
+  return updated ? toBrake(updated, Date.now()) : null;
+}
+async function markBrakeNotified(db, id) {
+  const existing = await getBrake(db, id);
+  if (!existing) return null;
+  const updated = await updateRecord(db, id, { notified_at: (/* @__PURE__ */ new Date()).toISOString() });
+  return updated ? toBrake(updated, Date.now()) : null;
+}
+function brakeBody(b) {
+  return { success: false, error: "usage_brake", message: b.message, brake: b };
 }
 
 // kbdb/src/routes/entries.ts
@@ -7057,6 +7849,7 @@ async function fillCardPassages(env, db, input) {
 // kbdb/src/routes/entries.ts
 init_maintenance_quota();
 init_d1();
+init_transient_error();
 var entryRoutes = new Hono2();
 var PAGE_EXPANSION_MAX_PAGES = 5;
 var PAGE_EXPANSION_PER_PAGE = 4;
@@ -7099,7 +7892,7 @@ entryRoutes.post("/", async (c) => {
   if (!body || typeof body.template !== "string" || !body.template.trim()) return c.json({ success: false, error: "template required\uFF08\u9019\u7B46\u8CC7\u6599\u5C6C\u65BC\u54EA\u500B template\uFF1B\u7A2E\u985E\u7531\u5B83\u6C7A\u5B9A\uFF09" }, 400);
   const nameBad = await templateNameGate(c, body);
   if (nameBad) return nameBad;
-  const budget = await entryWriteBudgetToday(c.env, dbOf(c.env));
+  const budget = await entryWriteBudgetToday(c.env, dbOf(c.env), judgePlan().plan === "paid");
   if (budget.remaining <= 0) {
     return c.json(writeBudgetExhaustedBody(budget), 429);
   }
@@ -7603,665 +8396,158 @@ init_record_crud();
 init_graph_query();
 init_field_index();
 init_maintenance_quota();
+init_d1();
 
-// kbdb/src/actions/speedometer.ts
-init_record_crud();
-init_maintenance_quota();
-init_brake_settings();
+// kbdb/src/storage/coalesce.ts
 init_port();
-init_brake_settings();
-var FREE_TIER_DAILY_ROWS_WRITTEN = 1e5;
-var FREE_TIER_DAILY_ROWS_READ = 5e6;
-var OP_CEILING_FRACTION = 0.05;
-var OP_GLOBAL_WRITE_CEILING = FREE_TIER_DAILY_ROWS_WRITTEN * OP_CEILING_FRACTION;
-var OP_GLOBAL_READ_CEILING = FREE_TIER_DAILY_ROWS_READ * OP_CEILING_FRACTION;
-var SAFETY_FACTOR = 3;
-var CARD_WRITE_BUDGET = 800;
-var DEFAULT_CEILING = {
-  write: OP_GLOBAL_WRITE_CEILING,
-  read: OP_GLOBAL_READ_CEILING,
-  normalWrite: OP_GLOBAL_WRITE_CEILING,
-  basis: "\u5168\u57DF\u4E0A\u9650\uFF1A\u514D\u8CBB\u65B9\u6848\u55AE\u65E5\u984D\u5EA6\u7684 5%"
-};
-var SINGLE_WRITE = {
-  write: CARD_WRITE_BUDGET * SAFETY_FACTOR,
-  // 2,400
-  read: OP_GLOBAL_READ_CEILING,
-  normalWrite: CARD_WRITE_BUDGET,
-  basis: `\u4E00\u6B21\u5BEB\u5165\uFF1A\u4E00\u6574\u5F35\u5361\u7684\u91CF\uFF08${CARD_WRITE_BUDGET} \u5217\uFF0Ccard-rows-written-gate\uFF09\xD7 ${SAFETY_FACTOR}`
-};
-var DECLARED_MAINTENANCE = {
-  write: DEFAULT_FTS_BACKFILL_RESERVE,
-  // 10,500
-  read: OP_GLOBAL_READ_CEILING,
-  normalWrite: DEFAULT_FTS_BACKFILL_RESERVE,
-  basis: `\u80CC\u666F\u7DAD\u8B77\uFF1A\u55AE\u6B21\u6279\u91CF\u4E0A\u9650\uFF08FTS \u88DC\u7D22\u5F15\u4E00\u6279\uFF0Bbookkeeping\uFF1D${DEFAULT_FTS_BACKFILL_RESERVE} \u5217\uFF0Cmaintenance-quota.ts\uFF09`
-};
-var OP_CEILINGS = {
-  "POST /entries": SINGLE_WRITE,
-  "PUT /entries/:id": SINGLE_WRITE,
-  "PATCH /entries/:id": SINGLE_WRITE,
-  "POST /records": SINGLE_WRITE,
-  "PATCH /records/:id": SINGLE_WRITE,
-  "POST /entries/fts-backfill": DECLARED_MAINTENANCE,
-  "POST /entries/backfill-library": DECLARED_MAINTENANCE,
-  "POST /embed/backfill": DECLARED_MAINTENANCE,
-  "POST /embed/reconcile": DECLARED_MAINTENANCE,
-  "POST /embed/sync": DECLARED_MAINTENANCE,
-  // 開欄位值索引（0016）：一次回填 ≤1000 筆 record × 開的格數 × 3 列（表＋兩支索引），AHub 一次開 ≤3 格 ⇒ ≤9,000 列
-  "POST /records/field-index": DECLARED_MAINTENANCE
-};
-function ceilingFor(op) {
-  return OP_CEILINGS[op] ?? DEFAULT_CEILING;
-}
-var OP_LABELS = {
-  "POST /entries": "\u5BEB\u5165\u4E00\u6BB5\u77E5\u8B58",
-  "PUT /entries/:id": "\u8986\u5BEB\u4E00\u7B46\u8CC7\u6599",
-  "PATCH /entries/:id": "\u4FEE\u6539\u4E00\u7B46\u8CC7\u6599",
-  "POST /records": "\u5BEB\u5165\u4E00\u7B46\u8A18\u9304\uFF08\u4F8B\u5982\u95DC\u4FC2\uFF09",
-  "PATCH /records/:id": "\u4FEE\u6539\u4E00\u7B46\u8A18\u9304",
-  "GET /entries/search": "\u641C\u5C0B",
-  "PATCH /entries/deprecate-by-library": "\u4E0B\u67B6\u4E00\u6574\u500B\u5EAB",
-  "POST /entries/fts-backfill": "\u88DC\u641C\u5C0B\u7D22\u5F15",
-  "POST /entries/backfill-library": "\u88DC\u6A19\u5EAB",
-  "POST /embed/backfill": "\u88DC\u5411\u91CF",
-  "POST /embed/reconcile": "\u5411\u91CF\u4E16\u4EE3\u6838\u5C0D",
-  "POST /embed/sync": "\u63DB\u7D22\u5F15\u5F8C\u91CD\u5D4C\u5411\u91CF",
-  "POST /records/field-index": "\u958B\u6B04\u4F4D\u503C\u7D22\u5F15",
-  "POST /map/recompute": "\u91CD\u7B97\u85CF\u66F8\u5730\u5716",
-  "POST /graph/canonicalize-entities": "\u6574\u4F75\u5716\u4E0A\u7684\u540C\u540D\u7BC0\u9EDE",
-  "POST /execution-log/cleanup": "\u6E05\u7406\u904E\u671F\u57F7\u884C\u7D00\u9304",
-  [`DAILY writes`]: "\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165",
-  [`DAILY reads`]: "\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6"
-};
-function opLabel(op) {
-  return OP_LABELS[op] ?? op;
-}
-var LITERAL_SEGMENTS = /* @__PURE__ */ new Set([
-  "entries",
-  "templates",
-  "sheets",
-  "records",
-  "recipe-stats",
-  "execution-log",
-  "embed",
-  "map",
-  "graph",
-  "maintenance",
-  "usage-brakes",
-  "usage",
-  "health",
-  "notified",
-  "libraries",
-  "library-cards",
-  "library-stats",
-  "search",
-  "deprecate-by-library",
-  "backfill-library",
-  "status",
-  "fts-backfill",
-  "record",
-  "latest",
-  "retention",
-  "cleanup",
-  "backfill",
-  "reconcile",
-  "selftest",
-  "sync",
-  "expected",
-  "canonicalize-entities",
-  "neighbors",
-  "select",
-  "recompute",
-  "narrative",
-  "triplet-stats",
-  "by-template",
-  "by-source",
-  "relation-orphans",
-  "release",
-  "field-index"
-]);
-function opKey(method, path) {
-  const segs = path.split("/").filter(Boolean).map((s) => LITERAL_SEGMENTS.has(s) ? s : ":id");
-  return `${method.toUpperCase()} /${segs.join("/")}`;
-}
-function isWriteSql(sql) {
-  return /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test(sql);
-}
-var DAILY_WARN_PERCENTS = [20, 50, 80];
-function utcDay3(now = Date.now()) {
-  return new Date(now).toISOString().slice(0, 10);
-}
-var odo = { day: utcDay3(), written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
-var odoEnsuredDay = null;
-function rollDay(now = Date.now()) {
-  const d = utcDay3(now);
-  if (odo.day !== d) odo = { day: d, written: 0, read: 0, pendingWritten: 0, pendingRead: 0, lastFlushAt: 0 };
-}
-function todayUsage(now = Date.now()) {
-  rollDay(now);
-  return { day: odo.day, written: odo.written + odo.pendingWritten, read: odo.read + odo.pendingRead };
-}
-var ESSENTIAL_HEADER = "X-Arcrun-Essential";
-var ESSENTIAL_DAILY_WRITES = 5e3;
-var ESSENTIAL_DAILY_READS = 15e4;
-var ESSENTIAL_PREFIXES = ["/records", "/templates", "/entries"];
-var essentialUse = { day: utcDay3(), written: 0, read: 0 };
-function rollEssential(now = Date.now()) {
-  const d = utcDay3(now);
-  if (essentialUse.day !== d) essentialUse = { day: d, written: 0, read: 0 };
-}
-function essentialReserveApplies(path, headerValue) {
-  if (headerValue !== "account") return false;
-  if (!ESSENTIAL_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) return false;
-  rollEssential();
-  return essentialUse.written < ESSENTIAL_DAILY_WRITES && essentialUse.read < ESSENTIAL_DAILY_READS;
-}
-function addEssentialUse(written, read) {
-  rollEssential();
-  essentialUse.written += written;
-  essentialUse.read += read;
-}
-function essentialUsageToday() {
-  rollEssential();
-  return { ...essentialUse, limit_written: ESSENTIAL_DAILY_WRITES, limit_read: ESSENTIAL_DAILY_READS };
-}
-function newTally(op) {
-  return {
-    op,
-    ceiling: ceilingFor(op),
-    rowsRead: 0,
-    rowsWritten: 0,
-    statements: 0,
-    top: null,
-    over: false,
-    blocked: false,
-    dailyBlocked: null,
-    dailyReleased: { writes: false, reads: false }
+init_transient_error();
+var COALESCE_MAX_STATEMENTS = 200;
+function coalescingPort(inner) {
+  let queue = [];
+  let timer = null;
+  let roundTrips = 0;
+  let statements = 0;
+  let transientFailure = null;
+  const settle = async (q) => {
+    roundTrips++;
+    statements += q.length;
+    try {
+      const out = await inner.batch(q.map((p) => ({ sql: p.sql, params: p.params })));
+      q.forEach((p, i) => p.resolve(out[i]));
+    } catch (e) {
+      if (isTransientD1Error(e)) {
+        transientFailure ??= e;
+        q.forEach((p) => p.reject(e));
+        return;
+      }
+      if (q.length === 1) {
+        q[0].reject(e);
+        return;
+      }
+      await Promise.all(q.map(async (p) => {
+        try {
+          roundTrips++;
+          p.resolve(await inner.all(p.sql, p.params));
+        } catch (err) {
+          if (isTransientD1Error(err)) transientFailure ??= err;
+          p.reject(err);
+        }
+      }));
+    }
   };
-}
-var UsageBrakeError = class extends Error {
-  constructor(tally) {
-    super(`usage brake: ${tally.op} \u5DF2\u5BEB ${tally.rowsWritten} \u5217\uFF0F\u8B80 ${tally.rowsRead} \u5217`);
-    this.tally = tally;
-    this.name = "UsageBrakeError";
-  }
-  tally;
-};
-function isOver(t) {
-  return t.rowsWritten >= t.ceiling.write || t.rowsRead >= t.ceiling.read;
-}
-function add(t, sql, meta) {
-  const w = Number(meta?.rows_written ?? 0);
-  const r = Number(meta?.rows_read ?? 0);
-  t.rowsWritten += w;
-  t.rowsRead += r;
-  t.statements += 1;
-  rollDay();
-  odo.pendingWritten += w;
-  odo.pendingRead += r;
-  if (!t.top || w > t.top.rowsWritten || w === t.top.rowsWritten && r > t.top.rowsRead) {
-    t.top = { sql: sql.replace(/\s+/g, " ").trim().slice(0, 200), rowsWritten: w, rowsRead: r };
-  }
-  if (isOver(t)) t.over = true;
-}
-function guard(t, sqls) {
-  if (isOver(t)) {
-    t.over = true;
-    t.blocked = true;
-    throw new UsageBrakeError(t);
-  }
-  const today = todayUsage();
-  if (today.read >= FREE_TIER_DAILY_ROWS_READ && !t.dailyReleased.reads) {
-    t.dailyBlocked = "reads";
-    throw new UsageBrakeError(t);
-  }
-  if (today.written >= FREE_TIER_DAILY_ROWS_WRITTEN && !t.dailyReleased.writes && sqls.some(isWriteSql)) {
-    t.dailyBlocked = "writes";
-    throw new UsageBrakeError(t);
-  }
-}
-function releaseDailyWriteBrakeIfSystemOwner(env, ownerId) {
-  if (!isSystemAssetOwner(ownerId)) return;
-  const t = env.__kbdbTally;
-  if (t) t.dailyReleased.writes = true;
-}
-function meterDb(db, t) {
+  const flush = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    const q = queue;
+    queue = [];
+    if (q.length) void settle(q);
+  };
+  const enqueue = (sql, params) => new Promise((resolve, reject) => {
+    queue.push({ sql, params, resolve, reject });
+    if (queue.length >= COALESCE_MAX_STATEMENTS) {
+      flush();
+      return;
+    }
+    if (timer === null) timer = setTimeout(flush, 0);
+  });
   const port = {
     [SQL_PORT]: true,
-    info: db.info,
-    async all(sql, params) {
-      guard(t, [sql]);
-      const r = await db.all(sql, params);
-      add(t, sql, r.meta);
-      return r;
+    info: inner.info,
+    get roundTrips() {
+      return roundTrips;
     },
-    async run(sql, params) {
-      guard(t, [sql]);
-      const r = await db.run(sql, params);
-      add(t, sql, r.meta);
-      return r;
+    get statements() {
+      return statements;
+    },
+    get transientFailure() {
+      return transientFailure;
+    },
+    async all(sql, params) {
+      return await enqueue(sql, params);
     },
     async first(sql, params) {
-      guard(t, [sql]);
-      const r = await db.all(sql, params);
-      add(t, sql, r.meta);
+      const r = await enqueue(sql, params);
       return r.results?.[0] ?? null;
     },
+    run: (sql, params) => inner.run(sql, params),
     async batch(stmts) {
-      guard(t, stmts.map((x) => x.sql));
-      const results = await db.batch(stmts);
-      results.forEach((r, i) => add(t, stmts[i].sql, r.meta));
-      return results;
+      return await Promise.all(stmts.map((s) => enqueue(s.sql, s.params)));
     }
   };
   return port;
 }
-var USAGE_DAY_TEMPLATE_ID = "tpl-usage-day";
-var USAGE_DAY_SLOTS = ["day", "rows_written", "rows_read", "warned_percent"];
-function usageDayRecordId(day) {
-  return `usage_day_${day}`;
-}
-async function ensureTemplate(db, id, name, description, slots) {
-  const tpl = await getTemplate(db, id);
-  if (tpl) {
-    const have = JSON.parse(tpl.slots_json);
-    if (slots.every((s) => have.includes(s))) return;
-    await updateTemplate(db, id, { slots: [.../* @__PURE__ */ new Set([...have, ...slots])] });
-    return;
-  }
-  await createTemplate(db, { id, name, description, slots, created_by: "kbdb-speedometer" });
-}
-async function ensureUsageDay(db, day) {
-  if (odoEnsuredDay === day) return;
-  await ensureTemplate(
-    db,
-    USAGE_DAY_TEMPLATE_ID,
-    "usage_day",
-    "\u6BCF\u65E5\u7528\u91CF\u91CC\u7A0B\u8868\uFF08inkstone/InkStoneCo#147\uFF09\uFF1AKBDB \u9598\u53E3\u81EA\u5DF1\u7B97\u7684\u4ECA\u5929\u8B80\u5BEB\u5217\u6578\uFF0C\u5C0D\u7167\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u3002",
-    USAGE_DAY_SLOTS
-  );
-  await createRecord(db, {
-    template: USAGE_DAY_TEMPLATE_ID,
-    record_id: usageDayRecordId(day),
-    derived_cell_ids: true,
-    owner_id: null,
-    values: { day, rows_written: "0", rows_read: "0", warned_percent: "0" }
-  });
-  odoEnsuredDay = day;
-}
-async function flushOdometer(db, now = Date.now()) {
-  rollDay(now);
-  odo.lastFlushAt = now;
-  const day = odo.day;
-  const w = odo.pendingWritten;
-  const r = odo.pendingRead;
-  if (w === 0 && r === 0) return null;
-  odo.pendingWritten = 0;
-  odo.pendingRead = 0;
-  try {
-    await ensureUsageDay(db, day);
-    const rid = usageDayRecordId(day);
-    const wId = derivedCellIds(rid, "rows_written").value;
-    const rId = derivedCellIds(rid, "rows_read").value;
-    const res = await db.batch([
-      { sql: `UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`, params: [w, wId] },
-      { sql: `UPDATE entries SET content = CAST(content AS INTEGER) + ? WHERE id = ? RETURNING content`, params: [r, rId] }
-    ]);
-    let selfW = 0;
-    let selfR = 0;
-    for (const x of res) {
-      selfW += Number(x.meta?.rows_written ?? 0);
-      selfR += Number(x.meta?.rows_read ?? 0);
-    }
-    odo.pendingWritten += selfW;
-    odo.pendingRead += selfR;
-    odo.written = Number(res[0].results?.[0]?.content ?? odo.written + w);
-    odo.read = Number(res[1].results?.[0]?.content ?? odo.read + r);
-    const pct = Math.floor(Math.max(odo.written / FREE_TIER_DAILY_ROWS_WRITTEN, odo.read / FREE_TIER_DAILY_ROWS_READ) * 100);
-    const level = [...DAILY_WARN_PERCENTS, 100].filter((p) => pct >= p).pop() ?? null;
-    let crossed = null;
-    if (level !== null) {
-      const warnId = derivedCellIds(rid, "warned_percent").value;
-      const u = await db.run(`UPDATE entries SET content = ? WHERE id = ? AND CAST(content AS INTEGER) < ?`, [String(level), warnId, level]);
-      odo.pendingWritten += Number(u.meta?.rows_written ?? 0);
-      odo.pendingRead += Number(u.meta?.rows_read ?? 0);
-      if (Number(u.meta?.changes ?? 0) > 0) crossed = level;
-    }
-    return { day, written: odo.written, read: odo.read, crossedPercent: crossed, selfWritten: selfW, selfRead: selfR };
-  } catch (e) {
-    odo.pendingWritten += w;
-    odo.pendingRead += r;
-    console.warn("[kbdb speedometer] odometer flush failed", e);
-    return null;
-  }
-}
-var ODOMETER_FLUSH_DELAY_MS = 72e5;
-var ODOMETER_MAX_PENDING_WRITTEN = 2e3;
-var ODOMETER_MAX_PENDING_READ = 1e5;
-function odometerDueForFlush(now = Date.now()) {
-  if (odo.pendingWritten <= 0 && odo.pendingRead <= 0) return false;
-  if (odo.pendingWritten >= ODOMETER_MAX_PENDING_WRITTEN) return true;
-  if (odo.pendingRead >= ODOMETER_MAX_PENDING_READ) return true;
-  return now - odo.lastFlushAt >= ODOMETER_FLUSH_DELAY_MS;
-}
-function projectExhaustion(used, limit, now = Date.now()) {
-  const dayStart = Date.parse(`${utcDay3(now)}T00:00:00Z`);
-  const elapsed = Math.max(6e4, now - dayStart);
-  if (used <= 0) return null;
-  if (used >= limit) return new Date(now).toISOString();
-  const eta = dayStart + limit / used * elapsed;
-  return eta < nextQuotaReset(now).getTime() ? new Date(eta).toISOString() : null;
-}
-var BRAKE_TEMPLATE_ID = "tpl-usage-brake";
-var BRAKE_SLOTS = [
-  "kind",
-  // brake（剎住了）／warning（今天用量過門檻，只提醒）
-  "op",
-  // 操作代號，例如 POST /entries；每日那種是 DAILY writes／DAILY reads
-  "op_label",
-  // 人話
-  "caller",
-  // 誰打的（X-Arcrun-Caller；執行器帶 workflow:<名字>）
-  "rows_written",
-  "rows_read",
-  "statements",
-  "ceiling_write",
-  "ceiling_read",
-  "basis",
-  // 上限的依據
-  "top_sql",
-  // 寫最多的那一句（只有 SQL 樣式，不含綁定值）
-  "blocked",
-  // 'true'＝有語句被擋下沒送出；'false'＝越線的那一句已經做完
-  "tripped_at",
-  // ISO
-  "release_at",
-  // ISO：自動放行（下一次 00:00 UTC＝台北 08:00）
-  "released_at",
-  // ISO：手動放行
-  "released_by",
-  "notified_at",
-  // ISO：通知已送出（執行器 tick 填）
-  "message"
-  // 給人看的整句話
-];
-function toBrake(r, now) {
-  const v = r.values;
-  const releasedAt = v.released_at || null;
-  const releaseAt = v.release_at || "";
-  const kind = v.kind === "warning" ? "warning" : "brake";
-  const active = kind === "brake" && !releasedAt && (!releaseAt || Date.parse(releaseAt) > now);
+
+// kbdb/src/lib/limits.ts
+function limitExceeded(o) {
   return {
-    id: r.record_id,
-    kind,
-    op: v.op ?? "",
-    op_label: v.op_label ?? "",
-    caller: v.caller ?? "",
-    rows_written: Number(v.rows_written ?? 0),
-    rows_read: Number(v.rows_read ?? 0),
-    ceiling_write: Number(v.ceiling_write ?? 0),
-    ceiling_read: Number(v.ceiling_read ?? 0),
-    basis: v.basis ?? "",
-    top_sql: v.top_sql ?? "",
-    blocked: v.blocked === "true",
-    tripped_at: v.tripped_at ?? "",
-    release_at: releaseAt,
-    released_at: releasedAt,
-    released_by: v.released_by || null,
-    notified_at: v.notified_at || null,
-    message: v.message ?? "",
-    active
+    success: false,
+    error: `${o.what}: limit ${o.limit}, got ${o.got}. ${o.fix}`,
+    code: "limit_exceeded",
+    what: o.what,
+    limit: o.limit,
+    got: o.got,
+    fix: o.fix
   };
 }
-function nextQuotaReset(now) {
-  const d = new Date(now);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
-}
-function taipeiClock(iso) {
-  const d = new Date(Date.parse(iso) + 8 * 36e5);
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mi = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${mm}/${dd} ${hh}:${mi}\uFF08\u53F0\u5317\uFF09`;
-}
-var n = (x) => x.toLocaleString("en-US");
-function brakeMessage(t, caller, releaseAt, id) {
-  const release = `\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\uFF0C\u6216\u547C\u53EB POST /usage-brakes/${id}/release`;
-  if (t.dailyBlocked) {
-    const what2 = t.dailyBlocked === "writes" ? `\u4ECA\u5929\u5168\u90E8\u7684\u5BEB\u5165\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09` : `\u4ECA\u5929\u5168\u90E8\u7684\u8B80\u53D6\u5DF2\u7D93\u5230 ${n(FREE_TIER_DAILY_ROWS_READ)} \u5217\uFF08\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650\uFF09`;
-    return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A${what2}\u3002\u9019\u500B\u5E33\u865F\u5C31\u7B97\u662F\u4ED8\u8CBB\u65B9\u6848\uFF0C\u4E5F\u7167\u514D\u8CBB\u7528\u6236\u7684\u984D\u5EA6\u505C\u4E0B\u4F86\uFF0C${t.dailyBlocked === "writes" ? "\u5BEB\u5165\u5148\u505C\u3001\u8B80\u53D6\u7167\u5E38" : "\u8B80\u5BEB\u90FD\u5148\u505C"}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF0C${release}\u3002`;
+var LimitExceededError = class extends Error {
+  body;
+  constructor(o) {
+    const body = limitExceeded(o);
+    super(body.error);
+    this.name = "LimitExceededError";
+    this.body = body;
   }
-  const what = t.rowsWritten >= t.ceiling.write ? t.ceiling.normalWrite < t.ceiling.write ? `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u9019\u985E\u64CD\u4F5C\u6B63\u5E38\u4E0D\u8D85\u904E ${n(t.ceiling.normalWrite)} \u5217\uFF0C\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.write)}\uFF09` : `\u9019\u4E00\u6B21\u5BEB\u4E86 ${n(t.rowsWritten)} \u5217\uFF08\u4EFB\u4F55\u55AE\u4E00\u64CD\u4F5C\u7684\u4E0A\u9650\u662F ${n(t.ceiling.write)} \u5217\uFF1D\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684 5%\uFF09` : `\u9019\u4E00\u6B21\u8B80\u4E86 ${n(t.rowsRead)} \u5217\uFF08\u55AE\u6B21\u4E0A\u9650 ${n(t.ceiling.read)}\uFF09`;
-  const stopped = t.blocked ? "\u5F8C\u9762\u7684\u6B65\u9A5F\u5DF2\u7D93\u505C\u4E0B\u6C92\u6709\u9001\u51FA" : "\u9019\u4E00\u6B21\u5DF2\u7D93\u505A\u5B8C\uFF0C\u4F46\u540C\u6A23\u7684\u64CD\u4F5C\u5148\u505C\u4F4F";
-  return `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u300C${opLabel(t.op)}\u300D${what}\u3002${stopped}\uFF0C\u514D\u5F97\u628A\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6\uFF08\u5BEB\u5165 ${n(FREE_TIER_DAILY_ROWS_WRITTEN)} \u5217\uFF0F\u5929\uFF09\u71D2\u5149\u3002\u4F86\u6E90\u300C${caller}\u300D\u7684\u9019\u500B\u64CD\u4F5C\u6703\u505C\u5230 ${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u653E\u884C\uFF1B\u8981\u63D0\u65E9\u653E\u884C\uFF0C${release}\u3002`;
-}
-function warningMessage(percent, written, read, now = Date.now()) {
-  const wEta = projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now);
-  const rEta = projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now);
-  const eta = wEta ?? rEta;
-  const speed = eta ? `\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C${taipeiClock(eta)} \u6703\u7528\u5B8C` : "\u7167\u76EE\u524D\u7684\u901F\u5EA6\uFF0C\u4ECA\u5929\u7528\u4E0D\u5B8C";
-  return `\u7528\u91CF\u63D0\u9192\uFF1A\u4ECA\u5929\u5DF2\u7528\u6389\u514D\u8CBB\u984D\u5EA6\u7684 ${percent}%\uFF08\u5BEB\u5165 ${n(written)}/${n(FREE_TIER_DAILY_ROWS_WRITTEN)}\u3001\u8B80\u53D6 ${n(read)}/${n(FREE_TIER_DAILY_ROWS_READ)}\uFF09\u3002${speed}\uFF1B\u5230 100% \u6703\u81EA\u52D5\u524E\u4F4F\u5BEB\u5165\uFF0C${taipeiClock(nextQuotaReset(now).toISOString())} \u91CD\u7F6E\u3002`;
-}
-var ACTIVE_CACHE_MS = 3e4;
-var ACTIVE_FULL_RELOAD_MS = 5 * 6e4;
-var activeCache = null;
-async function listBrakes(db, limit = 100) {
-  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
-  if (!tpl) return [];
-  const now = Date.now();
-  const recs = await searchByTemplate(db, BRAKE_TEMPLATE_ID, void 0, limit, 0);
-  return recs.map((r) => toBrake(r, now));
-}
-var BRAKE_PAGE = 5;
-async function listBrakesSince(db, sinceIso, maxRecords = 100) {
-  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
-  if (!tpl) return [];
-  const now = Date.now();
-  const out = [];
-  for (let offset = 0; out.length < maxRecords; offset += BRAKE_PAGE) {
-    const ids = await memberRecordIds(db, tpl.id, void 0, BRAKE_PAGE, offset);
-    if (ids.length === 0) break;
-    const recs = await hydrateRecordValues(db, tpl.id, ids);
-    const page = recs.map((r) => toBrake(r, now));
-    out.push(...page);
-    if (ids.length < BRAKE_PAGE) break;
-    const oldest = page[page.length - 1]?.tripped_at ?? "";
-    if (oldest && oldest < sinceIso) break;
-  }
-  return out;
-}
-async function recentBrakes(db) {
-  const now = Date.now();
-  const today = utcDay3(now);
-  if (activeCache && now - activeCache.at <= ACTIVE_CACHE_MS) return activeCache.brakes;
-  if (activeCache && activeCache.day === today && now - activeCache.fullAt < ACTIVE_FULL_RELOAD_MS) {
-    const tpl2 = await getTemplate(db, BRAKE_TEMPLATE_ID);
-    const [newest] = tpl2 ? await memberRecordIds(db, tpl2.id, void 0, 1, 0) : [];
-    if ((newest ?? null) === activeCache.newestId) {
-      activeCache = { ...activeCache, at: now };
-      return activeCache.brakes;
-    }
-  }
-  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
-  const [newestNow] = tpl ? await memberRecordIds(db, tpl.id, void 0, 1, 0) : [];
-  const all = await listBrakesSince(db, `${today}T00:00:00.000Z`, 100);
-  activeCache = {
-    at: now,
-    fullAt: now,
-    day: today,
-    newestId: newestNow ?? null,
-    brakes: all.filter((b) => b.active || (b.op.startsWith("DAILY") || !!b.released_at) && b.tripped_at.startsWith(today))
-  };
-  return activeCache.brakes;
-}
-var NOTIFY_WINDOW_MS = 24 * 36e5;
-var NOTIFY_CLEAN_TTL_MS = 10 * 6e4;
-var notifyClean = null;
-async function listPendingNotifyBrakes(db, now = Date.now()) {
-  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
-  if (!tpl) return [];
-  const [newest] = await memberRecordIds(db, tpl.id, void 0, 1, 0);
-  if (!newest) return [];
-  if (notifyClean && notifyClean.newestId === newest && now - notifyClean.at < NOTIFY_CLEAN_TTL_MS) return [];
-  const since = new Date(now - NOTIFY_WINDOW_MS).toISOString();
-  const pending = [];
-  for (let offset = 0; pending.length < 100; offset += BRAKE_PAGE) {
-    const ids = await memberRecordIds(db, tpl.id, void 0, BRAKE_PAGE, offset);
-    if (ids.length === 0) break;
-    const page = (await hydrateRecordValues(db, tpl.id, ids)).map((r) => toBrake(r, now));
-    const fresh = page.filter((b) => b.tripped_at >= since);
-    const pendingHere = fresh.filter((b) => !b.notified_at);
-    pending.push(...pendingHere);
-    if (ids.length < BRAKE_PAGE || pendingHere.length === 0 || fresh.length < page.length) break;
-  }
-  notifyClean = pending.length === 0 ? { newestId: newest, at: now } : null;
-  return pending;
-}
-async function findActiveBrake(db, op, caller) {
-  const now = Date.now();
-  const list = await recentBrakes(db);
-  return list.find((b) => b.kind === "brake" && b.op === op && b.caller === caller && !b.released_at && Date.parse(b.release_at) > now) ?? null;
-}
-async function dailyReleased(db) {
-  if (!await brakeEnabled(db)) return { writes: true, reads: true };
-  const today = utcDay3();
-  const list = await recentBrakes(db);
-  const rel = (op) => list.some((b) => b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
-  return { writes: rel("DAILY writes"), reads: rel("DAILY reads") };
-}
-async function opBrakeSuspended(db, op) {
-  if (!await brakeEnabled(db)) return true;
-  const today = utcDay3();
-  const list = await recentBrakes(db);
-  return list.some((b) => b.kind === "brake" && b.op === op && b.tripped_at.startsWith(today) && !!b.released_at);
-}
-async function ensureBrakeTemplate(db) {
-  await ensureTemplate(
-    db,
-    BRAKE_TEMPLATE_ID,
-    "usage_brake",
-    "\u7528\u91CF\u524E\u8ECA\u7D00\u9304\uFF08inkstone/InkStoneCo#147\uFF09\uFF1A\u67D0\u500B\u64CD\u4F5C\u55AE\u6B21\u82B1\u8CBB\u8D85\u904E\u4E0A\u9650\u3001\u6216\u4ECA\u5929\u7528\u91CF\u904E\u9580\u6ABB\u6642\uFF0C\u9598\u53E3\u81EA\u52D5\u8A18\u5728\u9019\u88E1\u3002",
-    BRAKE_SLOTS
-  );
-}
-async function recordBrake(db, t, caller, now = Date.now()) {
-  await ensureBrakeTemplate(db);
-  const trippedAt = new Date(now).toISOString();
-  const releaseAt = nextQuotaReset(now).toISOString();
-  const op = t.dailyBlocked ? `DAILY ${t.dailyBlocked}` : t.op;
-  const who = t.dailyBlocked ? "*" : caller;
-  const recordId = t.dailyBlocked ? `brake_daily_${t.dailyBlocked}_${utcDay3(now)}` : `brake_${crypto.randomUUID()}`;
-  const today = todayUsage(now);
-  const values = {
-    kind: "brake",
-    op,
-    op_label: opLabel(op),
-    caller: who,
-    rows_written: String(t.dailyBlocked ? today.written : t.rowsWritten),
-    rows_read: String(t.dailyBlocked ? today.read : t.rowsRead),
-    statements: String(t.statements),
-    ceiling_write: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_WRITTEN : t.ceiling.write),
-    ceiling_read: String(t.dailyBlocked ? FREE_TIER_DAILY_ROWS_READ : t.ceiling.read),
-    basis: t.dailyBlocked ? "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u5BEB\u5165 10 \u842C\u5217\uFF0F\u8B80\u53D6 500 \u842C\u5217\uFF09" : t.ceiling.basis,
-    top_sql: t.top?.sql ?? "",
-    blocked: t.blocked || t.dailyBlocked ? "true" : "false",
-    tripped_at: trippedAt,
-    release_at: releaseAt,
-    message: brakeMessage(t, caller, releaseAt, recordId)
-  };
-  const rec = await createRecord(db, {
-    template: BRAKE_TEMPLATE_ID,
-    record_id: recordId,
-    values,
-    owner_id: null,
-    derived_cell_ids: Boolean(t.dailyBlocked)
-  });
-  const trueRec = t.dailyBlocked ? await getRecord(db, recordId) : null;
-  const brake = trueRec ? toBrake(trueRec, now) : toBrake(rec, now);
-  if (activeCache) activeCache = { ...activeCache, newestId: brake.id, brakes: [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)] };
-  return brake;
-}
-async function recordWarning(db, percent, written, read, now = Date.now()) {
-  await ensureBrakeTemplate(db);
-  const day = utcDay3(now);
-  const recordId = `warn_${day}_${percent}`;
-  const values = {
-    kind: "warning",
-    op: "DAILY usage",
-    op_label: "\u4ECA\u5929\u7684\u7528\u91CF",
-    caller: "*",
-    rows_written: String(written),
-    rows_read: String(read),
-    ceiling_write: String(FREE_TIER_DAILY_ROWS_WRITTEN),
-    ceiling_read: String(FREE_TIER_DAILY_ROWS_READ),
-    basis: `\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\u7684 ${percent}%`,
-    tripped_at: new Date(now).toISOString(),
-    release_at: nextQuotaReset(now).toISOString(),
-    message: warningMessage(percent, written, read, now)
-  };
-  const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
-  return toBrake(rec, now);
-}
-var METERED_ITEMS = ["ai"];
-var METERED_LABELS = {
-  ai: { label: "\u4ECA\u5929\u7684 Workers AI \u7528\u91CF", unit: "neurons", what: "Workers AI", stopped: "\u96F2\u7AEF\u8403\u53D6\u5148\u66AB\u505C" }
 };
-async function recordMeteredBrake(db, input, now = Date.now()) {
-  await ensureBrakeTemplate(db);
-  const meta = METERED_LABELS[input.item];
-  const op = `DAILY ${input.item}`;
-  const recordId = `brake_daily_${input.item}_${utcDay3(now)}`;
-  const releaseAt = nextQuotaReset(now).toISOString();
-  const values = {
-    kind: "brake",
-    op,
-    op_label: meta.label,
-    caller: "*",
-    rows_written: "0",
-    rows_read: "0",
-    statements: "0",
-    ceiling_write: "0",
-    ceiling_read: "0",
-    basis: `${meta.what} \u514D\u8CBB\u984D\u5EA6\u6BCF\u65E5 ${n(input.limit)} ${meta.unit}\uFF08\u4ECA\u5929\u5DF2\u7528 ${n(input.used)}\uFF09`,
-    top_sql: "",
-    blocked: "true",
-    tripped_at: new Date(now).toISOString(),
-    release_at: releaseAt,
-    message: `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u4ECA\u5929\u7684 ${meta.what} \u5DF2\u7528 ${n(input.used)} ${meta.unit}\uFF0C\u5230\u4E86\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650 ${n(input.limit)}\u3002\u518D\u7528\u4E0B\u53BB\u5C31\u958B\u59CB\u8A08\u8CBB\uFF0C\u6240\u4EE5${meta.stopped}\uFF0C${taipeiClock(releaseAt)} \u984D\u5EA6\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF1B\u8981\u63D0\u65E9\u6062\u5FA9\uFF08\u63A5\u53D7\u8D85\u51FA\u7684\u90E8\u5206\u8A08\u8CBB\uFF09\uFF0C\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\uFF0C\u6216\u547C\u53EB POST /usage-brakes/${recordId}/release\u3002`
-  };
-  const rec = await createRecord(db, { template: BRAKE_TEMPLATE_ID, record_id: recordId, values, owner_id: null, derived_cell_ids: true });
-  const trueRec = await getRecord(db, recordId);
-  const brake = toBrake(trueRec ?? rec, now);
-  if (activeCache) activeCache = { ...activeCache, newestId: brake.id, brakes: [brake, ...activeCache.brakes.filter((b) => b.id !== brake.id)] };
-  return brake;
+function boundedInt(raw2, o) {
+  const n2 = Number(raw2);
+  if (raw2 === void 0 || raw2 === "" || !Number.isFinite(n2)) return o.fallback;
+  const v = Math.floor(n2);
+  if (v < o.min) return o.fallback;
+  if (v > o.max) throw new LimitExceededError({ what: o.what, limit: o.max, got: v, fix: o.fix });
+  return v;
 }
-async function getBrake(db, id) {
-  const { getRecord: getRecord2 } = await Promise.resolve().then(() => (init_record_crud(), record_crud_exports));
-  const rec = await getRecord2(db, id);
-  if (!rec || rec.template_id !== BRAKE_TEMPLATE_ID) return null;
-  return toBrake(rec, Date.now());
+
+// kbdb/src/lib/read-cache.ts
+var READ_CACHE_MAX_AGE_S = 120;
+var MAX_ENTRIES = 6;
+var MAX_TOTAL_BYTES = 12 * 1024 * 1024;
+var MAX_ENTRY_BYTES = 6 * 1024 * 1024;
+var store = /* @__PURE__ */ new Map();
+var totalBytes = 0;
+function readCacheKey(url) {
+  const u = new URL(url);
+  u.searchParams.delete("max_age");
+  u.searchParams.sort();
+  return `${u.pathname}?${u.searchParams.toString()}`;
 }
-async function releaseBrake(db, id, by) {
-  const existing = await getBrake(db, id);
-  if (!existing) return null;
-  const updated = await updateRecord(db, id, { released_at: (/* @__PURE__ */ new Date()).toISOString(), released_by: by || "manual" });
-  activeCache = null;
-  return updated ? toBrake(updated, Date.now()) : null;
+function readCacheGet(key, maxAgeS, now = Date.now()) {
+  const e = store.get(key);
+  if (!e) return null;
+  const ageMs = now - e.at;
+  if (ageMs > maxAgeS * 1e3) return null;
+  return { body: e.body, ageS: Math.floor(ageMs / 1e3) };
 }
-async function markBrakeNotified(db, id) {
-  const existing = await getBrake(db, id);
-  if (!existing) return null;
-  const updated = await updateRecord(db, id, { notified_at: (/* @__PURE__ */ new Date()).toISOString() });
-  return updated ? toBrake(updated, Date.now()) : null;
-}
-function brakeBody(b) {
-  return { success: false, error: "usage_brake", message: b.message, brake: b };
+function readCachePut(key, body, bytes, now = Date.now()) {
+  if (bytes > MAX_ENTRY_BYTES) return;
+  const old = store.get(key);
+  if (old) {
+    totalBytes -= old.bytes;
+    store.delete(key);
+  }
+  store.set(key, { at: now, body, bytes });
+  totalBytes += bytes;
+  while (store.size > MAX_ENTRIES || totalBytes > MAX_TOTAL_BYTES) {
+    const first = store.keys().next();
+    if (first.done) break;
+    totalBytes -= store.get(first.value).bytes;
+    store.delete(first.value);
+  }
 }
 
 // kbdb/src/routes/records.ts
-init_d1();
+init_transient_error();
 var recordRoutes = new Hono2();
 async function templateMissing(c, template, emptyBody) {
   const info = await templateMissingInfo(dbOf(c.env), template);
@@ -8283,7 +8569,7 @@ recordRoutes.post("/", async (c) => {
     return c.json({ success: false, error: "entry_ids must be an object of {slot: entry_id}" }, 400);
   }
   if (!isSystemAssetOwner(body.owner_id)) {
-    const budget = await entryWriteBudgetToday(c.env, dbOf(c.env));
+    const budget = await entryWriteBudgetToday(c.env, dbOf(c.env), judgePlan().plan === "paid");
     if (budget.remaining <= 0) {
       return c.json(writeBudgetExhaustedBody(budget), 429);
     }
@@ -8326,6 +8612,53 @@ recordRoutes.post("/batch-get", async (c) => {
   const missing = [...new Set(body.ids)].filter((id) => !got.has(id));
   return c.json({ success: true, records, missing, count: records.length });
 });
+var MULTI_READ_MAX = 150;
+var BY_TEMPLATE_MAX_FIELDS = 200;
+var MULTI_READ_PATH = /^\/[^/?#\s]+(\?[^#\s]*)?$/;
+recordRoutes.post("/multi-read", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !Array.isArray(body.reads) || typeof body.owner_id !== "string" || !body.owner_id) {
+    return c.json({ success: false, error: "reads[] and owner_id required" }, 400);
+  }
+  const reads = body.reads;
+  if (reads.length > MULTI_READ_MAX) {
+    return c.json(limitExceeded({ what: "multi-read reads", limit: MULTI_READ_MAX, got: reads.length, fix: `split into batches of at most ${MULTI_READ_MAX} reads` }), 422);
+  }
+  const urls = [];
+  for (let i = 0; i < reads.length; i++) {
+    const p = reads[i]?.path;
+    if (typeof p !== "string" || !MULTI_READ_PATH.test(p)) {
+      return c.json({ success: false, error: `reads[${i}].path must look like "/<template>?field=&value=&limit="` }, 400);
+    }
+    const u = new URL(`http://kbdb.local/by-template${p}`);
+    u.searchParams.set("owner_id", body.owner_id);
+    boundedInt(u.searchParams.get("limit") ?? void 0, { what: `reads[${i}] by-template limit`, fallback: 100, min: 1, max: 500, fix: "use limit<=500 and page with offset" });
+    const nFields = (u.searchParams.get("fields") ?? "").split(",").filter((x) => x.trim() && x.trim().length <= 64).length;
+    if (nFields > BY_TEMPLATE_MAX_FIELDS) throw new LimitExceededError({ what: `reads[${i}] by-template fields`, limit: BY_TEMPLATE_MAX_FIELDS, got: nFields, fix: `ask for at most ${BY_TEMPLATE_MAX_FIELDS} fields` });
+    urls.push(`${u.pathname}${u.search}`);
+  }
+  if (urls.length === 0) return c.json({ success: true, count: 0, results: [], round_trips: 0 });
+  const port = coalescingPort(dbOf(c.env));
+  const env2 = { ...c.env, __kbdbDb: port };
+  const results = await Promise.all(urls.map(async (url) => {
+    try {
+      const res = await recordRoutes.request(url, { method: "GET" }, env2);
+      const text = await res.text();
+      let parsed = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+      }
+      if (res.ok && parsed !== null && typeof parsed === "object") return parsed;
+      const msg = parsed && typeof parsed === "object" && "error" in parsed ? String(parsed.error) : text.slice(0, 200);
+      return { success: false, status: res.status, error: msg };
+    } catch (e) {
+      return { success: false, status: 500, error: e instanceof Error ? e.message : String(e) };
+    }
+  }));
+  if (port.transientFailure) throw port.transientFailure;
+  return c.json({ success: true, count: results.length, results, round_trips: port.roundTrips, statements: port.statements });
+});
 recordRoutes.get("/triplet-stats", async (c) => {
   const owner = c.req.query("owner_id") || void 0;
   const counts = owner ? await storedTripletCountsByLibrary(dbOf(c.env), owner) : await tripletCountsByLibrary(dbOf(c.env), void 0);
@@ -8338,13 +8671,16 @@ var intParam = (raw2, fallback, min, max) => {
   const v = Math.floor(n2);
   return v < min ? fallback : Math.min(v, max);
 };
-recordRoutes.get("/by-template/:template", async (c) => {
-  const limit = intParam(c.req.query("limit"), 100, 1, 500);
+var byTemplateRead = async (c) => {
+  const limit = boundedInt(c.req.query("limit"), { what: "by-template limit", fallback: 100, min: 1, max: 500, fix: "use limit<=500 and page with offset" });
   const offset = intParam(c.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
   const exactTotal = c.req.query("total") === "exact";
   const field = c.req.query("field");
   const value = c.req.query("value");
-  const slots = (c.req.query("fields") ?? "").split(",").map((x) => x.trim()).filter((x) => x && x.length <= 64).slice(0, 200);
+  const slots = (c.req.query("fields") ?? "").split(",").map((x) => x.trim()).filter((x) => x && x.length <= 64);
+  if (slots.length > BY_TEMPLATE_MAX_FIELDS) {
+    throw new LimitExceededError({ what: "by-template fields", limit: BY_TEMPLATE_MAX_FIELDS, got: slots.length, fix: `ask for at most ${BY_TEMPLATE_MAX_FIELDS} fields, or omit fields to get whole records` });
+  }
   if (field && !value || !field && value) {
     return c.json({ success: false, error: "field and value must be given together" }, 400);
   }
@@ -8375,12 +8711,28 @@ recordRoutes.get("/by-template/:template", async (c) => {
   );
   if (templateExists === false) return templateMissing(c, c.req.param("template"), { records: [], count: 0, limit, offset, total: 0, total_exact: true });
   return c.json({ success: true, records, count: records.length, limit, offset, total, total_exact: totalExact });
+};
+recordRoutes.get("/by-template/:template", async (c) => {
+  const maxAge = boundedInt(c.req.query("max_age"), { what: "by-template max_age", fallback: 0, min: 1, max: READ_CACHE_MAX_AGE_S, fix: `use max_age<=${READ_CACHE_MAX_AGE_S} seconds, or omit it to always read fresh` });
+  if (!maxAge) return byTemplateRead(c);
+  const key = readCacheKey(c.req.url);
+  const hit = readCacheGet(key, maxAge);
+  if (hit) return c.json({ ...hit.body, cached: true, cache_age_s: hit.ageS });
+  const res = await byTemplateRead(c);
+  if (res.status === 200) {
+    const text = await res.clone().text();
+    try {
+      readCachePut(key, JSON.parse(text), text.length);
+    } catch {
+    }
+  }
+  return res;
 });
 recordRoutes.get("/by-source/:template", async (c) => {
   const field = c.req.query("field");
   const value = c.req.query("value");
   if (!field || !value) return c.json({ success: false, error: "field and value required" }, 400);
-  const limit = intParam(c.req.query("limit"), 1e3, 1, 1e3);
+  const limit = boundedInt(c.req.query("limit"), { what: "by-source limit", fallback: 1e3, min: 1, max: 1e3, fix: "use limit<=1000 and page with offset" });
   const offset = intParam(c.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
   const tpl = await getTemplate(dbOf(c.env), c.req.param("template"));
   if (!tpl) return templateMissing(c, c.req.param("template"), { record_ids: [], count: 0, total: 0, limit, offset });
@@ -8850,7 +9202,7 @@ entityRoutes.post("/resolve", async (c) => {
   if (items.length === 0) return c.json({ success: false, error: "name (or items) required" }, 400);
   if (items.length > MAX_ITEMS) return c.json({ success: false, error: `items \u6700\u591A ${MAX_ITEMS} \u7B46` }, 400);
   if (!isSystemAssetOwner(owner)) {
-    const budget = await entryWriteBudgetToday(c.env, dbOf(c.env));
+    const budget = await entryWriteBudgetToday(c.env, dbOf(c.env), judgePlan().plan === "paid");
     if (budget.remaining <= 0) return c.json(writeBudgetExhaustedBody(budget), 429);
   }
   const tally = { rowsWritten: 0 };
@@ -8893,6 +9245,7 @@ entityRoutes.get("/", async (c) => {
 
 // kbdb/src/routes/map.ts
 init_d1();
+init_transient_error();
 var mapRoutes = new Hono2();
 mapRoutes.get("/select", async (c) => {
   const q = c.req.query("q") || c.req.query("question") || "";
@@ -9072,6 +9425,7 @@ async function canonicalizeTripletEntities(db, env, opts = {}) {
 // kbdb/src/routes/graph.ts
 init_library_predicate();
 init_d1();
+init_transient_error();
 var graphRoutes = new Hono2();
 graphRoutes.post("/canonicalize-entities", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -9682,6 +10036,7 @@ async function retrieveForQuestion(db, question, opts = {}) {
 init_embed();
 init_library_predicate();
 init_d1();
+init_transient_error();
 var retrieveRoutes = new Hono2();
 retrieveRoutes.get("/", async (c) => {
   const q = c.req.query("q") || c.req.query("question") || "";
@@ -10019,7 +10374,7 @@ executionLogRoutes.get("/", async (c) => {
   if (!workflowId) return c.json({ success: false, error: "workflow_id \u5FC5\u586B" }, 400);
   const ownerId = c.req.query("owner_id") || void 0;
   const limitParam = c.req.query("limit");
-  const limit = Math.min(Math.max(parseInt(limitParam || "10", 10) || 10, 1), 100);
+  const limit = boundedInt(limitParam, { what: "execution-log limit", fallback: 10, min: 1, max: 100, fix: "use limit<=100" });
   const executions = await listExecutionLog(execLogDbOf(c.env), dbOf(c.env), workflowId, ownerId, limit);
   return c.json({ success: true, executions });
 });
@@ -10389,8 +10744,14 @@ function setMeterHeaders(c, t) {
     c.header("X-KBDB-Rows-Read", String(t.rowsRead));
     c.header("X-KBDB-Rows-Written", String(t.rowsWritten));
     c.header("X-KBDB-Statements", String(t.statements));
+    const j = judgePlan();
+    c.header("X-KBDB-Plan", j.plan);
     c.header("X-KBDB-Today-Rows-Written", `${today.written}/${FREE_TIER_DAILY_ROWS_WRITTEN}`);
     c.header("X-KBDB-Today-Rows-Read", `${today.read}/${FREE_TIER_DAILY_ROWS_READ}`);
+    if (j.plan === "paid") {
+      c.header("X-KBDB-Month-Rows-Written", `${j.usedWritten}/${j.limitWritten}`);
+      c.header("X-KBDB-Month-Rows-Read", `${j.usedRead}/${j.limitRead}`);
+    }
   } catch {
   }
 }
@@ -10458,6 +10819,12 @@ var speedometer = async (c, next) => {
           return res;
         }
         t.dailyReleased = await dailyReleased(self);
+        try {
+          await loadMonthBase(self);
+        } catch (e) {
+          console.warn("[kbdb speedometer] month base lookup failed", e);
+        }
+        await ensurePlanProof(self, c.env.__kbdbPlanProbe);
       } catch (e) {
         console.warn("[kbdb speedometer] brake lookup failed", e);
         t.dailyReleased = { writes: true, reads: true };
@@ -10494,70 +10861,49 @@ var speedometer = async (c, next) => {
   const p = scheduleFlush(c, rawDb);
   if (p) await p;
 };
-var PAID_MONTHLY_INCLUDED_ROWS_READ = 25e9;
-var PAID_MONTHLY_INCLUDED_ROWS_WRITTEN = 5e7;
-function nextMonthStart(now) {
-  const d = new Date(now);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
-}
 var usageBrakeRoutes = new Hono2();
 usageBrakeRoutes.get("/", async (c) => {
-  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? "50") || 50, 1), 100);
+  const limit = boundedInt(c.req.query("limit"), { what: "usage-brakes limit", fallback: 50, min: 1, max: 100, fix: "use limit<=100" });
   const brakes = c.req.query("pending_notify") === "1" ? (await listPendingNotifyBrakes(dbOf(c.env))).slice(0, limit) : await listBrakes(dbOf(c.env), limit);
   return c.json({ success: true, brakes });
 });
-var monthCache = null;
-var MONTH_CACHE_MS = 5 * 6e4;
 async function monthUsage(db, day, todayWritten, todayRead) {
   const month = day.slice(0, 7);
-  const now = Date.now();
-  if (!monthCache || monthCache.key !== day || now - monthCache.at >= MONTH_CACHE_MS) {
-    const dom = Number(day.slice(8, 10));
-    const ids = Array.from({ length: dom - 1 }, (_, i) => usageDayRecordId(`${month}-${String(i + 1).padStart(2, "0")}`));
-    const recs = await Promise.all(ids.map((id) => getRecord(db, id).catch(() => null)));
-    let w = 0;
-    let r = 0;
-    let days = 0;
-    let exceeded = false;
-    for (const rec of recs) {
-      if (!rec) continue;
-      const dw = Number(rec.values.rows_written ?? 0);
-      const dr = Number(rec.values.rows_read ?? 0);
-      days += 1;
-      w += dw;
-      r += dr;
-      if (dw > FREE_TIER_DAILY_ROWS_WRITTEN || dr > FREE_TIER_DAILY_ROWS_READ) exceeded = true;
-    }
-    monthCache = { key: day, at: now, w, r, days, exceeded };
-  }
+  const base = await loadMonthBase(db);
   return {
     month,
-    rows_written: monthCache.w + todayWritten,
-    rows_read: monthCache.r + todayRead,
-    days_counted: monthCache.days + 1,
-    exceeded_free_daily: monthCache.exceeded || todayWritten > FREE_TIER_DAILY_ROWS_WRITTEN || todayRead > FREE_TIER_DAILY_ROWS_READ
+    rows_written: base.w + todayWritten,
+    rows_read: base.r + todayRead,
+    days_counted: base.days + 1,
+    exceeded_free_daily: base.exceeded || todayWritten > FREE_TIER_DAILY_ROWS_WRITTEN || todayRead > FREE_TIER_DAILY_ROWS_READ
   };
 }
 usageBrakeRoutes.get("/usage", async (c) => {
-  const day = utcDay3();
+  const day = utcDay2();
   const rec = await getRecord(dbOf(c.env), usageDayRecordId(day));
   const mine = todayUsage();
   const written = Math.max(Number(rec?.values.rows_written ?? 0), mine.written);
   const read = Math.max(Number(rec?.values.rows_read ?? 0), mine.read);
   const now = Date.now();
   const month = await monthUsage(dbOf(c.env), day, written, read);
+  const j = judgePlan(now);
+  const paid = j.plan === "paid";
+  const usedW = paid ? month.rows_written : written;
+  const usedR = paid ? month.rows_read : read;
   return c.json({
     success: true,
     day,
     rows_written: written,
     rows_read: read,
-    limit_rows_written: FREE_TIER_DAILY_ROWS_WRITTEN,
-    limit_rows_read: FREE_TIER_DAILY_ROWS_READ,
-    percent_written: Math.round(written / FREE_TIER_DAILY_ROWS_WRITTEN * 1e3) / 10,
-    percent_read: Math.round(read / FREE_TIER_DAILY_ROWS_READ * 1e3) / 10,
-    projected_exhaustion_written: projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now),
-    projected_exhaustion_read: projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now),
-    reset_at: nextQuotaReset(now).toISOString(),
+    plan: j.plan,
+    limit_period: j.period,
+    limit_rows_written: j.limitWritten,
+    limit_rows_read: j.limitRead,
+    percent_written: Math.round(usedW / j.limitWritten * 1e3) / 10,
+    percent_read: Math.round(usedR / j.limitRead * 1e3) / 10,
+    projected_exhaustion_written: paid ? null : projectExhaustion(written, FREE_TIER_DAILY_ROWS_WRITTEN, now),
+    projected_exhaustion_read: paid ? null : projectExhaustion(read, FREE_TIER_DAILY_ROWS_READ, now),
+    reset_at: j.resetAt,
     // 付費方案（Workers Paid）的月內含額度（出處：developers.cloudflare.com/d1/platform/pricing）：
     // 讀 250 億列／月、寫 5,000 萬列／月內含；超過讀 $0.001／百萬列、寫 $1.00／百萬列。
     month: {
@@ -10567,7 +10913,7 @@ usageBrakeRoutes.get("/usage", async (c) => {
       next_reset_at: nextMonthStart(now).toISOString()
     },
     essential_reserve: essentialUsageToday(),
-    basis: "\u514D\u8CBB\u65B9\u6848\u6BCF\u65E5\u984D\u5EA6\uFF08\u4E0D\u8AD6\u5E33\u865F\u5BE6\u969B\u65B9\u6848\uFF09\uFF1B\u6578\u5B57\u662F KBDB \u9598\u53E3\u81EA\u5DF1\u7D2F\u8A08\u7684 meta.rows_written\uFF0Frows_read"
+    basis: `${j.reason}\uFF1B\u6578\u5B57\u662F KBDB \u9598\u53E3\u81EA\u5DF1\u7D2F\u8A08\u7684 meta.rows_written\uFF0Frows_read`
   });
 });
 usageBrakeRoutes.post("/metered", async (c) => {
@@ -10612,6 +10958,38 @@ usageBrakeRoutes.post("/settings", async (c) => {
 
 // kbdb/src/index.ts
 init_d1();
+
+// kbdb/src/storage/replica.ts
+var BOOKMARK_HEADER = "X-KBDB-Bookmark";
+var REPLICA_READ_PREFIXES = ["/records", "/entries", "/templates", "/sheets", "/graph", "/retrieve", "/map"];
+var READ_POSTS = /* @__PURE__ */ new Set(["/records/batch-get", "/records/multi-read"]);
+function isReplicaReadable(method, path) {
+  const m = method.toUpperCase();
+  const isRead = m === "GET" || m === "HEAD" || m === "POST" && READ_POSTS.has(path);
+  if (!isRead) return false;
+  return REPLICA_READ_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+}
+var BOOKMARK_SHAPE = /^[0-9a-fA-F-]{8,200}$/;
+function sessionArgFor(method, path, bookmarkHeader) {
+  const bm = bookmarkHeader?.trim();
+  if (bm && BOOKMARK_SHAPE.test(bm)) return bm;
+  return isReplicaReadable(method, path) ? "first-unconstrained" : "first-primary";
+}
+function canSession(db) {
+  return typeof db === "object" && db !== null && typeof db.withSession === "function";
+}
+var replicaSession = async (c, next) => {
+  const env = c.env;
+  const path = new URL(c.req.url).pathname;
+  if (env.__kbdbDb || path === "/" || path === "/health" || !canSession(env.DB)) return next();
+  const session = env.DB.withSession(sessionArgFor(c.req.method, path, c.req.header(BOOKMARK_HEADER)));
+  c.env = { ...c.env, DB: session };
+  await next();
+  const bm = session.getBookmark?.();
+  if (bm) c.res.headers.set(BOOKMARK_HEADER, bm);
+};
+
+// kbdb/src/index.ts
 var app = new Hono2();
 app.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
@@ -10627,9 +11005,11 @@ app.use("*", async (c, next) => {
   }
   return next();
 });
+app.use("*", replicaSession);
 app.use("*", speedometer);
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
+  if (err instanceof LimitExceededError) return c.json(err.body, 422);
   if (isTransientD1Error(err)) {
     console.warn("[kbdb] transient D1 error \u2192 503", err instanceof Error ? err.message : err);
     c.header("Retry-After", "2");
