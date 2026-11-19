@@ -7850,6 +7850,18 @@ async function fillCardPassages(env, db, input) {
 init_maintenance_quota();
 init_d1();
 init_transient_error();
+
+// kbdb/src/lib/entry-echo.ts
+function slimEntryEcho(entry) {
+  const e = entry && typeof entry === "object" ? entry : {};
+  const out = {};
+  for (const k of ["id", "owner_id", "page_name", "template", "created_at", "updated_at"]) {
+    if (k in e) out[k] = e[k];
+  }
+  return out;
+}
+
+// kbdb/src/routes/entries.ts
 var entryRoutes = new Hono2();
 var PAGE_EXPANSION_MAX_PAGES = 5;
 var PAGE_EXPANSION_PER_PAGE = 4;
@@ -7904,7 +7916,7 @@ entryRoutes.post("/", async (c) => {
   }
   if (embedEnabled(c.env)) c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
   }));
-  return c.json({ success: true, entry });
+  return c.json({ success: true, entry: c.req.query("view") === "identity" ? slimEntryEcho(entry) : entry });
 });
 async function blockScopeOf(db, owner) {
   const tplId = await templateIdByName(db, "block");

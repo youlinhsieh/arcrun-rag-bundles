@@ -8800,10 +8800,12 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
         success: false,
         data: result.data,
         error: verdict.error,
-        trace: result.trace,
-        duration_ms,
         // inkstone/Arcrun#219：哪一步失敗（寫進執行紀錄，Portal 看工作流畫面標紅那一步）
-        ...verdict.failedNode ? { failed_node: verdict.failedNode } : {}
+        // inkstone/Arcrun#291：放在 trace 之前——trace 很長，呼叫端（小幫手）只讀回應前面一段，
+        // 排在後面就永遠看不到「是哪一步失敗」。
+        ...verdict.failedNode ? { failed_node: verdict.failedNode } : {},
+        trace: result.trace,
+        duration_ms
       };
     }
     return { success: true, data: result.data, trace: result.trace, duration_ms };
