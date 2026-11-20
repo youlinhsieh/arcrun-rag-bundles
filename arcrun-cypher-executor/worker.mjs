@@ -106095,15 +106095,54 @@ async function repoOf(c, name) {
   try {
     return { h: await b.get(name) };
   } catch (e) {
-    if (e?.code === "NOT_FOUND" || /not found/i.test(String(e?.message))) return err(c, 404, "repo_not_found", `Artifacts \u88E1\u6C92\u6709 repo\u300C${name}\u300D`);
+    if (e?.code === "NOT_FOUND" || /not found/i.test(String(e?.message))) {
+      const { total } = await listBound(b);
+      const hint = total === 0 ? "\uFF08\u9019\u53F0\u5BE6\u4F8B\u7D81\u5230\u7684 Artifacts namespace \u88E1\u5B8C\u5168\u6C92\u6709 repo\u2014\u2014binding \u591A\u534A\u7D81\u932F\uFF0C\u770B /artifacts/status\uFF09" : "";
+      return err(c, 404, "repo_not_found", `Artifacts \u88E1\u6C92\u6709 repo\u300C${name}\u300D${hint}`);
+    }
     return err(c, 502, "artifacts_error", `Artifacts \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A${String(e?.message ?? e).slice(0, 200)}`);
   }
 }
 var isRes = (x) => x instanceof Response;
 var SHA = /^[0-9a-f]{40}$/;
-artifactsRouter.get("/artifacts/status", (c) => {
+async function listBound(b) {
+  if (!b || typeof b.list !== "function") return { repos: null, total: null, error: "binding \u6C92\u6709 list()" };
+  try {
+    const out = await b.list({ limit: 100 });
+    const rows = Array.isArray(out) ? out : Array.isArray(out?.repos) ? out.repos : Array.isArray(out?.result) ? out.result : [];
+    const names = rows.map((r) => String(r?.name ?? r)).filter(Boolean);
+    const total = typeof out?.total === "number" ? out.total : typeof out?.total_count === "number" ? out.total_count : names.length;
+    return { repos: names, total };
+  } catch (e) {
+    return { repos: null, total: null, error: String(e?.message ?? e).slice(0, 160) };
+  }
+}
+artifactsRouter.get("/artifacts/status", async (c) => {
   const b = c.env.ARTIFACTS;
-  return c.json({ success: true, available: !!(b && typeof b.get === "function"), message: b ? "Artifacts \u5DF2\u9023\u4E0A\uFF08binding\uFF0C\u7121\u91D1\u9470\uFF09" : UNAVAILABLE });
+  if (!(b && typeof b.get === "function")) return c.json({ success: true, available: false, code: "artifacts_unavailable", message: UNAVAILABLE });
+  const declared = String(c.env.ARTIFACTS_NAMESPACE ?? "").trim() || null;
+  const { repos, total, error } = await listBound(b);
+  const probeName = (c.req.query("probe") ?? "").trim();
+  let probe;
+  if (probeName) {
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(probeName)) probe = { repo: probeName, readable: false, reason: "repo \u540D\u4E0D\u5408\u6CD5" };
+    else {
+      try {
+        await b.get(probeName);
+        probe = { repo: probeName, readable: true };
+      } catch (e) {
+        probe = { repo: probeName, readable: false, reason: String(e?.message ?? e).slice(0, 120) };
+      }
+    }
+  }
+  const base = { success: true, declared_namespace: declared, repo_count: total, repos: repos ? repos.slice(0, 50) : null, ...probe ? { probe } : {} };
+  if (repos === null) {
+    const ok = probe?.readable === true;
+    return c.json({ ...base, available: ok, code: ok ? void 0 : "unverified", message: `Artifacts \u5DF2\u7D81\u4E0A\uFF0C\u4F46\u6C92\u80FD\u5217\u51FA repo\uFF08${error}\uFF09\uFF1B${ok ? `\u8A66\u8B80 ${probe.repo} \u6210\u529F` : "\u6C92\u9A57\u5230\u8B80\u5F97\u5230\u6771\u897F\uFF0C\u4E0D\u7576\u4F5C\u5065\u5EB7"}` });
+  }
+  if (repos.length === 0) return c.json({ ...base, available: false, code: "namespace_empty", message: `\u7D81\u5230\u7684 namespace${declared ? `\uFF08\u90E8\u7F72\u5BEB\u7684\u662F\u300C${declared}\u300D\uFF09` : ""}\u88E1\u6C92\u6709\u4EFB\u4F55 repo\uFF1A\u591A\u534A\u7D81\u5230\u4E86\u4E0D\u5B58\u5728\u6216\u7A7A\u7684 namespace\u3002\u91CD\u65B0\u90E8\u7F72\u4E26\u6307\u5B9A\u653E repo \u7684 namespace\uFF08ARCRUN_ARTIFACTS_NAMESPACE\uFF09\u3002` });
+  if (probe && !probe.readable) return c.json({ ...base, available: false, code: "probe_failed", message: `\u7D81\u5230\u7684 namespace \u6709 ${total} \u500B repo\uFF0C\u4F46\u6C92\u6709\u4F60\u8981\u8B80\u7684\u300C${probe.repo}\u300D\u3002` });
+  return c.json({ ...base, available: true, message: `Artifacts \u5DF2\u9023\u4E0A\uFF1A\u7D81\u5230\u7684 namespace${declared ? `\uFF08${declared}\uFF09` : ""}\u6709 ${total} \u500B repo${probe ? `\uFF0C\u8A66\u8B80 ${probe.repo} \u6210\u529F` : ""}` });
 });
 artifactsRouter.get("/artifacts/repos/:repo/raw/*", async (c) => {
   const r = await repoOf(c, c.req.param("repo"));

@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.250",
- "fingerprint": "cd8e3d77797af31bb541230f5d0233a2ca490ca8029424f180c1b2eabf9b0ec4",
- "built": "2026-11-19",
- "source": "Arcrun@8067e4d1dda3",
+ "release": "1.4.251",
+ "fingerprint": "37ce39d6e9c837a18afd16d20991310e1d35ebe7adeb57c7ccb763fba39ed921",
+ "built": "2026-11-20",
+ "source": "Arcrun@b819b569121d",
  "daemon": {
   "version": "0.18.123",
   "built": "20261119-2028",
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 12800744,
+   "js_bytes": 12803802,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -246,10 +246,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "c77caed02e9c63ae80451cc5bb19bf3e62f4c101",
-   "source_content_sha256": "69586ba1fa360e91030a6dcb1cef4173bd6747b1aead5ebde166ad676aa458e3",
-   "sha256": "69586ba1fa360e91030a6dcb1cef4173bd6747b1aead5ebde166ad676aa458e3",
-   "bytes": 12800744
+   "source_commit": "b819b569121d21d7b980cca13ad009ca68ef6775",
+   "source_content_sha256": "71bde546201e1efc2cc7413fee6a444ba4839f920b7fb4b7b92d88366e4f3102",
+   "sha256": "71bde546201e1efc2cc7413fee6a444ba4839f920b7fb4b7b92d88366e4f3102",
+   "bytes": 12803802
   },
   {
    "name": "arcrun-date-ops",
@@ -951,7 +951,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 12800744,
+   "js_bytes": 12803802,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -993,8 +993,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "c77caed02e9c63ae80451cc5bb19bf3e62f4c101",
-   "source_content_sha256": "69586ba1fa360e91030a6dcb1cef4173bd6747b1aead5ebde166ad676aa458e3",
+   "source_commit": "b819b569121d21d7b980cca13ad009ca68ef6775",
+   "source_content_sha256": "71bde546201e1efc2cc7413fee6a444ba4839f920b7fb4b7b92d88366e4f3102",
    "first_install": true
   },
   {
@@ -1868,7 +1868,7 @@
   }
  ],
  "installer": {
-  "version": "1.0.83"
+  "version": "1.0.84"
  },
  "payload_fingerprint": "7e142ee616ff0db8588c4726ae02920bd861a2411bc2837b44e9a8bde0e46ec5"
 }
