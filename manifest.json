@@ -1,20 +1,20 @@
 {
  "schema": 2,
- "release": "1.4.255",
- "fingerprint": "2157315eb4ef57da2708f2da3c9324ec67826a018d7c65ef97da654199de5a7e",
+ "release": "1.4.256",
+ "fingerprint": "a5f45de974451ab2e41e0f2b971875e79ab54de7009a36f8c6ca79e81b8b98bc",
  "built": "2026-11-21",
  "source": "Arcrun@4699ee2157cf",
  "daemon": {
-  "version": "0.18.123",
-  "built": "20261119-2028",
-  "notes": "大檔不再因為雲端回應太大而送不進知識庫；真的失敗時，看得出是雲端哪一步出錯・通報卡改成每個帳號一張；首頁只放「去處理」，到該帳號頁面再看內容、同意通報",
+  "version": "0.18.124",
+  "built": "20261121-1351",
+  "notes": "Mac 小幫手整理大 PDF 不再被系統中途砍掉（細節見說明文件）",
   "mac": {
-   "file": "daemon/Arcrun-0.18.123.dmg",
-   "sha256": "ee0a31ebaa9335d74968267335be4ff1465034a3945ba13612bf20ad09e97d33"
+   "file": "daemon/Arcrun-0.18.124.dmg",
+   "sha256": "6f44d15a6810e2d37d20441e48896623becd389d16542b4bf59ff8b47479d89f"
   },
   "win": {
-   "file": "daemon/Arcrun-win-0.18.123.exe",
-   "sha256": "86b9f4a3b91cf8053cdaa1e528ad87155ac06adafcda32d66b16c74e83e89e4c"
+   "file": "daemon/Arcrun-win-0.18.124.exe",
+   "sha256": "e50017e02c127157bb91f79c32cf478fb088145a3595655dd6918c909bb44773"
   }
  },
  "core": [
@@ -1868,7 +1868,8 @@
   }
  ],
  "installer": {
-  "version": "1.0.84"
+  "version": "1.0.85"
  },
- "payload_fingerprint": "7e142ee616ff0db8588c4726ae02920bd861a2411bc2837b44e9a8bde0e46ec5"
+ "payload_fingerprint": "7e142ee616ff0db8588c4726ae02920bd861a2411bc2837b44e9a8bde0e46ec5",
+ "fingerprint_daemon": "0.18.124"
 }
