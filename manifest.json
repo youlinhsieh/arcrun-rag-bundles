@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.251",
- "fingerprint": "37ce39d6e9c837a18afd16d20991310e1d35ebe7adeb57c7ccb763fba39ed921",
- "built": "2026-11-20",
- "source": "Arcrun@b819b569121d",
+ "release": "1.4.255",
+ "fingerprint": "2157315eb4ef57da2708f2da3c9324ec67826a018d7c65ef97da654199de5a7e",
+ "built": "2026-11-21",
+ "source": "Arcrun@4699ee2157cf",
  "daemon": {
   "version": "0.18.123",
   "built": "20261119-2028",
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 12803802,
+   "js_bytes": 12967921,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -246,10 +246,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "b819b569121d21d7b980cca13ad009ca68ef6775",
-   "source_content_sha256": "71bde546201e1efc2cc7413fee6a444ba4839f920b7fb4b7b92d88366e4f3102",
-   "sha256": "71bde546201e1efc2cc7413fee6a444ba4839f920b7fb4b7b92d88366e4f3102",
-   "bytes": 12803802
+   "source_commit": "4699ee2157cf81599d8a143b391fd4f4b4944818",
+   "source_content_sha256": "e1802735571304fc7de0a9cf83b890887de3f8a5270aea3aa80594ffc632911e",
+   "sha256": "e1802735571304fc7de0a9cf83b890887de3f8a5270aea3aa80594ffc632911e",
+   "bytes": 12967921
   },
   {
    "name": "arcrun-date-ops",
@@ -951,7 +951,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 12803802,
+   "js_bytes": 12967921,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -993,8 +993,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "b819b569121d21d7b980cca13ad009ca68ef6775",
-   "source_content_sha256": "71bde546201e1efc2cc7413fee6a444ba4839f920b7fb4b7b92d88366e4f3102",
+   "source_commit": "4699ee2157cf81599d8a143b391fd4f4b4944818",
+   "source_content_sha256": "e1802735571304fc7de0a9cf83b890887de3f8a5270aea3aa80594ffc632911e",
    "first_install": true
   },
   {
