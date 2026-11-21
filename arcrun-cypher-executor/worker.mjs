@@ -52,10 +52,10 @@ var init_kbdb_busy = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -101,21 +101,21 @@ var init_compose = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -146,7 +146,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -193,10 +193,10 @@ var init_body = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -402,10 +402,10 @@ var init_url = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants();
     init_body();
@@ -679,10 +679,10 @@ var init_request = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -726,10 +726,10 @@ var init_html = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1140,10 +1140,10 @@ var init_context = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1153,18 +1153,18 @@ var init_router = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1542,7 +1542,7 @@ var init_hono_base = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1563,13 +1563,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1591,7 +1591,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1682,10 +1682,10 @@ var init_node = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1744,7 +1744,7 @@ var init_trie = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1826,7 +1826,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -1933,27 +1933,27 @@ var init_router2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -2011,17 +2011,17 @@ var init_router3 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2200,10 +2200,10 @@ var init_node2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2229,17 +2229,17 @@ var init_router4 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2260,9 +2260,9 @@ var init_hono = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
   }
 });
@@ -3548,7 +3548,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// ../../cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3730,7 +3730,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "../../cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -17268,14 +17268,25 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     });
   }
   for (const dt of decl.data) {
-    units.push({ step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225", label: dt.name, cost: 2, run: () => ensureTemplate2(env, dt.name, dt.slots, dt.description) });
+    const prevDt = existing?.declared?.data?.find((d) => d.name === dt.name);
+    const dtUnchanged = prevDt !== void 0 && canonicalize(prevDt) === canonicalize(dt);
+    units.push({
+      step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
+      label: dt.name,
+      cost: dtUnchanged ? 0 : 2,
+      run: dtUnchanged ? async () => {
+      } : () => ensureTemplate2(env, dt.name, dt.slots, dt.description)
+    });
   }
-  const prepared = decl.workflows.map((wf) => {
+  const prepared = await Promise.all(decl.workflows.map(async (wf) => {
     const wfKey2 = `${decl.id}__${wf.name}`;
     const trigger = resolveWorkflowTrigger(wf);
     const cronExpr = trigger === "schedule" ? extractCronExpr(wf.graph) : null;
     const graphId = typeof wf.graph.id === "string" ? wf.graph.id : void 0;
+    const description = wf.description || `${decl.name}: ${wf.name}`;
+    const hash = await computeContentHash({ graph: wf.graph, description, cron_expr: cronExpr });
     const ref = {
+      hash,
       name: wf.name,
       wf_key: wfKey2,
       description: wf.description || "",
@@ -17283,22 +17294,45 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
       ...cronExpr ? { cron_expr: cronExpr } : {},
       ...graphId ? { graph_id: graphId } : {}
     };
-    return { wf, wfKey: wfKey2, cronExpr, ref };
-  });
+    return { wf, wfKey: wfKey2, cronExpr, ref, description };
+  }));
   const workflowRefs = prepared.map((p) => p.ref);
   const prevCron = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, Boolean(w.cron_expr)]));
+  const foreignPending = existing?.pending_hash !== void 0 && existing.pending_hash !== contentHash;
+  const pendingFull = foreignPending || existing?.pending_full === true;
+  const trustPrev = Boolean(existing) && !pendingFull;
+  const prevHash = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, w.hash]));
+  let markerWritten = false;
+  const markPending = async () => {
+    if (markerWritten || !existing || existing.pending_hash === contentHash) {
+      markerWritten = true;
+      return;
+    }
+    await appStore(env).put(
+      appKey(tenant2, decl.id),
+      JSON.stringify({ ...existing, pending_hash: contentHash, ...pendingFull ? { pending_full: true } : {} })
+    );
+    markerWritten = true;
+  };
   for (const p of prepared) {
+    const wfUnchanged = trustPrev && prevHash.get(p.wfKey) === p.ref.hash;
+    if (wfUnchanged) {
+      units.push({ step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41", label: p.wf.name, cost: 0, run: async () => {
+      } });
+      continue;
+    }
     const touchCron = Boolean(p.cronExpr) || prevCron.get(p.wfKey) === true;
     units.push({
       step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
       label: p.wf.name,
       cost: touchCron ? 3 : 1,
       run: async () => {
+        await markPending();
         await appStore(env).put(
           workflowKvKey(tenant2, p.wfKey),
           JSON.stringify({
             graph: p.wf.graph,
-            description: p.wf.description || `${decl.name}: ${p.wf.name}`,
+            description: p.description,
             created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
             ...p.cronExpr ? { cron_expr: p.cronExpr } : {}
           })
@@ -22030,7 +22064,7 @@ async function cypherTenantAuth(c, next) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const defaults = {
     origin: "*",

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-21T07:13:17.494Z",
+  "generated_at": "2026-11-21T09:22:28.656Z",
   "apps": [
     {
       "id": "notes",
@@ -11,7 +11,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/notes-1.4.0.json",
-        "sha256": "54359a992d0829a14722f299434ea7a65959ec01a6dc523bca7ce3d477a1515c"
+        "sha256": "9951b4052699804a1ed3cb4968b076cebc64e55c434916e43361242d5b433932"
       }
     },
     {
@@ -23,7 +23,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/flow_canvas-0.2.1.json",
-        "sha256": "a5f9655e9108aebe612d7cf417104a6c878cf8567627629ca5042c4b04829406"
+        "sha256": "5e249e8f4c99e746b22d7980d5d00ca109047e624fe21262048c4f65e5a73586"
       }
     },
     {
@@ -58,7 +58,7 @@
       },
       "package": {
         "url": "packages/global_index-0.2.0.json",
-        "sha256": "77ba3bf1d402cc536a6e5ce93c7ff8db9f91ebbf5bcf70d8059f4eaca2ea4e3e"
+        "sha256": "f709746532cb417c6ea86a28a7a87eefd6b58709af84d5984f8c874293cf162c"
       }
     },
     {
@@ -94,7 +94,7 @@
       },
       "package": {
         "url": "packages/kanban-0.9.16.json",
-        "sha256": "2aecce733eb259dc8e3bab985a9b5685e6509bc9ea7a6600cc4b9e8c848f2454"
+        "sha256": "82130e8202bae0b45aacf041795cbec9f9b98027afacde2c1cf833959b6509b4"
       }
     },
     {
@@ -102,7 +102,7 @@
       "name": "AHub",
       "icon": "🧭",
       "summary": "把票、留言、標籤、相依與里程碑存在你自己的知識庫裡，用和 Gitea 一樣的方式讀寫；打開就能新增、修改、關閉票與里程碑，留言用 Markdown，簽核人由你在「設定」指定。連上 Arcrun MCP 的 AI 自動拿到管票與請你簽核的工具。選裝，沒裝的實例不受影響。",
-      "version": "0.50.0",
+      "version": "0.53.0",
       "author": "Arcrun 內建",
       "requires": {
         "recipes": [
@@ -402,8 +402,8 @@
         ]
       },
       "package": {
-        "url": "packages/ahub-0.50.0.json",
-        "sha256": "bf1733ed9aa431e20c709b53d14b72f1d4934b824e56fe45e38174573f699546"
+        "url": "packages/ahub-0.53.0.json",
+        "sha256": "2ac61d4bd17f6bd9cd8b7fb545fe5f5a2da3c81b97100bfd4ba697f1c1fa65bb"
       }
     },
     {
@@ -438,7 +438,7 @@
       },
       "package": {
         "url": "packages/releases-0.1.2.json",
-        "sha256": "56ccc57152a7cb4a6a97a1edf627b041c730df9656474b564499fde5adf8d26d"
+        "sha256": "0fa8277deeea1db6346fb7b637fa70e958dde5720725a466f9bde6c26c27909a"
       }
     },
     {
@@ -502,7 +502,7 @@
       },
       "package": {
         "url": "packages/imbot-0.1.1.json",
-        "sha256": "a9723237a16033d876a6cbdc7df706b04cba86e925c4f57d6924ec932d29648f"
+        "sha256": "c8c53e5bea36c100f308bd70878fa8488fe6cf46f8e6d6e7613c6857bd6c3a49"
       }
     },
     {
@@ -617,7 +617,153 @@
       },
       "package": {
         "url": "packages/loops-0.4.0.json",
-        "sha256": "417d34e9d470cea826cfbf3288a9d88f8630f8d094704df39e5d23adcbcff330"
+        "sha256": "27849b0fb03eceb62d5a5ef9f6a6f7fce8ccdabcd361b325b7612bdd938dc6ad"
+      }
+    },
+    {
+      "id": "paper",
+      "name": "報社",
+      "icon": "📰",
+      "summary": "每天定時把各迴圈的進展編成一份報紙，開成一張票送到你面前；同期重送會續跑、漏刊會補出、舊期被新期取代，每期都有回執。需要先安裝 AHub，選填 routine_fire_token。",
+      "version": "0.2.0",
+      "author": "Arcrun 內建",
+      "requires": {
+        "recipes": [
+          {
+            "canonical_id": "paper_rec_get",
+            "display_name": "報社讀 KBDB 的訂閱表與期刊（唯讀）",
+            "description": "報社用：GET __CYPHER_BASE__/kbdb/records/by-template{{_path}}，路徑與查詢字串由呼叫端用 _path 給。只做 GET。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/by-template{{_path}}",
+            "method": "GET",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            }
+          },
+          {
+            "canonical_id": "paper_rec_patch",
+            "display_name": "報社改一筆紀錄的幾格",
+            "description": "報社用：PATCH __CYPHER_BASE__/kbdb/records/{{id}}，只改 values 裡有的格子。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/{{id}}",
+            "method": "PATCH",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "values": "{{values}}"
+            }
+          },
+          {
+            "canonical_id": "paper_rec_claim",
+            "display_name": "報社登記一筆新紀錄（只在不存在時建）",
+            "description": "報社用：POST __CYPHER_BASE__/kbdb/records，帶 record_id 與 create_only:true；已存在回 409，不是靜默成功（同一刊只出一次、同一刊同一研究生只記一次，靠這個擋）。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "template": "{{template}}",
+              "record_id": "{{record_id}}",
+              "values": "{{values}}",
+              "create_only": true
+            }
+          },
+          {
+            "canonical_id": "paper_call_wake",
+            "display_name": "報社打自己的報童工作流（paper__wake）",
+            "description": "報社用：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__wake/query，body {text}。報童是獨立一條工作流，缺 credential 只讓它自己失敗。",
+            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__wake/query",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "text": "{{text}}"
+            }
+          },
+          {
+            "canonical_id": "paper_call_publish",
+            "display_name": "報社補刊（打自己的 paper__publish，補漏刊用）",
+            "description": "報社用：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__publish/query，body {slot,date,backfill:true}。只有 housekeep 補漏刊時用。",
+            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__publish/query",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "slot": "{{slot}}",
+              "date": "{{date}}",
+              "backfill": true
+            }
+          },
+          {
+            "canonical_id": "paper_call_housekeep",
+            "display_name": "報社回查漏刊（打自己的 paper__housekeep）",
+            "description": "報社用：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__housekeep/query。publish 在 tick 開頭呼叫。",
+            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__housekeep/query",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "now": "{{now}}"
+            }
+          },
+          {
+            "canonical_id": "paper_fire",
+            "display_name": "報童叫醒研究生（claude.ai 排程任務的 API 觸發）",
+            "description": "報童用：POST https://api.anthropic.com/v1/claude_code/routines/<排程任務 id>/fire，body {text}（官方文件 code.claude.com/docs/en/routines「Trigger a scheduled task」：Authorization Bearer、anthropic-beta experimental-cc-routine-2026-04-01、anthropic-version 2023-06-01）。權杖是 credential 名字 routine_fire_token（只寫名字，真身執行前回填）。排程任務＝Cloud-worker（trig_01NQGQZgjgshZiewEWoZQjvb）。成功回 {type:\"routine_fire\", claude_code_session_url}。",
+            "endpoint": "https://api.anthropic.com/v1/claude_code/routines/trig_01NQGQZgjgshZiewEWoZQjvb/fire",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{fire_token}}",
+              "anthropic-beta": "experimental-cc-routine-2026-04-01",
+              "anthropic-version": "2023-06-01"
+            },
+            "body_template": {
+              "text": "{{text}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_call",
+            "display_name": "AHub Call（打一條 AHub 路由）",
+            "description": "打同一台實例上 AHub App 的一條路由：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query，信封 {method, path, query, body, params, token}。wf 是路由名（例 issue_list、issue_get、issue_labels_set），其餘欄位由呼叫端節點給。token 是呼叫端的署名（每支工作流／App 有自己的身分，由實例 namespace 在執行當下推出，不是金鑰中心的金鑰）；只進信封的 token 欄，不進網址。回應是路由的 {success, data:{status, body}}，body 才是 Gitea 形狀的內容。",
+            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "method": "{{method}}",
+              "path": "{{path}}",
+              "query": "{{query}}",
+              "body": "{{body}}",
+              "params": "{{params}}",
+              "token": "{{token}}"
+            }
+          }
+        ],
+        "credentials": [
+          {
+            "name": "routine_fire_token",
+            "purpose": "報童叫醒研究生用的排程任務觸發金鑰（claude.ai 排程任務 Cloud-worker 的 API 觸發權杖）。沒設＝報社照常出刊，只是那一期記「叫醒沒成功」。"
+          }
+        ]
+      },
+      "package": {
+        "url": "packages/paper-0.2.0.json",
+        "sha256": "76a69db04e0757c8062663cf116a12e376597e731b22091209c5e8d17cea4201"
       }
     }
   ]

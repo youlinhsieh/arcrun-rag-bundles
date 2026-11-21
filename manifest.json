@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.258",
- "fingerprint": "becbc1defa9726f9b4043ebc6662a823b7340dd91237a2f1d1bd723f06421c1d",
+ "release": "1.4.260",
+ "fingerprint": "60b8534e6ed4cd4d07f4c3c41798cb1a12431940c8ffb17e709a2b5674a8de2d",
  "built": "2026-11-21",
- "source": "Arcrun@2dadee914537",
+ "source": "Arcrun@ee57f62523c8",
  "daemon": {
   "version": "0.18.124",
   "built": "20261121-1351",
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1457607,
+   "js_bytes": 1459331,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -246,10 +246,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "4f9704c3c2db07921a3266d627eba1ca8eb56cff",
-   "source_content_sha256": "f5f7856782c084e29e114626677606cea9d5badc6a73eaf2589c2c8f20fcc940",
-   "sha256": "f5f7856782c084e29e114626677606cea9d5badc6a73eaf2589c2c8f20fcc940",
-   "bytes": 1457607
+   "source_commit": "9058b6fdff039f53936edb87139efdc6861ef7e8",
+   "source_content_sha256": "81aefc0612bdcd843e5fb7c134f5ffc1449fe0541c0dbced95082a7da8fe1edb",
+   "sha256": "81aefc0612bdcd843e5fb7c134f5ffc1449fe0541c0dbced95082a7da8fe1edb",
+   "bytes": 1459331
   },
   {
    "name": "arcrun-date-ops",
@@ -951,7 +951,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1457607,
+   "js_bytes": 1459331,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -993,8 +993,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "4f9704c3c2db07921a3266d627eba1ca8eb56cff",
-   "source_content_sha256": "f5f7856782c084e29e114626677606cea9d5badc6a73eaf2589c2c8f20fcc940",
+   "source_commit": "9058b6fdff039f53936edb87139efdc6861ef7e8",
+   "source_content_sha256": "81aefc0612bdcd843e5fb7c134f5ffc1449fe0541c0dbced95082a7da8fe1edb",
    "first_install": true
   },
   {
@@ -1871,5 +1871,6 @@
   "version": "1.0.86"
  },
  "payload_fingerprint": "7e142ee616ff0db8588c4726ae02920bd861a2411bc2837b44e9a8bde0e46ec5",
- "fingerprint_daemon": "0.18.124"
+ "fingerprint_daemon": "0.18.124",
+ "fingerprint_apps": "ad6200d611041b2e28507b94800202d70ceab2e774ab84a8e856ff1d484f14de"
 }
