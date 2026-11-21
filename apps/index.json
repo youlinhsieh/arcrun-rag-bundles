@@ -1,0 +1,624 @@
+{
+  "schema": 1,
+  "generated_at": "2026-11-21T07:13:17.494Z",
+  "apps": [
+    {
+      "id": "notes",
+      "name": "筆記",
+      "icon": "📝",
+      "summary": "隨手寫一則筆記，存下後自動整理成知識卡；可以編輯（卡跟著重整）、刪除（卡一起下架），也可以留言或選一段文字引用回覆；依日期排成河道，寫下去的內容進你自己的知識庫。",
+      "version": "1.4.0",
+      "author": "Arcrun 內建",
+      "package": {
+        "url": "packages/notes-1.4.0.json",
+        "sha256": "54359a992d0829a14722f299434ea7a65959ec01a6dc523bca7ce3d477a1515c"
+      }
+    },
+    {
+      "id": "flow_canvas",
+      "name": "App 工作室",
+      "icon": "🧰",
+      "summary": "給開發的人用：看你做的 App，一層層點進去看它的工作流、節點與 Recipe，再請 AI 幫你做或改。別人做的 App 唯讀可看，想改先複製一份；一般同事不需要，沒裝就完全看不到。",
+      "version": "0.2.1",
+      "author": "Arcrun 內建",
+      "package": {
+        "url": "packages/flow_canvas-0.2.1.json",
+        "sha256": "a5f9655e9108aebe612d7cf417104a6c878cf8567627629ca5042c4b04829406"
+      }
+    },
+    {
+      "id": "global_index",
+      "name": "開場全局總圖",
+      "icon": "🧭",
+      "summary": "一次印出現在有哪些票在動、知識庫裡有什麼，開場先看這份不必被人提醒。",
+      "version": "0.2.0",
+      "author": "Arcrun 內建",
+      "requires": {
+        "recipes": [
+          {
+            "canonical_id": "ahub_call",
+            "display_name": "AHub Call（打一條 AHub 路由）",
+            "description": "打同一台實例上 AHub App 的一條路由：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query，信封 {method, path, query, body, params, token}。wf 是路由名（例 issue_list、issue_get、issue_labels_set），其餘欄位由呼叫端節點給。token 是呼叫端的署名（每支工作流／App 有自己的身分，由實例 namespace 在執行當下推出，不是金鑰中心的金鑰）；只進信封的 token 欄，不進網址。回應是路由的 {success, data:{status, body}}，body 才是 Gitea 形狀的內容。",
+            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "method": "{{method}}",
+              "path": "{{path}}",
+              "query": "{{query}}",
+              "body": "{{body}}",
+              "params": "{{params}}",
+              "token": "{{token}}"
+            }
+          }
+        ]
+      },
+      "package": {
+        "url": "packages/global_index-0.2.0.json",
+        "sha256": "77ba3bf1d402cc536a6e5ce93c7ff8db9f91ebbf5bcf70d8059f4eaca2ea4e3e"
+      }
+    },
+    {
+      "id": "kanban",
+      "name": "票地圖",
+      "icon": "🗂️",
+      "summary": "（已併入 AHub）專案、里程碑、票的結構與看板，以及目標指向的進度，現在都在 AHub 一個畫面裡；已裝的按更新就換成同一個畫面，資料不變。",
+      "version": "0.9.16",
+      "author": "Arcrun 內建",
+      "retired": true,
+      "requires": {
+        "recipes": [
+          {
+            "canonical_id": "ahub_call",
+            "display_name": "AHub Call（打一條 AHub 路由）",
+            "description": "打同一台實例上 AHub App 的一條路由：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query，信封 {method, path, query, body, params, token}。wf 是路由名（例 issue_list、issue_get、issue_labels_set），其餘欄位由呼叫端節點給。token 是呼叫端的署名（每支工作流／App 有自己的身分，由實例 namespace 在執行當下推出，不是金鑰中心的金鑰）；只進信封的 token 欄，不進網址。回應是路由的 {success, data:{status, body}}，body 才是 Gitea 形狀的內容。",
+            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "method": "{{method}}",
+              "path": "{{path}}",
+              "query": "{{query}}",
+              "body": "{{body}}",
+              "params": "{{params}}",
+              "token": "{{token}}"
+            }
+          }
+        ]
+      },
+      "package": {
+        "url": "packages/kanban-0.9.16.json",
+        "sha256": "2aecce733eb259dc8e3bab985a9b5685e6509bc9ea7a6600cc4b9e8c848f2454"
+      }
+    },
+    {
+      "id": "ahub",
+      "name": "AHub",
+      "icon": "🧭",
+      "summary": "把票、留言、標籤、相依與里程碑存在你自己的知識庫裡，用和 Gitea 一樣的方式讀寫；打開就能新增、修改、關閉票與里程碑，留言用 Markdown，簽核人由你在「設定」指定。連上 Arcrun MCP 的 AI 自動拿到管票與請你簽核的工具。選裝，沒裝的實例不受影響。",
+      "version": "0.50.0",
+      "author": "Arcrun 內建",
+      "requires": {
+        "recipes": [
+          {
+            "canonical_id": "ahub_rec_get",
+            "display_name": "AHub 讀 KBDB 的 record（唯讀）",
+            "description": "AHub 用：GET __CYPHER_BASE__/kbdb/records/by-template{{_path}}，路徑與查詢字串由呼叫端用 _path 給（例 /ahub_issue?field=key&value=o%2Fr%235&limit=5）。field／value 是「某一格等於某個值」的精確比對。只做 GET。走 recipe 不走 http_request 零件，因為零件讀不回超過 64 KiB 的回應，而一頁票可以比這大。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/by-template{{_path}}",
+            "method": "GET",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_post",
+            "display_name": "AHub 寫 KBDB（建一筆 record）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records，在 template 底下建一筆 record，values 是 {格名: 字串}。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            },
+            "body_template": {
+              "template": "{{template}}",
+              "values": "{{values}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_patch",
+            "display_name": "AHub 寫 KBDB（改一筆 record 的幾格）",
+            "description": "AHub 用：PATCH __CYPHER_BASE__/kbdb/records/{{id}}，只改 values 裡有的格子。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/{{id}}",
+            "method": "PATCH",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            },
+            "body_template": {
+              "values": "{{values}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_claim",
+            "display_name": "AHub 搶號（只在不存在時建一筆 record）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records，帶 record_id 與 create_only:true——這個 id 還沒有人用才會建，已存在回 409（record_exists），不是靜默成功。票號靠它搶（inkstone/Arcrun#307）。需要引擎有 #307；沒有的引擎會忽略 record_id，AHub 會發現回來的 id 不對而拒絕。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            },
+            "body_template": {
+              "template": "{{template}}",
+              "record_id": "{{record_id}}",
+              "values": "{{values}}",
+              "create_only": true
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_write",
+            "display_name": "AHub 一次寫一批 record（建／改，並行）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records/batch-write，ops 是 [{op:\"post\",template,values}|{op:\"patch\",id,values}…]（一次最多 20 筆），cypher 端同時打 KBDB，回 {ok, results:[{status, body}]}。互不相干的獨立寫入，不是交易；任何一筆非 2xx 則 ok=false。需要引擎有 inkstone/Arcrun#325。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-write",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            },
+            "body_template": {
+              "ops": "{{ops}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_actor_verify",
+            "display_name": "AHub 問引擎：這句「Portal 主人按的」斷言是你簽的嗎",
+            "description": "AHub 的「Portal 留言」路由用：POST __CYPHER_BASE__/portal/actor/verify，proof 是引擎在 Portal 動作裡簽的斷言（JSON 字串）。引擎答 {valid, login, role}；簽章對、租戶對、90 秒內、沒用過才 valid，驗過即作廢。這支只回答「是不是我簽的」，造不出斷言（inkstone/Arcrun#304 c22862）。",
+            "endpoint": "__CYPHER_BASE__/portal/actor/verify",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "proof": "{{proof}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_art_git",
+            "display_name": "AHub 讀 Artifacts repo 的 ref 清單（唯讀，零金鑰）",
+            "description": "AHub 讀 repo 內容用（inkstone/Arcrun#334／#416）：GET __CYPHER_BASE__/artifacts/repos/{{repo}}/refs——引擎用 Artifacts binding 現發 60 秒讀 token 打 git info/refs，回 git 的 pkt-line 文字（分支／tag 對應的 commit sha）。Artifacts 沒有「分支清單」的 binding 方法，只有這條路拿得到。只做 GET；身分是實例本來的租戶金鑰（引擎自動補），沒有任何 CF 金鑰。",
+            "endpoint": "__CYPHER_BASE__/artifacts/repos/{{repo}}/refs",
+            "method": "GET",
+            "headers": {
+              "Accept": "*/*",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Authorization": "Bearer {{kbdb_key}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_art_get",
+            "display_name": "AHub 讀 Artifacts repo 的內容（唯讀，零金鑰）",
+            "description": "AHub 讀 repo 內容用（inkstone/Arcrun#334／#416）：GET __CYPHER_BASE__/artifacts/repos/{{repo}}{{_path}}，_path 由呼叫端給（/raw/<ref>/<path>、/tree/<sha>、/commit/<sha>、/blob/<sha>）。引擎端用 Artifacts Workers binding 讀同帳號的 repo（形狀照舊的 Artifacts REST），身分是實例本來的租戶金鑰（引擎自動補），沒有任何 CF 金鑰。只做 GET；Artifacts 每 1000 次操作 US$0.15，呼叫端（lib/git.js）對每一次請求都有上限。走 recipe 不走 http_request 零件，因為零件讀不回超過 64 KiB 的回應。",
+            "endpoint": "__CYPHER_BASE__/artifacts/repos/{{repo}}{{_path}}",
+            "method": "GET",
+            "headers": {
+              "Accept": "*/*",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Authorization": "Bearer {{kbdb_key}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_art_commit",
+            "display_name": "AHub 寫一個 commit 到 Artifacts repo 的分支（零金鑰）",
+            "description": "AHub 寫 repo 用（inkstone/Arcrun#416）：POST __CYPHER_BASE__/artifacts/repos/{{repo}}/commit，body {branch, from, message, files:[{path, content|content_base64|delete}], by:{name, session}}。引擎用 Artifacts binding 現發 2 分鐘寫 token 走 git 推送；分支不存在就從 from（預設 main）長出來；main 不擋（git 歷史就是回溯）；commit 訊息尾端自動加 AHub-Writer／AHub-Session 兩行留痕。沒有任何長期金鑰。",
+            "endpoint": "__CYPHER_BASE__/artifacts/repos/{{repo}}/commit",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Authorization": "Bearer {{kbdb_key}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "branch": "{{branch}}",
+              "from": "{{from}}",
+              "message": "{{message}}",
+              "files": "{{files}}",
+              "by": "{{by}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_art_cred",
+            "display_name": "AHub 要一把 Artifacts 的短效憑證（clone／push 用）",
+            "description": "AHub 給 clone／push 用（inkstone/Arcrun#416）：POST __CYPHER_BASE__/artifacts/repos/{{repo}}/credential，body {scope:\"read\"|\"write\", ttl, by}。引擎用 Artifacts binding 現發，只對這一個 repo 有效、到期自動失效（最長 1 小時）；不是用戶手上的長期金鑰。",
+            "endpoint": "__CYPHER_BASE__/artifacts/repos/{{repo}}/credential",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Authorization": "Bearer {{kbdb_key}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "scope": "{{scope}}",
+              "ttl": "{{ttl}}",
+              "by": "{{by}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_signoff_wake",
+            "display_name": "AHub 叫醒專案總監（claude.ai 排程任務的 API 觸發）",
+            "description": "AHub 簽完回報用（inkstone/Arcrun#452）：POST https://api.anthropic.com/v1/claude_code/routines/<排程任務 id>/fire，body {text}（官方文件 code.claude.com/docs/en/routines「Trigger a scheduled task」：Authorization Bearer、anthropic-beta experimental-cc-routine-2026-04-01、anthropic-version 2023-06-01）。權杖是 credential 名字 ahub_signoff_wake（值由實例主人在 Portal「金鑰管理」填一次，AI 與工作流定義都碰不到）。成功回 {type:\"routine_fire\", claude_code_session_url}。",
+            "endpoint": "https://api.anthropic.com/v1/claude_code/routines/trig_01VQAuDAgy8Xj1F7o8XEPq3M/fire",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "Authorization": "Bearer {{wake_token}}",
+              "anthropic-beta": "experimental-cc-routine-2026-04-01",
+              "anthropic-version": "2023-06-01"
+            },
+            "body_template": {
+              "text": "{{text}}"
+            },
+            "credentials_required": [
+              {
+                "key": "wake_token",
+                "inject_as": "wake_token"
+              }
+            ]
+          },
+          {
+            "canonical_id": "ahub_rec_multi",
+            "display_name": "AHub 一次做一串讀（唯讀）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records/multi-read，reads 是 [{path}] 的陣列（path 的格式同 ahub_rec_get 的 _path，例 /ahub_issue?field=key&value=o%2Fr%235&limit=5；一次最多 150 個），回 {success, count, results:[每個讀各自的 by-template 回應]}，順序與 reads 一致。KBDB 把這一串讀的 SQL 收成「一輪一趟」往資料庫送，所以一張畫面不再是幾十到幾百個請求。只讀、只回本租戶的（inkstone/Arcrun#446）。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/multi-read",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            },
+            "body_template": {
+              "reads": "{{reads}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_batch",
+            "display_name": "AHub 一次讀一批 record（唯讀）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records/batch-get，ids 是 record id 的陣列（一次最多 200 個），回 {records, missing}。只讀、只回本租戶的（inkstone/Arcrun#307）。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-get",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            },
+            "body_template": {
+              "ids": "{{ids}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_batch_f",
+            "display_name": "AHub 一次讀一批 record、只要幾格（唯讀）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records/batch-get，帶 template 與 fields（只要這幾格）。其餘同 ahub_rec_batch；KBDB 不認得 fields 時回整筆（inkstone/Arcrun#384）。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-get",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            },
+            "body_template": {
+              "ids": "{{ids}}",
+              "template": "{{template}}",
+              "fields": "{{fields}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_get_w",
+            "display_name": "AHub 讀 KBDB 的 record（寫入路由用，忙時有界重讀）",
+            "description": "AHub 用：GET __CYPHER_BASE__/kbdb/records/by-template{{_path}}，路徑與查詢字串由呼叫端用 _path 給（例 /ahub_issue?field=key&value=o%2Fr%235&limit=5）。field／value 是「某一格等於某個值」的精確比對。只做 GET。走 recipe 不走 http_request 零件，因為零件讀不回超過 64 KiB 的回應，而一頁票可以比這大。 寫入路由專用：多帶 X-Arcrun-Write-Retry: 1，代轉層遇 KBDB 一時忙時有界退避重讀（最多 4 個請求、總等待 ≤ 6.5 秒；inkstone/Arcrun#422）。仍只讀。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/by-template{{_path}}",
+            "method": "GET",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "X-Arcrun-Write-Retry": "1"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_multi_w",
+            "display_name": "AHub 一次做一串讀（寫入路由用，忙時有界重讀）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records/multi-read，reads 是 [{path}] 的陣列（path 的格式同 ahub_rec_get 的 _path，例 /ahub_issue?field=key&value=o%2Fr%235&limit=5；一次最多 150 個），回 {success, count, results:[每個讀各自的 by-template 回應]}，順序與 reads 一致。KBDB 把這一串讀的 SQL 收成「一輪一趟」往資料庫送，所以一張畫面不再是幾十到幾百個請求。只讀、只回本租戶的（inkstone/Arcrun#446）。 寫入路由專用：多帶 X-Arcrun-Write-Retry: 1，代轉層遇 KBDB 一時忙時有界退避重讀（最多 4 個請求、總等待 ≤ 6.5 秒；inkstone/Arcrun#422）。仍只讀。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/multi-read",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "X-Arcrun-Write-Retry": "1"
+            },
+            "body_template": {
+              "reads": "{{reads}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_batch_w",
+            "display_name": "AHub 一次讀一批 record（寫入路由用，忙時有界重讀）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records/batch-get，ids 是 record id 的陣列（一次最多 200 個），回 {records, missing}。只讀、只回本租戶的（inkstone/Arcrun#307）。 寫入路由專用：多帶 X-Arcrun-Write-Retry: 1，代轉層遇 KBDB 一時忙時有界退避重讀（最多 4 個請求、總等待 ≤ 6.5 秒；inkstone/Arcrun#422）。仍只讀。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-get",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "X-Arcrun-Write-Retry": "1"
+            },
+            "body_template": {
+              "ids": "{{ids}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_rec_batch_f_w",
+            "display_name": "AHub 一次讀一批 record、只要幾格（寫入路由用，忙時有界重讀）",
+            "description": "AHub 用：POST __CYPHER_BASE__/kbdb/records/batch-get，帶 template 與 fields（只要這幾格）。其餘同 ahub_rec_batch；KBDB 不認得 fields 時回整筆（inkstone/Arcrun#384）。 寫入路由專用：多帶 X-Arcrun-Write-Retry: 1，代轉層遇 KBDB 一時忙時有界退避重讀（最多 4 個請求、總等待 ≤ 6.5 秒；inkstone/Arcrun#422）。仍只讀。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-get",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "X-Arcrun-Write-Retry": "1"
+            },
+            "body_template": {
+              "ids": "{{ids}}",
+              "template": "{{template}}",
+              "fields": "{{fields}}"
+            }
+          },
+          {
+            "canonical_id": "ahub_call",
+            "display_name": "AHub Call（打一條 AHub 路由）",
+            "description": "打同一台實例上 AHub App 的一條路由：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query，信封 {method, path, query, body, params, token}。wf 是路由名（例 issue_list、issue_get、issue_labels_set），其餘欄位由呼叫端節點給。token 是呼叫端的署名（每支工作流／App 有自己的身分，由實例 namespace 在執行當下推出，不是金鑰中心的金鑰）；只進信封的 token 欄，不進網址。回應是路由的 {success, data:{status, body}}，body 才是 Gitea 形狀的內容。",
+            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "method": "{{method}}",
+              "path": "{{path}}",
+              "query": "{{query}}",
+              "body": "{{body}}",
+              "params": "{{params}}",
+              "token": "{{token}}"
+            }
+          }
+        ]
+      },
+      "package": {
+        "url": "packages/ahub-0.50.0.json",
+        "sha256": "bf1733ed9aa431e20c709b53d14b72f1d4934b824e56fe45e38174573f699546"
+      }
+    },
+    {
+      "id": "releases",
+      "name": "版本頁",
+      "icon": "🏷️",
+      "summary": "打開就看到每個 repo 發佈過哪些版本、每一版改了什麼與附件，取代 Gitea 的 Releases 頁。需要先安裝 AHub。",
+      "version": "0.1.2",
+      "author": "Arcrun 內建",
+      "requires": {
+        "recipes": [
+          {
+            "canonical_id": "ahub_call",
+            "display_name": "AHub Call（打一條 AHub 路由）",
+            "description": "打同一台實例上 AHub App 的一條路由：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query，信封 {method, path, query, body, params, token}。wf 是路由名（例 issue_list、issue_get、issue_labels_set），其餘欄位由呼叫端節點給。token 是呼叫端的署名（每支工作流／App 有自己的身分，由實例 namespace 在執行當下推出，不是金鑰中心的金鑰）；只進信封的 token 欄，不進網址。回應是路由的 {success, data:{status, body}}，body 才是 Gitea 形狀的內容。",
+            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "method": "{{method}}",
+              "path": "{{path}}",
+              "query": "{{query}}",
+              "body": "{{body}}",
+              "params": "{{params}}",
+              "token": "{{token}}"
+            }
+          }
+        ]
+      },
+      "package": {
+        "url": "packages/releases-0.1.2.json",
+        "sha256": "56ccc57152a7cb4a6a97a1edf627b041c730df9656474b564499fde5adf8d26d"
+      }
+    },
+    {
+      "id": "imbot",
+      "name": "IM 機器人",
+      "icon": "💬",
+      "summary": "客人在 LINE 官方帳號傳訊息，由 AI 助理「小六」先回；你隨時能在這一頁接手（交代小六改寫，或原句直接說），接手的話小六之後都記得。談價錢、約開會會停下來等你。需要填 LINE 金鑰。",
+      "version": "0.1.1",
+      "author": "Arcrun 內建",
+      "requires": {
+        "recipes": [
+          {
+            "canonical_id": "imbot_actor_verify",
+            "display_name": "IM 機器人問引擎：這句「Portal 主人按的」斷言是你簽的嗎",
+            "description": "接手頁的動作用：POST __CYPHER_BASE__/portal/actor/verify，proof 是引擎在 Portal 動作裡簽的斷言。引擎答 {valid, login, role}；簽章對、租戶對、90 秒內、沒用過才 valid。這支只回答「是不是我簽的」，造不出斷言。內容與 AHub 的 ahub_actor_verify 相同，另取名是為了兩個 App 裝在同一台時不互相蓋掉。",
+            "endpoint": "__CYPHER_BASE__/portal/actor/verify",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "proof": "{{proof}}"
+            }
+          },
+          {
+            "canonical_id": "imbot_telegram_send",
+            "display_name": "IM 機器人通知 Leo（Telegram sendMessage）",
+            "description": "客人要開會／談價錢時通知 Leo：POST https://api.telegram.org/bot<token>/sendMessage。token 與 chat_id 只由節點寫 {{credential.telegram_bot_token}}／{{credential.telegram_chat_id}}，執行前才回填。只送訊息，不動 bot 的 webhook。",
+            "endpoint": "https://api.telegram.org/bot{{tg_token}}/sendMessage",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "chat_id": "{{chat_id}}",
+              "text": "{{text}}"
+            }
+          }
+        ],
+        "credentials": [
+          {
+            "name": "line_channel_access_token",
+            "purpose": "LINE Messaging API 的 Channel access token（長期）：小六回客人、Leo 從 Portal 送訊息、問客人資料都用它"
+          },
+          {
+            "name": "line_channel_secret",
+            "purpose": "LINE Channel secret（預留：要驗 X-Line-Signature 簽章需要引擎把標頭與原始本體交給工作流，目前不行，第一版沒用到）"
+          },
+          {
+            "name": "telegram_bot_token",
+            "purpose": "通知 Leo 用的 Telegram bot token（只送訊息；選填，沒設就不通知）"
+          },
+          {
+            "name": "telegram_chat_id",
+            "purpose": "通知送到哪個 Telegram 聊天室（選填，與 telegram_bot_token 一起設）"
+          }
+        ]
+      },
+      "package": {
+        "url": "packages/imbot-0.1.1.json",
+        "sha256": "a9723237a16033d876a6cbdc7df706b04cba86e925c4f57d6924ec932d29648f"
+      }
+    },
+    {
+      "id": "loops",
+      "name": "迴圈監控",
+      "icon": "🔁",
+      "summary": "每個迴圈一列燈號、主指標和近 12 期走勢，看得出卡在哪一格；點進去看四格的細節。每天早上自己重算燈號，有新紅燈可用 Telegram 通知你（選填）。",
+      "version": "0.4.0",
+      "author": "Arcrun 內建",
+      "requires": {
+        "recipes": [
+          {
+            "canonical_id": "loops_rec_get",
+            "display_name": "迴圈監控讀 KBDB 的迴圈卡（唯讀）",
+            "description": "迴圈監控用：GET __CYPHER_BASE__/kbdb/records/by-template{{_path}}，路徑與查詢字串由呼叫端用 _path 給。只做 GET。走 recipe 不走 http_request 零件，因為零件讀不回超過 64 KiB 的回應，而曲線序列可以比這大。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/by-template{{_path}}",
+            "method": "GET",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}"
+            }
+          },
+          {
+            "canonical_id": "loops_rec_batch",
+            "display_name": "迴圈監控一次讀一批 record（唯讀）",
+            "description": "迴圈監控用：POST __CYPHER_BASE__/kbdb/records/batch-get，ids 是 record id 的陣列（最多 200 個），回 {records, missing}。用來讀每個迴圈最近 10 輪（id 由迴圈登記的最後一輪序號推出來，讀量跟迴圈數成正比、不跟庫大小）。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-get",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "ids": "{{ids}}"
+            }
+          },
+          {
+            "canonical_id": "loops_rec_patch",
+            "display_name": "迴圈監控改一張迴圈卡的幾格",
+            "description": "迴圈監控用：PATCH __CYPHER_BASE__/kbdb/records/{{id}}，只改 values 裡有的格子。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/{{id}}",
+            "method": "PATCH",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "values": "{{values}}"
+            }
+          },
+          {
+            "canonical_id": "loops_rec_claim",
+            "display_name": "迴圈監控登記一張新的迴圈卡（只在不存在時建）",
+            "description": "迴圈監控用：POST __CYPHER_BASE__/kbdb/records，帶 record_id 與 create_only:true；已存在回 409，不是靜默成功。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "template": "{{template}}",
+              "record_id": "{{record_id}}",
+              "values": "{{values}}",
+              "create_only": true
+            }
+          },
+          {
+            "canonical_id": "loops_rec_write",
+            "display_name": "迴圈監控一次寫一批迴圈卡（心跳用）",
+            "description": "迴圈監控用：POST __CYPHER_BASE__/kbdb/records/batch-write，ops 是 [{op:\"patch\",id,values}…]（一次最多 20 筆）。心跳一個請求寫完所有迴圈的燈號。互不相干的獨立寫入，不是交易。需要引擎有 inkstone/Arcrun#325。",
+            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-write",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "X-Arcrun-API-Key": "{{_tenant}}",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "ops": "{{ops}}"
+            }
+          },
+          {
+            "canonical_id": "loops_telegram_send",
+            "display_name": "迴圈監控通知 Leo（Telegram sendMessage）",
+            "description": "紅燈通知用：POST https://api.telegram.org/bot<token>/sendMessage。token 與 chat_id 只由節點寫 {{credential.telegram_bot_token}}／{{credential.telegram_chat_id}}，執行前才回填。",
+            "endpoint": "https://api.telegram.org/bot{{tg_token}}/sendMessage",
+            "method": "POST",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "body_template": {
+              "chat_id": "{{chat_id}}",
+              "text": "{{text}}"
+            }
+          }
+        ],
+        "credentials": [
+          {
+            "name": "telegram_bot_token",
+            "purpose": "紅燈通知用的 Telegram bot token（只送訊息；選填，沒設就只在畫面上標紅、心跳會寫明沒通知）"
+          },
+          {
+            "name": "telegram_chat_id",
+            "purpose": "通知送到哪個 Telegram 聊天室（選填，與 telegram_bot_token 一起設）"
+          }
+        ]
+      },
+      "package": {
+        "url": "packages/loops-0.4.0.json",
+        "sha256": "417d34e9d470cea826cfbf3288a9d88f8630f8d094704df39e5d23adcbcff330"
+      }
+    }
+  ]
+}
