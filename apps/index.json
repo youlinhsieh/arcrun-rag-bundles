@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-21T09:22:28.656Z",
+  "generated_at": "2026-11-22T05:16:22.925Z",
   "apps": [
     {
       "id": "notes",
@@ -11,7 +11,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/notes-1.4.0.json",
-        "sha256": "9951b4052699804a1ed3cb4968b076cebc64e55c434916e43361242d5b433932"
+        "sha256": "6378ad106b9c3b88d437294260bd2a251289ca83dfffa9e0132d0dde96756806"
       }
     },
     {
@@ -23,7 +23,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/flow_canvas-0.2.1.json",
-        "sha256": "5e249e8f4c99e746b22d7980d5d00ca109047e624fe21262048c4f65e5a73586"
+        "sha256": "0b614ba763699da8c2187e168660210d80f666794a50cce186375cce4fe7bc33"
       }
     },
     {
@@ -58,7 +58,7 @@
       },
       "package": {
         "url": "packages/global_index-0.2.0.json",
-        "sha256": "f709746532cb417c6ea86a28a7a87eefd6b58709af84d5984f8c874293cf162c"
+        "sha256": "8bde492e27fc7aa75dfaf201dced6afdfa17f6f7fade9c3ab88f4341302ea893"
       }
     },
     {
@@ -94,7 +94,7 @@
       },
       "package": {
         "url": "packages/kanban-0.9.16.json",
-        "sha256": "82130e8202bae0b45aacf041795cbec9f9b98027afacde2c1cf833959b6509b4"
+        "sha256": "ccad10c3d086ae49ab331409ec405b00f2cdb2ef72cd77fa6ca36aea84f72bb9"
       }
     },
     {
@@ -102,7 +102,7 @@
       "name": "AHub",
       "icon": "🧭",
       "summary": "把票、留言、標籤、相依與里程碑存在你自己的知識庫裡，用和 Gitea 一樣的方式讀寫；打開就能新增、修改、關閉票與里程碑，留言用 Markdown，簽核人由你在「設定」指定。連上 Arcrun MCP 的 AI 自動拿到管票與請你簽核的工具。選裝，沒裝的實例不受影響。",
-      "version": "0.53.0",
+      "version": "0.60.0",
       "author": "Arcrun 內建",
       "requires": {
         "recipes": [
@@ -402,8 +402,8 @@
         ]
       },
       "package": {
-        "url": "packages/ahub-0.53.0.json",
-        "sha256": "2ac61d4bd17f6bd9cd8b7fb545fe5f5a2da3c81b97100bfd4ba697f1c1fa65bb"
+        "url": "packages/ahub-0.60.0.json",
+        "sha256": "3df3f26ef71b8b65e54a4da52e4e5c1effd4f64b9f049fbb01be3f4565e7b595"
       }
     },
     {
@@ -438,7 +438,7 @@
       },
       "package": {
         "url": "packages/releases-0.1.2.json",
-        "sha256": "0fa8277deeea1db6346fb7b637fa70e958dde5720725a466f9bde6c26c27909a"
+        "sha256": "7cf73ff548ff55cd502015e973080a9fff6015f230eda5f481280d53e878222e"
       }
     },
     {
@@ -502,7 +502,7 @@
       },
       "package": {
         "url": "packages/imbot-0.1.1.json",
-        "sha256": "c8c53e5bea36c100f308bd70878fa8488fe6cf46f8e6d6e7613c6857bd6c3a49"
+        "sha256": "4702934d5e3fd0c60f209ba724143e3acebe1009f8f1e7ac84fcde4c9722cfcf"
       }
     },
     {
@@ -617,7 +617,7 @@
       },
       "package": {
         "url": "packages/loops-0.4.0.json",
-        "sha256": "27849b0fb03eceb62d5a5ef9f6a6f7fce8ccdabcd361b325b7612bdd938dc6ad"
+        "sha256": "835ba8cac06e62ff40b5e7e062622af8200df76b0663a60d1a6720f3d4c4c0b4"
       }
     },
     {
@@ -625,7 +625,7 @@
       "name": "報社",
       "icon": "📰",
       "summary": "每天定時把各迴圈的進展編成一份報紙，開成一張票送到你面前；同期重送會續跑、漏刊會補出、舊期被新期取代，每期都有回執。需要先安裝 AHub，選填 routine_fire_token。",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": "Arcrun 內建",
       "requires": {
         "recipes": [
@@ -674,20 +674,6 @@
             }
           },
           {
-            "canonical_id": "paper_call_wake",
-            "display_name": "報社打自己的報童工作流（paper__wake）",
-            "description": "報社用：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__wake/query，body {text}。報童是獨立一條工作流，缺 credential 只讓它自己失敗。",
-            "endpoint": "__CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__wake/query",
-            "method": "POST",
-            "headers": {
-              "Accept": "application/json",
-              "Content-Type": "application/json"
-            },
-            "body_template": {
-              "text": "{{text}}"
-            }
-          },
-          {
             "canonical_id": "paper_call_publish",
             "display_name": "報社補刊（打自己的 paper__publish，補漏刊用）",
             "description": "報社用：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/paper__publish/query，body {slot,date,backfill:true}。只有 housekeep 補漏刊時用。",
@@ -718,23 +704,6 @@
             }
           },
           {
-            "canonical_id": "paper_fire",
-            "display_name": "報童叫醒研究生（claude.ai 排程任務的 API 觸發）",
-            "description": "報童用：POST https://api.anthropic.com/v1/claude_code/routines/<排程任務 id>/fire，body {text}（官方文件 code.claude.com/docs/en/routines「Trigger a scheduled task」：Authorization Bearer、anthropic-beta experimental-cc-routine-2026-04-01、anthropic-version 2023-06-01）。權杖是 credential 名字 routine_fire_token（只寫名字，真身執行前回填）。排程任務＝Cloud-worker（trig_01NQGQZgjgshZiewEWoZQjvb）。成功回 {type:\"routine_fire\", claude_code_session_url}。",
-            "endpoint": "https://api.anthropic.com/v1/claude_code/routines/trig_01NQGQZgjgshZiewEWoZQjvb/fire",
-            "method": "POST",
-            "headers": {
-              "Accept": "application/json",
-              "Content-Type": "application/json",
-              "Authorization": "Bearer {{fire_token}}",
-              "anthropic-beta": "experimental-cc-routine-2026-04-01",
-              "anthropic-version": "2023-06-01"
-            },
-            "body_template": {
-              "text": "{{text}}"
-            }
-          },
-          {
             "canonical_id": "ahub_call",
             "display_name": "AHub Call（打一條 AHub 路由）",
             "description": "打同一台實例上 AHub App 的一條路由：POST __CYPHER_BASE__/webhooks/named/{{_tenant}}/ahub__{{wf}}/query，信封 {method, path, query, body, params, token}。wf 是路由名（例 issue_list、issue_get、issue_labels_set），其餘欄位由呼叫端節點給。token 是呼叫端的署名（每支工作流／App 有自己的身分，由實例 namespace 在執行當下推出，不是金鑰中心的金鑰）；只進信封的 token 欄，不進網址。回應是路由的 {success, data:{status, body}}，body 才是 Gitea 形狀的內容。",
@@ -754,16 +723,11 @@
             }
           }
         ],
-        "credentials": [
-          {
-            "name": "routine_fire_token",
-            "purpose": "報童叫醒研究生用的排程任務觸發金鑰（claude.ai 排程任務 Cloud-worker 的 API 觸發權杖）。沒設＝報社照常出刊，只是那一期記「叫醒沒成功」。"
-          }
-        ]
+        "credentials": []
       },
       "package": {
-        "url": "packages/paper-0.2.0.json",
-        "sha256": "76a69db04e0757c8062663cf116a12e376597e731b22091209c5e8d17cea4201"
+        "url": "packages/paper-0.3.0.json",
+        "sha256": "bf8758221179402fd8c0961b149b60410f4cc8dd58602df6003bd26303e231ca"
       }
     }
   ]

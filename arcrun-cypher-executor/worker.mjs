@@ -52,10 +52,10 @@ var init_kbdb_busy = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -101,21 +101,21 @@ var init_compose = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -146,7 +146,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -193,10 +193,10 @@ var init_body = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -402,10 +402,10 @@ var init_url = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants();
     init_body();
@@ -679,10 +679,10 @@ var init_request = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -726,10 +726,10 @@ var init_html = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1140,10 +1140,10 @@ var init_context = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1153,18 +1153,18 @@ var init_router = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1542,7 +1542,7 @@ var init_hono_base = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1563,13 +1563,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1591,7 +1591,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1682,10 +1682,10 @@ var init_node = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1744,7 +1744,7 @@ var init_trie = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1826,7 +1826,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -1933,27 +1933,27 @@ var init_router2 = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -2011,17 +2011,17 @@ var init_router3 = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2200,10 +2200,10 @@ var init_node2 = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2229,17 +2229,17 @@ var init_router4 = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2260,9 +2260,9 @@ var init_hono = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
   }
 });
@@ -2523,14 +2523,14 @@ function recipeCredentialNames(r) {
   scan(r.body_template);
   return [...names];
 }
-async function recipeAuthSecretNames(r, kv, cache2) {
+async function recipeAuthSecretNames(r, kv, cache3) {
   if (r.auth === "binding") return [];
   const service = r.auth_service || r.canonical_id;
   if (!service) return [];
-  let pending = cache2?.get(service);
+  let pending = cache3?.get(service);
   if (!pending) {
     pending = resolveAuthRecipe(service, kv).catch(() => null);
-    cache2?.set(service, pending);
+    cache3?.set(service, pending);
   }
   const ar = await pending;
   if (!ar || !DISPATCHABLE_AUTH_PRIMITIVES.has(ar.primitive)) return [];
@@ -3399,8 +3399,8 @@ async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
   const recipe = service === componentId ? authByComponentId : await resolveAuthRecipe(service, env.RECIPES);
   if (!recipe) return null;
   if (!SUPPORTED_PRIMITIVES.has(recipe.primitive)) return null;
-  const secretNames = recipe.required_secrets.filter((s) => !s.optional).map((s) => s.key);
-  const { resolved: resolvedSecrets, directoryError } = await resolveSecretsFromNewHomeDetailed(env, apiKey, secretNames);
+  const secretNames2 = recipe.required_secrets.filter((s) => !s.optional).map((s) => s.key);
+  const { resolved: resolvedSecrets, directoryError } = await resolveSecretsFromNewHomeDetailed(env, apiKey, secretNames2);
   redactor?.addRecord(resolvedSecrets, (name) => `credential:${name}`);
   const oauth2Cache2 = recipe.primitive === "oauth2" ? await readOAuth2Cache(env, apiKey, service) : null;
   const primitiveUrl = componentUrl(`auth_${recipe.primitive}`, env);
@@ -3423,14 +3423,14 @@ async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
       explainCredentialFailure(
         `auth primitive "${recipe.primitive}" \u56DE\u50B3 ${res.status}: ${text.slice(0, 200)}`,
         directoryError,
-        secretNames
+        secretNames2
       )
     );
   }
   const result = await res.json().catch(() => null);
   if (!result || result.success === false) {
     throw new Error(
-      explainCredentialFailure(`auth primitive \u5931\u6557: ${result?.error ?? "\u672A\u77E5\u932F\u8AA4"}`, directoryError, secretNames)
+      explainCredentialFailure(`auth primitive \u5931\u6557: ${result?.error ?? "\u672A\u77E5\u932F\u8AA4"}`, directoryError, secretNames2)
     );
   }
   if (result.cache?.access_token && typeof result.cache.expires_at === "number") {
@@ -3548,7 +3548,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// ../../cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3730,7 +3730,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "../../cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -9867,6 +9867,133 @@ var init_kbdb_proxy = __esm({
   }
 });
 
+// cypher-executor/src/lib/worker-secret-lineage.ts
+function hasCfErrorCode(errors, code) {
+  return (errors ?? []).some((e) => e?.code === code);
+}
+async function cfJson(fetchImpl, token, path, init = {}) {
+  const res = await fetchImpl(`${CF}${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, ...init.headers }
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.success) {
+    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
+    throw new SecretLineageError("cf_api", `Cloudflare ${path.split("?")[0].split("/").slice(-1)[0]}\uFF1A${detail}`);
+  }
+  return body.result;
+}
+async function healLatestNotDeployed(opts) {
+  const { accountId, script, token, env } = opts;
+  const f = opts.fetchImpl ?? fetch;
+  const base = `/accounts/${accountId}/workers/scripts/${script}`;
+  const deployments = (await cfJson(f, token, `${base}/deployments`)).deployments ?? [];
+  const live = deployments[0]?.versions ?? [];
+  if (live.length !== 1 || live[0].percentage !== 100) {
+    throw new SecretLineageError("gradual_deployment", "\u73FE\u5F79\u7248\u672C\u662F\u6F38\u9032\u90E8\u7F72\uFF08\u591A\u500B\u7248\u672C\u5206\u6D41\uFF09\uFF0C\u81EA\u52D5\u4FEE\u5FA9\u4E0D\u78B0\uFF0C\u8ACB\u5148\u628A\u5B83\u6536\u6210\u55AE\u4E00\u7248\u672C\u3002");
+  }
+  const deployedId = live[0].version_id;
+  const items = (await cfJson(f, token, `${base}/versions?per_page=1`)).items ?? [];
+  const latest2 = items[0];
+  if (!latest2 || latest2.id === deployedId) {
+    throw new SecretLineageError("no_change_needed", "\u6700\u65B0\u7248\u672C\u5C31\u662F\u73FE\u5F79\u7248\u672C\uFF0C10215 \u4E0D\u662F\u9019\u500B\u539F\u56E0\u3002");
+  }
+  const everDeployed = deployments.some((d) => (d.versions ?? []).some((v) => v.version_id === latest2.id));
+  if (everDeployed || latest2.annotations?.["workers/triggered_by"] !== "version_upload") {
+    throw new SecretLineageError(
+      "not_prepared_version",
+      "\u6700\u65B0\u7248\u672C\u4E0D\u662F\u300C\u80CC\u666F\u6E96\u5099\u3001\u9084\u6C92\u90E8\u7F72\u300D\u7684\u7248\u672C\uFF08\u5B83\u88AB\u90E8\u7F72\u904E\u53C8\u88AB\u56DE\u6EFE\uFF0C\u6216\u662F\u5225\u7684\u65B9\u5F0F\u4E0A\u50B3\u7684\uFF09\uFF0C\u81EA\u52D5\u4FEE\u5FA9\u4E0D\u6703\u66FF\u4F60\u628A\u5B83\u90E8\u7F72\u4E0A\u53BB\u2014\u2014\u8ACB\u7531\u90E8\u7F72\u9019\u9846 worker \u7684\u4EBA\u6C7A\u5B9A\u8981\u4E0D\u8981\u90E8\u7F72\u5B83\uFF0C\u518D\u91CD\u8A66\u3002"
+    );
+  }
+  const [liveDetail, latestDetail] = await Promise.all([
+    cfJson(f, token, `${base}/versions/${deployedId}`),
+    cfJson(f, token, `${base}/versions/${latest2.id}`)
+  ]);
+  const liveSecrets = secretNames(liveDetail);
+  const latestSecrets = secretNames(latestDetail);
+  const missing = liveSecrets.filter((n) => !latestSecrets.includes(n));
+  const deploy = async (versionId) => {
+    await cfJson(f, token, `${base}/deployments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        strategy: "percentage",
+        versions: [{ version_id: versionId, percentage: 100 }],
+        annotations: { "workers/message": "inkstone/Arcrun#476\uFF1A\u6700\u65B0\u7248\u672A\u90E8\u7F72\uFF0CSecret \u5BEB\u5165\u524D\u81EA\u52D5\u6536\u6582" }
+      })
+    });
+  };
+  if (missing.length === 0) {
+    await deploy(latest2.id);
+    return { action: "deployed_latest", version: latest2.id };
+  }
+  const carry = [.../* @__PURE__ */ new Set([...liveSecrets, ...latestSecrets])];
+  const values = {};
+  const unavailable = [];
+  for (const n of carry) {
+    const v = env[n];
+    if (typeof v === "string" && v !== "") values[n] = v;
+    else unavailable.push(n);
+  }
+  if (unavailable.length > 0) {
+    throw new SecretLineageError(
+      "secret_values_unavailable",
+      `\u6700\u65B0\u7248\u672C\u6C92\u6709\u5E36\u73FE\u5F79\u7684 Secret\uFF0C\u800C\u9019\u9846 worker \u81EA\u5DF1\u7684\u74B0\u5883\u88E1\u8B80\u4E0D\u5230\u9019\u5E7E\u500B\u7684\u503C\uFF1A${unavailable.join("\u3001")}\u3002\u70BA\u4E86\u4E0D\u6D17\u6389\u73FE\u6709\u7684\u8A2D\u5B9A\uFF0C\u4EC0\u9EBC\u90FD\u6C92\u6709\u52D5\u3002`
+    );
+  }
+  const contentRes = await f(`${CF}${base}/content/v2?version=${encodeURIComponent(latest2.id)}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!contentRes.ok) {
+    throw new SecretLineageError("cf_api", `Cloudflare \u8B80\u6E96\u5099\u7248\u7A0B\u5F0F\u78BC\u5931\u6557\uFF1AHTTP ${contentRes.status}`);
+  }
+  const mainModule = contentRes.headers.get("cf-entrypoint");
+  const parts = await contentRes.formData();
+  const files = [];
+  parts.forEach((v, k) => {
+    if (typeof v !== "string") files.push([k, v]);
+  });
+  if (!mainModule || !files.some(([k]) => k === mainModule)) {
+    throw new SecretLineageError("cf_api", "\u8B80\u4E0D\u51FA\u6E96\u5099\u7248\u7684\u4E3B\u6A21\u7D44\u540D\u7A31\uFF0C\u4E0D\u91CD\u50B3\u3002");
+  }
+  const rt = latestDetail.resources?.script_runtime ?? {};
+  const bindings = [
+    ...(latestDetail.resources?.bindings ?? []).filter((b) => b.type !== "secret_text"),
+    ...carry.map((name) => ({ type: "secret_text", name, text: values[name] }))
+  ];
+  const metadata = {
+    main_module: mainModule,
+    compatibility_date: rt.compatibility_date,
+    ...rt.compatibility_flags?.length ? { compatibility_flags: rt.compatibility_flags } : {},
+    bindings,
+    annotations: { "workers/message": "inkstone/Arcrun#476\uFF1A\u6E96\u5099\u7248\uFF0B\u73FE\u5F79 Secret\uFF08\u81EA\u52D5\u6536\u6582\uFF09" }
+  };
+  const form = new FormData();
+  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }), "metadata.json");
+  for (const [name, file] of files) form.append(name, file, name);
+  const up = await cfJson(f, token, `${base}/versions`, { method: "POST", body: form });
+  if (!up?.id) throw new SecretLineageError("cf_api", "Cloudflare \u6C92\u6709\u56DE\u65B0\u7248\u672C\u7DE8\u865F\uFF0C\u4E0D\u90E8\u7F72\u3002");
+  await deploy(up.id);
+  return { action: "rebased", version: up.id, carried: carry };
+}
+var CF, CF_LATEST_NOT_DEPLOYED, SecretLineageError, secretNames;
+var init_worker_secret_lineage = __esm({
+  "cypher-executor/src/lib/worker-secret-lineage.ts"() {
+    "use strict";
+    CF = "https://api.cloudflare.com/client/v4";
+    CF_LATEST_NOT_DEPLOYED = 10215;
+    SecretLineageError = class extends Error {
+      constructor(reason, message2) {
+        super(message2);
+        this.reason = reason;
+        this.name = "SecretLineageError";
+      }
+      reason;
+    };
+    secretNames = (d) => (d.resources?.bindings ?? []).filter((b) => b.type === "secret_text").map((b) => b.name);
+  }
+});
+
 // cypher-executor/src/routes/credentials.ts
 function legacyOwnerFor(env, apiKey) {
   return apiKey === credentialOwner(env) ? legacyCredentialOwner(env) : null;
@@ -9899,19 +10026,39 @@ async function putWorkerSecret(env, secretRef, value, tokenOverride) {
     );
   }
   const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets`;
+  const attempt = () => cfSecretsCall(url, "PUT", token, JSON.stringify({ name: secretRef, text: value, type: "secret_text" }));
+  await runWithLineageHeal(env, token, attempt, "\u5BEB\u5165");
+}
+async function cfSecretsCall(url, method, token, body) {
   const res = await fetch(url, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ name: secretRef, text: value, type: "secret_text" })
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...body ? { "Content-Type": "application/json" } : {} },
+    ...body ? { body } : {}
   });
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !body?.success) {
-    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
-    throw new Error(`CF Workers Secrets \u5BEB\u5165\u5931\u6557\uFF1A${detail}`);
+  if (method === "DELETE" && res.status === 404) return { ok: true, status: 404, detail: "", latestNotDeployed: false };
+  const parsed = await res.json().catch(() => null);
+  if (res.ok && parsed?.success) return { ok: true, status: res.status, detail: "", latestNotDeployed: false };
+  const detail = parsed?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
+  return { ok: false, status: res.status, detail, latestNotDeployed: hasCfErrorCode(parsed?.errors, CF_LATEST_NOT_DEPLOYED) };
+}
+async function runWithLineageHeal(env, token, attempt, verb) {
+  let r = await attempt();
+  if (!r.ok && r.latestNotDeployed) {
+    try {
+      const healed = await healLatestNotDeployed({
+        accountId: env.CF_ACCOUNT_ID,
+        script: CYPHER_SCRIPT_NAME,
+        token,
+        env
+      });
+      console.warn(`[secrets] CF 10215 \u5DF2\u81EA\u52D5\u6536\u6582\uFF08${healed.action}\uFF09`);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      throw new Error(`CF Workers Secrets ${verb}\u5931\u6557\uFF1A\u9019\u9846 worker \u7684\u6700\u65B0\u7248\u672C\u9084\u6C92\u90E8\u7F72\uFF08Cloudflare 10215\uFF09\uFF0C\u4E14\u7121\u6CD5\u81EA\u52D5\u6536\u6582\uFF1A${why}`);
+    }
+    r = await attempt();
   }
+  if (!r.ok) throw new Error(`CF Workers Secrets ${verb}\u5931\u6557\uFF1A${r.detail}`);
 }
 async function deleteWorkerSecret(env, secretRef, tokenOverride) {
   const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
@@ -9919,16 +10066,7 @@ async function deleteWorkerSecret(env, secretRef, tokenOverride) {
     throw new SecretsNotReadyError("\u6B64 worker \u7F3A CF_SECRETS_API_TOKEN / CF_ACCOUNT_ID \u8A2D\u5B9A\uFF0C\u522A\u9664\u8DEF\u5F91\u672A\u5C31\u7DD2");
   }
   const url = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${CYPHER_SCRIPT_NAME}/secrets/${secretRef}`;
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (res.status === 404) return;
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !body?.success) {
-    const detail = body?.errors?.map((e) => e.message).filter(Boolean).join("; ") || `HTTP ${res.status}`;
-    throw new Error(`CF Workers Secrets \u522A\u9664\u5931\u6557\uFF1A${detail}`);
-  }
+  await runWithLineageHeal(env, token, () => cfSecretsCall(url, "DELETE", token), "\u522A\u9664");
 }
 async function putCredentialSecret(env, apiKey, secretRef, value) {
   const mode = secretBackendMode(env);
@@ -10190,6 +10328,7 @@ var init_credentials = __esm({
     init_kbdb_proxy();
     init_secret_backend();
     init_tenant();
+    init_worker_secret_lineage();
     credentialsRouter = new Hono2();
     CYPHER_SCRIPT_NAME = "arcrun-cypher-executor";
     SECRETS_NOT_READY_CODE = "secrets_write_unavailable";
@@ -16787,6 +16926,7 @@ function validateAppDeclaration(raw2) {
       });
     }
   }
+  if (d.skills !== void 0) errors.push(...validateSkills(d.skills));
   if (d.requires !== void 0) errors.push(...validateRequires(d.requires));
   if (d.mcp !== void 0) errors.push(...validateAppMcp(d.mcp, d.workflows));
   if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
@@ -16804,6 +16944,34 @@ function validateAppDeclaration(raw2) {
     }
   }
   return { ok: errors.length === 0, errors };
+}
+var SKILL_TEMPLATE = "agent-skill";
+var MAX_SKILLS_PER_APP = 50;
+var MAX_SKILL_CHARS = 1e5;
+var SKILL_SLUG_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+function validateSkills(raw2) {
+  if (!Array.isArray(raw2)) return ["skills \u5FC5\u9808\u662F\u9663\u5217"];
+  const errors = [];
+  if (raw2.length > MAX_SKILLS_PER_APP) errors.push(`skills \u6700\u591A ${MAX_SKILLS_PER_APP} \u652F\uFF08\u9019\u4EFD\u6709 ${raw2.length} \u652F\uFF09`);
+  const seen = /* @__PURE__ */ new Set();
+  raw2.forEach((sk, i) => {
+    if (!sk || typeof sk !== "object" || Array.isArray(sk)) {
+      errors.push(`skills[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+      return;
+    }
+    const o = sk;
+    if (typeof o.slug !== "string" || !SKILL_SLUG_RE.test(o.slug)) {
+      errors.push(`skills[${i}].slug \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09`);
+    } else if (seen.has(o.slug)) {
+      errors.push(`skills[${i}].slug\u300C${o.slug}\u300D\u91CD\u8907\u4E86`);
+    } else {
+      seen.add(o.slug);
+    }
+    if (typeof o.title !== "string" || o.title.trim() === "") errors.push(`skills[${i}].title \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32`);
+    if (typeof o.content !== "string" || o.content.trim() === "") errors.push(`skills[${i}].content \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32`);
+    else if (o.content.length > MAX_SKILL_CHARS) errors.push(`skills[${i}].content \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_SKILL_CHARS} \u5B57\uFF09`);
+  });
+  return errors;
 }
 function validateRequires(raw2) {
   const errors = [];
@@ -16868,6 +17036,7 @@ function applyDeclarationDefaults(raw2) {
     icon: raw2.icon ?? generateIcon(raw2.name),
     version: raw2.version ?? "0.0.0",
     workflows,
+    skills: raw2.skills ?? [],
     data: raw2.data ?? [],
     actions,
     keeps_data: raw2.remove?.keeps_data ?? true
@@ -17180,6 +17349,40 @@ async function findMissingCredentials(env, tenant2, wanted) {
     return { missing: [], checked: false };
   }
 }
+async function upsertAppSkill(env, tenant2, appId, skill) {
+  const { base, headers } = kbdbBase(env);
+  const pageName = `skill-${skill.slug}`;
+  const q = new URLSearchParams({ template: SKILL_TEMPLATE, owner_id: String(tenant2), page_name: pageName, limit: "1" });
+  noteSubrequest();
+  const probe = await fetch(`${base}/entries?${q.toString()}`, { headers });
+  if (!probe.ok) throw new Error(`\u8B80\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${probe.status}`);
+  const hit = (await probe.json().catch(() => null))?.entries?.[0];
+  const metadata = JSON.stringify({ slug: skill.slug, title: skill.title, source: `app:${appId}` });
+  noteSubrequest();
+  if (hit?.id) {
+    const res2 = await fetch(`${base}/entries/${encodeURIComponent(hit.id)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ content: skill.content, metadata_json: metadata })
+    });
+    if (!res2.ok) throw new Error(`\u66F4\u65B0\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${res2.status}`);
+    return "updated";
+  }
+  const res = await fetch(`${base}/entries`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      template: SKILL_TEMPLATE,
+      owner_id: String(tenant2),
+      page_name: pageName,
+      content: skill.content,
+      metadata_json: metadata,
+      tags_json: JSON.stringify([SKILL_TEMPLATE, `skill:${skill.slug}`])
+    })
+  });
+  if (!res.ok) throw new Error(`\u5EFA\u7ACB\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${res.status}`);
+  return "created";
+}
 var INSTALL_REQUEST_BUDGET = 32;
 var FINAL_RESERVE = 8;
 async function installApp(env, tenant2, rawDecl, opts = {}) {
@@ -17314,6 +17517,26 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     );
     markerWritten = true;
   };
+  const skillRefs = [];
+  const prevSkillHash = new Map((existing?.skills ?? []).map((k) => [k.slug, k.hash]));
+  for (const sk of decl.skills) {
+    const hash = await computeContentHash({ title: sk.title, content: sk.content });
+    skillRefs.push({ slug: sk.slug, hash });
+    if (trustPrev && prevSkillHash.get(sk.slug) === hash) {
+      units.push({ step: "\u5B89\u88DD\u6280\u80FD", label: sk.slug, cost: 0, run: async () => {
+      } });
+      continue;
+    }
+    units.push({
+      step: "\u5B89\u88DD\u6280\u80FD",
+      label: sk.slug,
+      cost: 2,
+      run: async () => {
+        await markPending();
+        await upsertAppSkill(env, tenant2, decl.id, sk);
+      }
+    });
+  }
   for (const p of prepared) {
     const wfUnchanged = trustPrev && prevHash.get(p.wfKey) === p.ref.hash;
     if (wfUnchanged) {
@@ -17397,6 +17620,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     version: decl.version,
     content_hash: contentHash,
     workflows: workflowRefs,
+    ...skillRefs.length ? { skills: skillRefs } : {},
     actions: decl.actions,
     data_templates: decl.data.map((d) => d.name),
     has_ui: Boolean(uiHtml || uiSurface),
@@ -18376,6 +18600,46 @@ async function runResetMailWorkflow(env, ns, ctx, input) {
 // cypher-executor/src/routes/portal.ts
 init_tenant();
 init_credentials();
+
+// cypher-executor/src/lib/portal-session-cache.ts
+var AUTH_CACHE_MS = 1e4;
+var AUTH_CACHE_MAX = 200;
+var cache2 = /* @__PURE__ */ new Map();
+var gen = 0;
+function authCacheGeneration() {
+  return gen;
+}
+function authCacheWindow(env) {
+  const raw2 = env.PORTAL_AUTH_CACHE_MS;
+  if (raw2 === void 0 || raw2 === "") return AUTH_CACHE_MS;
+  const n = Number(raw2);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 6e4) : AUTH_CACHE_MS;
+}
+function authCacheGet(token, windowMs = AUTH_CACHE_MS, now2 = Date.now()) {
+  if (windowMs <= 0) return null;
+  const hit = cache2.get(token);
+  if (!hit) return null;
+  if (now2 - hit.at >= windowMs) {
+    cache2.delete(token);
+    return null;
+  }
+  if (Number.isFinite(hit.sessExp) && hit.sessExp < now2) {
+    cache2.delete(token);
+    return null;
+  }
+  return hit;
+}
+function authCacheSet(token, entry, startedGen, windowMs = AUTH_CACHE_MS, now2 = Date.now()) {
+  if (windowMs <= 0 || startedGen !== gen) return;
+  if (cache2.size >= AUTH_CACHE_MAX) cache2.clear();
+  cache2.set(token, { at: now2, ...entry });
+}
+function authCacheClear() {
+  gen++;
+  cache2.clear();
+}
+
+// cypher-executor/src/routes/portal.ts
 init_kbdb_caller();
 
 // cypher-executor/src/lib/ai-response.ts
@@ -18916,12 +19180,47 @@ async function requestInstanceUpdate(env, fetchImpl = fetch) {
   }
   if (j.ok === true) {
     const deployed = typeof j.deployed === "number" ? j.deployed : 0;
+    const switched = typeof j.switched === "number" ? j.switched : 0;
+    const changed = deployed > 0 || switched > 0;
     return {
       status: 200,
-      body: { ok: true, state: deployed > 0 ? "updated" : "up_to_date", deployed, message: message2 || "\u66F4\u65B0\u5B8C\u6210\u3002" }
+      body: {
+        ok: true,
+        state: changed ? "updated" : "up_to_date",
+        deployed: deployed + (deployed === 0 ? switched : 0),
+        message: changed && deployed === 0 ? "\u66F4\u65B0\u5B8C\u6210\uFF0C\u5DF2\u7D93\u63DB\u6210\u6700\u65B0\u7248\u4E86\u3002" : message2 || "\u66F4\u65B0\u5B8C\u6210\u3002"
+      }
     };
   }
   return { status: 200, body: { ok: false, state: "refused", message: message2 || "\u9019\u6B21\u6C92\u8FA6\u6CD5\u5E6B\u4F60\u66F4\u65B0\u3002" } };
+}
+var STATUS_UNAVAILABLE = { available: false, prepared: false, preparing: false, prepared_workers: 0, prepared_at: null };
+async function requestInstanceUpdateStatus(env, fetchImpl = fetch) {
+  const token = env.ARCRUN_UPDATE_TOKEN;
+  const accountId = env.CF_ACCOUNT_ID;
+  const origin2 = installerOrigin(env);
+  if (!token || !accountId || !origin2) return STATUS_UNAVAILABLE;
+  try {
+    const res = await fetchImpl(`${origin2}/api/instance/update-status`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ accountId }),
+      signal: AbortSignal.timeout(4e3)
+    });
+    if (!res.ok) return STATUS_UNAVAILABLE;
+    const j = await res.json().catch(() => null);
+    if (!j || j.ok !== true) return STATUS_UNAVAILABLE;
+    const prepared = j.prepared === true;
+    return {
+      available: true,
+      prepared,
+      preparing: !prepared && j.preparing === true,
+      prepared_workers: typeof j.preparedWorkers === "number" ? j.preparedWorkers : 0,
+      prepared_at: typeof j.preparedAt === "number" || typeof j.preparedAt === "string" ? j.preparedAt : null
+    };
+  } catch {
+    return STATUS_UNAVAILABLE;
+  }
 }
 
 // cypher-executor/src/lib/update-center.ts
@@ -19523,6 +19822,14 @@ async function getRecordById(env, recordId) {
   return body.record ?? null;
 }
 async function patchRecordValues(env, recordId, values) {
+  authCacheClear();
+  try {
+    return await patchRecordValuesRaw(env, recordId, values);
+  } finally {
+    authCacheClear();
+  }
+}
+async function patchRecordValuesRaw(env, recordId, values) {
   if (isAuthStoreId(recordId)) {
     let updated = null;
     await mutateAuthStore(env, (data) => {
@@ -19545,6 +19852,14 @@ async function patchRecordValues(env, recordId, values) {
   return body.record;
 }
 async function deleteKbdbRecord(env, recordId) {
+  authCacheClear();
+  try {
+    return await deleteKbdbRecordRaw(env, recordId);
+  } finally {
+    authCacheClear();
+  }
+}
+async function deleteKbdbRecordRaw(env, recordId) {
   if (isAuthStoreId(recordId)) {
     let found = false;
     await mutateAuthStore(env, (data) => {
@@ -19683,6 +19998,13 @@ function toPublicUser(rec) {
 async function requirePortalUser(c, onSessionFound) {
   const token = bearerToken(c);
   if (!token) return { ok: false, res: c.json({ error: "\u672A\u767B\u5165" }, 401) };
+  const cacheMs = authCacheWindow(c.env);
+  const hit = authCacheGet(token, cacheMs);
+  if (hit) {
+    onSessionFound?.();
+    return { ok: true, user: { token, recordId: hit.recordId, values: hit.values } };
+  }
+  const startedGen = authCacheGeneration();
   const sess = await ephemeralGet(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
   if (!sess) return { ok: false, res: c.json({ error: "session \u7121\u6548\u6216\u5DF2\u904E\u671F" }, 401) };
   onSessionFound?.();
@@ -19714,6 +20036,8 @@ async function requirePortalUser(c, onSessionFound) {
     await ephemeralDelete(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
     return { ok: false, res: c.json({ error: "\u5E33\u865F\u5DF2\u505C\u7528" }, 403) };
   }
+  const sessExp = Number(sess.exp);
+  authCacheSet(token, { sessExp: Number.isFinite(sessExp) ? sessExp : Infinity, recordId, values: rec.values }, startedGen, cacheMs);
   return { ok: true, user: { token, recordId, values: rec.values } };
 }
 async function requirePortalAdmin(c) {
@@ -19794,6 +20118,7 @@ async function listSessionsFor(env, recordId, currentTokenHash) {
   return out;
 }
 async function revokeSessionsFor(env, recordId, exceptTokenHash) {
+  authCacheClear();
   const rows = await ephemeralListBy(env, SESSION_TEMPLATE2, "record_id", recordId, SESSION_LIST_MAX);
   let n = 0;
   for (const r of rows) {
@@ -19801,6 +20126,7 @@ async function revokeSessionsFor(env, recordId, exceptTokenHash) {
     await ephemeralDeleteById(env, r.record_id);
     n += 1;
   }
+  authCacheClear();
   return n;
 }
 async function instanceHasNoAuthData(env) {
@@ -19938,7 +20264,9 @@ portalRouter.post(
 );
 portalRouter.post("/portal/logout", async (c) => {
   const token = bearerToken(c);
+  authCacheClear();
   if (token) await ephemeralDelete(c.env, { template: SESSION_TEMPLATE2, hashField: "token_hash", rawKey: token });
+  authCacheClear();
   return c.json({ success: true });
 });
 portalRouter.get(
@@ -19969,7 +20297,9 @@ portalRouter.delete(
     const rows = await listSessionsFor(c.env, auth.user.recordId, await sha256Hex3(auth.user.token));
     const hit = rows.find((r) => r.id === id);
     if (!hit) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u500B\u9023\u7DDA\uFF08\u53EF\u80FD\u5DF2\u7D93\u767B\u51FA\u6216\u904E\u671F\u4E86\uFF09" }, 404);
+    authCacheClear();
     await ephemeralDeleteById(c.env, hit.id);
+    authCacheClear();
     return c.json({ success: true, revoked: 1, was_current: hit.current });
   })
 );
@@ -21997,6 +22327,14 @@ portalRouter.post(
     return c.json(r.body, r.status);
   })
 );
+portalRouter.get(
+  "/portal/admin/update-status",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    return c.json(await requestInstanceUpdateStatus(c.env));
+  })
+);
 portalRouter.post(
   "/portal/admin/accelerator-indexes",
   (c) => run(c, async () => {
@@ -22064,7 +22402,7 @@ async function cypherTenantAuth(c, next) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// ../../cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const defaults = {
     origin: "*",
@@ -22844,6 +23182,7 @@ function clearRecipeCache() {
 function cacheTtlFor(store2, key) {
   if (store2 === "RECIPES") return RECIPE_CACHE_MS;
   if (store2 === "WEBHOOKS" && /:wf:/.test(key)) return WORKFLOW_DEF_CACHE_MS;
+  if (store2 === "WEBHOOKS" && /^[^:]+:app:[^:]+$/.test(key)) return WORKFLOW_DEF_CACHE_MS;
   return 0;
 }
 function isHumanActionAsset(store2, key) {
@@ -22933,7 +23272,7 @@ var KbdbAssetStore = class {
       const ck = `${this.store}\0${key}`;
       const hit = recipeCache.get(ck);
       if (hit && Date.now() - hit.at < hit.ttl) return shape(hit.value, type);
-      const gen = recipeCacheGen;
+      const gen2 = recipeCacheGen;
       const stale = hit && hit.value !== null && Date.now() - hit.at < RECIPE_STALE_ON_ERROR_MS ? hit : null;
       let raw2;
       try {
@@ -22942,7 +23281,7 @@ var KbdbAssetStore = class {
         if (e instanceof AssetStoreUnavailableError && stale) return shape(stale.value, type);
         throw e;
       }
-      if (gen === recipeCacheGen) recipeCache.set(ck, { at: Date.now(), ttl, value: raw2 });
+      if (gen2 === recipeCacheGen) recipeCache.set(ck, { at: Date.now(), ttl, value: raw2 });
       return shape(raw2, type);
     }
     return shape(await this.readRaw(key, isHumanActionAsset(this.store, key)), type);
@@ -29468,9 +29807,9 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
   const cacheKey = new Request(
     `https://console-dashboard.arcrun.internal/gitea-waiting?${new URLSearchParams({ base: env.GITEA_BASE_URL, repo, dir }).toString()}`
   );
-  const cache2 = caches.default;
+  const cache3 = caches.default;
   try {
-    const hit = await cache2.match(cacheKey);
+    const hit = await cache3.match(cacheKey);
     if (hit) {
       const envelope2 = await hit.json();
       return {
@@ -29486,7 +29825,7 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
   const envelope = { snapshot: fresh, fetched_at_ms: nowMs };
   try {
     waitUntil(
-      cache2.put(
+      cache3.put(
         cacheKey,
         new Response(JSON.stringify(envelope), {
           headers: {
@@ -29963,6 +30302,28 @@ async function declarationFromInstalled(env, tenant2, app2, coords) {
       }
     }
   }
+  const skills = [];
+  if ((app2.skills ?? []).length > 0) {
+    const { base, headers } = kbdbBase(env);
+    for (const ref of app2.skills ?? []) {
+      try {
+        noteSubrequest();
+        const q = new URLSearchParams({ template: SKILL_TEMPLATE, owner_id: String(tenant2), page_name: `skill-${ref.slug}`, limit: "1" });
+        const res = await fetch(`${base}/entries?${q.toString()}`, { headers });
+        const j = await res.json().catch(() => null);
+        const hit = j?.entries?.[0];
+        let title = ref.slug;
+        try {
+          title = String(JSON.parse(hit?.metadata_json ?? "{}").title || ref.slug);
+        } catch {
+        }
+        if (res.ok && hit && typeof hit.content === "string" && hit.content) skills.push({ slug: ref.slug, title, content: hit.content });
+        else warnings.push(`\u6280\u80FD\u300C${ref.slug}\u300D\u9019\u53F0\u8B80\u4E0D\u5230\uFF0C\u5305\u88E1\u6C92\u6709\u5B83\uFF1B\u532F\u5165\u7AEF\u6703\u7F3A\u9019\u652F\u6280\u80FD\u3002`);
+      } catch {
+        warnings.push(`\u6280\u80FD\u300C${ref.slug}\u300D\u9019\u53F0\u8B80\u4E0D\u5230\uFF0C\u5305\u88E1\u6C92\u6709\u5B83\uFF1B\u532F\u5165\u7AEF\u6703\u7F3A\u9019\u652F\u6280\u80FD\u3002`);
+      }
+    }
+  }
   const recipes = [];
   for (const cid of app2.requires?.recipes ?? []) {
     const r = await resolveRecipe(cid, env.RECIPES);
@@ -29980,6 +30341,7 @@ async function declarationFromInstalled(env, tenant2, app2, coords) {
     version: app2.version,
     ...app2.declared?.engine_min ? { engine_min: app2.declared.engine_min } : {},
     workflows,
+    ...skills.length ? { skills } : {},
     actions: app2.actions,
     ...data.length ? { data } : {},
     ...recipes.length || credentials.length ? { requires: { ...recipes.length ? { recipes } : {}, ...credentials.length ? { credentials } : {} } } : {},

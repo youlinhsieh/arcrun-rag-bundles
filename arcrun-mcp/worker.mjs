@@ -32397,7 +32397,16 @@ async function callPortal(env, identity, what, path, opts, hints) {
     ]);
   }
   try {
-    const res = await portalFetch(env, identity.portal.session, path, opts);
+    let res = await portalFetch(env, identity.portal.session, path, opts);
+    let rounds = 1;
+    let json2;
+    while (res.ok && opts.next) {
+      json2 = await res.json();
+      const q = opts.next(json2);
+      if (!q || rounds >= (opts.maxRounds ?? 1)) break;
+      rounds++;
+      res = await portalFetch(env, identity.portal.session, path, { ...opts, query: q });
+    }
     if (!res.ok) {
       if (res.status === 400 || res.status === 404 || res.status === 409) {
         const detail = await res.text().catch(() => "");
@@ -32411,11 +32420,12 @@ async function callPortal(env, identity, what, path, opts, hints) {
       }
       return portalError(res, what);
     }
-    return successResponse(await res.json(), hints);
+    return successResponse(opts.next ? json2 ?? await res.json() : await res.json(), hints);
   } catch (e) {
     return errorResponse("internal_error", e instanceof Error ? e.message : String(e), ["\u7A0D\u5F8C\u91CD\u8A66"]);
   }
 }
+var APP_INSTALL_MAX_ROUNDS = 8;
 var appId = external_exports.string().min(1).describe("App id\uFF08arcrun_app_list \u56DE\u7684 id\uFF09\uFF0C\u4F8B\uFF1Aleave_request");
 function registerAllAppCrudTools(server, env, identity) {
   server.tool(
@@ -32447,12 +32457,32 @@ function registerAllAppCrudTools(server, env, identity) {
   );
   server.tool(
     toolName("app_install"),
-    "\u5F9E App \u5E02\u96C6\u5B89\u88DD\u4E00\u500B App\uFF1B\u5DF2\u7D93\u88DD\u4E86\u5C31\u66F4\u65B0\u5230\u5E02\u96C6\u90A3\u4E00\u7248\uFF08\u7248\u865F\u5012\u9000\u6703\u88AB\u64CB\uFF09\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002\u8868\u55AE App \u4E0D\u5728\u5E02\u96C6\uFF0C\u589E\uFF0F\u6539\u8ACB\u7528 arcrun_create_form\u3002",
-    { id: external_exports.string().min(1).describe("\u5E02\u96C6\u88E1\u7684 App id\uFF08arcrun_app_catalog \u56DE\u7684 id\uFF09") },
-    async ({ id }) => callPortal(env, identity, `\u5B89\u88DD App\u300C${id}\u300D`, `/portal/data/apps/catalog/${encodeURIComponent(id)}/install`, { method: "POST", body: {} }, [
-      "\u56DE\u61C9\u6709 in_progress\uFF1D\u5927 App \u9084\u6C92\u88DD\u5B8C\uFF0C\u540C\u4E00\u500B id \u518D\u547C\u53EB\u4E00\u6B21\u63A5\u8457\u88DD",
-      "\u88DD\u5B8C\uFF1Aarcrun_app_get(id) \u78BA\u8A8D\u7248\u672C"
-    ])
+    "\u5F9E App \u5E02\u96C6\u5B89\u88DD\u4E00\u500B App\uFF1B\u5DF2\u7D93\u88DD\u4E86\u5C31\u66F4\u65B0\u5230\u5E02\u96C6\u90A3\u4E00\u7248\uFF08\u7248\u865F\u5012\u9000\u6703\u88AB\u64CB\uFF09\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002\u5927 App\uFF08\u5DE5\u4F5C\u6D41\u5F88\u591A\uFF09\u4E00\u6B21\u8ACB\u6C42\u88DD\u4E0D\u5B8C\uFF0C\u9019\u652F\u6703\u81EA\u5DF1\u63A5\u8457\u88DD\u597D\u5E7E\u8F2A\uFF1B\u9084\u6C92\u88DD\u5B8C\u6703\u56DE in_progress\uFF0Bresume_from\uFF0Fresume_hash\uFF0C\u518D\u547C\u53EB\u4E00\u6B21\uFF08\u540C\u4E00\u500B id\uFF0C\u53EF\u5E36\u56DE\u90A3\u5169\u500B\u503C\uFF09\u5C31\u5F9E\u65B7\u9EDE\u63A5\u8457\u88DD\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\u3002\u8868\u55AE App \u4E0D\u5728\u5E02\u96C6\uFF0C\u589E\uFF0F\u6539\u8ACB\u7528 arcrun_create_form\u3002",
+    {
+      id: external_exports.string().min(1).describe("\u5E02\u96C6\u88E1\u7684 App id\uFF08arcrun_app_catalog \u56DE\u7684 id\uFF09"),
+      from: external_exports.number().int().min(0).optional().describe("\u7E8C\u88DD\u8D77\u9EDE\uFF1A\u4E0A\u4E00\u6B21\u56DE\u61C9\u7684 resume_from\uFF1B\u4E0D\u7D66\uFF1D\u5F9E\u982D"),
+      h: external_exports.string().optional().describe("\u7E8C\u88DD\u96DC\u6E4A\uFF1A\u4E0A\u4E00\u6B21\u56DE\u61C9\u7684 resume_hash\uFF0C\u8981\u548C from \u4E00\u8D77\u5E36")
+    },
+    async ({ id, from, h }) => callPortal(
+      env,
+      identity,
+      `\u5B89\u88DD App\u300C${id}\u300D`,
+      `/portal/data/apps/catalog/${encodeURIComponent(id)}/install`,
+      {
+        method: "POST",
+        body: {},
+        query: { from: from || void 0, h },
+        maxRounds: APP_INSTALL_MAX_ROUNDS,
+        next: (j) => {
+          if (!j.in_progress || typeof j.resume_from !== "number") return null;
+          return { from: j.resume_from, h: typeof j.resume_hash === "string" ? j.resume_hash : void 0 };
+        }
+      },
+      [
+        "\u56DE\u61C9\u6709 in_progress\uFF1D\u5927 App \u9084\u6C92\u88DD\u5B8C\uFF1A\u540C\u4E00\u500B id \u518D\u547C\u53EB\u4E00\u6B21\uFF0C\u5E36\u56DE\u56DE\u61C9\u88E1\u7684 resume_from \u7576 from\u3001resume_hash \u7576 h\uFF0C\u5C31\u5F9E\u65B7\u9EDE\u63A5\u8457\u88DD",
+        "\u88DD\u5B8C\uFF08installed:true\uFF09\uFF1Aarcrun_app_get(id) \u78BA\u8A8D\u7248\u672C"
+      ]
+    )
   );
   server.tool(
     toolName("app_delete"),

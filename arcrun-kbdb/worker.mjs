@@ -1801,6 +1801,94 @@ var init_entity_canon = __esm({
   }
 });
 
+// kbdb/src/actions/template-guard.ts
+function editDistance(a, b, cap) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function looksUnresolved(name) {
+  return /\{\{|\}\}|\$\{/.test(name);
+}
+function forgetTemplateNames(db) {
+  nameCache.delete(db);
+}
+async function templateNames(db, now = Date.now()) {
+  const key = db;
+  const hit = nameCache.get(key);
+  if (hit && now - hit.at < TEMPLATE_NAMES_TTL_MS) return hit.names;
+  const res = await db.all("SELECT name FROM templates");
+  const names = (res.results ?? []).map((r) => r.name);
+  nameCache.set(key, { at: now, names });
+  return names;
+}
+async function similarTemplateNames(db, name) {
+  const names = await templateNames(db);
+  const target = norm(name);
+  const out = [];
+  for (const rn of names) {
+    const r = { name: rn };
+    if (r.name === name) continue;
+    const n2 = norm(r.name);
+    if (n2 === target || target.length >= 4 && n2.length >= 4 && editDistance(n2, target, 2) <= 2) out.push(r.name);
+  }
+  return out.slice(0, 5);
+}
+async function assertKindTemplateWritable(db, name, allowCreate = false) {
+  const key = String(name ?? "").trim();
+  if (looksUnresolved(key)) {
+    throw new TemplateNameError(
+      "template_name_unresolved",
+      `template \u540D\u7A31 "${key}" \u542B\u6C92\u89E3\u958B\u7684\u53D6\u503C\u5F0F\uFF08{{\u2026}}\uFF09\u2014\u2014\u4E0A\u6E38\u6C92\u6709\u7D66\u51FA\u9019\u500B\u503C\u3002\u4E0D\u6703\u7528\u5B83\u5EFA\u7ACB\u65B0\u7684 template\u3002`
+    );
+  }
+  const hit = await db.first("SELECT id FROM templates WHERE name = ? OR id = ?", [key, key]);
+  if (hit || allowCreate) return;
+  const near = await similarTemplateNames(db, key);
+  if (near.length > 0) {
+    throw new TemplateNameError(
+      "template_name_suspect",
+      `template "${key}" \u4E0D\u5B58\u5728\uFF0C\u4F46\u6709\u5F88\u50CF\u7684\u65E2\u6709\u540D\u5B57\uFF1A${near.join("\u3001")}\u3002\u62FC\u932F\u5C31\u6539\u6210\u90A3\u500B\uFF1B\u771F\u7684\u8981\u65B0\u7A2E\u985E\u8ACB\u5728\u8ACB\u6C42\u5E36 create_template:true\u3002`,
+      near
+    );
+  }
+}
+async function templateMissingInfo(db, name) {
+  const near = await similarTemplateNames(db, name).catch(() => []);
+  return {
+    template_exists: false,
+    error_code: "template_not_found",
+    did_you_mean: near,
+    hint: `template "${name}" \u4E0D\u5B58\u5728\uFF08\u4E0D\u662F\u300C\u5B58\u5728\u4F46 0 \u7B46\u300D\uFF09\u3002${near.length ? `\u4F60\u662F\u4E0D\u662F\u8981\u627E\uFF1A${near.join("\u3001")}\uFF1F` : "\u6AA2\u67E5\u540D\u5B57\u62FC\u5BEB\uFF0C\u6216\u5148\u5BEB\u5165\u4E00\u7B46\u5EFA\u7ACB\u5B83\u3002"}`
+  };
+}
+var TemplateNameError, norm, TEMPLATE_NAMES_TTL_MS, nameCache;
+var init_template_guard = __esm({
+  "kbdb/src/actions/template-guard.ts"() {
+    "use strict";
+    TemplateNameError = class extends Error {
+      constructor(code, message, didYouMean = []) {
+        super(message);
+        this.code = code;
+        this.didYouMean = didYouMean;
+        this.name = "TemplateNameError";
+      }
+      code;
+      didYouMean;
+    };
+    norm = (s) => s.trim().toLowerCase().replace(/[_\s-]+/g, "");
+    TEMPLATE_NAMES_TTL_MS = 6e4;
+    nameCache = /* @__PURE__ */ new WeakMap();
+  }
+});
+
 // kbdb/src/actions/record-crud.ts
 var record_crud_exports = {};
 __export(record_crud_exports, {
@@ -1857,6 +1945,7 @@ async function ensureFieldEntries(db, templateId, slots) {
 async function createTemplate(db, input) {
   const id = input.id ?? uid2("tpl");
   await db.run(`INSERT INTO templates (id, name, description, slots_json, created_by) VALUES (?, ?, ?, ?, ?)`, [id, input.name, input.description ?? null, JSON.stringify(input.slots), input.created_by ?? null]);
+  forgetTemplateNames(db);
   await ensureAnchors(db);
   await insertEntryRow(db, { id, content: input.name }, { ignore: true });
   await insertEntryRow(db, { id: `relb_${id}`, src_id: id, rel_id: SYS_BELONGS, dst_id: SYS_ROOT }, { ignore: true });
@@ -2323,6 +2412,7 @@ var init_record_crud = __esm({
     init_kind();
     init_entity_canon();
     init_library_map_store();
+    init_template_guard();
     kindTemplateIds = /* @__PURE__ */ new WeakMap();
     RecordExistsError = class extends Error {
       recordId;
@@ -3248,6 +3338,7 @@ __export(embed_exports, {
   countPendingEmbeddings: () => countPendingEmbeddings,
   embedEnabled: () => embedEnabled,
   embedForEntity: () => embedForEntity,
+  embedManyForEntity: () => embedManyForEntity,
   embedOnWrite: () => embedOnWrite,
   embedSelfTest: () => embedSelfTest,
   expectedVectorCount: () => expectedVectorCount,
@@ -3748,6 +3839,11 @@ async function semanticSearch(env, q, opts = {}) {
 async function embedForEntity(env, text) {
   if (!embedEnabled(env)) return null;
   return embedText(env, text);
+}
+async function embedManyForEntity(env, texts) {
+  const provider = embedProviderOf(env);
+  if (!provider || !embedEnabled(env) || texts.length === 0) return null;
+  return provider.embed(embedModel(env), texts);
 }
 async function nearestEntities(env, vec, owner, topK = 3) {
   const store2 = vectorsOf(env);
@@ -6849,75 +6945,7 @@ function brakeBody(b) {
 // kbdb/src/routes/entries.ts
 init_kind();
 init_library_map_store();
-
-// kbdb/src/actions/template-guard.ts
-var TemplateNameError = class extends Error {
-  constructor(code, message, didYouMean = []) {
-    super(message);
-    this.code = code;
-    this.didYouMean = didYouMean;
-    this.name = "TemplateNameError";
-  }
-  code;
-  didYouMean;
-};
-var norm = (s) => s.trim().toLowerCase().replace(/[_\s-]+/g, "");
-function editDistance(a, b, cap) {
-  if (Math.abs(a.length - b.length) > cap) return cap + 1;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    for (let j = 1; j <= b.length; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = cur;
-  }
-  return prev[b.length];
-}
-function looksUnresolved(name) {
-  return /\{\{|\}\}|\$\{/.test(name);
-}
-async function similarTemplateNames(db, name) {
-  const res = await db.all("SELECT name FROM templates");
-  const target = norm(name);
-  const out = [];
-  for (const r of res.results ?? []) {
-    if (r.name === name) continue;
-    const n2 = norm(r.name);
-    if (n2 === target || target.length >= 4 && n2.length >= 4 && editDistance(n2, target, 2) <= 2) out.push(r.name);
-  }
-  return out.slice(0, 5);
-}
-async function assertKindTemplateWritable(db, name, allowCreate = false) {
-  const key = String(name ?? "").trim();
-  if (looksUnresolved(key)) {
-    throw new TemplateNameError(
-      "template_name_unresolved",
-      `template \u540D\u7A31 "${key}" \u542B\u6C92\u89E3\u958B\u7684\u53D6\u503C\u5F0F\uFF08{{\u2026}}\uFF09\u2014\u2014\u4E0A\u6E38\u6C92\u6709\u7D66\u51FA\u9019\u500B\u503C\u3002\u4E0D\u6703\u7528\u5B83\u5EFA\u7ACB\u65B0\u7684 template\u3002`
-    );
-  }
-  const hit = await db.first("SELECT id FROM templates WHERE name = ? OR id = ?", [key, key]);
-  if (hit || allowCreate) return;
-  const near = await similarTemplateNames(db, key);
-  if (near.length > 0) {
-    throw new TemplateNameError(
-      "template_name_suspect",
-      `template "${key}" \u4E0D\u5B58\u5728\uFF0C\u4F46\u6709\u5F88\u50CF\u7684\u65E2\u6709\u540D\u5B57\uFF1A${near.join("\u3001")}\u3002\u62FC\u932F\u5C31\u6539\u6210\u90A3\u500B\uFF1B\u771F\u7684\u8981\u65B0\u7A2E\u985E\u8ACB\u5728\u8ACB\u6C42\u5E36 create_template:true\u3002`,
-      near
-    );
-  }
-}
-async function templateMissingInfo(db, name) {
-  const near = await similarTemplateNames(db, name).catch(() => []);
-  return {
-    template_exists: false,
-    error_code: "template_not_found",
-    did_you_mean: near,
-    hint: `template "${name}" \u4E0D\u5B58\u5728\uFF08\u4E0D\u662F\u300C\u5B58\u5728\u4F46 0 \u7B46\u300D\uFF09\u3002${near.length ? `\u4F60\u662F\u4E0D\u662F\u8981\u627E\uFF1A${near.join("\u3001")}\uFF1F` : "\u6AA2\u67E5\u540D\u5B57\u62FC\u5BEB\uFF0C\u6216\u5148\u5BEB\u5165\u4E00\u7B46\u5EFA\u7ACB\u5B83\u3002"}`
-  };
-}
-
-// kbdb/src/routes/entries.ts
+init_template_guard();
 init_entry_crud();
 
 // kbdb/src/search-rank.ts
@@ -8405,6 +8433,7 @@ templateRoutes.patch("/:id", async (c) => {
 
 // kbdb/src/routes/records.ts
 init_record_crud();
+init_template_guard();
 init_graph_query();
 init_field_index();
 init_maintenance_quota();
@@ -8991,6 +9020,37 @@ var ENTITY_SLOTS_DEF = ["name", "description", "alias"];
 var DEFAULT_NORMALIZE_MIN_SCORE = 0.8;
 var DEFAULT_JUDGE_MIN_SCORE = 0.55;
 var MAX_JUDGE_CANDIDATES = 2;
+var DEFAULT_RECENT_WINDOW_SEC = 600;
+var MAX_RECENT_CANDIDATES = 20;
+function cosine(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  const n2 = Math.min(a.length, b.length);
+  for (let i = 0; i < n2; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+}
+async function recentNeighbors(env, db, tplId, owner, vec, seen) {
+  const n2 = Number(env.ENTITY_RECENT_WINDOW_SEC);
+  const windowSec = Number.isFinite(n2) && n2 >= 0 ? n2 : DEFAULT_RECENT_WINDOW_SEC;
+  if (windowSec === 0) return [];
+  const since = Math.floor(Date.now() / 1e3) - windowSec;
+  const rows = await db.all(
+    `SELECT e.id AS id, e.content AS name, d.content AS description
+       FROM entries b JOIN entries e ON e.id = b.src_id JOIN entries d ON d.id = e.id || '~v~description'
+      WHERE b.dst_id = ? AND b.rel_id = '${SYS_BELONGS}' AND b.created_at >= ? AND +b.owner_id = ?
+        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'
+      ORDER BY b.created_at DESC LIMIT ?`,
+    [tplId, since, owner, MAX_RECENT_CANDIDATES + seen.size]
+  );
+  const cands = (rows.results ?? []).filter((r) => !seen.has(r.id)).slice(0, MAX_RECENT_CANDIDATES);
+  if (cands.length === 0) return [];
+  const vecs = await embedManyForEntity(env, cands.map((r) => `${r.name}\uFF1A${r.description}`));
+  if (!vecs || vecs.length !== cands.length) return [];
+  return cands.map((r, i) => ({ id: r.id, score: cosine(vec, vecs[i]) })).sort((a, b) => b.score - a.score);
+}
 var EntityError = class extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -9132,7 +9192,17 @@ async function resolveEntity(env, db, input) {
     } catch {
       vectorState = "failed";
     }
+    const recentIds = /* @__PURE__ */ new Set();
+    if (vectorState !== "failed" && !neighbors.some((n2) => n2.score >= threshold)) {
+      try {
+        const extra = await recentNeighbors(env, db, tplId, owner, vec, new Set(neighbors.map((n2) => n2.id)));
+        for (const x of extra) recentIds.add(x.id);
+        if (extra.length) neighbors = [...neighbors, ...extra].sort((a, b) => b.score - a.score);
+      } catch {
+      }
+    }
     for (const n2 of neighbors) {
+      if (recentIds.has(n2.id)) continue;
       if (n2.score < threshold) break;
       const target = await db.first(
         `SELECT e.id AS id, e.content AS content FROM entries e WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")}
@@ -9143,7 +9213,7 @@ async function resolveEntity(env, db, input) {
       if (!await attachAlias(db, tplId, owner, target.id, canon)) continue;
       return { entity_id: target.id, name: target.content, matched_by: "vector", created: false, alias_added: true, score: n2.score, vector: "compared", judge: "not_needed", judge_calls: 0 };
     }
-    const gray = neighbors.filter((n2) => n2.score >= judgeMinScore(env, threshold) && n2.score < threshold).slice(0, MAX_JUDGE_CANDIDATES);
+    const gray = neighbors.filter((n2) => n2.score >= judgeMinScore(env, threshold) && (n2.score < threshold || recentIds.has(n2.id))).slice(0, MAX_JUDGE_CANDIDATES);
     judgeState = gray.length ? "different" : "not_needed";
     for (const n2 of gray) {
       const cand = await db.first(
@@ -10183,7 +10253,7 @@ function fromLegacyRow(workflowId, r) {
 }
 async function listExecutionLog(execLogDb, legacyDb, workflowId, ownerId, limit) {
   const newSql = ownerId ? `SELECT verdict, duration_ms, message, target, kbdb_rows_written, kbdb_rows_read, created_at FROM execution_log
-       WHERE workflow_id = ? AND owner_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?` : `SELECT verdict, duration_ms, message, target, kbdb_rows_written, kbdb_rows_read, created_at FROM execution_log
+       WHERE workflow_id = ? AND +owner_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?` : `SELECT verdict, duration_ms, message, target, kbdb_rows_written, kbdb_rows_read, created_at FROM execution_log
        WHERE workflow_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`;
   const newBinds = ownerId ? [workflowId, ownerId, limit] : [workflowId, limit];
   const newRes = await execLogDb.all(newSql, newBinds);
