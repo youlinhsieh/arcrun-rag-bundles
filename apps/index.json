@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-22T05:16:22.925Z",
+  "generated_at": "2026-11-22T06:29:59.089Z",
   "apps": [
     {
       "id": "notes",
@@ -11,7 +11,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/notes-1.4.0.json",
-        "sha256": "6378ad106b9c3b88d437294260bd2a251289ca83dfffa9e0132d0dde96756806"
+        "sha256": "41f55cc66cdfcdd73b177af3c89e3b5d3c1a6e2569bde83eb7a37bef87a1e6a9"
       }
     },
     {
@@ -23,7 +23,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/flow_canvas-0.2.1.json",
-        "sha256": "0b614ba763699da8c2187e168660210d80f666794a50cce186375cce4fe7bc33"
+        "sha256": "12d8eeb05493fb42ff3f0e7ce7d96a95d44e39c6f2ec4478f107de4203eb0f53"
       }
     },
     {
@@ -58,7 +58,7 @@
       },
       "package": {
         "url": "packages/global_index-0.2.0.json",
-        "sha256": "8bde492e27fc7aa75dfaf201dced6afdfa17f6f7fade9c3ab88f4341302ea893"
+        "sha256": "4bc6f864d3d6bf7ca437a3b64878d65532ba78f94bb360eb7f16b7be9e311884"
       }
     },
     {
@@ -94,7 +94,7 @@
       },
       "package": {
         "url": "packages/kanban-0.9.16.json",
-        "sha256": "ccad10c3d086ae49ab331409ec405b00f2cdb2ef72cd77fa6ca36aea84f72bb9"
+        "sha256": "2824383e01e55d5624c967ebe7e99a1a717af3d372681fa5e1d6b78b1235fea4"
       }
     },
     {
@@ -403,7 +403,7 @@
       },
       "package": {
         "url": "packages/ahub-0.60.0.json",
-        "sha256": "3df3f26ef71b8b65e54a4da52e4e5c1effd4f64b9f049fbb01be3f4565e7b595"
+        "sha256": "c4be4b206f71ec88d4db3401d85b65a7cb8015ed819f349bf212f16a586d1fd0"
       }
     },
     {
@@ -438,7 +438,7 @@
       },
       "package": {
         "url": "packages/releases-0.1.2.json",
-        "sha256": "7cf73ff548ff55cd502015e973080a9fff6015f230eda5f481280d53e878222e"
+        "sha256": "2049da19dc381d757cf0bd1f62df80e251511e8f16f2cfad05679e52b008b983"
       }
     },
     {
@@ -502,7 +502,7 @@
       },
       "package": {
         "url": "packages/imbot-0.1.1.json",
-        "sha256": "4702934d5e3fd0c60f209ba724143e3acebe1009f8f1e7ac84fcde4c9722cfcf"
+        "sha256": "7ba546c161ae8011b4632d61769377e4e52c188619ebfd02b2fd0b16390de9d1"
       }
     },
     {
@@ -617,15 +617,15 @@
       },
       "package": {
         "url": "packages/loops-0.4.0.json",
-        "sha256": "835ba8cac06e62ff40b5e7e062622af8200df76b0663a60d1a6720f3d4c4c0b4"
+        "sha256": "ae51fe8ec5196c9aec1d81267bf2c5d6fcb5803c9e3888f50519a28fc61c9f80"
       }
     },
     {
       "id": "paper",
       "name": "報社",
       "icon": "📰",
-      "summary": "每天定時把各迴圈的進展編成一份報紙，開成一張票送到你面前；同期重送會續跑、漏刊會補出、舊期被新期取代，每期都有回執。需要先安裝 AHub，選填 routine_fire_token。",
-      "version": "0.3.0",
+      "summary": "全系統只有一份報紙：照訂閱表定時抓 RSS、網址上的數字、AHub 意圖庫存，存成一期。首頁列出「訂了哪些報紙」（每個數據源最新抓到什麼、誰訂、沒抓到的原因），點進去看歷刊。同期重送續跑、漏刊補出、每期有回執。不需要任何金鑰；先安裝 AHub。",
+      "version": "0.4.0",
       "author": "Arcrun 內建",
       "requires": {
         "recipes": [
@@ -726,8 +726,8 @@
         "credentials": []
       },
       "package": {
-        "url": "packages/paper-0.3.0.json",
-        "sha256": "bf8758221179402fd8c0961b149b60410f4cc8dd58602df6003bd26303e231ca"
+        "url": "packages/paper-0.4.0.json",
+        "sha256": "f43e601e507f55d65c990b05864b65b8f68fc1b6456302ead43553bca1fd6e33"
       }
     }
   ]
