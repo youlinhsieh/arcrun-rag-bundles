@@ -24046,6 +24046,8 @@ async function cypherFetch(env, path, opts) {
     method: opts.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
+      "X-Arcrun-By": "MCP(AI)",
+      // inkstone/Arcrun#485：使用者層修改紀錄的署名
       ...await cypherAuthHeaders(env, opts.apiKey)
     },
     body: opts.body ? JSON.stringify(opts.body) : void 0
@@ -31361,7 +31363,9 @@ async function portalFetch(env, session, path, opts = {}) {
     method: opts.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${session}`
+      Authorization: `Bearer ${session}`,
+      // inkstone/Arcrun#485：App 使用者層的修改紀錄要寫得出「是 AI 經 MCP 改的」（署名仍是授權它的登入者）。
+      "X-Arcrun-By": "MCP(AI)"
     },
     body: opts.body !== void 0 ? JSON.stringify(opts.body) : void 0
   });
@@ -32445,6 +32449,78 @@ function registerAllAppCrudTools(server, env, identity) {
       "\u8981\u6539\u8868\u55AE App\uFF1A\u7528\u540C\u4E00\u500B name \u518D\u547C\u53EB arcrun_create_form",
       "\u8981\u6539\u5E02\u96C6 App \u7684\u7248\u672C\uFF1Aarcrun_app_install(id)"
     ])
+  );
+  server.tool(
+    toolName("app_changes"),
+    "\u770B\u67D0\u500B\u5DF2\u88DD App \u88AB\u4F7F\u7528\u8005\uFF08\u6216\u4ED6\u6388\u6B0A\u7684 AI\uFF09\u6539\u904E\u54EA\u4E9B recipe\uFF0F\u5DE5\u4F5C\u6D41\uFF0C\u8207\u4FEE\u6539\u7D00\u9304\uFF08\u8AB0\u3001\u4F55\u6642\u3001\u6539\u4E86\u4EC0\u9EBC\u3001\u6BCF\u4E00\u7B46\u6709\u6C92\u6709\u9000\u56DE\uFF09\u3002\u6539\u58DE\u4E86\uFF1Aarcrun_app_reset \u6062\u5FA9\u6210\u767C\u884C\u8005\u90A3\u4E00\u7248\uFF1Barcrun_app_rollback \u9000\u56DE\u67D0\u4E00\u6B21\u4FEE\u6539\u3002App \u66F4\u65B0\u4E0D\u6703\u84CB\u6389\u9019\u4E9B\u6539\u52D5\u3002",
+    { id: appId },
+    async ({ id }) => callPortal(env, identity, `\u770B App\u300C${id}\u300D\u7684\u4FEE\u6539\u7D00\u9304`, `/portal/data/apps/${encodeURIComponent(id)}/user-layer`, {}, [
+      "\u6539\u58DE\u4E86\uFF1Aarcrun_app_reset(id)\uFF08\u53EF\u6307\u5B9A kind\uFF0Bid \u53EA\u6062\u5FA9\u4E00\u9805\uFF09",
+      "\u9000\u56DE\u67D0\u4E00\u7B46\uFF1Aarcrun_app_rollback(id, n)"
+    ])
+  );
+  server.tool(
+    toolName("app_reset"),
+    "\u628A\u67D0\u500B\u5DF2\u88DD App \u88AB\u6539\u904E\u7684 recipe\uFF0F\u5DE5\u4F5C\u6D41\u6062\u5FA9\u6210\u767C\u884C\u8005\u90A3\u4E00\u7248\uFF08\u4E0D\u5E36 kind\uFF0Fitem \u5C31\u662F\u5168\u90E8\u6539\u904E\u7684\uFF09\u3002\u91D1\u9470\u7684\u503C\u4E0D\u52D5\u3002reset \u672C\u8EAB\u4E5F\u7559\u7D00\u9304\u3001\u4E5F\u80FD\u7528 arcrun_app_rollback \u9000\u56DE\u3002\u9019\u662F\u8B93 AI \u653E\u624B\u6539\u8A2D\u5B9A\u7684\u5B89\u5168\u7DB2\uFF1A\u6539\u58DE\u4E86\u5C31 reset\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002",
+    {
+      id: appId,
+      kind: external_exports.enum(["recipe", "workflow"]).optional().describe("\u53EA\u6062\u5FA9\u4E00\u9805\u6642\uFF1A\u5B83\u662F recipe \u9084\u662F\u5DE5\u4F5C\u6D41"),
+      item: external_exports.string().optional().describe("\u53EA\u6062\u5FA9\u4E00\u9805\u6642\uFF1Arecipe \u7684 canonical_id\uFF0C\u6216\u5DE5\u4F5C\u6D41\u843D\u5730\u540D\uFF08`<app id>__<\u540D\u5B57>`\uFF09")
+    },
+    async ({ id, kind, item }) => callPortal(env, identity, `\u6062\u5FA9 App\u300C${id}\u300D`, `/portal/data/apps/${encodeURIComponent(id)}/user-layer/reset`, {
+      method: "POST",
+      body: kind && item ? { kind, id: item } : {}
+    }, ["\u8981\u9000\u56DE\u525B\u624D\u7684\u6A23\u5B50\uFF1Aarcrun_app_rollback(id)"])
+  );
+  server.tool(
+    toolName("app_keep"),
+    "\u628A\u67D0\u500B\u5DF2\u88DD App \u88E1\u7684\u4E00\u689D\u5DE5\u4F5C\u6D41\uFF08\u6216 recipe\uFF09\u767B\u8A18\u6210\u300C\u7559\u7D66\u6211\u81EA\u5DF1\u7528\u300D\uFF1A\u4E4B\u5F8C\u767C\u884C\u8005\u51FA\u65B0\u7248\u4E0D\u6703\u8986\u84CB\u5B83\uFF0C\u767C\u884C\u8005\u65B0\u7248\u628A\u5B83\u5F9E\u5305\u88E1\u62FF\u6389\u4E5F\u4E0D\u6703\u88AB\u522A\u3002\u5167\u5BB9\u4E0D\u52D5\u3002\u4F8B\uFF1A\u767C\u884C\u8005\u8981\u628A\u67D0\u689D\u53EA\u6709\u4F60\u5728\u7528\u7684\u5DE5\u4F5C\u6D41\u5F9E\u51FA\u8CA8\u5305\u62FF\u6389\uFF0C\u5148\u7528\u9019\u500B\u628A\u5B83\u7559\u4E0B\u4F86\u3002\u6709\u4FEE\u6539\u7D00\u9304\uFF1B\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002",
+    {
+      id: appId,
+      kind: external_exports.enum(["recipe", "workflow"]).describe("\u8981\u7559\u7684\u662F recipe \u9084\u662F\u5DE5\u4F5C\u6D41"),
+      item: external_exports.string().min(1).describe("recipe \u7684 canonical_id\uFF0C\u6216\u5DE5\u4F5C\u6D41\u843D\u5730\u540D\uFF08`<app id>__<\u540D\u5B57>`\uFF09")
+    },
+    async ({ id, kind, item }) => callPortal(env, identity, `\u628A App\u300C${id}\u300D\u7684 ${item} \u7559\u7D66\u81EA\u5DF1\u7528`, `/portal/data/apps/${encodeURIComponent(id)}/user-layer/keep`, {
+      method: "POST",
+      body: { kind, id: item }
+    }, ["\u770B\u6539\u4E86\u4EC0\u9EBC\uFF1Aarcrun_app_changes(id)"])
+  );
+  server.tool(
+    toolName("app_rollback"),
+    "\u7528\u4FEE\u6539\u7D00\u9304\u9000\u56DE\u67D0\u4E00\u6B21\u4FEE\u6539\uFF08\u4E0D\u5E36 n\uFF1D\u9000\u56DE\u6700\u8FD1\u4E00\u7B46\u9084\u6C92\u9000\u56DE\u7684\u4FEE\u6539\u6216 reset\uFF09\u3002n \u662F arcrun_app_changes \u5217\u51FA\u7684\u7DE8\u865F\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002",
+    { id: appId, n: external_exports.number().int().min(1).optional().describe("\u4FEE\u6539\u7D00\u9304\u7684\u7DE8\u865F\uFF1B\u4E0D\u7D66\uFF1D\u6700\u8FD1\u4E00\u7B46") },
+    async ({ id, n }) => callPortal(env, identity, `\u9000\u56DE App\u300C${id}\u300D\u7684\u4FEE\u6539`, `/portal/data/apps/${encodeURIComponent(id)}/user-layer/rollback`, {
+      method: "POST",
+      body: n ? { n } : {}
+    }, ["\u770B\u7D00\u9304\uFF1Aarcrun_app_changes(id)"])
+  );
+  server.tool(
+    toolName("app_pack"),
+    "\u628A\u9019\u53F0\u5BE6\u4F8B\u4E0A\u5DF2\u6709\u7684\u5DE5\u4F5C\u6D41\uFF08\u4E00\u689D\u4E5F\u884C\uFF09\u6253\u5305\u6210\u4E00\u500B\u65B0 App\uFF08\u300C\u6211\u505A\u7684\u300D\uFF0CApp \u5DE5\u4F5C\u5BA4\u7B2C\u4E00\u5C64\uFF09\uFF0C\u88DD\u5728\u81EA\u5DF1\u7684\u5BE6\u4F8B\u4E0A\u3001\u4E0D\u5FC5\u4E0A\u5E02\u96C6\u3001\u4E0D\u5FC5\u7C3D prod\u3002\u4E4B\u5F8C\u8981\u518D\u52A0\u5DE5\u4F5C\u6D41\uFF1Aarcrun_push_workflow \u63A8\u4E0A\u4F86\u5F8C\uFF0C\u5728 Portal \u5DE5\u4F5C\u5BA4\u52A0\u9032 App\uFF0C\u6216\u518D arcrun_app_pack \u53E6\u4E00\u500B\u3002",
+    {
+      name: external_exports.string().min(1).describe("App \u7684\u540D\u5B57\uFF08\u7D66\u4EBA\u770B\u7684\uFF09"),
+      workflows: external_exports.array(external_exports.string().min(1)).min(1).describe("\u8981\u6253\u5305\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\uFF08arcrun_list_workflows \u56DE\u7684 name\uFF09"),
+      id: external_exports.string().optional().describe("App id\uFF08\u5C0F\u5BEB\u82F1\u6578\u8207 _\uFF1B\u4E0D\u7D66\u5C31\u7531\u540D\u5B57\u7522\u751F\uFF09"),
+      icon: external_exports.string().optional()
+    },
+    async ({ name, workflows, id, icon }) => callPortal(env, identity, `\u6253\u5305 App\u300C${name}\u300D`, "/portal/data/apps/pack", {
+      method: "POST",
+      body: { name, workflows, ...id ? { id } : {}, ...icon ? { icon } : {} }
+    }, ["\u770B\u5B83\uFF1Aarcrun_app_get(id)", "\u6539\u5B83\u7684 recipe\uFF0F\u5DE5\u4F5C\u6D41\uFF1A\u76F4\u63A5\u6539\uFF0C\u4E0B\u6B21\u57F7\u884C\u5C31\u751F\u6548\uFF1B\u6539\u58DE\u4E86 arcrun_app_reset"])
+  );
+  server.tool(
+    toolName("app_import"),
+    "\u532F\u5165\u4E00\u4EFD App \u5305\uFF08\u5F9E\u5225\u8655\u532F\u51FA\u7684 .arcrun-app.json \u5167\u5BB9\uFF09\u5230\u81EA\u5DF1\u7684\u5BE6\u4F8B\uFF0C\u88DD\u5728\u5DE5\u4F5C\u5BA4\uFF0C\u4E0D\u7D93\u5E02\u96C6\u8207 prod \u7C3D\u6838\u3002\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u7528\u3002\u5927 App \u4E00\u6B21\u88DD\u4E0D\u5B8C\u6703\u56DE in_progress\uFF0Bresume_from\uFF0Fresume_hash\uFF0C\u5E36\u8457\u5B83\u5011\u518D\u547C\u53EB\u4E00\u6B21\u63A5\u8457\u88DD\u3002",
+    {
+      package: external_exports.record(external_exports.unknown()).describe("App \u5305\u7684\u6574\u4EFD JSON"),
+      from: external_exports.number().int().min(0).optional().describe("\u7E8C\u88DD\u8D77\u9EDE\uFF1A\u4E0A\u4E00\u6B21\u56DE\u61C9\u7684 resume_from"),
+      h: external_exports.string().optional().describe("\u7E8C\u88DD\u7528\uFF1A\u4E0A\u4E00\u6B21\u56DE\u61C9\u7684 resume_hash")
+    },
+    async ({ package: pkg, from, h }) => callPortal(env, identity, "\u532F\u5165 App \u5305", "/portal/data/apps/import", {
+      method: "POST",
+      body: { package: pkg },
+      query: { from, h }
+    }, ["\u770B\u5B83\uFF1Aarcrun_app_get(id)"])
   );
   server.tool(
     toolName("app_catalog"),

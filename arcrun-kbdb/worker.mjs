@@ -159,7 +159,11 @@ var init_kind = __esm({
       "rel_id",
       "dst_id",
       "created_at",
-      "updated_at"
+      "updated_at",
+      "props",
+      "tpl_id",
+      "fmt"
+      // 0017：一張卡一列（props＝屬性 JSON；tpl_id＝所屬 template；fmt＝格式版本）
     ];
   }
 });
@@ -737,7 +741,20 @@ async function tallyIdentity(owner, library) {
   return { id: `lmapt~${lh}`, pageName: `${CARD_TALLY_PAGE_PREFIX}${oh}:${library}` };
 }
 async function tallySeededMarkerId(owner) {
-  return `lmapt~seeded_${await hexDigest(`card-tally-seeded ${ownerKey(owner)}`, 32)}`;
+  return `lmapt~seeded2_${await hexDigest(`card-tally-seeded2 ${ownerKey(owner)}`, 32)}`;
+}
+async function cardMarkerPrefix(owner, library) {
+  return `lmapp~${await hexDigest(`card-mark ${ownerKey(owner)} ${library}`, 24)}~`;
+}
+async function cardMarkerId(owner, library, page) {
+  return `${await cardMarkerPrefix(owner, library)}${await hexDigest(`card-mark-page ${page}`, 32)}`;
+}
+async function claimCardMarker(db, k) {
+  const st = entryRowStatement({ id: await cardMarkerId(k.owner, k.library, k.page), owner_id: k.owner }, { ignore: true });
+  return changesOf(await db.run(st.sql, st.params)) > 0;
+}
+async function releaseCardMarker(db, k) {
+  return changesOf(await db.run("DELETE FROM entries WHERE id = ?", [await cardMarkerId(k.owner, k.library, k.page)])) > 0;
 }
 function activeCardOf(e) {
   if (!e) return null;
@@ -774,6 +791,35 @@ async function aggregateCardCounts(db, owner, library) {
   );
   for (const r of res.results ?? []) out.set(String(r.library), r.n);
   return out;
+}
+async function aggregateCardPages(db, owner, library) {
+  const blockTpl = await templateIdByName(db, "block");
+  if (!blockTpl) return [];
+  const m = membersOf(blockTpl, owner);
+  const oc = owner === null ? " AND +owner_id IS NULL" : "";
+  const res = await db.all(
+    `SELECT DISTINCT ${ENTRY_LIBRARY} AS library, page_name
+           FROM ${m.from}
+          WHERE ${CARD_ACTIVE_SQL}${oc}
+            ${library ? `AND ${ENTRY_LIBRARY} = ?` : ""}`,
+    [...m.params, ...library ? [library] : []]
+  );
+  return (res.results ?? []).map((r) => ({ library: String(r.library), page: String(r.page_name) }));
+}
+async function syncCardMarkers(db, owner, library, pages) {
+  const prefix = await cardMarkerPrefix(owner, library);
+  const have = await db.all("SELECT id FROM entries WHERE id >= ? AND id < ?", [prefix, `${prefix}~`]);
+  const want = /* @__PURE__ */ new Map();
+  for (const page of pages) want.set(await cardMarkerId(owner, library, page), page);
+  const haveIds = new Set((have.results ?? []).map((r) => r.id));
+  const stale = [...haveIds].filter((id) => !want.has(id));
+  const missing = [...want.keys()].filter((id) => !haveIds.has(id));
+  for (let i = 0; i < stale.length; i += 50) {
+    await db.batch(stale.slice(i, i + 50).map((id) => ({ sql: "DELETE FROM entries WHERE id = ?", params: [id] })));
+  }
+  for (let i = 0; i < missing.length; i += 50) {
+    await db.batch(missing.slice(i, i + 50).map((id) => entryRowStatement({ id, owner_id: owner }, { ignore: true })));
+  }
 }
 async function activeBlocksOfPage(db, blockTpl, k) {
   const oc = ownerFilter(k.owner);
@@ -814,8 +860,24 @@ async function ensureCardTalliesSeeded(db, owner) {
     seeded.add(key);
     return false;
   }
-  const counts = await aggregateCardCounts(db, owner);
-  for (const [library, n2] of counts) await setTally(db, owner, library, n2);
+  const pages = await aggregateCardPages(db, owner);
+  const byLib = /* @__PURE__ */ new Map();
+  for (const { library, page } of pages) byLib.set(library, [...byLib.get(library) ?? [], page]);
+  const oh = await ownerHash(owner);
+  const lo = `${CARD_TALLY_PAGE_PREFIX}${oh}:`;
+  const old = await db.all(
+    "SELECT page_name, owner_id FROM entries WHERE page_name >= ? AND page_name < ?",
+    [lo, `${CARD_TALLY_PAGE_PREFIX}${oh};`]
+  );
+  for (const r of old.results ?? []) {
+    if ((r.owner_id ?? "") !== ownerKey(owner)) continue;
+    const lib = r.page_name.slice(lo.length);
+    if (!byLib.has(lib)) await setTally(db, owner, lib, 0);
+  }
+  for (const [library, libPages] of byLib) {
+    await syncCardMarkers(db, owner, library, libPages);
+    await setTally(db, owner, library, libPages.length);
+  }
   await insertEntryRow(db, { id: markerId, owner_id: owner }, { ignore: true });
   seeded.add(key);
   return true;
@@ -838,13 +900,15 @@ async function readCardTallies(db, owner) {
   return out;
 }
 async function recomputeCardTally(db, owner, library) {
-  const n2 = (await aggregateCardCounts(db, owner, library)).get(library) ?? 0;
-  await setTally(db, owner, library, n2);
-  return n2;
+  const pages = (await aggregateCardPages(db, owner, library)).map((p) => p.page);
+  await syncCardMarkers(db, owner, library, pages);
+  await setTally(db, owner, library, pages.length);
+  return pages.length;
 }
 async function noteLibraryDeprecated(db, owner, library) {
   try {
     if (!await isCardTallySeeded(db, owner)) return;
+    await syncCardMarkers(db, owner, library, []);
     await setTally(db, owner, library, 0);
   } catch (e) {
     logMapFailure("\u6574\u5EAB\u4E0B\u67B6", e);
@@ -878,10 +942,11 @@ async function noteCardLibrariesDiff(db, owner, before, after) {
   try {
     if (!await isCardTallySeeded(db, owner)) return;
     const d = /* @__PURE__ */ new Map();
+    const add2 = (l, n2) => d.set(l, (d.get(l) ?? 0) + n2);
     for (const [page, libs] of before) {
       const now = after.get(page) ?? /* @__PURE__ */ new Set();
-      for (const l of libs) if (!now.has(l)) d.set(l, (d.get(l) ?? 0) - 1);
-      for (const l of now) if (!libs.has(l)) d.set(l, (d.get(l) ?? 0) + 1);
+      for (const l of libs) if (!now.has(l) && await releaseCardMarker(db, { owner, library: l, page })) add2(l, -1);
+      for (const l of now) if (!libs.has(l) && await claimCardMarker(db, { owner, library: l, page })) add2(l, 1);
     }
     for (const [library, delta] of d) if (delta !== 0) await bumpTally(db, owner, library, delta);
   } catch (e) {
@@ -910,17 +975,16 @@ async function noteCardPagesChanged(db, changes) {
   if (!blockTpl) return;
   const owners = /* @__PURE__ */ new Map();
   const delta = /* @__PURE__ */ new Map();
-  for (const { key, blocks } of touched) {
+  for (const { key } of touched) {
     const ok = ownerKey(key.owner);
     if (!owners.has(ok)) owners.set(ok, await ensureCardTalliesSeeded(db, key.owner));
     if (owners.get(ok)) continue;
     const nowBlocks = await activeBlocksOfPage(db, blockTpl, key);
-    const was = nowBlocks - blocks > 0;
-    const is = nowBlocks > 0;
-    if (was === is) continue;
+    const flipped = nowBlocks > 0 ? await claimCardMarker(db, key) : await releaseCardMarker(db, key);
+    if (!flipped) continue;
     const dk = `${ok}\0${key.library}`;
     const cur = delta.get(dk) ?? { owner: key.owner, library: key.library, n: 0 };
-    cur.n += is ? 1 : -1;
+    cur.n += nowBlocks > 0 ? 1 : -1;
     delta.set(dk, cur);
   }
   for (const d of delta.values()) if (d.n !== 0) await bumpTally(db, d.owner, d.library, d.n);
@@ -1023,7 +1087,7 @@ async function readStoredMaps(db, owner) {
   const legacy = await readLegacyMaps(db, void 0);
   return legacyToStored(legacy.byLibrary.values(), null);
 }
-var LIBRARY_MAP_TEMPLATE_ID, LIBRARY_MAP_TEMPLATE_NAME, LIBRARY_MAP_SLOTS, DEFAULT_TRIPLET_TEMPLATE, PORTAL_LIBRARY_TEMPLATE, ENTITY_SKETCH_SIZE, PREDICATE_SKETCH_SIZE, LIBRARY_MAP_TEMPLATE_DESCRIPTION, NOT_KNOWLEDGE_TEMPLATES, templateReady, adoptedOwners, knownMaps, adoptionJobs, writeSeqCounter, MAP_PAGE_PREFIX, MAP_PAGE_UPPER_ALL, LIBRARY_MAP_ID_PREFIX, NOT_LIBRARY_MAP_ROW, NOT_LIBRARY_MAP_CELL, cellId, TRIPLET_SUMMARY_SLOTS, CARD_TALLY_TEMPLATE, CARD_TALLY_PAGE_PREFIX, seededTallyOwners, sameCardKey, CARD_ACTIVE_SQL;
+var LIBRARY_MAP_TEMPLATE_ID, LIBRARY_MAP_TEMPLATE_NAME, LIBRARY_MAP_SLOTS, DEFAULT_TRIPLET_TEMPLATE, PORTAL_LIBRARY_TEMPLATE, ENTITY_SKETCH_SIZE, PREDICATE_SKETCH_SIZE, LIBRARY_MAP_TEMPLATE_DESCRIPTION, NOT_KNOWLEDGE_TEMPLATES, templateReady, adoptedOwners, knownMaps, adoptionJobs, writeSeqCounter, MAP_PAGE_PREFIX, MAP_PAGE_UPPER_ALL, LIBRARY_MAP_ID_PREFIX, NOT_LIBRARY_MAP_ROW, NOT_LIBRARY_MAP_CELL, cellId, TRIPLET_SUMMARY_SLOTS, CARD_TALLY_TEMPLATE, CARD_TALLY_PAGE_PREFIX, changesOf, seededTallyOwners, sameCardKey, CARD_ACTIVE_SQL;
 var init_library_map_store = __esm({
   "kbdb/src/actions/library-map-store.ts"() {
     "use strict";
@@ -1082,6 +1146,7 @@ var init_library_map_store = __esm({
     TRIPLET_SUMMARY_SLOTS = ["subject", "object", "predicate", "status", "library", "source_uri"];
     CARD_TALLY_TEMPLATE = "library_card_tally";
     CARD_TALLY_PAGE_PREFIX = "library-cards@";
+    changesOf = (res) => Number(res?.meta?.changes ?? 0);
     seededTallyOwners = /* @__PURE__ */ new WeakMap();
     sameCardKey = (a, b) => a === b || !!a && !!b && a.owner === b.owner && a.library === b.library && a.page === b.page;
     CARD_ACTIVE_SQL = `page_name IS NOT NULL AND page_name != ''
@@ -1889,6 +1954,210 @@ var init_template_guard = __esm({
   }
 });
 
+// kbdb/src/actions/card-row.ts
+function isCardTemplate(tpl) {
+  return !!tpl && tpl.card_format === 1;
+}
+function parseFieldMap(json) {
+  if (json) {
+    try {
+      const m = JSON.parse(json);
+      if (m && m.v === 1 && m.by_name && typeof m.next === "number") return { ...m, retired: m.retired ?? [] };
+    } catch {
+    }
+  }
+  return { v: 1, next: 1, by_name: {}, retired: [] };
+}
+function syncFieldMap(map, slots) {
+  const out = { ...map, by_name: { ...map.by_name }, retired: [...map.retired], retired_names: { ...map.retired_names ?? {} } };
+  let changed = false;
+  const want = new Set(slots);
+  for (const [name, f] of Object.entries(out.by_name)) {
+    if (!want.has(name)) {
+      delete out.by_name[name];
+      out.retired.push(f);
+      out.retired_names[name] = f;
+      changed = true;
+    }
+  }
+  for (const name of slots) {
+    if (out.by_name[name]) continue;
+    const back = out.retired_names[name];
+    if (back) {
+      out.by_name[name] = back;
+      out.retired = out.retired.filter((x) => x !== back);
+      delete out.retired_names[name];
+    } else {
+      out.by_name[name] = `f${out.next}`;
+      out.next += 1;
+    }
+    changed = true;
+  }
+  if (Object.keys(out.retired_names).length === 0) delete out.retired_names;
+  return { map: out, changed };
+}
+function isRelationName(slot) {
+  return slot.length > 2 && slot.endsWith("[]");
+}
+function isRef(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v) && typeof v.$ref === "string";
+}
+function parseProps(text) {
+  if (!text) return {};
+  try {
+    const p = JSON.parse(text);
+    return p && typeof p === "object" && !Array.isArray(p) ? p : {};
+  } catch {
+    return {};
+  }
+}
+function decodeProps(map, props, refContent) {
+  const out = {};
+  for (const [slot, f] of Object.entries(map.by_name)) {
+    const v = props[f];
+    if (v === void 0) continue;
+    if (isRef(v)) {
+      if (v.mode === "snapshot" && v.v !== void 0) out[slot] = String(v.v);
+      else out[slot] = refContent.get(v.$ref) ?? REF_GONE;
+    } else if (Array.isArray(v)) {
+      out[slot] = JSON.stringify([...new Set(v.map(String))].sort());
+    } else {
+      out[slot] = String(v);
+    }
+  }
+  return out;
+}
+function refTargets(props) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const p of props) for (const v of Object.values(p)) if (isRef(v) && v.mode !== "snapshot") ids.add(v.$ref);
+  return [...ids];
+}
+async function loadRefContent(db, ids) {
+  const out = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const res = await db.all(`SELECT id, content FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
+    for (const r of res.results ?? []) out.set(r.id, r.content);
+  }
+  return out;
+}
+function parseRelationInput(slot, raw2, maxKeyLen, maxPerCall) {
+  let list;
+  try {
+    list = JSON.parse(raw2);
+  } catch {
+    list = raw2;
+  }
+  const arr = Array.isArray(list) ? list : [list];
+  const out = [...new Set(arr.map((x) => String(x)).filter((x) => x !== ""))].sort();
+  for (const fk of out) if (fk.length > maxKeyLen) throw new Error(`relation slot ${slot}: key too long (>${maxKeyLen})`);
+  if (out.length > maxPerCall) throw new Error(`relation slot ${slot}: too many keys in one write (>${maxPerCall})`);
+  return out;
+}
+function encodeProps(map, values, entryIds, relation) {
+  const props = {};
+  for (const [slot, raw2] of Object.entries(values)) {
+    const f = map.by_name[slot];
+    if (!f) continue;
+    props[f] = isRelationName(slot) ? relation(slot, raw2) : raw2;
+  }
+  for (const [slot, id] of Object.entries(entryIds)) {
+    const f = map.by_name[slot];
+    if (f) props[f] = { $ref: id };
+  }
+  return props;
+}
+async function orLegacy(db, fn, none) {
+  if (noCardColumns.has(db)) return none;
+  try {
+    return await fn();
+  } catch (e) {
+    if (/no such column:\s*(\w+\.)?(props|tpl_id|fmt)\b/i.test(String(e?.message ?? e))) {
+      noCardColumns.add(db);
+      return none;
+    }
+    throw e;
+  }
+}
+async function getTemplateById(db, id) {
+  return await db.first("SELECT * FROM templates WHERE id = ?", [id]) ?? null;
+}
+async function decodeCards(db, tpl, rows) {
+  const map = parseFieldMap(tpl.fields_json);
+  const parsed = rows.map((r) => ({ r, p: parseProps(r.props) }));
+  const refs = refTargets(parsed.map((x) => x.p));
+  const content = refs.length > 0 ? await loadRefContent(db, refs) : /* @__PURE__ */ new Map();
+  return parsed.map(({ r, p }) => ({ record_id: r.id, template_id: tpl.id, values: decodeProps(map, p, content), owner_id: r.owner_id }));
+}
+async function cardPage(db, tpl, owner_id, limit, offset, filter) {
+  const where = ["tpl_id = ?"];
+  const params = [tpl.id];
+  if (owner_id) {
+    where.push("+owner_id = ?");
+    params.push(owner_id);
+  }
+  if (filter) {
+    const f = parseFieldMap(tpl.fields_json).by_name[filter.slot];
+    if (!f) return [];
+    where.push(`json_extract(props, '$.${f}') = ?`);
+    params.push(filter.value);
+  }
+  const res = await db.all(
+    `SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE ${where.join(" AND ")} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
+  return decodeCards(db, tpl, res.results ?? []);
+}
+async function cardCount(db, tplId, owner_id) {
+  const row = owner_id ? await db.first("SELECT COUNT(*) AS n FROM entries WHERE tpl_id = ? AND +owner_id = ?", [tplId, owner_id]) : await db.first("SELECT COUNT(*) AS n FROM entries WHERE tpl_id = ?", [tplId]);
+  return row?.n ?? 0;
+}
+async function cardRowsByIds(db, ids) {
+  return orLegacy(db, async () => {
+    const out = [];
+    for (let i = 0; i < ids.length; i += 90) {
+      const chunk = ids.slice(i, i + 90);
+      const res = await db.all(`SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
+      out.push(...res.results ?? []);
+    }
+    return out;
+  }, []);
+}
+async function cardRowById(db, id) {
+  return orLegacy(db, async () => await db.first("SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE id = ?", [id]) ?? null, null);
+}
+function cardInsertStatement(id, tplId, ownerId, props, opts = {}) {
+  return entryRowStatement({ id, owner_id: ownerId, tpl_id: tplId, props: JSON.stringify(props), fmt: CARD_FORMAT_VERSION }, { ignore: opts.ignore });
+}
+function cardSetStatement(id, changes) {
+  const keys = Object.keys(changes);
+  if (keys.length === 0) return null;
+  const sets = keys.map(() => `?, json(?)`).join(", ");
+  const params = [];
+  for (const k of keys) params.push(`$.${k}`, JSON.stringify(changes[k]));
+  return { sql: `UPDATE entries SET props = json_set(COALESCE(props, '{}'), ${sets}), updated_at = unixepoch() WHERE id = ?`, params: [...params, id] };
+}
+function cardRelationStatement(id, key, add2, remove) {
+  return {
+    sql: `UPDATE entries SET props = json_set(COALESCE(props, '{}'), '$.${key}', json((
+        SELECT COALESCE(json_group_array(v), '[]') FROM (
+          SELECT value AS v FROM json_each(COALESCE(json_extract(props, '$.${key}'), '[]')) WHERE value NOT IN (SELECT value FROM json_each(?))
+          UNION SELECT value FROM json_each(?)
+          ORDER BY v)))), updated_at = unixepoch() WHERE id = ?`,
+    params: [JSON.stringify(remove), JSON.stringify(add2), id]
+  };
+}
+var CARD_FORMAT_VERSION, REF_GONE, noCardColumns;
+var init_card_row = __esm({
+  "kbdb/src/actions/card-row.ts"() {
+    "use strict";
+    init_kind();
+    CARD_FORMAT_VERSION = 1;
+    REF_GONE = "\u4F86\u6E90\u5DF2\u522A\u9664";
+    noCardColumns = /* @__PURE__ */ new WeakSet();
+  }
+});
+
 // kbdb/src/actions/record-crud.ts
 var record_crud_exports = {};
 __export(record_crud_exports, {
@@ -2004,6 +2273,14 @@ async function updateTemplate(db, id, patch) {
   if (patch.slots !== void 0) {
     cols.push("slots_json = ?");
     params.push(JSON.stringify(patch.slots));
+    const cur = await getTemplateById(db, id);
+    if (cur?.fields_json) {
+      const synced = syncFieldMap(parseFieldMap(cur.fields_json), patch.slots);
+      if (synced.changed) {
+        cols.push("fields_json = ?");
+        params.push(JSON.stringify(synced.map));
+      }
+    }
   }
   if (cols.length === 0) return getTemplate(db, id);
   cols.push("updated_at = unixepoch()");
@@ -2040,7 +2317,7 @@ function putCell(values, slot, content) {
   arr.sort();
   values[slot] = JSON.stringify(arr);
 }
-function parseRelationInput(slot, raw2) {
+function parseRelationInput2(slot, raw2) {
   let list;
   try {
     list = JSON.parse(raw2);
@@ -2096,6 +2373,78 @@ async function filterExistingRecordIds(db, templateId, ids) {
 async function insertCellRelation(db, recordId, templateId, slot, dstEntryId, ownerId) {
   await insertEntryRow(db, { id: uid2("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(templateId, slot), dst_id: dstEntryId });
 }
+async function cardIdentity(db, recordId) {
+  const row = await cardRowById(db, recordId);
+  if (!row || row.fmt !== 1 || !row.tpl_id) return null;
+  const tpl = await getTemplateById(db, row.tpl_id);
+  return tpl && isCardTemplate(tpl) ? { row, tpl } : null;
+}
+async function coveredFieldMap(db, tpl) {
+  const slots = JSON.parse(tpl.slots_json);
+  const synced = syncFieldMap(parseFieldMap(tpl.fields_json), slots);
+  if (synced.changed || !tpl.fields_json) {
+    await db.run("UPDATE templates SET fields_json = ? WHERE id = ?", [JSON.stringify(synced.map), tpl.id]);
+    tpl.fields_json = JSON.stringify(synced.map);
+  }
+  return synced.map;
+}
+async function createCard(db, tpl, recordId, values, entryIds, ownerId, referenced, createOnly) {
+  const slots = JSON.parse(tpl.slots_json);
+  const map = await coveredFieldMap(db, tpl);
+  const known = Object.fromEntries(Object.entries(values).filter(([s]) => slots.includes(s)));
+  const props = encodeProps(map, known, entryIds, (slot, raw2) => parseRelationInput(slot, raw2, RELATION_MAX_KEY_LEN, RELATION_MAX_PER_CALL));
+  const st = cardInsertStatement(recordId, tpl.id, ownerId, props, { ignore: true });
+  const claim = await db.run(st.sql, st.params);
+  if (claim.meta?.changes !== 1) {
+    if (claim.meta?.changes === void 0 && createOnly) throw new Error("create_only needs a storage driver that reports meta.changes");
+    if (createOnly) throw new RecordExistsError(recordId);
+    const cur = await db.first("SELECT fmt, tpl_id FROM entries WHERE id = ?", [recordId]);
+    if (cur?.fmt !== 1 || cur.tpl_id !== tpl.id) throw new Error(`record exists in another format: ${recordId}`);
+    const set = cardSetStatement(recordId, props);
+    if (set) await db.run(set.sql, set.params);
+  }
+  const out = { ...values };
+  for (const [slot, entryId] of Object.entries(entryIds)) out[slot] = referenced.get(entryId) ?? "";
+  return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
+}
+async function updateCard(db, ci, values) {
+  const { row, tpl } = ci;
+  const allowed = JSON.parse(tpl.slots_json);
+  const map = await coveredFieldMap(db, tpl);
+  const canon = canonicalizeEntityValues(allowed, values);
+  const cur = parseProps(row.props);
+  const changes = {};
+  for (const [slot, content] of Object.entries(canon)) {
+    if (!allowed.includes(slot)) throw new Error(`slot not in template: ${slot}`);
+    if (isRelationSlot(slot)) throw new Error(`relation slot ${slot}: use POST /records/:id/relation (add/remove), not PATCH`);
+    const key = map.by_name[slot];
+    if (cur[key] === content) continue;
+    changes[key] = content;
+  }
+  const set = cardSetStatement(row.id, changes);
+  if (set) await db.run(set.sql, set.params);
+  const merged = { ...row, props: JSON.stringify({ ...cur, ...changes }) };
+  return (await decodeCards(db, tpl, [merged]))[0];
+}
+async function deleteCard(db, ci) {
+  const id = ci.row.id;
+  const legacy = await recordBelongs(db, id);
+  if (legacy) await db.run(`DELETE FROM entries WHERE src_id = ?1 AND (rel_id != '${SYS_BELONGS}' OR dst_id = ?2)`, [id, legacy.dst_id]);
+  await db.run("DELETE FROM entries WHERE id = ? AND fmt = 1", [id]);
+}
+async function editCardRelation(db, ci, slot, add2, remove) {
+  const map = await coveredFieldMap(db, ci.tpl);
+  const key = map.by_name[slot];
+  if (!key) throw new Error(`slot not in template: ${slot}`);
+  if (add2.length > 0 || remove.length > 0) {
+    const st = cardRelationStatement(ci.row.id, key, add2, remove);
+    await db.run(st.sql, st.params);
+  }
+  const now = await db.first("SELECT props FROM entries WHERE id = ?", [ci.row.id]);
+  const arr = parseProps(now?.props)[key];
+  const keys = Array.isArray(arr) ? [...new Set(arr.map(String))].sort() : [];
+  return { record_id: ci.row.id, slot, keys };
+}
 async function createRecord(db, input) {
   if (input.create_only && !input.record_id) throw new Error("create_only requires record_id");
   const tpl = await getTemplate(db, input.template);
@@ -2111,6 +2460,7 @@ async function createRecord(db, input) {
   const unknown = refSlots.filter((s) => !slots.includes(s));
   if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
   const referenced = await loadReferencedEntries(db, entryIds, ownerId);
+  if (isCardTemplate(tpl)) return createCard(db, tpl, recordId, values, entryIds, ownerId, referenced, !!input.create_only);
   const mapTracked = isMapTrackedTemplate(tpl.name);
   const mapBefore = mapTracked && input.record_id ? (await getRecord(db, input.record_id))?.values ?? null : null;
   const claimStmt = entryRowStatement({ id: recordId, owner_id: ownerId }, { ignore: true });
@@ -2132,7 +2482,7 @@ async function createRecord(db, input) {
       continue;
     }
     if (isRelationSlot(slot)) {
-      for (const fk of parseRelationInput(slot, values[slot])) {
+      for (const fk of parseRelationInput2(slot, values[slot])) {
         const ids = relationCellIds(recordId, slot, fk);
         stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId }, { ignore: true }));
         stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
@@ -2160,6 +2510,8 @@ async function createRecord(db, input) {
   return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
 }
 async function updateRecord(db, recordId, values) {
+  const ci = await cardIdentity(db, recordId);
+  if (ci) return updateCard(db, ci, values);
   const belongs = await recordBelongs(db, recordId);
   if (!belongs) return null;
   const templateId = belongs.dst_id;
@@ -2209,6 +2561,8 @@ async function updateRecord(db, recordId, values) {
   return after;
 }
 async function getRecord(db, recordId) {
+  const ci = await cardIdentity(db, recordId);
+  if (ci) return (await decodeCards(db, ci.tpl, [ci.row]))[0];
   const belongs = await recordBelongs(db, recordId);
   if (!belongs) return null;
   const res = await db.all(
@@ -2225,6 +2579,34 @@ async function getRecord(db, recordId) {
   return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
 }
 async function getRecords(db, recordIds, ownerId) {
+  const ids = [...new Set(recordIds)];
+  if (ids.length === 0) return [];
+  const rows = await cardRowsByIds(db, ids);
+  const cardRows = rows.filter((r) => r.fmt === 1 && r.tpl_id);
+  if (cardRows.length === 0) return getRecordsLegacy(db, ids, ownerId);
+  const tpls = /* @__PURE__ */ new Map();
+  for (const t of new Set(cardRows.map((r) => r.tpl_id))) tpls.set(t, await getTemplateById(db, t));
+  const decoded = /* @__PURE__ */ new Map();
+  for (const [tid, tpl] of tpls) {
+    if (!isCardTemplate(tpl)) continue;
+    for (const r of await decodeCards(db, tpl, cardRows.filter((x) => x.tpl_id === tid))) decoded.set(r.record_id, r);
+  }
+  const rest = ids.filter((id) => !decoded.has(id));
+  const legacy = rest.length > 0 ? await getRecordsLegacy(db, rest, ownerId) : [];
+  const legacyById = new Map(legacy.map((r) => [r.record_id, r]));
+  const out = [];
+  for (const id of ids) {
+    const c = decoded.get(id);
+    if (c) {
+      if (ownerId == null || c.owner_id === ownerId) out.push(c);
+      continue;
+    }
+    const l = legacyById.get(id);
+    if (l) out.push(l);
+  }
+  return out;
+}
+async function getRecordsLegacy(db, recordIds, ownerId) {
   const ids = [...new Set(recordIds)];
   const belongs = /* @__PURE__ */ new Map();
   const owners = /* @__PURE__ */ new Map();
@@ -2273,6 +2655,11 @@ async function resolveTotal(db, sheetId, owner_id, offset, limit, got, exactTota
   return { total: row?.total ?? 0, totalExact: true };
 }
 async function memberRecordIds(db, tplId, owner_id, limit, offset) {
+  const cardTpl = await getTemplateById(db, tplId);
+  if (isCardTemplate(cardTpl)) {
+    const res2 = owner_id ? await db.all("SELECT id FROM entries WHERE tpl_id = ? AND +owner_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", [tplId, owner_id, limit, offset]) : await db.all("SELECT id FROM entries WHERE tpl_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", [tplId, limit, offset]);
+    return (res2.results ?? []).map((r) => r.id);
+  }
   const res = owner_id ? await db.all(
     `SELECT src_id AS record_id FROM entries
            WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?
@@ -2291,12 +2678,24 @@ async function searchByTemplatePage(db, template, owner_id, limit = 100, offset 
   if (!tpl) return { records: [], total: 0, totalExact: true, templateExists: false };
   const cap = Math.min(Math.max(limit, 1), 500);
   const skip = Math.max(offset, 0);
+  if (isCardTemplate(tpl)) {
+    const records = await cardPage(db, tpl, owner_id, cap, skip);
+    if (skip === 0 && records.length < cap) return { records, total: records.length, totalExact: true };
+    if (!exactTotal) return { records, total: skip + records.length + 1, totalExact: false };
+    return { records, total: await cardCount(db, tpl.id, owner_id), totalExact: true };
+  }
   const ids = await memberRecordIds(db, tpl.id, owner_id, cap, skip);
   const { total, totalExact } = await resolveTotal(db, tpl.id, owner_id, skip, cap, ids.length, exactTotal);
   if (ids.length === 0) return { records: [], total, totalExact };
   return { records: await hydrateRecordValues(db, tpl.id, ids, slots), total, totalExact };
 }
 async function hydrateRecordValues(db, tplId, ids, slots) {
+  const cardTpl = await getTemplateById(db, tplId);
+  if (isCardTemplate(cardTpl)) {
+    const decoded = new Map((await decodeCards(db, cardTpl, await cardRowsByIds(db, ids))).map((r) => [r.record_id, r]));
+    const want = slots && slots.length > 0 ? new Set(slots) : null;
+    return ids.map((id) => decoded.get(id)).filter((r) => !!r).map((r) => want ? { ...r, values: Object.fromEntries(Object.entries(r.values).filter(([k]) => want.has(k))) } : r);
+  }
   const byId = /* @__PURE__ */ new Map();
   for (const id of ids) byId.set(id, { record_id: id, template_id: tplId, values: {}, owner_id: null });
   const wanted = slots && slots.length > 0 ? [...new Set(slots)].map((s) => fieldEntryId(tplId, s)) : null;
@@ -2329,6 +2728,11 @@ async function hydrateRecordValues(db, tplId, ids, slots) {
   return ids.map((id) => byId.get(id)).filter((r) => !!r);
 }
 async function deleteRecord(db, recordId) {
+  const ci = await cardIdentity(db, recordId);
+  if (ci) {
+    await deleteCard(db, ci);
+    return true;
+  }
   const belongs = await recordBelongs(db, recordId);
   if (!belongs) return false;
   const mapTpl = await getTemplate(db, belongs.dst_id);
@@ -2355,9 +2759,10 @@ async function deleteRecord(db, recordId) {
   return true;
 }
 async function editRelation(db, recordId, slot, edit) {
-  const belongs = await recordBelongs(db, recordId);
-  if (!belongs) return null;
-  const tpl = await getTemplate(db, belongs.dst_id);
+  const ci = await cardIdentity(db, recordId);
+  const belongs = ci ? null : await recordBelongs(db, recordId);
+  if (!ci && !belongs) return null;
+  const tpl = ci ? ci.tpl : await getTemplate(db, belongs.dst_id);
   if (!tpl) return null;
   if (!isRelationSlot(slot)) throw new Error(`not a relation slot (name must end with []): ${slot}`);
   const slots = JSON.parse(tpl.slots_json);
@@ -2372,6 +2777,7 @@ async function editRelation(db, recordId, slot, edit) {
   };
   const add2 = clean(edit.add, "add");
   const remove = clean(edit.remove, "remove").filter((k) => !add2.includes(k));
+  if (ci) return editCardRelation(db, ci, slot, add2, remove);
   const relId = fieldEntryId(tpl.id, slot);
   const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
   const ownerId = identity?.owner_id ?? null;
@@ -2413,6 +2819,7 @@ var init_record_crud = __esm({
     init_entity_canon();
     init_library_map_store();
     init_template_guard();
+    init_card_row();
     kindTemplateIds = /* @__PURE__ */ new WeakMap();
     RecordExistsError = class extends Error {
       recordId;
@@ -2508,6 +2915,28 @@ var init_port = __esm({
 });
 
 // kbdb/src/actions/maintenance-quota.ts
+var maintenance_quota_exports = {};
+__export(maintenance_quota_exports, {
+  DEFAULT_FTS_BACKFILL_RESERVE: () => DEFAULT_FTS_BACKFILL_RESERVE,
+  DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT: () => DEFAULT_FTS_BUILD_DAILY_WRITE_LIMIT,
+  DEFAULT_INSTANCE_DAILY_WRITE_LIMIT: () => DEFAULT_INSTANCE_DAILY_WRITE_LIMIT,
+  DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT: () => DEFAULT_MAINTENANCE_DAILY_WRITE_LIMIT,
+  WRITE_BUDGET_QUOTA_MARKER: () => WRITE_BUDGET_QUOTA_MARKER,
+  addEntryWriteUsage: () => addEntryWriteUsage,
+  addMaintenanceUsage: () => addMaintenanceUsage,
+  entryWriteBudgetToday: () => entryWriteBudgetToday,
+  ftsBackfillReserve: () => ftsBackfillReserve,
+  ftsBuildBudgetToday: () => ftsBuildBudgetToday,
+  ftsBuildDailyLimit: () => ftsBuildDailyLimit,
+  getEntryWriteUsageToday: () => getEntryWriteUsageToday,
+  getMaintenanceUsageToday: () => getMaintenanceUsageToday,
+  instanceDailyWriteLimit: () => instanceDailyWriteLimit,
+  isSystemAssetOwner: () => isSystemAssetOwner,
+  maintenanceBudgetToday: () => maintenanceBudgetToday,
+  maintenanceDailyLimit: () => maintenanceDailyLimit,
+  withWriteTally: () => withWriteTally,
+  writeBudgetExhaustedBody: () => writeBudgetExhaustedBody
+});
 function maintenanceDailyLimit(env) {
   const raw2 = env.KBDB_MAINTENANCE_DAILY_WRITE_LIMIT;
   const n2 = raw2 ? parseInt(raw2, 10) : NaN;
@@ -2846,6 +3275,7 @@ async function fieldIndexRecordIds(db, relIds, value, owner, limit) {
 async function enableFieldIndex(db, template, slots) {
   const tpl = await getTemplate(db, template);
   if (!tpl) return null;
+  if (tpl.card_format === 1) throw new Error(`card format template ${tpl.name}: \u6B04\u4F4D\u904E\u6FFE\u76F4\u63A5\u8B80\u5361\u7247\u5217\uFF0C\u4E0D\u9700\u8981\uFF08\u4E5F\u9084\u4E0D\u80FD\uFF09\u958B\u6B04\u4F4D\u503C\u7D22\u5F15`);
   const all = JSON.parse(tpl.slots_json);
   const unknown = slots.filter((s) => !all.includes(s));
   if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
@@ -3060,6 +3490,12 @@ async function graphNeighbors(db, start, opts = {}) {
 async function recordsByFieldValuePage(db, template, field, value, owner_id, limit, offset, exactTotal = false, slots) {
   const tpl = await getTemplate(db, template);
   if (!tpl) return null;
+  if (isCardTemplate(tpl)) {
+    const records2 = await cardPage(db, tpl, owner_id, Math.max(limit, 0), Math.max(offset, 0), { slot: field, value });
+    const o = Math.max(offset, 0);
+    if (o === 0 && records2.length < limit) return { records: records2, total: records2.length, totalExact: true };
+    return { records: records2, total: o + records2.length + 1, totalExact: false };
+  }
   let allIds;
   let exhausted = true;
   if (exactTotal) {
@@ -3141,6 +3577,7 @@ var init_graph_query = __esm({
   "kbdb/src/actions/graph-query.ts"() {
     "use strict";
     init_record_crud();
+    init_card_row();
     init_field_index();
     init_library_predicate();
     init_entity_canon();
@@ -4080,6 +4517,331 @@ var init_orphan_purge = __esm({
     PURGE_MAX_IDS = 100;
     PurgeInputError = class extends Error {
     };
+  }
+});
+
+// kbdb/src/actions/card-migrate.ts
+var card_migrate_exports = {};
+__export(card_migrate_exports, {
+  CARD_COPY_BATCH_DEFAULT: () => CARD_COPY_BATCH_DEFAULT,
+  CARD_COPY_BATCH_MAX: () => CARD_COPY_BATCH_MAX,
+  CARD_RETENTION_DAYS: () => CARD_RETENTION_DAYS,
+  CardFormatError: () => CardFormatError,
+  MEMBER_INDEX_SQL: () => MEMBER_INDEX_SQL,
+  cardFormatAbort: () => cardFormatAbort,
+  cardFormatCleanup: () => cardFormatCleanup,
+  cardFormatCopy: () => cardFormatCopy,
+  cardFormatStatus: () => cardFormatStatus,
+  cardFormatSwitch: () => cardFormatSwitch,
+  cardFormatVerify: () => cardFormatVerify,
+  runCardFormat: () => runCardFormat,
+  sameProps: () => sameProps
+});
+async function loadTemplate(db, name) {
+  const tpl = await getTemplate(db, name);
+  if (!tpl) throw new CardFormatError(404, `template not found: ${name}`);
+  return tpl;
+}
+async function assertSwitchable(db, tpl) {
+  if (SYSTEM_TEMPLATES.has(tpl.name) || isMapTrackedTemplate(tpl.name)) {
+    throw new CardFormatError(422, `template ${tpl.name} \u662F\u7CFB\u7D71 template\uFF1A\u5B83\u7684\u5C08\u7528\u8B80\u5BEB\u8DEF\u5F91\u9084\u6C92\u63A5\u5361\u7247\u5217\uFF0C\u4E0D\u80FD\u5207\u6210\u4E00\u5361\u4E00\u5217`);
+  }
+  try {
+    const spec = await db.first("SELECT rel_id FROM field_value_index_spec WHERE template_id = ? LIMIT 1", [tpl.id]);
+    if (spec) throw new CardFormatError(422, `template ${tpl.name} \u958B\u904E\u6B04\u4F4D\u503C\u7D22\u5F15\uFF08POST /records/field-index\uFF09\uFF1A\u6B04\u4F4D\u503C\u7D22\u5F15\u9084\u6C92\u63A5\u5361\u7247\u5217\uFF0C\u4E0D\u80FD\u5207\u6210\u4E00\u5361\u4E00\u5217`);
+  } catch (e) {
+    if (e instanceof CardFormatError) throw e;
+    if (!/no such table/i.test(String(e?.message ?? e))) throw e;
+  }
+}
+function parseCursor(s) {
+  if (!s) return { created: -1, rowid: -1 };
+  const [c, r] = s.split(":");
+  const created = Number(c), rowid = Number(r);
+  return Number.isFinite(created) && Number.isFinite(rowid) ? { created, rowid } : { created: -1, rowid: -1 };
+}
+async function nextMembers(db, tplId, cur, limit) {
+  const res = await db.all(
+    `SELECT src_id AS id, created_at, rowid FROM entries
+      WHERE dst_id = ?1 AND rel_id = '${SYS_BELONGS}' AND (created_at > ?2 OR (created_at = ?2 AND rowid > ?3))
+      ORDER BY created_at, rowid LIMIT ?4`,
+    [tplId, cur.created, cur.rowid, limit]
+  );
+  return res.results ?? [];
+}
+async function legacyCards(db, ids, map) {
+  const ph = ids.map(() => "?").join(",");
+  const idents = await db.all(`SELECT id, owner_id FROM entries WHERE id IN (${ph})`, [...ids]);
+  const cells = await db.all(
+    `SELECT r.src_id AS rid, f.content AS slot, v.id AS vid, v.content AS content
+       FROM entries r JOIN entries f ON r.rel_id = f.id JOIN entries v ON r.dst_id = v.id
+      WHERE r.src_id IN (${ph}) AND r.rel_id != '${SYS_BELONGS}'`,
+    [...ids]
+  );
+  const cellRows = cells.results ?? [];
+  const vids = [...new Set(cellRows.map((c) => c.vid))];
+  const incoming = /* @__PURE__ */ new Map();
+  for (let i = 0; i < vids.length; i += 90) {
+    const chunk = vids.slice(i, i + 90);
+    const r = await db.all(`SELECT dst_id, COUNT(*) AS n FROM entries WHERE dst_id IN (${chunk.map(() => "?").join(",")}) GROUP BY dst_id`, [...chunk]);
+    for (const x of r.results ?? []) incoming.set(x.dst_id, x.n);
+  }
+  const unknown = /* @__PURE__ */ new Set();
+  const byId = /* @__PURE__ */ new Map();
+  for (const r of idents.results ?? []) byId.set(r.id, { id: r.id, owner_id: r.owner_id, props: {}, extraSlots: [] });
+  for (const c of cellRows) {
+    const card = byId.get(c.rid);
+    if (!card || c.content === null) continue;
+    const f = map.by_name[c.slot];
+    if (!f) {
+      unknown.add(c.slot);
+      continue;
+    }
+    const pointer = (incoming.get(c.vid) ?? 0) > 1 || !DEDICATED_CELL.test(c.vid);
+    if (pointer) {
+      card.props[f] = { $ref: c.vid };
+      continue;
+    }
+    if (isRelationName(c.slot)) {
+      const cur = Array.isArray(card.props[f]) ? card.props[f] : [];
+      if (!cur.includes(c.content)) cur.push(c.content);
+      card.props[f] = cur.sort();
+    } else {
+      card.props[f] = c.content;
+    }
+  }
+  return { cards: ids.map((id) => byId.get(id)).filter((x) => !!x), unknownSlots: unknown };
+}
+function sameProps(a, b) {
+  const norm3 = (p) => JSON.stringify(Object.keys(p).sort().map((k) => [k, p[k]]));
+  return norm3(a) === norm3(b);
+}
+function writeCardStatement(card, tplId) {
+  return { sql: "UPDATE entries SET props = ?, tpl_id = ?, fmt = ? WHERE id = ?", params: [JSON.stringify(card.props), tplId, CARD_FORMAT_VERSION, card.id] };
+}
+async function ensureMapFor(db, tpl, extraSlots) {
+  const slots = JSON.parse(tpl.slots_json);
+  const base = parseFieldMap(tpl.fields_json);
+  const want = [.../* @__PURE__ */ new Set([...slots, ...Object.keys(base.by_name), ...extraSlots])];
+  const synced = syncFieldMap(base, want);
+  if (synced.changed || !tpl.fields_json) {
+    await db.run("UPDATE templates SET fields_json = ? WHERE id = ?", [JSON.stringify(synced.map), tpl.id]);
+    tpl.fields_json = JSON.stringify(synced.map);
+  }
+  return synced.map;
+}
+function clampBatch(n2) {
+  return Math.max(1, Math.min(n2 ?? CARD_COPY_BATCH_DEFAULT, CARD_COPY_BATCH_MAX));
+}
+function report(tpl, action, extra) {
+  return {
+    template: tpl.name,
+    action,
+    state: tpl.card_state ?? null,
+    card_format: isCardTemplate(tpl),
+    processed: 0,
+    done: false,
+    cursor: tpl.card_cursor ?? null,
+    est_rows_per_record: EST_ROWS_PER_RECORD,
+    ...extra
+  };
+}
+async function cardFormatStatus(db, name, opts = {}) {
+  const tpl = await loadTemplate(db, name);
+  const extra = {};
+  if (opts.count) {
+    const n2 = await db.first(`SELECT COUNT(*) AS n FROM entries WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}'`, [tpl.id]);
+    extra.members = n2?.n ?? 0;
+    extra.est_total_rows_written = (n2?.n ?? 0) * EST_ROWS_PER_RECORD;
+  }
+  return report(tpl, "status", extra);
+}
+async function ensureMemberIndex(db) {
+  await db.run(MEMBER_INDEX_SQL);
+}
+async function cardFormatCopy(db, name, opts = {}) {
+  const tpl = await loadTemplate(db, name);
+  if (isCardTemplate(tpl)) throw new CardFormatError(409, `template ${tpl.name} \u5DF2\u7D93\u662F\u4E00\u5361\u4E00\u5217`);
+  await assertSwitchable(db, tpl);
+  await ensureMemberIndex(db);
+  const limit = clampBatch(opts.batch);
+  const members = await nextMembers(db, tpl.id, parseCursor(tpl.card_cursor), limit);
+  if (members.length === 0) {
+    if (!tpl.card_state) {
+      await db.run("UPDATE templates SET card_state = 'copying' WHERE id = ?", [tpl.id]);
+      tpl.card_state = "copying";
+    }
+    return report(tpl, "copy", { done: true, note: "\u6C92\u6709\u66F4\u591A\u820A\u8CC7\u6599\u8981\u642C\uFF1B\u53EF\u4EE5\u8DD1 verify" });
+  }
+  let map = await ensureMapFor(db, tpl, []);
+  let { cards, unknownSlots } = await legacyCards(db, members.map((m) => m.id), map);
+  if (unknownSlots.size > 0) {
+    map = await ensureMapFor(db, tpl, unknownSlots);
+    ({ cards } = await legacyCards(db, members.map((m) => m.id), map));
+  }
+  const last = members[members.length - 1];
+  const cursor = `${last.created_at}:${last.rowid}`;
+  await db.batch([
+    ...cards.map((c) => writeCardStatement(c, tpl.id)),
+    { sql: "UPDATE templates SET card_cursor = ?, card_state = 'copying', card_verify_cursor = NULL WHERE id = ?", params: [cursor, tpl.id] }
+  ]);
+  tpl.card_cursor = cursor;
+  tpl.card_state = "copying";
+  return report(tpl, "copy", { processed: cards.length, done: members.length < limit, cursor });
+}
+async function cardFormatVerify(db, name, opts = {}) {
+  const tpl = await loadTemplate(db, name);
+  if (isCardTemplate(tpl)) throw new CardFormatError(409, `template ${tpl.name} \u5DF2\u7D93\u662F\u4E00\u5361\u4E00\u5217`);
+  if (tpl.card_state !== "copying" && tpl.card_state !== "verified") throw new CardFormatError(409, "\u5148\u8DD1 copy\uFF08\u72C0\u614B\u4E0D\u662F copying\uFF09");
+  const rest = await nextMembers(db, tpl.id, parseCursor(tpl.card_cursor), 1);
+  if (rest.length > 0) throw new CardFormatError(409, "\u9084\u6709\u6C92\u642C\u5B8C\u7684\u820A\u8CC7\u6599\uFF1A\u5148\u628A copy \u8DD1\u5230 done");
+  const limit = clampBatch(opts.batch);
+  const [curStr, repairedSoFar] = (tpl.card_verify_cursor ?? "").split("|");
+  const members = await nextMembers(db, tpl.id, parseCursor(curStr), limit);
+  const map = parseFieldMap(tpl.fields_json);
+  let repaired = 0;
+  if (members.length > 0) {
+    const ids = members.map((m) => m.id);
+    const { cards } = await legacyCards(db, ids, map);
+    const stored = await db.all(
+      `SELECT id, props, tpl_id, fmt FROM entries WHERE id IN (${ids.map(() => "?").join(",")})`,
+      [...ids]
+    );
+    const have = new Map((stored.results ?? []).map((r) => [r.id, r]));
+    const fix = [];
+    for (const c of cards) {
+      const s = have.get(c.id);
+      if (s && s.fmt === 1 && s.tpl_id === tpl.id && sameProps(parseProps(s.props), c.props)) continue;
+      fix.push(writeCardStatement(c, tpl.id));
+      repaired += 1;
+    }
+    if (fix.length > 0) await db.batch(fix);
+  }
+  const total = Number(repairedSoFar ?? 0) + repaired;
+  if (members.length < limit) {
+    const state = total === 0 ? "verified" : "copying";
+    await db.run("UPDATE templates SET card_state = ?, card_verify_cursor = NULL WHERE id = ?", [state, tpl.id]);
+    tpl.card_state = state;
+    tpl.card_verify_cursor = null;
+    return report(tpl, "verify", { processed: members.length, repaired, done: true, note: total === 0 ? "\u6574\u8F2A\u6838\u5C0D 0 \u4FEE\u5FA9\uFF0C\u53EF\u4EE5 switch" : `\u672C\u8F2A\u4FEE\u4E86 ${total} \u7B46\uFF0C\u9700\u8981\u518D\u8DD1\u4E00\u8F2A verify` });
+  }
+  const last = members[members.length - 1];
+  const cursor = `${last.created_at}:${last.rowid}|${total}`;
+  await db.run("UPDATE templates SET card_verify_cursor = ? WHERE id = ?", [cursor, tpl.id]);
+  tpl.card_verify_cursor = cursor;
+  return report(tpl, "verify", { processed: members.length, repaired, done: false });
+}
+async function cardFormatSwitch(db, name, opts = {}) {
+  const tpl = await loadTemplate(db, name);
+  if (isCardTemplate(tpl)) throw new CardFormatError(409, `template ${tpl.name} \u5DF2\u7D93\u662F\u4E00\u5361\u4E00\u5217`);
+  if (tpl.card_state !== "verified") throw new CardFormatError(409, "\u53EA\u6709\u6838\u5C0D\u904E\uFF08state=verified\uFF09\u624D\u80FD\u5207\u63DB\uFF1A\u5148\u8DD1 verify \u5230 0 \u4FEE\u5FA9");
+  await assertSwitchable(db, tpl);
+  await ensureMemberIndex(db);
+  const at = opts.now ?? Math.floor(Date.now() / 1e3);
+  await db.run("UPDATE templates SET card_format = 1, card_state = 'switched', card_verify_cursor = ? WHERE id = ?", [`switched_at:${at}`, tpl.id]);
+  tpl.card_format = 1;
+  tpl.card_state = "switched";
+  let tail = 0;
+  for (let i = 0; i < 20; i++) {
+    const members = await nextMembers(db, tpl.id, parseCursor(tpl.card_cursor), CARD_COPY_BATCH_MAX);
+    if (members.length === 0) break;
+    const map = await ensureMapFor(db, tpl, []);
+    const { cards } = await legacyCards(db, members.map((m) => m.id), map);
+    const last = members[members.length - 1];
+    const cursor = `${last.created_at}:${last.rowid}`;
+    await db.batch([...cards.map((c) => writeCardStatement(c, tpl.id)), { sql: "UPDATE templates SET card_cursor = ? WHERE id = ?", params: [cursor, tpl.id] }]);
+    tpl.card_cursor = cursor;
+    tail += cards.length;
+  }
+  return report(tpl, "switch", { processed: tail, done: true, note: `\u5DF2\u5207\u63DB\uFF1B\u88DC\u5C3E\u5DF4 ${tail} \u7B46\u3002\u820A\u683C\u5B50\u4FDD\u7559 ${CARD_RETENTION_DAYS} \u5929\u5F8C\u624D\u80FD cleanup` });
+}
+async function cardFormatAbort(db, name, opts = {}) {
+  const tpl = await loadTemplate(db, name);
+  if (isCardTemplate(tpl)) throw new CardFormatError(409, "\u5DF2\u7D93\u5207\u63DB\uFF1A\u5207\u63DB\u5F8C\u7684\u6574\u500B\u9000\u56DE\u9084\u6C92\u505A\uFF08\u820A\u683C\u5B50\u4FDD\u7559\u4E2D\uFF0C\u6C92\u6709\u907A\u5931\uFF09");
+  if (!tpl.card_state) return report(tpl, "abort", { done: true, note: "\u6C92\u6709\u9032\u884C\u4E2D\u7684\u642C\u9077" });
+  const limit = clampBatch(opts.batch);
+  const res = await db.all("SELECT id FROM entries WHERE tpl_id = ? AND fmt = 1 LIMIT ?", [tpl.id, limit]);
+  const ids = (res.results ?? []).map((r) => r.id);
+  if (ids.length > 0) {
+    await db.run(`UPDATE entries SET props = NULL, tpl_id = NULL, fmt = NULL WHERE id IN (${ids.map(() => "?").join(",")})`, [...ids]);
+  }
+  if (ids.length < limit) {
+    await db.run("UPDATE templates SET card_state = NULL, card_cursor = NULL, card_verify_cursor = NULL WHERE id = ?", [tpl.id]);
+    tpl.card_state = null;
+    tpl.card_cursor = null;
+    return report(tpl, "abort", { processed: ids.length, done: true, note: "\u5DF2\u9000\u56DE\u820A\u5B58\u6CD5\uFF08\u820A\u683C\u5B50\u4E00\u76F4\u90FD\u5728\uFF09" });
+  }
+  return report(tpl, "abort", { processed: ids.length, done: false });
+}
+async function cardFormatCleanup(db, name, opts = {}) {
+  const tpl = await loadTemplate(db, name);
+  if (!isCardTemplate(tpl) || tpl.card_state !== "switched") throw new CardFormatError(409, "\u53EA\u6709\u5DF2\u5207\u63DB\u7684 template \u624D\u80FD\u6E05\u820A\u683C\u5B50");
+  const switchedAt = Number((tpl.card_verify_cursor ?? "").replace("switched_at:", ""));
+  const days = opts.retention_days ?? CARD_RETENTION_DAYS;
+  const now = opts.now ?? Math.floor(Date.now() / 1e3);
+  if (Number.isFinite(switchedAt) && now < switchedAt + days * 86400) {
+    throw new CardFormatError(409, `\u4FDD\u7559\u671F\u672A\u5230\uFF1A\u5207\u63DB\u5F8C ${days} \u5929\u5167\u820A\u683C\u5B50\u4E0D\u52D5\uFF08\u9084\u5269 ${Math.ceil((switchedAt + days * 86400 - now) / 86400)} \u5929\uFF09`);
+  }
+  const limit = clampBatch(opts.batch);
+  const members = await db.all(`SELECT src_id AS id FROM entries WHERE dst_id = ? AND rel_id = '${SYS_BELONGS}' LIMIT ?`, [tpl.id, limit]);
+  const ids = (members.results ?? []).map((m) => m.id);
+  if (ids.length === 0) return report(tpl, "cleanup", { done: true, note: "\u820A\u683C\u5B50\u5DF2\u5168\u90E8\u6E05\u5B8C" });
+  const ph = ids.map(() => "?").join(",");
+  const cards = await db.all(`SELECT id FROM entries WHERE id IN (${ph}) AND fmt = 1 AND props IS NOT NULL`, [...ids]);
+  const safe = (cards.results ?? []).map((c) => c.id);
+  if (safe.length === 0) throw new CardFormatError(409, `\u6709 ${ids.length} \u7B46\u820A\u6210\u54E1\u6C92\u6709\u5C0D\u61C9\u7684\u5361\u7247\u5217\uFF1A\u4E0D\u6E05\uFF08\u5148\u67E5\u70BA\u4EC0\u9EBC\u6C92\u642C\u5230\uFF09`);
+  const sph = safe.map(() => "?").join(",");
+  const cells = await db.all(`SELECT dst_id AS vid FROM entries WHERE src_id IN (${sph}) AND rel_id != '${SYS_BELONGS}'`, [...safe]);
+  const vids = [...new Set((cells.results ?? []).map((c) => c.vid))].filter((v) => DEDICATED_CELL.test(v));
+  const stmts = [
+    { sql: `DELETE FROM entries WHERE src_id IN (${sph}) AND (rel_id != '${SYS_BELONGS}' OR dst_id = ?)`, params: [...safe, tpl.id] }
+  ];
+  for (let i = 0; i < vids.length; i += 90) {
+    const chunk = vids.slice(i, i + 90);
+    stmts.push({ sql: `DELETE FROM entries WHERE id IN (${chunk.map(() => "?").join(",")}) AND NOT EXISTS (SELECT 1 FROM entries r WHERE r.dst_id = entries.id) AND src_id IS NULL`, params: [...chunk] });
+  }
+  await db.batch(stmts);
+  return report(tpl, "cleanup", { processed: safe.length, done: safe.length < limit && ids.length < limit });
+}
+async function runCardFormat(db, action, template, opts = {}) {
+  switch (action) {
+    case "status":
+      return cardFormatStatus(db, template, opts);
+    case "copy":
+      return cardFormatCopy(db, template, opts);
+    case "verify":
+      return cardFormatVerify(db, template, opts);
+    case "switch":
+      return cardFormatSwitch(db, template, opts);
+    case "abort":
+      return cardFormatAbort(db, template, opts);
+    case "cleanup":
+      return cardFormatCleanup(db, template, opts);
+  }
+}
+var CARD_COPY_BATCH_DEFAULT, CARD_COPY_BATCH_MAX, CARD_RETENTION_DAYS, SYSTEM_TEMPLATES, CardFormatError, EST_ROWS_PER_RECORD, DEDICATED_CELL, MEMBER_INDEX_SQL;
+var init_card_migrate = __esm({
+  "kbdb/src/actions/card-migrate.ts"() {
+    "use strict";
+    init_record_crud();
+    init_kind();
+    init_library_map_store();
+    init_card_row();
+    CARD_COPY_BATCH_DEFAULT = 50;
+    CARD_COPY_BATCH_MAX = 80;
+    CARD_RETENTION_DAYS = 30;
+    SYSTEM_TEMPLATES = /* @__PURE__ */ new Set(["triplet", "library_map", "execution_log", "credential", "recipe_stat", "portal_library"]);
+    CardFormatError = class extends Error {
+      constructor(status, message) {
+        super(message);
+        this.status = status;
+        this.name = "CardFormatError";
+      }
+      status;
+    };
+    EST_ROWS_PER_RECORD = 4;
+    DEDICATED_CELL = /^(e_|.*~v~|.*~mv~)/;
+    MEMBER_INDEX_SQL = "CREATE INDEX IF NOT EXISTS idx_entries_tpl_member ON entries(tpl_id, created_at) WHERE tpl_id IS NOT NULL";
   }
 });
 
@@ -7049,6 +7811,7 @@ async function listLibraryCards(db, f) {
            COUNT(*) AS block_count,
            MAX(CASE WHEN ${glossLike} THEN content END) AS gloss_block,
            MAX(json_extract(metadata_json, '$.source_path')) AS source_path,
+           MAX(json_extract(metadata_json, '$.source')) AS source,
            MAX(updated_at) AS updated_at
          FROM ${members.from}
          ${where}
@@ -7079,6 +7842,7 @@ async function listLibraryCards(db, f) {
     block_count: Number(r.block_count) || 0,
     gloss: glossOf(r.gloss_block),
     source_path: r.source_path ?? null,
+    source: r.source ?? null,
     updated_at: Number(r.updated_at) || 0
   }));
   return {
@@ -8795,7 +9559,7 @@ recordRoutes.post("/field-index", async (c) => {
   } catch (err) {
     if (err instanceof FieldIndexTooLargeError) return c.json({ success: false, error: err.message }, 422);
     const msg = String(err?.message ?? err);
-    if (/^slot not in template|^fields required/.test(msg)) return c.json({ success: false, error: msg }, 400);
+    if (/^slot not in template|^fields required|^card format template/.test(msg)) return c.json({ success: false, error: msg }, 400);
     throw err;
   }
 });
@@ -9673,7 +10437,7 @@ function scoreIndexLine(line, terms) {
   if (score === 0 && isFolderLine(line)) score = 1;
   return score;
 }
-async function blocksOf(db, pageNames, owner, libraries, cardCount = pageNames.length) {
+async function blocksOf(db, pageNames, owner, libraries, cardCount2 = pageNames.length) {
   if (pageNames.length === 0) return [];
   const ph = pageNames.map(() => "?").join(",");
   const libs = libraries ? [...libraries] : [];
@@ -9689,7 +10453,7 @@ async function blocksOf(db, pageNames, owner, libraries, cardCount = pageNames.l
         AND ${NOT_MAP}
       ORDER BY created_at ASC, rowid ASC
       LIMIT ?`,
-    [...pageNames, "block", owner, owner, ...libs, Math.max(1, cardCount) * MAX_BLOCKS_PER_CARD]
+    [...pageNames, "block", owner, owner, ...libs, Math.max(1, cardCount2) * MAX_BLOCKS_PER_CARD]
   );
   const all = rows.results ?? [];
   return libraries ? all.filter((r) => libraries.has(libraryOfValue(r.lib))) : all;
@@ -10657,6 +11421,21 @@ var GENERATIONS = [
       { kind: "trigger", name: "field_value_index_ad" }
     ],
     rows_per_card: 531
+  },
+  {
+    n: 17,
+    file: "0017_card_row.sql",
+    what: "\u4E00\u5F35\u5361\u4E00\u5217\u2014\u2014records \u7684\u5C6C\u6027\u6253\u5305\u5728\u8EAB\u5206\u5217\u7684 JSON \u88E1\uFF08entries \u52A0 props\uFF0Ftpl_id\uFF0Ffmt\u3001templates \u52A0\u5B58\u6CD5\u65D7\u6A19\u8207\u642C\u9077\u9032\u5EA6\uFF1BD100 \u7B2C\u2462\u6B65\uFF0Cinkstone/Arcrun#481\uFF09",
+    // 只加欄與索引、不搬資料：沒有 template 切到新存法之前，寫入與讀取都和第 16 代一字不差 ⇒ rows_per_card 沿用。
+    checks: [
+      { kind: "entries_column", name: "props" },
+      { kind: "entries_column", name: "tpl_id" },
+      { kind: "entries_column", name: "fmt" }
+      // 🔴 idx_entries_tpl_member 刻意不列為必備（inkstone/Arcrun#481）：它是可重建的加速索引（D100），
+      // 安裝器為省額度會先跳過，列進來就讓 /health 永遠卡在第 16 代。沒有 card 列之前它一列都不存（partial index，tpl_id IS NOT NULL）；
+      // 查詢不會因此退成全表掃描——template 切成一卡一列的第一步（card-format copy）會先確保它存在（ensureMemberIndex）。
+    ],
+    rows_per_card: 531
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
@@ -11133,24 +11912,24 @@ app.get("/health", async (c) => {
 app.get("/maintenance/relation-orphans", async (c) => {
   const { scanRelationOrphans: scanRelationOrphans2 } = await Promise.resolve().then(() => (init_relation_orphans(), relation_orphans_exports));
   const limit = Number(c.req.query("limit") ?? "200");
-  const report = await scanRelationOrphans2(dbOf(c.env), Number.isFinite(limit) ? limit : 200);
-  return c.json({ success: true, ...report });
+  const report2 = await scanRelationOrphans2(dbOf(c.env), Number.isFinite(limit) ? limit : 200);
+  return c.json({ success: true, ...report2 });
 });
 app.post("/maintenance/accelerator-indexes", async (c) => {
   const { buildAcceleratorIndexes: buildAcceleratorIndexes2 } = await Promise.resolve().then(() => (init_accelerator_indexes(), accelerator_indexes_exports));
   const body = await c.req.json().catch(() => null);
-  const report = await buildAcceleratorIndexes2(dbOf(c.env), { confirm: body?.confirm === true });
+  const report2 = await buildAcceleratorIndexes2(dbOf(c.env), { confirm: body?.confirm === true });
   healthCache = null;
-  return c.json({ success: !report.items.some((i) => i.state === "failed"), ...report });
+  return c.json({ success: !report2.items.some((i) => i.state === "failed"), ...report2 });
 });
 app.get("/maintenance/kind-orphans", async (c) => {
   const { scanKindOrphans: scanKindOrphans2 } = await Promise.resolve().then(() => (init_kind_orphans(), kind_orphans_exports));
   const limit = Number(c.req.query("limit") ?? "200");
-  const report = await scanKindOrphans2(dbOf(c.env), {
+  const report2 = await scanKindOrphans2(dbOf(c.env), {
     owner_id: c.req.query("owner_id") || void 0,
     limit: Number.isFinite(limit) ? limit : 200
   });
-  return c.json({ success: true, ...report });
+  return c.json({ success: true, ...report2 });
 });
 app.post("/maintenance/kind-orphans/purge", async (c) => {
   const { purgeKindOrphans: purgeKindOrphans2, PurgeInputError: PurgeInputError2 } = await Promise.resolve().then(() => (init_orphan_purge(), orphan_purge_exports));
@@ -11159,14 +11938,14 @@ app.post("/maintenance/kind-orphans/purge", async (c) => {
     return c.json({ success: false, error: "ids \u5FC5\u586B\uFF0C\u4E14\u8981\u662F\u5B57\u4E32\u9663\u5217\uFF08\u5148\u7528 GET /maintenance/kind-orphans \u5DE1\u6AA2\u518D\u5E36\u9032\u4F86\uFF09" }, 400);
   }
   try {
-    const report = await purgeKindOrphans2(dbOf(c.env), {
+    const report2 = await purgeKindOrphans2(dbOf(c.env), {
       ids: body.ids,
       owner_id: typeof body.owner_id === "string" && body.owner_id ? body.owner_id : void 0,
       confirm: body.confirm === true,
       include_content: body.include_content === true
     });
     let vectors_deleted = 0;
-    const embeddedIds = report.items.filter((i) => i.verdict === "deleted" && i.was_embedded).map((i) => i.id);
+    const embeddedIds = report2.items.filter((i) => i.verdict === "deleted" && i.was_embedded).map((i) => i.id);
     if (embeddedIds.length > 0) {
       const { embedEnabled: embedEnabled2 } = await Promise.resolve().then(() => (init_embed(), embed_exports));
       const { vectorsOf: vectorsOf2 } = await Promise.resolve().then(() => (init_select(), select_exports));
@@ -11178,9 +11957,30 @@ app.post("/maintenance/kind-orphans/purge", async (c) => {
         }
       }
     }
-    return c.json({ success: true, ...report, vectors_deleted });
+    return c.json({ success: true, ...report2, vectors_deleted });
   } catch (e) {
     if (e instanceof PurgeInputError2) return c.json({ success: false, error: e.message }, 400);
+    throw e;
+  }
+});
+app.post("/maintenance/card-format", async (c) => {
+  const { runCardFormat: runCardFormat2, CardFormatError: CardFormatError2 } = await Promise.resolve().then(() => (init_card_migrate(), card_migrate_exports));
+  const { withWriteTally: withWriteTally2 } = await Promise.resolve().then(() => (init_maintenance_quota(), maintenance_quota_exports));
+  const body = await c.req.json().catch(() => null);
+  const actions = ["status", "copy", "verify", "switch", "abort", "cleanup"];
+  if (!body || typeof body.template !== "string" || !body.template || typeof body.action !== "string" || !actions.includes(body.action)) {
+    return c.json({ success: false, error: `template\uFF08\u5B57\u4E32\uFF09\u8207 action\uFF08${actions.join("\uFF0F")}\uFF09\u5FC5\u586B` }, 400);
+  }
+  const tally = { rowsWritten: 0 };
+  try {
+    const rep = await runCardFormat2(withWriteTally2(dbOf(c.env), tally), body.action, body.template, {
+      batch: typeof body.batch === "number" ? body.batch : void 0,
+      count: body.count === true,
+      retention_days: typeof body.retention_days === "number" ? body.retention_days : void 0
+    });
+    return c.json({ success: true, ...rep, rows_written: tally.rowsWritten });
+  } catch (e) {
+    if (e instanceof CardFormatError2) return c.json({ success: false, error: e.message }, e.status);
     throw e;
   }
 });

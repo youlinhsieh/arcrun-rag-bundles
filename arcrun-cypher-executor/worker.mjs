@@ -2504,469 +2504,100 @@ var init_constants3 = __esm({
   }
 });
 
-// cypher-executor/src/routes/recipes.ts
-function recipeCredentialNames(r) {
-  const names = /* @__PURE__ */ new Set();
-  for (const c of r.credentials_required ?? []) if (c?.key) names.add(c.key);
-  const scan = (v) => {
-    if (typeof v === "string") {
-      for (const m of v.matchAll(/\{\{credential\.(\w+)\}\}/g)) names.add(m[1]);
-    } else if (Array.isArray(v)) {
-      v.forEach(scan);
-    } else if (v && typeof v === "object") {
-      Object.values(v).forEach(scan);
-    }
-  };
-  scan(r.endpoint);
-  scan(r.headers);
-  scan(r.body);
-  scan(r.body_template);
-  return [...names];
+// cypher-executor/src/lib/builtin-ids.ts
+function isBuiltinApp(id) {
+  return BUILTIN_APP_IDS.includes(id);
 }
-async function recipeAuthSecretNames(r, kv, cache3) {
-  if (r.auth === "binding") return [];
-  const service = r.auth_service || r.canonical_id;
-  if (!service) return [];
-  let pending = cache3?.get(service);
-  if (!pending) {
-    pending = resolveAuthRecipe(service, kv).catch(() => null);
-    cache3?.set(service, pending);
-  }
-  const ar = await pending;
-  if (!ar || !DISPATCHABLE_AUTH_PRIMITIVES.has(ar.primitive)) return [];
-  return (ar.required_secrets ?? []).filter((s) => s?.key && !s.optional).map((s) => s.key);
-}
-async function installRecipeRecord(kv, recipe) {
-  const uuid = recipe.uuid;
-  const { canonical_id, hash_id } = recipe;
-  const listRaw = await kv.get(kIdxCanonical(canonical_id));
-  const uuids = listRaw ? JSON.parse(listRaw) : [];
-  if (!uuids.includes(uuid)) uuids.push(uuid);
-  await Promise.all([
-    kv.put(`recipe:${uuid}`, JSON.stringify(recipe)),
-    kv.put(kIdxCanonical(canonical_id), JSON.stringify(uuids)),
-    kv.put(kIdxInstalled(canonical_id), uuid),
-    kv.put(`idx:${hash_id}`, canonical_id)
-  ]);
-}
-async function upsertPrivateRecipe(kv, body) {
-  const canonicalId = (body.canonical_id ?? "").trim().toLowerCase();
-  if (!canonicalId) return { ok: false, error: "canonical_id \u5FC5\u586B" };
-  if (!body.endpoint) return { ok: false, error: "endpoint \u5FC5\u586B" };
-  const hashId = await deriveRecipeHash(canonicalId);
-  const now2 = Date.now();
-  const existing = await resolveRecipe(canonicalId, kv);
-  const recipe = {
-    uuid: existing?.uuid ?? crypto.randomUUID(),
-    author: body.author ?? existing?.author ?? "local",
-    derived_from: body.derived_from ?? existing?.derived_from,
-    canonical_id: canonicalId,
-    hash_id: hashId,
-    display_name: body.display_name,
-    description: body.description,
-    endpoint: body.endpoint,
-    method: (body.method ?? "POST").toUpperCase(),
-    headers: body.headers,
-    body: body.body,
-    // ③ payload/回應/binding 三層（3.12）：全選填，沒給就是 undefined＝既有行為
-    body_template: body.body_template,
-    response_map: body.response_map,
-    auth: body.auth,
-    binding_name: body.binding_name,
-    auth_service: body.auth_service,
-    credentials_required: body.credentials_required,
-    created_at: existing?.created_at ?? now2,
-    updated_at: now2
-  };
-  await installRecipeRecord(kv, recipe);
-  return { ok: true, recipe };
-}
-async function fetchMarketStat(env, canonicalId) {
-  try {
-    const base = kbdbBaseUrl(env);
-    const headers = {};
-    if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-    const res = await fetch(`${base}/recipe-stats/${encodeURIComponent(canonicalId)}`, { headers });
-    if (!res.ok) return null;
-    const json = await res.json();
-    if (!json.stat) return null;
-    return {
-      success_count: json.stat.success_count ?? 0,
-      failure_count: json.stat.failure_count ?? 0
-    };
-  } catch {
-    return null;
-  }
-}
-async function listAllRecipes(kv) {
-  const list = await kv.list({ prefix: "recipe:" });
-  const all = (await Promise.all(
-    list.keys.map((k) => kv.get(k.name, "json"))
-  )).filter(Boolean);
-  const hasUuid = new Set(all.filter((r) => r.uuid).map((r) => r.canonical_id));
-  return all.filter((r) => r.uuid || !hasUuid.has(r.canonical_id));
-}
-async function resolveRecipe(id, kv) {
-  const speculativeInstalled = id.startsWith("rec_") ? null : kv.get(kIdxInstalled(id));
-  speculativeInstalled?.catch(() => void 0);
-  const direct = await kv.get(`recipe:${id}`, "json");
-  if (direct && direct.uuid) return direct;
-  let canonicalId = id;
-  if (id.startsWith("rec_")) {
-    const looked = await kv.get(`idx:${id}`);
-    if (!looked) return direct;
-    canonicalId = looked;
-  }
-  const installedUuid = speculativeInstalled && canonicalId === id ? await speculativeInstalled : await kv.get(kIdxInstalled(canonicalId));
-  if (installedUuid) {
-    const byUuid = await kv.get(`recipe:${installedUuid}`, "json");
-    if (byUuid) return byUuid;
-  }
-  return direct ?? await kv.get(`recipe:${canonicalId}`, "json");
-}
-async function resolveAuthRecipe(service, kv) {
-  return kv.get(`auth_recipe:${service}`, "json");
-}
-var recipesRouter, DISPATCHABLE_AUTH_PRIMITIVES, kIdxCanonical, kIdxInstalled;
-var init_recipes = __esm({
-  "cypher-executor/src/routes/recipes.ts"() {
+var BUILTIN_APP_IDS;
+var init_builtin_ids = __esm({
+  "cypher-executor/src/lib/builtin-ids.ts"() {
     "use strict";
-    init_dist();
-    init_hash();
-    init_endpoints();
-    recipesRouter = new Hono2();
-    DISPATCHABLE_AUTH_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
-    kIdxCanonical = (canonicalId) => `idx:canonical:${canonicalId}`;
-    kIdxInstalled = (canonicalId) => `idx:installed:${canonicalId}`;
-    recipesRouter.post("/recipes", async (c) => {
-      let body;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ success: false, error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
-      }
-      const r = await upsertPrivateRecipe(c.env.RECIPES, body);
-      if (!r.ok) return c.json({ success: false, error: r.error }, 400);
-      return c.json({ success: true, recipe: r.recipe });
-    });
-    recipesRouter.post("/recipes/submit", async (c) => {
-      let body;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ success: false, error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
-      }
-      const canonicalId = (body.canonical_id ?? "").trim().toLowerCase();
-      if (!canonicalId) return c.json({ success: false, error: "canonical_id \u5FC5\u586B" }, 400);
-      if (!body.endpoint) return c.json({ success: false, error: "endpoint \u5FC5\u586B" }, 400);
-      const hashId = await deriveRecipeHash(canonicalId);
-      const now2 = Date.now();
-      const recipe = {
-        uuid: crypto.randomUUID(),
-        author: body.author ?? body.submitter ?? "anonymous",
-        derived_from: body.derived_from,
-        canonical_id: canonicalId,
-        hash_id: hashId,
-        display_name: body.display_name,
-        description: body.description,
-        endpoint: body.endpoint,
-        method: (body.method ?? "POST").toUpperCase(),
-        headers: body.headers,
-        body: body.body,
-        auth_service: body.auth_service,
-        credentials_required: body.credentials_required,
-        created_at: now2,
-        updated_at: now2
-      };
-      await installRecipeRecord(c.env.RECIPES, recipe);
-      const kbdbBase3 = kbdbBaseUrl(c.env);
-      const evidence = {
-        content: canonicalId,
-        template: "recipe_submission",
-        metadata_json: JSON.stringify({
-          uuid: recipe.uuid,
-          canonical_id: canonicalId,
-          author: recipe.author,
-          submitter: body.submitter ?? "unknown",
-          claimed_stat: body.stat ?? null,
-          submitted_at: now2
-        })
-      };
-      const kbdbHeaders2 = { "Content-Type": "application/json" };
-      if (c.env.KBDB_INTERNAL_TOKEN) kbdbHeaders2["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
-      c.executionCtx.waitUntil(
-        fetch(`${kbdbBase3}/entries`, {
-          method: "POST",
-          headers: kbdbHeaders2,
-          body: JSON.stringify(evidence)
-        }).catch(() => void 0)
-      );
-      return c.json({ success: true, recipe, evidence_recorded: true });
-    });
-    recipesRouter.post("/recipes/migrate-uuid", async (c) => {
-      const list = await c.env.RECIPES.list({ prefix: "recipe:" });
-      let migrated = 0, skipped = 0;
-      const errors = [];
-      for (const k of list.keys) {
-        try {
-          const rec = await c.env.RECIPES.get(k.name, "json");
-          if (!rec || !rec.canonical_id) {
-            skipped++;
-            continue;
-          }
-          if (rec.uuid) {
-            skipped++;
-            continue;
-          }
-          const migrated_recipe = {
-            ...rec,
-            uuid: crypto.randomUUID(),
-            author: rec.author ?? "system"
-            // 舊種子歸 system
-          };
-          await installRecipeRecord(c.env.RECIPES, migrated_recipe);
-          migrated++;
-        } catch (e) {
-          errors.push(`${k.name}: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-      return c.json({ success: errors.length === 0, migrated, skipped, errors });
-    });
-    recipesRouter.get("/recipes/:id", async (c) => {
-      const id = c.req.param("id");
-      const recipe = await resolveRecipe(id, c.env.RECIPES);
-      if (!recipe) return c.json({ success: false, error: `\u627E\u4E0D\u5230 recipe: ${id}` }, 404);
-      return c.json({ success: true, recipe });
-    });
-    recipesRouter.get("/recipes", async (c) => {
-      const list = await c.env.RECIPES.list({ prefix: "recipe:" });
-      const all = (await Promise.all(
-        list.keys.map((k) => c.env.RECIPES.get(k.name, "json"))
-      )).filter(Boolean);
-      const hasUuidVersion = new Set(all.filter((r) => r.uuid).map((r) => r.canonical_id));
-      const recipes = all.filter((r) => r.uuid || !hasUuidVersion.has(r.canonical_id));
-      return c.json({ success: true, recipes, count: recipes.length });
-    });
-    recipesRouter.get("/public-recipes", async (c) => {
-      const q = (c.req.query("q") ?? "").trim().toLowerCase();
-      const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-      const offset = Number(c.req.query("offset") ?? 0);
-      const all = await listAllRecipes(c.env.RECIPES);
-      const matched = q ? all.filter((r) => r.canonical_id.toLowerCase().includes(q) || (r.display_name ?? "").toLowerCase().includes(q) || (r.description ?? "").toLowerCase().includes(q)) : all;
-      if (q && matched.length === 0) {
-        return c.json({
-          found: false,
-          query: q,
-          hint: `\u516C\u5EAB\u7121\u7B26\u5408\u300C${q}\u300D\u7684 recipe\u3002\u53EF\u81EA\u884C\u5EFA\u7ACB\u4E26 submit-p \u6295\u7A3F\u6210\u70BA\u4F5C\u8005\uFF08app-store \u6A21\u578B\uFF09\u3002`
-        });
-      }
-      const page = matched.slice(offset, offset + limit);
-      const withStats = await Promise.all(
-        page.map(async (r) => ({
-          uuid: r.uuid,
-          canonical_id: r.canonical_id,
-          author: r.author,
-          display_name: r.display_name,
-          description: r.description,
-          market_stat: await fetchMarketStat(c.env, r.uuid ?? r.canonical_id)
-          // §7.5.h per-uuid
-        }))
-      );
-      return c.json({ found: true, recipes: withStats, count: matched.length });
-    });
-    recipesRouter.get("/public-recipes/:canonical_id", async (c) => {
-      const canonicalId = c.req.param("canonical_id").trim().toLowerCase();
-      const author = c.req.query("author");
-      const all = await listAllRecipes(c.env.RECIPES);
-      let versions = all.filter((r) => r.canonical_id === canonicalId);
-      if (author) versions = versions.filter((r) => r.author === author);
-      if (versions.length === 0) {
-        return c.json({
-          found: false,
-          canonical_id: canonicalId,
-          hint: `\u516C\u5EAB\u7121 recipe\u300C${canonicalId}\u300D${author ? `\uFF08author=${author}\uFF09` : ""}\u3002\u53EF\u81EA\u884C\u5EFA\u7ACB\u4E26 submit-p \u6295\u7A3F\u6210\u70BA\u4F5C\u8005\uFF08app-store \u6A21\u578B\uFF09\u3002`
-        });
-      }
-      let best = versions[0];
-      let bestStat = null;
-      let bestScore = -1;
-      for (const v of versions) {
-        const stat = await fetchMarketStat(c.env, v.uuid ?? v.canonical_id);
-        const score = stat?.success_count ?? 0;
-        if (score > bestScore) {
-          bestScore = score;
-          best = v;
-          bestStat = stat;
-        }
-      }
-      return c.json({ found: true, recipe: best, market_stat: bestStat });
-    });
-    recipesRouter.delete("/recipes/:id", async (c) => {
-      const id = c.req.param("id");
-      const recipe = await resolveRecipe(id, c.env.RECIPES);
-      if (!recipe) return c.json({ success: false, error: `\u627E\u4E0D\u5230 recipe: ${id}` }, 404);
-      const canonicalId = recipe.canonical_id;
-      const ops = [
-        c.env.RECIPES.delete(`idx:${recipe.hash_id}`),
-        c.env.RECIPES.delete(`recipe:${canonicalId}`)
-        // 舊 key（若存在）
-      ];
-      if (recipe.uuid) {
-        ops.push(c.env.RECIPES.delete(`recipe:${recipe.uuid}`));
-        const listRaw = await c.env.RECIPES.get(kIdxCanonical(canonicalId));
-        const uuids = listRaw ? JSON.parse(listRaw) : [];
-        const left = uuids.filter((u) => u !== recipe.uuid);
-        if (left.length > 0) {
-          ops.push(c.env.RECIPES.put(kIdxCanonical(canonicalId), JSON.stringify(left)));
-          const installed = await c.env.RECIPES.get(kIdxInstalled(canonicalId));
-          if (installed === recipe.uuid) ops.push(c.env.RECIPES.put(kIdxInstalled(canonicalId), left[0]));
-        } else {
-          ops.push(c.env.RECIPES.delete(kIdxCanonical(canonicalId)));
-          ops.push(c.env.RECIPES.delete(kIdxInstalled(canonicalId)));
-        }
-      }
-      await Promise.all(ops);
-      return c.json({ success: true, deleted: recipe.uuid ?? canonicalId });
-    });
-    recipesRouter.post("/auth-recipes", async (c) => {
-      let body;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ success: false, error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
-      }
-      const service = (body.service ?? "").trim().toLowerCase();
-      if (!service) return c.json({ success: false, error: "service \u5FC5\u586B" }, 400);
-      if (!body.primitive) return c.json({ success: false, error: "primitive \u5FC5\u586B" }, 400);
-      if (!body.base_url) return c.json({ success: false, error: "base_url \u5FC5\u586B" }, 400);
-      if (!body.required_secrets?.length) return c.json({ success: false, error: "required_secrets \u5FC5\u586B" }, 400);
-      if (!body.inject) return c.json({ success: false, error: "inject \u5FC5\u586B" }, 400);
-      const missingHelp = body.required_secrets.filter((s) => !s.help_url || !/^https?:\/\//.test(s.help_url));
-      if (missingHelp.length > 0) {
-        return c.json({
-          success: false,
-          error: `\u6BCF\u500B required_secret \u5FC5\u9808\u6709 help_url\uFF08\u5B98\u65B9\u6587\u4EF6\u9023\u7D50\uFF0Chttp(s)://\uFF09\u3002\u7F3A\uFF1A${missingHelp.map((s) => s.key).join(", ")}`,
-          requires: "help_url"
-        }, 400);
-      }
-      const now2 = Date.now();
-      const existing = await c.env.RECIPES.get(`auth_recipe:${service}`, "json");
-      const recipe = {
-        kind: "auth_recipe",
-        service,
-        version: body.version ?? 1,
-        primitive: body.primitive,
-        base_url: body.base_url,
-        display_name: body.display_name,
-        description: body.description,
-        service_account_kind: body.service_account_kind,
-        token_exchange: body.token_exchange,
-        required_secrets: body.required_secrets,
-        inject: body.inject,
-        created_at: existing?.created_at ?? now2,
-        updated_at: now2
-      };
-      await c.env.RECIPES.put(`auth_recipe:${service}`, JSON.stringify(recipe));
-      return c.json({ success: true, recipe });
-    });
-    recipesRouter.get("/auth-recipes", async (c) => {
-      const list = await c.env.RECIPES.list({ prefix: "auth_recipe:" });
-      const recipes = await Promise.all(
-        list.keys.map((k) => c.env.RECIPES.get(k.name, "json"))
-      );
-      return c.json({ success: true, recipes: recipes.filter(Boolean), count: recipes.length });
-    });
-    recipesRouter.get("/auth-recipes/:service", async (c) => {
-      const service = c.req.param("service");
-      const recipe = await resolveAuthRecipe(service, c.env.RECIPES);
-      if (!recipe) return c.json({ success: false, error: `\u627E\u4E0D\u5230 auth recipe: ${service}` }, 404);
-      return c.json({ success: true, recipe });
-    });
-    recipesRouter.delete("/auth-recipes/:service", async (c) => {
-      const service = c.req.param("service");
-      const recipe = await resolveAuthRecipe(service, c.env.RECIPES);
-      if (!recipe) return c.json({ success: false, error: `\u627E\u4E0D\u5230 auth recipe: ${service}` }, 404);
-      await c.env.RECIPES.delete(`auth_recipe:${service}`);
-      return c.json({ success: true, deleted: service });
-    });
+    BUILTIN_APP_IDS = ["notes"];
   }
 });
 
-// cypher-executor/src/lib/recipe-payload.ts
-function getPath2(obj, path) {
-  let cur = obj;
-  for (const part of path.split(".")) {
-    if (cur === null || cur === void 0) return void 0;
-    if (typeof cur !== "object") return void 0;
-    cur = cur[part];
-  }
-  return cur;
+// cypher-executor/src/lib/app-glyphs.ts
+function appGlyph(icon, name) {
+  if (icon && EMOJI_GLYPH[icon]) return EMOJI_GLYPH[icon];
+  const seed = String(icon || name || "");
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h, 31) + seed.charCodeAt(i) >>> 0;
+  return APP_GLYPH_IDS[h % APP_GLYPH_IDS.length];
 }
-function renderBodyTemplate(template, ctx) {
-  if (template === void 0 || template === null) return void 0;
-  return renderValue(template, ctx);
-}
-function renderValue(v, ctx) {
-  if (typeof v === "string") return renderString(v, ctx);
-  if (Array.isArray(v)) return v.map((item) => renderValue(item, ctx));
-  if (v !== null && typeof v === "object") {
-    const out = {};
-    for (const [k, val] of Object.entries(v)) {
-      out[k] = renderValue(val, ctx);
-    }
-    return out;
+var APP_GLYPH_IDS, APP_GLYPH_BODIES, EMOJI_GLYPH;
+var init_app_glyphs = __esm({
+  "cypher-executor/src/lib/app-glyphs.ts"() {
+    "use strict";
+    APP_GLYPH_IDS = ["doc", "note", "layers", "pin", "wrench", "box", "folder", "check", "bulb", "bell", "chart", "compass"];
+    APP_GLYPH_BODIES = {
+      doc: '<path d="M6 3h7l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M13 3v5h5"/>',
+      note: '<path d="M17 3a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M14.5 5.5 18.5 9.5"/>',
+      layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>',
+      pin: '<path d="M8.5 3h7l-1 6 3.5 3v2H6v-2l3.5-3-1-6Z"/><path d="M12 14v7"/>',
+      wrench: '<path d="M15.5 3.4a5.2 5.2 0 0 0-6.4 6.4l-5.4 5.4a2 2 0 0 0 2.8 2.8l5.4-5.4a5.2 5.2 0 0 0 6.4-6.4l-3 3-2.8-.4-.4-2.8 3-3Z"/>',
+      box: '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/>',
+      folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h7A1.5 1.5 0 0 1 19 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
+      check: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.2 2.8 2.8L16 9.8"/>',
+      bulb: '<path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3Z"/><path d="M9.8 19h4.4M10.5 21.5h3"/>',
+      bell: '<path d="M18 8.5a6 6 0 1 0-12 0c0 5.5-2 7-2 7h16s-2-1.5-2-7Z"/><path d="M10.2 19a2.2 2.2 0 0 0 3.6 0"/>',
+      chart: '<path d="M4 4v16h16"/><path d="M8 20v-6.5M12.5 20V8.5M17 20v-4"/>',
+      compass: '<circle cx="12" cy="12" r="8.5"/><path d="m15.6 8.4-2.1 5.1-5.1 2.1 2.1-5.1 5.1-2.1Z"/>'
+    };
+    EMOJI_GLYPH = {
+      "\u{1F4C4}": "doc",
+      "\u{1F5D2}\uFE0F": "note",
+      "\u{1F5D2}": "note",
+      "\u{1F4DD}": "note",
+      "\u{1F9E9}": "layers",
+      "\u{1F4CC}": "pin",
+      "\u{1F527}": "wrench",
+      "\u{1F6E0}\uFE0F": "wrench",
+      "\u{1F4E6}": "box",
+      "\u{1F5C2}\uFE0F": "folder",
+      "\u{1F5C2}": "folder",
+      "\u{1F4C1}": "folder",
+      "\u2705": "check",
+      "\u{1F4A1}": "bulb",
+      "\u{1F514}": "bell",
+      "\u{1F4CA}": "chart",
+      "\u{1F4C8}": "chart",
+      "\u{1F9ED}": "compass"
+    };
   }
-  return v;
+});
+
+// cypher-executor/src/lib/version.ts
+function parseVersion(v) {
+  if (typeof v !== "string") return null;
+  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(v.trim());
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
-function renderString(s, ctx) {
-  const single = s.match(/^\s*\{\{([\w.]+)\}\}\s*$/);
-  if (single) {
-    const val = getPath2(ctx, single[1]);
-    return val === void 0 ? s : val;
+function compareVersions(a, b) {
+  const pa = parseVersion(a);
+  const pb = parseVersion(b);
+  if (!pa || !pb) return null;
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] > pb[i]) return 1;
+    if (pa[i] < pb[i]) return -1;
   }
-  return s.replace(/\{\{([\w.]+)\}\}/g, (_, key) => {
-    const val = getPath2(ctx, key);
-    if (val === void 0) return `{{${key}}}`;
-    return typeof val === "string" ? val : JSON.stringify(val);
-  });
+  return 0;
 }
-function applyResponseMap(body, map) {
-  if (!map) return { raw: body };
-  let picked = map.text_path ? getPath2(body, map.text_path) : body;
-  if (map.thinking_model && Array.isArray(picked)) {
-    const real = picked.filter(
-      (p) => !(p && typeof p === "object" && p.thought === true)
-    );
-    const last = real[real.length - 1];
-    picked = last && typeof last === "object" ? last.text : last;
-  }
-  if (typeof picked !== "string") return { text: void 0, raw: body };
-  return { text: sanitize(picked, map), raw: body };
+function checkEngineMin(needs, have) {
+  if (!needs || !have) return null;
+  if (compareVersions(have, needs) !== -1) return null;
+  return {
+    needs,
+    have,
+    error: `\u9019\u500B App \u9700\u8981\u5E73\u53F0 ${needs} \u4EE5\u4E0A\uFF0C\u9019\u53F0\u662F ${have}`,
+    hint: `\u8ACB\u5148\u628A\u9019\u53F0\u7684 Arcrun \u66F4\u65B0\u5230 ${needs} \u4EE5\u4E0A\uFF08\u66F4\u65B0\u4E2D\u5FC3\u7684 Portal \u90A3\u4E00\u5217\uFF09\uFF0C\u518D\u56DE\u4F86\u88DD\uFF1B\u4F60\u5DF2\u88DD\u7684 App \u8207\u8CC7\u6599\u4E0D\u6703\u52D5\u3002\u9700\u6C42\u7248\u672C\u662F App \u4F5C\u8005\u81EA\u5DF1\u5BEB\u7684\uFF0C\u4E0D\u662F\u7CFB\u7D71\u9A57\u904E\u7684\u76F8\u5BB9\u6027\u4FDD\u8B49\u3002`
+  };
 }
-function sanitize(input, map) {
-  let s = input.trim();
-  if (map.answer_marker) {
-    const idx = s.lastIndexOf(map.answer_marker);
-    if (idx >= 0) s = s.slice(idx + map.answer_marker.length);
-  }
-  const prefixes = map.strip_prefixes ?? [];
-  if (prefixes.length > 0) {
-    let changed = true;
-    while (changed) {
-      changed = false;
-      s = s.trimStart();
-      for (const p of prefixes) {
-        if (p && s.startsWith(p)) {
-          s = s.slice(p.length);
-          changed = true;
-        }
-      }
-    }
-  }
-  return s.trim();
+function engineGateNote(g) {
+  return `\u8981\u5148\u66F4\u65B0\u5E73\u53F0\u5230 ${g.needs}\uFF08\u9019\u53F0\u662F ${g.have}\uFF09`;
 }
-var init_recipe_payload = __esm({
-  "cypher-executor/src/lib/recipe-payload.ts"() {
+var init_version = __esm({
+  "cypher-executor/src/lib/version.ts"() {
     "use strict";
   }
 });
@@ -8775,7 +8406,7 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
   if (!parsed.success) {
     return { success: false, error: "\u5716\u5B9A\u7FA9\u5DF2\u5931\u6548", duration_ms: 0 };
   }
-  const loader = createComponentLoader(env);
+  const loader = createComponentLoader(env, ctx);
   const executor = new GraphExecutor(loader, void 0, env, apiKey).enableOwnKbdbAuth();
   const start = Date.now();
   try {
@@ -8855,15 +8486,7466 @@ var init_webhook_handlers = __esm({
   }
 });
 
+// cypher-executor/src/lib/release-body.ts
+function releaseBody(res) {
+  try {
+    if (res && res.body && !res.bodyUsed) void res.body.cancel().catch(() => void 0);
+  } catch {
+  }
+}
+var init_release_body = __esm({
+  "cypher-executor/src/lib/release-body.ts"() {
+    "use strict";
+  }
+});
+
+// cypher-executor/src/lib/run-explain.ts
+function messageWithFailedStep(message2, failedStep) {
+  const msg = message2 ?? "";
+  if (!failedStep) return msg;
+  if (STEP_PREFIX_RE.test(msg)) return msg;
+  return `\u6B65\u9A5F\u300C${failedStep}\u300D\u5931\u6557\uFF1A${msg}`;
+}
+function parseFailedStep(message2) {
+  const msg = String(message2 ?? "");
+  const m = STEP_PREFIX_RE.exec(msg);
+  if (m) return { step: m[1], error: msg.slice(m[0].length) };
+  for (const re of LEGACY_NODE_RES) {
+    const lm = re.exec(msg);
+    if (lm) return { step: lm[1], error: msg };
+  }
+  return { step: null, error: msg };
+}
+function humanReason(error) {
+  const e = String(error ?? "").trim();
+  if (!e) return "\u6C92\u6709\u7559\u4E0B\u932F\u8AA4\u8A0A\u606F";
+  for (const r of RULES) if (r.re.test(e)) return r.say;
+  const first = e.split(/[\n。]/)[0].trim();
+  return first.length > 60 ? first.slice(0, 60) + "\u2026" : first;
+}
+function isRecipeId(component) {
+  return !!component && /^[a-z][a-z0-9_]*$/.test(component) && !BUILTIN_COMPONENTS2.has(component);
+}
+function literalHost(data) {
+  const raw2 = data && (data.url ?? data.endpoint);
+  if (typeof raw2 !== "string" || raw2.includes("{{")) return void 0;
+  try {
+    const u = new URL(raw2);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.hostname : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function shownName(n) {
+  for (const v of [n.display_name, n.data?.display_name, n.label]) {
+    if (typeof v === "string" && v.trim()) return v.trim().slice(0, 60);
+  }
+  return void 0;
+}
+function componentLabel(componentId) {
+  if (!componentId) return "\uFF08\u6C92\u6709\u6307\u5B9A\u96F6\u4EF6\uFF09";
+  const w = /^https?:\/\/arcrun-([a-z0-9-]+)\./i.exec(componentId);
+  const ph = /^__([A-Z0-9_]+?)(?:_URL)?__$/.exec(componentId);
+  const id = w ? w[1].replace(/-/g, "_") : ph ? ph[1] === "HTTP_REQ" ? "http_request" : ph[1].toLowerCase() : componentId;
+  if (COMPONENT_LABELS[id]) return COMPONENT_LABELS[id];
+  return /^https?:\/\//i.test(componentId) ? "\u5916\u90E8\u670D\u52D9" : id;
+}
+function edgeLabel(type, edge) {
+  switch (type) {
+    case "ON_SUCCESS":
+    case "PIPE":
+      return "\u6210\u529F\u5F8C";
+    case "ON_FAIL":
+      return "\u5931\u6557\u6642";
+    case "FOREACH":
+      return edge.iterator ? `\u5C0D\u6BCF\u500B ${edge.iterator}` : "\u5C0D\u6BCF\u4E00\u7B46";
+    case "ON_TRUE":
+      return "\u689D\u4EF6\u6210\u7ACB\u6642";
+    case "ON_FALSE":
+      return "\u689D\u4EF6\u4E0D\u6210\u7ACB\u6642";
+    case "ON_BRANCH":
+      return edge.branch ? `\u5206\u652F\u300C${edge.branch}\u300D` : "\u5206\u652F";
+    case "IF":
+      return edge.condition ? `\u5982\u679C ${edge.condition}` : "\u5982\u679C";
+    case "CONTINUE":
+      return "\u7E7C\u7E8C";
+    case "CALLS_SUBFLOW":
+      return "\u547C\u53EB\u5B50\u6D41\u7A0B";
+    default:
+      return type;
+  }
+}
+function buildFlowSteps(nodes, edges, lastRun) {
+  const order = topoOrder(nodes, edges);
+  const failed = lastRun?.verdict === "failed" ? lastRun.failed_step ?? null : null;
+  const downstream = failed ? reachableFrom(failed, edges) : /* @__PURE__ */ new Set();
+  const onFailTargets = new Set(edges.filter((e) => e.type === "ON_FAIL" && e.from === failed).map((e) => e.to));
+  return order.map((n) => {
+    let last = "unknown";
+    if (failed) {
+      if (n.id === failed) last = "failed";
+      else if (downstream.has(n.id) && !onFailTargets.has(n.id)) last = "not_reached";
+    }
+    return {
+      id: n.id,
+      component: n.componentId ?? (n.type === "Input" ? "input" : ""),
+      component_label: componentLabel(n.componentId ?? (n.type === "Input" ? "input" : void 0)),
+      params: Object.keys(n.data ?? {}).slice(0, 20),
+      ...shownName(n) ? { display_name: shownName(n) } : {},
+      ...literalHost(n.data) ? { host: literalHost(n.data) } : {},
+      next: edges.filter((e) => e.from === n.id).map((e) => ({ to: e.to, how: edgeLabel(e.type, e) })),
+      prev: edges.filter((e) => e.to === n.id).map((e) => ({ from: e.from, how: edgeLabel(e.type, e) })),
+      last
+    };
+  });
+}
+function topoOrder(nodes, edges) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const indeg = new Map(nodes.map((n) => [n.id, 0]));
+  for (const e of edges) if (indeg.has(e.to) && byId.has(e.from)) indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
+  const queue = nodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).sort((a, b) => Number(b.type === "Input") - Number(a.type === "Input"));
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  while (queue.length) {
+    const n = queue.shift();
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
+    for (const e of edges) {
+      if (e.from !== n.id || !byId.has(e.to)) continue;
+      const d = (indeg.get(e.to) ?? 0) - 1;
+      indeg.set(e.to, d);
+      if (d <= 0 && !seen.has(e.to)) queue.push(byId.get(e.to));
+    }
+  }
+  for (const n of nodes) if (!seen.has(n.id)) out.push(n);
+  return out;
+}
+function reachableFrom(start, edges) {
+  const seen = /* @__PURE__ */ new Set();
+  const stack = edges.filter((e) => e.from === start && e.type !== "ON_FAIL").map((e) => e.to);
+  while (stack.length) {
+    const id = stack.pop();
+    if (seen.has(id) || id === start) continue;
+    seen.add(id);
+    for (const e of edges) if (e.from === id) stack.push(e.to);
+  }
+  return seen;
+}
+var STEP_PREFIX_RE, LEGACY_NODE_RES, RULES, BUILTIN_COMPONENTS2, COMPONENT_LABELS;
+var init_run_explain = __esm({
+  "cypher-executor/src/lib/run-explain.ts"() {
+    "use strict";
+    STEP_PREFIX_RE = /^步驟「([^」]{1,200})」失敗：/;
+    LEGACY_NODE_RES = [/^節點 ([\w.\-:]+) 回傳 success:false/, /^節點 ([\w.\-:]+) 缺少 componentId/];
+    RULES = [
+      { re: /workflow paused/i, say: "\u9084\u5728\u7B49\u5916\u90E8\u56DE\u8986\uFF0C\u66AB\u505C\u4E2D\uFF08\u4E0D\u662F\u58DE\u6389\uFF09" },
+      { re: /\b401\b|unauthori[sz]ed|invalid api key|invalid token|token (?:expired|invalid)/i, say: "\u5C0D\u65B9\u670D\u52D9\u4E0D\u8A8D\u9019\u628A\u91D1\u9470\uFF08\u53EF\u80FD\u904E\u671F\u6216\u586B\u932F\uFF09" },
+      { re: /\b403\b|forbidden|permission denied|沒有權限/i, say: "\u5C0D\u65B9\u670D\u52D9\u62D2\u7D55\uFF1A\u9019\u628A\u91D1\u9470\u6C92\u6709\u9019\u500B\u6B0A\u9650" },
+      { re: /\b404\b|not found|找不到/i, say: "\u5C0D\u65B9\u627E\u4E0D\u5230\u8981\u7684\u6771\u897F\uFF08\u7DB2\u5740\u6216\u8CC7\u6599\u4E0D\u5B58\u5728\uFF09" },
+      { re: /\b429\b|rate.?limit|too many requests|額度/i, say: "\u547C\u53EB\u592A\u983B\u7E41\u6216\u984D\u5EA6\u7528\u5B8C\uFF0C\u5C0D\u65B9\u66AB\u6642\u4E0D\u6536" },
+      { re: /\b5\d\d\b|bad gateway|service unavailable|internal server error/i, say: "\u5C0D\u65B9\u670D\u52D9\u81EA\u5DF1\u51FA\u932F\u4E86\uFF0C\u7A0D\u5F8C\u518D\u8DD1\u901A\u5E38\u6703\u597D" },
+      { re: /timeout|timed out|逾時|deadline/i, say: "\u5C0D\u65B9\u592A\u4E45\u6C92\u56DE\u61C9\uFF0C\u7B49\u4E0D\u5230\u5C31\u505C\u4E86" },
+      { re: /credential|缺少金鑰|missing key|secret.*(?:not|missing)|金鑰/i, say: "\u5C11\u4E86\u9700\u8981\u7684\u91D1\u9470\uFF0C\u8ACB\u5230\u91D1\u9470\u4E2D\u5FC3\u88DC\u4E0A" },
+      { re: /fetch failed|network|ECONN|ENOTFOUND|connection/i, say: "\u9023\u4E0D\u4E0A\u5C0D\u65B9\u670D\u52D9\uFF08\u7DB2\u8DEF\u6216\u7DB2\u5740\u6709\u554F\u984C\uFF09" },
+      { re: /JSON|parse|Unexpected token/i, say: "\u5C0D\u65B9\u56DE\u4F86\u7684\u8CC7\u6599\u683C\u5F0F\u770B\u4E0D\u61C2" },
+      { re: /圖定義已失效|工作流定義損毀|schema|invalid graph/i, say: "\u5DE5\u4F5C\u6D41\u672C\u8EAB\u7684\u5B9A\u7FA9\u6709\u554F\u984C\uFF0C\u9700\u8981\u91CD\u65B0\u5B89\u88DD\u6216\u4FEE\u6B63" }
+    ];
+    BUILTIN_COMPONENTS2 = /* @__PURE__ */ new Set([
+      "input",
+      "code",
+      "http_request",
+      "if_control",
+      "switch",
+      "try_catch",
+      "trigger_workflow",
+      "kbdb_get",
+      "kbdb_query",
+      "kbdb_create_record",
+      "claude_api",
+      "workers_ai_chat"
+    ]);
+    COMPONENT_LABELS = {
+      input: "\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09",
+      code: "\u6574\u7406\u8CC7\u6599",
+      http_request: "\u6253\u4E00\u500B\u7DB2\u5740",
+      if_control: "\u5224\u65B7\u689D\u4EF6",
+      switch: "\u5206\u6D41",
+      try_catch: "\u51FA\u932F\u6642\u6539\u8D70\u53E6\u4E00\u689D",
+      ahub_call: "\u8B80\u5BEB AHub",
+      kbdb_get: "\u8B80\u77E5\u8B58\u5EAB",
+      kbdb_query: "\u67E5\u77E5\u8B58\u5EAB",
+      kbdb_create_record: "\u5BEB\u9032\u77E5\u8B58\u5EAB",
+      claude_api: "\u8ACB AI \u8655\u7406",
+      workers_ai_chat: "\u8ACB AI \u56DE\u7B54",
+      trigger_workflow: "\u547C\u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41"
+    };
+  }
+});
+
+// cypher-executor/src/actions/execution-logger.ts
+function runMessage(result) {
+  if (!result.success) return result.error ?? "";
+  if (result.duration_ms < SLOW_RUN_MS) return "";
+  const steps = (Array.isArray(result.trace) ? result.trace : []).filter((x) => typeof x?.nodeId === "string" && typeof x?.duration_ms === "number");
+  const by = /* @__PURE__ */ new Map();
+  for (const x of steps) {
+    const id = x.nodeId, ms = x.duration_ms;
+    const g = by.get(id) ?? { n: 0, max: -1, path: "" };
+    g.n++;
+    if (ms > g.max) {
+      g.max = ms;
+      g.path = readPathOf(x.input);
+    }
+    by.set(id, g);
+  }
+  const top = [...by.entries()].sort((a, b) => b[1].max - a[1].max).slice(0, 3).map(([id, g]) => `${id}${g.n > 1 ? `\xD7${g.n}` : ""} \u6700\u9577${g.max}ms${g.path ? `\uFF08${g.path}\uFF09` : ""}`);
+  const head = `\u6162\uFF1A\u6574\u9AD4 ${result.duration_ms}ms`;
+  return (top.length ? `${head}\uFF1B${top.join("\u3001")}` : head).slice(0, 190);
+}
+function readPathOf(input) {
+  if (!input || typeof input !== "object") return "";
+  const o = input;
+  const pick = (v) => v && typeof v === "object" && typeof v.path === "string" ? v.path : "";
+  const p = pick(o.ahread) || pick(o.ahsread) || (typeof o._path === "string" ? o._path : "");
+  return p.slice(0, 50);
+}
+function extractTarget(input) {
+  if (!input) return void 0;
+  const raw2 = input.page_name ?? input.path;
+  if (raw2 === void 0 || raw2 === null) return void 0;
+  return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
+}
+async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message2, input, apiKey, kbdbUsage, failedStep) {
+  void nodes;
+  try {
+    const { base, headers } = kbdbBase(env);
+    const res = await fetch(`${base}/execution-log/record`, {
+      method: "POST",
+      // 這支自己也是一次 KBDB 呼叫——蓋掉 kbdbBase() 預設的 'cypher-kbdb-proxy'，
+      // 剎車紀錄點名時才不會誤指成 CLI 那條 proxy。
+      headers: withCaller(headers, KBDB_CALLERS.executionLog),
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        owner_id: apiKey ?? null,
+        verdict,
+        duration_ms: Math.max(0, Math.round(durationMs)),
+        // inkstone/Arcrun#219：失敗那一步記在 message 開頭（不加欄位、不動資料層，見 lib/run-explain.ts）
+        message: verdict === "failed" ? messageWithFailedStep(message2 ?? "", failedStep) : message2 ?? "",
+        target: extractTarget(input) ?? null,
+        ...kbdbUsage ? { kbdb_rows_written: kbdbUsage.rowsWritten, kbdb_rows_read: kbdbUsage.rowsRead } : {}
+      })
+    });
+    releaseBody(res);
+  } catch {
+  }
+}
+var SLOW_RUN_MS;
+var init_execution_logger = __esm({
+  "cypher-executor/src/actions/execution-logger.ts"() {
+    "use strict";
+    init_kbdb_proxy();
+    init_kbdb_caller();
+    init_release_body();
+    init_run_explain();
+    SLOW_RUN_MS = 8e3;
+  }
+});
+
+// cypher-executor/src/lib/cron-match.ts
+function matchField(expr, value, min, max) {
+  if (expr === "*") return true;
+  for (const part of expr.split(",")) {
+    if (matchPart(part.trim(), value, min, max)) return true;
+  }
+  return false;
+}
+function matchPart(part, value, min, max) {
+  if (part.startsWith("*/")) {
+    const step = parseInt(part.slice(2), 10);
+    if (!Number.isFinite(step) || step <= 0) return false;
+    return (value - min) % step === 0;
+  }
+  if (part.includes("-")) {
+    const [rangePart, stepStr] = part.split("/");
+    const [aStr, bStr] = rangePart.split("-");
+    const a = parseInt(aStr, 10);
+    const b = parseInt(bStr, 10);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+    if (value < a || value > b) return false;
+    if (stepStr === void 0) return true;
+    const step = parseInt(stepStr, 10);
+    if (!Number.isFinite(step) || step <= 0) return false;
+    return (value - a) % step === 0;
+  }
+  const n = parseInt(part, 10);
+  if (!Number.isFinite(n)) return false;
+  if (n < min || n > max) return false;
+  return value === n;
+}
+function cronMatch(expr, date) {
+  const fields = expr.trim().split(/\s+/);
+  if (fields.length !== 5) return false;
+  const [m, h, dom, mon, dow] = fields;
+  return matchField(m, date.getUTCMinutes(), 0, 59) && matchField(h, date.getUTCHours(), 0, 23) && matchField(dom, date.getUTCDate(), 1, 31) && matchField(mon, date.getUTCMonth() + 1, 1, 12) && matchField(dow, date.getUTCDay(), 0, 6);
+}
+function extractCronExpr(graph) {
+  if (!graph || typeof graph !== "object") return null;
+  const nodes = graph.nodes;
+  if (!Array.isArray(nodes)) return null;
+  for (const node of nodes) {
+    if (node.componentId !== "cron") continue;
+    const expr = node.data?.cron_expr;
+    if (typeof expr === "string" && expr.trim()) return expr.trim();
+  }
+  return null;
+}
+var init_cron_match = __esm({
+  "cypher-executor/src/lib/cron-match.ts"() {
+    "use strict";
+  }
+});
+
+// cypher-executor/src/lib/cron-index.ts
+function cronEntryKey(apiKey, name) {
+  return `${apiKey}:${name}`;
+}
+function parseCronEntryKey(entryKey) {
+  const idx = entryKey.indexOf(":");
+  if (idx <= 0) return null;
+  return { apiKey: entryKey.slice(0, idx), name: entryKey.slice(idx + 1) };
+}
+async function readCronIndex(kv) {
+  const raw2 = await kv.get(CRON_INDEX_KEY, "text");
+  if (!raw2) return {};
+  try {
+    const parsed = JSON.parse(raw2);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
+  const index = await readCronIndex(kv);
+  const entryKey = cronEntryKey(apiKey, name);
+  if (cronExpr) {
+    if (index[entryKey] === cronExpr) return;
+    index[entryKey] = cronExpr;
+  } else {
+    if (!(entryKey in index)) return;
+    delete index[entryKey];
+  }
+  await kv.put(CRON_INDEX_KEY, JSON.stringify(index));
+}
+var CRON_INDEX_KEY;
+var init_cron_index = __esm({
+  "cypher-executor/src/lib/cron-index.ts"() {
+    "use strict";
+    CRON_INDEX_KEY = "cron-idx:_all";
+  }
+});
+
+// cypher-executor/src/lib/app-ui-assets.ts
+function extOf(path) {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  const i = base.lastIndexOf(".");
+  return i < 0 ? "" : base.slice(i + 1).toLowerCase();
+}
+function localRefOf(ref, fromDir = "") {
+  let v = ref.trim();
+  if (!v) return null;
+  if (v.startsWith("#") || v.startsWith("/") || v.startsWith("\\")) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return null;
+  v = v.replace(/[?#].*$/, "");
+  const parts = (fromDir ? `${fromDir}/${v}` : v).split("/");
+  const out = [];
+  for (const seg of parts) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (out.length === 0) return null;
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return out.length ? out.join("/") : null;
+}
+function isAssetValue(v) {
+  if (typeof v === "string") return true;
+  return !!v && typeof v === "object" && typeof v.base64 === "string";
+}
+function validateUiAssets(assets) {
+  if (assets === void 0) return [];
+  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
+    return ["ui.assets \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u8DEF\u5F91 \u2192 \u5167\u5BB9\uFF09"];
+  }
+  const errors = [];
+  const entries = Object.entries(assets);
+  if (entries.length > MAX_UI_ASSET_COUNT) errors.push(`ui.assets \u6700\u591A ${MAX_UI_ASSET_COUNT} \u500B\u6A94\uFF08\u73FE\u5728 ${entries.length}\uFF09`);
+  let total = 0;
+  for (const [path, val] of entries) {
+    if (!PATH_RE.test(path) || path.split("/").includes("..")) {
+      errors.push(`ui.assets \u7684\u8DEF\u5F91\u300C${path}\u300D\u4E0D\u5408\u6CD5\uFF1A\u53EA\u80FD\u662F\u76F8\u5C0D\u8DEF\u5F91\uFF08\u82F1\u6578\u3001\u9EDE\u3001\u5E95\u7DDA\u3001\u9023\u5B57\u865F\uFF0C\u7528 / \u5206\u8CC7\u6599\u593E\uFF09\uFF0C\u4E0D\u53EF\u542B ..`);
+      continue;
+    }
+    if (!isAssetValue(val)) {
+      errors.push(`ui.assets["${path}"] \u5FC5\u9808\u662F\u5B57\u4E32\uFF08\u6587\u5B57\u6A94\uFF09\uFF0C\u6216 { "base64": "\u2026", "type": "image/png" }\uFF08\u4E8C\u9032\u4F4D\u6A94\uFF09`);
+      continue;
+    }
+    if (typeof val === "object" && val.type !== void 0 && (typeof val.type !== "string" || !/^[a-z]+\/[A-Za-z0-9.+-]+$/.test(val.type))) {
+      errors.push(`ui.assets["${path}"].type \u5FC5\u9808\u662F MIME \u683C\u5F0F\uFF08\u4F8B\uFF1Aimage/png\uFF09`);
+    }
+    total += typeof val === "string" ? val.length : val.base64.length;
+  }
+  if (total > MAX_UI_ASSET_BYTES) {
+    errors.push(`ui.assets \u5408\u8A08 ${total} \u5B57\u5143\uFF0C\u8D85\u904E\u4E0A\u9650 ${MAX_UI_ASSET_BYTES}\u3002\u756B\u9762\u5B58\u5728\u77E5\u8B58\u5EAB\u7684\u4E00\u7B46\u7D00\u9304\u88E1\uFF0C\u4E0D\u662F\u6A94\u6848\u4F3A\u670D\u5668\u2014\u2014\u5927\u5716\u8ACB\u7E2E\u5C0F\u6216\u63DB\u6210\u5916\u90E8\u4E0D\u4F9D\u8CF4\u7684\u683C\u5F0F`);
+  }
+  return errors;
+}
+function mimeOf(path, val) {
+  if (typeof val === "object" && val.type) return val.type;
+  return MIME_BY_EXT[extOf(path)] ?? "application/octet-stream";
+}
+function toDataUri(path, val) {
+  const mime = mimeOf(path, val);
+  if (typeof val === "string") return `data:${mime};charset=utf-8,${encodeURIComponent(val)}`;
+  return `data:${mime};base64,${val.base64.replace(/\s+/g, "")}`;
+}
+function textOf(path, val) {
+  if (typeof val === "string") return val;
+  void path;
+  return null;
+}
+function inlineCssUrls(css, cssPath, assets, used, errors) {
+  const dir = cssPath.includes("/") ? cssPath.slice(0, cssPath.lastIndexOf("/")) : "";
+  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (whole, _q, ref) => {
+    const key = localRefOf(ref, dir);
+    if (key === null) return whole;
+    if (!(key in assets)) {
+      errors.push(`\u6A23\u5F0F\u8868\u300C${cssPath}\u300D\u5F15\u7528\u4E86 url(${ref.trim()})\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
+      return whole;
+    }
+    used.add(key);
+    return `url("${toDataUri(key, assets[key])}")`;
+  });
+}
+function bundleUiAssets(html, assets) {
+  if (!assets || Object.keys(assets).length === 0) return { ok: true, html, errors: [], used: [] };
+  const errors = [];
+  const used = /* @__PURE__ */ new Set();
+  const lookup = (ref, what) => {
+    const key = localRefOf(ref);
+    if (key === null) return null;
+    if (!(key in assets)) {
+      errors.push(`${what} \u5F15\u7528\u4E86\u300C${ref.trim()}\u300D\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
+      return null;
+    }
+    used.add(key);
+    return key;
+  };
+  const out = html.replace(/<(script|link|img|source|video|audio|track|input)\b([^>]*?)(\/?)>(?:\s*<\/script\s*>)?/gi, (whole, tagRaw, attrs, selfClose) => {
+    const tag = tagRaw.toLowerCase();
+    if (tag === "script") {
+      const m = ATTR_RE("src").exec(attrs);
+      if (!m) return whole;
+      const ref = m[2] ?? m[3] ?? "";
+      const key = lookup(ref, "<script src>");
+      if (key === null) return whole;
+      const body = textOf(key, assets[key]);
+      if (body === null) {
+        errors.push(`<script src="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u8173\u672C\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
+        return whole;
+      }
+      const rest = attrs.replace(ATTR_RE("src"), "").replace(/\s+$/, "");
+      return `<script${rest}>${body.replace(/<\/script/gi, "<\\/script")}<\/script>`;
+    }
+    if (tag === "link") {
+      const relM = ATTR_RE("rel").exec(attrs);
+      const hrefM = ATTR_RE("href").exec(attrs);
+      if (!hrefM) return whole;
+      const ref = hrefM[2] ?? hrefM[3] ?? "";
+      const isSheet = /(^|\s)stylesheet(\s|$)/i.test(relM ? relM[2] ?? relM[3] ?? "" : "");
+      const key = lookup(ref, isSheet ? '<link rel="stylesheet">' : "<link href>");
+      if (key === null) return whole;
+      if (isSheet) {
+        const css = textOf(key, assets[key]);
+        if (css === null) {
+          errors.push(`<link rel="stylesheet" href="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u6A23\u5F0F\u8868\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
+          return whole;
+        }
+        return `<style>${inlineCssUrls(css, key, assets, used, errors).replace(/<\/style/gi, "<\\/style")}</style>`;
+      }
+      return whole.replace(ATTR_RE("href"), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
+    }
+    let replaced = whole;
+    for (const name of tag === "video" ? ["src", "poster"] : ["src"]) {
+      const m = ATTR_RE(name).exec(replaced);
+      if (!m) continue;
+      const ref = m[2] ?? m[3] ?? "";
+      const key = lookup(ref, `<${tag} ${name}>`);
+      if (key === null) continue;
+      replaced = replaced.replace(ATTR_RE(name), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
+    }
+    void selfClose;
+    return replaced;
+  });
+  return { ok: errors.length === 0, html: out, errors, used: [...used] };
+}
+var MAX_UI_ASSET_BYTES, MAX_UI_ASSET_COUNT, PATH_RE, MIME_BY_EXT, ATTR_RE;
+var init_app_ui_assets = __esm({
+  "cypher-executor/src/lib/app-ui-assets.ts"() {
+    "use strict";
+    MAX_UI_ASSET_BYTES = 15e5;
+    MAX_UI_ASSET_COUNT = 64;
+    PATH_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+    MIME_BY_EXT = {
+      css: "text/css",
+      js: "text/javascript",
+      mjs: "text/javascript",
+      json: "application/json",
+      txt: "text/plain",
+      svg: "image/svg+xml",
+      html: "text/html",
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      ico: "image/x-icon",
+      avif: "image/avif",
+      woff: "font/woff",
+      woff2: "font/woff2",
+      ttf: "font/ttf",
+      otf: "font/otf"
+    };
+    ATTR_RE = (name) => new RegExp(`(\\s${name}\\s*=\\s*)(?:"([^"]*)"|'([^']*)')`, "i");
+  }
+});
+
+// cypher-executor/src/lib/ui-catalog.generated.json
+var ui_catalog_generated_default;
+var init_ui_catalog_generated = __esm({
+  "cypher-executor/src/lib/ui-catalog.generated.json"() {
+    ui_catalog_generated_default = {
+      _generated: "\u7531 console-ui/a2ui/build.mjs \u5F9E registry/ui-components/*/component.contract.yaml \u7522\u751F\u2014\u2014\u52FF\u624B\u6539\uFF0C\u6539\u539F\u7A3F\u5F8C\u91CD\u8DD1",
+      catalog_id: "arcrun:catalog/v0",
+      protocol_version: "v0.9",
+      components: [
+        {
+          canonical_id: "ui_button",
+          display_name: "\u6309\u9215",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "Button",
+            implementation: "a2ui-basic"
+          },
+          description: "\u6309\u4E0B\u53BB\u9001\u51FA\u4E00\u500B\u4E8B\u4EF6\u540D\u7A31\uFF08\u53EF\u5E36\u53C3\u6578\uFF09\u3002\u6309\u9215\u672C\u8EAB\u4E0D\u542B\u908F\u8F2F\uFF1A\u8981\u89F8\u767C\u54EA\u500B\u5DE5\u4F5C\u6D41\uFF0C\u7531\u4F3A\u670D\u5668\u7AEF\u7684\u52D5\u4F5C\u767D\u540D\u55AE\u6C7A\u5B9A\u3002",
+          renders: "\u4E00\u9846\u6309\u9215\uFF0C\u4E0A\u9762\u7684\u5B57\u7531\u5B50\u5143\u4EF6\uFF08\u901A\u5E38\u662F\u4E00\u500B Text\uFF09\u6C7A\u5B9A\uFF1Bvariant \u70BA primary \u6642\u662F\u4E3B\u8981\u52D5\u4F5C\u7684\u6A23\u5F0F\u3002",
+          data_inputs: [
+            {
+              name: "child",
+              what: "\u6309\u9215\u4E0A\u986F\u793A\u7684\u5B50\u5143\u4EF6 id\uFF08\u901A\u5E38\u662F Text\uFF09"
+            },
+            {
+              name: "action",
+              what: '{"event": {"name": "\u4E8B\u4EF6\u540D\u7A31", "context": {"\u53C3\u6578": {"path": "/\u6B04\u4F4D"}}}}\u2014\u2014context \u7684\u503C\u53EF\u4EE5\u7D81\u8CC7\u6599'
+            }
+          ],
+          interactions: [
+            {
+              event: "action.event",
+              what: "\u6309\u4E0B\u6642\u9001\u51FA {name, context}\u3002Portal \u628A\u5B83\u8F49\u7D66\u5BBF\u4E3B\uFF08App \u7684\u52D5\u4F5C\u767D\u540D\u55AE\u7AEF\u9EDE\uFF09\uFF1B\u756B\u9762\u5B9A\u7FA9\u88E1\u4E0D\u51C6\u5BEB\u7DB2\u5740\u3001\u8DEF\u5F91\u6216\u6307\u4EE4"
+            }
+          ],
+          states: {
+            loading: "\u6309\u9215\u7ACB\u5373\u53EF\u6309\uFF1B\u9001\u51FA\u5F8C\u7684\u7B49\u5F85\u72C0\u614B\u7531\u5BBF\u4E3B\u986F\u793A",
+            empty: "\u6C92\u6709 child \u6642\u662F\u4E00\u9846\u6C92\u6709\u5B57\u7684\u6309\u9215\uFF08child \u5FC5\u586B\uFF0C\u9A57\u8B49\u6703\u64CB\uFF09",
+            error: "\u5BBF\u4E3B\u56DE\u932F\u8AA4\u6642\u7531\u5BBF\u4E3B\u986F\u793A\uFF0C\u6309\u9215\u672C\u8EAB\u4E0D\u8B8A",
+            disabled: "checks \u4E0D\u901A\u904E\u6642\u6309\u9215\u505C\u7528",
+            narrow: "\u6309\u9215\u5BEC\u5EA6\u8DDF\u8457\u5B57\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u6309\u9215\u4E0A\u7684\u5B57",
+              given: '{"components":[{"id":"root","component":"Button","child":"l","action":{"event":{"name":"refresh"}}},{"id":"l","component":"Text","text":"\u91CD\u65B0\u6574\u7406"}]}',
+              then_contains: "\u91CD\u65B0\u6574\u7406"
+            },
+            {
+              scenario: "\u4E3B\u8981\u52D5\u4F5C\u6A23\u5F0F\u7684\u6309\u9215",
+              given: '{"components":[{"id":"root","component":"Button","child":"l","variant":"primary","action":{"event":{"name":"run","context":{"id":{"path":"/id"}}}}},{"id":"l","component":"Text","text":"\u57F7\u884C"}],"data":{"id":"wf-1"}}',
+              then_contains: "\u57F7\u884C"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "button",
+            "action",
+            "event"
+          ],
+          example: '{ "id": "refresh", "component": "Button", "child": "refresh-label", "action": { "event": { "name": "refresh" } } }\n',
+          source: "registry/ui-components/button/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              child: {
+                $ref: "#/$defs/ComponentId",
+                description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
+              },
+              variant: {
+                type: "string",
+                enum: [
+                  "default",
+                  "primary",
+                  "borderless"
+                ],
+                default: "default",
+                description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
+              },
+              action: {
+                $ref: "#/$defs/Action"
+              },
+              component: {
+                const: "Button"
+              }
+            },
+            required: [
+              "id",
+              "child",
+              "action",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_card",
+          display_name: "\u5361\u7247",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "Card",
+            implementation: "a2ui-basic"
+          },
+          description: "\u6709\u5916\u6846\u7684\u5340\u584A\uFF0C\u628A\u4E00\u7D44\u76F8\u95DC\u5167\u5BB9\u6846\u5728\u4E00\u8D77\uFF08\u4E00\u5247\u5DE5\u4F5C\u6D41\u3001\u4E00\u5F35\u7968\u3001\u4E00\u7B46\u932F\u8AA4\uFF09\u3002",
+          renders: "\u4E00\u500B\u5E36\u5916\u6846\u8207\u5167\u8DDD\u7684\u65B9\u584A\uFF0C\u88E1\u9762\u653E\u4E00\u500B\u5B50\u5143\u4EF6\uFF1B\u8981\u653E\u591A\u500B\u6771\u897F\u6642\uFF0C\u5B50\u5143\u4EF6\u7528 Column \u6216 Row \u5305\u8D77\u4F86\u3002",
+          data_inputs: [
+            {
+              name: "child",
+              what: "\u8981\u6846\u8D77\u4F86\u7684\u90A3\u4E00\u500B\u5B50\u5143\u4EF6\u7684 id\uFF08\u4E0D\u662F\u8CC7\u6599\uFF0C\u662F\u7248\u9762\uFF09"
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u5916\u6846\u7167\u5E38\u51FA\u73FE\uFF0C\u88E1\u9762\u7531\u5B50\u5143\u4EF6\u81EA\u5DF1\u986F\u793A\u8F09\u5165\u4E2D",
+            empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u5C31\u4E0D\u6703\u51FA\u73FE\uFF08child \u5FC5\u586B\uFF09",
+            error: "\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\uFF0C\u6E32\u67D3\u5668\u5728\u4E3B\u63A7\u53F0\u5831\u932F\u3001\u90A3\u4E00\u683C\u7559\u767D\uFF0C\u4E0D\u6703\u6574\u9801\u58DE\u6389",
+            disabled: "\u5361\u7247\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
+            narrow: "\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u7E2E\uFF0C\u5167\u5BB9\u81EA\u52D5\u63DB\u884C"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u5361\u7247\u6846\u4F4F\u4E00\u6BB5\u6587\u5B57",
+              given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":"\u6846\u5728\u5361\u7247\u88E1"}]}',
+              then_contains: "\u6846\u5728\u5361\u7247\u88E1"
+            },
+            {
+              scenario: "\u5361\u7247\u88E1\u7684\u6587\u5B57\u53EF\u4EE5\u7D81\u8CC7\u6599",
+              given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"/title"}}],"data":{"title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"}}',
+              then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "layout",
+            "container",
+            "card"
+          ],
+          example: '{ "id": "wf-card", "component": "Card", "child": "wf-body" }\n',
+          source: "registry/ui-components/card/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              child: {
+                $ref: "#/$defs/ComponentId",
+                description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
+              },
+              component: {
+                const: "Card"
+              }
+            },
+            required: [
+              "id",
+              "child",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_check_box",
+          display_name: "\u52FE\u9078\u6846",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "CheckBox",
+            implementation: "a2ui-basic"
+          },
+          description: "\u8B93\u4EBA\u52FE\u9078\u662F\uFF0F\u5426\uFF08\u662F\u5426\u534A\u5929\u3001\u662F\u5426\u9700\u8981\u4EE3\u7406\u4EBA\uFF09\u3002\u7D50\u679C\u4EE5 true\uFF0Ffalse \u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+          renders: "\u4E00\u500B\u52FE\u9078\u6846\u52A0\u6A19\u7C64\u3002",
+          data_inputs: [
+            {
+              name: "label",
+              what: "\u52FE\u9078\u6846\u65C1\u7684\u5B57"
+            },
+            {
+              name: "value",
+              what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u52FE\u4E86\u662F true\u3001\u6C92\u52FE\u662F false'
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u7ACB\u5373\u53EF\u52FE",
+            empty: "\u6C92\u6709\u503C\u6642\u8996\u70BA\u6C92\u52FE\uFF08false\uFF09",
+            error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+            narrow: "\u6A19\u7C64\u81EA\u52D5\u63DB\u884C"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u52FE\u9078\u6846\u5E36\u6A19\u7C64",
+              given: '{"components":[{"id":"root","component":"CheckBox","label":"\u534A\u5929","value":{"path":"/form/half"}}],"data":{"form":{"half":false}}}',
+              then_contains: "\u534A\u5929"
+            },
+            {
+              scenario: "\u52FE\u9078\u6846\u9810\u8A2D\u5DF2\u52FE",
+              given: '{"components":[{"id":"root","component":"CheckBox","label":"\u9700\u8981\u4EE3\u7406\u4EBA","value":{"path":"/form/proxy"}}],"data":{"form":{"proxy":true}}}',
+              then_contains: "\u9700\u8981\u4EE3\u7406\u4EBA"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "input",
+            "form",
+            "checkbox",
+            "\u52FE\u9078"
+          ],
+          example: '{ "id": "f-half", "component": "CheckBox", "label": "\u534A\u5929", "value": { "path": "/form/half" } }\n',
+          source: "registry/ui-components/check_box/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "The text to display next to the checkbox."
+              },
+              value: {
+                $ref: "#/$defs/DynamicBoolean",
+                description: "The current state of the checkbox (true for checked, false for unchecked)."
+              },
+              component: {
+                const: "CheckBox"
+              }
+            },
+            required: [
+              "id",
+              "label",
+              "value",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_choice_picker",
+          display_name: "\u9078\u55AE",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "ChoicePicker",
+            implementation: "a2ui-basic"
+          },
+          description: "\u8B93\u4EBA\u5F9E\u56FA\u5B9A\u9078\u9805\u88E1\u9078\u4E00\u500B\u6216\u591A\u500B\uFF08\u5047\u5225\u3001\u90E8\u9580\u3001\u512A\u5148\u7D1A\uFF09\u3002\u9078\u7684\u7D50\u679C\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\uFF08\u4E00\u5F8B\u662F\u5B57\u4E32\u9663\u5217\uFF09\u3002",
+          renders: "\u4E00\u7D44\u9078\u9805\u3002variant \u70BA mutuallyExclusive \u6642\u662F\u55AE\u9078\uFF0CmultipleSelection \u662F\u591A\u9078\uFF1BdisplayStyle \u6C7A\u5B9A\u9577\u6210\u52FE\u9078\u6E05\u55AE\u6216\u4E0B\u62C9\u6676\u7247\u3002",
+          data_inputs: [
+            {
+              name: "label",
+              what: "\u9078\u55AE\u7684\u6A19\u7C64"
+            },
+            {
+              name: "options",
+              what: '\u9078\u9805\u6E05\u55AE [{"label": "\u7D66\u4EBA\u770B\u7684\u5B57", "value": "\u5B58\u9032\u53BB\u7684\u503C"}]'
+            },
+            {
+              name: "value",
+              what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u9078\u5230\u7684 value \u9663\u5217\u5BEB\u5230\u9019\u88E1\uFF08\u55AE\u9078\u6642\u9663\u5217\u53EA\u6709\u4E00\u500B\u5143\u7D20\uFF09'
+            },
+            {
+              name: "variant",
+              what: "mutuallyExclusive\uFF08\u55AE\u9078\uFF0C\u8868\u55AE\u6700\u5E38\u7528\uFF09\uFF0FmultipleSelection"
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u9078\u9805\u7ACB\u5373\u986F\u793A\uFF08\u9078\u9805\u5BEB\u5728\u756B\u9762\u5B9A\u7FA9\u88E1\uFF0C\u4E0D\u7B49\u8CC7\u6599\uFF09",
+            empty: "\u6C92\u9078\u6642 value \u662F\u7A7A\u9663\u5217",
+            error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+            narrow: "\u9078\u9805\u81EA\u52D5\u63DB\u884C"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u55AE\u9078\u9078\u55AE\u986F\u793A\u9078\u9805",
+              given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u5047\u5225","variant":"mutuallyExclusive","options":[{"label":"\u7279\u4F11","value":"annual"},{"label":"\u75C5\u5047","value":"sick"}],"value":{"path":"/form/type"}}],"data":{"form":{"type":[]}}}',
+              then_contains: "\u75C5\u5047"
+            },
+            {
+              scenario: "\u591A\u9078\u9078\u55AE\u986F\u793A\u6A19\u7C64",
+              given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u6A19\u7C64","variant":"multipleSelection","options":[{"label":"\u6025","value":"urgent"}],"value":{"path":"/form/tags"}}],"data":{"form":{"tags":[]}}}',
+              then_contains: "\u6025"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "input",
+            "form",
+            "select",
+            "choice",
+            "\u9078\u55AE",
+            "\u4E0B\u62C9"
+          ],
+          example: '{ "id": "f-type", "component": "ChoicePicker", "label": "\u5047\u5225", "variant": "mutuallyExclusive", "options": [{ "label": "\u7279\u4F11", "value": "annual" }, { "label": "\u75C5\u5047", "value": "sick" }], "value": { "path": "/form/type" } }\n',
+          source: "registry/ui-components/choice_picker/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "The label for the group of options."
+              },
+              variant: {
+                type: "string",
+                enum: [
+                  "multipleSelection",
+                  "mutuallyExclusive"
+                ],
+                default: "mutuallyExclusive",
+                description: "A hint for how the choice picker should be displayed and behave."
+              },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: {
+                      $ref: "#/$defs/DynamicString",
+                      description: "The text to display for this option."
+                    },
+                    value: {
+                      type: "string",
+                      description: "The stable value associated with this option."
+                    }
+                  },
+                  required: [
+                    "label",
+                    "value"
+                  ],
+                  additionalProperties: false
+                },
+                description: "The list of available options to choose from."
+              },
+              value: {
+                $ref: "#/$defs/DynamicStringList",
+                description: "The list of currently selected values. This should be bound to a string array in the data model."
+              },
+              displayStyle: {
+                type: "string",
+                enum: [
+                  "checkbox",
+                  "chips"
+                ],
+                default: "checkbox",
+                description: "The display style of the component."
+              },
+              filterable: {
+                type: "boolean",
+                default: false,
+                description: "If true, displays a search input to filter the options."
+              },
+              component: {
+                const: "ChoicePicker"
+              }
+            },
+            required: [
+              "id",
+              "options",
+              "value",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_column",
+          display_name: "\u76F4\u6392",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "Column",
+            implementation: "a2ui-basic"
+          },
+          description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u4E0A\u5F80\u4E0B\u6392\u3002\u6574\u500B\u756B\u9762\u7684\u9AA8\u67B6\u901A\u5E38\u662F\u4E00\u500B\u76F4\u6392\u3002",
+          renders: "\u4E00\u6B04\uFF0C\u5B50\u5143\u4EF6\u4F9D\u5E8F\u5F80\u4E0B\u5806\uFF0Cjustify\uFF0Falign \u63A7\u5236\u9593\u8DDD\u8207\u5C0D\u9F4A\u3002",
+          data_inputs: [
+            {
+              name: "children",
+              what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}\uFF0C\u8CC7\u6599\u9663\u5217\u6709\u5E7E\u7B46\u5C31\u9577\u5E7E\u500B'
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
+            empty: "\u7D81\u5230\u7684\u6E05\u55AE\u662F\u7A7A\u9663\u5217\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u8981\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\u8ACB\u53E6\u653E\u4E00\u500B Text\uFF09",
+            error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+            narrow: "\u672C\u4F86\u5C31\u662F\u55AE\u6B04\uFF0C\u7A84\u87A2\u5E55\u4E0D\u8B8A\u5F62"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u5169\u6BB5\u6587\u5B57\u4E0A\u4E0B\u6392",
+              given: '{"components":[{"id":"root","component":"Column","children":["a","b"]},{"id":"a","component":"Text","text":"\u7B2C\u4E00\u884C"},{"id":"b","component":"Text","text":"\u7B2C\u4E8C\u884C"}]}',
+              then_contains: "\u7B2C\u4E8C\u884C"
+            },
+            {
+              scenario: "\u7528\u8CC7\u6599\u9663\u5217\u9577\u51FA\u5B50\u5143\u4EF6",
+              given: '{"components":[{"id":"root","component":"Column","children":{"componentId":"item","path":"/items"}},{"id":"item","component":"Text","text":{"path":"name"}}],"data":{"items":[{"name":"\u7532"},{"name":"\u4E59"}]}}',
+              then_contains: "\u4E59"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "layout",
+            "column",
+            "stack"
+          ],
+          example: '{ "id": "page", "component": "Column", "children": ["title", "list"] }\n',
+          source: "registry/ui-components/column/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              children: {
+                $ref: "#/$defs/ChildList",
+                description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+              },
+              justify: {
+                type: "string",
+                enum: [
+                  "start",
+                  "center",
+                  "end",
+                  "spaceBetween",
+                  "spaceAround",
+                  "spaceEvenly",
+                  "stretch"
+                ],
+                default: "start",
+                description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
+              },
+              align: {
+                type: "string",
+                enum: [
+                  "center",
+                  "end",
+                  "start",
+                  "stretch"
+                ],
+                default: "stretch",
+                description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
+              },
+              component: {
+                const: "Column"
+              }
+            },
+            required: [
+              "id",
+              "children",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_data_table",
+          display_name: "\u8868\u683C",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "DataTable",
+            implementation: "arcrun"
+          },
+          description: "\u552F\u8B80\u8868\u683C\uFF1A\u5BA3\u544A\u6B04\u4F4D\uFF0C\u6BCF\u5217\u4E00\u500B\u7269\u4EF6\u3002\u5132\u5B58\u683C\u53EF\u4EE5\u662F\u5B57\u4E32\u3001\u6578\u5B57\uFF0C\u6216 {text, tone} \u986F\u793A\u6210\u72C0\u614B\u6A19\u7C64\u3002\u7528\u5728\u6307\u6A19\u6E05\u55AE\u3001\u5BE6\u9A57\u6E05\u55AE\u3001\u6AA2\u67E5\u8868\u9019\u985E\u8981\u4E26\u6392\u6BD4\u8F03\u7684\u8CC7\u6599\u3002",
+          renders: "\u6709\u8868\u982D\u7684\u8868\u683C\uFF1B\u6B04\u4F4D mono=true \u7528\u7B49\u5BEC\u6578\u5B57\u5B57\u578B\u3001align=right \u9760\u53F3\uFF1B\u5132\u5B58\u683C\u662F {text, tone} \u6642\u986F\u793A\u6210\u6A19\u7C64\u3002\u6240\u6709\u6587\u5B57\u8DF3\u812B\u5F8C\u624D\u986F\u793A\u3002\u6B04\u4F4D\u6BD4\u5BB9\u5668\u5BEC\u6642\u8868\u683C\u6A6B\u5411\u6372\u52D5\u3002\u6C92\u6709\u4EFB\u4F55\u5217\u6642\u986F\u793A emptyText\uFF08\u9810\u8A2D\u300C\u6C92\u6709\u8CC7\u6599\u300D\uFF09\u3002",
+          data_inputs: [
+            {
+              name: "columns",
+              what: "\u6B04\u4F4D [{key, title, mono?, align?}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE"
+            },
+            {
+              name: "rows",
+              what: "\u5217\u8CC7\u6599\uFF1A\u6BCF\u5217\u4E00\u500B\u7269\u4EF6\uFF0C\u6B04\u503C\u662F\u5B57\u4E32\uFF0F\u6578\u5B57\uFF0C\u6216 {text, tone}\uFF1B\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u9663\u5217"
+            },
+            {
+              name: "emptyText",
+              what: "\u6C92\u6709\u4EFB\u4F55\u5217\u6642\u986F\u793A\u7684\u5B57"
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "rows \u9084\u6C92\u5230\u6642\u986F\u793A emptyText",
+            empty: "\u7A7A\u9663\u5217\u986F\u793A emptyText\uFF0C\u4E0D\u756B\u7A7A\u8868\u683C",
+            error: "\u4E0D\u662F\u7269\u4EF6\u7684\u5217\u7565\u904E\uFF1B\u7F3A\u67D0\u6B04\u7684\u5132\u5B58\u683C\u662F\u7A7A\u7684\uFF1B\u6C92\u6709\u4EFB\u4F55\u6B04\u4F4D\u6642\u986F\u793A\u300C\u6C92\u6709\u6B04\u4F4D\u300D",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
+            narrow: "\u8868\u683C\u5916\u6846\u6A6B\u5411\u6372\u52D5\uFF0C\u6B04\u4F4D\u4E0D\u64E0\u6210\u4E00\u5718"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u5169\u6B04\u5169\u5217\uFF0C\u5176\u4E2D\u4E00\u683C\u662F\u6A19\u7C64",
+              given: '{"components":[{"id":"root","component":"DataTable","columns":[{"key":"name","title":"\u6307\u6A19"},{"key":"state","title":"\u72C0\u614B"}],"rows":[{"name":"Google \u6BCF\u9031\u66DD\u5149","state":{"text":"\u7D05\u71C8","tone":"red"}},{"name":"\u96FB\u5B50\u5831\u8A02\u6236","state":"\u6B63\u5E38"}]}]}',
+              then_contains: "\u96FB\u5B50\u5831\u8A02\u6236"
+            },
+            {
+              scenario: "\u6C92\u6709\u5217\u6642\u986F\u793A emptyText",
+              given: '{"components":[{"id":"root","component":"DataTable","columns":[{"key":"a","title":"A"}],"rows":[],"emptyText":"\u76EE\u524D\u6C92\u6709\u5BE6\u9A57"}]}',
+              then_contains: "\u76EE\u524D\u6C92\u6709\u5BE6\u9A57"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "table",
+            "monitor",
+            "list"
+          ],
+          example: '{ "id": "metrics", "component": "DataTable", "columns": { "path": "cols" }, "rows": { "path": "rows" } }\n',
+          source: "registry/ui-components/data_table/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              columns: {
+                description: "\u6B04\u4F4D\u5BA3\u544A [{key, title, mono, align}]",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        key: {
+                          type: "string"
+                        },
+                        title: {
+                          type: "string"
+                        },
+                        mono: {
+                          type: "boolean"
+                        },
+                        align: {
+                          type: "string",
+                          enum: [
+                            "left",
+                            "right"
+                          ]
+                        }
+                      },
+                      required: [
+                        "key"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u6B04"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              rows: {
+                description: "\u5217\u8CC7\u6599\uFF1A\u6BCF\u5217\u4E00\u500B\u7269\u4EF6\uFF0C\u6B04\u503C\u662F\u5B57\u4E32\uFF0F\u6578\u5B57\uFF0C\u6216 {text, tone} \u986F\u793A\u6210\u6A19\u7C64",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: true
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              emptyText: {
+                description: "\u6C92\u6709\u4EFB\u4F55\u5217\u6642\u986F\u793A\u7684\u5B57",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              component: {
+                const: "DataTable"
+              }
+            },
+            required: [
+              "id",
+              "columns",
+              "rows",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_date_time_input",
+          display_name: "\u65E5\u671F\u6642\u9593\u8F38\u5165",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "DateTimeInput",
+            implementation: "a2ui-basic"
+          },
+          description: "\u8B93\u4EBA\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u65E5\u671F\u52A0\u6642\u9593\uFF08\u8ACB\u5047\u8D77\u8A16\u3001\u9810\u7D04\u6642\u6BB5\uFF09\u3002\u7D50\u679C\u4EE5 ISO 8601 \u5B57\u4E32\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+          renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u65E5\u671F\uFF0F\u6642\u9593\u6311\u9078\u6B04\u3002enableDate\uFF0FenableTime \u6C7A\u5B9A\u53EF\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u5169\u8005\u3002",
+          data_inputs: [
+            {
+              name: "label",
+              what: "\u6B04\u4F4D\u6A19\u7C64"
+            },
+            {
+              name: "value",
+              what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u6311\u5230\u7684\u503C\uFF08ISO 8601 \u5B57\u4E32\uFF09\u5BEB\u5230\u9019\u88E1'
+            },
+            {
+              name: "enableDate",
+              what: "true \u624D\u80FD\u6311\u65E5\u671F\uFF08\u9810\u8A2D false\uFF0C\u8981\u65E5\u671F\u8ACB\u660E\u5BEB true\uFF09"
+            },
+            {
+              name: "enableTime",
+              what: "true \u624D\u80FD\u6311\u6642\u9593"
+            },
+            {
+              name: "min / max",
+              what: "\u53EF\u6311\u7BC4\u570D\u7684\u4E0B\u9650\uFF0F\u4E0A\u9650\uFF08ISO 8601\uFF09\uFF0C\u9078\u586B"
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u7ACB\u5373\u53EF\u6311",
+            empty: "\u6C92\u6311\u6642 value \u662F\u7A7A\u5B57\u4E32",
+            error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+            narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u65E5\u671F\u6B04\u5E36\u6A19\u7C64",
+              given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u958B\u59CB\u65E5\u671F","enableDate":true,"value":{"path":"/form/start"}}],"data":{"form":{"start":""}}}',
+              then_contains: "\u958B\u59CB\u65E5\u671F"
+            },
+            {
+              scenario: "\u65E5\u671F\u52A0\u6642\u9593\u6B04\u5E36\u6A19\u7C64",
+              given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u9810\u7D04\u6642\u6BB5","enableDate":true,"enableTime":true,"value":{"path":"/form/at"}}],"data":{"form":{"at":""}}}',
+              then_contains: "\u9810\u7D04\u6642\u6BB5"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "input",
+            "form",
+            "date",
+            "time",
+            "\u65E5\u671F",
+            "\u6642\u9593"
+          ],
+          example: '{ "id": "f-start", "component": "DateTimeInput", "label": "\u958B\u59CB\u65E5\u671F", "enableDate": true, "value": { "path": "/form/start" } }\n',
+          source: "registry/ui-components/date_time_input/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              value: {
+                $ref: "#/$defs/DynamicString",
+                description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
+              },
+              enableDate: {
+                type: "boolean",
+                default: false,
+                description: "If true, allows the user to select a date."
+              },
+              enableTime: {
+                type: "boolean",
+                default: false,
+                description: "If true, allows the user to select a time."
+              },
+              min: {
+                $ref: "#/$defs/DynamicString",
+                description: "The minimum allowed date/time in ISO 8601 format."
+              },
+              max: {
+                $ref: "#/$defs/DynamicString",
+                description: "The maximum allowed date/time in ISO 8601 format."
+              },
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "The text label for the input field."
+              },
+              component: {
+                const: "DateTimeInput"
+              }
+            },
+            required: [
+              "id",
+              "value",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_list",
+          display_name: "\u6E05\u55AE",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "List",
+            implementation: "a2ui-basic"
+          },
+          description: "\u628A\u4E00\u500B\u8CC7\u6599\u9663\u5217\u5C55\u958B\u6210\u91CD\u8907\u7684\u9805\u76EE\uFF1A\u6BCF\u4E00\u7B46\u8CC7\u6599\u9577\u4E00\u500B\u540C\u6A23\u7684\u6A23\u677F\uFF08\u4F8B\u5982\u6BCF\u689D\u5DE5\u4F5C\u6D41\u4E00\u5F35\u5361\uFF09\u3002",
+          renders: "\u4E00\u4E32\u76F4\u5411\uFF08\u6216\u6A6B\u5411\uFF09\u6392\u5217\u7684\u9805\u76EE\uFF0C\u6BCF\u4E00\u9805\u90FD\u662F\u540C\u4E00\u500B\u6A23\u677F\u5143\u4EF6\uFF0C\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\u8B80\u90A3\u4E00\u7B46\u7684\u6B04\u4F4D\u3002",
+          data_inputs: [
+            {
+              name: "children",
+              what: '\u6A23\u677F {"componentId": "\u6BCF\u4E00\u9805\u7684\u5143\u4EF6 id", "path": "/\u8CC7\u6599\u9663\u5217"}\uFF1B\u6A23\u677F\u88E1\u7684 {"path": "name"} \u8B80\u7684\u662F\u90A3\u4E00\u7B46\u7684 name'
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE",
+            empty: "\u7A7A\u9663\u5217\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE\uFF08\u300C\u6C92\u6709\u8CC7\u6599\u300D\u7684\u5B57\u8981\u53E6\u653E\u4E00\u500B Text\uFF0C\u756B\u9762\u5B9A\u7FA9\u81EA\u5DF1\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A\uFF09",
+            error: "\u67D0\u4E00\u7B46\u7F3A\u6B04\u4F4D\u6642\uFF0C\u90A3\u4E00\u7B46\u7684\u5C0D\u61C9\u6587\u5B57\u662F\u7A7A\u7684\uFF0C\u5176\u4ED6\u7B46\u7167\u5E38",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+            narrow: "\u76F4\u5411\u6E05\u55AE\u4E0D\u53D7\u5F71\u97FF\uFF1B\u6A6B\u5411\u6E05\u55AE\u6703\u51FA\u73FE\u6C34\u5E73\u6372\u52D5"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u6BCF\u7B46\u8CC7\u6599\u9577\u4E00\u9805",
+              given: '{"components":[{"id":"root","component":"List","children":{"componentId":"row","path":"/workflows"}},{"id":"row","component":"Text","text":{"path":"name"}}],"data":{"workflows":[{"name":"notify_daily"},{"name":"ingest_docs"}]}}',
+              then_contains: "ingest_docs"
+            },
+            {
+              scenario: "\u6A23\u677F\u53EF\u4EE5\u662F\u4E00\u5F35\u5361",
+              given: '{"components":[{"id":"root","component":"List","children":{"componentId":"card","path":"/items"}},{"id":"card","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"title"}}],"data":{"items":[{"title":"\u7B2C\u4E00\u5F35\u5361"}]}}',
+              then_contains: "\u7B2C\u4E00\u5F35\u5361"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "list",
+            "repeat",
+            "collection"
+          ],
+          example: '{ "id": "wf-list", "component": "List", "children": { "componentId": "wf-card", "path": "/workflows" } }\n',
+          source: "registry/ui-components/list/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              children: {
+                $ref: "#/$defs/ChildList",
+                description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
+              },
+              direction: {
+                type: "string",
+                enum: [
+                  "vertical",
+                  "horizontal"
+                ],
+                default: "vertical",
+                description: "The direction in which the list items are laid out."
+              },
+              align: {
+                type: "string",
+                enum: [
+                  "start",
+                  "center",
+                  "end",
+                  "stretch"
+                ],
+                default: "stretch",
+                description: "Defines the alignment of children along the cross axis."
+              },
+              component: {
+                const: "List"
+              }
+            },
+            required: [
+              "id",
+              "children",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_pill_row",
+          display_name: "\u6A19\u7C64\u5217",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "PillRow",
+            implementation: "arcrun"
+          },
+          description: "\u4E00\u6392\u72C0\u614B\u6A19\u7C64\uFF08\u4F8B\u5982\u300C\u89C0\u5BDF\u683C\u505C\u64FA\u300D\u300C\u6AA2\u67E5\u8868 2/9\u300D\uFF09\uFF0C\u653E\u4E0D\u4E0B\u6703\u81EA\u5DF1\u63DB\u884C\u3002\u6BCF\u500B\u6A19\u7C64\u7684\u6587\u5B57\u8207\u984F\u8272\u90FD\u4F86\u81EA\u8CC7\u6599\u3002",
+          renders: "\u6A6B\u5411\u6392\u5217\u3001\u653E\u4E0D\u4E0B\u5C31\u63DB\u884C\u7684\u5C0F\u5713\u89D2\u6A19\u7C64\uFF1B\u6BCF\u500B\u6A19\u7C64\u540C StatusPill \u7684 pill \u6A23\u5F0F\u3002items \u7684\u9805\u76EE\u4E0D\u662F\u7269\u4EF6\u6642\u7576\u4F5C\u7D14\u6587\u5B57\u7070\u8272\u6A19\u7C64\u3002",
+          data_inputs: [
+            {
+              name: "items",
+              what: '\u6A19\u7C64\u6E05\u55AE [{text, tone}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE\uFF08{"path":"pills"}\uFF09'
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u6E05\u55AE\u9084\u6C92\u5230\u5C31\u4E0D\u756B\u4EFB\u4F55\u6A19\u7C64",
+            empty: "\u7A7A\u6E05\u55AE\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u9AD8\u5EA6\u70BA\u96F6\uFF09",
+            error: "\u6E05\u55AE\u88E1\u5F62\u72C0\u4E0D\u5C0D\u7684\u9805\u76EE\u7576\u7D14\u6587\u5B57\u7070\u8272\u6A19\u7C64\uFF1B\u4E0D\u662F\u9663\u5217\u6642\u6574\u6392\u4E0D\u756B",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
+            narrow: "\u81EA\u52D5\u63DB\u884C\uFF0C\u4E0D\u6703\u6A6B\u5411\u6372\u52D5"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u5169\u9846\u6A19\u7C64",
+              given: '{"components":[{"id":"root","component":"PillRow","items":[{"text":"\u89C0\u5BDF\u683C\u505C\u64FA","tone":"red"},{"text":"\u6AA2\u67E5\u8868 2/9","tone":"yellow"}]}]}',
+              then_contains: "\u6AA2\u67E5\u8868 2/9"
+            },
+            {
+              scenario: "\u6A19\u7C64\u6E05\u55AE\u7D81\u8CC7\u6599\u6A21\u578B",
+              given: '{"components":[{"id":"root","component":"PillRow","items":{"path":"/pills"}}],"data":{"pills":[{"text":"\u5FC3\u8DF3\u6B63\u5E38","tone":"green"}]}}',
+              then_contains: "\u5FC3\u8DF3\u6B63\u5E38"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "status",
+            "badge",
+            "tags",
+            "monitor"
+          ],
+          example: '{ "id": "pills", "component": "PillRow", "items": { "path": "pills" } }\n',
+          source: "registry/ui-components/pill_row/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              items: {
+                description: "\u6A19\u7C64\u6E05\u55AE [{text, tone}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        text: {
+                          type: "string"
+                        },
+                        tone: {
+                          type: "string",
+                          enum: [
+                            "green",
+                            "yellow",
+                            "red",
+                            "gray",
+                            "teal"
+                          ]
+                        }
+                      },
+                      required: [
+                        "text"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u500B\u6A19\u7C64"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              component: {
+                const: "PillRow"
+              }
+            },
+            required: [
+              "id",
+              "items",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_row",
+          display_name: "\u6A6B\u6392",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "Row",
+            implementation: "a2ui-basic"
+          },
+          description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u5DE6\u5F80\u53F3\u6392\uFF0C\u4F8B\u5982\u300C\u540D\u7A31\uFF5C\u6392\u7A0B\uFF5C\u6700\u8FD1\u4E00\u6B21\u7D50\u679C\u300D\u653E\u5728\u540C\u4E00\u884C\u3002",
+          renders: "\u4E00\u5217\uFF0C\u5B50\u5143\u4EF6\u5DE6\u53F3\u4E26\u6392\uFF0Cjustify \u6C7A\u5B9A\u64E0\u5728\u4E00\u8D77\u6216\u63A8\u5230\u5169\u7AEF\uFF08spaceBetween\uFF09\u3002",
+          data_inputs: [
+            {
+              name: "children",
+              what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}'
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
+            empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u6642\u662F\u4E00\u689D\u7A7A\u5217",
+            error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
+            narrow: "\u5B50\u5143\u4EF6\u5BEC\u5EA6\u7E2E\u5C0F\uFF1B\u5167\u5BB9\u592A\u9577\u6642\u6587\u5B57\u63DB\u884C"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u540D\u7A31\u8207\u72C0\u614B\u4E26\u6392",
+              given: '{"components":[{"id":"root","component":"Row","children":["n","s"],"justify":"spaceBetween"},{"id":"n","component":"Text","text":"\u6BCF\u65E5\u5F59\u6574"},{"id":"s","component":"Text","text":"success"}]}',
+              then_contains: "\u6BCF\u65E5\u5F59\u6574"
+            },
+            {
+              scenario: "\u4E26\u6392\u7684\u7B2C\u4E8C\u683C\u4E5F\u756B\u5F97\u51FA\u4F86",
+              given: '{"components":[{"id":"root","component":"Row","children":["n","s"]},{"id":"n","component":"Text","text":"A"},{"id":"s","component":"Text","text":"\u53F3\u908A\u90A3\u683C"}]}',
+              then_contains: "\u53F3\u908A\u90A3\u683C"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "layout",
+            "row",
+            "inline"
+          ],
+          example: '{ "id": "wf-head", "component": "Row", "children": ["wf-name", "wf-last"], "justify": "spaceBetween" }\n',
+          source: "registry/ui-components/row/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              children: {
+                $ref: "#/$defs/ChildList",
+                description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+              },
+              justify: {
+                type: "string",
+                enum: [
+                  "center",
+                  "end",
+                  "spaceAround",
+                  "spaceBetween",
+                  "spaceEvenly",
+                  "start",
+                  "stretch"
+                ],
+                default: "start",
+                description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
+              },
+              align: {
+                type: "string",
+                enum: [
+                  "start",
+                  "center",
+                  "end",
+                  "stretch"
+                ],
+                default: "stretch",
+                description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
+              },
+              component: {
+                const: "Row"
+              }
+            },
+            required: [
+              "id",
+              "children",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_sparkline",
+          display_name: "\u8DA8\u52E2\u5C0F\u5716",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "Sparkline",
+            implementation: "arcrun"
+          },
+          description: "\u4E00\u4E32\u6578\u5B57\u7684\u8FF7\u4F60\u6298\u7DDA\u5716\uFF08\u820A\u5230\u65B0\uFF09\uFF0C\u4E00\u773C\u770B\u51FA\u6700\u8FD1\u662F\u5728\u5347\u3001\u964D\u9084\u662F\u8CBC\u5730\u677F\u3002\u4E0D\u986F\u793A\u5EA7\u6A19\u8207\u6578\u503C\uFF0C\u8981\u770B\u6578\u5B57\u8ACB\u642D\u914D ThresholdChart \u6216 DataTable\u3002",
+          renders: "\u4E00\u689D\u5E36\u6DE1\u5E95\u8272\u7684\u6298\u7DDA\uFF0C\u6700\u5F8C\u4E00\u9EDE\u6A19\u6210\u5BE6\u5FC3\u5713\uFF1B\u7E31\u8EF8\u5F9E 0 \u5230\u6700\u5927\u503C\u3002tone \u6C7A\u5B9A\u7DDA\u8207\u5E95\u8272\uFF08green\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF09\u3002\u5C11\u65BC\u5169\u500B\u6709\u6548\u6578\u5B57\u6642\u986F\u793A\u300C\u8CC7\u6599\u4E0D\u8DB3\u300D\u3002\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u3001\u6700\u5BEC 240px\u3002",
+          data_inputs: [
+            {
+              name: "values",
+              what: '\u6578\u5B57\u9663\u5217\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u9663\u5217\uFF08{"path":"trend"}\uFF09\uFF1B\u5B57\u4E32\u5F62\u7684\u6578\u5B57\u6703\u88AB\u8F49\u6210\u6578\u5B57\uFF0C\u8F49\u4E0D\u6210\u7684\u7565\u904E'
+            },
+            {
+              name: "tone",
+              what: "\u7DDA\u8207\u5E95\u8272\uFF0C\u9810\u8A2D gray"
+            },
+            {
+              name: "label",
+              what: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E\uFF08\u4F8B\uFF1A\u6700\u8FD1 12 \u9031 Google \u66DD\u5149\uFF09"
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u986F\u793A\u300C\u8CC7\u6599\u4E0D\u8DB3\u300D",
+            empty: "\u7A7A\u9663\u5217\u986F\u793A\u300C\u8CC7\u6599\u4E0D\u8DB3\u300D\uFF0C\u4E0D\u5831\u932F",
+            error: "\u9663\u5217\u88E1\u4E0D\u662F\u6578\u5B57\u7684\u9805\u76EE\u7565\u904E\uFF1B\u5269\u4E0D\u5230\u5169\u500B\u5C31\u986F\u793A\u300C\u8CC7\u6599\u4E0D\u8DB3\u300D",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
+            narrow: "\u5BEC\u5EA6\u96A8\u5BB9\u5668\u7E2E\u5C0F\uFF08viewBox \u7B49\u6BD4\uFF09\uFF0C\u4E0D\u6372\u52D5"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u6709\u8DA8\u52E2\u6642\u756B\u51FA\u5E36\u8AAA\u660E\u7684\u5716",
+              given: '{"components":[{"id":"root","component":"Column","children":["s","t"]},{"id":"s","component":"Sparkline","values":[2700,2600,1800,900,100,0],"tone":"red","label":"\u6700\u8FD1\u516D\u9031\u66DD\u5149"},{"id":"t","component":"Text","text":"\u8DA8\u52E2\u5716\u5DF2\u756B"}]}',
+              then_contains: "\u8DA8\u52E2\u5716\u5DF2\u756B"
+            },
+            {
+              scenario: "\u8CC7\u6599\u4E0D\u8DB3\u6642\u76F4\u8AAA",
+              given: '{"components":[{"id":"root","component":"Sparkline","values":[5]}]}',
+              then_contains: "\u8CC7\u6599\u4E0D\u8DB3"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "chart",
+            "trend",
+            "sparkline",
+            "monitor"
+          ],
+          example: '{ "id": "trend", "component": "Sparkline", "values": { "path": "trend" }, "tone": { "path": "tone" } }\n',
+          source: "registry/ui-components/sparkline/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              values: {
+                description: "\u4E00\u4E32\u6578\u5B57\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u9663\u5217",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: [
+                        "number",
+                        "string"
+                      ]
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              tone: {
+                description: "\u7DDA\u8207\u5E95\u8272\uFF0C\u9810\u8A2D gray",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              label: {
+                description: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E\uFF08\u4F8B\u300C\u6700\u8FD1 12 \u9031 Google \u66DD\u5149\u300D\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              component: {
+                const: "Sparkline"
+              }
+            },
+            required: [
+              "id",
+              "values",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_status_pill",
+          display_name: "\u71C8\u865F\u8207\u72C0\u614B\u6A19\u7C64",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "StatusPill",
+            implementation: "arcrun"
+          },
+          description: "\u4E00\u9846\u71C8\u865F\u6216\u4E00\u500B\u72C0\u614B\u6A19\u7C64\uFF08\u7DA0\uFF0F\u9EC3\uFF0F\u7D05\uFF0F\u7070\uFF0F\u9752\uFF09\u3002\u984F\u8272\u7531\u8CC7\u6599\u6C7A\u5B9A\uFF0C\u5143\u4EF6\u4E0D\u5224\u65B7\u4EFB\u4F55\u4E8B\uFF1A\u4EC0\u9EBC\u7B97\u7D05\u3001\u4EC0\u9EBC\u7B97\u505C\u64FA\uFF0C\u662F\u7522\u751F\u8CC7\u6599\u7684\u5DE5\u4F5C\u6D41\u7684\u4E8B\u3002",
+          renders: "variant=pill\uFF08\u9810\u8A2D\uFF09\uFF1A\u6709\u6DE1\u5E95\u8272\u7684\u5C0F\u5713\u89D2\u6A19\u7C64\uFF0C\u5B57\u662F text\uFF1Bvariant=lamp\uFF1A18px \u7684\u5BE6\u5FC3\u5713\u71C8\uFF0C\u5F8C\u9762\u63A5 text\uFF08\u53EF\u7701\u7565\uFF0C\u53EA\u5269\u5713\u71C8\uFF09\u3002tone \u6C7A\u5B9A\u984F\u8272\uFF1Agreen\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF0C\u6C92\u7D66\u6216\u4E0D\u8A8D\u5F97\u4E00\u5F8B\u7576 gray\u3002\u984F\u8272\u8D70 Portal \u8A2D\u8A08 token\uFF0C\u6DFA\u8272\u6DF1\u8272\u81EA\u52D5\u8DDF\u8457\u63DB\u3002",
+          data_inputs: [
+            {
+              name: "text",
+              what: "\u6A19\u7C64\u4E0A\u7684\u5B57\uFF08\u5B57\u4E32\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u7684\u8DEF\u5F91\uFF09"
+            },
+            {
+              name: "tone",
+              what: 'green\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF08\u5B57\u4E32\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u7684\u8DEF\u5F91\uFF0C\u4F8B\u5982 {"path":"lamp"}\uFF09'
+            },
+            {
+              name: "variant",
+              what: "pill \u6216 lamp"
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642 text \u662F\u7A7A\u7684\uFF0C\u53EA\u51FA\u73FE\u4E00\u9846\u7070\u8272\u5C0F\u6A19\u7C64\uFF1B\u547C\u53EB\u7AEF\u53EF\u5148\u4E0D\u639B",
+            empty: "text \u7A7A\u4E14\u662F lamp \u6642\u53EA\u756B\u5713\u71C8\uFF1Bpill \u4E14 text \u7A7A\u6642\u756B\u4E00\u9846\u6C92\u6709\u5B57\u7684\u5C0F\u6A19\u7C64",
+            error: "tone \u4E0D\u8A8D\u5F97\u6642\u7576 gray\uFF0C\u4E0D\u5831\u932F",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
+            narrow: "\u6A19\u7C64\u4E0D\u63DB\u884C\u3001\u6700\u5BEC\u5230\u5BB9\u5668\uFF1B\u5B57\u592A\u9577\u6642\u7531\u5BB9\u5668\u622A\u65B7\u6216\u6372\u52D5\uFF0C\u4E0D\u6490\u7834\u7248\u9762"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u7D05\u8272\u6A19\u7C64\u986F\u793A\u6587\u5B57",
+              given: '{"components":[{"id":"root","component":"StatusPill","text":"\u6307\u6A19\u8DCC\u7834\u9580\u6ABB","tone":"red"}]}',
+              then_contains: "\u6307\u6A19\u8DCC\u7834\u9580\u6ABB"
+            },
+            {
+              scenario: "\u71C8\u865F\u7D81\u8CC7\u6599\u6A21\u578B",
+              given: '{"components":[{"id":"root","component":"StatusPill","variant":"lamp","text":{"path":"/name"},"tone":{"path":"/lamp"}}],"data":{"name":"\u81EA\u6211\u884C\u92B7\u5167\u5BB9\u9589\u74B0","lamp":"yellow"}}',
+              then_contains: "\u81EA\u6211\u884C\u92B7\u5167\u5BB9\u9589\u74B0"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "status",
+            "lamp",
+            "badge",
+            "monitor"
+          ],
+          example: '{ "id": "lamp", "component": "StatusPill", "variant": "lamp", "text": { "path": "name" }, "tone": { "path": "lamp" } }\n',
+          source: "registry/ui-components/status_pill/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              text: {
+                description: "\u6A19\u7C64\u4E0A\u7684\u5B57\uFF1Bvariant=lamp \u6642\u53EF\u7701\u7565\uFF08\u53EA\u6709\u5713\u9EDE\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              tone: {
+                description: "green\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF0C\u9810\u8A2D gray\uFF1B\u984F\u8272\u7531\u8CC7\u6599\u6C7A\u5B9A\uFF0C\u5143\u4EF6\u4E0D\u5224\u65B7",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              variant: {
+                description: "pill\uFF08\u9810\u8A2D\uFF0C\u6709\u5E95\u8272\u7684\u5C0F\u6A19\u7C64\uFF09\u6216 lamp\uFF0818px \u5713\u71C8\u52A0\u5B57\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              component: {
+                const: "StatusPill"
+              }
+            },
+            required: [
+              "id",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_text",
+          display_name: "\u6587\u5B57",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "Text",
+            implementation: "a2ui-basic"
+          },
+          description: "\u986F\u793A\u4E00\u6BB5\u6587\u5B57\uFF1A\u6A19\u984C\u3001\u5167\u6587\u3001\u6578\u5B57\u3001\u8A3B\u8A18\u3002\u5167\u5BB9\u53EF\u4EE5\u5BEB\u6B7B\uFF0C\u4E5F\u53EF\u4EE5\u7D81\u5230\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
+          renders: "\u4E00\u884C\u6216\u4E00\u6BB5\u6587\u5B57\uFF0Cvariant \u6C7A\u5B9A\u5927\u5C0F\uFF08h1\u2013h5 \u6A19\u984C\u3001body \u5167\u6587\u3001caption \u5C0F\u5B57\u8A3B\u8A18\uFF09\u3002",
+          data_inputs: [
+            {
+              name: "text",
+              what: '\u8981\u986F\u793A\u7684\u5B57\u3002\u5BEB\u6B7B\u5C31\u662F\u5B57\u4E32\uFF1B\u8981\u5F9E\u8CC7\u6599\u4F86\u5C31\u5BEB {"path": "/\u6B04\u4F4D"}\uFF0C\u5728 List \u7684\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\uFF08\u4F8B {"path": "name"}\uFF09'
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642\u986F\u793A\u7A7A\u5B57\u4E32\uFF0C\u4E0D\u986F\u793A undefined",
+            empty: "\u7D81\u5230\u7684\u6B04\u4F4D\u4E0D\u5B58\u5728\u6642\u986F\u793A\u7A7A\u5B57\u4E32",
+            error: "\u4E0D\u6703\u4E1F\u932F\uFF1B\u756B\u4E0D\u51FA\u4F86\u7684\u503C\u4E00\u5F8B\u7576\u7A7A\u5B57\u4E32",
+            disabled: "\u6587\u5B57\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
+            narrow: "\u81EA\u52D5\u63DB\u884C"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u5BEB\u6B7B\u7684\u6A19\u984C",
+              given: '{"components":[{"id":"root","component":"Text","text":"\u5DE5\u4F5C\u6D41","variant":"h2"}]}',
+              then_contains: "\u5DE5\u4F5C\u6D41"
+            },
+            {
+              scenario: "\u7D81\u8CC7\u6599\u7684\u6578\u5B57",
+              given: '{"components":[{"id":"root","component":"Text","text":{"path":"/count"}}],"data":{"count":"\u5171 3 \u689D"}}',
+              then_contains: "\u5171 3 \u689D"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "text",
+            "label",
+            "heading"
+          ],
+          example: '{ "id": "wf-name", "component": "Text", "text": { "path": "name" }, "variant": "h3" }\n',
+          source: "registry/ui-components/text/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              text: {
+                $ref: "#/$defs/DynamicString",
+                description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+              },
+              variant: {
+                type: "string",
+                enum: [
+                  "h1",
+                  "h2",
+                  "h3",
+                  "h4",
+                  "h5",
+                  "caption",
+                  "body"
+                ],
+                default: "body",
+                description: "A hint for the base text style."
+              },
+              component: {
+                const: "Text"
+              }
+            },
+            required: [
+              "id",
+              "text",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_text_field",
+          display_name: "\u6587\u5B57\u8F38\u5165\u6846",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "TextField",
+            implementation: "a2ui-basic"
+          },
+          description: "\u8B93\u4EBA\u8F38\u5165\u4E00\u6BB5\u5B57\uFF08\u55AE\u884C\u3001\u591A\u884C\u3001\u6578\u5B57\u3001\u5BC6\u78BC\uFF09\u3002\u8F38\u5165\u7684\u503C\u76F4\u63A5\u5BEB\u9032\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\uFF0C\u9001\u51FA\u6642\u7531\u8868\u55AE\u7684 Button \u5E36\u8D70\u3002\u9019\u662F\u300C\u8868\u55AE\u300D\u7684\u57FA\u672C\u7A4D\u6728\u3002",
+          renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u8F38\u5165\u6846\u3002variant \u6C7A\u5B9A\u5F62\u72C0\uFF1AshortText \u55AE\u884C\u3001longText \u591A\u884C\u3001number \u6578\u5B57\u3001obscured \u5BC6\u78BC\u3002",
+          data_inputs: [
+            {
+              name: "label",
+              what: "\u8F38\u5165\u6846\u7684\u6A19\u7C64\uFF08\u6B04\u4F4D\u540D\u7A31\uFF0C\u7D66\u4EBA\u770B\u7684\u5B57\uFF09"
+            },
+            {
+              name: "value",
+              what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u4EBA\u8F38\u5165\u7684\u5B57\u6703\u5BEB\u5230\u8CC7\u6599\u7684\u9019\u500B\u4F4D\u7F6E\uFF0CButton \u7684 action.context \u518D\u7528\u540C\u4E00\u500B path \u628A\u5B83\u5E36\u8D70\u3002\u5FC5\u9808\u7D81 path\uFF0C\u5BEB\u6B7B\u5B57\u4E32\u5C31\u8B8A\u6210\u4E0D\u80FD\u6539'
+            },
+            {
+              name: "variant",
+              what: "shortText\uFF08\u9810\u8A2D\uFF09\uFF0FlongText\uFF0Fnumber\uFF0Fobscured"
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "\u8F38\u5165\u6846\u7ACB\u5373\u53EF\u8F38\u5165",
+            empty: "\u6C92\u6709\u503C\u6642\u986F\u793A\u6A19\u7C64\u7576\u63D0\u793A\uFF0C\u503C\u662F\u7A7A\u5B57\u4E32",
+            error: "validationRegexp \u6216 checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57\uFF0C\u9001\u51FA\u7531\u5BBF\u4E3B\u64CB",
+            disabled: "checks \u4E0D\u901A\u904E\u6642\u4E0D\u5F71\u97FF\u8F38\u5165\uFF0C\u53EA\u6A19\u932F\u8AA4",
+            narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u8F38\u5165\u6846\u5E36\u6A19\u7C64",
+              given: '{"components":[{"id":"root","component":"TextField","label":"\u59D3\u540D","value":{"path":"/form/name"}}],"data":{"form":{"name":""}}}',
+              then_contains: "\u59D3\u540D"
+            },
+            {
+              scenario: "\u591A\u884C\u8F38\u5165\u6846",
+              given: '{"components":[{"id":"root","component":"TextField","label":"\u8ACB\u5047\u539F\u56E0","variant":"longText","value":{"path":"/form/reason"}}],"data":{"form":{"reason":""}}}',
+              then_contains: "\u8ACB\u5047\u539F\u56E0"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "input",
+            "form",
+            "text",
+            "textfield",
+            "\u8F38\u5165"
+          ],
+          example: '{ "id": "f-name", "component": "TextField", "label": "\u59D3\u540D", "value": { "path": "/form/name" } }\n',
+          source: "registry/ui-components/text_field/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "The text label for the input field."
+              },
+              value: {
+                $ref: "#/$defs/DynamicString",
+                description: "The value of the text field."
+              },
+              variant: {
+                type: "string",
+                enum: [
+                  "longText",
+                  "number",
+                  "shortText",
+                  "obscured"
+                ],
+                default: "shortText",
+                description: "The type of input field to display."
+              },
+              validationRegexp: {
+                type: "string",
+                description: "A regular expression used for client-side validation of the input."
+              },
+              component: {
+                const: "TextField"
+              }
+            },
+            required: [
+              "id",
+              "label",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_threshold_chart",
+          display_name: "\u9580\u6ABB\u66F2\u7DDA",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "ThresholdChart",
+            implementation: "arcrun"
+          },
+          description: "\u9010\u671F\u9577\u689D\u5716\u52A0\u4E0A\u9010\u671F\u9580\u6ABB\u865B\u7DDA\uFF1A\u8DCC\u7834\u9580\u6ABB\u7684\u90A3\u5E7E\u671F\u6A19\u9EC3\u6216\u7D05\uFF0C\u53EF\u5728\u67D0\u4E00\u671F\u52A0\u4E00\u53E5\u8A3B\u8A18\uFF08\u4F8B\u5982\u300C\u642C\u5BB6 404\u300D\uFF09\u3002\u54EA\u4E00\u671F\u7B97\u9EC3\u3001\u7B97\u7D05\u3001\u9580\u6ABB\u662F\u591A\u5C11\uFF0C\u5168\u7531\u8CC7\u6599\u8AAA\u4E86\u7B97\uFF0C\u5143\u4EF6\u4E0D\u5224\u65B7\u3002",
+          renders: "\u7E31\u8EF8\u81EA\u52D5\u53D6\u597D\u770B\u7684\u523B\u5EA6\uFF1B\u6BCF\u4E00\u671F\u4E00\u6839\u9577\u689D\uFF0C\u984F\u8272\u7531\u8A72\u671F\u7684 level \u6C7A\u5B9A\uFF08green \u7528\u9752\u8272\u3001yellow\u3001red\u3001gray\uFF1B\u6C92\u7D66 level \u7684\u662F\u6DE1\u8272\uFF0C\u8868\u793A\u9084\u6C92\u6709\u57FA\u7DDA\u53EF\u6BD4\uFF09\uFF1B\u6709 threshold \u7684\u671F\u9023\u6210\u7D05\u8272\u865B\u7DDA\uFF1Bnotes \u5728\u5C0D\u4E0A label \u7684\u90A3\u4E00\u671F\u756B\u4E00\u689D\u8C4E\u7DDA\u8207\u4E00\u53E5\u8A71\uFF1Btick \u6709\u5B57\u7684\u90A3\u4E00\u671F\uFF0C\u5E95\u4E0B\u6A19\u51FA\u8A72\u5B57\uFF08\u4F8B\u5982\u6708\u4EFD\uFF09\uFF1Blegend \u5728\u5716\u4E0B\u65B9\u756B\u5716\u4F8B\u3002\u6ED1\u904E\u9577\u689D\u986F\u793A\u8A72\u671F\u7684\u6578\u5B57\u8207\u7D05\u7DDA\u3002",
+          data_inputs: [
+            {
+              name: "points",
+              what: "\u9010\u671F\u8CC7\u6599\uFF08\u820A\u2192\u65B0\uFF09\uFF1A[{label, value, level?, threshold?, tick?}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE"
+            },
+            {
+              name: "notes",
+              what: "\u8A3B\u8A18 [{at, text}]\uFF0Cat \u5C0D\u4E0A\u67D0\u4E00\u671F\u7684 label"
+            },
+            {
+              name: "legend",
+              what: "\u5716\u4F8B [{tone, text}]"
+            },
+            {
+              name: "label",
+              what: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E"
+            }
+          ],
+          interactions: [],
+          states: {
+            loading: "points \u9084\u6C92\u5230\u6642\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D",
+            empty: "\u6C92\u6709\u4EFB\u4F55\u6709\u6548\u6578\u5B57\u7684\u671F\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\uFF0C\u4E0D\u5831\u932F",
+            error: "value \u4E0D\u662F\u6578\u5B57\u7684\u671F\u6574\u7B46\u7565\u904E\uFF1B\u8A3B\u8A18\u5C0D\u4E0D\u4E0A\u4EFB\u4F55\u4E00\u671F\u5C31\u4E0D\u756B",
+            disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
+            narrow: "\u5716\u6700\u7A84 560px\uFF0C\u5BB9\u5668\u66F4\u7A84\u6642\u6A6B\u5411\u6372\u52D5\uFF08\u5B57\u624D\u8B80\u5F97\u6E05\u695A\uFF09"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u5169\u671F\u3001\u7B2C\u4E8C\u671F\u8DCC\u7834\u9580\u6ABB\uFF0C\u5E36\u8A3B\u8A18\u8207\u5716\u4F8B",
+              given: '{"components":[{"id":"root","component":"ThresholdChart","points":[{"label":"2026-02-09","value":6915,"level":"green","threshold":4800},{"label":"2026-02-16","value":2343,"level":"red","threshold":4800}],"notes":[{"at":"2026-02-16","text":"\u642C\u5BB6 404"}],"legend":[{"tone":"green","text":"\u6B63\u5E38"},{"tone":"red","text":"\u7D05\u71C8"}],"label":"Google \u6BCF\u9031\u66DD\u5149"}]}',
+              then_contains: "\u642C\u5BB6 404"
+            },
+            {
+              scenario: "\u6C92\u6709\u8CC7\u6599\u6642\u76F4\u8AAA",
+              given: '{"components":[{"id":"root","component":"ThresholdChart","points":[]}]}',
+              then_contains: "\u6C92\u6709\u8CC7\u6599"
+            },
+            {
+              scenario: "\u8CC7\u6599\u7D81\u8CC7\u6599\u6A21\u578B",
+              given: '{"components":[{"id":"root","component":"ThresholdChart","points":{"path":"/p"},"legend":{"path":"/l"}}],"data":{"p":[{"label":"w1","value":10}],"l":[{"tone":"red","text":"\u7D05\u71C8\u5716\u4F8B"}]}}',
+              then_contains: "\u7D05\u71C8\u5716\u4F8B"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "chart",
+            "threshold",
+            "monitor",
+            "bar"
+          ],
+          example: '{ "id": "curve", "component": "ThresholdChart", "points": { "path": "curve/points" }, "notes": { "path": "curve/notes" }, "legend": { "path": "curve/legend" } }\n',
+          source: "registry/ui-components/threshold_chart/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              points: {
+                description: "\u9010\u671F\u8CC7\u6599\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: {
+                          type: "string",
+                          description: "\u9019\u4E00\u671F\u7684\u540D\u5B57\uFF08\u4F8B 2026-11-09 \u90A3\u9031\uFF09\uFF1B\u8A3B\u8A18\u7528\u5B83\u5C0D\u4F4D"
+                        },
+                        value: {
+                          type: [
+                            "number",
+                            "string"
+                          ],
+                          description: "\u9019\u4E00\u671F\u7684\u6578\u5B57"
+                        },
+                        level: {
+                          type: "string",
+                          enum: [
+                            "green",
+                            "yellow",
+                            "red",
+                            "gray",
+                            "teal"
+                          ],
+                          description: "\u9019\u4E00\u671F\u9577\u689D\u7684\u984F\u8272\uFF1B\u6C92\u7D66\uFF1D\u6DE1\u8272\uFF08\u9084\u6C92\u6709\u57FA\u7DDA\u53EF\u6BD4\uFF09"
+                        },
+                        threshold: {
+                          type: [
+                            "number",
+                            "string"
+                          ],
+                          description: "\u9019\u4E00\u671F\u7684\u7D05\u7DDA\uFF08\u9023\u6210\u865B\u7DDA\uFF09"
+                        },
+                        tick: {
+                          type: "string",
+                          description: "\u9019\u4E00\u671F\u5E95\u4E0B\u8981\u6A19\u7684\u5B57\uFF08\u4F8B \u6708\u4EFD\uFF09\uFF0C\u6C92\u7D66\u5C31\u4E0D\u6A19"
+                        }
+                      },
+                      required: [
+                        "label",
+                        "value"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u671F"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              notes: {
+                description: "\u8A3B\u8A18\uFF1A\u5728\u67D0\u4E00\u671F\u756B\u8C4E\u7DDA\u8207\u4E00\u53E5\u8A71",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        at: {
+                          type: "string"
+                        },
+                        text: {
+                          type: "string"
+                        }
+                      },
+                      required: [
+                        "at",
+                        "text"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u53E5\u8A3B\u8A18\uFF0Cat \u5C0D\u4E0A\u67D0\u4E00\u671F\u7684 label"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              legend: {
+                description: "\u5716\u4F8B",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        tone: {
+                          type: "string",
+                          enum: [
+                            "green",
+                            "yellow",
+                            "red",
+                            "gray",
+                            "teal"
+                          ]
+                        },
+                        text: {
+                          type: "string"
+                        }
+                      },
+                      required: [
+                        "tone",
+                        "text"
+                      ],
+                      additionalProperties: false,
+                      description: "\u5716\u4F8B\u4E00\u9805"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              label: {
+                description: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              component: {
+                const: "ThresholdChart"
+              }
+            },
+            required: [
+              "id",
+              "points",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        {
+          canonical_id: "ui_workflow_graph",
+          display_name: "\u7BC0\u9EDE\u8207\u9023\u7DDA\u5716",
+          kind: "ui",
+          category: "ui",
+          version: "v1",
+          stability: "floating",
+          runtime_compat: [
+            "browser"
+          ],
+          a2ui: {
+            component: "WorkflowGraph",
+            implementation: "arcrun"
+          },
+          description: "\u628A\u4E00\u7FA4\u7BC0\u9EDE\u548C\u5B83\u5011\u4E4B\u9593\u7684\u9023\u7DDA\u756B\u6210\u4E00\u5F35\u53EF\u9EDE\u3001\u53EF\u7E2E\u653E\u7684\u5716\uFF1A\u5168\u5C40\u5716\uFF08\u5DE5\u4F5C\u6D41\u8207\u5B83\u5011\u8B80\u5BEB\u7684\u8CC7\u6599\u3001\u8AB0\u53EB\u8AB0\uFF0C\u65B7\u7DDA\u4EAE\u7D05\uFF09\u548C\u55AE\u4E00\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u7BC0\u9EDE\u8207\u9023\u7DDA\uFF09\u5171\u7528\u9019\u4E00\u9846\u3002",
+          renders: "layout=columns\uFF08XMind \u5F0F\u7684 drill\uFF0C\u4EE5\u67D0\u500B\u7BC0\u9EDE\u70BA\u4E2D\u5FC3\uFF09\uFF1A\u4E2D\u6B04\u662F\u4E2D\u5FC3\uFF08kind=center\uFF09\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF08\u5927\u7DB1\u7E2E\u6392\u7DDA\uFF09\uFF0C\u5DE6\u6B04\u662F\u547C\u53EB\u904E\u4F86\uFF0F\u5BEB\u8CC7\u6599\u7D66\u5B83\u7684\u9130\u5C45\uFF0C\u53F3\u6B04\u662F\u5B83\u53EB\u7684\u9130\u5C45\uFF1B\u6C92\u6709\u4E2D\u5FC3\u5C31\u662F\u6700\u5916\u5C64\u4E00\u6392\u540C\u8F29\uFF1B\u9023\u7DDA\u6A19\u51FA\u300C\u54EA\u4E00\u6B65 \u2192 \u53EB\u8AB0\u300D\uFF0C\u540C\u6B04\u7684\u7DDA\u7E5E\u5F27\uFF0Cvertical=true \u6642\u5168\u90E8\u6392\u6210\u4E00\u76F4\u6B04\u3002layout=flow\uFF08Claude Design \u7684 Workflow Viewer \u7248\u578B\uFF09\uFF1A\u7BC0\u9EDE\u5361\uFF1D\u8272\u584A\u5716\u793A\uFF0B\u540D\u5B57\uFF08\u986F\u793A\u540D\u512A\u5148\uFF09\uFF0B\u985E\u578B\u6A19\u7C64\uFF08\u53EA\u6A19\u6709\u5340\u5225\u610F\u7FA9\u7684\u985E\u578B\uFF09\uFF0B\u4E00\u884C\u7C21\u77ED\u8AAA\u660E\uFF0C\u7DB2\u5740\u8207 worker \u540D\u4E0D\u653E\u5728\u5361\u4E0A\uFF0C\u8C9D\u8332\u66F2\u7DDA\u9023\u7DDA\uFF0C\u88AB\u9078\uFF08selected\uFF09\u7684\u7BC0\u9EDE\u8207\u5B83\u7684\u9023\u7DDA\u9AD8\u4EAE\uFF1Bminimap=true \u6642\u5DE6\u4E0B\u89D2\u6709\u7E2E\u5C0F\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF1B\u7BC0\u9EDE\u7167\u9806\u5E8F\u5206\u5C64\uFF0C\u5BEC\u87A2\u5E55\u7531\u5DE6\u5230\u53F3\u3001\u7A84\u87A2\u5E55\uFF08vertical=true\uFF09\u7531\u4E0A\u5230\u4E0B\uFF0C\u689D\u4EF6\uFF0F\u5931\u6557\u7684\u7DDA\u5E36\u6587\u5B57\u3002\u7BC0\u9EDE\u6709 bad\uFF08\u7D05\u6846\uFF09\u3001dim\uFF08\u6DE1\uFF09\u5169\u7A2E\u6A19\u8A18\uFF0C\u9023\u7DDA\u6709 bad\uFF08\u7C97\u7D05\u7DDA\uFF0C\u9EDE\u5B83\u8DF3\u5230 href\uFF09\uFF1B\u7D05\u4E0D\u7D05\u7531\u8CC7\u6599\u8AAA\u4E86\u7B97\uFF0C\u9019\u9846\u5143\u4EF6\u4E0D\u5224\u65B7\u4EFB\u4F55\u4E8B\u3002",
+          data_inputs: [
+            {
+              name: "nodes",
+              what: "\u7BC0\u9EDE\u6E05\u55AE\uFF1Aid\u3001title\uFF0C\u9078\u586B sub\uFF08\u7B2C\u4E8C\u884C\u5B57\uFF0Cflow \u7248\u578B\u653E\u96F6\u4EF6 id\uFF09\u3001line3\uFF08flow \u5361\u7247\u53F3\u4E0B\u7684\u77ED\u5B57\uFF09\u3001badge\uFF08flow \u5361\u7247\u53F3\u4E0A\u7684\u985E\u578B\u6A19\u7C64\uFF0C\u5982 API\u3001AI\uFF09\u3001tone\uFF08\u5716\u793A\u8272\u584A\uFF1Agreen\uFF0Fblue\uFF0Famber\uFF0Fpurple\uFF0Fslate\uFF0Fgray\uFF0Fpink\uFF09\u3001icon\uFF08\u8272\u584A\u88E1\u7684\u4E00\u500B\u5B57\uFF09\u3001num\uFF08\u756B\u9762\u4E0A\u7684\u6307\u7A31\u7DE8\u865F\uFF0C\u986F\u793A\u6210\u300CN \u865F\u300D\uFF0C\u53EA\u7528\u4F86\u8DDF\u4EBA\u6216 AI \u6307\u67D0\u4E00\u584A\uFF0C\u4E0D\u4EE3\u8868\u5148\u5F8C\uFF09\u3001shape\uFF08\u56FA\u5B9A\u985E\u578B\u7684\u5916\u6846\uFF1Atrigger \u8D77\u9EDE\uFF1D\u5DE6\u534A\u5713\u3001call \u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41\uFF1D\u96D9\u5C64\u6846\u3001ext \u5916\u90E8\u670D\u52D9\uFF1D\u865B\u7DDA\u6846\u3001branch \u5224\u65B7\uFF1D\u516D\u89D2\u3001read\uFF0Fwrite \u8B80\u5BEB\u8CC7\u6599\u8868\uFF1D\u5713\u7B52\u9802\uFF1B\u6C92\u7D66\u5C31\u662F\u4E00\u822C\u5713\u89D2\u65B9\u584A\uFF09\u3001side\uFF08left\uFF0Fmid\uFF0Fright\uFF0Ccolumns \u7528\uFF09\u3001kind\uFF08item\uFF0Fgroup\uFF0Fdata\uFF0Fplat\uFF0Fmiss\uFF0Fcenter\uFF0Ftable\uFF1Btable\uFF1DUML \u985E\u5225\u5F0F\u7BC0\u9EDE\uFF0C\u8868\u540D\u7576\u6A19\u984C\u3001fields \u9010\u884C\u5217\u6B04\u4F4D\u3001more\uFF1D\u5176\u9918\u5E7E\u6B04\u6C92\u5217\u51FA\uFF09\u3001fields\u3001more\u3001bad\u3001dim\u3001href\uFF08\u9EDE\u5B83\u53BB\u54EA\uFF0C\u53EA\u6536 #/ \u958B\u982D\u7684\u7AD9\u5167\u7DB2\u5740\uFF09"
+            },
+            {
+              name: "edges",
+              what: "\u9023\u7DDA\u6E05\u55AE\uFF1Afrom\u3001to\uFF08\u7BC0\u9EDE id\uFF09\uFF0C\u9078\u586B kind\uFF08call\uFF0Fwrite\uFF0Fread\uFF0Fnext\uFF0Ffail\uFF0Fchild\uFF1Bchild\uFF1D\u4E2D\u5FC3\u5230\u5B83\u4E0B\u4E00\u5C64\u7684\u7E2E\u6392\u7DDA\uFF09\u3001label\u3001bad\u3001href\u3001tip\uFF08\u6ED1\u904E\u53BB\u986F\u793A\u7684\u8AAA\u660E\uFF09"
+            },
+            {
+              name: "layout / vertical / selected / minimap / pan / headLeft / headRight / zoom",
+              what: "\u7248\u578B\u3001\u9078\u53D6\u3001\u5168\u8C8C\u5716\u8207\u6B04\u6A19\u984C\uFF1Bzoom \u662F\u5728\u300C\u525B\u597D\u653E\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF1Bpan=true\uFF08flow \u7248\u578B\uFF09\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF0COVERVIEW \u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\u4E14\u9EDE\u5B83\u53EF\u8DF3\u904E\u53BB"
+            }
+          ],
+          interactions: [
+            {
+              name: "\u9EDE\u7BC0\u9EDE\uFF0F\u9EDE\u7D05\u7DDA",
+              what: "\u8DF3\u5230\u8A72\u7BC0\u9EDE\u6216\u8A72\u65B7\u7DDA\u6240\u5728\u7BC0\u9EDE\u7684 href\uFF08\u7AD9\u5167\u7DB2\u5740\uFF0C\u4E0D\u958B\u5916\u7AD9\uFF09"
+            }
+          ],
+          states: {
+            loading: "\u5143\u4EF6\u672C\u8EAB\u6C92\u6709\u8F09\u5165\u72C0\u614B\uFF1A\u547C\u53EB\u7AEF\u8CC7\u6599\u9084\u6C92\u5230\u5C31\u5148\u4E0D\u639B\u9019\u9846\uFF0C\u6216\u639B\u7A7A\u6E05\u55AE",
+            empty: "\u6C92\u6709\u7BC0\u9EDE\u6642\u756B\u4E00\u5F35\u7A7A\u7684\u5716\uFF08\u53EA\u6709\u6B04\u6A19\u984C\uFF09\uFF0C\u4E0D\u5831\u932F",
+            error: "\u8CC7\u6599\u5F62\u72C0\u4E0D\u5C0D\u7684\u7BC0\u9EDE\uFF0F\u9023\u7DDA\uFF08\u6C92\u6709 id\u3001\u9023\u5230\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE\uFF09\u6574\u7B46\u7565\u904E\uFF0C\u4E0D\u6703\u6574\u5F35\u5716\u58DE\u6389",
+            disabled: "\u5716\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF1B\u552F\u8B80\u662F\u9810\u8A2D\uFF0C\u6C92\u6709\u4EFB\u4F55\u6539\u52D5\u8CC7\u6599\u7684\u4E92\u52D5",
+            narrow: "\u5BB9\u5668\u6BD4\u5716\u7A84\u5C31\u7E2E\u5230\u6700\u5C0F 0.62 \u500D\uFF0C\u518D\u7A84\u6539\u6210\u6A6B\u5411\u6372\u52D5\uFF1Bflow \u7248\u578B\u53EF\u6539\u6210\u7531\u4E0A\u5230\u4E0B\uFF1Bpan=true \u6642\u6700\u5C0F\u53EA\u7E2E\u5230 0.9 \u500D\uFF0C\u5176\u9918\u9760\u5E73\u79FB"
+          },
+          gherkin_tests: [
+            {
+              scenario: "\u5168\u5C40\u5716\uFF1A\u5DE6\u6B04\u5DE5\u4F5C\u6D41\u3001\u53F3\u6B04\u8CC7\u6599\u3001\u4E00\u689D\u65B7\u7DDA\u4EAE\u7D05\u4E26\u5E36\u6587\u5B57",
+              given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"columns","headLeft":"\u5DE5\u4F5C\u6D41","headRight":"\u8CC7\u6599","nodes":[{"id":"a","title":"rag_ingest_card","sub":"\u5DE5\u4F5C\u6D41","side":"left"},{"id":"m","title":"rag_cluster_auto","sub":"\u9019\u53F0\u6C92\u88DD\u9019\u689D\u5DE5\u4F5C\u6D41","side":"right","kind":"miss","bad":true}],"edges":[{"from":"a","to":"m","kind":"call","bad":true,"label":"\u2717 \u6C92\u88DD\u30FBtrigger_wiki_cluster","href":"#/flows/~w/rag_ingest_card/trigger_wiki_cluster"}]}]}',
+              then_contains: "rag_cluster_auto"
+            },
+            {
+              scenario: "\u6D41\u7A0B\u5716\uFF1A\u5169\u500B\u7BC0\u9EDE\u4E00\u689D\u7DDA\uFF0C\u7BC0\u9EDE\u5E36\u7DE8\u865F\u8207\u96F6\u4EF6\u540D",
+              given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","minimap":true,"selected":"w","nodes":[{"id":"input","title":"input","sub":"\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09","num":1,"tone":"green","badge":"IN"},{"id":"w","title":"write_triplet","sub":"\u6253\u4E00\u500B\u7DB2\u5740","num":2,"line3":"\u5BEB triplet"}],"edges":[{"from":"input","to":"w","kind":"next","tip":"\u6210\u529F\u5F8C"}]}]}',
+              then_contains: "write_triplet"
+            },
+            {
+              scenario: "\u56FA\u5B9A\u985E\u578B\u7684\u7BC0\u9EDE\uFF1A\u8D77\u9EDE\u3001\u5916\u90E8\u670D\u52D9\u3001\u5224\u65B7\u5404\u6709\u81EA\u5DF1\u7684\u5916\u6846\u8207\u6A19\u7C64\uFF0C\u7DE8\u865F\u986F\u793A\u6210 N \u865F",
+              given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":[{"id":"a","title":"\u6536\u5230\u7559\u8A00","sub":"\u8D77\u9EDE","num":1,"tone":"green","badge":"\u8D77\u9EDE","icon":"\u25B6","shape":"trigger"},{"id":"b","title":"\u767C Telegram","sub":"Telegram","num":2,"tone":"blue","badge":"\u5916\u90E8","icon":"A","shape":"ext"},{"id":"c","title":"\u6709\u6C92\u6709\u7968","sub":"\u5224\u65B7","num":3,"tone":"slate","badge":"\u5224\u65B7","icon":"?","shape":"branch"}],"edges":[{"from":"a","to":"b","kind":"next"},{"from":"b","to":"c","kind":"next"}]}]}',
+              then_contains: "2 \u865F"
+            },
+            {
+              scenario: "\u7BC0\u9EDE\u6E05\u55AE\u53EF\u4EE5\u7D81\u8CC7\u6599\u6A21\u578B",
+              given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":{"path":"/n"},"edges":{"path":"/e"}}],"data":{"n":[{"id":"x","title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE","sub":"\u96F6\u4EF6"}],"e":[]}}',
+              then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE"
+            }
+          ],
+          tags: [
+            "ui",
+            "a2ui",
+            "graph",
+            "workflow",
+            "observer"
+          ],
+          example: '{ "id": "root", "component": "WorkflowGraph", "layout": "flow",\n  "nodes": { "path": "/nodes" }, "edges": { "path": "/edges" } }\n',
+          source: "registry/ui-components/workflow-graph/component.contract.yaml",
+          input_schema: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              layout: {
+                description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              vertical: {
+                description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
+                oneOf: [
+                  {
+                    type: "boolean"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              selected: {
+                description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              minimap: {
+                type: "boolean",
+                description: "flow \u7248\u578B\uFF1A\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1\uFF1B\u9801\u9762\u5728\u756B\u5E03\u5916\u7559\u4E86 .df-mmslot \u5C31\u653E\u90A3\u88E1\uFF08\u4E0D\u84CB\u756B\u5E03\uFF09\uFF0C\u5426\u5247\u6D6E\u5728\u756B\u5E03\u5DE6\u4E0B\u89D2"
+              },
+              pan: {
+                type: "boolean",
+                description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
+              },
+              headLeft: {
+                description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              headMid: {
+                description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              headRight: {
+                description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              zoom: {
+                description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
+                oneOf: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              nodes: {
+                description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: {
+                          type: "string"
+                        },
+                        title: {
+                          type: "string"
+                        },
+                        sub: {
+                          type: "string"
+                        },
+                        line3: {
+                          type: "string"
+                        },
+                        badge: {
+                          type: "string"
+                        },
+                        tone: {
+                          type: "string",
+                          enum: [
+                            "green",
+                            "blue",
+                            "amber",
+                            "purple",
+                            "slate",
+                            "gray",
+                            "pink"
+                          ]
+                        },
+                        icon: {
+                          type: "string"
+                        },
+                        num: {
+                          type: "number"
+                        },
+                        side: {
+                          type: "string",
+                          enum: [
+                            "left",
+                            "mid",
+                            "right"
+                          ]
+                        },
+                        kind: {
+                          type: "string",
+                          enum: [
+                            "item",
+                            "group",
+                            "data",
+                            "plat",
+                            "miss",
+                            "center",
+                            "table"
+                          ]
+                        },
+                        shape: {
+                          type: "string",
+                          enum: [
+                            "trigger",
+                            "call",
+                            "ext",
+                            "branch",
+                            "read",
+                            "write"
+                          ]
+                        },
+                        fields: {
+                          type: "array",
+                          items: {
+                            type: "string"
+                          }
+                        },
+                        more: {
+                          type: "number"
+                        },
+                        bad: {
+                          type: "boolean"
+                        },
+                        dim: {
+                          type: "boolean"
+                        },
+                        href: {
+                          type: "string"
+                        }
+                      },
+                      required: [
+                        "id",
+                        "title"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u500B\u7BC0\u9EDE"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              edges: {
+                description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        from: {
+                          type: "string"
+                        },
+                        to: {
+                          type: "string"
+                        },
+                        kind: {
+                          type: "string",
+                          enum: [
+                            "call",
+                            "write",
+                            "read",
+                            "next",
+                            "fail",
+                            "child"
+                          ]
+                        },
+                        label: {
+                          type: "string"
+                        },
+                        bad: {
+                          type: "boolean"
+                        },
+                        href: {
+                          type: "string"
+                        },
+                        tip: {
+                          type: "string"
+                        }
+                      },
+                      required: [
+                        "from",
+                        "to"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u689D\u9023\u7DDA"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              component: {
+                const: "WorkflowGraph"
+              }
+            },
+            required: [
+              "id",
+              "nodes",
+              "edges",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        }
+      ],
+      a2ui_catalog: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        catalogId: "arcrun:catalog/v0",
+        components: {
+          Button: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              child: {
+                $ref: "#/$defs/ComponentId",
+                description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
+              },
+              variant: {
+                type: "string",
+                enum: [
+                  "default",
+                  "primary",
+                  "borderless"
+                ],
+                default: "default",
+                description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
+              },
+              action: {
+                $ref: "#/$defs/Action"
+              },
+              component: {
+                const: "Button"
+              }
+            },
+            required: [
+              "id",
+              "child",
+              "action",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          Card: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              child: {
+                $ref: "#/$defs/ComponentId",
+                description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
+              },
+              component: {
+                const: "Card"
+              }
+            },
+            required: [
+              "id",
+              "child",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          CheckBox: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "The text to display next to the checkbox."
+              },
+              value: {
+                $ref: "#/$defs/DynamicBoolean",
+                description: "The current state of the checkbox (true for checked, false for unchecked)."
+              },
+              component: {
+                const: "CheckBox"
+              }
+            },
+            required: [
+              "id",
+              "label",
+              "value",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          ChoicePicker: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "The label for the group of options."
+              },
+              variant: {
+                type: "string",
+                enum: [
+                  "multipleSelection",
+                  "mutuallyExclusive"
+                ],
+                default: "mutuallyExclusive",
+                description: "A hint for how the choice picker should be displayed and behave."
+              },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: {
+                      $ref: "#/$defs/DynamicString",
+                      description: "The text to display for this option."
+                    },
+                    value: {
+                      type: "string",
+                      description: "The stable value associated with this option."
+                    }
+                  },
+                  required: [
+                    "label",
+                    "value"
+                  ],
+                  additionalProperties: false
+                },
+                description: "The list of available options to choose from."
+              },
+              value: {
+                $ref: "#/$defs/DynamicStringList",
+                description: "The list of currently selected values. This should be bound to a string array in the data model."
+              },
+              displayStyle: {
+                type: "string",
+                enum: [
+                  "checkbox",
+                  "chips"
+                ],
+                default: "checkbox",
+                description: "The display style of the component."
+              },
+              filterable: {
+                type: "boolean",
+                default: false,
+                description: "If true, displays a search input to filter the options."
+              },
+              component: {
+                const: "ChoicePicker"
+              }
+            },
+            required: [
+              "id",
+              "options",
+              "value",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          Column: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              children: {
+                $ref: "#/$defs/ChildList",
+                description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+              },
+              justify: {
+                type: "string",
+                enum: [
+                  "start",
+                  "center",
+                  "end",
+                  "spaceBetween",
+                  "spaceAround",
+                  "spaceEvenly",
+                  "stretch"
+                ],
+                default: "start",
+                description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
+              },
+              align: {
+                type: "string",
+                enum: [
+                  "center",
+                  "end",
+                  "start",
+                  "stretch"
+                ],
+                default: "stretch",
+                description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
+              },
+              component: {
+                const: "Column"
+              }
+            },
+            required: [
+              "id",
+              "children",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          DataTable: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              columns: {
+                description: "\u6B04\u4F4D\u5BA3\u544A [{key, title, mono, align}]",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        key: {
+                          type: "string"
+                        },
+                        title: {
+                          type: "string"
+                        },
+                        mono: {
+                          type: "boolean"
+                        },
+                        align: {
+                          type: "string",
+                          enum: [
+                            "left",
+                            "right"
+                          ]
+                        }
+                      },
+                      required: [
+                        "key"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u6B04"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              rows: {
+                description: "\u5217\u8CC7\u6599\uFF1A\u6BCF\u5217\u4E00\u500B\u7269\u4EF6\uFF0C\u6B04\u503C\u662F\u5B57\u4E32\uFF0F\u6578\u5B57\uFF0C\u6216 {text, tone} \u986F\u793A\u6210\u6A19\u7C64",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: true
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              emptyText: {
+                description: "\u6C92\u6709\u4EFB\u4F55\u5217\u6642\u986F\u793A\u7684\u5B57",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              component: {
+                const: "DataTable"
+              }
+            },
+            required: [
+              "id",
+              "columns",
+              "rows",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          DateTimeInput: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              value: {
+                $ref: "#/$defs/DynamicString",
+                description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
+              },
+              enableDate: {
+                type: "boolean",
+                default: false,
+                description: "If true, allows the user to select a date."
+              },
+              enableTime: {
+                type: "boolean",
+                default: false,
+                description: "If true, allows the user to select a time."
+              },
+              min: {
+                $ref: "#/$defs/DynamicString",
+                description: "The minimum allowed date/time in ISO 8601 format."
+              },
+              max: {
+                $ref: "#/$defs/DynamicString",
+                description: "The maximum allowed date/time in ISO 8601 format."
+              },
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "The text label for the input field."
+              },
+              component: {
+                const: "DateTimeInput"
+              }
+            },
+            required: [
+              "id",
+              "value",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          List: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              children: {
+                $ref: "#/$defs/ChildList",
+                description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
+              },
+              direction: {
+                type: "string",
+                enum: [
+                  "vertical",
+                  "horizontal"
+                ],
+                default: "vertical",
+                description: "The direction in which the list items are laid out."
+              },
+              align: {
+                type: "string",
+                enum: [
+                  "start",
+                  "center",
+                  "end",
+                  "stretch"
+                ],
+                default: "stretch",
+                description: "Defines the alignment of children along the cross axis."
+              },
+              component: {
+                const: "List"
+              }
+            },
+            required: [
+              "id",
+              "children",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          PillRow: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              items: {
+                description: "\u6A19\u7C64\u6E05\u55AE [{text, tone}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        text: {
+                          type: "string"
+                        },
+                        tone: {
+                          type: "string",
+                          enum: [
+                            "green",
+                            "yellow",
+                            "red",
+                            "gray",
+                            "teal"
+                          ]
+                        }
+                      },
+                      required: [
+                        "text"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u500B\u6A19\u7C64"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              component: {
+                const: "PillRow"
+              }
+            },
+            required: [
+              "id",
+              "items",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          Row: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              children: {
+                $ref: "#/$defs/ChildList",
+                description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
+              },
+              justify: {
+                type: "string",
+                enum: [
+                  "center",
+                  "end",
+                  "spaceAround",
+                  "spaceBetween",
+                  "spaceEvenly",
+                  "start",
+                  "stretch"
+                ],
+                default: "start",
+                description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
+              },
+              align: {
+                type: "string",
+                enum: [
+                  "start",
+                  "center",
+                  "end",
+                  "stretch"
+                ],
+                default: "stretch",
+                description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
+              },
+              component: {
+                const: "Row"
+              }
+            },
+            required: [
+              "id",
+              "children",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          Sparkline: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              values: {
+                description: "\u4E00\u4E32\u6578\u5B57\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u9663\u5217",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: [
+                        "number",
+                        "string"
+                      ]
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              tone: {
+                description: "\u7DDA\u8207\u5E95\u8272\uFF0C\u9810\u8A2D gray",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              label: {
+                description: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E\uFF08\u4F8B\u300C\u6700\u8FD1 12 \u9031 Google \u66DD\u5149\u300D\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              component: {
+                const: "Sparkline"
+              }
+            },
+            required: [
+              "id",
+              "values",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          StatusPill: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              text: {
+                description: "\u6A19\u7C64\u4E0A\u7684\u5B57\uFF1Bvariant=lamp \u6642\u53EF\u7701\u7565\uFF08\u53EA\u6709\u5713\u9EDE\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              tone: {
+                description: "green\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF0C\u9810\u8A2D gray\uFF1B\u984F\u8272\u7531\u8CC7\u6599\u6C7A\u5B9A\uFF0C\u5143\u4EF6\u4E0D\u5224\u65B7",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              variant: {
+                description: "pill\uFF08\u9810\u8A2D\uFF0C\u6709\u5E95\u8272\u7684\u5C0F\u6A19\u7C64\uFF09\u6216 lamp\uFF0818px \u5713\u71C8\u52A0\u5B57\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              component: {
+                const: "StatusPill"
+              }
+            },
+            required: [
+              "id",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          Text: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              text: {
+                $ref: "#/$defs/DynamicString",
+                description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
+              },
+              variant: {
+                type: "string",
+                enum: [
+                  "h1",
+                  "h2",
+                  "h3",
+                  "h4",
+                  "h5",
+                  "caption",
+                  "body"
+                ],
+                default: "body",
+                description: "A hint for the base text style."
+              },
+              component: {
+                const: "Text"
+              }
+            },
+            required: [
+              "id",
+              "text",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          TextField: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              accessibility: {
+                $ref: "#/$defs/AccessibilityAttributes"
+              },
+              weight: {
+                type: "number",
+                description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+              },
+              checks: {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/CheckRule",
+                  description: "A single validation rule applied to an input component."
+                },
+                description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
+              },
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "The text label for the input field."
+              },
+              value: {
+                $ref: "#/$defs/DynamicString",
+                description: "The value of the text field."
+              },
+              variant: {
+                type: "string",
+                enum: [
+                  "longText",
+                  "number",
+                  "shortText",
+                  "obscured"
+                ],
+                default: "shortText",
+                description: "The type of input field to display."
+              },
+              validationRegexp: {
+                type: "string",
+                description: "A regular expression used for client-side validation of the input."
+              },
+              component: {
+                const: "TextField"
+              }
+            },
+            required: [
+              "id",
+              "label",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          ThresholdChart: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              points: {
+                description: "\u9010\u671F\u8CC7\u6599\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: {
+                          type: "string",
+                          description: "\u9019\u4E00\u671F\u7684\u540D\u5B57\uFF08\u4F8B 2026-11-09 \u90A3\u9031\uFF09\uFF1B\u8A3B\u8A18\u7528\u5B83\u5C0D\u4F4D"
+                        },
+                        value: {
+                          type: [
+                            "number",
+                            "string"
+                          ],
+                          description: "\u9019\u4E00\u671F\u7684\u6578\u5B57"
+                        },
+                        level: {
+                          type: "string",
+                          enum: [
+                            "green",
+                            "yellow",
+                            "red",
+                            "gray",
+                            "teal"
+                          ],
+                          description: "\u9019\u4E00\u671F\u9577\u689D\u7684\u984F\u8272\uFF1B\u6C92\u7D66\uFF1D\u6DE1\u8272\uFF08\u9084\u6C92\u6709\u57FA\u7DDA\u53EF\u6BD4\uFF09"
+                        },
+                        threshold: {
+                          type: [
+                            "number",
+                            "string"
+                          ],
+                          description: "\u9019\u4E00\u671F\u7684\u7D05\u7DDA\uFF08\u9023\u6210\u865B\u7DDA\uFF09"
+                        },
+                        tick: {
+                          type: "string",
+                          description: "\u9019\u4E00\u671F\u5E95\u4E0B\u8981\u6A19\u7684\u5B57\uFF08\u4F8B \u6708\u4EFD\uFF09\uFF0C\u6C92\u7D66\u5C31\u4E0D\u6A19"
+                        }
+                      },
+                      required: [
+                        "label",
+                        "value"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u671F"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              notes: {
+                description: "\u8A3B\u8A18\uFF1A\u5728\u67D0\u4E00\u671F\u756B\u8C4E\u7DDA\u8207\u4E00\u53E5\u8A71",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        at: {
+                          type: "string"
+                        },
+                        text: {
+                          type: "string"
+                        }
+                      },
+                      required: [
+                        "at",
+                        "text"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u53E5\u8A3B\u8A18\uFF0Cat \u5C0D\u4E0A\u67D0\u4E00\u671F\u7684 label"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              legend: {
+                description: "\u5716\u4F8B",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        tone: {
+                          type: "string",
+                          enum: [
+                            "green",
+                            "yellow",
+                            "red",
+                            "gray",
+                            "teal"
+                          ]
+                        },
+                        text: {
+                          type: "string"
+                        }
+                      },
+                      required: [
+                        "tone",
+                        "text"
+                      ],
+                      additionalProperties: false,
+                      description: "\u5716\u4F8B\u4E00\u9805"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              label: {
+                description: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              component: {
+                const: "ThresholdChart"
+              }
+            },
+            required: [
+              "id",
+              "points",
+              "component"
+            ],
+            unevaluatedProperties: false
+          },
+          WorkflowGraph: {
+            type: "object",
+            properties: {
+              id: {
+                $ref: "#/$defs/ComponentId"
+              },
+              weight: {
+                type: "number"
+              },
+              layout: {
+                description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              vertical: {
+                description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
+                oneOf: [
+                  {
+                    type: "boolean"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              selected: {
+                description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              minimap: {
+                type: "boolean",
+                description: "flow \u7248\u578B\uFF1A\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1\uFF1B\u9801\u9762\u5728\u756B\u5E03\u5916\u7559\u4E86 .df-mmslot \u5C31\u653E\u90A3\u88E1\uFF08\u4E0D\u84CB\u756B\u5E03\uFF09\uFF0C\u5426\u5247\u6D6E\u5728\u756B\u5E03\u5DE6\u4E0B\u89D2"
+              },
+              pan: {
+                type: "boolean",
+                description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
+              },
+              headLeft: {
+                description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              headMid: {
+                description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              headRight: {
+                description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
+                oneOf: [
+                  {
+                    type: "string"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              zoom: {
+                description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
+                oneOf: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  },
+                  {
+                    $ref: "#/$defs/FunctionCall",
+                    description: "Invokes a named function on the client."
+                  }
+                ]
+              },
+              nodes: {
+                description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: {
+                          type: "string"
+                        },
+                        title: {
+                          type: "string"
+                        },
+                        sub: {
+                          type: "string"
+                        },
+                        line3: {
+                          type: "string"
+                        },
+                        badge: {
+                          type: "string"
+                        },
+                        tone: {
+                          type: "string",
+                          enum: [
+                            "green",
+                            "blue",
+                            "amber",
+                            "purple",
+                            "slate",
+                            "gray",
+                            "pink"
+                          ]
+                        },
+                        icon: {
+                          type: "string"
+                        },
+                        num: {
+                          type: "number"
+                        },
+                        side: {
+                          type: "string",
+                          enum: [
+                            "left",
+                            "mid",
+                            "right"
+                          ]
+                        },
+                        kind: {
+                          type: "string",
+                          enum: [
+                            "item",
+                            "group",
+                            "data",
+                            "plat",
+                            "miss",
+                            "center",
+                            "table"
+                          ]
+                        },
+                        shape: {
+                          type: "string",
+                          enum: [
+                            "trigger",
+                            "call",
+                            "ext",
+                            "branch",
+                            "read",
+                            "write"
+                          ]
+                        },
+                        fields: {
+                          type: "array",
+                          items: {
+                            type: "string"
+                          }
+                        },
+                        more: {
+                          type: "number"
+                        },
+                        bad: {
+                          type: "boolean"
+                        },
+                        dim: {
+                          type: "boolean"
+                        },
+                        href: {
+                          type: "string"
+                        }
+                      },
+                      required: [
+                        "id",
+                        "title"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u500B\u7BC0\u9EDE"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              edges: {
+                description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
+                oneOf: [
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        from: {
+                          type: "string"
+                        },
+                        to: {
+                          type: "string"
+                        },
+                        kind: {
+                          type: "string",
+                          enum: [
+                            "call",
+                            "write",
+                            "read",
+                            "next",
+                            "fail",
+                            "child"
+                          ]
+                        },
+                        label: {
+                          type: "string"
+                        },
+                        bad: {
+                          type: "boolean"
+                        },
+                        href: {
+                          type: "string"
+                        },
+                        tip: {
+                          type: "string"
+                        }
+                      },
+                      required: [
+                        "from",
+                        "to"
+                      ],
+                      additionalProperties: false,
+                      description: "\u4E00\u689D\u9023\u7DDA"
+                    }
+                  },
+                  {
+                    $ref: "#/$defs/DataBinding"
+                  }
+                ]
+              },
+              component: {
+                const: "WorkflowGraph"
+              }
+            },
+            required: [
+              "id",
+              "nodes",
+              "edges",
+              "component"
+            ],
+            unevaluatedProperties: false
+          }
+        },
+        $defs: {
+          anyComponent: {
+            oneOf: [
+              {
+                $ref: "#/components/Button"
+              },
+              {
+                $ref: "#/components/Card"
+              },
+              {
+                $ref: "#/components/CheckBox"
+              },
+              {
+                $ref: "#/components/ChoicePicker"
+              },
+              {
+                $ref: "#/components/Column"
+              },
+              {
+                $ref: "#/components/DataTable"
+              },
+              {
+                $ref: "#/components/DateTimeInput"
+              },
+              {
+                $ref: "#/components/List"
+              },
+              {
+                $ref: "#/components/PillRow"
+              },
+              {
+                $ref: "#/components/Row"
+              },
+              {
+                $ref: "#/components/Sparkline"
+              },
+              {
+                $ref: "#/components/StatusPill"
+              },
+              {
+                $ref: "#/components/Text"
+              },
+              {
+                $ref: "#/components/TextField"
+              },
+              {
+                $ref: "#/components/ThresholdChart"
+              },
+              {
+                $ref: "#/components/WorkflowGraph"
+              }
+            ],
+            discriminator: {
+              propertyName: "component"
+            }
+          },
+          ComponentId: {
+            type: "string",
+            description: "The unique identifier for a component, used for both definitions and references within the same surface."
+          },
+          AccessibilityAttributes: {
+            type: "object",
+            description: "Attributes to enhance accessibility when using assistive technologies like screen readers.",
+            properties: {
+              label: {
+                $ref: "#/$defs/DynamicString",
+                description: "A short string, typically 1 to 3 words, used by assistive technologies to convey the purpose or intent of an element. For example, an input field might have an accessible label of 'User ID' or a button might be labeled 'Submit'."
+              },
+              description: {
+                $ref: "#/$defs/DynamicString",
+                description: "Additional information provided by assistive technologies about an element such as instructions, format requirements, or result of an action. For example, a mute button might have a label of 'Mute' and a description of 'Silences notifications about this conversation'."
+              }
+            }
+          },
+          CheckRule: {
+            type: "object",
+            description: "A single validation rule applied to an input component.",
+            properties: {
+              condition: {
+                $ref: "#/$defs/DynamicBoolean"
+              },
+              message: {
+                type: "string",
+                description: "The error message to display if the check fails."
+              }
+            },
+            required: [
+              "condition",
+              "message"
+            ],
+            additionalProperties: false
+          },
+          Action: {
+            description: "Defines an interaction handler that can either trigger a server-side event or execute a local client-side function.",
+            oneOf: [
+              {
+                type: "object",
+                description: "Triggers a server-side event.",
+                properties: {
+                  event: {
+                    type: "object",
+                    description: "The event to dispatch to the server.",
+                    properties: {
+                      name: {
+                        type: "string",
+                        description: "The name of the action to be dispatched to the server."
+                      },
+                      context: {
+                        type: "object",
+                        description: "A JSON object containing the key-value pairs for the action context. Values can be literals or paths. Use literal values unless the value must be dynamically bound to the data model. Do NOT use paths for static IDs.",
+                        additionalProperties: {
+                          $ref: "#/$defs/DynamicValue"
+                        }
+                      }
+                    },
+                    required: [
+                      "name"
+                    ],
+                    additionalProperties: false
+                  }
+                },
+                required: [
+                  "event"
+                ],
+                additionalProperties: false
+              },
+              {
+                type: "object",
+                description: "Executes a local client-side function.",
+                properties: {
+                  functionCall: {
+                    $ref: "#/$defs/FunctionCall"
+                  }
+                },
+                required: [
+                  "functionCall"
+                ],
+                additionalProperties: false
+              }
+            ]
+          },
+          DynamicString: {
+            description: "Represents a string",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                allOf: [
+                  {
+                    $ref: "#/$defs/FunctionCall"
+                  },
+                  {
+                    properties: {
+                      returnType: {
+                        const: "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          DynamicBoolean: {
+            description: "A boolean value that can be a literal, a path, or a function call returning a boolean.",
+            oneOf: [
+              {
+                type: "boolean"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                allOf: [
+                  {
+                    $ref: "#/$defs/FunctionCall"
+                  },
+                  {
+                    properties: {
+                      returnType: {
+                        const: "boolean"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          DynamicStringList: {
+            description: "Represents a value that can be either a literal array of strings, a path to a string array in the data model, or a function call returning a string array.",
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "string"
+                }
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                allOf: [
+                  {
+                    $ref: "#/$defs/FunctionCall"
+                  },
+                  {
+                    properties: {
+                      returnType: {
+                        const: "array"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          ChildList: {
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  $ref: "#/$defs/ComponentId"
+                },
+                description: "A static list of child component IDs."
+              },
+              {
+                type: "object",
+                description: "A template for generating a dynamic list of children from a data model list. The `componentId` is the component to use as a template.",
+                properties: {
+                  componentId: {
+                    $ref: "#/$defs/ComponentId"
+                  },
+                  path: {
+                    type: "string",
+                    description: "The path to the list of component property objects in the data model."
+                  }
+                },
+                required: [
+                  "componentId",
+                  "path"
+                ],
+                additionalProperties: false
+              }
+            ]
+          },
+          DataBinding: {
+            type: "object",
+            properties: {
+              path: {
+                type: "string",
+                description: "A JSON Pointer path to a value in the data model."
+              }
+            },
+            required: [
+              "path"
+            ],
+            additionalProperties: false
+          },
+          FunctionCall: {
+            type: "object",
+            description: "Invokes a named function on the client.",
+            properties: {
+              call: {
+                type: "string",
+                description: "The name of the function to call."
+              },
+              args: {
+                type: "object",
+                description: "Arguments passed to the function.",
+                additionalProperties: {
+                  anyOf: [
+                    {
+                      $ref: "#/$defs/DynamicValue"
+                    },
+                    {
+                      type: "object",
+                      description: "A literal object argument (e.g. configuration)."
+                    }
+                  ]
+                }
+              },
+              returnType: {
+                type: "string",
+                description: "The expected return type of the function call.",
+                enum: [
+                  "string",
+                  "number",
+                  "boolean",
+                  "array",
+                  "object",
+                  "any",
+                  "void"
+                ],
+                default: "boolean"
+              }
+            },
+            required: [
+              "call"
+            ],
+            oneOf: [
+              {
+                $ref: "catalog.json#/$defs/anyFunction"
+              }
+            ]
+          },
+          DynamicValue: {
+            description: "A value that can be a literal, a path, or a function call returning any type.",
+            oneOf: [
+              {
+                type: "string"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "boolean"
+              },
+              {
+                type: "array"
+              },
+              {
+                $ref: "#/$defs/DataBinding"
+              },
+              {
+                $ref: "#/$defs/FunctionCall"
+              }
+            ]
+          }
+        }
+      }
+    };
+  }
+});
+
+// cypher-executor/src/lib/ui-surface.ts
+function validateUiSurface(raw2, actions) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["ui.surface \u5FC5\u9808\u662F\u7269\u4EF6\uFF1A{ components: [...], data?: {...} }"];
+  const s = raw2;
+  if (!Array.isArray(s.components) || s.components.length === 0) return ["ui.surface.components \u5FC5\u9808\u662F\u975E\u7A7A\u9663\u5217"];
+  if (s.data !== void 0 && (typeof s.data !== "object" || s.data === null || Array.isArray(s.data))) errors.push("ui.surface.data \u5FC5\u9808\u662F\u7269\u4EF6");
+  if (s.load !== void 0 && (typeof s.load !== "string" || !actions.includes(s.load))) {
+    errors.push(`ui.surface.load\u300C${String(s.load)}\u300D\u4E0D\u662F\u9019\u500B App \u7684\u52D5\u4F5C\uFF08\u53EF\u7528\uFF1A${actions.join("\u3001") || "\uFF08\u6C92\u6709\uFF09"}\uFF09\u2014\u2014\u756B\u9762\u958B\u555F\u6642\u53EA\u80FD\u5148\u8DD1 workflows\uFF0Factions \u5BA3\u544A\u904E\u7684\u52D5\u4F5C`);
+  }
+  const text = JSON.stringify(raw2);
+  if (text.length > MAX_SURFACE_BYTES) errors.push(`ui.surface \u592A\u5927\uFF08\u4E0A\u9650 ${MAX_SURFACE_BYTES / 1024} KB\uFF09`);
+  if (/openUrl|"call"\s*:|functionCall|javascript:|<script|https?:\/\//i.test(text)) {
+    errors.push("ui.surface \u4E0D\u53EF\u542B\u51FD\u5F0F\u547C\u53EB\u3001\u7DB2\u5740\u6216\u8173\u672C\uFF08\u53D7\u9650\u5143\u4EF6\u76EE\u9304\u53EA\u6536\u5143\u4EF6\uFF0C\u4E0D\u6536\u51FD\u5F0F\u8207\u4EFB\u610F\u9023\u7D50\uFF09");
+  }
+  const ids = /* @__PURE__ */ new Set();
+  const comps = s.components;
+  for (const [i, c] of comps.entries()) {
+    if (!c || typeof c !== "object" || typeof c.id !== "string" || !c.id) {
+      errors.push(`ui.surface.components[${i}] \u8981\u6709\u5B57\u4E32 id`);
+      continue;
+    }
+    if (ids.has(c.id)) errors.push(`ui.surface \u5143\u4EF6 id\u300C${c.id}\u300D\u91CD\u8907`);
+    ids.add(c.id);
+    if (typeof c.component !== "string" || !CATALOG_NAMES.has(c.component)) {
+      errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684 component\u300C${String(c.component)}\u300D\u4E0D\u5728\u756B\u9762\u5143\u4EF6\u76EE\u9304\u88E1\uFF08\u53EF\u7528\uFF1A${[...CATALOG_NAMES].join("\u3001")}\uFF1Barcrun_list_ui_components \u67E5\uFF09`);
+    }
+  }
+  if (!ids.has("root")) errors.push("ui.surface \u5FC5\u9808\u6709\u4E00\u500B id \u70BA root \u7684\u5143\u4EF6\uFF08\u756B\u9762\u7684\u6839\uFF09");
+  for (const c of comps) {
+    if (!c || typeof c.id !== "string") continue;
+    const kids = [];
+    if (Array.isArray(c.children)) kids.push(...c.children);
+    if (typeof c.child === "string") kids.push(c.child);
+    for (const k of kids) if (typeof k === "string" && !ids.has(k)) errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u6307\u5230\u4E0D\u5B58\u5728\u7684\u5B50\u5143\u4EF6\u300C${k}\u300D`);
+    const ev = c.action?.event;
+    if (ev) {
+      if (typeof ev.name !== "string" || !actions.includes(ev.name)) {
+        errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684\u6309\u9215\u4E8B\u4EF6\u300C${String(ev.name)}\u300D\u4E0D\u662F\u9019\u500B App \u7684\u52D5\u4F5C\uFF08\u53EF\u7528\uFF1A${actions.join("\u3001") || "\uFF08\u6C92\u6709\uFF09"}\uFF09\u2014\u2014\u756B\u9762\u53EA\u80FD\u89F8\u767C workflows\uFF0Factions \u5BA3\u544A\u904E\u7684\u52D5\u4F5C`);
+      }
+    }
+  }
+  return errors;
+}
+var MAX_SURFACE_BYTES, CATALOG_NAMES;
+var init_ui_surface = __esm({
+  "cypher-executor/src/lib/ui-surface.ts"() {
+    "use strict";
+    init_ui_catalog_generated();
+    MAX_SURFACE_BYTES = 64 * 1024;
+    CATALOG_NAMES = new Set(ui_catalog_generated_default.components.map((c) => c.a2ui.component));
+  }
+});
+
+// cypher-executor/src/lib/app-mcp.ts
+function validateToolInputSchema(schema, where) {
+  const errors = [];
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6\uFF08JSON Schema\uFF0Ctype: "object"\uFF09`];
+  const s = schema;
+  if (s.type !== "object") errors.push(`${where}.type \u5FC5\u9808\u662F "object"`);
+  const props = s.properties ?? {};
+  if (!props || typeof props !== "object" || Array.isArray(props)) {
+    errors.push(`${where}.properties \u5FC5\u9808\u662F\u7269\u4EF6`);
+    return errors;
+  }
+  for (const [k, v] of Object.entries(props)) {
+    if (!PROP_RE.test(k)) {
+      errors.push(`${where}.properties.${k}\uFF1A\u53C3\u6578\u540D\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u5E95\u7DDA\u958B\u982D\u7684 _caller\uFF0F_tool \u662F MCP \u81EA\u5DF1\u9644\u7684\uFF09`);
+      continue;
+    }
+    errors.push(...validateProp(v, `${where}.properties.${k}`, 0));
+  }
+  if (s.required !== void 0) {
+    if (!Array.isArray(s.required) || s.required.some((r) => typeof r !== "string")) {
+      errors.push(`${where}.required \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
+    } else {
+      for (const r of s.required) {
+        if (!(r in props)) errors.push(`${where}.required \u88E1\u7684\u300C${r}\u300D\u4E0D\u5728 properties`);
+      }
+    }
+  }
+  return errors;
+}
+function validateProp(v, where, depth) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6`];
+  const p = v;
+  const errors = [];
+  if (p.description !== void 0 && typeof p.description !== "string") errors.push(`${where}.description \u5FC5\u9808\u662F\u5B57\u4E32`);
+  if (p.type === "array") {
+    if (depth > 0) return [...errors, `${where}\uFF1A\u9663\u5217\u53EA\u80FD\u653E\u4E00\u5C64\uFF08\u9663\u5217\u88E1\u4E0D\u80FD\u518D\u653E\u9663\u5217\uFF09`];
+    if (!p.items || typeof p.items !== "object") return [...errors, `${where}.items \u5FC5\u586B`];
+    const it = p.items;
+    if (!SCALAR_TYPES.includes(String(it.type))) errors.push(`${where}.items.type \u53EA\u80FD\u662F ${SCALAR_TYPES.join("\uFF0F")}`);
+    if (it.enum !== void 0) errors.push(...validateEnum(it.enum, String(it.type), `${where}.items`));
+    return errors;
+  }
+  if (!SCALAR_TYPES.includes(String(p.type))) {
+    return [...errors, `${where}.type \u53EA\u80FD\u662F ${[...SCALAR_TYPES, "array"].join("\uFF0F")}\uFF08\u5DE2\u72C0\u7269\u4EF6\u8ACB\u6524\u5E73\u6210\u5E7E\u500B\u53C3\u6578\uFF09`];
+  }
+  if (p.enum !== void 0) errors.push(...validateEnum(p.enum, String(p.type), where));
+  return errors;
+}
+function validateEnum(e, type, where) {
+  if (type !== "string") return [`${where}.enum \u53EA\u652F\u63F4 string`];
+  if (!Array.isArray(e) || e.length === 0 || e.some((x) => typeof x !== "string")) return [`${where}.enum \u5FC5\u9808\u662F\u975E\u7A7A\u7684\u5B57\u4E32\u9663\u5217`];
+  return [];
+}
+function validateAppMcp(raw2, workflows) {
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["mcp \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 tools\u3001guides \u5169\u6B04\uFF09"];
+  const m = raw2;
+  const errors = [];
+  const wfNames = new Set(
+    (Array.isArray(workflows) ? workflows : []).map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
+  );
+  if (m.tools !== void 0) {
+    if (!Array.isArray(m.tools)) {
+      errors.push("mcp.tools \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      if (m.tools.length > MAX_APP_MCP_TOOLS) errors.push(`mcp.tools \u6700\u591A ${MAX_APP_MCP_TOOLS} \u652F\uFF08\u73FE\u5728 ${m.tools.length} \u652F\uFF09`);
+      const seen = /* @__PURE__ */ new Set();
+      m.tools.forEach((t, i) => {
+        const at = `mcp.tools[${i}]`;
+        if (!t || typeof t !== "object") {
+          errors.push(`${at} \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const tool = t;
+        const label = typeof tool.name === "string" ? `mcp.tools\u300C${tool.name}\u300D` : at;
+        if (typeof tool.name !== "string" || !NAME_RE.test(tool.name)) {
+          errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u226440 \u5B57\uFF09`);
+        } else if (seen.has(tool.name)) {
+          errors.push(`${label} \u91CD\u8907\u4E86`);
+        } else {
+          seen.add(tool.name);
+        }
+        if (typeof tool.description !== "string" || tool.description.trim() === "") {
+          errors.push(`${label}.description \u5FC5\u586B\u2014\u2014AI \u53EA\u770B\u9019\u4E00\u6BB5\u6C7A\u5B9A\u8981\u4E0D\u8981\u7528\u9019\u652F\u5DE5\u5177`);
+        } else if (tool.description.length > MAX_DESCRIPTION) {
+          errors.push(`${label}.description \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_DESCRIPTION} \u5B57\uFF09`);
+        }
+        if (typeof tool.workflow !== "string" || !wfNames.has(tool.workflow)) {
+          errors.push(
+            `${label}.workflow \u5FC5\u9808\u662F\u9019\u4EFD\u5BA3\u544A\u88E1\u7684\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
+          );
+        }
+        if (tool.read_only !== void 0 && typeof tool.read_only !== "boolean") errors.push(`${label}.read_only \u5FC5\u9808\u662F true\uFF0Ffalse`);
+        errors.push(...validateToolInputSchema(tool.input_schema, `${label}.input_schema`));
+      });
+    }
+  }
+  if (m.guides !== void 0) {
+    if (!Array.isArray(m.guides)) {
+      errors.push("mcp.guides \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      if (m.guides.length > MAX_APP_MCP_GUIDES) errors.push(`mcp.guides \u6700\u591A ${MAX_APP_MCP_GUIDES} \u4EFD`);
+      const seen = /* @__PURE__ */ new Set();
+      m.guides.forEach((g, i) => {
+        const at = `mcp.guides[${i}]`;
+        if (!g || typeof g !== "object") {
+          errors.push(`${at} \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const guide = g;
+        if (typeof guide.name !== "string" || !NAME_RE.test(guide.name)) errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D`);
+        else if (seen.has(guide.name)) errors.push(`${at}.name\u300C${guide.name}\u300D\u91CD\u8907\u4E86`);
+        else seen.add(guide.name);
+        if (typeof guide.description !== "string" || guide.description.trim() === "") errors.push(`${at}.description \u5FC5\u586B`);
+        if (typeof guide.text !== "string" || guide.text.trim() === "") errors.push(`${at}.text \u5FC5\u586B`);
+        else if (guide.text.length > MAX_GUIDE_TEXT) errors.push(`${at}.text \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_GUIDE_TEXT} \u5B57\uFF09`);
+      });
+    }
+  }
+  return errors;
+}
+function installedMcpOf(appId, mcp) {
+  const tools = (mcp?.tools ?? []).map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.input_schema,
+    wf_key: `${appId}__${t.workflow}`,
+    read_only: t.read_only === true
+  }));
+  const guides = (mcp?.guides ?? []).map((g) => ({ name: g.name, description: g.description, text: g.text }));
+  if (tools.length === 0 && guides.length === 0) return void 0;
+  return { tools, guides };
+}
+function mcpCatalogOf(apps) {
+  return apps.filter((a) => a.mcp && (a.status === void 0 || a.status === "active")).map((a) => ({ app_id: a.id, app_name: a.name, version: a.version, tools: a.mcp.tools, guides: a.mcp.guides })).sort((x, y) => x.app_id.localeCompare(y.app_id));
+}
+var MAX_APP_MCP_TOOLS, MAX_APP_MCP_GUIDES, MAX_DESCRIPTION, MAX_GUIDE_TEXT, NAME_RE, PROP_RE, SCALAR_TYPES;
+var init_app_mcp = __esm({
+  "cypher-executor/src/lib/app-mcp.ts"() {
+    "use strict";
+    MAX_APP_MCP_TOOLS = 46;
+    MAX_APP_MCP_GUIDES = 10;
+    MAX_DESCRIPTION = 2e3;
+    MAX_GUIDE_TEXT = 2e4;
+    NAME_RE = /^[a-z][a-z0-9_]{0,39}$/;
+    PROP_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
+    SCALAR_TYPES = ["string", "integer", "number", "boolean"];
+  }
+});
+
+// cypher-executor/src/lib/subrequest-meter.ts
+function noteSubrequest() {
+  count++;
+}
+function subrequestCount() {
+  return count;
+}
+var count;
+var init_subrequest_meter = __esm({
+  "cypher-executor/src/lib/subrequest-meter.ts"() {
+    "use strict";
+    count = 0;
+  }
+});
+
+// shared/dataflow-graph/extract.mjs
+function normalizeWorkflow(input) {
+  const wf = input && typeof input === "object" ? input : {};
+  const name = String(wf.name ?? wf.graph?.name ?? wf.id ?? "");
+  const graph = wf.graph && typeof wf.graph === "object" ? wf.graph : wf;
+  const config = (wf.config && typeof wf.config === "object" ? wf.config : null) ?? (graph.config && typeof graph.config === "object" ? graph.config : null) ?? {};
+  if (Array.isArray(graph.nodes) && graph.nodes.some((n) => n && (n.data || n.componentId))) {
+    const nodes2 = graph.nodes.map((n) => {
+      const cfg = config[n.label] ?? config[n.id] ?? {};
+      const { component: cfgComponent, ...cfgRest } = cfg;
+      const data = { ...cfgRest, ...n.data ?? {} };
+      const component = String(
+        (n.componentId && n.componentId !== n.id ? n.componentId : void 0) ?? cfgComponent ?? n.componentId ?? ""
+      );
+      return { id: String(n.id), component, data };
+    });
+    const edges2 = (Array.isArray(graph.edges) ? graph.edges : []).map((e) => ({
+      from: String(e.from),
+      to: String(e.to),
+      type: String(e.type ?? ""),
+      branch: e.branch
+    }));
+    return { name, nodes: nodes2, edges: edges2 };
+  }
+  const flow = Array.isArray(graph.flow) ? graph.flow : [];
+  const ids = /* @__PURE__ */ new Set();
+  const edges = [];
+  for (const line of flow) {
+    const parts = String(line).split(">>").map((s) => s.trim());
+    if (parts.length !== 3) continue;
+    const [from, label, to] = parts;
+    ids.add(from);
+    ids.add(to);
+    edges.push({ from, to, type: edgeTypeOf(label), ...branchOf(label) ? { branch: branchOf(label) } : {} });
+  }
+  for (const k of Object.keys(config)) ids.add(k);
+  const nodes = [...ids].map((id) => {
+    const { component, ...data } = config[id] ?? {};
+    return { id, component: String(component ?? (id === "input" ? "input" : "")), data };
+  });
+  return { name, nodes, edges };
+}
+function edgeTypeOf(label) {
+  const l = String(label).trim();
+  if (/^(ON_FAIL|FAIL|失敗時)$/i.test(l)) return "ON_FAIL";
+  if (/^(ON_SUCCESS|成功後|SUCCESS)$/i.test(l)) return "ON_SUCCESS";
+  if (/^(ON_TRUE|TRUE)$/i.test(l)) return "ON_TRUE";
+  if (/^(ON_FALSE|FALSE|ELSE)$/i.test(l)) return "ON_FALSE";
+  if (/^(ON_BRANCH|分支)/i.test(l)) return "ON_BRANCH";
+  if (/^(對每個|FOREACH)/i.test(l)) return "FOREACH";
+  return l;
+}
+function branchOf(label) {
+  const m = String(label).match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
+  return m ? m[1] : void 0;
+}
+function classifyName(v) {
+  if (typeof v !== "string") return "dynamic";
+  const s = v.trim();
+  if (s === "") return "invalid";
+  if (DYNAMIC_RE.test(s)) return "dynamic";
+  if (PLACEHOLDER_RE.test(s)) return "placeholder";
+  if (!NAME_RE2.test(s)) return "invalid";
+  return "literal";
+}
+function isKbdbUrl(url) {
+  if (typeof url !== "string") return false;
+  return /__KBDB_BASE__/.test(url) || /\/\/[^/]*kbdb[^/]*\//i.test(url) || /\{\{[^}]*kbdb[^}]*\}\}/i.test(url) || /(^|[^\w])\/kbdb\//.test(url) || /__[A-Z0-9_]+__\/kbdb\//.test(url) || /^[a-z]+:\/\/[^/]+\/kbdb\//i.test(url);
+}
+function splitKbdbUrl(url) {
+  let rest = url.replace(/^\{\{[^}]*\}\}/, "").replace(/^__[A-Z0-9_]+__/, "").replace(/^[a-z]+:\/\/[^/]+/i, "");
+  rest = rest.replace(/^\/kbdb(?=\/)/, "");
+  const qi = rest.indexOf("?");
+  const path = qi >= 0 ? rest.slice(0, qi) : rest;
+  const query = {};
+  if (qi >= 0) {
+    for (const kv of rest.slice(qi + 1).split("&")) {
+      const [k, ...v] = kv.split("=");
+      if (k) query[decodeSafe(k)] = decodeSafe(v.join("="));
+    }
+  }
+  return { path, query };
+}
+function decodeSafe(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+function workflowCallOf(url, selfOrigins = []) {
+  if (typeof url !== "string") return null;
+  const m = url.match(/\/webhooks\/named\/(?:([^/?#]+)\/)?([^/?#]+)\/(trigger|query)(?:[?#]|$)/);
+  if (!m) return null;
+  const head = url.slice(0, m.index);
+  const local = head === "" || /^__[A-Z0-9_]+__$/.test(head) || /^\{\{[^}]*\}\}$/.test(head) || selfOrigins.some((o) => head === o.replace(/\/$/, ""));
+  if (!local) return { external: true, url };
+  const name = m[2];
+  return { workflow: name, kind: classifyName(name) };
+}
+function substitute(template, data) {
+  return String(template).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (all, key) => {
+    if (key.startsWith("_")) return all;
+    const v = data[key];
+    return typeof v === "string" && !DYNAMIC_RE.test(v) ? v : all;
+  });
+}
+function requestOf(node, recipes) {
+  const d = node.data ?? {};
+  const recipe = recipes?.get?.(String(node.component).toLowerCase());
+  if (recipe && typeof recipe.endpoint === "string") {
+    return {
+      method: String(recipe.method ?? "GET").toUpperCase(),
+      url: substitute(recipe.endpoint, d),
+      body: d.body_json ?? d.body ?? recipe.body_template,
+      via: `recipe:${recipe.canonical_id}`
+    };
+  }
+  if (typeof d.url !== "string") return null;
+  return { method: String(d.method ?? "GET").toUpperCase(), url: d.url, body: d.body_json ?? d.body, via: "http" };
+}
+function parseBody2(body) {
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return null;
+    }
+  }
+  return body && typeof body === "object" ? body : null;
+}
+function extractNodeIO(node, { recipes, selfOrigins } = {}) {
+  const out = { reads: [], writes: [], calls: [], dynamic: [] };
+  const d = node.data ?? {};
+  const comp = String(node.component ?? "");
+  if (comp === "trigger_workflow" || /\/trigger_workflow$/.test(comp)) {
+    const w = d.workflow_name;
+    const kind = classifyName(w);
+    if (kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
+    else out.calls.push({ workflow: String(w ?? ""), kind, node: node.id, via: "trigger_workflow" });
+    return out;
+  }
+  const req = requestOf(node, recipes);
+  if (!req) return out;
+  const call = workflowCallOf(req.url, selfOrigins);
+  if (call && !call.external) {
+    if (call.kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
+    else out.calls.push({ workflow: call.workflow, kind: call.kind, node: node.id, via: req.via });
+    return out;
+  }
+  if (!isKbdbUrl(req.url)) return out;
+  const { path, query } = splitKbdbUrl(req.url);
+  const body = parseBody2(req.body);
+  const push = (list, kind, template, fields) => {
+    const tk = classifyName(template);
+    if (tk === "dynamic") {
+      out.dynamic.push({ node: node.id, what: list === out.reads ? "read" : "write" });
+      return;
+    }
+    list.push({ kind, template: String(template ?? ""), template_kind: tk, ...fields?.length ? { fields } : {}, node: node.id, via: req.via });
+  };
+  const fieldOf = (q) => q.field && classifyName(q.field) === "literal" ? [q.field] : void 0;
+  let m;
+  if (m = path.match(/^\/records\/by-(template|source)\/([^/]+)$/)) {
+    push(out.reads, "record", decodeSafe(m[2]), fieldOf(query));
+  } else if (path === "/records" && req.method === "GET" && query.template) {
+    push(out.reads, "record", query.template, fieldOf(query));
+  } else if (path === "/records" && req.method === "POST" && body) {
+    const fields = [...Object.keys(body.values ?? {}), ...Object.keys(body.entry_ids ?? {})];
+    push(out.writes, "record", body.template, fields);
+  } else if (/^\/records\/[^/]+$/.test(path) && ["PATCH", "PUT"].includes(req.method)) {
+    if (body?.template) push(out.writes, "record", body.template, Object.keys(body.values ?? {}));
+    else out.dynamic.push({ node: node.id, what: "write" });
+  } else if (/^\/entries(\/search)?$/.test(path) && req.method === "GET" && query.template) {
+    push(out.reads, "entry", query.template);
+  } else if (path === "/entries" && req.method === "POST" && body && "template" in body) {
+    push(out.writes, "entry", body.template);
+  } else if (/^\/entries\/[^/]+$/.test(path) && ["PUT", "PATCH"].includes(req.method) && body && "template" in body) {
+    push(out.writes, "entry", body.template);
+  }
+  return out;
+}
+function codeLiterals(code) {
+  const found = /* @__PURE__ */ new Set();
+  if (typeof code !== "string") return found;
+  const re = /(['"`])([a-z][a-z0-9_]{2,63})\1/g;
+  let m;
+  while ((m = re.exec(code)) !== null) found.add(m[2]);
+  return found;
+}
+function swallowsFailure(node, fromId) {
+  const code = node?.data?.code;
+  if (typeof code !== "string") return false;
+  if (/\bthrow\b/.test(code)) return false;
+  if (!/\bsuccess\s*:\s*true\b/.test(code)) return false;
+  if (fromId) {
+    const { code: _c, ...rest } = node.data;
+    const esc2 = String(fromId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\{\\{\\s*${esc2}(\\.|\\s*\\}\\})`).test(JSON.stringify(rest))) return false;
+  }
+  return true;
+}
+function extractWorkflowIO(input, opts = {}) {
+  const wf = normalizeWorkflow(input);
+  const res = { name: wf.name, reads: [], writes: [], calls: [], dynamic: [], mentions: [], swallows: [] };
+  const byId = new Map(wf.nodes.map((n) => [n.id, n]));
+  const callNodes = /* @__PURE__ */ new Map();
+  for (const n of wf.nodes) {
+    const io = extractNodeIO(n, opts);
+    res.reads.push(...io.reads);
+    res.writes.push(...io.writes);
+    res.calls.push(...io.calls);
+    res.dynamic.push(...io.dynamic);
+    for (const c of io.calls) callNodes.set(n.id, c);
+    for (const lit of codeLiterals(n.data?.code)) res.mentions.push({ template: lit, node: n.id });
+  }
+  for (const e of wf.edges) {
+    const isFail = e.type === "ON_FAIL" || e.type === "ON_BRANCH" && e.branch === "catch";
+    if (!isFail) continue;
+    const call = callNodes.get(e.from);
+    const handler = byId.get(e.to);
+    if (call && handler && swallowsFailure(handler, e.from)) {
+      res.swallows.push({ node: e.to, from: e.from, workflow: call.workflow });
+    }
+  }
+  return res;
+}
+var DYNAMIC_RE, PLACEHOLDER_RE, NAME_RE2;
+var init_extract = __esm({
+  "shared/dataflow-graph/extract.mjs"() {
+    DYNAMIC_RE = /\{\{[\s\S]*?\}\}/;
+    PLACEHOLDER_RE = /^__[A-Z0-9_]+__$/;
+    NAME_RE2 = /^[\w.:-]+$/;
+  }
+});
+
+// shared/dataflow-graph/rules.mjs
+function slotsOf(t) {
+  if (Array.isArray(t?.slots)) return t.slots.map(String);
+  if (typeof t?.slots_json === "string") {
+    try {
+      const s = JSON.parse(t.slots_json);
+      return Array.isArray(s) ? s.map(String) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+function editDistance(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return dp[a.length][b.length];
+}
+function closest(name, pool) {
+  let best = null;
+  for (const c of pool) {
+    const d = editDistance(name, c);
+    if (d <= Math.max(1, Math.floor(name.length / 5)) && (!best || d < best.d)) best = { c, d };
+  }
+  return best?.c;
+}
+function addTo(map, key, owner) {
+  if (!map.has(key)) map.set(key, /* @__PURE__ */ new Set());
+  map.get(key).add(owner);
+}
+function checkDataflow(input) {
+  const opts = {
+    recipes: new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r])),
+    selfOrigins: input.selfOrigins ?? []
+  };
+  const subjectIO = (input.subjects ?? []).map((w) => extractWorkflowIO(w, opts));
+  const subjectNames = new Set(subjectIO.map((w) => w.name));
+  const deployedIO = (input.deployed ?? []).map((w) => ({ name: normalizeWorkflow(w).name, w })).filter((x) => x.name && !subjectNames.has(x.name)).map((x) => extractWorkflowIO(x.w, opts));
+  const universe = [...deployedIO, ...subjectIO];
+  const installed = new Set(universe.map((w) => w.name));
+  const writers = /* @__PURE__ */ new Map();
+  const readers = /* @__PURE__ */ new Map();
+  const touchers = /* @__PURE__ */ new Map();
+  const slots = /* @__PURE__ */ new Map();
+  const existing = /* @__PURE__ */ new Set();
+  const recordable = /* @__PURE__ */ new Set();
+  const templatesKnown = Array.isArray(input.templates);
+  for (const t of input.templates ?? []) {
+    if (!t?.name) continue;
+    existing.add(t.name);
+    recordable.add(t.name);
+    const s = slotsOf(t);
+    if (s) slots.set(t.name, s);
+  }
+  for (const app2 of input.apps ?? []) {
+    for (const d of app2.data ?? []) {
+      if (!d?.name) continue;
+      existing.add(d.name);
+      recordable.add(d.name);
+      if (Array.isArray(d.slots)) slots.set(d.name, d.slots.map(String));
+      addTo(touchers, d.name, `app:${app2.id}`);
+    }
+  }
+  for (const p of input.platform ?? []) {
+    addTo(p.direction === "write" ? writers : readers, p.template, `platform:${p.owner}`);
+    if (p.direction === "write") existing.add(p.template);
+  }
+  for (const w of universe) {
+    const owner = `workflow:${w.name}`;
+    for (const x of w.writes) if (x.template_kind === "literal") {
+      addTo(writers, x.template, owner);
+      if (x.kind === "entry") existing.add(x.template);
+    }
+    for (const x of w.reads) if (x.template_kind === "literal") addTo(readers, x.template, owner);
+    for (const x of w.mentions) addTo(touchers, x.template, owner);
+  }
+  const errors = [];
+  const warnings = [];
+  const uncertain = [];
+  const allTemplateNames = [.../* @__PURE__ */ new Set([...existing, ...writers.keys()])];
+  for (const w of subjectIO) {
+    const at = (node) => ({ workflow: w.name, node });
+    const seenRead = /* @__PURE__ */ new Set();
+    for (const r of w.reads) {
+      if (r.template_kind !== "literal") {
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D${r.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u628A\u5B83\u63DB\u6210\u9019\u53F0\u5BE6\u4F8B\u4E0A\u771F\u7684 template \u540D\u5B57\uFF08arcrun \u7684 /kbdb/templates \u5217\u5F97\u51FA\u4F86\uFF09\u3002"
+        });
+        continue;
+      }
+      const key = `${r.template}|${r.node}`;
+      if (seenRead.has(key)) continue;
+      seenRead.add(key);
+      const hasWriter = (writers.get(r.template)?.size ?? 0) > 0 || (touchers.get(r.template)?.size ?? 0) > 0;
+      if (!hasWriter) {
+        errors.push({
+          rule: "R1",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          missing: { writer_of: r.template },
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u5DF2\u90E8\u7F72\u7684\u5DE5\u4F5C\u6D41\u3001App \u6216\u5E73\u53F0\u7A0B\u5F0F\u5BEB\u5B83\u2014\u2014\u9019\u652F\u5DE5\u4F5C\u6D41\u8B80\u5230\u7684\u6C38\u9060\u662F\u7A7A\u7684\u3002`,
+          next_action: `\u5148\u90E8\u7F72\u6703\u5BEB\u300C${r.template}\u300D\u7684\u90A3\u652F\u5DE5\u4F5C\u6D41\uFF08\u6216 App\uFF09\uFF0C\u518D\u63A8\u9019\u652F\uFF1B\u78BA\u5B9A\u53EA\u662F\u66AB\u6642\u6C92\u4EBA\u5BEB\uFF0C\u53EF\u4EE5\u5E36 force \u5F37\u63A8\u3002`
+        });
+      }
+      if (templatesKnown && !existing.has(r.template)) {
+        const hint = closest(r.template, allTemplateNames);
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u4E0D\u5B58\u5728${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u518D\u63A8\u3002` : "\u78BA\u8A8D template \u540D\u5B57\uFF1B\u5B83\u8981\u5148\u88AB\u67D0\u652F\u5DE5\u4F5C\u6D41\u5BEB\u904E\u6216\u7531 App \u5BA3\u544A\u624D\u6703\u5B58\u5728\u3002"
+        });
+      }
+      const s = slots.get(r.template);
+      for (const f of r.fields ?? []) {
+        if (s && !s.includes(f)) {
+          const hint = closest(f, s);
+          errors.push({
+            rule: "R3",
+            level: "error",
+            ...at(r.node),
+            template: r.template,
+            field: f,
+            message: `\u7BC0\u9EDE ${r.node} \u7528\u6B04\u4F4D\u300C${f}\u300D\u67E5\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
+            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\u3002`
+          });
+        }
+      }
+    }
+    const seenWrite = /* @__PURE__ */ new Set();
+    for (const x of w.writes) {
+      if (x.template_kind !== "literal") {
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u7684 template\u300C${x.template}\u300D${x.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u628A\u5B83\u63DB\u6210\u771F\u7684 template \u540D\u5B57\u3002"
+        });
+        continue;
+      }
+      if (x.kind === "record" && templatesKnown && !recordable.has(x.template)) {
+        const hint = closest(x.template, [...recordable]);
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u8981\u5BEB\u4E00\u7B46\u300C${x.template}\u300Drecord\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u9019\u500B template\uFF08\u5BEB record \u4E0D\u6703\u81EA\u52D5\u5EFA template\uFF0CKBDB \u6703\u56DE template not found\uFF09${hint ? `\uFF1B\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F` : "\u3002"}`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : "\u5148\u7531 App \u7684 data \u5BA3\u544A\u5B83\uFF08\u6216 POST /kbdb/templates \u5EFA\u597D\uFF09\uFF0C\u518D\u63A8\u9019\u652F\u3002"
+        });
+      }
+      const s = slots.get(x.template);
+      for (const f of x.fields ?? []) {
+        if (s && !s.includes(f)) {
+          const hint = closest(f, s);
+          errors.push({
+            rule: "R3",
+            level: "error",
+            ...at(x.node),
+            template: x.template,
+            field: f,
+            message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\u7684\u6B04\u4F4D\u300C${f}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
+            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\uFF0C\u6216\u5148\u66FF template \u52A0\u6B04\u4F4D\u3002`
+          });
+        }
+      }
+      if (seenWrite.has(x.template)) continue;
+      seenWrite.add(x.template);
+      const hasReader = (readers.get(x.template)?.size ?? 0) > 0 || (touchers.get(x.template)?.size ?? 0) > 0;
+      if (!hasReader) {
+        warnings.push({
+          rule: "R4",
+          level: "warning",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u6771\u897F\u8B80\u5B83\u3002`,
+          next_action: "\u5982\u679C\u662F\u7D66\u4EBA\u6216\u4E4B\u5F8C\u7684\u5DE5\u4F5C\u6D41\u7528\u7684\uFF0C\u53EF\u4EE5\u4E0D\u7406\uFF1B\u5982\u679C\u672C\u4F86\u8A72\u6709\u4EBA\u8B80\uFF0C\u6AA2\u67E5\u8B80\u7684\u90A3\u652F\u662F\u4E0D\u662F\u6C92\u88DD\u6216\u540D\u5B57\u62FC\u932F\u3002"
+        });
+      }
+    }
+    const seenCall = /* @__PURE__ */ new Set();
+    for (const c of w.calls) {
+      const key = `${c.workflow}|${c.node}`;
+      if (seenCall.has(key)) continue;
+      seenCall.add(key);
+      if (c.kind !== "literal") {
+        errors.push({
+          rule: "R2",
+          level: "error",
+          ...at(c.node),
+          workflow_called: c.workflow,
+          message: `\u7BC0\u9EDE ${c.node} \u53EB\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u300C${c.workflow}\u300D${c.kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u63DB\u6210\u771F\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u3002"
+        });
+        continue;
+      }
+      if (!installed.has(c.workflow)) {
+        const hint = closest(c.workflow, [...installed]);
+        errors.push({
+          rule: "R2",
+          level: "error",
+          ...at(c.node),
+          workflow_called: c.workflow,
+          missing: { workflow: c.workflow },
+          message: `\u7BC0\u9EDE ${c.node} \u53EB\u5DE5\u4F5C\u6D41\u300C${c.workflow}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u88DD\u5B83${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\uFF0C\u6216\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u3002` : `\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u518D\u63A8\u9019\u652F\u3002`
+        });
+      }
+    }
+    for (const s of w.swallows) {
+      errors.push({
+        rule: "R5",
+        level: "error",
+        ...at(s.node),
+        workflow_called: s.workflow,
+        message: `\u7BC0\u9EDE ${s.from} \u53EB\u300C${s.workflow}\u300D\u5931\u6557\u6642\uFF08\u5305\u62EC\u5B83\u6839\u672C\u6C92\u88DD\uFF09\uFF0C\u7531 ${s.node} \u63A5\u624B\u4E26\u56DE success:true\u2014\u2014\u4F9D\u8CF4\u6C92\u88DD\u4E5F\u6703\u88AB\u8A18\u6210\u6210\u529F\uFF0C\u6C92\u6709\u4EBA\u6703\u77E5\u9053\u5B83\u4E00\u76F4\u5728\u7A7A\u8F49\u3002`,
+        next_action: `\u8B93 ${s.node} \u7528 throw \u7D50\u675F\uFF08\u7BC0\u9EDE\u5931\u6557\u624D\u6703\u88AB\u770B\u898B\uFF09\uFF0C\u6216\u62FF\u6389\u9019\u689D ON_FAIL\uFF1B\u771F\u7684\u8981\u5BB9\u5FCD\uFF0C\u56DE\u50B3\u7684\u7D50\u679C\u4E5F\u8981\u8B93\u547C\u53EB\u7AEF\u770B\u5F97\u51FA\u300C\u9019\u4E00\u6B65\u6C92\u505A\u300D\u4E26\u8A08\u5165 verdict\u3002`
+      });
+    }
+    if (w.dynamic.length) uncertain.push({ workflow: w.name, nodes: [...new Set(w.dynamic.map((d) => d.node))] });
+  }
+  const skipped = templatesKnown ? [] : [{ rule: "R3", reason: "\u6C92\u6709\u62FF\u5230 template \u6E05\u55AE\uFF0Ctemplate\uFF0F\u6B04\u4F4D\u5B58\u4E0D\u5B58\u5728\u9019\u6B21\u6C92\u6AA2\u67E5\u3002" }];
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    uncertain,
+    skipped,
+    graph: buildGraph({ universe, writers, readers, touchers, installed })
+  };
+}
+function buildGraph({ universe, writers, readers, touchers, installed }) {
+  const nodes = /* @__PURE__ */ new Map();
+  const edges = [];
+  const node = (id, type, extra = {}) => {
+    if (!nodes.has(id)) nodes.set(id, { id, type, ...extra });
+  };
+  for (const w of universe) node(`workflow:${w.name}`, "workflow");
+  const ownerNode = (o) => {
+    const [type] = o.split(":");
+    node(o, type);
+    return o;
+  };
+  for (const [t, set] of writers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "writes" });
+  }
+  for (const [t, set] of readers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: `template:${t}`, to: ownerNode(o), type: "reads" });
+  }
+  for (const [t, set] of touchers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "touches" });
+  }
+  for (const w of universe) {
+    for (const c of w.calls) {
+      if (c.kind !== "literal") continue;
+      const to = installed.has(c.workflow) ? `workflow:${c.workflow}` : `missing:${c.workflow}`;
+      if (!installed.has(c.workflow)) node(to, "missing");
+      edges.push({ from: `workflow:${w.name}`, to, type: "calls", node: c.node });
+    }
+  }
+  for (const n of nodes.values()) {
+    if (n.type !== "template") continue;
+    const t = n.id.slice("template:".length);
+    n.orphan_read = (readers.get(t)?.size ?? 0) > 0 && (writers.get(t)?.size ?? 0) === 0 && (touchers.get(t)?.size ?? 0) === 0;
+  }
+  return { nodes: [...nodes.values()], edges };
+}
+var init_rules = __esm({
+  "shared/dataflow-graph/rules.mjs"() {
+    init_extract();
+  }
+});
+
+// shared/dataflow-graph/declarations.mjs
+var init_declarations = __esm({
+  "shared/dataflow-graph/declarations.mjs"() {
+  }
+});
+
+// shared/dataflow-graph/platform-io.generated.mjs
+var platform_io_generated_default;
+var init_platform_io_generated = __esm({
+  "shared/dataflow-graph/platform-io.generated.mjs"() {
+    platform_io_generated_default = [
+      {
+        "owner": "cypher-executor/src/lib/workflow-search.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "workflow",
+        "note": "\u641C\u5DE5\u4F5C\u6D41\uFF08\u5BEB\u5165\u8005\u662F webhooks-named.ts \u7684 push\uFF09"
+      },
+      {
+        "owner": "cypher-executor/src/routes/webhooks-named.ts",
+        "direction": "write",
+        "kind": "entry",
+        "template": "workflow",
+        "note": "\u6BCF\u652F push \u4E0A\u4F86\u7684\u5DE5\u4F5C\u6D41\u90FD\u5BEB\u4E00\u7B46\uFF0C\u4F9B /workflows/search"
+      },
+      {
+        "owner": "kbdb/src/actions/library-index.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "block",
+        "note": "\u5B50\u5EAB\u76EE\u9304\u3001\u627E\u5361\uFF08card-lookup\uFF09\u3001retrieve \u90FD\u8B80\u5361\u7684\u6BB5\u843D\uFF08\u5BEB\u5165\u8005\u662F rag_ingest_card\uFF09"
+      },
+      {
+        "owner": "kbdb/src/actions/library-map-store.ts",
+        "direction": "read",
+        "kind": "record",
+        "template": "triplet",
+        "note": "\u5730\u5716\u91CD\u7B97\uFF0F\u5716\u67E5\u8A62\u8B80\u4E09\u5143\u7D44\uFF08\u5BEB\u5165\u8005\u662F ingest \u5DE5\u4F5C\u6D41\uFF09"
+      },
+      {
+        "owner": "kbdb/src/actions/library-map-store.ts",
+        "direction": "write",
+        "kind": "entry",
+        "template": "library_card_tally",
+        "note": "\u6BCF\u5EAB\u73FE\u5F79\u5361\u5F35\u6578\uFF08\u5BEB\u5165\u7AEF\u589E\u6E1B\u3001\u8B80\u7AEF\u53EA\u8B80\uFF1Binkstone/Arcrun#393\uFF09"
+      },
+      {
+        "owner": "kbdb/src/actions/library-map-store.ts",
+        "direction": "write",
+        "kind": "entry",
+        "template": "library_map",
+        "note": "\u85CF\u66F8\u5730\u5716\u7531 kbdb \u81EA\u5DF1\u91CD\u7B97\u5BEB\u5165\uFF08inkstone/Arcrun#339\uFF09"
+      },
+      {
+        "owner": "kbdb/src/actions/record-crud.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "value",
+        "note": "record \u7684\u683C\u5B50\u53EF\u4EE5\u639B\u4E00\u9846\u65E2\u6709 entry\uFF08\u4F8B\uFF1Arag_ingest_card \u5148\u5BEB value \u5E38\u6578\u518D\u639B\u4E0A triplet\uFF09\uFF0C\u8B80 record \u6642\u4E00\u4F75\u8B80\u56DE"
+      },
+      {
+        "owner": "kbdb/src/embed.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "alias",
+        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+        "const": "VECTOR_ENTRY_TYPES",
+        "constValues": [
+          "alias",
+          "entity",
+          "predicate",
+          "source_passage"
+        ]
+      },
+      {
+        "owner": "kbdb/src/embed.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "entity",
+        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+        "const": "VECTOR_ENTRY_TYPES",
+        "constValues": [
+          "alias",
+          "entity",
+          "predicate",
+          "source_passage"
+        ]
+      },
+      {
+        "owner": "kbdb/src/embed.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "predicate",
+        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+        "const": "VECTOR_ENTRY_TYPES",
+        "constValues": [
+          "alias",
+          "entity",
+          "predicate",
+          "source_passage"
+        ]
+      },
+      {
+        "owner": "kbdb/src/embed.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "source_passage",
+        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+        "const": "VECTOR_ENTRY_TYPES",
+        "constValues": [
+          "alias",
+          "entity",
+          "predicate",
+          "source_passage"
+        ]
+      }
+    ];
+  }
+});
+
+// shared/dataflow-graph/index.mjs
+var init_dataflow_graph = __esm({
+  "shared/dataflow-graph/index.mjs"() {
+    init_extract();
+    init_rules();
+    init_declarations();
+    init_platform_io_generated();
+  }
+});
+
+// cypher-executor/src/lib/dataflow-check.ts
+async function loadInstance(env, tenant2) {
+  const store2 = env.WEBHOOKS;
+  const wfPrefix = `${tenant2}:wf:`;
+  const appPrefix = `${tenant2}:app:`;
+  const [wfList, appList] = await Promise.all([store2.list({ prefix: wfPrefix }), store2.list({ prefix: appPrefix })]);
+  const deployed = (await Promise.all(wfList.keys.map(async (k) => {
+    const raw2 = await store2.get(k.name, "text");
+    if (!raw2) return null;
+    try {
+      const rec = JSON.parse(raw2);
+      return { name: k.name.slice(wfPrefix.length), graph: rec.graph, config: rec.config };
+    } catch {
+      return null;
+    }
+  }))).filter((x) => x !== null);
+  const apps = (await Promise.all(appList.keys.map(async (k) => {
+    const raw2 = await store2.get(k.name, "text");
+    if (!raw2) return null;
+    try {
+      const rec = JSON.parse(raw2);
+      return { id: String(rec.id ?? k.name.slice(appPrefix.length)), data: (rec.data_templates ?? []).map((name) => ({ name })) };
+    } catch {
+      return null;
+    }
+  }))).filter((x) => x !== null);
+  let templates = null;
+  try {
+    const headers = {};
+    if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+    const res = await fetch(`${kbdbBaseUrl(env)}/templates`, { headers });
+    if (res.ok) {
+      const body = await res.json();
+      if (Array.isArray(body.templates)) templates = body.templates.map((t) => ({ name: t.name, slots_json: t.slots_json }));
+    }
+  } catch {
+  }
+  return { deployed, apps, templates };
+}
+async function runDataflowCheck(env, tenant2, subjects, extra = {}) {
+  let loaded;
+  try {
+    loaded = await loadInstance(env, tenant2);
+  } catch (e) {
+    return {
+      checked: false,
+      ok: true,
+      errors: [],
+      warnings: [],
+      uncertain: [],
+      skipped: [],
+      reason: `\u8B80\u4E0D\u5230\u9019\u53F0\u5BE6\u4F8B\u7684\u5DF2\u90E8\u7F72\u6E05\u55AE\uFF0C\u9019\u6B21\u6C92\u6709\u6AA2\u67E5\u8B80\u5BEB\u8207\u547C\u53EB\uFF08${e instanceof Error ? e.message : String(e)}\uFF09\u3002`
+    };
+  }
+  const extraIds = new Set((extra.apps ?? []).map((a) => a.id));
+  const r = checkDataflow({
+    subjects: subjects === "all-deployed" ? loaded.deployed : subjects,
+    deployed: loaded.deployed,
+    templates: loaded.templates,
+    platform: platform_io_generated_default,
+    apps: [...loaded.apps.filter((a) => !extraIds.has(a.id)), ...extra.apps ?? []],
+    recipes: extra.recipes ?? [],
+    selfOrigins: extra.selfOrigin ? [extra.selfOrigin] : []
+  });
+  return {
+    checked: true,
+    ok: r.ok,
+    errors: r.errors,
+    warnings: r.warnings,
+    uncertain: r.uncertain,
+    skipped: r.skipped,
+    against: {
+      deployed_workflows: loaded.deployed.length,
+      installed_apps: loaded.apps.length,
+      templates: loaded.templates ? loaded.templates.length : null
+    },
+    // 縮放視圖要知道哪些名字前綴是 App（工作流名字是 <App>__<名>）；只在要圖時帶，不多讀任何東西（App 清單本來就讀了）
+    // 清單頁每列的「幾個節點」：定義本來就整份讀進來了（讀取量不變），只數 graph.nodes 的長度，不另讀任何東西
+    ...extra.withGraph ? { graph: r.graph, app_ids: loaded.apps.map((a) => a.id), workflow_steps: stepCounts(loaded.deployed) } : {}
+  };
+}
+function stepCounts(deployed) {
+  const out = {};
+  for (const d of deployed) {
+    const nodes = d.graph?.nodes;
+    if (Array.isArray(nodes)) out[d.name] = nodes.length;
+  }
+  return out;
+}
+function dataflowNextActions(report) {
+  if (!report.checked) return report.reason ? [report.reason] : [];
+  return [...new Set(report.errors.map((e) => `${e.rule} ${e.workflow}\uFF0F${e.node}\uFF1A${e.next_action}`))];
+}
+var init_dataflow_check = __esm({
+  "cypher-executor/src/lib/dataflow-check.ts"() {
+    "use strict";
+    init_dataflow_graph();
+    init_endpoints();
+  }
+});
+
+// cypher-executor/src/lib/app-userlayer.ts
+function itemKey(kind, id) {
+  return `${kind}:${id}`;
+}
+function emptyLayer() {
+  return { v: 1, items: {}, log: [], next_n: 1 };
+}
+function layerOf(app2) {
+  const p = app2?.user_layer;
+  if (p && p.v === 1 && p.items && Array.isArray(p.log)) return JSON.parse(JSON.stringify(p));
+  return emptyLayer();
+}
+function stable(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v ?? null);
+  if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
+  const o = v;
+  return `{${Object.keys(o).filter((k) => o[k] !== void 0).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(",")}}`;
+}
+function recipeBehavior(r) {
+  if (!r) return "null";
+  const o = {};
+  for (const k of RECIPE_FIELDS) {
+    const v = k === "method" ? String(r.method ?? "POST").toUpperCase() : r[k];
+    if (v !== void 0) o[k] = v;
+  }
+  return stable(o);
+}
+function workflowBehavior(w) {
+  if (!w) return "null";
+  return stable({ graph: w.graph, description: w.description ?? "", cron_expr: w.cron_expr ?? null });
+}
+function pageBehavior(p) {
+  if (!p) return "null";
+  return stable({ id: p.id, chapter: p.chapter ?? null, title: p.title, body: p.body, guard: p.guard ?? null, mandatory: !!p.mandatory, direction: p.direction ?? null, source: p.source ?? null });
+}
+function sameContent(kind, a, b) {
+  if (kind === "page") return pageBehavior(a) === pageBehavior(b);
+  return kind === "recipe" ? recipeBehavior(a) === recipeBehavior(b) : workflowBehavior(a) === workflowBehavior(b);
+}
+function kindLabel(kind) {
+  return kind === "recipe" ? "recipe" : kind === "page" ? "\u689D\u6587" : "\u5DE5\u4F5C\u6D41";
+}
+function capSnapshot(v) {
+  const s = JSON.stringify(v ?? null);
+  return s.length <= SNAPSHOT_MAX_CHARS ? v : { _too_large: true, chars: s.length };
+}
+function isTooLarge(v) {
+  return !!v && typeof v === "object" && v._too_large === true;
+}
+function pushLog(layer, e, now2) {
+  const entry = { n: layer.next_n++, at: now2, ...e };
+  layer.log.push(entry);
+  if (layer.log.length > USER_LAYER_MAX_LOG) layer.log.splice(0, layer.log.length - USER_LAYER_MAX_LOG);
+  return entry;
+}
+function recordEdit(layer, kind, id, before, after, by, now2, extra) {
+  if (before != null && sameContent(kind, before, after)) return false;
+  const k = itemKey(kind, id);
+  if (!layer.items[k]) layer.items[k] = { kind, id, baseline: before ?? null, edited: true };
+  else layer.items[k].edited = true;
+  pushLog(layer, {
+    by: by || "unknown",
+    action: "edit",
+    kind,
+    id,
+    what: `${kindLabel(kind)}\u300C${id}\u300D\u88AB\u6539\uFF08${before == null ? "\u65B0\u589E" : "\u66F4\u65B0"}\uFF09`,
+    before: capSnapshot(before),
+    after: capSnapshot(after),
+    ...extra?.approved_by ? { approved_by: extra.approved_by } : {}
+  }, now2);
+  const it = layer.items[k];
+  if (it.baseline !== null && sameContent(kind, it.baseline, after)) it.edited = false;
+  return true;
+}
+function decideOnUpdate(layer, kind, id, publisher, by, now2) {
+  const it = layer.items[itemKey(kind, id)];
+  if (!it || !it.edited) return { keep: false, conflict: false, changed: false };
+  const publisherMoved = it.baseline === null ? false : !sameContent(kind, it.baseline, publisher);
+  if (!publisherMoved) return { keep: true, conflict: false, changed: false };
+  it.baseline = publisher;
+  pushLog(layer, {
+    by,
+    action: "update_conflict",
+    kind,
+    id,
+    what: `\u65B0\u7248\u8DDF\u4F60\u6539\u7684\u300C${id}\u300D\u885D\u7A81\uFF1A\u5DF2\u4FDD\u7559\u4F60\u6539\u7684\uFF1B\u8981\u6539\u7528\u65B0\u7248\u5C31 reset \u9019\u4E00\u9805\uFF08reset \u4E4B\u5F8C\u53EF\u7528 rollback \u9000\u56DE\u4F60\u7684\u7248\u672C\uFF09`
+  }, now2);
+  return { keep: true, conflict: true, changed: true };
+}
+function editedItems(layer) {
+  return Object.values(layer.items).filter((i) => i.edited);
+}
+function summarizeLayer(layer) {
+  return {
+    edited: editedItems(layer).map((i) => ({ kind: i.kind, id: i.id })),
+    ...Object.keys(layer.proposals ?? {}).length ? { pending: Object.keys(layer.proposals ?? {}) } : {},
+    log: layer.log.slice().reverse().map((e) => ({
+      n: e.n,
+      at: e.at,
+      by: e.by,
+      action: e.action,
+      kind: e.kind,
+      id: e.id,
+      what: e.what,
+      ...e.approved_by ? { approved_by: e.approved_by } : {},
+      ...e.undone ? { undone: true } : {},
+      ...e.action === "edit" || e.action === "reset" ? { can_rollback: !e.undone && !isTooLarge(e.before) } : {}
+    }))
+  };
+}
+async function resetLayer(layer, writer, by, now2, target) {
+  const out = { restored: [], removed: [], nothing: true };
+  const list = editedItems(layer).filter((i) => !target || i.kind === target.kind && i.id === target.id);
+  for (const it of list) {
+    const cur = await writer.read(it.kind, it.id);
+    if (it.baseline === null) {
+      await writer.remove(it.kind, it.id);
+      out.removed.push({ kind: it.kind, id: it.id });
+    } else {
+      await writer.write(it.kind, it.id, it.baseline);
+      out.restored.push({ kind: it.kind, id: it.id });
+    }
+    it.edited = false;
+    pushLog(layer, { by, action: "reset", kind: it.kind, id: it.id, what: `\u300C${it.id}\u300D\u6062\u5FA9\u6210\u767C\u884C\u8005\u90A3\u4E00\u7248`, before: capSnapshot(cur), after: capSnapshot(it.baseline) }, now2);
+    out.nothing = false;
+  }
+  return out;
+}
+async function rollbackLayer(layer, writer, by, now2, n) {
+  const cand = n === void 0 ? [...layer.log].reverse().find((e) => (e.action === "edit" || e.action === "reset") && !e.undone) : layer.log.find((e) => e.n === n);
+  if (!cand || cand.action !== "edit" && cand.action !== "reset") {
+    return { ok: false, code: "no_entry", error: n === void 0 ? "\u6C92\u6709\u53EF\u4EE5\u9000\u56DE\u7684\u4FEE\u6539\u3002" : `\u4FEE\u6539\u7D00\u9304\u88E1\u6C92\u6709\u7B2C ${n} \u7B46\u53EF\u9000\u56DE\u7684\u4FEE\u6539\u3002` };
+  }
+  if (cand.undone) return { ok: false, code: "already_undone", error: `\u7B2C ${cand.n} \u7B46\u5DF2\u7D93\u9000\u56DE\u904E\u4E86\u3002` };
+  if (isTooLarge(cand.before)) return { ok: false, code: "too_large", error: `\u7B2C ${cand.n} \u7B46\u6539\u52D5\u524D\u7684\u5167\u5BB9\u592A\u5927\u6C92\u6709\u7559\u5B58\uFF0C\u9000\u4E0D\u56DE\u53BB\uFF1B\u6539\u7528 reset \u6062\u5FA9\u6210\u767C\u884C\u8005\u90A3\u4E00\u7248\u3002` };
+  const it = layer.items[itemKey(cand.kind, cand.id)];
+  const cur = await writer.read(cand.kind, cand.id);
+  if (cand.before == null) await writer.remove(cand.kind, cand.id);
+  else await writer.write(cand.kind, cand.id, cand.before);
+  cand.undone = true;
+  if (it) it.edited = it.baseline === null ? cand.before != null : !sameContent(cand.kind, it.baseline, cand.before);
+  pushLog(layer, { by, action: "rollback", kind: cand.kind, id: cand.id, what: `\u9000\u56DE\u7B2C ${cand.n} \u7B46\u4FEE\u6539\uFF08\u300C${cand.id}\u300D\uFF09`, before: capSnapshot(cur), after: capSnapshot(cand.before) }, now2);
+  return { ok: true, entry: cand.n, restored: { kind: cand.kind, id: cand.id } };
+}
+function markKept(layer, kind, id, current, by, now2) {
+  const k = itemKey(kind, id);
+  if (layer.items[k]?.edited) return false;
+  if (layer.items[k]) layer.items[k].edited = true;
+  else layer.items[k] = { kind, id, baseline: current ?? null, edited: true };
+  pushLog(layer, { by: by || "unknown", action: "edit", kind, id, what: `${kindLabel(kind)}\u300C${id}\u300D\u7559\u7D66\u4F7F\u7528\u8005\u81EA\u5DF1\u7528\uFF08App \u66F4\u65B0\u4E0D\u6703\u8986\u84CB\u3001\u767C\u884C\u8005\u62FF\u6389\u5B83\u4E5F\u4E0D\u6703\u88AB\u522A\uFF09` }, now2);
+  return true;
+}
+function pageItemKey(id) {
+  return itemKey("page", id);
+}
+function putProposal(layer, id, p) {
+  if (!layer.proposals) layer.proposals = {};
+  const prop = { n: layer.next_n++, ...p };
+  layer.proposals[pageItemKey(id)] = prop;
+  return prop;
+}
+function getProposal(layer, id) {
+  return layer.proposals?.[pageItemKey(id)] ?? null;
+}
+function takeProposal(layer, id) {
+  const k = pageItemKey(id);
+  const p = layer.proposals?.[k] ?? null;
+  if (p && layer.proposals) {
+    delete layer.proposals[k];
+    if (!Object.keys(layer.proposals).length) delete layer.proposals;
+  }
+  return p;
+}
+function nextPageRev(layer, id, before) {
+  let hi = before?.rev ?? 1;
+  for (const e of layer.log) {
+    if (e.kind !== "page" || e.id !== id) continue;
+    for (const snap of [e.before, e.after]) {
+      if (snap && typeof snap.rev === "number" && snap.rev > hi) hi = snap.rev;
+    }
+  }
+  return hi + 1;
+}
+function lastRollbackable(layer, id) {
+  for (let i = layer.log.length - 1; i >= 0; i--) {
+    const e = layer.log[i];
+    if (e.kind === "page" && e.id === id && (e.action === "edit" || e.action === "reset") && !e.undone && !isTooLarge(e.before)) return e;
+  }
+  return null;
+}
+var USER_LAYER_MAX_LOG, RECIPE_FIELDS, SNAPSHOT_MAX_CHARS;
+var init_app_userlayer = __esm({
+  "cypher-executor/src/lib/app-userlayer.ts"() {
+    "use strict";
+    USER_LAYER_MAX_LOG = 20;
+    RECIPE_FIELDS = ["endpoint", "method", "headers", "body", "body_template", "response_map", "auth", "binding_name", "auth_service", "credentials_required"];
+    SNAPSHOT_MAX_CHARS = 8e3;
+  }
+});
+
+// cypher-executor/src/lib/app-rulebook.ts
+function validateRulebook(raw2, workflowNames) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["rulebook \u5FC5\u9808\u662F\u7269\u4EF6"];
+  const r = raw2;
+  if (r.title !== void 0 && (typeof r.title !== "string" || !r.title.trim() || r.title.length > 40)) errors.push("rulebook.title \u5FC5\u9808\u662F 1\uFF5E40 \u5B57\u7684\u5B57\u4E32");
+  if (!Array.isArray(r.sections) || r.sections.length === 0) return [...errors, "rulebook.sections \u5FC5\u9808\u662F\u81F3\u5C11\u4E00\u689D\u7684\u9663\u5217"];
+  if (r.sections.length > RULEBOOK_MAX_SECTIONS) errors.push(`rulebook.sections \u6700\u591A ${RULEBOOK_MAX_SECTIONS} \u689D\uFF08\u9019\u4EFD\u6709 ${r.sections.length} \u689D\uFF09`);
+  const seen = /* @__PURE__ */ new Set();
+  r.sections.forEach((sec, i) => {
+    if (!sec || typeof sec !== "object" || Array.isArray(sec)) {
+      errors.push(`rulebook.sections[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+      return;
+    }
+    const o = sec;
+    if (typeof o.id !== "string" || !SECTION_ID_RE.test(o.id) || o.id.includes("__")) {
+      errors.push(`rulebook.sections[${i}].id \u5FC5\u586B\uFF0C\u82F1\u6578\u5B57\uFF0F\u9EDE\uFF0F\u5E95\u7DDA\uFF0F\u9023\u5B57\u865F\uFF08\u226440 \u5B57\uFF09\uFF0C\u4E0D\u53EF\u542B\u5169\u500B\u5E95\u7DDA`);
+    } else if (seen.has(o.id)) errors.push(`rulebook.sections[${i}].id\u300C${o.id}\u300D\u91CD\u8907\u4E86`);
+    else seen.add(o.id);
+    if (typeof o.title !== "string" || !o.title.trim() || o.title.length > 60) errors.push(`rulebook.sections[${i}].title \u5FC5\u586B\uFF0C1\uFF5E60 \u5B57`);
+    if (typeof o.body !== "string" || !o.body.trim()) errors.push(`rulebook.sections[${i}].body \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32`);
+    else if (o.body.length > RULEBOOK_MAX_BODY) errors.push(`rulebook.sections[${i}].body \u592A\u9577\uFF08\u4E0A\u9650 ${RULEBOOK_MAX_BODY} \u5B57\uFF0C\u9019\u689D\u6709 ${o.body.length} \u5B57\uFF09`);
+    if (o.chapter !== void 0 && (typeof o.chapter !== "string" || !o.chapter.trim() || o.chapter.length > 60)) errors.push(`rulebook.sections[${i}].chapter \u5FC5\u9808\u662F 1\uFF5E60 \u5B57\u7684\u5B57\u4E32`);
+    if (o.mandatory !== void 0 && typeof o.mandatory !== "boolean") errors.push(`rulebook.sections[${i}].mandatory \u5FC5\u9808\u662F true\uFF0Ffalse`);
+    if (o.direction !== void 0 && !RULEBOOK_DIRECTIONS.includes(String(o.direction))) errors.push(`rulebook.sections[${i}].direction \u53EA\u80FD\u662F ${RULEBOOK_DIRECTIONS.join("\uFF0F")}`);
+    if (o.source !== void 0 && (typeof o.source !== "string" || !o.source.trim() || o.source.length > 80)) errors.push(`rulebook.sections[${i}].source \u5FC5\u9808\u662F 1\uFF5E80 \u5B57\u7684\u5B57\u4E32\uFF08\u7BC0\u9EDE@\u7248\u672C\uFF09`);
+    if (o.guard !== void 0) {
+      const g = o.guard;
+      if (!g || typeof g !== "object" || typeof g.workflow !== "string" || !g.workflow.trim()) errors.push(`rulebook.sections[${i}].guard.workflow \u5FC5\u586B`);
+      else if (!g.workflow.includes("__") && !workflowNames.includes(g.workflow)) {
+        errors.push(`rulebook.sections[${i}].guard.workflow\u300C${g.workflow}\u300D\u627E\u4E0D\u5230\u2014\u2014\u8981\u662F\u9019\u500B App \u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u4E4B\u4E00\uFF08${workflowNames.join("\uFF0F") || "\u9019\u4EFD\u5BA3\u544A\u6C92\u6709\u5DE5\u4F5C\u6D41"}\uFF09`);
+      }
+      if (g && g.label !== void 0 && (typeof g.label !== "string" || g.label.length > 40)) errors.push(`rulebook.sections[${i}].guard.label \u5FC5\u9808\u662F 40 \u5B57\u5167\u7684\u5B57\u4E32`);
+    }
+  });
+  return errors;
+}
+function pageId(appId, sectionId) {
+  return `${appId}__${sectionId}`;
+}
+function splitPageId(id) {
+  const i = id.lastIndexOf("__");
+  if (i <= 0 || i >= id.length - 2) return null;
+  return { appId: id.slice(0, i), sectionId: id.slice(i + 2) };
+}
+function guardWorkflowKey(appId, workflow) {
+  return workflow.includes("__") ? workflow : `${appId}__${workflow}`;
+}
+function publisherPage(sec) {
+  return {
+    id: sec.id,
+    ...sec.chapter ? { chapter: sec.chapter } : {},
+    title: sec.title,
+    body: sec.body,
+    ...sec.guard ? { guard: { workflow: sec.guard.workflow, ...sec.guard.label ? { label: sec.guard.label } : {} } } : {},
+    ...sec.mandatory ? { mandatory: true } : {},
+    ...sec.direction ? { direction: sec.direction } : {},
+    ...sec.source ? { source: sec.source } : {},
+    rev: 1
+  };
+}
+function buildBookRows(publisher, extraIds, effective, edited, pending) {
+  const ids = [...publisher.map((s) => s.id), ...extraIds.filter((x) => !publisher.some((s) => s.id === x))];
+  const rows = [];
+  for (const id of ids) {
+    const p = effective[id];
+    if (!p) continue;
+    rows.push({
+      id,
+      chapter: p.chapter ?? "",
+      title: p.title,
+      rev: p.rev ?? 1,
+      mandatory: !!p.mandatory,
+      edited: edited.has(id),
+      pending: pending.has(id),
+      guarded: !!p.guard
+    });
+  }
+  return rows;
+}
+function buildRewritePrompt(current, instruction) {
+  return {
+    system: [
+      "\u4F60\u662F\u516C\u53F8\u898F\u7AE0\u7684\u7DE8\u8F2F\u52A9\u7406\uFF0C\u5E6B\u4E3B\u7BA1\u628A\u4E00\u689D\u898F\u7AE0\u6539\u6210\u4ED6\u60F3\u8981\u7684\u6A23\u5B50\u3002",
+      "\u53EA\u4F9D\u7167\u4E3B\u7BA1\u8AAA\u7684\u90A3\u4E00\u53E5\u8A71\u4FEE\u6539\uFF1B\u4ED6\u6C92\u63D0\u5230\u7684\u5730\u65B9\u4FDD\u6301\u539F\u6587\u4E00\u5B57\u4E0D\u52D5\u3002",
+      "\u7528\u767D\u8A71\u6B63\u9AD4\u4E2D\u6587\uFF0C\u7DAD\u6301\u539F\u672C\u7684\u689D\u5217\u8207\u300C\u7B2C\u25CB\u689D\u300D\u5BEB\u6CD5\uFF0C\u4E0D\u8981\u52A0\u4EFB\u4F55\u8AAA\u660E\u3001\u524D\u8A00\u6216\u89E3\u91CB\u3002",
+      '\u53EA\u8F38\u51FA\u4E00\u500B JSON \u7269\u4EF6\uFF1A{"title":"\u689D\u6587\u6A19\u984C","body":"\u6539\u5F8C\u7684\u6574\u689D\u672C\u6587\uFF08markdown\uFF09"}\u3002'
+    ].join("\n"),
+    prompt: `\u3010\u73FE\u884C\u689D\u6587\u3011
+\u6A19\u984C\uFF1A${current.title}
+\u672C\u6587\uFF1A
+${current.body}
+
+\u3010\u4E3B\u7BA1\u7684\u4FEE\u6539\u8981\u6C42\u3011
+${instruction}`
+  };
+}
+function parseRewrite(text, fallbackTitle) {
+  let t = text.trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a < 0) return null;
+  const raw2 = t.slice(a);
+  const tries = [b > a ? t.slice(a, b + 1) : "", raw2, raw2 + "}", raw2 + '"}'].filter(Boolean).flatMap((x) => [x, x.replace(/\r?\n/g, "\\n")]);
+  let o = null;
+  for (const x of tries) {
+    try {
+      o = JSON.parse(x);
+      break;
+    } catch {
+    }
+  }
+  if (!o) return null;
+  if (typeof o.body !== "string" || !o.body.trim()) return null;
+  const title = typeof o.title === "string" && o.title.trim() ? o.title.trim().slice(0, 60) : fallbackTitle;
+  if (o.body.length > RULEBOOK_MAX_BODY) return null;
+  return { title, body: o.body.trim() };
+}
+var RULEBOOK_DEFAULT_TITLE, RULEBOOK_MAX_SECTIONS, RULEBOOK_MAX_BODY, SECTION_ID_RE, RULEBOOK_DIRECTIONS;
+var init_app_rulebook = __esm({
+  "cypher-executor/src/lib/app-rulebook.ts"() {
+    "use strict";
+    RULEBOOK_DEFAULT_TITLE = "\u672C\u516C\u53F8\u7BA1\u7406\u898F\u7AE0";
+    RULEBOOK_MAX_SECTIONS = 200;
+    RULEBOOK_MAX_BODY = 3e3;
+    SECTION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
+    RULEBOOK_DIRECTIONS = ["lower_is_stricter", "higher_is_stricter", "union"];
+  }
+});
+
+// cypher-executor/src/lib/app-system.ts
+var app_system_exports = {};
+__export(app_system_exports, {
+  APP_PLACEHOLDERS: () => APP_PLACEHOLDERS,
+  APP_UI_STYLES: () => APP_UI_STYLES,
+  APP_WORKFLOW_TRIGGERS: () => APP_WORKFLOW_TRIGGERS,
+  DEFAULT_APP_UI_STYLE: () => DEFAULT_APP_UI_STYLE,
+  FINAL_RESERVE: () => FINAL_RESERVE,
+  FLOW_CANVAS_APP_ID: () => FLOW_CANVAS_APP_ID,
+  INSTALL_REQUEST_BUDGET: () => INSTALL_REQUEST_BUDGET,
+  MAX_SKILLS_PER_APP: () => MAX_SKILLS_PER_APP,
+  MAX_SKILL_CHARS: () => MAX_SKILL_CHARS,
+  SKILL_TEMPLATE: () => SKILL_TEMPLATE,
+  STUDIO_APP_ICON: () => STUDIO_APP_ICON,
+  STUDIO_APP_NAME: () => STUDIO_APP_NAME,
+  STUDIO_SHARED_TIERS: () => STUDIO_SHARED_TIERS,
+  appKey: () => appKey,
+  appStore: () => appStore,
+  applyDeclarationDefaults: () => applyDeclarationDefaults,
+  canonicalize: () => canonicalize,
+  computeContentHash: () => computeContentHash,
+  copyApp: () => copyApp,
+  detailApp: () => detailApp,
+  ensureAppRecipes: () => ensureAppRecipes,
+  ensureFieldIndexes: () => ensureFieldIndexes,
+  ensureTemplate: () => ensureTemplate,
+  findMissingCredentials: () => findMissingCredentials,
+  flowCanvasNotInstalledBody: () => flowCanvasNotInstalledBody,
+  generateIcon: () => generateIcon,
+  getAppWorkflowGraph: () => getAppWorkflowGraph,
+  getInstalledApp: () => getInstalledApp,
+  installApp: () => installApp,
+  isFlowCanvasInstalled: () => isFlowCanvasInstalled,
+  isStudioVisibleApp: () => isStudioVisibleApp,
+  launchOf: () => launchOf,
+  listInstalledApps: () => listInstalledApps,
+  normalizeRequiredCredentials: () => normalizeRequiredCredentials,
+  prefetchAppAction: () => prefetchAppAction,
+  remainingPlaceholders: () => remainingPlaceholders,
+  resolveDeclarationPlaceholders: () => resolveDeclarationPlaceholders,
+  resolveWorkflowTrigger: () => resolveWorkflowTrigger,
+  runAppAction: () => runAppAction,
+  sameRecipeBehavior: () => sameRecipeBehavior,
+  studioScope: () => studioScope,
+  studioTierOf: () => studioTierOf,
+  summarizeApp: () => summarizeApp,
+  uninstallApp: () => uninstallApp,
+  upsertAppSkill: () => upsertAppSkill,
+  validateAppDeclaration: () => validateAppDeclaration,
+  validateRequires: () => validateRequires,
+  validateSkills: () => validateSkills,
+  workflowKvKey: () => workflowKvKey
+});
+function appStore(env) {
+  return env.WEBHOOKS;
+}
+function kbdbBehindHint(e) {
+  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  if (!msg.includes("KbdbUnavailable")) return null;
+  return "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u6C92\u6709\u56DE\u61C9\uFF0C\u6216\u5B83\u7684\u7248\u672C\u6BD4\u76EE\u524D\u7684\u7A0B\u5F0F\u78BC\u820A\u2014\u2014\u5B89\u88DD\u9700\u8981\u77E5\u8B58\u5EAB\u63D0\u4F9B\u300C\u540C\u4E00\u4EFD\u8CC7\u7522\u6C38\u9060\u540C\u4E00\u5217\u300D\u7684\u5BEB\u5165\u80FD\u529B\u3002\u8ACB\u7BA1\u7406\u8005\u628A\u77E5\u8B58\u5EAB\u4E00\u8D77\u66F4\u65B0\u5230\u540C\u4E00\u7248\uFF1B\u5728\u90A3\u4E4B\u524D**\u5DF2\u7D93\u88DD\u597D\u7684 App \u4E0D\u53D7\u5F71\u97FF**\uFF0C\u7167\u5E38\u53EF\u7528\u3002";
+}
+function resolveWorkflowTrigger(wf) {
+  if (typeof wf.trigger === "string" && APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
+    return wf.trigger;
+  }
+  return extractCronExpr(wf.graph) ? "schedule" : "manual";
+}
+function normalizeRequiredCredentials(requires) {
+  return (requires?.credentials ?? []).map((c) => typeof c === "string" ? { name: c } : { name: c.name, ...c.purpose ? { purpose: c.purpose } : {} });
+}
+function validateAppDeclaration(raw2) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) {
+    return { ok: false, errors: ["\u5BA3\u544A\u5FC5\u9808\u662F\u4E00\u500B JSON \u7269\u4EF6"] };
+  }
+  const d = raw2;
+  if (typeof d.id !== "string" || !ID_RE.test(d.id)) {
+    errors.push("id \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09");
+  }
+  if (typeof d.name !== "string" || d.name.trim() === "") {
+    errors.push("name \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32");
+  }
+  const hasWorkflows = Array.isArray(d.workflows) && d.workflows.length > 0;
+  const uiObj = d.ui && typeof d.ui === "object" ? d.ui : null;
+  const hasHtml = Boolean(uiObj && typeof uiObj.html === "string" && uiObj.html.trim() !== "");
+  const hasSurface = Boolean(uiObj && uiObj.surface !== void 0);
+  const hasUi = hasHtml || hasSurface;
+  const hasRulebook = d.rulebook !== void 0;
+  if (!hasWorkflows && !hasUi && !hasRulebook) {
+    errors.push("workflows \u6216 ui \u81F3\u5C11\u8981\u6709\u4E00\u500B\uFF08\u6C92\u6709\u756B\u9762\u4E5F\u6C92\u6709\u5DE5\u4F5C\u6D41\u7684 App \u4E0D\u6210\u7ACB\uFF0Cdesign \xA7\u4E8C\uFF09");
+  }
+  if (d.workflows !== void 0) {
+    if (!Array.isArray(d.workflows)) {
+      errors.push("workflows \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      d.workflows.forEach((w, i) => {
+        if (!w || typeof w !== "object") {
+          errors.push(`workflows[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const wf = w;
+        if (typeof wf.name !== "string" || wf.name.trim() === "") errors.push(`workflows[${i}].name \u5FC5\u586B`);
+        if (!wf.graph || typeof wf.graph !== "object") {
+          errors.push(`workflows[${i}].graph \u5FC5\u586B\uFF08\u57F7\u884C\u5716\uFF09`);
+        } else {
+          const g = wf.graph;
+          if (typeof g.id !== "string" || g.id.trim() === "") errors.push(`workflows[${i}].graph.id \u5FC5\u586B`);
+          if (typeof g.name !== "string" || g.name.trim() === "") errors.push(`workflows[${i}].graph.name \u5FC5\u586B`);
+          if (!Array.isArray(g.nodes)) errors.push(`workflows[${i}].graph.nodes \u5FC5\u9808\u662F\u9663\u5217`);
+          if (!Array.isArray(g.edges)) errors.push(`workflows[${i}].graph.edges \u5FC5\u9808\u662F\u9663\u5217`);
+        }
+        if (wf.trigger !== void 0) {
+          const label = typeof wf.name === "string" ? `\u300C${wf.name}\u300D` : `workflows[${i}]`;
+          if (typeof wf.trigger !== "string" || !APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
+            errors.push(`workflows[${i}].trigger \u53EA\u80FD\u662F ${APP_WORKFLOW_TRIGGERS.join("\uFF0F")}\uFF08\u7701\u7565\uFF1D\u770B\u5716\uFF1A\u6709\u6392\u7A0B\u96F6\u4EF6\u662F schedule\uFF0C\u5426\u5247 manual\uFF09`);
+          } else {
+            const hasCron = Boolean(extractCronExpr(wf.graph));
+            if (wf.trigger === "manual" && hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u624B\u52D5\uFF08manual\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6703\u81EA\u5DF1\u7167\u6392\u7A0B\u8DD1\u3002\u62FF\u6389 cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A schedule`);
+            }
+            if (wf.trigger === "schedule" && !hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u6392\u7A0B\uFF08schedule\uFF09\uFF0C\u4F46\u5716\u88E1\u6C92\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6C38\u9060\u4E0D\u6703\u81EA\u5DF1\u8DD1\u3002\u88DC\u4E0A cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A manual\uFF0Fevent`);
+            }
+            if (wf.trigger === "event" && hasCron) {
+              errors.push(`${label} \u5BA3\u544A\u6210\u5916\u90E8\u4E8B\u4EF6\uFF08event\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5169\u7A2E\u555F\u52D5\u65B9\u5F0F\u53EA\u80FD\u9078\u4E00\u7A2E`);
+            }
+          }
+        }
+      });
+    }
+  }
+  if (d.ui !== void 0 && !hasUi) {
+    errors.push("ui.html \u6216 ui.surface \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
+  }
+  if (hasHtml && hasSurface) errors.push("ui.html \u8207 ui.surface \u53EA\u80FD\u64C7\u4E00");
+  if (hasSurface) {
+    const wfNames = Array.isArray(d.workflows) ? d.workflows.map((w) => String(w?.name)) : [];
+    const acts = Array.isArray(d.actions) ? d.actions.map(String) : wfNames;
+    errors.push(...validateUiSurface(uiObj?.surface, acts));
+  }
+  if (d.ui && typeof d.ui === "object") {
+    const s = d.ui.style;
+    if (s !== void 0 && (typeof s !== "string" || !APP_UI_STYLES.includes(s))) {
+      errors.push(`ui.style \u53EA\u80FD\u662F ${APP_UI_STYLES.join(" \u6216 ")}\uFF08\u7701\u7565\uFF1D${DEFAULT_APP_UI_STYLE}\uFF0C\u8DDF\u96A8\u5168\u5C40\uFF09`);
+    }
+    const ui = d.ui;
+    const assetErrors = validateUiAssets(ui.assets);
+    errors.push(...assetErrors);
+    if (assetErrors.length === 0 && hasHtml) {
+      errors.push(...bundleUiAssets(ui.html, ui.assets).errors);
+    }
+  }
+  if (d.data !== void 0) {
+    if (!Array.isArray(d.data)) {
+      errors.push("data \u5FC5\u9808\u662F\u9663\u5217");
+    } else {
+      d.data.forEach((dt, i) => {
+        if (!dt || typeof dt !== "object") {
+          errors.push(`data[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+          return;
+        }
+        const decl = dt;
+        if (typeof decl.name !== "string" || decl.name.trim() === "") errors.push(`data[${i}].name \u5FC5\u586B`);
+        if (!Array.isArray(decl.slots) || decl.slots.some((s) => typeof s !== "string")) {
+          errors.push(`data[${i}].slots \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
+        }
+      });
+    }
+  }
+  if (d.skills !== void 0) errors.push(...validateSkills(d.skills));
+  if (d.rulebook !== void 0) {
+    const names = Array.isArray(d.workflows) ? d.workflows.map((w) => String(w?.name)) : [];
+    errors.push(...validateRulebook(d.rulebook, names));
+  }
+  if (d.requires !== void 0) errors.push(...validateRequires(d.requires));
+  if (d.mcp !== void 0) errors.push(...validateAppMcp(d.mcp, d.workflows));
+  if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
+    errors.push("actions \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217");
+  } else if (Array.isArray(d.actions) && Array.isArray(d.workflows)) {
+    const wfNames = new Set(
+      d.workflows.map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
+    );
+    for (const a of d.actions) {
+      if (!wfNames.has(a)) {
+        errors.push(
+          `actions \u88E1\u7684\u300C${a}\u300D\u627E\u4E0D\u5230\u540C\u540D\u7684 workflow\uFF08\u52D5\u4F5C\u540D\u5C31\u662F\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\uFF09\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
+        );
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+function validateSkills(raw2) {
+  if (!Array.isArray(raw2)) return ["skills \u5FC5\u9808\u662F\u9663\u5217"];
+  const errors = [];
+  if (raw2.length > MAX_SKILLS_PER_APP) errors.push(`skills \u6700\u591A ${MAX_SKILLS_PER_APP} \u652F\uFF08\u9019\u4EFD\u6709 ${raw2.length} \u652F\uFF09`);
+  const seen = /* @__PURE__ */ new Set();
+  raw2.forEach((sk, i) => {
+    if (!sk || typeof sk !== "object" || Array.isArray(sk)) {
+      errors.push(`skills[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
+      return;
+    }
+    const o = sk;
+    if (typeof o.slug !== "string" || !SKILL_SLUG_RE.test(o.slug)) {
+      errors.push(`skills[${i}].slug \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09`);
+    } else if (seen.has(o.slug)) {
+      errors.push(`skills[${i}].slug\u300C${o.slug}\u300D\u91CD\u8907\u4E86`);
+    } else {
+      seen.add(o.slug);
+    }
+    if (typeof o.title !== "string" || o.title.trim() === "") errors.push(`skills[${i}].title \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32`);
+    if (typeof o.content !== "string" || o.content.trim() === "") errors.push(`skills[${i}].content \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32`);
+    else if (o.content.length > MAX_SKILL_CHARS) errors.push(`skills[${i}].content \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_SKILL_CHARS} \u5B57\uFF09`);
+  });
+  return errors;
+}
+function validateRequires(raw2) {
+  const errors = [];
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["requires \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 recipes\u3001credentials \u5169\u6B04\uFF09"];
+  const r = raw2;
+  for (const k of Object.keys(r)) {
+    if (k !== "recipes" && k !== "credentials") errors.push(`requires.${k} \u4E0D\u8A8D\u5F97\uFF08\u53EA\u6709 recipes\u3001credentials\uFF09`);
+  }
+  if (r.recipes !== void 0) {
+    if (!Array.isArray(r.recipes)) errors.push("requires.recipes \u5FC5\u9808\u662F\u9663\u5217");
+    else {
+      const seen = /* @__PURE__ */ new Set();
+      r.recipes.forEach((x, i) => {
+        if (!x || typeof x !== "object" || Array.isArray(x)) {
+          errors.push(`requires.recipes[${i}] \u5FC5\u9808\u662F\u7269\u4EF6\uFF08recipe \u5168\u6587\uFF09`);
+          return;
+        }
+        const rec = x;
+        const cid = typeof rec.canonical_id === "string" ? rec.canonical_id.trim().toLowerCase() : "";
+        if (!cid) errors.push(`requires.recipes[${i}].canonical_id \u5FC5\u586B`);
+        else if (seen.has(cid)) errors.push(`requires.recipes \u88E1\u300C${cid}\u300D\u91CD\u8907`);
+        else seen.add(cid);
+        if (typeof rec.endpoint !== "string" || rec.endpoint.trim() === "") errors.push(`requires.recipes[${i}].endpoint \u5FC5\u586B`);
+      });
+    }
+  }
+  if (r.credentials !== void 0) {
+    if (!Array.isArray(r.credentials)) errors.push("requires.credentials \u5FC5\u9808\u662F\u9663\u5217\uFF08\u91D1\u9470\u7684\u540D\u5B57\uFF09");
+    else {
+      const seen = /* @__PURE__ */ new Set();
+      r.credentials.forEach((x, i) => {
+        let name;
+        if (typeof x === "string") name = x;
+        else if (x && typeof x === "object" && !Array.isArray(x)) {
+          const o = x;
+          const extra = Object.keys(o).filter((k) => k !== "name" && k !== "purpose");
+          if (extra.length > 0) errors.push(`requires.credentials[${i}] \u53EA\u51C6 name\uFF0Fpurpose\uFF0C\u4E0D\u51C6\u6709\u300C${extra.join("\u3001")}\u300D\u2014\u2014\u91D1\u9470\u7684\u503C\u6C38\u9060\u53EA\u7531\u5BE6\u4F8B\u4E3B\u4EBA\u5728\u91D1\u9470\u756B\u9762\u586B\uFF08D36\uFF09`);
+          if (o.purpose !== void 0 && typeof o.purpose !== "string") errors.push(`requires.credentials[${i}].purpose \u5FC5\u9808\u662F\u5B57\u4E32`);
+          name = o.name;
+        } else name = void 0;
+        if (!validateName(name)) errors.push(`requires.credentials[${i}] \u7684\u540D\u5B57\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\uFF08\u9019\u662F\u91D1\u9470\u7684\u540D\u5B57\uFF0C\u4E0D\u662F\u503C\uFF09`);
+        else if (seen.has(name)) errors.push(`requires.credentials \u88E1\u300C${name}\u300D\u91CD\u8907`);
+        else seen.add(name);
+      });
+    }
+  }
+  return errors;
+}
+function generateIcon(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
+  return ICON_SET[h % ICON_SET.length];
+}
+function applyDeclarationDefaults(raw2) {
+  const workflows = raw2.workflows ?? [];
+  const actions = raw2.actions ?? workflows.filter((w) => resolveWorkflowTrigger(w) === "manual").map((w) => w.name);
+  return {
+    ...raw2,
+    id: raw2.id,
+    name: raw2.name,
+    icon: raw2.icon ?? generateIcon(raw2.name),
+    version: raw2.version ?? "0.0.0",
+    workflows,
+    skills: raw2.skills ?? [],
+    data: raw2.data ?? [],
+    actions,
+    keeps_data: raw2.remove?.keeps_data ?? true
+  };
+}
+function resolveDeclarationPlaceholders(value, coords) {
+  const base = coords.cypherBase.replace(/\/+$/, "");
+  const swap = (s) => s.split("__NAMESPACE__").join(coords.namespace).split("__CYPHER_BASE__").join(base);
+  const walk = (v) => {
+    if (typeof v === "string") return swap(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out = {};
+      for (const [k, val] of Object.entries(v)) out[swap(k)] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  return walk(value);
+}
+function remainingPlaceholders(value) {
+  const text = JSON.stringify(value) ?? "";
+  return APP_PLACEHOLDERS.filter((p) => text.includes(p));
+}
+async function computeContentHash(raw2) {
+  const canonical = canonicalize(raw2);
+  const data = new TextEncoder().encode(canonical);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(value[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function appKey(tenant2, id) {
+  return `${tenant2}:app:${id}`;
+}
+function workflowKvKey(tenant2, wfKey2) {
+  return `${tenant2}:wf:${wfKey2}`;
+}
+function studioTierOf(app2) {
+  if (STUDIO_SYSTEM_APP_IDS.includes(app2.id)) return "system";
+  return app2.origin === "authored" ? "mine" : "others";
+}
+function isStudioVisibleApp(app2, showSystem = false) {
+  const t = studioTierOf(app2);
+  return STUDIO_SHARED_TIERS.includes(t) || showSystem && t === "system";
+}
+async function studioScope(env, tenant2, showSystem = false) {
+  const all = await listInstalledApps(env, tenant2);
+  const apps = all.filter((a) => isStudioVisibleApp(a, showSystem));
+  const wfKeys = new Set(apps.flatMap((a) => a.workflows.map((w) => w.wf_key)));
+  const recipes = new Set(apps.flatMap((a) => a.requires?.recipes ?? []));
+  const ownedWf = /* @__PURE__ */ new Map();
+  const ownedRecipes = /* @__PURE__ */ new Set();
+  const tierByApp = /* @__PURE__ */ new Map();
+  for (const a of all) {
+    const t = studioTierOf(a);
+    tierByApp.set(a.id, t);
+    for (const w of a.workflows) ownedWf.set(w.wf_key, t);
+    for (const r of a.requires?.recipes ?? []) ownedRecipes.add(r);
+  }
+  return {
+    showSystem,
+    apps,
+    appIds: new Set(apps.map((a) => a.id)),
+    wfKeys,
+    recipes,
+    tierOfWf: (k) => ownedWf.get(k) ?? "system",
+    hasWf: (k) => wfKeys.has(k) || showSystem && !ownedWf.has(k),
+    hasRecipe: (id) => recipes.has(id) || showSystem && !ownedRecipes.has(id),
+    tierOfApp: (id) => tierByApp.get(id) ?? null
+  };
+}
+async function copyApp(env, tenant2, srcId, opts = {}) {
+  const src = await getInstalledApp(env, tenant2, srcId);
+  if (!src) return { ok: false, code: "not_found", error: "\u627E\u4E0D\u5230\u9019\u500B App" };
+  let targetId = opts.targetId;
+  if (targetId) {
+    if (!new RegExp(`^${srcId.replace(/[^a-z0-9_-]/g, "")}_copy[0-9]*$`).test(targetId)) {
+      return { ok: false, code: "bad_target", error: "\u526F\u672C\u7684\u540D\u5B57\u4E0D\u5C0D" };
+    }
+  } else {
+    for (let i = 1; i < 50 && !targetId; i++) {
+      const cand = `${srcId}_copy${i === 1 ? "" : i}`;
+      if (cand.length <= 64 && !await getInstalledApp(env, tenant2, cand)) targetId = cand;
+    }
+    if (!targetId) return { ok: false, code: "bad_target", error: "\u526F\u672C\u592A\u591A\u4E86\uFF0C\u5148\u6E05\u6389\u4E0D\u8981\u7684" };
+  }
+  const total = src.workflows.length;
+  const from = Math.max(0, Math.floor(opts.from ?? 0));
+  const swap = (t) => t.split(`${srcId}__`).join(`${targetId}__`);
+  const end = Math.min(total, from + COPY_CHUNK);
+  try {
+    for (let i = from; i < end; i++) {
+      const w = src.workflows[i];
+      const raw2 = await appStore(env).get(workflowKvKey(tenant2, w.wf_key), "text");
+      if (!raw2) continue;
+      const rec = JSON.parse(swap(raw2));
+      delete rec.cron_expr;
+      await appStore(env).put(workflowKvKey(tenant2, swap(w.wf_key)), JSON.stringify({ ...rec, created_at: (/* @__PURE__ */ new Date()).toISOString() }));
+    }
+  } catch (e) {
+    return { ok: false, code: "write_failed", error: e instanceof Error ? e.message : String(e) };
+  }
+  if (end < total) return { ok: true, in_progress: true, target_id: targetId, resume_from: end, total };
+  const now2 = (/* @__PURE__ */ new Date()).toISOString();
+  const record = {
+    id: targetId,
+    name: `${src.name}\uFF08\u6211\u7684\u526F\u672C\uFF09`,
+    icon: src.icon,
+    version: src.version,
+    content_hash: `copy:${srcId}:${src.content_hash}`,
+    workflows: src.workflows.map((w) => {
+      const { cron_expr: _drop, ...rest } = w;
+      return { ...rest, wf_key: swap(w.wf_key), ...w.graph_id ? { graph_id: swap(w.graph_id) } : {} };
+    }),
+    actions: src.actions,
+    data_templates: src.data_templates,
+    has_ui: src.has_ui,
+    ...src.ui_html ? { ui_html: swap(src.ui_html) } : {},
+    ...src.ui_surface ? { ui_surface: src.ui_surface } : {},
+    ...src.ui_style ? { ui_style: src.ui_style } : {},
+    keeps_data: src.keeps_data,
+    ...src.requires ? { requires: src.requires } : {},
+    ...src.declared ? { declared: src.declared } : {},
+    origin: "authored",
+    ...opts.author ? { author: opts.author } : {},
+    installed_at: now2,
+    updated_at: now2,
+    status: "active"
+  };
+  try {
+    await appStore(env).put(appKey(tenant2, targetId), JSON.stringify(record));
+  } catch (e) {
+    return { ok: false, code: "write_failed", error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true, target_id: targetId, app: record };
+}
+async function isFlowCanvasInstalled(env, tenant2) {
+  return await getInstalledApp(env, tenant2, FLOW_CANVAS_APP_ID) !== null;
+}
+function flowCanvasNotInstalledBody() {
+  return {
+    error: `\u9019\u53F0\u9084\u6C92\u5B89\u88DD\u300C${STUDIO_APP_NAME}\u300D`,
+    code: "flow_canvas_not_installed",
+    hint: `${STUDIO_APP_NAME}\u662F\u7D66\u958B\u767C\u7684\u4EBA\u7528\u7684 App\u3002\u8981\u958B\u767C\u7684\u8A71\uFF0C\u8ACB\u7BA1\u7406\u54E1\u5230\u300CApp \u5E02\u96C6\u300D\u5B89\u88DD\u300C${STUDIO_APP_NAME}\u300D\uFF0C\u518D\u8ACB AI \u5E6B\u4F60\u505A App\u3002`,
+    install: { app: FLOW_CANVAS_APP_ID, where: "App \u5E02\u96C6" }
+  };
+}
+async function getInstalledApp(env, tenant2, id) {
+  const raw2 = await appStore(env).get(appKey(tenant2, id), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function getAppWorkflowGraph(env, tenant2, wfKey2) {
+  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfKey2), "text");
+  if (!raw2) return null;
+  try {
+    const g = JSON.parse(raw2).graph;
+    if (!g) return null;
+    return {
+      ...typeof g.id === "string" ? { id: g.id } : {},
+      nodes: Array.isArray(g.nodes) ? g.nodes : [],
+      edges: Array.isArray(g.edges) ? g.edges : []
+    };
+  } catch {
+    return null;
+  }
+}
+async function listInstalledApps(env, tenant2) {
+  const prefix = `${tenant2}:app:`;
+  const list = await appStore(env).list({ prefix });
+  const apps = await Promise.all(
+    list.keys.map(async (k) => {
+      const raw2 = await appStore(env).get(k.name, "text");
+      if (!raw2) return null;
+      try {
+        return JSON.parse(raw2);
+      } catch {
+        return null;
+      }
+    })
+  );
+  return apps.filter((a) => a !== null);
+}
+async function ensureTemplate(env, name, slots, description) {
+  const { base, headers } = kbdbBase(env);
+  noteSubrequest();
+  const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
+  if (getRes.ok) {
+    const data = await getRes.json().catch(() => null);
+    if (data?.success && data.template) {
+      const tpl = data.template;
+      let current = [];
+      try {
+        const parsed = JSON.parse(tpl.slots_json ?? "[]");
+        if (Array.isArray(parsed)) current = parsed.filter((s) => typeof s === "string");
+      } catch {
+      }
+      const missing = slots.filter((s) => !current.includes(s));
+      if (missing.length > 0 && tpl.id) {
+        noteSubrequest();
+        const patched = await fetch(`${base}/templates/${encodeURIComponent(tpl.id)}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ slots: [...current, ...missing] })
+        });
+        if (!patched.ok) throw new Error(`\u88DC\u8CC7\u6599\u6B04\u4F4D ${name}\uFF08${missing.join("\u3001")}\uFF09\u5931\u6557\uFF1AHTTP ${patched.status}`);
+      }
+      return;
+    }
+  }
+  noteSubrequest();
+  await fetch(`${base}/templates`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name, slots, description })
+  });
+}
+async function ensureFieldIndexes(env, data, maxRounds = FIELD_INDEX_ROUNDS_PER_INSTALL) {
+  const { base, headers } = kbdbBase(env);
+  const pending = [];
+  let rounds = 0;
+  for (const dt of data) {
+    const fields = (dt.index_fields ?? []).filter((f) => dt.slots.includes(f));
+    if (fields.length === 0) continue;
+    let ready = false;
+    while (!ready && rounds < Math.min(maxRounds, FIELD_INDEX_ROUNDS_PER_INSTALL)) {
+      rounds += 1;
+      noteSubrequest();
+      try {
+        const res = await fetch(`${base}/records/field-index`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ template: dt.name, fields })
+        });
+        if (!res.ok) {
+          await res.body?.cancel();
+          break;
+        }
+        const body = await res.json().catch(() => null);
+        ready = body?.ready === true;
+        if (!ready && !(body?.backfilled && body.backfilled > 0)) break;
+      } catch {
+        break;
+      }
+    }
+    if (!ready) pending.push(dt.name);
+  }
+  return pending;
+}
+function sameRecipeBehavior(a, b) {
+  const pick = (r) => {
+    const o = {};
+    for (const k of RECIPE_BEHAVIOR_FIELDS) {
+      const v = k === "method" ? (r.method ?? "POST").toUpperCase() : r[k];
+      if (v !== void 0) o[k] = v;
+    }
+    return o;
+  };
+  return canonicalize(pick(a)) === canonicalize(pick(b));
+}
+async function ensureAppRecipes(env, recipes, ul) {
+  const installed = [];
+  const kept = [];
+  for (const decl of recipes) {
+    const cid = String(decl.canonical_id ?? "").trim().toLowerCase();
+    if (ul) {
+      const d = decideOnUpdate(ul.layer, "recipe", cid, decl, ul.by, ul.now);
+      if (d.changed) ul.dirty = true;
+      if (d.keep) {
+        kept.push({ kind: "recipe", id: cid, conflict: d.conflict });
+        continue;
+      }
+    }
+    const have = await resolveRecipe(cid, env.RECIPES);
+    if (have && sameRecipeBehavior(have, decl)) continue;
+    const r = await upsertPrivateRecipe(env.RECIPES, { ...decl, canonical_id: cid });
+    if (!r.ok) return { ok: false, error: `recipe\u300C${cid}\u300D\uFF1A${r.error}` };
+    installed.push(cid);
+  }
+  return { ok: true, installed, kept };
+}
+async function findMissingCredentials(env, tenant2, wanted) {
+  if (wanted.length === 0) return { missing: [], checked: true };
+  try {
+    const have = new Set((await listCredentialRows(env, String(tenant2))).map((r) => r.name));
+    return { missing: wanted.filter((w) => !have.has(w.name)), checked: true };
+  } catch {
+    return { missing: [], checked: false };
+  }
+}
+async function upsertAppSkill(env, tenant2, appId, skill) {
+  const { base, headers } = kbdbBase(env);
+  const pageName = `skill-${skill.slug}`;
+  const q = new URLSearchParams({ template: SKILL_TEMPLATE, owner_id: String(tenant2), page_name: pageName, limit: "1" });
+  noteSubrequest();
+  const probe = await fetch(`${base}/entries?${q.toString()}`, { headers });
+  if (!probe.ok) throw new Error(`\u8B80\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${probe.status}`);
+  const hit = (await probe.json().catch(() => null))?.entries?.[0];
+  const metadata = JSON.stringify({ slug: skill.slug, title: skill.title, source: `app:${appId}` });
+  noteSubrequest();
+  if (hit?.id) {
+    const res2 = await fetch(`${base}/entries/${encodeURIComponent(hit.id)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ content: skill.content, metadata_json: metadata })
+    });
+    if (!res2.ok) throw new Error(`\u66F4\u65B0\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${res2.status}`);
+    return "updated";
+  }
+  const res = await fetch(`${base}/entries`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      template: SKILL_TEMPLATE,
+      owner_id: String(tenant2),
+      page_name: pageName,
+      content: skill.content,
+      metadata_json: metadata,
+      tags_json: JSON.stringify([SKILL_TEMPLATE, `skill:${skill.slug}`])
+    })
+  });
+  if (!res.ok) throw new Error(`\u5EFA\u7ACB\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${res.status}`);
+  return "created";
+}
+async function installApp(env, tenant2, rawDecl, opts = {}) {
+  let decl0 = rawDecl;
+  if (opts.coords) {
+    try {
+      decl0 = resolveDeclarationPlaceholders(rawDecl, opts.coords);
+    } catch (e) {
+      return {
+        ok: false,
+        step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
+        errors: [e instanceof Error ? e.message : String(e)],
+        hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u505A\u932F\u4E86\u3002\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u5373\u53EF\u3002"
+      };
+    }
+  }
+  const left = remainingPlaceholders(decl0);
+  if (left.length > 0) {
+    return {
+      ok: false,
+      step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
+      errors: [`\u9019\u4EFD\u5BA3\u544A\u88E1\u9084\u6709\u6C92\u586B\u7684\u4F4D\u7F6E\uFF1A${left.join("\u3001")}`],
+      hint: "\u9019\u500B App \u7684\u4F5C\u8005\u7559\u4E86\u8981\u7531\u5BE6\u4F8B\u586B\u7684\u6B04\u4F4D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u586B\u5F97\u8D77\u4F86\u3002\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+    };
+  }
+  const validation = validateAppDeclaration(decl0);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      step: "\u6AA2\u67E5\u9019\u500B App \u7684\u5BA3\u544A",
+      errors: validation.errors,
+      hint: "\u9019\u662F App \u4F5C\u8005\u90A3\u908A\u8981\u4FEE\u7684\uFF0C\u91CD\u8A66\u4E0D\u6703\u8B8A\u597D\u3002\u628A\u4E0A\u9762\u9019\u5E7E\u884C\u539F\u6587\u56DE\u5831\u7D66\u9019\u500B App \u7684\u4F5C\u8005\u3002"
+    };
+  }
+  const decl = applyDeclarationDefaults(decl0);
+  const contentHash = await computeContentHash(decl0);
+  const existing = await getInstalledApp(env, tenant2, decl.id);
+  const ulCtx = existing ? { layer: layerOf(existing), by: "app-update", now: (/* @__PURE__ */ new Date()).toISOString(), dirty: false } : void 0;
+  const keptUserChanges = [];
+  let recExtra = {};
+  const flushUl = async () => {
+    if (!existing || !ulCtx?.dirty) return;
+    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify({ ...existing, ...recExtra, user_layer: ulCtx.layer }));
+    ulCtx.dirty = false;
+  };
+  const wantedCreds = normalizeRequiredCredentials(decl.requires);
+  const wantedRecipes = decl.requires?.recipes ?? [];
+  const requestStart = subrequestCount();
+  const spent = () => subrequestCount() - requestStart;
+  if (existing && existing.content_hash === contentHash && existing.status === "active") {
+    const ensured3 = await ensureAppRecipes(env, wantedRecipes, ulCtx);
+    if (!ensured3.ok) {
+      return {
+        ok: false,
+        step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
+        errors: [ensured3.error],
+        hint: "\u9019\u500B App \u9700\u8981\u7684 recipe \u5BEB\u4E0D\u9032\u9019\u53F0\u5BE6\u4F8B\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+      };
+    }
+    const credCheck2 = await findMissingCredentials(env, tenant2, wantedCreds);
+    await flushUl();
+    const needs2 = {
+      recipes_installed: ensured3.installed,
+      ...ensured3.kept.length ? { kept_user_changes: ensured3.kept } : {},
+      missing_credentials: credCheck2.missing,
+      ...credCheck2.checked ? {} : { credentials_check_failed: true }
+    };
+    try {
+      for (const dt of decl.data) {
+        if (spent() >= INSTALL_REQUEST_BUDGET) break;
+        await ensureTemplate(env, dt.name, dt.slots, dt.description);
+      }
+    } catch (e) {
+      return {
+        ok: false,
+        step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
+        errors: [e instanceof Error ? e.message : String(e)],
+        hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\u670D\u52D9\u6C92\u6709\u56DE\u61C9\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
+      };
+    }
+    const pendingIdx2 = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
+    return { ok: true, changed: false, app: existing, ...needs2, ...pendingIdx2.length ? { field_index_pending: pendingIdx2 } : {} };
+  }
+  const units = [];
+  let recipesInstalled = [];
+  for (const r of wantedRecipes) {
+    units.push({
+      step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
+      label: String(r.canonical_id ?? ""),
+      cost: 3,
+      run: async () => {
+        const ensured3 = await ensureAppRecipes(env, [r], ulCtx);
+        if (!ensured3.ok) throw new Error(ensured3.error);
+        recipesInstalled = recipesInstalled.concat(ensured3.installed);
+        keptUserChanges.push(...ensured3.kept);
+        await flushUl();
+      }
+    });
+  }
+  for (const dt of decl.data) {
+    const prevDt = existing?.declared?.data?.find((d) => d.name === dt.name);
+    const dtUnchanged = prevDt !== void 0 && canonicalize(prevDt) === canonicalize(dt);
+    units.push({
+      step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
+      label: dt.name,
+      cost: dtUnchanged ? 0 : 2,
+      run: dtUnchanged ? async () => {
+      } : () => ensureTemplate(env, dt.name, dt.slots, dt.description)
+    });
+  }
+  const prepared = await Promise.all(decl.workflows.map(async (wf) => {
+    const wfKey2 = `${decl.id}__${wf.name}`;
+    const trigger = resolveWorkflowTrigger(wf);
+    const cronExpr = trigger === "schedule" ? extractCronExpr(wf.graph) : null;
+    const graphId = typeof wf.graph.id === "string" ? wf.graph.id : void 0;
+    const description = wf.description || `${decl.name}: ${wf.name}`;
+    const hash = await computeContentHash({ graph: wf.graph, description, cron_expr: cronExpr });
+    const ref = {
+      hash,
+      name: wf.name,
+      wf_key: wfKey2,
+      description: wf.description || "",
+      trigger,
+      ...cronExpr ? { cron_expr: cronExpr } : {},
+      ...graphId ? { graph_id: graphId } : {}
+    };
+    return { wf, wfKey: wfKey2, cronExpr, ref, description };
+  }));
+  const workflowRefs = prepared.map((p) => p.ref);
+  const prevCron = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, Boolean(w.cron_expr)]));
+  const foreignPending = existing?.pending_hash !== void 0 && existing.pending_hash !== contentHash;
+  const pendingFull = foreignPending || existing?.pending_full === true;
+  const trustPrev = Boolean(existing) && !pendingFull;
+  const prevHash = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, w.hash]));
+  let markerWritten = false;
+  const markPending = async () => {
+    if (markerWritten || !existing || existing.pending_hash === contentHash) {
+      markerWritten = true;
+      return;
+    }
+    recExtra = { pending_hash: contentHash, ...pendingFull ? { pending_full: true } : {} };
+    await appStore(env).put(
+      appKey(tenant2, decl.id),
+      JSON.stringify({ ...existing, ...recExtra, ...ulCtx ? { user_layer: ulCtx.layer } : {} })
+    );
+    markerWritten = true;
+  };
+  const skillRefs = [];
+  const prevSkillHash = new Map((existing?.skills ?? []).map((k) => [k.slug, k.hash]));
+  for (const sk of decl.skills) {
+    const hash = await computeContentHash({ title: sk.title, content: sk.content });
+    skillRefs.push({ slug: sk.slug, hash });
+    if (trustPrev && prevSkillHash.get(sk.slug) === hash) {
+      units.push({ step: "\u5B89\u88DD\u6280\u80FD", label: sk.slug, cost: 0, run: async () => {
+      } });
+      continue;
+    }
+    units.push({
+      step: "\u5B89\u88DD\u6280\u80FD",
+      label: sk.slug,
+      cost: 2,
+      run: async () => {
+        await markPending();
+        await upsertAppSkill(env, tenant2, decl.id, sk);
+      }
+    });
+  }
+  for (const p of prepared) {
+    if (ulCtx) {
+      const d = decideOnUpdate(ulCtx.layer, "workflow", p.wfKey, { graph: p.wf.graph, description: p.description, ...p.cronExpr ? { cron_expr: p.cronExpr } : {} }, ulCtx.by, ulCtx.now);
+      if (d.changed) ulCtx.dirty = true;
+      if (d.keep) {
+        keptUserChanges.push({ kind: "workflow", id: p.wfKey, conflict: d.conflict });
+        units.push({ step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41", label: p.wf.name, cost: 0, run: async () => {
+        } });
+        continue;
+      }
+    }
+    const wfUnchanged = trustPrev && prevHash.get(p.wfKey) === p.ref.hash;
+    if (wfUnchanged) {
+      units.push({ step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41", label: p.wf.name, cost: 0, run: async () => {
+      } });
+      continue;
+    }
+    const touchCron = Boolean(p.cronExpr) || prevCron.get(p.wfKey) === true;
+    units.push({
+      step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
+      label: p.wf.name,
+      cost: touchCron ? 3 : 1,
+      run: async () => {
+        await markPending();
+        await appStore(env).put(
+          workflowKvKey(tenant2, p.wfKey),
+          JSON.stringify({
+            graph: p.wf.graph,
+            description: p.description,
+            created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+            ...p.cronExpr ? { cron_expr: p.cronExpr } : {}
+          })
+        );
+        if (touchCron) await updateCronIndexEntry(appStore(env), String(tenant2), p.wfKey, p.cronExpr);
+      }
+    });
+  }
+  await flushUl();
+  const total = units.length;
+  const wantFrom = opts.resumeHash === contentHash ? Math.floor(opts.resumeFrom ?? 0) || 0 : 0;
+  let cursor = Math.min(Math.max(wantFrom, 0), total);
+  const from = cursor;
+  try {
+    while (cursor < total) {
+      if (cursor > from && spent() + units[cursor].cost > INSTALL_REQUEST_BUDGET) break;
+      await units[cursor].run();
+      cursor++;
+    }
+  } catch (e) {
+    const u = units[cursor];
+    const why = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      step: u?.step ?? "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
+      errors: [why],
+      resume_from: cursor,
+      resume_hash: contentHash,
+      hint: kbdbBehindHint(e) ?? `\u5DF2\u7D93\u5B8C\u6210 ${cursor}\uFF0F${total} \u500B\u6B65\u9A5F\uFF08\u5099\u9F4A recipe\u3001\u6E96\u5099\u8CC7\u6599\u578B\u5225\u3001\u5B89\u88DD\u5DE5\u4F5C\u6D41\uFF09\uFF0C\u5361\u5728\u300C${u?.label ?? ""}\u300D\u3002\u518D\u6309\u4E00\u6B21\u6703\u5F9E\u9019\u88E1\u63A5\u8457\u505A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\uFF1B\u5982\u679C\u6BCF\u6B21\u90FD\u5361\u5728\u540C\u4E00\u500B\u5730\u65B9\uFF0C\u91CD\u6309\u6C92\u6709\u7528\uFF0C\u8ACB\u628A\u4E0A\u9762\u90A3\u53E5\u539F\u56E0\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002`
+    };
+  }
+  if (cursor < total || spent() > INSTALL_REQUEST_BUDGET - FINAL_RESERVE) {
+    return { ok: true, in_progress: true, changed: true, progress: { done: cursor, total }, resume_from: cursor, resume_hash: contentHash };
+  }
+  const credCheck = await findMissingCredentials(env, tenant2, wantedCreds);
+  const needs = {
+    recipes_installed: recipesInstalled,
+    missing_credentials: credCheck.missing,
+    ...credCheck.checked ? {} : { credentials_check_failed: true }
+  };
+  const dataflow = await runDataflowCheck(
+    env,
+    tenant2,
+    decl.workflows.map((wf) => ({ name: `${decl.id}__${wf.name}`, graph: wf.graph })),
+    { apps: [{ id: decl.id, data: decl.data }], recipes: wantedRecipes }
+  );
+  if (existing) {
+    const keepKeys = new Set(workflowRefs.map((w) => w.wf_key));
+    for (const prev of existing.workflows) {
+      if (!keepKeys.has(prev.wf_key)) {
+        if (ulCtx?.layer.items[`workflow:${prev.wf_key}`]?.edited) {
+          keptUserChanges.push({ kind: "workflow", id: prev.wf_key, conflict: false, dropped_by_publisher: true });
+          continue;
+        }
+        await appStore(env).delete(workflowKvKey(tenant2, prev.wf_key));
+        await updateCronIndexEntry(appStore(env), String(tenant2), prev.wf_key, null);
+      }
+    }
+  }
+  const uiHtml = decl.ui?.html ? bundleUiAssets(decl.ui.html, decl.ui.assets).html : void 0;
+  const uiSurface = decl.ui?.surface;
+  if (ulCtx && decl.rulebook) {
+    for (const sec of decl.rulebook.sections) {
+      const d = decideOnUpdate(ulCtx.layer, "page", pageId(decl.id, sec.id), publisherPage(sec), ulCtx.by, ulCtx.now);
+      if (d.changed) ulCtx.dirty = true;
+      if (d.keep) keptUserChanges.push({ kind: "page", id: pageId(decl.id, sec.id), conflict: d.conflict });
+    }
+  }
+  const mcp = installedMcpOf(decl.id, decl.mcp);
+  const record = {
+    id: decl.id,
+    name: decl.name,
+    icon: decl.icon,
+    version: decl.version,
+    content_hash: contentHash,
+    workflows: workflowRefs,
+    ...skillRefs.length ? { skills: skillRefs } : {},
+    ...decl.rulebook ? { rulebook: decl.rulebook } : {},
+    actions: decl.actions,
+    data_templates: decl.data.map((d) => d.name),
+    has_ui: Boolean(uiHtml || uiSurface),
+    ui_html: uiHtml,
+    ...uiSurface ? { ui_surface: uiSurface } : {},
+    ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
+    keeps_data: decl.keeps_data,
+    ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
+    ...mcp ? { mcp } : {},
+    declared: { data: decl.data, ...decl.engine_min ? { engine_min: decl.engine_min } : {} },
+    ...ulCtx && (Object.keys(ulCtx.layer.items).length || ulCtx.layer.log.length || ulCtx.layer.proposals || ulCtx.layer.pages) ? { user_layer: ulCtx.layer } : {},
+    ...opts.source ?? existing?.source ? { source: opts.source ?? existing?.source } : {},
+    ...opts.origin ?? existing?.origin ? { origin: opts.origin ?? existing?.origin } : {},
+    ...opts.origin === "authored" && opts.author ? { author: opts.author } : existing?.author ? { author: existing.author } : {},
+    installed_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
+    updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+    status: "active"
+  };
+  try {
+    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
+  } catch (e) {
+    return {
+      ok: false,
+      step: "\u5BEB\u5165\u5B89\u88DD\u7D00\u9304",
+      errors: [e instanceof Error ? e.message : String(e)],
+      resume_from: total,
+      resume_hash: contentHash,
+      hint: kbdbBehindHint(e) ?? "\u5DE5\u4F5C\u6D41\u90FD\u5DF2\u7D93\u88DD\u597D\u4E86\uFF0C\u53EA\u5DEE\u6700\u5F8C\u9019\u4E00\u7B46\u7D00\u9304\u2014\u2014\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u6703\u76F4\u63A5\u88DC\u4E0A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\u3002"
+    };
+  }
+  const pendingIdx = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
+  return { ok: true, changed: true, app: record, ...needs, ...keptUserChanges.length ? { kept_user_changes: keptUserChanges } : {}, ...pendingIdx.length ? { field_index_pending: pendingIdx } : {}, dataflow };
+}
+async function uninstallApp(env, tenant2, id) {
+  if (isBuiltinApp(id)) {
+    return { ok: false, code: "builtin_app", error: "\u9019\u662F\u5167\u5EFA\u7684 App\uFF0C\u88DD AR \u5C31\u6709\u3001\u4E0D\u80FD\u79FB\u9664\u3002\u8981\u63DB\u65B0\u7248\u8ACB\u5230\u5E02\u96C6\u6216\u66F4\u65B0\u4E2D\u5FC3\u6309\u66F4\u65B0\u3002" };
+  }
+  const existing = await getInstalledApp(env, tenant2, id);
+  if (!existing) return { ok: false, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD\u7D00\u9304" };
+  try {
+    for (const wf of existing.workflows) {
+      await appStore(env).delete(workflowKvKey(tenant2, wf.wf_key));
+      await updateCronIndexEntry(appStore(env), String(tenant2), wf.wf_key, null);
+    }
+    await appStore(env).delete(appKey(tenant2, id));
+  } catch (e) {
+    return {
+      ok: false,
+      error: kbdbBehindHint(e) ?? `\u79FB\u9664\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
+    };
+  }
+  return { ok: true };
+}
+function prefetchAppAction(env, tenant2, appId, action) {
+  const guessedKey = `${appId}__${action}`;
+  const app2 = getInstalledApp(env, tenant2, appId);
+  const guessedRaw = appStore(env).get(workflowKvKey(tenant2, guessedKey), "text");
+  app2.catch(() => void 0);
+  guessedRaw.catch(() => void 0);
+  return { guessedKey, app: app2, guessedRaw };
+}
+async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch) {
+  const pre = prefetch ?? prefetchAppAction(env, tenant2, appId, action);
+  const guessedKey = pre.guessedKey;
+  const [app2, guessedRaw] = await Promise.all([pre.app, pre.guessedRaw]);
+  if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
+  if (!app2.actions.includes(action)) {
+    return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
+  }
+  const wfRef = app2.workflows.find((w) => w.name === action);
+  if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
+  const raw2 = wfRef.wf_key === guessedKey ? guessedRaw : await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
+  if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
+  let graph;
+  try {
+    const parsed = JSON.parse(raw2);
+    if (!parsed.graph) throw new Error("no graph");
+    graph = parsed.graph;
+  } catch {
+    return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
+  }
+  const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
+  const g = graph;
+  const verdict = writeExecutionVerdict(
+    env,
+    typeof g.id === "string" ? g.id : wfRef.wf_key,
+    Array.isArray(g.nodes) ? g.nodes : [],
+    result.success ? "success" : "failed",
+    result.duration_ms,
+    result.error ?? "",
+    // 斷言（_portal_actor）不進執行紀錄：紀錄 AI 讀得到（inkstone/Arcrun#304 c22862）
+    { ...payload, _portal_actor: void 0, _triggered_by: "app" },
+    String(tenant2),
+    void 0,
+    result.failed_node
+  );
+  if (ctx) ctx.waitUntil(verdict);
+  else await verdict;
+  if (!result.success) {
+    const gate = checkEngineMin(app2.declared?.engine_min, env.ARCRUN_BUNDLE_VERSION);
+    return {
+      ok: false,
+      status: 502,
+      error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` + (gate ? `\u3002\u9019\u500B App \u9700\u8981\u5E73\u53F0 ${gate.needs} \u4EE5\u4E0A\uFF0C\u9019\u53F0\u662F ${gate.have}\u2014\u2014\u5F88\u53EF\u80FD\u662F\u5E73\u53F0\u7248\u672C\u4E0D\u5920\u65B0\u9020\u6210\u7684\uFF0C\u8ACB\u5148\u628A\u5E73\u53F0\u66F4\u65B0\u5230 ${gate.needs} \u4EE5\u4E0A\uFF08\u66F4\u65B0\u4E2D\u5FC3\uFF09\u3002` : "")
+    };
+  }
+  return { ok: true, status: 200, result: result.data };
+}
+function refTrigger(w) {
+  return w.trigger ?? "manual";
+}
+function launchOf(app2) {
+  if (app2.has_ui) return { launch: "open" };
+  const runnable = app2.workflows.filter((w) => refTrigger(w) === "manual" && app2.actions.includes(w.name));
+  if (runnable.length === 0) return { launch: "auto" };
+  return runnable.length === 1 ? { launch: "run", run_action: runnable[0].name } : { launch: "run" };
+}
+function summarizeApp(app2) {
+  const l = launchOf(app2);
+  const studio = app2.id === FLOW_CANVAS_APP_ID;
+  const name = studio ? STUDIO_APP_NAME : app2.name;
+  const icon = studio ? STUDIO_APP_ICON : app2.icon;
+  return {
+    id: app2.id,
+    name,
+    icon,
+    builtin: isBuiltinApp(app2.id),
+    origin: app2.origin ?? "market",
+    tier: studioTierOf(app2),
+    ...app2.author ? { author: app2.author } : {},
+    glyph: appGlyph(icon, name),
+    has_ui: app2.has_ui,
+    version: app2.version,
+    launch: l.launch,
+    ...l.run_action ? { run_action: l.run_action } : {},
+    // 自動的那一格要說得出「它什麼時候會自己跑」，使用者才知道它在替他做事。
+    schedules: app2.workflows.map((w) => w.cron_expr).filter((x) => typeof x === "string")
+  };
+}
+function detailApp(app2) {
+  const l = launchOf(app2);
+  const studio = app2.id === FLOW_CANVAS_APP_ID;
+  return {
+    builtin: isBuiltinApp(app2.id),
+    id: app2.id,
+    name: studio ? STUDIO_APP_NAME : app2.name,
+    icon: studio ? STUDIO_APP_ICON : app2.icon,
+    version: app2.version,
+    has_ui: app2.has_ui,
+    ui_html: app2.ui_html,
+    ...app2.ui_surface ? { ui_surface: app2.ui_surface } : {},
+    // 舊安裝態（v0.1 裝的 App）沒有這一欄——一律當「跟隨全局」，不是「維持原樣」。
+    // 那正是 leo 抱怨的那個狀態，預設值要把它修好，不是把它保留下來。
+    ui_style: app2.ui_style ?? DEFAULT_APP_UI_STYLE,
+    workflows: app2.workflows.map((w) => ({
+      name: w.name,
+      description: w.description,
+      trigger: refTrigger(w),
+      ...w.cron_expr ? { cron_expr: w.cron_expr } : {},
+      ...w.graph_id ? { graph_id: w.graph_id } : {},
+      // 畫面只為「真的按得動」的那幾條長出鍵——白名單仍由 runAppAction 在伺服端把關。
+      runnable: app2.actions.includes(w.name)
+    })),
+    actions: app2.actions,
+    launch: l.launch,
+    ...l.run_action ? { run_action: l.run_action } : {}
+  };
+}
+var APP_WORKFLOW_TRIGGERS, APP_UI_STYLES, DEFAULT_APP_UI_STYLE, ID_RE, SKILL_TEMPLATE, MAX_SKILLS_PER_APP, MAX_SKILL_CHARS, SKILL_SLUG_RE, ICON_SET, APP_PLACEHOLDERS, FLOW_CANVAS_APP_ID, STUDIO_APP_NAME, STUDIO_APP_ICON, STUDIO_SHARED_TIERS, STUDIO_SYSTEM_APP_IDS, COPY_CHUNK, FIELD_INDEX_ROUNDS_PER_INSTALL, RECIPE_BEHAVIOR_FIELDS, INSTALL_REQUEST_BUDGET, FINAL_RESERVE;
+var init_app_system = __esm({
+  "cypher-executor/src/lib/app-system.ts"() {
+    "use strict";
+    init_builtin_ids();
+    init_app_glyphs();
+    init_version();
+    init_kbdb_proxy();
+    init_webhook_handlers();
+    init_execution_logger();
+    init_cron_match();
+    init_cron_index();
+    init_app_ui_assets();
+    init_ui_surface();
+    init_recipes();
+    init_credentials();
+    init_app_mcp();
+    init_subrequest_meter();
+    init_dataflow_check();
+    init_app_userlayer();
+    init_app_rulebook();
+    APP_WORKFLOW_TRIGGERS = ["manual", "schedule", "event"];
+    APP_UI_STYLES = ["inherit", "own"];
+    DEFAULT_APP_UI_STYLE = "inherit";
+    ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
+    SKILL_TEMPLATE = "agent-skill";
+    MAX_SKILLS_PER_APP = 50;
+    MAX_SKILL_CHARS = 1e5;
+    SKILL_SLUG_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+    ICON_SET = ["\u{1F4C4}", "\u{1F5D2}\uFE0F", "\u{1F9E9}", "\u{1F4CC}", "\u{1F527}", "\u{1F4E6}", "\u{1F5C2}\uFE0F", "\u2705", "\u{1F4A1}", "\u{1F514}", "\u{1F4CA}", "\u{1F9ED}"];
+    APP_PLACEHOLDERS = ["__NAMESPACE__", "__CYPHER_BASE__"];
+    FLOW_CANVAS_APP_ID = "flow_canvas";
+    STUDIO_APP_NAME = "App \u5DE5\u4F5C\u5BA4";
+    STUDIO_APP_ICON = "\u{1F9F0}";
+    STUDIO_SHARED_TIERS = ["mine", "others"];
+    STUDIO_SYSTEM_APP_IDS = [FLOW_CANVAS_APP_ID];
+    COPY_CHUNK = 12;
+    FIELD_INDEX_ROUNDS_PER_INSTALL = 12;
+    RECIPE_BEHAVIOR_FIELDS = [
+      "endpoint",
+      "method",
+      "headers",
+      "body",
+      "body_template",
+      "response_map",
+      "auth",
+      "binding_name",
+      "auth_service",
+      "credentials_required"
+    ];
+    INSTALL_REQUEST_BUDGET = 32;
+    FINAL_RESERVE = 8;
+  }
+});
+
+// cypher-executor/src/lib/app-userlayer-ops.ts
+var app_userlayer_ops_exports = {};
+__export(app_userlayer_ops_exports, {
+  actorOf: () => actorOf,
+  approvePage: () => approvePage,
+  bookLog: () => bookLog,
+  getUserLayerState: () => getUserLayerState,
+  keepUserItem: () => keepUserItem,
+  layerWriter: () => layerWriter,
+  noteUserEdit: () => noteUserEdit,
+  ownerAppOfRecipe: () => ownerAppOfRecipe,
+  proposePage: () => proposePage,
+  readBook: () => readBook,
+  readEffectivePage: () => readEffectivePage,
+  readPageDetail: () => readPageDetail,
+  rejectPage: () => rejectPage,
+  resetUserLayer: () => resetUserLayer,
+  rollbackPage: () => rollbackPage,
+  rollbackUserLayer: () => rollbackUserLayer
+});
+async function ownerAppOfRecipe(env, tenant2, cid, listApps) {
+  const id = cid.trim().toLowerCase();
+  for (const a of await listApps()) if (a.requires?.recipes.includes(id)) return a.id;
+  return null;
+}
+function layerWriter(env, tenant2, layer) {
+  const kv = appStore(env);
+  return {
+    async read(kind, id) {
+      if (kind === "page") return readEffectivePage(env, tenant2, id, layer);
+      if (kind === "recipe") return await resolveRecipe(id, env.RECIPES) ?? null;
+      const raw2 = await kv.get(workflowKvKey(tenant2, id));
+      return raw2 ? JSON.parse(raw2) : null;
+    },
+    async write(kind, id, content) {
+      if (kind === "page") {
+        if (!layer) throw new Error("\u6539\u898F\u7AE0\u689D\u6587\u8981\u5E36\u4F7F\u7528\u8005\u5C64");
+        const pub = await readPublisherPage(env, tenant2, id);
+        if (pub && pageBehavior(pub) === pageBehavior(content)) {
+          if (layer.pages) delete layer.pages[id];
+        } else (layer.pages ??= {})[id] = content;
+        if (layer.pages && !Object.keys(layer.pages).length) delete layer.pages;
+        return;
+      }
+      if (kind === "recipe") {
+        const r = await upsertPrivateRecipe(env.RECIPES, { ...content, canonical_id: id });
+        if (!r.ok) throw new Error(r.error);
+        return;
+      }
+      const w = content;
+      const cron = w.cron_expr ?? extractCronExpr(w.graph) ?? null;
+      const out = { ...content, created_at: w.created_at ?? (/* @__PURE__ */ new Date()).toISOString() };
+      if (cron) out.cron_expr = cron;
+      else delete out.cron_expr;
+      await kv.put(workflowKvKey(tenant2, id), JSON.stringify(out));
+      await updateCronIndexEntry(kv, tenant2, id, cron);
+    },
+    async remove(kind, id) {
+      if (kind === "page") {
+        if (layer?.pages) {
+          delete layer.pages[id];
+          if (!Object.keys(layer.pages).length) delete layer.pages;
+        }
+        return;
+      }
+      if (kind === "recipe") return;
+      await kv.delete(workflowKvKey(tenant2, id));
+      await updateCronIndexEntry(kv, tenant2, id, null);
+    }
+  };
+}
+function actorOf(h) {
+  const by = h.header("X-Arcrun-By") || h.header("User-Agent") || "unknown";
+  return by.slice(0, 80);
+}
+async function saveLayer(env, tenant2, appId, layer) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2) return false;
+  await appStore(env).put(appKey(tenant2, appId), JSON.stringify({ ...app2, user_layer: layer }));
+  return true;
+}
+async function noteUserEdit(env, tenant2, appId, kind, id, before, after, by) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2) return false;
+  const layer = layerOf(app2);
+  const changed = recordEdit(layer, kind, id, before, after, by, (/* @__PURE__ */ new Date()).toISOString());
+  if (changed) await appStore(env).put(appKey(tenant2, appId), JSON.stringify({ ...app2, user_layer: layer }));
+  return changed;
+}
+async function getUserLayerState(env, tenant2, appId) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2) return null;
+  return summarizeLayer(layerOf(app2));
+}
+async function resetUserLayer(env, tenant2, appId, by, target) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2) return null;
+  const layer = layerOf(app2);
+  const r = await resetLayer(layer, layerWriter(env, tenant2, layer), by, (/* @__PURE__ */ new Date()).toISOString(), target);
+  if (!r.nothing) await saveLayer(env, tenant2, appId, layer);
+  return r;
+}
+async function rollbackUserLayer(env, tenant2, appId, by, n) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2) return null;
+  const layer = layerOf(app2);
+  const r = await rollbackLayer(layer, layerWriter(env, tenant2, layer), by, (/* @__PURE__ */ new Date()).toISOString(), n);
+  if (r.ok) await saveLayer(env, tenant2, appId, layer);
+  return r;
+}
+async function keepUserItem(env, tenant2, appId, kind, id, by) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2) return { ok: false, code: "app_not_found", error: `\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u5B89\u88DD\u300C${appId}\u300D\u3002` };
+  const layer = layerOf(app2);
+  const cur = await layerWriter(env, tenant2).read(kind, id);
+  if (cur == null) return { ok: false, code: "item_not_found", error: `\u73FE\u5834\u6C92\u6709 ${kind}\u300C${id}\u300D\u3002` };
+  const changed = markKept(layer, kind, id, cur, by, (/* @__PURE__ */ new Date()).toISOString());
+  if (changed) await appStore(env).put(appKey(tenant2, appId), JSON.stringify({ ...app2, user_layer: layer }));
+  return { ok: true, changed, kind, id };
+}
+async function readPublisherPage(env, tenant2, id) {
+  const sp = splitPageId(id);
+  if (!sp) return null;
+  const app2 = await getInstalledApp(env, tenant2, sp.appId);
+  const sec = app2?.rulebook?.sections.find((s) => s.id === sp.sectionId);
+  return sec ? publisherPage(sec) : null;
+}
+async function readEffectivePage(env, tenant2, id, layer) {
+  const mine = layer?.pages?.[id];
+  if (mine) return mine;
+  return readPublisherPage(env, tenant2, id);
+}
+async function readBook(env, tenant2, app2) {
+  if (!app2.rulebook) return null;
+  const layer = layerOf(app2);
+  const extra = Object.values(layer.items).filter((i) => i.kind === "page" && i.edited).map((i) => splitPageId(i.id)?.sectionId ?? "").filter(Boolean);
+  const ids = [...app2.rulebook.sections.map((s) => s.id), ...extra];
+  const effective = {};
+  await Promise.all(ids.map(async (sid) => {
+    effective[sid] = await readEffectivePage(env, tenant2, pageId(app2.id, sid), layer);
+  }));
+  const edited = new Set(Object.values(layer.items).filter((i) => i.kind === "page" && i.edited).map((i) => splitPageId(i.id)?.sectionId ?? ""));
+  const pending = new Set(Object.keys(layer.proposals ?? {}).map((k) => splitPageId(k.replace(/^page:/, ""))?.sectionId ?? ""));
+  let last = null;
+  for (let i = layer.log.length - 1; i >= 0; i--) {
+    const e = layer.log[i];
+    if (e.kind === "page" && e.action === "edit" && !e.undone && e.approved_by) {
+      last = { at: e.at, approved_by: e.approved_by, id: splitPageId(e.id)?.sectionId ?? e.id };
+      break;
+    }
+  }
+  return {
+    app_id: app2.id,
+    title: app2.rulebook.title?.trim() || RULEBOOK_DEFAULT_TITLE,
+    app_version: app2.version,
+    sections: buildBookRows(app2.rulebook.sections, extra, effective, edited, pending),
+    last_change: last
+  };
+}
+function pageErr(code, error, status = 409) {
+  return { ok: false, code, error, status };
+}
+async function proposePage(env, tenant2, appId, sectionId, by, instruction, draft, ai) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2?.rulebook) return pageErr("not_found", "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0", 404);
+  const id = pageId(appId, sectionId);
+  const layer = layerOf(app2);
+  const cur = await readEffectivePage(env, tenant2, id, layer);
+  if (!cur) return pageErr("not_found", "\u627E\u4E0D\u5230\u9019\u4E00\u689D", 404);
+  if (cur.mandatory) return pageErr("mandatory", "\u9019\u4E00\u689D\u662F\u5FC5\u5B88\u689D\u6587\uFF0C\u5728\u9019\u4E00\u5C64\u6539\u4E0D\u52D5\u3002\u8981\u6539\u8ACB\u627E\u4E0A\u4E00\u5C64\u7684\u7BA1\u7406\u8005\u3002", 403);
+  if (!draft.body.trim() || draft.body.length > RULEBOOK_MAX_BODY) return pageErr("bad_draft", `\u4FEE\u6539\u5F8C\u7684\u689D\u6587\u8981\u6709\u5167\u5BB9\uFF0C\u4E14\u4E0D\u8D85\u904E ${RULEBOOK_MAX_BODY} \u5B57`, 400);
+  const prop = putProposal(layer, id, { at: (/* @__PURE__ */ new Date()).toISOString(), by, instruction: instruction.slice(0, 500), draft: { title: draft.title.trim() || cur.title, body: draft.body.trim() }, ai: !!ai, ...ai?.model ? { model: ai.model } : {} });
+  await saveLayer(env, tenant2, appId, layer);
+  return { ok: true, proposal: prop };
+}
+async function approvePage(env, tenant2, appId, sectionId, approver) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2?.rulebook) return pageErr("not_found", "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0", 404);
+  const id = pageId(appId, sectionId);
+  const layer = layerOf(app2);
+  const prop = getProposal(layer, id);
+  if (!prop) return pageErr("no_proposal", "\u9019\u4E00\u689D\u6C92\u6709\u7B49\u8457\u6838\u51C6\u7684\u4FEE\u6539\uFF08\u53EF\u80FD\u5DF2\u7D93\u6838\u51C6\u6216\u88AB\u53D6\u6D88\u4E86\uFF09\u3002", 404);
+  const writer = layerWriter(env, tenant2, layer);
+  const before = await writer.read("page", id);
+  if (!before) return pageErr("not_found", "\u627E\u4E0D\u5230\u9019\u4E00\u689D", 404);
+  if (before.mandatory) return pageErr("mandatory", "\u9019\u4E00\u689D\u662F\u5FC5\u5B88\u689D\u6587\uFF0C\u5728\u9019\u4E00\u5C64\u6539\u4E0D\u52D5\u3002", 403);
+  const now2 = (/* @__PURE__ */ new Date()).toISOString();
+  const rev = nextPageRev(layer, id, before);
+  const after = { ...before, title: prop.draft.title, body: prop.draft.body, rev, approved_by: approver, approved_at: now2 };
+  takeProposal(layer, id);
+  let changed = false;
+  if (pageBehavior(before) !== pageBehavior(after)) {
+    await writer.write("page", id, after);
+    changed = recordEdit(layer, "page", id, before, after, prop.by, now2, { approved_by: approver });
+  }
+  await saveLayer(env, tenant2, appId, layer);
+  return { ok: true, rev: changed ? rev : before.rev ?? 1, changed };
+}
+async function rejectPage(env, tenant2, appId, sectionId) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2?.rulebook) return pageErr("not_found", "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0", 404);
+  const layer = layerOf(app2);
+  if (!takeProposal(layer, pageId(appId, sectionId))) return pageErr("no_proposal", "\u9019\u4E00\u689D\u6C92\u6709\u7B49\u8457\u6838\u51C6\u7684\u4FEE\u6539\u3002", 404);
+  await saveLayer(env, tenant2, appId, layer);
+  return { ok: true };
+}
+async function rollbackPage(env, tenant2, appId, sectionId, by) {
+  const app2 = await getInstalledApp(env, tenant2, appId);
+  if (!app2?.rulebook) return pageErr("not_found", "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0", 404);
+  const id = pageId(appId, sectionId);
+  const layer = layerOf(app2);
+  const cand = lastRollbackable(layer, id);
+  if (!cand) return pageErr("no_entry", "\u9019\u4E00\u689D\u6C92\u6709\u53EF\u4EE5\u9000\u56DE\u7684\u4E0A\u4E00\u7248\u3002", 404);
+  const r = await rollbackLayer(layer, layerWriter(env, tenant2, layer), by, (/* @__PURE__ */ new Date()).toISOString(), cand.n);
+  if (!r.ok) return pageErr(r.code, r.error);
+  await saveLayer(env, tenant2, appId, layer);
+  return { ok: true, entry: r.entry };
+}
+async function readPageDetail(env, tenant2, app2, sectionId) {
+  if (!app2.rulebook) return null;
+  const id = pageId(app2.id, sectionId);
+  const layer = layerOf(app2);
+  const cur = await readEffectivePage(env, tenant2, id, layer);
+  if (!cur) return null;
+  const prop = getProposal(layer, id);
+  const state = summarizeLayer(layer).log.filter((e) => e.kind === "page" && e.id === id && (e.action === "edit" || e.action === "reset" || e.action === "rollback"));
+  const rb = lastRollbackable(layer, id);
+  return {
+    page: { ...cur, rev: cur.rev ?? 1, approved_by: cur.approved_by ?? "\u51FA\u5EE0\u7248" },
+    edited: !!layer.items[`page:${id}`]?.edited,
+    proposal: prop ? { at: prop.at, by: prop.by, instruction: prop.instruction, draft: prop.draft, ai: prop.ai } : null,
+    history: state.map((e) => ({ n: e.n, at: e.at, by: e.by, action: e.action, ...e.approved_by ? { approved_by: e.approved_by } : {}, ...e.undone ? { undone: true } : {}, can_rollback: !!e.can_rollback })),
+    can_rollback: !!rb
+  };
+}
+function bookLog(app2) {
+  const layer = layerOf(app2);
+  return summarizeLayer(layer).log.filter((e) => e.kind === "page" && e.id.startsWith(`${app2.id}__`)).map((e) => ({ n: e.n, at: e.at, by: e.by, ...e.approved_by ? { approved_by: e.approved_by } : {}, action: e.action, section: splitPageId(e.id)?.sectionId ?? e.id, what: e.what, ...e.undone ? { undone: true } : {} }));
+}
+var init_app_userlayer_ops = __esm({
+  "cypher-executor/src/lib/app-userlayer-ops.ts"() {
+    "use strict";
+    init_app_system();
+    init_cron_index();
+    init_recipes();
+    init_cron_match();
+    init_app_userlayer();
+    init_app_rulebook();
+  }
+});
+
+// cypher-executor/src/routes/recipes.ts
+function recipeCredentialNames(r) {
+  const names = /* @__PURE__ */ new Set();
+  for (const c of r.credentials_required ?? []) if (c?.key) names.add(c.key);
+  const scan = (v) => {
+    if (typeof v === "string") {
+      for (const m of v.matchAll(/\{\{credential\.(\w+)\}\}/g)) names.add(m[1]);
+    } else if (Array.isArray(v)) {
+      v.forEach(scan);
+    } else if (v && typeof v === "object") {
+      Object.values(v).forEach(scan);
+    }
+  };
+  scan(r.endpoint);
+  scan(r.headers);
+  scan(r.body);
+  scan(r.body_template);
+  return [...names];
+}
+async function recipeAuthSecretNames(r, kv, cache3) {
+  if (r.auth === "binding") return [];
+  const service = r.auth_service || r.canonical_id;
+  if (!service) return [];
+  let pending = cache3?.get(service);
+  if (!pending) {
+    pending = resolveAuthRecipe(service, kv).catch(() => null);
+    cache3?.set(service, pending);
+  }
+  const ar = await pending;
+  if (!ar || !DISPATCHABLE_AUTH_PRIMITIVES.has(ar.primitive)) return [];
+  return (ar.required_secrets ?? []).filter((s) => s?.key && !s.optional).map((s) => s.key);
+}
+async function installRecipeRecord(kv, recipe) {
+  const uuid = recipe.uuid;
+  const { canonical_id, hash_id } = recipe;
+  const listRaw = await kv.get(kIdxCanonical(canonical_id));
+  const uuids = listRaw ? JSON.parse(listRaw) : [];
+  if (!uuids.includes(uuid)) uuids.push(uuid);
+  await Promise.all([
+    kv.put(`recipe:${uuid}`, JSON.stringify(recipe)),
+    kv.put(kIdxCanonical(canonical_id), JSON.stringify(uuids)),
+    kv.put(kIdxInstalled(canonical_id), uuid),
+    kv.put(`idx:${hash_id}`, canonical_id)
+  ]);
+}
+async function upsertPrivateRecipe(kv, body) {
+  const canonicalId = (body.canonical_id ?? "").trim().toLowerCase();
+  if (!canonicalId) return { ok: false, error: "canonical_id \u5FC5\u586B" };
+  if (!body.endpoint) return { ok: false, error: "endpoint \u5FC5\u586B" };
+  const hashId = await deriveRecipeHash(canonicalId);
+  const now2 = Date.now();
+  const existing = await resolveRecipe(canonicalId, kv);
+  const recipe = {
+    uuid: existing?.uuid ?? crypto.randomUUID(),
+    author: body.author ?? existing?.author ?? "local",
+    derived_from: body.derived_from ?? existing?.derived_from,
+    canonical_id: canonicalId,
+    hash_id: hashId,
+    display_name: body.display_name,
+    description: body.description,
+    endpoint: body.endpoint,
+    method: (body.method ?? "POST").toUpperCase(),
+    headers: body.headers,
+    body: body.body,
+    // ③ payload/回應/binding 三層（3.12）：全選填，沒給就是 undefined＝既有行為
+    body_template: body.body_template,
+    response_map: body.response_map,
+    auth: body.auth,
+    binding_name: body.binding_name,
+    auth_service: body.auth_service,
+    credentials_required: body.credentials_required,
+    created_at: existing?.created_at ?? now2,
+    updated_at: now2
+  };
+  await installRecipeRecord(kv, recipe);
+  return { ok: true, recipe };
+}
+async function fetchMarketStat(env, canonicalId) {
+  try {
+    const base = kbdbBaseUrl(env);
+    const headers = {};
+    if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+    const res = await fetch(`${base}/recipe-stats/${encodeURIComponent(canonicalId)}`, { headers });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json.stat) return null;
+    return {
+      success_count: json.stat.success_count ?? 0,
+      failure_count: json.stat.failure_count ?? 0
+    };
+  } catch {
+    return null;
+  }
+}
+async function listAllRecipes(kv) {
+  const list = await kv.list({ prefix: "recipe:" });
+  const all = (await Promise.all(
+    list.keys.map((k) => kv.get(k.name, "json"))
+  )).filter(Boolean);
+  const hasUuid = new Set(all.filter((r) => r.uuid).map((r) => r.canonical_id));
+  return all.filter((r) => r.uuid || !hasUuid.has(r.canonical_id));
+}
+async function resolveRecipe(id, kv) {
+  const speculativeInstalled = id.startsWith("rec_") ? null : kv.get(kIdxInstalled(id));
+  speculativeInstalled?.catch(() => void 0);
+  const direct = await kv.get(`recipe:${id}`, "json");
+  if (direct && direct.uuid) return direct;
+  let canonicalId = id;
+  if (id.startsWith("rec_")) {
+    const looked = await kv.get(`idx:${id}`);
+    if (!looked) return direct;
+    canonicalId = looked;
+  }
+  const installedUuid = speculativeInstalled && canonicalId === id ? await speculativeInstalled : await kv.get(kIdxInstalled(canonicalId));
+  if (installedUuid) {
+    const byUuid = await kv.get(`recipe:${installedUuid}`, "json");
+    if (byUuid) return byUuid;
+  }
+  return direct ?? await kv.get(`recipe:${canonicalId}`, "json");
+}
+async function resolveAuthRecipe(service, kv) {
+  return kv.get(`auth_recipe:${service}`, "json");
+}
+var recipesRouter, DISPATCHABLE_AUTH_PRIMITIVES, kIdxCanonical, kIdxInstalled;
+var init_recipes = __esm({
+  "cypher-executor/src/routes/recipes.ts"() {
+    "use strict";
+    init_dist();
+    init_hash();
+    init_endpoints();
+    recipesRouter = new Hono2();
+    DISPATCHABLE_AUTH_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
+    kIdxCanonical = (canonicalId) => `idx:canonical:${canonicalId}`;
+    kIdxInstalled = (canonicalId) => `idx:installed:${canonicalId}`;
+    recipesRouter.post("/recipes", async (c) => {
+      let body;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ success: false, error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
+      }
+      const tenantKey = c.req.header("X-Arcrun-API-Key");
+      const cid = (body.canonical_id ?? "").trim().toLowerCase();
+      const before = tenantKey && cid ? await resolveRecipe(cid, c.env.RECIPES).catch(() => null) : null;
+      const r = await upsertPrivateRecipe(c.env.RECIPES, body);
+      if (!r.ok) return c.json({ success: false, error: r.error }, 400);
+      let user_layer;
+      if (tenantKey && cid) {
+        try {
+          const { ownerAppOfRecipe: ownerAppOfRecipe2, noteUserEdit: noteUserEdit2, actorOf: actorOf3 } = await Promise.resolve().then(() => (init_app_userlayer_ops(), app_userlayer_ops_exports));
+          const { listInstalledApps: listInstalledApps2 } = await Promise.resolve().then(() => (init_app_system(), app_system_exports));
+          const owner = await ownerAppOfRecipe2(c.env, tenantKey, cid, () => listInstalledApps2(c.env, tenantKey));
+          if (owner) user_layer = { app: owner, recorded: await noteUserEdit2(c.env, tenantKey, owner, "recipe", cid, before, r.recipe, actorOf3(c.req)) };
+        } catch {
+        }
+      }
+      return c.json({ success: true, recipe: r.recipe, ...user_layer ? { user_layer } : {} });
+    });
+    recipesRouter.post("/recipes/submit", async (c) => {
+      let body;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ success: false, error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
+      }
+      const canonicalId = (body.canonical_id ?? "").trim().toLowerCase();
+      if (!canonicalId) return c.json({ success: false, error: "canonical_id \u5FC5\u586B" }, 400);
+      if (!body.endpoint) return c.json({ success: false, error: "endpoint \u5FC5\u586B" }, 400);
+      const hashId = await deriveRecipeHash(canonicalId);
+      const now2 = Date.now();
+      const recipe = {
+        uuid: crypto.randomUUID(),
+        author: body.author ?? body.submitter ?? "anonymous",
+        derived_from: body.derived_from,
+        canonical_id: canonicalId,
+        hash_id: hashId,
+        display_name: body.display_name,
+        description: body.description,
+        endpoint: body.endpoint,
+        method: (body.method ?? "POST").toUpperCase(),
+        headers: body.headers,
+        body: body.body,
+        auth_service: body.auth_service,
+        credentials_required: body.credentials_required,
+        created_at: now2,
+        updated_at: now2
+      };
+      await installRecipeRecord(c.env.RECIPES, recipe);
+      const kbdbBase3 = kbdbBaseUrl(c.env);
+      const evidence = {
+        content: canonicalId,
+        template: "recipe_submission",
+        metadata_json: JSON.stringify({
+          uuid: recipe.uuid,
+          canonical_id: canonicalId,
+          author: recipe.author,
+          submitter: body.submitter ?? "unknown",
+          claimed_stat: body.stat ?? null,
+          submitted_at: now2
+        })
+      };
+      const kbdbHeaders2 = { "Content-Type": "application/json" };
+      if (c.env.KBDB_INTERNAL_TOKEN) kbdbHeaders2["Authorization"] = `Bearer ${c.env.KBDB_INTERNAL_TOKEN}`;
+      c.executionCtx.waitUntil(
+        fetch(`${kbdbBase3}/entries`, {
+          method: "POST",
+          headers: kbdbHeaders2,
+          body: JSON.stringify(evidence)
+        }).catch(() => void 0)
+      );
+      return c.json({ success: true, recipe, evidence_recorded: true });
+    });
+    recipesRouter.post("/recipes/migrate-uuid", async (c) => {
+      const list = await c.env.RECIPES.list({ prefix: "recipe:" });
+      let migrated = 0, skipped = 0;
+      const errors = [];
+      for (const k of list.keys) {
+        try {
+          const rec = await c.env.RECIPES.get(k.name, "json");
+          if (!rec || !rec.canonical_id) {
+            skipped++;
+            continue;
+          }
+          if (rec.uuid) {
+            skipped++;
+            continue;
+          }
+          const migrated_recipe = {
+            ...rec,
+            uuid: crypto.randomUUID(),
+            author: rec.author ?? "system"
+            // 舊種子歸 system
+          };
+          await installRecipeRecord(c.env.RECIPES, migrated_recipe);
+          migrated++;
+        } catch (e) {
+          errors.push(`${k.name}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      return c.json({ success: errors.length === 0, migrated, skipped, errors });
+    });
+    recipesRouter.get("/recipes/:id", async (c) => {
+      const id = c.req.param("id");
+      const recipe = await resolveRecipe(id, c.env.RECIPES);
+      if (!recipe) return c.json({ success: false, error: `\u627E\u4E0D\u5230 recipe: ${id}` }, 404);
+      return c.json({ success: true, recipe });
+    });
+    recipesRouter.get("/recipes", async (c) => {
+      const list = await c.env.RECIPES.list({ prefix: "recipe:" });
+      const all = (await Promise.all(
+        list.keys.map((k) => c.env.RECIPES.get(k.name, "json"))
+      )).filter(Boolean);
+      const hasUuidVersion = new Set(all.filter((r) => r.uuid).map((r) => r.canonical_id));
+      const recipes = all.filter((r) => r.uuid || !hasUuidVersion.has(r.canonical_id));
+      return c.json({ success: true, recipes, count: recipes.length });
+    });
+    recipesRouter.get("/public-recipes", async (c) => {
+      const q = (c.req.query("q") ?? "").trim().toLowerCase();
+      const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+      const offset = Number(c.req.query("offset") ?? 0);
+      const all = await listAllRecipes(c.env.RECIPES);
+      const matched = q ? all.filter((r) => r.canonical_id.toLowerCase().includes(q) || (r.display_name ?? "").toLowerCase().includes(q) || (r.description ?? "").toLowerCase().includes(q)) : all;
+      if (q && matched.length === 0) {
+        return c.json({
+          found: false,
+          query: q,
+          hint: `\u516C\u5EAB\u7121\u7B26\u5408\u300C${q}\u300D\u7684 recipe\u3002\u53EF\u81EA\u884C\u5EFA\u7ACB\u4E26 submit-p \u6295\u7A3F\u6210\u70BA\u4F5C\u8005\uFF08app-store \u6A21\u578B\uFF09\u3002`
+        });
+      }
+      const page = matched.slice(offset, offset + limit);
+      const withStats = await Promise.all(
+        page.map(async (r) => ({
+          uuid: r.uuid,
+          canonical_id: r.canonical_id,
+          author: r.author,
+          display_name: r.display_name,
+          description: r.description,
+          market_stat: await fetchMarketStat(c.env, r.uuid ?? r.canonical_id)
+          // §7.5.h per-uuid
+        }))
+      );
+      return c.json({ found: true, recipes: withStats, count: matched.length });
+    });
+    recipesRouter.get("/public-recipes/:canonical_id", async (c) => {
+      const canonicalId = c.req.param("canonical_id").trim().toLowerCase();
+      const author = c.req.query("author");
+      const all = await listAllRecipes(c.env.RECIPES);
+      let versions = all.filter((r) => r.canonical_id === canonicalId);
+      if (author) versions = versions.filter((r) => r.author === author);
+      if (versions.length === 0) {
+        return c.json({
+          found: false,
+          canonical_id: canonicalId,
+          hint: `\u516C\u5EAB\u7121 recipe\u300C${canonicalId}\u300D${author ? `\uFF08author=${author}\uFF09` : ""}\u3002\u53EF\u81EA\u884C\u5EFA\u7ACB\u4E26 submit-p \u6295\u7A3F\u6210\u70BA\u4F5C\u8005\uFF08app-store \u6A21\u578B\uFF09\u3002`
+        });
+      }
+      let best = versions[0];
+      let bestStat = null;
+      let bestScore = -1;
+      for (const v of versions) {
+        const stat = await fetchMarketStat(c.env, v.uuid ?? v.canonical_id);
+        const score = stat?.success_count ?? 0;
+        if (score > bestScore) {
+          bestScore = score;
+          best = v;
+          bestStat = stat;
+        }
+      }
+      return c.json({ found: true, recipe: best, market_stat: bestStat });
+    });
+    recipesRouter.delete("/recipes/:id", async (c) => {
+      const id = c.req.param("id");
+      const recipe = await resolveRecipe(id, c.env.RECIPES);
+      if (!recipe) return c.json({ success: false, error: `\u627E\u4E0D\u5230 recipe: ${id}` }, 404);
+      const canonicalId = recipe.canonical_id;
+      const ops = [
+        c.env.RECIPES.delete(`idx:${recipe.hash_id}`),
+        c.env.RECIPES.delete(`recipe:${canonicalId}`)
+        // 舊 key（若存在）
+      ];
+      if (recipe.uuid) {
+        ops.push(c.env.RECIPES.delete(`recipe:${recipe.uuid}`));
+        const listRaw = await c.env.RECIPES.get(kIdxCanonical(canonicalId));
+        const uuids = listRaw ? JSON.parse(listRaw) : [];
+        const left = uuids.filter((u) => u !== recipe.uuid);
+        if (left.length > 0) {
+          ops.push(c.env.RECIPES.put(kIdxCanonical(canonicalId), JSON.stringify(left)));
+          const installed = await c.env.RECIPES.get(kIdxInstalled(canonicalId));
+          if (installed === recipe.uuid) ops.push(c.env.RECIPES.put(kIdxInstalled(canonicalId), left[0]));
+        } else {
+          ops.push(c.env.RECIPES.delete(kIdxCanonical(canonicalId)));
+          ops.push(c.env.RECIPES.delete(kIdxInstalled(canonicalId)));
+        }
+      }
+      await Promise.all(ops);
+      return c.json({ success: true, deleted: recipe.uuid ?? canonicalId });
+    });
+    recipesRouter.post("/auth-recipes", async (c) => {
+      let body;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ success: false, error: "request body \u5FC5\u9808\u70BA JSON" }, 400);
+      }
+      const service = (body.service ?? "").trim().toLowerCase();
+      if (!service) return c.json({ success: false, error: "service \u5FC5\u586B" }, 400);
+      if (!body.primitive) return c.json({ success: false, error: "primitive \u5FC5\u586B" }, 400);
+      if (!body.base_url) return c.json({ success: false, error: "base_url \u5FC5\u586B" }, 400);
+      if (!body.required_secrets?.length) return c.json({ success: false, error: "required_secrets \u5FC5\u586B" }, 400);
+      if (!body.inject) return c.json({ success: false, error: "inject \u5FC5\u586B" }, 400);
+      const missingHelp = body.required_secrets.filter((s) => !s.help_url || !/^https?:\/\//.test(s.help_url));
+      if (missingHelp.length > 0) {
+        return c.json({
+          success: false,
+          error: `\u6BCF\u500B required_secret \u5FC5\u9808\u6709 help_url\uFF08\u5B98\u65B9\u6587\u4EF6\u9023\u7D50\uFF0Chttp(s)://\uFF09\u3002\u7F3A\uFF1A${missingHelp.map((s) => s.key).join(", ")}`,
+          requires: "help_url"
+        }, 400);
+      }
+      const now2 = Date.now();
+      const existing = await c.env.RECIPES.get(`auth_recipe:${service}`, "json");
+      const recipe = {
+        kind: "auth_recipe",
+        service,
+        version: body.version ?? 1,
+        primitive: body.primitive,
+        base_url: body.base_url,
+        display_name: body.display_name,
+        description: body.description,
+        service_account_kind: body.service_account_kind,
+        token_exchange: body.token_exchange,
+        required_secrets: body.required_secrets,
+        inject: body.inject,
+        created_at: existing?.created_at ?? now2,
+        updated_at: now2
+      };
+      await c.env.RECIPES.put(`auth_recipe:${service}`, JSON.stringify(recipe));
+      return c.json({ success: true, recipe });
+    });
+    recipesRouter.get("/auth-recipes", async (c) => {
+      const list = await c.env.RECIPES.list({ prefix: "auth_recipe:" });
+      const recipes = await Promise.all(
+        list.keys.map((k) => c.env.RECIPES.get(k.name, "json"))
+      );
+      return c.json({ success: true, recipes: recipes.filter(Boolean), count: recipes.length });
+    });
+    recipesRouter.get("/auth-recipes/:service", async (c) => {
+      const service = c.req.param("service");
+      const recipe = await resolveAuthRecipe(service, c.env.RECIPES);
+      if (!recipe) return c.json({ success: false, error: `\u627E\u4E0D\u5230 auth recipe: ${service}` }, 404);
+      return c.json({ success: true, recipe });
+    });
+    recipesRouter.delete("/auth-recipes/:service", async (c) => {
+      const service = c.req.param("service");
+      const recipe = await resolveAuthRecipe(service, c.env.RECIPES);
+      if (!recipe) return c.json({ success: false, error: `\u627E\u4E0D\u5230 auth recipe: ${service}` }, 404);
+      await c.env.RECIPES.delete(`auth_recipe:${service}`);
+      return c.json({ success: true, deleted: service });
+    });
+  }
+});
+
+// cypher-executor/src/lib/recipe-payload.ts
+function getPath2(obj, path) {
+  let cur = obj;
+  for (const part of path.split(".")) {
+    if (cur === null || cur === void 0) return void 0;
+    if (typeof cur !== "object") return void 0;
+    cur = cur[part];
+  }
+  return cur;
+}
+function renderBodyTemplate(template, ctx) {
+  if (template === void 0 || template === null) return void 0;
+  return renderValue(template, ctx);
+}
+function renderValue(v, ctx) {
+  if (typeof v === "string") return renderString(v, ctx);
+  if (Array.isArray(v)) return v.map((item) => renderValue(item, ctx));
+  if (v !== null && typeof v === "object") {
+    const out = {};
+    for (const [k, val] of Object.entries(v)) {
+      out[k] = renderValue(val, ctx);
+    }
+    return out;
+  }
+  return v;
+}
+function renderString(s, ctx) {
+  const single = s.match(/^\s*\{\{([\w.]+)\}\}\s*$/);
+  if (single) {
+    const val = getPath2(ctx, single[1]);
+    return val === void 0 ? s : val;
+  }
+  return s.replace(/\{\{([\w.]+)\}\}/g, (_, key) => {
+    const val = getPath2(ctx, key);
+    if (val === void 0) return `{{${key}}}`;
+    return typeof val === "string" ? val : JSON.stringify(val);
+  });
+}
+function applyResponseMap(body, map) {
+  if (!map) return { raw: body };
+  let picked = map.text_path ? getPath2(body, map.text_path) : body;
+  if (map.thinking_model && Array.isArray(picked)) {
+    const real = picked.filter(
+      (p) => !(p && typeof p === "object" && p.thought === true)
+    );
+    const last = real[real.length - 1];
+    picked = last && typeof last === "object" ? last.text : last;
+  }
+  if (typeof picked !== "string") return { text: void 0, raw: body };
+  return { text: sanitize(picked, map), raw: body };
+}
+function sanitize(input, map) {
+  let s = input.trim();
+  if (map.answer_marker) {
+    const idx = s.lastIndexOf(map.answer_marker);
+    if (idx >= 0) s = s.slice(idx + map.answer_marker.length);
+  }
+  const prefixes = map.strip_prefixes ?? [];
+  if (prefixes.length > 0) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      s = s.trimStart();
+      for (const p of prefixes) {
+        if (p && s.startsWith(p)) {
+          s = s.slice(p.length);
+          changed = true;
+        }
+      }
+    }
+  }
+  return s.trim();
+}
+var init_recipe_payload = __esm({
+  "cypher-executor/src/lib/recipe-payload.ts"() {
+    "use strict";
+  }
+});
+
 // cypher-executor/src/lib/component-loader.ts
 function wasmWorkerUrl(canonicalId, subdomain) {
   const kebab = canonicalId.replace(/_/g, "-");
   return `https://arcrun-${kebab}.${subdomain}.workers.dev`;
 }
-function createComponentLoader(env) {
+function createComponentLoader(env, ctx) {
   return async (componentId) => {
     if (componentId === "trigger_workflow") {
-      return makeTriggerWorkflowRunner(env);
+      return makeTriggerWorkflowRunner(env, ctx);
     }
     const builtin = BUILTIN_COMPONENTS.get(componentId);
     if (builtin) return builtin;
@@ -8899,7 +15981,7 @@ function createComponentLoader(env) {
     );
   };
 }
-function makeTriggerWorkflowRunner(env) {
+function makeTriggerWorkflowRunner(env, bg) {
   return async (ctx) => {
     const c = ctx && typeof ctx === "object" ? ctx : {};
     const workflowName = String(c.workflow_name ?? "");
@@ -8920,19 +16002,20 @@ function makeTriggerWorkflowRunner(env) {
     if (!record.graph) return { success: false, error: `workflow "${workflowName}" \u7F3A graph \u6B04\u4F4D` };
     const { executeWebhookGraph: executeWebhookGraph2 } = await Promise.resolve().then(() => (init_webhook_handlers(), webhook_handlers_exports));
     const triggerContext = { ...input, _triggered_by: "trigger_workflow" };
-    if (wait) {
-      const r = await executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey);
-      const isPaused = !r.success && typeof r.error === "string" && /workflow paused/i.test(r.error);
-      return {
-        success: r.success || isPaused,
-        triggered_workflow: workflowName,
-        status: r.success ? "completed" : isPaused ? "running_async" : "failed",
-        sub_result: r
-      };
-    } else {
-      void executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey).catch((e) => console.error("[trigger_workflow] fire-and-forget fail", workflowName, e));
-      return { success: true, triggered_workflow: workflowName, mode: "fire_and_forget" };
+    if (!wait && bg?.waitUntil) {
+      bg.waitUntil(
+        executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey, bg).catch((e) => console.error("[trigger_workflow] background fail", workflowName, e))
+      );
+      return { success: true, triggered_workflow: workflowName, status: "running_background", mode: "background" };
     }
+    const r = await executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey);
+    const isPaused = !r.success && typeof r.error === "string" && /workflow paused/i.test(r.error);
+    return {
+      success: r.success || isPaused,
+      triggered_workflow: workflowName,
+      status: r.success ? "completed" : isPaused ? "running_async" : "failed",
+      sub_result: r
+    };
   };
 }
 function makeHttpRunner(url) {
@@ -9343,6 +16426,10 @@ async function fetchRead(url, init) {
 }
 function relay(res) {
   const headers = { "Content-Type": "application/json" };
+  for (const h of ["X-KBDB-Rows-Read", "X-KBDB-Rows-Written", "X-KBDB-Statements"]) {
+    const v = res.headers.get(h);
+    if (v !== null) headers[h] = v;
+  }
   const wm = upstreamMeta.get(res);
   if (res.ok && wm && wm.attempts > 1) {
     headers["X-Upstream-Ms"] = String(wm.ms);
@@ -9768,6 +16855,20 @@ var init_kbdb_proxy = __esm({
         headers,
         body: JSON.stringify({ ids: body.ids, owner_id: owner, confirm: body.confirm === true })
       });
+      return relay(res);
+    });
+    kbdbProxyRouter.post("/kbdb/maintenance/card-format", async (c) => {
+      if (!tenant(c)) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || typeof body.template !== "string" || !body.template || typeof body.action !== "string") {
+        return c.json({ success: false, error: "template\uFF08\u5B57\u4E32\uFF09\u8207 action\uFF08status\uFF0Fcopy\uFF0Fverify\uFF0Fswitch\uFF0Fabort\uFF0Fcleanup\uFF09\u5FC5\u586B" }, 400);
+      }
+      const fwd = { template: body.template, action: body.action };
+      if (typeof body.batch === "number") fwd.batch = body.batch;
+      if (body.count === true) fwd.count = true;
+      if (typeof body.retention_days === "number") fwd.retention_days = body.retention_days;
+      const { base, headers } = kbdbBase(c.env);
+      const res = await timedFetch(`${base}/maintenance/card-format`, { method: "POST", headers, body: JSON.stringify(fwd) });
       return relay(res);
     });
     kbdbProxyRouter.get("/kbdb/entries/:id", async (c) => {
@@ -10497,16 +17598,7 @@ init_credentials();
 
 // cypher-executor/src/lib/ephemeral-store.ts
 init_kbdb_proxy();
-
-// cypher-executor/src/lib/release-body.ts
-function releaseBody(res) {
-  try {
-    if (res && res.body && !res.bodyUsed) void res.body.cancel().catch(() => void 0);
-  } catch {
-  }
-}
-
-// cypher-executor/src/lib/ephemeral-store.ts
+init_release_body();
 init_kbdb_caller();
 var EphemeralStoreError = class extends Error {
   constructor(message2, status) {
@@ -10533,7 +17625,7 @@ async function sha256Hex(input) {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 var ensuredTemplates = /* @__PURE__ */ new Set();
-async function ensureTemplate(env, name, slots) {
+async function ensureTemplate2(env, name, slots) {
   if (ensuredTemplates.has(name)) return;
   const got = await kFetch(env, `/templates/${encodeURIComponent(name)}`);
   releaseBody(got);
@@ -10573,7 +17665,7 @@ async function deleteRecordById(env, recordId) {
   releaseBody(await kFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }).catch(() => void 0));
 }
 async function ephemeralPut(env, opts) {
-  await ensureTemplate(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
+  await ensureTemplate2(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
   const hash = await sha256Hex(opts.rawKey);
   const exp = opts.ttlSeconds === null ? "never" : String(Date.now() + opts.ttlSeconds * 1e3);
   const values = { ...opts.values, [opts.hashField]: hash, exp };
@@ -11318,7 +18410,7 @@ var CfAnalyticsError = class extends Error {
   }
   status;
 };
-function addTo(s, date, v, mode = "sum") {
+function addTo2(s, date, v, mode = "sum") {
   if (!date) return;
   const n = Number(v) || 0;
   s[date] = mode === "max" ? Math.max(s[date] ?? 0, n) : (s[date] ?? 0) + n;
@@ -11329,13 +18421,13 @@ function parseCfAnalytics(body) {
   if (!acc) return null;
   const out = { d1_write: {}, d1_read: {}, ai: {}, vec_query: {}, vec_store: {}, requests: {} };
   for (const r of acc.d1 ?? []) {
-    addTo(out.d1_write, r.dimensions?.date, r.sum?.rowsWritten);
-    addTo(out.d1_read, r.dimensions?.date, r.sum?.rowsRead);
+    addTo2(out.d1_write, r.dimensions?.date, r.sum?.rowsWritten);
+    addTo2(out.d1_read, r.dimensions?.date, r.sum?.rowsRead);
   }
-  for (const r of acc.ai ?? []) addTo(out.ai, r.dimensions?.date, r.sum?.totalNeurons);
-  for (const r of acc.vq ?? []) addTo(out.vec_query, r.dimensions?.date, r.sum?.queriedVectorDimensions);
-  for (const r of acc.vs ?? []) addTo(out.vec_store, r.dimensions?.date, r.max?.storedVectorDimensions, "max");
-  for (const r of acc.w ?? []) addTo(out.requests, r.dimensions?.date, r.sum?.requests);
+  for (const r of acc.ai ?? []) addTo2(out.ai, r.dimensions?.date, r.sum?.totalNeurons);
+  for (const r of acc.vq ?? []) addTo2(out.vec_query, r.dimensions?.date, r.sum?.queriedVectorDimensions);
+  for (const r of acc.vs ?? []) addTo2(out.vec_store, r.dimensions?.date, r.max?.storedVectorDimensions, "max");
+  for (const r of acc.w ?? []) addTo2(out.requests, r.dimensions?.date, r.sum?.requests);
   return out;
 }
 async function queryCf(token, accountId, from, to, f) {
@@ -11547,6242 +18639,7 @@ function mcpUrlFor(subdomain) {
 
 // cypher-executor/src/routes/portal.ts
 init_endpoints();
-
-// cypher-executor/src/lib/app-glyphs.ts
-var APP_GLYPH_IDS = ["doc", "note", "layers", "pin", "wrench", "box", "folder", "check", "bulb", "bell", "chart", "compass"];
-var APP_GLYPH_BODIES = {
-  doc: '<path d="M6 3h7l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M13 3v5h5"/>',
-  note: '<path d="M17 3a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M14.5 5.5 18.5 9.5"/>',
-  layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>',
-  pin: '<path d="M8.5 3h7l-1 6 3.5 3v2H6v-2l3.5-3-1-6Z"/><path d="M12 14v7"/>',
-  wrench: '<path d="M15.5 3.4a5.2 5.2 0 0 0-6.4 6.4l-5.4 5.4a2 2 0 0 0 2.8 2.8l5.4-5.4a5.2 5.2 0 0 0 6.4-6.4l-3 3-2.8-.4-.4-2.8 3-3Z"/>',
-  box: '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/>',
-  folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h7A1.5 1.5 0 0 1 19 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
-  check: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.2 2.8 2.8L16 9.8"/>',
-  bulb: '<path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3Z"/><path d="M9.8 19h4.4M10.5 21.5h3"/>',
-  bell: '<path d="M18 8.5a6 6 0 1 0-12 0c0 5.5-2 7-2 7h16s-2-1.5-2-7Z"/><path d="M10.2 19a2.2 2.2 0 0 0 3.6 0"/>',
-  chart: '<path d="M4 4v16h16"/><path d="M8 20v-6.5M12.5 20V8.5M17 20v-4"/>',
-  compass: '<circle cx="12" cy="12" r="8.5"/><path d="m15.6 8.4-2.1 5.1-5.1 2.1 2.1-5.1 5.1-2.1Z"/>'
-};
-var EMOJI_GLYPH = {
-  "\u{1F4C4}": "doc",
-  "\u{1F5D2}\uFE0F": "note",
-  "\u{1F5D2}": "note",
-  "\u{1F4DD}": "note",
-  "\u{1F9E9}": "layers",
-  "\u{1F4CC}": "pin",
-  "\u{1F527}": "wrench",
-  "\u{1F6E0}\uFE0F": "wrench",
-  "\u{1F4E6}": "box",
-  "\u{1F5C2}\uFE0F": "folder",
-  "\u{1F5C2}": "folder",
-  "\u{1F4C1}": "folder",
-  "\u2705": "check",
-  "\u{1F4A1}": "bulb",
-  "\u{1F514}": "bell",
-  "\u{1F4CA}": "chart",
-  "\u{1F4C8}": "chart",
-  "\u{1F9ED}": "compass"
-};
-function appGlyph(icon, name) {
-  if (icon && EMOJI_GLYPH[icon]) return EMOJI_GLYPH[icon];
-  const seed = String(icon || name || "");
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = Math.imul(h, 31) + seed.charCodeAt(i) >>> 0;
-  return APP_GLYPH_IDS[h % APP_GLYPH_IDS.length];
-}
-
-// cypher-executor/src/lib/version.ts
-function parseVersion(v) {
-  if (typeof v !== "string") return null;
-  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(v.trim());
-  if (!m) return null;
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
-}
-function compareVersions(a, b) {
-  const pa = parseVersion(a);
-  const pb = parseVersion(b);
-  if (!pa || !pb) return null;
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] > pb[i]) return 1;
-    if (pa[i] < pb[i]) return -1;
-  }
-  return 0;
-}
-function checkEngineMin(needs, have) {
-  if (!needs || !have) return null;
-  if (compareVersions(have, needs) !== -1) return null;
-  return {
-    needs,
-    have,
-    error: `\u9019\u500B App \u9700\u8981\u5E73\u53F0 ${needs} \u4EE5\u4E0A\uFF0C\u9019\u53F0\u662F ${have}`,
-    hint: `\u8ACB\u5148\u628A\u9019\u53F0\u7684 Arcrun \u66F4\u65B0\u5230 ${needs} \u4EE5\u4E0A\uFF08\u66F4\u65B0\u4E2D\u5FC3\u7684 Portal \u90A3\u4E00\u5217\uFF09\uFF0C\u518D\u56DE\u4F86\u88DD\uFF1B\u4F60\u5DF2\u88DD\u7684 App \u8207\u8CC7\u6599\u4E0D\u6703\u52D5\u3002\u9700\u6C42\u7248\u672C\u662F App \u4F5C\u8005\u81EA\u5DF1\u5BEB\u7684\uFF0C\u4E0D\u662F\u7CFB\u7D71\u9A57\u904E\u7684\u76F8\u5BB9\u6027\u4FDD\u8B49\u3002`
-  };
-}
-function engineGateNote(g) {
-  return `\u8981\u5148\u66F4\u65B0\u5E73\u53F0\u5230 ${g.needs}\uFF08\u9019\u53F0\u662F ${g.have}\uFF09`;
-}
-
-// cypher-executor/src/lib/app-system.ts
-init_kbdb_proxy();
-init_webhook_handlers();
-
-// cypher-executor/src/actions/execution-logger.ts
-init_kbdb_proxy();
-init_kbdb_caller();
-
-// cypher-executor/src/lib/run-explain.ts
-var STEP_PREFIX_RE = /^步驟「([^」]{1,200})」失敗：/;
-var LEGACY_NODE_RES = [/^節點 ([\w.\-:]+) 回傳 success:false/, /^節點 ([\w.\-:]+) 缺少 componentId/];
-function messageWithFailedStep(message2, failedStep) {
-  const msg = message2 ?? "";
-  if (!failedStep) return msg;
-  if (STEP_PREFIX_RE.test(msg)) return msg;
-  return `\u6B65\u9A5F\u300C${failedStep}\u300D\u5931\u6557\uFF1A${msg}`;
-}
-function parseFailedStep(message2) {
-  const msg = String(message2 ?? "");
-  const m = STEP_PREFIX_RE.exec(msg);
-  if (m) return { step: m[1], error: msg.slice(m[0].length) };
-  for (const re of LEGACY_NODE_RES) {
-    const lm = re.exec(msg);
-    if (lm) return { step: lm[1], error: msg };
-  }
-  return { step: null, error: msg };
-}
-var RULES = [
-  { re: /workflow paused/i, say: "\u9084\u5728\u7B49\u5916\u90E8\u56DE\u8986\uFF0C\u66AB\u505C\u4E2D\uFF08\u4E0D\u662F\u58DE\u6389\uFF09" },
-  { re: /\b401\b|unauthori[sz]ed|invalid api key|invalid token|token (?:expired|invalid)/i, say: "\u5C0D\u65B9\u670D\u52D9\u4E0D\u8A8D\u9019\u628A\u91D1\u9470\uFF08\u53EF\u80FD\u904E\u671F\u6216\u586B\u932F\uFF09" },
-  { re: /\b403\b|forbidden|permission denied|沒有權限/i, say: "\u5C0D\u65B9\u670D\u52D9\u62D2\u7D55\uFF1A\u9019\u628A\u91D1\u9470\u6C92\u6709\u9019\u500B\u6B0A\u9650" },
-  { re: /\b404\b|not found|找不到/i, say: "\u5C0D\u65B9\u627E\u4E0D\u5230\u8981\u7684\u6771\u897F\uFF08\u7DB2\u5740\u6216\u8CC7\u6599\u4E0D\u5B58\u5728\uFF09" },
-  { re: /\b429\b|rate.?limit|too many requests|額度/i, say: "\u547C\u53EB\u592A\u983B\u7E41\u6216\u984D\u5EA6\u7528\u5B8C\uFF0C\u5C0D\u65B9\u66AB\u6642\u4E0D\u6536" },
-  { re: /\b5\d\d\b|bad gateway|service unavailable|internal server error/i, say: "\u5C0D\u65B9\u670D\u52D9\u81EA\u5DF1\u51FA\u932F\u4E86\uFF0C\u7A0D\u5F8C\u518D\u8DD1\u901A\u5E38\u6703\u597D" },
-  { re: /timeout|timed out|逾時|deadline/i, say: "\u5C0D\u65B9\u592A\u4E45\u6C92\u56DE\u61C9\uFF0C\u7B49\u4E0D\u5230\u5C31\u505C\u4E86" },
-  { re: /credential|缺少金鑰|missing key|secret.*(?:not|missing)|金鑰/i, say: "\u5C11\u4E86\u9700\u8981\u7684\u91D1\u9470\uFF0C\u8ACB\u5230\u91D1\u9470\u4E2D\u5FC3\u88DC\u4E0A" },
-  { re: /fetch failed|network|ECONN|ENOTFOUND|connection/i, say: "\u9023\u4E0D\u4E0A\u5C0D\u65B9\u670D\u52D9\uFF08\u7DB2\u8DEF\u6216\u7DB2\u5740\u6709\u554F\u984C\uFF09" },
-  { re: /JSON|parse|Unexpected token/i, say: "\u5C0D\u65B9\u56DE\u4F86\u7684\u8CC7\u6599\u683C\u5F0F\u770B\u4E0D\u61C2" },
-  { re: /圖定義已失效|工作流定義損毀|schema|invalid graph/i, say: "\u5DE5\u4F5C\u6D41\u672C\u8EAB\u7684\u5B9A\u7FA9\u6709\u554F\u984C\uFF0C\u9700\u8981\u91CD\u65B0\u5B89\u88DD\u6216\u4FEE\u6B63" }
-];
-function humanReason(error) {
-  const e = String(error ?? "").trim();
-  if (!e) return "\u6C92\u6709\u7559\u4E0B\u932F\u8AA4\u8A0A\u606F";
-  for (const r of RULES) if (r.re.test(e)) return r.say;
-  const first = e.split(/[\n。]/)[0].trim();
-  return first.length > 60 ? first.slice(0, 60) + "\u2026" : first;
-}
-var BUILTIN_COMPONENTS2 = /* @__PURE__ */ new Set([
-  "input",
-  "code",
-  "http_request",
-  "if_control",
-  "switch",
-  "try_catch",
-  "trigger_workflow",
-  "kbdb_get",
-  "kbdb_query",
-  "kbdb_create_record",
-  "claude_api",
-  "workers_ai_chat"
-]);
-function isRecipeId(component) {
-  return !!component && /^[a-z][a-z0-9_]*$/.test(component) && !BUILTIN_COMPONENTS2.has(component);
-}
-function literalHost(data) {
-  const raw2 = data && (data.url ?? data.endpoint);
-  if (typeof raw2 !== "string" || raw2.includes("{{")) return void 0;
-  try {
-    const u = new URL(raw2);
-    return u.protocol === "https:" || u.protocol === "http:" ? u.hostname : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function shownName(n) {
-  const v = n.display_name ?? n.data?.display_name;
-  return typeof v === "string" && v.trim() ? v.trim().slice(0, 60) : void 0;
-}
-var COMPONENT_LABELS = {
-  input: "\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09",
-  code: "\u6574\u7406\u8CC7\u6599",
-  http_request: "\u6253\u4E00\u500B\u7DB2\u5740",
-  if_control: "\u5224\u65B7\u689D\u4EF6",
-  switch: "\u5206\u6D41",
-  try_catch: "\u51FA\u932F\u6642\u6539\u8D70\u53E6\u4E00\u689D",
-  ahub_call: "\u8B80\u5BEB AHub",
-  kbdb_get: "\u8B80\u77E5\u8B58\u5EAB",
-  kbdb_query: "\u67E5\u77E5\u8B58\u5EAB",
-  kbdb_create_record: "\u5BEB\u9032\u77E5\u8B58\u5EAB",
-  claude_api: "\u8ACB AI \u8655\u7406",
-  workers_ai_chat: "\u8ACB AI \u56DE\u7B54",
-  trigger_workflow: "\u547C\u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41"
-};
-function componentLabel(componentId) {
-  if (!componentId) return "\uFF08\u6C92\u6709\u6307\u5B9A\u96F6\u4EF6\uFF09";
-  const w = /^https?:\/\/arcrun-([a-z0-9-]+)\./i.exec(componentId);
-  const ph = /^__([A-Z0-9_]+?)(?:_URL)?__$/.exec(componentId);
-  const id = w ? w[1].replace(/-/g, "_") : ph ? ph[1] === "HTTP_REQ" ? "http_request" : ph[1].toLowerCase() : componentId;
-  if (COMPONENT_LABELS[id]) return COMPONENT_LABELS[id];
-  return /^https?:\/\//i.test(componentId) ? "\u5916\u90E8\u670D\u52D9" : id;
-}
-function edgeLabel(type, edge) {
-  switch (type) {
-    case "ON_SUCCESS":
-    case "PIPE":
-      return "\u6210\u529F\u5F8C";
-    case "ON_FAIL":
-      return "\u5931\u6557\u6642";
-    case "FOREACH":
-      return edge.iterator ? `\u5C0D\u6BCF\u500B ${edge.iterator}` : "\u5C0D\u6BCF\u4E00\u7B46";
-    case "ON_TRUE":
-      return "\u689D\u4EF6\u6210\u7ACB\u6642";
-    case "ON_FALSE":
-      return "\u689D\u4EF6\u4E0D\u6210\u7ACB\u6642";
-    case "ON_BRANCH":
-      return edge.branch ? `\u5206\u652F\u300C${edge.branch}\u300D` : "\u5206\u652F";
-    case "IF":
-      return edge.condition ? `\u5982\u679C ${edge.condition}` : "\u5982\u679C";
-    case "CONTINUE":
-      return "\u7E7C\u7E8C";
-    case "CALLS_SUBFLOW":
-      return "\u547C\u53EB\u5B50\u6D41\u7A0B";
-    default:
-      return type;
-  }
-}
-function buildFlowSteps(nodes, edges, lastRun) {
-  const order = topoOrder(nodes, edges);
-  const failed = lastRun?.verdict === "failed" ? lastRun.failed_step ?? null : null;
-  const downstream = failed ? reachableFrom(failed, edges) : /* @__PURE__ */ new Set();
-  const onFailTargets = new Set(edges.filter((e) => e.type === "ON_FAIL" && e.from === failed).map((e) => e.to));
-  return order.map((n) => {
-    let last = "unknown";
-    if (failed) {
-      if (n.id === failed) last = "failed";
-      else if (downstream.has(n.id) && !onFailTargets.has(n.id)) last = "not_reached";
-    }
-    return {
-      id: n.id,
-      component: n.componentId ?? (n.type === "Input" ? "input" : ""),
-      component_label: componentLabel(n.componentId ?? (n.type === "Input" ? "input" : void 0)),
-      params: Object.keys(n.data ?? {}).slice(0, 20),
-      ...shownName(n) ? { display_name: shownName(n) } : {},
-      ...literalHost(n.data) ? { host: literalHost(n.data) } : {},
-      next: edges.filter((e) => e.from === n.id).map((e) => ({ to: e.to, how: edgeLabel(e.type, e) })),
-      prev: edges.filter((e) => e.to === n.id).map((e) => ({ from: e.from, how: edgeLabel(e.type, e) })),
-      last
-    };
-  });
-}
-function topoOrder(nodes, edges) {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const indeg = new Map(nodes.map((n) => [n.id, 0]));
-  for (const e of edges) if (indeg.has(e.to) && byId.has(e.from)) indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
-  const queue = nodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).sort((a, b) => Number(b.type === "Input") - Number(a.type === "Input"));
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  while (queue.length) {
-    const n = queue.shift();
-    if (seen.has(n.id)) continue;
-    seen.add(n.id);
-    out.push(n);
-    for (const e of edges) {
-      if (e.from !== n.id || !byId.has(e.to)) continue;
-      const d = (indeg.get(e.to) ?? 0) - 1;
-      indeg.set(e.to, d);
-      if (d <= 0 && !seen.has(e.to)) queue.push(byId.get(e.to));
-    }
-  }
-  for (const n of nodes) if (!seen.has(n.id)) out.push(n);
-  return out;
-}
-function reachableFrom(start, edges) {
-  const seen = /* @__PURE__ */ new Set();
-  const stack = edges.filter((e) => e.from === start && e.type !== "ON_FAIL").map((e) => e.to);
-  while (stack.length) {
-    const id = stack.pop();
-    if (seen.has(id) || id === start) continue;
-    seen.add(id);
-    for (const e of edges) if (e.from === id) stack.push(e.to);
-  }
-  return seen;
-}
-
-// cypher-executor/src/actions/execution-logger.ts
-var SLOW_RUN_MS = 8e3;
-function runMessage(result) {
-  if (!result.success) return result.error ?? "";
-  if (result.duration_ms < SLOW_RUN_MS) return "";
-  const steps = (Array.isArray(result.trace) ? result.trace : []).filter((x) => typeof x?.nodeId === "string" && typeof x?.duration_ms === "number");
-  const by = /* @__PURE__ */ new Map();
-  for (const x of steps) {
-    const id = x.nodeId, ms = x.duration_ms;
-    const g = by.get(id) ?? { n: 0, max: -1, path: "" };
-    g.n++;
-    if (ms > g.max) {
-      g.max = ms;
-      g.path = readPathOf(x.input);
-    }
-    by.set(id, g);
-  }
-  const top = [...by.entries()].sort((a, b) => b[1].max - a[1].max).slice(0, 3).map(([id, g]) => `${id}${g.n > 1 ? `\xD7${g.n}` : ""} \u6700\u9577${g.max}ms${g.path ? `\uFF08${g.path}\uFF09` : ""}`);
-  const head = `\u6162\uFF1A\u6574\u9AD4 ${result.duration_ms}ms`;
-  return (top.length ? `${head}\uFF1B${top.join("\u3001")}` : head).slice(0, 190);
-}
-function readPathOf(input) {
-  if (!input || typeof input !== "object") return "";
-  const o = input;
-  const pick = (v) => v && typeof v === "object" && typeof v.path === "string" ? v.path : "";
-  const p = pick(o.ahread) || pick(o.ahsread) || (typeof o._path === "string" ? o._path : "");
-  return p.slice(0, 50);
-}
-function extractTarget(input) {
-  if (!input) return void 0;
-  const raw2 = input.page_name ?? input.path;
-  if (raw2 === void 0 || raw2 === null) return void 0;
-  return typeof raw2 === "string" ? raw2 : JSON.stringify(raw2);
-}
-async function writeExecutionVerdict(env, workflowId, nodes, verdict, durationMs, message2, input, apiKey, kbdbUsage, failedStep) {
-  void nodes;
-  try {
-    const { base, headers } = kbdbBase(env);
-    const res = await fetch(`${base}/execution-log/record`, {
-      method: "POST",
-      // 這支自己也是一次 KBDB 呼叫——蓋掉 kbdbBase() 預設的 'cypher-kbdb-proxy'，
-      // 剎車紀錄點名時才不會誤指成 CLI 那條 proxy。
-      headers: withCaller(headers, KBDB_CALLERS.executionLog),
-      body: JSON.stringify({
-        workflow_id: workflowId,
-        owner_id: apiKey ?? null,
-        verdict,
-        duration_ms: Math.max(0, Math.round(durationMs)),
-        // inkstone/Arcrun#219：失敗那一步記在 message 開頭（不加欄位、不動資料層，見 lib/run-explain.ts）
-        message: verdict === "failed" ? messageWithFailedStep(message2 ?? "", failedStep) : message2 ?? "",
-        target: extractTarget(input) ?? null,
-        ...kbdbUsage ? { kbdb_rows_written: kbdbUsage.rowsWritten, kbdb_rows_read: kbdbUsage.rowsRead } : {}
-      })
-    });
-    releaseBody(res);
-  } catch {
-  }
-}
-
-// cypher-executor/src/lib/cron-match.ts
-function matchField(expr, value, min, max) {
-  if (expr === "*") return true;
-  for (const part of expr.split(",")) {
-    if (matchPart(part.trim(), value, min, max)) return true;
-  }
-  return false;
-}
-function matchPart(part, value, min, max) {
-  if (part.startsWith("*/")) {
-    const step = parseInt(part.slice(2), 10);
-    if (!Number.isFinite(step) || step <= 0) return false;
-    return (value - min) % step === 0;
-  }
-  if (part.includes("-")) {
-    const [rangePart, stepStr] = part.split("/");
-    const [aStr, bStr] = rangePart.split("-");
-    const a = parseInt(aStr, 10);
-    const b = parseInt(bStr, 10);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
-    if (value < a || value > b) return false;
-    if (stepStr === void 0) return true;
-    const step = parseInt(stepStr, 10);
-    if (!Number.isFinite(step) || step <= 0) return false;
-    return (value - a) % step === 0;
-  }
-  const n = parseInt(part, 10);
-  if (!Number.isFinite(n)) return false;
-  if (n < min || n > max) return false;
-  return value === n;
-}
-function cronMatch(expr, date) {
-  const fields = expr.trim().split(/\s+/);
-  if (fields.length !== 5) return false;
-  const [m, h, dom, mon, dow] = fields;
-  return matchField(m, date.getUTCMinutes(), 0, 59) && matchField(h, date.getUTCHours(), 0, 23) && matchField(dom, date.getUTCDate(), 1, 31) && matchField(mon, date.getUTCMonth() + 1, 1, 12) && matchField(dow, date.getUTCDay(), 0, 6);
-}
-function extractCronExpr(graph) {
-  if (!graph || typeof graph !== "object") return null;
-  const nodes = graph.nodes;
-  if (!Array.isArray(nodes)) return null;
-  for (const node of nodes) {
-    if (node.componentId !== "cron") continue;
-    const expr = node.data?.cron_expr;
-    if (typeof expr === "string" && expr.trim()) return expr.trim();
-  }
-  return null;
-}
-
-// cypher-executor/src/lib/cron-index.ts
-var CRON_INDEX_KEY = "cron-idx:_all";
-function cronEntryKey(apiKey, name) {
-  return `${apiKey}:${name}`;
-}
-function parseCronEntryKey(entryKey) {
-  const idx = entryKey.indexOf(":");
-  if (idx <= 0) return null;
-  return { apiKey: entryKey.slice(0, idx), name: entryKey.slice(idx + 1) };
-}
-async function readCronIndex(kv) {
-  const raw2 = await kv.get(CRON_INDEX_KEY, "text");
-  if (!raw2) return {};
-  try {
-    const parsed = JSON.parse(raw2);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-async function updateCronIndexEntry(kv, apiKey, name, cronExpr) {
-  const index = await readCronIndex(kv);
-  const entryKey = cronEntryKey(apiKey, name);
-  if (cronExpr) {
-    if (index[entryKey] === cronExpr) return;
-    index[entryKey] = cronExpr;
-  } else {
-    if (!(entryKey in index)) return;
-    delete index[entryKey];
-  }
-  await kv.put(CRON_INDEX_KEY, JSON.stringify(index));
-}
-
-// cypher-executor/src/lib/app-ui-assets.ts
-var MAX_UI_ASSET_BYTES = 15e5;
-var MAX_UI_ASSET_COUNT = 64;
-var PATH_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
-var MIME_BY_EXT = {
-  css: "text/css",
-  js: "text/javascript",
-  mjs: "text/javascript",
-  json: "application/json",
-  txt: "text/plain",
-  svg: "image/svg+xml",
-  html: "text/html",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  ico: "image/x-icon",
-  avif: "image/avif",
-  woff: "font/woff",
-  woff2: "font/woff2",
-  ttf: "font/ttf",
-  otf: "font/otf"
-};
-function extOf(path) {
-  const base = path.slice(path.lastIndexOf("/") + 1);
-  const i = base.lastIndexOf(".");
-  return i < 0 ? "" : base.slice(i + 1).toLowerCase();
-}
-function localRefOf(ref, fromDir = "") {
-  let v = ref.trim();
-  if (!v) return null;
-  if (v.startsWith("#") || v.startsWith("/") || v.startsWith("\\")) return null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return null;
-  v = v.replace(/[?#].*$/, "");
-  const parts = (fromDir ? `${fromDir}/${v}` : v).split("/");
-  const out = [];
-  for (const seg of parts) {
-    if (seg === "" || seg === ".") continue;
-    if (seg === "..") {
-      if (out.length === 0) return null;
-      out.pop();
-      continue;
-    }
-    out.push(seg);
-  }
-  return out.length ? out.join("/") : null;
-}
-function isAssetValue(v) {
-  if (typeof v === "string") return true;
-  return !!v && typeof v === "object" && typeof v.base64 === "string";
-}
-function validateUiAssets(assets) {
-  if (assets === void 0) return [];
-  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
-    return ["ui.assets \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u8DEF\u5F91 \u2192 \u5167\u5BB9\uFF09"];
-  }
-  const errors = [];
-  const entries = Object.entries(assets);
-  if (entries.length > MAX_UI_ASSET_COUNT) errors.push(`ui.assets \u6700\u591A ${MAX_UI_ASSET_COUNT} \u500B\u6A94\uFF08\u73FE\u5728 ${entries.length}\uFF09`);
-  let total = 0;
-  for (const [path, val] of entries) {
-    if (!PATH_RE.test(path) || path.split("/").includes("..")) {
-      errors.push(`ui.assets \u7684\u8DEF\u5F91\u300C${path}\u300D\u4E0D\u5408\u6CD5\uFF1A\u53EA\u80FD\u662F\u76F8\u5C0D\u8DEF\u5F91\uFF08\u82F1\u6578\u3001\u9EDE\u3001\u5E95\u7DDA\u3001\u9023\u5B57\u865F\uFF0C\u7528 / \u5206\u8CC7\u6599\u593E\uFF09\uFF0C\u4E0D\u53EF\u542B ..`);
-      continue;
-    }
-    if (!isAssetValue(val)) {
-      errors.push(`ui.assets["${path}"] \u5FC5\u9808\u662F\u5B57\u4E32\uFF08\u6587\u5B57\u6A94\uFF09\uFF0C\u6216 { "base64": "\u2026", "type": "image/png" }\uFF08\u4E8C\u9032\u4F4D\u6A94\uFF09`);
-      continue;
-    }
-    if (typeof val === "object" && val.type !== void 0 && (typeof val.type !== "string" || !/^[a-z]+\/[A-Za-z0-9.+-]+$/.test(val.type))) {
-      errors.push(`ui.assets["${path}"].type \u5FC5\u9808\u662F MIME \u683C\u5F0F\uFF08\u4F8B\uFF1Aimage/png\uFF09`);
-    }
-    total += typeof val === "string" ? val.length : val.base64.length;
-  }
-  if (total > MAX_UI_ASSET_BYTES) {
-    errors.push(`ui.assets \u5408\u8A08 ${total} \u5B57\u5143\uFF0C\u8D85\u904E\u4E0A\u9650 ${MAX_UI_ASSET_BYTES}\u3002\u756B\u9762\u5B58\u5728\u77E5\u8B58\u5EAB\u7684\u4E00\u7B46\u7D00\u9304\u88E1\uFF0C\u4E0D\u662F\u6A94\u6848\u4F3A\u670D\u5668\u2014\u2014\u5927\u5716\u8ACB\u7E2E\u5C0F\u6216\u63DB\u6210\u5916\u90E8\u4E0D\u4F9D\u8CF4\u7684\u683C\u5F0F`);
-  }
-  return errors;
-}
-function mimeOf(path, val) {
-  if (typeof val === "object" && val.type) return val.type;
-  return MIME_BY_EXT[extOf(path)] ?? "application/octet-stream";
-}
-function toDataUri(path, val) {
-  const mime = mimeOf(path, val);
-  if (typeof val === "string") return `data:${mime};charset=utf-8,${encodeURIComponent(val)}`;
-  return `data:${mime};base64,${val.base64.replace(/\s+/g, "")}`;
-}
-function textOf(path, val) {
-  if (typeof val === "string") return val;
-  void path;
-  return null;
-}
-function inlineCssUrls(css, cssPath, assets, used, errors) {
-  const dir = cssPath.includes("/") ? cssPath.slice(0, cssPath.lastIndexOf("/")) : "";
-  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (whole, _q, ref) => {
-    const key = localRefOf(ref, dir);
-    if (key === null) return whole;
-    if (!(key in assets)) {
-      errors.push(`\u6A23\u5F0F\u8868\u300C${cssPath}\u300D\u5F15\u7528\u4E86 url(${ref.trim()})\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
-      return whole;
-    }
-    used.add(key);
-    return `url("${toDataUri(key, assets[key])}")`;
-  });
-}
-var ATTR_RE = (name) => new RegExp(`(\\s${name}\\s*=\\s*)(?:"([^"]*)"|'([^']*)')`, "i");
-function bundleUiAssets(html, assets) {
-  if (!assets || Object.keys(assets).length === 0) return { ok: true, html, errors: [], used: [] };
-  const errors = [];
-  const used = /* @__PURE__ */ new Set();
-  const lookup = (ref, what) => {
-    const key = localRefOf(ref);
-    if (key === null) return null;
-    if (!(key in assets)) {
-      errors.push(`${what} \u5F15\u7528\u4E86\u300C${ref.trim()}\u300D\uFF0C\u4F46 ui.assets \u88E1\u6C92\u6709\u300C${key}\u300D`);
-      return null;
-    }
-    used.add(key);
-    return key;
-  };
-  const out = html.replace(/<(script|link|img|source|video|audio|track|input)\b([^>]*?)(\/?)>(?:\s*<\/script\s*>)?/gi, (whole, tagRaw, attrs, selfClose) => {
-    const tag = tagRaw.toLowerCase();
-    if (tag === "script") {
-      const m = ATTR_RE("src").exec(attrs);
-      if (!m) return whole;
-      const ref = m[2] ?? m[3] ?? "";
-      const key = lookup(ref, "<script src>");
-      if (key === null) return whole;
-      const body = textOf(key, assets[key]);
-      if (body === null) {
-        errors.push(`<script src="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u8173\u672C\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
-        return whole;
-      }
-      const rest = attrs.replace(ATTR_RE("src"), "").replace(/\s+$/, "");
-      return `<script${rest}>${body.replace(/<\/script/gi, "<\\/script")}<\/script>`;
-    }
-    if (tag === "link") {
-      const relM = ATTR_RE("rel").exec(attrs);
-      const hrefM = ATTR_RE("href").exec(attrs);
-      if (!hrefM) return whole;
-      const ref = hrefM[2] ?? hrefM[3] ?? "";
-      const isSheet = /(^|\s)stylesheet(\s|$)/i.test(relM ? relM[2] ?? relM[3] ?? "" : "");
-      const key = lookup(ref, isSheet ? '<link rel="stylesheet">' : "<link href>");
-      if (key === null) return whole;
-      if (isSheet) {
-        const css = textOf(key, assets[key]);
-        if (css === null) {
-          errors.push(`<link rel="stylesheet" href="${ref}"> \u6307\u5230\u4E8C\u9032\u4F4D\u8CC7\u7522\u300C${key}\u300D\uFF0C\u6A23\u5F0F\u8868\u5FC5\u9808\u662F\u6587\u5B57\u6A94`);
-          return whole;
-        }
-        return `<style>${inlineCssUrls(css, key, assets, used, errors).replace(/<\/style/gi, "<\\/style")}</style>`;
-      }
-      return whole.replace(ATTR_RE("href"), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
-    }
-    let replaced = whole;
-    for (const name of tag === "video" ? ["src", "poster"] : ["src"]) {
-      const m = ATTR_RE(name).exec(replaced);
-      if (!m) continue;
-      const ref = m[2] ?? m[3] ?? "";
-      const key = lookup(ref, `<${tag} ${name}>`);
-      if (key === null) continue;
-      replaced = replaced.replace(ATTR_RE(name), (_w, pre) => `${pre}"${toDataUri(key, assets[key])}"`);
-    }
-    void selfClose;
-    return replaced;
-  });
-  return { ok: errors.length === 0, html: out, errors, used: [...used] };
-}
-
-// cypher-executor/src/lib/ui-catalog.generated.json
-var ui_catalog_generated_default = {
-  _generated: "\u7531 console-ui/a2ui/build.mjs \u5F9E registry/ui-components/*/component.contract.yaml \u7522\u751F\u2014\u2014\u52FF\u624B\u6539\uFF0C\u6539\u539F\u7A3F\u5F8C\u91CD\u8DD1",
-  catalog_id: "arcrun:catalog/v0",
-  protocol_version: "v0.9",
-  components: [
-    {
-      canonical_id: "ui_button",
-      display_name: "\u6309\u9215",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Button",
-        implementation: "a2ui-basic"
-      },
-      description: "\u6309\u4E0B\u53BB\u9001\u51FA\u4E00\u500B\u4E8B\u4EF6\u540D\u7A31\uFF08\u53EF\u5E36\u53C3\u6578\uFF09\u3002\u6309\u9215\u672C\u8EAB\u4E0D\u542B\u908F\u8F2F\uFF1A\u8981\u89F8\u767C\u54EA\u500B\u5DE5\u4F5C\u6D41\uFF0C\u7531\u4F3A\u670D\u5668\u7AEF\u7684\u52D5\u4F5C\u767D\u540D\u55AE\u6C7A\u5B9A\u3002",
-      renders: "\u4E00\u9846\u6309\u9215\uFF0C\u4E0A\u9762\u7684\u5B57\u7531\u5B50\u5143\u4EF6\uFF08\u901A\u5E38\u662F\u4E00\u500B Text\uFF09\u6C7A\u5B9A\uFF1Bvariant \u70BA primary \u6642\u662F\u4E3B\u8981\u52D5\u4F5C\u7684\u6A23\u5F0F\u3002",
-      data_inputs: [
-        {
-          name: "child",
-          what: "\u6309\u9215\u4E0A\u986F\u793A\u7684\u5B50\u5143\u4EF6 id\uFF08\u901A\u5E38\u662F Text\uFF09"
-        },
-        {
-          name: "action",
-          what: '{"event": {"name": "\u4E8B\u4EF6\u540D\u7A31", "context": {"\u53C3\u6578": {"path": "/\u6B04\u4F4D"}}}}\u2014\u2014context \u7684\u503C\u53EF\u4EE5\u7D81\u8CC7\u6599'
-        }
-      ],
-      interactions: [
-        {
-          event: "action.event",
-          what: "\u6309\u4E0B\u6642\u9001\u51FA {name, context}\u3002Portal \u628A\u5B83\u8F49\u7D66\u5BBF\u4E3B\uFF08App \u7684\u52D5\u4F5C\u767D\u540D\u55AE\u7AEF\u9EDE\uFF09\uFF1B\u756B\u9762\u5B9A\u7FA9\u88E1\u4E0D\u51C6\u5BEB\u7DB2\u5740\u3001\u8DEF\u5F91\u6216\u6307\u4EE4"
-        }
-      ],
-      states: {
-        loading: "\u6309\u9215\u7ACB\u5373\u53EF\u6309\uFF1B\u9001\u51FA\u5F8C\u7684\u7B49\u5F85\u72C0\u614B\u7531\u5BBF\u4E3B\u986F\u793A",
-        empty: "\u6C92\u6709 child \u6642\u662F\u4E00\u9846\u6C92\u6709\u5B57\u7684\u6309\u9215\uFF08child \u5FC5\u586B\uFF0C\u9A57\u8B49\u6703\u64CB\uFF09",
-        error: "\u5BBF\u4E3B\u56DE\u932F\u8AA4\u6642\u7531\u5BBF\u4E3B\u986F\u793A\uFF0C\u6309\u9215\u672C\u8EAB\u4E0D\u8B8A",
-        disabled: "checks \u4E0D\u901A\u904E\u6642\u6309\u9215\u505C\u7528",
-        narrow: "\u6309\u9215\u5BEC\u5EA6\u8DDF\u8457\u5B57\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u6309\u9215\u4E0A\u7684\u5B57",
-          given: '{"components":[{"id":"root","component":"Button","child":"l","action":{"event":{"name":"refresh"}}},{"id":"l","component":"Text","text":"\u91CD\u65B0\u6574\u7406"}]}',
-          then_contains: "\u91CD\u65B0\u6574\u7406"
-        },
-        {
-          scenario: "\u4E3B\u8981\u52D5\u4F5C\u6A23\u5F0F\u7684\u6309\u9215",
-          given: '{"components":[{"id":"root","component":"Button","child":"l","variant":"primary","action":{"event":{"name":"run","context":{"id":{"path":"/id"}}}}},{"id":"l","component":"Text","text":"\u57F7\u884C"}],"data":{"id":"wf-1"}}',
-          then_contains: "\u57F7\u884C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "button",
-        "action",
-        "event"
-      ],
-      example: '{ "id": "refresh", "component": "Button", "child": "refresh-label", "action": { "event": { "name": "refresh" } } }\n',
-      source: "registry/ui-components/button/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "default",
-              "primary",
-              "borderless"
-            ],
-            default: "default",
-            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
-          },
-          action: {
-            $ref: "#/$defs/Action"
-          },
-          component: {
-            const: "Button"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "action",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_card",
-      display_name: "\u5361\u7247",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Card",
-        implementation: "a2ui-basic"
-      },
-      description: "\u6709\u5916\u6846\u7684\u5340\u584A\uFF0C\u628A\u4E00\u7D44\u76F8\u95DC\u5167\u5BB9\u6846\u5728\u4E00\u8D77\uFF08\u4E00\u5247\u5DE5\u4F5C\u6D41\u3001\u4E00\u5F35\u7968\u3001\u4E00\u7B46\u932F\u8AA4\uFF09\u3002",
-      renders: "\u4E00\u500B\u5E36\u5916\u6846\u8207\u5167\u8DDD\u7684\u65B9\u584A\uFF0C\u88E1\u9762\u653E\u4E00\u500B\u5B50\u5143\u4EF6\uFF1B\u8981\u653E\u591A\u500B\u6771\u897F\u6642\uFF0C\u5B50\u5143\u4EF6\u7528 Column \u6216 Row \u5305\u8D77\u4F86\u3002",
-      data_inputs: [
-        {
-          name: "child",
-          what: "\u8981\u6846\u8D77\u4F86\u7684\u90A3\u4E00\u500B\u5B50\u5143\u4EF6\u7684 id\uFF08\u4E0D\u662F\u8CC7\u6599\uFF0C\u662F\u7248\u9762\uFF09"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5916\u6846\u7167\u5E38\u51FA\u73FE\uFF0C\u88E1\u9762\u7531\u5B50\u5143\u4EF6\u81EA\u5DF1\u986F\u793A\u8F09\u5165\u4E2D",
-        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u5C31\u4E0D\u6703\u51FA\u73FE\uFF08child \u5FC5\u586B\uFF09",
-        error: "\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\uFF0C\u6E32\u67D3\u5668\u5728\u4E3B\u63A7\u53F0\u5831\u932F\u3001\u90A3\u4E00\u683C\u7559\u767D\uFF0C\u4E0D\u6703\u6574\u9801\u58DE\u6389",
-        disabled: "\u5361\u7247\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u7E2E\uFF0C\u5167\u5BB9\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5361\u7247\u6846\u4F4F\u4E00\u6BB5\u6587\u5B57",
-          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":"\u6846\u5728\u5361\u7247\u88E1"}]}',
-          then_contains: "\u6846\u5728\u5361\u7247\u88E1"
-        },
-        {
-          scenario: "\u5361\u7247\u88E1\u7684\u6587\u5B57\u53EF\u4EE5\u7D81\u8CC7\u6599",
-          given: '{"components":[{"id":"root","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"/title"}}],"data":{"title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"}}',
-          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u6A19\u984C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "container",
-        "card"
-      ],
-      example: '{ "id": "wf-card", "component": "Card", "child": "wf-body" }\n',
-      source: "registry/ui-components/card/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
-          },
-          component: {
-            const: "Card"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_check_box",
-      display_name: "\u52FE\u9078\u6846",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "CheckBox",
-        implementation: "a2ui-basic"
-      },
-      description: "\u8B93\u4EBA\u52FE\u9078\u662F\uFF0F\u5426\uFF08\u662F\u5426\u534A\u5929\u3001\u662F\u5426\u9700\u8981\u4EE3\u7406\u4EBA\uFF09\u3002\u7D50\u679C\u4EE5 true\uFF0Ffalse \u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
-      renders: "\u4E00\u500B\u52FE\u9078\u6846\u52A0\u6A19\u7C64\u3002",
-      data_inputs: [
-        {
-          name: "label",
-          what: "\u52FE\u9078\u6846\u65C1\u7684\u5B57"
-        },
-        {
-          name: "value",
-          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u52FE\u4E86\u662F true\u3001\u6C92\u52FE\u662F false'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u7ACB\u5373\u53EF\u52FE",
-        empty: "\u6C92\u6709\u503C\u6642\u8996\u70BA\u6C92\u52FE\uFF08false\uFF09",
-        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u6A19\u7C64\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u52FE\u9078\u6846\u5E36\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"CheckBox","label":"\u534A\u5929","value":{"path":"/form/half"}}],"data":{"form":{"half":false}}}',
-          then_contains: "\u534A\u5929"
-        },
-        {
-          scenario: "\u52FE\u9078\u6846\u9810\u8A2D\u5DF2\u52FE",
-          given: '{"components":[{"id":"root","component":"CheckBox","label":"\u9700\u8981\u4EE3\u7406\u4EBA","value":{"path":"/form/proxy"}}],"data":{"form":{"proxy":true}}}',
-          then_contains: "\u9700\u8981\u4EE3\u7406\u4EBA"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "input",
-        "form",
-        "checkbox",
-        "\u52FE\u9078"
-      ],
-      example: '{ "id": "f-half", "component": "CheckBox", "label": "\u534A\u5929", "value": { "path": "/form/half" } }\n',
-      source: "registry/ui-components/check_box/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text to display next to the checkbox."
-          },
-          value: {
-            $ref: "#/$defs/DynamicBoolean",
-            description: "The current state of the checkbox (true for checked, false for unchecked)."
-          },
-          component: {
-            const: "CheckBox"
-          }
-        },
-        required: [
-          "id",
-          "label",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_choice_picker",
-      display_name: "\u9078\u55AE",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "ChoicePicker",
-        implementation: "a2ui-basic"
-      },
-      description: "\u8B93\u4EBA\u5F9E\u56FA\u5B9A\u9078\u9805\u88E1\u9078\u4E00\u500B\u6216\u591A\u500B\uFF08\u5047\u5225\u3001\u90E8\u9580\u3001\u512A\u5148\u7D1A\uFF09\u3002\u9078\u7684\u7D50\u679C\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\uFF08\u4E00\u5F8B\u662F\u5B57\u4E32\u9663\u5217\uFF09\u3002",
-      renders: "\u4E00\u7D44\u9078\u9805\u3002variant \u70BA mutuallyExclusive \u6642\u662F\u55AE\u9078\uFF0CmultipleSelection \u662F\u591A\u9078\uFF1BdisplayStyle \u6C7A\u5B9A\u9577\u6210\u52FE\u9078\u6E05\u55AE\u6216\u4E0B\u62C9\u6676\u7247\u3002",
-      data_inputs: [
-        {
-          name: "label",
-          what: "\u9078\u55AE\u7684\u6A19\u7C64"
-        },
-        {
-          name: "options",
-          what: '\u9078\u9805\u6E05\u55AE [{"label": "\u7D66\u4EBA\u770B\u7684\u5B57", "value": "\u5B58\u9032\u53BB\u7684\u503C"}]'
-        },
-        {
-          name: "value",
-          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u9078\u5230\u7684 value \u9663\u5217\u5BEB\u5230\u9019\u88E1\uFF08\u55AE\u9078\u6642\u9663\u5217\u53EA\u6709\u4E00\u500B\u5143\u7D20\uFF09'
-        },
-        {
-          name: "variant",
-          what: "mutuallyExclusive\uFF08\u55AE\u9078\uFF0C\u8868\u55AE\u6700\u5E38\u7528\uFF09\uFF0FmultipleSelection"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u9078\u9805\u7ACB\u5373\u986F\u793A\uFF08\u9078\u9805\u5BEB\u5728\u756B\u9762\u5B9A\u7FA9\u88E1\uFF0C\u4E0D\u7B49\u8CC7\u6599\uFF09",
-        empty: "\u6C92\u9078\u6642 value \u662F\u7A7A\u9663\u5217",
-        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u9078\u9805\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u55AE\u9078\u9078\u55AE\u986F\u793A\u9078\u9805",
-          given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u5047\u5225","variant":"mutuallyExclusive","options":[{"label":"\u7279\u4F11","value":"annual"},{"label":"\u75C5\u5047","value":"sick"}],"value":{"path":"/form/type"}}],"data":{"form":{"type":[]}}}',
-          then_contains: "\u75C5\u5047"
-        },
-        {
-          scenario: "\u591A\u9078\u9078\u55AE\u986F\u793A\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"ChoicePicker","label":"\u6A19\u7C64","variant":"multipleSelection","options":[{"label":"\u6025","value":"urgent"}],"value":{"path":"/form/tags"}}],"data":{"form":{"tags":[]}}}',
-          then_contains: "\u6025"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "input",
-        "form",
-        "select",
-        "choice",
-        "\u9078\u55AE",
-        "\u4E0B\u62C9"
-      ],
-      example: '{ "id": "f-type", "component": "ChoicePicker", "label": "\u5047\u5225", "variant": "mutuallyExclusive", "options": [{ "label": "\u7279\u4F11", "value": "annual" }, { "label": "\u75C5\u5047", "value": "sick" }], "value": { "path": "/form/type" } }\n',
-      source: "registry/ui-components/choice_picker/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The label for the group of options."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "multipleSelection",
-              "mutuallyExclusive"
-            ],
-            default: "mutuallyExclusive",
-            description: "A hint for how the choice picker should be displayed and behave."
-          },
-          options: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                label: {
-                  $ref: "#/$defs/DynamicString",
-                  description: "The text to display for this option."
-                },
-                value: {
-                  type: "string",
-                  description: "The stable value associated with this option."
-                }
-              },
-              required: [
-                "label",
-                "value"
-              ],
-              additionalProperties: false
-            },
-            description: "The list of available options to choose from."
-          },
-          value: {
-            $ref: "#/$defs/DynamicStringList",
-            description: "The list of currently selected values. This should be bound to a string array in the data model."
-          },
-          displayStyle: {
-            type: "string",
-            enum: [
-              "checkbox",
-              "chips"
-            ],
-            default: "checkbox",
-            description: "The display style of the component."
-          },
-          filterable: {
-            type: "boolean",
-            default: false,
-            description: "If true, displays a search input to filter the options."
-          },
-          component: {
-            const: "ChoicePicker"
-          }
-        },
-        required: [
-          "id",
-          "options",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_column",
-      display_name: "\u76F4\u6392",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Column",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u4E0A\u5F80\u4E0B\u6392\u3002\u6574\u500B\u756B\u9762\u7684\u9AA8\u67B6\u901A\u5E38\u662F\u4E00\u500B\u76F4\u6392\u3002",
-      renders: "\u4E00\u6B04\uFF0C\u5B50\u5143\u4EF6\u4F9D\u5E8F\u5F80\u4E0B\u5806\uFF0Cjustify\uFF0Falign \u63A7\u5236\u9593\u8DDD\u8207\u5C0D\u9F4A\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}\uFF0C\u8CC7\u6599\u9663\u5217\u6709\u5E7E\u7B46\u5C31\u9577\u5E7E\u500B'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
-        empty: "\u7D81\u5230\u7684\u6E05\u55AE\u662F\u7A7A\u9663\u5217\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u8981\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\u8ACB\u53E6\u653E\u4E00\u500B Text\uFF09",
-        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u672C\u4F86\u5C31\u662F\u55AE\u6B04\uFF0C\u7A84\u87A2\u5E55\u4E0D\u8B8A\u5F62"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5169\u6BB5\u6587\u5B57\u4E0A\u4E0B\u6392",
-          given: '{"components":[{"id":"root","component":"Column","children":["a","b"]},{"id":"a","component":"Text","text":"\u7B2C\u4E00\u884C"},{"id":"b","component":"Text","text":"\u7B2C\u4E8C\u884C"}]}',
-          then_contains: "\u7B2C\u4E8C\u884C"
-        },
-        {
-          scenario: "\u7528\u8CC7\u6599\u9663\u5217\u9577\u51FA\u5B50\u5143\u4EF6",
-          given: '{"components":[{"id":"root","component":"Column","children":{"componentId":"item","path":"/items"}},{"id":"item","component":"Text","text":{"path":"name"}}],"data":{"items":[{"name":"\u7532"},{"name":"\u4E59"}]}}',
-          then_contains: "\u4E59"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "column",
-        "stack"
-      ],
-      example: '{ "id": "page", "component": "Column", "children": ["title", "list"] }\n',
-      source: "registry/ui-components/column/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "spaceBetween",
-              "spaceAround",
-              "spaceEvenly",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "start",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
-          },
-          component: {
-            const: "Column"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_data_table",
-      display_name: "\u8868\u683C",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "DataTable",
-        implementation: "arcrun"
-      },
-      description: "\u552F\u8B80\u8868\u683C\uFF1A\u5BA3\u544A\u6B04\u4F4D\uFF0C\u6BCF\u5217\u4E00\u500B\u7269\u4EF6\u3002\u5132\u5B58\u683C\u53EF\u4EE5\u662F\u5B57\u4E32\u3001\u6578\u5B57\uFF0C\u6216 {text, tone} \u986F\u793A\u6210\u72C0\u614B\u6A19\u7C64\u3002\u7528\u5728\u6307\u6A19\u6E05\u55AE\u3001\u5BE6\u9A57\u6E05\u55AE\u3001\u6AA2\u67E5\u8868\u9019\u985E\u8981\u4E26\u6392\u6BD4\u8F03\u7684\u8CC7\u6599\u3002",
-      renders: "\u6709\u8868\u982D\u7684\u8868\u683C\uFF1B\u6B04\u4F4D mono=true \u7528\u7B49\u5BEC\u6578\u5B57\u5B57\u578B\u3001align=right \u9760\u53F3\uFF1B\u5132\u5B58\u683C\u662F {text, tone} \u6642\u986F\u793A\u6210\u6A19\u7C64\u3002\u6240\u6709\u6587\u5B57\u8DF3\u812B\u5F8C\u624D\u986F\u793A\u3002\u6B04\u4F4D\u6BD4\u5BB9\u5668\u5BEC\u6642\u8868\u683C\u6A6B\u5411\u6372\u52D5\u3002\u6C92\u6709\u4EFB\u4F55\u5217\u6642\u986F\u793A emptyText\uFF08\u9810\u8A2D\u300C\u6C92\u6709\u8CC7\u6599\u300D\uFF09\u3002",
-      data_inputs: [
-        {
-          name: "columns",
-          what: "\u6B04\u4F4D [{key, title, mono?, align?}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE"
-        },
-        {
-          name: "rows",
-          what: "\u5217\u8CC7\u6599\uFF1A\u6BCF\u5217\u4E00\u500B\u7269\u4EF6\uFF0C\u6B04\u503C\u662F\u5B57\u4E32\uFF0F\u6578\u5B57\uFF0C\u6216 {text, tone}\uFF1B\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u9663\u5217"
-        },
-        {
-          name: "emptyText",
-          what: "\u6C92\u6709\u4EFB\u4F55\u5217\u6642\u986F\u793A\u7684\u5B57"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "rows \u9084\u6C92\u5230\u6642\u986F\u793A emptyText",
-        empty: "\u7A7A\u9663\u5217\u986F\u793A emptyText\uFF0C\u4E0D\u756B\u7A7A\u8868\u683C",
-        error: "\u4E0D\u662F\u7269\u4EF6\u7684\u5217\u7565\u904E\uFF1B\u7F3A\u67D0\u6B04\u7684\u5132\u5B58\u683C\u662F\u7A7A\u7684\uFF1B\u6C92\u6709\u4EFB\u4F55\u6B04\u4F4D\u6642\u986F\u793A\u300C\u6C92\u6709\u6B04\u4F4D\u300D",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
-        narrow: "\u8868\u683C\u5916\u6846\u6A6B\u5411\u6372\u52D5\uFF0C\u6B04\u4F4D\u4E0D\u64E0\u6210\u4E00\u5718"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5169\u6B04\u5169\u5217\uFF0C\u5176\u4E2D\u4E00\u683C\u662F\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"DataTable","columns":[{"key":"name","title":"\u6307\u6A19"},{"key":"state","title":"\u72C0\u614B"}],"rows":[{"name":"Google \u6BCF\u9031\u66DD\u5149","state":{"text":"\u7D05\u71C8","tone":"red"}},{"name":"\u96FB\u5B50\u5831\u8A02\u6236","state":"\u6B63\u5E38"}]}]}',
-          then_contains: "\u96FB\u5B50\u5831\u8A02\u6236"
-        },
-        {
-          scenario: "\u6C92\u6709\u5217\u6642\u986F\u793A emptyText",
-          given: '{"components":[{"id":"root","component":"DataTable","columns":[{"key":"a","title":"A"}],"rows":[],"emptyText":"\u76EE\u524D\u6C92\u6709\u5BE6\u9A57"}]}',
-          then_contains: "\u76EE\u524D\u6C92\u6709\u5BE6\u9A57"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "table",
-        "monitor",
-        "list"
-      ],
-      example: '{ "id": "metrics", "component": "DataTable", "columns": { "path": "cols" }, "rows": { "path": "rows" } }\n',
-      source: "registry/ui-components/data_table/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          columns: {
-            description: "\u6B04\u4F4D\u5BA3\u544A [{key, title, mono, align}]",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    key: {
-                      type: "string"
-                    },
-                    title: {
-                      type: "string"
-                    },
-                    mono: {
-                      type: "boolean"
-                    },
-                    align: {
-                      type: "string",
-                      enum: [
-                        "left",
-                        "right"
-                      ]
-                    }
-                  },
-                  required: [
-                    "key"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u6B04"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          rows: {
-            description: "\u5217\u8CC7\u6599\uFF1A\u6BCF\u5217\u4E00\u500B\u7269\u4EF6\uFF0C\u6B04\u503C\u662F\u5B57\u4E32\uFF0F\u6578\u5B57\uFF0C\u6216 {text, tone} \u986F\u793A\u6210\u6A19\u7C64",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  additionalProperties: true
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          emptyText: {
-            description: "\u6C92\u6709\u4EFB\u4F55\u5217\u6642\u986F\u793A\u7684\u5B57",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          component: {
-            const: "DataTable"
-          }
-        },
-        required: [
-          "id",
-          "columns",
-          "rows",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_date_time_input",
-      display_name: "\u65E5\u671F\u6642\u9593\u8F38\u5165",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "DateTimeInput",
-        implementation: "a2ui-basic"
-      },
-      description: "\u8B93\u4EBA\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u65E5\u671F\u52A0\u6642\u9593\uFF08\u8ACB\u5047\u8D77\u8A16\u3001\u9810\u7D04\u6642\u6BB5\uFF09\u3002\u7D50\u679C\u4EE5 ISO 8601 \u5B57\u4E32\u5BEB\u9032\u8CC7\u6599\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
-      renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u65E5\u671F\uFF0F\u6642\u9593\u6311\u9078\u6B04\u3002enableDate\uFF0FenableTime \u6C7A\u5B9A\u53EF\u6311\u65E5\u671F\u3001\u6642\u9593\u6216\u5169\u8005\u3002",
-      data_inputs: [
-        {
-          name: "label",
-          what: "\u6B04\u4F4D\u6A19\u7C64"
-        },
-        {
-          name: "value",
-          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u6311\u5230\u7684\u503C\uFF08ISO 8601 \u5B57\u4E32\uFF09\u5BEB\u5230\u9019\u88E1'
-        },
-        {
-          name: "enableDate",
-          what: "true \u624D\u80FD\u6311\u65E5\u671F\uFF08\u9810\u8A2D false\uFF0C\u8981\u65E5\u671F\u8ACB\u660E\u5BEB true\uFF09"
-        },
-        {
-          name: "enableTime",
-          what: "true \u624D\u80FD\u6311\u6642\u9593"
-        },
-        {
-          name: "min / max",
-          what: "\u53EF\u6311\u7BC4\u570D\u7684\u4E0B\u9650\uFF0F\u4E0A\u9650\uFF08ISO 8601\uFF09\uFF0C\u9078\u586B"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u7ACB\u5373\u53EF\u6311",
-        empty: "\u6C92\u6311\u6642 value \u662F\u7A7A\u5B57\u4E32",
-        error: "checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u65E5\u671F\u6B04\u5E36\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u958B\u59CB\u65E5\u671F","enableDate":true,"value":{"path":"/form/start"}}],"data":{"form":{"start":""}}}',
-          then_contains: "\u958B\u59CB\u65E5\u671F"
-        },
-        {
-          scenario: "\u65E5\u671F\u52A0\u6642\u9593\u6B04\u5E36\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"DateTimeInput","label":"\u9810\u7D04\u6642\u6BB5","enableDate":true,"enableTime":true,"value":{"path":"/form/at"}}],"data":{"form":{"at":""}}}',
-          then_contains: "\u9810\u7D04\u6642\u6BB5"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "input",
-        "form",
-        "date",
-        "time",
-        "\u65E5\u671F",
-        "\u6642\u9593"
-      ],
-      example: '{ "id": "f-start", "component": "DateTimeInput", "label": "\u958B\u59CB\u65E5\u671F", "enableDate": true, "value": { "path": "/form/start" } }\n',
-      source: "registry/ui-components/date_time_input/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          value: {
-            $ref: "#/$defs/DynamicString",
-            description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
-          },
-          enableDate: {
-            type: "boolean",
-            default: false,
-            description: "If true, allows the user to select a date."
-          },
-          enableTime: {
-            type: "boolean",
-            default: false,
-            description: "If true, allows the user to select a time."
-          },
-          min: {
-            $ref: "#/$defs/DynamicString",
-            description: "The minimum allowed date/time in ISO 8601 format."
-          },
-          max: {
-            $ref: "#/$defs/DynamicString",
-            description: "The maximum allowed date/time in ISO 8601 format."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text label for the input field."
-          },
-          component: {
-            const: "DateTimeInput"
-          }
-        },
-        required: [
-          "id",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_list",
-      display_name: "\u6E05\u55AE",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "List",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u4E00\u500B\u8CC7\u6599\u9663\u5217\u5C55\u958B\u6210\u91CD\u8907\u7684\u9805\u76EE\uFF1A\u6BCF\u4E00\u7B46\u8CC7\u6599\u9577\u4E00\u500B\u540C\u6A23\u7684\u6A23\u677F\uFF08\u4F8B\u5982\u6BCF\u689D\u5DE5\u4F5C\u6D41\u4E00\u5F35\u5361\uFF09\u3002",
-      renders: "\u4E00\u4E32\u76F4\u5411\uFF08\u6216\u6A6B\u5411\uFF09\u6392\u5217\u7684\u9805\u76EE\uFF0C\u6BCF\u4E00\u9805\u90FD\u662F\u540C\u4E00\u500B\u6A23\u677F\u5143\u4EF6\uFF0C\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\u8B80\u90A3\u4E00\u7B46\u7684\u6B04\u4F4D\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u6A23\u677F {"componentId": "\u6BCF\u4E00\u9805\u7684\u5143\u4EF6 id", "path": "/\u8CC7\u6599\u9663\u5217"}\uFF1B\u6A23\u677F\u88E1\u7684 {"path": "name"} \u8B80\u7684\u662F\u90A3\u4E00\u7B46\u7684 name'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE",
-        empty: "\u7A7A\u9663\u5217\u6642\u4E0D\u756B\u4EFB\u4F55\u9805\u76EE\uFF08\u300C\u6C92\u6709\u8CC7\u6599\u300D\u7684\u5B57\u8981\u53E6\u653E\u4E00\u500B Text\uFF0C\u756B\u9762\u5B9A\u7FA9\u81EA\u5DF1\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A\uFF09",
-        error: "\u67D0\u4E00\u7B46\u7F3A\u6B04\u4F4D\u6642\uFF0C\u90A3\u4E00\u7B46\u7684\u5C0D\u61C9\u6587\u5B57\u662F\u7A7A\u7684\uFF0C\u5176\u4ED6\u7B46\u7167\u5E38",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u76F4\u5411\u6E05\u55AE\u4E0D\u53D7\u5F71\u97FF\uFF1B\u6A6B\u5411\u6E05\u55AE\u6703\u51FA\u73FE\u6C34\u5E73\u6372\u52D5"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u6BCF\u7B46\u8CC7\u6599\u9577\u4E00\u9805",
-          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"row","path":"/workflows"}},{"id":"row","component":"Text","text":{"path":"name"}}],"data":{"workflows":[{"name":"notify_daily"},{"name":"ingest_docs"}]}}',
-          then_contains: "ingest_docs"
-        },
-        {
-          scenario: "\u6A23\u677F\u53EF\u4EE5\u662F\u4E00\u5F35\u5361",
-          given: '{"components":[{"id":"root","component":"List","children":{"componentId":"card","path":"/items"}},{"id":"card","component":"Card","child":"t"},{"id":"t","component":"Text","text":{"path":"title"}}],"data":{"items":[{"title":"\u7B2C\u4E00\u5F35\u5361"}]}}',
-          then_contains: "\u7B2C\u4E00\u5F35\u5361"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "list",
-        "repeat",
-        "collection"
-      ],
-      example: '{ "id": "wf-list", "component": "List", "children": { "componentId": "wf-card", "path": "/workflows" } }\n',
-      source: "registry/ui-components/list/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
-          },
-          direction: {
-            type: "string",
-            enum: [
-              "vertical",
-              "horizontal"
-            ],
-            default: "vertical",
-            description: "The direction in which the list items are laid out."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis."
-          },
-          component: {
-            const: "List"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_pill_row",
-      display_name: "\u6A19\u7C64\u5217",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "PillRow",
-        implementation: "arcrun"
-      },
-      description: "\u4E00\u6392\u72C0\u614B\u6A19\u7C64\uFF08\u4F8B\u5982\u300C\u89C0\u5BDF\u683C\u505C\u64FA\u300D\u300C\u6AA2\u67E5\u8868 2/9\u300D\uFF09\uFF0C\u653E\u4E0D\u4E0B\u6703\u81EA\u5DF1\u63DB\u884C\u3002\u6BCF\u500B\u6A19\u7C64\u7684\u6587\u5B57\u8207\u984F\u8272\u90FD\u4F86\u81EA\u8CC7\u6599\u3002",
-      renders: "\u6A6B\u5411\u6392\u5217\u3001\u653E\u4E0D\u4E0B\u5C31\u63DB\u884C\u7684\u5C0F\u5713\u89D2\u6A19\u7C64\uFF1B\u6BCF\u500B\u6A19\u7C64\u540C StatusPill \u7684 pill \u6A23\u5F0F\u3002items \u7684\u9805\u76EE\u4E0D\u662F\u7269\u4EF6\u6642\u7576\u4F5C\u7D14\u6587\u5B57\u7070\u8272\u6A19\u7C64\u3002",
-      data_inputs: [
-        {
-          name: "items",
-          what: '\u6A19\u7C64\u6E05\u55AE [{text, tone}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE\uFF08{"path":"pills"}\uFF09'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u6E05\u55AE\u9084\u6C92\u5230\u5C31\u4E0D\u756B\u4EFB\u4F55\u6A19\u7C64",
-        empty: "\u7A7A\u6E05\u55AE\u6642\u4EC0\u9EBC\u90FD\u4E0D\u756B\uFF08\u9AD8\u5EA6\u70BA\u96F6\uFF09",
-        error: "\u6E05\u55AE\u88E1\u5F62\u72C0\u4E0D\u5C0D\u7684\u9805\u76EE\u7576\u7D14\u6587\u5B57\u7070\u8272\u6A19\u7C64\uFF1B\u4E0D\u662F\u9663\u5217\u6642\u6574\u6392\u4E0D\u756B",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
-        narrow: "\u81EA\u52D5\u63DB\u884C\uFF0C\u4E0D\u6703\u6A6B\u5411\u6372\u52D5"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5169\u9846\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"PillRow","items":[{"text":"\u89C0\u5BDF\u683C\u505C\u64FA","tone":"red"},{"text":"\u6AA2\u67E5\u8868 2/9","tone":"yellow"}]}]}',
-          then_contains: "\u6AA2\u67E5\u8868 2/9"
-        },
-        {
-          scenario: "\u6A19\u7C64\u6E05\u55AE\u7D81\u8CC7\u6599\u6A21\u578B",
-          given: '{"components":[{"id":"root","component":"PillRow","items":{"path":"/pills"}}],"data":{"pills":[{"text":"\u5FC3\u8DF3\u6B63\u5E38","tone":"green"}]}}',
-          then_contains: "\u5FC3\u8DF3\u6B63\u5E38"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "status",
-        "badge",
-        "tags",
-        "monitor"
-      ],
-      example: '{ "id": "pills", "component": "PillRow", "items": { "path": "pills" } }\n',
-      source: "registry/ui-components/pill_row/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          items: {
-            description: "\u6A19\u7C64\u6E05\u55AE [{text, tone}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    text: {
-                      type: "string"
-                    },
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "yellow",
-                        "red",
-                        "gray",
-                        "teal"
-                      ]
-                    }
-                  },
-                  required: [
-                    "text"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u500B\u6A19\u7C64"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          component: {
-            const: "PillRow"
-          }
-        },
-        required: [
-          "id",
-          "items",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_row",
-      display_name: "\u6A6B\u6392",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Row",
-        implementation: "a2ui-basic"
-      },
-      description: "\u628A\u5E7E\u500B\u5143\u4EF6\u7531\u5DE6\u5F80\u53F3\u6392\uFF0C\u4F8B\u5982\u300C\u540D\u7A31\uFF5C\u6392\u7A0B\uFF5C\u6700\u8FD1\u4E00\u6B21\u7D50\u679C\u300D\u653E\u5728\u540C\u4E00\u884C\u3002",
-      renders: "\u4E00\u5217\uFF0C\u5B50\u5143\u4EF6\u5DE6\u53F3\u4E26\u6392\uFF0Cjustify \u6C7A\u5B9A\u64E0\u5728\u4E00\u8D77\u6216\u63A8\u5230\u5169\u7AEF\uFF08spaceBetween\uFF09\u3002",
-      data_inputs: [
-        {
-          name: "children",
-          what: '\u5B50\u5143\u4EF6\u7684 id \u6E05\u55AE\uFF1B\u6216\u6A23\u677F {"componentId": "\u2026", "path": "/\u6E05\u55AE"}'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u5B50\u5143\u4EF6\u5404\u81EA\u986F\u793A",
-        empty: "\u6C92\u6709\u5B50\u5143\u4EF6\u6642\u662F\u4E00\u689D\u7A7A\u5217",
-        error: "\u67D0\u500B\u5B50\u5143\u4EF6 id \u4E0D\u5B58\u5728\u6642\u53EA\u5C11\u90A3\u4E00\u683C",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u5B50\u5143\u4EF6\u5BEC\u5EA6\u7E2E\u5C0F\uFF1B\u5167\u5BB9\u592A\u9577\u6642\u6587\u5B57\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u540D\u7A31\u8207\u72C0\u614B\u4E26\u6392",
-          given: '{"components":[{"id":"root","component":"Row","children":["n","s"],"justify":"spaceBetween"},{"id":"n","component":"Text","text":"\u6BCF\u65E5\u5F59\u6574"},{"id":"s","component":"Text","text":"success"}]}',
-          then_contains: "\u6BCF\u65E5\u5F59\u6574"
-        },
-        {
-          scenario: "\u4E26\u6392\u7684\u7B2C\u4E8C\u683C\u4E5F\u756B\u5F97\u51FA\u4F86",
-          given: '{"components":[{"id":"root","component":"Row","children":["n","s"]},{"id":"n","component":"Text","text":"A"},{"id":"s","component":"Text","text":"\u53F3\u908A\u90A3\u683C"}]}',
-          then_contains: "\u53F3\u908A\u90A3\u683C"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "layout",
-        "row",
-        "inline"
-      ],
-      example: '{ "id": "wf-head", "component": "Row", "children": ["wf-name", "wf-last"], "justify": "spaceBetween" }\n',
-      source: "registry/ui-components/row/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "spaceAround",
-              "spaceBetween",
-              "spaceEvenly",
-              "start",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
-          },
-          component: {
-            const: "Row"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_sparkline",
-      display_name: "\u8DA8\u52E2\u5C0F\u5716",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Sparkline",
-        implementation: "arcrun"
-      },
-      description: "\u4E00\u4E32\u6578\u5B57\u7684\u8FF7\u4F60\u6298\u7DDA\u5716\uFF08\u820A\u5230\u65B0\uFF09\uFF0C\u4E00\u773C\u770B\u51FA\u6700\u8FD1\u662F\u5728\u5347\u3001\u964D\u9084\u662F\u8CBC\u5730\u677F\u3002\u4E0D\u986F\u793A\u5EA7\u6A19\u8207\u6578\u503C\uFF0C\u8981\u770B\u6578\u5B57\u8ACB\u642D\u914D ThresholdChart \u6216 DataTable\u3002",
-      renders: "\u4E00\u689D\u5E36\u6DE1\u5E95\u8272\u7684\u6298\u7DDA\uFF0C\u6700\u5F8C\u4E00\u9EDE\u6A19\u6210\u5BE6\u5FC3\u5713\uFF1B\u7E31\u8EF8\u5F9E 0 \u5230\u6700\u5927\u503C\u3002tone \u6C7A\u5B9A\u7DDA\u8207\u5E95\u8272\uFF08green\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF09\u3002\u5C11\u65BC\u5169\u500B\u6709\u6548\u6578\u5B57\u6642\u986F\u793A\u300C\u8CC7\u6599\u4E0D\u8DB3\u300D\u3002\u5BEC\u5EA6\u8DDF\u8457\u5BB9\u5668\u3001\u6700\u5BEC 240px\u3002",
-      data_inputs: [
-        {
-          name: "values",
-          what: '\u6578\u5B57\u9663\u5217\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u9663\u5217\uFF08{"path":"trend"}\uFF09\uFF1B\u5B57\u4E32\u5F62\u7684\u6578\u5B57\u6703\u88AB\u8F49\u6210\u6578\u5B57\uFF0C\u8F49\u4E0D\u6210\u7684\u7565\u904E'
-        },
-        {
-          name: "tone",
-          what: "\u7DDA\u8207\u5E95\u8272\uFF0C\u9810\u8A2D gray"
-        },
-        {
-          name: "label",
-          what: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E\uFF08\u4F8B\uFF1A\u6700\u8FD1 12 \u9031 Google \u66DD\u5149\uFF09"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u9663\u5217\u9084\u6C92\u5230\u6642\u986F\u793A\u300C\u8CC7\u6599\u4E0D\u8DB3\u300D",
-        empty: "\u7A7A\u9663\u5217\u986F\u793A\u300C\u8CC7\u6599\u4E0D\u8DB3\u300D\uFF0C\u4E0D\u5831\u932F",
-        error: "\u9663\u5217\u88E1\u4E0D\u662F\u6578\u5B57\u7684\u9805\u76EE\u7565\u904E\uFF1B\u5269\u4E0D\u5230\u5169\u500B\u5C31\u986F\u793A\u300C\u8CC7\u6599\u4E0D\u8DB3\u300D",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
-        narrow: "\u5BEC\u5EA6\u96A8\u5BB9\u5668\u7E2E\u5C0F\uFF08viewBox \u7B49\u6BD4\uFF09\uFF0C\u4E0D\u6372\u52D5"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u6709\u8DA8\u52E2\u6642\u756B\u51FA\u5E36\u8AAA\u660E\u7684\u5716",
-          given: '{"components":[{"id":"root","component":"Column","children":["s","t"]},{"id":"s","component":"Sparkline","values":[2700,2600,1800,900,100,0],"tone":"red","label":"\u6700\u8FD1\u516D\u9031\u66DD\u5149"},{"id":"t","component":"Text","text":"\u8DA8\u52E2\u5716\u5DF2\u756B"}]}',
-          then_contains: "\u8DA8\u52E2\u5716\u5DF2\u756B"
-        },
-        {
-          scenario: "\u8CC7\u6599\u4E0D\u8DB3\u6642\u76F4\u8AAA",
-          given: '{"components":[{"id":"root","component":"Sparkline","values":[5]}]}',
-          then_contains: "\u8CC7\u6599\u4E0D\u8DB3"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "chart",
-        "trend",
-        "sparkline",
-        "monitor"
-      ],
-      example: '{ "id": "trend", "component": "Sparkline", "values": { "path": "trend" }, "tone": { "path": "tone" } }\n',
-      source: "registry/ui-components/sparkline/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          values: {
-            description: "\u4E00\u4E32\u6578\u5B57\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u9663\u5217",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: [
-                    "number",
-                    "string"
-                  ]
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          tone: {
-            description: "\u7DDA\u8207\u5E95\u8272\uFF0C\u9810\u8A2D gray",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          label: {
-            description: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E\uFF08\u4F8B\u300C\u6700\u8FD1 12 \u9031 Google \u66DD\u5149\u300D\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          component: {
-            const: "Sparkline"
-          }
-        },
-        required: [
-          "id",
-          "values",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_status_pill",
-      display_name: "\u71C8\u865F\u8207\u72C0\u614B\u6A19\u7C64",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "StatusPill",
-        implementation: "arcrun"
-      },
-      description: "\u4E00\u9846\u71C8\u865F\u6216\u4E00\u500B\u72C0\u614B\u6A19\u7C64\uFF08\u7DA0\uFF0F\u9EC3\uFF0F\u7D05\uFF0F\u7070\uFF0F\u9752\uFF09\u3002\u984F\u8272\u7531\u8CC7\u6599\u6C7A\u5B9A\uFF0C\u5143\u4EF6\u4E0D\u5224\u65B7\u4EFB\u4F55\u4E8B\uFF1A\u4EC0\u9EBC\u7B97\u7D05\u3001\u4EC0\u9EBC\u7B97\u505C\u64FA\uFF0C\u662F\u7522\u751F\u8CC7\u6599\u7684\u5DE5\u4F5C\u6D41\u7684\u4E8B\u3002",
-      renders: "variant=pill\uFF08\u9810\u8A2D\uFF09\uFF1A\u6709\u6DE1\u5E95\u8272\u7684\u5C0F\u5713\u89D2\u6A19\u7C64\uFF0C\u5B57\u662F text\uFF1Bvariant=lamp\uFF1A18px \u7684\u5BE6\u5FC3\u5713\u71C8\uFF0C\u5F8C\u9762\u63A5 text\uFF08\u53EF\u7701\u7565\uFF0C\u53EA\u5269\u5713\u71C8\uFF09\u3002tone \u6C7A\u5B9A\u984F\u8272\uFF1Agreen\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF0C\u6C92\u7D66\u6216\u4E0D\u8A8D\u5F97\u4E00\u5F8B\u7576 gray\u3002\u984F\u8272\u8D70 Portal \u8A2D\u8A08 token\uFF0C\u6DFA\u8272\u6DF1\u8272\u81EA\u52D5\u8DDF\u8457\u63DB\u3002",
-      data_inputs: [
-        {
-          name: "text",
-          what: "\u6A19\u7C64\u4E0A\u7684\u5B57\uFF08\u5B57\u4E32\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u7684\u8DEF\u5F91\uFF09"
-        },
-        {
-          name: "tone",
-          what: 'green\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF08\u5B57\u4E32\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u7684\u8DEF\u5F91\uFF0C\u4F8B\u5982 {"path":"lamp"}\uFF09'
-        },
-        {
-          name: "variant",
-          what: "pill \u6216 lamp"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642 text \u662F\u7A7A\u7684\uFF0C\u53EA\u51FA\u73FE\u4E00\u9846\u7070\u8272\u5C0F\u6A19\u7C64\uFF1B\u547C\u53EB\u7AEF\u53EF\u5148\u4E0D\u639B",
-        empty: "text \u7A7A\u4E14\u662F lamp \u6642\u53EA\u756B\u5713\u71C8\uFF1Bpill \u4E14 text \u7A7A\u6642\u756B\u4E00\u9846\u6C92\u6709\u5B57\u7684\u5C0F\u6A19\u7C64",
-        error: "tone \u4E0D\u8A8D\u5F97\u6642\u7576 gray\uFF0C\u4E0D\u5831\u932F",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
-        narrow: "\u6A19\u7C64\u4E0D\u63DB\u884C\u3001\u6700\u5BEC\u5230\u5BB9\u5668\uFF1B\u5B57\u592A\u9577\u6642\u7531\u5BB9\u5668\u622A\u65B7\u6216\u6372\u52D5\uFF0C\u4E0D\u6490\u7834\u7248\u9762"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u7D05\u8272\u6A19\u7C64\u986F\u793A\u6587\u5B57",
-          given: '{"components":[{"id":"root","component":"StatusPill","text":"\u6307\u6A19\u8DCC\u7834\u9580\u6ABB","tone":"red"}]}',
-          then_contains: "\u6307\u6A19\u8DCC\u7834\u9580\u6ABB"
-        },
-        {
-          scenario: "\u71C8\u865F\u7D81\u8CC7\u6599\u6A21\u578B",
-          given: '{"components":[{"id":"root","component":"StatusPill","variant":"lamp","text":{"path":"/name"},"tone":{"path":"/lamp"}}],"data":{"name":"\u81EA\u6211\u884C\u92B7\u5167\u5BB9\u9589\u74B0","lamp":"yellow"}}',
-          then_contains: "\u81EA\u6211\u884C\u92B7\u5167\u5BB9\u9589\u74B0"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "status",
-        "lamp",
-        "badge",
-        "monitor"
-      ],
-      example: '{ "id": "lamp", "component": "StatusPill", "variant": "lamp", "text": { "path": "name" }, "tone": { "path": "lamp" } }\n',
-      source: "registry/ui-components/status_pill/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          text: {
-            description: "\u6A19\u7C64\u4E0A\u7684\u5B57\uFF1Bvariant=lamp \u6642\u53EF\u7701\u7565\uFF08\u53EA\u6709\u5713\u9EDE\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          tone: {
-            description: "green\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF0C\u9810\u8A2D gray\uFF1B\u984F\u8272\u7531\u8CC7\u6599\u6C7A\u5B9A\uFF0C\u5143\u4EF6\u4E0D\u5224\u65B7",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          variant: {
-            description: "pill\uFF08\u9810\u8A2D\uFF0C\u6709\u5E95\u8272\u7684\u5C0F\u6A19\u7C64\uFF09\u6216 lamp\uFF0818px \u5713\u71C8\u52A0\u5B57\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          component: {
-            const: "StatusPill"
-          }
-        },
-        required: [
-          "id",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_text",
-      display_name: "\u6587\u5B57",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "Text",
-        implementation: "a2ui-basic"
-      },
-      description: "\u986F\u793A\u4E00\u6BB5\u6587\u5B57\uFF1A\u6A19\u984C\u3001\u5167\u6587\u3001\u6578\u5B57\u3001\u8A3B\u8A18\u3002\u5167\u5BB9\u53EF\u4EE5\u5BEB\u6B7B\uFF0C\u4E5F\u53EF\u4EE5\u7D81\u5230\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\u3002",
-      renders: "\u4E00\u884C\u6216\u4E00\u6BB5\u6587\u5B57\uFF0Cvariant \u6C7A\u5B9A\u5927\u5C0F\uFF08h1\u2013h5 \u6A19\u984C\u3001body \u5167\u6587\u3001caption \u5C0F\u5B57\u8A3B\u8A18\uFF09\u3002",
-      data_inputs: [
-        {
-          name: "text",
-          what: '\u8981\u986F\u793A\u7684\u5B57\u3002\u5BEB\u6B7B\u5C31\u662F\u5B57\u4E32\uFF1B\u8981\u5F9E\u8CC7\u6599\u4F86\u5C31\u5BEB {"path": "/\u6B04\u4F4D"}\uFF0C\u5728 List \u7684\u6A23\u677F\u88E1\u7528\u76F8\u5C0D\u8DEF\u5F91\uFF08\u4F8B {"path": "name"}\uFF09'
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u8CC7\u6599\u9084\u6C92\u5230\u6642\u986F\u793A\u7A7A\u5B57\u4E32\uFF0C\u4E0D\u986F\u793A undefined",
-        empty: "\u7D81\u5230\u7684\u6B04\u4F4D\u4E0D\u5B58\u5728\u6642\u986F\u793A\u7A7A\u5B57\u4E32",
-        error: "\u4E0D\u6703\u4E1F\u932F\uFF1B\u756B\u4E0D\u51FA\u4F86\u7684\u503C\u4E00\u5F8B\u7576\u7A7A\u5B57\u4E32",
-        disabled: "\u6587\u5B57\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B",
-        narrow: "\u81EA\u52D5\u63DB\u884C"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5BEB\u6B7B\u7684\u6A19\u984C",
-          given: '{"components":[{"id":"root","component":"Text","text":"\u5DE5\u4F5C\u6D41","variant":"h2"}]}',
-          then_contains: "\u5DE5\u4F5C\u6D41"
-        },
-        {
-          scenario: "\u7D81\u8CC7\u6599\u7684\u6578\u5B57",
-          given: '{"components":[{"id":"root","component":"Text","text":{"path":"/count"}}],"data":{"count":"\u5171 3 \u689D"}}',
-          then_contains: "\u5171 3 \u689D"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "text",
-        "label",
-        "heading"
-      ],
-      example: '{ "id": "wf-name", "component": "Text", "text": { "path": "name" }, "variant": "h3" }\n',
-      source: "registry/ui-components/text/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          text: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "h1",
-              "h2",
-              "h3",
-              "h4",
-              "h5",
-              "caption",
-              "body"
-            ],
-            default: "body",
-            description: "A hint for the base text style."
-          },
-          component: {
-            const: "Text"
-          }
-        },
-        required: [
-          "id",
-          "text",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_text_field",
-      display_name: "\u6587\u5B57\u8F38\u5165\u6846",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "TextField",
-        implementation: "a2ui-basic"
-      },
-      description: "\u8B93\u4EBA\u8F38\u5165\u4E00\u6BB5\u5B57\uFF08\u55AE\u884C\u3001\u591A\u884C\u3001\u6578\u5B57\u3001\u5BC6\u78BC\uFF09\u3002\u8F38\u5165\u7684\u503C\u76F4\u63A5\u5BEB\u9032\u8CC7\u6599\u4E0A\u7684\u67D0\u500B\u6B04\u4F4D\uFF0C\u9001\u51FA\u6642\u7531\u8868\u55AE\u7684 Button \u5E36\u8D70\u3002\u9019\u662F\u300C\u8868\u55AE\u300D\u7684\u57FA\u672C\u7A4D\u6728\u3002",
-      renders: "\u4E00\u500B\u5E36\u6A19\u7C64\u7684\u8F38\u5165\u6846\u3002variant \u6C7A\u5B9A\u5F62\u72C0\uFF1AshortText \u55AE\u884C\u3001longText \u591A\u884C\u3001number \u6578\u5B57\u3001obscured \u5BC6\u78BC\u3002",
-      data_inputs: [
-        {
-          name: "label",
-          what: "\u8F38\u5165\u6846\u7684\u6A19\u7C64\uFF08\u6B04\u4F4D\u540D\u7A31\uFF0C\u7D66\u4EBA\u770B\u7684\u5B57\uFF09"
-        },
-        {
-          name: "value",
-          what: '{"path": "/form/\u6B04\u4F4D\u540D"}\u2014\u2014\u4EBA\u8F38\u5165\u7684\u5B57\u6703\u5BEB\u5230\u8CC7\u6599\u7684\u9019\u500B\u4F4D\u7F6E\uFF0CButton \u7684 action.context \u518D\u7528\u540C\u4E00\u500B path \u628A\u5B83\u5E36\u8D70\u3002\u5FC5\u9808\u7D81 path\uFF0C\u5BEB\u6B7B\u5B57\u4E32\u5C31\u8B8A\u6210\u4E0D\u80FD\u6539'
-        },
-        {
-          name: "variant",
-          what: "shortText\uFF08\u9810\u8A2D\uFF09\uFF0FlongText\uFF0Fnumber\uFF0Fobscured"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "\u8F38\u5165\u6846\u7ACB\u5373\u53EF\u8F38\u5165",
-        empty: "\u6C92\u6709\u503C\u6642\u986F\u793A\u6A19\u7C64\u7576\u63D0\u793A\uFF0C\u503C\u662F\u7A7A\u5B57\u4E32",
-        error: "validationRegexp \u6216 checks \u4E0D\u901A\u904E\u6642\u986F\u793A\u932F\u8AA4\u6587\u5B57\uFF0C\u9001\u51FA\u7531\u5BBF\u4E3B\u64CB",
-        disabled: "checks \u4E0D\u901A\u904E\u6642\u4E0D\u5F71\u97FF\u8F38\u5165\uFF0C\u53EA\u6A19\u932F\u8AA4",
-        narrow: "\u5BEC\u5EA6\u6490\u6EFF\u7236\u5BB9\u5668\uFF0C\u4E0D\u6703\u6490\u7834\u7248\u9762"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u8F38\u5165\u6846\u5E36\u6A19\u7C64",
-          given: '{"components":[{"id":"root","component":"TextField","label":"\u59D3\u540D","value":{"path":"/form/name"}}],"data":{"form":{"name":""}}}',
-          then_contains: "\u59D3\u540D"
-        },
-        {
-          scenario: "\u591A\u884C\u8F38\u5165\u6846",
-          given: '{"components":[{"id":"root","component":"TextField","label":"\u8ACB\u5047\u539F\u56E0","variant":"longText","value":{"path":"/form/reason"}}],"data":{"form":{"reason":""}}}',
-          then_contains: "\u8ACB\u5047\u539F\u56E0"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "input",
-        "form",
-        "text",
-        "textfield",
-        "\u8F38\u5165"
-      ],
-      example: '{ "id": "f-name", "component": "TextField", "label": "\u59D3\u540D", "value": { "path": "/form/name" } }\n',
-      source: "registry/ui-components/text_field/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text label for the input field."
-          },
-          value: {
-            $ref: "#/$defs/DynamicString",
-            description: "The value of the text field."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "longText",
-              "number",
-              "shortText",
-              "obscured"
-            ],
-            default: "shortText",
-            description: "The type of input field to display."
-          },
-          validationRegexp: {
-            type: "string",
-            description: "A regular expression used for client-side validation of the input."
-          },
-          component: {
-            const: "TextField"
-          }
-        },
-        required: [
-          "id",
-          "label",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_threshold_chart",
-      display_name: "\u9580\u6ABB\u66F2\u7DDA",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "ThresholdChart",
-        implementation: "arcrun"
-      },
-      description: "\u9010\u671F\u9577\u689D\u5716\u52A0\u4E0A\u9010\u671F\u9580\u6ABB\u865B\u7DDA\uFF1A\u8DCC\u7834\u9580\u6ABB\u7684\u90A3\u5E7E\u671F\u6A19\u9EC3\u6216\u7D05\uFF0C\u53EF\u5728\u67D0\u4E00\u671F\u52A0\u4E00\u53E5\u8A3B\u8A18\uFF08\u4F8B\u5982\u300C\u642C\u5BB6 404\u300D\uFF09\u3002\u54EA\u4E00\u671F\u7B97\u9EC3\u3001\u7B97\u7D05\u3001\u9580\u6ABB\u662F\u591A\u5C11\uFF0C\u5168\u7531\u8CC7\u6599\u8AAA\u4E86\u7B97\uFF0C\u5143\u4EF6\u4E0D\u5224\u65B7\u3002",
-      renders: "\u7E31\u8EF8\u81EA\u52D5\u53D6\u597D\u770B\u7684\u523B\u5EA6\uFF1B\u6BCF\u4E00\u671F\u4E00\u6839\u9577\u689D\uFF0C\u984F\u8272\u7531\u8A72\u671F\u7684 level \u6C7A\u5B9A\uFF08green \u7528\u9752\u8272\u3001yellow\u3001red\u3001gray\uFF1B\u6C92\u7D66 level \u7684\u662F\u6DE1\u8272\uFF0C\u8868\u793A\u9084\u6C92\u6709\u57FA\u7DDA\u53EF\u6BD4\uFF09\uFF1B\u6709 threshold \u7684\u671F\u9023\u6210\u7D05\u8272\u865B\u7DDA\uFF1Bnotes \u5728\u5C0D\u4E0A label \u7684\u90A3\u4E00\u671F\u756B\u4E00\u689D\u8C4E\u7DDA\u8207\u4E00\u53E5\u8A71\uFF1Btick \u6709\u5B57\u7684\u90A3\u4E00\u671F\uFF0C\u5E95\u4E0B\u6A19\u51FA\u8A72\u5B57\uFF08\u4F8B\u5982\u6708\u4EFD\uFF09\uFF1Blegend \u5728\u5716\u4E0B\u65B9\u756B\u5716\u4F8B\u3002\u6ED1\u904E\u9577\u689D\u986F\u793A\u8A72\u671F\u7684\u6578\u5B57\u8207\u7D05\u7DDA\u3002",
-      data_inputs: [
-        {
-          name: "points",
-          what: "\u9010\u671F\u8CC7\u6599\uFF08\u820A\u2192\u65B0\uFF09\uFF1A[{label, value, level?, threshold?, tick?}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE"
-        },
-        {
-          name: "notes",
-          what: "\u8A3B\u8A18 [{at, text}]\uFF0Cat \u5C0D\u4E0A\u67D0\u4E00\u671F\u7684 label"
-        },
-        {
-          name: "legend",
-          what: "\u5716\u4F8B [{tone, text}]"
-        },
-        {
-          name: "label",
-          what: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E"
-        }
-      ],
-      interactions: [],
-      states: {
-        loading: "points \u9084\u6C92\u5230\u6642\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D",
-        empty: "\u6C92\u6709\u4EFB\u4F55\u6709\u6548\u6578\u5B57\u7684\u671F\u986F\u793A\u300C\u6C92\u6709\u8CC7\u6599\u300D\uFF0C\u4E0D\u5831\u932F",
-        error: "value \u4E0D\u662F\u6578\u5B57\u7684\u671F\u6574\u7B46\u7565\u904E\uFF1B\u8A3B\u8A18\u5C0D\u4E0D\u4E0A\u4EFB\u4F55\u4E00\u671F\u5C31\u4E0D\u756B",
-        disabled: "\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF0C\u552F\u8B80",
-        narrow: "\u5716\u6700\u7A84 560px\uFF0C\u5BB9\u5668\u66F4\u7A84\u6642\u6A6B\u5411\u6372\u52D5\uFF08\u5B57\u624D\u8B80\u5F97\u6E05\u695A\uFF09"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5169\u671F\u3001\u7B2C\u4E8C\u671F\u8DCC\u7834\u9580\u6ABB\uFF0C\u5E36\u8A3B\u8A18\u8207\u5716\u4F8B",
-          given: '{"components":[{"id":"root","component":"ThresholdChart","points":[{"label":"2026-02-09","value":6915,"level":"green","threshold":4800},{"label":"2026-02-16","value":2343,"level":"red","threshold":4800}],"notes":[{"at":"2026-02-16","text":"\u642C\u5BB6 404"}],"legend":[{"tone":"green","text":"\u6B63\u5E38"},{"tone":"red","text":"\u7D05\u71C8"}],"label":"Google \u6BCF\u9031\u66DD\u5149"}]}',
-          then_contains: "\u642C\u5BB6 404"
-        },
-        {
-          scenario: "\u6C92\u6709\u8CC7\u6599\u6642\u76F4\u8AAA",
-          given: '{"components":[{"id":"root","component":"ThresholdChart","points":[]}]}',
-          then_contains: "\u6C92\u6709\u8CC7\u6599"
-        },
-        {
-          scenario: "\u8CC7\u6599\u7D81\u8CC7\u6599\u6A21\u578B",
-          given: '{"components":[{"id":"root","component":"ThresholdChart","points":{"path":"/p"},"legend":{"path":"/l"}}],"data":{"p":[{"label":"w1","value":10}],"l":[{"tone":"red","text":"\u7D05\u71C8\u5716\u4F8B"}]}}',
-          then_contains: "\u7D05\u71C8\u5716\u4F8B"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "chart",
-        "threshold",
-        "monitor",
-        "bar"
-      ],
-      example: '{ "id": "curve", "component": "ThresholdChart", "points": { "path": "curve/points" }, "notes": { "path": "curve/notes" }, "legend": { "path": "curve/legend" } }\n',
-      source: "registry/ui-components/threshold_chart/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          points: {
-            description: "\u9010\u671F\u8CC7\u6599\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    label: {
-                      type: "string",
-                      description: "\u9019\u4E00\u671F\u7684\u540D\u5B57\uFF08\u4F8B 2026-11-09 \u90A3\u9031\uFF09\uFF1B\u8A3B\u8A18\u7528\u5B83\u5C0D\u4F4D"
-                    },
-                    value: {
-                      type: [
-                        "number",
-                        "string"
-                      ],
-                      description: "\u9019\u4E00\u671F\u7684\u6578\u5B57"
-                    },
-                    level: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "yellow",
-                        "red",
-                        "gray",
-                        "teal"
-                      ],
-                      description: "\u9019\u4E00\u671F\u9577\u689D\u7684\u984F\u8272\uFF1B\u6C92\u7D66\uFF1D\u6DE1\u8272\uFF08\u9084\u6C92\u6709\u57FA\u7DDA\u53EF\u6BD4\uFF09"
-                    },
-                    threshold: {
-                      type: [
-                        "number",
-                        "string"
-                      ],
-                      description: "\u9019\u4E00\u671F\u7684\u7D05\u7DDA\uFF08\u9023\u6210\u865B\u7DDA\uFF09"
-                    },
-                    tick: {
-                      type: "string",
-                      description: "\u9019\u4E00\u671F\u5E95\u4E0B\u8981\u6A19\u7684\u5B57\uFF08\u4F8B \u6708\u4EFD\uFF09\uFF0C\u6C92\u7D66\u5C31\u4E0D\u6A19"
-                    }
-                  },
-                  required: [
-                    "label",
-                    "value"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u671F"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          notes: {
-            description: "\u8A3B\u8A18\uFF1A\u5728\u67D0\u4E00\u671F\u756B\u8C4E\u7DDA\u8207\u4E00\u53E5\u8A71",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    at: {
-                      type: "string"
-                    },
-                    text: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "at",
-                    "text"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u53E5\u8A3B\u8A18\uFF0Cat \u5C0D\u4E0A\u67D0\u4E00\u671F\u7684 label"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          legend: {
-            description: "\u5716\u4F8B",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "yellow",
-                        "red",
-                        "gray",
-                        "teal"
-                      ]
-                    },
-                    text: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "tone",
-                    "text"
-                  ],
-                  additionalProperties: false,
-                  description: "\u5716\u4F8B\u4E00\u9805"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          label: {
-            description: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          component: {
-            const: "ThresholdChart"
-          }
-        },
-        required: [
-          "id",
-          "points",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    {
-      canonical_id: "ui_workflow_graph",
-      display_name: "\u7BC0\u9EDE\u8207\u9023\u7DDA\u5716",
-      kind: "ui",
-      category: "ui",
-      version: "v1",
-      stability: "floating",
-      runtime_compat: [
-        "browser"
-      ],
-      a2ui: {
-        component: "WorkflowGraph",
-        implementation: "arcrun"
-      },
-      description: "\u628A\u4E00\u7FA4\u7BC0\u9EDE\u548C\u5B83\u5011\u4E4B\u9593\u7684\u9023\u7DDA\u756B\u6210\u4E00\u5F35\u53EF\u9EDE\u3001\u53EF\u7E2E\u653E\u7684\u5716\uFF1A\u5168\u5C40\u5716\uFF08\u5DE5\u4F5C\u6D41\u8207\u5B83\u5011\u8B80\u5BEB\u7684\u8CC7\u6599\u3001\u8AB0\u53EB\u8AB0\uFF0C\u65B7\u7DDA\u4EAE\u7D05\uFF09\u548C\u55AE\u4E00\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u7BC0\u9EDE\u8207\u9023\u7DDA\uFF09\u5171\u7528\u9019\u4E00\u9846\u3002",
-      renders: "layout=columns\uFF08XMind \u5F0F\u7684 drill\uFF0C\u4EE5\u67D0\u500B\u7BC0\u9EDE\u70BA\u4E2D\u5FC3\uFF09\uFF1A\u4E2D\u6B04\u662F\u4E2D\u5FC3\uFF08kind=center\uFF09\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF08\u5927\u7DB1\u7E2E\u6392\u7DDA\uFF09\uFF0C\u5DE6\u6B04\u662F\u547C\u53EB\u904E\u4F86\uFF0F\u5BEB\u8CC7\u6599\u7D66\u5B83\u7684\u9130\u5C45\uFF0C\u53F3\u6B04\u662F\u5B83\u53EB\u7684\u9130\u5C45\uFF1B\u6C92\u6709\u4E2D\u5FC3\u5C31\u662F\u6700\u5916\u5C64\u4E00\u6392\u540C\u8F29\uFF1B\u9023\u7DDA\u6A19\u51FA\u300C\u54EA\u4E00\u6B65 \u2192 \u53EB\u8AB0\u300D\uFF0C\u540C\u6B04\u7684\u7DDA\u7E5E\u5F27\uFF0Cvertical=true \u6642\u5168\u90E8\u6392\u6210\u4E00\u76F4\u6B04\u3002layout=flow\uFF08Claude Design \u7684 Workflow Viewer \u7248\u578B\uFF09\uFF1A\u7BC0\u9EDE\u5361\uFF1D\u8272\u584A\u5716\u793A\uFF0B\u540D\u5B57\uFF08\u986F\u793A\u540D\u512A\u5148\uFF09\uFF0B\u985E\u578B\u6A19\u7C64\uFF08\u53EA\u6A19\u6709\u5340\u5225\u610F\u7FA9\u7684\u985E\u578B\uFF09\uFF0B\u4E00\u884C\u7C21\u77ED\u8AAA\u660E\uFF0C\u7DB2\u5740\u8207 worker \u540D\u4E0D\u653E\u5728\u5361\u4E0A\uFF0C\u8C9D\u8332\u66F2\u7DDA\u9023\u7DDA\uFF0C\u88AB\u9078\uFF08selected\uFF09\u7684\u7BC0\u9EDE\u8207\u5B83\u7684\u9023\u7DDA\u9AD8\u4EAE\uFF1Bminimap=true \u6642\u5DE6\u4E0B\u89D2\u6709\u7E2E\u5C0F\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF1B\u7BC0\u9EDE\u7167\u9806\u5E8F\u5206\u5C64\uFF0C\u5BEC\u87A2\u5E55\u7531\u5DE6\u5230\u53F3\u3001\u7A84\u87A2\u5E55\uFF08vertical=true\uFF09\u7531\u4E0A\u5230\u4E0B\uFF0C\u689D\u4EF6\uFF0F\u5931\u6557\u7684\u7DDA\u5E36\u6587\u5B57\u3002\u7BC0\u9EDE\u6709 bad\uFF08\u7D05\u6846\uFF09\u3001dim\uFF08\u6DE1\uFF09\u5169\u7A2E\u6A19\u8A18\uFF0C\u9023\u7DDA\u6709 bad\uFF08\u7C97\u7D05\u7DDA\uFF0C\u9EDE\u5B83\u8DF3\u5230 href\uFF09\uFF1B\u7D05\u4E0D\u7D05\u7531\u8CC7\u6599\u8AAA\u4E86\u7B97\uFF0C\u9019\u9846\u5143\u4EF6\u4E0D\u5224\u65B7\u4EFB\u4F55\u4E8B\u3002",
-      data_inputs: [
-        {
-          name: "nodes",
-          what: "\u7BC0\u9EDE\u6E05\u55AE\uFF1Aid\u3001title\uFF0C\u9078\u586B sub\uFF08\u7B2C\u4E8C\u884C\u5B57\uFF0Cflow \u7248\u578B\u653E\u96F6\u4EF6 id\uFF09\u3001line3\uFF08flow \u5361\u7247\u53F3\u4E0B\u7684\u77ED\u5B57\uFF09\u3001badge\uFF08flow \u5361\u7247\u53F3\u4E0A\u7684\u985E\u578B\u6A19\u7C64\uFF0C\u5982 API\u3001AI\uFF09\u3001tone\uFF08\u5716\u793A\u8272\u584A\uFF1Agreen\uFF0Fblue\uFF0Famber\uFF0Fpurple\uFF0Fslate\uFF0Fgray\uFF0Fpink\uFF09\u3001icon\uFF08\u8272\u584A\u88E1\u7684\u4E00\u500B\u5B57\uFF09\u3001num\uFF08\u756B\u9762\u4E0A\u7684\u6307\u7A31\u7DE8\u865F\uFF0C\u986F\u793A\u6210\u300CN \u865F\u300D\uFF0C\u53EA\u7528\u4F86\u8DDF\u4EBA\u6216 AI \u6307\u67D0\u4E00\u584A\uFF0C\u4E0D\u4EE3\u8868\u5148\u5F8C\uFF09\u3001shape\uFF08\u56FA\u5B9A\u985E\u578B\u7684\u5916\u6846\uFF1Atrigger \u8D77\u9EDE\uFF1D\u5DE6\u534A\u5713\u3001call \u53EB\u53E6\u4E00\u689D\u5DE5\u4F5C\u6D41\uFF1D\u96D9\u5C64\u6846\u3001ext \u5916\u90E8\u670D\u52D9\uFF1D\u865B\u7DDA\u6846\u3001branch \u5224\u65B7\uFF1D\u516D\u89D2\u3001read\uFF0Fwrite \u8B80\u5BEB\u8CC7\u6599\u8868\uFF1D\u5713\u7B52\u9802\uFF1B\u6C92\u7D66\u5C31\u662F\u4E00\u822C\u5713\u89D2\u65B9\u584A\uFF09\u3001side\uFF08left\uFF0Fmid\uFF0Fright\uFF0Ccolumns \u7528\uFF09\u3001kind\uFF08item\uFF0Fgroup\uFF0Fdata\uFF0Fplat\uFF0Fmiss\uFF0Fcenter\uFF0Ftable\uFF1Btable\uFF1DUML \u985E\u5225\u5F0F\u7BC0\u9EDE\uFF0C\u8868\u540D\u7576\u6A19\u984C\u3001fields \u9010\u884C\u5217\u6B04\u4F4D\u3001more\uFF1D\u5176\u9918\u5E7E\u6B04\u6C92\u5217\u51FA\uFF09\u3001fields\u3001more\u3001bad\u3001dim\u3001href\uFF08\u9EDE\u5B83\u53BB\u54EA\uFF0C\u53EA\u6536 #/ \u958B\u982D\u7684\u7AD9\u5167\u7DB2\u5740\uFF09"
-        },
-        {
-          name: "edges",
-          what: "\u9023\u7DDA\u6E05\u55AE\uFF1Afrom\u3001to\uFF08\u7BC0\u9EDE id\uFF09\uFF0C\u9078\u586B kind\uFF08call\uFF0Fwrite\uFF0Fread\uFF0Fnext\uFF0Ffail\uFF0Fchild\uFF1Bchild\uFF1D\u4E2D\u5FC3\u5230\u5B83\u4E0B\u4E00\u5C64\u7684\u7E2E\u6392\u7DDA\uFF09\u3001label\u3001bad\u3001href\u3001tip\uFF08\u6ED1\u904E\u53BB\u986F\u793A\u7684\u8AAA\u660E\uFF09"
-        },
-        {
-          name: "layout / vertical / selected / minimap / pan / headLeft / headRight / zoom",
-          what: "\u7248\u578B\u3001\u9078\u53D6\u3001\u5168\u8C8C\u5716\u8207\u6B04\u6A19\u984C\uFF1Bzoom \u662F\u5728\u300C\u525B\u597D\u653E\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF1Bpan=true\uFF08flow \u7248\u578B\uFF09\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF0COVERVIEW \u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\u4E14\u9EDE\u5B83\u53EF\u8DF3\u904E\u53BB"
-        }
-      ],
-      interactions: [
-        {
-          name: "\u9EDE\u7BC0\u9EDE\uFF0F\u9EDE\u7D05\u7DDA",
-          what: "\u8DF3\u5230\u8A72\u7BC0\u9EDE\u6216\u8A72\u65B7\u7DDA\u6240\u5728\u7BC0\u9EDE\u7684 href\uFF08\u7AD9\u5167\u7DB2\u5740\uFF0C\u4E0D\u958B\u5916\u7AD9\uFF09"
-        }
-      ],
-      states: {
-        loading: "\u5143\u4EF6\u672C\u8EAB\u6C92\u6709\u8F09\u5165\u72C0\u614B\uFF1A\u547C\u53EB\u7AEF\u8CC7\u6599\u9084\u6C92\u5230\u5C31\u5148\u4E0D\u639B\u9019\u9846\uFF0C\u6216\u639B\u7A7A\u6E05\u55AE",
-        empty: "\u6C92\u6709\u7BC0\u9EDE\u6642\u756B\u4E00\u5F35\u7A7A\u7684\u5716\uFF08\u53EA\u6709\u6B04\u6A19\u984C\uFF09\uFF0C\u4E0D\u5831\u932F",
-        error: "\u8CC7\u6599\u5F62\u72C0\u4E0D\u5C0D\u7684\u7BC0\u9EDE\uFF0F\u9023\u7DDA\uFF08\u6C92\u6709 id\u3001\u9023\u5230\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE\uFF09\u6574\u7B46\u7565\u904E\uFF0C\u4E0D\u6703\u6574\u5F35\u5716\u58DE\u6389",
-        disabled: "\u5716\u672C\u8EAB\u6C92\u6709\u505C\u7528\u72C0\u614B\uFF1B\u552F\u8B80\u662F\u9810\u8A2D\uFF0C\u6C92\u6709\u4EFB\u4F55\u6539\u52D5\u8CC7\u6599\u7684\u4E92\u52D5",
-        narrow: "\u5BB9\u5668\u6BD4\u5716\u7A84\u5C31\u7E2E\u5230\u6700\u5C0F 0.62 \u500D\uFF0C\u518D\u7A84\u6539\u6210\u6A6B\u5411\u6372\u52D5\uFF1Bflow \u7248\u578B\u53EF\u6539\u6210\u7531\u4E0A\u5230\u4E0B\uFF1Bpan=true \u6642\u6700\u5C0F\u53EA\u7E2E\u5230 0.9 \u500D\uFF0C\u5176\u9918\u9760\u5E73\u79FB"
-      },
-      gherkin_tests: [
-        {
-          scenario: "\u5168\u5C40\u5716\uFF1A\u5DE6\u6B04\u5DE5\u4F5C\u6D41\u3001\u53F3\u6B04\u8CC7\u6599\u3001\u4E00\u689D\u65B7\u7DDA\u4EAE\u7D05\u4E26\u5E36\u6587\u5B57",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"columns","headLeft":"\u5DE5\u4F5C\u6D41","headRight":"\u8CC7\u6599","nodes":[{"id":"a","title":"rag_ingest_card","sub":"\u5DE5\u4F5C\u6D41","side":"left"},{"id":"m","title":"rag_cluster_auto","sub":"\u9019\u53F0\u6C92\u88DD\u9019\u689D\u5DE5\u4F5C\u6D41","side":"right","kind":"miss","bad":true}],"edges":[{"from":"a","to":"m","kind":"call","bad":true,"label":"\u2717 \u6C92\u88DD\u30FBtrigger_wiki_cluster","href":"#/flows/~w/rag_ingest_card/trigger_wiki_cluster"}]}]}',
-          then_contains: "rag_cluster_auto"
-        },
-        {
-          scenario: "\u6D41\u7A0B\u5716\uFF1A\u5169\u500B\u7BC0\u9EDE\u4E00\u689D\u7DDA\uFF0C\u7BC0\u9EDE\u5E36\u7DE8\u865F\u8207\u96F6\u4EF6\u540D",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","minimap":true,"selected":"w","nodes":[{"id":"input","title":"input","sub":"\u8D77\u9EDE\uFF08\u6536\u5230\u7684\u8CC7\u6599\uFF09","num":1,"tone":"green","badge":"IN"},{"id":"w","title":"write_triplet","sub":"\u6253\u4E00\u500B\u7DB2\u5740","num":2,"line3":"\u5BEB triplet"}],"edges":[{"from":"input","to":"w","kind":"next","tip":"\u6210\u529F\u5F8C"}]}]}',
-          then_contains: "write_triplet"
-        },
-        {
-          scenario: "\u56FA\u5B9A\u985E\u578B\u7684\u7BC0\u9EDE\uFF1A\u8D77\u9EDE\u3001\u5916\u90E8\u670D\u52D9\u3001\u5224\u65B7\u5404\u6709\u81EA\u5DF1\u7684\u5916\u6846\u8207\u6A19\u7C64\uFF0C\u7DE8\u865F\u986F\u793A\u6210 N \u865F",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":[{"id":"a","title":"\u6536\u5230\u7559\u8A00","sub":"\u8D77\u9EDE","num":1,"tone":"green","badge":"\u8D77\u9EDE","icon":"\u25B6","shape":"trigger"},{"id":"b","title":"\u767C Telegram","sub":"Telegram","num":2,"tone":"blue","badge":"\u5916\u90E8","icon":"A","shape":"ext"},{"id":"c","title":"\u6709\u6C92\u6709\u7968","sub":"\u5224\u65B7","num":3,"tone":"slate","badge":"\u5224\u65B7","icon":"?","shape":"branch"}],"edges":[{"from":"a","to":"b","kind":"next"},{"from":"b","to":"c","kind":"next"}]}]}',
-          then_contains: "2 \u865F"
-        },
-        {
-          scenario: "\u7BC0\u9EDE\u6E05\u55AE\u53EF\u4EE5\u7D81\u8CC7\u6599\u6A21\u578B",
-          given: '{"components":[{"id":"root","component":"WorkflowGraph","layout":"flow","nodes":{"path":"/n"},"edges":{"path":"/e"}}],"data":{"n":[{"id":"x","title":"\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE","sub":"\u96F6\u4EF6"}],"e":[]}}',
-          then_contains: "\u5F9E\u8CC7\u6599\u4F86\u7684\u7BC0\u9EDE"
-        }
-      ],
-      tags: [
-        "ui",
-        "a2ui",
-        "graph",
-        "workflow",
-        "observer"
-      ],
-      example: '{ "id": "root", "component": "WorkflowGraph", "layout": "flow",\n  "nodes": { "path": "/nodes" }, "edges": { "path": "/edges" } }\n',
-      source: "registry/ui-components/workflow-graph/component.contract.yaml",
-      input_schema: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          layout: {
-            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          vertical: {
-            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
-            oneOf: [
-              {
-                type: "boolean"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          selected: {
-            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          minimap: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1\uFF1B\u9801\u9762\u5728\u756B\u5E03\u5916\u7559\u4E86 .df-mmslot \u5C31\u653E\u90A3\u88E1\uFF08\u4E0D\u84CB\u756B\u5E03\uFF09\uFF0C\u5426\u5247\u6D6E\u5728\u756B\u5E03\u5DE6\u4E0B\u89D2"
-          },
-          pan: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
-          },
-          headLeft: {
-            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headMid: {
-            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headRight: {
-            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          zoom: {
-            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
-            oneOf: [
-              {
-                type: "number"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          nodes: {
-            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    id: {
-                      type: "string"
-                    },
-                    title: {
-                      type: "string"
-                    },
-                    sub: {
-                      type: "string"
-                    },
-                    line3: {
-                      type: "string"
-                    },
-                    badge: {
-                      type: "string"
-                    },
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "blue",
-                        "amber",
-                        "purple",
-                        "slate",
-                        "gray",
-                        "pink"
-                      ]
-                    },
-                    icon: {
-                      type: "string"
-                    },
-                    num: {
-                      type: "number"
-                    },
-                    side: {
-                      type: "string",
-                      enum: [
-                        "left",
-                        "mid",
-                        "right"
-                      ]
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "item",
-                        "group",
-                        "data",
-                        "plat",
-                        "miss",
-                        "center",
-                        "table"
-                      ]
-                    },
-                    shape: {
-                      type: "string",
-                      enum: [
-                        "trigger",
-                        "call",
-                        "ext",
-                        "branch",
-                        "read",
-                        "write"
-                      ]
-                    },
-                    fields: {
-                      type: "array",
-                      items: {
-                        type: "string"
-                      }
-                    },
-                    more: {
-                      type: "number"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    dim: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "id",
-                    "title"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u500B\u7BC0\u9EDE"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          edges: {
-            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    from: {
-                      type: "string"
-                    },
-                    to: {
-                      type: "string"
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "call",
-                        "write",
-                        "read",
-                        "next",
-                        "fail",
-                        "child"
-                      ]
-                    },
-                    label: {
-                      type: "string"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    },
-                    tip: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "from",
-                    "to"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u689D\u9023\u7DDA"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          component: {
-            const: "WorkflowGraph"
-          }
-        },
-        required: [
-          "id",
-          "nodes",
-          "edges",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    }
-  ],
-  a2ui_catalog: {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    catalogId: "arcrun:catalog/v0",
-    components: {
-      Button: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "default",
-              "primary",
-              "borderless"
-            ],
-            default: "default",
-            description: "A hint for the button style. If omitted, a default button style is used. 'primary' indicates this is the main call-to-action button. 'borderless' means the button has no visual border or background, making its child content appear like a clickable link."
-          },
-          action: {
-            $ref: "#/$defs/Action"
-          },
-          component: {
-            const: "Button"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "action",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Card: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          child: {
-            $ref: "#/$defs/ComponentId",
-            description: "The ID of the single child component to be rendered inside the card. To display multiple elements, you MUST wrap them in a layout component (like Column or Row) and pass that container's ID here. Do NOT pass multiple IDs or a non-existent ID."
-          },
-          component: {
-            const: "Card"
-          }
-        },
-        required: [
-          "id",
-          "child",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      CheckBox: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text to display next to the checkbox."
-          },
-          value: {
-            $ref: "#/$defs/DynamicBoolean",
-            description: "The current state of the checkbox (true for checked, false for unchecked)."
-          },
-          component: {
-            const: "CheckBox"
-          }
-        },
-        required: [
-          "id",
-          "label",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      ChoicePicker: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The label for the group of options."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "multipleSelection",
-              "mutuallyExclusive"
-            ],
-            default: "mutuallyExclusive",
-            description: "A hint for how the choice picker should be displayed and behave."
-          },
-          options: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                label: {
-                  $ref: "#/$defs/DynamicString",
-                  description: "The text to display for this option."
-                },
-                value: {
-                  type: "string",
-                  description: "The stable value associated with this option."
-                }
-              },
-              required: [
-                "label",
-                "value"
-              ],
-              additionalProperties: false
-            },
-            description: "The list of available options to choose from."
-          },
-          value: {
-            $ref: "#/$defs/DynamicStringList",
-            description: "The list of currently selected values. This should be bound to a string array in the data model."
-          },
-          displayStyle: {
-            type: "string",
-            enum: [
-              "checkbox",
-              "chips"
-            ],
-            default: "checkbox",
-            description: "The display style of the component."
-          },
-          filterable: {
-            type: "boolean",
-            default: false,
-            description: "If true, displays a search input to filter the options."
-          },
-          component: {
-            const: "ChoicePicker"
-          }
-        },
-        required: [
-          "id",
-          "options",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Column: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "spaceBetween",
-              "spaceAround",
-              "spaceEvenly",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (vertically). Use 'spaceBetween' to push items to the edges (e.g. header at top, footer at bottom), or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "start",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (horizontally). This is similar to the CSS 'align-items' property."
-          },
-          component: {
-            const: "Column"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      DataTable: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          columns: {
-            description: "\u6B04\u4F4D\u5BA3\u544A [{key, title, mono, align}]",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    key: {
-                      type: "string"
-                    },
-                    title: {
-                      type: "string"
-                    },
-                    mono: {
-                      type: "boolean"
-                    },
-                    align: {
-                      type: "string",
-                      enum: [
-                        "left",
-                        "right"
-                      ]
-                    }
-                  },
-                  required: [
-                    "key"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u6B04"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          rows: {
-            description: "\u5217\u8CC7\u6599\uFF1A\u6BCF\u5217\u4E00\u500B\u7269\u4EF6\uFF0C\u6B04\u503C\u662F\u5B57\u4E32\uFF0F\u6578\u5B57\uFF0C\u6216 {text, tone} \u986F\u793A\u6210\u6A19\u7C64",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  additionalProperties: true
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          emptyText: {
-            description: "\u6C92\u6709\u4EFB\u4F55\u5217\u6642\u986F\u793A\u7684\u5B57",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          component: {
-            const: "DataTable"
-          }
-        },
-        required: [
-          "id",
-          "columns",
-          "rows",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      DateTimeInput: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          value: {
-            $ref: "#/$defs/DynamicString",
-            description: "The selected date and/or time value in ISO 8601 format. If not yet set, initialize with an empty string."
-          },
-          enableDate: {
-            type: "boolean",
-            default: false,
-            description: "If true, allows the user to select a date."
-          },
-          enableTime: {
-            type: "boolean",
-            default: false,
-            description: "If true, allows the user to select a time."
-          },
-          min: {
-            $ref: "#/$defs/DynamicString",
-            description: "The minimum allowed date/time in ISO 8601 format."
-          },
-          max: {
-            $ref: "#/$defs/DynamicString",
-            description: "The maximum allowed date/time in ISO 8601 format."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text label for the input field."
-          },
-          component: {
-            const: "DateTimeInput"
-          }
-        },
-        required: [
-          "id",
-          "value",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      List: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list."
-          },
-          direction: {
-            type: "string",
-            enum: [
-              "vertical",
-              "horizontal"
-            ],
-            default: "vertical",
-            description: "The direction in which the list items are laid out."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis."
-          },
-          component: {
-            const: "List"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      PillRow: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          items: {
-            description: "\u6A19\u7C64\u6E05\u55AE [{text, tone}]\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    text: {
-                      type: "string"
-                    },
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "yellow",
-                        "red",
-                        "gray",
-                        "teal"
-                      ]
-                    }
-                  },
-                  required: [
-                    "text"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u500B\u6A19\u7C64"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          component: {
-            const: "PillRow"
-          }
-        },
-        required: [
-          "id",
-          "items",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Row: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          children: {
-            $ref: "#/$defs/ChildList",
-            description: "Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list. Children cannot be defined inline, they must be referred to by ID."
-          },
-          justify: {
-            type: "string",
-            enum: [
-              "center",
-              "end",
-              "spaceAround",
-              "spaceBetween",
-              "spaceEvenly",
-              "start",
-              "stretch"
-            ],
-            default: "start",
-            description: "Defines the arrangement of children along the main axis (horizontally). Use 'spaceBetween' to push items to the edges, or 'start'/'end'/'center' to pack them together."
-          },
-          align: {
-            type: "string",
-            enum: [
-              "start",
-              "center",
-              "end",
-              "stretch"
-            ],
-            default: "stretch",
-            description: "Defines the alignment of children along the cross axis (vertically). This is similar to the CSS 'align-items' property, but uses camelCase values (e.g., 'start')."
-          },
-          component: {
-            const: "Row"
-          }
-        },
-        required: [
-          "id",
-          "children",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Sparkline: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          values: {
-            description: "\u4E00\u4E32\u6578\u5B57\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u9663\u5217",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: [
-                    "number",
-                    "string"
-                  ]
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          tone: {
-            description: "\u7DDA\u8207\u5E95\u8272\uFF0C\u9810\u8A2D gray",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          label: {
-            description: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E\uFF08\u4F8B\u300C\u6700\u8FD1 12 \u9031 Google \u66DD\u5149\u300D\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          component: {
-            const: "Sparkline"
-          }
-        },
-        required: [
-          "id",
-          "values",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      StatusPill: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          text: {
-            description: "\u6A19\u7C64\u4E0A\u7684\u5B57\uFF1Bvariant=lamp \u6642\u53EF\u7701\u7565\uFF08\u53EA\u6709\u5713\u9EDE\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          tone: {
-            description: "green\uFF0Fyellow\uFF0Fred\uFF0Fgray\uFF0Fteal\uFF0C\u9810\u8A2D gray\uFF1B\u984F\u8272\u7531\u8CC7\u6599\u6C7A\u5B9A\uFF0C\u5143\u4EF6\u4E0D\u5224\u65B7",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          variant: {
-            description: "pill\uFF08\u9810\u8A2D\uFF0C\u6709\u5E95\u8272\u7684\u5C0F\u6A19\u7C64\uFF09\u6216 lamp\uFF0818px \u5713\u71C8\u52A0\u5B57\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          component: {
-            const: "StatusPill"
-          }
-        },
-        required: [
-          "id",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      Text: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          text: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "h1",
-              "h2",
-              "h3",
-              "h4",
-              "h5",
-              "caption",
-              "body"
-            ],
-            default: "body",
-            description: "A hint for the base text style."
-          },
-          component: {
-            const: "Text"
-          }
-        },
-        required: [
-          "id",
-          "text",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      TextField: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          accessibility: {
-            $ref: "#/$defs/AccessibilityAttributes"
-          },
-          weight: {
-            type: "number",
-            description: "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
-          },
-          checks: {
-            type: "array",
-            items: {
-              $ref: "#/$defs/CheckRule",
-              description: "A single validation rule applied to an input component."
-            },
-            description: "A list of checks to perform. These are function calls that must return a boolean indicating validity."
-          },
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "The text label for the input field."
-          },
-          value: {
-            $ref: "#/$defs/DynamicString",
-            description: "The value of the text field."
-          },
-          variant: {
-            type: "string",
-            enum: [
-              "longText",
-              "number",
-              "shortText",
-              "obscured"
-            ],
-            default: "shortText",
-            description: "The type of input field to display."
-          },
-          validationRegexp: {
-            type: "string",
-            description: "A regular expression used for client-side validation of the input."
-          },
-          component: {
-            const: "TextField"
-          }
-        },
-        required: [
-          "id",
-          "label",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      ThresholdChart: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          points: {
-            description: "\u9010\u671F\u8CC7\u6599\uFF08\u820A\u2192\u65B0\uFF09\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    label: {
-                      type: "string",
-                      description: "\u9019\u4E00\u671F\u7684\u540D\u5B57\uFF08\u4F8B 2026-11-09 \u90A3\u9031\uFF09\uFF1B\u8A3B\u8A18\u7528\u5B83\u5C0D\u4F4D"
-                    },
-                    value: {
-                      type: [
-                        "number",
-                        "string"
-                      ],
-                      description: "\u9019\u4E00\u671F\u7684\u6578\u5B57"
-                    },
-                    level: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "yellow",
-                        "red",
-                        "gray",
-                        "teal"
-                      ],
-                      description: "\u9019\u4E00\u671F\u9577\u689D\u7684\u984F\u8272\uFF1B\u6C92\u7D66\uFF1D\u6DE1\u8272\uFF08\u9084\u6C92\u6709\u57FA\u7DDA\u53EF\u6BD4\uFF09"
-                    },
-                    threshold: {
-                      type: [
-                        "number",
-                        "string"
-                      ],
-                      description: "\u9019\u4E00\u671F\u7684\u7D05\u7DDA\uFF08\u9023\u6210\u865B\u7DDA\uFF09"
-                    },
-                    tick: {
-                      type: "string",
-                      description: "\u9019\u4E00\u671F\u5E95\u4E0B\u8981\u6A19\u7684\u5B57\uFF08\u4F8B \u6708\u4EFD\uFF09\uFF0C\u6C92\u7D66\u5C31\u4E0D\u6A19"
-                    }
-                  },
-                  required: [
-                    "label",
-                    "value"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u671F"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          notes: {
-            description: "\u8A3B\u8A18\uFF1A\u5728\u67D0\u4E00\u671F\u756B\u8C4E\u7DDA\u8207\u4E00\u53E5\u8A71",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    at: {
-                      type: "string"
-                    },
-                    text: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "at",
-                    "text"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u53E5\u8A3B\u8A18\uFF0Cat \u5C0D\u4E0A\u67D0\u4E00\u671F\u7684 label"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          legend: {
-            description: "\u5716\u4F8B",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "yellow",
-                        "red",
-                        "gray",
-                        "teal"
-                      ]
-                    },
-                    text: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "tone",
-                    "text"
-                  ],
-                  additionalProperties: false,
-                  description: "\u5716\u4F8B\u4E00\u9805"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          label: {
-            description: "\u7D66\u8B80\u5C4F\u8EDF\u9AD4\u7684\u8AAA\u660E",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          component: {
-            const: "ThresholdChart"
-          }
-        },
-        required: [
-          "id",
-          "points",
-          "component"
-        ],
-        unevaluatedProperties: false
-      },
-      WorkflowGraph: {
-        type: "object",
-        properties: {
-          id: {
-            $ref: "#/$defs/ComponentId"
-          },
-          weight: {
-            type: "number"
-          },
-          layout: {
-            description: "columns\uFF1D\u5DE6\u53F3\u5169\u6B04\u7684\u5168\u5C40\u5716\uFF1Bflow\uFF1D\u4E00\u689D\u5DE5\u4F5C\u6D41\u7684\u6D41\u7A0B\u5716\uFF08\u9810\u8A2D columns\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          vertical: {
-            description: "flow \u7248\u578B\uFF1Atrue\uFF1D\u7531\u4E0A\u5230\u4E0B\uFF08\u7A84\u87A2\u5E55\uFF09\uFF1B\u9810\u8A2D\u7531\u5DE6\u5230\u53F3",
-            oneOf: [
-              {
-                type: "boolean"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          selected: {
-            description: "flow \u7248\u578B\uFF1A\u88AB\u9078\u53D6\u7684\u7BC0\u9EDE id\uFF08\u9AD8\u4EAE\u5B83\u8207\u5B83\u7684\u9023\u7DDA\uFF09",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          minimap: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u986F\u793A\u7E2E\u5C0F\u7684\u5168\u8C8C\uFF08OVERVIEW\uFF09\uFF0C\u4E26\u6A19\u51FA\u76EE\u524D\u770B\u5230\u7684\u7BC4\u570D\uFF0C\u9EDE\u5B83\u8DF3\u5230\u90A3\u88E1\uFF1B\u9801\u9762\u5728\u756B\u5E03\u5916\u7559\u4E86 .df-mmslot \u5C31\u653E\u90A3\u88E1\uFF08\u4E0D\u84CB\u756B\u5E03\uFF09\uFF0C\u5426\u5247\u6D6E\u5728\u756B\u5E03\u5DE6\u4E0B\u89D2"
-          },
-          pan: {
-            type: "boolean",
-            description: "flow \u7248\u578B\uFF1A\u53EF\u7528\u6ED1\u9F20\u62D6\u66F3\u5E73\u79FB\u3001\u6EFE\u8F2A\u4EE5\u6E38\u6A19\u70BA\u4E2D\u5FC3\u7E2E\u653E\uFF1B\u958B\u555F\u6642\u7BC0\u9EDE\u4EE5\u63A5\u8FD1\u539F\u5C3A\u5BF8\u986F\u793A\uFF08\u4E0D\u6574\u5F35\u7E2E\u5C0F\uFF09\uFF0C\u5716\u6BD4\u5BB9\u5668\u5927\u5C31\u5E73\u79FB"
-          },
-          headLeft: {
-            description: "columns \u7248\u578B\u5DE6\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headMid: {
-            description: "columns \u7248\u578B\u4E2D\u6B04\uFF08\u4E2D\u5FC3\u8207\u5B83\u7684\u4E0B\u4E00\u5C64\uFF09\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          headRight: {
-            description: "columns \u7248\u578B\u53F3\u6B04\u7684\u6A19\u984C",
-            oneOf: [
-              {
-                type: "string"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          zoom: {
-            description: "\u5728\u300C\u525B\u597D\u653E\u5F97\u9032\u5BB9\u5668\u300D\u7684\u5927\u5C0F\u4E0A\u518D\u4E58\u591A\u5C11\u500D\uFF0C\u9810\u8A2D 1",
-            oneOf: [
-              {
-                type: "number"
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              },
-              {
-                $ref: "#/$defs/FunctionCall",
-                description: "Invokes a named function on the client."
-              }
-            ]
-          },
-          nodes: {
-            description: "\u7BC0\u9EDE\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    id: {
-                      type: "string"
-                    },
-                    title: {
-                      type: "string"
-                    },
-                    sub: {
-                      type: "string"
-                    },
-                    line3: {
-                      type: "string"
-                    },
-                    badge: {
-                      type: "string"
-                    },
-                    tone: {
-                      type: "string",
-                      enum: [
-                        "green",
-                        "blue",
-                        "amber",
-                        "purple",
-                        "slate",
-                        "gray",
-                        "pink"
-                      ]
-                    },
-                    icon: {
-                      type: "string"
-                    },
-                    num: {
-                      type: "number"
-                    },
-                    side: {
-                      type: "string",
-                      enum: [
-                        "left",
-                        "mid",
-                        "right"
-                      ]
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "item",
-                        "group",
-                        "data",
-                        "plat",
-                        "miss",
-                        "center",
-                        "table"
-                      ]
-                    },
-                    shape: {
-                      type: "string",
-                      enum: [
-                        "trigger",
-                        "call",
-                        "ext",
-                        "branch",
-                        "read",
-                        "write"
-                      ]
-                    },
-                    fields: {
-                      type: "array",
-                      items: {
-                        type: "string"
-                      }
-                    },
-                    more: {
-                      type: "number"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    dim: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "id",
-                    "title"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u500B\u7BC0\u9EDE"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          edges: {
-            description: "\u9023\u7DDA\u6E05\u55AE\uFF0C\u6216\u7D81\u5230\u8CC7\u6599\u6A21\u578B\u88E1\u7684\u6E05\u55AE",
-            oneOf: [
-              {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    from: {
-                      type: "string"
-                    },
-                    to: {
-                      type: "string"
-                    },
-                    kind: {
-                      type: "string",
-                      enum: [
-                        "call",
-                        "write",
-                        "read",
-                        "next",
-                        "fail",
-                        "child"
-                      ]
-                    },
-                    label: {
-                      type: "string"
-                    },
-                    bad: {
-                      type: "boolean"
-                    },
-                    href: {
-                      type: "string"
-                    },
-                    tip: {
-                      type: "string"
-                    }
-                  },
-                  required: [
-                    "from",
-                    "to"
-                  ],
-                  additionalProperties: false,
-                  description: "\u4E00\u689D\u9023\u7DDA"
-                }
-              },
-              {
-                $ref: "#/$defs/DataBinding"
-              }
-            ]
-          },
-          component: {
-            const: "WorkflowGraph"
-          }
-        },
-        required: [
-          "id",
-          "nodes",
-          "edges",
-          "component"
-        ],
-        unevaluatedProperties: false
-      }
-    },
-    $defs: {
-      anyComponent: {
-        oneOf: [
-          {
-            $ref: "#/components/Button"
-          },
-          {
-            $ref: "#/components/Card"
-          },
-          {
-            $ref: "#/components/CheckBox"
-          },
-          {
-            $ref: "#/components/ChoicePicker"
-          },
-          {
-            $ref: "#/components/Column"
-          },
-          {
-            $ref: "#/components/DataTable"
-          },
-          {
-            $ref: "#/components/DateTimeInput"
-          },
-          {
-            $ref: "#/components/List"
-          },
-          {
-            $ref: "#/components/PillRow"
-          },
-          {
-            $ref: "#/components/Row"
-          },
-          {
-            $ref: "#/components/Sparkline"
-          },
-          {
-            $ref: "#/components/StatusPill"
-          },
-          {
-            $ref: "#/components/Text"
-          },
-          {
-            $ref: "#/components/TextField"
-          },
-          {
-            $ref: "#/components/ThresholdChart"
-          },
-          {
-            $ref: "#/components/WorkflowGraph"
-          }
-        ],
-        discriminator: {
-          propertyName: "component"
-        }
-      },
-      ComponentId: {
-        type: "string",
-        description: "The unique identifier for a component, used for both definitions and references within the same surface."
-      },
-      AccessibilityAttributes: {
-        type: "object",
-        description: "Attributes to enhance accessibility when using assistive technologies like screen readers.",
-        properties: {
-          label: {
-            $ref: "#/$defs/DynamicString",
-            description: "A short string, typically 1 to 3 words, used by assistive technologies to convey the purpose or intent of an element. For example, an input field might have an accessible label of 'User ID' or a button might be labeled 'Submit'."
-          },
-          description: {
-            $ref: "#/$defs/DynamicString",
-            description: "Additional information provided by assistive technologies about an element such as instructions, format requirements, or result of an action. For example, a mute button might have a label of 'Mute' and a description of 'Silences notifications about this conversation'."
-          }
-        }
-      },
-      CheckRule: {
-        type: "object",
-        description: "A single validation rule applied to an input component.",
-        properties: {
-          condition: {
-            $ref: "#/$defs/DynamicBoolean"
-          },
-          message: {
-            type: "string",
-            description: "The error message to display if the check fails."
-          }
-        },
-        required: [
-          "condition",
-          "message"
-        ],
-        additionalProperties: false
-      },
-      Action: {
-        description: "Defines an interaction handler that can either trigger a server-side event or execute a local client-side function.",
-        oneOf: [
-          {
-            type: "object",
-            description: "Triggers a server-side event.",
-            properties: {
-              event: {
-                type: "object",
-                description: "The event to dispatch to the server.",
-                properties: {
-                  name: {
-                    type: "string",
-                    description: "The name of the action to be dispatched to the server."
-                  },
-                  context: {
-                    type: "object",
-                    description: "A JSON object containing the key-value pairs for the action context. Values can be literals or paths. Use literal values unless the value must be dynamically bound to the data model. Do NOT use paths for static IDs.",
-                    additionalProperties: {
-                      $ref: "#/$defs/DynamicValue"
-                    }
-                  }
-                },
-                required: [
-                  "name"
-                ],
-                additionalProperties: false
-              }
-            },
-            required: [
-              "event"
-            ],
-            additionalProperties: false
-          },
-          {
-            type: "object",
-            description: "Executes a local client-side function.",
-            properties: {
-              functionCall: {
-                $ref: "#/$defs/FunctionCall"
-              }
-            },
-            required: [
-              "functionCall"
-            ],
-            additionalProperties: false
-          }
-        ]
-      },
-      DynamicString: {
-        description: "Represents a string",
-        oneOf: [
-          {
-            type: "string"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            allOf: [
-              {
-                $ref: "#/$defs/FunctionCall"
-              },
-              {
-                properties: {
-                  returnType: {
-                    const: "string"
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      DynamicBoolean: {
-        description: "A boolean value that can be a literal, a path, or a function call returning a boolean.",
-        oneOf: [
-          {
-            type: "boolean"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            allOf: [
-              {
-                $ref: "#/$defs/FunctionCall"
-              },
-              {
-                properties: {
-                  returnType: {
-                    const: "boolean"
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      DynamicStringList: {
-        description: "Represents a value that can be either a literal array of strings, a path to a string array in the data model, or a function call returning a string array.",
-        oneOf: [
-          {
-            type: "array",
-            items: {
-              type: "string"
-            }
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            allOf: [
-              {
-                $ref: "#/$defs/FunctionCall"
-              },
-              {
-                properties: {
-                  returnType: {
-                    const: "array"
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      ChildList: {
-        oneOf: [
-          {
-            type: "array",
-            items: {
-              $ref: "#/$defs/ComponentId"
-            },
-            description: "A static list of child component IDs."
-          },
-          {
-            type: "object",
-            description: "A template for generating a dynamic list of children from a data model list. The `componentId` is the component to use as a template.",
-            properties: {
-              componentId: {
-                $ref: "#/$defs/ComponentId"
-              },
-              path: {
-                type: "string",
-                description: "The path to the list of component property objects in the data model."
-              }
-            },
-            required: [
-              "componentId",
-              "path"
-            ],
-            additionalProperties: false
-          }
-        ]
-      },
-      DataBinding: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "A JSON Pointer path to a value in the data model."
-          }
-        },
-        required: [
-          "path"
-        ],
-        additionalProperties: false
-      },
-      FunctionCall: {
-        type: "object",
-        description: "Invokes a named function on the client.",
-        properties: {
-          call: {
-            type: "string",
-            description: "The name of the function to call."
-          },
-          args: {
-            type: "object",
-            description: "Arguments passed to the function.",
-            additionalProperties: {
-              anyOf: [
-                {
-                  $ref: "#/$defs/DynamicValue"
-                },
-                {
-                  type: "object",
-                  description: "A literal object argument (e.g. configuration)."
-                }
-              ]
-            }
-          },
-          returnType: {
-            type: "string",
-            description: "The expected return type of the function call.",
-            enum: [
-              "string",
-              "number",
-              "boolean",
-              "array",
-              "object",
-              "any",
-              "void"
-            ],
-            default: "boolean"
-          }
-        },
-        required: [
-          "call"
-        ],
-        oneOf: [
-          {
-            $ref: "catalog.json#/$defs/anyFunction"
-          }
-        ]
-      },
-      DynamicValue: {
-        description: "A value that can be a literal, a path, or a function call returning any type.",
-        oneOf: [
-          {
-            type: "string"
-          },
-          {
-            type: "number"
-          },
-          {
-            type: "boolean"
-          },
-          {
-            type: "array"
-          },
-          {
-            $ref: "#/$defs/DataBinding"
-          },
-          {
-            $ref: "#/$defs/FunctionCall"
-          }
-        ]
-      }
-    }
-  }
-};
-
-// cypher-executor/src/lib/ui-surface.ts
-var MAX_SURFACE_BYTES = 64 * 1024;
-var CATALOG_NAMES = new Set(ui_catalog_generated_default.components.map((c) => c.a2ui.component));
-function validateUiSurface(raw2, actions) {
-  const errors = [];
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["ui.surface \u5FC5\u9808\u662F\u7269\u4EF6\uFF1A{ components: [...], data?: {...} }"];
-  const s = raw2;
-  if (!Array.isArray(s.components) || s.components.length === 0) return ["ui.surface.components \u5FC5\u9808\u662F\u975E\u7A7A\u9663\u5217"];
-  if (s.data !== void 0 && (typeof s.data !== "object" || s.data === null || Array.isArray(s.data))) errors.push("ui.surface.data \u5FC5\u9808\u662F\u7269\u4EF6");
-  if (s.load !== void 0 && (typeof s.load !== "string" || !actions.includes(s.load))) {
-    errors.push(`ui.surface.load\u300C${String(s.load)}\u300D\u4E0D\u662F\u9019\u500B App \u7684\u52D5\u4F5C\uFF08\u53EF\u7528\uFF1A${actions.join("\u3001") || "\uFF08\u6C92\u6709\uFF09"}\uFF09\u2014\u2014\u756B\u9762\u958B\u555F\u6642\u53EA\u80FD\u5148\u8DD1 workflows\uFF0Factions \u5BA3\u544A\u904E\u7684\u52D5\u4F5C`);
-  }
-  const text = JSON.stringify(raw2);
-  if (text.length > MAX_SURFACE_BYTES) errors.push(`ui.surface \u592A\u5927\uFF08\u4E0A\u9650 ${MAX_SURFACE_BYTES / 1024} KB\uFF09`);
-  if (/openUrl|"call"\s*:|functionCall|javascript:|<script|https?:\/\//i.test(text)) {
-    errors.push("ui.surface \u4E0D\u53EF\u542B\u51FD\u5F0F\u547C\u53EB\u3001\u7DB2\u5740\u6216\u8173\u672C\uFF08\u53D7\u9650\u5143\u4EF6\u76EE\u9304\u53EA\u6536\u5143\u4EF6\uFF0C\u4E0D\u6536\u51FD\u5F0F\u8207\u4EFB\u610F\u9023\u7D50\uFF09");
-  }
-  const ids = /* @__PURE__ */ new Set();
-  const comps = s.components;
-  for (const [i, c] of comps.entries()) {
-    if (!c || typeof c !== "object" || typeof c.id !== "string" || !c.id) {
-      errors.push(`ui.surface.components[${i}] \u8981\u6709\u5B57\u4E32 id`);
-      continue;
-    }
-    if (ids.has(c.id)) errors.push(`ui.surface \u5143\u4EF6 id\u300C${c.id}\u300D\u91CD\u8907`);
-    ids.add(c.id);
-    if (typeof c.component !== "string" || !CATALOG_NAMES.has(c.component)) {
-      errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684 component\u300C${String(c.component)}\u300D\u4E0D\u5728\u756B\u9762\u5143\u4EF6\u76EE\u9304\u88E1\uFF08\u53EF\u7528\uFF1A${[...CATALOG_NAMES].join("\u3001")}\uFF1Barcrun_list_ui_components \u67E5\uFF09`);
-    }
-  }
-  if (!ids.has("root")) errors.push("ui.surface \u5FC5\u9808\u6709\u4E00\u500B id \u70BA root \u7684\u5143\u4EF6\uFF08\u756B\u9762\u7684\u6839\uFF09");
-  for (const c of comps) {
-    if (!c || typeof c.id !== "string") continue;
-    const kids = [];
-    if (Array.isArray(c.children)) kids.push(...c.children);
-    if (typeof c.child === "string") kids.push(c.child);
-    for (const k of kids) if (typeof k === "string" && !ids.has(k)) errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u6307\u5230\u4E0D\u5B58\u5728\u7684\u5B50\u5143\u4EF6\u300C${k}\u300D`);
-    const ev = c.action?.event;
-    if (ev) {
-      if (typeof ev.name !== "string" || !actions.includes(ev.name)) {
-        errors.push(`ui.surface \u5143\u4EF6\u300C${c.id}\u300D\u7684\u6309\u9215\u4E8B\u4EF6\u300C${String(ev.name)}\u300D\u4E0D\u662F\u9019\u500B App \u7684\u52D5\u4F5C\uFF08\u53EF\u7528\uFF1A${actions.join("\u3001") || "\uFF08\u6C92\u6709\uFF09"}\uFF09\u2014\u2014\u756B\u9762\u53EA\u80FD\u89F8\u767C workflows\uFF0Factions \u5BA3\u544A\u904E\u7684\u52D5\u4F5C`);
-      }
-    }
-  }
-  return errors;
-}
-
-// cypher-executor/src/lib/app-system.ts
-init_recipes();
-init_credentials();
-
-// cypher-executor/src/lib/app-mcp.ts
-var MAX_APP_MCP_TOOLS = 45;
-var MAX_APP_MCP_GUIDES = 10;
-var MAX_DESCRIPTION = 2e3;
-var MAX_GUIDE_TEXT = 2e4;
-var NAME_RE = /^[a-z][a-z0-9_]{0,39}$/;
-var PROP_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
-var SCALAR_TYPES = ["string", "integer", "number", "boolean"];
-function validateToolInputSchema(schema, where) {
-  const errors = [];
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6\uFF08JSON Schema\uFF0Ctype: "object"\uFF09`];
-  const s = schema;
-  if (s.type !== "object") errors.push(`${where}.type \u5FC5\u9808\u662F "object"`);
-  const props = s.properties ?? {};
-  if (!props || typeof props !== "object" || Array.isArray(props)) {
-    errors.push(`${where}.properties \u5FC5\u9808\u662F\u7269\u4EF6`);
-    return errors;
-  }
-  for (const [k, v] of Object.entries(props)) {
-    if (!PROP_RE.test(k)) {
-      errors.push(`${where}.properties.${k}\uFF1A\u53C3\u6578\u540D\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u5E95\u7DDA\u958B\u982D\u7684 _caller\uFF0F_tool \u662F MCP \u81EA\u5DF1\u9644\u7684\uFF09`);
-      continue;
-    }
-    errors.push(...validateProp(v, `${where}.properties.${k}`, 0));
-  }
-  if (s.required !== void 0) {
-    if (!Array.isArray(s.required) || s.required.some((r) => typeof r !== "string")) {
-      errors.push(`${where}.required \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
-    } else {
-      for (const r of s.required) {
-        if (!(r in props)) errors.push(`${where}.required \u88E1\u7684\u300C${r}\u300D\u4E0D\u5728 properties`);
-      }
-    }
-  }
-  return errors;
-}
-function validateProp(v, where, depth) {
-  if (!v || typeof v !== "object" || Array.isArray(v)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6`];
-  const p = v;
-  const errors = [];
-  if (p.description !== void 0 && typeof p.description !== "string") errors.push(`${where}.description \u5FC5\u9808\u662F\u5B57\u4E32`);
-  if (p.type === "array") {
-    if (depth > 0) return [...errors, `${where}\uFF1A\u9663\u5217\u53EA\u80FD\u653E\u4E00\u5C64\uFF08\u9663\u5217\u88E1\u4E0D\u80FD\u518D\u653E\u9663\u5217\uFF09`];
-    if (!p.items || typeof p.items !== "object") return [...errors, `${where}.items \u5FC5\u586B`];
-    const it = p.items;
-    if (!SCALAR_TYPES.includes(String(it.type))) errors.push(`${where}.items.type \u53EA\u80FD\u662F ${SCALAR_TYPES.join("\uFF0F")}`);
-    if (it.enum !== void 0) errors.push(...validateEnum(it.enum, String(it.type), `${where}.items`));
-    return errors;
-  }
-  if (!SCALAR_TYPES.includes(String(p.type))) {
-    return [...errors, `${where}.type \u53EA\u80FD\u662F ${[...SCALAR_TYPES, "array"].join("\uFF0F")}\uFF08\u5DE2\u72C0\u7269\u4EF6\u8ACB\u6524\u5E73\u6210\u5E7E\u500B\u53C3\u6578\uFF09`];
-  }
-  if (p.enum !== void 0) errors.push(...validateEnum(p.enum, String(p.type), where));
-  return errors;
-}
-function validateEnum(e, type, where) {
-  if (type !== "string") return [`${where}.enum \u53EA\u652F\u63F4 string`];
-  if (!Array.isArray(e) || e.length === 0 || e.some((x) => typeof x !== "string")) return [`${where}.enum \u5FC5\u9808\u662F\u975E\u7A7A\u7684\u5B57\u4E32\u9663\u5217`];
-  return [];
-}
-function validateAppMcp(raw2, workflows) {
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["mcp \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 tools\u3001guides \u5169\u6B04\uFF09"];
-  const m = raw2;
-  const errors = [];
-  const wfNames = new Set(
-    (Array.isArray(workflows) ? workflows : []).map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
-  );
-  if (m.tools !== void 0) {
-    if (!Array.isArray(m.tools)) {
-      errors.push("mcp.tools \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      if (m.tools.length > MAX_APP_MCP_TOOLS) errors.push(`mcp.tools \u6700\u591A ${MAX_APP_MCP_TOOLS} \u652F\uFF08\u73FE\u5728 ${m.tools.length} \u652F\uFF09`);
-      const seen = /* @__PURE__ */ new Set();
-      m.tools.forEach((t, i) => {
-        const at = `mcp.tools[${i}]`;
-        if (!t || typeof t !== "object") {
-          errors.push(`${at} \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const tool = t;
-        const label = typeof tool.name === "string" ? `mcp.tools\u300C${tool.name}\u300D` : at;
-        if (typeof tool.name !== "string" || !NAME_RE.test(tool.name)) {
-          errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u226440 \u5B57\uFF09`);
-        } else if (seen.has(tool.name)) {
-          errors.push(`${label} \u91CD\u8907\u4E86`);
-        } else {
-          seen.add(tool.name);
-        }
-        if (typeof tool.description !== "string" || tool.description.trim() === "") {
-          errors.push(`${label}.description \u5FC5\u586B\u2014\u2014AI \u53EA\u770B\u9019\u4E00\u6BB5\u6C7A\u5B9A\u8981\u4E0D\u8981\u7528\u9019\u652F\u5DE5\u5177`);
-        } else if (tool.description.length > MAX_DESCRIPTION) {
-          errors.push(`${label}.description \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_DESCRIPTION} \u5B57\uFF09`);
-        }
-        if (typeof tool.workflow !== "string" || !wfNames.has(tool.workflow)) {
-          errors.push(
-            `${label}.workflow \u5FC5\u9808\u662F\u9019\u4EFD\u5BA3\u544A\u88E1\u7684\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
-          );
-        }
-        if (tool.read_only !== void 0 && typeof tool.read_only !== "boolean") errors.push(`${label}.read_only \u5FC5\u9808\u662F true\uFF0Ffalse`);
-        errors.push(...validateToolInputSchema(tool.input_schema, `${label}.input_schema`));
-      });
-    }
-  }
-  if (m.guides !== void 0) {
-    if (!Array.isArray(m.guides)) {
-      errors.push("mcp.guides \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      if (m.guides.length > MAX_APP_MCP_GUIDES) errors.push(`mcp.guides \u6700\u591A ${MAX_APP_MCP_GUIDES} \u4EFD`);
-      const seen = /* @__PURE__ */ new Set();
-      m.guides.forEach((g, i) => {
-        const at = `mcp.guides[${i}]`;
-        if (!g || typeof g !== "object") {
-          errors.push(`${at} \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const guide = g;
-        if (typeof guide.name !== "string" || !NAME_RE.test(guide.name)) errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D`);
-        else if (seen.has(guide.name)) errors.push(`${at}.name\u300C${guide.name}\u300D\u91CD\u8907\u4E86`);
-        else seen.add(guide.name);
-        if (typeof guide.description !== "string" || guide.description.trim() === "") errors.push(`${at}.description \u5FC5\u586B`);
-        if (typeof guide.text !== "string" || guide.text.trim() === "") errors.push(`${at}.text \u5FC5\u586B`);
-        else if (guide.text.length > MAX_GUIDE_TEXT) errors.push(`${at}.text \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_GUIDE_TEXT} \u5B57\uFF09`);
-      });
-    }
-  }
-  return errors;
-}
-function installedMcpOf(appId, mcp) {
-  const tools = (mcp?.tools ?? []).map((t) => ({
-    name: t.name,
-    description: t.description,
-    input_schema: t.input_schema,
-    wf_key: `${appId}__${t.workflow}`,
-    read_only: t.read_only === true
-  }));
-  const guides = (mcp?.guides ?? []).map((g) => ({ name: g.name, description: g.description, text: g.text }));
-  if (tools.length === 0 && guides.length === 0) return void 0;
-  return { tools, guides };
-}
-function mcpCatalogOf(apps) {
-  return apps.filter((a) => a.mcp && (a.status === void 0 || a.status === "active")).map((a) => ({ app_id: a.id, app_name: a.name, version: a.version, tools: a.mcp.tools, guides: a.mcp.guides })).sort((x, y) => x.app_id.localeCompare(y.app_id));
-}
-
-// cypher-executor/src/lib/subrequest-meter.ts
-var count = 0;
-function noteSubrequest() {
-  count++;
-}
-function subrequestCount() {
-  return count;
-}
-
-// shared/dataflow-graph/extract.mjs
-function normalizeWorkflow(input) {
-  const wf = input && typeof input === "object" ? input : {};
-  const name = String(wf.name ?? wf.graph?.name ?? wf.id ?? "");
-  const graph = wf.graph && typeof wf.graph === "object" ? wf.graph : wf;
-  const config = (wf.config && typeof wf.config === "object" ? wf.config : null) ?? (graph.config && typeof graph.config === "object" ? graph.config : null) ?? {};
-  if (Array.isArray(graph.nodes) && graph.nodes.some((n) => n && (n.data || n.componentId))) {
-    const nodes2 = graph.nodes.map((n) => {
-      const cfg = config[n.label] ?? config[n.id] ?? {};
-      const { component: cfgComponent, ...cfgRest } = cfg;
-      const data = { ...cfgRest, ...n.data ?? {} };
-      const component = String(
-        (n.componentId && n.componentId !== n.id ? n.componentId : void 0) ?? cfgComponent ?? n.componentId ?? ""
-      );
-      return { id: String(n.id), component, data };
-    });
-    const edges2 = (Array.isArray(graph.edges) ? graph.edges : []).map((e) => ({
-      from: String(e.from),
-      to: String(e.to),
-      type: String(e.type ?? ""),
-      branch: e.branch
-    }));
-    return { name, nodes: nodes2, edges: edges2 };
-  }
-  const flow = Array.isArray(graph.flow) ? graph.flow : [];
-  const ids = /* @__PURE__ */ new Set();
-  const edges = [];
-  for (const line of flow) {
-    const parts = String(line).split(">>").map((s) => s.trim());
-    if (parts.length !== 3) continue;
-    const [from, label, to] = parts;
-    ids.add(from);
-    ids.add(to);
-    edges.push({ from, to, type: edgeTypeOf(label), ...branchOf(label) ? { branch: branchOf(label) } : {} });
-  }
-  for (const k of Object.keys(config)) ids.add(k);
-  const nodes = [...ids].map((id) => {
-    const { component, ...data } = config[id] ?? {};
-    return { id, component: String(component ?? (id === "input" ? "input" : "")), data };
-  });
-  return { name, nodes, edges };
-}
-function edgeTypeOf(label) {
-  const l = String(label).trim();
-  if (/^(ON_FAIL|FAIL|失敗時)$/i.test(l)) return "ON_FAIL";
-  if (/^(ON_SUCCESS|成功後|SUCCESS)$/i.test(l)) return "ON_SUCCESS";
-  if (/^(ON_TRUE|TRUE)$/i.test(l)) return "ON_TRUE";
-  if (/^(ON_FALSE|FALSE|ELSE)$/i.test(l)) return "ON_FALSE";
-  if (/^(ON_BRANCH|分支)/i.test(l)) return "ON_BRANCH";
-  if (/^(對每個|FOREACH)/i.test(l)) return "FOREACH";
-  return l;
-}
-function branchOf(label) {
-  const m = String(label).match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
-  return m ? m[1] : void 0;
-}
-var DYNAMIC_RE = /\{\{[\s\S]*?\}\}/;
-var PLACEHOLDER_RE = /^__[A-Z0-9_]+__$/;
-var NAME_RE2 = /^[\w.:-]+$/;
-function classifyName(v) {
-  if (typeof v !== "string") return "dynamic";
-  const s = v.trim();
-  if (s === "") return "invalid";
-  if (DYNAMIC_RE.test(s)) return "dynamic";
-  if (PLACEHOLDER_RE.test(s)) return "placeholder";
-  if (!NAME_RE2.test(s)) return "invalid";
-  return "literal";
-}
-function isKbdbUrl(url) {
-  if (typeof url !== "string") return false;
-  return /__KBDB_BASE__/.test(url) || /\/\/[^/]*kbdb[^/]*\//i.test(url) || /\{\{[^}]*kbdb[^}]*\}\}/i.test(url) || /(^|[^\w])\/kbdb\//.test(url) || /__[A-Z0-9_]+__\/kbdb\//.test(url) || /^[a-z]+:\/\/[^/]+\/kbdb\//i.test(url);
-}
-function splitKbdbUrl(url) {
-  let rest = url.replace(/^\{\{[^}]*\}\}/, "").replace(/^__[A-Z0-9_]+__/, "").replace(/^[a-z]+:\/\/[^/]+/i, "");
-  rest = rest.replace(/^\/kbdb(?=\/)/, "");
-  const qi = rest.indexOf("?");
-  const path = qi >= 0 ? rest.slice(0, qi) : rest;
-  const query = {};
-  if (qi >= 0) {
-    for (const kv of rest.slice(qi + 1).split("&")) {
-      const [k, ...v] = kv.split("=");
-      if (k) query[decodeSafe(k)] = decodeSafe(v.join("="));
-    }
-  }
-  return { path, query };
-}
-function decodeSafe(s) {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-}
-function workflowCallOf(url, selfOrigins = []) {
-  if (typeof url !== "string") return null;
-  const m = url.match(/\/webhooks\/named\/(?:([^/?#]+)\/)?([^/?#]+)\/(trigger|query)(?:[?#]|$)/);
-  if (!m) return null;
-  const head = url.slice(0, m.index);
-  const local = head === "" || /^__[A-Z0-9_]+__$/.test(head) || /^\{\{[^}]*\}\}$/.test(head) || selfOrigins.some((o) => head === o.replace(/\/$/, ""));
-  if (!local) return { external: true, url };
-  const name = m[2];
-  return { workflow: name, kind: classifyName(name) };
-}
-function substitute(template, data) {
-  return String(template).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (all, key) => {
-    if (key.startsWith("_")) return all;
-    const v = data[key];
-    return typeof v === "string" && !DYNAMIC_RE.test(v) ? v : all;
-  });
-}
-function requestOf(node, recipes) {
-  const d = node.data ?? {};
-  const recipe = recipes?.get?.(String(node.component).toLowerCase());
-  if (recipe && typeof recipe.endpoint === "string") {
-    return {
-      method: String(recipe.method ?? "GET").toUpperCase(),
-      url: substitute(recipe.endpoint, d),
-      body: d.body_json ?? d.body ?? recipe.body_template,
-      via: `recipe:${recipe.canonical_id}`
-    };
-  }
-  if (typeof d.url !== "string") return null;
-  return { method: String(d.method ?? "GET").toUpperCase(), url: d.url, body: d.body_json ?? d.body, via: "http" };
-}
-function parseBody2(body) {
-  if (typeof body === "string") {
-    try {
-      return JSON.parse(body);
-    } catch {
-      return null;
-    }
-  }
-  return body && typeof body === "object" ? body : null;
-}
-function extractNodeIO(node, { recipes, selfOrigins } = {}) {
-  const out = { reads: [], writes: [], calls: [], dynamic: [] };
-  const d = node.data ?? {};
-  const comp = String(node.component ?? "");
-  if (comp === "trigger_workflow" || /\/trigger_workflow$/.test(comp)) {
-    const w = d.workflow_name;
-    const kind = classifyName(w);
-    if (kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
-    else out.calls.push({ workflow: String(w ?? ""), kind, node: node.id, via: "trigger_workflow" });
-    return out;
-  }
-  const req = requestOf(node, recipes);
-  if (!req) return out;
-  const call = workflowCallOf(req.url, selfOrigins);
-  if (call && !call.external) {
-    if (call.kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
-    else out.calls.push({ workflow: call.workflow, kind: call.kind, node: node.id, via: req.via });
-    return out;
-  }
-  if (!isKbdbUrl(req.url)) return out;
-  const { path, query } = splitKbdbUrl(req.url);
-  const body = parseBody2(req.body);
-  const push = (list, kind, template, fields) => {
-    const tk = classifyName(template);
-    if (tk === "dynamic") {
-      out.dynamic.push({ node: node.id, what: list === out.reads ? "read" : "write" });
-      return;
-    }
-    list.push({ kind, template: String(template ?? ""), template_kind: tk, ...fields?.length ? { fields } : {}, node: node.id, via: req.via });
-  };
-  const fieldOf = (q) => q.field && classifyName(q.field) === "literal" ? [q.field] : void 0;
-  let m;
-  if (m = path.match(/^\/records\/by-(template|source)\/([^/]+)$/)) {
-    push(out.reads, "record", decodeSafe(m[2]), fieldOf(query));
-  } else if (path === "/records" && req.method === "GET" && query.template) {
-    push(out.reads, "record", query.template, fieldOf(query));
-  } else if (path === "/records" && req.method === "POST" && body) {
-    const fields = [...Object.keys(body.values ?? {}), ...Object.keys(body.entry_ids ?? {})];
-    push(out.writes, "record", body.template, fields);
-  } else if (/^\/records\/[^/]+$/.test(path) && ["PATCH", "PUT"].includes(req.method)) {
-    if (body?.template) push(out.writes, "record", body.template, Object.keys(body.values ?? {}));
-    else out.dynamic.push({ node: node.id, what: "write" });
-  } else if (/^\/entries(\/search)?$/.test(path) && req.method === "GET" && query.template) {
-    push(out.reads, "entry", query.template);
-  } else if (path === "/entries" && req.method === "POST" && body && "template" in body) {
-    push(out.writes, "entry", body.template);
-  } else if (/^\/entries\/[^/]+$/.test(path) && ["PUT", "PATCH"].includes(req.method) && body && "template" in body) {
-    push(out.writes, "entry", body.template);
-  }
-  return out;
-}
-function codeLiterals(code) {
-  const found = /* @__PURE__ */ new Set();
-  if (typeof code !== "string") return found;
-  const re = /(['"`])([a-z][a-z0-9_]{2,63})\1/g;
-  let m;
-  while ((m = re.exec(code)) !== null) found.add(m[2]);
-  return found;
-}
-function swallowsFailure(node, fromId) {
-  const code = node?.data?.code;
-  if (typeof code !== "string") return false;
-  if (/\bthrow\b/.test(code)) return false;
-  if (!/\bsuccess\s*:\s*true\b/.test(code)) return false;
-  if (fromId) {
-    const { code: _c, ...rest } = node.data;
-    const esc2 = String(fromId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`\\{\\{\\s*${esc2}(\\.|\\s*\\}\\})`).test(JSON.stringify(rest))) return false;
-  }
-  return true;
-}
-function extractWorkflowIO(input, opts = {}) {
-  const wf = normalizeWorkflow(input);
-  const res = { name: wf.name, reads: [], writes: [], calls: [], dynamic: [], mentions: [], swallows: [] };
-  const byId = new Map(wf.nodes.map((n) => [n.id, n]));
-  const callNodes = /* @__PURE__ */ new Map();
-  for (const n of wf.nodes) {
-    const io = extractNodeIO(n, opts);
-    res.reads.push(...io.reads);
-    res.writes.push(...io.writes);
-    res.calls.push(...io.calls);
-    res.dynamic.push(...io.dynamic);
-    for (const c of io.calls) callNodes.set(n.id, c);
-    for (const lit of codeLiterals(n.data?.code)) res.mentions.push({ template: lit, node: n.id });
-  }
-  for (const e of wf.edges) {
-    const isFail = e.type === "ON_FAIL" || e.type === "ON_BRANCH" && e.branch === "catch";
-    if (!isFail) continue;
-    const call = callNodes.get(e.from);
-    const handler = byId.get(e.to);
-    if (call && handler && swallowsFailure(handler, e.from)) {
-      res.swallows.push({ node: e.to, from: e.from, workflow: call.workflow });
-    }
-  }
-  return res;
-}
-
-// shared/dataflow-graph/rules.mjs
-function slotsOf(t) {
-  if (Array.isArray(t?.slots)) return t.slots.map(String);
-  if (typeof t?.slots_json === "string") {
-    try {
-      const s = JSON.parse(t.slots_json);
-      return Array.isArray(s) ? s.map(String) : null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-function editDistance(a, b) {
-  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
-  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-  }
-  return dp[a.length][b.length];
-}
-function closest(name, pool) {
-  let best = null;
-  for (const c of pool) {
-    const d = editDistance(name, c);
-    if (d <= Math.max(1, Math.floor(name.length / 5)) && (!best || d < best.d)) best = { c, d };
-  }
-  return best?.c;
-}
-function addTo2(map, key, owner) {
-  if (!map.has(key)) map.set(key, /* @__PURE__ */ new Set());
-  map.get(key).add(owner);
-}
-function checkDataflow(input) {
-  const opts = {
-    recipes: new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r])),
-    selfOrigins: input.selfOrigins ?? []
-  };
-  const subjectIO = (input.subjects ?? []).map((w) => extractWorkflowIO(w, opts));
-  const subjectNames = new Set(subjectIO.map((w) => w.name));
-  const deployedIO = (input.deployed ?? []).map((w) => ({ name: normalizeWorkflow(w).name, w })).filter((x) => x.name && !subjectNames.has(x.name)).map((x) => extractWorkflowIO(x.w, opts));
-  const universe = [...deployedIO, ...subjectIO];
-  const installed = new Set(universe.map((w) => w.name));
-  const writers = /* @__PURE__ */ new Map();
-  const readers = /* @__PURE__ */ new Map();
-  const touchers = /* @__PURE__ */ new Map();
-  const slots = /* @__PURE__ */ new Map();
-  const existing = /* @__PURE__ */ new Set();
-  const recordable = /* @__PURE__ */ new Set();
-  const templatesKnown = Array.isArray(input.templates);
-  for (const t of input.templates ?? []) {
-    if (!t?.name) continue;
-    existing.add(t.name);
-    recordable.add(t.name);
-    const s = slotsOf(t);
-    if (s) slots.set(t.name, s);
-  }
-  for (const app2 of input.apps ?? []) {
-    for (const d of app2.data ?? []) {
-      if (!d?.name) continue;
-      existing.add(d.name);
-      recordable.add(d.name);
-      if (Array.isArray(d.slots)) slots.set(d.name, d.slots.map(String));
-      addTo2(touchers, d.name, `app:${app2.id}`);
-    }
-  }
-  for (const p of input.platform ?? []) {
-    addTo2(p.direction === "write" ? writers : readers, p.template, `platform:${p.owner}`);
-    if (p.direction === "write") existing.add(p.template);
-  }
-  for (const w of universe) {
-    const owner = `workflow:${w.name}`;
-    for (const x of w.writes) if (x.template_kind === "literal") {
-      addTo2(writers, x.template, owner);
-      if (x.kind === "entry") existing.add(x.template);
-    }
-    for (const x of w.reads) if (x.template_kind === "literal") addTo2(readers, x.template, owner);
-    for (const x of w.mentions) addTo2(touchers, x.template, owner);
-  }
-  const errors = [];
-  const warnings = [];
-  const uncertain = [];
-  const allTemplateNames = [.../* @__PURE__ */ new Set([...existing, ...writers.keys()])];
-  for (const w of subjectIO) {
-    const at = (node) => ({ workflow: w.name, node });
-    const seenRead = /* @__PURE__ */ new Set();
-    for (const r of w.reads) {
-      if (r.template_kind !== "literal") {
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D${r.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u628A\u5B83\u63DB\u6210\u9019\u53F0\u5BE6\u4F8B\u4E0A\u771F\u7684 template \u540D\u5B57\uFF08arcrun \u7684 /kbdb/templates \u5217\u5F97\u51FA\u4F86\uFF09\u3002"
-        });
-        continue;
-      }
-      const key = `${r.template}|${r.node}`;
-      if (seenRead.has(key)) continue;
-      seenRead.add(key);
-      const hasWriter = (writers.get(r.template)?.size ?? 0) > 0 || (touchers.get(r.template)?.size ?? 0) > 0;
-      if (!hasWriter) {
-        errors.push({
-          rule: "R1",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          missing: { writer_of: r.template },
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u5DF2\u90E8\u7F72\u7684\u5DE5\u4F5C\u6D41\u3001App \u6216\u5E73\u53F0\u7A0B\u5F0F\u5BEB\u5B83\u2014\u2014\u9019\u652F\u5DE5\u4F5C\u6D41\u8B80\u5230\u7684\u6C38\u9060\u662F\u7A7A\u7684\u3002`,
-          next_action: `\u5148\u90E8\u7F72\u6703\u5BEB\u300C${r.template}\u300D\u7684\u90A3\u652F\u5DE5\u4F5C\u6D41\uFF08\u6216 App\uFF09\uFF0C\u518D\u63A8\u9019\u652F\uFF1B\u78BA\u5B9A\u53EA\u662F\u66AB\u6642\u6C92\u4EBA\u5BEB\uFF0C\u53EF\u4EE5\u5E36 force \u5F37\u63A8\u3002`
-        });
-      }
-      if (templatesKnown && !existing.has(r.template)) {
-        const hint = closest(r.template, allTemplateNames);
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u4E0D\u5B58\u5728${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u518D\u63A8\u3002` : "\u78BA\u8A8D template \u540D\u5B57\uFF1B\u5B83\u8981\u5148\u88AB\u67D0\u652F\u5DE5\u4F5C\u6D41\u5BEB\u904E\u6216\u7531 App \u5BA3\u544A\u624D\u6703\u5B58\u5728\u3002"
-        });
-      }
-      const s = slots.get(r.template);
-      for (const f of r.fields ?? []) {
-        if (s && !s.includes(f)) {
-          const hint = closest(f, s);
-          errors.push({
-            rule: "R3",
-            level: "error",
-            ...at(r.node),
-            template: r.template,
-            field: f,
-            message: `\u7BC0\u9EDE ${r.node} \u7528\u6B04\u4F4D\u300C${f}\u300D\u67E5\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
-            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\u3002`
-          });
-        }
-      }
-    }
-    const seenWrite = /* @__PURE__ */ new Set();
-    for (const x of w.writes) {
-      if (x.template_kind !== "literal") {
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u7684 template\u300C${x.template}\u300D${x.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u628A\u5B83\u63DB\u6210\u771F\u7684 template \u540D\u5B57\u3002"
-        });
-        continue;
-      }
-      if (x.kind === "record" && templatesKnown && !recordable.has(x.template)) {
-        const hint = closest(x.template, [...recordable]);
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u8981\u5BEB\u4E00\u7B46\u300C${x.template}\u300Drecord\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u9019\u500B template\uFF08\u5BEB record \u4E0D\u6703\u81EA\u52D5\u5EFA template\uFF0CKBDB \u6703\u56DE template not found\uFF09${hint ? `\uFF1B\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F` : "\u3002"}`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : "\u5148\u7531 App \u7684 data \u5BA3\u544A\u5B83\uFF08\u6216 POST /kbdb/templates \u5EFA\u597D\uFF09\uFF0C\u518D\u63A8\u9019\u652F\u3002"
-        });
-      }
-      const s = slots.get(x.template);
-      for (const f of x.fields ?? []) {
-        if (s && !s.includes(f)) {
-          const hint = closest(f, s);
-          errors.push({
-            rule: "R3",
-            level: "error",
-            ...at(x.node),
-            template: x.template,
-            field: f,
-            message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\u7684\u6B04\u4F4D\u300C${f}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
-            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\uFF0C\u6216\u5148\u66FF template \u52A0\u6B04\u4F4D\u3002`
-          });
-        }
-      }
-      if (seenWrite.has(x.template)) continue;
-      seenWrite.add(x.template);
-      const hasReader = (readers.get(x.template)?.size ?? 0) > 0 || (touchers.get(x.template)?.size ?? 0) > 0;
-      if (!hasReader) {
-        warnings.push({
-          rule: "R4",
-          level: "warning",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u6771\u897F\u8B80\u5B83\u3002`,
-          next_action: "\u5982\u679C\u662F\u7D66\u4EBA\u6216\u4E4B\u5F8C\u7684\u5DE5\u4F5C\u6D41\u7528\u7684\uFF0C\u53EF\u4EE5\u4E0D\u7406\uFF1B\u5982\u679C\u672C\u4F86\u8A72\u6709\u4EBA\u8B80\uFF0C\u6AA2\u67E5\u8B80\u7684\u90A3\u652F\u662F\u4E0D\u662F\u6C92\u88DD\u6216\u540D\u5B57\u62FC\u932F\u3002"
-        });
-      }
-    }
-    const seenCall = /* @__PURE__ */ new Set();
-    for (const c of w.calls) {
-      const key = `${c.workflow}|${c.node}`;
-      if (seenCall.has(key)) continue;
-      seenCall.add(key);
-      if (c.kind !== "literal") {
-        errors.push({
-          rule: "R2",
-          level: "error",
-          ...at(c.node),
-          workflow_called: c.workflow,
-          message: `\u7BC0\u9EDE ${c.node} \u53EB\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u300C${c.workflow}\u300D${c.kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u63DB\u6210\u771F\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u3002"
-        });
-        continue;
-      }
-      if (!installed.has(c.workflow)) {
-        const hint = closest(c.workflow, [...installed]);
-        errors.push({
-          rule: "R2",
-          level: "error",
-          ...at(c.node),
-          workflow_called: c.workflow,
-          missing: { workflow: c.workflow },
-          message: `\u7BC0\u9EDE ${c.node} \u53EB\u5DE5\u4F5C\u6D41\u300C${c.workflow}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u88DD\u5B83${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\uFF0C\u6216\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u3002` : `\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u518D\u63A8\u9019\u652F\u3002`
-        });
-      }
-    }
-    for (const s of w.swallows) {
-      errors.push({
-        rule: "R5",
-        level: "error",
-        ...at(s.node),
-        workflow_called: s.workflow,
-        message: `\u7BC0\u9EDE ${s.from} \u53EB\u300C${s.workflow}\u300D\u5931\u6557\u6642\uFF08\u5305\u62EC\u5B83\u6839\u672C\u6C92\u88DD\uFF09\uFF0C\u7531 ${s.node} \u63A5\u624B\u4E26\u56DE success:true\u2014\u2014\u4F9D\u8CF4\u6C92\u88DD\u4E5F\u6703\u88AB\u8A18\u6210\u6210\u529F\uFF0C\u6C92\u6709\u4EBA\u6703\u77E5\u9053\u5B83\u4E00\u76F4\u5728\u7A7A\u8F49\u3002`,
-        next_action: `\u8B93 ${s.node} \u7528 throw \u7D50\u675F\uFF08\u7BC0\u9EDE\u5931\u6557\u624D\u6703\u88AB\u770B\u898B\uFF09\uFF0C\u6216\u62FF\u6389\u9019\u689D ON_FAIL\uFF1B\u771F\u7684\u8981\u5BB9\u5FCD\uFF0C\u56DE\u50B3\u7684\u7D50\u679C\u4E5F\u8981\u8B93\u547C\u53EB\u7AEF\u770B\u5F97\u51FA\u300C\u9019\u4E00\u6B65\u6C92\u505A\u300D\u4E26\u8A08\u5165 verdict\u3002`
-      });
-    }
-    if (w.dynamic.length) uncertain.push({ workflow: w.name, nodes: [...new Set(w.dynamic.map((d) => d.node))] });
-  }
-  const skipped = templatesKnown ? [] : [{ rule: "R3", reason: "\u6C92\u6709\u62FF\u5230 template \u6E05\u55AE\uFF0Ctemplate\uFF0F\u6B04\u4F4D\u5B58\u4E0D\u5B58\u5728\u9019\u6B21\u6C92\u6AA2\u67E5\u3002" }];
-  return {
-    ok: errors.length === 0,
-    errors,
-    warnings,
-    uncertain,
-    skipped,
-    graph: buildGraph({ universe, writers, readers, touchers, installed })
-  };
-}
-function buildGraph({ universe, writers, readers, touchers, installed }) {
-  const nodes = /* @__PURE__ */ new Map();
-  const edges = [];
-  const node = (id, type, extra = {}) => {
-    if (!nodes.has(id)) nodes.set(id, { id, type, ...extra });
-  };
-  for (const w of universe) node(`workflow:${w.name}`, "workflow");
-  const ownerNode = (o) => {
-    const [type] = o.split(":");
-    node(o, type);
-    return o;
-  };
-  for (const [t, set] of writers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "writes" });
-  }
-  for (const [t, set] of readers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: `template:${t}`, to: ownerNode(o), type: "reads" });
-  }
-  for (const [t, set] of touchers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "touches" });
-  }
-  for (const w of universe) {
-    for (const c of w.calls) {
-      if (c.kind !== "literal") continue;
-      const to = installed.has(c.workflow) ? `workflow:${c.workflow}` : `missing:${c.workflow}`;
-      if (!installed.has(c.workflow)) node(to, "missing");
-      edges.push({ from: `workflow:${w.name}`, to, type: "calls", node: c.node });
-    }
-  }
-  for (const n of nodes.values()) {
-    if (n.type !== "template") continue;
-    const t = n.id.slice("template:".length);
-    n.orphan_read = (readers.get(t)?.size ?? 0) > 0 && (writers.get(t)?.size ?? 0) === 0 && (touchers.get(t)?.size ?? 0) === 0;
-  }
-  return { nodes: [...nodes.values()], edges };
-}
-
-// shared/dataflow-graph/platform-io.generated.mjs
-var platform_io_generated_default = [
-  {
-    "owner": "cypher-executor/src/lib/workflow-search.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "workflow",
-    "note": "\u641C\u5DE5\u4F5C\u6D41\uFF08\u5BEB\u5165\u8005\u662F webhooks-named.ts \u7684 push\uFF09"
-  },
-  {
-    "owner": "cypher-executor/src/routes/webhooks-named.ts",
-    "direction": "write",
-    "kind": "entry",
-    "template": "workflow",
-    "note": "\u6BCF\u652F push \u4E0A\u4F86\u7684\u5DE5\u4F5C\u6D41\u90FD\u5BEB\u4E00\u7B46\uFF0C\u4F9B /workflows/search"
-  },
-  {
-    "owner": "kbdb/src/actions/library-index.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "block",
-    "note": "\u5B50\u5EAB\u76EE\u9304\u3001\u627E\u5361\uFF08card-lookup\uFF09\u3001retrieve \u90FD\u8B80\u5361\u7684\u6BB5\u843D\uFF08\u5BEB\u5165\u8005\u662F rag_ingest_card\uFF09"
-  },
-  {
-    "owner": "kbdb/src/actions/library-map-store.ts",
-    "direction": "read",
-    "kind": "record",
-    "template": "triplet",
-    "note": "\u5730\u5716\u91CD\u7B97\uFF0F\u5716\u67E5\u8A62\u8B80\u4E09\u5143\u7D44\uFF08\u5BEB\u5165\u8005\u662F ingest \u5DE5\u4F5C\u6D41\uFF09"
-  },
-  {
-    "owner": "kbdb/src/actions/library-map-store.ts",
-    "direction": "write",
-    "kind": "entry",
-    "template": "library_card_tally",
-    "note": "\u6BCF\u5EAB\u73FE\u5F79\u5361\u5F35\u6578\uFF08\u5BEB\u5165\u7AEF\u589E\u6E1B\u3001\u8B80\u7AEF\u53EA\u8B80\uFF1Binkstone/Arcrun#393\uFF09"
-  },
-  {
-    "owner": "kbdb/src/actions/library-map-store.ts",
-    "direction": "write",
-    "kind": "entry",
-    "template": "library_map",
-    "note": "\u85CF\u66F8\u5730\u5716\u7531 kbdb \u81EA\u5DF1\u91CD\u7B97\u5BEB\u5165\uFF08inkstone/Arcrun#339\uFF09"
-  },
-  {
-    "owner": "kbdb/src/actions/record-crud.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "value",
-    "note": "record \u7684\u683C\u5B50\u53EF\u4EE5\u639B\u4E00\u9846\u65E2\u6709 entry\uFF08\u4F8B\uFF1Arag_ingest_card \u5148\u5BEB value \u5E38\u6578\u518D\u639B\u4E0A triplet\uFF09\uFF0C\u8B80 record \u6642\u4E00\u4F75\u8B80\u56DE"
-  },
-  {
-    "owner": "kbdb/src/embed.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "alias",
-    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-    "const": "VECTOR_ENTRY_TYPES",
-    "constValues": [
-      "alias",
-      "entity",
-      "predicate",
-      "source_passage"
-    ]
-  },
-  {
-    "owner": "kbdb/src/embed.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "entity",
-    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-    "const": "VECTOR_ENTRY_TYPES",
-    "constValues": [
-      "alias",
-      "entity",
-      "predicate",
-      "source_passage"
-    ]
-  },
-  {
-    "owner": "kbdb/src/embed.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "predicate",
-    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-    "const": "VECTOR_ENTRY_TYPES",
-    "constValues": [
-      "alias",
-      "entity",
-      "predicate",
-      "source_passage"
-    ]
-  },
-  {
-    "owner": "kbdb/src/embed.ts",
-    "direction": "read",
-    "kind": "entry",
-    "template": "source_passage",
-    "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-    "const": "VECTOR_ENTRY_TYPES",
-    "constValues": [
-      "alias",
-      "entity",
-      "predicate",
-      "source_passage"
-    ]
-  }
-];
-
-// cypher-executor/src/lib/dataflow-check.ts
-init_endpoints();
-async function loadInstance(env, tenant2) {
-  const store2 = env.WEBHOOKS;
-  const wfPrefix = `${tenant2}:wf:`;
-  const appPrefix = `${tenant2}:app:`;
-  const [wfList, appList] = await Promise.all([store2.list({ prefix: wfPrefix }), store2.list({ prefix: appPrefix })]);
-  const deployed = (await Promise.all(wfList.keys.map(async (k) => {
-    const raw2 = await store2.get(k.name, "text");
-    if (!raw2) return null;
-    try {
-      const rec = JSON.parse(raw2);
-      return { name: k.name.slice(wfPrefix.length), graph: rec.graph, config: rec.config };
-    } catch {
-      return null;
-    }
-  }))).filter((x) => x !== null);
-  const apps = (await Promise.all(appList.keys.map(async (k) => {
-    const raw2 = await store2.get(k.name, "text");
-    if (!raw2) return null;
-    try {
-      const rec = JSON.parse(raw2);
-      return { id: String(rec.id ?? k.name.slice(appPrefix.length)), data: (rec.data_templates ?? []).map((name) => ({ name })) };
-    } catch {
-      return null;
-    }
-  }))).filter((x) => x !== null);
-  let templates = null;
-  try {
-    const headers = {};
-    if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
-    const res = await fetch(`${kbdbBaseUrl(env)}/templates`, { headers });
-    if (res.ok) {
-      const body = await res.json();
-      if (Array.isArray(body.templates)) templates = body.templates.map((t) => ({ name: t.name, slots_json: t.slots_json }));
-    }
-  } catch {
-  }
-  return { deployed, apps, templates };
-}
-async function runDataflowCheck(env, tenant2, subjects, extra = {}) {
-  let loaded;
-  try {
-    loaded = await loadInstance(env, tenant2);
-  } catch (e) {
-    return {
-      checked: false,
-      ok: true,
-      errors: [],
-      warnings: [],
-      uncertain: [],
-      skipped: [],
-      reason: `\u8B80\u4E0D\u5230\u9019\u53F0\u5BE6\u4F8B\u7684\u5DF2\u90E8\u7F72\u6E05\u55AE\uFF0C\u9019\u6B21\u6C92\u6709\u6AA2\u67E5\u8B80\u5BEB\u8207\u547C\u53EB\uFF08${e instanceof Error ? e.message : String(e)}\uFF09\u3002`
-    };
-  }
-  const extraIds = new Set((extra.apps ?? []).map((a) => a.id));
-  const r = checkDataflow({
-    subjects: subjects === "all-deployed" ? loaded.deployed : subjects,
-    deployed: loaded.deployed,
-    templates: loaded.templates,
-    platform: platform_io_generated_default,
-    apps: [...loaded.apps.filter((a) => !extraIds.has(a.id)), ...extra.apps ?? []],
-    recipes: extra.recipes ?? [],
-    selfOrigins: extra.selfOrigin ? [extra.selfOrigin] : []
-  });
-  return {
-    checked: true,
-    ok: r.ok,
-    errors: r.errors,
-    warnings: r.warnings,
-    uncertain: r.uncertain,
-    skipped: r.skipped,
-    against: {
-      deployed_workflows: loaded.deployed.length,
-      installed_apps: loaded.apps.length,
-      templates: loaded.templates ? loaded.templates.length : null
-    },
-    // 縮放視圖要知道哪些名字前綴是 App（工作流名字是 <App>__<名>）；只在要圖時帶，不多讀任何東西（App 清單本來就讀了）
-    // 清單頁每列的「幾個節點」：定義本來就整份讀進來了（讀取量不變），只數 graph.nodes 的長度，不另讀任何東西
-    ...extra.withGraph ? { graph: r.graph, app_ids: loaded.apps.map((a) => a.id), workflow_steps: stepCounts(loaded.deployed) } : {}
-  };
-}
-function stepCounts(deployed) {
-  const out = {};
-  for (const d of deployed) {
-    const nodes = d.graph?.nodes;
-    if (Array.isArray(nodes)) out[d.name] = nodes.length;
-  }
-  return out;
-}
-function dataflowNextActions(report) {
-  if (!report.checked) return report.reason ? [report.reason] : [];
-  return [...new Set(report.errors.map((e) => `${e.rule} ${e.workflow}\uFF0F${e.node}\uFF1A${e.next_action}`))];
-}
-
-// cypher-executor/src/lib/app-system.ts
-function appStore(env) {
-  return env.WEBHOOKS;
-}
-function kbdbBehindHint(e) {
-  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-  if (!msg.includes("KbdbUnavailable")) return null;
-  return "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u6C92\u6709\u56DE\u61C9\uFF0C\u6216\u5B83\u7684\u7248\u672C\u6BD4\u76EE\u524D\u7684\u7A0B\u5F0F\u78BC\u820A\u2014\u2014\u5B89\u88DD\u9700\u8981\u77E5\u8B58\u5EAB\u63D0\u4F9B\u300C\u540C\u4E00\u4EFD\u8CC7\u7522\u6C38\u9060\u540C\u4E00\u5217\u300D\u7684\u5BEB\u5165\u80FD\u529B\u3002\u8ACB\u7BA1\u7406\u8005\u628A\u77E5\u8B58\u5EAB\u4E00\u8D77\u66F4\u65B0\u5230\u540C\u4E00\u7248\uFF1B\u5728\u90A3\u4E4B\u524D**\u5DF2\u7D93\u88DD\u597D\u7684 App \u4E0D\u53D7\u5F71\u97FF**\uFF0C\u7167\u5E38\u53EF\u7528\u3002";
-}
-var APP_WORKFLOW_TRIGGERS = ["manual", "schedule", "event"];
-function resolveWorkflowTrigger(wf) {
-  if (typeof wf.trigger === "string" && APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
-    return wf.trigger;
-  }
-  return extractCronExpr(wf.graph) ? "schedule" : "manual";
-}
-function normalizeRequiredCredentials(requires) {
-  return (requires?.credentials ?? []).map((c) => typeof c === "string" ? { name: c } : { name: c.name, ...c.purpose ? { purpose: c.purpose } : {} });
-}
-var APP_UI_STYLES = ["inherit", "own"];
-var DEFAULT_APP_UI_STYLE = "inherit";
-var ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
-function validateAppDeclaration(raw2) {
-  const errors = [];
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) {
-    return { ok: false, errors: ["\u5BA3\u544A\u5FC5\u9808\u662F\u4E00\u500B JSON \u7269\u4EF6"] };
-  }
-  const d = raw2;
-  if (typeof d.id !== "string" || !ID_RE.test(d.id)) {
-    errors.push("id \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09");
-  }
-  if (typeof d.name !== "string" || d.name.trim() === "") {
-    errors.push("name \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32");
-  }
-  const hasWorkflows = Array.isArray(d.workflows) && d.workflows.length > 0;
-  const uiObj = d.ui && typeof d.ui === "object" ? d.ui : null;
-  const hasHtml = Boolean(uiObj && typeof uiObj.html === "string" && uiObj.html.trim() !== "");
-  const hasSurface = Boolean(uiObj && uiObj.surface !== void 0);
-  const hasUi = hasHtml || hasSurface;
-  if (!hasWorkflows && !hasUi) {
-    errors.push("workflows \u6216 ui \u81F3\u5C11\u8981\u6709\u4E00\u500B\uFF08\u6C92\u6709\u756B\u9762\u4E5F\u6C92\u6709\u5DE5\u4F5C\u6D41\u7684 App \u4E0D\u6210\u7ACB\uFF0Cdesign \xA7\u4E8C\uFF09");
-  }
-  if (d.workflows !== void 0) {
-    if (!Array.isArray(d.workflows)) {
-      errors.push("workflows \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      d.workflows.forEach((w, i) => {
-        if (!w || typeof w !== "object") {
-          errors.push(`workflows[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const wf = w;
-        if (typeof wf.name !== "string" || wf.name.trim() === "") errors.push(`workflows[${i}].name \u5FC5\u586B`);
-        if (!wf.graph || typeof wf.graph !== "object") {
-          errors.push(`workflows[${i}].graph \u5FC5\u586B\uFF08\u57F7\u884C\u5716\uFF09`);
-        } else {
-          const g = wf.graph;
-          if (typeof g.id !== "string" || g.id.trim() === "") errors.push(`workflows[${i}].graph.id \u5FC5\u586B`);
-          if (typeof g.name !== "string" || g.name.trim() === "") errors.push(`workflows[${i}].graph.name \u5FC5\u586B`);
-          if (!Array.isArray(g.nodes)) errors.push(`workflows[${i}].graph.nodes \u5FC5\u9808\u662F\u9663\u5217`);
-          if (!Array.isArray(g.edges)) errors.push(`workflows[${i}].graph.edges \u5FC5\u9808\u662F\u9663\u5217`);
-        }
-        if (wf.trigger !== void 0) {
-          const label = typeof wf.name === "string" ? `\u300C${wf.name}\u300D` : `workflows[${i}]`;
-          if (typeof wf.trigger !== "string" || !APP_WORKFLOW_TRIGGERS.includes(wf.trigger)) {
-            errors.push(`workflows[${i}].trigger \u53EA\u80FD\u662F ${APP_WORKFLOW_TRIGGERS.join("\uFF0F")}\uFF08\u7701\u7565\uFF1D\u770B\u5716\uFF1A\u6709\u6392\u7A0B\u96F6\u4EF6\u662F schedule\uFF0C\u5426\u5247 manual\uFF09`);
-          } else {
-            const hasCron = Boolean(extractCronExpr(wf.graph));
-            if (wf.trigger === "manual" && hasCron) {
-              errors.push(`${label} \u5BA3\u544A\u6210\u624B\u52D5\uFF08manual\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6703\u81EA\u5DF1\u7167\u6392\u7A0B\u8DD1\u3002\u62FF\u6389 cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A schedule`);
-            }
-            if (wf.trigger === "schedule" && !hasCron) {
-              errors.push(`${label} \u5BA3\u544A\u6210\u6392\u7A0B\uFF08schedule\uFF09\uFF0C\u4F46\u5716\u88E1\u6C92\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5B83\u6C38\u9060\u4E0D\u6703\u81EA\u5DF1\u8DD1\u3002\u88DC\u4E0A cron \u96F6\u4EF6\uFF0C\u6216\u6539\u5BA3\u544A manual\uFF0Fevent`);
-            }
-            if (wf.trigger === "event" && hasCron) {
-              errors.push(`${label} \u5BA3\u544A\u6210\u5916\u90E8\u4E8B\u4EF6\uFF08event\uFF09\uFF0C\u4F46\u5716\u88E1\u6709\u6392\u7A0B\uFF08cron\uFF09\u96F6\u4EF6\u2014\u2014\u5169\u7A2E\u555F\u52D5\u65B9\u5F0F\u53EA\u80FD\u9078\u4E00\u7A2E`);
-            }
-          }
-        }
-      });
-    }
-  }
-  if (d.ui !== void 0 && !hasUi) {
-    errors.push("ui.html \u6216 ui.surface \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
-  }
-  if (hasHtml && hasSurface) errors.push("ui.html \u8207 ui.surface \u53EA\u80FD\u64C7\u4E00");
-  if (hasSurface) {
-    const wfNames = Array.isArray(d.workflows) ? d.workflows.map((w) => String(w?.name)) : [];
-    const acts = Array.isArray(d.actions) ? d.actions.map(String) : wfNames;
-    errors.push(...validateUiSurface(uiObj?.surface, acts));
-  }
-  if (d.ui && typeof d.ui === "object") {
-    const s = d.ui.style;
-    if (s !== void 0 && (typeof s !== "string" || !APP_UI_STYLES.includes(s))) {
-      errors.push(`ui.style \u53EA\u80FD\u662F ${APP_UI_STYLES.join(" \u6216 ")}\uFF08\u7701\u7565\uFF1D${DEFAULT_APP_UI_STYLE}\uFF0C\u8DDF\u96A8\u5168\u5C40\uFF09`);
-    }
-    const ui = d.ui;
-    const assetErrors = validateUiAssets(ui.assets);
-    errors.push(...assetErrors);
-    if (assetErrors.length === 0 && hasHtml) {
-      errors.push(...bundleUiAssets(ui.html, ui.assets).errors);
-    }
-  }
-  if (d.data !== void 0) {
-    if (!Array.isArray(d.data)) {
-      errors.push("data \u5FC5\u9808\u662F\u9663\u5217");
-    } else {
-      d.data.forEach((dt, i) => {
-        if (!dt || typeof dt !== "object") {
-          errors.push(`data[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
-          return;
-        }
-        const decl = dt;
-        if (typeof decl.name !== "string" || decl.name.trim() === "") errors.push(`data[${i}].name \u5FC5\u586B`);
-        if (!Array.isArray(decl.slots) || decl.slots.some((s) => typeof s !== "string")) {
-          errors.push(`data[${i}].slots \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
-        }
-      });
-    }
-  }
-  if (d.skills !== void 0) errors.push(...validateSkills(d.skills));
-  if (d.requires !== void 0) errors.push(...validateRequires(d.requires));
-  if (d.mcp !== void 0) errors.push(...validateAppMcp(d.mcp, d.workflows));
-  if (d.actions !== void 0 && (!Array.isArray(d.actions) || d.actions.some((a) => typeof a !== "string"))) {
-    errors.push("actions \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217");
-  } else if (Array.isArray(d.actions) && Array.isArray(d.workflows)) {
-    const wfNames = new Set(
-      d.workflows.map((w) => w && typeof w === "object" ? w.name : void 0).filter((n) => typeof n === "string")
-    );
-    for (const a of d.actions) {
-      if (!wfNames.has(a)) {
-        errors.push(
-          `actions \u88E1\u7684\u300C${a}\u300D\u627E\u4E0D\u5230\u540C\u540D\u7684 workflow\uFF08\u52D5\u4F5C\u540D\u5C31\u662F\u5DE5\u4F5C\u6D41\u672C\u5730\u540D\uFF09\u3002\u9019\u4EFD\u5BA3\u544A\u7684\u5DE5\u4F5C\u6D41\u662F\uFF1A${[...wfNames].join("\uFF0F") || "\uFF08\u4E00\u500B\u90FD\u6C92\u6709\uFF09"}`
-        );
-      }
-    }
-  }
-  return { ok: errors.length === 0, errors };
-}
-var SKILL_TEMPLATE = "agent-skill";
-var MAX_SKILLS_PER_APP = 50;
-var MAX_SKILL_CHARS = 1e5;
-var SKILL_SLUG_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
-function validateSkills(raw2) {
-  if (!Array.isArray(raw2)) return ["skills \u5FC5\u9808\u662F\u9663\u5217"];
-  const errors = [];
-  if (raw2.length > MAX_SKILLS_PER_APP) errors.push(`skills \u6700\u591A ${MAX_SKILLS_PER_APP} \u652F\uFF08\u9019\u4EFD\u6709 ${raw2.length} \u652F\uFF09`);
-  const seen = /* @__PURE__ */ new Set();
-  raw2.forEach((sk, i) => {
-    if (!sk || typeof sk !== "object" || Array.isArray(sk)) {
-      errors.push(`skills[${i}] \u5FC5\u9808\u662F\u7269\u4EF6`);
-      return;
-    }
-    const o = sk;
-    if (typeof o.slug !== "string" || !SKILL_SLUG_RE.test(o.slug)) {
-      errors.push(`skills[${i}].slug \u5FC5\u586B\uFF0C\u4E14\u53EA\u80FD\u662F\u82F1\u6578\u5B57/\u5E95\u7DDA/\u9023\u5B57\u865F\uFF0C\u958B\u982D\u9808\u70BA\u5B57\u6BCD\uFF08\u226464 \u5B57\uFF09`);
-    } else if (seen.has(o.slug)) {
-      errors.push(`skills[${i}].slug\u300C${o.slug}\u300D\u91CD\u8907\u4E86`);
-    } else {
-      seen.add(o.slug);
-    }
-    if (typeof o.title !== "string" || o.title.trim() === "") errors.push(`skills[${i}].title \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32`);
-    if (typeof o.content !== "string" || o.content.trim() === "") errors.push(`skills[${i}].content \u5FC5\u586B\uFF0C\u4E0D\u53EF\u7A7A\u5B57\u4E32`);
-    else if (o.content.length > MAX_SKILL_CHARS) errors.push(`skills[${i}].content \u592A\u9577\uFF08\u4E0A\u9650 ${MAX_SKILL_CHARS} \u5B57\uFF09`);
-  });
-  return errors;
-}
-function validateRequires(raw2) {
-  const errors = [];
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["requires \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 recipes\u3001credentials \u5169\u6B04\uFF09"];
-  const r = raw2;
-  for (const k of Object.keys(r)) {
-    if (k !== "recipes" && k !== "credentials") errors.push(`requires.${k} \u4E0D\u8A8D\u5F97\uFF08\u53EA\u6709 recipes\u3001credentials\uFF09`);
-  }
-  if (r.recipes !== void 0) {
-    if (!Array.isArray(r.recipes)) errors.push("requires.recipes \u5FC5\u9808\u662F\u9663\u5217");
-    else {
-      const seen = /* @__PURE__ */ new Set();
-      r.recipes.forEach((x, i) => {
-        if (!x || typeof x !== "object" || Array.isArray(x)) {
-          errors.push(`requires.recipes[${i}] \u5FC5\u9808\u662F\u7269\u4EF6\uFF08recipe \u5168\u6587\uFF09`);
-          return;
-        }
-        const rec = x;
-        const cid = typeof rec.canonical_id === "string" ? rec.canonical_id.trim().toLowerCase() : "";
-        if (!cid) errors.push(`requires.recipes[${i}].canonical_id \u5FC5\u586B`);
-        else if (seen.has(cid)) errors.push(`requires.recipes \u88E1\u300C${cid}\u300D\u91CD\u8907`);
-        else seen.add(cid);
-        if (typeof rec.endpoint !== "string" || rec.endpoint.trim() === "") errors.push(`requires.recipes[${i}].endpoint \u5FC5\u586B`);
-      });
-    }
-  }
-  if (r.credentials !== void 0) {
-    if (!Array.isArray(r.credentials)) errors.push("requires.credentials \u5FC5\u9808\u662F\u9663\u5217\uFF08\u91D1\u9470\u7684\u540D\u5B57\uFF09");
-    else {
-      const seen = /* @__PURE__ */ new Set();
-      r.credentials.forEach((x, i) => {
-        let name;
-        if (typeof x === "string") name = x;
-        else if (x && typeof x === "object" && !Array.isArray(x)) {
-          const o = x;
-          const extra = Object.keys(o).filter((k) => k !== "name" && k !== "purpose");
-          if (extra.length > 0) errors.push(`requires.credentials[${i}] \u53EA\u51C6 name\uFF0Fpurpose\uFF0C\u4E0D\u51C6\u6709\u300C${extra.join("\u3001")}\u300D\u2014\u2014\u91D1\u9470\u7684\u503C\u6C38\u9060\u53EA\u7531\u5BE6\u4F8B\u4E3B\u4EBA\u5728\u91D1\u9470\u756B\u9762\u586B\uFF08D36\uFF09`);
-          if (o.purpose !== void 0 && typeof o.purpose !== "string") errors.push(`requires.credentials[${i}].purpose \u5FC5\u9808\u662F\u5B57\u4E32`);
-          name = o.name;
-        } else name = void 0;
-        if (!validateName(name)) errors.push(`requires.credentials[${i}] \u7684\u540D\u5B57\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\uFF08\u9019\u662F\u91D1\u9470\u7684\u540D\u5B57\uFF0C\u4E0D\u662F\u503C\uFF09`);
-        else if (seen.has(name)) errors.push(`requires.credentials \u88E1\u300C${name}\u300D\u91CD\u8907`);
-        else seen.add(name);
-      });
-    }
-  }
-  return errors;
-}
-var ICON_SET = ["\u{1F4C4}", "\u{1F5D2}\uFE0F", "\u{1F9E9}", "\u{1F4CC}", "\u{1F527}", "\u{1F4E6}", "\u{1F5C2}\uFE0F", "\u2705", "\u{1F4A1}", "\u{1F514}", "\u{1F4CA}", "\u{1F9ED}"];
-function generateIcon(name) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
-  return ICON_SET[h % ICON_SET.length];
-}
-function applyDeclarationDefaults(raw2) {
-  const workflows = raw2.workflows ?? [];
-  const actions = raw2.actions ?? workflows.filter((w) => resolveWorkflowTrigger(w) === "manual").map((w) => w.name);
-  return {
-    ...raw2,
-    id: raw2.id,
-    name: raw2.name,
-    icon: raw2.icon ?? generateIcon(raw2.name),
-    version: raw2.version ?? "0.0.0",
-    workflows,
-    skills: raw2.skills ?? [],
-    data: raw2.data ?? [],
-    actions,
-    keeps_data: raw2.remove?.keeps_data ?? true
-  };
-}
-var APP_PLACEHOLDERS = ["__NAMESPACE__", "__CYPHER_BASE__"];
-function resolveDeclarationPlaceholders(value, coords) {
-  const base = coords.cypherBase.replace(/\/+$/, "");
-  const swap = (s) => s.split("__NAMESPACE__").join(coords.namespace).split("__CYPHER_BASE__").join(base);
-  const walk = (v) => {
-    if (typeof v === "string") return swap(v);
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === "object") {
-      const out = {};
-      for (const [k, val] of Object.entries(v)) out[swap(k)] = walk(val);
-      return out;
-    }
-    return v;
-  };
-  return walk(value);
-}
-function remainingPlaceholders(value) {
-  const text = JSON.stringify(value) ?? "";
-  return APP_PLACEHOLDERS.filter((p) => text.includes(p));
-}
-async function computeContentHash(raw2) {
-  const canonical = canonicalize(raw2);
-  const data = new TextEncoder().encode(canonical);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function canonicalize(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
-  if (value && typeof value === "object") {
-    const keys = Object.keys(value).sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(value[k])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-function appKey(tenant2, id) {
-  return `${tenant2}:app:${id}`;
-}
-function workflowKvKey(tenant2, wfKey2) {
-  return `${tenant2}:wf:${wfKey2}`;
-}
-var FLOW_CANVAS_APP_ID = "flow_canvas";
-var STUDIO_APP_NAME = "App \u5DE5\u4F5C\u5BA4";
-var STUDIO_APP_ICON = "\u{1F9F0}";
-var STUDIO_SHARED_TIERS = ["mine", "others"];
-var STUDIO_SYSTEM_APP_IDS = [FLOW_CANVAS_APP_ID];
-function studioTierOf(app2) {
-  if (STUDIO_SYSTEM_APP_IDS.includes(app2.id)) return "system";
-  return app2.origin === "authored" ? "mine" : "others";
-}
-function isStudioVisibleApp(app2, showSystem = false) {
-  const t = studioTierOf(app2);
-  return STUDIO_SHARED_TIERS.includes(t) || showSystem && t === "system";
-}
-async function studioScope(env, tenant2, showSystem = false) {
-  const all = await listInstalledApps(env, tenant2);
-  const apps = all.filter((a) => isStudioVisibleApp(a, showSystem));
-  const wfKeys = new Set(apps.flatMap((a) => a.workflows.map((w) => w.wf_key)));
-  const recipes = new Set(apps.flatMap((a) => a.requires?.recipes ?? []));
-  const ownedWf = /* @__PURE__ */ new Map();
-  const ownedRecipes = /* @__PURE__ */ new Set();
-  const tierByApp = /* @__PURE__ */ new Map();
-  for (const a of all) {
-    const t = studioTierOf(a);
-    tierByApp.set(a.id, t);
-    for (const w of a.workflows) ownedWf.set(w.wf_key, t);
-    for (const r of a.requires?.recipes ?? []) ownedRecipes.add(r);
-  }
-  return {
-    showSystem,
-    apps,
-    appIds: new Set(apps.map((a) => a.id)),
-    wfKeys,
-    recipes,
-    tierOfWf: (k) => ownedWf.get(k) ?? "system",
-    hasWf: (k) => wfKeys.has(k) || showSystem && !ownedWf.has(k),
-    hasRecipe: (id) => recipes.has(id) || showSystem && !ownedRecipes.has(id),
-    tierOfApp: (id) => tierByApp.get(id) ?? null
-  };
-}
-var COPY_CHUNK = 12;
-async function copyApp(env, tenant2, srcId, opts = {}) {
-  const src = await getInstalledApp(env, tenant2, srcId);
-  if (!src) return { ok: false, code: "not_found", error: "\u627E\u4E0D\u5230\u9019\u500B App" };
-  let targetId = opts.targetId;
-  if (targetId) {
-    if (!new RegExp(`^${srcId.replace(/[^a-z0-9_-]/g, "")}_copy[0-9]*$`).test(targetId)) {
-      return { ok: false, code: "bad_target", error: "\u526F\u672C\u7684\u540D\u5B57\u4E0D\u5C0D" };
-    }
-  } else {
-    for (let i = 1; i < 50 && !targetId; i++) {
-      const cand = `${srcId}_copy${i === 1 ? "" : i}`;
-      if (cand.length <= 64 && !await getInstalledApp(env, tenant2, cand)) targetId = cand;
-    }
-    if (!targetId) return { ok: false, code: "bad_target", error: "\u526F\u672C\u592A\u591A\u4E86\uFF0C\u5148\u6E05\u6389\u4E0D\u8981\u7684" };
-  }
-  const total = src.workflows.length;
-  const from = Math.max(0, Math.floor(opts.from ?? 0));
-  const swap = (t) => t.split(`${srcId}__`).join(`${targetId}__`);
-  const end = Math.min(total, from + COPY_CHUNK);
-  try {
-    for (let i = from; i < end; i++) {
-      const w = src.workflows[i];
-      const raw2 = await appStore(env).get(workflowKvKey(tenant2, w.wf_key), "text");
-      if (!raw2) continue;
-      const rec = JSON.parse(swap(raw2));
-      delete rec.cron_expr;
-      await appStore(env).put(workflowKvKey(tenant2, swap(w.wf_key)), JSON.stringify({ ...rec, created_at: (/* @__PURE__ */ new Date()).toISOString() }));
-    }
-  } catch (e) {
-    return { ok: false, code: "write_failed", error: e instanceof Error ? e.message : String(e) };
-  }
-  if (end < total) return { ok: true, in_progress: true, target_id: targetId, resume_from: end, total };
-  const now2 = (/* @__PURE__ */ new Date()).toISOString();
-  const record = {
-    id: targetId,
-    name: `${src.name}\uFF08\u6211\u7684\u526F\u672C\uFF09`,
-    icon: src.icon,
-    version: src.version,
-    content_hash: `copy:${srcId}:${src.content_hash}`,
-    workflows: src.workflows.map((w) => {
-      const { cron_expr: _drop, ...rest } = w;
-      return { ...rest, wf_key: swap(w.wf_key), ...w.graph_id ? { graph_id: swap(w.graph_id) } : {} };
-    }),
-    actions: src.actions,
-    data_templates: src.data_templates,
-    has_ui: src.has_ui,
-    ...src.ui_html ? { ui_html: swap(src.ui_html) } : {},
-    ...src.ui_surface ? { ui_surface: src.ui_surface } : {},
-    ...src.ui_style ? { ui_style: src.ui_style } : {},
-    keeps_data: src.keeps_data,
-    ...src.requires ? { requires: src.requires } : {},
-    ...src.declared ? { declared: src.declared } : {},
-    origin: "authored",
-    ...opts.author ? { author: opts.author } : {},
-    installed_at: now2,
-    updated_at: now2,
-    status: "active"
-  };
-  try {
-    await appStore(env).put(appKey(tenant2, targetId), JSON.stringify(record));
-  } catch (e) {
-    return { ok: false, code: "write_failed", error: e instanceof Error ? e.message : String(e) };
-  }
-  return { ok: true, target_id: targetId, app: record };
-}
-async function isFlowCanvasInstalled(env, tenant2) {
-  return await getInstalledApp(env, tenant2, FLOW_CANVAS_APP_ID) !== null;
-}
-function flowCanvasNotInstalledBody() {
-  return {
-    error: `\u9019\u53F0\u9084\u6C92\u5B89\u88DD\u300C${STUDIO_APP_NAME}\u300D`,
-    code: "flow_canvas_not_installed",
-    hint: `${STUDIO_APP_NAME}\u662F\u7D66\u958B\u767C\u7684\u4EBA\u7528\u7684 App\u3002\u8981\u958B\u767C\u7684\u8A71\uFF0C\u8ACB\u7BA1\u7406\u54E1\u5230\u300CApp \u5E02\u96C6\u300D\u5B89\u88DD\u300C${STUDIO_APP_NAME}\u300D\uFF0C\u518D\u8ACB AI \u5E6B\u4F60\u505A App\u3002`,
-    install: { app: FLOW_CANVAS_APP_ID, where: "App \u5E02\u96C6" }
-  };
-}
-async function getInstalledApp(env, tenant2, id) {
-  const raw2 = await appStore(env).get(appKey(tenant2, id), "text");
-  if (!raw2) return null;
-  try {
-    return JSON.parse(raw2);
-  } catch {
-    return null;
-  }
-}
-async function getAppWorkflowGraph(env, tenant2, wfKey2) {
-  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfKey2), "text");
-  if (!raw2) return null;
-  try {
-    const g = JSON.parse(raw2).graph;
-    if (!g) return null;
-    return {
-      ...typeof g.id === "string" ? { id: g.id } : {},
-      nodes: Array.isArray(g.nodes) ? g.nodes : [],
-      edges: Array.isArray(g.edges) ? g.edges : []
-    };
-  } catch {
-    return null;
-  }
-}
-async function listInstalledApps(env, tenant2) {
-  const prefix = `${tenant2}:app:`;
-  const list = await appStore(env).list({ prefix });
-  const apps = await Promise.all(
-    list.keys.map(async (k) => {
-      const raw2 = await appStore(env).get(k.name, "text");
-      if (!raw2) return null;
-      try {
-        return JSON.parse(raw2);
-      } catch {
-        return null;
-      }
-    })
-  );
-  return apps.filter((a) => a !== null);
-}
-async function ensureTemplate2(env, name, slots, description) {
-  const { base, headers } = kbdbBase(env);
-  noteSubrequest();
-  const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
-  if (getRes.ok) {
-    const data = await getRes.json().catch(() => null);
-    if (data?.success && data.template) {
-      const tpl = data.template;
-      let current = [];
-      try {
-        const parsed = JSON.parse(tpl.slots_json ?? "[]");
-        if (Array.isArray(parsed)) current = parsed.filter((s) => typeof s === "string");
-      } catch {
-      }
-      const missing = slots.filter((s) => !current.includes(s));
-      if (missing.length > 0 && tpl.id) {
-        noteSubrequest();
-        const patched = await fetch(`${base}/templates/${encodeURIComponent(tpl.id)}`, {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({ slots: [...current, ...missing] })
-        });
-        if (!patched.ok) throw new Error(`\u88DC\u8CC7\u6599\u6B04\u4F4D ${name}\uFF08${missing.join("\u3001")}\uFF09\u5931\u6557\uFF1AHTTP ${patched.status}`);
-      }
-      return;
-    }
-  }
-  noteSubrequest();
-  await fetch(`${base}/templates`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ name, slots, description })
-  });
-}
-var FIELD_INDEX_ROUNDS_PER_INSTALL = 12;
-async function ensureFieldIndexes(env, data, maxRounds = FIELD_INDEX_ROUNDS_PER_INSTALL) {
-  const { base, headers } = kbdbBase(env);
-  const pending = [];
-  let rounds = 0;
-  for (const dt of data) {
-    const fields = (dt.index_fields ?? []).filter((f) => dt.slots.includes(f));
-    if (fields.length === 0) continue;
-    let ready = false;
-    while (!ready && rounds < Math.min(maxRounds, FIELD_INDEX_ROUNDS_PER_INSTALL)) {
-      rounds += 1;
-      noteSubrequest();
-      try {
-        const res = await fetch(`${base}/records/field-index`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ template: dt.name, fields })
-        });
-        if (!res.ok) {
-          await res.body?.cancel();
-          break;
-        }
-        const body = await res.json().catch(() => null);
-        ready = body?.ready === true;
-        if (!ready && !(body?.backfilled && body.backfilled > 0)) break;
-      } catch {
-        break;
-      }
-    }
-    if (!ready) pending.push(dt.name);
-  }
-  return pending;
-}
-var RECIPE_BEHAVIOR_FIELDS = [
-  "endpoint",
-  "method",
-  "headers",
-  "body",
-  "body_template",
-  "response_map",
-  "auth",
-  "binding_name",
-  "auth_service",
-  "credentials_required"
-];
-function sameRecipeBehavior(a, b) {
-  const pick = (r) => {
-    const o = {};
-    for (const k of RECIPE_BEHAVIOR_FIELDS) {
-      const v = k === "method" ? (r.method ?? "POST").toUpperCase() : r[k];
-      if (v !== void 0) o[k] = v;
-    }
-    return o;
-  };
-  return canonicalize(pick(a)) === canonicalize(pick(b));
-}
-async function ensureAppRecipes(env, recipes) {
-  const installed = [];
-  for (const decl of recipes) {
-    const cid = String(decl.canonical_id ?? "").trim().toLowerCase();
-    const have = await resolveRecipe(cid, env.RECIPES);
-    if (have && sameRecipeBehavior(have, decl)) continue;
-    const r = await upsertPrivateRecipe(env.RECIPES, { ...decl, canonical_id: cid });
-    if (!r.ok) return { ok: false, error: `recipe\u300C${cid}\u300D\uFF1A${r.error}` };
-    installed.push(cid);
-  }
-  return { ok: true, installed };
-}
-async function findMissingCredentials(env, tenant2, wanted) {
-  if (wanted.length === 0) return { missing: [], checked: true };
-  try {
-    const have = new Set((await listCredentialRows(env, String(tenant2))).map((r) => r.name));
-    return { missing: wanted.filter((w) => !have.has(w.name)), checked: true };
-  } catch {
-    return { missing: [], checked: false };
-  }
-}
-async function upsertAppSkill(env, tenant2, appId, skill) {
-  const { base, headers } = kbdbBase(env);
-  const pageName = `skill-${skill.slug}`;
-  const q = new URLSearchParams({ template: SKILL_TEMPLATE, owner_id: String(tenant2), page_name: pageName, limit: "1" });
-  noteSubrequest();
-  const probe = await fetch(`${base}/entries?${q.toString()}`, { headers });
-  if (!probe.ok) throw new Error(`\u8B80\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${probe.status}`);
-  const hit = (await probe.json().catch(() => null))?.entries?.[0];
-  const metadata = JSON.stringify({ slug: skill.slug, title: skill.title, source: `app:${appId}` });
-  noteSubrequest();
-  if (hit?.id) {
-    const res2 = await fetch(`${base}/entries/${encodeURIComponent(hit.id)}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({ content: skill.content, metadata_json: metadata })
-    });
-    if (!res2.ok) throw new Error(`\u66F4\u65B0\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${res2.status}`);
-    return "updated";
-  }
-  const res = await fetch(`${base}/entries`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      template: SKILL_TEMPLATE,
-      owner_id: String(tenant2),
-      page_name: pageName,
-      content: skill.content,
-      metadata_json: metadata,
-      tags_json: JSON.stringify([SKILL_TEMPLATE, `skill:${skill.slug}`])
-    })
-  });
-  if (!res.ok) throw new Error(`\u5EFA\u7ACB\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${res.status}`);
-  return "created";
-}
-var INSTALL_REQUEST_BUDGET = 32;
-var FINAL_RESERVE = 8;
-async function installApp(env, tenant2, rawDecl, opts = {}) {
-  let decl0 = rawDecl;
-  if (opts.coords) {
-    try {
-      decl0 = resolveDeclarationPlaceholders(rawDecl, opts.coords);
-    } catch (e) {
-      return {
-        ok: false,
-        step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
-        errors: [e instanceof Error ? e.message : String(e)],
-        hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u4E0D\u662F\u4F60\u505A\u932F\u4E86\u3002\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u5373\u53EF\u3002"
-      };
-    }
-  }
-  const left = remainingPlaceholders(decl0);
-  if (left.length > 0) {
-    return {
-      ok: false,
-      step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740",
-      errors: [`\u9019\u4EFD\u5BA3\u544A\u88E1\u9084\u6709\u6C92\u586B\u7684\u4F4D\u7F6E\uFF1A${left.join("\u3001")}`],
-      hint: "\u9019\u500B App \u7684\u4F5C\u8005\u7559\u4E86\u8981\u7531\u5BE6\u4F8B\u586B\u7684\u6B04\u4F4D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u586B\u5F97\u8D77\u4F86\u3002\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
-    };
-  }
-  const validation = validateAppDeclaration(decl0);
-  if (!validation.ok) {
-    return {
-      ok: false,
-      step: "\u6AA2\u67E5\u9019\u500B App \u7684\u5BA3\u544A",
-      errors: validation.errors,
-      hint: "\u9019\u662F App \u4F5C\u8005\u90A3\u908A\u8981\u4FEE\u7684\uFF0C\u91CD\u8A66\u4E0D\u6703\u8B8A\u597D\u3002\u628A\u4E0A\u9762\u9019\u5E7E\u884C\u539F\u6587\u56DE\u5831\u7D66\u9019\u500B App \u7684\u4F5C\u8005\u3002"
-    };
-  }
-  const decl = applyDeclarationDefaults(decl0);
-  const contentHash = await computeContentHash(decl0);
-  const existing = await getInstalledApp(env, tenant2, decl.id);
-  const wantedCreds = normalizeRequiredCredentials(decl.requires);
-  const wantedRecipes = decl.requires?.recipes ?? [];
-  const requestStart = subrequestCount();
-  const spent = () => subrequestCount() - requestStart;
-  if (existing && existing.content_hash === contentHash && existing.status === "active") {
-    const ensured2 = await ensureAppRecipes(env, wantedRecipes);
-    if (!ensured2.ok) {
-      return {
-        ok: false,
-        step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
-        errors: [ensured2.error],
-        hint: "\u9019\u500B App \u9700\u8981\u7684 recipe \u5BEB\u4E0D\u9032\u9019\u53F0\u5BE6\u4F8B\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
-      };
-    }
-    const credCheck2 = await findMissingCredentials(env, tenant2, wantedCreds);
-    const needs2 = {
-      recipes_installed: ensured2.installed,
-      missing_credentials: credCheck2.missing,
-      ...credCheck2.checked ? {} : { credentials_check_failed: true }
-    };
-    try {
-      for (const dt of decl.data) {
-        if (spent() >= INSTALL_REQUEST_BUDGET) break;
-        await ensureTemplate2(env, dt.name, dt.slots, dt.description);
-      }
-    } catch (e) {
-      return {
-        ok: false,
-        step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
-        errors: [e instanceof Error ? e.message : String(e)],
-        hint: "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\u670D\u52D9\u6C92\u6709\u56DE\u61C9\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\u5B89\u88DD\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
-      };
-    }
-    const pendingIdx2 = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
-    return { ok: true, changed: false, app: existing, ...needs2, ...pendingIdx2.length ? { field_index_pending: pendingIdx2 } : {} };
-  }
-  const units = [];
-  let recipesInstalled = [];
-  for (const r of wantedRecipes) {
-    units.push({
-      step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
-      label: String(r.canonical_id ?? ""),
-      cost: 3,
-      run: async () => {
-        const ensured2 = await ensureAppRecipes(env, [r]);
-        if (!ensured2.ok) throw new Error(ensured2.error);
-        recipesInstalled = recipesInstalled.concat(ensured2.installed);
-      }
-    });
-  }
-  for (const dt of decl.data) {
-    const prevDt = existing?.declared?.data?.find((d) => d.name === dt.name);
-    const dtUnchanged = prevDt !== void 0 && canonicalize(prevDt) === canonicalize(dt);
-    units.push({
-      step: "\u6E96\u5099\u8CC7\u6599\u578B\u5225",
-      label: dt.name,
-      cost: dtUnchanged ? 0 : 2,
-      run: dtUnchanged ? async () => {
-      } : () => ensureTemplate2(env, dt.name, dt.slots, dt.description)
-    });
-  }
-  const prepared = await Promise.all(decl.workflows.map(async (wf) => {
-    const wfKey2 = `${decl.id}__${wf.name}`;
-    const trigger = resolveWorkflowTrigger(wf);
-    const cronExpr = trigger === "schedule" ? extractCronExpr(wf.graph) : null;
-    const graphId = typeof wf.graph.id === "string" ? wf.graph.id : void 0;
-    const description = wf.description || `${decl.name}: ${wf.name}`;
-    const hash = await computeContentHash({ graph: wf.graph, description, cron_expr: cronExpr });
-    const ref = {
-      hash,
-      name: wf.name,
-      wf_key: wfKey2,
-      description: wf.description || "",
-      trigger,
-      ...cronExpr ? { cron_expr: cronExpr } : {},
-      ...graphId ? { graph_id: graphId } : {}
-    };
-    return { wf, wfKey: wfKey2, cronExpr, ref, description };
-  }));
-  const workflowRefs = prepared.map((p) => p.ref);
-  const prevCron = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, Boolean(w.cron_expr)]));
-  const foreignPending = existing?.pending_hash !== void 0 && existing.pending_hash !== contentHash;
-  const pendingFull = foreignPending || existing?.pending_full === true;
-  const trustPrev = Boolean(existing) && !pendingFull;
-  const prevHash = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, w.hash]));
-  let markerWritten = false;
-  const markPending = async () => {
-    if (markerWritten || !existing || existing.pending_hash === contentHash) {
-      markerWritten = true;
-      return;
-    }
-    await appStore(env).put(
-      appKey(tenant2, decl.id),
-      JSON.stringify({ ...existing, pending_hash: contentHash, ...pendingFull ? { pending_full: true } : {} })
-    );
-    markerWritten = true;
-  };
-  const skillRefs = [];
-  const prevSkillHash = new Map((existing?.skills ?? []).map((k) => [k.slug, k.hash]));
-  for (const sk of decl.skills) {
-    const hash = await computeContentHash({ title: sk.title, content: sk.content });
-    skillRefs.push({ slug: sk.slug, hash });
-    if (trustPrev && prevSkillHash.get(sk.slug) === hash) {
-      units.push({ step: "\u5B89\u88DD\u6280\u80FD", label: sk.slug, cost: 0, run: async () => {
-      } });
-      continue;
-    }
-    units.push({
-      step: "\u5B89\u88DD\u6280\u80FD",
-      label: sk.slug,
-      cost: 2,
-      run: async () => {
-        await markPending();
-        await upsertAppSkill(env, tenant2, decl.id, sk);
-      }
-    });
-  }
-  for (const p of prepared) {
-    const wfUnchanged = trustPrev && prevHash.get(p.wfKey) === p.ref.hash;
-    if (wfUnchanged) {
-      units.push({ step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41", label: p.wf.name, cost: 0, run: async () => {
-      } });
-      continue;
-    }
-    const touchCron = Boolean(p.cronExpr) || prevCron.get(p.wfKey) === true;
-    units.push({
-      step: "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
-      label: p.wf.name,
-      cost: touchCron ? 3 : 1,
-      run: async () => {
-        await markPending();
-        await appStore(env).put(
-          workflowKvKey(tenant2, p.wfKey),
-          JSON.stringify({
-            graph: p.wf.graph,
-            description: p.description,
-            created_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
-            ...p.cronExpr ? { cron_expr: p.cronExpr } : {}
-          })
-        );
-        if (touchCron) await updateCronIndexEntry(appStore(env), String(tenant2), p.wfKey, p.cronExpr);
-      }
-    });
-  }
-  const total = units.length;
-  const wantFrom = opts.resumeHash === contentHash ? Math.floor(opts.resumeFrom ?? 0) || 0 : 0;
-  let cursor = Math.min(Math.max(wantFrom, 0), total);
-  const from = cursor;
-  try {
-    while (cursor < total) {
-      if (cursor > from && spent() + units[cursor].cost > INSTALL_REQUEST_BUDGET) break;
-      await units[cursor].run();
-      cursor++;
-    }
-  } catch (e) {
-    const u = units[cursor];
-    const why = e instanceof Error ? e.message : String(e);
-    return {
-      ok: false,
-      step: u?.step ?? "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
-      errors: [why],
-      resume_from: cursor,
-      resume_hash: contentHash,
-      hint: kbdbBehindHint(e) ?? `\u5DF2\u7D93\u5B8C\u6210 ${cursor}\uFF0F${total} \u500B\u6B65\u9A5F\uFF08\u5099\u9F4A recipe\u3001\u6E96\u5099\u8CC7\u6599\u578B\u5225\u3001\u5B89\u88DD\u5DE5\u4F5C\u6D41\uFF09\uFF0C\u5361\u5728\u300C${u?.label ?? ""}\u300D\u3002\u518D\u6309\u4E00\u6B21\u6703\u5F9E\u9019\u88E1\u63A5\u8457\u505A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\uFF1B\u5982\u679C\u6BCF\u6B21\u90FD\u5361\u5728\u540C\u4E00\u500B\u5730\u65B9\uFF0C\u91CD\u6309\u6C92\u6709\u7528\uFF0C\u8ACB\u628A\u4E0A\u9762\u90A3\u53E5\u539F\u56E0\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002`
-    };
-  }
-  if (cursor < total || spent() > INSTALL_REQUEST_BUDGET - FINAL_RESERVE) {
-    return { ok: true, in_progress: true, changed: true, progress: { done: cursor, total }, resume_from: cursor, resume_hash: contentHash };
-  }
-  const credCheck = await findMissingCredentials(env, tenant2, wantedCreds);
-  const needs = {
-    recipes_installed: recipesInstalled,
-    missing_credentials: credCheck.missing,
-    ...credCheck.checked ? {} : { credentials_check_failed: true }
-  };
-  const dataflow = await runDataflowCheck(
-    env,
-    tenant2,
-    decl.workflows.map((wf) => ({ name: `${decl.id}__${wf.name}`, graph: wf.graph })),
-    { apps: [{ id: decl.id, data: decl.data }], recipes: wantedRecipes }
-  );
-  if (existing) {
-    const keepKeys = new Set(workflowRefs.map((w) => w.wf_key));
-    for (const prev of existing.workflows) {
-      if (!keepKeys.has(prev.wf_key)) {
-        await appStore(env).delete(workflowKvKey(tenant2, prev.wf_key));
-        await updateCronIndexEntry(appStore(env), String(tenant2), prev.wf_key, null);
-      }
-    }
-  }
-  const uiHtml = decl.ui?.html ? bundleUiAssets(decl.ui.html, decl.ui.assets).html : void 0;
-  const uiSurface = decl.ui?.surface;
-  const mcp = installedMcpOf(decl.id, decl.mcp);
-  const record = {
-    id: decl.id,
-    name: decl.name,
-    icon: decl.icon,
-    version: decl.version,
-    content_hash: contentHash,
-    workflows: workflowRefs,
-    ...skillRefs.length ? { skills: skillRefs } : {},
-    actions: decl.actions,
-    data_templates: decl.data.map((d) => d.name),
-    has_ui: Boolean(uiHtml || uiSurface),
-    ui_html: uiHtml,
-    ...uiSurface ? { ui_surface: uiSurface } : {},
-    ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
-    keeps_data: decl.keeps_data,
-    ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
-    ...mcp ? { mcp } : {},
-    declared: { data: decl.data, ...decl.engine_min ? { engine_min: decl.engine_min } : {} },
-    ...opts.source ?? existing?.source ? { source: opts.source ?? existing?.source } : {},
-    ...opts.origin ?? existing?.origin ? { origin: opts.origin ?? existing?.origin } : {},
-    ...opts.origin === "authored" && opts.author ? { author: opts.author } : existing?.author ? { author: existing.author } : {},
-    installed_at: existing?.installed_at ?? (/* @__PURE__ */ new Date()).toISOString(),
-    updated_at: (/* @__PURE__ */ new Date()).toISOString(),
-    status: "active"
-  };
-  try {
-    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
-  } catch (e) {
-    return {
-      ok: false,
-      step: "\u5BEB\u5165\u5B89\u88DD\u7D00\u9304",
-      errors: [e instanceof Error ? e.message : String(e)],
-      resume_from: total,
-      resume_hash: contentHash,
-      hint: kbdbBehindHint(e) ?? "\u5DE5\u4F5C\u6D41\u90FD\u5DF2\u7D93\u88DD\u597D\u4E86\uFF0C\u53EA\u5DEE\u6700\u5F8C\u9019\u4E00\u7B46\u7D00\u9304\u2014\u2014\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u6703\u76F4\u63A5\u88DC\u4E0A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\u3002"
-    };
-  }
-  const pendingIdx = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
-  return { ok: true, changed: true, app: record, ...needs, ...pendingIdx.length ? { field_index_pending: pendingIdx } : {}, dataflow };
-}
-async function uninstallApp(env, tenant2, id) {
-  const existing = await getInstalledApp(env, tenant2, id);
-  if (!existing) return { ok: false, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD\u7D00\u9304" };
-  try {
-    for (const wf of existing.workflows) {
-      await appStore(env).delete(workflowKvKey(tenant2, wf.wf_key));
-      await updateCronIndexEntry(appStore(env), String(tenant2), wf.wf_key, null);
-    }
-    await appStore(env).delete(appKey(tenant2, id));
-  } catch (e) {
-    return {
-      ok: false,
-      error: kbdbBehindHint(e) ?? `\u79FB\u9664\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`
-    };
-  }
-  return { ok: true };
-}
-function prefetchAppAction(env, tenant2, appId, action) {
-  const guessedKey = `${appId}__${action}`;
-  const app2 = getInstalledApp(env, tenant2, appId);
-  const guessedRaw = appStore(env).get(workflowKvKey(tenant2, guessedKey), "text");
-  app2.catch(() => void 0);
-  guessedRaw.catch(() => void 0);
-  return { guessedKey, app: app2, guessedRaw };
-}
-async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch) {
-  const pre = prefetch ?? prefetchAppAction(env, tenant2, appId, action);
-  const guessedKey = pre.guessedKey;
-  const [app2, guessedRaw] = await Promise.all([pre.app, pre.guessedRaw]);
-  if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
-  if (!app2.actions.includes(action)) {
-    return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
-  }
-  const wfRef = app2.workflows.find((w) => w.name === action);
-  if (!wfRef) return { ok: false, status: 500, error: "\u52D5\u4F5C\u5C0D\u61C9\u7684\u5DE5\u4F5C\u6D41\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
-  const raw2 = wfRef.wf_key === guessedKey ? guessedRaw : await appStore(env).get(workflowKvKey(tenant2, wfRef.wf_key), "text");
-  if (!raw2) return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u8CC7\u6599\u907A\u5931\uFF08\u5B89\u88DD\u614B\u640D\u6BC0\uFF09" };
-  let graph;
-  try {
-    const parsed = JSON.parse(raw2);
-    if (!parsed.graph) throw new Error("no graph");
-    graph = parsed.graph;
-  } catch {
-    return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
-  }
-  const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
-  const g = graph;
-  const verdict = writeExecutionVerdict(
-    env,
-    typeof g.id === "string" ? g.id : wfRef.wf_key,
-    Array.isArray(g.nodes) ? g.nodes : [],
-    result.success ? "success" : "failed",
-    result.duration_ms,
-    result.error ?? "",
-    // 斷言（_portal_actor）不進執行紀錄：紀錄 AI 讀得到（inkstone/Arcrun#304 c22862）
-    { ...payload, _portal_actor: void 0, _triggered_by: "app" },
-    String(tenant2),
-    void 0,
-    result.failed_node
-  );
-  if (ctx) ctx.waitUntil(verdict);
-  else await verdict;
-  if (!result.success) {
-    const gate = checkEngineMin(app2.declared?.engine_min, env.ARCRUN_BUNDLE_VERSION);
-    return {
-      ok: false,
-      status: 502,
-      error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` + (gate ? `\u3002\u9019\u500B App \u9700\u8981\u5E73\u53F0 ${gate.needs} \u4EE5\u4E0A\uFF0C\u9019\u53F0\u662F ${gate.have}\u2014\u2014\u5F88\u53EF\u80FD\u662F\u5E73\u53F0\u7248\u672C\u4E0D\u5920\u65B0\u9020\u6210\u7684\uFF0C\u8ACB\u5148\u628A\u5E73\u53F0\u66F4\u65B0\u5230 ${gate.needs} \u4EE5\u4E0A\uFF08\u66F4\u65B0\u4E2D\u5FC3\uFF09\u3002` : "")
-    };
-  }
-  return { ok: true, status: 200, result: result.data };
-}
-function refTrigger(w) {
-  return w.trigger ?? "manual";
-}
-function launchOf(app2) {
-  if (app2.has_ui) return { launch: "open" };
-  const runnable = app2.workflows.filter((w) => refTrigger(w) === "manual" && app2.actions.includes(w.name));
-  if (runnable.length === 0) return { launch: "auto" };
-  return runnable.length === 1 ? { launch: "run", run_action: runnable[0].name } : { launch: "run" };
-}
-function summarizeApp(app2) {
-  const l = launchOf(app2);
-  const studio = app2.id === FLOW_CANVAS_APP_ID;
-  const name = studio ? STUDIO_APP_NAME : app2.name;
-  const icon = studio ? STUDIO_APP_ICON : app2.icon;
-  return {
-    id: app2.id,
-    name,
-    icon,
-    origin: app2.origin ?? "market",
-    tier: studioTierOf(app2),
-    ...app2.author ? { author: app2.author } : {},
-    glyph: appGlyph(icon, name),
-    has_ui: app2.has_ui,
-    version: app2.version,
-    launch: l.launch,
-    ...l.run_action ? { run_action: l.run_action } : {},
-    // 自動的那一格要說得出「它什麼時候會自己跑」，使用者才知道它在替他做事。
-    schedules: app2.workflows.map((w) => w.cron_expr).filter((x) => typeof x === "string")
-  };
-}
-function detailApp(app2) {
-  const l = launchOf(app2);
-  const studio = app2.id === FLOW_CANVAS_APP_ID;
-  return {
-    id: app2.id,
-    name: studio ? STUDIO_APP_NAME : app2.name,
-    icon: studio ? STUDIO_APP_ICON : app2.icon,
-    version: app2.version,
-    has_ui: app2.has_ui,
-    ui_html: app2.ui_html,
-    ...app2.ui_surface ? { ui_surface: app2.ui_surface } : {},
-    // 舊安裝態（v0.1 裝的 App）沒有這一欄——一律當「跟隨全局」，不是「維持原樣」。
-    // 那正是 leo 抱怨的那個狀態，預設值要把它修好，不是把它保留下來。
-    ui_style: app2.ui_style ?? DEFAULT_APP_UI_STYLE,
-    workflows: app2.workflows.map((w) => ({
-      name: w.name,
-      description: w.description,
-      trigger: refTrigger(w),
-      ...w.cron_expr ? { cron_expr: w.cron_expr } : {},
-      ...w.graph_id ? { graph_id: w.graph_id } : {},
-      // 畫面只為「真的按得動」的那幾條長出鍵——白名單仍由 runAppAction 在伺服端把關。
-      runnable: app2.actions.includes(w.name)
-    })),
-    actions: app2.actions,
-    launch: l.launch,
-    ...l.run_action ? { run_action: l.run_action } : {}
-  };
-}
+init_app_system();
 
 // cypher-executor/src/lib/mcp-token-ttl.ts
 var NEVER_EXPIRES_SECONDS = 0;
@@ -18549,6 +19406,7 @@ async function listProviderModels(env, tenant2, providerId, baseUrl) {
 
 // cypher-executor/src/lib/reset-mail-workflow.ts
 init_webhook_handlers();
+init_execution_logger();
 var RESET_MAIL_WORKFLOW = "portal_password_reset_mail";
 function wfKey(ns) {
   return `${ns}:wf:${RESET_MAIL_WORKFLOW}`;
@@ -18600,6 +19458,7 @@ async function runResetMailWorkflow(env, ns, ctx, input) {
 // cypher-executor/src/routes/portal.ts
 init_tenant();
 init_credentials();
+init_release_body();
 
 // cypher-executor/src/lib/portal-session-cache.ts
 var AUTH_CACHE_MS = 1e4;
@@ -19129,6 +19988,9 @@ function renderFaqHtml(origin2, code) {
 
 // cypher-executor/src/lib/instance-update.ts
 init_endpoints();
+function shortCode(v) {
+  return typeof v === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(v) ? v : void 0;
+}
 async function requestInstanceUpdate(env, fetchImpl = fetch) {
   const token = env.ARCRUN_UPDATE_TOKEN;
   const accountId = env.CF_ACCOUNT_ID;
@@ -19173,10 +20035,20 @@ async function requestInstanceUpdate(env, fetchImpl = fetch) {
     };
   }
   if (res.status === 401 || res.status === 403) {
-    return { status: 200, body: { ok: false, state: "refused", message: message2 || "\u9019\u500B\u66F4\u65B0\u8981\u6C42\u6C92\u6709\u901A\u904E\u9A57\u8B49\u3002" } };
+    return { status: 200, body: { ok: false, state: "refused", reason: "unauthorized", message: message2 || "\u9019\u500B\u66F4\u65B0\u8981\u6C42\u6C92\u6709\u901A\u904E\u9A57\u8B49\u3002" } };
   }
   if (j.ok === true && j.state === "busy") {
-    return { status: 200, body: { ok: true, state: "busy", message: message2 || "\u6B63\u5728\u5E6B\u4F60\u66F4\u65B0\uFF0C\u8ACB\u7A0D\u5019\u518D\u91CD\u65B0\u6574\u7406\u3002" } };
+    const busyReason = shortCode(j.reason);
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        state: "busy",
+        message: message2 || "\u6B63\u5728\u5E6B\u4F60\u66F4\u65B0\uFF0C\u8ACB\u7A0D\u5019\u518D\u91CD\u65B0\u6574\u7406\u3002",
+        ...busyReason ? { reason: busyReason } : {},
+        ...typeof j.deployed === "number" ? { deployed: j.deployed } : {}
+      }
+    };
   }
   if (j.ok === true) {
     const deployed = typeof j.deployed === "number" ? j.deployed : 0;
@@ -19192,7 +20064,20 @@ async function requestInstanceUpdate(env, fetchImpl = fetch) {
       }
     };
   }
-  return { status: 200, body: { ok: false, state: "refused", message: message2 || "\u9019\u6B21\u6C92\u8FA6\u6CD5\u5E6B\u4F60\u66F4\u65B0\u3002" } };
+  const reason = shortCode(j.reason);
+  const installerState = shortCode(j.state);
+  const failedStep = shortCode(j.failedStep);
+  return {
+    status: 200,
+    body: {
+      ok: false,
+      state: "refused",
+      message: message2 || "\u9019\u6B21\u6C92\u8FA6\u6CD5\u5E6B\u4F60\u66F4\u65B0\u3002",
+      ...reason ? { reason } : {},
+      ...installerState ? { installer_state: installerState } : {},
+      ...failedStep ? { failed_step: failedStep } : {}
+    }
+  };
 }
 var STATUS_UNAVAILABLE = { available: false, prepared: false, preparing: false, prepared_workers: 0, prepared_at: null };
 async function requestInstanceUpdateStatus(env, fetchImpl = fetch) {
@@ -19227,7 +20112,2755 @@ async function requestInstanceUpdateStatus(env, fetchImpl = fetch) {
 init_endpoints();
 
 // cypher-executor/src/lib/app-catalog.ts
-var APP_CATALOG = [];
+init_app_glyphs();
+init_builtin_ids();
+init_version();
+init_app_system();
+
+// app-market/catalog.json
+var catalog_default = {
+  _: [
+    "App \u5E02\u96C6\u7684\u76EE\u9304\u539F\u7A3F\uFF08inkstone/Arcrun#432\uFF09\u3002App \u5C6C\u65BC\u5E02\u96C6\u3001\u4E0D\u5C6C\u65BC\u4E3B\u7A0B\u5F0F\u5F15\u64CE\uFF1A\u9019\u4EFD\u76EE\u9304\u8207\u5404 App \u7684\u5BA3\u544A\u300C\u4E0D\u7DE8\u9032\u5F15\u64CE\u300D\uFF0C",
+    "\u7531 build-feed.mjs \u7522\u51FA\u975C\u614B\u7684\u5E02\u96C6\u76EE\u9304\uFF08index.json\uFF09\u8207 App \u5305\uFF08packages/<id>-<version>.json\uFF09\uFF0C\u7531\u5E02\u96C6\u4F86\u6E90\u767C\u3002",
+    "\u7248\u672C\u865F\u4EE5\u5BA3\u544A\u88E1\u7684 version \u70BA\u6E96\uFF08\u4E0D\u5728\u9019\u88E1\u53E6\u5BEB\u4E00\u4EFD\uFF0C\u514D\u5F97\u5169\u908A\u6F02\u79FB\uFF09\u3002",
+    "engine_min\uFF08\u4F5C\u8005\u81EA\u5831\uFF1A\u9700\u8981\u5E73\u53F0\u5E7E\u7248\u4EE5\u4E0A\uFF09\u8207 notes\uFF08\u9019\u4E00\u7248\u6539\u4E86\u4EC0\u9EBC\uFF09\u5BEB\u5728\u5BA3\u544A\u9802\u5C64\uFF0C\u96A8 App \u5305\u4E00\u8D77\u8D70\u3002"
+  ],
+  apps: [
+    {
+      id: "notes",
+      name: "\u7B46\u8A18",
+      icon: "\u{1F4DD}",
+      summary: "\u96A8\u624B\u5BEB\u4E00\u5247\u7B46\u8A18\uFF0C\u5B58\u4E0B\u5F8C\u81EA\u52D5\u6574\u7406\u6210\u77E5\u8B58\u5361\uFF1B\u53EF\u4EE5\u7DE8\u8F2F\uFF08\u5361\u8DDF\u8457\u91CD\u6574\uFF09\u3001\u522A\u9664\uFF08\u5361\u4E00\u8D77\u4E0B\u67B6\uFF09\uFF0C\u4E5F\u53EF\u4EE5\u7559\u8A00\u6216\u9078\u4E00\u6BB5\u6587\u5B57\u5F15\u7528\u56DE\u8986\uFF1B\u4F9D\u65E5\u671F\u6392\u6210\u6CB3\u9053\uFF0C\u5BEB\u4E0B\u53BB\u7684\u5167\u5BB9\u9032\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u3002",
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "declarations/notes.json"
+    },
+    {
+      id: "flow_canvas",
+      name: "App \u5DE5\u4F5C\u5BA4",
+      icon: "\u{1F9F0}",
+      summary: "\u7D66\u958B\u767C\u7684\u4EBA\u7528\uFF1A\u770B\u4F60\u505A\u7684 App\uFF0C\u4E00\u5C64\u5C64\u9EDE\u9032\u53BB\u770B\u5B83\u7684\u5DE5\u4F5C\u6D41\u3001\u7BC0\u9EDE\u8207 Recipe\uFF0C\u518D\u8ACB AI \u5E6B\u4F60\u505A\u6216\u6539\u3002\u5225\u4EBA\u505A\u7684 App \u552F\u8B80\u53EF\u770B\uFF0C\u60F3\u6539\u5148\u8907\u88FD\u4E00\u4EFD\uFF1B\u4E00\u822C\u540C\u4E8B\u4E0D\u9700\u8981\uFF0C\u6C92\u88DD\u5C31\u5B8C\u5168\u770B\u4E0D\u5230\u3002",
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "declarations/flow_canvas.json"
+    },
+    {
+      id: "global_index",
+      name: "\u958B\u5834\u5168\u5C40\u7E3D\u5716",
+      icon: "\u{1F9ED}",
+      summary: "\u4E00\u6B21\u5370\u51FA\u73FE\u5728\u6709\u54EA\u4E9B\u7968\u5728\u52D5\u3001\u77E5\u8B58\u5EAB\u88E1\u6709\u4EC0\u9EBC\uFF0C\u958B\u5834\u5148\u770B\u9019\u4EFD\u4E0D\u5FC5\u88AB\u4EBA\u63D0\u9192\u3002",
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "../workflows/global_index.app.json"
+    },
+    {
+      id: "kanban",
+      name: "\u7968\u5730\u5716",
+      icon: "\u{1F5C2}\uFE0F",
+      summary: "\uFF08\u5DF2\u4F75\u5165 AHub\uFF09\u5C08\u6848\u3001\u91CC\u7A0B\u7891\u3001\u7968\u7684\u7D50\u69CB\u8207\u770B\u677F\uFF0C\u4EE5\u53CA\u76EE\u6A19\u6307\u5411\u7684\u9032\u5EA6\uFF0C\u73FE\u5728\u90FD\u5728 AHub \u4E00\u500B\u756B\u9762\u88E1\uFF1B\u5DF2\u88DD\u7684\u6309\u66F4\u65B0\u5C31\u63DB\u6210\u540C\u4E00\u500B\u756B\u9762\uFF0C\u8CC7\u6599\u4E0D\u8B8A\u3002",
+      retired: true,
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "../workflows/kanban_ahub.app.json"
+    },
+    {
+      id: "ahub",
+      name: "AHub",
+      icon: "\u{1F9ED}",
+      summary: "\u628A\u7968\u3001\u7559\u8A00\u3001\u6A19\u7C64\u3001\u76F8\u4F9D\u8207\u91CC\u7A0B\u7891\u5B58\u5728\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB\u88E1\uFF0C\u7528\u548C Gitea \u4E00\u6A23\u7684\u65B9\u5F0F\u8B80\u5BEB\uFF1B\u6253\u958B\u5C31\u80FD\u65B0\u589E\u3001\u4FEE\u6539\u3001\u95DC\u9589\u7968\u8207\u91CC\u7A0B\u7891\uFF0C\u7559\u8A00\u7528 Markdown\uFF0C\u7C3D\u6838\u4EBA\u7531\u4F60\u5728\u300C\u8A2D\u5B9A\u300D\u6307\u5B9A\u3002\u9023\u4E0A Arcrun MCP \u7684 AI \u81EA\u52D5\u62FF\u5230\u7BA1\u7968\u8207\u8ACB\u4F60\u7C3D\u6838\u7684\u5DE5\u5177\u3002\u9078\u88DD\uFF0C\u6C92\u88DD\u7684\u5BE6\u4F8B\u4E0D\u53D7\u5F71\u97FF\u3002",
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "../workflows/ahub.app.json"
+    },
+    {
+      id: "releases",
+      name: "\u7248\u672C\u9801",
+      icon: "\u{1F3F7}\uFE0F",
+      summary: "\u6253\u958B\u5C31\u770B\u5230\u6BCF\u500B repo \u767C\u4F48\u904E\u54EA\u4E9B\u7248\u672C\u3001\u6BCF\u4E00\u7248\u6539\u4E86\u4EC0\u9EBC\u8207\u9644\u4EF6\uFF0C\u53D6\u4EE3 Gitea \u7684 Releases \u9801\u3002\u9700\u8981\u5148\u5B89\u88DD AHub\u3002",
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "../workflows/releases.app.json"
+    },
+    {
+      id: "imbot",
+      name: "IM \u6A5F\u5668\u4EBA",
+      icon: "\u{1F4AC}",
+      summary: "\u5BA2\u4EBA\u5728 LINE \u5B98\u65B9\u5E33\u865F\u50B3\u8A0A\u606F\uFF0C\u7531 AI \u52A9\u7406\u300C\u5C0F\u516D\u300D\u5148\u56DE\uFF1B\u4F60\u96A8\u6642\u80FD\u5728\u9019\u4E00\u9801\u63A5\u624B\uFF08\u4EA4\u4EE3\u5C0F\u516D\u6539\u5BEB\uFF0C\u6216\u539F\u53E5\u76F4\u63A5\u8AAA\uFF09\uFF0C\u63A5\u624B\u7684\u8A71\u5C0F\u516D\u4E4B\u5F8C\u90FD\u8A18\u5F97\u3002\u8AC7\u50F9\u9322\u3001\u7D04\u958B\u6703\u6703\u505C\u4E0B\u4F86\u7B49\u4F60\u3002\u9700\u8981\u586B LINE \u91D1\u9470\u3002",
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "../workflows/imbot.app.json"
+    },
+    {
+      id: "loops",
+      name: "\u8FF4\u5708\u76E3\u63A7",
+      icon: "\u{1F501}",
+      summary: "\u6BCF\u500B\u8FF4\u5708\u4E00\u5217\u71C8\u865F\u3001\u4E3B\u6307\u6A19\u548C\u8FD1 12 \u671F\u8D70\u52E2\uFF0C\u770B\u5F97\u51FA\u5361\u5728\u54EA\u4E00\u683C\uFF1B\u9EDE\u9032\u53BB\u770B\u56DB\u683C\u7684\u7D30\u7BC0\u3002\u6BCF\u5929\u65E9\u4E0A\u81EA\u5DF1\u91CD\u7B97\u71C8\u865F\uFF0C\u6709\u65B0\u7D05\u71C8\u53EF\u7528 Telegram \u901A\u77E5\u4F60\uFF08\u9078\u586B\uFF09\u3002",
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "../workflows/loops.app.json"
+    },
+    {
+      id: "paper",
+      name: "\u5831\u793E",
+      icon: "\u{1F4F0}",
+      summary: "\u5168\u7CFB\u7D71\u53EA\u6709\u4E00\u4EFD\u5831\u7D19\uFF1A\u7167\u8A02\u95B1\u8868\u5B9A\u6642\u6293 RSS\u3001\u7DB2\u5740\u4E0A\u7684\u6578\u5B57\u3001AHub \u610F\u5716\u5EAB\u5B58\uFF0C\u5B58\u6210\u4E00\u671F\u3002\u9996\u9801\u5217\u51FA\u300C\u8A02\u4E86\u54EA\u4E9B\u5831\u7D19\u300D\uFF08\u6BCF\u500B\u6578\u64DA\u6E90\u6700\u65B0\u6293\u5230\u4EC0\u9EBC\u3001\u8AB0\u8A02\u3001\u6C92\u6293\u5230\u7684\u539F\u56E0\uFF09\uFF0C\u9EDE\u9032\u53BB\u770B\u6B77\u520A\u3002\u540C\u671F\u91CD\u9001\u7E8C\u8DD1\u3001\u6F0F\u520A\u88DC\u51FA\u3001\u6BCF\u671F\u6709\u56DE\u57F7\u3002\u4E0D\u9700\u8981\u4EFB\u4F55\u91D1\u9470\uFF1B\u5148\u5B89\u88DD AHub\u3002",
+      author: "Arcrun \u5167\u5EFA",
+      declaration: "../workflows/paper.app.json"
+    },
+    {
+      id: "company_rules",
+      name: "\u672C\u516C\u53F8\u7BA1\u7406\u898F\u7AE0",
+      icon: "\u{1F4D8}",
+      summary: "\u628A\u516C\u53F8\u7D66 AI \u548C\u540C\u4EC1\u7684\u898F\u77E9\u5BEB\u6210\u4E00\u672C\u767D\u8A71\u7684\u66F8\uFF1B\u89BA\u5F97\u4E0D\u5C0D\uFF0C\u8AAA\u4E00\u53E5\u8A71\u8ACB AI \u6539\uFF0C\u4E3B\u7BA1\u6838\u51C6\u624D\u751F\u6548\uFF0C\u96A8\u6642\u53EF\u4EE5\u56DE\u4E0A\u4E00\u7248\u3002",
+      author: "Arcrun \u793A\u7BC4",
+      declaration: "declarations/company_rules.json"
+    }
+  ]
+};
+
+// app-market/declarations/notes.json
+var notes_default = {
+  id: "notes",
+  name: "\u7B46\u8A18",
+  icon: "\u{1F4DD}",
+  version: "1.5.1",
+  workflows: [
+    {
+      name: "create_note",
+      description: "\u6536\u4E00\u6BB5 markdown \u5167\u5BB9\uFF08\u53EF\u9078\u65E5\u671F\uFF09\uFF0C\u5BEB\u5165\u4E00\u7B46 note record\uFF0C\u56DE\u50B3\u6574\u7406\u904E\u7684\u4E7E\u6DE8\u6B04\u4F4D \uFF08\u4E0D\u662F KBDB \u539F\u59CB\u56DE\u61C9\u2014\u2014\u90A3\u500B\u8981\u547C\u53EB\u7AEF\u81EA\u5DF1\u525D body \u5B57\u4E32\uFF0C\u4E0D\u8A72\u8B93\u524D\u7AEF\u505A\u9019\u4EF6\u4E8B\uFF09\u3002\n",
+      graph: {
+        id: "create_note",
+        name: "create_note",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: `// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\uFF0C\u4E0D\u662F\u731C\u7684\uFF09\uFF1A
+// {{input.xxx}} \u5728 xxx \u9019\u500B key \u771F\u7684\u4E0D\u5B58\u5728\u6642\uFF0CGraphExecutor \u7684 interpolateString
+// \u6703\u56DE\u300C\u539F\u6A23\u4FDD\u7559\u9019\u500B {{...}} \u5B57\u9762\u5B57\u4E32\u300D\uFF0C\u4E0D\u662F undefined\u3001\u4E5F\u4E0D\u662F\u7A7A\u5B57\u4E32
+// \uFF08matrix/arcrun/cypher-executor/src/graph-executor.ts interpolateString \u7684\u65E2\u6709\u8A2D\u8A08\uFF1A
+//  \u300C\u627E\u4E0D\u5230\u5C31\u4FDD\u7559\u5B57\u9762\u5B57\u4E32\u300D\uFF0C\u662F\u5F15\u64CE\u6545\u610F\u7684\u884C\u70BA\uFF0C\u4E0D\u662F bug\uFF09\u3002
+// \u21D2 \u547C\u53EB\u7AEF\u6F0F\u5E36 date \u6642\uFF0C\u9019\u88E1\u6536\u5230\u7684 input.date \u4E0D\u662F undefined\uFF0C\u662F\u5B57\u4E32 "{{input.date}}"
+//   \u2014\u2014\u82E5\u53EA\u5224\u65B7 == null || === ''\uFF0C\u9019\u500B\u5B57\u9762\u5B57\u4E32\u6703\u88AB\u8AA4\u5224\u6210\u300C\u6709\u7D66\u503C\u300D\uFF0C
+//   \u7136\u5F8C\u5728 YYYY-MM-DD \u683C\u5F0F\u6AA2\u67E5\u90A3\u95DC\u5931\u6557\uFF0C\u8B93\u300C\u4E0D\u5E36 date \u5C31\u7528\u4ECA\u5929\u300D\u6574\u500B\u5931\u6548\u3002
+// \u4FEE\u6CD5\uFF1A\u591A\u5224\u4E00\u7A2E\u300C\u770B\u8D77\u4F86\u50CF\u6C92\u89E3\u958B\u7684\u6A21\u677F\u300D\u7684\u5F62\u72C0\uFF0C\u8996\u540C\u6C92\u7D66\u3002
+function provided(v) {
+  if (typeof v !== 'string') return false;
+  var t = v.trim();
+  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);
+}
+const content = provided(input.content) ? String(input.content).trim() : '';
+if (!content) return { success: false, error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u7B46\u8A18\u81F3\u5C11\u8981\u6709\u5167\u5BB9\uFF09' };
+const now = new Date();
+const rawDate = provided(input.date) ? String(input.date).trim() : now.toISOString().slice(0, 10);
+if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate)) {
+  return { success: false, error: 'date \u5FC5\u9808\u662F YYYY-MM-DD \u683C\u5F0F\uFF08\u6536\u5230\uFF1A' + rawDate + '\uFF09' };
+}
+// parent_id\uFF1A\u7701\u7565\uFF0F\u7A7A\u5B57\u4E32\uFF1D\u4E00\u5247\u7368\u7ACB\u7B46\u8A18\uFF1B\u975E\u7A7A\uFF1D\u9019\u662F\u67D0\u5247\u7B46\u8A18\u7684\u56DE\u8986\uFF08\u503C\uFF1D\u90A3\u5247\u7684 record_id\uFF09\u3002
+// \u6C92\u6709\u683C\u5F0F\u9650\u5236\uFF08record_id \u7684\u5F62\u72C0\u7531 KBDB \u6C7A\u5B9A\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u9A57\u8B49\u5B83\u7684\u9577\u76F8\uFF09\u2014\u2014
+// \u9019\u6A23\u524D\u7AEF\u4E0D\u7528\u5148\u77E5\u9053 record_id \u7684\u683C\u5F0F\u898F\u5247\uFF0C\u53EA\u8981\u300C\u539F\u6A23\u628A\u4E0A\u4E00\u6B65\u62FF\u5230\u7684 id \u50B3\u56DE\u4F86\u300D\u5C31\u5C0D\u3002
+const parentId = provided(input.parent_id) ? String(input.parent_id).trim() : '';
+// quote\uFF0Fquote_pos\uFF08arcrun-app-note#2\uFF09\uFF1A\u9019\u5247\u56DE\u8986\u5F15\u7528\u4E86\u539F\u6587\u54EA\u4E00\u6BB5\u3001\u90A3\u6BB5\u5728\u539F\u6587\u7B2C\u5E7E\u500B\u5B57\u3002
+// \u53EA\u6709\u56DE\u8986\u6703\u5E36\uFF1B\u7368\u7ACB\u7B46\u8A18\u4E00\u5F8B\u5B58\u7A7A\u5B57\u4E32\uFF08\u4E0D\u4FE1\u4EFB\u547C\u53EB\u7AEF\u5C0D\u7368\u7ACB\u7B46\u8A18\u5E36\u7684 quote\uFF09\u3002
+const quote = parentId && provided(input.quote) ? String(input.quote).trim().slice(0, 300) : '';
+// \u756B\u9762\u9001\u4F86\u7684\u662F\u6578\u5B57\uFF1B\u7D93 HTTP\uFF0F\u6A21\u677F\u4E5F\u53EF\u80FD\u8B8A\u5B57\u4E32\u2014\u2014\u5169\u7A2E\u90FD\u6536\uFF0C\u6C92\u7D66\u5C31\u662F\u7A7A\uFF08\u4E0D\u662F 0\uFF09\u3002
+const qp = typeof input.quote_pos === 'number' ? input.quote_pos : (provided(input.quote_pos) ? Number(input.quote_pos) : NaN);
+const quotePos = quote && isFinite(qp) && qp >= 0 ? String(Math.floor(qp)) : '';
+// author\uFF08arcrun-app-note#2\uFF09\uFF1A\u53EA\u8A8D\u5F15\u64CE\u7C3D\u7684 Portal \u65B7\u8A00\uFF08_portal_actor\uFF09\u88E1\u7684\u767B\u5165\u540D\u2014\u2014
+// \u547C\u53EB\u7AEF\u81EA\u5E36\u7684\u540C\u540D\u6B04\u4F4D\u5728 /portal/data/apps/:id/action \u90A3\u4E00\u95DC\u5C31\u88AB\u4E1F\u6389\u4E86\u3002\u6C92\u6709\u65B7\u8A00\uFF1D\u4F5C\u8005\u7559\u7A7A
+// \uFF08\u7A7A\u4F5C\u8005\uFF1D\u820A\u8CC7\u6599\uFF0F\u6C92\u7C3D\u7AE0\u91D1\u9470\u7684\u5BE6\u4F8B\uFF0C\u7DE8\u8F2F\u522A\u9664\u7684\u5224\u65B7\u628A\u5B83\u7576\u300C\u4EFB\u4F55\u767B\u5165\u8005\u90FD\u80FD\u52D5\u300D\uFF0C\u898B update_note\uFF09\u3002
+function loginOf(a) {
+  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }
+  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';
+}
+return { success: true, content: content, date: rawDate, created_at: now.toISOString(), parent_id: parentId,
+         author: loginOf(input.actor), quote: quote, quote_pos: quotePos };
+`,
+              input: {
+                content: "{{input.content}}",
+                date: "{{input.date}}",
+                parent_id: "{{input.parent_id}}",
+                quote: "{{input.quote}}",
+                quote_pos: "{{input.quote_pos}}",
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "write_note",
+            type: "Component",
+            label: "write_note",
+            componentId: "http_request",
+            data: {
+              method: "POST",
+              url: "__CYPHER_BASE__/kbdb/records",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                template: "note",
+                values: {
+                  date: "{{prep.data.date}}",
+                  content: "{{prep.data.content}}",
+                  created_at: "{{prep.data.created_at}}",
+                  parent_id: "{{prep.data.parent_id}}",
+                  author: "{{prep.data.author}}",
+                  quote: "{{prep.data.quote}}",
+                  quote_pos: "{{prep.data.quote_pos}}"
+                }
+              }
+            }
+          },
+          {
+            id: "new_id",
+            type: "Component",
+            label: "new_id",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nreturn { success: true, record_id: body && body.record && body.record.record_id ? String(body.record.record_id) : '' };\n",
+              input: {
+                body: "{{write_note.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 1024
+              }
+            }
+          },
+          {
+            id: "organize",
+            type: "Component",
+            label: "organize",
+            componentId: "trigger_workflow",
+            data: {
+              workflow_name: "notes__organize_note",
+              wait: false,
+              api_key: "{{_tenant}}",
+              input: {
+                record_id: "{{new_id.data.record_id}}"
+              }
+            }
+          },
+          {
+            id: "extract_note",
+            type: "Component",
+            label: "extract_note",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u5BEB\u5165\u6C92\u6709\u56DE\u53EF\u7528\u7684 record' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n  parent_id: v.parent_id || '',\n  author: v.author || '',\n  quote: v.quote || '',\n  quote_pos: v.quote_pos || '',\n};\n",
+              input: {
+                body: "{{write_note.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "write_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "write_note",
+            to: "new_id",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "new_id",
+            to: "organize",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "organize",
+            to: "extract_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "organize",
+            to: "extract_note",
+            type: "ON_FAIL"
+          }
+        ]
+      }
+    },
+    {
+      name: "list_notes",
+      description: "\u53D6\u56DE\u6CB3\u9053\uFF1A\u9810\u8A2D\u5168\u90E8\uFF08\u4F9D created_at \u65B0\u5230\u820A\uFF0C\u53EA\u7B97\u7368\u7ACB\u7B46\u8A18\uFF09\uFF0C\u5E36 date \u53EA\u56DE\u90A3\u4E00\u5929\u7684\u7B46\u8A18\uFF1B \u6BCF\u5247\u7B46\u8A18\u9644\u4E0A\u5B83\u7684\u56DE\u8986\u6E05\u55AE\uFF08replies[]\uFF0C\u4F9D created_at \u7531\u820A\u5230\u65B0\uFF09\u3002\n",
+      graph: {
+        id: "list_notes",
+        name: "list_notes",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "fetch_notes",
+            type: "Component",
+            label: "fetch_notes",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/by-template/note?limit=500",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "filter_sort",
+            type: "Component",
+            label: "filter_sort",
+            componentId: "code",
+            data: {
+              code: "// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\u2014\u2014\n// \u4E0D\u52A0\u9019\u6BB5\u9632\u8B77\u6642\uFF0C\u300C\u4E0D\u5E36 date\uFF1D\u67E5\u5168\u90E8\u300D\u9019\u500B\u6700\u5E38\u7528\u7684\u9810\u8A2D\u8DEF\u5F91\u6703\u975C\u9ED8\u56DE\u50B3 0 \u7B46\uFF0C\n// \u8A73\u7D30\u6210\u56E0\u898B notes-create.yaml \u7684 prep \u7BC0\u9EDE\u540C\u6B3E\u8A3B\u89E3\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u8CBC\u4E00\u6B21\uFF09\u3002\nfunction provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst body = parse(input.body) || {};\nconst records = Array.isArray(body.records) ? body.records : [];\nconst wantDate = provided(input.date) ? String(input.date).trim() : '';\nconst all = records.map(function (r) {\n  const v = r.values || {};\n  return {\n    record_id: r.record_id,\n    date: v.date || '',\n    content: v.content || '',\n    created_at: v.created_at || '',\n    edited_at: v.edited_at || '',\n    folder: v.folder || '',\n    parent_id: v.parent_id || '',\n    author: v.author || '',\n    quote: v.quote || '',\n    quote_pos: v.quote_pos || '',\n    deleted: v.deleted === '1'\n  };\n});\n// \u5DF2\u522A\u9664\uFF08arcrun-app-note#2\uFF0C\u6A19\u8A18\u522A\u9664\u3001\u4E0D\u7269\u7406\u522A\u9664\uFF09\uFF1A\n//   \xB7 \u5DF2\u522A\u9664\u7684\u7368\u7ACB\u7B46\u8A18\u6574\u5247\u4E0D\u51FA\u73FE\uFF0C\u5B83\u5E95\u4E0B\u7684\u56DE\u8986\u8DDF\u8457\u4E0D\u51FA\u73FE\uFF1B\n//   \xB7 \u5DF2\u522A\u9664\u7684\u56DE\u8986\uFF1A\u5B83\u300C\u4E4B\u5F8C\u300D\u9084\u6709\u5225\u4EBA\u7684\u56DE\u8986\u6642\u7559\u4E00\u500B\u5360\u4F4D\uFF08deleted:true\uFF0C\u5167\u6587\u6E05\u7A7A\u2014\u2014\u522A\u6389\u7684\u5B57\u4E0D\u9001\u5230\u756B\u9762\uFF09\uFF0C\n//     \u4E4B\u5F8C\u6C92\u6709\u4EFB\u4F55\u56DE\u8986\u4E86\u5C31\u4E0D\u51FA\u73FE\u3002\u756B\u9762\u628A\u5360\u4F4D\u986F\u793A\u6210\u300C\u9019\u5247\u56DE\u8986\u5DF2\u522A\u9664\u300D\u3002\nconst deletedTop = {};\nall.forEach(function (n) { if (n.deleted && !n.parent_id) deletedTop[n.record_id] = true; });\nconst repliesByParent = {};\nall.forEach(function (n) {\n  if (!n.parent_id || deletedTop[n.parent_id]) return;\n  (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);\n});\nObject.keys(repliesByParent).forEach(function (pid) {\n  const list = repliesByParent[pid];\n  list.sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });\n  let lastLive = -1;\n  list.forEach(function (r, i) { if (!r.deleted) lastLive = i; });\n  repliesByParent[pid] = list.filter(function (r, i) { return !r.deleted || i < lastLive; }).map(function (r) {\n    return r.deleted ? { record_id: r.record_id, parent_id: r.parent_id, created_at: r.created_at, deleted: true, content: '', author: '', quote: '', quote_pos: '' } : r;\n  });\n});\nlet notes = all.filter(function (n) { return !n.parent_id && !n.deleted; });\nif (wantDate) notes = notes.filter(function (n) { return n.date === wantDate; });\nnotes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });\nnotes = notes.map(function (n) {\n  return Object.assign({}, n, { replies: repliesByParent[n.record_id] || [] });\n});\nreturn { success: true, notes: notes, count: notes.length, date: wantDate || null, me: loginOf(input.actor) };\n",
+              input: {
+                body: "{{fetch_notes.data.body}}",
+                date: "{{input.date}}",
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 3e3,
+                max_output_bytes: 4194304
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "fetch_notes",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "fetch_notes",
+            to: "filter_sort",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "update_note",
+      description: "\u6539\u4E00\u5247\u7B46\u8A18\u6216\u56DE\u8986\u7684\u5167\u6587\u3002\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\uFF08\u6216\u4F5C\u8005\u6B04\u70BA\u7A7A\u7684\u820A\u8CC7\u6599\uFF09\u80FD\u6539\uFF1B\u5DF2\u522A\u9664\u7684\u4E0D\u80FD\u6539\u3002 \u5B58\u6A94\u524D\u5148\u628A\u88AB\u63DB\u6389\u7684\u90A3\u4E00\u7248\u8A18\u9032 note_version\uFF08\u7248\u672C\u6B77\u53F2\u7528\uFF09\u3002\n",
+      graph: {
+        id: "update_note",
+        name: "update_note",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u6539\u54EA\u4E00\u5247\uFF09' };\nconst content = provided(input.content) ? String(input.content).trim() : '';\nif (!content) return { success: false, error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u8981\u6E05\u6389\u8ACB\u7528\u522A\u9664\uFF09' };\nreturn { success: true, record_id: recordId, content: content, edited_at: new Date().toISOString(), me: loginOf(input.actor) };\n",
+              input: {
+                record_id: "{{input.record_id}}",
+                content: "{{input.content}}",
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "read_note",
+            type: "Component",
+            label: "read_note",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/{{prep.data.record_id}}",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "guard",
+            type: "Component",
+            label: "guard",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst rec = body.record;\nconst v = rec && rec.values;\nif (!body.success || !v || typeof v.content !== 'string' || typeof v.date !== 'string') {\n  return { success: false, error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };\n}\nif (v.deleted === '1') return { success: false, error: '\u9019\u5247\u5DF2\u7D93\u522A\u9664\uFF0C\u4E0D\u80FD\u518D\u6539' };\nconst author = v.author || '';\nif (author && author !== input.me) return { success: false, error: '\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\u80FD\u6539\u9019\u5247' };\nreturn { success: true, record_id: input.record_id, content: input.content, edited_at: input.edited_at, prev_content: v.content, replaced_by: input.me };\n",
+              input: {
+                body: "{{read_note.data.body}}",
+                me: "{{prep.data.me}}",
+                record_id: "{{prep.data.record_id}}",
+                content: "{{prep.data.content}}",
+                edited_at: "{{prep.data.edited_at}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "snapshot",
+            type: "Component",
+            label: "snapshot",
+            componentId: "http_request",
+            data: {
+              method: "POST",
+              url: "__CYPHER_BASE__/kbdb/records",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                template: "note_version",
+                values: {
+                  note_id: "{{guard.data.record_id}}",
+                  content: "{{guard.data.prev_content}}",
+                  replaced_at: "{{guard.data.edited_at}}",
+                  replaced_by: "{{guard.data.replaced_by}}"
+                }
+              }
+            }
+          },
+          {
+            id: "write_note",
+            type: "Component",
+            label: "write_note",
+            componentId: "http_request",
+            data: {
+              method: "PATCH",
+              url: "__CYPHER_BASE__/kbdb/records/{{guard.data.record_id}}",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                values: {
+                  content: "{{guard.data.content}}",
+                  edited_at: "{{guard.data.edited_at}}"
+                }
+              }
+            }
+          },
+          {
+            id: "organize",
+            type: "Component",
+            label: "organize",
+            componentId: "trigger_workflow",
+            data: {
+              workflow_name: "notes__organize_note",
+              wait: false,
+              api_key: "{{_tenant}}",
+              input: {
+                record_id: "{{guard.data.record_id}}"
+              }
+            }
+          },
+          {
+            id: "extract_note",
+            type: "Component",
+            label: "extract_note",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u6C92\u6709\u78BA\u8A8D\u9019\u6B21\u4FEE\u6539' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n  edited_at: v.edited_at || '',\n  parent_id: v.parent_id || '',\n  author: v.author || '',\n  quote: v.quote || '',\n  quote_pos: v.quote_pos || '',\n};\n",
+              input: {
+                body: "{{write_note.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "read_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "read_note",
+            to: "guard",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "write_note",
+            to: "organize",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "guard",
+            to: "snapshot",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "snapshot",
+            to: "write_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "organize",
+            to: "extract_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "organize",
+            to: "extract_note",
+            type: "ON_FAIL"
+          }
+        ]
+      }
+    },
+    {
+      name: "delete_note",
+      description: "\u628A\u4E00\u5247\u7B46\u8A18\u6216\u56DE\u8986\u6A19\u6210\u5DF2\u522A\u9664\uFF08\u4E0D\u7269\u7406\u522A\u9664\uFF09\u3002\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\uFF08\u6216\u4F5C\u8005\u6B04\u70BA\u7A7A\u7684\u820A\u8CC7\u6599\uFF09\u80FD\u522A\u3002\n",
+      graph: {
+        id: "delete_note",
+        name: "delete_note",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u522A\u54EA\u4E00\u5247\uFF09' };\nreturn { success: true, record_id: recordId, deleted_at: new Date().toISOString(), me: loginOf(input.actor) };\n",
+              input: {
+                record_id: "{{input.record_id}}",
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "read_note",
+            type: "Component",
+            label: "read_note",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/{{prep.data.record_id}}",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "guard",
+            type: "Component",
+            label: "guard",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst rec = body.record;\nconst v = rec && rec.values;\nif (!body.success || !v || typeof v.content !== 'string' || typeof v.date !== 'string') {\n  return { success: false, error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };\n}\nif (v.deleted === '1') return { success: false, error: '\u9019\u5247\u5DF2\u7D93\u522A\u9664\u4E86' };\nconst author = v.author || '';\nif (author && author !== input.me) return { success: false, error: '\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\u80FD\u522A\u9019\u5247' };\nreturn { success: true, record_id: input.record_id, deleted_at: input.deleted_at };\n",
+              input: {
+                body: "{{read_note.data.body}}",
+                me: "{{prep.data.me}}",
+                record_id: "{{prep.data.record_id}}",
+                deleted_at: "{{prep.data.deleted_at}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "take_down_cards",
+            type: "Component",
+            label: "take_down_cards",
+            componentId: "http_request",
+            data: {
+              method: "PATCH",
+              url: "__CYPHER_BASE__/kbdb/entries/deprecate-by-source",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                source: "note://{{guard.data.record_id}}"
+              }
+            }
+          },
+          {
+            id: "write_note",
+            type: "Component",
+            label: "write_note",
+            componentId: "http_request",
+            data: {
+              method: "PATCH",
+              url: "__CYPHER_BASE__/kbdb/records/{{guard.data.record_id}}",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                values: {
+                  deleted: "1",
+                  deleted_at: "{{guard.data.deleted_at}}"
+                }
+              }
+            }
+          },
+          {
+            id: "extract_note",
+            type: "Component",
+            label: "extract_note",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u6C92\u6709\u78BA\u8A8D\u9019\u6B21\u522A\u9664' };\n}\nconst v = body.record.values || {};\nconst td = parse(input.takedown) || {};\nreturn { success: true, record_id: body.record.record_id, deleted: v.deleted === '1', deleted_at: v.deleted_at || '',\n         cards_taken_down: Number(td.cards) || 0 };\n",
+              input: {
+                body: "{{write_note.data.body}}",
+                takedown: "{{take_down_cards.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "read_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "read_note",
+            to: "guard",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "guard",
+            to: "take_down_cards",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "take_down_cards",
+            to: "write_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "write_note",
+            to: "extract_note",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "note_cards",
+      description: "\u56DE\u50B3\u7531\u67D0\u5247\u7B46\u8A18\u6574\u7406\u51FA\u3001\u76EE\u524D\u9084\u5728\u73FE\u5F79\u7684\u77E5\u8B58\u5361\u5F35\u6578\u8207\u5361\u540D\uFF08\u522A\u7B46\u8A18\u524D\u7684\u63D0\u793A\u7528\uFF09\u3002\n",
+      graph: {
+        id: "note_cards",
+        name: "note_cards",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u67E5\u54EA\u4E00\u5247\uFF09' };\nreturn { success: true, record_id: recordId };\n",
+              input: {
+                record_id: "{{input.record_id}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "count_cards",
+            type: "Component",
+            label: "count_cards",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/entries/source-summary?source=note%3A%2F%2F{{prep.data.record_id}}",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "extract_cards",
+            type: "Component",
+            label: "extract_cards",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true) {\n  return { success: false, error: (body && body.error) || '\u67E5\u4E0D\u5230\u9019\u5247\u7B46\u8A18\u6574\u7406\u51FA\u7684\u5361' };\n}\nreturn { success: true, card_count: Number(body.cards) || 0, page_names: Array.isArray(body.page_names) ? body.page_names : [] };\n",
+              input: {
+                body: "{{count_cards.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 16384
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "count_cards",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "count_cards",
+            to: "extract_cards",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "organize_note",
+      description: "\u628A\u4E00\u5247\u7368\u7ACB\u7B46\u8A18\u6574\u7406\u6210\u77E5\u8B58\u5361\uFF08\u6BCF\u5F35\u5361\u84CB metadata.source\uFF1Dnote://<record_id>\uFF09\uFF0C\u91CD\u6574\u6642\u820A\u5361\u5148\u4E0B\u67B6\u3002 \u56DE\u61C9\u5E36 cards\uFF08\u5BEB\u4E86\u5E7E\u5F35\uFF09\u8207 page_names\u3002\n",
+      graph: {
+        id: "organize_note",
+        name: "organize_note",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u6574\u7406\u54EA\u4E00\u5247\uFF09' };\nreturn { success: true, record_id: recordId };\n",
+              input: {
+                record_id: "{{input.record_id}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "read_note",
+            type: "Component",
+            label: "read_note",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/{{prep.data.record_id}}",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "guard",
+            type: "Component",
+            label: "guard",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst v = body.record && body.record.values;\nif (!body.success || !v || typeof v.content !== 'string' || typeof v.date !== 'string') {\n  return { success: false, error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };\n}\nif (v.deleted === '1') return { success: false, error: '\u9019\u5247\u5DF2\u7D93\u522A\u9664\uFF0C\u4E0D\u6574\u7406' };\nif (v.parent_id) return { success: false, error: '\u56DE\u8986\u4E0D\u6574\u7406\u6210\u5361\uFF08\u53EA\u6574\u7406\u7368\u7ACB\u7B46\u8A18\uFF09' };\nconst text = String(v.content).trim();\nif (text.length < 10) return { success: false, error: '\u7B46\u8A18\u592A\u77ED\uFF08\u4E0D\u5230 10 \u500B\u5B57\uFF09\uFF0C\u4E0D\u6574\u7406\u6210\u5361' };\n// \u4E0A\u9650\uFF1A\u4E00\u5247\u7B46\u8A18\u518D\u9577\u4E5F\u53EA\u9001\u524D 6000 \u5B57\u7D66\u6A21\u578B\uFF08\u514D\u5F97\u4E00\u5247\u8CBC\u4E86\u6574\u672C\u66F8\u7684\u7B46\u8A18\u628A\u6574\u7406\u62D6\u57AE\uFF09\u3002\nreturn { success: true, record_id: input.record_id, date: v.date, page_name: '\u7B46\u8A18 ' + v.date, text: text.slice(0, 6000) };\n",
+              input: {
+                body: "{{read_note.data.body}}",
+                record_id: "{{prep.data.record_id}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 16384
+              }
+            }
+          },
+          {
+            id: "ask_ai",
+            type: "Component",
+            label: "ask_ai",
+            componentId: "http_request",
+            data: {
+              method: "POST",
+              url: "__CYPHER_BASE__/portal/daemon/extract",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                page_name: "{{guard.data.page_name}}",
+                text: "{{guard.data.text}}",
+                prompt_table: "note_to_cards"
+              }
+            }
+          },
+          {
+            id: "parse_cards",
+            type: "Component",
+            label: "parse_cards",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true) {\n  return { success: false, error: '\u6574\u7406\u5931\u6557\uFF1A' + ((body && body.error) || 'AI \u6C92\u6709\u56DE\u61C9') };\n}\nconst raw = String(body.output || '');\nconst i = raw.indexOf('{'), j = raw.lastIndexOf('}');\nlet obj = null;\nif (i >= 0 && j > i) { try { obj = JSON.parse(raw.slice(i, j + 1)); } catch (e) { obj = null; } }\nif (!obj || !Array.isArray(obj.cards)) return { success: false, error: '\u6574\u7406\u5931\u6557\uFF1AAI \u56DE\u7684\u4E0D\u662F\u7D04\u5B9A\u7684 JSON\uFF08\u6C92\u6709 cards \u6E05\u55AE\uFF09' };\nfunction str(x, n) { return typeof x === 'string' ? x.replace(/\\s+/g, ' ').trim().slice(0, n) : ''; }\nconst source = 'note://' + input.record_id;\nconst cards = [];\nconst seen = {};\nfor (const c of obj.cards.slice(0, 4)) {\n  if (!c || typeof c !== 'object') continue;\n  const title = str(c.title, 40).replace(/[#\\n]/g, '');\n  const summary = str(c.summary, 300);\n  const points = (Array.isArray(c.points) ? c.points : []).map(function (p) { return str(p, 300); }).filter(Boolean).slice(0, 6);\n  if (!title || (!summary && points.length === 0)) continue;\n  const pageName = title + '\uFF08\u7B46\u8A18 ' + input.date + '\uFF09';\n  if (seen[pageName]) continue;\n  seen[pageName] = true;\n  let md = '# ' + title + '\\n';\n  if (summary) md += '## \u4E00\u53E5\u8A71\u5B9A\u7FA9\\n' + summary + '\\n';\n  if (points.length) md += '## \u8981\u9EDE\\n' + points.map(function (p) { return '- ' + p; }).join('\\n') + '\\n';\n  cards.push({\n    page_name: pageName,\n    content: md,\n    // \u6574\u4E32 metadata \u5728\u9019\u88E1\u7D44\u597D\u518D\u50B3\uFF1A\u6B04\u4F4D\u503C\u88E1\u6709\u5F15\u865F\u6642\uFF0C\u4E0D\u6703\u628A JSON \u5B57\u4E32\u5F04\u58DE\u3002\n    metadata_json: JSON.stringify({ source: source, source_path: '\u7B46\u8A18 ' + input.date, library: 'notes', machine_label: '\u7B46\u8A18 App', note_id: input.record_id, embed: true }),\n  });\n}\nif (cards.length === 0) return { success: false, error: '\u6574\u7406\u5931\u6557\uFF1AAI \u6C92\u6709\u6574\u7406\u51FA\u53EF\u7528\u7684\u5361' };\nreturn { success: true, cards: cards, card_count: cards.length, page_names: cards.map(function (c) { return c.page_name; }) };\n",
+              input: {
+                body: "{{ask_ai.data.body}}",
+                record_id: "{{prep.data.record_id}}",
+                date: "{{guard.data.date}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "take_down_old",
+            type: "Component",
+            label: "take_down_old",
+            componentId: "http_request",
+            data: {
+              method: "PATCH",
+              url: "__CYPHER_BASE__/kbdb/entries/deprecate-by-source",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                source: "note://{{prep.data.record_id}}"
+              }
+            }
+          },
+          {
+            id: "post_card",
+            type: "Component",
+            label: "post_card",
+            componentId: "http_request",
+            data: {
+              method: "POST",
+              url: "__CYPHER_BASE__/kbdb/entries",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                template: "block",
+                create_template: true,
+                page_name: "{{card.page_name}}",
+                content: "{{card.content}}",
+                metadata_json: "{{card.metadata_json}}"
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "read_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "read_note",
+            to: "guard",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "guard",
+            to: "ask_ai",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "ask_ai",
+            to: "parse_cards",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "parse_cards",
+            to: "take_down_old",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "parse_cards",
+            to: "post_card",
+            type: "FOREACH",
+            iterator: "card"
+          }
+        ]
+      }
+    },
+    {
+      name: "move_note",
+      description: "\u628A\u4E00\u5247\u7B46\u8A18\u642C\u5230\u67D0\u500B\u8CC7\u6599\u593E\uFF08folder \u7A7A\u5B57\u4E32\uFF1D\u653E\u56DE\u300C\u6211\u7684\u7B46\u8A18\u300D\u6839\uFF1B\u7528 / \u5206\u5C64\uFF09\u3002\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\uFF08\u6216\u4F5C\u8005\u6B04\u70BA\u7A7A\u7684\u820A\u8CC7\u6599\uFF09\u80FD\u642C\uFF1B\u56DE\u8986\u4E0D\u80FD\u642C\uFF1B\u4E0D\u6539\u5167\u5BB9\u3001\u4E0D\u91CD\u6574\u77E5\u8B58\u5361\u3002\n",
+      graph: {
+        id: "move_note",
+        name: "move_note",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u642C\u54EA\u4E00\u5247\uFF09' };\n// folder\uFF1A\u7A7A\u5B57\u4E32\uFF1D\u653E\u56DE\u300C\u6211\u7684\u7B46\u8A18\u300D\u6839\uFF1B\u5176\u9918\u7528 / \u5206\u5C64\uFF0C\u6BCF\u6BB5\u4E0D\u53EF\u70BA\u7A7A\u3001\u4E0D\u53EF\u542B\u63A7\u5236\u5B57\u5143\uFF0C\u6574\u4E32 \u2264 80 \u5B57\u3002\nconst rawFolder = typeof input.folder === 'string' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(input.folder.trim()) ? input.folder : '';\nconst folder = rawFolder.split('/').map(function (s) { return s.replace(/[\\u0000-\\u001f\\u007f]/g, '').trim(); }).filter(Boolean).join('/');\nif (folder.length > 80) return { success: false, error: '\u8CC7\u6599\u593E\u540D\u7A31\u592A\u9577\uFF08\u4E0A\u9650 80 \u5B57\uFF09' };\nreturn { success: true, record_id: recordId, folder: folder, me: loginOf(input.actor) };\n",
+              input: {
+                record_id: "{{input.record_id}}",
+                folder: "{{input.folder}}",
+                actor: "{{input._portal_actor}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "read_note",
+            type: "Component",
+            label: "read_note",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/{{prep.data.record_id}}",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "guard",
+            type: "Component",
+            label: "guard",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body) || {};\nconst rec = body.record;\nconst v = rec && rec.values;\nif (!body.success || !v || typeof v.content !== 'string' || typeof v.date !== 'string') {\n  return { success: false, error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };\n}\nif (v.deleted === '1') return { success: false, error: '\u9019\u5247\u5DF2\u7D93\u522A\u9664\uFF0C\u4E0D\u80FD\u518D\u642C' };\nconst author = v.author || '';\nif (author && author !== input.me) return { success: false, error: '\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\u80FD\u642C\u9019\u5247' };\nif (v.parent_id) return { success: false, error: '\u56DE\u8986\u4E0D\u80FD\u642C\u8CC7\u6599\u593E\uFF0C\u53EA\u6709\u7B46\u8A18\u53EF\u4EE5' };\nreturn { success: true, record_id: input.record_id, folder: input.folder };\n",
+              input: {
+                body: "{{read_note.data.body}}",
+                me: "{{prep.data.me}}",
+                record_id: "{{prep.data.record_id}}",
+                folder: "{{prep.data.folder}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          },
+          {
+            id: "write_note",
+            type: "Component",
+            label: "write_note",
+            componentId: "http_request",
+            data: {
+              method: "PATCH",
+              url: "__CYPHER_BASE__/kbdb/records/{{guard.data.record_id}}",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              },
+              body_json: {
+                values: {
+                  folder: "{{guard.data.folder}}"
+                }
+              }
+            }
+          },
+          {
+            id: "extract_note",
+            type: "Component",
+            label: "extract_note",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true || !body.record) {\n  return { success: false, error: (body && body.error) || 'KBDB \u6C92\u6709\u78BA\u8A8D\u9019\u6B21\u4FEE\u6539' };\n}\nconst v = body.record.values || {};\nreturn {\n  success: true,\n  record_id: body.record.record_id,\n  date: v.date || '',\n  content: v.content || '',\n  created_at: v.created_at || '',\n  edited_at: v.edited_at || '',\n  parent_id: v.parent_id || '',\n  author: v.author || '',\n  quote: v.quote || '',\n  quote_pos: v.quote_pos || '',\n  folder: v.folder || '',\n};\n",
+              input: {
+                body: "{{write_note.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 65536
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "read_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "read_note",
+            to: "guard",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "guard",
+            to: "write_note",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "write_note",
+            to: "extract_note",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    },
+    {
+      name: "list_note_versions",
+      description: "\u4E00\u5247\u7B46\u8A18\u7684\u7248\u672C\u6B77\u53F2\uFF1A\u6BCF\u6B21\u5B58\u6A94\u524D\u88AB\u63DB\u6389\u7684\u90A3\u4E00\u7248\uFF08\u65B0\u5230\u820A\uFF09\u3002\u8981\u9084\u539F\u5C31\u62FF\u5176\u4E2D\u4E00\u7248\u7684 content \u547C\u53EB update_note\uFF08\u9084\u539F\u672C\u8EAB\u4E5F\u6703\u7559\u4E00\u7B46\u6B77\u53F2\uFF09\u3002\n",
+      graph: {
+        id: "list_note_versions",
+        name: "list_note_versions",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "input"
+          },
+          {
+            id: "prep",
+            type: "Component",
+            label: "prep",
+            componentId: "code",
+            data: {
+              code: "function provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nconst recordId = provided(input.record_id) ? String(input.record_id).trim() : '';\nif (!/^[A-Za-z0-9_.:-]{1,200}$/.test(recordId)) return { success: false, error: 'record_id \u5FC5\u586B\uFF08\u8981\u770B\u54EA\u4E00\u5247\u7684\u7248\u672C\u6B77\u53F2\uFF09' };\nreturn { success: true, record_id: recordId };\n",
+              input: {
+                record_id: "{{input.record_id}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 8192
+              }
+            }
+          },
+          {
+            id: "fetch_versions",
+            type: "Component",
+            label: "fetch_versions",
+            componentId: "http_request",
+            data: {
+              method: "GET",
+              url: "__CYPHER_BASE__/kbdb/records/by-template/note_version?field=note_id&value={{prep.data.record_id}}&limit=100",
+              headers: {
+                Accept: "application/json",
+                "X-Arcrun-API-Key": "__NAMESPACE__"
+              }
+            }
+          },
+          {
+            id: "extract_versions",
+            type: "Component",
+            label: "extract_versions",
+            componentId: "code",
+            data: {
+              code: "function parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nconst body = parse(input.body);\nif (!body || body.success !== true) return { success: false, error: (body && body.error) || '\u8B80\u4E0D\u5230\u9019\u5247\u7B46\u8A18\u7684\u7248\u672C\u6B77\u53F2' };\nconst versions = (Array.isArray(body.records) ? body.records : []).map(function (r) {\n  const v = r.values || {};\n  return { version_id: r.record_id, content: v.content || '', replaced_at: v.replaced_at || '', replaced_by: v.replaced_by || '' };\n}).sort(function (a, b) { return (b.replaced_at || '').localeCompare(a.replaced_at || ''); });\nreturn { success: true, versions: versions, count: versions.length };\n",
+              input: {
+                body: "{{fetch_versions.data.body}}"
+              },
+              limits: {
+                timeout_ms: 1e3,
+                max_output_bytes: 262144
+              }
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "prep",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "prep",
+            to: "fetch_versions",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "fetch_versions",
+            to: "extract_versions",
+            type: "ON_SUCCESS"
+          }
+        ]
+      }
+    }
+  ],
+  ui: {
+    html: `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>\u7B46\u8A18</title>
+<!--
+  ui/index.html \u2014 \u7B46\u8A18 App \u524D\u7AEF\uFF08inkstone/InkStoneCo#2\uFF1B\u57F7\u884C\u7968 inkstone/arcrun-app-note#1\uFF09
+
+  \u624B\u6A5F\u512A\u5148\u3001\u55AE\u4E00 HTML \u6A94\uFF08\u5916\u52A0 notes-core.js \u4E00\u4EFD\u7D14\u908F\u8F2F\uFF09\uFF0C\u96F6\u5916\u90E8\u4F9D\u8CF4\u3001\u96F6 CDN\uFF0C
+  \u7167 design.md \u5C0D\u300C\u756B\u9762\u8CC7\u7522\u8981\u80FD\u843D\u5730\u5230\u5BE6\u4F8B\u300D\u7684\u8981\u6C42\uFF1A\u9019\u500B\u6A94\u6848\u672C\u8EAB\u5C31\u662F\u5168\u90E8\uFF0C
+  \u4E0D\u9700\u8981 build pipeline\uFF0C\u8907\u88FD\u9019\u5169\u500B\u6A94\u6848\u5230\u4EFB\u4F55\u5730\u65B9\u90FD\u80FD\u958B\u3002
+
+  \u{1F534} \u9019\u4E00\u9801\u9810\u8A2D\u8DD1\u5728 MOCK \u6A21\u5F0F\uFF08localStorage \u5047\u8CC7\u6599\uFF09\u2014\u2014\u56E0\u70BA inkstone/Arcrun#82
+  \u7684\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u9084\u6C92\u505A\u51FA\u4F86\uFF0C\u6C92\u6709\u771F\u5F8C\u7AEF\u53EF\u4EE5\u6253\u3002MOCK \u6A6B\u5E45\u6C38\u9060\u986F\u793A\u5728\u756B\u9762\u4E0A\uFF0C
+  \u4E0D\u5141\u8A31\u4F7F\u7528\u8005\u8AA4\u4EE5\u70BA\u9019\u662F\u771F\u8CC7\u6599\u3002\u7B49\u771F\u7AEF\u9EDE\u505A\u51FA\u4F86\uFF0C\u53EA\u8981\u5728\u9801\u9762\u8F09\u5165\u524D\u8A2D\u5B9A\uFF1A
+      window.ARCRUN_APP_ACTION_ENDPOINT = 'https://.../portal/apps/actions';
+  \u9019\u4E00\u9801\u5C31\u6703\u6539\u6253\u771F\u5F8C\u7AEF\uFF0C\u524D\u7AEF\u7A0B\u5F0F\u78BC\u4E00\u884C\u4E0D\u7528\u6539\uFF08\u547C\u53EB\u4ECB\u9762\u898B\u4E0B\u9762 callAction()\uFF09\u3002
+-->
+<style>
+  /*
+   * \u639B\u8F09\u5354\u5B9A v0.2\uFF08inkstone/Arcrun#82\uFF0Cleo 2026-08-24 \u62CD\u677F\uFF09\uFF1A\u9019\u500B App \u7528 \`ui.style: inherit\`
+   * \uFF08app.yaml \u7701\u7565\u8A72\u6B04\uFF1D\u9810\u8A2D\u503C\uFF09\uFF0CPortal \u6703\u628A\u4E0B\u9762\u6240\u6709 \`:root\`\uFF0F\`html\`\uFF0F\`body\` \u9078\u64C7\u5668\u6574\u689D\u4E1F\u6389\uFF0C
+   * \u63DB\u6210\u7956\u5148 \`:host\` \u4E0A\u639B\u7684\u5168\u5C40\u8272\u7968\uFF0F\u5B57\u9AD4\uFF08CSS custom property \u7A7F\u904E shadow \u908A\u754C\u6B63\u5E38\u7E7C\u627F\uFF09\u3002
+   * \u21D2 **\u9019\u88E1\u4E0D\u518D\u81EA\u8A02\u4E00\u5957 --bg/--panel/--accent**\uFF08v0.1 \u90A3\u5957\u5728\u771F Portal \u88E1\u6703\u88AB\u780D\u6389\u3001
+   *   \u7B49\u65BC\u6574\u9801\u6C92\u6709\u984F\u8272\uFF0C\u9019\u6B63\u662F leo 08-24 \u5BE6\u6E2C\u300C\u5B83\u70BA\u4EC0\u9EBC\u4E0D\u5403\u5168\u5C40\u7684 style\uFF1F\u300D\u90A3\u53E5\u8A71\u7684\u75C5\u6839\uFF09\u3002
+   *   \u4E00\u5F8B\u76F4\u63A5\u5F15\u7528 Portal \u7684 CIS token\uFF08\u898B matrix/arcrun console-ui/public/portal/index.html
+   *   \`APP_INHERIT_CSS\`\uFF0F\`:root\` \u5B9A\u7FA9\uFF09\uFF1A
+   *     --ink / --ink-rgb     \u6587\u5B57\u8272\uFF08\u6DFA\u8272\u4E3B\u984C\u6DF1\u3001\u6DF1\u8272\u4E3B\u984C\u6DFA\uFF0C\u96A8\u4E3B\u984C\u81EA\u52D5\u5207\uFF09
+   *     --amber / --amber-rgb \u54C1\u724C\u8272\uFF08\u539F\u672C\u7B46\u8A18\u6309\u9215\u662F\u81EA\u5DF1\u7684\u85CD\u8272\uFF0C\u73FE\u5728\u8DDF\u7CFB\u7D71\u7D71\u4E00\u7528\u5B83\uFF09
+   *     --paper-a / --paper-b \u5E95\u8272\uFF08\u7D19\u7D0B\u96D9\u8272\uFF09
+   *     --bar-bg              \u5DE5\u5177\u5217\uFF0F\u56FA\u5B9A\u689D\u80CC\u666F
+   *   \u672C\u6A5F\u76F4\u63A5\u958B\u9019\u500B\u6A94\u6848\uFF08\u4E0D\u7D93 Portal\uFF09\u6642\u9019\u4E9B\u8B8A\u6578\u4E0D\u5B58\u5728 \u2192 \u700F\u89BD\u5668\u9810\u8A2D\u503C\uFF08\u9ED1\u5B57\u767D\u5E95\uFF09\uFF0C
+   *   \u756B\u9762\u4ECD\u53EF\u8B80\uFF0C\u53EA\u662F\u6C92\u6709\u4E3B\u984C\u8272\u2014\u2014\u9019\u662F\u300C\u8DDF\u96A8\u5168\u5C40\u300D\u8A2D\u8A08\u672C\u8EAB\u7684\u8AA0\u5BE6\u4EE3\u50F9\uFF0C\u4E0D\u662F bug\u3002
+   */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  }
+  #app { max-width: 640px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+
+  .mock-banner {
+    background: rgba(var(--amber-rgb, 217, 120, 79), 0.15); color: var(--amber, #b04a2f);
+    font-size: 12px; text-align: center; padding: 6px 10px;
+    border-bottom: 1px solid rgba(var(--amber-rgb, 217, 120, 79), 0.4);
+  }
+
+  header { padding: 12px 14px 8px; border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12); }
+  header h1 { font-size: 18px; margin: 0 0 8px; }
+
+  .composer { display: flex; flex-direction: column; gap: 8px; }
+  .composer-textbox { position: relative; }
+  .composer textarea, .fs-textarea {
+    width: 100%; min-height: 72px; resize: vertical;
+    background: rgba(var(--ink-rgb, 23, 24, 26), 0.05); color: var(--ink, inherit);
+    border: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.2);
+    border-radius: 10px; padding: 10px 40px 10px 12px; font-size: 15px; font-family: inherit;
+  }
+  .expand-btn {
+    position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: none; border-radius: 6px; cursor: pointer;
+    color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); font-size: 14px;
+  }
+  .expand-btn:hover { background: rgba(var(--ink-rgb, 23, 24, 26), 0.08); }
+  .composer-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+  .composer-row .hint { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); }
+  .composer-row button, .fs-submit {
+    background: var(--amber, #333); color: #fff; border: none; border-radius: 999px;
+    padding: 8px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .composer-row button:disabled, .fs-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+  .error-line { color: #c0392b; font-size: 13px; min-height: 16px; }
+
+  /* \u2500\u2500 \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo 2026-08-24\uFF1A\u300C\u539F\u672C\u7B46\u8A18\u8F38\u5165\u754C\u9762\u53EF\u4EE5\u5168\u87A2\u5E55\uFF0C\u4F46\u4E5F\u6C92\u6709\u6309\u9215\u300D\uFF0C
+     Mira \u6CB3\u9053\u539F\u7A3F\u7684 Esc \u6536\u8D77\uFF0F\u2318+Enter \u9001\u51FA\u6A21\u5F0F\uFF0C\u898B landing/app/mira/feed/page.tsx
+     EditingArea \u7684 popup \u90A3\u6BB5\u2014\u2014\u9019\u88E1\u7167\u5B83\u7684\u9375\u76E4\u884C\u70BA\u505A\uFF0C\u4E0D\u662F\u65B0\u8A2D\u8A08\uFF09 \u2500\u2500 */
+  .fs-backdrop {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
+    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px;
+  }
+  /* \`[hidden]\` \u7684 UA \u9810\u8A2D\u6A23\u5F0F\uFF08display:none\uFF09specificity \u592A\u4F4E\uFF0C\u84CB\u4E0D\u6389\u4E0A\u9762 .fs-backdrop
+     \u81EA\u5DF1\u90A3\u689D display:flex\uFF08author style \u4E00\u5F8B\u8D0F\u904E UA style\uFF0C\u8DDF\u5BA3\u544A\u9806\u5E8F\u7121\u95DC\uFF09\u2014\u2014
+     \u6C92\u6709\u9019\u689D\uFF0Chidden \u5C6C\u6027\u8A2D\u4E86\u4E5F\u6C92\u7528\uFF0C\u9019\u9846\u80CC\u666F\u6703\u4E00\u76F4\u84CB\u5728\u756B\u9762\u4E0A\u5403\u6389\u6240\u6709\u9EDE\u64CA
+     \uFF08browser-e2e.mjs \u7B2C\u4E00\u6B21\u8DD1\u5C31\u649E\u5230\uFF1A#submitBtn \u9EDE\u4E0D\u5230\uFF0C\u56E0\u70BA #fsBackdrop \u6514\u5728\u6700\u4E0A\u5C64\uFF09\u3002 */
+  .fs-backdrop[hidden] { display: none; }
+  .fs-panel {
+    background: var(--paper-a, #fff); color: var(--ink, inherit); width: 100%; max-width: 560px;
+    max-height: 80vh; border-radius: 14px; display: flex; flex-direction: column;
+    padding: 14px; gap: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+  .fs-header { display: flex; align-items: center; justify-content: space-between; }
+  .fs-header .title { font-size: 15px; font-weight: 600; }
+  .fs-close {
+    background: transparent; border: none; font-size: 16px; cursor: pointer; padding: 4px 8px;
+    color: rgba(var(--ink-rgb, 23, 24, 26), 0.6);
+  }
+  .fs-textarea { flex: 1; min-height: 240px; resize: none; padding: 12px; }
+  .fs-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+  .fs-kbd { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.45); margin-right: auto; }
+
+  .calendar-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px; font-size: 13px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.55); cursor: pointer;
+    border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12);
+    user-select: none;
+  }
+  .calendar-toggle .filter-chip {
+    background: rgba(var(--amber-rgb, 217, 120, 79), 0.15); color: var(--amber, #b04a2f); border-radius: 999px;
+    padding: 3px 10px; font-size: 12px; margin-left: 8px;
+  }
+
+  .calendar { padding: 8px 14px 12px; border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12); }
+  .calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .calendar-header button {
+    background: none; border: none; color: var(--ink, inherit); font-size: 16px; padding: 4px 10px; cursor: pointer;
+  }
+  .calendar-header .label { font-size: 14px; font-weight: 600; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+  .cal-dow { font-size: 11px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); padding: 2px 0; }
+  .cal-cell {
+    position: relative; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--ink, inherit);
+  }
+  .cal-cell.empty { cursor: default; visibility: hidden; }
+  .cal-cell.today { border: 1px solid var(--amber, #b04a2f); }
+  .cal-cell.selected { background: var(--amber, #b04a2f); color: #fff; font-weight: 700; }
+  .cal-cell .dot {
+    position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--amber, #b04a2f);
+  }
+  .cal-cell.selected .dot { background: #fff; }
+
+  .river { flex: 1; overflow-y: auto; padding: 8px 14px 24px; }
+  .river-empty { color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); font-size: 14px; text-align: center; padding: 40px 10px; }
+
+  /*
+   * \u2500\u2500 \u5361\u7247\uFF08leo 2026-08-24\uFF1A\u300C\u6BCF\u4E00\u5247\u7B46\u8A18\u662F\u4E00\u5F35\u5361\u7247\uFF0C\u5361\u7247\u7684\u5916\u6846\u6C92\u986F\u793A\u300D\uFF09\u2500\u2500
+   * \u908A\u754C\u4E00\u5F8B\u7528 Portal \u8272\u7968\uFF08--ink-rgb \u7684\u4F4E\u900F\u660E\u5EA6\uFF09\uFF0C\u4E0D\u5BEB\u6B7B\u984F\u8272\u2014\u2014\u9019\u6A23\u6DFA\u8272\uFF0F\u6DF1\u8272\u4E3B\u984C
+   * \u5207\u63DB\u6642\u908A\u754C\u81EA\u52D5\u8DDF\u8457\u63DB\uFF0C\u4E0D\u6703\u6D88\u5931\uFF08\u540C\u4E0A\u65B9\u6A94\u982D\u8AAA\u660E\u7684\u90A3\u500B\u75C5\uFF0C\u4E0D\u91CD\u72AF\u7B2C\u4E8C\u6B21\uFF09\u3002
+   */
+  .note-card {
+    border: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.18); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 10px;
+  }
+  .note-card .meta { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); margin-bottom: 6px; }
+  .note-card .content { font-size: 15px; line-height: 1.55; word-break: break-word; }
+  .note-card .content p { margin: 0 0 8px; }
+  .note-card .content p:last-child { margin-bottom: 0; }
+  .note-card .content h1, .note-card .content h2, .note-card .content h3 { margin: 0 0 8px; }
+  .note-card .content ul { margin: 0 0 8px; padding-left: 20px; }
+  .note-card .content code {
+    background: rgba(var(--ink-rgb, 23, 24, 26), 0.08); padding: 1px 5px; border-radius: 4px; font-size: 13px;
+  }
+
+  /*
+   * \u2500\u2500 \u56DE\u8986\uFF08leo 2026-08-24\u300C\u6BCF\u4E00\u5247\u7B46\u8A18\u90FD\u53EF\u4EE5\u56DE\u8986\u300D\u2192 2026-11-11 \u6539\u6210\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684\u5143\u4EF6\uFF09\u2500\u2500
+   * \u56DE\u8986\u4E32\u3001\u56DE\u8986\u6846\u3001\u5DE5\u5177\u5217\u3001\u9078\u5B57\u5F15\u7528\u3001\u7DE8\u8F2F\u522A\u9664\u7684\u756B\u9762\u8207\u898F\u5247\u5168\u5728 ui/reply-kit.js\uFF08ReplyKit\uFF09\uFF0C
+   * \u6A23\u5F0F\u4E5F\u7531\u5B83\u81EA\u5DF1\u6CE8\u5165\u2014\u2014\u9019\u88E1\u53EA\u7559\u7B46\u8A18\u5361\u81EA\u5DF1\u7684\u7248\u9762\u3002
+   */
+  .note-card { position: relative; }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .card-top .meta { margin-bottom: 0; }
+  .note-card .content blockquote { margin: 0 0 8px; padding: 0 0 0 10px; border-left: 3px solid rgba(var(--ink-rgb, 23, 24, 26), 0.25); color: rgba(var(--ink-rgb, 23, 24, 26), 0.7); }
+  .note-card .content { user-select: text; -webkit-user-select: text; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="mock-banner" id="mockBanner" hidden>
+    \u26A0\uFE0F MOCK \u6A21\u5F0F\uFF1A\u8CC7\u6599\u53EA\u5B58\u5728\u9019\u500B\u700F\u89BD\u5668\u7684 localStorage\uFF0C\u4E0D\u662F\u771F\u7684 KBDB\uFF0FArcrun \u5F8C\u7AEF\u3002
+  </div>
+
+  <header>
+    <h1>\u7B46\u8A18</h1>
+    <div class="composer">
+      <div class="composer-textbox">
+        <textarea id="composerInput" placeholder="\u5BEB\u9EDE\u4EC0\u9EBC\u2026\u2026\u652F\u63F4 Markdown\uFF08# \u6A19\u984C\u3001**\u7C97\u9AD4**\u3001*\u659C\u9AD4*\u3001- \u6E05\u55AE\u3001[\u9023\u7D50](\u7DB2\u5740)\uFF09\uFF08Esc \u6536\u8D77\u3001\u2318+Enter \u9001\u51FA\uFF09"></textarea>
+        <button type="button" class="expand-btn" id="composerExpandBtn" title="\u5168\u87A2\u5E55\u7DE8\u8F2F" aria-label="\u5168\u87A2\u5E55\u7DE8\u8F2F">\u26F6</button>
+      </div>
+      <div class="composer-row">
+        <span class="hint" id="composerHint"></span>
+        <button id="submitBtn" type="button">\u9001\u51FA</button>
+      </div>
+      <div class="error-line" id="composerError"></div>
+    </div>
+  </header>
+
+  <!-- \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo \u53CD\u994B\u300C\u539F\u672C\u53EF\u4EE5\u5168\u87A2\u5E55\u300D\uFF09\uFF1AEsc \u6536\u8D77\uFF0C\u6536\u8D77\u6642\u628A\u5167\u5BB9\u540C\u6B65\u56DE\u4E3B\u8F38\u5165\u6846\uFF0C\u4E0D\u662F\u53E6\u4E00\u4EFD\u8349\u7A3F\u3002 -->
+  <div class="fs-backdrop" id="fsBackdrop" hidden>
+    <div class="fs-panel">
+      <div class="fs-header">
+        <span class="title">\u5BEB\u7B46\u8A18</span>
+        <button type="button" class="fs-close" id="fsCloseBtn" title="\u6536\u8D77\uFF08Esc\uFF09" aria-label="\u6536\u8D77">\u2715</button>
+      </div>
+      <textarea class="fs-textarea" id="fsTextarea"></textarea>
+      <div class="fs-footer">
+        <span class="fs-kbd">Esc \u6536\u8D77 \xB7 \u2318+Enter \u9001\u51FA</span>
+        <button type="button" class="fs-submit" id="fsSubmitBtn">\u9001\u51FA</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="calendar-toggle" id="calendarToggle">
+    <span>
+      <span id="calendarToggleLabel">\u5C0F\u65E5\u66C6</span>
+      <span class="filter-chip" id="filterChip" hidden></span>
+    </span>
+    <span id="calendarChevron">\u25BE</span>
+  </div>
+  <div class="calendar" id="calendarPanel" hidden>
+    <div class="calendar-header">
+      <button type="button" id="calPrev" aria-label="\u4E0A\u500B\u6708">\u2039</button>
+      <span class="label" id="calLabel"></span>
+      <button type="button" id="calNext" aria-label="\u4E0B\u500B\u6708">\u203A</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <main class="river" id="river">
+    <div class="river-empty">\u8F09\u5165\u4E2D\u2026</div>
+  </main>
+</div>
+
+<script>
+/*
+ * notes-core.js \u2014 \u7D14\u908F\u8F2F\u5C64\uFF08inkstone/InkStoneCo#2\uFF1B\u57F7\u884C\u7968 inkstone/arcrun-app-note#1 \u7B46\u8A18 App\uFF09
+ *
+ * \u523B\u610F\u8DDF DOM \u5206\u958B\u653E\u4E00\u500B\u6A94\u6848\u7684\u7406\u7531\uFF1A\u9019\u6A23 test/test-notes-core.mjs \u624D\u80FD\u5728 Node \u88E1
+ * \u76F4\u63A5 require \u9019\u4EFD\u908F\u8F2F\u505A\u55AE\u5143\u6E2C\u8A66\uFF0C\u4E0D\u9700\u8981\u4E00\u9846\u771F\u700F\u89BD\u5668\uFF08headless Chrome \u9019\u985E\u91CD\u4F9D\u8CF4
+ * \u5728\u9019\u53F0\u6A5F\u5668\u4E0A\u4E0D\u4E00\u5B9A\u88DD\u5F97\u4E86\uFF1B\u7D14\u51FD\u5F0F\u908F\u8F2F\u7528 node \u5C31\u6E2C\u5F97\u5230\uFF0C\u9019\u662F\u53EF\u4EE5\u505A\u5230\u300C\u6E2C\u904E\u300D\u800C\u4E0D\u662F
+ * \u300C\u61C9\u8A72\u53EF\u4EE5\u300D\u7684\u6700\u52D9\u5BE6\u4F5C\u6CD5\uFF09\u3002
+ *
+ * \u9019\u500B\u6A94\u6848\u4E0D import \u4EFB\u4F55\u6771\u897F\u3001\u4E0D\u78B0 window/document\u2014\u2014\u5728 <script> \u6A19\u7C64\u6216 Node \u90FD\u80FD\u8DD1\u3002
+ * \u5C0D\u5916\u7528\u4E00\u500B\u547D\u540D\u7A7A\u9593\u7269\u4EF6 NotesCore \u639B\u4F4F\u6240\u6709\u51FD\u5F0F\uFF0C\u540C\u6642\u5728 Node \u74B0\u5883\uFF08module !== undefined\uFF09
+ * \u639B module.exports\uFF0C\u5169\u908A\u5171\u7528\u540C\u4E00\u4EFD\u5BE6\u4F5C\uFF0C\u4E0D\u6703\u51FA\u73FE\u300C\u700F\u89BD\u5668\u7248\u300D\u8DDF\u300C\u6E2C\u8A66\u7248\u300D\u6F02\u79FB\u3002
+ */
+(function (root) {
+  'use strict';
+
+  // \u2500\u2500 \u65E5\u671F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  var DATE_RE = /^\\d{4}-\\d{2}-\\d{2}$/;
+
+  function isValidDateStr(s) {
+    return typeof s === 'string' && DATE_RE.test(s);
+  }
+
+  /** \u4F7F\u7528\u8005\u672C\u5730\u6642\u5340\u7684\u300C\u4ECA\u5929\u300D\uFF0CYYYY-MM-DD\u3002\u523B\u610F\u4E0D\u7528 toISOString()\uFF08\u90A3\u662F UTC\uFF0C\u665A\u4E0A\u5BEB\u7B46\u8A18
+   *  \u5BB9\u6613\u8DE8\u65E5\u7B97\u932F\u2014\u2014\u9019\u662F\u820A Mira \u6CB3\u9053\u9801\u8E29\u904E\u7684\u75C5\u4E4B\u4E00\uFF0C\u9019\u88E1\u4E0D\u91CD\u72AF\uFF09\u3002 */
+  function todayISO(d) {
+    d = d || new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  // \u2500\u2500 \u7B46\u8A18\u6392\u5E8F\uFF0F\u904E\u6FFE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  /** \u4F9D created_at \u65B0\u5230\u820A\u6392\u5E8F\uFF0C\u56DE\u50B3\u65B0\u9663\u5217\uFF08\u4E0D\u6539\u539F\u9663\u5217\uFF09\u3002created_at \u7F3A\u503C\u6392\u6700\u5F8C\u3002 */
+  function sortNotesDesc(notes) {
+    return notes.slice().sort(function (a, b) {
+      var ca = a && a.created_at ? a.created_at : '';
+      var cb = b && b.created_at ? b.created_at : '';
+      if (ca === cb) return 0;
+      return ca < cb ? 1 : -1; // \u65B0\uFF08\u5B57\u4E32\u8F03\u5927\uFF09\u5728\u524D
+    });
+  }
+
+  function filterByDate(notes, dateStr) {
+    if (!dateStr) return notes.slice();
+    return notes.filter(function (n) { return n && n.date === dateStr; });
+  }
+
+  /** \u56DE\u50B3\u300C\u6709\u7B46\u8A18\u7684\u65E5\u671F\u300D\u96C6\u5408\uFF08\u7D66\u5C0F\u65E5\u66C6\u756B\u9EDE\u7528\uFF09\u3002 */
+  function datesWithNotes(notes) {
+    var set = {};
+    for (var i = 0; i < notes.length; i++) {
+      if (notes[i] && notes[i].date) set[notes[i].date] = true;
+    }
+    return set;
+  }
+
+  // \u2500\u2500 \u5C0F\u65E5\u66C6 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  /**
+   * \u7522\u751F\u4E00\u500B\u6708\u7684\u65E5\u66C6\u683C\u5B50\u3002year/month \u70BA 0-based month\uFF08\u540C Date \u6163\u4F8B\uFF0C0=\u4E00\u6708\uFF09\u3002
+   * \u56DE\u50B3 { year, month, weeks: [[cell,...], ...] }\uFF0Ccell \u70BA null\uFF08\u6708\u9996/\u6708\u5C3E\u88DC\u7A7A\u683C\uFF09
+   * \u6216 { day, dateStr, isToday, hasNotes, isSelected }\u3002
+   */
+  function buildCalendarMonth(year, month, notesByDate, todayStr, selectedStr) {
+    notesByDate = notesByDate || {};
+    var firstOfMonth = new Date(year, month, 1);
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var startWeekday = firstOfMonth.getDay(); // 0=Sun
+
+    var cells = [];
+    for (var i = 0; i < startWeekday; i++) cells.push(null);
+    for (var day = 1; day <= daysInMonth; day++) {
+      var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+      cells.push({
+        day: day,
+        dateStr: dateStr,
+        isToday: dateStr === todayStr,
+        hasNotes: !!notesByDate[dateStr],
+        isSelected: !!selectedStr && dateStr === selectedStr,
+      });
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    var weeks = [];
+    for (var w = 0; w < cells.length; w += 7) weeks.push(cells.slice(w, w + 7));
+    return { year: year, month: month, weeks: weeks };
+  }
+
+  // \u2500\u2500 Markdown\uFF08\u6975\u7C21\u5B50\u96C6\uFF0C\u96F6\u4F9D\u8CF4\u2014\u2014design.md \u8981\u6C42\u55AE\u6A94\uFF0F\u5C11\u6A94\uFF0C\u4E0D\u63A5 CDN\uFF09 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  //
+  // \u652F\u63F4\uFF1A\u8DF3\u812B HTML \u2192 \u6A19\u984C #~###### \u2192 **\u7C97\u9AD4** \u2192 *\u659C\u9AD4* \u2192 \`code\` \u2192 [text](url)
+  // \u2192 \u4E00\u822C\u6BB5\u843D\u63DB\u884C \u2192 \u958B\u982D \`- \` \u6216 \`* \` \u7684\u6E05\u55AE\u884C \u2192 \u958B\u982D \`> \` \u7684\u5F15\u7528\u884C\uFF08arcrun-app-note#2 \u5DE5\u5177\u5217\u7684\u300C\u5F15\u7528\u300D\uFF09\u3002
+  // \u4E0D\u652F\u63F4\uFF1A\u8868\u683C\u3001\u5DE2\u72C0\u6E05\u55AE\u3001\u5716\u7247\u3001fenced code block\u2014\u2014\u7B46\u8A18 App v0.1 \u4E0D\u9700\u8981\uFF0C
+  // \u52A0\u4E86\u53EA\u6703\u8B93\u300C\u55AE\u4E00 HTML/JS \u6A94\u300D\u7684\u76EE\u6A19\u8B8A\u91CD\uFF0C\u4E14\u6C92\u6709 leo \u63D0\u51FA\u7684\u9700\u6C42\u6490\u9019\u500B\u8907\u96DC\u5EA6\u3002
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderInline(s) {
+    s = s.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+    s = s.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+    s = s.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
+    s = s.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return s;
+  }
+
+  function renderMarkdown(md) {
+    var lines = escapeHtml(md == null ? '' : md).split(/\\r?\\n/);
+    var html = [];
+    var listOpen = false;
+
+    function closeList() {
+      if (listOpen) { html.push('</ul>'); listOpen = false; }
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var heading = /^(#{1,6})\\s+(.*)$/.exec(line);
+      var listItem = /^[-*]\\s+(.*)$/.exec(line);
+      var quoteLine = /^&gt;\\s?(.*)$/.exec(line); // escapeHtml \u4E4B\u5F8C ">" \u5DF2\u662F &gt;\uFF08\u5DE5\u5177\u5217\u7684\u300C\u5F15\u7528\u300D\u63D2\u7684\u5C31\u662F\u9019\u500B\uFF09
+
+      if (heading) {
+        closeList();
+        var level = heading[1].length;
+        html.push('<h' + level + '>' + renderInline(heading[2]) + '</h' + level + '>');
+      } else if (quoteLine) {
+        closeList();
+        html.push('<blockquote>' + renderInline(quoteLine[1]) + '</blockquote>');
+      } else if (listItem) {
+        if (!listOpen) { html.push('<ul>'); listOpen = true; }
+        html.push('<li>' + renderInline(listItem[1]) + '</li>');
+      } else if (line.trim() === '') {
+        closeList();
+      } else {
+        closeList();
+        html.push('<p>' + renderInline(line) + '</p>');
+      }
+    }
+    closeList();
+    return html.join('\\n');
+  }
+
+  // \u2500\u2500 Mock \u5F8C\u7AEF\uFF08design.md K6 \u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u7684\u5047\u5F62\u72C0\uFF1B\u771F\u7AEF\u9EDE\u898B README\u300C\u9084\u7F3A\u4EC0\u9EBC\u300D\uFF09\u2500\u2500\u2500
+  //
+  // \u5951\u7D04\u523B\u610F\u8DDF\u300C\u771F\u7684\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u300D\u9577\u4E00\u6A23\uFF1Acall(action, params) -> Promise<{success, data|error}>\u3002
+  // \u4E4B\u5F8C\u63A5\u4E0A\u771F\u5F8C\u7AEF\uFF0C\u53EA\u8981\u628A\u547C\u53EB\u7AEF\u7684 dispatcher \u63DB\u6210\u771F\u7684 fetch\uFF0C\u9019\u500B\u6A94\u6848\u4E00\u884C\u4E0D\u7528\u6539
+  // \u2014\u2014\u9019\u6B63\u662F K6\u300C\u524D\u7AEF\u4E0D\u77E5\u9053 apiBase / \u4E0D\u81EA\u5DF1 fetch\u300D\u7CBE\u795E\u5728 mock \u5C64\u7684\u9AD4\u73FE\uFF1A
+  // UI \u6C38\u9060\u53EA\u8A8D\u5F97\u5230 call(action, params)\uFF0C\u4E0D\u7BA1\u80CC\u5F8C\u662F mock \u9084\u662F\u771F\u5F15\u64CE\u3002
+  //
+  // storage \u53C3\u6578\u662F\u6CE8\u5165\u7684\u6301\u4E45\u5316\u4ECB\u9762\uFF08{ load(): Note[], save(notes: Note[]): void }\uFF09\uFF0C
+  // \u9810\u8A2D\u7528\u8A18\u61B6\u9AD4\u9663\u5217\uFF08\u7D66 Node \u6E2C\u8A66\u8207\u300C\u6C92\u6709 localStorage\u300D\u7684\u74B0\u5883\u7528\uFF09\uFF1B
+  // \u700F\u89BD\u5668\u7248\u7531 ui/index.html \u6CE8\u5165\u4E00\u4EFD\u5305 localStorage \u7684 storage\u3002
+
+  function createMemoryStorage() {
+    var notes = [];
+    return {
+      load: function () { return notes.slice(); },
+      save: function (next) { notes = next.slice(); },
+    };
+  }
+
+  // \u2500\u2500 \u56DE\u61C9\u4FE1\u5C01\uFF08\u7167\u771F\u5951\u7D04\u7684\u5F62\u72C0\uFF0C\u898B\u4E0B\u65B9 unwrapActionResult \u7684\u9577\u8A3B\u89E3\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  function createMockBackend(storage, idGen) {
+    storage = storage || createMemoryStorage();
+    var seq = 0;
+    idGen = idGen || function () { seq += 1; return 'mock_rec_' + Date.now() + '_' + seq; };
+
+    // \u56DE\u50B3 d \u672C\u8EAB\uFF08\u771F\u5951\u7D04\u88E1 window.arcrunApp.action() resolve \u51FA\u4F86\u7684 {ok,status,d} \u7684 d \u90A3\u5C64\uFF09\uFF1A
+    //   \u6210\u529F \u2192 { ok: true, result: { success: true, data: {...} } }
+    //   \u5931\u6557 \u2192 { error: "..." }\uFF08\u6C92\u6709 ok \u6B04\u4F4D\u2014\u2014\u7167\u771F\u7AEF\u9EDE\u7684\u5931\u6557\u56DE\u61C9\u5F62\u72C0\uFF09
+    var ME = 'mock-user'; // MOCK \u6A21\u5F0F\u4E0B\u300C\u6309\u7684\u4EBA\u300D\u56FA\u5B9A\u662F\u9019\u4E00\u500B\uFF1B\u771F\u5F8C\u7AEF\u662F Portal \u767B\u5165\u540D\uFF08\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\uFF09
+
+    function createNote(params) {
+      var content = (params && params.content != null) ? String(params.content).trim() : '';
+      if (!content) return { error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u7B46\u8A18\u81F3\u5C11\u8981\u6709\u5167\u5BB9\uFF09' };
+      var date = (params && params.date) ? String(params.date).trim() : todayISO();
+      if (!isValidDateStr(date)) return { error: 'date \u5FC5\u9808\u662F YYYY-MM-DD \u683C\u5F0F\uFF08\u6536\u5230\uFF1A' + date + '\uFF09' };
+      // parent_id\uFF1A\u7701\u7565\uFF0F\u7A7A\u5B57\u4E32\uFF1D\u7368\u7ACB\u7B46\u8A18\uFF1B\u975E\u7A7A\uFF1D\u9019\u662F\u67D0\u5247\u7B46\u8A18\u7684\u56DE\u8986\uFF08\u540C\u771F\u5F8C\u7AEF notes-create.yaml
+      // \u7684 prep \u7BC0\u9EDE\u5951\u7D04\u2014\u2014mock \u8DDF\u771F\u5F8C\u7AEF\u5FC5\u9808\u662F\u540C\u4E00\u4EFD\u5951\u7D04\uFF0C\u4E0D\u80FD\u5404\u81EA\u8868\u8FF0\uFF09\u3002
+      var parentId = (params && params.parent_id != null) ? String(params.parent_id).trim() : '';
+      // quote\uFF0Fquote_pos\uFF1A\u53EA\u6709\u56DE\u8986\u5E36\uFF08\u540C\u771F\u5F8C\u7AEF\uFF1A\u7368\u7ACB\u7B46\u8A18\u4E00\u5F8B\u5B58\u7A7A\uFF09\u3002
+      var quote = parentId && params && params.quote != null ? String(params.quote).trim().slice(0, 300) : '';
+      var qp = Number(params && params.quote_pos != null ? params.quote_pos : '');
+      var note = {
+        record_id: idGen(),
+        date: date,
+        content: content,
+        created_at: new Date().toISOString(),
+        edited_at: '',
+        parent_id: parentId,
+        author: ME,
+        quote: quote,
+        quote_pos: quote && isFinite(qp) && qp >= 0 ? String(Math.floor(qp)) : '',
+        deleted: false
+      };
+      var notes = storage.load();
+      notes.push(note);
+      storage.save(notes);
+      return { ok: true, result: { success: true, data: note } };
+    }
+
+    // \u540C\u771F\u5F8C\u7AEF update_note\uFF0Fdelete_note \u7684\u5B88\u9580\uFF1A\u5B58\u5728\u3001\u6C92\u522A\u904E\u3001\u4F5C\u8005\u672C\u4EBA\uFF08\u4F5C\u8005\u7A7A\uFF1D\u820A\u8CC7\u6599\uFF0C\u4E0D\u9650\u4EBA\uFF09\u3002
+    function findMine(params, verb) {
+      var id = params && params.record_id != null ? String(params.record_id).trim() : '';
+      if (!id) return { error: 'record_id \u5FC5\u586B\uFF08\u8981' + verb + '\u54EA\u4E00\u5247\uFF09' };
+      var notes = storage.load();
+      var idx = -1;
+      for (var i = 0; i < notes.length; i++) if (notes[i] && notes[i].record_id === id) idx = i;
+      if (idx < 0 || !notes[idx].content) return { error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };
+      if (notes[idx].deleted) return { error: verb === '\u6539' ? '\u9019\u5247\u5DF2\u7D93\u522A\u9664\uFF0C\u4E0D\u80FD\u518D\u6539' : '\u9019\u5247\u5DF2\u7D93\u522A\u9664\u4E86' };
+      if (notes[idx].author && notes[idx].author !== ME) return { error: '\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\u80FD' + verb + '\u9019\u5247' };
+      return { notes: notes, idx: idx };
+    }
+
+    function updateNote(params) {
+      var content = params && params.content != null ? String(params.content).trim() : '';
+      if (!content) return { error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u8981\u6E05\u6389\u8ACB\u7528\u522A\u9664\uFF09' };
+      var f = findMine(params, '\u6539');
+      if (f.error) return f;
+      f.notes[f.idx].content = content;
+      f.notes[f.idx].edited_at = new Date().toISOString();
+      storage.save(f.notes);
+      return { ok: true, result: { success: true, data: f.notes[f.idx] } };
+    }
+
+    function deleteNote(params) {
+      var f = findMine(params, '\u522A');
+      if (f.error) return f;
+      f.notes[f.idx].deleted = true;
+      f.notes[f.idx].deleted_at = new Date().toISOString();
+      var taken = f.notes[f.idx].card_count > 0 ? f.notes[f.idx].card_count : 0;
+      f.notes[f.idx].card_count = 0; // \u540C\u771F\u5F8C\u7AEF\uFF1A\u522A\u7B46\u8A18\u9023\u5E36\u4E0B\u67B6\u5B83\u6574\u7406\u51FA\u7684\u5361\uFF0C\u518D\u6578\u5C31\u662F 0
+      storage.save(f.notes);
+      return { ok: true, result: { success: true, data: { record_id: f.notes[f.idx].record_id, deleted: true, deleted_at: f.notes[f.idx].deleted_at, cards_taken_down: taken } } };
+    }
+
+    // note_cards\uFF1A\u9019\u5247\u7B46\u8A18\u6574\u7406\u51FA\u5E7E\u5F35\u73FE\u5F79\u7684\u5361\uFF08\u522A\u9664\u524D\u7684\u63D0\u793A\u7528\uFF09\u3002mock \u88E1\u7B46\u8A18\u6C92\u6709\u771F\u7684\u5361\uFF0C
+    // \u4EE5\u7B46\u8A18\u4E0A\u7684 card_count \u6B04\u4EE3\u8868\uFF08\u6E2C\u8A66\uFF0F\u793A\u7BC4\u53EF\u585E\uFF09\uFF1B\u6C92\u6709\u5C31\u662F 0\u3002
+    function noteCards(params) {
+      var id = params && params.record_id != null ? String(params.record_id).trim() : '';
+      if (!id) return { error: 'record_id \u5FC5\u586B\uFF08\u8981\u67E5\u54EA\u4E00\u5247\uFF09' };
+      var notes = storage.load();
+      var n = null;
+      for (var i = 0; i < notes.length; i++) if (notes[i] && notes[i].record_id === id) n = notes[i];
+      var c = n && n.card_count > 0 ? n.card_count : 0;
+      return { ok: true, result: { success: true, data: { card_count: c, page_names: [] } } };
+    }
+
+    function listNotes(params) {
+      var wantDate = (params && params.date) ? String(params.date).trim() : '';
+      var all = storage.load();
+      // \u540C\u771F\u5F8C\u7AEF notes-list.yaml \u7684 filter_sort\uFF08\u5169\u908A\u5FC5\u9808\u540C\u4E00\u4EFD\u884C\u70BA\uFF0Ctest/test-list-parity.mjs \u6703\u62FF\u771F\u5DE5\u4F5C\u6D41\u7684\u7A0B\u5F0F\u78BC\u5C0D\u8DD1\uFF09\uFF1A
+      //   \u5DF2\u522A\u9664\u7684\u7368\u7ACB\u7B46\u8A18\u6574\u5247\u4E0D\u51FA\u73FE\u3001\u5E95\u4E0B\u7684\u56DE\u8986\u8DDF\u8457\u4E0D\u51FA\u73FE\uFF1B
+      //   \u5DF2\u522A\u9664\u7684\u56DE\u8986\u4E4B\u5F8C\u9084\u6709\u5225\u4EBA\u7684\u56DE\u8986\u6642\u7559\u5360\u4F4D\uFF08deleted:true\u3001\u5167\u6587\u6E05\u7A7A\uFF09\uFF0C\u4E4B\u5F8C\u6C92\u6709\u4E86\u5C31\u4E0D\u51FA\u73FE\u3002
+      var deletedTop = {};
+      all.forEach(function (n) { if (n && n.deleted && !n.parent_id) deletedTop[n.record_id] = true; });
+      var repliesByParent = {};
+      all.forEach(function (n) {
+        if (!n || !n.parent_id || deletedTop[n.parent_id]) return;
+        (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);
+      });
+      Object.keys(repliesByParent).forEach(function (pid) {
+        var list = repliesByParent[pid];
+        list.sort(function (a, b) {
+          var ca = (a && a.created_at) || ''; var cb = (b && b.created_at) || '';
+          return ca < cb ? -1 : (ca > cb ? 1 : 0);
+        });
+        var lastLive = -1;
+        list.forEach(function (r, i) { if (!r.deleted) lastLive = i; });
+        repliesByParent[pid] = list.filter(function (r, i) { return !r.deleted || i < lastLive; }).map(function (r) {
+          return r.deleted ? { record_id: r.record_id, parent_id: r.parent_id, created_at: r.created_at, deleted: true, content: '', author: '', quote: '', quote_pos: '' } : r;
+        });
+      });
+      var top = all.filter(function (n) { return n && !n.parent_id && !n.deleted; });
+      var filtered = sortNotesDesc(filterByDate(top, wantDate)).map(function (n) {
+        var copy = {};
+        for (var k in n) if (Object.prototype.hasOwnProperty.call(n, k)) copy[k] = n[k];
+        copy.replies = repliesByParent[n.record_id] || [];
+        return copy;
+      });
+      return {
+        ok: true,
+        result: { success: true, data: { notes: filtered, count: filtered.length, date: wantDate || null, me: ME } },
+      };
+    }
+
+    return {
+      // call() \u56DE\u50B3\u5916\u5C64 {ok,status,d}\u2014\u2014\u8DDF window.arcrunApp.action() \u7684 resolve \u5F62\u72C0\u4E00\u81F4\uFF0C
+      // \u8B93 ui/index.html \u7684 callAction() \u4E0D\u5FC5\u5206\u5169\u5957\u908F\u8F2F\u8655\u7406 mock \u8207\u771F\u5F8C\u7AEF\u3002
+      call: function (action, params) {
+        var d;
+        if (action === 'create_note') d = createNote(params);
+        else if (action === 'list_notes') d = listNotes(params);
+        else if (action === 'update_note') d = updateNote(params);
+        else if (action === 'delete_note') d = deleteNote(params);
+        else if (action === 'note_cards') d = noteCards(params);
+        else d = { error: '\u672A\u77E5\u52D5\u4F5C\uFF08\u4E0D\u5728\u767D\u540D\u55AE\uFF09\uFF1A' + action };
+        var ok = !!(d && d.ok === true);
+        return Promise.resolve({ ok: ok, status: ok ? 200 : 400, d: d });
+      },
+      _storage: storage, // \u6E2C\u8A66\u7528\uFF1A\u76F4\u63A5\u6AA2\u67E5\u5E95\u5C64\u5132\u5B58
+    };
+  }
+
+  /**
+   * unwrapActionResult(resp) \u2014 \u628A window.arcrunApp.action()\uFF0Fmock \u7684\u56DE\u61C9\u7D71\u4E00\u525D\u6210
+   * { success, data } \u6216 { success:false, error }\uFF0CUI \u5C64\u53EA\u8A8D\u9019\u4E00\u7A2E\u5F62\u72C0\u3002
+   *
+   * resp \u7684\u5F62\u72C0\u662F { ok, status, d }\uFF1A
+   *   - resp.ok           \u2190 HTTP \u5C64\u662F\u5426 2xx\uFF08\u771F\u5F8C\u7AEF\uFF1Dfetch \u7684 res.ok\uFF1Bmock \u81EA\u5DF1\u6A21\u64EC\u540C\u6B3E\uFF09
+   *   - resp.d             \u2190 body JSON
+   *       \u6210\u529F\uFF1A{ ok: true, result: { success, data } }
+   *              \u2500 \u5916\u5C64 ok\uFF1A\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u672C\u8EAB\u7684\u4FE1\u5C01\uFF08design.md K6\uFF0C
+   *                matrix/arcrun cypher-executor/src/routes/portal-data.ts
+   *                \`POST /portal/data/apps/:id/action\` \u7684\u65E2\u6709\u56DE\u61C9\u683C\u5F0F\uFF09
+   *              \u2500 \u5167\u5C64 success/data\uFF1A\u672C App \u5DE5\u4F5C\u6D41\u7D42\u9EDE code \u7BC0\u9EDE\u7684\u8F38\u51FA\u2014\u2014
+   *                WASM component \u57F7\u884C\u7D50\u679C\u7D71\u4E00\u5305\u6210 {success,data:{...}}
+   *                \uFF08\u898B\u5404\u96F6\u4EF6\u7684 component.contract.yaml\uFF09\uFF0C
+   *                \u672C\u5377\u5DF2\u7528 matrix/arcrun \u7684\u771F GraphExecutor \u5BE6\u969B\u8DD1\u904E
+   *                create_note\uFF0Flist_notes \u5169\u689D\uFF0C\u5169\u5C64\u4FE1\u5C01\u90FD\u662F\u7167\u5BE6\u6E2C\u7D50\u679C\u5BEB\u7684\uFF0C
+   *                \u4E0D\u662F\u6191\u7A7A\u731C\u7684\u5F62\u72C0\uFF08\u904E\u7A0B\u8207\u8E29\u904E\u7684\u5751\u898B README\u300C\u5DF2\u9A57\u8B49\u7684\u57F7\u884C\u671F\u884C\u70BA\u300D\uFF09\u3002
+   *       \u5931\u6557\uFF1A{ error: "..." }\uFF08\u6C92\u6709 ok \u6B04\u4F4D\uFF09
+   */
+  function unwrapActionResult(resp) {
+    if (!resp || !resp.ok) {
+      var httpErr = (resp && resp.d && resp.d.error) || ('HTTP ' + (resp && resp.status));
+      return { success: false, error: httpErr };
+    }
+    var d = resp.d;
+    if (!d || d.ok !== true) {
+      return { success: false, error: (d && d.error) || '\u56DE\u61C9\u6C92\u6709 ok:true\uFF08\u672A\u77E5\u932F\u8AA4\uFF09' };
+    }
+    var r = d.result;
+    if (!r || r.success !== true) {
+      return { success: false, error: (r && r.error) || '\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF08\u6C92\u6709\u56DE\u53EF\u7528\u7D50\u679C\uFF09' };
+    }
+    return { success: true, data: r.data };
+  }
+
+  var NotesCore = {
+    isValidDateStr: isValidDateStr,
+    todayISO: todayISO,
+    sortNotesDesc: sortNotesDesc,
+    filterByDate: filterByDate,
+    datesWithNotes: datesWithNotes,
+    buildCalendarMonth: buildCalendarMonth,
+    renderMarkdown: renderMarkdown,
+    escapeHtml: escapeHtml,
+    createMemoryStorage: createMemoryStorage,
+    createMockBackend: createMockBackend,
+    unwrapActionResult: unwrapActionResult,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = NotesCore;
+  } else {
+    root.NotesCore = NotesCore;
+  }
+})(typeof window !== 'undefined' ? window : this);
+
+<\/script>
+<script>
+/*
+ * reply-kit.js \u2014 \u7B46\u8A18\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684\u300C\u56DE\u8986\u300D\u5143\u4EF6\uFF08inkstone/arcrun-app-note#2\uFF1B\u898F\u683C docs/interaction-spec.html\uFF09
+ *
+ * \u70BA\u4EC0\u9EBC\u662F\u4E00\u500B\u7368\u7ACB\u6A94\uFF1Aleo 2026-11-08\u300C\u540C\u6A23\u529F\u80FD\u7528\u5728\u7B46\u8A18\u4E0A\uFF0C\u4E00\u7A2E\u754C\u9762\u5169\u908A\u90FD\u7528\u2026\u2026\u4E0D\u8981\u5728\u4E00\u500B\u8EDF\u9AD4\u88E1\u5169\u908A\u5DEE\u5F88\u591A\u300D\u3002
+ * \u7B46\u8A18 App \u8207\u770B\u5361\u756B\u9762\uFF08arcrun-rag#297 \u5C0F\u5E6B\u624B\u3001Arcrun#345 Portal\uFF09\u8F09\u5165**\u540C\u4E00\u4EFD**\u9019\u500B\u6A94\uFF0C
+ * \u5169\u908A\u53EA\u5DEE\u5169\u500B\u53C3\u6578\uFF1Amode\uFF08'note' \u7B46\u8A18\uFF0F'card' \u77E5\u8B58\u5361\uFF09\u8207\u6BCF\u4E00\u5247\u56DE\u8986\u7684 state\u3002
+ *
+ *   mode = 'note'  \u6309\u9215\u5BEB\u300C\u7559\u8A00\u300D\uFF0C\u4E00\u822C\u8A0E\u8AD6\uFF0C\u4E0D\u9078\u7406\u7531\uFF1B\u4F5C\u8005\u53EF\u6539\u53EF\u522A\u81EA\u5DF1\u7684\u7B46\u8A18\u8207\u56DE\u8986\u3002
+ *   mode = 'card'  \u6309\u9215\u5BEB\u300C\u5EFA\u8B70\u300D\uFF0C\u65C1\u908A\u6709\u7406\u7531\u4E0B\u62C9\uFF08\u88DC\u5145\uFF0F\u5167\u5BB9\u4E0D\u5C0D\uFF0F\u2026\uFF0F\u5176\u4ED6\uFF0C\u53EF\u81EA\u586B\uFF09\uFF1B\u6B63\u6587\u4EBA\u4E0D\u80FD\u6539\u4E0D\u80FD\u522A\uFF1B
+ *                  \u81EA\u5DF1\u7684\u5EFA\u8B70\u5728\u300C\u4EBA\u985E\u901A\u904E\u524D\u300D\u53EF\u6539\u53EF\u522A\uFF0C\u901A\u904E\u5F8C\u9396\u5B9A\uFF0C\u88AB\u99C1\u56DE\u53EA\u80FD\u5F9E\u81EA\u5DF1\u7684\u6E05\u55AE\u522A\u9664\u3002
+ *
+ * \u672C\u6A94\u5206\u5169\u5C64\uFF1A
+ *   \u2460 \u7D14\u908F\u8F2F\uFF08\u6B0A\u9650\u898F\u5247\u3001\u4E32\u6392\u5E8F\u3001\u5DE5\u5177\u5217\u63D2\u5165\u3001\u7406\u7531\u7D44\u5408\uFF09\u2014\u2014\u4E0D\u78B0 DOM\uFF0CNode \u53EF\u76F4\u63A5 require \u6E2C\uFF08test/test-reply-kit.mjs\uFF09\u3002
+ *   \u2461 \u756B\u9762\uFF08renderThread\uFF0FrenderComposer\uFF0FinstallSelection\uFF09\u2014\u2014\u5410 HTML \u5B57\u4E32\uFF0B\u639B\u4E8B\u4EF6\uFF0C\u547C\u53EB\u6642\u624D\u7528 document\u3002
+ * \u63A1\u7D0D\u3001\u99C1\u56DE\u3001\u8CA0\u8CAC\u4EBA\u300130 \u5929\u964D\u7D1A\u4E0D\u5728\u9019\u88E1\uFF08\u5C6C Arcrun#344\uFF09\uFF1B\u9019\u88E1\u53EA\u6709\u56DE\u8986\u4E32\u7684\u756B\u9762\u3001\u6B0A\u9650\u5224\u65B7\u8207\u9001\u51FA\u52D5\u4F5C\u3002
+ *
+ * \u4F9D\u8CF4\uFF1A\u540C\u9801\u5148\u8F09\u5165 notes-core.js\uFF08escapeHtml\uFF0FrenderMarkdown\uFF09\u3002\u96F6\u5916\u90E8\u4F9D\u8CF4\u3002
+ */
+(function (root) {
+  'use strict';
+
+  var NC = (typeof module !== 'undefined' && module.exports && typeof require === 'function')
+    ? require('./notes-core.js') : root.NotesCore;
+
+  function esc(s) { return NC.escapeHtml(String(s == null ? '' : s)); }
+
+  // \u2500\u2500 \u2460 \u7D14\u908F\u8F2F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  /** \u9001\u51FA\u9215\u7684\u5B57\uFF1A\u7B46\u8A18\u300C\u7559\u8A00\u300D\u3001\u5361\u300C\u5EFA\u8B70\u300D\uFF08leo 2026-11-10\uFF1A\u6309\u9215\u672C\u8EAB\u5C31\u8868\u793A\u300C\u4F60\u53EA\u80FD\u5EFA\u8B70\u4E0D\u662F\u7DE8\u8F2F\u300D\uFF0C\u4E0D\u653E\u8AAA\u660E\u6587\u5B57\uFF09\u3002 */
+  function sendLabel(mode) { return mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00'; }
+
+  /** \u7406\u7531\u6E05\u55AE\uFF08\u50CF\u5BA2\u670D\u8868\u55AE\uFF0C\u4E4B\u5F8C\u6703\u589E\u52A0\uFF1A\u6539\u9019\u500B\u9663\u5217\u6216\u7531\u547C\u53EB\u7AEF\u50B3 reasons \u9032\u4F86\uFF09\u3002\u6700\u5F8C\u4E00\u9805\u56FA\u5B9A\u662F\u300C\u5176\u4ED6\u300D\u3002 */
+  var DEFAULT_REASONS = ['\u88DC\u5145', '\u5167\u5BB9\u4E0D\u5C0D', '\u8CC7\u6599\u904E\u671F', '\u4F86\u6E90\u6709\u8AA4'];
+  var OTHER = '\u5176\u4ED6';
+
+  /**
+   * \u7D44\u51FA\u8981\u9001\u7684\u7406\u7531\u3002\u9078\u300C\u5176\u4ED6\u300D\u5FC5\u9808\u586B\u5B57\uFF08\u7A7A\u7684\u4E0D\u80FD\u9001\uFF09\uFF0C\u5B58\u6210 { kind:'\u5176\u4ED6\uFF1Axxx', reason_type:'\u5176\u4ED6', reason_text:'xxx' }\uFF1B
+   * \u5176\u4ED6\u7406\u7531 reason_type \u5C31\u662F\u7406\u7531\u672C\u8EAB\u3001reason_text \u7A7A\u3002reason_type \u662F\u4E4B\u5F8C\u4F9D\u7406\u7531\u7BE9\u9078\u300C\u5176\u4ED6\u300D\u539F\u6587\u7684\u9375\uFF08\u898F\u683C\u300C\u5176\u4ED6\u300D\u4E00\u7BC0\uFF09\u3002
+   */
+  function composeReason(selected, otherText) {
+    var sel = String(selected == null ? '' : selected);
+    if (sel === OTHER) {
+      var t = String(otherText == null ? '' : otherText).trim();
+      if (!t) return { ok: false, error: '\u9078\u4E86\u300C\u5176\u4ED6\u300D\uFF0C\u8ACB\u5BEB\u4E0B\u7406\u7531\u3002' };
+      return { ok: true, kind: OTHER + '\uFF1A' + t, reason_type: OTHER, reason_text: t.slice(0, 200) };
+    }
+    if (!sel) return { ok: false, error: '\u8ACB\u9078\u4E00\u500B\u7406\u7531\u3002' };
+    return { ok: true, kind: sel, reason_type: sel, reason_text: '' };
+  }
+
+  /**
+   * \u9019\u4E00\u5247\uFF08\u7B46\u8A18\uFF0F\u56DE\u8986\uFF0F\u5EFA\u8B70\uFF09\u73FE\u5728\u80FD\u505A\u4EC0\u9EBC\u3002\u5C0D\u61C9\u898F\u683C\u300C\u522A\u9664\u8207\u7DE8\u8F2F\u898F\u5247\u300D\u90A3\u5F35\u8868\uFF0C\u4E00\u683C\u4E00\u683C\u7167\u6284\uFF1A
+   *   ctx = { mode, kind, mine, state, supporters }
+   *     mode       'note' | 'card'
+   *     kind       'doc'\uFF08\u7B46\u8A18\u6216\u5361\u7684\u6B63\u6587\uFF09| 'reply'\uFF08\u56DE\u8986\uFF0F\u5EFA\u8B70\uFF09
+   *     mine       \u662F\u4E0D\u662F\u6211\u5BEB\u7684
+   *     state      \u7B46\u8A18\u5074\uFF1A'live' | 'deleted'
+   *                \u5361\u5074\u7684\u5EFA\u8B70\uFF1A'pending'\uFF08\u5F85\u78BA\u8A8D\uFF09| 'adopted'\uFF08\u5DF2\u7D0D\u5165\uFF09| 'rejected'\uFF08\u5DF2\u99C1\u56DE\uFF09| 'withdrawn'\uFF08\u5DF2\u64A4\u56DE\uFF09
+   *     supporters \u9644\u548C\u9019\u5247\u5EFA\u8B70\u7684\u4EBA\u6578\uFF08\u5361\u5074\uFF0C\u522A\u9664\u6642\u6C7A\u5B9A\u300C\u63A5\u7E8C\u300D\u9084\u662F\u300C\u6574\u5247\u64A4\u6389\u300D\uFF09
+   * \u56DE { edit, delete, outcome, note }
+   *   outcome\uFF1D\u522A\u9664\u4E4B\u5F8C\u767C\u751F\u4EC0\u9EBC\uFF1A'soft_delete'\uFF08\u6A19\u8A18\u522A\u9664\uFF09\uFF5C'handover'\uFF08\u53EA\u62FF\u6389\u4F60\u7684\u540D\u5B57\uFF0C\u7531\u9644\u548C\u7684\u4EBA\u63A5\u7E8C\uFF09
+   *            \uFF5C'withdraw'\uFF08\u6574\u5247\u64A4\u56DE\uFF0CAI \u64A4\u6A19\u793A\uFF0C\u7D00\u9304\u4FDD\u7559\uFF09\uFF5C'hide_own'\uFF08\u53EA\u5F9E\u81EA\u5DF1\u7684\u6E05\u55AE\u62FF\u6389\uFF09\uFF5Cnull
+   *   note\uFF1D\u4E0D\u80FD\u52D5\u6642\u756B\u9762\u8A72\u8AAA\u7684\u4E00\u53E5\u8A71\uFF08\u6C92\u6709\u5C31\u7A7A\u5B57\u4E32\uFF09
+   */
+  function can(ctx) {
+    var none = { edit: false, delete: false, outcome: null, note: '' };
+    var mode = ctx && ctx.mode === 'card' ? 'card' : 'note';
+    var kind = ctx && ctx.kind === 'doc' ? 'doc' : 'reply';
+    var mine = !!(ctx && ctx.mine);
+    var state = (ctx && ctx.state) || (mode === 'card' && kind === 'reply' ? 'pending' : 'live');
+    if (mode === 'note') {
+      if (state === 'deleted' || !mine) return none;
+      return { edit: true, delete: true, outcome: 'soft_delete', note: '' };
+    }
+    // mode === 'card'
+    if (kind === 'doc') return { edit: false, delete: false, outcome: null, note: '' }; // \u5361\u6B63\u6587\u53EA\u6709 LLM \u80FD\u6539
+    if (!mine) return { edit: false, delete: false, outcome: null, note: '\u5225\u4EBA\u7684\u5EFA\u8B70\uFF1A\u53EA\u6709\u8CA0\u8CAC\u4EBA\u80FD\u88C1\u6C7A' };
+    if (state === 'pending') {
+      return { edit: true, delete: true, outcome: ctx.supporters > 0 ? 'handover' : 'withdraw', note: '' };
+    }
+    if (state === 'adopted') return { edit: false, delete: false, outcome: null, note: '\u5DF2\u7D0D\u5165\uFF0C\u4E0D\u80FD\u6539\u6216\u522A\u3002\u8981\u6539\u53E3\u8ACB\u518D\u63D0\u4E00\u5247\u65B0\u5EFA\u8B70' };
+    if (state === 'rejected') return { edit: false, delete: true, outcome: 'hide_own', note: '' };
+    return none; // withdrawn\uFF1A\u5DF2\u4E0D\u986F\u793A
+  }
+
+  /** \u522A\u9664\u524D\u7684\u78BA\u8A8D\u6587\u5B57\uFF08\u898F\u683C\u8868\u300C\u756B\u9762\u884C\u70BA\u300D\u6B04\uFF09\u3002cardCount\uFF1D\u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210\u5E7E\u5F35\u5361\uFF08\u6709\u624D\u63D0\u793A\uFF09\u3002 */
+  function deleteWarning(ctx, extra) {
+    var o = can(ctx).outcome;
+    var cards = extra && extra.cardCount > 0 ? extra.cardCount : 0;
+    if (o === 'handover') return '\u522A\u9664\u53EA\u6703\u62FF\u6389\u4F60\u7684\u540D\u5B57\uFF0C\u5EFA\u8B70\u7531\u9644\u548C\u7684\u4EBA\u63A5\u7E8C\u3002';
+    if (o === 'withdraw') return '\u522A\u9664\u5F8C AI \u6703\u64A4\u6389\u90A3\u4E00\u6BB5\u7684\u6A19\u793A\uFF0C\u5361\u56DE\u5230\u539F\u6A23\u3002\u7D00\u9304\u6703\u4FDD\u7559\u3002';
+    if (o === 'hide_own') return '\u5F9E\u4F60\u7684\u6E05\u55AE\u522A\u9664\u3002\u8CA0\u8CAC\u4EBA\u7684\u88C1\u6C7A\u7D00\u9304\u6703\u4FDD\u7559\u3002';
+    if (ctx.kind === 'doc') {
+      return cards ? '\u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210 ' + cards + ' \u5F35\u5361\uFF0C\u522A\u9664\u5F8C\u9019\u4E9B\u5361\u6703\u4E0B\u67B6\u3002\u78BA\u5B9A\u522A\u9664\uFF1F' : '\u522A\u9664\u9019\u5247\u7B46\u8A18\uFF1F';
+    }
+    return '\u522A\u9664\u9019\u5247\u56DE\u8986\uFF1F';
+  }
+
+  /**
+   * \u56DE\u8986\u4E32\u6392\u5E8F\uFF08\u898F\u683C\uFF1A\u6309\u5728\u539F\u6587\u7684\u4F4D\u7F6E\u6392\u5E8F\uFF0C\u6574\u7BC7\u56DE\u8986\u6392\u6700\u524D\uFF09\u3002
+   * \u6574\u7BC7\u56DE\u8986\uFF08\u6C92\u6709\u5F15\u7528\uFF09\u5728\u524D\u3001\u4F9D\u6642\u9593\u820A\u5230\u65B0\uFF1B\u5F15\u7528\u7684\u4F9D quote_pos \u7531\u5C0F\u5230\u5927\uFF0C\u540C\u4E00\u4F4D\u7F6E\u4F9D\u6642\u9593\u3002\u56DE\u50B3\u65B0\u9663\u5217\u3002
+   */
+  function sortThread(replies) {
+    function pos(r) { var n = Number(r && r.quote_pos); return r && r.quote && isFinite(n) ? n : null; }
+    return (replies || []).slice().sort(function (a, b) {
+      var pa = pos(a), pb = pos(b);
+      if ((pa === null) !== (pb === null)) return pa === null ? -1 : 1;
+      if (pa !== null && pa !== pb) return pa - pb;
+      var ca = (a && a.created_at) || '', cb = (b && b.created_at) || '';
+      return ca < cb ? -1 : (ca > cb ? 1 : 0);
+    });
+  }
+
+  /** \u5DE5\u5177\u5217\uFF08\u4EE3\u66FF slash command \u8207 Markdown \u7B26\u865F\uFF09\u3002line:true\uFF1D\u52A0\u5728\u6BCF\u884C\u958B\u982D\uFF1B\u5426\u5247\u5305\u4F4F\u9078\u53D6\u7684\u5B57\u3002 */
+  var TOOLS = [
+    { id: 'bold', label: 'B', title: '\u7C97\u9AD4', open: '**', close: '**' },
+    { id: 'italic', label: 'I', title: '\u659C\u9AD4', open: '*', close: '*' },
+    { id: 'heading', label: 'H', title: '\u6A19\u984C', line: true, open: '## ' },
+    { id: 'list', label: '\u2022 \u6E05\u55AE', title: '\u6E05\u55AE', line: true, open: '- ' },
+    { id: 'quote', label: '\u275D \u5F15\u7528', title: '\u5F15\u7528', line: true, open: '> ' },
+    { id: 'link', label: '\u9023\u7D50', title: '\u9023\u7D50', open: '[', close: '](https://)' }
+  ];
+
+  /** \u628A\u5DE5\u5177\u5957\u5728 value \u7684 [s,e) \u9078\u53D6\u4E0A\uFF0C\u56DE { value, start, end }\uFF08\u65B0\u7684\u9078\u53D6\u7BC4\u570D\uFF09\u3002\u7D14\u51FD\u5F0F\uFF0C\u4E0D\u78B0 DOM\u3002 */
+  function applyTool(value, s, e, toolId) {
+    var t = TOOLS.filter(function (x) { return x.id === toolId; })[0];
+    value = String(value == null ? '' : value);
+    if (!t) return { value: value, start: s, end: e };
+    if (t.line) {
+      var ls = value.lastIndexOf('\\n', s - 1) + 1;
+      var head = value.slice(0, ls), body = value.slice(ls, e), tail = value.slice(e);
+      var lines = body.split('\\n').map(function (l) { return l.indexOf(t.open) === 0 ? l : t.open + l; });
+      var nb = lines.join('\\n');
+      return { value: head + nb + tail, start: s + (lines[0].length - body.split('\\n')[0].length), end: ls + nb.length };
+    }
+    var sel = value.slice(s, e);
+    var out = value.slice(0, s) + t.open + sel + t.close + value.slice(e);
+    if (sel) return { value: out, start: s + t.open.length, end: s + t.open.length + sel.length };
+    return { value: out, start: s + t.open.length, end: s + t.open.length };
+  }
+
+  // \u2500\u2500 \u2461 \u756B\u9762 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  var CSS = [
+    '.rk-bar{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:4px}',
+    '.rk-count{background:transparent;border:1px solid rgba(var(--ink-rgb,23,24,26),.25);color:inherit;border-radius:999px;padding:3px 12px;font-size:12.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}',
+    '.rk-count:hover,.rk-count[aria-expanded="true"]{border-color:var(--amber,#b04a2f);color:var(--amber,#b04a2f)}',
+    '.rk-badge{background:var(--amber,#b04a2f);color:#fff;border-radius:99px;font-size:11px;min-width:17px;padding:0 6px;text-align:center}',
+    '.rk-more{background:transparent;border:1px solid transparent;color:inherit;border-radius:8px;padding:2px 9px;font-size:16px;line-height:1.2;cursor:pointer}',
+    '.rk-more:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}',
+    '.rk-menu{position:absolute;right:10px;top:38px;z-index:20;background:var(--paper-a,#fff);color:var(--ink,inherit);border:1px solid rgba(var(--ink-rgb,23,24,26),.2);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18);min-width:120px;padding:4px}',
+    '.rk-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;font:inherit;font-size:14px;padding:7px 10px;border-radius:6px;cursor:pointer}',
+    '.rk-menu button:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}.rk-menu .rk-del{color:#c0392b}',
+    '.rk-pop{position:absolute;z-index:30;background:var(--ink,#222);color:var(--paper-a,#fff);border-radius:8px;padding:4px;box-shadow:0 4px 14px rgba(0,0,0,.3)}',
+    '.rk-pop button{border:0;background:transparent;color:inherit;font:inherit;font-size:13.5px;padding:6px 12px;cursor:pointer;border-radius:6px;white-space:nowrap}',
+    '.rk-hit{background:rgba(var(--amber-rgb,217,120,79),.3);border-radius:3px}',
+    '.rk-drawer{margin-top:8px;border-top:1px solid rgba(var(--ink-rgb,23,24,26),.12);padding-top:8px;display:flex;flex-direction:column;gap:8px}',
+    '.rk-thread{background:rgba(var(--ink-rgb,23,24,26),.05);border-radius:12px;padding:8px 12px;font-size:13.5px;line-height:1.5;min-width:0}',
+    '.rk-thread .rk-q{display:block;width:100%;text-align:left;background:transparent;border:0;border-left:3px solid var(--amber,#b04a2f);padding:0 0 0 8px;margin:0 0 4px;color:rgba(var(--ink-rgb,23,24,26),.6);font:inherit;font-size:12.5px;cursor:pointer}',
+    '.rk-thread .rk-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:rgba(var(--ink-rgb,23,24,26),.5);margin-bottom:2px}',
+    '.rk-pill{display:inline-block;font-size:11px;padding:0 8px;border-radius:99px;background:rgba(var(--amber-rgb,217,120,79),.15);color:var(--amber,#b04a2f)}',
+    '.rk-pill.rk-ok{background:rgba(40,150,90,.15);color:#1f7a4d}.rk-pill.rk-bad{background:rgba(192,57,43,.14);color:#c0392b}',
+    '.rk-gone{color:rgba(var(--ink-rgb,23,24,26),.45);font-size:12.5px;font-style:italic}',
+    '.rk-acts{display:flex;gap:12px;font-size:12px;margin-top:2px}',
+    '.rk-acts button{border:0;background:none;color:var(--amber,#b04a2f);font:inherit;cursor:pointer;padding:0}.rk-acts .rk-d{color:#c0392b}',
+    '.rk-acts .rk-note{color:rgba(var(--ink-rgb,23,24,26),.5)}',
+    '.rk-confirm{background:rgba(192,57,43,.1);color:#c0392b;border-radius:8px;padding:8px 10px;font-size:13px;display:flex;flex-direction:column;gap:6px;margin-top:6px}',
+    '.rk-confirm .rk-row button{border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 12px;font:inherit;font-size:12.5px;cursor:pointer;margin-right:8px}',
+    '.rk-composer{display:flex;flex-direction:column;gap:6px}',
+    '.rk-tools{display:flex;gap:4px;flex-wrap:wrap}',
+    '.rk-tools button{border:1px solid rgba(var(--ink-rgb,23,24,26),.2);background:transparent;color:inherit;border-radius:6px;min-width:32px;padding:3px 8px;font:inherit;font-size:13px;cursor:pointer}',
+    '.rk-tools button:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}',
+    '.rk-qchip{border-left:3px solid var(--amber,#b04a2f);padding:2px 0 2px 8px;font-size:12.5px;color:rgba(var(--ink-rgb,23,24,26),.65);display:flex;gap:8px;align-items:center}',
+    '.rk-qchip button{border:0;background:none;color:var(--amber,#b04a2f);cursor:pointer;font:inherit;font-size:12px;padding:0}',
+    '.rk-composer textarea,.rk-edit textarea{width:100%;min-height:56px;resize:vertical;background:rgba(var(--ink-rgb,23,24,26),.05);color:var(--ink,inherit);border:1px solid rgba(var(--ink-rgb,23,24,26),.2);border-radius:10px;padding:8px 10px;font-size:14px;font-family:inherit}',
+    '.rk-edit{display:flex;flex-direction:column;gap:6px}',
+    '.rk-row2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
+    '.rk-row2 select,.rk-row2 input[type=text]{border:1px solid rgba(var(--ink-rgb,23,24,26),.2);background:rgba(var(--ink-rgb,23,24,26),.05);color:inherit;border-radius:8px;padding:5px 8px;font:inherit;font-size:13px;min-width:0}',
+    '.rk-send{margin-left:auto;background:var(--amber,#b04a2f);color:#fff;border:0;border-radius:999px;padding:6px 18px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}',
+    '.rk-ghost{background:transparent;color:rgba(var(--ink-rgb,23,24,26),.6);border:0;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}',
+    '.rk-send:disabled{opacity:.5;cursor:not-allowed}',
+    '.rk-err{color:#c0392b;font-size:12.5px;min-height:1em}'
+  ].join('\\n');
+
+  function injectCss(anchorEl) {
+    if (typeof document === 'undefined') return;
+    var rn = (anchorEl && anchorEl.getRootNode && anchorEl.getRootNode()) || document;
+    var host = rn.head || rn;
+    if (host.querySelector && host.querySelector('style[data-reply-kit]')) return;
+    var st = document.createElement('style');
+    st.setAttribute('data-reply-kit', '1');
+    st.textContent = CSS;
+    host.appendChild(st);
+  }
+
+  function renderToolbar() {
+    return '<div class="rk-tools" role="toolbar" aria-label="\u683C\u5F0F\u5DE5\u5177\u5217">' + TOOLS.map(function (t) {
+      return '<button type="button" data-rk-tool="' + t.id + '" title="' + esc(t.title) + '" aria-label="' + esc(t.title) + '">' + esc(t.label) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  /** \u53F3\u4E0A\u89D2\u5165\u53E3\uFF1A\u7559\u8A00\uFF08\u56DE\u8986\uFF09\u6578\uFF0B\u5C55\u958B\u9215\uFF1BmenuItems \u662F\u300C\u22EF\u300D\u9078\u55AE\uFF08\u7B46\u8A18\uFF1A\u7DE8\u8F2F\uFF0F\u522A\u9664\uFF09\u3002 */
+  function renderBar(opts) {
+    var label = opts.mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00';
+    return '<div class="rk-bar">' +
+      '<button type="button" class="rk-count" data-rk-toggle="' + esc(opts.docId) + '" aria-expanded="' + (opts.open ? 'true' : 'false') + '">' +
+        esc(label) + ' <span class="rk-badge">' + (opts.count | 0) + '</span></button>' +
+      (opts.hasMenu ? '<button type="button" class="rk-more" data-rk-more="' + esc(opts.docId) + '" aria-haspopup="menu" aria-expanded="' + (opts.menuOpen ? 'true' : 'false') + '" aria-label="\u66F4\u591A">\u22EF</button>' : '') +
+      '</div>';
+  }
+
+  function renderMenu(opts) {
+    var items = [];
+    if (opts.canEdit) items.push('<button type="button" role="menuitem" data-rk-edit-doc="' + esc(opts.docId) + '">\u7DE8\u8F2F</button>');
+    if (opts.canDelete) items.push('<button type="button" role="menuitem" class="rk-del" data-rk-del-doc="' + esc(opts.docId) + '">\u522A\u9664</button>');
+    return '<div class="rk-menu" role="menu">' + items.join('') + '</div>';
+  }
+
+  function renderConfirm(text, yesAttr, id) {
+    return '<div class="rk-confirm" role="alertdialog"><div>' + esc(text) + '</div><div class="rk-row">' +
+      '<button type="button" data-rk-yes="' + esc(yesAttr) + '" data-id="' + esc(id) + '">\u78BA\u8A8D\u522A\u9664</button>' +
+      '<button type="button" data-rk-no="1">\u53D6\u6D88</button></div></div>';
+  }
+
+  /** \u884C\u5167\u7DE8\u8F2F\u6846\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u56DE\u8986\u5171\u7528\uFF09\u3002draft\uFF1D\u76EE\u524D\u8F38\u5165\u4E2D\u7684\u6587\u5B57\u3002 */
+  function renderEditor(opts) {
+    return '<div class="rk-edit">' + renderToolbar() +
+      '<textarea data-rk-edit-box="' + esc(opts.id) + '" aria-label="\u7DE8\u8F2F\u5167\u5BB9">' + esc(opts.draft) + '</textarea>' +
+      '<div class="rk-err" data-rk-err="' + esc(opts.id) + '"></div>' +
+      '<div class="rk-row2"><button type="button" class="rk-ghost" data-rk-edit-cancel="1">\u53D6\u6D88</button>' +
+      '<button type="button" class="rk-send" data-rk-edit-save="' + esc(opts.id) + '"' + (opts.busy ? ' disabled' : '') + '>' + (opts.busy ? '\u5132\u5B58\u4E2D\u2026' : '\u5132\u5B58') + '</button></div></div>';
+  }
+
+  /**
+   * \u56DE\u8986\u4E32\u3002opts = { mode, me, replies, editing, confirming, busyId, draft }
+   * \u6BCF\u5247 reply: { record_id, author, content, created_at, quote, quote_pos, deleted, state, kind, supporters, note }
+   */
+  function renderThread(opts) {
+    var mode = opts.mode === 'card' ? 'card' : 'note';
+    var list = sortThread(opts.replies);
+    var html = list.length ? '' : '<div class="rk-gone">\u9084\u6C92\u6709' + (mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00') + '\u3002</div>';
+    list.forEach(function (r) {
+      var id = r.record_id;
+      if (r.state === 'withdrawn') return;
+      if (r.deleted) { html += '<div class="rk-thread"><span class="rk-gone">\u9019\u5247\u56DE\u8986\u5DF2\u522A\u9664</span></div>'; return; }
+      var mine = !!opts.me && r.author === opts.me;
+      var legacyOpen = !r.author; // \u820A\u8CC7\u6599\uFF08\u6C92\u6709\u4F5C\u8005\u6B04\uFF09\uFF1A\u4EFB\u4F55\u767B\u5165\u8005\u90FD\u80FD\u52D5\uFF0C\u540C update_note\uFF0Fdelete_note \u7684\u5F8C\u7AEF\u5B88\u9580
+      var ctx = { mode: mode, kind: 'reply', mine: mine || (mode === 'note' && legacyOpen), state: r.state || (mode === 'card' ? 'pending' : 'live'), supporters: r.supporters | 0 };
+      var perm = can(ctx);
+      var pill = '';
+      if (mode === 'card') {
+        var cls = r.state === 'adopted' ? 'rk-ok' : (/^\u5167\u5BB9\u4E0D\u5C0D/.test(r.kind || '') ? 'rk-bad' : '');
+        pill = (r.state === 'adopted' ? '<span class="rk-pill rk-ok">\u5DF2\u7D0D\u5165</span>' : '') + (r.kind ? '<span class="rk-pill ' + cls + '">' + esc(r.kind) + '</span>' : '');
+      }
+      var head = '<div class="rk-h"><b>' + esc(r.author || '\uFF08\u672A\u7F72\u540D\uFF09') + '</b>' + pill + '<span>' + esc(formatTime(r.created_at)) + (r.edited_at ? '\u30FB\u5DF2\u7DE8\u8F2F' : '') + '</span></div>';
+      var q = r.quote ? '<button type="button" class="rk-q" data-rk-jump="' + esc(id) + '" title="\u8DF3\u5230\u539F\u6587">' + esc(r.quote.length > 80 ? r.quote.slice(0, 80) + '\u2026' : r.quote) + '</button>' : '';
+      var body;
+      if (opts.editing === id) {
+        body = renderEditor({ id: id, draft: opts.draft != null ? opts.draft : r.content, busy: opts.busyId === id });
+      } else {
+        body = '<div class="rk-body">' + NC.renderMarkdown(r.content) + '</div>';
+      }
+      var acts = '';
+      if (opts.editing !== id) {
+        var a = [];
+        if (perm.edit) a.push('<button type="button" data-rk-edit="' + esc(id) + '">\u7DE8\u8F2F</button>');
+        if (perm.delete) a.push('<button type="button" class="rk-d" data-rk-del="' + esc(id) + '">\u522A\u9664</button>');
+        if (perm.note) a.push('<span class="rk-note">' + esc(perm.note) + '</span>');
+        if (a.length) acts = '<div class="rk-acts">' + a.join('') + '</div>';
+      }
+      var conf = opts.confirming === id ? renderConfirm(deleteWarning(ctx), 'reply', id) : '';
+      html += '<div class="rk-thread" data-rk-thread="' + esc(id) + '">' + q + head + body + acts + conf + '</div>';
+    });
+    return html;
+  }
+
+  /** \u5E95\u90E8\u56DE\u8986\u6846\uFF08\u5C0D\u6574\u7BC7\u56DE\u8986\uFF1B\u6709 quote \u5C31\u662F\u5F15\u7528\u56DE\u8986\uFF09\u3002 */
+  function renderComposer(opts) {
+    var mode = opts.mode === 'card' ? 'card' : 'note';
+    var reasons = opts.reasons && opts.reasons.length ? opts.reasons : DEFAULT_REASONS;
+    var chip = opts.quote ? '<div class="rk-qchip"><span>\u5F15\u7528\uFF1A\u300C' + esc(opts.quote.text.length > 80 ? opts.quote.text.slice(0, 80) + '\u2026' : opts.quote.text) + '\u300D</span>' +
+      '<button type="button" data-rk-qclear="' + esc(opts.docId) + '">\u79FB\u9664</button></div>' : '';
+    var kinds = '';
+    if (mode === 'card') {
+      kinds = '<label>\u7406\u7531 <select data-rk-reason="' + esc(opts.docId) + '" aria-label="\u5EFA\u8B70\u7406\u7531">' +
+        reasons.concat([OTHER]).map(function (r) { return '<option value="' + esc(r) + '"' + (opts.reason === r ? ' selected' : '') + '>' + esc(r === OTHER ? '\u5176\u4ED6\uFF08\u81EA\u5DF1\u586B\uFF09' : r) + '</option>'; }).join('') +
+        '</select></label><input type="text" data-rk-other="' + esc(opts.docId) + '" placeholder="\u8ACB\u5BEB\u4E0B\u7406\u7531" aria-label="\u5176\u4ED6\u7406\u7531" value="' + esc(opts.otherText || '') + '"' + (opts.reason === OTHER ? '' : ' hidden') + '>';
+    }
+    return '<div class="rk-composer">' + renderToolbar() + chip +
+      '<textarea data-rk-box="' + esc(opts.docId) + '" aria-label="' + esc(sendLabel(mode)) + '\u5167\u5BB9" placeholder="' + (mode === 'card' ? '\u5C0D\u6574\u7BC7\u63D0\u51FA\u5EFA\u8B70\uFF0C\u6216\u5148\u9078\u4E00\u6BB5\u6587\u5B57\u5F15\u7528\u2026' : '\u5C0D\u6574\u7BC7\u7559\u8A00\uFF0C\u6216\u5148\u9078\u4E00\u6BB5\u6587\u5B57\u5F15\u7528\u2026') + '">' + esc(opts.draft || '') + '</textarea>' +
+      '<div class="rk-err" data-rk-err="' + esc(opts.docId) + '">' + esc(opts.error || '') + '</div>' +
+      '<div class="rk-row2">' + kinds + '<button type="button" class="rk-send" data-rk-send="' + esc(opts.docId) + '"' + (opts.busy ? ' disabled' : '') + '>' + (opts.busy ? '\u9001\u51FA\u4E2D\u2026' : esc(sendLabel(mode))) + '</button></div></div>';
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return String(d.getMonth() + 1) + '/' + String(d.getDate()) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  /**
+   * \u639B\u4E0A\u300C\u5DE5\u5177\u5217\u6309\u9215\u300D\u7684\u4E8B\u4EF6\uFF1A\u9EDE data-rk-tool \u6642\u628A\u5C0D\u61C9\u7684 Markdown \u63D2\u9032\u540C\u4E00\u500B container \u5167\u6700\u8FD1\u7684 textarea\u3002
+   * \u4E00\u500B container \u639B\u4E00\u6B21\uFF08\u4E8B\u4EF6\u59D4\u6D3E\uFF09\uFF0C\u91CD\u7E6A\u4E0D\u5FC5\u91CD\u639B\u3002
+   */
+  function installToolbar(container) {
+    container.addEventListener('mousedown', function (e) {
+      // \u4E0D\u8B93\u6309\u9215\u6436\u8D70 textarea \u7684\u7126\u9EDE\u8207\u9078\u53D6\u7BC4\u570D\u2014\u2014\u5426\u5247\u300C\u9078\u4E00\u6BB5\u5B57\u518D\u6309\u7C97\u9AD4\u300D\u6703\u5148\u5931\u53BB\u9078\u53D6\u3002
+      if (e.target.closest && e.target.closest('[data-rk-tool]')) e.preventDefault();
+    });
+    container.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-rk-tool]');
+      if (!b) return;
+      var scope = b.closest('.rk-composer,.rk-edit');
+      var ta = scope && scope.querySelector('textarea');
+      if (!ta) return;
+      var r = applyTool(ta.value, ta.selectionStart, ta.selectionEnd, b.getAttribute('data-rk-tool'));
+      ta.value = r.value;
+      ta.focus();
+      ta.setSelectionRange(r.start, r.end);
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  /**
+   * \u9078\u4E00\u6BB5\u6B63\u6587 \u2192 \u9078\u53D6\u8655\u4E0A\u65B9\u6D6E\u51FA\u300C\u5F15\u7528\u56DE\u8986\u300D\uFF08\u9760\u8FD1\u756B\u9762\u9802\u90E8\u6539\u5728\u4E0B\u65B9\uFF09\u3002
+   * \u684C\u6A5F\u653E\u958B\u6ED1\u9F20\u3001\u624B\u6A5F\u9577\u6309\u9078\u53D6\uFF08selectionchange\uFF09\u90FD\u6703\u89F8\u767C\u3002
+   * docSelector\uFF1A\u6B63\u6587\u5143\u7D20\u7684\u9078\u64C7\u5668\uFF0C\u4E14\u5B83\u8981\u6709 data-rk-doc="<docId>"\uFF1BpopupHost\uFF1Apopup \u8981\u5B9A\u4F4D\u5728\u54EA\u500B position:relative \u5143\u7D20\u88E1\u7684\u9078\u64C7\u5668\u3002
+   * onQuote(docId, text, pos)\uFF1A\u6309\u4E0B\u300C\u5F15\u7528\u56DE\u8986\u300D\u6642\u547C\u53EB\u3002
+   */
+  function installSelection(container, opts) {
+    var timer = null;
+    function clear() { var p = container.querySelector('.rk-pop'); if (p && p.parentNode) p.parentNode.removeChild(p); }
+    function check() {
+      clear();
+      var sel = (typeof window !== 'undefined' && window.getSelection) ? window.getSelection() : null;
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      var text = sel.toString().replace(/\\s+/g, ' ').trim();
+      if (!text) return;
+      var anchor = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+      var focus = sel.focusNode && (sel.focusNode.nodeType === 1 ? sel.focusNode : sel.focusNode.parentElement);
+      var doc = anchor && anchor.closest && anchor.closest(opts.docSelector);
+      if (!doc || !container.contains(doc) || !focus || !doc.contains(focus)) return; // \u53EA\u8A8D\u300C\u9078\u5728\u540C\u4E00\u5247\u6B63\u6587\u88E1\u300D
+      var host = doc.closest(opts.hostSelector);
+      if (!host) return;
+      var rc = sel.getRangeAt(0).getBoundingClientRect();
+      var hr = host.getBoundingClientRect();
+      var pop = document.createElement('div');
+      pop.className = 'rk-pop';
+      pop.innerHTML = '<button type="button">\u5F15\u7528\u56DE\u8986</button>';
+      host.appendChild(pop);
+      var left = Math.max(4, Math.min(rc.left - hr.left, hr.width - pop.offsetWidth - 4));
+      var above = rc.top - hr.top - pop.offsetHeight - 6;
+      pop.style.left = left + 'px';
+      pop.style.top = (above < 0 ? rc.bottom - hr.top + 6 : above) + 'px'; // \u9760\u8FD1\u9802\u90E8\u6539\u5728\u4E0B\u65B9
+      var plain = (doc.textContent || '').replace(/\\s+/g, ' ');
+      var idx = plain.indexOf(text);
+      var btn = pop.firstChild;
+      var fire = function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        var docId = doc.getAttribute('data-rk-doc');
+        clear();
+        sel.removeAllRanges();
+        opts.onQuote(docId, text.slice(0, 300), idx < 0 ? 0 : idx);
+      };
+      btn.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // \u4E0D\u8B93\u6309\u4E0B\u53BB\u6E05\u6389\u9078\u53D6
+      btn.addEventListener('click', fire);
+    }
+    function later() { clearTimeout(timer); timer = setTimeout(check, 180); }
+    container.addEventListener('mouseup', later);
+    container.addEventListener('touchend', later);
+    document.addEventListener('selectionchange', later);
+    return { clear: clear, destroy: function () { document.removeEventListener('selectionchange', later); clearTimeout(timer); } };
+  }
+
+  /** \u9EDE\u300C\u5F15\u7528\u7684\u90A3\u4E00\u884C\u300D\u2192 \u6372\u5230\u539F\u6587\u4E26\u6A19\u4EAE\u90A3\u4E00\u6BB5\uFF08\u7D04 2.5 \u79D2\uFF09\u3002\u627E\u4E0D\u5230\u6574\u6BB5\uFF08\u8DE8\u4E86\u683C\u5F0F\u908A\u754C\uFF09\u5C31\u53EA\u6372\u904E\u53BB\u3002 */
+  function flashQuote(docEl, text) {
+    if (!docEl || !text) return;
+    var done = false;
+    var walker = document.createTreeWalker(docEl, NodeFilter.SHOW_TEXT);
+    var n;
+    while ((n = walker.nextNode())) {
+      var i = n.nodeValue.indexOf(text);
+      if (i < 0) continue;
+      try {
+        var rg = document.createRange();
+        rg.setStart(n, i); rg.setEnd(n, i + text.length);
+        var m = document.createElement('mark');
+        m.className = 'rk-hit';
+        rg.surroundContents(m);
+        setTimeout(function () { if (m.parentNode) { var p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); p.normalize(); } }, 2500);
+        m.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        done = true;
+      } catch (e) { /* \u8DE8\u7BC0\u9EDE\u9078\u4E0D\u8D77\u4F86\u5C31\u9000\u56DE\u53EA\u6372\u52D5 */ }
+      break;
+    }
+    if (!done && docEl.scrollIntoView) docEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  var ReplyKit = {
+    // \u7D14\u908F\u8F2F
+    sendLabel: sendLabel, DEFAULT_REASONS: DEFAULT_REASONS, OTHER: OTHER, composeReason: composeReason,
+    can: can, deleteWarning: deleteWarning, sortThread: sortThread, TOOLS: TOOLS, applyTool: applyTool,
+    // \u756B\u9762
+    CSS: CSS, injectCss: injectCss, renderToolbar: renderToolbar, renderBar: renderBar, renderMenu: renderMenu,
+    renderConfirm: renderConfirm, renderEditor: renderEditor, renderThread: renderThread, renderComposer: renderComposer,
+    installToolbar: installToolbar, installSelection: installSelection, flashQuote: flashQuote, formatTime: formatTime
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = ReplyKit;
+  else root.ReplyKit = ReplyKit;
+})(typeof window !== 'undefined' ? window : this);
+
+<\/script>
+<script>
+(function () {
+  'use strict';
+
+  // \u2500\u2500 \u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u7684\u547C\u53EB\u4ECB\u9762\uFF08design.md K6\uFF0C\u771F\u5951\u7D04\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  //
+  // \u771F\u6B63\u8DD1\u5728 Arcrun Portal \u88E1\u6642\uFF0CPortal \u7684\u6CDB\u7528 loader \u6703\u628A\u9019\u4E00\u9801\u7684 HTML mount \u9032\u53BB\u3001
+  // \u91CD\u65B0\u57F7\u884C\u5167\u5D4C <script>\uFF0C\u7136\u5F8C\u624D\u8A2D\u5B9A window.arcrunApp.action\u2014\u2014\u9019\u662F\u8B80
+  // matrix/arcrun \u5206\u652F feat/app-system-v0 \u7684 console-ui/public/portal/index.html
+  // renderAppView() \u5C0D\u51FA\u4F86\u7684\u771F\u6D41\u7A0B\uFF0C\u4E0D\u662F\u672C\u5377\u767C\u660E\u7684\u4ECB\u9762\uFF1A
+  //   window.arcrunApp.action(actionName, payload)
+  //     \u2192 fetch POST /portal/data/apps/notes/action { action, payload }
+  //     \u2192 resolve { ok, status, d }\uFF08d = { ok:true, result:{success,data} } \u6216 { error }\uFF09
+  // \u9019\u689D\u8DEF\u53EA\u7528\u300C\u50B3 action \u540D\u5B57 + payload\u300D\uFF0C\u524D\u7AEF**\u62FF\u4E0D\u5230**\u4EFB\u4F55\u91D1\u9470\uFF0F\u79DF\u6236\u5B57\u4E32\uFF08K6\uFF09\u3002
+  //
+  // \u{1F534} \u6642\u5E8F\u9677\u9631\uFF08\u8B80 Portal \u539F\u59CB\u78BC\u624D\u767C\u73FE\uFF0C\u4E0D\u662F\u731C\u7684\uFF09\uFF1APortal \u628A\u9019\u9801\u7684 HTML mount \u9032\u53BB\u3001
+  // \u91CD\u65B0\u57F7\u884C <script> \u4E4B\u5F8C\uFF0C**\u624D**\u8A2D\u5B9A window.arcrunApp.action\u2014\u2014\u9806\u5E8F\u53CD\u904E\u4F86\u3002
+  // \u82E5\u9019\u652F script \u5728\u9802\u5C64\u540C\u6B65\u547C\u53EB window.arcrunApp.action\uFF0C\u90A3\u500B\u7576\u4E0B\u5B83\u9084\u4E0D\u5B58\u5728\uFF0C
+  // \u6703\u76F4\u63A5\u70B8\u6389\u3002\u5C0D\u7B56\uFF1A\u6240\u6709\u521D\u6B21\u8F09\u5165\u547C\u53EB\u4E00\u5F8B\u7528 setTimeout(fn, 0) \u5EF6\u5F8C\u5230\u4E0B\u4E00\u8F2A\u4E8B\u4EF6\u5708\uFF0C
+  // \u4F7F\u7528\u8005\u89F8\u767C\u7684\u52D5\u4F5C\uFF08\u6309\u9215\u9EDE\u64CA\uFF09\u672C\u4F86\u5C31\u5728 mount \u5B8C\u6210\u4E4B\u5F8C\u624D\u6703\u767C\u751F\uFF0C\u4E0D\u53D7\u5F71\u97FF\u3002
+  // \u898B\u6A94\u6848\u6700\u4E0B\u65B9 \`loadNotes()\` \u7684\u547C\u53EB\u65B9\u5F0F\u3002
+  //
+  // \u6C92\u6709 window.arcrunApp\uFF08\u672C\u6A5F\u76F4\u63A5\u958B\u9019\u500B\u6A94\u6848\u3001\u6216\u9084\u6C92\u88DD\u9032\u771F Portal\uFF09\u2192 \u9000\u56DE MOCK\uFF1A
+  // \u8CC7\u6599\u5B58\u9019\u500B\u700F\u89BD\u5668\u7684 localStorage\uFF0C\u540C\u4E00\u7D44 { ok, status, d } \u4FE1\u5C01\u683C\u5F0F
+  // \uFF08NotesCore.createMockBackend \u7522\u751F\uFF09\uFF0CUI \u5C64\u5B8C\u5168\u4E0D\u7528\u5206\u5169\u5957\u908F\u8F2F\u3002
+  var APP_ID = 'notes';
+
+  // \u{1F534} \u9019\u689D**\u5FC5\u9808**\u662F\u5373\u6642\u67E5\u3001\u4E0D\u80FD\u5728 script \u9802\u5C64\u7B97\u4E00\u6B21\u5FEB\u53D6\u8D77\u4F86\uFF08\u66FE\u7D93\u9019\u6A23\u5BEB\u904E\uFF0C
+  // \u88AB test/browser-e2e.mjs \u7684\u300C\u7B2C\u4E8C\u6BB5\uFF1A\u6A21\u64EC\u771F Portal\u300D\u6293\u5230\uFF09\uFF1APortal \u628A\u9019\u9801\u7684
+  // <script> \u57F7\u884C\u5B8C\u4E4B\u5F8C\u624D\u8CE6\u503C window.arcrunApp.action\uFF08\u540C\u4E0A\u65B9\u6642\u5E8F\u9677\u9631\uFF09\u2014\u2014
+  // \u82E5\u5728\u9802\u5C64\u540C\u6B65\u7B97\u4E00\u6B21 USING_MOCK\uFF0C\u90A3\u4E00\u523B window.arcrunApp \u5FC5\u5B9A\u9084\u4E0D\u5B58\u5728\uFF0C
+  // \u65BC\u662F\u300C\u662F\u4E0D\u662F MOCK\u300D\u9019\u500B\u5224\u65B7\u5728\u771F Portal \u88E1\u6C38\u9060\u5F97\u5230\u932F\u7684\u7B54\u6848\uFF08\u4E00\u5F8B\u8AA4\u5224\u6210 MOCK\uFF0C
+  // \u6CB3\u9053\u9EC3\u8272\u6A6B\u5E45\u6C38\u9060show\u3001\u9001\u51FA\u7684\u7B46\u8A18\u6C38\u9060\u5BEB\u9032 localStorage \u800C\u4E0D\u662F\u771F\u7684 KBDB\uFF09\u3002
+  // \u6539\u6210\u6BCF\u6B21\u547C\u53EB\u90FD\u91CD\u65B0\u5224\u65B7\uFF0C\u5C31\u4E0D\u6703\u53D7\u5B83\u8CE6\u503C\u7684\u6642\u9593\u9EDE\u5F71\u97FF\u3002
+  function usingMock() {
+    return !(window.arcrunApp && typeof window.arcrunApp.action === 'function');
+  }
+
+  var mockStorage = (function () {
+    var KEY = 'arcrun-notes-app:mock-notes:v1';
+    function safeParse(raw) { try { return JSON.parse(raw) || []; } catch (e) { return []; } }
+    var hasLocalStorage = (function () {
+      try { window.localStorage.setItem('__t', '1'); window.localStorage.removeItem('__t'); return true; }
+      catch (e) { return false; } // \u79C1\u5BC6\u700F\u89BD\u6A21\u5F0F\u7B49\u74B0\u5883\u53EF\u80FD\u4E1F\u4F8B\u5916\uFF0C\u9000\u56DE\u8A18\u61B6\u9AD4
+    })();
+    if (!hasLocalStorage) return NotesCore.createMemoryStorage();
+    return {
+      load: function () { return safeParse(window.localStorage.getItem(KEY)); },
+      save: function (notes) { window.localStorage.setItem(KEY, JSON.stringify(notes)); },
+    };
+  })();
+
+  var mockBackend = NotesCore.createMockBackend(mockStorage);
+
+  // callAction() \u4E00\u5F8B resolve \u6210 { ok, status, d }\uFF0C\u4E0D\u7BA1\u8D70\u771F\u5F8C\u7AEF\u9084\u662F mock\u2014\u2014
+  // \u547C\u53EB\u7AEF\u4E00\u5F8B\u7528 NotesCore.unwrapActionResult() \u525D\u6BBC\uFF0C\u4E0D\u5FC5\u77E5\u9053\u80CC\u5F8C\u662F\u54EA\u4E00\u500B\u3002
+  function callAction(action, params) {
+    if (!usingMock()) return window.arcrunApp.action(action, params || {});
+    return mockBackend.call(action, params);
+  }
+
+  // \u2500\u2500 \u72C0\u614B \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  var state = {
+    notes: [],          // \u76EE\u524D\u62FF\u5230\u7684\u5168\u90E8\u7B46\u8A18\uFF08\u672A\u904E\u6FFE\uFF0C\u6BCF\u5247\u5E36 replies[]\uFF0C\u898B notes-list.yaml\uFF09
+    me: '',             // \u6309\u7684\u4EBA\uFF08Portal \u767B\u5165\u540D\uFF1BMOCK \u662F\u56FA\u5B9A\u4E00\u500B\u540D\u5B57\uFF09\u2014\u2014\u6C7A\u5B9A\u54EA\u4E9B\u7B46\u8A18\uFF0F\u56DE\u8986\u986F\u793A\u300C\u7DE8\u8F2F\uFF0F\u522A\u9664\u300D\uFF0C\u771F\u6B63\u7684\u5B88\u9580\u5728\u5F8C\u7AEF
+    selectedDate: null, // \u5C0F\u65E5\u66C6\u9078\u4E2D\u7684\u65E5\u671F\uFF1Bnull = \u986F\u793A\u5168\u90E8
+    calYear: new Date().getFullYear(),
+    calMonth: new Date().getMonth(),
+    calendarOpen: false,
+    openThread: {},     // record_id -> true\uFF1A\u9019\u4E00\u5247\u7684\u7559\u8A00\u4E32\uFF08\u53F3\u4E0A\u89D2\u300C\u7559\u8A00\u300D\uFF09\u662F\u5C55\u958B\u7684
+    menuFor: null,      // \u300C\u22EF\u300D\u9078\u55AE\u958B\u5728\u54EA\u4E00\u5247
+    editing: null,      // \u6B63\u5728\u884C\u5167\u7DE8\u8F2F\u7684 record_id\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u67D0\u5247\u56DE\u8986\uFF0C\u5169\u8005\u5171\u7528\u540C\u4E00\u500B\u7DE8\u8F2F\u6846\uFF09
+    editDraft: '',      // \u7DE8\u8F2F\u6846\u76EE\u524D\u7684\u5B57\uFF08\u91CD\u7E6A\u6642\u4E0D\u4E1F\uFF09
+    confirmDoc: null,   // \u6B63\u5728\u78BA\u8A8D\u300C\u522A\u9664\u9019\u5247\u7B46\u8A18\u300D\u7684 record_id
+    cardCounts: {},     // record_id \u2192 \u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210\u5E7E\u5F35\u73FE\u5F79\u7684\u5361\uFF08\u522A\u9664\u524D\u554F note_cards \u5F97\u5230\uFF1B\u5931\u6557\u5C31\u6C92\u6709\u6578\u5B57\u3001\u4E0D\u4E82\u731C\uFF09
+    checkingDoc: null,  // \u6B63\u5728\u554F\u300C\u9019\u5247\u7B46\u8A18\u6574\u7406\u6210\u5E7E\u5F35\u5361\u300D\u7684 record_id\uFF08\u554F\u5B8C\u624D\u8DF3\u51FA\u78BA\u8A8D\u6846\uFF0C\u514D\u5F97\u63D0\u793A\u5C11\u4E86\u6578\u5B57\uFF09
+    confirmReply: null, // \u6B63\u5728\u78BA\u8A8D\u300C\u522A\u9664\u9019\u5247\u56DE\u8986\u300D\u7684 record_id
+    drafts: {},         // record_id -> \u9084\u6C92\u9001\u51FA\u7684\u7559\u8A00\u8349\u7A3F\uFF08\u91CD\u7E6A\u6642\u4E0D\u4E1F\uFF09
+    quote: {},          // record_id -> { text, pos }\uFF1A\u9078\u5B57\u5F8C\u6309\u300C\u5F15\u7528\u56DE\u8986\u300D\u66AB\u5B58\u7684\u5F15\u7528
+    errors: {},         // record_id -> \u9019\u4E00\u5247\u6700\u8FD1\u4E00\u6B21\u52D5\u4F5C\u7684\u932F\u8AA4\u8A0A\u606F
+    busy: null,         // \u6B63\u5728\u7B49\u5F8C\u7AEF\u56DE\u61C9\u7684\u90A3\u4E00\u5247\uFF08record_id\uFF09
+    focusBox: null,     // \u91CD\u7E6A\u5F8C\u8981\u628A\u6E38\u6A19\u653E\u9032\u54EA\u4E00\u5247\u7684\u7559\u8A00\u6846
+  };
+
+  // \u2500\u2500 DOM \u53C3\u7167 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  var $ = function (id) { return document.getElementById(id); };
+  var composerInput = $('composerInput');
+  var composerError = $('composerError');
+  var composerHint = $('composerHint');
+  var submitBtn = $('submitBtn');
+  var river = $('river');
+  var calendarToggle = $('calendarToggle');
+  var calendarPanel = $('calendarPanel');
+  var calendarChevron = $('calendarChevron');
+  var filterChip = $('filterChip');
+  var calLabel = $('calLabel');
+  var calGrid = $('calGrid');
+  var composerExpandBtn = $('composerExpandBtn');
+  var fsBackdrop = $('fsBackdrop');
+  var fsTextarea = $('fsTextarea');
+  var fsCloseBtn = $('fsCloseBtn');
+  var fsSubmitBtn = $('fsSubmitBtn');
+
+  // \u540C\u300C\u6642\u5E8F\u9677\u9631\u300D\u7406\u7531\uFF1A\u9019\u88E1\u4E5F\u4E0D\u80FD\u540C\u6B65\u5224\u65B7\u2014\u2014\u5EF6\u5230 setTimeout(0) \u4E4B\u5F8C\uFF08loadNotes \u90A3\u500B
+  // \u56DE\u547C\u88E1\uFF09\u624D\u6C7A\u5B9A\u6A6B\u5E45\u8981\u4E0D\u8981\u986F\u793A\uFF0C\u6B64\u6642 window.arcrunApp \u624D\u78BA\u5B9A\u5DF2\u7D93\u88AB Portal \u8CE6\u503C\u904E\u3002
+
+  // \u2500\u2500 \u6CB3\u9053\u6E32\u67D3 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  // \u6CB3\u9053\u662F Facebook \u6CB3\u9053\u5F0F\uFF08leo 2026-08-24 \u53CD\u994B\uFF09\uFF1A\u6BCF\u4E00\u5247\u7B46\u8A18\u662F\u4E00\u5F35\u5361\u7247\uFF08\u898B\u4E0A\u65B9 CSS
+  // .note-card \u7684\u908A\u6846\uFF09\u30022026-11-11\uFF08arcrun-app-note#2\uFF09\uFF1A\u56DE\u8986\u3001\u7DE8\u8F2F\u3001\u522A\u9664\u3001\u9078\u5B57\u5F15\u7528\u3001\u5DE5\u5177\u5217
+  // \u5168\u90E8\u6539\u7528\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684 ReplyKit\uFF0C\u9019\u88E1\u53EA\u8CA0\u8CAC\u628A\u72C0\u614B\u9935\u7D66\u5B83\u3001\u628A\u52D5\u4F5C\u9001\u5230\u5F8C\u7AEF\u3002
+  function renderRiver() {
+    var list = state.selectedDate ? NotesCore.filterByDate(state.notes, state.selectedDate) : state.notes.slice();
+    list = NotesCore.sortNotesDesc(list);
+
+    if (list.length === 0) {
+      river.innerHTML = '<div class="river-empty">' +
+        (state.selectedDate ? '\u9019\u4E00\u5929\u6C92\u6709\u7B46\u8A18\u3002' : '\u9084\u6C92\u6709\u7B46\u8A18\uFF0C\u5BEB\u4E0B\u7B2C\u4E00\u5247\u5427\u3002') +
+        '</div>';
+      return;
+    }
+
+    river.innerHTML = list.map(renderNoteCard).join('');
+
+    // \u5168\u91CF\u91CD\u7E6A\u6703\u8B93\u6E38\u6A19\u6389\u51FA\u8F38\u5165\u6846\uFF1B\u8981\u6253\u5B57\u7684\u90A3\u4E00\u683C\u5728\u9019\u88E1\u63A5\u56DE\u53BB\u3002
+    if (state.focusBox) {
+      var box = river.querySelector('[data-rk-box="' + cssEsc(state.focusBox) + '"]');
+      if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+      state.focusBox = null;
+    } else if (state.editing) {
+      var eb = river.querySelector('[data-rk-edit-box="' + cssEsc(state.editing) + '"]');
+      if (eb && document.activeElement !== eb) { eb.focus(); eb.setSelectionRange(eb.value.length, eb.value.length); }
+    }
+  }
+
+  function cssEsc(s) { return String(s).replace(/["\\\\]/g, '\\\\$&'); }
+
+  /** \u9019\u4E00\u5247\u662F\u4E0D\u662F\u300C\u6211\u7684\u300D\uFF1A\u4F5C\u8005\u6B04\u7A7A\uFF1D\u820A\u8CC7\u6599\uFF081.2.0 \u4EE5\u524D\u5BEB\u7684\uFF09\uFF0C\u4EFB\u4F55\u767B\u5165\u8005\u90FD\u80FD\u52D5\uFF08\u540C\u5F8C\u7AEF\u5B88\u9580\u7684\u8AAA\u6CD5\uFF09\u3002 */
+  function isMine(n) { return !n.author || (!!state.me && n.author === state.me); }
+
+  function renderNoteCard(n) {
+    var id = n.record_id;
+    var replies = (n.replies || []).filter(function (r) { return !r.deleted; });
+    var perm = ReplyKit.can({ mode: 'note', kind: 'doc', mine: isMine(n), state: 'live' });
+    var meta = n.date + '\u3000' + formatTime(n.created_at) + (n.edited_at ? '\u3000\u5DF2\u7DE8\u8F2F' : '');
+    var open = !!state.openThread[id];
+
+    var body;
+    if (state.editing === id) {
+      body = ReplyKit.renderEditor({ id: id, draft: state.editDraft, busy: state.busy === id });
+    } else {
+      body = '<div class="content" data-rk-doc="' + attr(id) + '">' + NotesCore.renderMarkdown(n.content) + '</div>';
+    }
+    var confirm = state.confirmDoc === id
+      ? ReplyKit.renderConfirm(ReplyKit.deleteWarning({ mode: 'note', kind: 'doc', mine: true, state: 'live' }, { cardCount: state.cardCounts[id] }), 'doc', id)
+      : '';
+    var err = state.errors[id] ? '<div class="rk-err">' + NotesCore.escapeHtml(state.errors[id]) + '</div>' : '';
+    var drawer = '';
+    if (open) {
+      drawer = '<div class="rk-drawer">' +
+        ReplyKit.renderThread({
+          mode: 'note', me: state.me, replies: n.replies || [],
+          editing: state.editing, draft: state.editDraft, busyId: state.busy,
+          confirming: state.confirmReply
+        }) +
+        ReplyKit.renderComposer({
+          mode: 'note', docId: id, draft: state.drafts[id] || '', quote: state.quote[id] || null,
+          busy: state.busy === 'send:' + id, error: state.errors['send:' + id] || ''
+        }) +
+        '</div>';
+    }
+    return '<div class="note-card" data-note-id="' + attr(id) + '">' +
+      '<div class="card-top"><span class="meta">' + NotesCore.escapeHtml(meta) + '</span>' +
+        ReplyKit.renderBar({ mode: 'note', docId: id, count: replies.length, open: open,
+          hasMenu: perm.edit || perm.delete, menuOpen: state.menuFor === id }) + '</div>' +
+      (state.menuFor === id ? ReplyKit.renderMenu({ docId: id, canEdit: perm.edit, canDelete: perm.delete }) : '') +
+      body + err + confirm + drawer +
+      '</div>';
+  }
+
+  function attr(s) { return NotesCore.escapeHtml(String(s == null ? '' : s)); }
+
+  function findNote(id) {
+    for (var i = 0; i < state.notes.length; i++) {
+      if (state.notes[i].record_id === id) return state.notes[i];
+      var rs = state.notes[i].replies || [];
+      for (var j = 0; j < rs.length; j++) if (rs[j].record_id === id) return rs[j];
+    }
+    return null;
+  }
+  function parentOfReply(id) {
+    for (var i = 0; i < state.notes.length; i++) {
+      var rs = state.notes[i].replies || [];
+      for (var j = 0; j < rs.length; j++) if (rs[j].record_id === id) return state.notes[i];
+    }
+    return null;
+  }
+
+  function resetTransient() {
+    state.menuFor = null; state.editing = null; state.editDraft = '';
+    state.confirmDoc = null; state.confirmReply = null; state.checkingDoc = null;
+  }
+
+  river.addEventListener('click', function (e) {
+    var t = e.target;
+    function hit(sel) { return t.closest ? t.closest(sel) : null; }
+    var b;
+    if ((b = hit('[data-rk-toggle]'))) {
+      var tid = b.getAttribute('data-rk-toggle');
+      state.openThread[tid] = !state.openThread[tid];
+      if (state.openThread[tid]) state.focusBox = tid;
+      state.menuFor = null;
+      renderRiver(); return;
+    }
+    if ((b = hit('[data-rk-more]'))) {
+      var mid = b.getAttribute('data-rk-more');
+      state.menuFor = state.menuFor === mid ? null : mid;
+      renderRiver(); return;
+    }
+    if ((b = hit('[data-rk-edit-doc]'))) {
+      var eid = b.getAttribute('data-rk-edit-doc');
+      resetTransient();
+      state.editing = eid; state.editDraft = (findNote(eid) || {}).content || '';
+      renderRiver(); return;
+    }
+    if ((b = hit('[data-rk-edit]'))) {
+      var rid = b.getAttribute('data-rk-edit');
+      resetTransient();
+      state.editing = rid; state.editDraft = (findNote(rid) || {}).content || '';
+      renderRiver(); return;
+    }
+    if (hit('[data-rk-edit-cancel]')) { resetTransient(); renderRiver(); return; }
+    if ((b = hit('[data-rk-edit-save]'))) { saveEdit(b.getAttribute('data-rk-edit-save')); return; }
+    if ((b = hit('[data-rk-del-doc]'))) { askDeleteDoc(b.getAttribute('data-rk-del-doc')); return; }
+    if ((b = hit('[data-rk-del]'))) { resetTransient(); state.confirmReply = b.getAttribute('data-rk-del'); renderRiver(); return; }
+    if (hit('[data-rk-no]')) { state.confirmDoc = null; state.confirmReply = null; renderRiver(); return; }
+    if ((b = hit('[data-rk-yes]'))) { doDelete(b.getAttribute('data-id')); return; }
+    if ((b = hit('[data-rk-send]'))) { sendReply(b.getAttribute('data-rk-send')); return; }
+    if ((b = hit('[data-rk-qclear]'))) { delete state.quote[b.getAttribute('data-rk-qclear')]; renderRiver(); return; }
+    if ((b = hit('[data-rk-jump]'))) {
+      var r = findNote(b.getAttribute('data-rk-jump'));
+      var card = hit('.note-card');
+      if (r && card) ReplyKit.flashQuote(card.querySelector('.content'), r.quote);
+      return;
+    }
+    // \u9EDE\u5230\u5361\u7247\u4EE5\u5916\uFF0F\u5225\u7684\u5730\u65B9\uFF1A\u6536\u8D77\u300C\u22EF\u300D\u9078\u55AE
+    if (state.menuFor) { state.menuFor = null; renderRiver(); }
+  });
+
+  // \u8349\u7A3F\u8DDF\u8457\u6253\u5B57\u5B58\u9032 state\u2014\u2014\u91CD\u7E6A\uFF08\u958B\u95DC\u9078\u55AE\u3001\u522A\u9664\u78BA\u8A8D\u2026\u2026\uFF09\u4E0D\u6703\u5403\u6389\u6253\u5230\u4E00\u534A\u7684\u5B57\u3002
+  river.addEventListener('input', function (e) {
+    var t = e.target;
+    var k = t.getAttribute && t.getAttribute('data-rk-box');
+    if (k) { state.drafts[k] = t.value; return; }
+    if (t.getAttribute && t.getAttribute('data-rk-edit-box')) state.editDraft = t.value;
+  });
+
+  river.addEventListener('keydown', function (e) {
+    var t = e.target;
+    var k = t.getAttribute && t.getAttribute('data-rk-box');
+    var ek = t.getAttribute && t.getAttribute('data-rk-edit-box');
+    if (k && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); sendReply(k); return; }
+    if (ek && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveEdit(ek); return; }
+    if (ek && e.key === 'Escape') { e.preventDefault(); resetTransient(); renderRiver(); return; }
+    if (k && e.key === 'Escape') { e.preventDefault(); state.openThread[k] = false; renderRiver(); }
+  });
+
+  ReplyKit.injectCss(river);
+  ReplyKit.installToolbar(river);
+  // \u9078\u4E00\u6BB5\u6B63\u6587 \u2192 \u9078\u53D6\u8655\u4E0A\u65B9\u6D6E\u51FA\u300C\u5F15\u7528\u56DE\u8986\u300D\uFF08\u684C\u6A5F\u653E\u958B\u6ED1\u9F20\u3001\u624B\u6A5F\u9577\u6309\u9078\u53D6\u90FD\u6703\u89F8\u767C\uFF09\u3002
+  ReplyKit.installSelection(river, {
+    docSelector: '[data-rk-doc]', hostSelector: '.note-card',
+    onQuote: function (docId, text, pos) {
+      state.quote[docId] = { text: text, pos: pos };
+      state.openThread[docId] = true;
+      state.focusBox = docId;
+      renderRiver();
+    }
+  });
+
+  /** \u9001\u51FA\u4E00\u5247\u7559\u8A00\uFF08\u5C0D\u6574\u7BC7\uFF0C\u6216\u5E36\u8457\u5F15\u7528\u7684\u90A3\u4E00\u6BB5\uFF09\u3002 */
+  function sendReply(docId) {
+    var content = (state.drafts[docId] || '').trim();
+    if (!content) { state.errors['send:' + docId] = '\u8ACB\u5148\u8F38\u5165\u7559\u8A00\u5167\u5BB9\u3002'; renderRiver(); return; }
+    var parent = findNote(docId);
+    var q = state.quote[docId];
+    var payload = { content: content, date: (parent && parent.date) || NotesCore.todayISO(), parent_id: docId };
+    if (q && q.text) { payload.quote = q.text; payload.quote_pos = q.pos; }
+    state.busy = 'send:' + docId; delete state.errors['send:' + docId];
+    renderRiver();
+    callAction('create_note', payload).then(function (resp) {
+      state.busy = null;
+      var res = NotesCore.unwrapActionResult(resp);
+      if (!res || !res.success) {
+        state.errors['send:' + docId] = '\u7559\u8A00\u9001\u51FA\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
+        renderRiver();
+        return;
+      }
+      // \u5F8C\u7AEF\u56DE\u4F86\u7684 parent_id \u8DDF\u6211\u5011\u9001\u7684\u4E0D\u4E00\u81F4\uFF1D\u8CC7\u6599\u8868\u7F3A\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3001\u88AB\u975C\u9ED8\u4E1F\u6389\uFF08\u820A\u7248 note \u8CC7\u6599\u8868\u7684\u75C7\u72C0\uFF1A
+      // \u56DE\u8986\u8B8A\u6210\u4E00\u5247\u9802\u5C64\u7B46\u8A18\uFF09\u3002\u4E0D\u5047\u88DD\u6210\u529F\uFF1A\u660E\u8B1B\uFF0C\u4E26\u6307\u51FA\u600E\u9EBC\u4FEE\uFF08inkstone/arcrun-app-note#1 c17811\uFF09\u3002
+      if (res.data && res.data.parent_id !== docId) {
+        state.errors['send:' + docId] = '\u9019\u5247\u56DE\u8986\u88AB\u5B58\u6210\u4E86\u7368\u7ACB\u7B46\u8A18\uFF1A\u9019\u53F0\u7684\u7B46\u8A18\u8CC7\u6599\u8868\u9084\u6C92\u6709\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3002\u8ACB\u5230 App \u5E02\u96C6\u628A\u300C\u7B46\u8A18\u300D\u66F4\u65B0\u5230\u6700\u65B0\u7248\uFF08\u6703\u81EA\u52D5\u88DC\u6B04\u4F4D\uFF09\uFF0C\u518D\u91CD\u65B0\u56DE\u8986\u4E00\u6B21\u3002';
+      } else {
+        state.drafts[docId] = ''; delete state.quote[docId];
+      }
+      loadNotes();
+    });
+  }
+
+  /** \u5B58\u4E0B\u884C\u5167\u7DE8\u8F2F\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u67D0\u5247\u56DE\u8986\uFF09\u3002 */
+  function saveEdit(id) {
+    var content = (state.editDraft || '').trim();
+    if (!content) { state.errors[id] = '\u5167\u5BB9\u4E0D\u80FD\u662F\u7A7A\u7684\uFF08\u8981\u6E05\u6389\u8ACB\u7528\u522A\u9664\uFF09\u3002'; renderRiver(); return; }
+    state.busy = id; delete state.errors[id];
+    renderRiver();
+    callAction('update_note', { record_id: id, content: content }).then(function (resp) {
+      state.busy = null;
+      var res = NotesCore.unwrapActionResult(resp);
+      if (!res || !res.success) {
+        state.errors[id] = '\u5132\u5B58\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
+        renderRiver();
+        return;
+      }
+      resetTransient();
+      loadNotes();
+    });
+  }
+
+  /** \u6309\u300C\u522A\u9664\u300D\uFF1A\u5148\u554F\u9019\u5247\u7B46\u8A18\u6574\u7406\u51FA\u5E7E\u5F35\u5361\uFF0C\u518D\u8DF3\u78BA\u8A8D\u6846\uFF08\u63D0\u793A\u300C\u5DF2\u6574\u7406\u6210 N \u5F35\u5361\uFF0C\u522A\u9664\u5F8C\u9019\u4E9B\u5361\u6703\u4E0B\u67B6\u300D\uFF09\u3002 */
+  function askDeleteDoc(id) {
+    resetTransient();
+    state.checkingDoc = id;
+    callAction('note_cards', { record_id: id }).then(function (resp) {
+      if (state.checkingDoc !== id) return; // \u4F7F\u7528\u8005\u5728\u7B49\u7684\u6642\u5019\u6309\u4E86\u5225\u7684\uFF0C\u4E0D\u8981\u628A\u820A\u7B54\u6848\u84CB\u4E0A\u53BB
+      state.checkingDoc = null;
+      var res = NotesCore.unwrapActionResult(resp);
+      // \u554F\u4E0D\u5230\uFF08\u7DB2\u8DEF\u3001\u6B0A\u9650\uFF09\u5C31\u4E0D\u986F\u793A\u6578\u5B57\uFF1A\u5BE7\u53EF\u53EA\u554F\u300C\u522A\u9664\u9019\u5247\u7B46\u8A18\uFF1F\u300D\uFF0C\u4E5F\u4E0D\u5047\u88DD\u77E5\u9053\u6709 0 \u5F35\u5361\u3002
+      if (res && res.success && res.data && res.data.card_count > 0) state.cardCounts[id] = res.data.card_count;
+      else delete state.cardCounts[id];
+      state.confirmDoc = id;
+      renderRiver();
+    });
+  }
+
+  /** \u78BA\u8A8D\u5F8C\u7684\u522A\u9664\uFF08\u7B46\u8A18\u6216\u56DE\u8986\uFF0C\u5F8C\u7AEF\u662F\u300C\u6A19\u8A18\u522A\u9664\u300D\uFF09\u3002 */
+  function doDelete(id) {
+    state.busy = id; delete state.errors[id];
+    callAction('delete_note', { record_id: id }).then(function (resp) {
+      state.busy = null;
+      var res = NotesCore.unwrapActionResult(resp);
+      var parent = parentOfReply(id);
+      var errKey = parent ? parent.record_id : id; // \u56DE\u8986\u522A\u5931\u6557\u7684\u8A0A\u606F\u986F\u793A\u5728\u5B83\u6240\u5C6C\u90A3\u5F35\u5361
+      if (!res || !res.success) {
+        state.errors[errKey] = '\u522A\u9664\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
+        state.confirmDoc = null; state.confirmReply = null;
+        renderRiver();
+        return;
+      }
+      resetTransient();
+      loadNotes();
+    });
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  // \u2500\u2500 \u5C0F\u65E5\u66C6\u6E32\u67D3 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  var DOW = ['\u65E5', '\u4E00', '\u4E8C', '\u4E09', '\u56DB', '\u4E94', '\u516D'];
+
+  function renderCalendar() {
+    var notesByDate = NotesCore.datesWithNotes(state.notes);
+    var todayStr = NotesCore.todayISO();
+    var cal = NotesCore.buildCalendarMonth(state.calYear, state.calMonth, notesByDate, todayStr, state.selectedDate);
+
+    calLabel.textContent = state.calYear + ' \u5E74 ' + (state.calMonth + 1) + ' \u6708';
+
+    var html = DOW.map(function (d) { return '<div class="cal-dow">' + d + '</div>'; }).join('');
+    cal.weeks.forEach(function (week) {
+      week.forEach(function (cell) {
+        if (!cell) { html += '<div class="cal-cell empty"></div>'; return; }
+        var cls = 'cal-cell';
+        if (cell.isToday) cls += ' today';
+        if (cell.isSelected) cls += ' selected';
+        html += '<div class="' + cls + '" data-date="' + cell.dateStr + '">' +
+          cell.day + (cell.hasNotes ? '<span class="dot"></span>' : '') +
+          '</div>';
+      });
+    });
+    calGrid.innerHTML = html;
+
+    Array.prototype.forEach.call(calGrid.querySelectorAll('.cal-cell[data-date]'), function (el) {
+      el.addEventListener('click', function () {
+        var d = el.getAttribute('data-date');
+        selectDate(state.selectedDate === d ? null : d); // \u518D\u9EDE\u4E00\u6B21\u540C\u4E00\u5929\uFF1D\u53D6\u6D88\u7BE9\u9078
+      });
+    });
+
+    filterChip.hidden = !state.selectedDate;
+    if (state.selectedDate) filterChip.textContent = state.selectedDate;
+  }
+
+  function selectDate(dateStr) {
+    state.selectedDate = dateStr;
+    if (dateStr) {
+      var parts = dateStr.split('-');
+      state.calYear = Number(parts[0]);
+      state.calMonth = Number(parts[1]) - 1;
+    }
+    renderCalendar();
+    renderRiver();
+  }
+
+  calendarToggle.addEventListener('click', function () {
+    state.calendarOpen = !state.calendarOpen;
+    calendarPanel.hidden = !state.calendarOpen;
+    calendarChevron.textContent = state.calendarOpen ? '\u25B4' : '\u25BE';
+    if (state.calendarOpen) renderCalendar();
+  });
+
+  $('calPrev').addEventListener('click', function () {
+    state.calMonth -= 1;
+    if (state.calMonth < 0) { state.calMonth = 11; state.calYear -= 1; }
+    renderCalendar();
+  });
+  $('calNext').addEventListener('click', function () {
+    state.calMonth += 1;
+    if (state.calMonth > 11) { state.calMonth = 0; state.calYear += 1; }
+    renderCalendar();
+  });
+
+  // \u2500\u2500 \u9001\u51FA\u4E00\u5247\u7B46\u8A18 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  function submitNote() {
+    var content = composerInput.value;
+    composerError.textContent = '';
+    if (!content.trim()) { composerError.textContent = '\u7B46\u8A18\u4E0D\u80FD\u662F\u7A7A\u7684\u3002'; return; }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = '\u9001\u51FA\u4E2D\u2026';
+
+    // \u5BEB\u5165\u7684\u65E5\u671F\uFF1A\u82E5\u76EE\u524D\u6B63\u7BE9\u9078\u8457\u67D0\u4E00\u5929\uFF0C\u5C31\u5BEB\u9032\u90A3\u4E00\u5929\uFF08\u65B9\u4FBF\u88DC\u8A18\uFF09\uFF1B\u5426\u5247\u7528\u4ECA\u5929\u3002
+    var targetDate = state.selectedDate || NotesCore.todayISO();
+
+    callAction('create_note', { content: content, date: targetDate }).then(function (resp) {
+      var res = NotesCore.unwrapActionResult(resp);
+      submitBtn.disabled = false;
+      submitBtn.textContent = '\u9001\u51FA';
+      if (!res || !res.success) {
+        composerError.textContent = '\u9001\u51FA\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
+        return;
+      }
+      composerInput.value = '';
+      loadNotes();
+    });
+  }
+
+  submitBtn.addEventListener('click', submitNote);
+  composerInput.addEventListener('keydown', function (e) {
+    // Cmd/Ctrl+Enter \u9001\u51FA\uFF0C\u4E00\u822C Enter \u4FDD\u7559\u7D66\u63DB\u884C\uFF08\u7B46\u8A18\u5E38\u5E38\u662F\u591A\u884C\uFF09\u3002
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitNote();
+  });
+  composerHint.textContent = '\u2318/Ctrl + Enter \u9001\u51FA';
+
+  // \u2500\u2500 \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo 2026-08-24\uFF1A\u300C\u539F\u672C\u7B46\u8A18\u8F38\u5165\u754C\u9762\u53EF\u4EE5\u5168\u87A2\u5E55\uFF0C\u4F46\u4E5F\u6C92\u6709\u6309\u9215\u300D\uFF09\u2500\u2500\u2500
+  //
+  // \u540C\u4E00\u4EFD\u8349\u7A3F\uFF0C\u4E0D\u662F\u5169\u4EFD\uFF1A\u5C55\u958B\u6642\u628A\u4E3B\u8F38\u5165\u6846\u7684\u503C\u5E36\u904E\u53BB\uFF0C\u6536\u8D77\uFF08Esc \u6216 \u2715\uFF09\u6642\u628A\u5168\u87A2\u5E55\u6846
+  // \u7684\u503C\u5E36\u56DE\u4E3B\u8F38\u5165\u6846\u2014\u2014\u4F7F\u7528\u8005\u4E2D\u9014\u5207\u63DB\u4E0D\u6703\u767C\u73FE\u5167\u5BB9\u8B8A\u4E86\uFF0C\u53EA\u662F\u63DB\u4E86\u500B\u66F4\u5927\u7684\u6846\u7DE8\u8F2F\u3002
+  // \u9001\u51FA\u53EF\u4EE5\u76F4\u63A5\u5728\u5168\u87A2\u5E55\u6846\u88E1\u6309 \u2318+Enter\uFF0C\u4E0D\u5FC5\u5148\u6536\u8D77\u518D\u6309\u4E3B\u9001\u51FA\u9375\u3002
+
+  function openFullscreen() {
+    fsTextarea.value = composerInput.value;
+    fsBackdrop.hidden = false;
+    setTimeout(function () { fsTextarea.focus(); }, 0);
+  }
+  function closeFullscreen(syncBack) {
+    if (syncBack !== false) composerInput.value = fsTextarea.value;
+    fsBackdrop.hidden = true;
+  }
+  composerExpandBtn.addEventListener('click', openFullscreen);
+  fsCloseBtn.addEventListener('click', function () { closeFullscreen(true); });
+  fsBackdrop.addEventListener('click', function (e) {
+    if (e.target === fsBackdrop) closeFullscreen(true); // \u9EDE\u80CC\u666F\uFF1D\u8DDF Esc \u4E00\u6A23\u6536\u8D77\uFF0C\u4E0D\u662F\u53D6\u6D88
+  });
+  fsTextarea.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.preventDefault(); closeFullscreen(true); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      composerInput.value = fsTextarea.value;
+      closeFullscreen(false); // \u503C\u5DF2\u7D93\u540C\u6B65\u904E\u4E86\uFF0C\u6536\u8D77\u6642\u4E0D\u8981\u7528\uFF08\u53EF\u80FD\u5DF2\u88AB\u6E05\u7A7A\u7684\uFF09fsTextarea \u518D\u84CB\u4E00\u6B21
+      submitNote();
+    }
+  });
+  fsSubmitBtn.addEventListener('click', function () {
+    composerInput.value = fsTextarea.value;
+    closeFullscreen(false);
+    submitNote();
+  });
+
+  // \u2500\u2500 \u8F09\u5165\u6CB3\u9053 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  function loadNotes() {
+    callAction('list_notes', {}).then(function (resp) {
+      var res = NotesCore.unwrapActionResult(resp);
+      if (!res || !res.success) {
+        river.innerHTML = '<div class="river-empty">\u8F09\u5165\u5931\u6557\uFF1A' + NotesCore.escapeHtml((res && res.error) || '\u672A\u77E5\u932F\u8AA4') + '</div>';
+        return;
+      }
+      state.notes = (res.data && res.data.notes) || [];
+      state.me = (res.data && res.data.me) || '';
+      renderRiver();
+      if (state.calendarOpen) renderCalendar();
+    });
+  }
+
+  // \u{1F534} \u5EF6\u5F8C\u5230\u4E0B\u4E00\u8F2A\u4E8B\u4EF6\u5708\u624D\u7B2C\u4E00\u6B21\u547C\u53EB callAction\u3001\u624D\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A MOCK \u6A6B\u5E45\uFF1A
+  // \u771F Portal \u88E1 window.arcrunApp.action \u662F\u5728\u9019\u652F script \u57F7\u884C\u5B8C\u4E4B\u5F8C\u624D\u88AB\u8CE6\u503C\u7684
+  // \uFF08\u898B\u4E0A\u9762\u300C\u6642\u5E8F\u9677\u9631\u300D\u8AAA\u660E\uFF09\u3002\u540C\u6B65\u547C\u53EB\uFF0F\u540C\u6B65\u5224\u65B7\u90FD\u6703\u62FF\u5230\u932F\u7684\u7B54\u6848\uFF08\u6C38\u9060\u8AA4\u5224\u6210 MOCK\uFF09\u3002
+  // setTimeout(fn, 0) \u4FDD\u8B49\u665A\u65BC\u90A3\u6B21\u8CE6\u503C\u2014\u2014\u9019\u88E1\u9023\u6A6B\u5E45\u7684\u986F\u793A\u8207\u5426\u90FD\u653E\u9032\u540C\u4E00\u500B\u56DE\u547C\uFF0C
+  // \u78BA\u4FDD\u5169\u8005\u7528\u7684\u662F\u540C\u4E00\u6B21\u3001\u540C\u4E00\u500B\u6642\u9593\u9EDE\u5224\u65B7\u51FA\u4F86\u7684\u7D50\u679C\uFF0C\u4E0D\u6703\u4E0D\u4E00\u81F4\u3002
+  setTimeout(function () {
+    $('mockBanner').hidden = !usingMock();
+    loadNotes();
+  }, 0);
+})();
+<\/script>
+</body>
+</html>
+`
+  },
+  data: [
+    {
+      name: "note",
+      description: "Arcrun \u7B46\u8A18 App \u7684\u4E00\u5247\u7B46\u8A18\u2014\u2014\u6CB3\u9053\u5F0F\uFF1A\u65B0\u7684\u5728\u6700\u4E0A\u9762\uFF0C\u5C0F\u65E5\u66C6\u4F9D date \u7BE9\u9078\u904E\u53BB\u7684\u8A18\u9304\u3002 \u4E00\u5247\u7B46\u8A18\u53EF\u4EE5\u6709\u56DE\u8986\uFF08parent_id \u6307\u56DE\u5B83\uFF09\uFF0C\u56DE\u8986\u662F indented \u639B\u5728\u8A72\u5247\u5E95\u4E0B\uFF0C\u4E0D\u662F\u7368\u7ACB\u7684\u6CB3\u9053\u9805\u76EE\u3002\n",
+      slots: [
+        "date",
+        "content",
+        "created_at",
+        "parent_id",
+        "author",
+        "quote",
+        "quote_pos",
+        "deleted",
+        "deleted_at",
+        "edited_at",
+        "folder"
+      ]
+    },
+    {
+      name: "note_version",
+      description: "\u4E00\u5247\u7B46\u8A18\u6539\u7248\u524D\u7684\u5167\u5BB9\uFF08inkstone/Arcrun#487\uFF09\uFF1A\u6BCF\u6B21\u5B58\u6A94\u524D\u628A\u300C\u88AB\u63DB\u6389\u7684\u90A3\u4E00\u7248\u300D\u8A18\u4E00\u7B46\uFF0C\u7D66\u300C\u7248\u672C\u6B77\u53F2\u300D\u770B\u8207\u9084\u539F\u3002\u53EA\u589E\u4E0D\u6539\uFF1B\u7B46\u8A18\u522A\u9664\u6642\u9019\u4E9B\u7D00\u9304\u7559\u8457\uFF0C\u8DDF\u7B46\u8A18\u4E00\u6A23\u662F\u6A19\u8A18\u522A\u9664\u3001\u4E0D\u7269\u7406\u522A\u9664\u3002\n",
+      slots: [
+        "note_id",
+        "content",
+        "replaced_at",
+        "replaced_by"
+      ]
+    }
+  ],
+  actions: [
+    "create_note",
+    "list_notes",
+    "update_note",
+    "delete_note",
+    "note_cards",
+    "organize_note",
+    "move_note",
+    "list_note_versions"
+  ]
+};
+
+// cypher-executor/src/lib/app-catalog.ts
+var marketRow = (id) => {
+  const r = catalog_default.apps.find((a) => a.id === id);
+  if (!r) throw new Error(`app-market/catalog.json \u627E\u4E0D\u5230\u5167\u5EFA App\u300C${id}\u300D`);
+  return r;
+};
+var builtinEntry = (id, declaration) => {
+  const r = marketRow(id);
+  const decl = declaration;
+  return {
+    id,
+    name: String(r.name),
+    icon: String(r.icon),
+    summary: String(r.summary),
+    version: decl.version,
+    author: String(r.author ?? "Arcrun \u5167\u5EFA"),
+    declaration: decl,
+    ...typeof r.notes === "string" ? { notes: r.notes } : {},
+    ...typeof r.engine_min === "string" ? { engine_min: r.engine_min } : {}
+  };
+};
+var APP_CATALOG = [builtinEntry("notes", notes_default)];
+if (JSON.stringify(APP_CATALOG.map((e) => e.id).sort()) !== JSON.stringify([...BUILTIN_APP_IDS].sort())) {
+  throw new Error("builtin-ids.ts \u7684\u5167\u5EFA App \u8207 app-catalog.ts \u7684 APP_CATALOG \u4E0D\u4E00\u81F4");
+}
 function updateStatus(installedVersion, catalogVersion2) {
   if (catalogVersion2 === void 0) return "none";
   const c = compareVersions(catalogVersion2, installedVersion);
@@ -19287,6 +22920,7 @@ function catalogListing(installed, entries = APP_CATALOG, engineVersion) {
       ...em ? { engine_min: em } : {},
       ...gate ? { engine_blocked: { needs: gate.needs, have: gate.have, note: engineGateNote(gate) } } : {},
       source: isMarketEntry(e) ? "market" : "bundled",
+      builtin: isBuiltinApp(e.id),
       ...e.notes ? { notes: e.notes } : {}
     };
   });
@@ -22491,7 +26125,10 @@ var cors = (options) => {
 };
 
 // cypher-executor/src/scheduled.ts
+init_cron_match();
+init_cron_index();
 init_webhook_handlers();
+init_execution_logger();
 init_kbdb_proxy();
 
 // cypher-executor/src/lib/fts-backfill-tick.ts
@@ -22672,6 +26309,7 @@ async function handleScheduled(controller, env, ctx) {
 init_kbdb_caller();
 init_kbdb_tally();
 init_endpoints();
+init_subrequest_meter();
 init_kbdb_write_retry();
 function kbdbBase2(env) {
   return kbdbBaseUrl(env);
@@ -23498,6 +27136,7 @@ init_types();
 init_graph_executor();
 init_schemas();
 init_component_loader();
+init_execution_logger();
 init_run_scratch();
 var executeRouter = new Hono2();
 executeRouter.post("/execute", async (c) => {
@@ -26689,6 +30328,7 @@ async function resolveWebhookGraph(body, description, env) {
 }
 
 // cypher-executor/src/routes/webhooks.ts
+init_execution_logger();
 init_failure_evidence();
 var webhooksRouter = new Hono2();
 webhooksRouter.post("/webhooks", async (c) => {
@@ -26838,7 +30478,10 @@ init_credentials();
 init_dist();
 init_webhook_handlers();
 init_schemas();
+init_execution_logger();
 init_failure_evidence();
+init_cron_match();
+init_cron_index();
 init_telemetry();
 init_endpoints();
 
@@ -26929,6 +30572,7 @@ async function coalesce(scope, key, run2, now2 = Date.now()) {
 }
 
 // cypher-executor/src/routes/webhooks-named.ts
+init_dataflow_check();
 var webhooksNamedRouter = new Hono2();
 function kvKey(apiKey, name) {
   return `${apiKey}:wf:${name}`;
@@ -27032,7 +30676,24 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
     cron_expr: cronExpr ?? void 0
   };
   const start = Date.now();
+  const appPrefix = name.includes("__") ? name.split("__")[0] : "";
+  let beforeWf = null;
+  if (appPrefix) {
+    const raw2 = await c.env.WEBHOOKS.get(kvKey(apiKey, name)).catch(() => null);
+    beforeWf = raw2 ? JSON.parse(raw2) : null;
+  }
   await c.env.WEBHOOKS.put(kvKey(apiKey, name), JSON.stringify(record));
+  if (appPrefix) {
+    try {
+      const { noteUserEdit: noteUserEdit2, actorOf: actorOf3 } = await Promise.resolve().then(() => (init_app_userlayer_ops(), app_userlayer_ops_exports));
+      const { getInstalledApp: getInstalledApp2 } = await Promise.resolve().then(() => (init_app_system(), app_system_exports));
+      const app2 = await getInstalledApp2(c.env, apiKey, appPrefix);
+      if (app2?.workflows.some((w) => w.wf_key === name)) {
+        await noteUserEdit2(c.env, apiKey, appPrefix, "workflow", name, beforeWf, record, actorOf3(c.req));
+      }
+    } catch {
+    }
+  }
   await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, cronExpr);
   c.executionCtx.waitUntil(
     writeWorkflowSearchEntry(c.env, apiKey, name, record.description).catch(() => {
@@ -28788,7 +32449,7 @@ var AUTH_RECIPE_SEEDS = [
 
 // cypher-executor/src/routes/init-seed.ts
 var initSeedRouter = new Hono2();
-function sameContent(a, b, omit) {
+function sameContent2(a, b, omit) {
   const strip = (obj) => {
     const rec = obj;
     const out = {};
@@ -28832,7 +32493,7 @@ initSeedRouter.post("/init/seed", async (c) => {
         created_at: existing?.created_at ?? now2,
         updated_at: now2
       };
-      if (!existing || !sameContent(recipe, existing, TIMESTAMP_FIELDS)) {
+      if (!existing || !sameContent2(recipe, existing, TIMESTAMP_FIELDS)) {
         await installRecipeRecord(c.env.RECIPES, recipe);
         apiWritten++;
       }
@@ -28857,7 +32518,7 @@ initSeedRouter.post("/init/seed", async (c) => {
         created_at: existing?.created_at ?? now2,
         updated_at: now2
       };
-      if (!existing || !sameContent(recipe, existing, TIMESTAMP_FIELDS)) {
+      if (!existing || !sameContent2(recipe, existing, TIMESTAMP_FIELDS)) {
         await c.env.RECIPES.put(`auth_recipe:${service}`, JSON.stringify(recipe));
         authWritten++;
       }
@@ -30127,6 +33788,7 @@ async function verifyPortalActor(env, tenant2, raw2, nowMs = Date.now()) {
 init_tenant();
 init_webhook_handlers();
 init_recipes();
+init_dataflow_check();
 
 // cypher-executor/src/lib/studio-scope.ts
 function scopeDataflowReport(report, scope) {
@@ -30171,8 +33833,10 @@ function scopeDataflowReport(report, scope) {
 }
 
 // cypher-executor/src/lib/app-package.ts
+init_app_system();
 init_recipes();
 init_kbdb_proxy();
+init_subrequest_meter();
 var PACKAGE_FORMAT = "arcrun-app-package";
 var PACKAGE_FORMAT_VERSION = 1;
 var MAX_PACKAGE_CHARS = 16e6;
@@ -30342,6 +34006,7 @@ async function declarationFromInstalled(env, tenant2, app2, coords) {
     ...app2.declared?.engine_min ? { engine_min: app2.declared.engine_min } : {},
     workflows,
     ...skills.length ? { skills } : {},
+    ...app2.rulebook ? { rulebook: app2.rulebook } : {},
     actions: app2.actions,
     ...data.length ? { data } : {},
     ...recipes.length || credentials.length ? { requires: { ...recipes.length ? { recipes } : {}, ...credentials.length ? { credentials } : {} } } : {},
@@ -30562,6 +34227,84 @@ async function addWorkflowToApp(env, tenant2, appId, input) {
   }
   return { ok: true, app: next, added: local };
 }
+
+// cypher-executor/src/routes/portal-data.ts
+init_dataflow_graph();
+init_app_glyphs();
+
+// cypher-executor/src/lib/builtin-apps.ts
+init_app_system();
+init_builtin_ids();
+var RETRY_AFTER_FAIL_MS = 6e4;
+var MAX_RESUME_STEPS = 30;
+var inflight2 = /* @__PURE__ */ new Map();
+var failedAt = /* @__PURE__ */ new Map();
+var progress = /* @__PURE__ */ new Map();
+function missingBuiltinIds(installedIds) {
+  const have = new Set(installedIds);
+  return APP_CATALOG.filter((e) => isBuiltinApp(e.id) && !have.has(e.id)).map((e) => e.id);
+}
+async function ensureBuiltinApps(env, tenant2, installed, coords, now2 = Date.now) {
+  const missing = missingBuiltinIds(installed.map((a) => a.id));
+  if (missing.length === 0) return { installed: [], failed: [] };
+  const key = `${tenant2}|${missing.join(",")}`;
+  const running = inflight2.get(key);
+  if (running) return running;
+  const last = failedAt.get(key);
+  if (last !== void 0 && now2() - last < RETRY_AFTER_FAIL_MS) return { installed: [], failed: [] };
+  const job = (async () => {
+    const out = { installed: [], failed: [] };
+    for (const id of missing) {
+      const entry = APP_CATALOG.find((e) => e.id === id);
+      if (!entry) continue;
+      try {
+        const pk = `${tenant2}|${id}`;
+        let resumeFrom = progress.get(pk)?.from ?? 0;
+        let resumeHash = progress.get(pk)?.hash;
+        for (let step = 0; step < MAX_RESUME_STEPS; step++) {
+          const r = await installApp(env, tenant2, entry.declaration, { coords, resumeFrom, resumeHash, origin: "market" });
+          if (!r.ok) {
+            out.failed.push({ id, error: (r.errors ?? [r.hint ?? "\u5B89\u88DD\u5931\u6557"]).join("\uFF1B") });
+            break;
+          }
+          if (r.in_progress) {
+            resumeFrom = r.resume_from ?? resumeFrom;
+            resumeHash = r.resume_hash;
+            progress.set(pk, { from: resumeFrom, hash: resumeHash });
+            continue;
+          }
+          progress.delete(pk);
+          out.installed.push(id);
+          break;
+        }
+        if (!out.installed.includes(id) && !out.failed.some((f) => f.id === id)) out.failed.push({ id, error: "\u5206\u6BB5\u5B89\u88DD\u8D85\u904E\u4E0A\u9650\uFF0C\u6C92\u6709\u88DD\u5B8C" });
+      } catch (e) {
+        out.failed.push({ id, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (out.failed.length) failedAt.set(key, now2());
+    else failedAt.delete(key);
+    return out;
+  })();
+  inflight2.set(key, job);
+  try {
+    return await job;
+  } finally {
+    inflight2.delete(key);
+  }
+}
+async function listAppsWithBuiltins(env, tenant2, base, preloaded) {
+  const apps = preloaded ?? await listInstalledApps(env, tenant2);
+  if (missingBuiltinIds(apps.map((a) => a.id)).length === 0) return apps;
+  const r = await ensureBuiltinApps(env, tenant2, apps, { namespace: String(tenant2), cypherBase: base });
+  for (const f of r.failed) console.warn(`[builtin-app] \u88DC\u88DD ${f.id} \u5931\u6557\uFF1A${f.error}`);
+  if (r.installed.length === 0) return apps;
+  return listInstalledApps(env, tenant2);
+}
+
+// cypher-executor/src/routes/portal-data.ts
+init_app_system();
+init_run_explain();
 
 // cypher-executor/src/lib/app-market.ts
 init_endpoints();
@@ -30997,6 +34740,7 @@ async function connectByLogin(baseUrl, email, password, from, timeoutMs = 2e4) {
 
 // cypher-executor/src/lib/proofread-store.ts
 init_kbdb_proxy();
+init_release_body();
 init_tenant();
 
 // cypher-executor/src/lib/proofread.ts
@@ -31203,7 +34947,7 @@ var T_SETTING = "proofread_setting";
 var T_PROBE = "proofread_probe";
 var T_PROBE_DAY = "proofread_probe_day";
 var SLOTS2 = {
-  [T_OBJECTION]: ["card_key", "library", "page_name", "paragraph", "paragraph_id", "claim_b", "source", "author_id", "author_name", "created_at", "status", "card_version", "question", "decided_by", "decided_at", "decision_reason", "source_path", "machine"],
+  [T_OBJECTION]: ["card_key", "library", "page_name", "paragraph", "paragraph_id", "claim_b", "source", "author_id", "author_name", "created_at", "status", "card_version", "question", "reason", "decided_by", "decided_at", "decision_reason", "source_path", "machine"],
   [T_VOTE]: ["objection_id", "voter_id", "voter_name", "choice", "basis", "quote", "channel", "weight", "created_at"],
   [T_SIGNAL]: ["card_key", "kind", "user_id", "question", "created_at"],
   [T_ASSIGN]: ["scope", "library", "owner_id", "owner_name", "active", "assigned_by", "created_at"],
@@ -31241,12 +34985,27 @@ var ensured = /* @__PURE__ */ new Set();
 async function ensureTemplate5(env, name) {
   if (ensured.has(name)) return;
   const got = await kFetch3(env, `/templates/${encodeURIComponent(name)}`);
-  releaseBody(got);
   if (!got.ok) {
+    releaseBody(got);
     releaseBody(await kFetch3(env, "/templates", {
       method: "POST",
       body: JSON.stringify({ name, slots: [...SLOTS2[name], "k"] })
     }).catch(() => void 0));
+  } else {
+    const b = await got.json().catch(() => null);
+    let have = [];
+    try {
+      have = JSON.parse(b?.template?.slots_json ?? "[]");
+    } catch {
+      have = [];
+    }
+    const missing = [...SLOTS2[name], "k"].filter((x) => !have.includes(x));
+    if (have.length > 0 && missing.length > 0) {
+      releaseBody(await kFetch3(env, `/templates/${encodeURIComponent(name)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ slots: [...have, ...missing] })
+      }).catch(() => void 0));
+    }
   }
   ensured.add(name);
 }
@@ -31320,7 +35079,7 @@ async function getByKey(env, template, key) {
 var str3 = (v) => typeof v === "string" ? v : "";
 function toObjection(r) {
   const v = r.values;
-  const status = ["pending", "held", "adopted", "rejected"].find((s) => s === v.status) ?? "pending";
+  const status = ["pending", "held", "adopted", "rejected", "withdrawn"].find((s) => s === v.status) ?? "pending";
   return {
     id: r.record_id,
     card_key: str3(v.card_key),
@@ -31336,6 +35095,7 @@ function toObjection(r) {
     status,
     card_version: str3(v.card_version),
     question: str3(v.question),
+    reason: str3(v.reason),
     decided_by: str3(v.decided_by),
     decided_at: str3(v.decided_at),
     decision_reason: str3(v.decision_reason),
@@ -31409,7 +35169,7 @@ async function writeIndex2(env, library, mutate) {
   idxCache.delete(library);
 }
 async function loadCardProofs(env, library, pageName, now2 = Date.now()) {
-  const objs = (await listBy(env, T_OBJECTION, "card_key", cardKeyOf(library, pageName))).map(toObjection);
+  const objs = (await listBy(env, T_OBJECTION, "card_key", cardKeyOf(library, pageName))).map(toObjection).filter((o) => o.status !== "withdrawn");
   if (objs.length === 0) return [];
   const settings = await getSettings(env, library);
   const votesByObj = /* @__PURE__ */ new Map();
@@ -31474,6 +35234,7 @@ async function createObjection(env, input, now2 = Date.now()) {
     status: "pending",
     card_version: input.card_version,
     question: input.question.slice(0, 300),
+    reason: (input.reason ?? "").slice(0, 200),
     decided_by: "",
     decided_at: "",
     decision_reason: "",
@@ -31523,6 +35284,24 @@ async function getObjection(env, id) {
   if (!r || !r.values.card_key) return null;
   return toObjection({ ...r, values: r.values });
 }
+async function editObjection(env, o, input) {
+  const values = { claim_b: normalizeClaim(input.claim_b) };
+  if (typeof input.reason === "string") values.reason = input.reason.slice(0, 200);
+  if (typeof input.source === "string") values.source = input.source.trim().slice(0, 500);
+  await ensureTemplate5(env, T_OBJECTION);
+  await patch(env, o.id, values);
+  idxCache.delete(o.library);
+  return { ...o, claim_b: values.claim_b, reason: values.reason ?? o.reason, source: values.source ?? o.source };
+}
+async function withdrawObjection(env, o) {
+  await ensureTemplate5(env, T_OBJECTION);
+  await patch(env, o.id, { status: "withdrawn" });
+  const rest = (await listBy(env, T_OBJECTION, "card_key", o.card_key)).map(toObjection).filter((x) => x.id !== o.id && x.status !== "rejected" && x.status !== "withdrawn");
+  if (rest.length === 0) await writeIndex2(env, o.library, (s) => {
+    s.delete(o.card_key);
+  });
+  else idxCache.delete(o.library);
+}
 async function decide(env, o, by, decision, reason, now2 = Date.now()) {
   const iso = new Date(now2).toISOString();
   const status = decision === "adopt" ? "adopted" : decision === "reject" ? "rejected" : "held";
@@ -31545,7 +35324,7 @@ async function decide(env, o, by, decision, reason, now2 = Date.now()) {
   }
   if (decision !== "hold") {
     if (decision === "reject") {
-      const rest = (await listBy(env, T_OBJECTION, "card_key", o.card_key)).map(toObjection).filter((x) => x.id !== o.id && x.status !== "rejected");
+      const rest = (await listBy(env, T_OBJECTION, "card_key", o.card_key)).map(toObjection).filter((x) => x.id !== o.id && x.status !== "rejected" && x.status !== "withdrawn");
       if (rest.length === 0) await writeIndex2(env, o.library, (s) => {
         s.delete(o.card_key);
       });
@@ -31654,6 +35433,7 @@ async function recordSignal(env, kind, library, pageName, userId, question, now2
 }
 
 // cypher-executor/src/lib/chat-surface.ts
+init_ui_surface();
 var FENCE = /(~~~|```)a2ui[ \t]*\r?\n([\s\S]*?)\r?\n?\1/i;
 var ASK_FENCE = /(~~~|```)ask[ \t]*\r?\n([\s\S]*?)\r?\n?\1/i;
 var OPEN_FENCE = /(~~~|```)(a2ui|ask)[\s\S]*$/i;
@@ -31947,6 +35727,8 @@ async function rerankPassages(env, tenant2, config, question, passages) {
 
 // cypher-executor/src/routes/portal-data.ts
 init_kbdb_busy();
+init_app_userlayer_ops();
+init_app_rulebook();
 
 // cypher-executor/src/lib/form-surface.ts
 var FORM_FIELD_TYPES = ["text", "longtext", "number", "date", "datetime", "select", "multiselect", "checkbox"];
@@ -32995,13 +36777,17 @@ portalDataRouter.get(
     return c.json({ glyphs: APP_GLYPH_BODIES });
   })
 );
+function withBuiltinApps(c, tenant2, apps) {
+  return listAppsWithBuiltins(c.env, tenant2, selfBaseFromRequest(c.env, c.req.url), apps);
+}
 portalDataRouter.get(
   "/portal/data/apps",
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
-    const [apps, catalog] = await Promise.all([listInstalledApps(c.env, tenant2), resolveCatalog(c.env)]);
+    const [apps0, catalog] = await Promise.all([listInstalledApps(c.env, tenant2), resolveCatalog(c.env)]);
+    const apps = await withBuiltinApps(c, tenant2, apps0);
     const info = (a) => updateInfo(a.version, a.id, catalog.entries, c.env.ARCRUN_BUNDLE_VERSION);
     return c.json({
       apps: apps.map((a) => ({ ...summarizeApp(a), ...info(a) })),
@@ -33429,8 +37215,67 @@ portalDataRouter.delete(
     }
     const tenant2 = knowledgeOwner(c.env);
     const result = await uninstallApp(c.env, tenant2, c.req.param("id"));
-    if (!result.ok) return c.json({ error: result.error ?? "\u5378\u8F09\u5931\u6557" }, 404);
+    if (!result.ok) return c.json({ error: result.error ?? "\u5378\u8F09\u5931\u6557", ...result.code ? { code: result.code } : {} }, result.code === "builtin_app" ? 409 : 404);
     return c.json({ removed: true });
+  })
+);
+function ulActor(c, user) {
+  const who = String(user.values.email ?? user.values.name ?? "portal-user");
+  const via = c.req.header("X-Arcrun-By");
+  return `${who}${via ? ` via ${via}` : ""}`.slice(0, 80);
+}
+portalDataRouter.get(
+  "/portal/data/apps/:id/user-layer",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const { getUserLayerState: getUserLayerState2 } = await Promise.resolve().then(() => (init_app_userlayer_ops(), app_userlayer_ops_exports));
+    const st = await getUserLayerState2(c.env, knowledgeOwner(c.env), c.req.param("id"));
+    if (!st) return c.json({ error: `\u6C92\u6709\u5B89\u88DD\u9019\u500B App\uFF1A${c.req.param("id")}` }, 404);
+    return c.json(st);
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/:id/user-layer/reset",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
+    const body = await c.req.json().catch(() => ({}));
+    const target = body.kind && body.id && (body.kind === "recipe" || body.kind === "workflow") ? { kind: body.kind, id: String(body.id) } : void 0;
+    if ((body.kind || body.id) && !target) return c.json({ error: "kind \u8981\u662F recipe \u6216 workflow\uFF0C\u4E26\u4E14\u8981\u5E36 id\uFF1B\u6216\u5169\u500B\u90FD\u4E0D\u5E36\uFF1D\u5168\u90E8\u6062\u5FA9\u3002" }, 400);
+    const { resetUserLayer: resetUserLayer2 } = await Promise.resolve().then(() => (init_app_userlayer_ops(), app_userlayer_ops_exports));
+    const r = await resetUserLayer2(c.env, knowledgeOwner(c.env), c.req.param("id"), ulActor(c, auth.user), target);
+    if (!r) return c.json({ error: `\u6C92\u6709\u5B89\u88DD\u9019\u500B App\uFF1A${c.req.param("id")}` }, 404);
+    return c.json({ ...r, message: r.nothing ? "\u6C92\u6709\u4F60\u6539\u904E\u7684\u5730\u65B9\uFF0C\u5DF2\u7D93\u662F\u767C\u884C\u8005\u90A3\u4E00\u7248\u3002" : "\u5DF2\u6062\u5FA9\u6210\u767C\u884C\u8005\u90A3\u4E00\u7248\u3002\u91D1\u9470\u7684\u503C\u6C92\u6709\u52D5\uFF1B\u8981\u9000\u56DE\u525B\u624D\u7684\u6A23\u5B50\u7528 rollback\u3002" });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/:id/user-layer/keep",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
+    const body = await c.req.json().catch(() => ({}));
+    if (body.kind !== "recipe" && body.kind !== "workflow" || !body.id) return c.json({ error: "kind \u8981\u662F recipe \u6216 workflow\uFF0C\u4E26\u4E14\u8981\u5E36 id\u3002" }, 400);
+    const { keepUserItem: keepUserItem2 } = await Promise.resolve().then(() => (init_app_userlayer_ops(), app_userlayer_ops_exports));
+    const r = await keepUserItem2(c.env, knowledgeOwner(c.env), c.req.param("id"), body.kind, String(body.id), ulActor(c, auth.user));
+    if (!r.ok) return c.json({ error: r.error, code: r.code }, 404);
+    return c.json(r);
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/:id/user-layer/rollback",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
+    const body = await c.req.json().catch(() => ({}));
+    const { rollbackUserLayer: rollbackUserLayer2 } = await Promise.resolve().then(() => (init_app_userlayer_ops(), app_userlayer_ops_exports));
+    const r = await rollbackUserLayer2(c.env, knowledgeOwner(c.env), c.req.param("id"), ulActor(c, auth.user), typeof body.n === "number" ? body.n : void 0);
+    if (!r) return c.json({ error: `\u6C92\u6709\u5B89\u88DD\u9019\u500B App\uFF1A${c.req.param("id")}` }, 404);
+    if (!r.ok) return c.json({ error: r.error, code: r.code }, r.code === "no_entry" ? 404 : 409);
+    return c.json(r);
   })
 );
 function recordLibrary(values) {
@@ -34030,6 +37875,118 @@ portalDataRouter.get(
     return c.json({ account: a.account, cards: r.body.cards, passages: r.body.passages });
   })
 );
+function ruleActor(auth) {
+  return String(auth.user.values.email ?? auth.user.values.name ?? "") || "unknown";
+}
+function ruleIsAdmin(auth) {
+  return (auth.user.values.role ?? "user") === "admin";
+}
+var RULE_ADMIN_ONLY = { error: "\u53EA\u6709\u7BA1\u7406\u54E1\u53EF\u4EE5\u6838\u51C6\u898F\u7AE0\u7684\u4FEE\u6539", hint: "\u8ACB\u4F60\u7684\u7BA1\u7406\u54E1\u4F86\u6838\u51C6\uFF0C\u6216\u8ACB\u4ED6\u628A\u4F60\u8A2D\u6210\u7BA1\u7406\u54E1\u3002" };
+portalDataRouter.get(
+  "/portal/data/rules",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const apps = (await listInstalledApps(c.env, tenant2)).filter((a) => a.rulebook);
+    const books = (await Promise.all(apps.map((a) => readBook(c.env, tenant2, a)))).filter((b) => b !== null);
+    return c.json({ books, can_approve: ruleIsAdmin(auth) });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/rules/:app/log",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const app2 = await getInstalledApp(c.env, knowledgeOwner(c.env), c.req.param("app"));
+    if (!app2?.rulebook) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0" }, 404);
+    return c.json({ title: app2.rulebook.title?.trim() || RULEBOOK_DEFAULT_TITLE, log: bookLog(app2) });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/rules/:app/:sec",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const app2 = await getInstalledApp(c.env, tenant2, c.req.param("app"));
+    if (!app2?.rulebook) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0" }, 404);
+    const d = await readPageDetail(c.env, tenant2, app2, c.req.param("sec"));
+    if (!d) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u4E00\u689D" }, 404);
+    let guard = null;
+    if (d.page.guard) {
+      const key = guardWorkflowKey(app2.id, d.page.guard.workflow);
+      const g = await getAppWorkflowGraph(c.env, tenant2, key).catch(() => null);
+      const label = d.page.guard.label || d.page.guard.workflow.replace(/^.*__/, "");
+      guard = {
+        workflow: key,
+        label,
+        steps: g ? buildFlowSteps(g.nodes, g.edges, null) : null
+      };
+    }
+    return c.json({ book: app2.rulebook.title?.trim() || RULEBOOK_DEFAULT_TITLE, app_id: app2.id, ...d, guard, can_approve: ruleIsAdmin(auth) });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/:app/:sec/ask",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const app2 = await getInstalledApp(c.env, tenant2, c.req.param("app"));
+    if (!app2?.rulebook) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0" }, 404);
+    const body = await c.req.json().catch(() => null);
+    const instruction = typeof body?.instruction === "string" ? body.instruction.trim() : "";
+    if (!instruction) return c.json({ error: "\u8ACB\u5148\u8AAA\u4E00\u53E5\u4F60\u60F3\u600E\u9EBC\u6539" }, 400);
+    if (instruction.length > 500) return c.json({ error: "\u9019\u53E5\u8A71\u592A\u9577\u4E86\uFF0C\u8ACB\u7E2E\u77ED\u5230 500 \u5B57\u5167" }, 400);
+    const d = await readPageDetail(c.env, tenant2, app2, c.req.param("sec"));
+    if (!d) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u4E00\u689D" }, 404);
+    if (d.page.mandatory) return c.json({ error: "\u9019\u4E00\u689D\u662F\u5FC5\u5B88\u689D\u6587\uFF0C\u5728\u9019\u4E00\u5C64\u6539\u4E0D\u52D5\u3002\u8981\u6539\u8ACB\u627E\u4E0A\u4E00\u5C64\u7684\u7BA1\u7406\u8005\u3002", code: "mandatory" }, 403);
+    const config = await readExtractAiConfig(c.env).catch(() => void 0);
+    if (!config) return c.json({ error: "\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u7684 AI \u8A2D\u5B9A", code: "ai_config_unreadable" }, 502);
+    const pr = buildRewritePrompt({ title: d.page.title, body: d.page.body }, instruction);
+    const r = await runExtractAi(c.env, tenant2, config, { system: pr.system, prompt: pr.prompt, maxTokens: 1200, temperature: 0.1, jsonObject: false });
+    if (!r.ok) return c.json({ error: `AI \u6C92\u6709\u6539\u6210\uFF1A${r.error}`, code: r.code }, 502);
+    const draft = parseRewrite(normalizeAiText(r.out).text, d.page.title);
+    if (!draft) return c.json({ error: `AI\uFF08${r.model}\uFF09\u6C92\u6709\u5BEB\u51FA\u53EF\u7528\u7684\u689D\u6587\uFF0C\u8ACB\u63DB\u500B\u8AAA\u6CD5\u518D\u8A66\u4E00\u6B21`, code: "ai_unusable" }, 502);
+    const res = await proposePage(c.env, tenant2, app2.id, c.req.param("sec"), ruleActor(auth), instruction, draft, { model: r.model });
+    if (!res.ok) return c.json({ error: res.error, code: res.code }, res.status);
+    return c.json({ proposal: res.proposal });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/:app/:sec/approve",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(RULE_ADMIN_ONLY, 403);
+    const res = await approvePage(c.env, knowledgeOwner(c.env), c.req.param("app"), c.req.param("sec"), ruleActor(auth));
+    if (!res.ok) return c.json({ error: res.error, code: res.code }, res.status);
+    return c.json({ rev: res.rev, changed: res.changed });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/:app/:sec/reject",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(RULE_ADMIN_ONLY, 403);
+    const res = await rejectPage(c.env, knowledgeOwner(c.env), c.req.param("app"), c.req.param("sec"));
+    if (!res.ok) return c.json({ error: res.error, code: res.code }, res.status);
+    return c.json({ ok: true });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/:app/:sec/rollback",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(RULE_ADMIN_ONLY, 403);
+    const res = await rollbackPage(c.env, knowledgeOwner(c.env), c.req.param("app"), c.req.param("sec"), ruleActor(auth));
+    if (!res.ok) return c.json({ error: res.error, code: res.code }, res.status);
+    return c.json({ entry: res.entry });
+  })
+);
 
 // cypher-executor/src/routes/portal-proofread.ts
 init_dist();
@@ -34045,7 +38002,7 @@ function nameOf(values) {
 function channelOf(raw2) {
   return raw2 === "mcp" || raw2 === "helper" ? raw2 : "portal";
 }
-function actorOf(auth, rawChannel) {
+function actorOf2(auth, rawChannel) {
   return { id: auth.recordId, name: nameOf(auth.values), channel: channelOf(rawChannel) };
 }
 async function loadPeople(env) {
@@ -34086,9 +38043,11 @@ async function readCard(env, library, pageName) {
   return { content, version: await shortHash(content), source_path, machine };
 }
 var strField = (b, k, max) => typeof b?.[k] === "string" ? b[k].trim().slice(0, max) : "";
-function publicObjection(o, ev) {
+function publicObjection(o, ev, viewerId) {
   return {
     objection_id: o.id,
+    suggestion_reason: o.reason ?? "",
+    mine: !!viewerId && o.author_id === viewerId,
     paragraph: o.paragraph,
     claim_b: o.claim_b,
     has_source: o.source.trim() !== "",
@@ -34118,7 +38077,7 @@ portalProofreadRouter.post(
     if (kind !== "like" && kind !== "not_wanted" && kind !== "wrong") return c.json({ error: "kind \u53EA\u80FD\u662F like\uFF0Fnot_wanted\uFF0Fwrong" }, 400);
     if (!library || !pageName) return c.json({ error: "\u7F3A\u5C11 library \u6216 page_name" }, 400);
     if (!canReadLibrary(libraries, library)) return notFound2(c);
-    const actor = actorOf(auth.user, b?.channel);
+    const actor = actorOf2(auth.user, b?.channel);
     if (kind !== "wrong") {
       await recordSignal(c.env, kind, library, pageName, actor.id, strField(b, "question", 300));
       return c.json({
@@ -34149,6 +38108,7 @@ portalProofreadRouter.post(
       claim_b: suggestion,
       source,
       question: strField(b, "question", 300),
+      reason: strField(b, "reason", 200),
       card_version: card.version,
       source_path: card.source_path,
       machine: card.machine,
@@ -34195,9 +38155,9 @@ portalProofreadRouter.post(
     const choice = b?.choice;
     if (!id || choice !== "a" && choice !== "b" && choice !== "unsure") return c.json({ error: "\u9700\u8981 objection_id \u8207 choice\uFF08a\uFF0Fb\uFF0Funsure\uFF09" }, 400);
     const o = await getObjection(c.env, id);
-    if (!o || !canReadLibrary(libraries, o.library)) return notFound2(c);
+    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound2(c);
     if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u7570\u8B70\u5DF2\u7D93\u7D50\u6848\u4E86", code: "closed", status: o.status }, 409);
-    const actor = actorOf(auth.user, b?.channel);
+    const actor = actorOf2(auth.user, b?.channel);
     if (actor.id === o.author_id) return c.json({ error: "\u9019\u662F\u4F60\u81EA\u5DF1\u63D0\u7684\u7570\u8B70\uFF0C\u540C\u4E00\u500B\u4EBA\u53EA\u7B97\u4E00\u7968", code: "own_objection" }, 409);
     const quote = strField(b, "quote", 500);
     if (actor.channel === "mcp" && !quote) {
@@ -34229,9 +38189,48 @@ portalProofreadRouter.get(
       success: true,
       library,
       page_name: pageName,
-      objections: proofs.map((p) => publicObjection(p.objection, p.evaluation)),
+      objections: proofs.map((p) => publicObjection(p.objection, p.evaluation, auth.user.recordId)),
       paragraphs: viewsOf(proofs)
     });
+  })
+);
+portalProofreadRouter.patch(
+  "/portal/data/proofread/objection",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const b = await c.req.json().catch(() => null);
+    const id = strField(b, "objection_id", 200);
+    if (!id) return c.json({ error: "\u9700\u8981 objection_id" }, 400);
+    const o = await getObjection(c.env, id);
+    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound2(c);
+    if (o.author_id !== auth.user.recordId) return c.json({ error: "\u53EA\u6709\u63D0\u51FA\u5EFA\u8B70\u7684\u4EBA\u80FD\u6539\u81EA\u5DF1\u7684\u5EFA\u8B70", code: "not_author" }, 403);
+    if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u5EFA\u8B70\u5DF2\u7D93\u88C1\u6C7A\uFF0C\u4E0D\u80FD\u518D\u6539\uFF1B\u8981\u6539\u53E3\u8ACB\u518D\u63D0\u4E00\u5247\u65B0\u5EFA\u8B70", code: "closed", status: o.status }, 409);
+    const suggestion = strField(b, "suggestion", 1e3);
+    if (typeof b?.suggestion === "string" && !suggestion) return c.json({ error: "\u5EFA\u8B70\u5167\u5BB9\u4E0D\u80FD\u662F\u7A7A\u7684\uFF1B\u4E0D\u60F3\u8981\u4E86\u8ACB\u7528\u300C\u64A4\u56DE\u300D", code: "empty" }, 400);
+    const next = await editObjection(c.env, o, {
+      claim_b: suggestion || o.claim_b,
+      ...typeof b?.reason === "string" ? { reason: strField(b, "reason", 200) } : {},
+      ...typeof b?.source === "string" ? { source: strField(b, "source", 500) } : {}
+    });
+    return c.json({ ok: true, objection_id: next.id, suggestion: next.claim_b, suggestion_reason: next.reason ?? "", reply: "\u5DF2\u66F4\u65B0\u4F60\u7684\u5EFA\u8B70\u3002" });
+  })
+);
+portalProofreadRouter.delete(
+  "/portal/data/proofread/objection",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const libraries = parseLibraries(auth.user.values.libraries);
+    const id = (c.req.query("objection_id") ?? "").trim();
+    if (!id) return c.json({ error: "\u9700\u8981 objection_id" }, 400);
+    const o = await getObjection(c.env, id);
+    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound2(c);
+    if (o.author_id !== auth.user.recordId) return c.json({ error: "\u53EA\u6709\u63D0\u51FA\u5EFA\u8B70\u7684\u4EBA\u80FD\u64A4\u56DE\u81EA\u5DF1\u7684\u5EFA\u8B70", code: "not_author" }, 403);
+    if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u5EFA\u8B70\u5DF2\u7D93\u88C1\u6C7A\uFF0C\u4E0D\u80FD\u64A4\u56DE", code: "closed", status: o.status }, 409);
+    await withdrawObjection(c.env, o);
+    return c.json({ ok: true, objection_id: o.id, reply: "\u5DF2\u64A4\u56DE\u3002\u7D00\u9304\u6703\u4FDD\u7559\uFF0C\u4F46\u4E0D\u6703\u518D\u5F71\u97FF\u9019\u5F35\u5361\u3002" });
   })
 );
 async function requireOwnerOf(env, auth, library, sourcePath, machine) {
@@ -34251,7 +38250,7 @@ portalProofreadRouter.post(
     const decision = b?.decision;
     if (!id || decision !== "adopt" && decision !== "reject" && decision !== "hold") return c.json({ error: "\u9700\u8981 objection_id \u8207 decision\uFF08adopt\uFF0Freject\uFF0Fhold\uFF09" }, 400);
     const o = await getObjection(c.env, id);
-    if (!o || !canReadLibrary(libraries, o.library)) return notFound2(c);
+    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound2(c);
     if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u7570\u8B70\u5DF2\u7D93\u88C1\u6C7A\u904E\u4E86", code: "closed", status: o.status }, 409);
     const gate = await requireOwnerOf(c.env, auth.user, o.library, o.source_path, o.machine);
     if (!gate.ok) return c.json({ error: "\u53EA\u6709\u9019\u4EFD\u539F\u7A3F\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u88C1\u6C7A", code: "not_owner" }, 403);
@@ -34373,6 +38372,121 @@ portalProofreadRouter.put(
   })
 );
 
+// cypher-executor/src/routes/portal-note-images.ts
+init_dist();
+init_release_body();
+var portalNoteImagesRouter = new Hono2();
+var NOTE_IMAGE_TEMPLATE = "note_image";
+var SLOTS3 = ["name", "mime", "data", "size", "author", "created_at"];
+var MAX_IMAGE_BYTES = 8e5;
+var ALLOWED = /* @__PURE__ */ new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+function sniffImage(bytes) {
+  const at = (i, s) => s.every((b, k) => bytes[i + k] === b);
+  if (bytes.length >= 8 && at(0, [137, 80, 78, 71, 13, 10, 26, 10])) return "image/png";
+  if (bytes.length >= 3 && at(0, [255, 216, 255])) return "image/jpeg";
+  if (bytes.length >= 6 && at(0, [71, 73, 70, 56])) return "image/gif";
+  if (bytes.length >= 12 && at(0, [82, 73, 70, 70]) && at(8, [87, 69, 66, 80])) return "image/webp";
+  return null;
+}
+var ensured2 = false;
+async function ensureTemplate6(env) {
+  if (ensured2) return;
+  const got = await kbdbFetch2(env, `/templates/${NOTE_IMAGE_TEMPLATE}`);
+  releaseBody(got);
+  if (!got.ok) {
+    releaseBody(await kbdbFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name: NOTE_IMAGE_TEMPLATE, slots: SLOTS3 }) }).catch(() => void 0));
+  }
+  ensured2 = true;
+}
+function decodeB64(b642) {
+  try {
+    const bin = atob(b642);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+var cleanName = (raw2) => {
+  const base = typeof raw2 === "string" ? raw2.split(/[/\\]/).pop() ?? "" : "";
+  return base.replace(/[\u0000-\u001f\u007f[\]()<>]/g, "").trim().slice(0, 80);
+};
+portalNoteImagesRouter.post(
+  "/portal/data/note-images",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const b = await c.req.json().catch(() => null);
+    const b642 = typeof b?.data_b64 === "string" ? b.data_b64.replace(/^data:[^,]*,/, "").replace(/\s+/g, "") : "";
+    if (!b642) return c.json({ error: "data_b64 \u5FC5\u586B\uFF08\u5716\u7247\u5167\u5BB9\uFF09" }, 400);
+    if (b642.length > Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 8) {
+      return c.json({ error: `\u5716\u7247\u592A\u5927\uFF08\u4E0A\u9650\u7D04 ${Math.round(MAX_IMAGE_BYTES / 1e3)} KB\uFF09`, code: "image_too_large" }, 413);
+    }
+    const bytes = decodeB64(b642);
+    if (!bytes || bytes.length === 0) return c.json({ error: "data_b64 \u4E0D\u662F\u5408\u6CD5\u7684 base64" }, 400);
+    if (bytes.length > MAX_IMAGE_BYTES) return c.json({ error: `\u5716\u7247\u592A\u5927\uFF08\u4E0A\u9650\u7D04 ${Math.round(MAX_IMAGE_BYTES / 1e3)} KB\uFF09`, code: "image_too_large" }, 413);
+    const mime = sniffImage(bytes);
+    if (!mime || !ALLOWED.has(mime)) return c.json({ error: "\u53EA\u6536 PNG\u3001JPEG\u3001GIF\u3001WebP \u5716\u7247", code: "unsupported_image" }, 415);
+    const name = cleanName(b?.name) || "\u5716\u7247";
+    await ensureTemplate6(c.env);
+    const res = await kbdbFetch2(c.env, "/records", {
+      method: "POST",
+      body: JSON.stringify({
+        template: NOTE_IMAGE_TEMPLATE,
+        values: {
+          name,
+          mime,
+          data: b642,
+          size: String(bytes.length),
+          author: String(auth.user.values.email ?? ""),
+          created_at: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      })
+    });
+    if (!res.ok) {
+      releaseBody(res);
+      return c.json({ error: `\u5716\u7247\u6C92\u6709\u5B58\u9032\u77E5\u8B58\u5EAB\uFF08HTTP ${res.status}\uFF09\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66` }, 502);
+    }
+    const body = await res.json().catch(() => null);
+    const id = body?.record?.record_id;
+    if (!id) return c.json({ error: "\u77E5\u8B58\u5EAB\u6C92\u6709\u56DE\u5716\u7247\u7DE8\u865F\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66" }, 502);
+    return c.json({ ok: true, id, url: `/portal/data/note-images/${encodeURIComponent(id)}`, markdown: `![${name}](kbimg:${id})`, mime, size: bytes.length });
+  })
+);
+portalNoteImagesRouter.get(
+  "/portal/data/note-images/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const id = c.req.param("id");
+    if (!/^[A-Za-z0-9_.:-]{1,200}$/.test(id)) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u5F35\u5716\u7247" }, 404);
+    const res = await kbdbFetch2(c.env, `/records/${encodeURIComponent(id)}`);
+    if (!res.ok) {
+      releaseBody(res);
+      return c.json({ error: "\u627E\u4E0D\u5230\u9019\u5F35\u5716\u7247" }, 404);
+    }
+    const body = await res.json().catch(() => null);
+    const v = body?.record?.values;
+    const mime = v?.mime ?? "";
+    if (!v || body?.record?.template && body.record.template !== NOTE_IMAGE_TEMPLATE || !ALLOWED.has(mime) || typeof v.data !== "string") {
+      return c.json({ error: "\u627E\u4E0D\u5230\u9019\u5F35\u5716\u7247" }, 404);
+    }
+    const bytes = decodeB64(v.data);
+    if (!bytes) return c.json({ error: "\u9019\u5F35\u5716\u7247\u7684\u8CC7\u6599\u58DE\u4E86" }, 500);
+    return new Response(bytes, {
+      status: 200,
+      headers: {
+        "Content-Type": mime,
+        "Content-Length": String(bytes.length),
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox"
+      }
+    });
+  })
+);
+
 // cypher-executor/src/routes/portal-actor.ts
 init_dist();
 var SPENT_TEMPLATE = "portal_actor_spent";
@@ -34401,7 +38515,11 @@ portalActorRouter.post("/portal/actor/verify", async (c) => {
 
 // cypher-executor/src/routes/apps.ts
 init_dist();
+init_app_glyphs();
+init_app_system();
+init_app_mcp();
 init_endpoints();
+init_app_userlayer_ops();
 var appsRouter = new Hono2();
 function requireApiKey(c) {
   return c.req.header("X-Arcrun-API-Key") ?? null;
@@ -34494,7 +38612,7 @@ appsRouter.delete("/apps/:id", async (c) => {
   if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
   const id = c.req.param("id");
   const result = await uninstallApp(c.env, apiKey, id);
-  if (!result.ok) return c.json({ error: result.error ?? "\u5378\u8F09\u5931\u6557" }, 404);
+  if (!result.ok) return c.json({ error: result.error ?? "\u5378\u8F09\u5931\u6557", ...result.code ? { code: result.code } : {} }, result.code === "builtin_app" ? 409 : 404);
   return c.json({ removed: true });
 });
 appsRouter.get("/apps/glyphs", (c) => {
@@ -34504,18 +38622,57 @@ appsRouter.get("/apps/glyphs", (c) => {
 appsRouter.get("/apps/mcp", async (c) => {
   const apiKey = requireApiKey(c);
   if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  const apps = mcpCatalogOf(await listInstalledApps(c.env, apiKey));
+  const apps = mcpCatalogOf(await listAppsWithBuiltins(c.env, apiKey, selfBaseFromRequest(c.env, c.req.url)));
   return c.json({ apps });
 });
 appsRouter.get("/apps", async (c) => {
   const apiKey = requireApiKey(c);
   if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
-  const apps = await listInstalledApps(c.env, apiKey);
+  const apps = await listAppsWithBuiltins(c.env, apiKey, selfBaseFromRequest(c.env, c.req.url));
   return c.json({ apps: apps.map(summarizeApp), count: apps.length });
+});
+appsRouter.get("/apps/:id/user-layer", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const st = await getUserLayerState(c.env, apiKey, c.req.param("id"));
+  if (!st) return c.json({ error: `\u6C92\u6709\u5B89\u88DD\u9019\u500B App\uFF1A${c.req.param("id")}`, code: "not_found" }, 404);
+  return c.json(st);
+});
+appsRouter.post("/apps/:id/user-layer/reset", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const body = await c.req.json().catch(() => ({}));
+  const target = body.kind && body.id && (body.kind === "recipe" || body.kind === "workflow") ? { kind: body.kind, id: String(body.id) } : void 0;
+  if ((body.kind || body.id) && !target) return c.json({ error: "kind \u8981\u662F recipe \u6216 workflow\uFF0C\u4E26\u4E14\u8981\u5E36 id\uFF1B\u6216\u5169\u500B\u90FD\u4E0D\u5E36\uFF1D\u5168\u90E8\u6062\u5FA9\u3002", code: "bad_target" }, 400);
+  const r = await resetUserLayer(c.env, apiKey, c.req.param("id"), actorOf(c.req), target);
+  if (!r) return c.json({ error: `\u6C92\u6709\u5B89\u88DD\u9019\u500B App\uFF1A${c.req.param("id")}`, code: "not_found" }, 404);
+  return c.json({
+    ...r,
+    message: r.nothing ? "\u6C92\u6709\u4F60\u6539\u904E\u7684\u5730\u65B9\uFF0C\u5DF2\u7D93\u662F\u767C\u884C\u8005\u90A3\u4E00\u7248\u3002" : "\u5DF2\u6062\u5FA9\u6210\u767C\u884C\u8005\u90A3\u4E00\u7248\u3002\u91D1\u9470\u7684\u503C\u6C92\u6709\u52D5\uFF1B\u8981\u9000\u56DE\u525B\u624D\u7684\u6A23\u5B50\u7528 rollback\u3002"
+  });
+});
+appsRouter.post("/apps/:id/user-layer/keep", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const body = await c.req.json().catch(() => ({}));
+  if (body.kind !== "recipe" && body.kind !== "workflow" || !body.id) return c.json({ error: "kind \u8981\u662F recipe \u6216 workflow\uFF0C\u4E26\u4E14\u8981\u5E36 id\u3002", code: "bad_target" }, 400);
+  const r = await keepUserItem(c.env, apiKey, c.req.param("id"), body.kind, String(body.id), actorOf(c.req));
+  if (!r.ok) return c.json({ error: r.error, code: r.code }, 404);
+  return c.json(r);
+});
+appsRouter.post("/apps/:id/user-layer/rollback", async (c) => {
+  const apiKey = requireApiKey(c);
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const body = await c.req.json().catch(() => ({}));
+  const r = await rollbackUserLayer(c.env, apiKey, c.req.param("id"), actorOf(c.req), typeof body.n === "number" ? body.n : void 0);
+  if (!r) return c.json({ error: `\u6C92\u6709\u5B89\u88DD\u9019\u500B App\uFF1A${c.req.param("id")}`, code: "not_found" }, 404);
+  if (!r.ok) return c.json({ error: r.error, code: r.code }, r.code === "no_entry" ? 404 : 409);
+  return c.json(r);
 });
 
 // cypher-executor/src/routes/storage.ts
 init_dist();
+init_cron_index();
 var storageRouter = new Hono2();
 var IMPORT_BATCH_MAX = 8;
 var TRANSIENT_NAMESPACES = {
@@ -34668,8 +38825,10 @@ internalCronRouter.post("/internal/cron/tick", async (c) => {
 
 // cypher-executor/src/routes/ui-components.ts
 init_dist();
+init_ui_surface();
 
 // cypher-executor/src/lib/ui-catalog.ts
+init_ui_catalog_generated();
 var CATALOG2 = ui_catalog_generated_default;
 var UI_CATALOG_ID = CATALOG2.catalog_id;
 var UI_PROTOCOL_VERSION = CATALOG2.protocol_version;
@@ -34850,7 +39009,7 @@ app.use("*", cors({
   },
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization", "X-Arcrun-API-Key", "X-Arcrun-Secrets-Grant", "X-Arcrun-Grant-Session"],
-  exposeHeaders: ["X-Arcrun-Grant-Session"],
+  exposeHeaders: ["X-Arcrun-Grant-Session", "X-KBDB-Rows-Read", "X-KBDB-Rows-Written", "X-KBDB-Statements"],
   credentials: true
 }));
 app.onError((err2, c) => {
@@ -34906,6 +39065,7 @@ app.route("/", consoleDashboardRouter);
 app.route("/", portalRouter);
 app.route("/", portalActorRouter);
 app.route("/", portalProofreadRouter);
+app.route("/", portalNoteImagesRouter);
 app.route("/", portalDataRouter);
 app.route("/", storageRouter);
 app.route("/", appsRouter);
