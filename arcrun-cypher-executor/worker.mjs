@@ -1,11 +1,11 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res, err2) => function __init() {
-  if (err2) throw err2[0];
+var __esm = (fn, res, err3) => function __init() {
+  if (err3) throw err3[0];
   try {
     return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
   } catch (e) {
-    throw err2 = [e], e;
+    throw err3 = [e], e;
   }
 };
 var __export = (target, all) => {
@@ -77,13 +77,13 @@ var init_compose = __esm({
           if (handler) {
             try {
               res = await handler(context, () => dispatch(i + 1));
-            } catch (err2) {
-              if (err2 instanceof Error && onError) {
-                context.error = err2;
-                res = await onError(err2, context);
+            } catch (err3) {
+              if (err3 instanceof Error && onError) {
+                context.error = err3;
+                res = await onError(err3, context);
                 isError = true;
               } else {
-                throw err2;
+                throw err3;
               }
             }
           } else {
@@ -1173,12 +1173,12 @@ var init_hono_base = __esm({
     notFoundHandler = (c) => {
       return c.text("404 Not Found", 404);
     };
-    errorHandler = (err2, c) => {
-      if ("getResponse" in err2) {
-        const res = err2.getResponse();
+    errorHandler = (err3, c) => {
+      if ("getResponse" in err3) {
+        const res = err3.getResponse();
         return c.newResponse(res.body, res);
       }
-      console.error(err2);
+      console.error(err3);
       return c.text("Internal Server Error", 500);
     };
     Hono = class _Hono {
@@ -1429,11 +1429,11 @@ var init_hono_base = __esm({
         this.router.add(method, path, [handler, r]);
         this.routes.push(r);
       }
-      #handleError(err2, c) {
-        if (err2 instanceof Error) {
-          return this.errorHandler(err2, c);
+      #handleError(err3, c) {
+        if (err3 instanceof Error) {
+          return this.errorHandler(err3, c);
         }
-        throw err2;
+        throw err3;
       }
       #dispatch(request, executionCtx, env, method) {
         if (method === "HEAD") {
@@ -1454,12 +1454,12 @@ var init_hono_base = __esm({
             res = matchResult[0][0][0][0](c, async () => {
               c.res = await this.#notFoundHandler(c);
             });
-          } catch (err2) {
-            return this.#handleError(err2, c);
+          } catch (err3) {
+            return this.#handleError(err3, c);
           }
           return res instanceof Promise ? res.then(
             (resolved) => resolved || (c.finalized ? c.res : this.#notFoundHandler(c))
-          ).catch((err2) => this.#handleError(err2, c)) : res ?? this.#notFoundHandler(c);
+          ).catch((err3) => this.#handleError(err3, c)) : res ?? this.#notFoundHandler(c);
         }
         const composed = compose(matchResult[0], this.errorHandler, this.#notFoundHandler);
         return (async () => {
@@ -1471,8 +1471,8 @@ var init_hono_base = __esm({
               );
             }
             return context.res;
-          } catch (err2) {
-            return this.#handleError(err2, c);
+          } catch (err3) {
+            return this.#handleError(err3, c);
           }
         })();
       }
@@ -7738,8 +7738,8 @@ function liftCodeNodeFailure(componentId, result) {
   if (!data || typeof data !== "object" || Array.isArray(data)) return result;
   const d = data;
   if (d.success !== false) return result;
-  const err2 = typeof d.error === "string" && d.error ? d.error : typeof d.message === "string" && d.message ? d.message : "code \u7BC0\u9EDE\u56DE\u50B3 success:false";
-  return { ...r, success: false, error: err2 };
+  const err3 = typeof d.error === "string" && d.error ? d.error : typeof d.message === "string" && d.message ? d.message : "code \u7BC0\u9EDE\u56DE\u50B3 success:false";
+  return { ...r, success: false, error: err3 };
 }
 function isFailure(result) {
   if (!result || typeof result !== "object") return false;
@@ -7757,8 +7757,8 @@ function deriveExecutionVerdict(graph, trace) {
     }
     if (isFailure(step.output)) {
       const out = step.output;
-      const err2 = typeof out.error === "string" ? out.error : `\u7BC0\u9EDE ${step.nodeId} \u56DE\u50B3 success:false${describeFailedOutput(out) ? `\uFF1A${describeFailedOutput(out)}` : ""}`;
-      return { success: false, failedNode: step.nodeId, error: err2 };
+      const err3 = typeof out.error === "string" ? out.error : `\u7BC0\u9EDE ${step.nodeId} \u56DE\u50B3 success:false${describeFailedOutput(out) ? `\uFF1A${describeFailedOutput(out)}` : ""}`;
+      return { success: false, failedNode: step.nodeId, error: err3 };
     }
   }
   return { success: true };
@@ -8440,9 +8440,9 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
       };
     }
     return { success: true, data: result.data, trace: result.trace, duration_ms };
-  } catch (err2) {
+  } catch (err3) {
     const duration_ms = Date.now() - start;
-    const errMsg = err2 instanceof Error ? err2.message : String(err2);
+    const errMsg = err3 instanceof Error ? err3.message : String(err3);
     const isPaused = /workflow paused/i.test(errMsg);
     recordTelemetry(env, apiKey, {
       event_type: isPaused ? "run_success" : "run_fail",
@@ -8454,13 +8454,13 @@ async function executeWebhookGraph(env, graph, triggerContext, token, apiKey, ct
     if (!isPaused) {
       recordRecipeStats(env, executor.usedRecipeKeys, false, Date.now(), ctx);
     }
-    if (err2 instanceof ExecutionError) {
-      const traceFormatted = err2.trace.map((s) => ({
+    if (err3 instanceof ExecutionError) {
+      const traceFormatted = err3.trace.map((s) => ({
         node: s.nodeId,
         status: s.error ? "failed" : "success",
         ...s.error ? { error: s.error } : {}
       }));
-      const failedStep = [...err2.trace].reverse().find((s) => s.error)?.nodeId;
+      const failedStep = [...err3.trace].reverse().find((s) => s.error)?.nodeId;
       return {
         success: false,
         error: errMsg,
@@ -14228,6 +14228,8 @@ function validateAppDeclaration(raw2) {
       });
     }
   }
+  if (d.entry !== void 0 && d.entry !== "kb") errors.push("entry \u53EA\u80FD\u662F 'kb'\uFF08\u5165\u53E3\u5728\u77E5\u8B58\u5EAB\uFF09\uFF1B\u7701\u7565\uFF1DApp \u6E05\u55AE\u6709\u81EA\u5DF1\u7684\u5716\u793A");
+  if (d.entry === "kb" && hasUi) errors.push("entry \u662F 'kb' \u7684 App \u4E0D\u80FD\u518D\u5E36 ui\uFF08\u5165\u53E3\u53EA\u6709\u77E5\u8B58\u5EAB\u4E00\u500B\uFF09");
   if (d.ui !== void 0 && !hasUi) {
     errors.push("ui.html \u6216 ui.surface \u5FC5\u586B\u4E14\u4E0D\u53EF\u7A7A\uFF08\u6709 ui \u6B04\u4F4D\u5C31\u8981\u6709\u756B\u9762\u5167\u5BB9\uFF09");
   }
@@ -14990,10 +14992,11 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     ...uiSurface ? { ui_surface: uiSurface } : {},
     ui_style: uiHtml ? decl.ui?.style ?? DEFAULT_APP_UI_STYLE : void 0,
     keeps_data: decl.keeps_data,
+    ...decl.entry === "kb" ? { entry: "kb" } : {},
     ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
     ...mcp ? { mcp } : {},
     declared: { data: decl.data, ...decl.engine_min ? { engine_min: decl.engine_min } : {} },
-    ...ulCtx && (Object.keys(ulCtx.layer.items).length || ulCtx.layer.log.length || ulCtx.layer.proposals || ulCtx.layer.pages) ? { user_layer: ulCtx.layer } : {},
+    ...ulCtx && (Object.keys(ulCtx.layer.items).length || ulCtx.layer.log.length || ulCtx.layer.proposals || ulCtx.layer.pages || ulCtx.layer.rule_sources) ? { user_layer: ulCtx.layer } : {},
     ...opts.source ?? existing?.source ? { source: opts.source ?? existing?.source } : {},
     ...opts.origin ?? existing?.origin ? { origin: opts.origin ?? existing?.origin } : {},
     ...opts.origin === "authored" && opts.author ? { author: opts.author } : existing?.author ? { author: existing.author } : {},
@@ -15110,6 +15113,7 @@ function summarizeApp(app2) {
     name,
     icon,
     builtin: isBuiltinApp(app2.id),
+    ...app2.entry === "kb" ? { entry: "kb" } : {},
     origin: app2.origin ?? "market",
     tier: studioTierOf(app2),
     ...app2.author ? { author: app2.author } : {},
@@ -20184,14 +20188,6 @@ var catalog_default = {
       declaration: "../workflows/imbot.app.json"
     },
     {
-      id: "loops",
-      name: "\u8FF4\u5708\u76E3\u63A7",
-      icon: "\u{1F501}",
-      summary: "\u6BCF\u500B\u8FF4\u5708\u4E00\u5217\u71C8\u865F\u3001\u4E3B\u6307\u6A19\u548C\u8FD1 12 \u671F\u8D70\u52E2\uFF0C\u770B\u5F97\u51FA\u5361\u5728\u54EA\u4E00\u683C\uFF1B\u9EDE\u9032\u53BB\u770B\u56DB\u683C\u7684\u7D30\u7BC0\u3002\u6BCF\u5929\u65E9\u4E0A\u81EA\u5DF1\u91CD\u7B97\u71C8\u865F\uFF0C\u6709\u65B0\u7D05\u71C8\u53EF\u7528 Telegram \u901A\u77E5\u4F60\uFF08\u9078\u586B\uFF09\u3002",
-      author: "Arcrun \u5167\u5EFA",
-      declaration: "../workflows/loops.app.json"
-    },
-    {
       id: "paper",
       name: "\u5831\u793E",
       icon: "\u{1F4F0}",
@@ -20215,7 +20211,8 @@ var notes_default = {
   id: "notes",
   name: "\u7B46\u8A18",
   icon: "\u{1F4DD}",
-  version: "1.5.1",
+  entry: "kb",
+  version: "1.6.0",
   workflows: [
     {
       name: "create_note",
@@ -20429,7 +20426,7 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
             label: "filter_sort",
             componentId: "code",
             data: {
-              code: "// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\u2014\u2014\n// \u4E0D\u52A0\u9019\u6BB5\u9632\u8B77\u6642\uFF0C\u300C\u4E0D\u5E36 date\uFF1D\u67E5\u5168\u90E8\u300D\u9019\u500B\u6700\u5E38\u7528\u7684\u9810\u8A2D\u8DEF\u5F91\u6703\u975C\u9ED8\u56DE\u50B3 0 \u7B46\uFF0C\n// \u8A73\u7D30\u6210\u56E0\u898B notes-create.yaml \u7684 prep \u7BC0\u9EDE\u540C\u6B3E\u8A3B\u89E3\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u8CBC\u4E00\u6B21\uFF09\u3002\nfunction provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst body = parse(input.body) || {};\nconst records = Array.isArray(body.records) ? body.records : [];\nconst wantDate = provided(input.date) ? String(input.date).trim() : '';\nconst all = records.map(function (r) {\n  const v = r.values || {};\n  return {\n    record_id: r.record_id,\n    date: v.date || '',\n    content: v.content || '',\n    created_at: v.created_at || '',\n    edited_at: v.edited_at || '',\n    folder: v.folder || '',\n    parent_id: v.parent_id || '',\n    author: v.author || '',\n    quote: v.quote || '',\n    quote_pos: v.quote_pos || '',\n    deleted: v.deleted === '1'\n  };\n});\n// \u5DF2\u522A\u9664\uFF08arcrun-app-note#2\uFF0C\u6A19\u8A18\u522A\u9664\u3001\u4E0D\u7269\u7406\u522A\u9664\uFF09\uFF1A\n//   \xB7 \u5DF2\u522A\u9664\u7684\u7368\u7ACB\u7B46\u8A18\u6574\u5247\u4E0D\u51FA\u73FE\uFF0C\u5B83\u5E95\u4E0B\u7684\u56DE\u8986\u8DDF\u8457\u4E0D\u51FA\u73FE\uFF1B\n//   \xB7 \u5DF2\u522A\u9664\u7684\u56DE\u8986\uFF1A\u5B83\u300C\u4E4B\u5F8C\u300D\u9084\u6709\u5225\u4EBA\u7684\u56DE\u8986\u6642\u7559\u4E00\u500B\u5360\u4F4D\uFF08deleted:true\uFF0C\u5167\u6587\u6E05\u7A7A\u2014\u2014\u522A\u6389\u7684\u5B57\u4E0D\u9001\u5230\u756B\u9762\uFF09\uFF0C\n//     \u4E4B\u5F8C\u6C92\u6709\u4EFB\u4F55\u56DE\u8986\u4E86\u5C31\u4E0D\u51FA\u73FE\u3002\u756B\u9762\u628A\u5360\u4F4D\u986F\u793A\u6210\u300C\u9019\u5247\u56DE\u8986\u5DF2\u522A\u9664\u300D\u3002\nconst deletedTop = {};\nall.forEach(function (n) { if (n.deleted && !n.parent_id) deletedTop[n.record_id] = true; });\nconst repliesByParent = {};\nall.forEach(function (n) {\n  if (!n.parent_id || deletedTop[n.parent_id]) return;\n  (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);\n});\nObject.keys(repliesByParent).forEach(function (pid) {\n  const list = repliesByParent[pid];\n  list.sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });\n  let lastLive = -1;\n  list.forEach(function (r, i) { if (!r.deleted) lastLive = i; });\n  repliesByParent[pid] = list.filter(function (r, i) { return !r.deleted || i < lastLive; }).map(function (r) {\n    return r.deleted ? { record_id: r.record_id, parent_id: r.parent_id, created_at: r.created_at, deleted: true, content: '', author: '', quote: '', quote_pos: '' } : r;\n  });\n});\nlet notes = all.filter(function (n) { return !n.parent_id && !n.deleted; });\nif (wantDate) notes = notes.filter(function (n) { return n.date === wantDate; });\nnotes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });\nnotes = notes.map(function (n) {\n  return Object.assign({}, n, { replies: repliesByParent[n.record_id] || [] });\n});\nreturn { success: true, notes: notes, count: notes.length, date: wantDate || null, me: loginOf(input.actor) };\n",
+              code: "// \u{1F534} \u771F\u5BE6\u8E29\u904E\u7684\u5751\uFF08\u672C\u6A5F\u7528 matrix/arcrun \u7684 GraphExecutor \u771F\u8DD1\u904E\u624D\u767C\u73FE\u2014\u2014\n// \u4E0D\u52A0\u9019\u6BB5\u9632\u8B77\u6642\uFF0C\u300C\u4E0D\u5E36 date\uFF1D\u67E5\u5168\u90E8\u300D\u9019\u500B\u6700\u5E38\u7528\u7684\u9810\u8A2D\u8DEF\u5F91\u6703\u975C\u9ED8\u56DE\u50B3 0 \u7B46\uFF0C\n// \u8A73\u7D30\u6210\u56E0\u898B notes-create.yaml \u7684 prep \u7BC0\u9EDE\u540C\u6B3E\u8A3B\u89E3\uFF0C\u9019\u88E1\u4E0D\u91CD\u8907\u8CBC\u4E00\u6B21\uFF09\u3002\nfunction provided(v) {\n  if (typeof v !== 'string') return false;\n  var t = v.trim();\n  return t !== '' && !/^\\{\\{[\\s\\S]*\\}\\}$/.test(t);\n}\nfunction parse(b) { if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return null; } } return b; }\nfunction loginOf(a) {\n  if (typeof a === 'string') { a = provided(a) ? a : ''; if (a) { try { a = JSON.parse(a); } catch (e) { a = null; } } else { a = null; } }\n  return a && typeof a === 'object' && typeof a.login === 'string' ? a.login.trim().slice(0, 128) : '';\n}\nconst body = parse(input.body) || {};\nconst records = Array.isArray(body.records) ? body.records : [];\nconst wantDate = provided(input.date) ? String(input.date).trim() : '';\nconst all = records.map(function (r) {\n  const v = r.values || {};\n  return {\n    record_id: r.record_id,\n    date: v.date || '',\n    content: v.content || '',\n    created_at: v.created_at || '',\n    edited_at: v.edited_at || '',\n    folder: v.folder || '',\n    parent_id: v.parent_id || '',\n    author: v.author || '',\n    quote: v.quote || '',\n    quote_pos: v.quote_pos || '',\n    deleted: v.deleted === '1'\n  };\n});\n// \u5DF2\u522A\u9664\uFF08arcrun-app-note#2\uFF0C\u6A19\u8A18\u522A\u9664\u3001\u4E0D\u7269\u7406\u522A\u9664\uFF09\uFF1A\n//   \xB7 \u5DF2\u522A\u9664\u7684\u7368\u7ACB\u7B46\u8A18\u6574\u5247\u4E0D\u51FA\u73FE\uFF0C\u5B83\u5E95\u4E0B\u7684\u56DE\u8986\u8DDF\u8457\u4E0D\u51FA\u73FE\uFF1B\n//   \xB7 \u5DF2\u522A\u9664\u7684\u56DE\u8986\uFF1A\u5B83\u300C\u4E4B\u5F8C\u300D\u9084\u6709\u5225\u4EBA\u7684\u56DE\u8986\u6642\u7559\u4E00\u500B\u5360\u4F4D\uFF08deleted:true\uFF0C\u5167\u6587\u6E05\u7A7A\u2014\u2014\u522A\u6389\u7684\u5B57\u4E0D\u9001\u5230\u756B\u9762\uFF09\uFF0C\n//     \u4E4B\u5F8C\u6C92\u6709\u4EFB\u4F55\u56DE\u8986\u4E86\u5C31\u4E0D\u51FA\u73FE\u3002\u756B\u9762\u628A\u5360\u4F4D\u986F\u793A\u6210\u300C\u9019\u5247\u56DE\u8986\u5DF2\u522A\u9664\u300D\u3002\nconst deletedTop = {};\nall.forEach(function (n) { if (n.deleted && !n.parent_id) deletedTop[n.record_id] = true; });\nconst repliesByParent = {};\nall.forEach(function (n) {\n  if (!n.parent_id || deletedTop[n.parent_id]) return;\n  (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);\n});\nObject.keys(repliesByParent).forEach(function (pid) {\n  const list = repliesByParent[pid];\n  list.sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });\n  let lastLive = -1;\n  list.forEach(function (r, i) { if (!r.deleted) lastLive = i; });\n  repliesByParent[pid] = list.filter(function (r, i) { return !r.deleted || i < lastLive; }).map(function (r) {\n    return r.deleted ? { record_id: r.record_id, parent_id: r.parent_id, created_at: r.created_at, deleted: true, content: '', author: '', quote: '', quote_pos: '' } : r;\n  });\n});\nlet notes = all.filter(function (n) { return !n.parent_id && !n.deleted; });\nif (wantDate) notes = notes.filter(function (n) { return n.date === wantDate; });\nnotes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });\nnotes = notes.map(function (n) {\n  return Object.assign({}, n, { replies: repliesByParent[n.record_id] || [] });\n});\n// threads\uFF08inkstone/Arcrun#500\uFF09\uFF1A\u4E0D\u662F\u639B\u5728\u67D0\u5247\u7B46\u8A18\u5E95\u4E0B\u7684\u7559\u8A00\u4E32\u2014\u2014\u898F\u7AE0\u689D\u6587\u3001\u77E5\u8B58\u5361\u7684\u7559\u8A00\u4E5F\u5B58\u6210 note \u8A18\u9304\uFF0C\n// parent_id \u6307\u5411\u88AB\u7559\u8A00\u7684\u90A3\u500B\u6771\u897F\uFF08\u4F8B rule:company_rules:1-1\uFF09\u3002\u9019\u88E1\u628A\u5B83\u5011\u4F9D parent_id \u5206\u597D\u4E00\u8D77\u56DE\uFF0C\n// \u756B\u9762\u4E0D\u5FC5\u70BA\u4E86\u300C\u9019\u4E00\u689D\u898F\u7AE0\u6709\u5E7E\u5247\u7559\u8A00\u300D\u518D\u591A\u6253\u4E00\u6B21\u8B80\u53D6\u3002\u7368\u7ACB\u7B46\u8A18\u5E95\u4E0B\u7684\u7559\u8A00\u7167\u820A\u5728 notes[i].replies\u3002\nconst noteIds = {};\nall.forEach(function (n) { if (!n.parent_id) noteIds[n.record_id] = true; });\nconst threads = {};\nObject.keys(repliesByParent).forEach(function (pid) { if (!noteIds[pid]) threads[pid] = repliesByParent[pid]; });\nreturn { success: true, notes: notes, count: notes.length, date: wantDate || null, me: loginOf(input.actor), threads: threads };\n",
               input: {
                 body: "{{fetch_notes.data.body}}",
                 date: "{{input.date}}",
@@ -21249,1552 +21246,6 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
       }
     }
   ],
-  ui: {
-    html: `<!doctype html>
-<html lang="zh-Hant">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>\u7B46\u8A18</title>
-<!--
-  ui/index.html \u2014 \u7B46\u8A18 App \u524D\u7AEF\uFF08inkstone/InkStoneCo#2\uFF1B\u57F7\u884C\u7968 inkstone/arcrun-app-note#1\uFF09
-
-  \u624B\u6A5F\u512A\u5148\u3001\u55AE\u4E00 HTML \u6A94\uFF08\u5916\u52A0 notes-core.js \u4E00\u4EFD\u7D14\u908F\u8F2F\uFF09\uFF0C\u96F6\u5916\u90E8\u4F9D\u8CF4\u3001\u96F6 CDN\uFF0C
-  \u7167 design.md \u5C0D\u300C\u756B\u9762\u8CC7\u7522\u8981\u80FD\u843D\u5730\u5230\u5BE6\u4F8B\u300D\u7684\u8981\u6C42\uFF1A\u9019\u500B\u6A94\u6848\u672C\u8EAB\u5C31\u662F\u5168\u90E8\uFF0C
-  \u4E0D\u9700\u8981 build pipeline\uFF0C\u8907\u88FD\u9019\u5169\u500B\u6A94\u6848\u5230\u4EFB\u4F55\u5730\u65B9\u90FD\u80FD\u958B\u3002
-
-  \u{1F534} \u9019\u4E00\u9801\u9810\u8A2D\u8DD1\u5728 MOCK \u6A21\u5F0F\uFF08localStorage \u5047\u8CC7\u6599\uFF09\u2014\u2014\u56E0\u70BA inkstone/Arcrun#82
-  \u7684\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u9084\u6C92\u505A\u51FA\u4F86\uFF0C\u6C92\u6709\u771F\u5F8C\u7AEF\u53EF\u4EE5\u6253\u3002MOCK \u6A6B\u5E45\u6C38\u9060\u986F\u793A\u5728\u756B\u9762\u4E0A\uFF0C
-  \u4E0D\u5141\u8A31\u4F7F\u7528\u8005\u8AA4\u4EE5\u70BA\u9019\u662F\u771F\u8CC7\u6599\u3002\u7B49\u771F\u7AEF\u9EDE\u505A\u51FA\u4F86\uFF0C\u53EA\u8981\u5728\u9801\u9762\u8F09\u5165\u524D\u8A2D\u5B9A\uFF1A
-      window.ARCRUN_APP_ACTION_ENDPOINT = 'https://.../portal/apps/actions';
-  \u9019\u4E00\u9801\u5C31\u6703\u6539\u6253\u771F\u5F8C\u7AEF\uFF0C\u524D\u7AEF\u7A0B\u5F0F\u78BC\u4E00\u884C\u4E0D\u7528\u6539\uFF08\u547C\u53EB\u4ECB\u9762\u898B\u4E0B\u9762 callAction()\uFF09\u3002
--->
-<style>
-  /*
-   * \u639B\u8F09\u5354\u5B9A v0.2\uFF08inkstone/Arcrun#82\uFF0Cleo 2026-08-24 \u62CD\u677F\uFF09\uFF1A\u9019\u500B App \u7528 \`ui.style: inherit\`
-   * \uFF08app.yaml \u7701\u7565\u8A72\u6B04\uFF1D\u9810\u8A2D\u503C\uFF09\uFF0CPortal \u6703\u628A\u4E0B\u9762\u6240\u6709 \`:root\`\uFF0F\`html\`\uFF0F\`body\` \u9078\u64C7\u5668\u6574\u689D\u4E1F\u6389\uFF0C
-   * \u63DB\u6210\u7956\u5148 \`:host\` \u4E0A\u639B\u7684\u5168\u5C40\u8272\u7968\uFF0F\u5B57\u9AD4\uFF08CSS custom property \u7A7F\u904E shadow \u908A\u754C\u6B63\u5E38\u7E7C\u627F\uFF09\u3002
-   * \u21D2 **\u9019\u88E1\u4E0D\u518D\u81EA\u8A02\u4E00\u5957 --bg/--panel/--accent**\uFF08v0.1 \u90A3\u5957\u5728\u771F Portal \u88E1\u6703\u88AB\u780D\u6389\u3001
-   *   \u7B49\u65BC\u6574\u9801\u6C92\u6709\u984F\u8272\uFF0C\u9019\u6B63\u662F leo 08-24 \u5BE6\u6E2C\u300C\u5B83\u70BA\u4EC0\u9EBC\u4E0D\u5403\u5168\u5C40\u7684 style\uFF1F\u300D\u90A3\u53E5\u8A71\u7684\u75C5\u6839\uFF09\u3002
-   *   \u4E00\u5F8B\u76F4\u63A5\u5F15\u7528 Portal \u7684 CIS token\uFF08\u898B matrix/arcrun console-ui/public/portal/index.html
-   *   \`APP_INHERIT_CSS\`\uFF0F\`:root\` \u5B9A\u7FA9\uFF09\uFF1A
-   *     --ink / --ink-rgb     \u6587\u5B57\u8272\uFF08\u6DFA\u8272\u4E3B\u984C\u6DF1\u3001\u6DF1\u8272\u4E3B\u984C\u6DFA\uFF0C\u96A8\u4E3B\u984C\u81EA\u52D5\u5207\uFF09
-   *     --amber / --amber-rgb \u54C1\u724C\u8272\uFF08\u539F\u672C\u7B46\u8A18\u6309\u9215\u662F\u81EA\u5DF1\u7684\u85CD\u8272\uFF0C\u73FE\u5728\u8DDF\u7CFB\u7D71\u7D71\u4E00\u7528\u5B83\uFF09
-   *     --paper-a / --paper-b \u5E95\u8272\uFF08\u7D19\u7D0B\u96D9\u8272\uFF09
-   *     --bar-bg              \u5DE5\u5177\u5217\uFF0F\u56FA\u5B9A\u689D\u80CC\u666F
-   *   \u672C\u6A5F\u76F4\u63A5\u958B\u9019\u500B\u6A94\u6848\uFF08\u4E0D\u7D93 Portal\uFF09\u6642\u9019\u4E9B\u8B8A\u6578\u4E0D\u5B58\u5728 \u2192 \u700F\u89BD\u5668\u9810\u8A2D\u503C\uFF08\u9ED1\u5B57\u767D\u5E95\uFF09\uFF0C
-   *   \u756B\u9762\u4ECD\u53EF\u8B80\uFF0C\u53EA\u662F\u6C92\u6709\u4E3B\u984C\u8272\u2014\u2014\u9019\u662F\u300C\u8DDF\u96A8\u5168\u5C40\u300D\u8A2D\u8A08\u672C\u8EAB\u7684\u8AA0\u5BE6\u4EE3\u50F9\uFF0C\u4E0D\u662F bug\u3002
-   */
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0; height: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
-  }
-  #app { max-width: 640px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
-
-  .mock-banner {
-    background: rgba(var(--amber-rgb, 217, 120, 79), 0.15); color: var(--amber, #b04a2f);
-    font-size: 12px; text-align: center; padding: 6px 10px;
-    border-bottom: 1px solid rgba(var(--amber-rgb, 217, 120, 79), 0.4);
-  }
-
-  header { padding: 12px 14px 8px; border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12); }
-  header h1 { font-size: 18px; margin: 0 0 8px; }
-
-  .composer { display: flex; flex-direction: column; gap: 8px; }
-  .composer-textbox { position: relative; }
-  .composer textarea, .fs-textarea {
-    width: 100%; min-height: 72px; resize: vertical;
-    background: rgba(var(--ink-rgb, 23, 24, 26), 0.05); color: var(--ink, inherit);
-    border: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.2);
-    border-radius: 10px; padding: 10px 40px 10px 12px; font-size: 15px; font-family: inherit;
-  }
-  .expand-btn {
-    position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; padding: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: transparent; border: none; border-radius: 6px; cursor: pointer;
-    color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); font-size: 14px;
-  }
-  .expand-btn:hover { background: rgba(var(--ink-rgb, 23, 24, 26), 0.08); }
-  .composer-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
-  .composer-row .hint { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); }
-  .composer-row button, .fs-submit {
-    background: var(--amber, #333); color: #fff; border: none; border-radius: 999px;
-    padding: 8px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
-  }
-  .composer-row button:disabled, .fs-submit:disabled { opacity: 0.5; cursor: not-allowed; }
-  .error-line { color: #c0392b; font-size: 13px; min-height: 16px; }
-
-  /* \u2500\u2500 \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo 2026-08-24\uFF1A\u300C\u539F\u672C\u7B46\u8A18\u8F38\u5165\u754C\u9762\u53EF\u4EE5\u5168\u87A2\u5E55\uFF0C\u4F46\u4E5F\u6C92\u6709\u6309\u9215\u300D\uFF0C
-     Mira \u6CB3\u9053\u539F\u7A3F\u7684 Esc \u6536\u8D77\uFF0F\u2318+Enter \u9001\u51FA\u6A21\u5F0F\uFF0C\u898B landing/app/mira/feed/page.tsx
-     EditingArea \u7684 popup \u90A3\u6BB5\u2014\u2014\u9019\u88E1\u7167\u5B83\u7684\u9375\u76E4\u884C\u70BA\u505A\uFF0C\u4E0D\u662F\u65B0\u8A2D\u8A08\uFF09 \u2500\u2500 */
-  .fs-backdrop {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
-    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px;
-  }
-  /* \`[hidden]\` \u7684 UA \u9810\u8A2D\u6A23\u5F0F\uFF08display:none\uFF09specificity \u592A\u4F4E\uFF0C\u84CB\u4E0D\u6389\u4E0A\u9762 .fs-backdrop
-     \u81EA\u5DF1\u90A3\u689D display:flex\uFF08author style \u4E00\u5F8B\u8D0F\u904E UA style\uFF0C\u8DDF\u5BA3\u544A\u9806\u5E8F\u7121\u95DC\uFF09\u2014\u2014
-     \u6C92\u6709\u9019\u689D\uFF0Chidden \u5C6C\u6027\u8A2D\u4E86\u4E5F\u6C92\u7528\uFF0C\u9019\u9846\u80CC\u666F\u6703\u4E00\u76F4\u84CB\u5728\u756B\u9762\u4E0A\u5403\u6389\u6240\u6709\u9EDE\u64CA
-     \uFF08browser-e2e.mjs \u7B2C\u4E00\u6B21\u8DD1\u5C31\u649E\u5230\uFF1A#submitBtn \u9EDE\u4E0D\u5230\uFF0C\u56E0\u70BA #fsBackdrop \u6514\u5728\u6700\u4E0A\u5C64\uFF09\u3002 */
-  .fs-backdrop[hidden] { display: none; }
-  .fs-panel {
-    background: var(--paper-a, #fff); color: var(--ink, inherit); width: 100%; max-width: 560px;
-    max-height: 80vh; border-radius: 14px; display: flex; flex-direction: column;
-    padding: 14px; gap: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  }
-  .fs-header { display: flex; align-items: center; justify-content: space-between; }
-  .fs-header .title { font-size: 15px; font-weight: 600; }
-  .fs-close {
-    background: transparent; border: none; font-size: 16px; cursor: pointer; padding: 4px 8px;
-    color: rgba(var(--ink-rgb, 23, 24, 26), 0.6);
-  }
-  .fs-textarea { flex: 1; min-height: 240px; resize: none; padding: 12px; }
-  .fs-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
-  .fs-kbd { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.45); margin-right: auto; }
-
-  .calendar-toggle {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 14px; font-size: 13px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.55); cursor: pointer;
-    border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12);
-    user-select: none;
-  }
-  .calendar-toggle .filter-chip {
-    background: rgba(var(--amber-rgb, 217, 120, 79), 0.15); color: var(--amber, #b04a2f); border-radius: 999px;
-    padding: 3px 10px; font-size: 12px; margin-left: 8px;
-  }
-
-  .calendar { padding: 8px 14px 12px; border-bottom: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.12); }
-  .calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-  .calendar-header button {
-    background: none; border: none; color: var(--ink, inherit); font-size: 16px; padding: 4px 10px; cursor: pointer;
-  }
-  .calendar-header .label { font-size: 14px; font-weight: 600; }
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
-  .cal-dow { font-size: 11px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); padding: 2px 0; }
-  .cal-cell {
-    position: relative; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
-    border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--ink, inherit);
-  }
-  .cal-cell.empty { cursor: default; visibility: hidden; }
-  .cal-cell.today { border: 1px solid var(--amber, #b04a2f); }
-  .cal-cell.selected { background: var(--amber, #b04a2f); color: #fff; font-weight: 700; }
-  .cal-cell .dot {
-    position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 50%;
-    background: var(--amber, #b04a2f);
-  }
-  .cal-cell.selected .dot { background: #fff; }
-
-  .river { flex: 1; overflow-y: auto; padding: 8px 14px 24px; }
-  .river-empty { color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); font-size: 14px; text-align: center; padding: 40px 10px; }
-
-  /*
-   * \u2500\u2500 \u5361\u7247\uFF08leo 2026-08-24\uFF1A\u300C\u6BCF\u4E00\u5247\u7B46\u8A18\u662F\u4E00\u5F35\u5361\u7247\uFF0C\u5361\u7247\u7684\u5916\u6846\u6C92\u986F\u793A\u300D\uFF09\u2500\u2500
-   * \u908A\u754C\u4E00\u5F8B\u7528 Portal \u8272\u7968\uFF08--ink-rgb \u7684\u4F4E\u900F\u660E\u5EA6\uFF09\uFF0C\u4E0D\u5BEB\u6B7B\u984F\u8272\u2014\u2014\u9019\u6A23\u6DFA\u8272\uFF0F\u6DF1\u8272\u4E3B\u984C
-   * \u5207\u63DB\u6642\u908A\u754C\u81EA\u52D5\u8DDF\u8457\u63DB\uFF0C\u4E0D\u6703\u6D88\u5931\uFF08\u540C\u4E0A\u65B9\u6A94\u982D\u8AAA\u660E\u7684\u90A3\u500B\u75C5\uFF0C\u4E0D\u91CD\u72AF\u7B2C\u4E8C\u6B21\uFF09\u3002
-   */
-  .note-card {
-    border: 1px solid rgba(var(--ink-rgb, 23, 24, 26), 0.18); border-radius: 12px;
-    padding: 12px 14px; margin-bottom: 10px;
-  }
-  .note-card .meta { font-size: 12px; color: rgba(var(--ink-rgb, 23, 24, 26), 0.5); margin-bottom: 6px; }
-  .note-card .content { font-size: 15px; line-height: 1.55; word-break: break-word; }
-  .note-card .content p { margin: 0 0 8px; }
-  .note-card .content p:last-child { margin-bottom: 0; }
-  .note-card .content h1, .note-card .content h2, .note-card .content h3 { margin: 0 0 8px; }
-  .note-card .content ul { margin: 0 0 8px; padding-left: 20px; }
-  .note-card .content code {
-    background: rgba(var(--ink-rgb, 23, 24, 26), 0.08); padding: 1px 5px; border-radius: 4px; font-size: 13px;
-  }
-
-  /*
-   * \u2500\u2500 \u56DE\u8986\uFF08leo 2026-08-24\u300C\u6BCF\u4E00\u5247\u7B46\u8A18\u90FD\u53EF\u4EE5\u56DE\u8986\u300D\u2192 2026-11-11 \u6539\u6210\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684\u5143\u4EF6\uFF09\u2500\u2500
-   * \u56DE\u8986\u4E32\u3001\u56DE\u8986\u6846\u3001\u5DE5\u5177\u5217\u3001\u9078\u5B57\u5F15\u7528\u3001\u7DE8\u8F2F\u522A\u9664\u7684\u756B\u9762\u8207\u898F\u5247\u5168\u5728 ui/reply-kit.js\uFF08ReplyKit\uFF09\uFF0C
-   * \u6A23\u5F0F\u4E5F\u7531\u5B83\u81EA\u5DF1\u6CE8\u5165\u2014\u2014\u9019\u88E1\u53EA\u7559\u7B46\u8A18\u5361\u81EA\u5DF1\u7684\u7248\u9762\u3002
-   */
-  .note-card { position: relative; }
-  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-  .card-top .meta { margin-bottom: 0; }
-  .note-card .content blockquote { margin: 0 0 8px; padding: 0 0 0 10px; border-left: 3px solid rgba(var(--ink-rgb, 23, 24, 26), 0.25); color: rgba(var(--ink-rgb, 23, 24, 26), 0.7); }
-  .note-card .content { user-select: text; -webkit-user-select: text; }
-</style>
-</head>
-<body>
-<div id="app">
-  <div class="mock-banner" id="mockBanner" hidden>
-    \u26A0\uFE0F MOCK \u6A21\u5F0F\uFF1A\u8CC7\u6599\u53EA\u5B58\u5728\u9019\u500B\u700F\u89BD\u5668\u7684 localStorage\uFF0C\u4E0D\u662F\u771F\u7684 KBDB\uFF0FArcrun \u5F8C\u7AEF\u3002
-  </div>
-
-  <header>
-    <h1>\u7B46\u8A18</h1>
-    <div class="composer">
-      <div class="composer-textbox">
-        <textarea id="composerInput" placeholder="\u5BEB\u9EDE\u4EC0\u9EBC\u2026\u2026\u652F\u63F4 Markdown\uFF08# \u6A19\u984C\u3001**\u7C97\u9AD4**\u3001*\u659C\u9AD4*\u3001- \u6E05\u55AE\u3001[\u9023\u7D50](\u7DB2\u5740)\uFF09\uFF08Esc \u6536\u8D77\u3001\u2318+Enter \u9001\u51FA\uFF09"></textarea>
-        <button type="button" class="expand-btn" id="composerExpandBtn" title="\u5168\u87A2\u5E55\u7DE8\u8F2F" aria-label="\u5168\u87A2\u5E55\u7DE8\u8F2F">\u26F6</button>
-      </div>
-      <div class="composer-row">
-        <span class="hint" id="composerHint"></span>
-        <button id="submitBtn" type="button">\u9001\u51FA</button>
-      </div>
-      <div class="error-line" id="composerError"></div>
-    </div>
-  </header>
-
-  <!-- \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo \u53CD\u994B\u300C\u539F\u672C\u53EF\u4EE5\u5168\u87A2\u5E55\u300D\uFF09\uFF1AEsc \u6536\u8D77\uFF0C\u6536\u8D77\u6642\u628A\u5167\u5BB9\u540C\u6B65\u56DE\u4E3B\u8F38\u5165\u6846\uFF0C\u4E0D\u662F\u53E6\u4E00\u4EFD\u8349\u7A3F\u3002 -->
-  <div class="fs-backdrop" id="fsBackdrop" hidden>
-    <div class="fs-panel">
-      <div class="fs-header">
-        <span class="title">\u5BEB\u7B46\u8A18</span>
-        <button type="button" class="fs-close" id="fsCloseBtn" title="\u6536\u8D77\uFF08Esc\uFF09" aria-label="\u6536\u8D77">\u2715</button>
-      </div>
-      <textarea class="fs-textarea" id="fsTextarea"></textarea>
-      <div class="fs-footer">
-        <span class="fs-kbd">Esc \u6536\u8D77 \xB7 \u2318+Enter \u9001\u51FA</span>
-        <button type="button" class="fs-submit" id="fsSubmitBtn">\u9001\u51FA</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="calendar-toggle" id="calendarToggle">
-    <span>
-      <span id="calendarToggleLabel">\u5C0F\u65E5\u66C6</span>
-      <span class="filter-chip" id="filterChip" hidden></span>
-    </span>
-    <span id="calendarChevron">\u25BE</span>
-  </div>
-  <div class="calendar" id="calendarPanel" hidden>
-    <div class="calendar-header">
-      <button type="button" id="calPrev" aria-label="\u4E0A\u500B\u6708">\u2039</button>
-      <span class="label" id="calLabel"></span>
-      <button type="button" id="calNext" aria-label="\u4E0B\u500B\u6708">\u203A</button>
-    </div>
-    <div class="cal-grid" id="calGrid"></div>
-  </div>
-
-  <main class="river" id="river">
-    <div class="river-empty">\u8F09\u5165\u4E2D\u2026</div>
-  </main>
-</div>
-
-<script>
-/*
- * notes-core.js \u2014 \u7D14\u908F\u8F2F\u5C64\uFF08inkstone/InkStoneCo#2\uFF1B\u57F7\u884C\u7968 inkstone/arcrun-app-note#1 \u7B46\u8A18 App\uFF09
- *
- * \u523B\u610F\u8DDF DOM \u5206\u958B\u653E\u4E00\u500B\u6A94\u6848\u7684\u7406\u7531\uFF1A\u9019\u6A23 test/test-notes-core.mjs \u624D\u80FD\u5728 Node \u88E1
- * \u76F4\u63A5 require \u9019\u4EFD\u908F\u8F2F\u505A\u55AE\u5143\u6E2C\u8A66\uFF0C\u4E0D\u9700\u8981\u4E00\u9846\u771F\u700F\u89BD\u5668\uFF08headless Chrome \u9019\u985E\u91CD\u4F9D\u8CF4
- * \u5728\u9019\u53F0\u6A5F\u5668\u4E0A\u4E0D\u4E00\u5B9A\u88DD\u5F97\u4E86\uFF1B\u7D14\u51FD\u5F0F\u908F\u8F2F\u7528 node \u5C31\u6E2C\u5F97\u5230\uFF0C\u9019\u662F\u53EF\u4EE5\u505A\u5230\u300C\u6E2C\u904E\u300D\u800C\u4E0D\u662F
- * \u300C\u61C9\u8A72\u53EF\u4EE5\u300D\u7684\u6700\u52D9\u5BE6\u4F5C\u6CD5\uFF09\u3002
- *
- * \u9019\u500B\u6A94\u6848\u4E0D import \u4EFB\u4F55\u6771\u897F\u3001\u4E0D\u78B0 window/document\u2014\u2014\u5728 <script> \u6A19\u7C64\u6216 Node \u90FD\u80FD\u8DD1\u3002
- * \u5C0D\u5916\u7528\u4E00\u500B\u547D\u540D\u7A7A\u9593\u7269\u4EF6 NotesCore \u639B\u4F4F\u6240\u6709\u51FD\u5F0F\uFF0C\u540C\u6642\u5728 Node \u74B0\u5883\uFF08module !== undefined\uFF09
- * \u639B module.exports\uFF0C\u5169\u908A\u5171\u7528\u540C\u4E00\u4EFD\u5BE6\u4F5C\uFF0C\u4E0D\u6703\u51FA\u73FE\u300C\u700F\u89BD\u5668\u7248\u300D\u8DDF\u300C\u6E2C\u8A66\u7248\u300D\u6F02\u79FB\u3002
- */
-(function (root) {
-  'use strict';
-
-  // \u2500\u2500 \u65E5\u671F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  var DATE_RE = /^\\d{4}-\\d{2}-\\d{2}$/;
-
-  function isValidDateStr(s) {
-    return typeof s === 'string' && DATE_RE.test(s);
-  }
-
-  /** \u4F7F\u7528\u8005\u672C\u5730\u6642\u5340\u7684\u300C\u4ECA\u5929\u300D\uFF0CYYYY-MM-DD\u3002\u523B\u610F\u4E0D\u7528 toISOString()\uFF08\u90A3\u662F UTC\uFF0C\u665A\u4E0A\u5BEB\u7B46\u8A18
-   *  \u5BB9\u6613\u8DE8\u65E5\u7B97\u932F\u2014\u2014\u9019\u662F\u820A Mira \u6CB3\u9053\u9801\u8E29\u904E\u7684\u75C5\u4E4B\u4E00\uFF0C\u9019\u88E1\u4E0D\u91CD\u72AF\uFF09\u3002 */
-  function todayISO(d) {
-    d = d || new Date();
-    var y = d.getFullYear();
-    var m = String(d.getMonth() + 1).padStart(2, '0');
-    var day = String(d.getDate()).padStart(2, '0');
-    return y + '-' + m + '-' + day;
-  }
-
-  // \u2500\u2500 \u7B46\u8A18\u6392\u5E8F\uFF0F\u904E\u6FFE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  /** \u4F9D created_at \u65B0\u5230\u820A\u6392\u5E8F\uFF0C\u56DE\u50B3\u65B0\u9663\u5217\uFF08\u4E0D\u6539\u539F\u9663\u5217\uFF09\u3002created_at \u7F3A\u503C\u6392\u6700\u5F8C\u3002 */
-  function sortNotesDesc(notes) {
-    return notes.slice().sort(function (a, b) {
-      var ca = a && a.created_at ? a.created_at : '';
-      var cb = b && b.created_at ? b.created_at : '';
-      if (ca === cb) return 0;
-      return ca < cb ? 1 : -1; // \u65B0\uFF08\u5B57\u4E32\u8F03\u5927\uFF09\u5728\u524D
-    });
-  }
-
-  function filterByDate(notes, dateStr) {
-    if (!dateStr) return notes.slice();
-    return notes.filter(function (n) { return n && n.date === dateStr; });
-  }
-
-  /** \u56DE\u50B3\u300C\u6709\u7B46\u8A18\u7684\u65E5\u671F\u300D\u96C6\u5408\uFF08\u7D66\u5C0F\u65E5\u66C6\u756B\u9EDE\u7528\uFF09\u3002 */
-  function datesWithNotes(notes) {
-    var set = {};
-    for (var i = 0; i < notes.length; i++) {
-      if (notes[i] && notes[i].date) set[notes[i].date] = true;
-    }
-    return set;
-  }
-
-  // \u2500\u2500 \u5C0F\u65E5\u66C6 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  /**
-   * \u7522\u751F\u4E00\u500B\u6708\u7684\u65E5\u66C6\u683C\u5B50\u3002year/month \u70BA 0-based month\uFF08\u540C Date \u6163\u4F8B\uFF0C0=\u4E00\u6708\uFF09\u3002
-   * \u56DE\u50B3 { year, month, weeks: [[cell,...], ...] }\uFF0Ccell \u70BA null\uFF08\u6708\u9996/\u6708\u5C3E\u88DC\u7A7A\u683C\uFF09
-   * \u6216 { day, dateStr, isToday, hasNotes, isSelected }\u3002
-   */
-  function buildCalendarMonth(year, month, notesByDate, todayStr, selectedStr) {
-    notesByDate = notesByDate || {};
-    var firstOfMonth = new Date(year, month, 1);
-    var daysInMonth = new Date(year, month + 1, 0).getDate();
-    var startWeekday = firstOfMonth.getDay(); // 0=Sun
-
-    var cells = [];
-    for (var i = 0; i < startWeekday; i++) cells.push(null);
-    for (var day = 1; day <= daysInMonth; day++) {
-      var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-      cells.push({
-        day: day,
-        dateStr: dateStr,
-        isToday: dateStr === todayStr,
-        hasNotes: !!notesByDate[dateStr],
-        isSelected: !!selectedStr && dateStr === selectedStr,
-      });
-    }
-    while (cells.length % 7 !== 0) cells.push(null);
-
-    var weeks = [];
-    for (var w = 0; w < cells.length; w += 7) weeks.push(cells.slice(w, w + 7));
-    return { year: year, month: month, weeks: weeks };
-  }
-
-  // \u2500\u2500 Markdown\uFF08\u6975\u7C21\u5B50\u96C6\uFF0C\u96F6\u4F9D\u8CF4\u2014\u2014design.md \u8981\u6C42\u55AE\u6A94\uFF0F\u5C11\u6A94\uFF0C\u4E0D\u63A5 CDN\uFF09 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  //
-  // \u652F\u63F4\uFF1A\u8DF3\u812B HTML \u2192 \u6A19\u984C #~###### \u2192 **\u7C97\u9AD4** \u2192 *\u659C\u9AD4* \u2192 \`code\` \u2192 [text](url)
-  // \u2192 \u4E00\u822C\u6BB5\u843D\u63DB\u884C \u2192 \u958B\u982D \`- \` \u6216 \`* \` \u7684\u6E05\u55AE\u884C \u2192 \u958B\u982D \`> \` \u7684\u5F15\u7528\u884C\uFF08arcrun-app-note#2 \u5DE5\u5177\u5217\u7684\u300C\u5F15\u7528\u300D\uFF09\u3002
-  // \u4E0D\u652F\u63F4\uFF1A\u8868\u683C\u3001\u5DE2\u72C0\u6E05\u55AE\u3001\u5716\u7247\u3001fenced code block\u2014\u2014\u7B46\u8A18 App v0.1 \u4E0D\u9700\u8981\uFF0C
-  // \u52A0\u4E86\u53EA\u6703\u8B93\u300C\u55AE\u4E00 HTML/JS \u6A94\u300D\u7684\u76EE\u6A19\u8B8A\u91CD\uFF0C\u4E14\u6C92\u6709 leo \u63D0\u51FA\u7684\u9700\u6C42\u6490\u9019\u500B\u8907\u96DC\u5EA6\u3002
-
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  function renderInline(s) {
-    s = s.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
-    s = s.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
-    s = s.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
-    s = s.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-    return s;
-  }
-
-  function renderMarkdown(md) {
-    var lines = escapeHtml(md == null ? '' : md).split(/\\r?\\n/);
-    var html = [];
-    var listOpen = false;
-
-    function closeList() {
-      if (listOpen) { html.push('</ul>'); listOpen = false; }
-    }
-
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      var heading = /^(#{1,6})\\s+(.*)$/.exec(line);
-      var listItem = /^[-*]\\s+(.*)$/.exec(line);
-      var quoteLine = /^&gt;\\s?(.*)$/.exec(line); // escapeHtml \u4E4B\u5F8C ">" \u5DF2\u662F &gt;\uFF08\u5DE5\u5177\u5217\u7684\u300C\u5F15\u7528\u300D\u63D2\u7684\u5C31\u662F\u9019\u500B\uFF09
-
-      if (heading) {
-        closeList();
-        var level = heading[1].length;
-        html.push('<h' + level + '>' + renderInline(heading[2]) + '</h' + level + '>');
-      } else if (quoteLine) {
-        closeList();
-        html.push('<blockquote>' + renderInline(quoteLine[1]) + '</blockquote>');
-      } else if (listItem) {
-        if (!listOpen) { html.push('<ul>'); listOpen = true; }
-        html.push('<li>' + renderInline(listItem[1]) + '</li>');
-      } else if (line.trim() === '') {
-        closeList();
-      } else {
-        closeList();
-        html.push('<p>' + renderInline(line) + '</p>');
-      }
-    }
-    closeList();
-    return html.join('\\n');
-  }
-
-  // \u2500\u2500 Mock \u5F8C\u7AEF\uFF08design.md K6 \u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u7684\u5047\u5F62\u72C0\uFF1B\u771F\u7AEF\u9EDE\u898B README\u300C\u9084\u7F3A\u4EC0\u9EBC\u300D\uFF09\u2500\u2500\u2500
-  //
-  // \u5951\u7D04\u523B\u610F\u8DDF\u300C\u771F\u7684\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u300D\u9577\u4E00\u6A23\uFF1Acall(action, params) -> Promise<{success, data|error}>\u3002
-  // \u4E4B\u5F8C\u63A5\u4E0A\u771F\u5F8C\u7AEF\uFF0C\u53EA\u8981\u628A\u547C\u53EB\u7AEF\u7684 dispatcher \u63DB\u6210\u771F\u7684 fetch\uFF0C\u9019\u500B\u6A94\u6848\u4E00\u884C\u4E0D\u7528\u6539
-  // \u2014\u2014\u9019\u6B63\u662F K6\u300C\u524D\u7AEF\u4E0D\u77E5\u9053 apiBase / \u4E0D\u81EA\u5DF1 fetch\u300D\u7CBE\u795E\u5728 mock \u5C64\u7684\u9AD4\u73FE\uFF1A
-  // UI \u6C38\u9060\u53EA\u8A8D\u5F97\u5230 call(action, params)\uFF0C\u4E0D\u7BA1\u80CC\u5F8C\u662F mock \u9084\u662F\u771F\u5F15\u64CE\u3002
-  //
-  // storage \u53C3\u6578\u662F\u6CE8\u5165\u7684\u6301\u4E45\u5316\u4ECB\u9762\uFF08{ load(): Note[], save(notes: Note[]): void }\uFF09\uFF0C
-  // \u9810\u8A2D\u7528\u8A18\u61B6\u9AD4\u9663\u5217\uFF08\u7D66 Node \u6E2C\u8A66\u8207\u300C\u6C92\u6709 localStorage\u300D\u7684\u74B0\u5883\u7528\uFF09\uFF1B
-  // \u700F\u89BD\u5668\u7248\u7531 ui/index.html \u6CE8\u5165\u4E00\u4EFD\u5305 localStorage \u7684 storage\u3002
-
-  function createMemoryStorage() {
-    var notes = [];
-    return {
-      load: function () { return notes.slice(); },
-      save: function (next) { notes = next.slice(); },
-    };
-  }
-
-  // \u2500\u2500 \u56DE\u61C9\u4FE1\u5C01\uFF08\u7167\u771F\u5951\u7D04\u7684\u5F62\u72C0\uFF0C\u898B\u4E0B\u65B9 unwrapActionResult \u7684\u9577\u8A3B\u89E3\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  function createMockBackend(storage, idGen) {
-    storage = storage || createMemoryStorage();
-    var seq = 0;
-    idGen = idGen || function () { seq += 1; return 'mock_rec_' + Date.now() + '_' + seq; };
-
-    // \u56DE\u50B3 d \u672C\u8EAB\uFF08\u771F\u5951\u7D04\u88E1 window.arcrunApp.action() resolve \u51FA\u4F86\u7684 {ok,status,d} \u7684 d \u90A3\u5C64\uFF09\uFF1A
-    //   \u6210\u529F \u2192 { ok: true, result: { success: true, data: {...} } }
-    //   \u5931\u6557 \u2192 { error: "..." }\uFF08\u6C92\u6709 ok \u6B04\u4F4D\u2014\u2014\u7167\u771F\u7AEF\u9EDE\u7684\u5931\u6557\u56DE\u61C9\u5F62\u72C0\uFF09
-    var ME = 'mock-user'; // MOCK \u6A21\u5F0F\u4E0B\u300C\u6309\u7684\u4EBA\u300D\u56FA\u5B9A\u662F\u9019\u4E00\u500B\uFF1B\u771F\u5F8C\u7AEF\u662F Portal \u767B\u5165\u540D\uFF08\u5F15\u64CE\u7C3D\u7684\u65B7\u8A00\uFF09
-
-    function createNote(params) {
-      var content = (params && params.content != null) ? String(params.content).trim() : '';
-      if (!content) return { error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u7B46\u8A18\u81F3\u5C11\u8981\u6709\u5167\u5BB9\uFF09' };
-      var date = (params && params.date) ? String(params.date).trim() : todayISO();
-      if (!isValidDateStr(date)) return { error: 'date \u5FC5\u9808\u662F YYYY-MM-DD \u683C\u5F0F\uFF08\u6536\u5230\uFF1A' + date + '\uFF09' };
-      // parent_id\uFF1A\u7701\u7565\uFF0F\u7A7A\u5B57\u4E32\uFF1D\u7368\u7ACB\u7B46\u8A18\uFF1B\u975E\u7A7A\uFF1D\u9019\u662F\u67D0\u5247\u7B46\u8A18\u7684\u56DE\u8986\uFF08\u540C\u771F\u5F8C\u7AEF notes-create.yaml
-      // \u7684 prep \u7BC0\u9EDE\u5951\u7D04\u2014\u2014mock \u8DDF\u771F\u5F8C\u7AEF\u5FC5\u9808\u662F\u540C\u4E00\u4EFD\u5951\u7D04\uFF0C\u4E0D\u80FD\u5404\u81EA\u8868\u8FF0\uFF09\u3002
-      var parentId = (params && params.parent_id != null) ? String(params.parent_id).trim() : '';
-      // quote\uFF0Fquote_pos\uFF1A\u53EA\u6709\u56DE\u8986\u5E36\uFF08\u540C\u771F\u5F8C\u7AEF\uFF1A\u7368\u7ACB\u7B46\u8A18\u4E00\u5F8B\u5B58\u7A7A\uFF09\u3002
-      var quote = parentId && params && params.quote != null ? String(params.quote).trim().slice(0, 300) : '';
-      var qp = Number(params && params.quote_pos != null ? params.quote_pos : '');
-      var note = {
-        record_id: idGen(),
-        date: date,
-        content: content,
-        created_at: new Date().toISOString(),
-        edited_at: '',
-        parent_id: parentId,
-        author: ME,
-        quote: quote,
-        quote_pos: quote && isFinite(qp) && qp >= 0 ? String(Math.floor(qp)) : '',
-        deleted: false
-      };
-      var notes = storage.load();
-      notes.push(note);
-      storage.save(notes);
-      return { ok: true, result: { success: true, data: note } };
-    }
-
-    // \u540C\u771F\u5F8C\u7AEF update_note\uFF0Fdelete_note \u7684\u5B88\u9580\uFF1A\u5B58\u5728\u3001\u6C92\u522A\u904E\u3001\u4F5C\u8005\u672C\u4EBA\uFF08\u4F5C\u8005\u7A7A\uFF1D\u820A\u8CC7\u6599\uFF0C\u4E0D\u9650\u4EBA\uFF09\u3002
-    function findMine(params, verb) {
-      var id = params && params.record_id != null ? String(params.record_id).trim() : '';
-      if (!id) return { error: 'record_id \u5FC5\u586B\uFF08\u8981' + verb + '\u54EA\u4E00\u5247\uFF09' };
-      var notes = storage.load();
-      var idx = -1;
-      for (var i = 0; i < notes.length; i++) if (notes[i] && notes[i].record_id === id) idx = i;
-      if (idx < 0 || !notes[idx].content) return { error: '\u627E\u4E0D\u5230\u9019\u5247\u7B46\u8A18\uFF08\u53EF\u80FD\u5DF2\u88AB\u522A\u9664\uFF09' };
-      if (notes[idx].deleted) return { error: verb === '\u6539' ? '\u9019\u5247\u5DF2\u7D93\u522A\u9664\uFF0C\u4E0D\u80FD\u518D\u6539' : '\u9019\u5247\u5DF2\u7D93\u522A\u9664\u4E86' };
-      if (notes[idx].author && notes[idx].author !== ME) return { error: '\u53EA\u6709\u4F5C\u8005\u672C\u4EBA\u80FD' + verb + '\u9019\u5247' };
-      return { notes: notes, idx: idx };
-    }
-
-    function updateNote(params) {
-      var content = params && params.content != null ? String(params.content).trim() : '';
-      if (!content) return { error: 'content \u4E0D\u53EF\u70BA\u7A7A\uFF08\u8981\u6E05\u6389\u8ACB\u7528\u522A\u9664\uFF09' };
-      var f = findMine(params, '\u6539');
-      if (f.error) return f;
-      f.notes[f.idx].content = content;
-      f.notes[f.idx].edited_at = new Date().toISOString();
-      storage.save(f.notes);
-      return { ok: true, result: { success: true, data: f.notes[f.idx] } };
-    }
-
-    function deleteNote(params) {
-      var f = findMine(params, '\u522A');
-      if (f.error) return f;
-      f.notes[f.idx].deleted = true;
-      f.notes[f.idx].deleted_at = new Date().toISOString();
-      var taken = f.notes[f.idx].card_count > 0 ? f.notes[f.idx].card_count : 0;
-      f.notes[f.idx].card_count = 0; // \u540C\u771F\u5F8C\u7AEF\uFF1A\u522A\u7B46\u8A18\u9023\u5E36\u4E0B\u67B6\u5B83\u6574\u7406\u51FA\u7684\u5361\uFF0C\u518D\u6578\u5C31\u662F 0
-      storage.save(f.notes);
-      return { ok: true, result: { success: true, data: { record_id: f.notes[f.idx].record_id, deleted: true, deleted_at: f.notes[f.idx].deleted_at, cards_taken_down: taken } } };
-    }
-
-    // note_cards\uFF1A\u9019\u5247\u7B46\u8A18\u6574\u7406\u51FA\u5E7E\u5F35\u73FE\u5F79\u7684\u5361\uFF08\u522A\u9664\u524D\u7684\u63D0\u793A\u7528\uFF09\u3002mock \u88E1\u7B46\u8A18\u6C92\u6709\u771F\u7684\u5361\uFF0C
-    // \u4EE5\u7B46\u8A18\u4E0A\u7684 card_count \u6B04\u4EE3\u8868\uFF08\u6E2C\u8A66\uFF0F\u793A\u7BC4\u53EF\u585E\uFF09\uFF1B\u6C92\u6709\u5C31\u662F 0\u3002
-    function noteCards(params) {
-      var id = params && params.record_id != null ? String(params.record_id).trim() : '';
-      if (!id) return { error: 'record_id \u5FC5\u586B\uFF08\u8981\u67E5\u54EA\u4E00\u5247\uFF09' };
-      var notes = storage.load();
-      var n = null;
-      for (var i = 0; i < notes.length; i++) if (notes[i] && notes[i].record_id === id) n = notes[i];
-      var c = n && n.card_count > 0 ? n.card_count : 0;
-      return { ok: true, result: { success: true, data: { card_count: c, page_names: [] } } };
-    }
-
-    function listNotes(params) {
-      var wantDate = (params && params.date) ? String(params.date).trim() : '';
-      var all = storage.load();
-      // \u540C\u771F\u5F8C\u7AEF notes-list.yaml \u7684 filter_sort\uFF08\u5169\u908A\u5FC5\u9808\u540C\u4E00\u4EFD\u884C\u70BA\uFF0Ctest/test-list-parity.mjs \u6703\u62FF\u771F\u5DE5\u4F5C\u6D41\u7684\u7A0B\u5F0F\u78BC\u5C0D\u8DD1\uFF09\uFF1A
-      //   \u5DF2\u522A\u9664\u7684\u7368\u7ACB\u7B46\u8A18\u6574\u5247\u4E0D\u51FA\u73FE\u3001\u5E95\u4E0B\u7684\u56DE\u8986\u8DDF\u8457\u4E0D\u51FA\u73FE\uFF1B
-      //   \u5DF2\u522A\u9664\u7684\u56DE\u8986\u4E4B\u5F8C\u9084\u6709\u5225\u4EBA\u7684\u56DE\u8986\u6642\u7559\u5360\u4F4D\uFF08deleted:true\u3001\u5167\u6587\u6E05\u7A7A\uFF09\uFF0C\u4E4B\u5F8C\u6C92\u6709\u4E86\u5C31\u4E0D\u51FA\u73FE\u3002
-      var deletedTop = {};
-      all.forEach(function (n) { if (n && n.deleted && !n.parent_id) deletedTop[n.record_id] = true; });
-      var repliesByParent = {};
-      all.forEach(function (n) {
-        if (!n || !n.parent_id || deletedTop[n.parent_id]) return;
-        (repliesByParent[n.parent_id] = repliesByParent[n.parent_id] || []).push(n);
-      });
-      Object.keys(repliesByParent).forEach(function (pid) {
-        var list = repliesByParent[pid];
-        list.sort(function (a, b) {
-          var ca = (a && a.created_at) || ''; var cb = (b && b.created_at) || '';
-          return ca < cb ? -1 : (ca > cb ? 1 : 0);
-        });
-        var lastLive = -1;
-        list.forEach(function (r, i) { if (!r.deleted) lastLive = i; });
-        repliesByParent[pid] = list.filter(function (r, i) { return !r.deleted || i < lastLive; }).map(function (r) {
-          return r.deleted ? { record_id: r.record_id, parent_id: r.parent_id, created_at: r.created_at, deleted: true, content: '', author: '', quote: '', quote_pos: '' } : r;
-        });
-      });
-      var top = all.filter(function (n) { return n && !n.parent_id && !n.deleted; });
-      var filtered = sortNotesDesc(filterByDate(top, wantDate)).map(function (n) {
-        var copy = {};
-        for (var k in n) if (Object.prototype.hasOwnProperty.call(n, k)) copy[k] = n[k];
-        copy.replies = repliesByParent[n.record_id] || [];
-        return copy;
-      });
-      return {
-        ok: true,
-        result: { success: true, data: { notes: filtered, count: filtered.length, date: wantDate || null, me: ME } },
-      };
-    }
-
-    return {
-      // call() \u56DE\u50B3\u5916\u5C64 {ok,status,d}\u2014\u2014\u8DDF window.arcrunApp.action() \u7684 resolve \u5F62\u72C0\u4E00\u81F4\uFF0C
-      // \u8B93 ui/index.html \u7684 callAction() \u4E0D\u5FC5\u5206\u5169\u5957\u908F\u8F2F\u8655\u7406 mock \u8207\u771F\u5F8C\u7AEF\u3002
-      call: function (action, params) {
-        var d;
-        if (action === 'create_note') d = createNote(params);
-        else if (action === 'list_notes') d = listNotes(params);
-        else if (action === 'update_note') d = updateNote(params);
-        else if (action === 'delete_note') d = deleteNote(params);
-        else if (action === 'note_cards') d = noteCards(params);
-        else d = { error: '\u672A\u77E5\u52D5\u4F5C\uFF08\u4E0D\u5728\u767D\u540D\u55AE\uFF09\uFF1A' + action };
-        var ok = !!(d && d.ok === true);
-        return Promise.resolve({ ok: ok, status: ok ? 200 : 400, d: d });
-      },
-      _storage: storage, // \u6E2C\u8A66\u7528\uFF1A\u76F4\u63A5\u6AA2\u67E5\u5E95\u5C64\u5132\u5B58
-    };
-  }
-
-  /**
-   * unwrapActionResult(resp) \u2014 \u628A window.arcrunApp.action()\uFF0Fmock \u7684\u56DE\u61C9\u7D71\u4E00\u525D\u6210
-   * { success, data } \u6216 { success:false, error }\uFF0CUI \u5C64\u53EA\u8A8D\u9019\u4E00\u7A2E\u5F62\u72C0\u3002
-   *
-   * resp \u7684\u5F62\u72C0\u662F { ok, status, d }\uFF1A
-   *   - resp.ok           \u2190 HTTP \u5C64\u662F\u5426 2xx\uFF08\u771F\u5F8C\u7AEF\uFF1Dfetch \u7684 res.ok\uFF1Bmock \u81EA\u5DF1\u6A21\u64EC\u540C\u6B3E\uFF09
-   *   - resp.d             \u2190 body JSON
-   *       \u6210\u529F\uFF1A{ ok: true, result: { success, data } }
-   *              \u2500 \u5916\u5C64 ok\uFF1A\u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u672C\u8EAB\u7684\u4FE1\u5C01\uFF08design.md K6\uFF0C
-   *                matrix/arcrun cypher-executor/src/routes/portal-data.ts
-   *                \`POST /portal/data/apps/:id/action\` \u7684\u65E2\u6709\u56DE\u61C9\u683C\u5F0F\uFF09
-   *              \u2500 \u5167\u5C64 success/data\uFF1A\u672C App \u5DE5\u4F5C\u6D41\u7D42\u9EDE code \u7BC0\u9EDE\u7684\u8F38\u51FA\u2014\u2014
-   *                WASM component \u57F7\u884C\u7D50\u679C\u7D71\u4E00\u5305\u6210 {success,data:{...}}
-   *                \uFF08\u898B\u5404\u96F6\u4EF6\u7684 component.contract.yaml\uFF09\uFF0C
-   *                \u672C\u5377\u5DF2\u7528 matrix/arcrun \u7684\u771F GraphExecutor \u5BE6\u969B\u8DD1\u904E
-   *                create_note\uFF0Flist_notes \u5169\u689D\uFF0C\u5169\u5C64\u4FE1\u5C01\u90FD\u662F\u7167\u5BE6\u6E2C\u7D50\u679C\u5BEB\u7684\uFF0C
-   *                \u4E0D\u662F\u6191\u7A7A\u731C\u7684\u5F62\u72C0\uFF08\u904E\u7A0B\u8207\u8E29\u904E\u7684\u5751\u898B README\u300C\u5DF2\u9A57\u8B49\u7684\u57F7\u884C\u671F\u884C\u70BA\u300D\uFF09\u3002
-   *       \u5931\u6557\uFF1A{ error: "..." }\uFF08\u6C92\u6709 ok \u6B04\u4F4D\uFF09
-   */
-  function unwrapActionResult(resp) {
-    if (!resp || !resp.ok) {
-      var httpErr = (resp && resp.d && resp.d.error) || ('HTTP ' + (resp && resp.status));
-      return { success: false, error: httpErr };
-    }
-    var d = resp.d;
-    if (!d || d.ok !== true) {
-      return { success: false, error: (d && d.error) || '\u56DE\u61C9\u6C92\u6709 ok:true\uFF08\u672A\u77E5\u932F\u8AA4\uFF09' };
-    }
-    var r = d.result;
-    if (!r || r.success !== true) {
-      return { success: false, error: (r && r.error) || '\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF08\u6C92\u6709\u56DE\u53EF\u7528\u7D50\u679C\uFF09' };
-    }
-    return { success: true, data: r.data };
-  }
-
-  var NotesCore = {
-    isValidDateStr: isValidDateStr,
-    todayISO: todayISO,
-    sortNotesDesc: sortNotesDesc,
-    filterByDate: filterByDate,
-    datesWithNotes: datesWithNotes,
-    buildCalendarMonth: buildCalendarMonth,
-    renderMarkdown: renderMarkdown,
-    escapeHtml: escapeHtml,
-    createMemoryStorage: createMemoryStorage,
-    createMockBackend: createMockBackend,
-    unwrapActionResult: unwrapActionResult,
-  };
-
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = NotesCore;
-  } else {
-    root.NotesCore = NotesCore;
-  }
-})(typeof window !== 'undefined' ? window : this);
-
-<\/script>
-<script>
-/*
- * reply-kit.js \u2014 \u7B46\u8A18\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684\u300C\u56DE\u8986\u300D\u5143\u4EF6\uFF08inkstone/arcrun-app-note#2\uFF1B\u898F\u683C docs/interaction-spec.html\uFF09
- *
- * \u70BA\u4EC0\u9EBC\u662F\u4E00\u500B\u7368\u7ACB\u6A94\uFF1Aleo 2026-11-08\u300C\u540C\u6A23\u529F\u80FD\u7528\u5728\u7B46\u8A18\u4E0A\uFF0C\u4E00\u7A2E\u754C\u9762\u5169\u908A\u90FD\u7528\u2026\u2026\u4E0D\u8981\u5728\u4E00\u500B\u8EDF\u9AD4\u88E1\u5169\u908A\u5DEE\u5F88\u591A\u300D\u3002
- * \u7B46\u8A18 App \u8207\u770B\u5361\u756B\u9762\uFF08arcrun-rag#297 \u5C0F\u5E6B\u624B\u3001Arcrun#345 Portal\uFF09\u8F09\u5165**\u540C\u4E00\u4EFD**\u9019\u500B\u6A94\uFF0C
- * \u5169\u908A\u53EA\u5DEE\u5169\u500B\u53C3\u6578\uFF1Amode\uFF08'note' \u7B46\u8A18\uFF0F'card' \u77E5\u8B58\u5361\uFF09\u8207\u6BCF\u4E00\u5247\u56DE\u8986\u7684 state\u3002
- *
- *   mode = 'note'  \u6309\u9215\u5BEB\u300C\u7559\u8A00\u300D\uFF0C\u4E00\u822C\u8A0E\u8AD6\uFF0C\u4E0D\u9078\u7406\u7531\uFF1B\u4F5C\u8005\u53EF\u6539\u53EF\u522A\u81EA\u5DF1\u7684\u7B46\u8A18\u8207\u56DE\u8986\u3002
- *   mode = 'card'  \u6309\u9215\u5BEB\u300C\u5EFA\u8B70\u300D\uFF0C\u65C1\u908A\u6709\u7406\u7531\u4E0B\u62C9\uFF08\u88DC\u5145\uFF0F\u5167\u5BB9\u4E0D\u5C0D\uFF0F\u2026\uFF0F\u5176\u4ED6\uFF0C\u53EF\u81EA\u586B\uFF09\uFF1B\u6B63\u6587\u4EBA\u4E0D\u80FD\u6539\u4E0D\u80FD\u522A\uFF1B
- *                  \u81EA\u5DF1\u7684\u5EFA\u8B70\u5728\u300C\u4EBA\u985E\u901A\u904E\u524D\u300D\u53EF\u6539\u53EF\u522A\uFF0C\u901A\u904E\u5F8C\u9396\u5B9A\uFF0C\u88AB\u99C1\u56DE\u53EA\u80FD\u5F9E\u81EA\u5DF1\u7684\u6E05\u55AE\u522A\u9664\u3002
- *
- * \u672C\u6A94\u5206\u5169\u5C64\uFF1A
- *   \u2460 \u7D14\u908F\u8F2F\uFF08\u6B0A\u9650\u898F\u5247\u3001\u4E32\u6392\u5E8F\u3001\u5DE5\u5177\u5217\u63D2\u5165\u3001\u7406\u7531\u7D44\u5408\uFF09\u2014\u2014\u4E0D\u78B0 DOM\uFF0CNode \u53EF\u76F4\u63A5 require \u6E2C\uFF08test/test-reply-kit.mjs\uFF09\u3002
- *   \u2461 \u756B\u9762\uFF08renderThread\uFF0FrenderComposer\uFF0FinstallSelection\uFF09\u2014\u2014\u5410 HTML \u5B57\u4E32\uFF0B\u639B\u4E8B\u4EF6\uFF0C\u547C\u53EB\u6642\u624D\u7528 document\u3002
- * \u63A1\u7D0D\u3001\u99C1\u56DE\u3001\u8CA0\u8CAC\u4EBA\u300130 \u5929\u964D\u7D1A\u4E0D\u5728\u9019\u88E1\uFF08\u5C6C Arcrun#344\uFF09\uFF1B\u9019\u88E1\u53EA\u6709\u56DE\u8986\u4E32\u7684\u756B\u9762\u3001\u6B0A\u9650\u5224\u65B7\u8207\u9001\u51FA\u52D5\u4F5C\u3002
- *
- * \u4F9D\u8CF4\uFF1A\u540C\u9801\u5148\u8F09\u5165 notes-core.js\uFF08escapeHtml\uFF0FrenderMarkdown\uFF09\u3002\u96F6\u5916\u90E8\u4F9D\u8CF4\u3002
- */
-(function (root) {
-  'use strict';
-
-  var NC = (typeof module !== 'undefined' && module.exports && typeof require === 'function')
-    ? require('./notes-core.js') : root.NotesCore;
-
-  function esc(s) { return NC.escapeHtml(String(s == null ? '' : s)); }
-
-  // \u2500\u2500 \u2460 \u7D14\u908F\u8F2F \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  /** \u9001\u51FA\u9215\u7684\u5B57\uFF1A\u7B46\u8A18\u300C\u7559\u8A00\u300D\u3001\u5361\u300C\u5EFA\u8B70\u300D\uFF08leo 2026-11-10\uFF1A\u6309\u9215\u672C\u8EAB\u5C31\u8868\u793A\u300C\u4F60\u53EA\u80FD\u5EFA\u8B70\u4E0D\u662F\u7DE8\u8F2F\u300D\uFF0C\u4E0D\u653E\u8AAA\u660E\u6587\u5B57\uFF09\u3002 */
-  function sendLabel(mode) { return mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00'; }
-
-  /** \u7406\u7531\u6E05\u55AE\uFF08\u50CF\u5BA2\u670D\u8868\u55AE\uFF0C\u4E4B\u5F8C\u6703\u589E\u52A0\uFF1A\u6539\u9019\u500B\u9663\u5217\u6216\u7531\u547C\u53EB\u7AEF\u50B3 reasons \u9032\u4F86\uFF09\u3002\u6700\u5F8C\u4E00\u9805\u56FA\u5B9A\u662F\u300C\u5176\u4ED6\u300D\u3002 */
-  var DEFAULT_REASONS = ['\u88DC\u5145', '\u5167\u5BB9\u4E0D\u5C0D', '\u8CC7\u6599\u904E\u671F', '\u4F86\u6E90\u6709\u8AA4'];
-  var OTHER = '\u5176\u4ED6';
-
-  /**
-   * \u7D44\u51FA\u8981\u9001\u7684\u7406\u7531\u3002\u9078\u300C\u5176\u4ED6\u300D\u5FC5\u9808\u586B\u5B57\uFF08\u7A7A\u7684\u4E0D\u80FD\u9001\uFF09\uFF0C\u5B58\u6210 { kind:'\u5176\u4ED6\uFF1Axxx', reason_type:'\u5176\u4ED6', reason_text:'xxx' }\uFF1B
-   * \u5176\u4ED6\u7406\u7531 reason_type \u5C31\u662F\u7406\u7531\u672C\u8EAB\u3001reason_text \u7A7A\u3002reason_type \u662F\u4E4B\u5F8C\u4F9D\u7406\u7531\u7BE9\u9078\u300C\u5176\u4ED6\u300D\u539F\u6587\u7684\u9375\uFF08\u898F\u683C\u300C\u5176\u4ED6\u300D\u4E00\u7BC0\uFF09\u3002
-   */
-  function composeReason(selected, otherText) {
-    var sel = String(selected == null ? '' : selected);
-    if (sel === OTHER) {
-      var t = String(otherText == null ? '' : otherText).trim();
-      if (!t) return { ok: false, error: '\u9078\u4E86\u300C\u5176\u4ED6\u300D\uFF0C\u8ACB\u5BEB\u4E0B\u7406\u7531\u3002' };
-      return { ok: true, kind: OTHER + '\uFF1A' + t, reason_type: OTHER, reason_text: t.slice(0, 200) };
-    }
-    if (!sel) return { ok: false, error: '\u8ACB\u9078\u4E00\u500B\u7406\u7531\u3002' };
-    return { ok: true, kind: sel, reason_type: sel, reason_text: '' };
-  }
-
-  /**
-   * \u9019\u4E00\u5247\uFF08\u7B46\u8A18\uFF0F\u56DE\u8986\uFF0F\u5EFA\u8B70\uFF09\u73FE\u5728\u80FD\u505A\u4EC0\u9EBC\u3002\u5C0D\u61C9\u898F\u683C\u300C\u522A\u9664\u8207\u7DE8\u8F2F\u898F\u5247\u300D\u90A3\u5F35\u8868\uFF0C\u4E00\u683C\u4E00\u683C\u7167\u6284\uFF1A
-   *   ctx = { mode, kind, mine, state, supporters }
-   *     mode       'note' | 'card'
-   *     kind       'doc'\uFF08\u7B46\u8A18\u6216\u5361\u7684\u6B63\u6587\uFF09| 'reply'\uFF08\u56DE\u8986\uFF0F\u5EFA\u8B70\uFF09
-   *     mine       \u662F\u4E0D\u662F\u6211\u5BEB\u7684
-   *     state      \u7B46\u8A18\u5074\uFF1A'live' | 'deleted'
-   *                \u5361\u5074\u7684\u5EFA\u8B70\uFF1A'pending'\uFF08\u5F85\u78BA\u8A8D\uFF09| 'adopted'\uFF08\u5DF2\u7D0D\u5165\uFF09| 'rejected'\uFF08\u5DF2\u99C1\u56DE\uFF09| 'withdrawn'\uFF08\u5DF2\u64A4\u56DE\uFF09
-   *     supporters \u9644\u548C\u9019\u5247\u5EFA\u8B70\u7684\u4EBA\u6578\uFF08\u5361\u5074\uFF0C\u522A\u9664\u6642\u6C7A\u5B9A\u300C\u63A5\u7E8C\u300D\u9084\u662F\u300C\u6574\u5247\u64A4\u6389\u300D\uFF09
-   * \u56DE { edit, delete, outcome, note }
-   *   outcome\uFF1D\u522A\u9664\u4E4B\u5F8C\u767C\u751F\u4EC0\u9EBC\uFF1A'soft_delete'\uFF08\u6A19\u8A18\u522A\u9664\uFF09\uFF5C'handover'\uFF08\u53EA\u62FF\u6389\u4F60\u7684\u540D\u5B57\uFF0C\u7531\u9644\u548C\u7684\u4EBA\u63A5\u7E8C\uFF09
-   *            \uFF5C'withdraw'\uFF08\u6574\u5247\u64A4\u56DE\uFF0CAI \u64A4\u6A19\u793A\uFF0C\u7D00\u9304\u4FDD\u7559\uFF09\uFF5C'hide_own'\uFF08\u53EA\u5F9E\u81EA\u5DF1\u7684\u6E05\u55AE\u62FF\u6389\uFF09\uFF5Cnull
-   *   note\uFF1D\u4E0D\u80FD\u52D5\u6642\u756B\u9762\u8A72\u8AAA\u7684\u4E00\u53E5\u8A71\uFF08\u6C92\u6709\u5C31\u7A7A\u5B57\u4E32\uFF09
-   */
-  function can(ctx) {
-    var none = { edit: false, delete: false, outcome: null, note: '' };
-    var mode = ctx && ctx.mode === 'card' ? 'card' : 'note';
-    var kind = ctx && ctx.kind === 'doc' ? 'doc' : 'reply';
-    var mine = !!(ctx && ctx.mine);
-    var state = (ctx && ctx.state) || (mode === 'card' && kind === 'reply' ? 'pending' : 'live');
-    if (mode === 'note') {
-      if (state === 'deleted' || !mine) return none;
-      return { edit: true, delete: true, outcome: 'soft_delete', note: '' };
-    }
-    // mode === 'card'
-    if (kind === 'doc') return { edit: false, delete: false, outcome: null, note: '' }; // \u5361\u6B63\u6587\u53EA\u6709 LLM \u80FD\u6539
-    if (!mine) return { edit: false, delete: false, outcome: null, note: '\u5225\u4EBA\u7684\u5EFA\u8B70\uFF1A\u53EA\u6709\u8CA0\u8CAC\u4EBA\u80FD\u88C1\u6C7A' };
-    if (state === 'pending') {
-      return { edit: true, delete: true, outcome: ctx.supporters > 0 ? 'handover' : 'withdraw', note: '' };
-    }
-    if (state === 'adopted') return { edit: false, delete: false, outcome: null, note: '\u5DF2\u7D0D\u5165\uFF0C\u4E0D\u80FD\u6539\u6216\u522A\u3002\u8981\u6539\u53E3\u8ACB\u518D\u63D0\u4E00\u5247\u65B0\u5EFA\u8B70' };
-    if (state === 'rejected') return { edit: false, delete: true, outcome: 'hide_own', note: '' };
-    return none; // withdrawn\uFF1A\u5DF2\u4E0D\u986F\u793A
-  }
-
-  /** \u522A\u9664\u524D\u7684\u78BA\u8A8D\u6587\u5B57\uFF08\u898F\u683C\u8868\u300C\u756B\u9762\u884C\u70BA\u300D\u6B04\uFF09\u3002cardCount\uFF1D\u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210\u5E7E\u5F35\u5361\uFF08\u6709\u624D\u63D0\u793A\uFF09\u3002 */
-  function deleteWarning(ctx, extra) {
-    var o = can(ctx).outcome;
-    var cards = extra && extra.cardCount > 0 ? extra.cardCount : 0;
-    if (o === 'handover') return '\u522A\u9664\u53EA\u6703\u62FF\u6389\u4F60\u7684\u540D\u5B57\uFF0C\u5EFA\u8B70\u7531\u9644\u548C\u7684\u4EBA\u63A5\u7E8C\u3002';
-    if (o === 'withdraw') return '\u522A\u9664\u5F8C AI \u6703\u64A4\u6389\u90A3\u4E00\u6BB5\u7684\u6A19\u793A\uFF0C\u5361\u56DE\u5230\u539F\u6A23\u3002\u7D00\u9304\u6703\u4FDD\u7559\u3002';
-    if (o === 'hide_own') return '\u5F9E\u4F60\u7684\u6E05\u55AE\u522A\u9664\u3002\u8CA0\u8CAC\u4EBA\u7684\u88C1\u6C7A\u7D00\u9304\u6703\u4FDD\u7559\u3002';
-    if (ctx.kind === 'doc') {
-      return cards ? '\u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210 ' + cards + ' \u5F35\u5361\uFF0C\u522A\u9664\u5F8C\u9019\u4E9B\u5361\u6703\u4E0B\u67B6\u3002\u78BA\u5B9A\u522A\u9664\uFF1F' : '\u522A\u9664\u9019\u5247\u7B46\u8A18\uFF1F';
-    }
-    return '\u522A\u9664\u9019\u5247\u56DE\u8986\uFF1F';
-  }
-
-  /**
-   * \u56DE\u8986\u4E32\u6392\u5E8F\uFF08\u898F\u683C\uFF1A\u6309\u5728\u539F\u6587\u7684\u4F4D\u7F6E\u6392\u5E8F\uFF0C\u6574\u7BC7\u56DE\u8986\u6392\u6700\u524D\uFF09\u3002
-   * \u6574\u7BC7\u56DE\u8986\uFF08\u6C92\u6709\u5F15\u7528\uFF09\u5728\u524D\u3001\u4F9D\u6642\u9593\u820A\u5230\u65B0\uFF1B\u5F15\u7528\u7684\u4F9D quote_pos \u7531\u5C0F\u5230\u5927\uFF0C\u540C\u4E00\u4F4D\u7F6E\u4F9D\u6642\u9593\u3002\u56DE\u50B3\u65B0\u9663\u5217\u3002
-   */
-  function sortThread(replies) {
-    function pos(r) { var n = Number(r && r.quote_pos); return r && r.quote && isFinite(n) ? n : null; }
-    return (replies || []).slice().sort(function (a, b) {
-      var pa = pos(a), pb = pos(b);
-      if ((pa === null) !== (pb === null)) return pa === null ? -1 : 1;
-      if (pa !== null && pa !== pb) return pa - pb;
-      var ca = (a && a.created_at) || '', cb = (b && b.created_at) || '';
-      return ca < cb ? -1 : (ca > cb ? 1 : 0);
-    });
-  }
-
-  /** \u5DE5\u5177\u5217\uFF08\u4EE3\u66FF slash command \u8207 Markdown \u7B26\u865F\uFF09\u3002line:true\uFF1D\u52A0\u5728\u6BCF\u884C\u958B\u982D\uFF1B\u5426\u5247\u5305\u4F4F\u9078\u53D6\u7684\u5B57\u3002 */
-  var TOOLS = [
-    { id: 'bold', label: 'B', title: '\u7C97\u9AD4', open: '**', close: '**' },
-    { id: 'italic', label: 'I', title: '\u659C\u9AD4', open: '*', close: '*' },
-    { id: 'heading', label: 'H', title: '\u6A19\u984C', line: true, open: '## ' },
-    { id: 'list', label: '\u2022 \u6E05\u55AE', title: '\u6E05\u55AE', line: true, open: '- ' },
-    { id: 'quote', label: '\u275D \u5F15\u7528', title: '\u5F15\u7528', line: true, open: '> ' },
-    { id: 'link', label: '\u9023\u7D50', title: '\u9023\u7D50', open: '[', close: '](https://)' }
-  ];
-
-  /** \u628A\u5DE5\u5177\u5957\u5728 value \u7684 [s,e) \u9078\u53D6\u4E0A\uFF0C\u56DE { value, start, end }\uFF08\u65B0\u7684\u9078\u53D6\u7BC4\u570D\uFF09\u3002\u7D14\u51FD\u5F0F\uFF0C\u4E0D\u78B0 DOM\u3002 */
-  function applyTool(value, s, e, toolId) {
-    var t = TOOLS.filter(function (x) { return x.id === toolId; })[0];
-    value = String(value == null ? '' : value);
-    if (!t) return { value: value, start: s, end: e };
-    if (t.line) {
-      var ls = value.lastIndexOf('\\n', s - 1) + 1;
-      var head = value.slice(0, ls), body = value.slice(ls, e), tail = value.slice(e);
-      var lines = body.split('\\n').map(function (l) { return l.indexOf(t.open) === 0 ? l : t.open + l; });
-      var nb = lines.join('\\n');
-      return { value: head + nb + tail, start: s + (lines[0].length - body.split('\\n')[0].length), end: ls + nb.length };
-    }
-    var sel = value.slice(s, e);
-    var out = value.slice(0, s) + t.open + sel + t.close + value.slice(e);
-    if (sel) return { value: out, start: s + t.open.length, end: s + t.open.length + sel.length };
-    return { value: out, start: s + t.open.length, end: s + t.open.length };
-  }
-
-  // \u2500\u2500 \u2461 \u756B\u9762 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  var CSS = [
-    '.rk-bar{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:4px}',
-    '.rk-count{background:transparent;border:1px solid rgba(var(--ink-rgb,23,24,26),.25);color:inherit;border-radius:999px;padding:3px 12px;font-size:12.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}',
-    '.rk-count:hover,.rk-count[aria-expanded="true"]{border-color:var(--amber,#b04a2f);color:var(--amber,#b04a2f)}',
-    '.rk-badge{background:var(--amber,#b04a2f);color:#fff;border-radius:99px;font-size:11px;min-width:17px;padding:0 6px;text-align:center}',
-    '.rk-more{background:transparent;border:1px solid transparent;color:inherit;border-radius:8px;padding:2px 9px;font-size:16px;line-height:1.2;cursor:pointer}',
-    '.rk-more:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}',
-    '.rk-menu{position:absolute;right:10px;top:38px;z-index:20;background:var(--paper-a,#fff);color:var(--ink,inherit);border:1px solid rgba(var(--ink-rgb,23,24,26),.2);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18);min-width:120px;padding:4px}',
-    '.rk-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;font:inherit;font-size:14px;padding:7px 10px;border-radius:6px;cursor:pointer}',
-    '.rk-menu button:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}.rk-menu .rk-del{color:#c0392b}',
-    '.rk-pop{position:absolute;z-index:30;background:var(--ink,#222);color:var(--paper-a,#fff);border-radius:8px;padding:4px;box-shadow:0 4px 14px rgba(0,0,0,.3)}',
-    '.rk-pop button{border:0;background:transparent;color:inherit;font:inherit;font-size:13.5px;padding:6px 12px;cursor:pointer;border-radius:6px;white-space:nowrap}',
-    '.rk-hit{background:rgba(var(--amber-rgb,217,120,79),.3);border-radius:3px}',
-    '.rk-drawer{margin-top:8px;border-top:1px solid rgba(var(--ink-rgb,23,24,26),.12);padding-top:8px;display:flex;flex-direction:column;gap:8px}',
-    '.rk-thread{background:rgba(var(--ink-rgb,23,24,26),.05);border-radius:12px;padding:8px 12px;font-size:13.5px;line-height:1.5;min-width:0}',
-    '.rk-thread .rk-q{display:block;width:100%;text-align:left;background:transparent;border:0;border-left:3px solid var(--amber,#b04a2f);padding:0 0 0 8px;margin:0 0 4px;color:rgba(var(--ink-rgb,23,24,26),.6);font:inherit;font-size:12.5px;cursor:pointer}',
-    '.rk-thread .rk-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:rgba(var(--ink-rgb,23,24,26),.5);margin-bottom:2px}',
-    '.rk-pill{display:inline-block;font-size:11px;padding:0 8px;border-radius:99px;background:rgba(var(--amber-rgb,217,120,79),.15);color:var(--amber,#b04a2f)}',
-    '.rk-pill.rk-ok{background:rgba(40,150,90,.15);color:#1f7a4d}.rk-pill.rk-bad{background:rgba(192,57,43,.14);color:#c0392b}',
-    '.rk-gone{color:rgba(var(--ink-rgb,23,24,26),.45);font-size:12.5px;font-style:italic}',
-    '.rk-acts{display:flex;gap:12px;font-size:12px;margin-top:2px}',
-    '.rk-acts button{border:0;background:none;color:var(--amber,#b04a2f);font:inherit;cursor:pointer;padding:0}.rk-acts .rk-d{color:#c0392b}',
-    '.rk-acts .rk-note{color:rgba(var(--ink-rgb,23,24,26),.5)}',
-    '.rk-confirm{background:rgba(192,57,43,.1);color:#c0392b;border-radius:8px;padding:8px 10px;font-size:13px;display:flex;flex-direction:column;gap:6px;margin-top:6px}',
-    '.rk-confirm .rk-row button{border:1px solid currentColor;background:transparent;color:inherit;border-radius:6px;padding:2px 12px;font:inherit;font-size:12.5px;cursor:pointer;margin-right:8px}',
-    '.rk-composer{display:flex;flex-direction:column;gap:6px}',
-    '.rk-tools{display:flex;gap:4px;flex-wrap:wrap}',
-    '.rk-tools button{border:1px solid rgba(var(--ink-rgb,23,24,26),.2);background:transparent;color:inherit;border-radius:6px;min-width:32px;padding:3px 8px;font:inherit;font-size:13px;cursor:pointer}',
-    '.rk-tools button:hover{background:rgba(var(--ink-rgb,23,24,26),.08)}',
-    '.rk-qchip{border-left:3px solid var(--amber,#b04a2f);padding:2px 0 2px 8px;font-size:12.5px;color:rgba(var(--ink-rgb,23,24,26),.65);display:flex;gap:8px;align-items:center}',
-    '.rk-qchip button{border:0;background:none;color:var(--amber,#b04a2f);cursor:pointer;font:inherit;font-size:12px;padding:0}',
-    '.rk-composer textarea,.rk-edit textarea{width:100%;min-height:56px;resize:vertical;background:rgba(var(--ink-rgb,23,24,26),.05);color:var(--ink,inherit);border:1px solid rgba(var(--ink-rgb,23,24,26),.2);border-radius:10px;padding:8px 10px;font-size:14px;font-family:inherit}',
-    '.rk-edit{display:flex;flex-direction:column;gap:6px}',
-    '.rk-row2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
-    '.rk-row2 select,.rk-row2 input[type=text]{border:1px solid rgba(var(--ink-rgb,23,24,26),.2);background:rgba(var(--ink-rgb,23,24,26),.05);color:inherit;border-radius:8px;padding:5px 8px;font:inherit;font-size:13px;min-width:0}',
-    '.rk-send{margin-left:auto;background:var(--amber,#b04a2f);color:#fff;border:0;border-radius:999px;padding:6px 18px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}',
-    '.rk-ghost{background:transparent;color:rgba(var(--ink-rgb,23,24,26),.6);border:0;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}',
-    '.rk-send:disabled{opacity:.5;cursor:not-allowed}',
-    '.rk-err{color:#c0392b;font-size:12.5px;min-height:1em}'
-  ].join('\\n');
-
-  function injectCss(anchorEl) {
-    if (typeof document === 'undefined') return;
-    var rn = (anchorEl && anchorEl.getRootNode && anchorEl.getRootNode()) || document;
-    var host = rn.head || rn;
-    if (host.querySelector && host.querySelector('style[data-reply-kit]')) return;
-    var st = document.createElement('style');
-    st.setAttribute('data-reply-kit', '1');
-    st.textContent = CSS;
-    host.appendChild(st);
-  }
-
-  function renderToolbar() {
-    return '<div class="rk-tools" role="toolbar" aria-label="\u683C\u5F0F\u5DE5\u5177\u5217">' + TOOLS.map(function (t) {
-      return '<button type="button" data-rk-tool="' + t.id + '" title="' + esc(t.title) + '" aria-label="' + esc(t.title) + '">' + esc(t.label) + '</button>';
-    }).join('') + '</div>';
-  }
-
-  /** \u53F3\u4E0A\u89D2\u5165\u53E3\uFF1A\u7559\u8A00\uFF08\u56DE\u8986\uFF09\u6578\uFF0B\u5C55\u958B\u9215\uFF1BmenuItems \u662F\u300C\u22EF\u300D\u9078\u55AE\uFF08\u7B46\u8A18\uFF1A\u7DE8\u8F2F\uFF0F\u522A\u9664\uFF09\u3002 */
-  function renderBar(opts) {
-    var label = opts.mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00';
-    return '<div class="rk-bar">' +
-      '<button type="button" class="rk-count" data-rk-toggle="' + esc(opts.docId) + '" aria-expanded="' + (opts.open ? 'true' : 'false') + '">' +
-        esc(label) + ' <span class="rk-badge">' + (opts.count | 0) + '</span></button>' +
-      (opts.hasMenu ? '<button type="button" class="rk-more" data-rk-more="' + esc(opts.docId) + '" aria-haspopup="menu" aria-expanded="' + (opts.menuOpen ? 'true' : 'false') + '" aria-label="\u66F4\u591A">\u22EF</button>' : '') +
-      '</div>';
-  }
-
-  function renderMenu(opts) {
-    var items = [];
-    if (opts.canEdit) items.push('<button type="button" role="menuitem" data-rk-edit-doc="' + esc(opts.docId) + '">\u7DE8\u8F2F</button>');
-    if (opts.canDelete) items.push('<button type="button" role="menuitem" class="rk-del" data-rk-del-doc="' + esc(opts.docId) + '">\u522A\u9664</button>');
-    return '<div class="rk-menu" role="menu">' + items.join('') + '</div>';
-  }
-
-  function renderConfirm(text, yesAttr, id) {
-    return '<div class="rk-confirm" role="alertdialog"><div>' + esc(text) + '</div><div class="rk-row">' +
-      '<button type="button" data-rk-yes="' + esc(yesAttr) + '" data-id="' + esc(id) + '">\u78BA\u8A8D\u522A\u9664</button>' +
-      '<button type="button" data-rk-no="1">\u53D6\u6D88</button></div></div>';
-  }
-
-  /** \u884C\u5167\u7DE8\u8F2F\u6846\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u56DE\u8986\u5171\u7528\uFF09\u3002draft\uFF1D\u76EE\u524D\u8F38\u5165\u4E2D\u7684\u6587\u5B57\u3002 */
-  function renderEditor(opts) {
-    return '<div class="rk-edit">' + renderToolbar() +
-      '<textarea data-rk-edit-box="' + esc(opts.id) + '" aria-label="\u7DE8\u8F2F\u5167\u5BB9">' + esc(opts.draft) + '</textarea>' +
-      '<div class="rk-err" data-rk-err="' + esc(opts.id) + '"></div>' +
-      '<div class="rk-row2"><button type="button" class="rk-ghost" data-rk-edit-cancel="1">\u53D6\u6D88</button>' +
-      '<button type="button" class="rk-send" data-rk-edit-save="' + esc(opts.id) + '"' + (opts.busy ? ' disabled' : '') + '>' + (opts.busy ? '\u5132\u5B58\u4E2D\u2026' : '\u5132\u5B58') + '</button></div></div>';
-  }
-
-  /**
-   * \u56DE\u8986\u4E32\u3002opts = { mode, me, replies, editing, confirming, busyId, draft }
-   * \u6BCF\u5247 reply: { record_id, author, content, created_at, quote, quote_pos, deleted, state, kind, supporters, note }
-   */
-  function renderThread(opts) {
-    var mode = opts.mode === 'card' ? 'card' : 'note';
-    var list = sortThread(opts.replies);
-    var html = list.length ? '' : '<div class="rk-gone">\u9084\u6C92\u6709' + (mode === 'card' ? '\u5EFA\u8B70' : '\u7559\u8A00') + '\u3002</div>';
-    list.forEach(function (r) {
-      var id = r.record_id;
-      if (r.state === 'withdrawn') return;
-      if (r.deleted) { html += '<div class="rk-thread"><span class="rk-gone">\u9019\u5247\u56DE\u8986\u5DF2\u522A\u9664</span></div>'; return; }
-      var mine = !!opts.me && r.author === opts.me;
-      var legacyOpen = !r.author; // \u820A\u8CC7\u6599\uFF08\u6C92\u6709\u4F5C\u8005\u6B04\uFF09\uFF1A\u4EFB\u4F55\u767B\u5165\u8005\u90FD\u80FD\u52D5\uFF0C\u540C update_note\uFF0Fdelete_note \u7684\u5F8C\u7AEF\u5B88\u9580
-      var ctx = { mode: mode, kind: 'reply', mine: mine || (mode === 'note' && legacyOpen), state: r.state || (mode === 'card' ? 'pending' : 'live'), supporters: r.supporters | 0 };
-      var perm = can(ctx);
-      var pill = '';
-      if (mode === 'card') {
-        var cls = r.state === 'adopted' ? 'rk-ok' : (/^\u5167\u5BB9\u4E0D\u5C0D/.test(r.kind || '') ? 'rk-bad' : '');
-        pill = (r.state === 'adopted' ? '<span class="rk-pill rk-ok">\u5DF2\u7D0D\u5165</span>' : '') + (r.kind ? '<span class="rk-pill ' + cls + '">' + esc(r.kind) + '</span>' : '');
-      }
-      var head = '<div class="rk-h"><b>' + esc(r.author || '\uFF08\u672A\u7F72\u540D\uFF09') + '</b>' + pill + '<span>' + esc(formatTime(r.created_at)) + (r.edited_at ? '\u30FB\u5DF2\u7DE8\u8F2F' : '') + '</span></div>';
-      var q = r.quote ? '<button type="button" class="rk-q" data-rk-jump="' + esc(id) + '" title="\u8DF3\u5230\u539F\u6587">' + esc(r.quote.length > 80 ? r.quote.slice(0, 80) + '\u2026' : r.quote) + '</button>' : '';
-      var body;
-      if (opts.editing === id) {
-        body = renderEditor({ id: id, draft: opts.draft != null ? opts.draft : r.content, busy: opts.busyId === id });
-      } else {
-        body = '<div class="rk-body">' + NC.renderMarkdown(r.content) + '</div>';
-      }
-      var acts = '';
-      if (opts.editing !== id) {
-        var a = [];
-        if (perm.edit) a.push('<button type="button" data-rk-edit="' + esc(id) + '">\u7DE8\u8F2F</button>');
-        if (perm.delete) a.push('<button type="button" class="rk-d" data-rk-del="' + esc(id) + '">\u522A\u9664</button>');
-        if (perm.note) a.push('<span class="rk-note">' + esc(perm.note) + '</span>');
-        if (a.length) acts = '<div class="rk-acts">' + a.join('') + '</div>';
-      }
-      var conf = opts.confirming === id ? renderConfirm(deleteWarning(ctx), 'reply', id) : '';
-      html += '<div class="rk-thread" data-rk-thread="' + esc(id) + '">' + q + head + body + acts + conf + '</div>';
-    });
-    return html;
-  }
-
-  /** \u5E95\u90E8\u56DE\u8986\u6846\uFF08\u5C0D\u6574\u7BC7\u56DE\u8986\uFF1B\u6709 quote \u5C31\u662F\u5F15\u7528\u56DE\u8986\uFF09\u3002 */
-  function renderComposer(opts) {
-    var mode = opts.mode === 'card' ? 'card' : 'note';
-    var reasons = opts.reasons && opts.reasons.length ? opts.reasons : DEFAULT_REASONS;
-    var chip = opts.quote ? '<div class="rk-qchip"><span>\u5F15\u7528\uFF1A\u300C' + esc(opts.quote.text.length > 80 ? opts.quote.text.slice(0, 80) + '\u2026' : opts.quote.text) + '\u300D</span>' +
-      '<button type="button" data-rk-qclear="' + esc(opts.docId) + '">\u79FB\u9664</button></div>' : '';
-    var kinds = '';
-    if (mode === 'card') {
-      kinds = '<label>\u7406\u7531 <select data-rk-reason="' + esc(opts.docId) + '" aria-label="\u5EFA\u8B70\u7406\u7531">' +
-        reasons.concat([OTHER]).map(function (r) { return '<option value="' + esc(r) + '"' + (opts.reason === r ? ' selected' : '') + '>' + esc(r === OTHER ? '\u5176\u4ED6\uFF08\u81EA\u5DF1\u586B\uFF09' : r) + '</option>'; }).join('') +
-        '</select></label><input type="text" data-rk-other="' + esc(opts.docId) + '" placeholder="\u8ACB\u5BEB\u4E0B\u7406\u7531" aria-label="\u5176\u4ED6\u7406\u7531" value="' + esc(opts.otherText || '') + '"' + (opts.reason === OTHER ? '' : ' hidden') + '>';
-    }
-    return '<div class="rk-composer">' + renderToolbar() + chip +
-      '<textarea data-rk-box="' + esc(opts.docId) + '" aria-label="' + esc(sendLabel(mode)) + '\u5167\u5BB9" placeholder="' + (mode === 'card' ? '\u5C0D\u6574\u7BC7\u63D0\u51FA\u5EFA\u8B70\uFF0C\u6216\u5148\u9078\u4E00\u6BB5\u6587\u5B57\u5F15\u7528\u2026' : '\u5C0D\u6574\u7BC7\u7559\u8A00\uFF0C\u6216\u5148\u9078\u4E00\u6BB5\u6587\u5B57\u5F15\u7528\u2026') + '">' + esc(opts.draft || '') + '</textarea>' +
-      '<div class="rk-err" data-rk-err="' + esc(opts.docId) + '">' + esc(opts.error || '') + '</div>' +
-      '<div class="rk-row2">' + kinds + '<button type="button" class="rk-send" data-rk-send="' + esc(opts.docId) + '"' + (opts.busy ? ' disabled' : '') + '>' + (opts.busy ? '\u9001\u51FA\u4E2D\u2026' : esc(sendLabel(mode))) + '</button></div></div>';
-  }
-
-  function formatTime(iso) {
-    if (!iso) return '';
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    return String(d.getMonth() + 1) + '/' + String(d.getDate()) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-  }
-
-  /**
-   * \u639B\u4E0A\u300C\u5DE5\u5177\u5217\u6309\u9215\u300D\u7684\u4E8B\u4EF6\uFF1A\u9EDE data-rk-tool \u6642\u628A\u5C0D\u61C9\u7684 Markdown \u63D2\u9032\u540C\u4E00\u500B container \u5167\u6700\u8FD1\u7684 textarea\u3002
-   * \u4E00\u500B container \u639B\u4E00\u6B21\uFF08\u4E8B\u4EF6\u59D4\u6D3E\uFF09\uFF0C\u91CD\u7E6A\u4E0D\u5FC5\u91CD\u639B\u3002
-   */
-  function installToolbar(container) {
-    container.addEventListener('mousedown', function (e) {
-      // \u4E0D\u8B93\u6309\u9215\u6436\u8D70 textarea \u7684\u7126\u9EDE\u8207\u9078\u53D6\u7BC4\u570D\u2014\u2014\u5426\u5247\u300C\u9078\u4E00\u6BB5\u5B57\u518D\u6309\u7C97\u9AD4\u300D\u6703\u5148\u5931\u53BB\u9078\u53D6\u3002
-      if (e.target.closest && e.target.closest('[data-rk-tool]')) e.preventDefault();
-    });
-    container.addEventListener('click', function (e) {
-      var b = e.target.closest && e.target.closest('[data-rk-tool]');
-      if (!b) return;
-      var scope = b.closest('.rk-composer,.rk-edit');
-      var ta = scope && scope.querySelector('textarea');
-      if (!ta) return;
-      var r = applyTool(ta.value, ta.selectionStart, ta.selectionEnd, b.getAttribute('data-rk-tool'));
-      ta.value = r.value;
-      ta.focus();
-      ta.setSelectionRange(r.start, r.end);
-      ta.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-  }
-
-  /**
-   * \u9078\u4E00\u6BB5\u6B63\u6587 \u2192 \u9078\u53D6\u8655\u4E0A\u65B9\u6D6E\u51FA\u300C\u5F15\u7528\u56DE\u8986\u300D\uFF08\u9760\u8FD1\u756B\u9762\u9802\u90E8\u6539\u5728\u4E0B\u65B9\uFF09\u3002
-   * \u684C\u6A5F\u653E\u958B\u6ED1\u9F20\u3001\u624B\u6A5F\u9577\u6309\u9078\u53D6\uFF08selectionchange\uFF09\u90FD\u6703\u89F8\u767C\u3002
-   * docSelector\uFF1A\u6B63\u6587\u5143\u7D20\u7684\u9078\u64C7\u5668\uFF0C\u4E14\u5B83\u8981\u6709 data-rk-doc="<docId>"\uFF1BpopupHost\uFF1Apopup \u8981\u5B9A\u4F4D\u5728\u54EA\u500B position:relative \u5143\u7D20\u88E1\u7684\u9078\u64C7\u5668\u3002
-   * onQuote(docId, text, pos)\uFF1A\u6309\u4E0B\u300C\u5F15\u7528\u56DE\u8986\u300D\u6642\u547C\u53EB\u3002
-   */
-  function installSelection(container, opts) {
-    var timer = null;
-    function clear() { var p = container.querySelector('.rk-pop'); if (p && p.parentNode) p.parentNode.removeChild(p); }
-    function check() {
-      clear();
-      var sel = (typeof window !== 'undefined' && window.getSelection) ? window.getSelection() : null;
-      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-      var text = sel.toString().replace(/\\s+/g, ' ').trim();
-      if (!text) return;
-      var anchor = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
-      var focus = sel.focusNode && (sel.focusNode.nodeType === 1 ? sel.focusNode : sel.focusNode.parentElement);
-      var doc = anchor && anchor.closest && anchor.closest(opts.docSelector);
-      if (!doc || !container.contains(doc) || !focus || !doc.contains(focus)) return; // \u53EA\u8A8D\u300C\u9078\u5728\u540C\u4E00\u5247\u6B63\u6587\u88E1\u300D
-      var host = doc.closest(opts.hostSelector);
-      if (!host) return;
-      var rc = sel.getRangeAt(0).getBoundingClientRect();
-      var hr = host.getBoundingClientRect();
-      var pop = document.createElement('div');
-      pop.className = 'rk-pop';
-      pop.innerHTML = '<button type="button">\u5F15\u7528\u56DE\u8986</button>';
-      host.appendChild(pop);
-      var left = Math.max(4, Math.min(rc.left - hr.left, hr.width - pop.offsetWidth - 4));
-      var above = rc.top - hr.top - pop.offsetHeight - 6;
-      pop.style.left = left + 'px';
-      pop.style.top = (above < 0 ? rc.bottom - hr.top + 6 : above) + 'px'; // \u9760\u8FD1\u9802\u90E8\u6539\u5728\u4E0B\u65B9
-      var plain = (doc.textContent || '').replace(/\\s+/g, ' ');
-      var idx = plain.indexOf(text);
-      var btn = pop.firstChild;
-      var fire = function (ev) {
-        ev.preventDefault(); ev.stopPropagation();
-        var docId = doc.getAttribute('data-rk-doc');
-        clear();
-        sel.removeAllRanges();
-        opts.onQuote(docId, text.slice(0, 300), idx < 0 ? 0 : idx);
-      };
-      btn.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // \u4E0D\u8B93\u6309\u4E0B\u53BB\u6E05\u6389\u9078\u53D6
-      btn.addEventListener('click', fire);
-    }
-    function later() { clearTimeout(timer); timer = setTimeout(check, 180); }
-    container.addEventListener('mouseup', later);
-    container.addEventListener('touchend', later);
-    document.addEventListener('selectionchange', later);
-    return { clear: clear, destroy: function () { document.removeEventListener('selectionchange', later); clearTimeout(timer); } };
-  }
-
-  /** \u9EDE\u300C\u5F15\u7528\u7684\u90A3\u4E00\u884C\u300D\u2192 \u6372\u5230\u539F\u6587\u4E26\u6A19\u4EAE\u90A3\u4E00\u6BB5\uFF08\u7D04 2.5 \u79D2\uFF09\u3002\u627E\u4E0D\u5230\u6574\u6BB5\uFF08\u8DE8\u4E86\u683C\u5F0F\u908A\u754C\uFF09\u5C31\u53EA\u6372\u904E\u53BB\u3002 */
-  function flashQuote(docEl, text) {
-    if (!docEl || !text) return;
-    var done = false;
-    var walker = document.createTreeWalker(docEl, NodeFilter.SHOW_TEXT);
-    var n;
-    while ((n = walker.nextNode())) {
-      var i = n.nodeValue.indexOf(text);
-      if (i < 0) continue;
-      try {
-        var rg = document.createRange();
-        rg.setStart(n, i); rg.setEnd(n, i + text.length);
-        var m = document.createElement('mark');
-        m.className = 'rk-hit';
-        rg.surroundContents(m);
-        setTimeout(function () { if (m.parentNode) { var p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); p.normalize(); } }, 2500);
-        m.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        done = true;
-      } catch (e) { /* \u8DE8\u7BC0\u9EDE\u9078\u4E0D\u8D77\u4F86\u5C31\u9000\u56DE\u53EA\u6372\u52D5 */ }
-      break;
-    }
-    if (!done && docEl.scrollIntoView) docEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }
-
-  var ReplyKit = {
-    // \u7D14\u908F\u8F2F
-    sendLabel: sendLabel, DEFAULT_REASONS: DEFAULT_REASONS, OTHER: OTHER, composeReason: composeReason,
-    can: can, deleteWarning: deleteWarning, sortThread: sortThread, TOOLS: TOOLS, applyTool: applyTool,
-    // \u756B\u9762
-    CSS: CSS, injectCss: injectCss, renderToolbar: renderToolbar, renderBar: renderBar, renderMenu: renderMenu,
-    renderConfirm: renderConfirm, renderEditor: renderEditor, renderThread: renderThread, renderComposer: renderComposer,
-    installToolbar: installToolbar, installSelection: installSelection, flashQuote: flashQuote, formatTime: formatTime
-  };
-
-  if (typeof module !== 'undefined' && module.exports) module.exports = ReplyKit;
-  else root.ReplyKit = ReplyKit;
-})(typeof window !== 'undefined' ? window : this);
-
-<\/script>
-<script>
-(function () {
-  'use strict';
-
-  // \u2500\u2500 \u6CDB\u7528\u52D5\u4F5C\u7AEF\u9EDE\u7684\u547C\u53EB\u4ECB\u9762\uFF08design.md K6\uFF0C\u771F\u5951\u7D04\uFF09\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  //
-  // \u771F\u6B63\u8DD1\u5728 Arcrun Portal \u88E1\u6642\uFF0CPortal \u7684\u6CDB\u7528 loader \u6703\u628A\u9019\u4E00\u9801\u7684 HTML mount \u9032\u53BB\u3001
-  // \u91CD\u65B0\u57F7\u884C\u5167\u5D4C <script>\uFF0C\u7136\u5F8C\u624D\u8A2D\u5B9A window.arcrunApp.action\u2014\u2014\u9019\u662F\u8B80
-  // matrix/arcrun \u5206\u652F feat/app-system-v0 \u7684 console-ui/public/portal/index.html
-  // renderAppView() \u5C0D\u51FA\u4F86\u7684\u771F\u6D41\u7A0B\uFF0C\u4E0D\u662F\u672C\u5377\u767C\u660E\u7684\u4ECB\u9762\uFF1A
-  //   window.arcrunApp.action(actionName, payload)
-  //     \u2192 fetch POST /portal/data/apps/notes/action { action, payload }
-  //     \u2192 resolve { ok, status, d }\uFF08d = { ok:true, result:{success,data} } \u6216 { error }\uFF09
-  // \u9019\u689D\u8DEF\u53EA\u7528\u300C\u50B3 action \u540D\u5B57 + payload\u300D\uFF0C\u524D\u7AEF**\u62FF\u4E0D\u5230**\u4EFB\u4F55\u91D1\u9470\uFF0F\u79DF\u6236\u5B57\u4E32\uFF08K6\uFF09\u3002
-  //
-  // \u{1F534} \u6642\u5E8F\u9677\u9631\uFF08\u8B80 Portal \u539F\u59CB\u78BC\u624D\u767C\u73FE\uFF0C\u4E0D\u662F\u731C\u7684\uFF09\uFF1APortal \u628A\u9019\u9801\u7684 HTML mount \u9032\u53BB\u3001
-  // \u91CD\u65B0\u57F7\u884C <script> \u4E4B\u5F8C\uFF0C**\u624D**\u8A2D\u5B9A window.arcrunApp.action\u2014\u2014\u9806\u5E8F\u53CD\u904E\u4F86\u3002
-  // \u82E5\u9019\u652F script \u5728\u9802\u5C64\u540C\u6B65\u547C\u53EB window.arcrunApp.action\uFF0C\u90A3\u500B\u7576\u4E0B\u5B83\u9084\u4E0D\u5B58\u5728\uFF0C
-  // \u6703\u76F4\u63A5\u70B8\u6389\u3002\u5C0D\u7B56\uFF1A\u6240\u6709\u521D\u6B21\u8F09\u5165\u547C\u53EB\u4E00\u5F8B\u7528 setTimeout(fn, 0) \u5EF6\u5F8C\u5230\u4E0B\u4E00\u8F2A\u4E8B\u4EF6\u5708\uFF0C
-  // \u4F7F\u7528\u8005\u89F8\u767C\u7684\u52D5\u4F5C\uFF08\u6309\u9215\u9EDE\u64CA\uFF09\u672C\u4F86\u5C31\u5728 mount \u5B8C\u6210\u4E4B\u5F8C\u624D\u6703\u767C\u751F\uFF0C\u4E0D\u53D7\u5F71\u97FF\u3002
-  // \u898B\u6A94\u6848\u6700\u4E0B\u65B9 \`loadNotes()\` \u7684\u547C\u53EB\u65B9\u5F0F\u3002
-  //
-  // \u6C92\u6709 window.arcrunApp\uFF08\u672C\u6A5F\u76F4\u63A5\u958B\u9019\u500B\u6A94\u6848\u3001\u6216\u9084\u6C92\u88DD\u9032\u771F Portal\uFF09\u2192 \u9000\u56DE MOCK\uFF1A
-  // \u8CC7\u6599\u5B58\u9019\u500B\u700F\u89BD\u5668\u7684 localStorage\uFF0C\u540C\u4E00\u7D44 { ok, status, d } \u4FE1\u5C01\u683C\u5F0F
-  // \uFF08NotesCore.createMockBackend \u7522\u751F\uFF09\uFF0CUI \u5C64\u5B8C\u5168\u4E0D\u7528\u5206\u5169\u5957\u908F\u8F2F\u3002
-  var APP_ID = 'notes';
-
-  // \u{1F534} \u9019\u689D**\u5FC5\u9808**\u662F\u5373\u6642\u67E5\u3001\u4E0D\u80FD\u5728 script \u9802\u5C64\u7B97\u4E00\u6B21\u5FEB\u53D6\u8D77\u4F86\uFF08\u66FE\u7D93\u9019\u6A23\u5BEB\u904E\uFF0C
-  // \u88AB test/browser-e2e.mjs \u7684\u300C\u7B2C\u4E8C\u6BB5\uFF1A\u6A21\u64EC\u771F Portal\u300D\u6293\u5230\uFF09\uFF1APortal \u628A\u9019\u9801\u7684
-  // <script> \u57F7\u884C\u5B8C\u4E4B\u5F8C\u624D\u8CE6\u503C window.arcrunApp.action\uFF08\u540C\u4E0A\u65B9\u6642\u5E8F\u9677\u9631\uFF09\u2014\u2014
-  // \u82E5\u5728\u9802\u5C64\u540C\u6B65\u7B97\u4E00\u6B21 USING_MOCK\uFF0C\u90A3\u4E00\u523B window.arcrunApp \u5FC5\u5B9A\u9084\u4E0D\u5B58\u5728\uFF0C
-  // \u65BC\u662F\u300C\u662F\u4E0D\u662F MOCK\u300D\u9019\u500B\u5224\u65B7\u5728\u771F Portal \u88E1\u6C38\u9060\u5F97\u5230\u932F\u7684\u7B54\u6848\uFF08\u4E00\u5F8B\u8AA4\u5224\u6210 MOCK\uFF0C
-  // \u6CB3\u9053\u9EC3\u8272\u6A6B\u5E45\u6C38\u9060show\u3001\u9001\u51FA\u7684\u7B46\u8A18\u6C38\u9060\u5BEB\u9032 localStorage \u800C\u4E0D\u662F\u771F\u7684 KBDB\uFF09\u3002
-  // \u6539\u6210\u6BCF\u6B21\u547C\u53EB\u90FD\u91CD\u65B0\u5224\u65B7\uFF0C\u5C31\u4E0D\u6703\u53D7\u5B83\u8CE6\u503C\u7684\u6642\u9593\u9EDE\u5F71\u97FF\u3002
-  function usingMock() {
-    return !(window.arcrunApp && typeof window.arcrunApp.action === 'function');
-  }
-
-  var mockStorage = (function () {
-    var KEY = 'arcrun-notes-app:mock-notes:v1';
-    function safeParse(raw) { try { return JSON.parse(raw) || []; } catch (e) { return []; } }
-    var hasLocalStorage = (function () {
-      try { window.localStorage.setItem('__t', '1'); window.localStorage.removeItem('__t'); return true; }
-      catch (e) { return false; } // \u79C1\u5BC6\u700F\u89BD\u6A21\u5F0F\u7B49\u74B0\u5883\u53EF\u80FD\u4E1F\u4F8B\u5916\uFF0C\u9000\u56DE\u8A18\u61B6\u9AD4
-    })();
-    if (!hasLocalStorage) return NotesCore.createMemoryStorage();
-    return {
-      load: function () { return safeParse(window.localStorage.getItem(KEY)); },
-      save: function (notes) { window.localStorage.setItem(KEY, JSON.stringify(notes)); },
-    };
-  })();
-
-  var mockBackend = NotesCore.createMockBackend(mockStorage);
-
-  // callAction() \u4E00\u5F8B resolve \u6210 { ok, status, d }\uFF0C\u4E0D\u7BA1\u8D70\u771F\u5F8C\u7AEF\u9084\u662F mock\u2014\u2014
-  // \u547C\u53EB\u7AEF\u4E00\u5F8B\u7528 NotesCore.unwrapActionResult() \u525D\u6BBC\uFF0C\u4E0D\u5FC5\u77E5\u9053\u80CC\u5F8C\u662F\u54EA\u4E00\u500B\u3002
-  function callAction(action, params) {
-    if (!usingMock()) return window.arcrunApp.action(action, params || {});
-    return mockBackend.call(action, params);
-  }
-
-  // \u2500\u2500 \u72C0\u614B \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  var state = {
-    notes: [],          // \u76EE\u524D\u62FF\u5230\u7684\u5168\u90E8\u7B46\u8A18\uFF08\u672A\u904E\u6FFE\uFF0C\u6BCF\u5247\u5E36 replies[]\uFF0C\u898B notes-list.yaml\uFF09
-    me: '',             // \u6309\u7684\u4EBA\uFF08Portal \u767B\u5165\u540D\uFF1BMOCK \u662F\u56FA\u5B9A\u4E00\u500B\u540D\u5B57\uFF09\u2014\u2014\u6C7A\u5B9A\u54EA\u4E9B\u7B46\u8A18\uFF0F\u56DE\u8986\u986F\u793A\u300C\u7DE8\u8F2F\uFF0F\u522A\u9664\u300D\uFF0C\u771F\u6B63\u7684\u5B88\u9580\u5728\u5F8C\u7AEF
-    selectedDate: null, // \u5C0F\u65E5\u66C6\u9078\u4E2D\u7684\u65E5\u671F\uFF1Bnull = \u986F\u793A\u5168\u90E8
-    calYear: new Date().getFullYear(),
-    calMonth: new Date().getMonth(),
-    calendarOpen: false,
-    openThread: {},     // record_id -> true\uFF1A\u9019\u4E00\u5247\u7684\u7559\u8A00\u4E32\uFF08\u53F3\u4E0A\u89D2\u300C\u7559\u8A00\u300D\uFF09\u662F\u5C55\u958B\u7684
-    menuFor: null,      // \u300C\u22EF\u300D\u9078\u55AE\u958B\u5728\u54EA\u4E00\u5247
-    editing: null,      // \u6B63\u5728\u884C\u5167\u7DE8\u8F2F\u7684 record_id\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u67D0\u5247\u56DE\u8986\uFF0C\u5169\u8005\u5171\u7528\u540C\u4E00\u500B\u7DE8\u8F2F\u6846\uFF09
-    editDraft: '',      // \u7DE8\u8F2F\u6846\u76EE\u524D\u7684\u5B57\uFF08\u91CD\u7E6A\u6642\u4E0D\u4E1F\uFF09
-    confirmDoc: null,   // \u6B63\u5728\u78BA\u8A8D\u300C\u522A\u9664\u9019\u5247\u7B46\u8A18\u300D\u7684 record_id
-    cardCounts: {},     // record_id \u2192 \u9019\u5247\u7B46\u8A18\u5DF2\u6574\u7406\u6210\u5E7E\u5F35\u73FE\u5F79\u7684\u5361\uFF08\u522A\u9664\u524D\u554F note_cards \u5F97\u5230\uFF1B\u5931\u6557\u5C31\u6C92\u6709\u6578\u5B57\u3001\u4E0D\u4E82\u731C\uFF09
-    checkingDoc: null,  // \u6B63\u5728\u554F\u300C\u9019\u5247\u7B46\u8A18\u6574\u7406\u6210\u5E7E\u5F35\u5361\u300D\u7684 record_id\uFF08\u554F\u5B8C\u624D\u8DF3\u51FA\u78BA\u8A8D\u6846\uFF0C\u514D\u5F97\u63D0\u793A\u5C11\u4E86\u6578\u5B57\uFF09
-    confirmReply: null, // \u6B63\u5728\u78BA\u8A8D\u300C\u522A\u9664\u9019\u5247\u56DE\u8986\u300D\u7684 record_id
-    drafts: {},         // record_id -> \u9084\u6C92\u9001\u51FA\u7684\u7559\u8A00\u8349\u7A3F\uFF08\u91CD\u7E6A\u6642\u4E0D\u4E1F\uFF09
-    quote: {},          // record_id -> { text, pos }\uFF1A\u9078\u5B57\u5F8C\u6309\u300C\u5F15\u7528\u56DE\u8986\u300D\u66AB\u5B58\u7684\u5F15\u7528
-    errors: {},         // record_id -> \u9019\u4E00\u5247\u6700\u8FD1\u4E00\u6B21\u52D5\u4F5C\u7684\u932F\u8AA4\u8A0A\u606F
-    busy: null,         // \u6B63\u5728\u7B49\u5F8C\u7AEF\u56DE\u61C9\u7684\u90A3\u4E00\u5247\uFF08record_id\uFF09
-    focusBox: null,     // \u91CD\u7E6A\u5F8C\u8981\u628A\u6E38\u6A19\u653E\u9032\u54EA\u4E00\u5247\u7684\u7559\u8A00\u6846
-  };
-
-  // \u2500\u2500 DOM \u53C3\u7167 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  var $ = function (id) { return document.getElementById(id); };
-  var composerInput = $('composerInput');
-  var composerError = $('composerError');
-  var composerHint = $('composerHint');
-  var submitBtn = $('submitBtn');
-  var river = $('river');
-  var calendarToggle = $('calendarToggle');
-  var calendarPanel = $('calendarPanel');
-  var calendarChevron = $('calendarChevron');
-  var filterChip = $('filterChip');
-  var calLabel = $('calLabel');
-  var calGrid = $('calGrid');
-  var composerExpandBtn = $('composerExpandBtn');
-  var fsBackdrop = $('fsBackdrop');
-  var fsTextarea = $('fsTextarea');
-  var fsCloseBtn = $('fsCloseBtn');
-  var fsSubmitBtn = $('fsSubmitBtn');
-
-  // \u540C\u300C\u6642\u5E8F\u9677\u9631\u300D\u7406\u7531\uFF1A\u9019\u88E1\u4E5F\u4E0D\u80FD\u540C\u6B65\u5224\u65B7\u2014\u2014\u5EF6\u5230 setTimeout(0) \u4E4B\u5F8C\uFF08loadNotes \u90A3\u500B
-  // \u56DE\u547C\u88E1\uFF09\u624D\u6C7A\u5B9A\u6A6B\u5E45\u8981\u4E0D\u8981\u986F\u793A\uFF0C\u6B64\u6642 window.arcrunApp \u624D\u78BA\u5B9A\u5DF2\u7D93\u88AB Portal \u8CE6\u503C\u904E\u3002
-
-  // \u2500\u2500 \u6CB3\u9053\u6E32\u67D3 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  // \u6CB3\u9053\u662F Facebook \u6CB3\u9053\u5F0F\uFF08leo 2026-08-24 \u53CD\u994B\uFF09\uFF1A\u6BCF\u4E00\u5247\u7B46\u8A18\u662F\u4E00\u5F35\u5361\u7247\uFF08\u898B\u4E0A\u65B9 CSS
-  // .note-card \u7684\u908A\u6846\uFF09\u30022026-11-11\uFF08arcrun-app-note#2\uFF09\uFF1A\u56DE\u8986\u3001\u7DE8\u8F2F\u3001\u522A\u9664\u3001\u9078\u5B57\u5F15\u7528\u3001\u5DE5\u5177\u5217
-  // \u5168\u90E8\u6539\u7528\u8207\u77E5\u8B58\u5361\u5171\u7528\u7684 ReplyKit\uFF0C\u9019\u88E1\u53EA\u8CA0\u8CAC\u628A\u72C0\u614B\u9935\u7D66\u5B83\u3001\u628A\u52D5\u4F5C\u9001\u5230\u5F8C\u7AEF\u3002
-  function renderRiver() {
-    var list = state.selectedDate ? NotesCore.filterByDate(state.notes, state.selectedDate) : state.notes.slice();
-    list = NotesCore.sortNotesDesc(list);
-
-    if (list.length === 0) {
-      river.innerHTML = '<div class="river-empty">' +
-        (state.selectedDate ? '\u9019\u4E00\u5929\u6C92\u6709\u7B46\u8A18\u3002' : '\u9084\u6C92\u6709\u7B46\u8A18\uFF0C\u5BEB\u4E0B\u7B2C\u4E00\u5247\u5427\u3002') +
-        '</div>';
-      return;
-    }
-
-    river.innerHTML = list.map(renderNoteCard).join('');
-
-    // \u5168\u91CF\u91CD\u7E6A\u6703\u8B93\u6E38\u6A19\u6389\u51FA\u8F38\u5165\u6846\uFF1B\u8981\u6253\u5B57\u7684\u90A3\u4E00\u683C\u5728\u9019\u88E1\u63A5\u56DE\u53BB\u3002
-    if (state.focusBox) {
-      var box = river.querySelector('[data-rk-box="' + cssEsc(state.focusBox) + '"]');
-      if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
-      state.focusBox = null;
-    } else if (state.editing) {
-      var eb = river.querySelector('[data-rk-edit-box="' + cssEsc(state.editing) + '"]');
-      if (eb && document.activeElement !== eb) { eb.focus(); eb.setSelectionRange(eb.value.length, eb.value.length); }
-    }
-  }
-
-  function cssEsc(s) { return String(s).replace(/["\\\\]/g, '\\\\$&'); }
-
-  /** \u9019\u4E00\u5247\u662F\u4E0D\u662F\u300C\u6211\u7684\u300D\uFF1A\u4F5C\u8005\u6B04\u7A7A\uFF1D\u820A\u8CC7\u6599\uFF081.2.0 \u4EE5\u524D\u5BEB\u7684\uFF09\uFF0C\u4EFB\u4F55\u767B\u5165\u8005\u90FD\u80FD\u52D5\uFF08\u540C\u5F8C\u7AEF\u5B88\u9580\u7684\u8AAA\u6CD5\uFF09\u3002 */
-  function isMine(n) { return !n.author || (!!state.me && n.author === state.me); }
-
-  function renderNoteCard(n) {
-    var id = n.record_id;
-    var replies = (n.replies || []).filter(function (r) { return !r.deleted; });
-    var perm = ReplyKit.can({ mode: 'note', kind: 'doc', mine: isMine(n), state: 'live' });
-    var meta = n.date + '\u3000' + formatTime(n.created_at) + (n.edited_at ? '\u3000\u5DF2\u7DE8\u8F2F' : '');
-    var open = !!state.openThread[id];
-
-    var body;
-    if (state.editing === id) {
-      body = ReplyKit.renderEditor({ id: id, draft: state.editDraft, busy: state.busy === id });
-    } else {
-      body = '<div class="content" data-rk-doc="' + attr(id) + '">' + NotesCore.renderMarkdown(n.content) + '</div>';
-    }
-    var confirm = state.confirmDoc === id
-      ? ReplyKit.renderConfirm(ReplyKit.deleteWarning({ mode: 'note', kind: 'doc', mine: true, state: 'live' }, { cardCount: state.cardCounts[id] }), 'doc', id)
-      : '';
-    var err = state.errors[id] ? '<div class="rk-err">' + NotesCore.escapeHtml(state.errors[id]) + '</div>' : '';
-    var drawer = '';
-    if (open) {
-      drawer = '<div class="rk-drawer">' +
-        ReplyKit.renderThread({
-          mode: 'note', me: state.me, replies: n.replies || [],
-          editing: state.editing, draft: state.editDraft, busyId: state.busy,
-          confirming: state.confirmReply
-        }) +
-        ReplyKit.renderComposer({
-          mode: 'note', docId: id, draft: state.drafts[id] || '', quote: state.quote[id] || null,
-          busy: state.busy === 'send:' + id, error: state.errors['send:' + id] || ''
-        }) +
-        '</div>';
-    }
-    return '<div class="note-card" data-note-id="' + attr(id) + '">' +
-      '<div class="card-top"><span class="meta">' + NotesCore.escapeHtml(meta) + '</span>' +
-        ReplyKit.renderBar({ mode: 'note', docId: id, count: replies.length, open: open,
-          hasMenu: perm.edit || perm.delete, menuOpen: state.menuFor === id }) + '</div>' +
-      (state.menuFor === id ? ReplyKit.renderMenu({ docId: id, canEdit: perm.edit, canDelete: perm.delete }) : '') +
-      body + err + confirm + drawer +
-      '</div>';
-  }
-
-  function attr(s) { return NotesCore.escapeHtml(String(s == null ? '' : s)); }
-
-  function findNote(id) {
-    for (var i = 0; i < state.notes.length; i++) {
-      if (state.notes[i].record_id === id) return state.notes[i];
-      var rs = state.notes[i].replies || [];
-      for (var j = 0; j < rs.length; j++) if (rs[j].record_id === id) return rs[j];
-    }
-    return null;
-  }
-  function parentOfReply(id) {
-    for (var i = 0; i < state.notes.length; i++) {
-      var rs = state.notes[i].replies || [];
-      for (var j = 0; j < rs.length; j++) if (rs[j].record_id === id) return state.notes[i];
-    }
-    return null;
-  }
-
-  function resetTransient() {
-    state.menuFor = null; state.editing = null; state.editDraft = '';
-    state.confirmDoc = null; state.confirmReply = null; state.checkingDoc = null;
-  }
-
-  river.addEventListener('click', function (e) {
-    var t = e.target;
-    function hit(sel) { return t.closest ? t.closest(sel) : null; }
-    var b;
-    if ((b = hit('[data-rk-toggle]'))) {
-      var tid = b.getAttribute('data-rk-toggle');
-      state.openThread[tid] = !state.openThread[tid];
-      if (state.openThread[tid]) state.focusBox = tid;
-      state.menuFor = null;
-      renderRiver(); return;
-    }
-    if ((b = hit('[data-rk-more]'))) {
-      var mid = b.getAttribute('data-rk-more');
-      state.menuFor = state.menuFor === mid ? null : mid;
-      renderRiver(); return;
-    }
-    if ((b = hit('[data-rk-edit-doc]'))) {
-      var eid = b.getAttribute('data-rk-edit-doc');
-      resetTransient();
-      state.editing = eid; state.editDraft = (findNote(eid) || {}).content || '';
-      renderRiver(); return;
-    }
-    if ((b = hit('[data-rk-edit]'))) {
-      var rid = b.getAttribute('data-rk-edit');
-      resetTransient();
-      state.editing = rid; state.editDraft = (findNote(rid) || {}).content || '';
-      renderRiver(); return;
-    }
-    if (hit('[data-rk-edit-cancel]')) { resetTransient(); renderRiver(); return; }
-    if ((b = hit('[data-rk-edit-save]'))) { saveEdit(b.getAttribute('data-rk-edit-save')); return; }
-    if ((b = hit('[data-rk-del-doc]'))) { askDeleteDoc(b.getAttribute('data-rk-del-doc')); return; }
-    if ((b = hit('[data-rk-del]'))) { resetTransient(); state.confirmReply = b.getAttribute('data-rk-del'); renderRiver(); return; }
-    if (hit('[data-rk-no]')) { state.confirmDoc = null; state.confirmReply = null; renderRiver(); return; }
-    if ((b = hit('[data-rk-yes]'))) { doDelete(b.getAttribute('data-id')); return; }
-    if ((b = hit('[data-rk-send]'))) { sendReply(b.getAttribute('data-rk-send')); return; }
-    if ((b = hit('[data-rk-qclear]'))) { delete state.quote[b.getAttribute('data-rk-qclear')]; renderRiver(); return; }
-    if ((b = hit('[data-rk-jump]'))) {
-      var r = findNote(b.getAttribute('data-rk-jump'));
-      var card = hit('.note-card');
-      if (r && card) ReplyKit.flashQuote(card.querySelector('.content'), r.quote);
-      return;
-    }
-    // \u9EDE\u5230\u5361\u7247\u4EE5\u5916\uFF0F\u5225\u7684\u5730\u65B9\uFF1A\u6536\u8D77\u300C\u22EF\u300D\u9078\u55AE
-    if (state.menuFor) { state.menuFor = null; renderRiver(); }
-  });
-
-  // \u8349\u7A3F\u8DDF\u8457\u6253\u5B57\u5B58\u9032 state\u2014\u2014\u91CD\u7E6A\uFF08\u958B\u95DC\u9078\u55AE\u3001\u522A\u9664\u78BA\u8A8D\u2026\u2026\uFF09\u4E0D\u6703\u5403\u6389\u6253\u5230\u4E00\u534A\u7684\u5B57\u3002
-  river.addEventListener('input', function (e) {
-    var t = e.target;
-    var k = t.getAttribute && t.getAttribute('data-rk-box');
-    if (k) { state.drafts[k] = t.value; return; }
-    if (t.getAttribute && t.getAttribute('data-rk-edit-box')) state.editDraft = t.value;
-  });
-
-  river.addEventListener('keydown', function (e) {
-    var t = e.target;
-    var k = t.getAttribute && t.getAttribute('data-rk-box');
-    var ek = t.getAttribute && t.getAttribute('data-rk-edit-box');
-    if (k && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); sendReply(k); return; }
-    if (ek && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveEdit(ek); return; }
-    if (ek && e.key === 'Escape') { e.preventDefault(); resetTransient(); renderRiver(); return; }
-    if (k && e.key === 'Escape') { e.preventDefault(); state.openThread[k] = false; renderRiver(); }
-  });
-
-  ReplyKit.injectCss(river);
-  ReplyKit.installToolbar(river);
-  // \u9078\u4E00\u6BB5\u6B63\u6587 \u2192 \u9078\u53D6\u8655\u4E0A\u65B9\u6D6E\u51FA\u300C\u5F15\u7528\u56DE\u8986\u300D\uFF08\u684C\u6A5F\u653E\u958B\u6ED1\u9F20\u3001\u624B\u6A5F\u9577\u6309\u9078\u53D6\u90FD\u6703\u89F8\u767C\uFF09\u3002
-  ReplyKit.installSelection(river, {
-    docSelector: '[data-rk-doc]', hostSelector: '.note-card',
-    onQuote: function (docId, text, pos) {
-      state.quote[docId] = { text: text, pos: pos };
-      state.openThread[docId] = true;
-      state.focusBox = docId;
-      renderRiver();
-    }
-  });
-
-  /** \u9001\u51FA\u4E00\u5247\u7559\u8A00\uFF08\u5C0D\u6574\u7BC7\uFF0C\u6216\u5E36\u8457\u5F15\u7528\u7684\u90A3\u4E00\u6BB5\uFF09\u3002 */
-  function sendReply(docId) {
-    var content = (state.drafts[docId] || '').trim();
-    if (!content) { state.errors['send:' + docId] = '\u8ACB\u5148\u8F38\u5165\u7559\u8A00\u5167\u5BB9\u3002'; renderRiver(); return; }
-    var parent = findNote(docId);
-    var q = state.quote[docId];
-    var payload = { content: content, date: (parent && parent.date) || NotesCore.todayISO(), parent_id: docId };
-    if (q && q.text) { payload.quote = q.text; payload.quote_pos = q.pos; }
-    state.busy = 'send:' + docId; delete state.errors['send:' + docId];
-    renderRiver();
-    callAction('create_note', payload).then(function (resp) {
-      state.busy = null;
-      var res = NotesCore.unwrapActionResult(resp);
-      if (!res || !res.success) {
-        state.errors['send:' + docId] = '\u7559\u8A00\u9001\u51FA\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
-        renderRiver();
-        return;
-      }
-      // \u5F8C\u7AEF\u56DE\u4F86\u7684 parent_id \u8DDF\u6211\u5011\u9001\u7684\u4E0D\u4E00\u81F4\uFF1D\u8CC7\u6599\u8868\u7F3A\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3001\u88AB\u975C\u9ED8\u4E1F\u6389\uFF08\u820A\u7248 note \u8CC7\u6599\u8868\u7684\u75C7\u72C0\uFF1A
-      // \u56DE\u8986\u8B8A\u6210\u4E00\u5247\u9802\u5C64\u7B46\u8A18\uFF09\u3002\u4E0D\u5047\u88DD\u6210\u529F\uFF1A\u660E\u8B1B\uFF0C\u4E26\u6307\u51FA\u600E\u9EBC\u4FEE\uFF08inkstone/arcrun-app-note#1 c17811\uFF09\u3002
-      if (res.data && res.data.parent_id !== docId) {
-        state.errors['send:' + docId] = '\u9019\u5247\u56DE\u8986\u88AB\u5B58\u6210\u4E86\u7368\u7ACB\u7B46\u8A18\uFF1A\u9019\u53F0\u7684\u7B46\u8A18\u8CC7\u6599\u8868\u9084\u6C92\u6709\u300C\u56DE\u8986\u300D\u6B04\u4F4D\u3002\u8ACB\u5230 App \u5E02\u96C6\u628A\u300C\u7B46\u8A18\u300D\u66F4\u65B0\u5230\u6700\u65B0\u7248\uFF08\u6703\u81EA\u52D5\u88DC\u6B04\u4F4D\uFF09\uFF0C\u518D\u91CD\u65B0\u56DE\u8986\u4E00\u6B21\u3002';
-      } else {
-        state.drafts[docId] = ''; delete state.quote[docId];
-      }
-      loadNotes();
-    });
-  }
-
-  /** \u5B58\u4E0B\u884C\u5167\u7DE8\u8F2F\uFF08\u7B46\u8A18\u6B63\u6587\u6216\u67D0\u5247\u56DE\u8986\uFF09\u3002 */
-  function saveEdit(id) {
-    var content = (state.editDraft || '').trim();
-    if (!content) { state.errors[id] = '\u5167\u5BB9\u4E0D\u80FD\u662F\u7A7A\u7684\uFF08\u8981\u6E05\u6389\u8ACB\u7528\u522A\u9664\uFF09\u3002'; renderRiver(); return; }
-    state.busy = id; delete state.errors[id];
-    renderRiver();
-    callAction('update_note', { record_id: id, content: content }).then(function (resp) {
-      state.busy = null;
-      var res = NotesCore.unwrapActionResult(resp);
-      if (!res || !res.success) {
-        state.errors[id] = '\u5132\u5B58\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
-        renderRiver();
-        return;
-      }
-      resetTransient();
-      loadNotes();
-    });
-  }
-
-  /** \u6309\u300C\u522A\u9664\u300D\uFF1A\u5148\u554F\u9019\u5247\u7B46\u8A18\u6574\u7406\u51FA\u5E7E\u5F35\u5361\uFF0C\u518D\u8DF3\u78BA\u8A8D\u6846\uFF08\u63D0\u793A\u300C\u5DF2\u6574\u7406\u6210 N \u5F35\u5361\uFF0C\u522A\u9664\u5F8C\u9019\u4E9B\u5361\u6703\u4E0B\u67B6\u300D\uFF09\u3002 */
-  function askDeleteDoc(id) {
-    resetTransient();
-    state.checkingDoc = id;
-    callAction('note_cards', { record_id: id }).then(function (resp) {
-      if (state.checkingDoc !== id) return; // \u4F7F\u7528\u8005\u5728\u7B49\u7684\u6642\u5019\u6309\u4E86\u5225\u7684\uFF0C\u4E0D\u8981\u628A\u820A\u7B54\u6848\u84CB\u4E0A\u53BB
-      state.checkingDoc = null;
-      var res = NotesCore.unwrapActionResult(resp);
-      // \u554F\u4E0D\u5230\uFF08\u7DB2\u8DEF\u3001\u6B0A\u9650\uFF09\u5C31\u4E0D\u986F\u793A\u6578\u5B57\uFF1A\u5BE7\u53EF\u53EA\u554F\u300C\u522A\u9664\u9019\u5247\u7B46\u8A18\uFF1F\u300D\uFF0C\u4E5F\u4E0D\u5047\u88DD\u77E5\u9053\u6709 0 \u5F35\u5361\u3002
-      if (res && res.success && res.data && res.data.card_count > 0) state.cardCounts[id] = res.data.card_count;
-      else delete state.cardCounts[id];
-      state.confirmDoc = id;
-      renderRiver();
-    });
-  }
-
-  /** \u78BA\u8A8D\u5F8C\u7684\u522A\u9664\uFF08\u7B46\u8A18\u6216\u56DE\u8986\uFF0C\u5F8C\u7AEF\u662F\u300C\u6A19\u8A18\u522A\u9664\u300D\uFF09\u3002 */
-  function doDelete(id) {
-    state.busy = id; delete state.errors[id];
-    callAction('delete_note', { record_id: id }).then(function (resp) {
-      state.busy = null;
-      var res = NotesCore.unwrapActionResult(resp);
-      var parent = parentOfReply(id);
-      var errKey = parent ? parent.record_id : id; // \u56DE\u8986\u522A\u5931\u6557\u7684\u8A0A\u606F\u986F\u793A\u5728\u5B83\u6240\u5C6C\u90A3\u5F35\u5361
-      if (!res || !res.success) {
-        state.errors[errKey] = '\u522A\u9664\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
-        state.confirmDoc = null; state.confirmReply = null;
-        renderRiver();
-        return;
-      }
-      resetTransient();
-      loadNotes();
-    });
-  }
-
-  function formatTime(iso) {
-    if (!iso) return '';
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-  }
-
-  // \u2500\u2500 \u5C0F\u65E5\u66C6\u6E32\u67D3 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  var DOW = ['\u65E5', '\u4E00', '\u4E8C', '\u4E09', '\u56DB', '\u4E94', '\u516D'];
-
-  function renderCalendar() {
-    var notesByDate = NotesCore.datesWithNotes(state.notes);
-    var todayStr = NotesCore.todayISO();
-    var cal = NotesCore.buildCalendarMonth(state.calYear, state.calMonth, notesByDate, todayStr, state.selectedDate);
-
-    calLabel.textContent = state.calYear + ' \u5E74 ' + (state.calMonth + 1) + ' \u6708';
-
-    var html = DOW.map(function (d) { return '<div class="cal-dow">' + d + '</div>'; }).join('');
-    cal.weeks.forEach(function (week) {
-      week.forEach(function (cell) {
-        if (!cell) { html += '<div class="cal-cell empty"></div>'; return; }
-        var cls = 'cal-cell';
-        if (cell.isToday) cls += ' today';
-        if (cell.isSelected) cls += ' selected';
-        html += '<div class="' + cls + '" data-date="' + cell.dateStr + '">' +
-          cell.day + (cell.hasNotes ? '<span class="dot"></span>' : '') +
-          '</div>';
-      });
-    });
-    calGrid.innerHTML = html;
-
-    Array.prototype.forEach.call(calGrid.querySelectorAll('.cal-cell[data-date]'), function (el) {
-      el.addEventListener('click', function () {
-        var d = el.getAttribute('data-date');
-        selectDate(state.selectedDate === d ? null : d); // \u518D\u9EDE\u4E00\u6B21\u540C\u4E00\u5929\uFF1D\u53D6\u6D88\u7BE9\u9078
-      });
-    });
-
-    filterChip.hidden = !state.selectedDate;
-    if (state.selectedDate) filterChip.textContent = state.selectedDate;
-  }
-
-  function selectDate(dateStr) {
-    state.selectedDate = dateStr;
-    if (dateStr) {
-      var parts = dateStr.split('-');
-      state.calYear = Number(parts[0]);
-      state.calMonth = Number(parts[1]) - 1;
-    }
-    renderCalendar();
-    renderRiver();
-  }
-
-  calendarToggle.addEventListener('click', function () {
-    state.calendarOpen = !state.calendarOpen;
-    calendarPanel.hidden = !state.calendarOpen;
-    calendarChevron.textContent = state.calendarOpen ? '\u25B4' : '\u25BE';
-    if (state.calendarOpen) renderCalendar();
-  });
-
-  $('calPrev').addEventListener('click', function () {
-    state.calMonth -= 1;
-    if (state.calMonth < 0) { state.calMonth = 11; state.calYear -= 1; }
-    renderCalendar();
-  });
-  $('calNext').addEventListener('click', function () {
-    state.calMonth += 1;
-    if (state.calMonth > 11) { state.calMonth = 0; state.calYear += 1; }
-    renderCalendar();
-  });
-
-  // \u2500\u2500 \u9001\u51FA\u4E00\u5247\u7B46\u8A18 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  function submitNote() {
-    var content = composerInput.value;
-    composerError.textContent = '';
-    if (!content.trim()) { composerError.textContent = '\u7B46\u8A18\u4E0D\u80FD\u662F\u7A7A\u7684\u3002'; return; }
-
-    submitBtn.disabled = true;
-    submitBtn.textContent = '\u9001\u51FA\u4E2D\u2026';
-
-    // \u5BEB\u5165\u7684\u65E5\u671F\uFF1A\u82E5\u76EE\u524D\u6B63\u7BE9\u9078\u8457\u67D0\u4E00\u5929\uFF0C\u5C31\u5BEB\u9032\u90A3\u4E00\u5929\uFF08\u65B9\u4FBF\u88DC\u8A18\uFF09\uFF1B\u5426\u5247\u7528\u4ECA\u5929\u3002
-    var targetDate = state.selectedDate || NotesCore.todayISO();
-
-    callAction('create_note', { content: content, date: targetDate }).then(function (resp) {
-      var res = NotesCore.unwrapActionResult(resp);
-      submitBtn.disabled = false;
-      submitBtn.textContent = '\u9001\u51FA';
-      if (!res || !res.success) {
-        composerError.textContent = '\u9001\u51FA\u5931\u6557\uFF1A' + ((res && res.error) || '\u672A\u77E5\u932F\u8AA4');
-        return;
-      }
-      composerInput.value = '';
-      loadNotes();
-    });
-  }
-
-  submitBtn.addEventListener('click', submitNote);
-  composerInput.addEventListener('keydown', function (e) {
-    // Cmd/Ctrl+Enter \u9001\u51FA\uFF0C\u4E00\u822C Enter \u4FDD\u7559\u7D66\u63DB\u884C\uFF08\u7B46\u8A18\u5E38\u5E38\u662F\u591A\u884C\uFF09\u3002
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitNote();
-  });
-  composerHint.textContent = '\u2318/Ctrl + Enter \u9001\u51FA';
-
-  // \u2500\u2500 \u5168\u87A2\u5E55\u8F38\u5165\uFF08leo 2026-08-24\uFF1A\u300C\u539F\u672C\u7B46\u8A18\u8F38\u5165\u754C\u9762\u53EF\u4EE5\u5168\u87A2\u5E55\uFF0C\u4F46\u4E5F\u6C92\u6709\u6309\u9215\u300D\uFF09\u2500\u2500\u2500
-  //
-  // \u540C\u4E00\u4EFD\u8349\u7A3F\uFF0C\u4E0D\u662F\u5169\u4EFD\uFF1A\u5C55\u958B\u6642\u628A\u4E3B\u8F38\u5165\u6846\u7684\u503C\u5E36\u904E\u53BB\uFF0C\u6536\u8D77\uFF08Esc \u6216 \u2715\uFF09\u6642\u628A\u5168\u87A2\u5E55\u6846
-  // \u7684\u503C\u5E36\u56DE\u4E3B\u8F38\u5165\u6846\u2014\u2014\u4F7F\u7528\u8005\u4E2D\u9014\u5207\u63DB\u4E0D\u6703\u767C\u73FE\u5167\u5BB9\u8B8A\u4E86\uFF0C\u53EA\u662F\u63DB\u4E86\u500B\u66F4\u5927\u7684\u6846\u7DE8\u8F2F\u3002
-  // \u9001\u51FA\u53EF\u4EE5\u76F4\u63A5\u5728\u5168\u87A2\u5E55\u6846\u88E1\u6309 \u2318+Enter\uFF0C\u4E0D\u5FC5\u5148\u6536\u8D77\u518D\u6309\u4E3B\u9001\u51FA\u9375\u3002
-
-  function openFullscreen() {
-    fsTextarea.value = composerInput.value;
-    fsBackdrop.hidden = false;
-    setTimeout(function () { fsTextarea.focus(); }, 0);
-  }
-  function closeFullscreen(syncBack) {
-    if (syncBack !== false) composerInput.value = fsTextarea.value;
-    fsBackdrop.hidden = true;
-  }
-  composerExpandBtn.addEventListener('click', openFullscreen);
-  fsCloseBtn.addEventListener('click', function () { closeFullscreen(true); });
-  fsBackdrop.addEventListener('click', function (e) {
-    if (e.target === fsBackdrop) closeFullscreen(true); // \u9EDE\u80CC\u666F\uFF1D\u8DDF Esc \u4E00\u6A23\u6536\u8D77\uFF0C\u4E0D\u662F\u53D6\u6D88
-  });
-  fsTextarea.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { e.preventDefault(); closeFullscreen(true); return; }
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      composerInput.value = fsTextarea.value;
-      closeFullscreen(false); // \u503C\u5DF2\u7D93\u540C\u6B65\u904E\u4E86\uFF0C\u6536\u8D77\u6642\u4E0D\u8981\u7528\uFF08\u53EF\u80FD\u5DF2\u88AB\u6E05\u7A7A\u7684\uFF09fsTextarea \u518D\u84CB\u4E00\u6B21
-      submitNote();
-    }
-  });
-  fsSubmitBtn.addEventListener('click', function () {
-    composerInput.value = fsTextarea.value;
-    closeFullscreen(false);
-    submitNote();
-  });
-
-  // \u2500\u2500 \u8F09\u5165\u6CB3\u9053 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-  function loadNotes() {
-    callAction('list_notes', {}).then(function (resp) {
-      var res = NotesCore.unwrapActionResult(resp);
-      if (!res || !res.success) {
-        river.innerHTML = '<div class="river-empty">\u8F09\u5165\u5931\u6557\uFF1A' + NotesCore.escapeHtml((res && res.error) || '\u672A\u77E5\u932F\u8AA4') + '</div>';
-        return;
-      }
-      state.notes = (res.data && res.data.notes) || [];
-      state.me = (res.data && res.data.me) || '';
-      renderRiver();
-      if (state.calendarOpen) renderCalendar();
-    });
-  }
-
-  // \u{1F534} \u5EF6\u5F8C\u5230\u4E0B\u4E00\u8F2A\u4E8B\u4EF6\u5708\u624D\u7B2C\u4E00\u6B21\u547C\u53EB callAction\u3001\u624D\u6C7A\u5B9A\u8981\u4E0D\u8981\u986F\u793A MOCK \u6A6B\u5E45\uFF1A
-  // \u771F Portal \u88E1 window.arcrunApp.action \u662F\u5728\u9019\u652F script \u57F7\u884C\u5B8C\u4E4B\u5F8C\u624D\u88AB\u8CE6\u503C\u7684
-  // \uFF08\u898B\u4E0A\u9762\u300C\u6642\u5E8F\u9677\u9631\u300D\u8AAA\u660E\uFF09\u3002\u540C\u6B65\u547C\u53EB\uFF0F\u540C\u6B65\u5224\u65B7\u90FD\u6703\u62FF\u5230\u932F\u7684\u7B54\u6848\uFF08\u6C38\u9060\u8AA4\u5224\u6210 MOCK\uFF09\u3002
-  // setTimeout(fn, 0) \u4FDD\u8B49\u665A\u65BC\u90A3\u6B21\u8CE6\u503C\u2014\u2014\u9019\u88E1\u9023\u6A6B\u5E45\u7684\u986F\u793A\u8207\u5426\u90FD\u653E\u9032\u540C\u4E00\u500B\u56DE\u547C\uFF0C
-  // \u78BA\u4FDD\u5169\u8005\u7528\u7684\u662F\u540C\u4E00\u6B21\u3001\u540C\u4E00\u500B\u6642\u9593\u9EDE\u5224\u65B7\u51FA\u4F86\u7684\u7D50\u679C\uFF0C\u4E0D\u6703\u4E0D\u4E00\u81F4\u3002
-  setTimeout(function () {
-    $('mockBanner').hidden = !usingMock();
-    loadNotes();
-  }, 0);
-})();
-<\/script>
-</body>
-</html>
-`
-  },
   data: [
     {
       name: "note",
@@ -27179,9 +25630,9 @@ executeRouter.post("/execute", async (c) => {
       }, 500);
     }
     return c.json({ success: true, data: result.data, trace: result.trace, duration_ms });
-  } catch (err2) {
+  } catch (err3) {
     const duration_ms = Date.now() - start;
-    const errMsg = err2 instanceof Error ? err2.message : String(err2);
+    const errMsg = err3 instanceof Error ? err3.message : String(err3);
     c.executionCtx.waitUntil(
       writeExecutionVerdict(
         c.env,
@@ -27193,11 +25644,11 @@ executeRouter.post("/execute", async (c) => {
         context,
         apiKey,
         c.env.__kbdbTally,
-        err2 instanceof ExecutionError ? [...err2.trace].reverse().find((s) => s.error)?.nodeId : void 0
+        err3 instanceof ExecutionError ? [...err3.trace].reverse().find((s) => s.error)?.nodeId : void 0
       )
     );
-    if (err2 instanceof ExecutionError) {
-      const traceFormatted = err2.trace.map((s) => ({
+    if (err3 instanceof ExecutionError) {
+      const traceFormatted = err3.trace.map((s) => ({
         node: s.nodeId,
         status: s.error ? "failed" : "success",
         ...s.error ? { error: s.error } : {}
@@ -27205,8 +25656,8 @@ executeRouter.post("/execute", async (c) => {
       return c.json({
         success: false,
         error: errMsg,
-        failed_node: err2.failed_node,
-        failed_input: err2.failed_input,
+        failed_node: err3.failed_node,
+        failed_input: err3.failed_input,
         trace: traceFormatted,
         duration_ms
       }, 500);
@@ -29700,23 +28151,23 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
       };
     }
     return { success: true, data: result.data, trace: result.trace, duration_ms, graph };
-  } catch (err2) {
+  } catch (err3) {
     const duration_ms = Date.now() - start;
-    if (err2 instanceof WorkflowPaused) {
+    if (err3 instanceof WorkflowPaused) {
       return {
         success: true,
         paused: true,
-        task_id: err2.task_id,
-        run_id: err2.run_id,
-        paused_node_id: err2.paused_node_id,
-        trace: err2.trace_so_far,
+        task_id: err3.task_id,
+        run_id: err3.run_id,
+        paused_node_id: err3.paused_node_id,
+        trace: err3.trace_so_far,
         duration_ms,
         graph
       };
     }
-    const errMsg = err2 instanceof Error ? err2.message : String(err2);
-    if (err2 instanceof ExecutionError) {
-      const traceFormatted = err2.trace.map((s) => ({
+    const errMsg = err3 instanceof Error ? err3.message : String(err3);
+    if (err3 instanceof ExecutionError) {
+      const traceFormatted = err3.trace.map((s) => ({
         node: s.nodeId,
         status: s.error ? "failed" : "success",
         ...s.error ? { error: s.error } : {}
@@ -29724,13 +28175,13 @@ async function handleCypherExecute(triplets, context, graphId, graphName, config
       throw new Error(JSON.stringify({
         success: false,
         error: errMsg,
-        failed_node: err2.failed_node,
-        failed_input: err2.failed_input,
+        failed_node: err3.failed_node,
+        failed_input: err3.failed_input,
         trace: traceFormatted,
         duration_ms
       }));
     }
-    throw err2;
+    throw err3;
   }
 }
 
@@ -29840,8 +28291,8 @@ cypherRouter.post("/cypher/search", async (c) => {
       missing: result.missing
     };
     return c.json(response);
-  } catch (err2) {
-    const errMsg = err2 instanceof Error ? err2.message : String(err2);
+  } catch (err3) {
+    const errMsg = err3 instanceof Error ? err3.message : String(err3);
     return c.json({ error: errMsg }, 400);
   }
 });
@@ -29873,8 +28324,8 @@ cypherRouter.post("/cypher/execute", async (c) => {
       ...result
     };
     return c.json(response);
-  } catch (err2) {
-    const errMsg = err2 instanceof Error ? err2.message : String(err2);
+  } catch (err3) {
+    const errMsg = err3 instanceof Error ? err3.message : String(err3);
     try {
       const parsed = JSON.parse(errMsg);
       const response = {
@@ -31425,8 +29876,8 @@ authRouter.get("/auth/callback", async (c) => {
         "Set-Cookie": `arcrun_session=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax; Domain=.arcrun.dev; Max-Age=${7 * 24 * 60 * 60}`
       }
     });
-  } catch (err2) {
-    console.error("[auth/callback]", err2);
+  } catch (err3) {
+    console.error("[auth/callback]", err3);
     return Response.redirect(`${landingOrigin}/login?error=server_error`, 302);
   }
 });
@@ -31554,17 +30005,17 @@ resumeRouter.post("/workflows/resume", async (c) => {
       trace: result.trace,
       duration_ms
     });
-  } catch (err2) {
-    if (err2 instanceof WorkflowPaused) {
+  } catch (err3) {
+    if (err3 instanceof WorkflowPaused) {
       return c.json({
         success: true,
         paused_again: true,
-        task_id: err2.task_id,
-        run_id: err2.run_id,
-        paused_node_id: err2.paused_node_id
+        task_id: err3.task_id,
+        run_id: err3.run_id,
+        paused_node_id: err3.paused_node_id
       });
     }
-    const errMsg = err2 instanceof Error ? err2.message : String(err2);
+    const errMsg = err3 instanceof Error ? err3.message : String(err3);
     return c.json({ success: false, error: errMsg, task_id: taskId, run_id: state.run_id }, 500);
   }
 });
@@ -33136,8 +31587,8 @@ function parseSprintWaitingTable(md, sprintFile) {
   return sortWaitingItems(items);
 }
 function sortWaitingItems(items) {
-  const rank = (u) => u === "\u{1F534}" ? 0 : u === "\u{1F7E1}" ? 1 : 2;
-  return items.map((it, i) => ({ it, i })).sort((a, b) => rank(a.it.urgency) - rank(b.it.urgency) || a.i - b.i).map((x) => x.it);
+  const rank2 = (u) => u === "\u{1F534}" ? 0 : u === "\u{1F7E1}" ? 1 : 2;
+  return items.map((it, i) => ({ it, i })).sort((a, b) => rank2(a.it.urgency) - rank2(b.it.urgency) || a.i - b.i).map((x) => x.it);
 }
 function cleanWaitingTitle(raw2) {
   let s = raw2.replace(/\*\*/g, "").replace(/~~/g, "").replace(/`/g, "").trim();
@@ -34007,6 +32458,7 @@ async function declarationFromInstalled(env, tenant2, app2, coords) {
     workflows,
     ...skills.length ? { skills } : {},
     ...app2.rulebook ? { rulebook: app2.rulebook } : {},
+    ...app2.entry === "kb" ? { entry: "kb" } : {},
     actions: app2.actions,
     ...data.length ? { data } : {},
     ...recipes.length || credentials.length ? { requires: { ...recipes.length ? { recipes } : {}, ...credentials.length ? { credentials } : {} } } : {},
@@ -35728,6 +34180,415 @@ async function rerankPassages(env, tenant2, config, question, passages) {
 // cypher-executor/src/routes/portal-data.ts
 init_kbdb_busy();
 init_app_userlayer_ops();
+
+// cypher-executor/src/lib/rule-sources-ops.ts
+init_app_system();
+init_app_userlayer();
+init_app_userlayer_ops();
+
+// cypher-executor/src/lib/rule-sources.ts
+init_app_rulebook();
+var RULE_LAYERS = ["group", "company", "dept", "person"];
+var RULE_LAYER_LABEL = { group: "\u96C6\u5718", company: "\u516C\u53F8", dept: "\u90E8\u9580", person: "\u500B\u4EBA" };
+var RULE_SOURCES_MAX = 12;
+var RULE_REPO_MAX_CHARS = 7e5;
+function emptySources() {
+  return { v: 1, items: [], next: 1 };
+}
+var ARTIFACTS_HOST = /^([0-9a-f]{32})\.artifacts\.cloudflare\.net$/;
+function parseArtifactsUrl(u, account) {
+  const parts = u.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts[0] !== "git" || parts.length < 3) return { error: "\u9023\u7D50\u8981\u50CF https://\u2026artifacts.cloudflare.net/git/\u547D\u540D\u7A7A\u9593/\u898F\u7AE0" };
+  const ns = parts[1], repo = parts[2].replace(/\.git$/i, ""), rest = parts.slice(3);
+  if (!/^[A-Za-z0-9_.-]+$/.test(ns) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return { error: "\u9019\u500B repo \u9023\u7D50\u770B\u8D77\u4F86\u4E0D\u5C0D" };
+  let ref = "HEAD", path = "";
+  if (rest.length) {
+    if (rest[0] !== "tree" || !rest[1]) return { error: "\u9023\u7D50\u53EA\u8981\u5230 repo \u672C\u8EAB\uFF0C\u6216\u50CF \u2026/tree/main/\u8CC7\u6599\u593E \u9019\u6A23\u6307\u5230\u8CC7\u6599\u593E" };
+    ref = rest[1];
+    path = rest.slice(2).join("/");
+  }
+  if (!/^[A-Za-z0-9_./-]+$/.test(ref) || ref.includes("..") || path.includes("..")) return { error: "\u5206\u652F\u6216\u8CC7\u6599\u593E\u540D\u7A31\u4E0D\u5408\u6CD5" };
+  return { host: "artifacts", owner: ns, repo, ref, path, account };
+}
+function parseRepoUrl(input) {
+  const s = String(input ?? "").trim();
+  if (!s) return { error: "\u8ACB\u8CBC\u4E0A git repo \u7684\u9023\u7D50" };
+  let u;
+  try {
+    u = new URL(s.replace(/\.git$/i, ""));
+  } catch {
+    return { error: "\u9019\u4E0D\u662F\u4E00\u500B\u7DB2\u5740\uFF0C\u8ACB\u8CBC\u4E0A\u50CF https://github.com/\u516C\u53F8/\u898F\u7AE0 \u9019\u6A23\u7684\u9023\u7D50" };
+  }
+  if (u.protocol !== "https:") return { error: "\u53EA\u63A5\u53D7 https \u958B\u982D\u7684\u9023\u7D50" };
+  if (u.username || u.password) return { error: "\u9023\u7D50\u88E1\u4E0D\u8981\u653E\u5E33\u865F\u5BC6\u78BC\uFF1B\u8B80\u79C1\u6709 repo \u7684\u91D1\u9470\u7531\u7BA1\u7406\u54E1\u5B58\u5728\u96F2\u7AEF\uFF0C\u4E0D\u5728\u9019\u88E1\u8CBC" };
+  const host = u.hostname.toLowerCase();
+  const am = ARTIFACTS_HOST.exec(host);
+  if (am) return parseArtifactsUrl(new URL(s), am[1]);
+  if (host !== "github.com" && host !== "gitlab.com") return { error: "\u53EA\u80FD\u639B Artifacts\u3001github.com \u6216 gitlab.com \u7684 repo" };
+  const parts = u.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts.length < 2) return { error: "\u9023\u7D50\u8981\u6307\u5230\u4E00\u500B repo\uFF08\u50CF https://github.com/\u516C\u53F8/\u898F\u7AE0\uFF09" };
+  const [owner, repo, ...rest] = parts;
+  if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return { error: "\u9019\u500B repo \u9023\u7D50\u770B\u8D77\u4F86\u4E0D\u5C0D" };
+  let ref = "HEAD", path = "";
+  if (rest.length) {
+    const at = host === "github.com" ? 0 : 1;
+    const ok = host === "github.com" ? rest[0] === "tree" : rest[0] === "-" && rest[1] === "tree";
+    if (!ok || !rest[at + 1]) return { error: "\u9023\u7D50\u53EA\u8981\u5230 repo \u672C\u8EAB\uFF0C\u6216\u50CF \u2026/tree/main/\u8CC7\u6599\u593E \u9019\u6A23\u6307\u5230\u8CC7\u6599\u593E" };
+    ref = rest[at + 1];
+    path = rest.slice(at + 2).join("/");
+  }
+  if (!/^[A-Za-z0-9_./-]+$/.test(ref) || ref.includes("..") || path.includes("..")) return { error: "\u5206\u652F\u6216\u8CC7\u6599\u593E\u540D\u7A31\u4E0D\u5408\u6CD5" };
+  return { host, owner, repo, ref, path };
+}
+function rulebookFiles(p) {
+  const base = p.path ? `${p.path.replace(/\/$/, "")}/` : "";
+  return [`${base}rulebook.json`, `${base}.claude-plugin/rulebook.json`, `${base}rules/rulebook.json`];
+}
+function rulebookCandidates(p) {
+  const files = rulebookFiles(p);
+  return files.map((f) => p.host === "github.com" ? `https://raw.githubusercontent.com/${p.owner}/${p.repo}/${p.ref}/${f}` : `https://gitlab.com/${p.owner}/${p.repo}/-/raw/${p.ref}/${f}`);
+}
+async function fetchRepoRulebook(url, opts = {}) {
+  const p = parseRepoUrl(url);
+  if ("error" in p) return { ok: false, code: "bad_url", error: p.error };
+  if (p.host === "artifacts") return fetchArtifactsRulebook(p, opts.artifactsEnv ?? { ARTIFACTS: opts.artifacts });
+  const f = opts.fetchImpl ?? fetch;
+  const repo = `${p.owner}/${p.repo}`;
+  let sawDenied = false;
+  for (const raw2 of rulebookCandidates(p)) {
+    let res;
+    try {
+      res = await f(raw2, { headers: opts.token ? p.host === "github.com" ? { Authorization: `token ${opts.token}` } : { "PRIVATE-TOKEN": opts.token } : {}, redirect: "follow" });
+    } catch (e) {
+      return { ok: false, code: "unreachable", error: `\u9023\u4E0D\u4E0A ${p.host}\uFF1A${e instanceof Error ? e.message : String(e)}` };
+    }
+    if (res.status === 404) continue;
+    if (res.status === 401 || res.status === 403) {
+      sawDenied = true;
+      continue;
+    }
+    if (!res.ok) return { ok: false, code: "unreachable", error: `${p.host} \u56DE ${res.status}\uFF0C\u7A0D\u5F8C\u518D\u8A66` };
+    const text = await res.text();
+    if (text.length > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u4E0D\u662F\u5408\u6CD5\u7684 JSON` };
+    }
+    return normalizeRulebook(json, repo);
+  }
+  if (opts.token && sawDenied) {
+    return { ok: false, code: "private_denied", error: `\u8B80\u4E0D\u5230 ${repo}\uFF1A\u96F2\u7AEF\u8A2D\u5B9A\u7684\u8B80\u53D6\u91D1\u9470\u6C92\u6709\u9019\u500B repo \u7684\u6B0A\u9650\u3002` };
+  }
+  if (!opts.token) {
+    return { ok: false, code: "private_no_token", error: `\u8B80\u4E0D\u5230 ${repo} \u7684 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002\u8ACB\u78BA\u8A8D repo \u662F\u516C\u958B\u7684\u3001\u6839\u76EE\u9304\u6709 rulebook.json\uFF1B\u76EE\u524D\u53EA\u652F\u63F4\u516C\u958B repo\uFF0C\u79C1\u6709 repo \u5C1A\u672A\u652F\u63F4\uFF08\u8ACB\u4E0D\u8981\u8CBC token\uFF09\u3002` };
+  }
+  return { ok: false, code: "not_found", error: `${repo} \u88E1\u627E\u4E0D\u5230 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002` };
+}
+var artifactsNsBindingName = (ns) => /^[A-Za-z][A-Za-z0-9_]*$/.test(ns) ? `ARTIFACTS_NS_${ns}` : null;
+function pickArtifactsBinding(env, ns) {
+  const declared = String(env.ARTIFACTS_NAMESPACE ?? "").trim();
+  if (!declared || declared === ns) return env.ARTIFACTS ?? null;
+  const name = artifactsNsBindingName(ns);
+  return name && env[name] || null;
+}
+async function fetchArtifactsRulebook(p, env) {
+  const repo = `${p.owner}/${p.repo}`;
+  const binding = pickArtifactsBinding(env, p.owner);
+  if (!binding || typeof binding.get !== "function") {
+    return env.ARTIFACTS && typeof env.ARTIFACTS.get === "function" ? { ok: false, code: "not_found", error: `\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u7D81\u4E0A Artifacts \u7684\u547D\u540D\u7A7A\u9593\u300C${p.owner}\u300D\uFF08\u53EA\u7D81\u4E86\u300C${String(env.ARTIFACTS_NAMESPACE || "\u9810\u8A2D")}\u300D\uFF09\u3002\u66F4\u65B0\u5BE6\u4F8B\u5F8C\u6703\u81EA\u52D5\u7D81\u4E0A\u5E33\u865F\u88E1\u6240\u6709\u547D\u540D\u7A7A\u9593\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002` } : { ok: false, code: "unreachable", error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u9023\u4E0A Artifacts\uFF08\u5E33\u865F\u6C92\u958B\u6216\u9084\u6C92\u7D81\uFF09\u3002Artifacts \u958B\u901A\u5F8C\u91CD\u65B0\u5B89\u88DD\u6216\u66F4\u65B0\u5BE6\u4F8B\u5373\u53EF\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002" };
+  }
+  let h;
+  try {
+    h = await binding.get(p.repo);
+  } catch (e) {
+    if (e?.code === "NOT_FOUND" || /not found/i.test(String(e?.message))) {
+      return { ok: false, code: "not_found", error: `\u9019\u500B\u5E33\u865F\u7684 Artifacts \u88E1\u6C92\u6709 repo\u300C${p.repo}\u300D\uFF0C\u8ACB\u78BA\u8A8D\u9023\u7D50\u3002` };
+    }
+    return { ok: false, code: "unreachable", error: `Artifacts \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A${String(e?.message ?? e).slice(0, 120)}` };
+  }
+  try {
+    const remote = String((await h?.info?.())?.remote ?? "");
+    if (remote && !remote.toLowerCase().includes(`${p.account}.artifacts.cloudflare.net/git/${p.owner}/${p.repo}`.toLowerCase())) {
+      return { ok: false, code: "not_found", error: `\u9019\u500B\u9023\u7D50\u4E0D\u662F\u9019\u53F0\u5BE6\u4F8B\u6240\u5728\u5E33\u865F\u7684 Artifacts\uFF08\u5E33\u865F\u6216\u547D\u540D\u7A7A\u9593\u5C0D\u4E0D\u4E0A\uFF09\uFF0C\u4E0D\u8B80\u3002` };
+    }
+  } catch {
+  }
+  const refs = p.ref === "HEAD" ? ["HEAD", "main", "master"] : [p.ref];
+  let lastErr = "";
+  for (const path of rulebookFiles(p)) {
+    for (const ref of refs) {
+      let blob;
+      try {
+        blob = await h.readFile({ ref, path });
+      } catch (e) {
+        lastErr = String(e?.message ?? e);
+        continue;
+      }
+      if (!blob) continue;
+      if (typeof blob.size === "number" && blob.size > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
+      const text = String(await blob.text());
+      if (text.length > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u4E0D\u662F\u5408\u6CD5\u7684 JSON` };
+      }
+      return normalizeRulebook(json, repo);
+    }
+  }
+  return { ok: false, code: "not_found", error: `${repo} \u88E1\u627E\u4E0D\u5230 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002${lastErr && !/not found|no such|404/i.test(lastErr) ? `\uFF08\u8B80\u53D6\u56DE\u5831\uFF1A${lastErr.slice(0, 80)}\uFF09` : ""}` };
+}
+function normalizeRulebook(raw2, repo) {
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u5FC5\u9808\u662F\u7269\u4EF6` };
+  const r = raw2;
+  let dropped = 0;
+  const sections = Array.isArray(r.sections) ? r.sections.map((s) => {
+    if (s && typeof s === "object" && !Array.isArray(s) && s.guard !== void 0) {
+      dropped++;
+      const { guard: _g, ...rest } = s;
+      return rest;
+    }
+    return s;
+  }) : r.sections;
+  const decl = { ...r.title !== void 0 ? { title: r.title } : {}, sections };
+  const errors = validateRulebook(decl, []);
+  if (errors.length) return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u5167\u5BB9\u6709\u554F\u984C\uFF1A${errors.slice(0, 3).join("\uFF1B")}${errors.length > 3 ? `\uFF08\u9084\u6709 ${errors.length - 3} \u9805\uFF09` : ""}` };
+  return { ok: true, repo, decl, dropped_guards: dropped };
+}
+var rank = (l) => RULE_LAYERS.indexOf(l);
+function flattenRules(inputs) {
+  const sorted = [...inputs].sort((a, b) => rank(a.layer) - rank(b.layer) || a.order - b.order);
+  const byId = /* @__PURE__ */ new Map();
+  const orderIds = [];
+  const blocked = [];
+  const tag = (i) => ({ layer: i.layer, layer_label: RULE_LAYER_LABEL[i.layer], repo: i.repo });
+  for (const src of sorted) {
+    for (const s of src.sections) {
+      const row = {
+        id: s.id,
+        chapter: s.chapter ?? "",
+        title: s.title,
+        mandatory: !!s.mandatory,
+        origin: { ...tag(src), kind: src.kind, book_id: src.book_id, source_id: src.source_id }
+      };
+      const cur = byId.get(s.id);
+      if (!cur) {
+        byId.set(s.id, row);
+        orderIds.push(s.id);
+        continue;
+      }
+      const by = { layer: cur.origin.layer, layer_label: cur.origin.layer_label, repo: cur.origin.repo };
+      if (cur.origin.layer === src.layer) {
+        blocked.push({ id: s.id, title: s.title, from: tag(src), reason: "duplicate_same_layer", by });
+      } else if (cur.mandatory) {
+        blocked.push({ id: s.id, title: s.title, from: tag(src), reason: "mandatory_above", by });
+      } else {
+        row.overrides = by;
+        byId.set(s.id, row);
+      }
+    }
+  }
+  return { sections: orderIds.map((id) => byId.get(id)), blocked };
+}
+function sourcePage(src, sec) {
+  return {
+    id: sec.id,
+    chapter: sec.chapter,
+    title: sec.title,
+    body: sec.body.slice(0, RULEBOOK_MAX_BODY),
+    ...sec.mandatory ? { mandatory: true } : {},
+    ...sec.direction ? { direction: sec.direction } : {},
+    ...sec.source ? { source: sec.source } : {},
+    rev: 1,
+    approved_by: `${RULE_LAYER_LABEL[src.layer]}\u5C64 ${src.repo}`
+  };
+}
+function summarizeSource(s) {
+  return {
+    id: s.id,
+    url: s.url,
+    layer: s.layer,
+    layer_label: RULE_LAYER_LABEL[s.layer],
+    label: s.label,
+    repo: s.repo,
+    order: s.order,
+    added_by: s.added_by,
+    added_at: s.added_at,
+    fetched_at: s.fetched_at,
+    count: s.sections.length,
+    book_id: `src.${s.id}`,
+    ...s.dropped_guards ? { dropped_guards: s.dropped_guards } : {}
+  };
+}
+
+// cypher-executor/src/lib/rule-sources-ops.ts
+var err2 = (code, error, status = 400) => ({ ok: false, code, error, status });
+async function anchorApp(env, tenant2) {
+  const apps = (await listInstalledApps(env, tenant2)).filter((a) => a.rulebook);
+  return apps.find((a) => a.id === "company_rules") ?? apps.sort((a, b) => a.id.localeCompare(b.id))[0] ?? null;
+}
+var NO_BOOK = "\u9019\u53F0\u9084\u6C92\u6709\u5B89\u88DD\u898F\u7AE0 App\uFF0C\u6C92\u6709\u5730\u65B9\u639B\u3002\u8ACB\u5148\u5230 App \u5E02\u96C6\u5B89\u88DD\u300C\u7BA1\u7406\u898F\u7AE0\u300D\u3002";
+async function readSources(env, tenant2) {
+  const app2 = await anchorApp(env, tenant2);
+  return app2 ? layerOf(app2).rule_sources ?? emptySources() : emptySources();
+}
+async function writeSources(env, tenant2, doc) {
+  const app2 = await anchorApp(env, tenant2);
+  if (!app2) return false;
+  const layer = layerOf(app2);
+  if (doc.items.length) layer.rule_sources = doc;
+  else delete layer.rule_sources;
+  await appStore(env).put(appKey(tenant2, app2.id), JSON.stringify({ ...app2, user_layer: layer }));
+  return true;
+}
+var SRC_PREFIX = "src.";
+function sourceIdOf(bookId) {
+  return bookId.startsWith(SRC_PREFIX) ? bookId.slice(SRC_PREFIX.length) : null;
+}
+async function readFlatBook(env, tenant2) {
+  const apps = (await listInstalledApps(env, tenant2)).filter((a) => a.rulebook);
+  const books = (await Promise.all(apps.map((a) => readBook(env, tenant2, a)))).filter((b) => b !== null);
+  const doc = await readSources(env, tenant2);
+  const inputs = [
+    ...books.map((b, i) => ({
+      source_id: `app.${b.app_id}`,
+      book_id: b.app_id,
+      kind: "app",
+      layer: "company",
+      repo: b.title,
+      order: -1e3 + i,
+      sections: b.sections.map((s) => ({ id: s.id, chapter: s.chapter, title: s.title, mandatory: s.mandatory }))
+    })),
+    ...doc.items.map((s) => ({
+      source_id: s.id,
+      book_id: `${SRC_PREFIX}${s.id}`,
+      kind: "git",
+      layer: s.layer,
+      repo: s.label,
+      order: s.order,
+      sections: s.sections.map((x) => ({ id: x.id, chapter: x.chapter, title: x.title, mandatory: !!x.mandatory }))
+    }))
+  ];
+  const flat = flattenRules(inputs);
+  const pend = /* @__PURE__ */ new Map(), edited = /* @__PURE__ */ new Map();
+  for (const b of books) for (const s of b.sections) {
+    pend.set(`${b.app_id}\0${s.id}`, s.pending);
+    edited.set(`${b.app_id}\0${s.id}`, s.edited);
+  }
+  return {
+    sections: flat.sections.map((s) => ({ ...s, pending: pend.get(`${s.origin.book_id}\0${s.id}`) ?? false, edited: edited.get(`${s.origin.book_id}\0${s.id}`) ?? false })),
+    blocked: flat.blocked,
+    sources: [
+      ...books.map((b) => ({ id: `app.${b.app_id}`, builtin: true, layer: "company", layer_label: "\u516C\u53F8", label: b.title, repo: b.title, count: b.sections.length, book_id: b.app_id })),
+      ...doc.items.map((s) => ({ ...summarizeSource(s), builtin: false }))
+    ]
+  };
+}
+async function addSource(env, tenant2, by, input, fetchImpl) {
+  const url = typeof input.url === "string" ? input.url.trim() : "";
+  const layer = input.layer;
+  if (!RULE_LAYERS.includes(layer)) return err2("bad_layer", "\u8ACB\u9078\u5C64\u7D1A\uFF1A\u96C6\u5718\u3001\u516C\u53F8\u3001\u90E8\u9580\u6216\u500B\u4EBA");
+  const p = parseRepoUrl(url);
+  if ("error" in p) return err2("bad_url", p.error);
+  if (!await anchorApp(env, tenant2)) return err2("no_book_app", NO_BOOK, 409);
+  const doc = await readSources(env, tenant2);
+  if (doc.items.length >= RULE_SOURCES_MAX) return err2("too_many", `\u6700\u591A\u639B ${RULE_SOURCES_MAX} \u500B\u898F\u7AE0\u4F86\u6E90`);
+  const norm = `${p.host}/${p.owner}/${p.repo}/${p.ref}/${p.path}`.toLowerCase();
+  if (doc.items.some((s) => {
+    const q = parseRepoUrl(s.url);
+    return !("error" in q) && `${q.host}/${q.owner}/${q.repo}/${q.ref}/${q.path}`.toLowerCase() === norm;
+  })) {
+    return err2("duplicate", "\u9019\u500B repo \u5DF2\u7D93\u639B\u904E\u4E86", 409);
+  }
+  const r = await fetchRepoRulebook(url, { token: env.RULE_REPO_TOKEN, fetchImpl, artifactsEnv: env });
+  if (!r.ok) return err2(r.code, r.error, r.code === "unreachable" ? 502 : 422);
+  const label = (typeof input.label === "string" && input.label.trim() ? input.label.trim() : r.decl.title?.trim() || `${p.owner}/${p.repo}`).slice(0, 40);
+  const now2 = (/* @__PURE__ */ new Date()).toISOString();
+  const inLayer = doc.items.filter((s) => s.layer === layer);
+  const src = {
+    id: `s${doc.next}`,
+    url,
+    layer,
+    label,
+    repo: `${p.owner}/${p.repo}`,
+    order: inLayer.length ? Math.max(...inLayer.map((s) => s.order)) + 1 : 0,
+    added_by: by,
+    added_at: now2,
+    fetched_at: now2,
+    ...r.decl.title ? { title: r.decl.title } : {},
+    sections: r.decl.sections,
+    ...r.dropped_guards ? { dropped_guards: r.dropped_guards } : {}
+  };
+  doc.items.push(src);
+  doc.next++;
+  await writeSources(env, tenant2, doc);
+  return { ok: true, source: summarizeSource(src) };
+}
+async function removeSource(env, tenant2, id) {
+  const doc = await readSources(env, tenant2);
+  if (!doc.items.some((s) => s.id === id)) return err2("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  doc.items = doc.items.filter((s) => s.id !== id);
+  await writeSources(env, tenant2, doc);
+  return { ok: true };
+}
+async function moveSource(env, tenant2, id, dir) {
+  const doc = await readSources(env, tenant2);
+  const me = doc.items.find((s) => s.id === id);
+  if (!me) return err2("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  const row = doc.items.filter((s) => s.layer === me.layer).sort((a, b) => a.order - b.order);
+  const i = row.findIndex((s) => s.id === id), j = dir === "up" ? i - 1 : i + 1;
+  if (j < 0 || j >= row.length) return { ok: true };
+  row.forEach((x, k) => {
+    x.order = k;
+  });
+  const tmp = row[i].order;
+  row[i].order = row[j].order;
+  row[j].order = tmp;
+  await writeSources(env, tenant2, doc);
+  return { ok: true };
+}
+async function refreshSource(env, tenant2, id, fetchImpl) {
+  const doc = await readSources(env, tenant2);
+  const s = doc.items.find((x) => x.id === id);
+  if (!s) return err2("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  const r = await fetchRepoRulebook(s.url, { token: env.RULE_REPO_TOKEN, fetchImpl, artifactsEnv: env });
+  if (!r.ok) return err2(r.code, r.error, r.code === "unreachable" ? 502 : 422);
+  s.sections = r.decl.sections;
+  s.fetched_at = (/* @__PURE__ */ new Date()).toISOString();
+  if (r.decl.title) s.title = r.decl.title;
+  if (r.dropped_guards) s.dropped_guards = r.dropped_guards;
+  else delete s.dropped_guards;
+  await writeSources(env, tenant2, doc);
+  return { ok: true, source: summarizeSource(s) };
+}
+async function readSourceSection(env, tenant2, id, sec) {
+  const doc = await readSources(env, tenant2);
+  const s = doc.items.find((x) => x.id === id);
+  const d = s?.sections.find((x) => x.id === sec);
+  if (!s || !d) return null;
+  const flat = await readFlatBook(env, tenant2);
+  const row = flat.sections.find((x) => x.id === sec);
+  const blocked = flat.blocked.find((x) => x.id === sec && x.from.repo === s.label);
+  return {
+    book: s.title?.trim() || s.label,
+    app_id: `${SRC_PREFIX}${s.id}`,
+    page: sourcePage(s, d),
+    edited: false,
+    proposal: null,
+    history: [],
+    can_rollback: false,
+    guard: null,
+    readonly: true,
+    origin: { layer: s.layer, layer_label: summarizeSource(s).layer_label, repo: s.label, url: s.url, fetched_at: s.fetched_at },
+    ...row && row.origin.source_id !== s.id ? { superseded_by: row.origin } : {},
+    ...blocked ? { blocked } : {}
+  };
+}
+
+// cypher-executor/src/routes/portal-data.ts
 init_app_rulebook();
 
 // cypher-executor/src/lib/form-surface.ts
@@ -36315,8 +35176,8 @@ portalDataRouter.get(
     }
     if (!first) return c.json({ error: "KBDB \u5716\u8B5C\u67E5\u8A62\u6C92\u6709\u56DE\u61C9" }, 502);
     if (!first.ok) {
-      const err2 = first.body && typeof first.body === "object" ? first.body : { error: `KBDB \u5716\u8B5C\u67E5\u8A62\u5931\u6557\uFF08HTTP ${first.status}\uFF09` };
-      return c.json(err2, first.status);
+      const err3 = first.body && typeof first.body === "object" ? first.body : { error: `KBDB \u5716\u8B5C\u67E5\u8A62\u5931\u6557\uFF08HTTP ${first.status}\uFF09` };
+      return c.json(err3, first.status);
     }
     return c.json(mapGraphNeighborsResponse(first.body));
   })
@@ -37890,7 +36751,57 @@ portalDataRouter.get(
     const tenant2 = knowledgeOwner(c.env);
     const apps = (await listInstalledApps(c.env, tenant2)).filter((a) => a.rulebook);
     const books = (await Promise.all(apps.map((a) => readBook(c.env, tenant2, a)))).filter((b) => b !== null);
-    return c.json({ books, can_approve: ruleIsAdmin(auth) });
+    const flat = await readFlatBook(c.env, tenant2);
+    return c.json({ books, flat: flat.sections, blocked: flat.blocked, sources: flat.sources, can_approve: ruleIsAdmin(auth), token_configured: !!c.env.RULE_REPO_TOKEN });
+  })
+);
+var SRC_ADMIN_ONLY = { error: "\u53EA\u6709\u7BA1\u7406\u54E1\u53EF\u4EE5\u639B\u4E0A\u6216\u79FB\u9664\u898F\u7AE0\u4F86\u6E90", hint: "\u8ACB\u4F60\u7684\u7BA1\u7406\u54E1\u4F86\u505A\uFF0C\u6216\u8ACB\u4ED6\u628A\u4F60\u8A2D\u6210\u7BA1\u7406\u54E1\u3002" };
+var srcFail = (c, r) => c.json({ error: r.error, code: r.code }, r.status);
+portalDataRouter.post(
+  "/portal/data/rules/sources",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
+    const body = await c.req.json().catch(() => null);
+    const r = await addSource(c.env, knowledgeOwner(c.env), ruleActor(auth), body ?? {});
+    if (!r.ok) return srcFail(c, r);
+    return c.json({ source: r.source }, 201);
+  })
+);
+portalDataRouter.delete(
+  "/portal/data/rules/sources/:id",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
+    const r = await removeSource(c.env, knowledgeOwner(c.env), c.req.param("id"));
+    if (!r.ok) return srcFail(c, r);
+    return c.json({ ok: true });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/sources/:id/move",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
+    const body = await c.req.json().catch(() => null);
+    if (body?.dir !== "up" && body?.dir !== "down") return c.json({ error: "dir \u8981\u662F up \u6216 down" }, 400);
+    const r = await moveSource(c.env, knowledgeOwner(c.env), c.req.param("id"), body.dir);
+    if (!r.ok) return srcFail(c, r);
+    return c.json({ ok: true });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/sources/:id/refresh",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
+    const r = await refreshSource(c.env, knowledgeOwner(c.env), c.req.param("id"));
+    if (!r.ok) return srcFail(c, r);
+    return c.json({ source: r.source });
   })
 );
 portalDataRouter.get(
@@ -37898,6 +36809,7 @@ portalDataRouter.get(
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
+    if (sourceIdOf(c.req.param("app")) !== null) return c.json({ title: "\u898F\u7AE0\u4F86\u6E90", log: [] });
     const app2 = await getInstalledApp(c.env, knowledgeOwner(c.env), c.req.param("app"));
     if (!app2?.rulebook) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0" }, 404);
     return c.json({ title: app2.rulebook.title?.trim() || RULEBOOK_DEFAULT_TITLE, log: bookLog(app2) });
@@ -37909,6 +36821,12 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
+    const srcId = sourceIdOf(c.req.param("app"));
+    if (srcId !== null) {
+      const sd = await readSourceSection(c.env, tenant2, srcId, c.req.param("sec"));
+      if (!sd) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u4E00\u689D\uFF08\u4F86\u6E90\u53EF\u80FD\u5DF2\u88AB\u79FB\u9664\uFF09" }, 404);
+      return c.json({ ...sd, can_approve: ruleIsAdmin(auth) });
+    }
     const app2 = await getInstalledApp(c.env, tenant2, c.req.param("app"));
     if (!app2?.rulebook) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0" }, 404);
     const d = await readPageDetail(c.env, tenant2, app2, c.req.param("sec"));
@@ -37924,7 +36842,7 @@ portalDataRouter.get(
         steps: g ? buildFlowSteps(g.nodes, g.edges, null) : null
       };
     }
-    return c.json({ book: app2.rulebook.title?.trim() || RULEBOOK_DEFAULT_TITLE, app_id: app2.id, ...d, guard, can_approve: ruleIsAdmin(auth) });
+    return c.json({ book: app2.rulebook.title?.trim() || RULEBOOK_DEFAULT_TITLE, app_id: app2.id, ...d, guard, origin: { layer: "company", layer_label: "\u516C\u53F8", repo: app2.rulebook.title?.trim() || RULEBOOK_DEFAULT_TITLE }, can_approve: ruleIsAdmin(auth) });
   })
 );
 portalDataRouter.post(
@@ -37933,6 +36851,7 @@ portalDataRouter.post(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
+    if (sourceIdOf(c.req.param("app")) !== null) return c.json({ error: "\u9019\u4E00\u689D\u4F86\u81EA\u639B\u4E0A\u4F86\u7684 git repo\uFF0C\u5728\u9019\u88E1\u6539\u4E0D\u52D5\u3002\u8981\u6539\u8ACB\u6539\u90A3\u500B repo\uFF0C\u518D\u6309\u300C\u91CD\u65B0\u8B80\u53D6\u300D\u3002", code: "readonly_source" }, 403);
     const app2 = await getInstalledApp(c.env, tenant2, c.req.param("app"));
     if (!app2?.rulebook) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0" }, 404);
     const body = await c.req.json().catch(() => null);
@@ -39012,24 +37931,24 @@ app.use("*", cors({
   exposeHeaders: ["X-Arcrun-Grant-Session", "X-KBDB-Rows-Read", "X-KBDB-Rows-Written", "X-KBDB-Statements"],
   credentials: true
 }));
-app.onError((err2, c) => {
-  if (err2 instanceof AssetStoreUnavailableError) {
-    const status = err2.status && err2.status >= 400 && err2.status < 600 ? err2.status : 503;
-    if (err2.status === void 0 || err2.status >= 500) return kbdbBusyJson(c);
-    return c.json({ success: false, error: "kbdb_unavailable", message: err2.message }, status);
+app.onError((err3, c) => {
+  if (err3 instanceof AssetStoreUnavailableError) {
+    const status = err3.status && err3.status >= 400 && err3.status < 600 ? err3.status : 503;
+    if (err3.status === void 0 || err3.status >= 500) return kbdbBusyJson(c);
+    return c.json({ success: false, error: "kbdb_unavailable", message: err3.message }, status);
   }
-  if (err2 instanceof EphemeralStoreError) {
-    const status = err2.status && err2.status >= 400 && err2.status < 500 ? err2.status : 503;
+  if (err3 instanceof EphemeralStoreError) {
+    const status = err3.status && err3.status >= 400 && err3.status < 500 ? err3.status : 503;
     if (status === 503) return kbdbBusyJson(c);
-    return c.json({ success: false, error: "kbdb_unavailable", message: `\u77E5\u8B58\u5EAB\u66AB\u6642\u8B80\u5BEB\u4E0D\u5230\uFF08${err2.message}\uFF09\u3002\u9019\u4E0D\u662F\u7A0B\u5F0F\u58DE\u4E86\uFF0C\u4E5F\u4E0D\u662F\u5BC6\u78BC\u932F\u3002` }, status);
+    return c.json({ success: false, error: "kbdb_unavailable", message: `\u77E5\u8B58\u5EAB\u66AB\u6642\u8B80\u5BEB\u4E0D\u5230\uFF08${err3.message}\uFF09\u3002\u9019\u4E0D\u662F\u7A0B\u5F0F\u58DE\u4E86\uFF0C\u4E5F\u4E0D\u662F\u5BC6\u78BC\u932F\u3002` }, status);
   }
-  if (err2 instanceof EndpointConfigError) {
-    console.error("[cypher-executor]", err2.message);
-    return c.json({ success: false, error: "endpoint_config_missing", missing: err2.missing, message: err2.message }, 500);
+  if (err3 instanceof EndpointConfigError) {
+    console.error("[cypher-executor]", err3.message);
+    return c.json({ success: false, error: "endpoint_config_missing", missing: err3.missing, message: err3.message }, 500);
   }
-  console.error("[cypher-executor] unhandled error", err2);
+  console.error("[cypher-executor] unhandled error", err3);
   return c.json(
-    { success: false, error: "internal_error", message: err2 instanceof Error ? err2.message : String(err2) },
+    { success: false, error: "internal_error", message: err3 instanceof Error ? err3.message : String(err3) },
     500
   );
 });

@@ -1,17 +1,17 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-22T12:21:53.741Z",
+  "generated_at": "2026-11-23T02:56:26.566Z",
   "apps": [
     {
       "id": "notes",
       "name": "筆記",
       "icon": "📝",
       "summary": "隨手寫一則筆記，存下後自動整理成知識卡；可以編輯（卡跟著重整）、刪除（卡一起下架），也可以留言或選一段文字引用回覆；依日期排成河道，寫下去的內容進你自己的知識庫。",
-      "version": "1.5.1",
+      "version": "1.6.0",
       "author": "Arcrun 內建",
       "package": {
-        "url": "packages/notes-1.5.1.json",
-        "sha256": "7ad19d2293c6b8116d34902765725d311fbceab981c0e9b2a1194839da9d96b0"
+        "url": "packages/notes-1.6.0.json",
+        "sha256": "ac2ade712efac09f7b8a1a70fef975b2c83be9d900f988868e6394b59ad791cc"
       }
     },
     {
@@ -23,7 +23,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/flow_canvas-0.2.1.json",
-        "sha256": "ef6c7c9a690c8090c46795b7d471ca8c03ffe010e959b8488f111faaf3a39d8b"
+        "sha256": "fdee1da7064a171cf8452599493fd641a3024be7f2dddfa0260ebcd53ec14dd3"
       }
     },
     {
@@ -58,7 +58,7 @@
       },
       "package": {
         "url": "packages/global_index-0.2.0.json",
-        "sha256": "ebf9d2d74bb857efff8742588321b455825b0507a1f12f7ad8489f0f92f4b50c"
+        "sha256": "86ca6bf1a39181cf872ca6295a481930e8ea3dfb5d79d20326b1a9debf4859c2"
       }
     },
     {
@@ -66,7 +66,7 @@
       "name": "票地圖",
       "icon": "🗂️",
       "summary": "（已併入 AHub）專案、里程碑、票的結構與看板，以及目標指向的進度，現在都在 AHub 一個畫面裡；已裝的按更新就換成同一個畫面，資料不變。",
-      "version": "0.9.16",
+      "version": "0.9.18",
       "author": "Arcrun 內建",
       "retired": true,
       "requires": {
@@ -93,8 +93,8 @@
         ]
       },
       "package": {
-        "url": "packages/kanban-0.9.16.json",
-        "sha256": "bdcaac73aaa9404a699d9490ffc0e360de3e11628452074ae5242b52e86fb72d"
+        "url": "packages/kanban-0.9.18.json",
+        "sha256": "958c4352f42cf5de930a5d6a46709b1365a3946849fbf8d581d78ca947ed2b45"
       }
     },
     {
@@ -102,7 +102,7 @@
       "name": "AHub",
       "icon": "🧭",
       "summary": "把票、留言、標籤、相依與里程碑存在你自己的知識庫裡，用和 Gitea 一樣的方式讀寫；打開就能新增、修改、關閉票與里程碑，留言用 Markdown，簽核人由你在「設定」指定。連上 Arcrun MCP 的 AI 自動拿到管票與請你簽核的工具。選裝，沒裝的實例不受影響。",
-      "version": "0.63.1",
+      "version": "0.64.2",
       "author": "Arcrun 內建",
       "requires": {
         "recipes": [
@@ -402,8 +402,8 @@
         ]
       },
       "package": {
-        "url": "packages/ahub-0.63.1.json",
-        "sha256": "d0894478b02c8ccf0c7323f8fe037c258e650183fa7eea63cf3e9d620ba514e3"
+        "url": "packages/ahub-0.64.2.json",
+        "sha256": "5198fb0a79bbe22254aa1a2cdb50483d022384cda000ae77f7ec424fe1b0b9c7"
       }
     },
     {
@@ -438,7 +438,7 @@
       },
       "package": {
         "url": "packages/releases-0.1.2.json",
-        "sha256": "9b80324bb144fe7070c0a9a788f7ff75a78118ccbcb6ef1c7a92d5791aa032a2"
+        "sha256": "06dc9e8f057a6c94953624ead31958b720d12ababa5965aeb1a462d575828db6"
       }
     },
     {
@@ -502,122 +502,7 @@
       },
       "package": {
         "url": "packages/imbot-0.1.1.json",
-        "sha256": "43e5fc2c6ec9df5b62497aa8d634527095db6719bcefd613ad6266f2bdde3061"
-      }
-    },
-    {
-      "id": "loops",
-      "name": "迴圈監控",
-      "icon": "🔁",
-      "summary": "每個迴圈一列燈號、主指標和近 12 期走勢，看得出卡在哪一格；點進去看四格的細節。每天早上自己重算燈號，有新紅燈可用 Telegram 通知你（選填）。",
-      "version": "0.4.1",
-      "author": "Arcrun 內建",
-      "requires": {
-        "recipes": [
-          {
-            "canonical_id": "loops_rec_get",
-            "display_name": "迴圈監控讀 KBDB 的迴圈卡（唯讀）",
-            "description": "迴圈監控用：GET __CYPHER_BASE__/kbdb/records/by-template{{_path}}，路徑與查詢字串由呼叫端用 _path 給。只做 GET。走 recipe 不走 http_request 零件，因為零件讀不回超過 64 KiB 的回應，而曲線序列可以比這大。",
-            "endpoint": "__CYPHER_BASE__/kbdb/records/by-template{{_path}}",
-            "method": "GET",
-            "headers": {
-              "Accept": "application/json",
-              "X-Arcrun-API-Key": "{{_tenant}}"
-            }
-          },
-          {
-            "canonical_id": "loops_rec_batch",
-            "display_name": "迴圈監控一次讀一批 record（唯讀）",
-            "description": "迴圈監控用：POST __CYPHER_BASE__/kbdb/records/batch-get，ids 是 record id 的陣列（最多 200 個），回 {records, missing}。用來讀每個迴圈最近 10 輪（id 由迴圈登記的最後一輪序號推出來，讀量跟迴圈數成正比、不跟庫大小）。",
-            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-get",
-            "method": "POST",
-            "headers": {
-              "Accept": "application/json",
-              "X-Arcrun-API-Key": "{{_tenant}}",
-              "Content-Type": "application/json"
-            },
-            "body_template": {
-              "ids": "{{ids}}"
-            }
-          },
-          {
-            "canonical_id": "loops_rec_patch",
-            "display_name": "迴圈監控改一張迴圈卡的幾格",
-            "description": "迴圈監控用：PATCH __CYPHER_BASE__/kbdb/records/{{id}}，只改 values 裡有的格子。",
-            "endpoint": "__CYPHER_BASE__/kbdb/records/{{id}}",
-            "method": "PATCH",
-            "headers": {
-              "Accept": "application/json",
-              "X-Arcrun-API-Key": "{{_tenant}}",
-              "Content-Type": "application/json"
-            },
-            "body_template": {
-              "values": "{{values}}"
-            }
-          },
-          {
-            "canonical_id": "loops_rec_claim",
-            "display_name": "迴圈監控登記一張新的迴圈卡（只在不存在時建）",
-            "description": "迴圈監控用：POST __CYPHER_BASE__/kbdb/records，帶 record_id 與 create_only:true；已存在回 409，不是靜默成功。",
-            "endpoint": "__CYPHER_BASE__/kbdb/records",
-            "method": "POST",
-            "headers": {
-              "Accept": "application/json",
-              "X-Arcrun-API-Key": "{{_tenant}}",
-              "Content-Type": "application/json"
-            },
-            "body_template": {
-              "template": "{{template}}",
-              "record_id": "{{record_id}}",
-              "values": "{{values}}",
-              "create_only": true
-            }
-          },
-          {
-            "canonical_id": "loops_rec_write",
-            "display_name": "迴圈監控一次寫一批迴圈卡（心跳用）",
-            "description": "迴圈監控用：POST __CYPHER_BASE__/kbdb/records/batch-write，ops 是 [{op:\"patch\",id,values}…]（一次最多 20 筆）。心跳一個請求寫完所有迴圈的燈號。互不相干的獨立寫入，不是交易。需要引擎有 inkstone/Arcrun#325。",
-            "endpoint": "__CYPHER_BASE__/kbdb/records/batch-write",
-            "method": "POST",
-            "headers": {
-              "Accept": "application/json",
-              "X-Arcrun-API-Key": "{{_tenant}}",
-              "Content-Type": "application/json"
-            },
-            "body_template": {
-              "ops": "{{ops}}"
-            }
-          },
-          {
-            "canonical_id": "loops_telegram_send",
-            "display_name": "迴圈監控通知你（Telegram sendMessage）",
-            "description": "紅燈通知用：POST https://api.telegram.org/bot<token>/sendMessage。token 與 chat_id 只由節點寫 {{credential.telegram_bot_token}}／{{credential.telegram_chat_id}}，執行前才回填。",
-            "endpoint": "https://api.telegram.org/bot{{tg_token}}/sendMessage",
-            "method": "POST",
-            "headers": {
-              "Accept": "application/json",
-              "Content-Type": "application/json"
-            },
-            "body_template": {
-              "chat_id": "{{chat_id}}",
-              "text": "{{text}}"
-            }
-          }
-        ],
-        "credentials": [
-          {
-            "name": "telegram_bot_token",
-            "purpose": "紅燈通知用的 Telegram bot token（只送訊息；選填，沒設就只在畫面上標紅、心跳會寫明沒通知）"
-          },
-          {
-            "name": "telegram_chat_id",
-            "purpose": "通知送到哪個 Telegram 聊天室（選填，與 telegram_bot_token 一起設）"
-          }
-        ]
-      },
-      "package": {
-        "url": "packages/loops-0.4.1.json",
-        "sha256": "6bde02477e794e01c2ef73a7d0a17e7369c86fe8fdae8fa64b3aa28316680ddb"
+        "sha256": "acf7d45025f92f2a503a59eb3b5c8f8c95604e3a0813efab9f447f737284c0ea"
       }
     },
     {
@@ -739,7 +624,7 @@
       },
       "package": {
         "url": "packages/paper-0.5.0.json",
-        "sha256": "65908bb1f5f3e3569ad15cc2b5f5428732a0eeffdb726a99ab584b0bce1bfd39"
+        "sha256": "b4758bc924d21774e8e0b217fdd9b632c7570677608a8faaadbfd949950a5fe0"
       }
     },
     {
@@ -747,11 +632,11 @@
       "name": "本公司管理規章",
       "icon": "📘",
       "summary": "把公司給 AI 和同仁的規矩寫成一本白話的書；覺得不對，說一句話請 AI 改，主管核准才生效，隨時可以回上一版。",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": "Arcrun 示範",
       "package": {
-        "url": "packages/company_rules-0.1.0.json",
-        "sha256": "08f82b2266dc63d4087fb9884f03e5891e1bef6a52e08049b789f17a3dd05e4e"
+        "url": "packages/company_rules-0.1.1.json",
+        "sha256": "482cbf62db064aca3305a5d511f89b1cdf73c46f8ecd2333c9202745b51887c4"
       }
     }
   ]
