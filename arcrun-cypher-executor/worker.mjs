@@ -52,10 +52,10 @@ var init_kbdb_busy = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -101,21 +101,21 @@ var init_compose = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -146,7 +146,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -193,10 +193,10 @@ var init_body = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -402,10 +402,10 @@ var init_url = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants();
     init_body();
@@ -679,10 +679,10 @@ var init_request = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -726,10 +726,10 @@ var init_html = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1140,10 +1140,10 @@ var init_context = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1153,18 +1153,18 @@ var init_router = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1542,7 +1542,7 @@ var init_hono_base = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1563,13 +1563,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1591,7 +1591,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1682,10 +1682,10 @@ var init_node = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1744,7 +1744,7 @@ var init_trie = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1826,7 +1826,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -1933,27 +1933,27 @@ var init_router2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -2011,17 +2011,17 @@ var init_router3 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2200,10 +2200,10 @@ var init_node2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2229,17 +2229,17 @@ var init_router4 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2260,9 +2260,9 @@ var init_hono = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
   }
 });
@@ -3179,7 +3179,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// ../504/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3361,7 +3361,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "../504/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -14109,6 +14109,7 @@ __export(app_system_exports, {
   INSTALL_REQUEST_BUDGET: () => INSTALL_REQUEST_BUDGET,
   MAX_SKILLS_PER_APP: () => MAX_SKILLS_PER_APP,
   MAX_SKILL_CHARS: () => MAX_SKILL_CHARS,
+  PLATFORM_WORKFLOW_NAMES: () => PLATFORM_WORKFLOW_NAMES,
   SKILL_TEMPLATE: () => SKILL_TEMPLATE,
   STUDIO_APP_ICON: () => STUDIO_APP_ICON,
   STUDIO_APP_NAME: () => STUDIO_APP_NAME,
@@ -14130,6 +14131,7 @@ __export(app_system_exports, {
   getInstalledApp: () => getInstalledApp,
   installApp: () => installApp,
   isFlowCanvasInstalled: () => isFlowCanvasInstalled,
+  isPlatformWorkflow: () => isPlatformWorkflow,
   isStudioVisibleApp: () => isStudioVisibleApp,
   launchOf: () => launchOf,
   listInstalledApps: () => listInstalledApps,
@@ -14422,6 +14424,9 @@ function appKey(tenant2, id) {
 function workflowKvKey(tenant2, wfKey2) {
   return `${tenant2}:wf:${wfKey2}`;
 }
+function isPlatformWorkflow(key) {
+  return PLATFORM_WORKFLOW_NAMES.has(key);
+}
 function studioTierOf(app2) {
   if (STUDIO_SYSTEM_APP_IDS.includes(app2.id)) return "system";
   return app2.origin === "authored" ? "mine" : "others";
@@ -14450,8 +14455,9 @@ async function studioScope(env, tenant2, showSystem = false) {
     appIds: new Set(apps.map((a) => a.id)),
     wfKeys,
     recipes,
-    tierOfWf: (k) => ownedWf.get(k) ?? "system",
-    hasWf: (k) => wfKeys.has(k) || showSystem && !ownedWf.has(k),
+    tierOfWf: (k) => ownedWf.get(k) ?? (isPlatformWorkflow(k) ? "system" : "mine"),
+    isLoose: (k) => !ownedWf.has(k),
+    hasWf: (k) => wfKeys.has(k) || !ownedWf.has(k) && (showSystem || !isPlatformWorkflow(k)),
     hasRecipe: (id) => recipes.has(id) || showSystem && !ownedRecipes.has(id),
     tierOfApp: (id) => tierByApp.get(id) ?? null
   };
@@ -14746,7 +14752,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     };
   }
   const decl = applyDeclarationDefaults(decl0);
-  const contentHash = await computeContentHash(decl0);
+  const contentHash2 = await computeContentHash(decl0);
   const existing = await getInstalledApp(env, tenant2, decl.id);
   const ulCtx = existing ? { layer: layerOf(existing), by: "app-update", now: (/* @__PURE__ */ new Date()).toISOString(), dirty: false } : void 0;
   const keptUserChanges = [];
@@ -14760,7 +14766,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   const wantedRecipes = decl.requires?.recipes ?? [];
   const requestStart = subrequestCount();
   const spent = () => subrequestCount() - requestStart;
-  if (existing && existing.content_hash === contentHash && existing.status === "active") {
+  if (existing && existing.content_hash === contentHash2 && existing.status === "active") {
     const ensured3 = await ensureAppRecipes(env, wantedRecipes, ulCtx);
     if (!ensured3.ok) {
       return {
@@ -14841,17 +14847,17 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   }));
   const workflowRefs = prepared.map((p) => p.ref);
   const prevCron = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, Boolean(w.cron_expr)]));
-  const foreignPending = existing?.pending_hash !== void 0 && existing.pending_hash !== contentHash;
+  const foreignPending = existing?.pending_hash !== void 0 && existing.pending_hash !== contentHash2;
   const pendingFull = foreignPending || existing?.pending_full === true;
   const trustPrev = Boolean(existing) && !pendingFull;
   const prevHash = new Map((existing?.workflows ?? []).map((w) => [w.wf_key, w.hash]));
   let markerWritten = false;
   const markPending = async () => {
-    if (markerWritten || !existing || existing.pending_hash === contentHash) {
+    if (markerWritten || !existing || existing.pending_hash === contentHash2) {
       markerWritten = true;
       return;
     }
-    recExtra = { pending_hash: contentHash, ...pendingFull ? { pending_full: true } : {} };
+    recExtra = { pending_hash: contentHash2, ...pendingFull ? { pending_full: true } : {} };
     await appStore(env).put(
       appKey(tenant2, decl.id),
       JSON.stringify({ ...existing, ...recExtra, ...ulCtx ? { user_layer: ulCtx.layer } : {} })
@@ -14917,7 +14923,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   }
   await flushUl();
   const total = units.length;
-  const wantFrom = opts.resumeHash === contentHash ? Math.floor(opts.resumeFrom ?? 0) || 0 : 0;
+  const wantFrom = opts.resumeHash === contentHash2 ? Math.floor(opts.resumeFrom ?? 0) || 0 : 0;
   let cursor = Math.min(Math.max(wantFrom, 0), total);
   const from = cursor;
   try {
@@ -14934,12 +14940,12 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
       step: u?.step ?? "\u5B89\u88DD\u5DE5\u4F5C\u6D41",
       errors: [why],
       resume_from: cursor,
-      resume_hash: contentHash,
+      resume_hash: contentHash2,
       hint: kbdbBehindHint(e) ?? `\u5DF2\u7D93\u5B8C\u6210 ${cursor}\uFF0F${total} \u500B\u6B65\u9A5F\uFF08\u5099\u9F4A recipe\u3001\u6E96\u5099\u8CC7\u6599\u578B\u5225\u3001\u5B89\u88DD\u5DE5\u4F5C\u6D41\uFF09\uFF0C\u5361\u5728\u300C${u?.label ?? ""}\u300D\u3002\u518D\u6309\u4E00\u6B21\u6703\u5F9E\u9019\u88E1\u63A5\u8457\u505A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\uFF1B\u5982\u679C\u6BCF\u6B21\u90FD\u5361\u5728\u540C\u4E00\u500B\u5730\u65B9\uFF0C\u91CD\u6309\u6C92\u6709\u7528\uFF0C\u8ACB\u628A\u4E0A\u9762\u90A3\u53E5\u539F\u56E0\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002`
     };
   }
   if (cursor < total || spent() > INSTALL_REQUEST_BUDGET - FINAL_RESERVE) {
-    return { ok: true, in_progress: true, changed: true, progress: { done: cursor, total }, resume_from: cursor, resume_hash: contentHash };
+    return { ok: true, in_progress: true, changed: true, progress: { done: cursor, total }, resume_from: cursor, resume_hash: contentHash2 };
   }
   const credCheck = await findMissingCredentials(env, tenant2, wantedCreds);
   const needs = {
@@ -14981,7 +14987,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     name: decl.name,
     icon: decl.icon,
     version: decl.version,
-    content_hash: contentHash,
+    content_hash: contentHash2,
     workflows: workflowRefs,
     ...skillRefs.length ? { skills: skillRefs } : {},
     ...decl.rulebook ? { rulebook: decl.rulebook } : {},
@@ -15012,7 +15018,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
       step: "\u5BEB\u5165\u5B89\u88DD\u7D00\u9304",
       errors: [e instanceof Error ? e.message : String(e)],
       resume_from: total,
-      resume_hash: contentHash,
+      resume_hash: contentHash2,
       hint: kbdbBehindHint(e) ?? "\u5DE5\u4F5C\u6D41\u90FD\u5DF2\u7D93\u88DD\u597D\u4E86\uFF0C\u53EA\u5DEE\u6700\u5F8C\u9019\u4E00\u7B46\u7D00\u9304\u2014\u2014\u518D\u6309\u4E00\u6B21\u5B89\u88DD\u6703\u76F4\u63A5\u88DC\u4E0A\uFF0C\u4E0D\u6703\u5F9E\u982D\u4F86\u3002"
     };
   }
@@ -15155,7 +15161,7 @@ function detailApp(app2) {
     ...l.run_action ? { run_action: l.run_action } : {}
   };
 }
-var APP_WORKFLOW_TRIGGERS, APP_UI_STYLES, DEFAULT_APP_UI_STYLE, ID_RE, SKILL_TEMPLATE, MAX_SKILLS_PER_APP, MAX_SKILL_CHARS, SKILL_SLUG_RE, ICON_SET, APP_PLACEHOLDERS, FLOW_CANVAS_APP_ID, STUDIO_APP_NAME, STUDIO_APP_ICON, STUDIO_SHARED_TIERS, STUDIO_SYSTEM_APP_IDS, COPY_CHUNK, FIELD_INDEX_ROUNDS_PER_INSTALL, RECIPE_BEHAVIOR_FIELDS, INSTALL_REQUEST_BUDGET, FINAL_RESERVE;
+var APP_WORKFLOW_TRIGGERS, APP_UI_STYLES, DEFAULT_APP_UI_STYLE, ID_RE, SKILL_TEMPLATE, MAX_SKILLS_PER_APP, MAX_SKILL_CHARS, SKILL_SLUG_RE, ICON_SET, APP_PLACEHOLDERS, FLOW_CANVAS_APP_ID, STUDIO_APP_NAME, STUDIO_APP_ICON, STUDIO_SHARED_TIERS, STUDIO_SYSTEM_APP_IDS, PLATFORM_WORKFLOW_NAMES, COPY_CHUNK, FIELD_INDEX_ROUNDS_PER_INSTALL, RECIPE_BEHAVIOR_FIELDS, INSTALL_REQUEST_BUDGET, FINAL_RESERVE;
 var init_app_system = __esm({
   "cypher-executor/src/lib/app-system.ts"() {
     "use strict";
@@ -15191,6 +15197,16 @@ var init_app_system = __esm({
     STUDIO_APP_ICON = "\u{1F9F0}";
     STUDIO_SHARED_TIERS = ["mine", "others"];
     STUDIO_SYSTEM_APP_IDS = [FLOW_CANVAS_APP_ID];
+    PLATFORM_WORKFLOW_NAMES = /* @__PURE__ */ new Set([
+      "graph_neighbors",
+      "rag_chat",
+      "rag_ingest_card",
+      "rag_takedown_direct",
+      "rag_ingest_passages",
+      "rag_entity_concept",
+      "rag_entity_lookup",
+      "portal_password_reset_mail"
+    ]);
     COPY_CHUNK = 12;
     FIELD_INDEX_ROUNDS_PER_INSTALL = 12;
     RECIPE_BEHAVIOR_FIELDS = [
@@ -21663,6 +21679,21 @@ function buildUpdateCenter(input) {
       action: st === "update" && a.latest_version ? { type: "app_install", admin_only: true, app_id: a.id, to: a.latest_version } : null
     });
   }
+  for (const r of input.rules ?? []) {
+    const c = r.counts;
+    const parts = [c.added ? `\u65B0\u589E ${c.added} \u689D` : "", c.removed ? `\u522A\u9664 ${c.removed} \u689D` : "", c.changed ? `\u4FEE\u6539 ${c.changed} \u689D` : ""].filter(Boolean);
+    items.push({
+      kind: "rule",
+      zone: "apps",
+      id: `rule:${r.id}`,
+      name: `\u898F\u7AE0 ${r.label}`,
+      current: r.adopted_short,
+      latest: r.upstream_short ?? "",
+      status: "update",
+      note: `\u4E0A\u6E38\u6539\u4E86\uFF1A${parts.join("\u3001") || "\u6A19\u984C"}\u3002\u5148\u770B\u5DEE\u7570\uFF0C\u6838\u51C6\u5F8C\u624D\u751F\u6548\uFF1B\u4E0D\u6838\u51C6\u5C31\u7DAD\u6301\u76EE\u524D\u9019\u4E00\u7248\u3002`,
+      action: { type: "rule_review", admin_only: true, source_id: r.id, book_id: r.book_id }
+    });
+  }
   return {
     items,
     updates_available: items.filter((i) => i.status === "update").length,
@@ -24487,7 +24518,7 @@ async function cypherTenantAuth(c, next) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const defaults = {
     origin: "*",
@@ -24672,6 +24703,1303 @@ async function runUsageBrakeNotifyTick(env, log = console.log, logError = consol
   return { skipped: false, checked: list.length, notified, errors };
 }
 
+// cypher-executor/src/lib/rule-upstream-hook.ts
+init_dist();
+init_tenant();
+
+// cypher-executor/src/lib/rule-sources-ops.ts
+init_app_system();
+init_app_userlayer();
+init_app_userlayer_ops();
+
+// cypher-executor/src/lib/rule-sources.ts
+init_app_rulebook();
+var RULE_LAYERS = ["group", "company", "dept", "person"];
+var RULE_LAYER_LABEL = { group: "\u96C6\u5718", company: "\u516C\u53F8", dept: "\u90E8\u9580", person: "\u500B\u4EBA" };
+var RULE_SOURCES_MAX = 12;
+var RULE_REPO_MAX_CHARS = 7e5;
+var PROPOSALS_MAX = 20;
+var MIRROR_HISTORY_MAX = 30;
+function emptySources() {
+  return { v: 1, items: [], next: 1 };
+}
+var ARTIFACTS_HOST = /^([0-9a-f]{32})\.artifacts\.cloudflare\.net$/;
+function parseArtifactsUrl(u, account) {
+  const parts = u.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts[0] !== "git" || parts.length < 3) return { error: "\u9023\u7D50\u8981\u50CF https://\u2026artifacts.cloudflare.net/git/\u547D\u540D\u7A7A\u9593/\u898F\u7AE0" };
+  const ns = parts[1], repo = parts[2].replace(/\.git$/i, ""), rest = parts.slice(3);
+  if (!/^[A-Za-z0-9_.-]+$/.test(ns) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return { error: "\u9019\u500B repo \u9023\u7D50\u770B\u8D77\u4F86\u4E0D\u5C0D" };
+  let ref = "HEAD", path = "";
+  if (rest.length) {
+    if (rest[0] !== "tree" || !rest[1]) return { error: "\u9023\u7D50\u53EA\u8981\u5230 repo \u672C\u8EAB\uFF0C\u6216\u50CF \u2026/tree/main/\u8CC7\u6599\u593E \u9019\u6A23\u6307\u5230\u8CC7\u6599\u593E" };
+    ref = rest[1];
+    path = rest.slice(2).join("/");
+  }
+  if (!/^[A-Za-z0-9_./-]+$/.test(ref) || ref.includes("..") || path.includes("..")) return { error: "\u5206\u652F\u6216\u8CC7\u6599\u593E\u540D\u7A31\u4E0D\u5408\u6CD5" };
+  return { host: "artifacts", owner: ns, repo, ref, path, account };
+}
+function parseRepoUrl(input) {
+  const s = String(input ?? "").trim();
+  if (!s) return { error: "\u8ACB\u8CBC\u4E0A git repo \u7684\u9023\u7D50" };
+  let u;
+  try {
+    u = new URL(s.replace(/\.git$/i, ""));
+  } catch {
+    return { error: "\u9019\u4E0D\u662F\u4E00\u500B\u7DB2\u5740\uFF0C\u8ACB\u8CBC\u4E0A\u50CF https://github.com/\u516C\u53F8/\u898F\u7AE0 \u9019\u6A23\u7684\u9023\u7D50" };
+  }
+  if (u.protocol !== "https:") return { error: "\u53EA\u63A5\u53D7 https \u958B\u982D\u7684\u9023\u7D50" };
+  if (u.username || u.password) return { error: "\u9023\u7D50\u88E1\u4E0D\u8981\u653E\u5E33\u865F\u5BC6\u78BC\uFF1B\u8B80\u79C1\u6709 repo \u7684\u91D1\u9470\u7531\u7BA1\u7406\u54E1\u5B58\u5728\u96F2\u7AEF\uFF0C\u4E0D\u5728\u9019\u88E1\u8CBC" };
+  const host = u.hostname.toLowerCase();
+  const am = ARTIFACTS_HOST.exec(host);
+  if (am) return parseArtifactsUrl(new URL(s), am[1]);
+  if (host !== "github.com" && host !== "gitlab.com") return { error: "\u53EA\u80FD\u639B Artifacts\u3001github.com \u6216 gitlab.com \u7684 repo" };
+  const parts = u.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts.length < 2) return { error: "\u9023\u7D50\u8981\u6307\u5230\u4E00\u500B repo\uFF08\u50CF https://github.com/\u516C\u53F8/\u898F\u7AE0\uFF09" };
+  const [owner, repo, ...rest] = parts;
+  if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return { error: "\u9019\u500B repo \u9023\u7D50\u770B\u8D77\u4F86\u4E0D\u5C0D" };
+  let ref = "HEAD", path = "";
+  if (rest.length) {
+    const at = host === "github.com" ? 0 : 1;
+    const ok = host === "github.com" ? rest[0] === "tree" : rest[0] === "-" && rest[1] === "tree";
+    if (!ok || !rest[at + 1]) return { error: "\u9023\u7D50\u53EA\u8981\u5230 repo \u672C\u8EAB\uFF0C\u6216\u50CF \u2026/tree/main/\u8CC7\u6599\u593E \u9019\u6A23\u6307\u5230\u8CC7\u6599\u593E" };
+    ref = rest[at + 1];
+    path = rest.slice(at + 2).join("/");
+  }
+  if (!/^[A-Za-z0-9_./-]+$/.test(ref) || ref.includes("..") || path.includes("..")) return { error: "\u5206\u652F\u6216\u8CC7\u6599\u593E\u540D\u7A31\u4E0D\u5408\u6CD5" };
+  return { host, owner, repo, ref, path };
+}
+function rulebookFiles(p) {
+  const base = p.path ? `${p.path.replace(/\/$/, "")}/` : "";
+  return [`${base}rulebook.json`, `${base}.claude-plugin/rulebook.json`, `${base}rules/rulebook.json`];
+}
+function rulebookCandidates(p) {
+  const files = rulebookFiles(p);
+  return files.map((f) => p.host === "github.com" ? `https://raw.githubusercontent.com/${p.owner}/${p.repo}/${p.ref}/${f}` : `https://gitlab.com/${p.owner}/${p.repo}/-/raw/${p.ref}/${f}`);
+}
+async function resolveUpstreamCommit(p, f, token) {
+  try {
+    if (p.host === "github.com") {
+      const r = await f(`https://api.github.com/repos/${p.owner}/${p.repo}/commits/${encodeURIComponent(p.ref)}`, { headers: { Accept: "application/vnd.github.sha", ...token ? { Authorization: `token ${token}` } : {} } });
+      const t = r.ok ? (await r.text()).trim() : "";
+      return /^[0-9a-f]{40}$/.test(t) ? t : void 0;
+    }
+    if (p.host === "gitlab.com") {
+      const r = await f(`https://gitlab.com/api/v4/projects/${encodeURIComponent(`${p.owner}/${p.repo}`)}/repository/commits/${encodeURIComponent(p.ref)}`, { headers: token ? { "PRIVATE-TOKEN": token } : {} });
+      const j = r.ok ? await r.json() : null;
+      return j && /^[0-9a-f]{40}$/.test(String(j.id)) ? String(j.id) : void 0;
+    }
+  } catch {
+  }
+  return void 0;
+}
+async function fetchRepoRulebook(url, opts = {}) {
+  const p = parseRepoUrl(url);
+  if ("error" in p) return { ok: false, code: "bad_url", error: p.error };
+  if (p.host === "artifacts") return fetchArtifactsRulebook(p, opts.artifactsEnv ?? { ARTIFACTS: opts.artifacts });
+  const f = opts.fetchImpl ?? fetch;
+  const repo = `${p.owner}/${p.repo}`;
+  let sawDenied = false;
+  for (const raw2 of rulebookCandidates(p)) {
+    let res;
+    try {
+      res = await f(raw2, { headers: opts.token ? p.host === "github.com" ? { Authorization: `token ${opts.token}` } : { "PRIVATE-TOKEN": opts.token } : {}, redirect: "follow" });
+    } catch (e) {
+      return { ok: false, code: "unreachable", error: `\u9023\u4E0D\u4E0A ${p.host}\uFF1A${e instanceof Error ? e.message : String(e)}` };
+    }
+    if (res.status === 404) continue;
+    if (res.status === 401 || res.status === 403) {
+      sawDenied = true;
+      continue;
+    }
+    if (!res.ok) return { ok: false, code: "unreachable", error: `${p.host} \u56DE ${res.status}\uFF0C\u7A0D\u5F8C\u518D\u8A66` };
+    const text = await res.text();
+    if (text.length > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u4E0D\u662F\u5408\u6CD5\u7684 JSON` };
+    }
+    const norm = normalizeRulebook(json, repo);
+    if (!norm.ok) return norm;
+    const upstream = await resolveUpstreamCommit(p, f, opts.token);
+    return upstream ? { ...norm, upstream } : norm;
+  }
+  if (opts.token && sawDenied) {
+    return { ok: false, code: "private_denied", error: `\u8B80\u4E0D\u5230 ${repo}\uFF1A\u96F2\u7AEF\u8A2D\u5B9A\u7684\u8B80\u53D6\u91D1\u9470\u6C92\u6709\u9019\u500B repo \u7684\u6B0A\u9650\u3002` };
+  }
+  if (!opts.token) {
+    return { ok: false, code: "private_no_token", error: `\u8B80\u4E0D\u5230 ${repo} \u7684 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002\u8ACB\u78BA\u8A8D repo \u662F\u516C\u958B\u7684\u3001\u6839\u76EE\u9304\u6709 rulebook.json\uFF1B\u76EE\u524D\u53EA\u652F\u63F4\u516C\u958B repo\uFF0C\u79C1\u6709 repo \u5C1A\u672A\u652F\u63F4\uFF08\u8ACB\u4E0D\u8981\u8CBC token\uFF09\u3002` };
+  }
+  return { ok: false, code: "not_found", error: `${repo} \u88E1\u627E\u4E0D\u5230 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002` };
+}
+var artifactsNsBindingName = (ns) => /^[A-Za-z][A-Za-z0-9_]*$/.test(ns) ? `ARTIFACTS_NS_${ns}` : null;
+function pickArtifactsBinding(env, ns) {
+  const declared = String(env.ARTIFACTS_NAMESPACE ?? "").trim();
+  if (!declared || declared === ns) return env.ARTIFACTS ?? null;
+  const name = artifactsNsBindingName(ns);
+  return name && env[name] || null;
+}
+async function fetchArtifactsRulebook(p, env) {
+  const repo = `${p.owner}/${p.repo}`;
+  const binding = pickArtifactsBinding(env, p.owner);
+  if (!binding || typeof binding.get !== "function") {
+    return env.ARTIFACTS && typeof env.ARTIFACTS.get === "function" ? { ok: false, code: "not_found", error: `\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u7D81\u4E0A Artifacts \u7684\u547D\u540D\u7A7A\u9593\u300C${p.owner}\u300D\uFF08\u53EA\u7D81\u4E86\u300C${String(env.ARTIFACTS_NAMESPACE || "\u9810\u8A2D")}\u300D\uFF09\u3002\u66F4\u65B0\u5BE6\u4F8B\u5F8C\u6703\u81EA\u52D5\u7D81\u4E0A\u5E33\u865F\u88E1\u6240\u6709\u547D\u540D\u7A7A\u9593\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002` } : { ok: false, code: "unreachable", error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u9023\u4E0A Artifacts\uFF08\u5E33\u865F\u6C92\u958B\u6216\u9084\u6C92\u7D81\uFF09\u3002Artifacts \u958B\u901A\u5F8C\u91CD\u65B0\u5B89\u88DD\u6216\u66F4\u65B0\u5BE6\u4F8B\u5373\u53EF\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002" };
+  }
+  let h;
+  try {
+    h = await binding.get(p.repo);
+  } catch (e) {
+    if (e?.code === "NOT_FOUND" || /not found/i.test(String(e?.message))) {
+      return { ok: false, code: "not_found", error: `\u9019\u500B\u5E33\u865F\u7684 Artifacts \u88E1\u6C92\u6709 repo\u300C${p.repo}\u300D\uFF0C\u8ACB\u78BA\u8A8D\u9023\u7D50\u3002` };
+    }
+    return { ok: false, code: "unreachable", error: `Artifacts \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A${String(e?.message ?? e).slice(0, 120)}` };
+  }
+  try {
+    const remote = String((await h?.info?.())?.remote ?? "");
+    if (remote && !remote.toLowerCase().includes(`${p.account}.artifacts.cloudflare.net/git/${p.owner}/${p.repo}`.toLowerCase())) {
+      return { ok: false, code: "not_found", error: `\u9019\u500B\u9023\u7D50\u4E0D\u662F\u9019\u53F0\u5BE6\u4F8B\u6240\u5728\u5E33\u865F\u7684 Artifacts\uFF08\u5E33\u865F\u6216\u547D\u540D\u7A7A\u9593\u5C0D\u4E0D\u4E0A\uFF09\uFF0C\u4E0D\u8B80\u3002` };
+    }
+  } catch {
+  }
+  const refs = p.ref === "HEAD" ? ["HEAD", "main", "master"] : [p.ref];
+  let lastErr = "";
+  for (const path of rulebookFiles(p)) {
+    for (const ref of refs) {
+      let blob;
+      try {
+        blob = await h.readFile({ ref, path });
+      } catch (e) {
+        lastErr = String(e?.message ?? e);
+        continue;
+      }
+      if (!blob) continue;
+      if (typeof blob.size === "number" && blob.size > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
+      const text = String(await blob.text());
+      if (text.length > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u4E0D\u662F\u5408\u6CD5\u7684 JSON` };
+      }
+      const norm = normalizeRulebook(json, repo);
+      if (!norm.ok) return norm;
+      let upstream;
+      try {
+        const lg = await h.log?.({ ref, limit: 1 });
+        const first = Array.isArray(lg) ? lg[0] : Array.isArray(lg?.commits) ? lg.commits[0] : void 0;
+        const sha = String(first?.hash ?? first?.sha ?? first?.oid ?? "");
+        if (/^[0-9a-f]{40}$/.test(sha)) upstream = sha;
+      } catch {
+      }
+      return upstream ? { ...norm, upstream } : norm;
+    }
+  }
+  return { ok: false, code: "not_found", error: `${repo} \u88E1\u627E\u4E0D\u5230 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002${lastErr && !/not found|no such|404/i.test(lastErr) ? `\uFF08\u8B80\u53D6\u56DE\u5831\uFF1A${lastErr.slice(0, 80)}\uFF09` : ""}` };
+}
+function normalizeRulebook(raw2, repo) {
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u5FC5\u9808\u662F\u7269\u4EF6` };
+  const r = raw2;
+  let dropped = 0;
+  const sections = Array.isArray(r.sections) ? r.sections.map((s) => {
+    if (s && typeof s === "object" && !Array.isArray(s) && s.guard !== void 0) {
+      dropped++;
+      const { guard: _g, ...rest } = s;
+      return rest;
+    }
+    return s;
+  }) : r.sections;
+  const decl = { ...r.title !== void 0 ? { title: r.title } : {}, sections };
+  const errors = validateRulebook(decl, []);
+  if (errors.length) return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u5167\u5BB9\u6709\u554F\u984C\uFF1A${errors.slice(0, 3).join("\uFF1B")}${errors.length > 3 ? `\uFF08\u9084\u6709 ${errors.length - 3} \u9805\uFF09` : ""}` };
+  return { ok: true, repo, decl, dropped_guards: dropped };
+}
+var rank = (l) => RULE_LAYERS.indexOf(l);
+function flattenRules(inputs) {
+  const sorted = [...inputs].sort((a, b) => rank(a.layer) - rank(b.layer) || a.order - b.order);
+  const byId = /* @__PURE__ */ new Map();
+  const orderIds = [];
+  const blocked = [];
+  const tag = (i) => ({ layer: i.layer, layer_label: RULE_LAYER_LABEL[i.layer], repo: i.repo });
+  for (const src of sorted) {
+    for (const s of src.sections) {
+      const row = {
+        id: s.id,
+        chapter: s.chapter ?? "",
+        title: s.title,
+        mandatory: !!s.mandatory,
+        origin: { ...tag(src), kind: src.kind, book_id: src.book_id, source_id: src.source_id }
+      };
+      const cur = byId.get(s.id);
+      if (!cur) {
+        byId.set(s.id, row);
+        orderIds.push(s.id);
+        continue;
+      }
+      const by = { layer: cur.origin.layer, layer_label: cur.origin.layer_label, repo: cur.origin.repo };
+      if (cur.origin.layer === src.layer) {
+        blocked.push({ id: s.id, title: s.title, from: tag(src), reason: "duplicate_same_layer", by });
+      } else if (cur.mandatory) {
+        blocked.push({ id: s.id, title: s.title, from: tag(src), reason: "mandatory_above", by });
+      } else {
+        row.overrides = by;
+        byId.set(s.id, row);
+      }
+    }
+  }
+  return { sections: orderIds.map((id) => byId.get(id)), blocked };
+}
+function sourcePage(src, sec) {
+  return {
+    id: sec.id,
+    chapter: sec.chapter,
+    title: sec.title,
+    body: sec.body.slice(0, RULEBOOK_MAX_BODY),
+    ...sec.mandatory ? { mandatory: true } : {},
+    ...sec.direction ? { direction: sec.direction } : {},
+    ...sec.source ? { source: sec.source } : {},
+    rev: 1,
+    approved_by: `${RULE_LAYER_LABEL[src.layer]}\u5C64 ${src.repo}`
+  };
+}
+var DIFF_TEXT_MAX = 600;
+var FIELD_LABEL = { chapter: "\u7AE0", title: "\u6A19\u984C", body: "\u5167\u6587", mandatory: "\u5FC5\u5B88", direction: "\u65B9\u5411", source: "\u4F86\u6E90" };
+var fieldText = (s, f) => f === "mandatory" ? s.mandatory ? "\u5FC5\u5B88" : "\u4E00\u822C" : String(s[f] ?? "");
+var clip = (t) => t.length > DIFF_TEXT_MAX ? `${t.slice(0, DIFF_TEXT_MAX)}\u2026` : t;
+function diffRulebooks(before, after) {
+  const b = new Map(before.sections.map((x) => [x.id, x])), a = new Map(after.sections.map((x) => [x.id, x]));
+  const added = after.sections.filter((x) => !b.has(x.id)).map((x) => ({ id: x.id, title: x.title, chapter: x.chapter ?? "", mandatory: !!x.mandatory }));
+  const removed = before.sections.filter((x) => !a.has(x.id)).map((x) => ({ id: x.id, title: x.title, chapter: x.chapter ?? "" }));
+  const changed = [];
+  for (const n of after.sections) {
+    const o = b.get(n.id);
+    if (!o) continue;
+    const fields = [];
+    for (const f of ["chapter", "title", "body", "mandatory", "direction", "source"]) {
+      const x = fieldText(o, f), y = fieldText(n, f);
+      if (x !== y) fields.push({ field: f, label: FIELD_LABEL[f], before: clip(x), after: clip(y) });
+    }
+    if (fields.length) changed.push({ id: n.id, title: n.title, fields });
+  }
+  const t0 = before.title ?? "", t1 = after.title ?? "";
+  const out = { added, removed, changed, counts: { added: added.length, removed: removed.length, changed: changed.length, total: added.length + removed.length + changed.length } };
+  if (t0 !== t1) {
+    out.title = { before: t0, after: t1 };
+    out.counts.total++;
+  }
+  return out;
+}
+async function contentHash(decl) {
+  const canon = (v) => Array.isArray(v) ? v.map(canon) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v;
+  const bytes = new TextEncoder().encode(JSON.stringify(canon({ title: decl.title ?? "", sections: decl.sections })));
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return [...d.slice(0, 8)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+function adoptedIndex(s) {
+  return s.adopted && s.history ? s.history.findIndex((h) => h.commit === s.adopted) : -1;
+}
+function summarizeSource(s) {
+  return {
+    id: s.id,
+    url: s.url,
+    layer: s.layer,
+    layer_label: RULE_LAYER_LABEL[s.layer],
+    label: s.label,
+    repo: s.repo,
+    order: s.order,
+    added_by: s.added_by,
+    added_at: s.added_at,
+    fetched_at: s.fetched_at,
+    count: s.sections.length,
+    book_id: `src.${s.id}`,
+    ...s.dropped_guards ? { dropped_guards: s.dropped_guards } : {},
+    // inkstone/Arcrun#503：副本與採用歷史（畫面顯示「副本 <commit>」、退回上一版、上游連不上）
+    mirrored: !!s.mirror,
+    ...s.mirror ? { mirror_repo: s.mirror } : {},
+    ...s.adopted ? { adopted: s.adopted, adopted_short: s.adopted.slice(0, 7) } : {},
+    can_rollback: adoptedIndex(s) > 0,
+    ...adoptedIndex(s) > 0 ? { previous_short: (s.history ?? [])[adoptedIndex(s) - 1].commit.slice(0, 7) } : {},
+    history: (s.history ?? []).slice(-10).map((h) => ({ commit: h.commit, short: h.commit.slice(0, 7), ...h.upstream ? { upstream: h.upstream, upstream_short: h.upstream.slice(0, 7) } : {}, at: h.at, by: h.by, kind: h.kind })),
+    ...s.upstream_error ? { upstream_error: s.upstream_error } : {},
+    ...s.checked_at ? { checked_at: s.checked_at } : {},
+    ...s.pending ? { pending: pendingView(s) } : {}
+  };
+}
+function pendingView(s) {
+  const p = s.pending;
+  const d = diffRulebooks({ title: s.title, sections: s.sections }, { title: p.title, sections: p.sections });
+  return { found_at: p.found_at, hash: p.hash, ...p.upstream ? { upstream: p.upstream, upstream_short: p.upstream.slice(0, 7) } : {}, counts: d.counts };
+}
+
+// cypher-executor/src/lib/git-push.ts
+var MAX_FILES = 20;
+var MAX_FILE_BYTES = 256 * 1024;
+var PushError = class extends Error {
+  code;
+  status;
+  constructor(code, message2, status = 422) {
+    super(message2);
+    this.code = code;
+    this.status = status;
+  }
+};
+var enc2 = new TextEncoder();
+var SHA_RE = /^[0-9a-f]{40}$/;
+function hex2(b) {
+  const u = b instanceof Uint8Array ? b : new Uint8Array(b);
+  let s = "";
+  for (let i = 0; i < u.length; i++) s += u[i].toString(16).padStart(2, "0");
+  return s;
+}
+function fromHex(h) {
+  const out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+function concat(parts) {
+  let n = 0;
+  for (const p of parts) n += p.length;
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (const p of parts) {
+    out.set(p, o);
+    o += p.length;
+  }
+  return out;
+}
+async function sha1(data) {
+  return new Uint8Array(await crypto.subtle.digest("SHA-1", data));
+}
+function b64ToBytes(s) {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function makeObj(type, body) {
+  const header = enc2.encode(`${type} ${body.length}\0`);
+  return { type, body, sha: hex2(await sha1(concat([header, body]))) };
+}
+function treeSortKey(e) {
+  return e.type === "tree" || e.mode === "40000" ? e.name + "/" : e.name;
+}
+function serializeTree(entries) {
+  const sorted = entries.slice().sort((a, b) => {
+    const ka = enc2.encode(treeSortKey(a)), kb = enc2.encode(treeSortKey(b));
+    const n = Math.min(ka.length, kb.length);
+    for (let i = 0; i < n; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return ka.length - kb.length;
+  });
+  return concat(sorted.map((e) => concat([enc2.encode(`${e.mode === "040000" ? "40000" : e.mode} ${e.name}\0`), fromHex(e.hash)])));
+}
+async function deflate(data) {
+  const cs = new CompressionStream("deflate");
+  const w = cs.writable.getWriter();
+  void w.write(data);
+  void w.close();
+  return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+}
+function packObjHeader(type, size) {
+  const out = [];
+  let first = type << 4 | size & 15;
+  size = Math.floor(size / 16);
+  if (size > 0) first |= 128;
+  out.push(first);
+  while (size > 0) {
+    let b = size & 127;
+    size = Math.floor(size / 128);
+    if (size > 0) b |= 128;
+    out.push(b);
+  }
+  return new Uint8Array(out);
+}
+var TYPE_NUM = { commit: 1, tree: 2, blob: 3 };
+async function buildPack(objs) {
+  const head = new Uint8Array(12);
+  head.set(enc2.encode("PACK"), 0);
+  new DataView(head.buffer).setUint32(4, 2);
+  new DataView(head.buffer).setUint32(8, objs.length);
+  const parts = [head];
+  for (const o of objs) {
+    parts.push(packObjHeader(TYPE_NUM[o.type], o.body.length));
+    parts.push(await deflate(o.body));
+  }
+  const body = concat(parts);
+  return concat([body, await sha1(body)]);
+}
+function pkt(s) {
+  const b = typeof s === "string" ? enc2.encode(s) : s;
+  return concat([enc2.encode((b.length + 4).toString(16).padStart(4, "0")), b]);
+}
+function parseAdvertisedRefs(text) {
+  const refs = {};
+  const re = /([0-9a-f]{40}) (refs\/[^\u0000\n\r]+)/g;
+  let m;
+  while (m = re.exec(text)) refs[m[2]] = m[1];
+  return refs;
+}
+function cleanPath(p) {
+  const s = String(p ?? "").replace(/^\/+|\/+$/g, "");
+  if (!s || s.length > 400 || /[\u0000-\u001f\\]/.test(s)) throw new PushError("bad_path", `path \u683C\u5F0F\u4E0D\u5C0D\uFF1A${JSON.stringify(p)}\uFF08\u4E0D\u51C6\u7A7A\u3001\u53CD\u659C\u7DDA\u3001\u63A7\u5236\u5B57\u5143\uFF09`);
+  const a = s.split("/");
+  for (const seg of a) if (!seg || seg === "." || seg === ".." || seg === ".git") throw new PushError("bad_path", `path \u683C\u5F0F\u4E0D\u5C0D\uFF1A${p}\uFF08\u4E0D\u51C6\u6709 ..\u3001\u7A7A\u6BB5\u3001.git\uFF09`);
+  return a;
+}
+function branchOk(b) {
+  return typeof b === "string" && b.length > 0 && b.length <= 200 && /^[A-Za-z0-9._\/-]+$/.test(b) && !b.includes("..") && !b.startsWith("/") && !b.endsWith("/") && !b.endsWith(".lock") && !b.includes("//") && !b.startsWith("-");
+}
+async function pushCommit(req) {
+  const f = req.fetchImpl ?? ((u, i) => fetch(u, i));
+  if (!branchOk(req.branch)) throw new PushError("bad_branch", `\u5206\u652F\u540D\u4E0D\u5408\u6CD5\uFF1A${req.branch}`);
+  if (!req.files.length) throw new PushError("no_files", "\u6C92\u6709\u8981\u5BEB\u7684\u6A94\u6848\uFF08files \u662F\u7A7A\u7684\uFF09");
+  if (req.files.length > MAX_FILES) throw new PushError("too_many_files", `\u4E00\u6B21\u6700\u591A ${MAX_FILES} \u500B\u6A94\uFF0C\u9019\u6B21\u7D66\u4E86 ${req.files.length} \u500B`);
+  const msg = String(req.message ?? "").trim();
+  if (!msg) throw new PushError("no_message", "message\uFF08commit \u8A0A\u606F\uFF09\u4E0D\u80FD\u7A7A");
+  const root = { children: /* @__PURE__ */ new Map() };
+  const seen = /* @__PURE__ */ new Set();
+  for (const fc of req.files) {
+    const segs = cleanPath(fc.path);
+    const key = segs.join("/");
+    if (seen.has(key)) throw new PushError("dup_path", `\u540C\u4E00\u500B path \u51FA\u73FE\u5169\u6B21\uFF1A${key}`);
+    seen.add(key);
+    let content = null;
+    if (!fc.delete) {
+      if (typeof fc.content === "string") content = enc2.encode(fc.content);
+      else if (typeof fc.content_base64 === "string") {
+        try {
+          content = b64ToBytes(fc.content_base64);
+        } catch {
+          throw new PushError("bad_content", `${key} \u7684 content_base64 \u4E0D\u662F\u5408\u6CD5 base64`);
+        }
+      } else throw new PushError("no_content", `${key} \u8981\u7D66 content\uFF08\u6587\u5B57\uFF09\u6216 content_base64\uFF0C\u6216 delete:true`);
+      if (content.length > MAX_FILE_BYTES) throw new PushError("file_too_large", `${key} \u6709 ${content.length} \u4F4D\u5143\u7D44\uFF0C\u8D85\u904E\u55AE\u6A94\u4E0A\u9650 ${MAX_FILE_BYTES}`, 413);
+    }
+    let cur = root;
+    for (let i = 0; i < segs.length; i++) {
+      let n = cur.children.get(segs[i]);
+      if (!n) {
+        n = { children: /* @__PURE__ */ new Map() };
+        cur.children.set(segs[i], n);
+      }
+      if (i === segs.length - 1) {
+        if (n.children.size) throw new PushError("path_conflict", `${key} \u8207\u5E95\u4E0B\u7684\u5176\u4ED6\u8DEF\u5F91\u885D\u7A81\uFF08\u4E00\u500B\u662F\u6A94\u3001\u4E00\u500B\u662F\u76EE\u9304\uFF09`);
+        n.file = { content };
+      } else {
+        if (n.file) throw new PushError("path_conflict", `${segs.slice(0, i + 1).join("/")} \u540C\u6642\u88AB\u7576\u6210\u6A94\u548C\u76EE\u9304`);
+        cur = n;
+      }
+    }
+  }
+  const auth = { Authorization: "Basic " + btoa("x:" + req.token) };
+  const adv = await f(`${req.remote}/info/refs?service=git-receive-pack`, { headers: auth });
+  if (!adv.ok) throw new PushError("artifacts_refs", `\u8B80\u4E0D\u5230 repo \u7684\u5206\u652F\uFF08HTTP ${adv.status}\uFF09`, adv.status === 404 ? 404 : 502);
+  const refs = parseAdvertisedRefs(await adv.text());
+  const ZERO = "0".repeat(40);
+  const oldSha = refs[`refs/heads/${req.branch}`] ?? ZERO;
+  let baseSha = oldSha !== ZERO ? oldSha : null;
+  if (!baseSha) {
+    const from = (req.from ?? "main").trim();
+    baseSha = SHA_RE.test(from) ? from : refs[`refs/heads/${from}`] ?? refs[`refs/tags/${from}`] ?? null;
+    const hasAnyBranch = Object.keys(refs).some((k) => k.startsWith("refs/heads/"));
+    if (!baseSha && hasAnyBranch) throw new PushError("from_not_found", `\u5206\u652F ${req.branch} \u4E0D\u5B58\u5728\uFF0C\u800C\u4E14 from\uFF08${from}\uFF09\u4E5F\u627E\u4E0D\u5230\uFF1B\u7D66\u4E00\u500B\u5B58\u5728\u7684\u5206\u652F\u540D\u6216 40 \u78BC sha`, 404);
+  }
+  let baseTree = null;
+  if (baseSha) {
+    const c = await req.handle.readCommit(baseSha);
+    if (!c) throw new PushError("base_not_found", `\u627E\u4E0D\u5230\u8D77\u9EDE commit ${baseSha}`, 404);
+    baseTree = c.treeHash;
+  }
+  const objs = [];
+  const changed = [];
+  async function rebuild(node, treeSha, prefix) {
+    const existing = treeSha ? await req.handle.readTree(treeSha) : null;
+    if (treeSha && existing === null) throw new PushError("tree_not_found", `\u8B80\u4E0D\u5230 tree ${treeSha}`, 502);
+    const entries = /* @__PURE__ */ new Map();
+    for (const e of existing ?? []) entries.set(e.name, e);
+    for (const [name, child] of node.children) {
+      const path = prefix + name;
+      const old = entries.get(name);
+      if (child.file) {
+        if (old && old.type === "tree") throw new PushError("path_conflict", `${path} \u73FE\u5728\u662F\u76EE\u9304\uFF0C\u4E0D\u80FD\u76F4\u63A5\u5BEB\u6210\u6A94`);
+        if (child.file.content === null) {
+          if (!old) throw new PushError("delete_missing", `\u8981\u522A\u7684\u6A94\u4E0D\u5B58\u5728\uFF1A${path}`, 404);
+          entries.delete(name);
+          changed.push({ path, status: "deleted" });
+        } else {
+          const blob = await makeObj("blob", child.file.content);
+          if (old && old.hash === blob.sha) changed.push({ path, status: "unchanged" });
+          else {
+            objs.push(blob);
+            entries.set(name, { name, mode: old && old.type === "blob" ? old.mode : "100644", hash: blob.sha, type: "blob" });
+            changed.push({ path, status: old ? "modified" : "added" });
+          }
+        }
+      } else {
+        if (old && old.type !== "tree") throw new PushError("path_conflict", `${path} \u73FE\u5728\u662F\u6A94\uFF0C\u4E0D\u80FD\u7576\u76EE\u9304\u7528`);
+        const sub = await rebuild(child, old ? old.hash : null, path + "/");
+        if (sub === null) entries.delete(name);
+        else entries.set(name, { name, mode: "40000", hash: sub, type: "tree" });
+      }
+    }
+    if (entries.size === 0) return null;
+    const t = await makeObj("tree", serializeTree([...entries.values()]));
+    if (!(existing && treeSha === t.sha)) objs.push(t);
+    return t.sha;
+  }
+  const newTree = await rebuild(root, baseTree, "");
+  if (newTree === null) throw new PushError("empty_tree", "\u9019\u6B21\u6539\u52D5\u6703\u8B93\u6574\u500B repo \u8B8A\u7A7A\uFF0C\u4E0D\u505A");
+  if (baseTree === newTree) throw new PushError("no_change", "\u9019\u4E9B\u5167\u5BB9\u8DDF\u73FE\u5728\u7684\u7248\u672C\u4E00\u6A21\u4E00\u6A23\uFF0C\u6C92\u6709\u6771\u897F\u53EF\u4EE5 commit", 409);
+  const ts = Math.floor(req.now ?? Date.now() / 1e3);
+  const who = `${req.author.name.replace(/[<>\n]/g, "")} <${req.author.email.replace(/[<>\n]/g, "")}> ${ts} +0000`;
+  const commitText = `tree ${newTree}
+${baseSha ? `parent ${baseSha}
+` : ""}author ${who}
+committer ${who}
+
+${msg}
+`;
+  const commit = await makeObj("commit", enc2.encode(commitText));
+  objs.push(commit);
+  const pack = await buildPack(objs);
+  const cmd = pkt(`${oldSha} ${commit.sha} refs/heads/${req.branch}\0 report-status agent=arcrun-engine/416`);
+  const body = concat([cmd, enc2.encode("0000"), pack]);
+  const res = await f(`${req.remote}/git-receive-pack`, {
+    method: "POST",
+    headers: { ...auth, "Content-Type": "application/x-git-receive-pack-request", Accept: "application/x-git-receive-pack-result" },
+    body
+  });
+  const report = await res.text();
+  const cleaned = report.replace(/[\u0000-\u0008\u000b-\u001f]/g, " ");
+  const okRef = new RegExp(`ok refs/heads/${req.branch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+  if (!res.ok || !/unpack ok/.test(cleaned) || !okRef.test(cleaned)) {
+    throw new PushError("push_rejected", `Artifacts \u6C92\u6709\u63A5\u53D7\u9019\u6B21\u5BEB\u5165\uFF08HTTP ${res.status}\uFF09\uFF1A${cleaned.trim().slice(0, 300)}`, res.status === 401 || res.status === 403 ? 502 : 409);
+  }
+  return { ok: true, commit: commit.sha, parent: baseSha, branch: req.branch, created_branch: oldSha === ZERO, changed, objects: objs.length, report: cleaned.trim().slice(0, 200) };
+}
+async function createBranch(req) {
+  const f = req.fetchImpl ?? ((u, i) => fetch(u, i));
+  if (!branchOk(req.branch)) throw new PushError("bad_branch", `\u5206\u652F\u540D\u4E0D\u5408\u6CD5\uFF1A${req.branch}`);
+  const auth = { Authorization: "Basic " + btoa("x:" + req.token) };
+  const adv = await f(`${req.remote}/info/refs?service=git-receive-pack`, { headers: auth });
+  if (!adv.ok) throw new PushError("artifacts_refs", `\u8B80\u4E0D\u5230 repo \u7684\u5206\u652F\uFF08HTTP ${adv.status}\uFF09`, adv.status === 404 ? 404 : 502);
+  const refs = parseAdvertisedRefs(await adv.text());
+  if (refs[`refs/heads/${req.branch}`]) throw new PushError("branch_exists", `\u5206\u652F ${req.branch} \u5DF2\u7D93\u5B58\u5728`, 409);
+  const from = (req.from ?? "main").trim();
+  const sha = SHA_RE.test(from) ? from : refs[`refs/heads/${from}`] ?? refs[`refs/tags/${from}`];
+  if (!sha) throw new PushError("from_not_found", `from\uFF08${from}\uFF09\u627E\u4E0D\u5230`, 404);
+  const pack = await buildPack([]);
+  const body = concat([pkt(`${"0".repeat(40)} ${sha} refs/heads/${req.branch}\0 report-status agent=arcrun-engine/416`), enc2.encode("0000"), pack]);
+  const res = await f(`${req.remote}/git-receive-pack`, { method: "POST", headers: { ...auth, "Content-Type": "application/x-git-receive-pack-request" }, body });
+  const rep = (await res.text()).replace(/[\u0000-\u0008\u000b-\u001f]/g, " ");
+  if (!res.ok || !/unpack ok/.test(rep) || !/ok refs\/heads\//.test(rep)) throw new PushError("push_rejected", `Artifacts \u6C92\u6709\u63A5\u53D7\u5EFA\u5206\u652F\uFF08HTTP ${res.status}\uFF09\uFF1A${rep.trim().slice(0, 300)}`, 409);
+  return { ok: true, branch: req.branch, sha };
+}
+
+// cypher-executor/src/lib/rule-mirror.ts
+var MirrorError = class extends Error {
+  code;
+  constructor(code, message2) {
+    super(message2);
+    this.code = code;
+  }
+};
+var MIRROR_PREFIX = "rulemirror-";
+var MIRROR_FILE = "rulebook.json";
+var MIRROR_META = "SOURCE.json";
+function mirrorRepoName(tenant2, sourceId) {
+  const slug2 = String(tenant2).replace(/[^A-Za-z0-9]/g, "").slice(0, 16) || "t";
+  let h = 5381;
+  for (const ch of String(tenant2)) h = (h * 33 ^ ch.charCodeAt(0)) >>> 0;
+  return `${MIRROR_PREFIX}${slug2}-${h.toString(36)}-${String(sourceId).replace(/[^A-Za-z0-9]/g, "")}`.slice(0, 100);
+}
+var notFound = (e) => e?.code === "NOT_FOUND" || /not found/i.test(String(e?.message ?? ""));
+function artifactsMirror(env) {
+  const bind = () => {
+    const b = env.ARTIFACTS;
+    if (!b || typeof b.get !== "function") throw new MirrorError("no_artifacts", "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u9023\u4E0A Artifacts\uFF08\u5E33\u865F\u6C92\u958B\u6216\u9084\u6C92\u7D81\uFF09\uFF0C\u6C92\u8FA6\u6CD5\u66FF\u898F\u7AE0\u7559\u526F\u672C\u3002Artifacts \u958B\u901A\u5F8C\u91CD\u65B0\u5B89\u88DD\u6216\u66F4\u65B0\u5BE6\u4F8B\u5373\u53EF\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002");
+    return b;
+  };
+  const open = async (repo, create2) => {
+    const b = bind();
+    try {
+      return await b.get(repo);
+    } catch (e) {
+      if (!notFound(e)) throw new MirrorError("write_failed", `Artifacts \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A${String(e?.message ?? e).slice(0, 120)}`);
+      if (!create2) return null;
+    }
+    if (typeof b.create !== "function") throw new MirrorError("write_failed", "\u9019\u500B Artifacts \u7D81\u5B9A\u4E0D\u80FD\u5EFA\u7ACB repo\uFF08\u6C92\u6709 create\uFF09\u3002");
+    try {
+      await b.create(repo);
+      return await b.get(repo);
+    } catch (e) {
+      throw new MirrorError("write_failed", `\u5EFA\u7ACB\u526F\u672C\u5931\u6557\uFF1A${String(e?.message ?? e).slice(0, 120)}`);
+    }
+  };
+  return {
+    async write(repo, files, message2) {
+      for (const f of files) {
+        if (new TextEncoder().encode(f.content).length > MAX_FILE_BYTES) {
+          throw new MirrorError("too_large", `\u898F\u7AE0\u6A94 ${f.path} \u8D85\u904E ${Math.floor(MAX_FILE_BYTES / 1024)} KB\uFF0C\u526F\u672C\u653E\u4E0D\u4E0B\uFF0C\u8ACB\u62C6\u5C0F\u6216\u7CBE\u7C21\u689D\u6587\u3002`);
+        }
+      }
+      const h = await open(repo, true);
+      let tok = null;
+      try {
+        const info = await h.info();
+        tok = await h.createToken("write", 120);
+        const res = await pushCommit({
+          remote: info.remote,
+          token: tok.plaintext,
+          handle: h,
+          branch: "main",
+          message: message2,
+          author: { name: "arcrun-rule-mirror", email: "rule-mirror@arcrun" },
+          files
+        });
+        return { changed: true, commit: res.commit };
+      } catch (e) {
+        if (e instanceof PushError) {
+          if (e.code === "no_change") return { changed: false, commit: null };
+          throw new MirrorError(e.code === "file_too_large" ? "too_large" : "write_failed", `\u5BEB\u526F\u672C\u5931\u6557\uFF1A${e.message}`);
+        }
+        throw new MirrorError("write_failed", `\u5BEB\u526F\u672C\u5931\u6557\uFF1A${String(e?.message ?? e).slice(0, 160)}`);
+      } finally {
+        try {
+          if (tok?.id) await h.revokeToken(tok.id);
+        } catch {
+        }
+      }
+    },
+    async read(repo, ref, path) {
+      const h = await open(repo, false);
+      if (!h) return null;
+      try {
+        const blob = await h.readFile({ ref, path });
+        return blob ? String(await blob.text()) : null;
+      } catch (e) {
+        throw new MirrorError("read_failed", `\u8B80\u526F\u672C\u5931\u6557\uFF1A${String(e?.message ?? e).slice(0, 120)}`);
+      }
+    },
+    async remove(repo) {
+      const b = bind();
+      if (typeof b.delete !== "function") throw new MirrorError("delete_failed", "\u9019\u500B Artifacts \u7D81\u5B9A\u4E0D\u80FD\u522A\u9664 repo\uFF08\u6C92\u6709 delete\uFF09\uFF0C\u526F\u672C\u522A\u4E0D\u6389\u3002");
+      try {
+        await b.delete(repo);
+      } catch (e) {
+        if (!notFound(e)) throw new MirrorError("delete_failed", `\u526F\u672C\u522A\u4E0D\u6389\uFF1A${String(e?.message ?? e).slice(0, 120)}`);
+      }
+    },
+    async exists(repo) {
+      return await open(repo, false) !== null;
+    }
+  };
+}
+
+// cypher-executor/src/lib/rule-upstream-pr.ts
+var UpstreamPrError = class extends Error {
+  code;
+  constructor(code, message2) {
+    super(message2);
+    this.code = code;
+  }
+};
+var notFound2 = (e) => e?.code === "NOT_FOUND" || /not found/i.test(String(e?.message ?? ""));
+function artifactsUpstream(env) {
+  const open = async (p) => {
+    const b = pickArtifactsBinding(env, p.owner);
+    if (!b || typeof b.get !== "function") {
+      throw env.ARTIFACTS && typeof env.ARTIFACTS.get === "function" ? new UpstreamPrError("not_bound", `\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u7D81\u4E0A Artifacts \u7684\u547D\u540D\u7A7A\u9593\u300C${p.owner}\u300D\uFF0C\u6C92\u8FA6\u6CD5\u66FF\u4E0A\u6E38\u958B\u63D0\u6848\u3002\u66F4\u65B0\u5BE6\u4F8B\u5F8C\u6703\u81EA\u52D5\u7D81\u4E0A\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002`) : new UpstreamPrError("no_artifacts", "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u9023\u4E0A Artifacts\uFF0C\u6C92\u8FA6\u6CD5\u66FF\u4E0A\u6E38\u958B\u63D0\u6848\u3002Artifacts \u958B\u901A\u5F8C\u91CD\u65B0\u5B89\u88DD\u6216\u66F4\u65B0\u5BE6\u4F8B\u5373\u53EF\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002");
+    }
+    let h;
+    try {
+      h = await b.get(p.repo);
+    } catch (e) {
+      if (notFound2(e)) throw new UpstreamPrError("repo_missing", `\u9019\u500B\u5E33\u865F\u7684 Artifacts \u88E1\u6C92\u6709 repo\u300C${p.repo}\u300D\uFF0C\u6C92\u8FA6\u6CD5\u958B\u63D0\u6848\u3002`);
+      throw new UpstreamPrError("write_failed", `Artifacts \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A${String(e?.message ?? e).slice(0, 120)}`);
+    }
+    let info = null;
+    try {
+      info = await h.info();
+    } catch {
+    }
+    const remote = String(info?.remote ?? "");
+    if (remote && !remote.toLowerCase().includes(`${p.account}.artifacts.cloudflare.net/git/${p.owner}/${p.repo}`.toLowerCase())) {
+      throw new UpstreamPrError("wrong_account", "\u9019\u500B\u9023\u7D50\u4E0D\u662F\u9019\u53F0\u5BE6\u4F8B\u6240\u5728\u5E33\u865F\u7684 Artifacts\uFF0C\u4E0D\u66FF\u5B83\u958B\u63D0\u6848\u3002");
+    }
+    return { h, info, remote };
+  };
+  return {
+    async read(p) {
+      const { h, info } = await open(p);
+      const names = p.ref === "HEAD" ? ["main", "master", "HEAD"] : [p.ref];
+      for (const path of rulebookFiles(p)) {
+        for (const ref of names) {
+          let blob;
+          try {
+            blob = await h.readFile({ ref, path });
+          } catch {
+            continue;
+          }
+          if (!blob) continue;
+          const text = String(await blob.text());
+          const baseBranch = ref === "HEAD" ? String(info?.defaultBranch || "main") : ref;
+          let base;
+          try {
+            const lg = await h.log?.({ ref, limit: 1 });
+            const first = Array.isArray(lg) ? lg[0] : Array.isArray(lg?.commits) ? lg.commits[0] : void 0;
+            const sha = String(first?.hash ?? first?.sha ?? first?.oid ?? "");
+            if (/^[0-9a-f]{40}$/.test(sha)) base = sha;
+          } catch {
+          }
+          return { path, text, baseBranch, ...base ? { base } : {} };
+        }
+      }
+      throw new UpstreamPrError("no_rulebook", `${p.owner}/${p.repo} \u88E1\u73FE\u5728\u627E\u4E0D\u5230 rulebook.json\uFF0C\u6C92\u8FA6\u6CD5\u958B\u63D0\u6848\u3002`);
+    },
+    async push(p, req) {
+      const { h, info, remote } = await open(p);
+      const rem = remote || String(info?.remote ?? "");
+      if (!rem) throw new UpstreamPrError("write_failed", "\u8B80\u4E0D\u5230\u4E0A\u6E38 repo \u7684 git \u4F4D\u5740\uFF0C\u6C92\u8FA6\u6CD5\u958B\u63D0\u6848\u3002");
+      let tok = null;
+      try {
+        tok = await h.createToken("write", 120);
+        const res = await pushCommit({
+          remote: rem,
+          token: tok.plaintext,
+          handle: h,
+          branch: req.branch,
+          from: req.from,
+          message: req.message,
+          author: { name: "arcrun-ai", email: "rule-proposal@arcrun" },
+          files: [{ path: req.path, content: req.content }]
+        });
+        return { commit: res.commit, remote: rem };
+      } catch (e) {
+        if (e instanceof PushError) throw new UpstreamPrError("write_failed", `\u958B\u63D0\u6848\u5931\u6557\uFF1A${e.message}`);
+        throw new UpstreamPrError("write_failed", `\u958B\u63D0\u6848\u5931\u6557\uFF1A${String(e?.message ?? e).slice(0, 160)}`);
+      } finally {
+        try {
+          if (tok?.id) await h.revokeToken(tok.id);
+        } catch {
+        }
+      }
+    }
+  };
+}
+function editRulebookText(text, sectionId, draft) {
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new UpstreamPrError("bad_rulebook", "\u4E0A\u6E38\u7684 rulebook.json \u73FE\u5728\u4E0D\u662F\u5408\u6CD5\u7684 JSON\uFF0C\u6C92\u8FA6\u6CD5\u958B\u63D0\u6848\u3002");
+  }
+  const list = Array.isArray(json?.sections) ? json.sections : void 0;
+  const hit = list?.find((s) => s && typeof s === "object" && s.id === sectionId);
+  if (!hit) throw new UpstreamPrError("section_gone", `\u4E0A\u6E38\u73FE\u5728\u5DF2\u7D93\u6C92\u6709\u300C${sectionId}\u300D\u9019\u4E00\u689D\u4E86\uFF0C\u8ACB\u5148\u6309\u300C\u91CD\u65B0\u8B80\u53D6\u300D\u770B\u770B\u4E0A\u6E38\u6539\u4E86\u4EC0\u9EBC\u3002`);
+  if (hit.title === draft.title && hit.body === draft.body) throw new UpstreamPrError("no_change", "\u4E0A\u6E38\u73FE\u5728\u7684\u9019\u4E00\u689D\u5C31\u662F\u9019\u500B\u6A23\u5B50\uFF0C\u4E0D\u7528\u518D\u958B\u63D0\u6848\u3002");
+  hit.title = draft.title;
+  hit.body = draft.body;
+  const m = /^\s*[\[{]\s*\r?\n([ \t]+)\S/.exec(text);
+  const indent = m ? m[1] : 2;
+  return JSON.stringify(json, null, indent) + (text.endsWith("\n") ? "\n" : "");
+}
+function proposalBranch(sectionId, now2) {
+  const slug2 = String(sectionId).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 40) || "rule";
+  const ts = now2.toISOString().replace(/[-:T]/g, "").slice(0, 14);
+  const b = `arcrun-ai/${slug2}-${ts}`;
+  return branchOk(b) ? b : `arcrun-ai/rule-${ts}`;
+}
+function proposalMessage(a) {
+  return `AI \u63D0\u6848\uFF1A\u4FEE\u6539\u898F\u7AE0 ${a.section}\u300C${a.title}\u300D
+
+\u63D0\u51FA\u8005\uFF1A${a.by}
+\u8981\u6C42\uFF1A${a.instruction.replace(/\s+/g, " ").slice(0, 300)}
+${a.model ? `AI\uFF1A${a.model}
+` : ""}
+\u9019\u662F Arcrun \u4F9D\u4F7F\u7528\u8005\u5728\u689D\u6587\u4E0A\u7684\u7559\u8A00\uFF08@AI\uFF09\u66FF\u4E0A\u6E38\u958B\u7684\u63D0\u6848\uFF1A\u9019\u689D\u5206\u652F\u53EA\u6539\u9019\u4E00\u689D\u689D\u6587\u3002
+\u5408\u4F75\u4E4B\u5F8C\uFF0C\u639B\u4E86\u9019\u4EFD\u898F\u7AE0\u7684\u5BE6\u4F8B\u6703\u5148\u770B\u5230\u5DEE\u7570\uFF0C\u6838\u51C6\u624D\u751F\u6548\u3002`;
+}
+
+// cypher-executor/src/lib/rule-sources-ops.ts
+var err = (code, error, status = 400) => ({ ok: false, code, error, status });
+function pickAnchor(all) {
+  const apps = all.filter((a) => a.rulebook);
+  return apps.find((a) => a.id === "company_rules") ?? apps.sort((a, b) => a.id.localeCompare(b.id))[0] ?? null;
+}
+async function anchorApp(env, tenant2) {
+  return pickAnchor(await listInstalledApps(env, tenant2));
+}
+function pendingFromApps(apps) {
+  const a = pickAnchor(apps);
+  const doc = a ? layerOf(a).rule_sources : void 0;
+  return (doc?.items ?? []).filter((s) => s.pending).map((s) => ({
+    id: s.id,
+    label: s.label,
+    layer: s.layer,
+    repo: s.repo,
+    book_id: `${SRC_PREFIX}${s.id}`,
+    adopted_short: s.adopted ? s.adopted.slice(0, 7) : "",
+    ...pendingView(s)
+  }));
+}
+var NO_BOOK = "\u9019\u53F0\u9084\u6C92\u6709\u5B89\u88DD\u898F\u7AE0 App\uFF0C\u6C92\u6709\u5730\u65B9\u639B\u3002\u8ACB\u5148\u5230 App \u5E02\u96C6\u5B89\u88DD\u300C\u7BA1\u7406\u898F\u7AE0\u300D\u3002";
+async function readSources(env, tenant2) {
+  const app2 = await anchorApp(env, tenant2);
+  return app2 ? layerOf(app2).rule_sources ?? emptySources() : emptySources();
+}
+async function writeSources(env, tenant2, doc) {
+  const app2 = await anchorApp(env, tenant2);
+  if (!app2) return false;
+  const layer = layerOf(app2);
+  if (doc.items.length) layer.rule_sources = doc;
+  else delete layer.rule_sources;
+  await appStore(env).put(appKey(tenant2, app2.id), JSON.stringify({ ...app2, user_layer: layer }));
+  return true;
+}
+var mirrorStatus = (e) => e.code === "no_artifacts" ? 424 : e.code === "too_large" ? 422 : 502;
+var storeOf = (env, m) => m ?? artifactsMirror(env);
+async function adopt(store2, tenant2, src, decl, upstream, by, kind) {
+  const repo = src.mirror ?? mirrorRepoName(tenant2, src.id);
+  const files = [
+    { path: MIRROR_FILE, content: JSON.stringify({ ...decl.title ? { title: decl.title } : {}, sections: decl.sections }, null, 2) + "\n" },
+    { path: MIRROR_META, content: JSON.stringify({ url: src.url, ...upstream ? { upstream_commit: upstream } : {}, note: "\u9019\u662F Arcrun \u66FF\u898F\u7AE0 plugin \u7559\u7684\u552F\u8B80\u526F\u672C\uFF1B\u8981\u6539\u689D\u6587\u8ACB\u6539\u4E0A\u6E38\u3002" }, null, 2) + "\n" }
+  ];
+  const w = await store2.write(repo, files, `\u63A1\u7528\u898F\u7AE0 ${src.url}${upstream ? `\uFF08\u4E0A\u6E38 ${upstream.slice(0, 7)}\uFF09` : ""}`);
+  const history = [...src.history ?? []];
+  let commit = w.commit;
+  if (!w.changed) commit = history.length ? history[history.length - 1].commit : null;
+  if (!commit) throw new MirrorError("write_failed", "\u526F\u672C\u5167\u5BB9\u6C92\u8B8A\uFF0C\u537B\u627E\u4E0D\u5230\u4E0A\u4E00\u500B commit");
+  if (w.changed) history.push({ commit, ...upstream ? { upstream } : {}, at: (/* @__PURE__ */ new Date()).toISOString(), by, kind });
+  return { mirror: repo, adopted: commit, history: history.slice(-MIRROR_HISTORY_MAX) };
+}
+async function ensureMirrors(env, tenant2, mirror) {
+  const doc = await readSources(env, tenant2);
+  const todo = doc.items.filter((x) => !x.mirror);
+  if (!todo.length) return { migrated: 0, pending: 0 };
+  const store2 = storeOf(env, mirror);
+  let migrated = 0;
+  for (const src of todo) {
+    try {
+      const a = await adopt(store2, tenant2, src, { ...src.title ? { title: src.title } : {}, sections: src.sections }, void 0, "system", "migrate");
+      src.mirror = a.mirror;
+      src.adopted = a.adopted;
+      src.history = a.history;
+      migrated++;
+    } catch {
+    }
+  }
+  if (migrated) await writeSources(env, tenant2, doc);
+  return { migrated, pending: todo.length - migrated };
+}
+var SRC_PREFIX = "src.";
+function sourceIdOf(bookId) {
+  return bookId.startsWith(SRC_PREFIX) ? bookId.slice(SRC_PREFIX.length) : null;
+}
+async function readFlatBook(env, tenant2) {
+  const apps = (await listInstalledApps(env, tenant2)).filter((a) => a.rulebook);
+  const books = (await Promise.all(apps.map((a) => readBook(env, tenant2, a)))).filter((b) => b !== null);
+  const doc = await readSources(env, tenant2);
+  const inputs = [
+    ...books.map((b, i) => ({
+      source_id: `app.${b.app_id}`,
+      book_id: b.app_id,
+      kind: "app",
+      layer: "company",
+      repo: b.title,
+      order: -1e3 + i,
+      sections: b.sections.map((s) => ({ id: s.id, chapter: s.chapter, title: s.title, mandatory: s.mandatory }))
+    })),
+    ...doc.items.map((s) => ({
+      source_id: s.id,
+      book_id: `${SRC_PREFIX}${s.id}`,
+      kind: "git",
+      layer: s.layer,
+      repo: s.label,
+      order: s.order,
+      sections: s.sections.map((x) => ({ id: x.id, chapter: x.chapter, title: x.title, mandatory: !!x.mandatory }))
+    }))
+  ];
+  const flat = flattenRules(inputs);
+  const pend = /* @__PURE__ */ new Map(), edited = /* @__PURE__ */ new Map();
+  for (const b of books) for (const s of b.sections) {
+    pend.set(`${b.app_id}\0${s.id}`, s.pending);
+    edited.set(`${b.app_id}\0${s.id}`, s.edited);
+  }
+  return {
+    sections: flat.sections.map((s) => ({ ...s, pending: pend.get(`${s.origin.book_id}\0${s.id}`) ?? false, edited: edited.get(`${s.origin.book_id}\0${s.id}`) ?? false })),
+    blocked: flat.blocked,
+    sources: [
+      ...books.map((b) => ({ id: `app.${b.app_id}`, builtin: true, layer: "company", layer_label: "\u516C\u53F8", label: b.title, repo: b.title, count: b.sections.length, book_id: b.app_id })),
+      ...doc.items.map((s) => ({ ...summarizeSource(s), builtin: false }))
+    ]
+  };
+}
+async function addSource(env, tenant2, by, input, fetchImpl, mirror) {
+  const url = typeof input.url === "string" ? input.url.trim() : "";
+  const layer = input.layer;
+  if (!RULE_LAYERS.includes(layer)) return err("bad_layer", "\u8ACB\u9078\u5C64\u7D1A\uFF1A\u96C6\u5718\u3001\u516C\u53F8\u3001\u90E8\u9580\u6216\u500B\u4EBA");
+  const p = parseRepoUrl(url);
+  if ("error" in p) return err("bad_url", p.error);
+  if (!await anchorApp(env, tenant2)) return err("no_book_app", NO_BOOK, 409);
+  const doc = await readSources(env, tenant2);
+  if (doc.items.length >= RULE_SOURCES_MAX) return err("too_many", `\u6700\u591A\u639B ${RULE_SOURCES_MAX} \u500B\u898F\u7AE0\u4F86\u6E90`);
+  const norm = `${p.host}/${p.owner}/${p.repo}/${p.ref}/${p.path}`.toLowerCase();
+  if (doc.items.some((s) => {
+    const q = parseRepoUrl(s.url);
+    return !("error" in q) && `${q.host}/${q.owner}/${q.repo}/${q.ref}/${q.path}`.toLowerCase() === norm;
+  })) {
+    return err("duplicate", "\u9019\u500B repo \u5DF2\u7D93\u639B\u904E\u4E86", 409);
+  }
+  const r = await fetchRepoRulebook(url, { token: env.RULE_REPO_TOKEN, fetchImpl, artifactsEnv: env });
+  if (!r.ok) return err(r.code, r.error, r.code === "unreachable" ? 502 : 422);
+  const label = (typeof input.label === "string" && input.label.trim() ? input.label.trim() : r.decl.title?.trim() || `${p.owner}/${p.repo}`).slice(0, 40);
+  const now2 = (/* @__PURE__ */ new Date()).toISOString();
+  const inLayer = doc.items.filter((s) => s.layer === layer);
+  const src = {
+    id: `s${doc.next}`,
+    url,
+    layer,
+    label,
+    repo: `${p.owner}/${p.repo}`,
+    order: inLayer.length ? Math.max(...inLayer.map((s) => s.order)) + 1 : 0,
+    added_by: by,
+    added_at: now2,
+    fetched_at: now2,
+    ...r.decl.title ? { title: r.decl.title } : {},
+    sections: r.decl.sections,
+    ...r.dropped_guards ? { dropped_guards: r.dropped_guards } : {}
+  };
+  const store2 = storeOf(env, mirror);
+  try {
+    Object.assign(src, await adopt(store2, tenant2, src, r.decl, r.upstream, by, "install"));
+  } catch (e) {
+    if (e instanceof MirrorError) {
+      try {
+        await store2.remove(mirrorRepoName(tenant2, src.id));
+      } catch {
+      }
+      return err(`mirror_${e.code}`, e.message, mirrorStatus(e));
+    }
+    throw e;
+  }
+  doc.items.push(src);
+  doc.next++;
+  await writeSources(env, tenant2, doc);
+  return { ok: true, source: summarizeSource(src) };
+}
+async function removeSource(env, tenant2, id, mirror) {
+  const doc = await readSources(env, tenant2);
+  const gone = doc.items.find((s) => s.id === id);
+  if (!gone) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  if (gone.mirror) {
+    try {
+      await storeOf(env, mirror).remove(gone.mirror);
+    } catch (e) {
+      if (e instanceof MirrorError) return err(`mirror_${e.code}`, `${e.message}\uFF08\u4F86\u6E90\u6C92\u6709\u79FB\u9664\uFF0C\u7A0D\u5F8C\u518D\u8A66\uFF09`, 502);
+      throw e;
+    }
+  }
+  doc.items = doc.items.filter((s) => s.id !== id);
+  await writeSources(env, tenant2, doc);
+  return { ok: true };
+}
+async function moveSource(env, tenant2, id, dir) {
+  const doc = await readSources(env, tenant2);
+  const me = doc.items.find((s) => s.id === id);
+  if (!me) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  const row = doc.items.filter((s) => s.layer === me.layer).sort((a, b) => a.order - b.order);
+  const i = row.findIndex((s) => s.id === id), j = dir === "up" ? i - 1 : i + 1;
+  if (j < 0 || j >= row.length) return { ok: true };
+  row.forEach((x, k) => {
+    x.order = k;
+  });
+  const tmp = row[i].order;
+  row[i].order = row[j].order;
+  row[j].order = tmp;
+  await writeSources(env, tenant2, doc);
+  return { ok: true };
+}
+async function mutate(env, tenant2, id, fn) {
+  const doc = await readSources(env, tenant2);
+  const s = doc.items.find((x) => x.id === id);
+  if (!s) return null;
+  fn(s);
+  await writeSources(env, tenant2, doc);
+  return s;
+}
+function markMerged(x, decl, at) {
+  for (const pr of x.proposals ?? []) {
+    if (pr.status !== "open") continue;
+    const cur = decl.sections.find((c) => c.id === pr.section);
+    if (cur && cur.title === pr.draft.title && cur.body === pr.draft.body) {
+      pr.status = "merged";
+      pr.merged_at = at;
+    }
+  }
+}
+async function refreshSource(env, tenant2, id, opts = {}) {
+  const now2 = opts.now ?? /* @__PURE__ */ new Date();
+  const first = (await readSources(env, tenant2)).items.find((x) => x.id === id);
+  if (!first) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  if (opts.minIntervalMs && first.checked_at && now2.getTime() - Date.parse(first.checked_at) < opts.minIntervalMs) {
+    return { ok: true, upstream_ok: !first.upstream_error, state: "skipped", source: summarizeSource(first) };
+  }
+  const r = await fetchRepoRulebook(first.url, { token: opts.auto ? void 0 : env.RULE_REPO_TOKEN, fetchImpl: opts.fetchImpl, artifactsEnv: env });
+  const at = now2.toISOString();
+  if (!r.ok) {
+    if (opts.auto && r.code === "private_no_token") {
+      const s3 = await mutate(env, tenant2, id, (x) => {
+        x.checked_at = at;
+      });
+      return { ok: true, upstream_ok: true, state: "skipped", source: summarizeSource(s3 ?? first) };
+    }
+    const s2 = await mutate(env, tenant2, id, (x) => {
+      x.checked_at = at;
+      x.upstream_error = { at, code: r.code, error: r.error };
+    });
+    return { ok: true, upstream_ok: false, state: "unreachable", source: summarizeSource(s2 ?? first) };
+  }
+  const hash = await contentHash(r.decl);
+  let state = "current";
+  const s = await mutate(env, tenant2, id, (x) => {
+    x.checked_at = at;
+    x.fetched_at = at;
+    delete x.upstream_error;
+    markMerged(x, r.decl, at);
+    const d = diffRulebooks({ title: x.title, sections: x.sections }, r.decl);
+    if (d.counts.total === 0) {
+      delete x.pending;
+      delete x.rejected_hash;
+      state = "current";
+      return;
+    }
+    if (x.rejected_hash === hash) {
+      delete x.pending;
+      state = "rejected_same";
+      return;
+    }
+    state = "pending";
+    if (x.pending?.hash === hash) return;
+    x.pending = { found_at: at, hash, ...r.upstream ? { upstream: r.upstream } : {}, ...r.decl.title ? { title: r.decl.title } : {}, sections: r.decl.sections, ...r.dropped_guards ? { dropped_guards: r.dropped_guards } : {} };
+  });
+  if (!s) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  return { ok: true, upstream_ok: true, state, source: summarizeSource(s) };
+}
+async function readUpstream(env, tenant2, id) {
+  const s = (await readSources(env, tenant2)).items.find((x) => x.id === id);
+  if (!s) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  if (!s.pending) return { ok: true, pending: false, source: summarizeSource(s) };
+  const diff = diffRulebooks({ title: s.title, sections: s.sections }, { title: s.pending.title, sections: s.pending.sections });
+  return { ok: true, pending: true, source: summarizeSource(s), diff, hash: s.pending.hash, found_at: s.pending.found_at, ...s.pending.upstream ? { upstream_short: s.pending.upstream.slice(0, 7) } : {} };
+}
+async function approveUpstream(env, tenant2, id, by, hash, mirror) {
+  const s0 = (await readSources(env, tenant2)).items.find((x) => x.id === id);
+  if (!s0) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  const p = s0.pending;
+  if (!p) return err("no_pending", "\u73FE\u5728\u6C92\u6709\u7B49\u6838\u51C6\u7684\u65B0\u7248\uFF08\u53EF\u80FD\u5DF2\u7D93\u6709\u4EBA\u8655\u7406\u4E86\uFF09", 409);
+  if (typeof hash !== "string" || hash !== p.hash) return err("stale", "\u4E0A\u6E38\u525B\u525B\u53C8\u6539\u4E86\uFF0C\u8ACB\u91CD\u65B0\u770B\u4E00\u6B21\u5DEE\u7570\u518D\u6838\u51C6", 409);
+  let a;
+  try {
+    a = await adopt(storeOf(env, mirror), tenant2, s0, { ...p.title ? { title: p.title } : {}, sections: p.sections }, p.upstream, by, "refresh");
+  } catch (e) {
+    if (e instanceof MirrorError) return err(`mirror_${e.code}`, e.message, mirrorStatus(e));
+    throw e;
+  }
+  const s = await mutate(env, tenant2, id, (x) => {
+    if (x.pending?.hash !== p.hash) return;
+    x.sections = p.sections;
+    x.mirror = a.mirror;
+    x.adopted = a.adopted;
+    x.history = a.history;
+    if (p.title) x.title = p.title;
+    else delete x.title;
+    if (p.dropped_guards) x.dropped_guards = p.dropped_guards;
+    else delete x.dropped_guards;
+    delete x.pending;
+    delete x.rejected_hash;
+  });
+  if (!s) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  if (s.pending) return err("stale", "\u4E0A\u6E38\u525B\u525B\u53C8\u6539\u4E86\uFF0C\u8ACB\u91CD\u65B0\u770B\u4E00\u6B21\u5DEE\u7570\u518D\u6838\u51C6", 409);
+  return { ok: true, source: summarizeSource(s) };
+}
+async function rejectUpstream(env, tenant2, id, hash) {
+  const s0 = (await readSources(env, tenant2)).items.find((x) => x.id === id);
+  if (!s0) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  if (!s0.pending) return err("no_pending", "\u73FE\u5728\u6C92\u6709\u7B49\u6838\u51C6\u7684\u65B0\u7248\uFF08\u53EF\u80FD\u5DF2\u7D93\u6709\u4EBA\u8655\u7406\u4E86\uFF09", 409);
+  if (typeof hash !== "string" || hash !== s0.pending.hash) return err("stale", "\u4E0A\u6E38\u525B\u525B\u53C8\u6539\u4E86\uFF0C\u8ACB\u91CD\u65B0\u770B\u4E00\u6B21\u5DEE\u7570", 409);
+  const s = await mutate(env, tenant2, id, (x) => {
+    if (x.pending?.hash === hash) {
+      x.rejected_hash = hash;
+      delete x.pending;
+    }
+  });
+  if (!s) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  return { ok: true, source: summarizeSource(s) };
+}
+async function pullAllSources(env, tenant2, opts = {}) {
+  const ids = (await readSources(env, tenant2)).items.map((s) => s.id);
+  const out = [];
+  for (const id of ids) {
+    try {
+      const r = await refreshSource(env, tenant2, id, { ...opts, auto: true });
+      out.push({ id, state: r.ok ? r.state : "error" });
+    } catch {
+      out.push({ id, state: "error" });
+    }
+  }
+  return out;
+}
+async function rollbackSource(env, tenant2, id, mirror) {
+  const doc = await readSources(env, tenant2);
+  const s = doc.items.find((x) => x.id === id);
+  if (!s) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  const i = adoptedIndex(s);
+  if (!s.mirror || i <= 0) return err("no_previous", "\u6C92\u6709\u66F4\u65E9\u7684\u7248\u672C\u53EF\u4EE5\u9000\u56DE", 409);
+  const prev = (s.history ?? [])[i - 1];
+  let text;
+  try {
+    text = await storeOf(env, mirror).read(s.mirror, prev.commit, MIRROR_FILE);
+  } catch (e) {
+    if (e instanceof MirrorError) return err(`mirror_${e.code}`, e.message, mirrorStatus(e));
+    throw e;
+  }
+  if (text === null) return err("mirror_missing", `\u526F\u672C\u88E1\u627E\u4E0D\u5230 ${prev.commit.slice(0, 7)} \u90A3\u4E00\u7248\uFF0C\u9000\u4E0D\u56DE\u53BB\u3002`, 502);
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return err("mirror_bad", `\u526F\u672C\u88E1 ${prev.commit.slice(0, 7)} \u90A3\u4E00\u7248\u7684\u5167\u5BB9\u58DE\u4E86\uFF0C\u9000\u4E0D\u56DE\u53BB\u3002`, 502);
+  }
+  const n = normalizeRulebook(json, s.repo);
+  if (!n.ok) return err("mirror_bad", n.error, 502);
+  s.sections = n.decl.sections;
+  s.adopted = prev.commit;
+  if (n.decl.title) s.title = n.decl.title;
+  else delete s.title;
+  await writeSources(env, tenant2, doc);
+  return { ok: true, source: summarizeSource(s) };
+}
+async function readSourceSection(env, tenant2, id, sec) {
+  const doc = await readSources(env, tenant2);
+  const s = doc.items.find((x) => x.id === id);
+  const d = s?.sections.find((x) => x.id === sec);
+  if (!s || !d) return null;
+  const flat = await readFlatBook(env, tenant2);
+  const row = flat.sections.find((x) => x.id === sec);
+  const blocked = flat.blocked.find((x) => x.id === sec && x.from.repo === s.label);
+  return {
+    book: s.title?.trim() || s.label,
+    app_id: `${SRC_PREFIX}${s.id}`,
+    page: sourcePage(s, d),
+    edited: false,
+    proposal: null,
+    history: [],
+    can_rollback: false,
+    guard: null,
+    readonly: true,
+    proposals: (s.proposals ?? []).filter((x) => x.section === sec).map(proposalView).reverse(),
+    can_propose: (() => {
+      const q = parseRepoUrl(s.url);
+      return !("error" in q) && q.host === "artifacts";
+    })(),
+    origin: { layer: s.layer, layer_label: summarizeSource(s).layer_label, repo: s.label, url: s.url, host: (() => {
+      const q = parseRepoUrl(s.url);
+      return "error" in q ? "" : q.host;
+    })(), fetched_at: s.fetched_at, ...s.adopted ? { adopted: s.adopted, adopted_short: s.adopted.slice(0, 7) } : {} },
+    ...row && row.origin.source_id !== s.id ? { superseded_by: row.origin } : {},
+    ...blocked ? { blocked } : {}
+  };
+}
+function proposalView(p) {
+  return {
+    id: p.id,
+    section: p.section,
+    section_title: p.section_title,
+    branch: p.branch,
+    commit_short: p.commit.slice(0, 7),
+    ...p.base ? { base_short: p.base.slice(0, 7) } : {},
+    remote: p.remote,
+    by: p.by,
+    instruction: p.instruction,
+    at: p.at,
+    draft: p.draft,
+    status: p.status,
+    ...p.merged_at ? { merged_at: p.merged_at } : {}
+  };
+}
+async function proposeToUpstream(env, tenant2, id, sectionId, by, instruction, draft, meta = {}, deps = {}) {
+  const src = (await readSources(env, tenant2)).items.find((x) => x.id === id);
+  if (!src) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  const sec = src.sections.find((x) => x.id === sectionId);
+  if (!sec) return err("not_found", "\u627E\u4E0D\u5230\u9019\u4E00\u689D", 404);
+  const p = parseRepoUrl(src.url);
+  if ("error" in p) return err("bad_url", p.error);
+  if (p.host !== "artifacts") return err("external_host", `\u9019\u4EFD\u898F\u7AE0\u4F86\u81EA ${p.host}\u3002\u5C0D\u5916\u90E8\u4E3B\u6A5F\u7684\u5BEB\u5165\u8981\u4EBA\u958B\u9598\uFF0CArcrun \u4E0D\u6703\u81EA\u52D5\u66FF\u4F60\u958B PR\uFF1B\u8ACB\u628A\u4FEE\u6539\u5EFA\u8B70\u76F4\u63A5\u4EA4\u7D66\u4E0A\u6E38\u7DAD\u8B77\u7684\u4EBA\u3002`, 403);
+  const up = deps.upstream ?? artifactsUpstream(env);
+  const now2 = deps.now ?? /* @__PURE__ */ new Date();
+  try {
+    const file = await up.read(p);
+    const content = editRulebookText(file.text, sectionId, draft);
+    const branch = proposalBranch(sectionId, now2);
+    const out = await up.push(p, {
+      branch,
+      from: file.base ?? file.baseBranch,
+      path: file.path,
+      content,
+      message: proposalMessage({ section: sectionId, title: draft.title, by, instruction, model: meta.model })
+    });
+    const pr = {
+      id: `p${now2.getTime().toString(36)}`,
+      section: sectionId,
+      section_title: sec.title,
+      branch,
+      commit: out.commit,
+      ...file.base ? { base: file.base } : {},
+      remote: out.remote,
+      by,
+      instruction: instruction.slice(0, 500),
+      at: now2.toISOString(),
+      draft,
+      status: "open"
+    };
+    await mutate(env, tenant2, id, (x) => {
+      x.proposals = [...x.proposals ?? [], pr].slice(-PROPOSALS_MAX);
+    });
+    return { ok: true, proposal: proposalView(pr) };
+  } catch (e) {
+    if (e instanceof UpstreamPrError) return err(`upstream_${e.code}`, e.message, e.code === "no_change" || e.code === "section_gone" ? 409 : e.code === "write_failed" ? 502 : 424);
+    throw e;
+  }
+}
+
+// cypher-executor/src/lib/rule-upstream-hook.ts
+var RULE_PULL_MIN_INTERVAL_MS = 30 * 6e4;
+var ruleWebhookConfigured = (env) => !!String(env.RULE_WEBHOOK_SECRET ?? "").trim();
+async function ruleWebhookToken(env, tenant2, sourceId) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(env.RULE_WEBHOOK_SECRET ?? "")), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`rule-source:${tenant2}:${sourceId}`)));
+  return [...sig.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var ruleUpstreamHookRouter = new Hono2();
+ruleUpstreamHookRouter.post("/hooks/rule-source/:tenant/:id/:token", async (c) => {
+  if (!ruleWebhookConfigured(c.env)) return c.json({ error: "webhook_disabled", message: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u958B\u898F\u7AE0\u4E0A\u6E38 webhook\u3002" }, 503);
+  const tenant2 = knowledgeOwner(c.env), id = c.req.param("id");
+  const want = await ruleWebhookToken(c.env, tenant2, id);
+  if (c.req.param("tenant") !== tenant2 || !constantTimeEqual(c.req.param("token"), want)) return c.json({ error: "unauthorized" }, 401);
+  if (c.req.header("x-github-event") === "ping") return c.json({ ok: true, pulled: false });
+  const r = await refreshSource(c.env, tenant2, id, { auto: true, minIntervalMs: RULE_PULL_MIN_INTERVAL_MS });
+  if (!r.ok) return c.json({ error: r.code }, r.status);
+  return c.json({ ok: true, pulled: r.state !== "skipped", state: r.state }, 202);
+});
+function isRulePullSlot(now2) {
+  return now2.getUTCMinutes() === 20 && now2.getUTCHours() % 6 === 0;
+}
+async function runRuleUpstreamTick(env, now2) {
+  if (!isRulePullSlot(now2)) return [];
+  return pullAllSources(env, knowledgeOwner(env), { minIntervalMs: RULE_PULL_MIN_INTERVAL_MS, now: now2 });
+}
+
 // cypher-executor/src/scheduled.ts
 async function handleScheduled(controller, env, ctx) {
   const now2 = new Date(controller.scheduledTime);
@@ -24736,6 +26064,16 @@ async function handleScheduled(controller, env, ctx) {
         const body = await r.json().catch(() => null);
         console.log("[scheduled] execution-log cleanup", r.status, JSON.stringify(body));
       }).catch((e) => console.error("[scheduled] execution-log cleanup failed", e))
+    );
+  }
+  if (isRulePullSlot(now2)) {
+    ctx.waitUntil(
+      runRuleUpstreamTick(env, now2).then(
+        (r) => {
+          if (r.length) console.log("[scheduled] rule-upstream pull", JSON.stringify(r));
+        },
+        (e) => console.error("[scheduled] rule-upstream pull failed", e)
+      )
     );
   }
   if (now2.getUTCMinutes() === 15) {
@@ -31012,292 +32350,26 @@ init_kbdb_proxy();
 
 // cypher-executor/src/routes/artifacts.ts
 init_dist();
-
-// cypher-executor/src/lib/git-push.ts
-var MAX_FILES = 20;
-var MAX_FILE_BYTES = 256 * 1024;
-var PushError = class extends Error {
-  code;
-  status;
-  constructor(code, message2, status = 422) {
-    super(message2);
-    this.code = code;
-    this.status = status;
-  }
-};
-var enc2 = new TextEncoder();
-var SHA_RE = /^[0-9a-f]{40}$/;
-function hex2(b) {
-  const u = b instanceof Uint8Array ? b : new Uint8Array(b);
-  let s = "";
-  for (let i = 0; i < u.length; i++) s += u[i].toString(16).padStart(2, "0");
-  return s;
-}
-function fromHex(h) {
-  const out = new Uint8Array(h.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
-  return out;
-}
-function concat(parts) {
-  let n = 0;
-  for (const p of parts) n += p.length;
-  const out = new Uint8Array(n);
-  let o = 0;
-  for (const p of parts) {
-    out.set(p, o);
-    o += p.length;
-  }
-  return out;
-}
-async function sha1(data) {
-  return new Uint8Array(await crypto.subtle.digest("SHA-1", data));
-}
-function b64ToBytes(s) {
-  const bin = atob(s);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-async function makeObj(type, body) {
-  const header = enc2.encode(`${type} ${body.length}\0`);
-  return { type, body, sha: hex2(await sha1(concat([header, body]))) };
-}
-function treeSortKey(e) {
-  return e.type === "tree" || e.mode === "40000" ? e.name + "/" : e.name;
-}
-function serializeTree(entries) {
-  const sorted = entries.slice().sort((a, b) => {
-    const ka = enc2.encode(treeSortKey(a)), kb = enc2.encode(treeSortKey(b));
-    const n = Math.min(ka.length, kb.length);
-    for (let i = 0; i < n; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
-    return ka.length - kb.length;
-  });
-  return concat(sorted.map((e) => concat([enc2.encode(`${e.mode === "040000" ? "40000" : e.mode} ${e.name}\0`), fromHex(e.hash)])));
-}
-async function deflate(data) {
-  const cs = new CompressionStream("deflate");
-  const w = cs.writable.getWriter();
-  void w.write(data);
-  void w.close();
-  return new Uint8Array(await new Response(cs.readable).arrayBuffer());
-}
-function packObjHeader(type, size) {
-  const out = [];
-  let first = type << 4 | size & 15;
-  size = Math.floor(size / 16);
-  if (size > 0) first |= 128;
-  out.push(first);
-  while (size > 0) {
-    let b = size & 127;
-    size = Math.floor(size / 128);
-    if (size > 0) b |= 128;
-    out.push(b);
-  }
-  return new Uint8Array(out);
-}
-var TYPE_NUM = { commit: 1, tree: 2, blob: 3 };
-async function buildPack(objs) {
-  const head = new Uint8Array(12);
-  head.set(enc2.encode("PACK"), 0);
-  new DataView(head.buffer).setUint32(4, 2);
-  new DataView(head.buffer).setUint32(8, objs.length);
-  const parts = [head];
-  for (const o of objs) {
-    parts.push(packObjHeader(TYPE_NUM[o.type], o.body.length));
-    parts.push(await deflate(o.body));
-  }
-  const body = concat(parts);
-  return concat([body, await sha1(body)]);
-}
-function pkt(s) {
-  const b = typeof s === "string" ? enc2.encode(s) : s;
-  return concat([enc2.encode((b.length + 4).toString(16).padStart(4, "0")), b]);
-}
-function parseAdvertisedRefs(text) {
-  const refs = {};
-  const re = /([0-9a-f]{40}) (refs\/[^\u0000\n\r]+)/g;
-  let m;
-  while (m = re.exec(text)) refs[m[2]] = m[1];
-  return refs;
-}
-function cleanPath(p) {
-  const s = String(p ?? "").replace(/^\/+|\/+$/g, "");
-  if (!s || s.length > 400 || /[\u0000-\u001f\\]/.test(s)) throw new PushError("bad_path", `path \u683C\u5F0F\u4E0D\u5C0D\uFF1A${JSON.stringify(p)}\uFF08\u4E0D\u51C6\u7A7A\u3001\u53CD\u659C\u7DDA\u3001\u63A7\u5236\u5B57\u5143\uFF09`);
-  const a = s.split("/");
-  for (const seg of a) if (!seg || seg === "." || seg === ".." || seg === ".git") throw new PushError("bad_path", `path \u683C\u5F0F\u4E0D\u5C0D\uFF1A${p}\uFF08\u4E0D\u51C6\u6709 ..\u3001\u7A7A\u6BB5\u3001.git\uFF09`);
-  return a;
-}
-function branchOk(b) {
-  return typeof b === "string" && b.length > 0 && b.length <= 200 && /^[A-Za-z0-9._\/-]+$/.test(b) && !b.includes("..") && !b.startsWith("/") && !b.endsWith("/") && !b.endsWith(".lock") && !b.includes("//") && !b.startsWith("-");
-}
-async function pushCommit(req) {
-  const f = req.fetchImpl ?? ((u, i) => fetch(u, i));
-  if (!branchOk(req.branch)) throw new PushError("bad_branch", `\u5206\u652F\u540D\u4E0D\u5408\u6CD5\uFF1A${req.branch}`);
-  if (!req.files.length) throw new PushError("no_files", "\u6C92\u6709\u8981\u5BEB\u7684\u6A94\u6848\uFF08files \u662F\u7A7A\u7684\uFF09");
-  if (req.files.length > MAX_FILES) throw new PushError("too_many_files", `\u4E00\u6B21\u6700\u591A ${MAX_FILES} \u500B\u6A94\uFF0C\u9019\u6B21\u7D66\u4E86 ${req.files.length} \u500B`);
-  const msg = String(req.message ?? "").trim();
-  if (!msg) throw new PushError("no_message", "message\uFF08commit \u8A0A\u606F\uFF09\u4E0D\u80FD\u7A7A");
-  const root = { children: /* @__PURE__ */ new Map() };
-  const seen = /* @__PURE__ */ new Set();
-  for (const fc of req.files) {
-    const segs = cleanPath(fc.path);
-    const key = segs.join("/");
-    if (seen.has(key)) throw new PushError("dup_path", `\u540C\u4E00\u500B path \u51FA\u73FE\u5169\u6B21\uFF1A${key}`);
-    seen.add(key);
-    let content = null;
-    if (!fc.delete) {
-      if (typeof fc.content === "string") content = enc2.encode(fc.content);
-      else if (typeof fc.content_base64 === "string") {
-        try {
-          content = b64ToBytes(fc.content_base64);
-        } catch {
-          throw new PushError("bad_content", `${key} \u7684 content_base64 \u4E0D\u662F\u5408\u6CD5 base64`);
-        }
-      } else throw new PushError("no_content", `${key} \u8981\u7D66 content\uFF08\u6587\u5B57\uFF09\u6216 content_base64\uFF0C\u6216 delete:true`);
-      if (content.length > MAX_FILE_BYTES) throw new PushError("file_too_large", `${key} \u6709 ${content.length} \u4F4D\u5143\u7D44\uFF0C\u8D85\u904E\u55AE\u6A94\u4E0A\u9650 ${MAX_FILE_BYTES}`, 413);
-    }
-    let cur = root;
-    for (let i = 0; i < segs.length; i++) {
-      let n = cur.children.get(segs[i]);
-      if (!n) {
-        n = { children: /* @__PURE__ */ new Map() };
-        cur.children.set(segs[i], n);
-      }
-      if (i === segs.length - 1) {
-        if (n.children.size) throw new PushError("path_conflict", `${key} \u8207\u5E95\u4E0B\u7684\u5176\u4ED6\u8DEF\u5F91\u885D\u7A81\uFF08\u4E00\u500B\u662F\u6A94\u3001\u4E00\u500B\u662F\u76EE\u9304\uFF09`);
-        n.file = { content };
-      } else {
-        if (n.file) throw new PushError("path_conflict", `${segs.slice(0, i + 1).join("/")} \u540C\u6642\u88AB\u7576\u6210\u6A94\u548C\u76EE\u9304`);
-        cur = n;
-      }
-    }
-  }
-  const auth = { Authorization: "Basic " + btoa("x:" + req.token) };
-  const adv = await f(`${req.remote}/info/refs?service=git-receive-pack`, { headers: auth });
-  if (!adv.ok) throw new PushError("artifacts_refs", `\u8B80\u4E0D\u5230 repo \u7684\u5206\u652F\uFF08HTTP ${adv.status}\uFF09`, adv.status === 404 ? 404 : 502);
-  const refs = parseAdvertisedRefs(await adv.text());
-  const ZERO = "0".repeat(40);
-  const oldSha = refs[`refs/heads/${req.branch}`] ?? ZERO;
-  let baseSha = oldSha !== ZERO ? oldSha : null;
-  if (!baseSha) {
-    const from = (req.from ?? "main").trim();
-    baseSha = SHA_RE.test(from) ? from : refs[`refs/heads/${from}`] ?? refs[`refs/tags/${from}`] ?? null;
-    const hasAnyBranch = Object.keys(refs).some((k) => k.startsWith("refs/heads/"));
-    if (!baseSha && hasAnyBranch) throw new PushError("from_not_found", `\u5206\u652F ${req.branch} \u4E0D\u5B58\u5728\uFF0C\u800C\u4E14 from\uFF08${from}\uFF09\u4E5F\u627E\u4E0D\u5230\uFF1B\u7D66\u4E00\u500B\u5B58\u5728\u7684\u5206\u652F\u540D\u6216 40 \u78BC sha`, 404);
-  }
-  let baseTree = null;
-  if (baseSha) {
-    const c = await req.handle.readCommit(baseSha);
-    if (!c) throw new PushError("base_not_found", `\u627E\u4E0D\u5230\u8D77\u9EDE commit ${baseSha}`, 404);
-    baseTree = c.treeHash;
-  }
-  const objs = [];
-  const changed = [];
-  async function rebuild(node, treeSha, prefix) {
-    const existing = treeSha ? await req.handle.readTree(treeSha) : null;
-    if (treeSha && existing === null) throw new PushError("tree_not_found", `\u8B80\u4E0D\u5230 tree ${treeSha}`, 502);
-    const entries = /* @__PURE__ */ new Map();
-    for (const e of existing ?? []) entries.set(e.name, e);
-    for (const [name, child] of node.children) {
-      const path = prefix + name;
-      const old = entries.get(name);
-      if (child.file) {
-        if (old && old.type === "tree") throw new PushError("path_conflict", `${path} \u73FE\u5728\u662F\u76EE\u9304\uFF0C\u4E0D\u80FD\u76F4\u63A5\u5BEB\u6210\u6A94`);
-        if (child.file.content === null) {
-          if (!old) throw new PushError("delete_missing", `\u8981\u522A\u7684\u6A94\u4E0D\u5B58\u5728\uFF1A${path}`, 404);
-          entries.delete(name);
-          changed.push({ path, status: "deleted" });
-        } else {
-          const blob = await makeObj("blob", child.file.content);
-          if (old && old.hash === blob.sha) changed.push({ path, status: "unchanged" });
-          else {
-            objs.push(blob);
-            entries.set(name, { name, mode: old && old.type === "blob" ? old.mode : "100644", hash: blob.sha, type: "blob" });
-            changed.push({ path, status: old ? "modified" : "added" });
-          }
-        }
-      } else {
-        if (old && old.type !== "tree") throw new PushError("path_conflict", `${path} \u73FE\u5728\u662F\u6A94\uFF0C\u4E0D\u80FD\u7576\u76EE\u9304\u7528`);
-        const sub = await rebuild(child, old ? old.hash : null, path + "/");
-        if (sub === null) entries.delete(name);
-        else entries.set(name, { name, mode: "40000", hash: sub, type: "tree" });
-      }
-    }
-    if (entries.size === 0) return null;
-    const t = await makeObj("tree", serializeTree([...entries.values()]));
-    if (!(existing && treeSha === t.sha)) objs.push(t);
-    return t.sha;
-  }
-  const newTree = await rebuild(root, baseTree, "");
-  if (newTree === null) throw new PushError("empty_tree", "\u9019\u6B21\u6539\u52D5\u6703\u8B93\u6574\u500B repo \u8B8A\u7A7A\uFF0C\u4E0D\u505A");
-  if (baseTree === newTree) throw new PushError("no_change", "\u9019\u4E9B\u5167\u5BB9\u8DDF\u73FE\u5728\u7684\u7248\u672C\u4E00\u6A21\u4E00\u6A23\uFF0C\u6C92\u6709\u6771\u897F\u53EF\u4EE5 commit", 409);
-  const ts = Math.floor(req.now ?? Date.now() / 1e3);
-  const who = `${req.author.name.replace(/[<>\n]/g, "")} <${req.author.email.replace(/[<>\n]/g, "")}> ${ts} +0000`;
-  const commitText = `tree ${newTree}
-${baseSha ? `parent ${baseSha}
-` : ""}author ${who}
-committer ${who}
-
-${msg}
-`;
-  const commit = await makeObj("commit", enc2.encode(commitText));
-  objs.push(commit);
-  const pack = await buildPack(objs);
-  const cmd = pkt(`${oldSha} ${commit.sha} refs/heads/${req.branch}\0 report-status agent=arcrun-engine/416`);
-  const body = concat([cmd, enc2.encode("0000"), pack]);
-  const res = await f(`${req.remote}/git-receive-pack`, {
-    method: "POST",
-    headers: { ...auth, "Content-Type": "application/x-git-receive-pack-request", Accept: "application/x-git-receive-pack-result" },
-    body
-  });
-  const report = await res.text();
-  const cleaned = report.replace(/[\u0000-\u0008\u000b-\u001f]/g, " ");
-  const okRef = new RegExp(`ok refs/heads/${req.branch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
-  if (!res.ok || !/unpack ok/.test(cleaned) || !okRef.test(cleaned)) {
-    throw new PushError("push_rejected", `Artifacts \u6C92\u6709\u63A5\u53D7\u9019\u6B21\u5BEB\u5165\uFF08HTTP ${res.status}\uFF09\uFF1A${cleaned.trim().slice(0, 300)}`, res.status === 401 || res.status === 403 ? 502 : 409);
-  }
-  return { ok: true, commit: commit.sha, parent: baseSha, branch: req.branch, created_branch: oldSha === ZERO, changed, objects: objs.length, report: cleaned.trim().slice(0, 200) };
-}
-async function createBranch(req) {
-  const f = req.fetchImpl ?? ((u, i) => fetch(u, i));
-  if (!branchOk(req.branch)) throw new PushError("bad_branch", `\u5206\u652F\u540D\u4E0D\u5408\u6CD5\uFF1A${req.branch}`);
-  const auth = { Authorization: "Basic " + btoa("x:" + req.token) };
-  const adv = await f(`${req.remote}/info/refs?service=git-receive-pack`, { headers: auth });
-  if (!adv.ok) throw new PushError("artifacts_refs", `\u8B80\u4E0D\u5230 repo \u7684\u5206\u652F\uFF08HTTP ${adv.status}\uFF09`, adv.status === 404 ? 404 : 502);
-  const refs = parseAdvertisedRefs(await adv.text());
-  if (refs[`refs/heads/${req.branch}`]) throw new PushError("branch_exists", `\u5206\u652F ${req.branch} \u5DF2\u7D93\u5B58\u5728`, 409);
-  const from = (req.from ?? "main").trim();
-  const sha = SHA_RE.test(from) ? from : refs[`refs/heads/${from}`] ?? refs[`refs/tags/${from}`];
-  if (!sha) throw new PushError("from_not_found", `from\uFF08${from}\uFF09\u627E\u4E0D\u5230`, 404);
-  const pack = await buildPack([]);
-  const body = concat([pkt(`${"0".repeat(40)} ${sha} refs/heads/${req.branch}\0 report-status agent=arcrun-engine/416`), enc2.encode("0000"), pack]);
-  const res = await f(`${req.remote}/git-receive-pack`, { method: "POST", headers: { ...auth, "Content-Type": "application/x-git-receive-pack-request" }, body });
-  const rep = (await res.text()).replace(/[\u0000-\u0008\u000b-\u001f]/g, " ");
-  if (!res.ok || !/unpack ok/.test(rep) || !/ok refs\/heads\//.test(rep)) throw new PushError("push_rejected", `Artifacts \u6C92\u6709\u63A5\u53D7\u5EFA\u5206\u652F\uFF08HTTP ${res.status}\uFF09\uFF1A${rep.trim().slice(0, 300)}`, 409);
-  return { ok: true, branch: req.branch, sha };
-}
-
-// cypher-executor/src/routes/artifacts.ts
 var artifactsRouter = new Hono2();
 var MAX_RAW_BYTES = 1e6;
 var TOKEN_MAX_TTL = 3600;
-function err(c, status, code, message2) {
+function err2(c, status, code, message2) {
   return c.json({ success: false, errors: [{ code, message: message2 }] }, status);
 }
 var UNAVAILABLE = "\u9019\u500B CF \u5E33\u865F\u6C92\u6709\u958B Artifacts\uFF08\u6216\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u7D81\u4E0A\u5B83\uFF09\u3002Artifacts \u958B\u901A\u5F8C\u91CD\u65B0\u5B89\u88DD\uFF0F\u66F4\u65B0\u5BE6\u4F8B\u5373\u53EF\uFF0C\u4E0D\u9700\u8981\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002";
 async function repoOf(c, name) {
   const b = c.env.ARTIFACTS;
-  if (!b || typeof b.get !== "function") return err(c, 424, "artifacts_unavailable", UNAVAILABLE);
-  if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) return err(c, 422, "bad_repo", "repo \u540D\u53EA\u80FD\u662F\u82F1\u6578\u3001\u9EDE\u3001\u5E95\u7DDA\u3001\u9023\u5B57\u865F");
+  if (!b || typeof b.get !== "function") return err2(c, 424, "artifacts_unavailable", UNAVAILABLE);
+  if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) return err2(c, 422, "bad_repo", "repo \u540D\u53EA\u80FD\u662F\u82F1\u6578\u3001\u9EDE\u3001\u5E95\u7DDA\u3001\u9023\u5B57\u865F");
   try {
     return { h: await b.get(name) };
   } catch (e) {
     if (e?.code === "NOT_FOUND" || /not found/i.test(String(e?.message))) {
       const { total } = await listBound(b);
       const hint = total === 0 ? "\uFF08\u9019\u53F0\u5BE6\u4F8B\u7D81\u5230\u7684 Artifacts namespace \u88E1\u5B8C\u5168\u6C92\u6709 repo\u2014\u2014binding \u591A\u534A\u7D81\u932F\uFF0C\u770B /artifacts/status\uFF09" : "";
-      return err(c, 404, "repo_not_found", `Artifacts \u88E1\u6C92\u6709 repo\u300C${name}\u300D${hint}`);
+      return err2(c, 404, "repo_not_found", `Artifacts \u88E1\u6C92\u6709 repo\u300C${name}\u300D${hint}`);
     }
-    return err(c, 502, "artifacts_error", `Artifacts \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A${String(e?.message ?? e).slice(0, 200)}`);
+    return err2(c, 502, "artifacts_error", `Artifacts \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A${String(e?.message ?? e).slice(0, 200)}`);
   }
 }
 var isRes = (x) => x instanceof Response;
@@ -31353,14 +32425,14 @@ artifactsRouter.get("/artifacts/repos/:repo/raw/*", async (c) => {
     }
   });
   const ref = segs.shift() ?? "";
-  if (!ref || !segs.length) return err(c, 422, "bad_path", "\u8981\u7D66 /raw/<ref>/<path>");
+  if (!ref || !segs.length) return err2(c, 422, "bad_path", "\u8981\u7D66 /raw/<ref>/<path>");
   try {
     const blob = await r.h.readFile({ ref, path: segs.join("/") });
-    if (!blob) return err(c, 404, "file_not_found", "File not found");
-    if (blob.size > MAX_RAW_BYTES) return err(c, 413, "too_large", `\u6A94\u6848 ${blob.size} \u4F4D\u5143\u7D44\uFF0C\u8D85\u904E\u8B80\u53D6\u4E0A\u9650 ${MAX_RAW_BYTES}`);
+    if (!blob) return err2(c, 404, "file_not_found", "File not found");
+    if (blob.size > MAX_RAW_BYTES) return err2(c, 413, "too_large", `\u6A94\u6848 ${blob.size} \u4F4D\u5143\u7D44\uFF0C\u8D85\u904E\u8B80\u53D6\u4E0A\u9650 ${MAX_RAW_BYTES}`);
     return new Response(await blob.text(), { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
   } catch (e) {
-    return err(c, 502, "artifacts_error", `\u8B80\u6A94\u5931\u6557\uFF1A${String(e?.message ?? e).slice(0, 200)}`);
+    return err2(c, 502, "artifacts_error", `\u8B80\u6A94\u5931\u6557\uFF1A${String(e?.message ?? e).slice(0, 200)}`);
   }
 });
 for (const [kind, method] of [["tree", "readTree"], ["commit", "readCommit"]]) {
@@ -31368,13 +32440,13 @@ for (const [kind, method] of [["tree", "readTree"], ["commit", "readCommit"]]) {
     const r = await repoOf(c, c.req.param("repo"));
     if (isRes(r)) return r;
     const sha = c.req.param("sha");
-    if (!SHA.test(sha)) return err(c, 400, "bad_sha", "Invalid SHA-1");
+    if (!SHA.test(sha)) return err2(c, 400, "bad_sha", "Invalid SHA-1");
     try {
       const out = await r.h[method](sha);
-      if (out === null || out === void 0) return err(c, 404, "not_found", `${kind} \u4E0D\u5B58\u5728`);
+      if (out === null || out === void 0) return err2(c, 404, "not_found", `${kind} \u4E0D\u5B58\u5728`);
       return c.json({ success: true, result: out });
     } catch (e) {
-      return err(c, /Invalid hash/.test(String(e?.message)) ? 400 : 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
+      return err2(c, /Invalid hash/.test(String(e?.message)) ? 400 : 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
     }
   });
 }
@@ -31382,14 +32454,14 @@ artifactsRouter.get("/artifacts/repos/:repo/blob/:sha", async (c) => {
   const r = await repoOf(c, c.req.param("repo"));
   if (isRes(r)) return r;
   const sha = c.req.param("sha");
-  if (!SHA.test(sha)) return err(c, 400, "bad_sha", "Invalid SHA-1");
+  if (!SHA.test(sha)) return err2(c, 400, "bad_sha", "Invalid SHA-1");
   try {
     const blob = await r.h.readBlob(sha);
-    if (!blob) return err(c, 404, "not_found", "blob \u4E0D\u5B58\u5728");
-    if (blob.size > MAX_RAW_BYTES) return err(c, 413, "too_large", `blob ${blob.size} \u4F4D\u5143\u7D44\uFF0C\u8D85\u904E\u8B80\u53D6\u4E0A\u9650 ${MAX_RAW_BYTES}`);
+    if (!blob) return err2(c, 404, "not_found", "blob \u4E0D\u5B58\u5728");
+    if (blob.size > MAX_RAW_BYTES) return err2(c, 413, "too_large", `blob ${blob.size} \u4F4D\u5143\u7D44\uFF0C\u8D85\u904E\u8B80\u53D6\u4E0A\u9650 ${MAX_RAW_BYTES}`);
     return c.json({ success: true, result: await blob.text() });
   } catch (e) {
-    return err(c, 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
+    return err2(c, 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
   }
 });
 artifactsRouter.get("/artifacts/repos/:repo/refs", async (c) => {
@@ -31399,10 +32471,10 @@ artifactsRouter.get("/artifacts/repos/:repo/refs", async (c) => {
     const info = await r.h.info();
     const t = await r.h.createToken("read", 60);
     const res = await fetch(`${info.remote}/info/refs?service=git-upload-pack`, { headers: { Authorization: "Bearer " + t.plaintext } });
-    if (!res.ok) return err(c, 502, "artifacts_error", `\u8B80\u5206\u652F\u6E05\u55AE\u5931\u6557\uFF08HTTP ${res.status}\uFF09`);
+    if (!res.ok) return err2(c, 502, "artifacts_error", `\u8B80\u5206\u652F\u6E05\u55AE\u5931\u6557\uFF08HTTP ${res.status}\uFF09`);
     return new Response(await res.text(), { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
   } catch (e) {
-    return err(c, 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
+    return err2(c, 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
   }
 });
 artifactsRouter.post("/artifacts/repos/:repo/credential", async (c) => {
@@ -31426,14 +32498,14 @@ artifactsRouter.post("/artifacts/repos/:repo/credential", async (c) => {
       use: { clone: `git -c http.extraHeader="Authorization: Bearer <token>" clone ${info.remote}`, push: `git -c http.extraHeader="Authorization: Bearer <token>" push ${info.remote} <branch>`, note: "\u9019\u628A token \u53EA\u5C0D\u9019\u4E00\u500B repo \u6709\u6548\u3001\u5230\u671F\u81EA\u52D5\u5931\u6548\uFF1B\u7528\u5B8C\u4E0D\u5FC5\u6B78\u9084\u3002\u4E0D\u8981\u8CBC\u9032\u4EFB\u4F55\u6A94\u6848\u3001commit \u6216\u7968\u3002" }
     });
   } catch (e) {
-    return err(c, 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
+    return err2(c, 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
   }
 });
 artifactsRouter.post("/artifacts/repos/:repo/commit", async (c) => {
   const r = await repoOf(c, c.req.param("repo"));
   if (isRes(r)) return r;
   const body = await c.req.json().catch(() => null);
-  if (!body || typeof body !== "object") return err(c, 400, "bad_body", "body \u8981\u662F JSON");
+  if (!body || typeof body !== "object") return err2(c, 400, "bad_body", "body \u8981\u662F JSON");
   const by = body.by && typeof body.by === "object" ? body.by : {};
   const name = String(by.name ?? "ahub").replace(/[^\w.@-]/g, "").slice(0, 60) || "ahub";
   const trailer = `
@@ -31459,8 +32531,8 @@ AHub-Session: ${String(by.session).replace(/[\r\n]/g, " ").slice(0, 200)}` : ""}
     }
     return c.json({ success: true, ...res, repo: info.name });
   } catch (e) {
-    if (e instanceof PushError) return err(c, e.status, e.code, e.message);
-    return err(c, 502, "artifacts_error", `\u5BEB\u5165\u5931\u6557\uFF1A${String(e?.message ?? e).slice(0, 200)}`);
+    if (e instanceof PushError) return err2(c, e.status, e.code, e.message);
+    return err2(c, 502, "artifacts_error", `\u5BEB\u5165\u5931\u6557\uFF1A${String(e?.message ?? e).slice(0, 200)}`);
   }
 });
 artifactsRouter.post("/artifacts/repos/:repo/branch", async (c) => {
@@ -31477,8 +32549,8 @@ artifactsRouter.post("/artifacts/repos/:repo/branch", async (c) => {
     }
     return c.json({ success: true, ...out });
   } catch (e) {
-    if (e instanceof PushError) return err(c, e.status, e.code, e.message);
-    return err(c, 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
+    if (e instanceof PushError) return err2(c, e.status, e.code, e.message);
+    return err2(c, 502, "artifacts_error", String(e?.message ?? e).slice(0, 200));
   }
 });
 
@@ -32240,6 +33312,7 @@ init_tenant();
 init_webhook_handlers();
 init_recipes();
 init_dataflow_check();
+init_cron_index();
 
 // cypher-executor/src/lib/studio-scope.ts
 function scopeDataflowReport(report, scope) {
@@ -32473,31 +33546,72 @@ async function exportAppPackage(env, tenant2, appId, coords, engineVersion) {
   if (!app2) return { ok: false, code: "not_found", error: "\u627E\u4E0D\u5230\u9019\u500B App" };
   const built = await declarationFromInstalled(env, tenant2, app2, coords);
   if (!built.ok) return { ok: false, code: "unreadable", error: built.error, ...built.hint ? { hint: built.hint } : {} };
-  const secrets = findSecretLikeStrings(built.declaration);
+  return finishPackage(built.declaration, built.warnings, coords, engineVersion, { id: app2.id, name: app2.name, icon: app2.icon, version: app2.version, workflow_count: app2.workflows.length }, "\u9019\u500B App");
+}
+function finishPackage(declaration, warnings, coords, engineVersion, summary, what) {
+  const secrets = findSecretLikeStrings(declaration);
   if (secrets.length) {
     return {
       ok: false,
       code: "blocked",
-      error: `\u9019\u500B App \u88E1\u6709\u770B\u8D77\u4F86\u50CF\u91D1\u9470\u771F\u8EAB\u7684\u6771\u897F\uFF08${secrets.join("\u3001")}\uFF09\uFF0C\u70BA\u4E86\u4E0D\u628A\u91D1\u9470\u5E36\u9032\u4E00\u500B\u6703\u88AB\u50B3\u4F86\u50B3\u53BB\u7684\u6A94\uFF0C\u6C92\u6709\u532F\u51FA`,
+      error: `${what}\u88E1\u6709\u770B\u8D77\u4F86\u50CF\u91D1\u9470\u771F\u8EAB\u7684\u6771\u897F\uFF08${secrets.join("\u3001")}\uFF09\uFF0C\u70BA\u4E86\u4E0D\u628A\u91D1\u9470\u5E36\u9032\u4E00\u500B\u6703\u88AB\u50B3\u4F86\u50B3\u53BB\u7684\u6A94\uFF0C\u6C92\u6709\u532F\u51FA`,
       hint: "\u628A\u5B83\u6539\u6210\u300C{{credential.<\u540D\u5B57>}}\u300D\u7684\u5BEB\u6CD5\uFF08\u91D1\u9470\u503C\u653E\u9032\u91D1\u9470\u756B\u9762\uFF09\uFF0C\u518D\u532F\u51FA\u4E00\u6B21\u3002"
     };
   }
-  const leaks = findInstanceLeaks(built.declaration, coords);
+  const leaks = findInstanceLeaks(declaration, coords);
   if (leaks.length) {
     return { ok: false, code: "blocked", error: `\u532F\u51FA\u6A94\u88E1\u9084\u7559\u8457${leaks.join("\u3001")}\uFF0C\u6C92\u6709\u532F\u51FA`, hint: "\u9019\u662F\u7CFB\u7D71\u5167\u90E8\u7684\u554F\u984C\uFF0C\u8ACB\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002" };
   }
   return {
     ok: true,
-    warnings: built.warnings,
+    warnings,
     package: {
       format: PACKAGE_FORMAT,
       format_version: PACKAGE_FORMAT_VERSION,
       exported_at: (/* @__PURE__ */ new Date()).toISOString(),
       ...engineVersion ? { exported_from_engine: engineVersion } : {},
-      app: { id: app2.id, name: app2.name, icon: app2.icon, version: app2.version, workflow_count: app2.workflows.length },
-      declaration: built.declaration
+      app: summary,
+      declaration
     }
   };
+}
+async function exportWorkflowPackage(env, tenant2, wfName, coords, engineVersion) {
+  const raw2 = await appStore(env).get(workflowKvKey(tenant2, wfName), "text");
+  if (!raw2) return { ok: false, code: "not_found", error: "\u627E\u4E0D\u5230\u9019\u689D\u5DE5\u4F5C\u6D41" };
+  let rec;
+  try {
+    rec = JSON.parse(raw2);
+  } catch {
+    return { ok: false, code: "unreadable", error: `\u5DE5\u4F5C\u6D41\u300C${wfName}\u300D\u7684\u5167\u5BB9\u58DE\u6389\u4E86\uFF0C\u8B80\u4E0D\u61C2` };
+  }
+  if (!rec.graph) return { ok: false, code: "unreadable", error: `\u5DE5\u4F5C\u6D41\u300C${wfName}\u300D\u6C92\u6709\u57F7\u884C\u5716` };
+  const appId = slugId(wfName, "wf");
+  let local = LOCAL_NAME_RE.test(wfName) ? wfName : slugId(wfName, "wf");
+  if (!LOCAL_NAME_RE.test(local)) local = "main";
+  const title = rec.display_name && rec.display_name.trim() || wfName;
+  const credNames = extractCredentialNames({ graph: rec.graph, config: rec.config });
+  const warnings = [];
+  if (rec.cron_expr) warnings.push("\u9019\u689D\u5DE5\u4F5C\u6D41\u6709\u6392\u7A0B\uFF1B\u532F\u5165\u5F8C\u7684\u90A3\u4E00\u4EFD\u7167\u5716\u88E1\u7684\u6392\u7A0B\u8A2D\u5B9A\uFF0C\u4E00\u6A23\u6703\u81EA\u5DF1\u8DD1\u3002");
+  const decl = {
+    id: appId,
+    name: title,
+    version: "1.0.0",
+    workflows: [{
+      name: local,
+      graph: { ...rec.graph, name: typeof rec.graph.name === "string" && rec.graph.name ? rec.graph.name : local },
+      ...rec.description ? { description: rec.description } : {},
+      ...rec.cron_expr ? {} : { trigger: "manual" }
+    }],
+    ...credNames.length ? { requires: { credentials: credNames } } : {}
+  };
+  return finishPackage(
+    restorePlaceholders(decl, coords),
+    warnings,
+    coords,
+    engineVersion,
+    { id: appId, name: title, icon: "", version: "1.0.0", workflow_count: 1 },
+    "\u9019\u689D\u5DE5\u4F5C\u6D41"
+  );
 }
 function checkPackage(raw2) {
   if ((JSON.stringify(raw2)?.length ?? 0) > MAX_PACKAGE_CHARS) {
@@ -33608,7 +34722,7 @@ async function openCardKeys(env, library, now2 = Date.now()) {
   idxCache.set(library, { at: now2, cards });
   return cards;
 }
-async function writeIndex2(env, library, mutate) {
+async function writeIndex2(env, library, mutate2) {
   idxCache.delete(library);
   const r = await getByKey(env, T_INDEX, library).catch(() => null);
   let cards = /* @__PURE__ */ new Set();
@@ -33616,7 +34730,7 @@ async function writeIndex2(env, library, mutate) {
     cards = new Set(r?.values.cards ? JSON.parse(r.values.cards) : []);
   } catch {
   }
-  mutate(cards);
+  mutate2(cards);
   await upsertByKey(env, T_INDEX, library, { library, cards: JSON.stringify([...cards].slice(0, 500)) });
   idxCache.delete(library);
 }
@@ -34180,415 +35294,6 @@ async function rerankPassages(env, tenant2, config, question, passages) {
 // cypher-executor/src/routes/portal-data.ts
 init_kbdb_busy();
 init_app_userlayer_ops();
-
-// cypher-executor/src/lib/rule-sources-ops.ts
-init_app_system();
-init_app_userlayer();
-init_app_userlayer_ops();
-
-// cypher-executor/src/lib/rule-sources.ts
-init_app_rulebook();
-var RULE_LAYERS = ["group", "company", "dept", "person"];
-var RULE_LAYER_LABEL = { group: "\u96C6\u5718", company: "\u516C\u53F8", dept: "\u90E8\u9580", person: "\u500B\u4EBA" };
-var RULE_SOURCES_MAX = 12;
-var RULE_REPO_MAX_CHARS = 7e5;
-function emptySources() {
-  return { v: 1, items: [], next: 1 };
-}
-var ARTIFACTS_HOST = /^([0-9a-f]{32})\.artifacts\.cloudflare\.net$/;
-function parseArtifactsUrl(u, account) {
-  const parts = u.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  if (parts[0] !== "git" || parts.length < 3) return { error: "\u9023\u7D50\u8981\u50CF https://\u2026artifacts.cloudflare.net/git/\u547D\u540D\u7A7A\u9593/\u898F\u7AE0" };
-  const ns = parts[1], repo = parts[2].replace(/\.git$/i, ""), rest = parts.slice(3);
-  if (!/^[A-Za-z0-9_.-]+$/.test(ns) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return { error: "\u9019\u500B repo \u9023\u7D50\u770B\u8D77\u4F86\u4E0D\u5C0D" };
-  let ref = "HEAD", path = "";
-  if (rest.length) {
-    if (rest[0] !== "tree" || !rest[1]) return { error: "\u9023\u7D50\u53EA\u8981\u5230 repo \u672C\u8EAB\uFF0C\u6216\u50CF \u2026/tree/main/\u8CC7\u6599\u593E \u9019\u6A23\u6307\u5230\u8CC7\u6599\u593E" };
-    ref = rest[1];
-    path = rest.slice(2).join("/");
-  }
-  if (!/^[A-Za-z0-9_./-]+$/.test(ref) || ref.includes("..") || path.includes("..")) return { error: "\u5206\u652F\u6216\u8CC7\u6599\u593E\u540D\u7A31\u4E0D\u5408\u6CD5" };
-  return { host: "artifacts", owner: ns, repo, ref, path, account };
-}
-function parseRepoUrl(input) {
-  const s = String(input ?? "").trim();
-  if (!s) return { error: "\u8ACB\u8CBC\u4E0A git repo \u7684\u9023\u7D50" };
-  let u;
-  try {
-    u = new URL(s.replace(/\.git$/i, ""));
-  } catch {
-    return { error: "\u9019\u4E0D\u662F\u4E00\u500B\u7DB2\u5740\uFF0C\u8ACB\u8CBC\u4E0A\u50CF https://github.com/\u516C\u53F8/\u898F\u7AE0 \u9019\u6A23\u7684\u9023\u7D50" };
-  }
-  if (u.protocol !== "https:") return { error: "\u53EA\u63A5\u53D7 https \u958B\u982D\u7684\u9023\u7D50" };
-  if (u.username || u.password) return { error: "\u9023\u7D50\u88E1\u4E0D\u8981\u653E\u5E33\u865F\u5BC6\u78BC\uFF1B\u8B80\u79C1\u6709 repo \u7684\u91D1\u9470\u7531\u7BA1\u7406\u54E1\u5B58\u5728\u96F2\u7AEF\uFF0C\u4E0D\u5728\u9019\u88E1\u8CBC" };
-  const host = u.hostname.toLowerCase();
-  const am = ARTIFACTS_HOST.exec(host);
-  if (am) return parseArtifactsUrl(new URL(s), am[1]);
-  if (host !== "github.com" && host !== "gitlab.com") return { error: "\u53EA\u80FD\u639B Artifacts\u3001github.com \u6216 gitlab.com \u7684 repo" };
-  const parts = u.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  if (parts.length < 2) return { error: "\u9023\u7D50\u8981\u6307\u5230\u4E00\u500B repo\uFF08\u50CF https://github.com/\u516C\u53F8/\u898F\u7AE0\uFF09" };
-  const [owner, repo, ...rest] = parts;
-  if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return { error: "\u9019\u500B repo \u9023\u7D50\u770B\u8D77\u4F86\u4E0D\u5C0D" };
-  let ref = "HEAD", path = "";
-  if (rest.length) {
-    const at = host === "github.com" ? 0 : 1;
-    const ok = host === "github.com" ? rest[0] === "tree" : rest[0] === "-" && rest[1] === "tree";
-    if (!ok || !rest[at + 1]) return { error: "\u9023\u7D50\u53EA\u8981\u5230 repo \u672C\u8EAB\uFF0C\u6216\u50CF \u2026/tree/main/\u8CC7\u6599\u593E \u9019\u6A23\u6307\u5230\u8CC7\u6599\u593E" };
-    ref = rest[at + 1];
-    path = rest.slice(at + 2).join("/");
-  }
-  if (!/^[A-Za-z0-9_./-]+$/.test(ref) || ref.includes("..") || path.includes("..")) return { error: "\u5206\u652F\u6216\u8CC7\u6599\u593E\u540D\u7A31\u4E0D\u5408\u6CD5" };
-  return { host, owner, repo, ref, path };
-}
-function rulebookFiles(p) {
-  const base = p.path ? `${p.path.replace(/\/$/, "")}/` : "";
-  return [`${base}rulebook.json`, `${base}.claude-plugin/rulebook.json`, `${base}rules/rulebook.json`];
-}
-function rulebookCandidates(p) {
-  const files = rulebookFiles(p);
-  return files.map((f) => p.host === "github.com" ? `https://raw.githubusercontent.com/${p.owner}/${p.repo}/${p.ref}/${f}` : `https://gitlab.com/${p.owner}/${p.repo}/-/raw/${p.ref}/${f}`);
-}
-async function fetchRepoRulebook(url, opts = {}) {
-  const p = parseRepoUrl(url);
-  if ("error" in p) return { ok: false, code: "bad_url", error: p.error };
-  if (p.host === "artifacts") return fetchArtifactsRulebook(p, opts.artifactsEnv ?? { ARTIFACTS: opts.artifacts });
-  const f = opts.fetchImpl ?? fetch;
-  const repo = `${p.owner}/${p.repo}`;
-  let sawDenied = false;
-  for (const raw2 of rulebookCandidates(p)) {
-    let res;
-    try {
-      res = await f(raw2, { headers: opts.token ? p.host === "github.com" ? { Authorization: `token ${opts.token}` } : { "PRIVATE-TOKEN": opts.token } : {}, redirect: "follow" });
-    } catch (e) {
-      return { ok: false, code: "unreachable", error: `\u9023\u4E0D\u4E0A ${p.host}\uFF1A${e instanceof Error ? e.message : String(e)}` };
-    }
-    if (res.status === 404) continue;
-    if (res.status === 401 || res.status === 403) {
-      sawDenied = true;
-      continue;
-    }
-    if (!res.ok) return { ok: false, code: "unreachable", error: `${p.host} \u56DE ${res.status}\uFF0C\u7A0D\u5F8C\u518D\u8A66` };
-    const text = await res.text();
-    if (text.length > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u4E0D\u662F\u5408\u6CD5\u7684 JSON` };
-    }
-    return normalizeRulebook(json, repo);
-  }
-  if (opts.token && sawDenied) {
-    return { ok: false, code: "private_denied", error: `\u8B80\u4E0D\u5230 ${repo}\uFF1A\u96F2\u7AEF\u8A2D\u5B9A\u7684\u8B80\u53D6\u91D1\u9470\u6C92\u6709\u9019\u500B repo \u7684\u6B0A\u9650\u3002` };
-  }
-  if (!opts.token) {
-    return { ok: false, code: "private_no_token", error: `\u8B80\u4E0D\u5230 ${repo} \u7684 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002\u8ACB\u78BA\u8A8D repo \u662F\u516C\u958B\u7684\u3001\u6839\u76EE\u9304\u6709 rulebook.json\uFF1B\u76EE\u524D\u53EA\u652F\u63F4\u516C\u958B repo\uFF0C\u79C1\u6709 repo \u5C1A\u672A\u652F\u63F4\uFF08\u8ACB\u4E0D\u8981\u8CBC token\uFF09\u3002` };
-  }
-  return { ok: false, code: "not_found", error: `${repo} \u88E1\u627E\u4E0D\u5230 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002` };
-}
-var artifactsNsBindingName = (ns) => /^[A-Za-z][A-Za-z0-9_]*$/.test(ns) ? `ARTIFACTS_NS_${ns}` : null;
-function pickArtifactsBinding(env, ns) {
-  const declared = String(env.ARTIFACTS_NAMESPACE ?? "").trim();
-  if (!declared || declared === ns) return env.ARTIFACTS ?? null;
-  const name = artifactsNsBindingName(ns);
-  return name && env[name] || null;
-}
-async function fetchArtifactsRulebook(p, env) {
-  const repo = `${p.owner}/${p.repo}`;
-  const binding = pickArtifactsBinding(env, p.owner);
-  if (!binding || typeof binding.get !== "function") {
-    return env.ARTIFACTS && typeof env.ARTIFACTS.get === "function" ? { ok: false, code: "not_found", error: `\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u7D81\u4E0A Artifacts \u7684\u547D\u540D\u7A7A\u9593\u300C${p.owner}\u300D\uFF08\u53EA\u7D81\u4E86\u300C${String(env.ARTIFACTS_NAMESPACE || "\u9810\u8A2D")}\u300D\uFF09\u3002\u66F4\u65B0\u5BE6\u4F8B\u5F8C\u6703\u81EA\u52D5\u7D81\u4E0A\u5E33\u865F\u88E1\u6240\u6709\u547D\u540D\u7A7A\u9593\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002` } : { ok: false, code: "unreachable", error: "\u9019\u53F0\u5BE6\u4F8B\u9084\u6C92\u6709\u9023\u4E0A Artifacts\uFF08\u5E33\u865F\u6C92\u958B\u6216\u9084\u6C92\u7D81\uFF09\u3002Artifacts \u958B\u901A\u5F8C\u91CD\u65B0\u5B89\u88DD\u6216\u66F4\u65B0\u5BE6\u4F8B\u5373\u53EF\uFF0C\u4E0D\u7528\u8A2D\u4EFB\u4F55\u91D1\u9470\u3002" };
-  }
-  let h;
-  try {
-    h = await binding.get(p.repo);
-  } catch (e) {
-    if (e?.code === "NOT_FOUND" || /not found/i.test(String(e?.message))) {
-      return { ok: false, code: "not_found", error: `\u9019\u500B\u5E33\u865F\u7684 Artifacts \u88E1\u6C92\u6709 repo\u300C${p.repo}\u300D\uFF0C\u8ACB\u78BA\u8A8D\u9023\u7D50\u3002` };
-    }
-    return { ok: false, code: "unreachable", error: `Artifacts \u6C92\u6709\u6B63\u5E38\u56DE\u61C9\uFF1A${String(e?.message ?? e).slice(0, 120)}` };
-  }
-  try {
-    const remote = String((await h?.info?.())?.remote ?? "");
-    if (remote && !remote.toLowerCase().includes(`${p.account}.artifacts.cloudflare.net/git/${p.owner}/${p.repo}`.toLowerCase())) {
-      return { ok: false, code: "not_found", error: `\u9019\u500B\u9023\u7D50\u4E0D\u662F\u9019\u53F0\u5BE6\u4F8B\u6240\u5728\u5E33\u865F\u7684 Artifacts\uFF08\u5E33\u865F\u6216\u547D\u540D\u7A7A\u9593\u5C0D\u4E0D\u4E0A\uFF09\uFF0C\u4E0D\u8B80\u3002` };
-    }
-  } catch {
-  }
-  const refs = p.ref === "HEAD" ? ["HEAD", "main", "master"] : [p.ref];
-  let lastErr = "";
-  for (const path of rulebookFiles(p)) {
-    for (const ref of refs) {
-      let blob;
-      try {
-        blob = await h.readFile({ ref, path });
-      } catch (e) {
-        lastErr = String(e?.message ?? e);
-        continue;
-      }
-      if (!blob) continue;
-      if (typeof blob.size === "number" && blob.size > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
-      const text = String(await blob.text());
-      if (text.length > RULE_REPO_MAX_CHARS) return { ok: false, code: "too_large", error: `\u898F\u7AE0\u6A94\u592A\u5927\uFF08\u4E0A\u9650 ${RULE_REPO_MAX_CHARS} \u5B57\u5143\uFF09` };
-      let json;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u4E0D\u662F\u5408\u6CD5\u7684 JSON` };
-      }
-      return normalizeRulebook(json, repo);
-    }
-  }
-  return { ok: false, code: "not_found", error: `${repo} \u88E1\u627E\u4E0D\u5230 rulebook.json\uFF08\u627E\u904E\u6839\u76EE\u9304\u3001.claude-plugin/\u3001rules/\uFF09\u3002${lastErr && !/not found|no such|404/i.test(lastErr) ? `\uFF08\u8B80\u53D6\u56DE\u5831\uFF1A${lastErr.slice(0, 80)}\uFF09` : ""}` };
-}
-function normalizeRulebook(raw2, repo) {
-  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u5FC5\u9808\u662F\u7269\u4EF6` };
-  const r = raw2;
-  let dropped = 0;
-  const sections = Array.isArray(r.sections) ? r.sections.map((s) => {
-    if (s && typeof s === "object" && !Array.isArray(s) && s.guard !== void 0) {
-      dropped++;
-      const { guard: _g, ...rest } = s;
-      return rest;
-    }
-    return s;
-  }) : r.sections;
-  const decl = { ...r.title !== void 0 ? { title: r.title } : {}, sections };
-  const errors = validateRulebook(decl, []);
-  if (errors.length) return { ok: false, code: "bad_rulebook", error: `${repo} \u7684 rulebook.json \u5167\u5BB9\u6709\u554F\u984C\uFF1A${errors.slice(0, 3).join("\uFF1B")}${errors.length > 3 ? `\uFF08\u9084\u6709 ${errors.length - 3} \u9805\uFF09` : ""}` };
-  return { ok: true, repo, decl, dropped_guards: dropped };
-}
-var rank = (l) => RULE_LAYERS.indexOf(l);
-function flattenRules(inputs) {
-  const sorted = [...inputs].sort((a, b) => rank(a.layer) - rank(b.layer) || a.order - b.order);
-  const byId = /* @__PURE__ */ new Map();
-  const orderIds = [];
-  const blocked = [];
-  const tag = (i) => ({ layer: i.layer, layer_label: RULE_LAYER_LABEL[i.layer], repo: i.repo });
-  for (const src of sorted) {
-    for (const s of src.sections) {
-      const row = {
-        id: s.id,
-        chapter: s.chapter ?? "",
-        title: s.title,
-        mandatory: !!s.mandatory,
-        origin: { ...tag(src), kind: src.kind, book_id: src.book_id, source_id: src.source_id }
-      };
-      const cur = byId.get(s.id);
-      if (!cur) {
-        byId.set(s.id, row);
-        orderIds.push(s.id);
-        continue;
-      }
-      const by = { layer: cur.origin.layer, layer_label: cur.origin.layer_label, repo: cur.origin.repo };
-      if (cur.origin.layer === src.layer) {
-        blocked.push({ id: s.id, title: s.title, from: tag(src), reason: "duplicate_same_layer", by });
-      } else if (cur.mandatory) {
-        blocked.push({ id: s.id, title: s.title, from: tag(src), reason: "mandatory_above", by });
-      } else {
-        row.overrides = by;
-        byId.set(s.id, row);
-      }
-    }
-  }
-  return { sections: orderIds.map((id) => byId.get(id)), blocked };
-}
-function sourcePage(src, sec) {
-  return {
-    id: sec.id,
-    chapter: sec.chapter,
-    title: sec.title,
-    body: sec.body.slice(0, RULEBOOK_MAX_BODY),
-    ...sec.mandatory ? { mandatory: true } : {},
-    ...sec.direction ? { direction: sec.direction } : {},
-    ...sec.source ? { source: sec.source } : {},
-    rev: 1,
-    approved_by: `${RULE_LAYER_LABEL[src.layer]}\u5C64 ${src.repo}`
-  };
-}
-function summarizeSource(s) {
-  return {
-    id: s.id,
-    url: s.url,
-    layer: s.layer,
-    layer_label: RULE_LAYER_LABEL[s.layer],
-    label: s.label,
-    repo: s.repo,
-    order: s.order,
-    added_by: s.added_by,
-    added_at: s.added_at,
-    fetched_at: s.fetched_at,
-    count: s.sections.length,
-    book_id: `src.${s.id}`,
-    ...s.dropped_guards ? { dropped_guards: s.dropped_guards } : {}
-  };
-}
-
-// cypher-executor/src/lib/rule-sources-ops.ts
-var err2 = (code, error, status = 400) => ({ ok: false, code, error, status });
-async function anchorApp(env, tenant2) {
-  const apps = (await listInstalledApps(env, tenant2)).filter((a) => a.rulebook);
-  return apps.find((a) => a.id === "company_rules") ?? apps.sort((a, b) => a.id.localeCompare(b.id))[0] ?? null;
-}
-var NO_BOOK = "\u9019\u53F0\u9084\u6C92\u6709\u5B89\u88DD\u898F\u7AE0 App\uFF0C\u6C92\u6709\u5730\u65B9\u639B\u3002\u8ACB\u5148\u5230 App \u5E02\u96C6\u5B89\u88DD\u300C\u7BA1\u7406\u898F\u7AE0\u300D\u3002";
-async function readSources(env, tenant2) {
-  const app2 = await anchorApp(env, tenant2);
-  return app2 ? layerOf(app2).rule_sources ?? emptySources() : emptySources();
-}
-async function writeSources(env, tenant2, doc) {
-  const app2 = await anchorApp(env, tenant2);
-  if (!app2) return false;
-  const layer = layerOf(app2);
-  if (doc.items.length) layer.rule_sources = doc;
-  else delete layer.rule_sources;
-  await appStore(env).put(appKey(tenant2, app2.id), JSON.stringify({ ...app2, user_layer: layer }));
-  return true;
-}
-var SRC_PREFIX = "src.";
-function sourceIdOf(bookId) {
-  return bookId.startsWith(SRC_PREFIX) ? bookId.slice(SRC_PREFIX.length) : null;
-}
-async function readFlatBook(env, tenant2) {
-  const apps = (await listInstalledApps(env, tenant2)).filter((a) => a.rulebook);
-  const books = (await Promise.all(apps.map((a) => readBook(env, tenant2, a)))).filter((b) => b !== null);
-  const doc = await readSources(env, tenant2);
-  const inputs = [
-    ...books.map((b, i) => ({
-      source_id: `app.${b.app_id}`,
-      book_id: b.app_id,
-      kind: "app",
-      layer: "company",
-      repo: b.title,
-      order: -1e3 + i,
-      sections: b.sections.map((s) => ({ id: s.id, chapter: s.chapter, title: s.title, mandatory: s.mandatory }))
-    })),
-    ...doc.items.map((s) => ({
-      source_id: s.id,
-      book_id: `${SRC_PREFIX}${s.id}`,
-      kind: "git",
-      layer: s.layer,
-      repo: s.label,
-      order: s.order,
-      sections: s.sections.map((x) => ({ id: x.id, chapter: x.chapter, title: x.title, mandatory: !!x.mandatory }))
-    }))
-  ];
-  const flat = flattenRules(inputs);
-  const pend = /* @__PURE__ */ new Map(), edited = /* @__PURE__ */ new Map();
-  for (const b of books) for (const s of b.sections) {
-    pend.set(`${b.app_id}\0${s.id}`, s.pending);
-    edited.set(`${b.app_id}\0${s.id}`, s.edited);
-  }
-  return {
-    sections: flat.sections.map((s) => ({ ...s, pending: pend.get(`${s.origin.book_id}\0${s.id}`) ?? false, edited: edited.get(`${s.origin.book_id}\0${s.id}`) ?? false })),
-    blocked: flat.blocked,
-    sources: [
-      ...books.map((b) => ({ id: `app.${b.app_id}`, builtin: true, layer: "company", layer_label: "\u516C\u53F8", label: b.title, repo: b.title, count: b.sections.length, book_id: b.app_id })),
-      ...doc.items.map((s) => ({ ...summarizeSource(s), builtin: false }))
-    ]
-  };
-}
-async function addSource(env, tenant2, by, input, fetchImpl) {
-  const url = typeof input.url === "string" ? input.url.trim() : "";
-  const layer = input.layer;
-  if (!RULE_LAYERS.includes(layer)) return err2("bad_layer", "\u8ACB\u9078\u5C64\u7D1A\uFF1A\u96C6\u5718\u3001\u516C\u53F8\u3001\u90E8\u9580\u6216\u500B\u4EBA");
-  const p = parseRepoUrl(url);
-  if ("error" in p) return err2("bad_url", p.error);
-  if (!await anchorApp(env, tenant2)) return err2("no_book_app", NO_BOOK, 409);
-  const doc = await readSources(env, tenant2);
-  if (doc.items.length >= RULE_SOURCES_MAX) return err2("too_many", `\u6700\u591A\u639B ${RULE_SOURCES_MAX} \u500B\u898F\u7AE0\u4F86\u6E90`);
-  const norm = `${p.host}/${p.owner}/${p.repo}/${p.ref}/${p.path}`.toLowerCase();
-  if (doc.items.some((s) => {
-    const q = parseRepoUrl(s.url);
-    return !("error" in q) && `${q.host}/${q.owner}/${q.repo}/${q.ref}/${q.path}`.toLowerCase() === norm;
-  })) {
-    return err2("duplicate", "\u9019\u500B repo \u5DF2\u7D93\u639B\u904E\u4E86", 409);
-  }
-  const r = await fetchRepoRulebook(url, { token: env.RULE_REPO_TOKEN, fetchImpl, artifactsEnv: env });
-  if (!r.ok) return err2(r.code, r.error, r.code === "unreachable" ? 502 : 422);
-  const label = (typeof input.label === "string" && input.label.trim() ? input.label.trim() : r.decl.title?.trim() || `${p.owner}/${p.repo}`).slice(0, 40);
-  const now2 = (/* @__PURE__ */ new Date()).toISOString();
-  const inLayer = doc.items.filter((s) => s.layer === layer);
-  const src = {
-    id: `s${doc.next}`,
-    url,
-    layer,
-    label,
-    repo: `${p.owner}/${p.repo}`,
-    order: inLayer.length ? Math.max(...inLayer.map((s) => s.order)) + 1 : 0,
-    added_by: by,
-    added_at: now2,
-    fetched_at: now2,
-    ...r.decl.title ? { title: r.decl.title } : {},
-    sections: r.decl.sections,
-    ...r.dropped_guards ? { dropped_guards: r.dropped_guards } : {}
-  };
-  doc.items.push(src);
-  doc.next++;
-  await writeSources(env, tenant2, doc);
-  return { ok: true, source: summarizeSource(src) };
-}
-async function removeSource(env, tenant2, id) {
-  const doc = await readSources(env, tenant2);
-  if (!doc.items.some((s) => s.id === id)) return err2("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
-  doc.items = doc.items.filter((s) => s.id !== id);
-  await writeSources(env, tenant2, doc);
-  return { ok: true };
-}
-async function moveSource(env, tenant2, id, dir) {
-  const doc = await readSources(env, tenant2);
-  const me = doc.items.find((s) => s.id === id);
-  if (!me) return err2("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
-  const row = doc.items.filter((s) => s.layer === me.layer).sort((a, b) => a.order - b.order);
-  const i = row.findIndex((s) => s.id === id), j = dir === "up" ? i - 1 : i + 1;
-  if (j < 0 || j >= row.length) return { ok: true };
-  row.forEach((x, k) => {
-    x.order = k;
-  });
-  const tmp = row[i].order;
-  row[i].order = row[j].order;
-  row[j].order = tmp;
-  await writeSources(env, tenant2, doc);
-  return { ok: true };
-}
-async function refreshSource(env, tenant2, id, fetchImpl) {
-  const doc = await readSources(env, tenant2);
-  const s = doc.items.find((x) => x.id === id);
-  if (!s) return err2("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
-  const r = await fetchRepoRulebook(s.url, { token: env.RULE_REPO_TOKEN, fetchImpl, artifactsEnv: env });
-  if (!r.ok) return err2(r.code, r.error, r.code === "unreachable" ? 502 : 422);
-  s.sections = r.decl.sections;
-  s.fetched_at = (/* @__PURE__ */ new Date()).toISOString();
-  if (r.decl.title) s.title = r.decl.title;
-  if (r.dropped_guards) s.dropped_guards = r.dropped_guards;
-  else delete s.dropped_guards;
-  await writeSources(env, tenant2, doc);
-  return { ok: true, source: summarizeSource(s) };
-}
-async function readSourceSection(env, tenant2, id, sec) {
-  const doc = await readSources(env, tenant2);
-  const s = doc.items.find((x) => x.id === id);
-  const d = s?.sections.find((x) => x.id === sec);
-  if (!s || !d) return null;
-  const flat = await readFlatBook(env, tenant2);
-  const row = flat.sections.find((x) => x.id === sec);
-  const blocked = flat.blocked.find((x) => x.id === sec && x.from.repo === s.label);
-  return {
-    book: s.title?.trim() || s.label,
-    app_id: `${SRC_PREFIX}${s.id}`,
-    page: sourcePage(s, d),
-    edited: false,
-    proposal: null,
-    history: [],
-    can_rollback: false,
-    guard: null,
-    readonly: true,
-    origin: { layer: s.layer, layer_label: summarizeSource(s).layer_label, repo: s.label, url: s.url, fetched_at: s.fetched_at },
-    ...row && row.origin.source_id !== s.id ? { superseded_by: row.origin } : {},
-    ...blocked ? { blocked } : {}
-  };
-}
-
-// cypher-executor/src/routes/portal-data.ts
 init_app_rulebook();
 
 // cypher-executor/src/lib/form-surface.ts
@@ -34851,7 +35556,7 @@ function dedupeSourcesByPage(sources) {
     ({ item, count: count2 }) => count2 > 1 ? { ...item, hit_count: count2 } : item
   );
 }
-function notFound(c) {
+function notFound3(c) {
   return c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u8CC7\u6599" }, 404);
 }
 function entryLibrary(entry) {
@@ -35113,15 +35818,15 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
-    if (libraries.length === 0) return notFound(c);
+    if (libraries.length === 0) return notFound3(c);
     const res = await kbdbFetch2(c.env, `/entries/${encodeURIComponent(c.req.param("id"))}`);
-    if (res.status === 404) return notFound(c);
+    if (res.status === 404) return notFound3(c);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json();
     const entry = body.entry;
-    if (!entry) return notFound(c);
-    if (!isOwnedBy(entry.owner_id, knowledgeOwner(c.env))) return notFound(c);
-    if (!canReadLibrary(libraries, entryLibrary(entry))) return notFound(c);
+    if (!entry) return notFound3(c);
+    if (!isOwnedBy(entry.owner_id, knowledgeOwner(c.env))) return notFound3(c);
+    if (!canReadLibrary(libraries, entryLibrary(entry))) return notFound3(c);
     return c.json({ success: true, entry });
   })
 );
@@ -35403,7 +36108,7 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const setting = (c.env.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
-    if (setting === "off") return notFound(c);
+    if (setting === "off") return notFound3(c);
     if (!workflowsVisible(c.env, auth.user.values.role ?? "user")) {
       return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
     }
@@ -35453,7 +36158,7 @@ async function workflowsGateAuth(c) {
   const auth = await requirePortalUser(c);
   if (!auth.ok) return { res: auth.res };
   const setting = (c.env.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
-  if (setting === "off") return { res: notFound(c) };
+  if (setting === "off") return { res: notFound3(c) };
   if (!workflowsVisible(c.env, auth.user.values.role ?? "user")) return { res: c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403) };
   if (!await isFlowCanvasInstalled(c.env, knowledgeOwner(c.env))) return { res: c.json(flowCanvasNotInstalledBody(), 404) };
   return { res: null, user: auth.user };
@@ -35595,7 +36300,7 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const setting = (c.env.PORTAL_SHOW_WORKFLOWS ?? "admin").toLowerCase();
-    if (setting === "off") return notFound(c);
+    if (setting === "off") return notFound3(c);
     if (!workflowsVisible(c.env, auth.user.values.role ?? "user")) {
       return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
     }
@@ -35681,7 +36386,8 @@ portalDataRouter.get(
       latest: latest2,
       apps: apps.map((a) => ({ id: a.id, name: a.name, version: a.version, ...updateInfo(a.version, a.id, catalog.entries, c.env.ARCRUN_BUNDLE_VERSION) })),
       daemonReports,
-      marketSources: catalog.sources
+      marketSources: catalog.sources,
+      rules: pendingFromApps(apps)
     });
     return c.json({ success: true, ...center });
   })
@@ -35949,6 +36655,67 @@ portalDataRouter.post(
   })
 );
 portalDataRouter.get(
+  "/portal/data/workflows/loose",
+  (c) => run(c, async () => {
+    const denied = await workflowsGate(c);
+    if (denied) return denied;
+    const tenant2 = knowledgeOwner(c.env);
+    const prefix = `${tenant2}:wf:`;
+    const scope = await studioScope(c.env, tenant2, showSystemOf(c));
+    const list = await c.env.WEBHOOKS.list({ prefix });
+    const names = list.keys.map((k) => k.name.slice(prefix.length)).filter((n) => scope.isLoose(n) && scope.hasWf(n));
+    const workflows = await Promise.all(names.map(async (name) => {
+      const raw2 = await c.env.WEBHOOKS.get(`${prefix}${name}`, "text");
+      let description = "", created_at = "", display_name = "", cron_expr;
+      if (raw2) {
+        try {
+          const rec = JSON.parse(raw2);
+          description = rec.description ?? "";
+          created_at = rec.created_at ?? "";
+          cron_expr = rec.cron_expr;
+          display_name = rec.display_name ?? "";
+        } catch {
+        }
+      }
+      return { name, description, created_at, cron_expr, display_name, tier: scope.tierOfWf(name), trigger: cron_expr ? "schedule" : "manual" };
+    }));
+    return c.json({ success: true, workflows, total: workflows.length });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/workflows/:name/export",
+  (c) => run(c, async () => {
+    const denied = await workflowsGate(c);
+    if (denied) return denied;
+    const tenant2 = knowledgeOwner(c.env);
+    const name = c.req.param("name");
+    const scope = await studioScope(c.env, tenant2, showSystemOf(c));
+    if (!scope.hasWf(name)) return notYours(c);
+    if (!scope.isLoose(name)) return c.json({ error: "\u9019\u689D\u5DE5\u4F5C\u6D41\u5C6C\u65BC\u4E00\u500B App", code: "owned_by_app", hint: "\u532F\u51FA\u90A3\u500B App\uFF0C\u5DE5\u4F5C\u6D41\u6703\u4E00\u8D77\u5E36\u8D70\u3002" }, 409);
+    const r = await exportWorkflowPackage(c.env, String(tenant2), name, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) }, c.env.ARCRUN_BUNDLE_VERSION);
+    if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {} }, r.code === "not_found" ? 404 : r.code === "blocked" ? 422 : 500);
+    return c.json({ package: r.package, warnings: r.warnings, filename: `${name}.arcrun-app.json` });
+  })
+);
+portalDataRouter.delete(
+  "/portal/data/workflows/:name",
+  (c) => run(c, async () => {
+    const g = await workflowsGateAuth(c);
+    if (g.res) return g.res;
+    if (String(g.user.values.role ?? "user") !== "admin") return c.json({ error: "\u9700\u8981 admin \u6B0A\u9650" }, 403);
+    const tenant2 = knowledgeOwner(c.env);
+    const name = c.req.param("name");
+    if (isPlatformWorkflow(name)) return c.json({ error: "\u9019\u662F\u5E73\u53F0\u7684\u5DE5\u4F5C\u6D41\uFF0C\u4E0D\u80FD\u5F9E\u9019\u88E1\u522A", code: "platform_workflow" }, 409);
+    const scope = await studioScope(c.env, tenant2, false);
+    if (!scope.isLoose(name)) return c.json({ error: "\u9019\u689D\u5DE5\u4F5C\u6D41\u5C6C\u65BC\u4E00\u500B App", code: "owned_by_app", hint: "\u8981\u522A\u5C31\u5378\u8F09\u90A3\u500B App\u3002" }, 409);
+    const key = `${tenant2}:wf:${name}`;
+    if (!await c.env.WEBHOOKS.get(key, "text")) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u689D\u5DE5\u4F5C\u6D41" }, 404);
+    await c.env.WEBHOOKS.delete(key);
+    await updateCronIndexEntry(c.env.WEBHOOKS, String(tenant2), name, null);
+    return c.json({ deleted: true, name });
+  })
+);
+portalDataRouter.get(
   "/portal/data/apps/:id/export",
   (c) => run(c, async () => {
     const denied = await workflowsGate(c);
@@ -36179,7 +36946,7 @@ portalDataRouter.get(
     const libraries = parseLibraries(auth.user.values.libraries);
     const library = c.req.query("library") || "";
     if (!library.trim()) return c.json({ error: "\u7F3A\u5C11 library \u53C3\u6578\uFF08\u76EE\u9304\u5929\u751F\u5C6C\u65BC\u67D0\u4E00\u500B\u5EAB\uFF09" }, 400);
-    if (!canReadLibrary(libraries, library)) return notFound(c);
+    if (!canReadLibrary(libraries, library)) return notFound3(c);
     const params = new URLSearchParams({ library });
     params.set("owner_id", String(knowledgeOwner(c.env)));
     const limit = c.req.query("limit");
@@ -36200,7 +36967,7 @@ portalDataRouter.get(
     if (!library.trim() || !pageName.trim()) {
       return c.json({ error: "\u7F3A\u5C11 library \u6216 page_name\uFF08\u4E00\u5F35\u5361\u7531\u300C\u54EA\u500B\u5EAB\u7684\u54EA\u500B\u5361\u540D\u300D\u5B9A\u4F4D\uFF09" }, 400);
     }
-    if (!canReadLibrary(libraries, library)) return notFound(c);
+    if (!canReadLibrary(libraries, library)) return notFound3(c);
     const params = new URLSearchParams({ library, page_name: pageName });
     params.set("owner_id", String(knowledgeOwner(c.env)));
     params.set("limit", "200");
@@ -36211,7 +36978,7 @@ portalDataRouter.get(
       return c.json({ error: "KBDB \u56DE\u61C9\u4E0D\u662F\u9810\u671F\u7684 entries \u6E05\u55AE" }, 502);
     }
     const entries = filterDeprecatedEntries(body.entries);
-    if (entries.length === 0) return notFound(c);
+    if (entries.length === 0) return notFound3(c);
     const libRecords = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE).catch(() => []);
     const libRootRaw = libRecords.find((r) => String(r.values.name ?? "") === library)?.values.root;
     const libraryRoot = typeof libRootRaw === "string" ? libRootRaw : null;
@@ -36307,12 +37074,12 @@ portalDataRouter.get(
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
     const library = c.req.param("library");
-    if (!canReadLibrary(libraries, library)) return notFound(c);
+    if (!canReadLibrary(libraries, library)) return notFound3(c);
     const res = await kbdbFetch2(
       c.env,
       `/map/${encodeURIComponent(library)}?${ownerQuery(knowledgeOwner(c.env))}`
     );
-    if (res.status === 404) return notFound(c);
+    if (res.status === 404) return notFound3(c);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     return new Response(res.body, { status: 200, headers: { "Content-Type": "application/json" } });
   })
@@ -36417,14 +37184,14 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const libraries = parseLibraries(auth.user.values.libraries);
-    if (libraries.length === 0) return notFound(c);
+    if (libraries.length === 0) return notFound3(c);
     const res = await kbdbFetch2(c.env, `/records/${encodeURIComponent(c.req.param("recordId"))}`);
-    if (res.status === 404) return notFound(c);
+    if (res.status === 404) return notFound3(c);
     if (!res.ok) return c.json({ error: `KBDB \u56DE\u932F\uFF08HTTP ${res.status}\uFF09` }, 502);
     const body = await res.json().catch(() => null);
     const record = body?.record;
-    if (!record) return notFound(c);
-    if (!canReadRecord(record, knowledgeOwner(c.env), libraries)) return notFound(c);
+    if (!record) return notFound3(c);
+    if (!canReadRecord(record, knowledgeOwner(c.env), libraries)) return notFound3(c);
     return c.json({ success: true, record });
   })
 );
@@ -36751,6 +37518,10 @@ portalDataRouter.get(
     const tenant2 = knowledgeOwner(c.env);
     const apps = (await listInstalledApps(c.env, tenant2)).filter((a) => a.rulebook);
     const books = (await Promise.all(apps.map((a) => readBook(c.env, tenant2, a)))).filter((b) => b !== null);
+    try {
+      await ensureMirrors(c.env, tenant2);
+    } catch {
+    }
     const flat = await readFlatBook(c.env, tenant2);
     return c.json({ books, flat: flat.sections, blocked: flat.blocked, sources: flat.sources, can_approve: ruleIsAdmin(auth), token_configured: !!c.env.RULE_REPO_TOKEN });
   })
@@ -36800,6 +37571,54 @@ portalDataRouter.post(
     if (!auth.ok) return auth.res;
     if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
     const r = await refreshSource(c.env, knowledgeOwner(c.env), c.req.param("id"));
+    if (!r.ok) return srcFail(c, r);
+    return c.json({ source: r.source, upstream_ok: r.upstream_ok, state: r.state });
+  })
+);
+portalDataRouter.get(
+  "/portal/data/rules/sources/:id/upstream",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const tenant2 = knowledgeOwner(c.env);
+    const r = await readUpstream(c.env, tenant2, c.req.param("id"));
+    if (!r.ok) return srcFail(c, r);
+    const { ok: _ok, ...rest } = r;
+    const hook = ruleWebhookConfigured(c.env) && ruleIsAdmin(auth) ? { webhook_url: `${new URL(c.req.url).origin}/hooks/rule-source/${encodeURIComponent(tenant2)}/${encodeURIComponent(c.req.param("id"))}/${await ruleWebhookToken(c.env, tenant2, c.req.param("id"))}` } : {};
+    return c.json({ ...rest, ...hook, can_approve: ruleIsAdmin(auth) });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/sources/:id/approve",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
+    const body = await c.req.json().catch(() => null);
+    const r = await approveUpstream(c.env, knowledgeOwner(c.env), c.req.param("id"), ruleActor(auth), body?.hash);
+    if (!r.ok) return srcFail(c, r);
+    return c.json({ source: r.source });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/sources/:id/reject",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
+    const body = await c.req.json().catch(() => null);
+    const r = await rejectUpstream(c.env, knowledgeOwner(c.env), c.req.param("id"), body?.hash);
+    if (!r.ok) return srcFail(c, r);
+    return c.json({ source: r.source });
+  })
+);
+portalDataRouter.post(
+  "/portal/data/rules/sources/:id/rollback",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
+    const r = await rollbackSource(c.env, knowledgeOwner(c.env), c.req.param("id"));
     if (!r.ok) return srcFail(c, r);
     return c.json({ source: r.source });
   })
@@ -36851,7 +37670,26 @@ portalDataRouter.post(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
-    if (sourceIdOf(c.req.param("app")) !== null) return c.json({ error: "\u9019\u4E00\u689D\u4F86\u81EA\u639B\u4E0A\u4F86\u7684 git repo\uFF0C\u5728\u9019\u88E1\u6539\u4E0D\u52D5\u3002\u8981\u6539\u8ACB\u6539\u90A3\u500B repo\uFF0C\u518D\u6309\u300C\u91CD\u65B0\u8B80\u53D6\u300D\u3002", code: "readonly_source" }, 403);
+    const srcId = sourceIdOf(c.req.param("app"));
+    if (srcId !== null) {
+      const sd = await readSourceSection(c.env, tenant2, srcId, c.req.param("sec"));
+      if (!sd) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u4E00\u689D\uFF08\u4F86\u6E90\u53EF\u80FD\u5DF2\u88AB\u79FB\u9664\uFF09" }, 404);
+      if (!sd.can_propose) return c.json({ error: "\u9019\u4E00\u689D\u4F86\u81EA GitHub\uFF0FGitLab\u3002\u5C0D\u5916\u90E8\u4E3B\u6A5F\u7684\u5BEB\u5165\u8981\u4EBA\u958B\u9598\uFF0CArcrun \u4E0D\u6703\u81EA\u52D5\u66FF\u4F60\u958B PR\uFF1B\u8ACB\u628A\u4FEE\u6539\u5EFA\u8B70\u4EA4\u7D66\u4E0A\u6E38\u7DAD\u8B77\u7684\u4EBA\uFF0C\u4E0A\u6E38\u6539\u597D\u5F8C\u6309\u300C\u91CD\u65B0\u8B80\u53D6\u300D\u3002", code: "external_host" }, 403);
+      const body2 = await c.req.json().catch(() => null);
+      const instruction2 = typeof body2?.instruction === "string" ? body2.instruction.trim() : "";
+      if (!instruction2) return c.json({ error: "\u8ACB\u5148\u8AAA\u4E00\u53E5\u4F60\u60F3\u600E\u9EBC\u6539" }, 400);
+      if (instruction2.length > 500) return c.json({ error: "\u9019\u53E5\u8A71\u592A\u9577\u4E86\uFF0C\u8ACB\u7E2E\u77ED\u5230 500 \u5B57\u5167" }, 400);
+      const config2 = await readExtractAiConfig(c.env).catch(() => void 0);
+      if (!config2) return c.json({ error: "\u8B80\u4E0D\u5230\u9019\u53F0\u96F2\u7AEF\u7684 AI \u8A2D\u5B9A", code: "ai_config_unreadable" }, 502);
+      const pr2 = buildRewritePrompt({ title: sd.page.title, body: sd.page.body }, instruction2);
+      const r2 = await runExtractAi(c.env, tenant2, config2, { system: pr2.system, prompt: pr2.prompt, maxTokens: 1200, temperature: 0.1, jsonObject: false });
+      if (!r2.ok) return c.json({ error: `AI \u6C92\u6709\u6539\u6210\uFF1A${r2.error}`, code: r2.code }, 502);
+      const draft2 = parseRewrite(normalizeAiText(r2.out).text, sd.page.title);
+      if (!draft2) return c.json({ error: `AI\uFF08${r2.model}\uFF09\u6C92\u6709\u5BEB\u51FA\u53EF\u7528\u7684\u689D\u6587\uFF0C\u8ACB\u63DB\u500B\u8AAA\u6CD5\u518D\u8A66\u4E00\u6B21`, code: "ai_unusable" }, 502);
+      const res2 = await proposeToUpstream(c.env, tenant2, srcId, c.req.param("sec"), ruleActor(auth), instruction2, draft2, { model: r2.model });
+      if (!res2.ok) return srcFail(c, res2);
+      return c.json({ upstream_proposal: res2.proposal });
+    }
     const app2 = await getInstalledApp(c.env, tenant2, c.req.param("app"));
     if (!app2?.rulebook) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u672C\u898F\u7AE0" }, 404);
     const body = await c.req.json().catch(() => null);
@@ -36911,7 +37749,7 @@ portalDataRouter.post(
 init_dist();
 init_tenant();
 var portalProofreadRouter = new Hono2();
-var notFound2 = (c) => c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u8CC7\u6599" }, 404);
+var notFound4 = (c) => c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u8CC7\u6599" }, 404);
 function nameOf(values) {
   const n = (values.display_name ?? "").trim();
   if (n) return n;
@@ -36995,7 +37833,7 @@ portalProofreadRouter.post(
     const pageName = strField(b, "page_name", 300);
     if (kind !== "like" && kind !== "not_wanted" && kind !== "wrong") return c.json({ error: "kind \u53EA\u80FD\u662F like\uFF0Fnot_wanted\uFF0Fwrong" }, 400);
     if (!library || !pageName) return c.json({ error: "\u7F3A\u5C11 library \u6216 page_name" }, 400);
-    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    if (!canReadLibrary(libraries, library)) return notFound4(c);
     const actor = actorOf2(auth.user, b?.channel);
     if (kind !== "wrong") {
       await recordSignal(c.env, kind, library, pageName, actor.id, strField(b, "question", 300));
@@ -37014,7 +37852,7 @@ portalProofreadRouter.post(
       return c.json({ error: "\u7D93 MCP \u56DE\u994B\u8981\u9644\u4E0A\u4F7F\u7528\u8005\u7684\u539F\u8A71\uFF08quote\uFF09\u2014\u2014\u53EA\u6536\u4F7F\u7528\u8005\u672C\u4EBA\u7684\u5224\u65B7\uFF0CAI \u81EA\u5DF1\u7684\u5224\u65B7\u4E0D\u7B97\u7968", code: "quote_required" }, 400);
     }
     const card = await readCard(c.env, library, pageName);
-    if (!card) return notFound2(c);
+    if (!card) return notFound4(c);
     if (!card.content.replace(/\s+/g, " ").includes(paragraph)) {
       return c.json({ error: "\u9019\u6BB5\u6587\u5B57\u4E0D\u5728\u9019\u5F35\u5361\u88E1\uFF08\u5361\u53EF\u80FD\u5DF2\u7D93\u66F4\u65B0\uFF09\uFF0C\u8ACB\u91CD\u65B0\u6253\u958B\u5361\u518D\u9078\u4E00\u6B21", code: "paragraph_not_in_card" }, 422);
     }
@@ -37074,7 +37912,7 @@ portalProofreadRouter.post(
     const choice = b?.choice;
     if (!id || choice !== "a" && choice !== "b" && choice !== "unsure") return c.json({ error: "\u9700\u8981 objection_id \u8207 choice\uFF08a\uFF0Fb\uFF0Funsure\uFF09" }, 400);
     const o = await getObjection(c.env, id);
-    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound2(c);
+    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound4(c);
     if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u7570\u8B70\u5DF2\u7D93\u7D50\u6848\u4E86", code: "closed", status: o.status }, 409);
     const actor = actorOf2(auth.user, b?.channel);
     if (actor.id === o.author_id) return c.json({ error: "\u9019\u662F\u4F60\u81EA\u5DF1\u63D0\u7684\u7570\u8B70\uFF0C\u540C\u4E00\u500B\u4EBA\u53EA\u7B97\u4E00\u7968", code: "own_objection" }, 409);
@@ -37102,7 +37940,7 @@ portalProofreadRouter.get(
     const library = c.req.query("library") ?? "";
     const pageName = c.req.query("page_name") ?? "";
     if (!library || !pageName) return c.json({ error: "\u7F3A\u5C11 library \u6216 page_name" }, 400);
-    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    if (!canReadLibrary(libraries, library)) return notFound4(c);
     const proofs = await loadCardProofs(c.env, library, pageName);
     return c.json({
       success: true,
@@ -37123,7 +37961,7 @@ portalProofreadRouter.patch(
     const id = strField(b, "objection_id", 200);
     if (!id) return c.json({ error: "\u9700\u8981 objection_id" }, 400);
     const o = await getObjection(c.env, id);
-    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound2(c);
+    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound4(c);
     if (o.author_id !== auth.user.recordId) return c.json({ error: "\u53EA\u6709\u63D0\u51FA\u5EFA\u8B70\u7684\u4EBA\u80FD\u6539\u81EA\u5DF1\u7684\u5EFA\u8B70", code: "not_author" }, 403);
     if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u5EFA\u8B70\u5DF2\u7D93\u88C1\u6C7A\uFF0C\u4E0D\u80FD\u518D\u6539\uFF1B\u8981\u6539\u53E3\u8ACB\u518D\u63D0\u4E00\u5247\u65B0\u5EFA\u8B70", code: "closed", status: o.status }, 409);
     const suggestion = strField(b, "suggestion", 1e3);
@@ -37145,7 +37983,7 @@ portalProofreadRouter.delete(
     const id = (c.req.query("objection_id") ?? "").trim();
     if (!id) return c.json({ error: "\u9700\u8981 objection_id" }, 400);
     const o = await getObjection(c.env, id);
-    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound2(c);
+    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound4(c);
     if (o.author_id !== auth.user.recordId) return c.json({ error: "\u53EA\u6709\u63D0\u51FA\u5EFA\u8B70\u7684\u4EBA\u80FD\u64A4\u56DE\u81EA\u5DF1\u7684\u5EFA\u8B70", code: "not_author" }, 403);
     if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u5EFA\u8B70\u5DF2\u7D93\u88C1\u6C7A\uFF0C\u4E0D\u80FD\u64A4\u56DE", code: "closed", status: o.status }, 409);
     await withdrawObjection(c.env, o);
@@ -37169,7 +38007,7 @@ portalProofreadRouter.post(
     const decision = b?.decision;
     if (!id || decision !== "adopt" && decision !== "reject" && decision !== "hold") return c.json({ error: "\u9700\u8981 objection_id \u8207 decision\uFF08adopt\uFF0Freject\uFF0Fhold\uFF09" }, 400);
     const o = await getObjection(c.env, id);
-    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound2(c);
+    if (!o || !canReadLibrary(libraries, o.library) || o.status === "withdrawn") return notFound4(c);
     if (o.status === "adopted" || o.status === "rejected") return c.json({ error: "\u9019\u5247\u7570\u8B70\u5DF2\u7D93\u88C1\u6C7A\u904E\u4E86", code: "closed", status: o.status }, 409);
     const gate = await requireOwnerOf(c.env, auth.user, o.library, o.source_path, o.machine);
     if (!gate.ok) return c.json({ error: "\u53EA\u6709\u9019\u4EFD\u539F\u7A3F\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u88C1\u6C7A", code: "not_owner" }, 403);
@@ -37191,7 +38029,7 @@ portalProofreadRouter.get(
     const libraries = parseLibraries(auth.user.values.libraries);
     const library = c.req.query("library") ?? "";
     if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
-    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    if (!canReadLibrary(libraries, library)) return notFound4(c);
     const people = await loadPeople(c.env);
     const assignments = await listAssignments(c.env, library);
     const mine = people.root?.id === auth.user.recordId || assignments.some((a) => a.active && a.owner_id === auth.user.recordId && people.active.has(a.owner_id));
@@ -37217,7 +38055,7 @@ portalProofreadRouter.put(
     const machine = strField(b, "machine", 200);
     const email = strField(b, "user_email", 254).toLowerCase();
     if (!library || !email) return c.json({ error: "\u9700\u8981 library \u8207 user_email" }, 400);
-    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    if (!canReadLibrary(libraries, library)) return notFound4(c);
     const scope = scopeFrom(library, folder, machine);
     const gate = await requireOwnerOf(c.env, auth.user, library, folder ? `${folder}/x` : "", machine);
     if (!gate.ok) return c.json({ error: "\u53EA\u6709\u76EE\u524D\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u6307\u6D3E\u65B0\u7684\u8CA0\u8CAC\u4EBA", code: "not_owner" }, 403);
@@ -37237,7 +38075,7 @@ portalProofreadRouter.delete(
     const folder = c.req.query("folder") ?? "";
     const machine = c.req.query("machine") ?? "";
     if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
-    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    if (!canReadLibrary(libraries, library)) return notFound4(c);
     const gate = await requireOwnerOf(c.env, auth.user, library, folder ? `${folder}/x` : "", machine);
     if (!gate.ok) return c.json({ error: "\u53EA\u6709\u76EE\u524D\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u53D6\u6D88\u6307\u6D3E", code: "not_owner" }, 403);
     const done = await revokeAssignment(c.env, scopeFrom(library, folder, machine), auth.user.recordId);
@@ -37252,7 +38090,7 @@ portalProofreadRouter.get(
     const libraries = parseLibraries(auth.user.values.libraries);
     const library = c.req.query("library") ?? "";
     if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
-    if (!canReadLibrary(libraries, library)) return notFound2(c);
+    if (!canReadLibrary(libraries, library)) return notFound4(c);
     const folder = c.req.query("folder") ?? "";
     const people = await loadPeople(c.env);
     const owner = await ownerOf(c.env, people, library, folder ? `${folder}/x` : "", c.req.query("machine") ?? "");
@@ -37266,7 +38104,7 @@ portalProofreadRouter.get(
     if (!auth.ok) return auth.res;
     const library = c.req.query("library") ?? "";
     if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
-    if (!canReadLibrary(parseLibraries(auth.user.values.libraries), library)) return notFound2(c);
+    if (!canReadLibrary(parseLibraries(auth.user.values.libraries), library)) return notFound4(c);
     return c.json({ success: true, library, settings: await getSettings(c.env, library), defaults: DEFAULT_SETTINGS });
   })
 );
@@ -37278,7 +38116,7 @@ portalProofreadRouter.put(
     const b = await c.req.json().catch(() => null);
     const library = strField(b, "library", 200);
     if (!library) return c.json({ error: "\u7F3A\u5C11 library" }, 400);
-    if (!canReadLibrary(parseLibraries(auth.user.values.libraries), library)) return notFound2(c);
+    if (!canReadLibrary(parseLibraries(auth.user.values.libraries), library)) return notFound4(c);
     const gate = await requireOwnerOf(c.env, auth.user, library, "", "");
     if (!gate.ok) return c.json({ error: "\u53EA\u6709\u5EAB\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u8ABF\u6574\u9580\u6ABB", code: "not_owner" }, 403);
     const s = await putSettings(c.env, library, {
@@ -37960,6 +38798,7 @@ app.use("*", async (c, next) => {
   await next();
 });
 app.use("*", cypherTenantAuth);
+app.route("/", ruleUpstreamHookRouter);
 app.route("/", internalCronRouter);
 app.route("/", helpRouter);
 app.route("/", docsRouter);
