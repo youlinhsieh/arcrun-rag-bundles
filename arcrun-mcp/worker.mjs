@@ -8942,6 +8942,159 @@ var cors = (options) => {
   };
 };
 
+// mcp/src/lib/cypher-client.ts
+async function deriveCypherKey(secret, tenant) {
+  const s = (secret ?? "").trim();
+  const t = (tenant ?? "").trim();
+  if (!s || !t) return null;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(s), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("kbdb-proxy-v1\n" + t));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function cypherAuthHeaders(env, tenant) {
+  const h = { "X-Arcrun-API-Key": tenant };
+  const key = await deriveCypherKey(env.KBDB_INTERNAL_TOKEN, tenant);
+  if (key) h["Authorization"] = `Bearer ${key}`;
+  return h;
+}
+async function cypherFetch(env, path, opts) {
+  if (!env.CYPHER_EXECUTOR) {
+    throw new Error("CYPHER_EXECUTOR service binding not configured");
+  }
+  const url = new URL(`http://cypher-executor${path}`);
+  if (opts.query) {
+    for (const [k, v] of Object.entries(opts.query)) {
+      url.searchParams.set(k, String(v));
+    }
+  }
+  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
+    method: opts.method ?? "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Arcrun-By": "MCP(AI)",
+      // inkstone/Arcrun#485：使用者層修改紀錄的署名
+      ...await cypherAuthHeaders(env, opts.apiKey)
+    },
+    body: opts.body ? JSON.stringify(opts.body) : void 0
+  });
+}
+function errorResponse(error_code, human_message, next_actions, detail) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          { ok: false, error_code, human_message, next_actions, detail },
+          null,
+          2
+        )
+      }
+    ],
+    isError: true
+  };
+}
+function successResponse(data, hints) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          { ok: true, data, ...hints ? { hints } : {} },
+          null,
+          2
+        )
+      }
+    ]
+  };
+}
+
+// mcp/src/lib/portal-client.ts
+async function portalFetch(env, session, path, opts = {}) {
+  if (!env.CYPHER_EXECUTOR) {
+    throw new Error("CYPHER_EXECUTOR service binding not configured");
+  }
+  const url = new URL(`https://cypher${path}`);
+  for (const [k, v] of Object.entries(opts.query ?? {})) {
+    if (v !== void 0 && v !== "") url.searchParams.set(k, String(v));
+  }
+  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
+    method: opts.method ?? "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session}`,
+      // inkstone/Arcrun#485：App 使用者層的修改紀錄要寫得出「是 AI 經 MCP 改的」（署名仍是授權它的登入者）。
+      "X-Arcrun-By": "MCP(AI)"
+    },
+    body: opts.body !== void 0 ? JSON.stringify(opts.body) : void 0
+  });
+}
+function resolveKnowledgeIdentity(authPath, portal) {
+  if (authPath !== "oauth") return { kind: "service" };
+  return portal?.session ? { kind: "portal", portal } : { kind: "stale" };
+}
+function staleIdentityError() {
+  return errorResponse(
+    "identity_missing",
+    "\u9019\u689D MCP \u9023\u7DDA\u662F\u820A\u7248\u7C3D\u767C\u7684 token\uFF0C\u88E1\u9762\u6C92\u6709\u767B\u5165\u8005\u8EAB\u5206\uFF0C\u56E0\u6B64\u67E5\u4E0D\u5230\u4EFB\u4F55\u77E5\u8B58\u5167\u5BB9\u3002\u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u5728 claude.ai \u7684 connector \u8A2D\u5B9A\u88E1\u91CD\u65B0\u6388\u6B0A\u3001\u8F38\u5165\u4F60\u7684 Portal \u5E33\u5BC6\uFF09\u5373\u53EF\u2014\u2014\u4E0D\u9700\u8981\u53E6\u5916\u627E\u4EFB\u4F55 credential \u6216\u91D1\u9470\u3002",
+    [
+      "\u5230 claude.ai \u2192 Settings \u2192 Connectors\uFF0C\u628A\u9019\u500B connector \u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u6703\u8DF3\u51FA\u8F38\u5165 Portal \u5E33\u5BC6\u7684\u9801\u9762\uFF09",
+      "\u91CD\u9023\u5F8C kbdb_* \u5168\u90E8\u5DE5\u5177\u90FD\u6703\u7528\u4F60\u9019\u500B\u5E33\u865F\u7684\u6B0A\u9650\u67E5\u8A62"
+    ]
+  );
+}
+async function portalError(res, what) {
+  const detail = await res.text().catch(() => "");
+  if (res.status === 401) {
+    return errorResponse(
+      "session_expired",
+      `${what}\u5931\u6557\uFF1A\u767B\u5165\u968E\u6BB5\u5DF2\u904E\u671F\uFF08portal session \u5230\u671F\u6216\u5DF2\u767B\u51FA\uFF09\u3002`,
+      [
+        "\u5230 claude.ai \u2192 Settings \u2192 Connectors \u91CD\u65B0\u9023\u7DDA\u9019\u500B connector\uFF08\u91CD\u65B0\u8F38\u5165 Portal \u5E33\u5BC6\uFF09",
+        "\u91CD\u9023\u5F8C\u6B0A\u9650\u8207\u4F60\u5728 portal \u7DB2\u9801\u4E0A\u770B\u5230\u7684\u4E00\u81F4"
+      ],
+      detail
+    );
+  }
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    return errorResponse(
+      "kbdb_busy",
+      `${what}\u5931\u6557\uFF1A\u77E5\u8B58\u5EAB\u66AB\u6642\u8B80\u4E0D\u5230\uFF08HTTP ${res.status}\uFF09\u3002\u9019\u4E0D\u662F\u767B\u5165\u904E\u671F\uFF0C\u4E5F\u4E0D\u662F\u4F60\u7684\u5E33\u5BC6\u554F\u984C\u3002`,
+      ["\u4E0D\u7528\u91CD\u65B0\u9023\u7DDA\u6216\u91CD\u65B0\u6388\u6B0A\uFF1B\u7B49\u5E7E\u79D2\u5F8C\u518D\u8A66\u4E00\u6B21", "\u82E5\u6301\u7E8C\u51FA\u73FE\uFF0C\u901A\u77E5\u7DAD\u904B\uFF1A\u77E5\u8B58\u5EAB\uFF08D1\uFF09\u53EF\u80FD\u6B63\u5728\u904E\u8F09"],
+      detail
+    );
+  }
+  if (res.status === 403) {
+    return errorResponse(
+      "forbidden",
+      `${what}\u5931\u6557\uFF1A\u9019\u500B\u5E33\u865F\u6C92\u6709\u9019\u9805\u6B0A\u9650\uFF08\u5E33\u865F\u53EF\u80FD\u5DF2\u505C\u7528\uFF0C\u6216\u6C92\u6709\u88AB\u6388\u6B0A\u8A72\u77E5\u8B58\u5EAB\uFF09\u3002`,
+      ["\u8ACB\u77E5\u8B58\u5EAB\u7BA1\u7406\u54E1\u5728 portal \u7684\u5E33\u865F\u7BA1\u7406\u88E1\u78BA\u8A8D\u4F60\u7684\u72C0\u614B\u8207\u53EF\u7528\u77E5\u8B58\u5EAB"],
+      detail
+    );
+  }
+  return errorResponse(`portal_${res.status}`, `${what}\u5931\u6557\uFF08HTTP ${res.status}\uFF09`, ["\u7A0D\u5F8C\u91CD\u8A66"], detail);
+}
+async function refreshPortalIdentity(env, portal) {
+  try {
+    const res = await portalFetch(env, portal.session, "/portal/session");
+    if (res.status === 401 || res.status === 403) return { state: "revoked" };
+    if (!res.ok) return { state: "unavailable" };
+    const j = await res.json().catch(() => null);
+    if (!j || j.valid === false) return { state: "revoked" };
+    return {
+      state: "ok",
+      portal: {
+        session: portal.session,
+        display_name: typeof j.display_name === "string" ? j.display_name : portal.display_name,
+        // 角色讀不到就用最小權限，不沿用 token 裡可能已經過期的「admin」
+        role: typeof j.role === "string" && j.role ? j.role : "user",
+        libraries: Array.isArray(j.libraries) ? j.libraries.filter((x) => typeof x === "string") : portal.libraries
+      }
+    };
+  } catch {
+    return { state: "unavailable" };
+  }
+}
+
 // mcp/src/oauth/crypto.ts
 function base64UrlEncode(bytes) {
   let bin = "";
@@ -9222,7 +9375,25 @@ async function partnerAuthMiddleware(c, next) {
       }
       c.set("org_namespace", at.namespace);
       c.set("partner_token", at.namespace);
-      c.set("portal", at.portal);
+      let portal = at.portal;
+      if (portal?.session) {
+        const fresh = await refreshPortalIdentity(c.env, portal);
+        if (fresh.state === "revoked") {
+          return unauthorized(
+            "The account behind this connection is no longer active (disabled, removed, or signed out). Ask your admin; reconnecting only works for an active account",
+            "invalid_token"
+          );
+        }
+        if (fresh.state === "unavailable") {
+          return c.json(
+            { error: "temporarily_unavailable", error_description: "MCP server \u66AB\u6642\u7121\u6CD5\u78BA\u8A8D\u4F60\u7684\u5E33\u865F\u72C0\u614B\uFF08Portal \u5FD9\u788C\uFF09\uFF0C\u8ACB\u7A0D\u5F8C\u91CD\u8A66\uFF1B\u4E0D\u9700\u8981\u91CD\u65B0\u6388\u6B0A" },
+            503,
+            { "Retry-After": "10" }
+          );
+        }
+        portal = fresh.portal;
+      }
+      c.set("portal", portal);
       c.set("auth_path", "oauth");
       await next();
       return;
@@ -24017,72 +24188,6 @@ var envPrefix = globalThis.process?.env?.ARCRUN_TOOL_PREFIX;
 var TOOL_PREFIX = envPrefix || "arcrun";
 var toolName = (suffix) => `${TOOL_PREFIX}_${suffix}`;
 
-// mcp/src/lib/cypher-client.ts
-async function deriveCypherKey(secret, tenant) {
-  const s = (secret ?? "").trim();
-  const t = (tenant ?? "").trim();
-  if (!s || !t) return null;
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(s), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("kbdb-proxy-v1\n" + t));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function cypherAuthHeaders(env, tenant) {
-  const h = { "X-Arcrun-API-Key": tenant };
-  const key = await deriveCypherKey(env.KBDB_INTERNAL_TOKEN, tenant);
-  if (key) h["Authorization"] = `Bearer ${key}`;
-  return h;
-}
-async function cypherFetch(env, path, opts) {
-  if (!env.CYPHER_EXECUTOR) {
-    throw new Error("CYPHER_EXECUTOR service binding not configured");
-  }
-  const url = new URL(`http://cypher-executor${path}`);
-  if (opts.query) {
-    for (const [k, v] of Object.entries(opts.query)) {
-      url.searchParams.set(k, String(v));
-    }
-  }
-  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
-    method: opts.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Arcrun-By": "MCP(AI)",
-      // inkstone/Arcrun#485：使用者層修改紀錄的署名
-      ...await cypherAuthHeaders(env, opts.apiKey)
-    },
-    body: opts.body ? JSON.stringify(opts.body) : void 0
-  });
-}
-function errorResponse(error_code, human_message, next_actions, detail) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(
-          { ok: false, error_code, human_message, next_actions, detail },
-          null,
-          2
-        )
-      }
-    ],
-    isError: true
-  };
-}
-function successResponse(data, hints) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(
-          { ok: true, data, ...hints ? { hints } : {} },
-          null,
-          2
-        )
-      }
-    ]
-  };
-}
-
 // mcp/src/tools/arcrun_search_components.ts
 var CATALOG_UNREADABLE = "\u8B80\u4E0D\u5230\u96F6\u4EF6\u5EAB\uFF08\u9019\u662F\u67E5\u8A62\u5931\u6557\uFF0C\u4E0D\u4EE3\u8868\u96F6\u4EF6\u4E0D\u5B58\u5728\uFF09";
 function registerSearchComponents(server, env, partnerToken) {
@@ -31350,72 +31455,6 @@ function registerAllWorkflowCrudTools(server, env, partnerToken) {
   registerRunWorkflow(server, env, partnerToken);
 }
 
-// mcp/src/lib/portal-client.ts
-async function portalFetch(env, session, path, opts = {}) {
-  if (!env.CYPHER_EXECUTOR) {
-    throw new Error("CYPHER_EXECUTOR service binding not configured");
-  }
-  const url = new URL(`https://cypher${path}`);
-  for (const [k, v] of Object.entries(opts.query ?? {})) {
-    if (v !== void 0 && v !== "") url.searchParams.set(k, String(v));
-  }
-  return env.CYPHER_EXECUTOR.fetch(url.toString(), {
-    method: opts.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session}`,
-      // inkstone/Arcrun#485：App 使用者層的修改紀錄要寫得出「是 AI 經 MCP 改的」（署名仍是授權它的登入者）。
-      "X-Arcrun-By": "MCP(AI)"
-    },
-    body: opts.body !== void 0 ? JSON.stringify(opts.body) : void 0
-  });
-}
-function resolveKnowledgeIdentity(authPath, portal) {
-  if (authPath !== "oauth") return { kind: "service" };
-  return portal?.session ? { kind: "portal", portal } : { kind: "stale" };
-}
-function staleIdentityError() {
-  return errorResponse(
-    "identity_missing",
-    "\u9019\u689D MCP \u9023\u7DDA\u662F\u820A\u7248\u7C3D\u767C\u7684 token\uFF0C\u88E1\u9762\u6C92\u6709\u767B\u5165\u8005\u8EAB\u5206\uFF0C\u56E0\u6B64\u67E5\u4E0D\u5230\u4EFB\u4F55\u77E5\u8B58\u5167\u5BB9\u3002\u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u5728 claude.ai \u7684 connector \u8A2D\u5B9A\u88E1\u91CD\u65B0\u6388\u6B0A\u3001\u8F38\u5165\u4F60\u7684 Portal \u5E33\u5BC6\uFF09\u5373\u53EF\u2014\u2014\u4E0D\u9700\u8981\u53E6\u5916\u627E\u4EFB\u4F55 credential \u6216\u91D1\u9470\u3002",
-    [
-      "\u5230 claude.ai \u2192 Settings \u2192 Connectors\uFF0C\u628A\u9019\u500B connector \u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\uFF08\u6703\u8DF3\u51FA\u8F38\u5165 Portal \u5E33\u5BC6\u7684\u9801\u9762\uFF09",
-      "\u91CD\u9023\u5F8C kbdb_* \u5168\u90E8\u5DE5\u5177\u90FD\u6703\u7528\u4F60\u9019\u500B\u5E33\u865F\u7684\u6B0A\u9650\u67E5\u8A62"
-    ]
-  );
-}
-async function portalError(res, what) {
-  const detail = await res.text().catch(() => "");
-  if (res.status === 401) {
-    return errorResponse(
-      "session_expired",
-      `${what}\u5931\u6557\uFF1A\u767B\u5165\u968E\u6BB5\u5DF2\u904E\u671F\uFF08portal session \u5230\u671F\u6216\u5DF2\u767B\u51FA\uFF09\u3002`,
-      [
-        "\u5230 claude.ai \u2192 Settings \u2192 Connectors \u91CD\u65B0\u9023\u7DDA\u9019\u500B connector\uFF08\u91CD\u65B0\u8F38\u5165 Portal \u5E33\u5BC6\uFF09",
-        "\u91CD\u9023\u5F8C\u6B0A\u9650\u8207\u4F60\u5728 portal \u7DB2\u9801\u4E0A\u770B\u5230\u7684\u4E00\u81F4"
-      ],
-      detail
-    );
-  }
-  if (res.status === 502 || res.status === 503 || res.status === 504) {
-    return errorResponse(
-      "kbdb_busy",
-      `${what}\u5931\u6557\uFF1A\u77E5\u8B58\u5EAB\u66AB\u6642\u8B80\u4E0D\u5230\uFF08HTTP ${res.status}\uFF09\u3002\u9019\u4E0D\u662F\u767B\u5165\u904E\u671F\uFF0C\u4E5F\u4E0D\u662F\u4F60\u7684\u5E33\u5BC6\u554F\u984C\u3002`,
-      ["\u4E0D\u7528\u91CD\u65B0\u9023\u7DDA\u6216\u91CD\u65B0\u6388\u6B0A\uFF1B\u7B49\u5E7E\u79D2\u5F8C\u518D\u8A66\u4E00\u6B21", "\u82E5\u6301\u7E8C\u51FA\u73FE\uFF0C\u901A\u77E5\u7DAD\u904B\uFF1A\u77E5\u8B58\u5EAB\uFF08D1\uFF09\u53EF\u80FD\u6B63\u5728\u904E\u8F09"],
-      detail
-    );
-  }
-  if (res.status === 403) {
-    return errorResponse(
-      "forbidden",
-      `${what}\u5931\u6557\uFF1A\u9019\u500B\u5E33\u865F\u6C92\u6709\u9019\u9805\u6B0A\u9650\uFF08\u5E33\u865F\u53EF\u80FD\u5DF2\u505C\u7528\uFF0C\u6216\u6C92\u6709\u88AB\u6388\u6B0A\u8A72\u77E5\u8B58\u5EAB\uFF09\u3002`,
-      ["\u8ACB\u77E5\u8B58\u5EAB\u7BA1\u7406\u54E1\u5728 portal \u7684\u5E33\u865F\u7BA1\u7406\u88E1\u78BA\u8A8D\u4F60\u7684\u72C0\u614B\u8207\u53EF\u7528\u77E5\u8B58\u5EAB"],
-      detail
-    );
-  }
-  return errorResponse(`portal_${res.status}`, `${what}\u5931\u6557\uFF08HTTP ${res.status}\uFF09`, ["\u7A0D\u5F8C\u91CD\u8A66"], detail);
-}
-
 // mcp/src/tools/arcrun_skills_examples.ts
 var KbdbAccessError = class extends Error {
   constructor(status, what, detail) {
@@ -33607,6 +33646,44 @@ async function registerAllAppTools(server, env, orgNamespace, identity) {
   );
 }
 
+// mcp/src/lib/role-policy.ts
+var MEMBER_TOOLS = /* @__PURE__ */ new Set([
+  "kbdb_get_map",
+  "kbdb_get_index",
+  "kbdb_get_card",
+  "kbdb_search",
+  "kbdb_graph_neighbors",
+  "arcrun_whoami"
+]);
+var FULL_ROLES = /* @__PURE__ */ new Set(["admin", "owner"]);
+function isMemberOnly(identity) {
+  return identity.kind === "portal" && !FULL_ROLES.has(identity.portal.role);
+}
+function memberOnlyServer(server) {
+  const gate = {
+    tool: (name, ...rest) => MEMBER_TOOLS.has(name) ? server.tool.call(server, name, ...rest) : void 0,
+    registerTool: (name, ...rest) => MEMBER_TOOLS.has(name) ? server.registerTool.call(server, name, ...rest) : void 0,
+    prompt: () => void 0,
+    registerPrompt: () => void 0,
+    resource: () => void 0,
+    registerResource: () => void 0
+  };
+  return new Proxy(server, {
+    get(target, prop, receiver) {
+      if (prop in gate) return gate[prop];
+      const v = Reflect.get(target, prop, receiver);
+      return typeof v === "function" ? v.bind(target) : v;
+    }
+  });
+}
+var MEMBER_ONLY_NOTE = [
+  "\u3010\u9019\u500B\u5E33\u865F\u662F\u4E00\u822C\u540C\u4EC1\uFF1A\u53EA\u958B\u67E5\u8A62\u985E\u5DE5\u5177\u3011",
+  "\u9019\u689D\u9023\u7DDA\u7528\u7684\u662F\u4F60\u81EA\u5DF1\u7684 Portal \u5E33\u865F\uFF0C\u89D2\u8272\u4E0D\u662F\u7BA1\u7406\u54E1\uFF0C\u6240\u4EE5\u53EA\u6709\u67E5\u8A62\u77E5\u8B58\u5EAB\u7684\u5DE5\u5177",
+  "\uFF08`kbdb_search`\uFF0F`kbdb_get_map`\uFF0F`kbdb_get_index`\uFF0F`kbdb_get_card`\uFF0F`kbdb_graph_neighbors`\uFF0F`arcrun_whoami`\uFF09\u3002",
+  "\u5BEB\u5165\u3001\u522A\u9664\u3001\u8DD1\u5DE5\u4F5C\u6D41\u3001\u88DD App \u9019\u985E\u5DE5\u5177\u5728\u9019\u500B\u5E33\u865F\u4E0A**\u6839\u672C\u4E0D\u5B58\u5728**\u2014\u2014\u4E0D\u662F\u58DE\u4E86\uFF0C\u662F\u6B0A\u9650\u3002",
+  "\u9700\u8981\u7684\u8A71\u8ACB\u7BA1\u7406\u54E1\u5E6B\u5FD9\uFF0C\u4E0D\u8981\u81EA\u5DF1\u627E\u5225\u7684\u91D1\u9470\u6216\u5225\u7684\u9023\u7DDA\u53BB\u7E5E\u3002"
+].join("\n");
+
 // mcp/src/mcp-handler.ts
 var KNOWLEDGE_FIRST = [
   "\u3010\u9019\u689D\u9023\u7DDA\u4E0A\u6709\u4E3B\u4EBA\u7684\u77E5\u8B58\u5EAB\u2014\u2014\u5148\u67E5\u5B83\uFF0C\u518D\u67E5\u5225\u7684\u3011",
@@ -33712,14 +33789,19 @@ async function buildServerInstructions(env, identity) {
   return [KNOWLEDGE_FIRST, startHere, mapSection].join("\n\n---\n\n");
 }
 async function handleMcpRequest(request, env, orgNamespace, partnerToken, identity) {
-  const instructions = await buildServerInstructions(env, identity);
+  const memberOnly = isMemberOnly(identity);
+  const instructions = await buildServerInstructions(env, identity) + (memberOnly ? `
+
+---
+
+${MEMBER_ONLY_NOTE}` : "");
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: void 0 });
   const server = new McpServer(
     { name: "arcrun-mcp-server", version: "1.0.0" },
     { instructions }
   );
-  registerAllTools(server, env, orgNamespace, partnerToken, identity);
-  await registerAllAppTools(server, env, orgNamespace, identity);
+  registerAllTools(memberOnly ? memberOnlyServer(server) : server, env, orgNamespace, partnerToken, identity);
+  if (!memberOnly) await registerAllAppTools(server, env, orgNamespace, identity);
   await server.connect(transport);
   return transport.handleRequest(request);
 }
