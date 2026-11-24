@@ -52,10 +52,10 @@ var init_kbdb_busy = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -101,21 +101,21 @@ var init_compose = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -146,7 +146,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -193,10 +193,10 @@ var init_body = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -402,10 +402,10 @@ var init_url = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants();
     init_body();
@@ -679,10 +679,10 @@ var init_request = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -726,10 +726,10 @@ var init_html = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1140,10 +1140,10 @@ var init_context = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1153,18 +1153,18 @@ var init_router = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants2 = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1542,7 +1542,7 @@ var init_hono_base = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1563,13 +1563,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1591,7 +1591,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1682,10 +1682,10 @@ var init_node = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1744,7 +1744,7 @@ var init_trie = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1826,7 +1826,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -1933,27 +1933,27 @@ var init_router2 = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -2011,17 +2011,17 @@ var init_router3 = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2200,10 +2200,10 @@ var init_node2 = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2229,17 +2229,17 @@ var init_router4 = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2260,9 +2260,9 @@ var init_hono = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
   }
 });
@@ -2512,7 +2512,7 @@ var BUILTIN_APP_IDS;
 var init_builtin_ids = __esm({
   "cypher-executor/src/lib/builtin-ids.ts"() {
     "use strict";
-    BUILTIN_APP_IDS = ["notes"];
+    BUILTIN_APP_IDS = ["notes", "company_rules"];
   }
 });
 
@@ -3179,7 +3179,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// ../504/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -3361,7 +3361,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "../504/cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -14137,6 +14137,8 @@ __export(app_system_exports, {
   listInstalledApps: () => listInstalledApps,
   normalizeRequiredCredentials: () => normalizeRequiredCredentials,
   prefetchAppAction: () => prefetchAppAction,
+  putAppKeepingSources: () => putAppKeepingSources,
+  readAppFresh: () => readAppFresh,
   remainingPlaceholders: () => remainingPlaceholders,
   resolveDeclarationPlaceholders: () => resolveDeclarationPlaceholders,
   resolveWorkflowTrigger: () => resolveWorkflowTrigger,
@@ -14562,6 +14564,28 @@ async function getAppWorkflowGraph(env, tenant2, wfKey2) {
     return null;
   }
 }
+async function readAppFresh(env, tenant2, id) {
+  const store2 = appStore(env);
+  const raw2 = store2.getFresh ? await store2.getFresh(appKey(tenant2, id)) : await store2.get(appKey(tenant2, id), "text");
+  if (!raw2) return null;
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return null;
+  }
+}
+async function putAppKeepingSources(env, tenant2, id, record) {
+  const fresh = await readAppFresh(env, tenant2, id);
+  const sources = fresh?.user_layer?.rule_sources;
+  const ul = record.user_layer;
+  let out = record;
+  if (sources) out = { ...record, user_layer: { ...ul ?? layerOf(fresh), rule_sources: sources } };
+  else if (ul?.rule_sources) {
+    const { rule_sources: _drop, ...rest } = ul;
+    out = { ...record, user_layer: rest };
+  }
+  await appStore(env).put(appKey(tenant2, id), JSON.stringify(out));
+}
 async function listInstalledApps(env, tenant2) {
   const prefix = `${tenant2}:app:`;
   const list = await appStore(env).list({ prefix });
@@ -14759,7 +14783,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   let recExtra = {};
   const flushUl = async () => {
     if (!existing || !ulCtx?.dirty) return;
-    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify({ ...existing, ...recExtra, user_layer: ulCtx.layer }));
+    await putAppKeepingSources(env, tenant2, decl.id, { ...existing, ...recExtra, user_layer: ulCtx.layer });
     ulCtx.dirty = false;
   };
   const wantedCreds = normalizeRequiredCredentials(decl.requires);
@@ -14858,10 +14882,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
       return;
     }
     recExtra = { pending_hash: contentHash2, ...pendingFull ? { pending_full: true } : {} };
-    await appStore(env).put(
-      appKey(tenant2, decl.id),
-      JSON.stringify({ ...existing, ...recExtra, ...ulCtx ? { user_layer: ulCtx.layer } : {} })
-    );
+    await putAppKeepingSources(env, tenant2, decl.id, { ...existing, ...recExtra, ...ulCtx ? { user_layer: ulCtx.layer } : {} });
     markerWritten = true;
   };
   const skillRefs = [];
@@ -14945,7 +14966,16 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     };
   }
   if (cursor < total || spent() > INSTALL_REQUEST_BUDGET - FINAL_RESERVE) {
-    return { ok: true, in_progress: true, changed: true, progress: { done: cursor, total }, resume_from: cursor, resume_hash: contentHash2 };
+    const todoTotal = units.filter((u) => u.cost > 0).length;
+    const todoDone = units.slice(0, cursor).filter((u) => u.cost > 0).length;
+    return {
+      ok: true,
+      in_progress: true,
+      changed: true,
+      progress: { done: cursor, total, todo_total: todoTotal, todo_done: todoDone, skipped: total - todoTotal },
+      resume_from: cursor,
+      resume_hash: contentHash2
+    };
   }
   const credCheck = await findMissingCredentials(env, tenant2, wantedCreds);
   const needs = {
@@ -15011,7 +15041,8 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     status: "active"
   };
   try {
-    await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
+    if (existing) await putAppKeepingSources(env, tenant2, decl.id, record);
+    else await appStore(env).put(appKey(tenant2, decl.id), JSON.stringify(record));
   } catch (e) {
     return {
       ok: false,
@@ -15304,7 +15335,7 @@ function actorOf(h) {
 async function saveLayer(env, tenant2, appId, layer) {
   const app2 = await getInstalledApp(env, tenant2, appId);
   if (!app2) return false;
-  await appStore(env).put(appKey(tenant2, appId), JSON.stringify({ ...app2, user_layer: layer }));
+  await putAppKeepingSources(env, tenant2, appId, { ...app2, user_layer: layer });
   return true;
 }
 async function noteUserEdit(env, tenant2, appId, kind, id, before, after, by) {
@@ -15312,7 +15343,7 @@ async function noteUserEdit(env, tenant2, appId, kind, id, before, after, by) {
   if (!app2) return false;
   const layer = layerOf(app2);
   const changed = recordEdit(layer, kind, id, before, after, by, (/* @__PURE__ */ new Date()).toISOString());
-  if (changed) await appStore(env).put(appKey(tenant2, appId), JSON.stringify({ ...app2, user_layer: layer }));
+  if (changed) await putAppKeepingSources(env, tenant2, appId, { ...app2, user_layer: layer });
   return changed;
 }
 async function getUserLayerState(env, tenant2, appId) {
@@ -15343,7 +15374,7 @@ async function keepUserItem(env, tenant2, appId, kind, id, by) {
   const cur = await layerWriter(env, tenant2).read(kind, id);
   if (cur == null) return { ok: false, code: "item_not_found", error: `\u73FE\u5834\u6C92\u6709 ${kind}\u300C${id}\u300D\u3002` };
   const changed = markKept(layer, kind, id, cur, by, (/* @__PURE__ */ new Date()).toISOString());
-  if (changed) await appStore(env).put(appKey(tenant2, appId), JSON.stringify({ ...app2, user_layer: layer }));
+  if (changed) await putAppKeepingSources(env, tenant2, appId, { ...app2, user_layer: layer });
   return { ok: true, changed, kind, id };
 }
 async function readPublisherPage(env, tenant2, id) {
@@ -21303,6 +21334,116 @@ return { success: true, content: content, date: rawDate, created_at: now.toISOSt
   ]
 };
 
+// app-market/declarations/company_rules.json
+var company_rules_default = {
+  id: "company_rules",
+  name: "\u672C\u516C\u53F8\u7BA1\u7406\u898F\u7AE0",
+  icon: "\u{1F4D8}",
+  entry: "kb",
+  version: "0.1.1",
+  workflows: [
+    {
+      name: "refund_guard",
+      description: "\u9000\u6B3E\u8D85\u984D\u9001\u4E3B\u7BA1\uFF1A\u91D1\u984D\u8D85\u904E\u9580\u6ABB\u5C31\u8ACB\u4E3B\u7BA1\u540C\u610F\uFF0C\u6C92\u8D85\u904E\u5C31\u76F4\u63A5\u653E\u884C",
+      trigger: "manual",
+      graph: {
+        id: "refund_guard",
+        name: "refund_guard",
+        nodes: [
+          {
+            id: "input",
+            type: "Input",
+            label: "\u6536\u5230\u9000\u6B3E\u7533\u8ACB"
+          },
+          {
+            id: "check",
+            type: "Component",
+            label: "\u91D1\u984D\u8D85\u904E\u4E94\u5343\u5143\u55CE",
+            componentId: "if_control",
+            data: {
+              condition: "amount > 5000",
+              input: {
+                amount: "{{input.amount}}"
+              }
+            }
+          },
+          {
+            id: "escalate",
+            type: "Component",
+            label: "\u9001\u4E3B\u7BA1\u540C\u610F",
+            componentId: "code",
+            data: {
+              code: "return { decision: 'needs_manager', message: '\u9000\u6B3E\u91D1\u984D\u8D85\u904E\u4E94\u5343\u5143\uFF0C\u9808\u7D93\u4E3B\u7BA1\u540C\u610F\u5F8C\u624D\u80FD\u9000\u6B3E' };"
+            }
+          },
+          {
+            id: "pass",
+            type: "Component",
+            label: "\u76F4\u63A5\u653E\u884C",
+            componentId: "code",
+            data: {
+              code: "return { decision: 'allowed', message: '\u4E94\u5343\u5143\u4EE5\u5167\uFF0C\u53EF\u4EE5\u76F4\u63A5\u9000\u6B3E' };"
+            }
+          }
+        ],
+        edges: [
+          {
+            from: "input",
+            to: "check",
+            type: "ON_SUCCESS"
+          },
+          {
+            from: "check",
+            to: "escalate",
+            type: "ON_TRUE"
+          },
+          {
+            from: "check",
+            to: "pass",
+            type: "ON_FALSE"
+          }
+        ]
+      }
+    }
+  ],
+  actions: [],
+  rulebook: {
+    title: "\u672C\u516C\u53F8\u7BA1\u7406\u898F\u7AE0",
+    sections: [
+      {
+        id: "1-1",
+        chapter: "\u7B2C\u4E00\u7AE0\u3000\u7E3D\u5247",
+        title: "\u9069\u7528\u7BC4\u570D",
+        body: "**\u7B2C\u4E00\u689D**\u3000\u672C\u898F\u7AE0\u9069\u7528\u65BC\u672C\u516C\u53F8\u6240\u6709\u540C\u4EC1\uFF0C\u4EE5\u53CA\u66FF\u672C\u516C\u53F8\u5DE5\u4F5C\u7684 AI \u52A9\u7406\u3002\n\n**\u7B2C\u4E8C\u689D**\u3000\u898F\u7AE0\u6709\u7591\u7FA9\u6642\uFF0C\u4EE5\u4E3B\u7BA1\u7684\u89E3\u91CB\u70BA\u6E96\u3002"
+      },
+      {
+        id: "2-1",
+        chapter: "\u7B2C\u4E8C\u7AE0\u3000\u5BA2\u6236\u670D\u52D9",
+        title: "\u56DE\u8986\u6642\u9650",
+        body: "**\u7B2C\u4E00\u689D**\u3000\u5BA2\u4EBA\u4F86\u4FE1\u6216\u4F86\u96FB\uFF0C\u7576\u5929\u71DF\u696D\u6642\u9593\u5167\u8981\u5148\u56DE\u8986\u300C\u5DF2\u6536\u5230\u300D\u3002\n\n**\u7B2C\u4E8C\u689D**\u3000\u9700\u8981\u67E5\u8B49\u7684\u4E8B\uFF0C\u4E09\u500B\u5DE5\u4F5C\u5929\u5167\u7D66\u51FA\u5B8C\u6574\u7B54\u8986\u3002"
+      },
+      {
+        id: "2-2",
+        chapter: "\u7B2C\u4E8C\u7AE0\u3000\u5BA2\u6236\u670D\u52D9",
+        title: "\u9000\u8CA8\u8207\u4FDD\u56FA",
+        body: "**\u7B2C\u4E00\u689D**\u3000\u5BA2\u4EBA\u5728\u6536\u8CA8\u5F8C\u4E03\u5929\u5167\u8981\u6C42\u9000\u8CA8\uFF0C\u4E00\u5F8B\u53D7\u7406\uFF0C\u4E0D\u554F\u539F\u56E0\u3002\n\n**\u7B2C\u4E8C\u689D**\u3000\u9000\u6B3E\u91D1\u984D\u8D85\u904E\u65B0\u53F0\u5E63\u4E94\u5343\u5143\uFF0C\u9808\u7D93\u4E3B\u7BA1\u540C\u610F\u5F8C\u624D\u80FD\u9000\u6B3E\u3002\n\n**\u7B2C\u4E09\u689D**\u3000\u4FDD\u56FA\u671F\u70BA\u5341\u4E8C\u500B\u6708\uFF0C\u81EA\u8CFC\u8CB7\u65E5\u8D77\u7B97\uFF1B\u4FDD\u56FA\u5167\u7684\u7DAD\u4FEE\u4E0D\u6536\u8CBB\u3002",
+        guard: {
+          workflow: "refund_guard",
+          label: "\u9000\u6B3E\u8D85\u984D\u9001\u4E3B\u7BA1"
+        }
+      },
+      {
+        id: "3-1",
+        chapter: "\u7B2C\u4E09\u7AE0\u3000\u8CC7\u6599\u8207\u4FDD\u5BC6",
+        title: "\u5BA2\u6236\u8CC7\u6599",
+        body: "**\u7B2C\u4E00\u689D**\u3000\u5BA2\u6236\u7684\u806F\u7D61\u65B9\u5F0F\u8207\u8A02\u55AE\u5167\u5BB9\u53EA\u80FD\u7528\u5728\u670D\u52D9\u9019\u4F4D\u5BA2\u6236\uFF0C\u4E0D\u5F97\u5916\u6D41\u3002\n\n**\u7B2C\u4E8C\u689D**\u3000\u4EFB\u4F55\u4EBA\u4E0D\u5F97\u628A\u5BA2\u6236\u8CC7\u6599\u8CBC\u5230\u516C\u53F8\u4EE5\u5916\u7684\u670D\u52D9\u3002",
+        mandatory: true,
+        source: "\u7E3D\u7DB1@1"
+      }
+    ]
+  }
+};
+
 // cypher-executor/src/lib/app-catalog.ts
 var marketRow = (id) => {
   const r = catalog_default.apps.find((a) => a.id === id);
@@ -21324,7 +21465,7 @@ var builtinEntry = (id, declaration) => {
     ...typeof r.engine_min === "string" ? { engine_min: r.engine_min } : {}
   };
 };
-var APP_CATALOG = [builtinEntry("notes", notes_default)];
+var APP_CATALOG = [builtinEntry("notes", notes_default), builtinEntry("company_rules", company_rules_default)];
 if (JSON.stringify(APP_CATALOG.map((e) => e.id).sort()) !== JSON.stringify([...BUILTIN_APP_IDS].sort())) {
   throw new Error("builtin-ids.ts \u7684\u5167\u5EFA App \u8207 app-catalog.ts \u7684 APP_CATALOG \u4E0D\u4E00\u81F4");
 }
@@ -24518,7 +24659,7 @@ async function cypherTenantAuth(c, next) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// ../504/cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
   const defaults = {
     origin: "*",
@@ -25487,6 +25628,75 @@ function artifactsUpstream(env) {
     }
   };
 }
+function spanOf(text, from) {
+  let i = from;
+  const ws = () => {
+    while (i < text.length && /\s/.test(text[i])) i++;
+  };
+  const value = () => {
+    ws();
+    const start = i;
+    const c = text[i];
+    if (c === '"') {
+      i++;
+      while (i < text.length && text[i] !== '"') i += text[i] === "\\" ? 2 : 1;
+      i++;
+      return { start, end: i };
+    }
+    if (c === "{") {
+      i++;
+      const props = /* @__PURE__ */ new Map();
+      ws();
+      if (text[i] === "}") {
+        i++;
+        return { start, end: i, props };
+      }
+      for (; ; ) {
+        ws();
+        const k = value();
+        ws();
+        if (text[i] !== ":") throw new Error("bad json");
+        i++;
+        props.set(JSON.parse(text.slice(k.start, k.end)), value());
+        ws();
+        if (text[i] === ",") {
+          i++;
+          continue;
+        }
+        if (text[i] === "}") {
+          i++;
+          return { start, end: i, props };
+        }
+        throw new Error("bad json");
+      }
+    }
+    if (c === "[") {
+      i++;
+      const items = [];
+      ws();
+      if (text[i] === "]") {
+        i++;
+        return { start, end: i, items };
+      }
+      for (; ; ) {
+        items.push(value());
+        ws();
+        if (text[i] === ",") {
+          i++;
+          continue;
+        }
+        if (text[i] === "]") {
+          i++;
+          return { start, end: i, items };
+        }
+        throw new Error("bad json");
+      }
+    }
+    while (i < text.length && !/[\s,\]}]/.test(text[i])) i++;
+    return { start, end: i };
+  };
+  return value();
+}
 function editRulebookText(text, sectionId, draft) {
   let json;
   try {
@@ -25495,9 +25705,23 @@ function editRulebookText(text, sectionId, draft) {
     throw new UpstreamPrError("bad_rulebook", "\u4E0A\u6E38\u7684 rulebook.json \u73FE\u5728\u4E0D\u662F\u5408\u6CD5\u7684 JSON\uFF0C\u6C92\u8FA6\u6CD5\u958B\u63D0\u6848\u3002");
   }
   const list = Array.isArray(json?.sections) ? json.sections : void 0;
-  const hit = list?.find((s) => s && typeof s === "object" && s.id === sectionId);
-  if (!hit) throw new UpstreamPrError("section_gone", `\u4E0A\u6E38\u73FE\u5728\u5DF2\u7D93\u6C92\u6709\u300C${sectionId}\u300D\u9019\u4E00\u689D\u4E86\uFF0C\u8ACB\u5148\u6309\u300C\u91CD\u65B0\u8B80\u53D6\u300D\u770B\u770B\u4E0A\u6E38\u6539\u4E86\u4EC0\u9EBC\u3002`);
+  const idx = list ? list.findIndex((s) => s && typeof s === "object" && s.id === sectionId) : -1;
+  if (!list || idx < 0) throw new UpstreamPrError("section_gone", `\u4E0A\u6E38\u73FE\u5728\u5DF2\u7D93\u6C92\u6709\u300C${sectionId}\u300D\u9019\u4E00\u689D\u4E86\uFF0C\u8ACB\u5148\u6309\u300C\u91CD\u65B0\u8B80\u53D6\u300D\u770B\u770B\u4E0A\u6E38\u6539\u4E86\u4EC0\u9EBC\u3002`);
+  const hit = list[idx];
   if (hit.title === draft.title && hit.body === draft.body) throw new UpstreamPrError("no_change", "\u4E0A\u6E38\u73FE\u5728\u7684\u9019\u4E00\u689D\u5C31\u662F\u9019\u500B\u6A23\u5B50\uFF0C\u4E0D\u7528\u518D\u958B\u63D0\u6848\u3002");
+  try {
+    const root = spanOf(text, 0);
+    const node = root.props?.get("sections")?.items?.[idx];
+    const t = node?.props?.get("title"), b = node?.props?.get("body");
+    if (t && b && text[t.start] === '"' && text[b.start] === '"') {
+      const edits = [{ s: t, v: draft.title }, { s: b, v: draft.body }].sort((x, y) => y.s.start - x.s.start);
+      let out = text;
+      for (const e of edits) out = out.slice(0, e.s.start) + JSON.stringify(e.v) + out.slice(e.s.end);
+      const check = JSON.parse(out);
+      if (check.sections[idx].title === draft.title && check.sections[idx].body === draft.body) return out;
+    }
+  } catch {
+  }
   hit.title = draft.title;
   hit.body = draft.body;
   const m = /^\s*[\[{]\s*\r?\n([ \t]+)\S/.exec(text);
@@ -25543,19 +25767,56 @@ function pendingFromApps(apps) {
     ...pendingView(s)
   }));
 }
-var NO_BOOK = "\u9019\u53F0\u9084\u6C92\u6709\u5B89\u88DD\u898F\u7AE0 App\uFF0C\u6C92\u6709\u5730\u65B9\u639B\u3002\u8ACB\u5148\u5230 App \u5E02\u96C6\u5B89\u88DD\u300C\u7BA1\u7406\u898F\u7AE0\u300D\u3002";
+var NO_BOOK = "\u9019\u53F0\u7684\u898F\u7AE0\u5340\u9084\u6C92\u6E96\u5099\u597D\uFF08\u5167\u5EFA\u898F\u7AE0\u88DC\u88DD\u6C92\u6210\u529F\uFF09\uFF0C\u66AB\u6642\u6C92\u6709\u5730\u65B9\u639B\u3002\u7A0D\u5F8C\u91CD\u6574\u518D\u8A66\uFF1B\u4E00\u76F4\u4E0D\u884C\u8ACB\u56DE\u5831\u3002";
 async function readSources(env, tenant2) {
   const app2 = await anchorApp(env, tenant2);
   return app2 ? layerOf(app2).rule_sources ?? emptySources() : emptySources();
 }
-async function writeSources(env, tenant2, doc) {
-  const app2 = await anchorApp(env, tenant2);
-  if (!app2) return false;
-  const layer = layerOf(app2);
-  if (doc.items.length) layer.rule_sources = doc;
-  else delete layer.rule_sources;
-  await appStore(env).put(appKey(tenant2, app2.id), JSON.stringify({ ...app2, user_layer: layer }));
-  return true;
+var queues = /* @__PURE__ */ new Map();
+function serial(key, job) {
+  const run2 = (queues.get(key) ?? Promise.resolve()).then(job, job);
+  const tail = run2.catch(() => void 0);
+  queues.set(key, tail);
+  tail.then(() => {
+    if (queues.get(key) === tail) queues.delete(key);
+  });
+  return run2;
+}
+var SOURCES_WRITE_TRIES = 4;
+var settleTuning = { min: 100, factor: 2, pad: 100, max: 3e3 };
+var settleMs = (putMs) => Math.min(settleTuning.max, Math.max(settleTuning.min, putMs * settleTuning.factor + settleTuning.pad));
+async function mutateSources(env, tenant2, fn) {
+  return serial(`${tenant2}`, async () => {
+    let anchorId = null;
+    let last = emptySources();
+    for (let attempt = 0; attempt < SOURCES_WRITE_TRIES; attempt++) {
+      if (anchorId === null) {
+        const a = await anchorApp(env, tenant2);
+        if (!a) return { saved: false, doc: last };
+        anchorId = a.id;
+      }
+      const app2 = await readAppFresh(env, tenant2, anchorId);
+      if (!app2) return { saved: false, doc: last };
+      const layer = layerOf(app2);
+      const doc = layer.rule_sources ?? emptySources();
+      const verify = fn(doc);
+      if (verify === "skip") return { saved: true, doc };
+      const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      doc.w = token;
+      if (doc.items.length || doc.next > 1) layer.rule_sources = doc;
+      else delete layer.rule_sources;
+      const t0 = Date.now();
+      await appStore(env).put(appKey(tenant2, app2.id), JSON.stringify({ ...app2, user_layer: layer }));
+      const putMs = Date.now() - t0;
+      last = doc;
+      const mine = (b) => !!b && (b.w === token || !!verify && verify(b));
+      const back = (await readAppFresh(env, tenant2, app2.id))?.user_layer?.rule_sources;
+      if (!mine(back)) continue;
+      await new Promise((r) => setTimeout(r, settleMs(putMs)));
+      if (mine((await readAppFresh(env, tenant2, app2.id))?.user_layer?.rule_sources)) return { saved: true, doc };
+    }
+    return { saved: false, doc: last };
+  });
 }
 var mirrorStatus = (e) => e.code === "no_artifacts" ? 424 : e.code === "too_large" ? 422 : 502;
 var storeOf = (env, m) => m ?? artifactsMirror(env);
@@ -25582,14 +25843,18 @@ async function ensureMirrors(env, tenant2, mirror) {
   for (const src of todo) {
     try {
       const a = await adopt(store2, tenant2, src, { ...src.title ? { title: src.title } : {}, sections: src.sections }, void 0, "system", "migrate");
-      src.mirror = a.mirror;
-      src.adopted = a.adopted;
-      src.history = a.history;
+      await mutateSources(env, tenant2, (d) => {
+        const x = d.items.find((i) => i.id === src.id);
+        if (!x || x.mirror) return "skip";
+        x.mirror = a.mirror;
+        x.adopted = a.adopted;
+        x.history = a.history;
+        return (b) => b.items.find((i) => i.id === src.id)?.mirror === a.mirror;
+      });
       migrated++;
     } catch {
     }
   }
-  if (migrated) await writeSources(env, tenant2, doc);
   return { migrated, pending: todo.length - migrated };
 }
 var SRC_PREFIX = "src.";
@@ -25642,27 +25907,40 @@ async function addSource(env, tenant2, by, input, fetchImpl, mirror) {
   const p = parseRepoUrl(url);
   if ("error" in p) return err("bad_url", p.error);
   if (!await anchorApp(env, tenant2)) return err("no_book_app", NO_BOOK, 409);
-  const doc = await readSources(env, tenant2);
-  if (doc.items.length >= RULE_SOURCES_MAX) return err("too_many", `\u6700\u591A\u639B ${RULE_SOURCES_MAX} \u500B\u898F\u7AE0\u4F86\u6E90`);
   const norm = `${p.host}/${p.owner}/${p.repo}/${p.ref}/${p.path}`.toLowerCase();
-  if (doc.items.some((s) => {
+  const sameRepo = (d) => d.items.some((s) => {
     const q = parseRepoUrl(s.url);
     return !("error" in q) && `${q.host}/${q.owner}/${q.repo}/${q.ref}/${q.path}`.toLowerCase() === norm;
-  })) {
-    return err("duplicate", "\u9019\u500B repo \u5DF2\u7D93\u639B\u904E\u4E86", 409);
-  }
+  });
+  let reservedNo = 0, early = null;
+  const res = await mutateSources(env, tenant2, (d) => {
+    early = null;
+    if (d.items.length >= RULE_SOURCES_MAX) {
+      early = err("too_many", `\u6700\u591A\u639B ${RULE_SOURCES_MAX} \u500B\u898F\u7AE0\u4F86\u6E90`);
+      return "skip";
+    }
+    if (sameRepo(d)) {
+      early = err("duplicate", "\u9019\u500B repo \u5DF2\u7D93\u639B\u904E\u4E86", 409);
+      return "skip";
+    }
+    reservedNo = d.next;
+    d.next++;
+    const no = reservedNo;
+    return (b) => b.next > no;
+  });
+  if (early) return early;
+  if (!res.saved) return err("save_conflict", "\u8A2D\u5B9A\u525B\u597D\u88AB\u5225\u7684\u64CD\u4F5C\u6539\u52D5\uFF0C\u9019\u6B21\u6C92\u5B58\u6210\uFF0C\u8ACB\u518D\u6309\u4E00\u6B21\u3002", 409);
   const r = await fetchRepoRulebook(url, { token: env.RULE_REPO_TOKEN, fetchImpl, artifactsEnv: env });
   if (!r.ok) return err(r.code, r.error, r.code === "unreachable" ? 502 : 422);
   const label = (typeof input.label === "string" && input.label.trim() ? input.label.trim() : r.decl.title?.trim() || `${p.owner}/${p.repo}`).slice(0, 40);
   const now2 = (/* @__PURE__ */ new Date()).toISOString();
-  const inLayer = doc.items.filter((s) => s.layer === layer);
   const src = {
-    id: `s${doc.next}`,
+    id: `s${reservedNo}`,
     url,
     layer,
     label,
     repo: `${p.owner}/${p.repo}`,
-    order: inLayer.length ? Math.max(...inLayer.map((s) => s.order)) + 1 : 0,
+    order: 0,
     added_by: by,
     added_at: now2,
     fetched_at: now2,
@@ -25683,9 +25961,28 @@ async function addSource(env, tenant2, by, input, fetchImpl, mirror) {
     }
     throw e;
   }
-  doc.items.push(src);
-  doc.next++;
-  await writeSources(env, tenant2, doc);
+  let dup = false;
+  const fin = await mutateSources(env, tenant2, (d) => {
+    dup = false;
+    if (d.items.some((x) => x.id === src.id)) return (b) => b.items.some((x) => x.id === src.id);
+    if (sameRepo(d)) {
+      dup = true;
+      return "skip";
+    }
+    const inLayer = d.items.filter((x) => x.layer === layer);
+    src.order = inLayer.length ? Math.max(...inLayer.map((x) => x.order)) + 1 : 0;
+    d.items.push({ ...src });
+    if (d.next <= reservedNo) d.next = reservedNo + 1;
+    return (b) => b.items.some((x) => x.id === src.id);
+  });
+  if (dup) {
+    try {
+      await store2.remove(src.mirror);
+    } catch {
+    }
+    return err("duplicate", "\u9019\u500B repo \u5DF2\u7D93\u639B\u904E\u4E86", 409);
+  }
+  if (!fin.saved) return err("save_conflict", "\u8A2D\u5B9A\u525B\u597D\u88AB\u5225\u7684\u64CD\u4F5C\u6539\u52D5\uFF0C\u9019\u6B21\u6C92\u5B58\u6210\uFF0C\u8ACB\u518D\u6309\u4E00\u6B21\u3002", 409);
   return { ok: true, source: summarizeSource(src) };
 }
 async function removeSource(env, tenant2, id, mirror) {
@@ -25700,33 +25997,53 @@ async function removeSource(env, tenant2, id, mirror) {
       throw e;
     }
   }
-  doc.items = doc.items.filter((s) => s.id !== id);
-  await writeSources(env, tenant2, doc);
-  return { ok: true };
+  const r = await mutateSources(env, tenant2, (d) => {
+    d.items = d.items.filter((s) => s.id !== id);
+    return (b) => !b.items.some((s) => s.id === id);
+  });
+  return r.saved ? { ok: true } : err("save_conflict", "\u8A2D\u5B9A\u525B\u597D\u88AB\u5225\u7684\u64CD\u4F5C\u6539\u52D5\uFF0C\u4F86\u6E90\u9084\u5728\uFF0C\u8ACB\u518D\u6309\u4E00\u6B21\u79FB\u9664\u3002", 409);
 }
 async function moveSource(env, tenant2, id, dir) {
-  const doc = await readSources(env, tenant2);
-  const me = doc.items.find((s) => s.id === id);
-  if (!me) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
-  const row = doc.items.filter((s) => s.layer === me.layer).sort((a, b) => a.order - b.order);
-  const i = row.findIndex((s) => s.id === id), j = dir === "up" ? i - 1 : i + 1;
-  if (j < 0 || j >= row.length) return { ok: true };
-  row.forEach((x, k) => {
-    x.order = k;
+  if (!(await readSources(env, tenant2)).items.some((s) => s.id === id)) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  let gone = false;
+  const r = await mutateSources(env, tenant2, (d) => {
+    gone = false;
+    const me = d.items.find((s) => s.id === id);
+    if (!me) {
+      gone = true;
+      return "skip";
+    }
+    const row = d.items.filter((s) => s.layer === me.layer).sort((a, b) => a.order - b.order);
+    const i = row.findIndex((s) => s.id === id), j = dir === "up" ? i - 1 : i + 1;
+    if (j < 0 || j >= row.length) return "skip";
+    row.forEach((x, k) => {
+      x.order = k;
+    });
+    const tmp = row[i].order;
+    row[i].order = row[j].order;
+    row[j].order = tmp;
+    const want = row[j].id;
+    const wantOrder = row[j].order;
+    return (b) => b.items.find((x) => x.id === want)?.order === wantOrder;
   });
-  const tmp = row[i].order;
-  row[i].order = row[j].order;
-  row[j].order = tmp;
-  await writeSources(env, tenant2, doc);
-  return { ok: true };
+  if (gone) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  return r.saved ? { ok: true } : err("save_conflict", "\u8A2D\u5B9A\u525B\u597D\u88AB\u5225\u7684\u64CD\u4F5C\u6539\u52D5\uFF0C\u9019\u6B21\u6C92\u79FB\u6210\uFF0C\u8ACB\u518D\u6309\u4E00\u6B21\u3002", 409);
 }
 async function mutate(env, tenant2, id, fn) {
-  const doc = await readSources(env, tenant2);
-  const s = doc.items.find((x) => x.id === id);
-  if (!s) return null;
-  fn(s);
-  await writeSources(env, tenant2, doc);
-  return s;
+  let out = null;
+  await mutateSources(env, tenant2, (d) => {
+    out = null;
+    const s = d.items.find((x) => x.id === id);
+    if (!s) return "skip";
+    fn(s);
+    out = s;
+    const mine = JSON.stringify(s);
+    return (b) => {
+      const x = b.items.find((i) => i.id === id);
+      return !!x && JSON.stringify(x) === mine;
+    };
+  });
+  return out;
 }
 function markMerged(x, decl, at) {
   for (const pr of x.proposals ?? []) {
@@ -25807,7 +26124,7 @@ async function approveUpstream(env, tenant2, id, by, hash, mirror) {
     throw e;
   }
   const s = await mutate(env, tenant2, id, (x) => {
-    if (x.pending?.hash !== p.hash) return;
+    if (x.pending?.hash !== p.hash || x.adopted !== s0.adopted) return;
     x.sections = p.sections;
     x.mirror = a.mirror;
     x.adopted = a.adopted;
@@ -25851,12 +26168,12 @@ async function pullAllSources(env, tenant2, opts = {}) {
   return out;
 }
 async function rollbackSource(env, tenant2, id, mirror) {
-  const doc = await readSources(env, tenant2);
-  const s = doc.items.find((x) => x.id === id);
+  const s = (await readSources(env, tenant2)).items.find((x) => x.id === id);
   if (!s) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
   const i = adoptedIndex(s);
   if (!s.mirror || i <= 0) return err("no_previous", "\u6C92\u6709\u66F4\u65E9\u7684\u7248\u672C\u53EF\u4EE5\u9000\u56DE", 409);
   const prev = (s.history ?? [])[i - 1];
+  const from = s.adopted;
   let text;
   try {
     text = await storeOf(env, mirror).read(s.mirror, prev.commit, MIRROR_FILE);
@@ -25873,12 +26190,22 @@ async function rollbackSource(env, tenant2, id, mirror) {
   }
   const n = normalizeRulebook(json, s.repo);
   if (!n.ok) return err("mirror_bad", n.error, 502);
-  s.sections = n.decl.sections;
-  s.adopted = prev.commit;
-  if (n.decl.title) s.title = n.decl.title;
-  else delete s.title;
-  await writeSources(env, tenant2, doc);
-  return { ok: true, source: summarizeSource(s) };
+  let moved = false;
+  const out = await mutate(env, tenant2, id, (x) => {
+    moved = false;
+    if (x.adopted === prev.commit) return;
+    if (x.adopted !== from) {
+      moved = true;
+      return;
+    }
+    x.sections = n.decl.sections;
+    x.adopted = prev.commit;
+    if (n.decl.title) x.title = n.decl.title;
+    else delete x.title;
+  });
+  if (!out) return err("not_found", "\u627E\u4E0D\u5230\u9019\u500B\u4F86\u6E90", 404);
+  if (moved) return err("stale", "\u9019\u500B\u4F86\u6E90\u525B\u525B\u6709\u5225\u7684\u8B8A\u52D5\uFF08\u53EF\u80FD\u525B\u6838\u51C6\u4E86\u65B0\u7248\uFF09\uFF0C\u8ACB\u91CD\u65B0\u770B\u4E00\u6B21\u518D\u9000\u56DE\u3002", 409);
+  return { ok: true, source: summarizeSource(out) };
 }
 async function readSourceSection(env, tenant2, id, sec) {
   const doc = await readSources(env, tenant2);
@@ -26712,6 +27039,14 @@ var KbdbAssetStore = class {
       return shape(raw2, type);
     }
     return shape(await this.readRaw(key, isHumanActionAsset(this.store, key)), type);
+  }
+  /**
+   * inkstone/Arcrun#506：繞過本請求的讀取備忘，直接去 KBDB 讀現在的內容。
+   * 「讀—改—寫」要寫回之前用它讀一次，才不會拿 list() 在請求開頭備忘的舊內容去蓋掉別人剛寫的。
+   */
+  async getFresh(key) {
+    this.memo.delete(key);
+    return this.readRaw(key, isHumanActionAsset(this.store, key));
   }
   async getWithMetadata(key, type) {
     return { value: await this.get(key, type), metadata: null, cacheStatus: null };
@@ -35095,7 +35430,7 @@ function passageToChatCard(p, account, accountId) {
   };
 }
 function mergeCards(perAccount, max = MAX_CARDS_IN_PROMPT) {
-  const queues = perAccount.map(
+  const queues2 = perAccount.map(
     (cards) => cards.map((c, i) => ({ c, i })).sort((a, b) => (FOUND_BY_RANK[a.c.found_by] ?? 3) - (FOUND_BY_RANK[b.c.found_by] ?? 3) || a.i - b.i).map((x) => x.c)
   );
   const seen = /* @__PURE__ */ new Set();
@@ -35103,7 +35438,7 @@ function mergeCards(perAccount, max = MAX_CARDS_IN_PROMPT) {
   let progressed = true;
   while (out.length < max && progressed) {
     progressed = false;
-    for (const q of queues) {
+    for (const q of queues2) {
       while (q.length > 0) {
         const c = q.shift();
         const key = `${c.account_id}\0${c.library}\0${c.page_name}`;
@@ -37516,7 +37851,7 @@ portalDataRouter.get(
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
     const tenant2 = knowledgeOwner(c.env);
-    const apps = (await listInstalledApps(c.env, tenant2)).filter((a) => a.rulebook);
+    const apps = (await withBuiltinApps(c, tenant2, await listInstalledApps(c.env, tenant2))).filter((a) => a.rulebook);
     const books = (await Promise.all(apps.map((a) => readBook(c.env, tenant2, a)))).filter((b) => b !== null);
     try {
       await ensureMirrors(c.env, tenant2);
@@ -37535,6 +37870,7 @@ portalDataRouter.post(
     if (!auth.ok) return auth.res;
     if (!ruleIsAdmin(auth)) return c.json(SRC_ADMIN_ONLY, 403);
     const body = await c.req.json().catch(() => null);
+    await withBuiltinApps(c, knowledgeOwner(c.env), await listInstalledApps(c.env, knowledgeOwner(c.env)));
     const r = await addSource(c.env, knowledgeOwner(c.env), ruleActor(auth), body ?? {});
     if (!r.ok) return srcFail(c, r);
     return c.json({ source: r.source }, 201);
