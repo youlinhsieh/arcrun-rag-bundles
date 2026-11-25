@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-24T11:56:09.145Z",
+  "generated_at": "2026-11-25T02:01:01.971Z",
   "apps": [
     {
       "id": "notes",
@@ -11,7 +11,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/notes-1.6.0.json",
-        "sha256": "2e7ca37770a49eab2b1ccb231d0917e09e17b1dc2af9b68077918433e18dd4cd"
+        "sha256": "f90a09fead420d946e49d24bab6fb31bb74b37fffa847276b7918e45ae74879a"
       }
     },
     {
@@ -23,7 +23,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/flow_canvas-0.2.1.json",
-        "sha256": "300b7bf403efe94a2f1601c1816cae9b6d1b1180f86fdbdef2d0b1747e43504c"
+        "sha256": "705774fff2f955769d89bb81d31a826e99edf1b0530289179253c6197e462630"
       }
     },
     {
@@ -58,7 +58,7 @@
       },
       "package": {
         "url": "packages/global_index-0.2.0.json",
-        "sha256": "065a477aa3cc76c43d0f4c8db2bf84135cdb01012e117fe938f242b0c107c26e"
+        "sha256": "e2fe116815fc69bedf22183ddc6940d34fea3bd729d7c188200a951a704c7f84"
       }
     },
     {
@@ -94,7 +94,7 @@
       },
       "package": {
         "url": "packages/kanban-0.9.19.json",
-        "sha256": "9c5159dbc8fde9b01ac18177d8f0e53c6a5e68068992d15b33a39ff94a9f5291"
+        "sha256": "4863860f9ea9948d0bfe13a71e3d50f7c12539e9b75a9ecf8c2a994c7bbe2c32"
       }
     },
     {
@@ -403,7 +403,7 @@
       },
       "package": {
         "url": "packages/ahub-0.64.3.json",
-        "sha256": "85df5e4e9b33e5c7f6a874d47a4c4daf808d8c01b1203ec4792ea9d33fb8586d"
+        "sha256": "d88ba7dfbbdc3bd9ffd8e2004be4132c8fe0bf287589c91f4f6c393252be2744"
       }
     },
     {
@@ -438,7 +438,7 @@
       },
       "package": {
         "url": "packages/releases-0.1.2.json",
-        "sha256": "93e0ac23227b86552ce8769fc96f5499ae74623c5d7e4fb8eba7753454a973c9"
+        "sha256": "fe411fb7e5e1adcd2492041a4c089ef3e357e4b0e446f18a18ff2bcff717e88a"
       }
     },
     {
@@ -502,7 +502,7 @@
       },
       "package": {
         "url": "packages/imbot-0.1.1.json",
-        "sha256": "b3ad9a42bd86634f0ee35e74f81ac6de1b103459875484e3e15880e4cb0a886e"
+        "sha256": "b25ccc122cfc1cd98353146e65cc1e000c7ea760b53ad1f631cfa640458c38ee"
       }
     },
     {
@@ -624,7 +624,7 @@
       },
       "package": {
         "url": "packages/paper-0.5.0.json",
-        "sha256": "261bfa3255b3d167cb1be28f81cfacd58caa9810300f14d4c2ea689673b37e6e"
+        "sha256": "9c2d98aff59bd5f0e9780c95c41d01c1ed2f2802ce44ef440c335d85ed9c42a4"
       }
     },
     {
@@ -636,7 +636,7 @@
       "author": "Arcrun 示範",
       "package": {
         "url": "packages/company_rules-0.1.1.json",
-        "sha256": "c7bf0b8e66d217d3f00b4a3e458af6985ed00f95548e4192fc80335c4761038a"
+        "sha256": "205aaf146301028ac6c0ef7da8986c3c7d4278575cea5b09b4374b37bc59a989"
       }
     }
   ]

@@ -1233,6 +1233,7 @@ async function listEntries(db, f = {}) {
     conds.push("page_name = ?");
     params.push(f.page_name);
   }
+  if (f.only_paged) conds.push("page_name IS NOT NULL");
   if (f.source) {
     conds.push("json_extract(metadata_json, '$.source') = ?");
     params.push(f.source);
@@ -2470,6 +2471,12 @@ async function createRecord(db, input) {
     throw new RecordExistsError(recordId);
   }
   const writtenSlots = slots.filter((s) => s in entryIds || s in values);
+  const cellMeta = (slot) => {
+    if (slot !== "subject" && slot !== "object") return {};
+    const raw2 = "library" in entryIds ? referenced.get(entryIds["library"]) : values["library"];
+    const lib = typeof raw2 === "string" ? raw2.trim() : "";
+    return lib && lib !== UNLABELLED_LIBRARY ? { metadata_json: JSON.stringify({ library: lib }) } : {};
+  };
   const stmts = [
     // 歸屬＝一條關係（舊 template_id 欄的下場）
     belongsStatement(recordId, tpl.id, ownerId),
@@ -2484,19 +2491,19 @@ async function createRecord(db, input) {
     if (isRelationSlot(slot)) {
       for (const fk of parseRelationInput2(slot, values[slot])) {
         const ids = relationCellIds(recordId, slot, fk);
-        stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId }, { ignore: true }));
+        stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId, ...cellMeta(slot) }, { ignore: true }));
         stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
       }
       continue;
     }
     if (input.derived_cell_ids) {
       const ids = derivedCellIds(recordId, slot);
-      stmts.push(entryRowStatement({ id: ids.value, content: values[slot], owner_id: ownerId }, { ignore: true }));
+      stmts.push(entryRowStatement({ id: ids.value, content: values[slot], owner_id: ownerId, ...cellMeta(slot) }, { ignore: true }));
       stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
       continue;
     }
     const valueId = uid2("e");
-    stmts.push(entryRowStatement({ id: valueId, content: values[slot], owner_id: ownerId, refs_json: "[]", tags_json: "[]" }));
+    stmts.push(entryRowStatement({ id: valueId, content: values[slot], owner_id: ownerId, refs_json: "[]", tags_json: "[]", ...cellMeta(slot) }));
     stmts.push(entryRowStatement({ id: uid2("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: valueId }));
   }
   await db.batch(stmts);
@@ -2817,6 +2824,7 @@ var init_record_crud = __esm({
     init_entry_crud();
     init_kind();
     init_entity_canon();
+    init_library_predicate();
     init_library_map_store();
     init_template_guard();
     init_card_row();
@@ -9768,10 +9776,12 @@ embedRoutes.get("/selftest", async (c) => {
 });
 
 // kbdb/src/routes/entities.ts
+init_library_predicate();
 init_d1();
 
 // kbdb/src/actions/entity-resolve.ts
 init_entity_canon();
+init_library_predicate();
 init_record_crud();
 init_kind();
 init_embed();
@@ -9786,6 +9796,12 @@ var DEFAULT_JUDGE_MIN_SCORE = 0.55;
 var MAX_JUDGE_CANDIDATES = 2;
 var DEFAULT_RECENT_WINDOW_SEC = 600;
 var MAX_RECENT_CANDIDATES = 20;
+var entityLibraryExpr = (alias) => ENTRY_LIBRARY.replace(/metadata_json/g, `${alias}.metadata_json`);
+function normLibrary(raw2) {
+  if (typeof raw2 !== "string") return void 0;
+  const v = raw2.trim();
+  return v === "" ? void 0 : v;
+}
 function cosine(a, b) {
   let dot = 0, na = 0, nb = 0;
   const n2 = Math.min(a.length, b.length);
@@ -9796,7 +9812,7 @@ function cosine(a, b) {
   }
   return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
 }
-async function recentNeighbors(env, db, tplId, owner, vec, seen) {
+async function recentNeighbors(env, db, tplId, owner, vec, seen, library) {
   const n2 = Number(env.ENTITY_RECENT_WINDOW_SEC);
   const windowSec = Number.isFinite(n2) && n2 >= 0 ? n2 : DEFAULT_RECENT_WINDOW_SEC;
   if (windowSec === 0) return [];
@@ -9805,9 +9821,10 @@ async function recentNeighbors(env, db, tplId, owner, vec, seen) {
     `SELECT e.id AS id, e.content AS name, d.content AS description
        FROM entries b JOIN entries e ON e.id = b.src_id JOIN entries d ON d.id = e.id || '~v~description'
       WHERE b.dst_id = ? AND b.rel_id = '${SYS_BELONGS}' AND b.created_at >= ? AND +b.owner_id = ?
-        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'
+        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? `
+        AND ${entityLibraryExpr("e")} = ?` : ""}
       ORDER BY b.created_at DESC LIMIT ?`,
-    [tplId, since, owner, MAX_RECENT_CANDIDATES + seen.size]
+    [tplId, since, owner, ...library ? [library] : [], MAX_RECENT_CANDIDATES + seen.size]
   );
   const cands = (rows.results ?? []).filter((r) => !seen.has(r.id)).slice(0, MAX_RECENT_CANDIDATES);
   if (cands.length === 0) return [];
@@ -9896,22 +9913,22 @@ async function findEntity(db, owner, rawName) {
   const id = await entityIdOf(owner, canon);
   const tpl = await getTemplate(db, TPL_ENTITY_NAME);
   if (!tpl) return null;
-  const hit = await db.first(`SELECT e.id AS id, e.content AS content FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [id, tpl.id]);
-  if (hit) return { id: hit.id, name: hit.content, matched_by: "canonical" };
+  const hit = await db.first(`SELECT e.id AS id, e.content AS content, ${entityLibraryExpr("e")} AS lib FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [id, tpl.id]);
+  if (hit) return { id: hit.id, name: hit.content, matched_by: "canonical", library: libraryOfValue(hit.lib) };
   const aid = await aliasIdOf(owner, canon);
   const holder = await db.first(
-    `SELECT e.id AS id, e.content AS content FROM entries r JOIN entries e ON e.id = r.src_id
+    `SELECT e.id AS id, e.content AS content, ${entityLibraryExpr("e")} AS lib FROM entries r JOIN entries e ON e.id = r.src_id
       WHERE r.dst_id = ? AND r.rel_id = ? AND ${isEntityExpr("e.id")} LIMIT 1`,
     [aid, fieldEntryId(tpl.id, "alias"), tpl.id]
   );
-  return holder ? { id: holder.id, name: holder.content, matched_by: "alias" } : null;
+  return holder ? { id: holder.id, name: holder.content, matched_by: "alias", library: libraryOfValue(holder.lib) } : null;
 }
-async function attachAlias(db, tplId, owner, entityId, aliasName) {
+async function attachAlias(db, tplId, owner, entityId, aliasName, library) {
   const aid = await aliasIdOf(owner, aliasName);
   const same = await db.first(`SELECT e.id AS id FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [await entityIdOf(owner, aliasName), tplId]);
   if (same) return same.id === entityId;
   const aliasTpl = await ensureAliasTemplate(db);
-  await insertEntryRow(db, { id: aid, content: aliasName, owner_id: owner }, { ignore: true });
+  await insertEntryRow(db, { id: aid, content: aliasName, owner_id: owner, ...library ? { metadata_json: JSON.stringify({ library }) } : {} }, { ignore: true });
   await insertBelongs(db, aid, aliasTpl, owner);
   await insertEntryRow(db, { id: fieldEntryId(tplId, "alias"), content: "alias" }, { ignore: true });
   await insertEntryRow(db, { id: `rela_${entityId}~${aid}`, owner_id: owner, src_id: entityId, rel_id: fieldEntryId(tplId, "alias"), dst_id: aid }, { ignore: true });
@@ -9923,14 +9940,16 @@ async function resolveEntity(env, db, input) {
   if (typeof input.name !== "string" || !input.name.trim()) throw new EntityError("name \u5FC5\u586B\uFF08\u975E\u7A7A\u5B57\u4E32\uFF09");
   const canon = canonicalEntity(input.name);
   const description = typeof input.description === "string" ? input.description.trim() : "";
+  const library = normLibrary(input.library);
   const tplId = await ensureEntityTemplate(db);
+  const mismatch = (entityLib) => library && libraryOfValue(entityLib) !== library ? { library_mismatch: true } : {};
   const known = await findEntity(db, owner, canon);
   if (known) {
-    if (description && await fillDescriptionIfEmpty(db, tplId, known.id, owner, description)) {
+    if (description && await fillDescriptionIfEmpty(db, tplId, known.id, owner, description, known.library === "general" ? void 0 : known.library)) {
       const row2 = await db.first("SELECT * FROM entries WHERE id = ?", [known.id]);
       if (row2) await embedOnWrite(env, row2).catch(() => false);
     }
-    return { entity_id: known.id, name: known.name, matched_by: known.matched_by, created: false, alias_added: false, vector: "skipped" };
+    return { entity_id: known.id, name: known.name, matched_by: known.matched_by, created: false, library: known.library, ...mismatch(known.library), alias_added: false, vector: "skipped" };
   }
   let vec = null;
   let vectorState = "no_description";
@@ -9959,7 +9978,7 @@ async function resolveEntity(env, db, input) {
     const recentIds = /* @__PURE__ */ new Set();
     if (vectorState !== "failed" && !neighbors.some((n2) => n2.score >= threshold)) {
       try {
-        const extra = await recentNeighbors(env, db, tplId, owner, vec, new Set(neighbors.map((n2) => n2.id)));
+        const extra = await recentNeighbors(env, db, tplId, owner, vec, new Set(neighbors.map((n2) => n2.id)), library);
         for (const x of extra) recentIds.add(x.id);
         if (extra.length) neighbors = [...neighbors, ...extra].sort((a, b) => b.score - a.score);
       } catch {
@@ -9970,20 +9989,20 @@ async function resolveEntity(env, db, input) {
       if (n2.score < threshold) break;
       const target = await db.first(
         `SELECT e.id AS id, e.content AS content FROM entries e WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")}
-            AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'`,
-        [n2.id, owner, tplId]
+            AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? ` AND ${entityLibraryExpr("e")} = ?` : ""}`,
+        [n2.id, owner, tplId, ...library ? [library] : []]
       );
       if (!target) continue;
-      if (!await attachAlias(db, tplId, owner, target.id, canon)) continue;
-      return { entity_id: target.id, name: target.content, matched_by: "vector", created: false, alias_added: true, score: n2.score, vector: "compared", judge: "not_needed", judge_calls: 0 };
+      if (!await attachAlias(db, tplId, owner, target.id, canon, library)) continue;
+      return { entity_id: target.id, name: target.content, matched_by: "vector", created: false, library: library ?? "general", alias_added: true, score: n2.score, vector: "compared", judge: "not_needed", judge_calls: 0 };
     }
     const gray = neighbors.filter((n2) => n2.score >= judgeMinScore(env, threshold) && (n2.score < threshold || recentIds.has(n2.id))).slice(0, MAX_JUDGE_CANDIDATES);
     judgeState = gray.length ? "different" : "not_needed";
     for (const n2 of gray) {
       const cand = await db.first(
         `SELECT e.id AS id, e.content AS content, d.content AS description FROM entries e LEFT JOIN entries d ON d.id = e.id || '~v~description'
-          WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")} AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'`,
-        [n2.id, owner, tplId]
+          WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")} AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? ` AND ${entityLibraryExpr("e")} = ?` : ""}`,
+        [n2.id, owner, tplId, ...library ? [library] : []]
       );
       if (!cand) continue;
       judgeCalls++;
@@ -9991,12 +10010,12 @@ async function resolveEntity(env, db, input) {
       judgeState = verdict;
       if (verdict === "unavailable" || verdict === "failed") break;
       if (verdict !== "same") continue;
-      if (!await attachAlias(db, tplId, owner, cand.id, canon)) continue;
-      return { entity_id: cand.id, name: cand.content, matched_by: "ai", created: false, alias_added: true, score: n2.score, vector: "compared", judge: "same", judge_calls: judgeCalls };
+      if (!await attachAlias(db, tplId, owner, cand.id, canon, library)) continue;
+      return { entity_id: cand.id, name: cand.content, matched_by: "ai", created: false, library: library ?? "general", alias_added: true, score: n2.score, vector: "compared", judge: "same", judge_calls: judgeCalls };
     }
   }
   const id = await entityIdOf(owner, canon);
-  await insertEntryRow(db, { id, content: canon, owner_id: owner, metadata_json: JSON.stringify({ embed: true }) }, { ignore: true });
+  await insertEntryRow(db, { id, content: canon, owner_id: owner, metadata_json: JSON.stringify(library ? { embed: true, library } : { embed: true }) }, { ignore: true });
   await createRecord(db, {
     template: tplId,
     record_id: id,
@@ -10004,32 +10023,40 @@ async function resolveEntity(env, db, input) {
     values: description ? { name: canon, description } : { name: canon },
     derived_cell_ids: true
   });
+  if (library) {
+    await db.run(
+      `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.library', ?) WHERE id IN (?, ?)`,
+      [library, derivedCellIds(id, "name").value, derivedCellIds(id, "description").value]
+    );
+  }
   const row = await db.first("SELECT * FROM entries WHERE id = ?", [id]);
   if (row) await embedOnWrite(env, row, vec ? { vec } : {}).catch(() => false);
-  return { entity_id: id, name: canon, matched_by: "new", created: true, alias_added: false, vector: vectorState, judge: judgeState, judge_calls: judgeCalls };
+  return { entity_id: id, name: canon, matched_by: "new", created: true, library: library ?? "general", alias_added: false, vector: vectorState, judge: judgeState, judge_calls: judgeCalls };
 }
-async function fillDescriptionIfEmpty(db, tplId, entityId, owner, description) {
+async function fillDescriptionIfEmpty(db, tplId, entityId, owner, description, library) {
   const ids = derivedCellIds(entityId, "description");
   const exists = await db.first("SELECT id FROM entries WHERE id = ?", [ids.value]);
   if (exists) return false;
-  await insertEntryRow(db, { id: ids.value, content: description, owner_id: owner }, { ignore: true });
+  await insertEntryRow(db, { id: ids.value, content: description, owner_id: owner, ...library ? { metadata_json: JSON.stringify({ library }) } : {} }, { ignore: true });
   await insertEntryRow(db, { id: ids.relation, owner_id: owner, src_id: entityId, rel_id: fieldEntryId(tplId, "description"), dst_id: ids.value }, { ignore: true });
   await insertEntryRow(db, { id: fieldEntryId(tplId, "description"), content: "description" }, { ignore: true });
   await db.run(`UPDATE entries SET is_embedded = 0 WHERE id = ?`, [entityId]);
   return true;
 }
-async function entityCatalog(db, owner, limit = 200, offset = 0) {
+async function entityCatalog(db, owner, limit = 200, offset = 0, libraries) {
   const n2 = Math.min(Math.max(Math.trunc(limit) || 200, 1), 500);
   const o = Math.max(Math.trunc(offset) || 0, 0);
+  const libs = libraries && libraries.length > 0 ? libraries : void 0;
   const tpl = await getTemplate(db, TPL_ENTITY_NAME);
   if (!tpl) return [];
   const res = await db.all(
     `SELECT e.id AS id, e.content AS name, d.content AS description
        FROM entries b JOIN entries e ON e.id = b.src_id LEFT JOIN entries d ON d.id = e.id || '~v~description'
       WHERE b.dst_id = ? AND b.rel_id = '${SYS_BELONGS}' AND +b.owner_id = ?
-        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'
+        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${libs ? `
+        AND ${entityLibraryExpr("e")} IN (${libs.map(() => "?").join(",")})` : ""}
       ORDER BY b.created_at DESC, e.id LIMIT ? OFFSET ?`,
-    [tpl.id, owner, n2, o]
+    [tpl.id, owner, ...libs ?? [], n2, o]
   );
   return res.results ?? [];
 }
@@ -10057,7 +10084,7 @@ entityRoutes.post("/resolve", async (c) => {
   try {
     for (const it of items) {
       try {
-        results.push(await resolveEntity(c.env, db, { owner_id: owner, name: String(it.name ?? ""), description: it.description }));
+        results.push(await resolveEntity(c.env, db, { owner_id: owner, name: String(it.name ?? ""), description: it.description, library: it.library ?? body.library }));
       } catch (e) {
         if (!(e instanceof EntityError)) throw e;
         results.push({ error: e.message });
@@ -10080,12 +10107,12 @@ entityRoutes.get("/lookup", async (c) => {
   const name = c.req.query("name") ?? "";
   if (!owner.trim() || !name.trim()) return c.json({ success: false, error: "owner_id and name required" }, 400);
   const found = await findEntity(dbOf(c.env), owner.trim(), name);
-  return c.json({ success: true, found: !!found, ...found ? { entity_id: found.id, name: found.name, matched_by: found.matched_by } : {} });
+  return c.json({ success: true, found: !!found, ...found ? { entity_id: found.id, name: found.name, matched_by: found.matched_by, library: found.library } : {} });
 });
 entityRoutes.get("/", async (c) => {
   const owner = c.req.query("owner_id") ?? "";
   if (!owner.trim()) return c.json({ success: false, error: "owner_id required" }, 400);
-  const entities = await entityCatalog(dbOf(c.env), owner.trim(), Number(c.req.query("limit") ?? 200), Number(c.req.query("offset") ?? 0));
+  const entities = await entityCatalog(dbOf(c.env), owner.trim(), Number(c.req.query("limit") ?? 200), Number(c.req.query("offset") ?? 0), parseLibraryList(c.req.query("library")));
   return c.json({ success: true, count: entities.length, entities });
 });
 
@@ -10788,6 +10815,8 @@ async function retrieveForQuestion(db, question, opts = {}) {
       owner_id: opts.owner_id,
       library: targetLibraries,
       exclude_kind: ["library_map"],
+      only_paged: true,
+      // 三元組值格帶庫後不能被當成「頁」列出來（#174）
       limit: pagesLimit + 1,
       without_total: true
     });
@@ -11427,6 +11456,9 @@ var GENERATIONS = [
     file: "0017_card_row.sql",
     what: "\u4E00\u5F35\u5361\u4E00\u5217\u2014\u2014records \u7684\u5C6C\u6027\u6253\u5305\u5728\u8EAB\u5206\u5217\u7684 JSON \u88E1\uFF08entries \u52A0 props\uFF0Ftpl_id\uFF0Ffmt\u3001templates \u52A0\u5B58\u6CD5\u65D7\u6A19\u8207\u642C\u9077\u9032\u5EA6\uFF1BD100 \u7B2C\u2462\u6B65\uFF0Cinkstone/Arcrun#481\uFF09",
     // 只加欄與索引、不搬資料：沒有 template 切到新存法之前，寫入與讀取都和第 16 代一字不差 ⇒ rows_per_card 沿用。
+    // inkstone/Arcrun#174：三元組的 subject／object 值格跟著 record 的庫標庫（受限庫的實體名字不外洩），
+    // 每個標了庫的 entry 在庫索引上多寫 1 列 ⇒ 一張卡（5 條三元組）多 10 列：531 → 548（現場量到，card-rows-written-gate）。
+    // 這是有意、看得見的增加：換到「沒授權該庫的人搜不到它的實體名」。
     checks: [
       { kind: "entries_column", name: "props" },
       { kind: "entries_column", name: "tpl_id" },
@@ -11435,7 +11467,7 @@ var GENERATIONS = [
       // 安裝器為省額度會先跳過，列進來就讓 /health 永遠卡在第 16 代。沒有 card 列之前它一列都不存（partial index，tpl_id IS NOT NULL）；
       // 查詢不會因此退成全表掃描——template 切成一卡一列的第一步（card-format copy）會先確保它存在（ensureMemberIndex）。
     ],
-    rows_per_card: 531
+    rows_per_card: 548
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;

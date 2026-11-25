@@ -2876,6 +2876,47 @@ async function deriveKbdbProxyKey(secret, tenant2) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(s), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(KEY_PREFIX + t)));
 }
+function b64urlEncode(s) {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDecode(s) {
+  try {
+    const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - s.length % 4);
+    const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + pad);
+    return new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0)));
+  } catch {
+    return null;
+  }
+}
+async function userKeyMac(secret, tenant2, email) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${USER_KEY_PREFIX}${tenant2}
+${email}`)));
+}
+async function deriveDaemonUserKey(secret, tenant2, email) {
+  const s = (secret ?? "").trim();
+  const t = (tenant2 ?? "").trim();
+  const e = (email ?? "").trim().toLowerCase();
+  if (!s || !t || !e) return null;
+  return `${DAEMON_USER_KEY_PREFIX}${b64urlEncode(e)}.${await userKeyMac(s, t, e)}`;
+}
+async function verifyDaemonUserKey(secret, tenant2, bearer) {
+  const s = (secret ?? "").trim();
+  const t = (tenant2 ?? "").trim();
+  if (!s || !t || !bearer.startsWith(DAEMON_USER_KEY_PREFIX)) return null;
+  const [encEmail, mac, ...rest] = bearer.slice(DAEMON_USER_KEY_PREFIX.length).split(".");
+  if (!encEmail || !mac || rest.length > 0) return null;
+  const email = b64urlDecode(encEmail);
+  if (!email || email !== email.toLowerCase()) return null;
+  const want = await userKeyMac(s, t, email);
+  if (want.length !== mac.length) return null;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ mac.charCodeAt(i);
+  return diff === 0 ? { email } : null;
+}
 function ownCypherHosts(env) {
   const hosts = /* @__PURE__ */ new Set();
   const add = (u) => {
@@ -2945,12 +2986,14 @@ function gateInfo(pathname) {
   }
   return { gated: false };
 }
-var KEY_PREFIX;
+var KEY_PREFIX, USER_KEY_PREFIX, DAEMON_USER_KEY_PREFIX;
 var init_kbdb_proxy_key = __esm({
   "cypher-executor/src/lib/kbdb-proxy-key.ts"() {
     "use strict";
     init_endpoints();
     KEY_PREFIX = "kbdb-proxy-v1\n";
+    USER_KEY_PREFIX = "daemon-user-v1\n";
+    DAEMON_USER_KEY_PREFIX = "dk1.";
   }
 });
 
@@ -15085,9 +15128,11 @@ function prefetchAppAction(env, tenant2, appId, action) {
   return { guessedKey, app: app2, guessedRaw };
 }
 async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch) {
+  const tStart = Date.now();
   const pre = prefetch ?? prefetchAppAction(env, tenant2, appId, action);
   const guessedKey = pre.guessedKey;
   const [app2, guessedRaw] = await Promise.all([pre.app, pre.guessedRaw]);
+  const tLoaded = Date.now();
   if (!app2 || app2.status !== "active") return { ok: false, status: 404, error: "\u9019\u500B App \u6C92\u6709\u5B89\u88DD" };
   if (!app2.actions.includes(action)) {
     return { ok: false, status: 403, error: "\u9019\u500B\u52D5\u4F5C\u4E0D\u5728\u9019\u500B App \u7684\u767D\u540D\u55AE\u5167" };
@@ -15104,7 +15149,17 @@ async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch)
   } catch {
     return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
   }
+  const tExec = Date.now();
   const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
+  const tDone = Date.now();
+  const timing = [["load", tLoaded - tStart], ["run", tDone - tExec]];
+  if (Array.isArray(result.trace)) {
+    for (const st of result.trace) {
+      if (typeof st?.nodeId === "string" && typeof st.duration_ms === "number" && st.nodeId !== "input") {
+        timing.push([`n_${st.nodeId.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40)}`, st.duration_ms]);
+      }
+    }
+  }
   const g = graph;
   const verdict = writeExecutionVerdict(
     env,
@@ -15126,10 +15181,11 @@ async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch)
     return {
       ok: false,
       status: 502,
-      error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` + (gate ? `\u3002\u9019\u500B App \u9700\u8981\u5E73\u53F0 ${gate.needs} \u4EE5\u4E0A\uFF0C\u9019\u53F0\u662F ${gate.have}\u2014\u2014\u5F88\u53EF\u80FD\u662F\u5E73\u53F0\u7248\u672C\u4E0D\u5920\u65B0\u9020\u6210\u7684\uFF0C\u8ACB\u5148\u628A\u5E73\u53F0\u66F4\u65B0\u5230 ${gate.needs} \u4EE5\u4E0A\uFF08\u66F4\u65B0\u4E2D\u5FC3\uFF09\u3002` : "")
+      error: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u5931\u6557\uFF1A${result.error ?? "\u672A\u77E5\u932F\u8AA4"}` + (gate ? `\u3002\u9019\u500B App \u9700\u8981\u5E73\u53F0 ${gate.needs} \u4EE5\u4E0A\uFF0C\u9019\u53F0\u662F ${gate.have}\u2014\u2014\u5F88\u53EF\u80FD\u662F\u5E73\u53F0\u7248\u672C\u4E0D\u5920\u65B0\u9020\u6210\u7684\uFF0C\u8ACB\u5148\u628A\u5E73\u53F0\u66F4\u65B0\u5230 ${gate.needs} \u4EE5\u4E0A\uFF08\u66F4\u65B0\u4E2D\u5FC3\uFF09\u3002` : ""),
+      timing
     };
   }
-  return { ok: true, status: 200, result: result.data };
+  return { ok: true, status: 200, result: result.data, timing };
 }
 function refTrigger(w) {
   return w.trigger ?? "manual";
@@ -17775,6 +17831,14 @@ async function ephemeralListBy(env, template, field, value, max = 50) {
   }
   return out;
 }
+async function ephemeralPatchById(env, recordId, values) {
+  const res = await kFetch(env, `/records/${encodeURIComponent(recordId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ values })
+  });
+  releaseBody(res);
+  if (!res.ok) throw new EphemeralStoreError(`PATCH /records/:id \u2192 ${res.status}`, res.status);
+}
 async function ephemeralDeleteById(env, recordId) {
   await deleteRecordById(env, recordId);
 }
@@ -18723,7 +18787,7 @@ var PORTAL_TEMPLATE_SEEDS = [
     // 永不存明碼；libraries 是 JSON array 字串（["general"] / ["*"]＝全庫）。
     name: "portal_user",
     description: "RAG Portal \u540C\u4EC1\u5E33\u865F\uFF08portal-auth \xA72.1\uFF1B\u8CC7\u6599\u5BEB {tenant}::portal \u5B50 namespace\uFF09",
-    slots: ["email", "display_name", "status", "role", "password_hash", "libraries", "created_at", "updated_at"],
+    slots: ["email", "display_name", "status", "role", "password_hash", "libraries", "created_at", "updated_at", "groups"],
     created_by: "system"
   },
   {
@@ -18745,7 +18809,7 @@ var PORTAL_TEMPLATE_SEEDS = [
     // 既有實例靠 ensurePortalTemplates 的「補 slots」路徑自動補上（同 P3 加 graph_source 那次）。
     name: "portal_library",
     description: "RAG Portal \u5EAB\u76EE\u9304\u767B\u8A18\uFF08portal-auth \xA73.2\uFF1B\u4E00\u500B\u5EAB\uFF1D\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u4E00\u500B\u8CC7\u6599\u593E\uFF09",
-    slots: ["name", "display_name", "description", "status", "graph_source", "root", "mode", "reason"],
+    slots: ["name", "display_name", "description", "status", "graph_source", "root", "mode", "reason", "owner", "owner_name", "scope", "share_groups"],
     created_by: "system"
   },
   {
@@ -19586,8 +19650,12 @@ var AUDIT_ACTIONS = [
   // 連進別的帳號
   "link_remove",
   // 移除連進來的帳號
-  "link_query"
+  "link_query",
   // 有人拿連結金鑰來查
+  "library_claim",
+  // 同仁用小幫手送資料夾進公司、成為他的庫（inkstone/arcrun-rag#390）
+  "library_share"
+  // 管理員改庫的可見範圍（私人／群組／全公司）
 ];
 function randomHex3(bytes) {
   const a = new Uint8Array(bytes);
@@ -19699,6 +19767,9 @@ async function listAudit(env, q = {}) {
 }
 
 // cypher-executor/src/lib/account-link.ts
+init_credentials();
+init_auth_dispatcher();
+init_tenant();
 var LINK_KEY_TEMPLATE = "portal_link_key";
 var LINK_KEY_SLOTS = ["key_id", "label", "issued_by", "issued_by_name", "created_at"];
 var ACCOUNT_LINK_TEMPLATE = "portal_account_link";
@@ -19714,13 +19785,13 @@ function randomHex4(bytes) {
   crypto.getRandomValues(a);
   return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-function b64urlEncode(s) {
+function b64urlEncode2(s) {
   const bytes = new TextEncoder().encode(s);
   let bin = "";
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-function b64urlDecode(s) {
+function b64urlDecode2(s) {
   const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - s.length % 4);
   const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + pad);
   const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
@@ -19758,13 +19829,13 @@ function normalizePortalUrl(raw2) {
 function encodeLinkCode(baseUrl, key, company) {
   const payload = { u: baseUrl, k: key };
   if (company) payload.n = company.slice(0, 60);
-  return CODE_PREFIX + b64urlEncode(JSON.stringify(payload));
+  return CODE_PREFIX + b64urlEncode2(JSON.stringify(payload));
 }
 function decodeLinkCode(code) {
   const s = code.trim();
   if (!s.startsWith(CODE_PREFIX)) return null;
   try {
-    const obj = JSON.parse(b64urlDecode(s.slice(CODE_PREFIX.length)));
+    const obj = JSON.parse(b64urlDecode2(s.slice(CODE_PREFIX.length)));
     if (typeof obj.u !== "string" || typeof obj.k !== "string") return null;
     const baseUrl = normalizeBaseUrl(obj.u);
     if (!baseUrl || !/^alk_[0-9a-f]{48}$/.test(obj.k)) return null;
@@ -19844,12 +19915,38 @@ async function purgeLinksOf(env, userRecordId) {
   for (const r of issuedRows) await ephemeralDeleteById(env, r.record_id);
   const linkedRows = await ephemeralListBy(env, ACCOUNT_LINK_TEMPLATE, "user_record_id", userRecordId, 200).catch(() => []);
   for (const r of linkedRows) await ephemeralDeleteById(env, r.record_id);
+  const secrets_pending = await sweepLinkCredentials(env, userRecordId, /* @__PURE__ */ new Set());
   return {
     issued: issuedRows.map((r) => ({ key_id: r.values.key_id ?? "", label: r.values.label ?? "" })),
-    linked: linkedRows.length
+    linked: linkedRows.length,
+    secrets_pending
   };
 }
+var LINK_RECONNECT_MARK = "reconnect";
+var RECONNECT_DETAIL = "\u9019\u689D\u9023\u7D50\u8981\u91CD\u9023\u4E00\u6B21\uFF08\u820A\u7684\u91D1\u9470\u5B58\u653E\u65B9\u5F0F\u5DF2\u505C\u7528\uFF09\uFF1A\u8ACB\u79FB\u9664\u5F8C\u91CD\u65B0\u9023\u7DDA";
+var SECRET_MISSING_DETAIL = "\u9019\u689D\u9023\u7D50\u7684\u91D1\u9470\u9084\u6C92\u751F\u6548\uFF08\u525B\u5B58\u597D\u8981\u5E7E\u79D2\uFF09\u6216\u5DF2\u907A\u5931\uFF1A\u8ACB\u7A0D\u5F8C\u518D\u554F\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u79FB\u9664\u5F8C\u91CD\u65B0\u9023\u7DDA";
+var CRED_REF_RE = /^\{\{credential\.(link_[0-9a-f]{16})\}\}$/;
+var LINK_CRED_SERVICE = "account_link";
+var isLegacyPlainKey = (v) => /^alk_[0-9a-f]{48}$/.test(v);
+function linkCredentialOwner(env, userRecordId) {
+  return `${credentialOwner(env)}::link::${userRecordId}`;
+}
+async function sha256Hex16(input) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+}
+async function linkCredentialName(userRecordId, baseUrl) {
+  return `link_${await sha256Hex16(`${userRecordId}
+${baseUrl}`)}`;
+}
+var refOf = (name) => `{{credential.${name}}}`;
+function isStructuralStoreFailure(e) {
+  if (isSecretsNotReady(e)) return true;
+  const msg = e instanceof Error ? e.message : String(e);
+  return /金鑰保管未就緒|SECRET_BACKEND 設定值無法辨識/.test(msg);
+}
 function toStored(r) {
+  const link_key = r.values.link_key ?? "";
   return {
     link_id: r.values.link_id ?? "",
     label: r.values.label ?? "",
@@ -19857,21 +19954,68 @@ function toStored(r) {
     remote_account: r.values.remote_account ?? "",
     created_at: r.values.created_at ?? "",
     company: isCompanyLinkId(r.values.link_id ?? ""),
-    link_key: r.values.link_key ?? ""
+    needs_reconnect: link_key === LINK_RECONNECT_MARK,
+    link_key
   };
+}
+async function upgradeLegacyLink(env, userRecordId, row, l) {
+  let next;
+  try {
+    const name = await linkCredentialName(userRecordId, l.base_url);
+    await storeCredential(env, linkCredentialOwner(env, userRecordId), name, l.link_key, LINK_CRED_SERVICE);
+    next = refOf(name);
+  } catch (e) {
+    if (!isStructuralStoreFailure(e)) {
+      console.warn("[account-link] \u820A\u9023\u7D50\u91D1\u9470\u66AB\u6642\u642C\u4E0D\u52D5\uFF0C\u4E0B\u6B21\u518D\u8A66\uFF1A", e instanceof Error ? e.message : String(e));
+      return l;
+    }
+    next = LINK_RECONNECT_MARK;
+  }
+  try {
+    await ephemeralPatchById(env, row.record_id, { ...row.values, link_key: next });
+  } catch (e) {
+    console.warn("[account-link] \u820A\u9023\u7D50\u7D00\u9304\u6539\u5BEB\u5931\u6557\uFF0C\u4E0B\u6B21\u518D\u8A66\uFF1A", e instanceof Error ? e.message : String(e));
+    return l;
+  }
+  return { ...l, link_key: next, needs_reconnect: next === LINK_RECONNECT_MARK };
 }
 async function listStoredLinks(env, userRecordId) {
   const rows = await ephemeralListBy(env, ACCOUNT_LINK_TEMPLATE, "user_record_id", userRecordId, MAX_LINKS_PER_USER);
-  return rows.map(toStored).filter((l) => l.base_url && l.link_key);
+  const out = [];
+  for (const r of rows) {
+    let l = toStored(r);
+    if (!l.base_url || !l.link_key) continue;
+    if (isLegacyPlainKey(l.link_key)) l = await upgradeLegacyLink(env, userRecordId, r, l);
+    out.push(l);
+  }
+  return out;
 }
 function publicLink(l) {
   const { link_key: _k, ...rest } = l;
   return rest;
 }
+async function sweepLinkCredentials(env, userRecordId, keep) {
+  const owner = linkCredentialOwner(env, userRecordId);
+  let pending = 0;
+  let rows = [];
+  try {
+    rows = await listCredentialRows(env, owner);
+  } catch {
+    return 0;
+  }
+  for (const r of rows) {
+    if (keep.has(r.name)) continue;
+    const res = await deleteCredentialByName(env, owner, r.name);
+    if (!res.ok) pending += 1;
+  }
+  return pending;
+}
 async function saveLink(env, userRecordId, input) {
   const company = input.company === true;
   const link_id = `${company ? COMPANY_LINK_PREFIX : "al_"}${randomHex4(8)}`;
   const created_at = (/* @__PURE__ */ new Date()).toISOString();
+  const credName = await linkCredentialName(userRecordId, input.baseUrl);
+  await storeCredential(env, linkCredentialOwner(env, userRecordId), credName, input.key, LINK_CRED_SERVICE);
   const existing = await ephemeralListBy(env, ACCOUNT_LINK_TEMPLATE, "user_record_id", userRecordId, MAX_LINKS_PER_USER);
   const same = existing.filter((r) => r.values.base_url === input.baseUrl);
   for (const r of same) await ephemeralDeleteById(env, r.record_id);
@@ -19886,14 +20030,19 @@ ${input.baseUrl}`,
       user_record_id: userRecordId,
       label: input.label.slice(0, 60),
       base_url: input.baseUrl,
-      link_key: input.key,
+      link_key: refOf(credName),
       remote_account: input.remoteAccount.slice(0, 120),
       created_at
     },
     ttlSeconds: null
   });
+  const keep = /* @__PURE__ */ new Set([credName]);
+  for (const r of existing) {
+    if (r.values.base_url && r.values.base_url !== input.baseUrl) keep.add(await linkCredentialName(userRecordId, r.values.base_url));
+  }
+  await sweepLinkCredentials(env, userRecordId, keep).catch(() => 0);
   return {
-    link: { link_id, label: input.label.slice(0, 60), base_url: input.baseUrl, remote_account: input.remoteAccount, created_at, company },
+    link: { link_id, label: input.label.slice(0, 60), base_url: input.baseUrl, remote_account: input.remoteAccount, created_at, company, needs_reconnect: false },
     replaced: same.length > 0
   };
 }
@@ -19902,7 +20051,32 @@ async function deleteLink(env, userRecordId, linkId) {
   const hit = rows.find((r) => r.values.link_id === linkId);
   if (!hit) return false;
   await ephemeralDeleteById(env, hit.record_id);
+  if (hit.values.base_url) {
+    try {
+      const name = await linkCredentialName(userRecordId, hit.values.base_url);
+      const res = await deleteCredentialByName(env, linkCredentialOwner(env, userRecordId), name);
+      if (!res.ok && res.status !== 404) console.warn("[account-link] \u9023\u7D50\u91D1\u9470\u5BC6\u6587\u66AB\u6642\u522A\u4E0D\u6389\uFF0C\u4E4B\u5F8C\u518D\u6E05\uFF1A", res.error);
+    } catch (e) {
+      console.warn("[account-link] \u9023\u7D50\u91D1\u9470\u5BC6\u6587\u66AB\u6642\u522A\u4E0D\u6389\uFF0C\u4E4B\u5F8C\u518D\u6E05\uFF1A", e instanceof Error ? e.message : String(e));
+    }
+  }
   return true;
+}
+async function resolveLinkKey(env, userRecordId, l) {
+  if (l.link_key === LINK_RECONNECT_MARK) return null;
+  const m = CRED_REF_RE.exec(l.link_key);
+  if (m) {
+    const got = await resolveSecretsFromNewHome(env, linkCredentialOwner(env, userRecordId), [m[1]]);
+    return got[m[1]] ?? null;
+  }
+  return isLegacyPlainKey(l.link_key) ? l.link_key : null;
+}
+async function callStoredLink(env, userRecordId, l, path, timeoutMs = REMOTE_TIMEOUT_MS) {
+  const key = await resolveLinkKey(env, userRecordId, l);
+  if (!key) {
+    return { ok: false, reason: "reconnect", detail: l.needs_reconnect ? RECONNECT_DETAIL : SECRET_MISSING_DETAIL };
+  }
+  return callLinkedAccount(l.base_url, key, path, timeoutMs);
 }
 var REMOTE_TIMEOUT_MS = 8e3;
 async function callLinkedAccount(baseUrl, key, path, timeoutMs = REMOTE_TIMEOUT_MS) {
@@ -19955,6 +20129,58 @@ async function connectByLogin(baseUrl, email, password, from, timeoutMs = 2e4) {
     return { ok: false, status: res.status === 429 || res.status === 403 ? res.status : 502, error: msg };
   }
   return { ok: true, key: out.key, account: typeof out.account === "string" ? out.account : "" };
+}
+
+// cypher-executor/src/lib/library-acl.ts
+function parseGroups(raw2) {
+  if (!raw2) return [];
+  try {
+    const parsed = JSON.parse(raw2);
+    if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === "string" && isValidGroupName(x));
+  } catch {
+  }
+  return [];
+}
+function isValidGroupName(name) {
+  return typeof name === "string" && /^[^\s,"'<>\\]{1,32}$/u.test(name);
+}
+function validGroupsInput(groups) {
+  return Array.isArray(groups) && groups.length <= 20 && groups.every((g) => typeof g === "string" && isValidGroupName(g));
+}
+function parseScope(raw2) {
+  return raw2 === "company" || raw2 === "groups" ? raw2 : "private";
+}
+function aclOf(values) {
+  return {
+    name: values.name ?? "",
+    owner: (values.owner ?? "").trim().toLowerCase(),
+    scope: parseScope(values.scope),
+    groups: parseGroups(values.share_groups)
+  };
+}
+function isAdmin(user) {
+  return user.role === "admin";
+}
+function canRead(user, acl) {
+  if (user.libraries.includes("*") || user.libraries.includes(acl.name)) return true;
+  if (acl.owner && acl.owner === user.email.toLowerCase()) return true;
+  if (acl.scope === "company") return true;
+  if (acl.scope === "groups" && acl.groups.some((g) => user.groups.includes(g))) return true;
+  return false;
+}
+function writeDecision(user, acl) {
+  if (isAdmin(user) || user.libraries.includes("*")) return "allow";
+  if (!acl) return "claim";
+  if (acl.owner && acl.owner === user.email.toLowerCase()) return "allow";
+  return "deny";
+}
+function effectiveLibraries(user, libs) {
+  if (user.libraries.includes("*")) return user.libraries;
+  const out = new Set(user.libraries);
+  for (const acl of libs) {
+    if (acl.name && canRead(user, acl)) out.add(acl.name);
+  }
+  return [...out];
 }
 
 // cypher-executor/src/lib/ai-response.ts
@@ -22653,6 +22879,7 @@ function toPublicUser(rec) {
     status: v.status ?? "",
     role: v.role ?? "",
     libraries: parseLibraries(v.libraries),
+    groups: parseGroups(v.groups),
     created_at: v.created_at ?? "",
     updated_at: v.updated_at ?? ""
   };
@@ -22705,8 +22932,129 @@ async function requirePortalUser(c, onSessionFound) {
     return { ok: false, res: c.json({ error: inactiveMessage(rec.values.status) }, 403) };
   }
   const sessExp = Number(sess.exp);
-  authCacheSet(token, { sessExp: Number.isFinite(sessExp) ? sessExp : Infinity, recordId, values: rec.values }, startedGen, cacheMs);
-  return { ok: true, user: { token, recordId, values: rec.values } };
+  const values = await withEffectiveLibraries(c.env, rec.values);
+  authCacheSet(token, { sessExp: Number.isFinite(sessExp) ? sessExp : Infinity, recordId, values }, startedGen, cacheMs);
+  return { ok: true, user: { token, recordId, values } };
+}
+var aclListCache = null;
+function libraryAclCacheClear() {
+  aclListCache = null;
+}
+async function loadLibraryAcls(env) {
+  const now2 = Date.now();
+  const windowMs = authCacheWindow(env);
+  if (windowMs > 0 && aclListCache && now2 - aclListCache.at < windowMs) return aclListCache.list;
+  const recs = await listRecordsByTemplate(env, LIBRARY_TEMPLATE);
+  const list = recs.filter((r) => (r.values.status ?? "active") !== "disabled").map((r) => aclOf(r.values));
+  aclListCache = { at: now2, list };
+  return list;
+}
+function aclUserOf(values) {
+  return {
+    email: (values.email ?? "").toLowerCase(),
+    role: values.role ?? "user",
+    libraries: parseLibraries(values.libraries_explicit ?? values.libraries),
+    groups: parseGroups(values.groups)
+  };
+}
+async function withEffectiveLibraries(env, values) {
+  const u = aclUserOf({ ...values, libraries_explicit: void 0 });
+  if (u.role === "admin" || u.libraries.includes("*")) return values;
+  try {
+    const eff = effectiveLibraries(u, await loadLibraryAcls(env));
+    return { ...values, libraries: JSON.stringify(eff), libraries_explicit: values.libraries ?? "[]" };
+  } catch {
+    return values;
+  }
+}
+async function effectiveLibrariesOf(env, values) {
+  return parseLibraries((await withEffectiveLibraries(env, values)).libraries);
+}
+async function activeUserByEmail(env, email) {
+  const id = await findUserRecordId(env, email.toLowerCase());
+  if (!id) return null;
+  const rec = await getRecordById(env, id);
+  if (!rec || (rec.values.status ?? "") !== "active") return null;
+  return { token: "", recordId: id, values: await withEffectiveLibraries(env, rec.values) };
+}
+var callerMemo = /* @__PURE__ */ new WeakMap();
+function rememberDaemonCaller(req, user) {
+  callerMemo.set(req, user);
+}
+async function daemonCallerUser(c) {
+  const memo = callerMemo.get(c.req.raw);
+  if (memo) return isUnrestricted(memo.values) ? null : memo;
+  const auth = c.req.header("Authorization") ?? "";
+  const bearer = auth.match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+  if (!bearer) return null;
+  if (bearer.startsWith(DAEMON_USER_KEY_PREFIX)) {
+    const v = await verifyDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, String(knowledgeOwner(c.env)), bearer);
+    if (!v) return null;
+    const u = await activeUserByEmail(c.env, v.email);
+    return u && !isUnrestricted(u.values) ? u : null;
+  }
+  const pu = await requirePortalUser(c);
+  if (pu.ok && !isUnrestricted(pu.user.values)) return pu.user;
+  return null;
+}
+function isMemberRec(values) {
+  return !isUnrestricted(values);
+}
+function isUnrestricted(values) {
+  const u = aclUserOf(values);
+  return u.role === "admin" || u.libraries.includes("*");
+}
+async function checkLibraryWrite(env, user, library, meta = {}) {
+  const acls = await loadLibraryAcls(env);
+  const acl = acls.find((a) => a.name === library) ?? null;
+  const decision = writeDecision(aclUserOf(user.values), acl);
+  if (decision === "allow") return null;
+  if (decision === "deny") {
+    return {
+      status: 403,
+      body: {
+        error: `\u5EAB\u300C${library}\u300D\u4E0D\u662F\u4F60\u7684\u2014\u2014\u5B83${acl?.owner ? `\u662F ${acl.owner} \u9001\u9032\u4F86\u7684` : "\u7531\u7BA1\u7406\u54E1\u5EFA\u7ACB"}\uFF0C\u4F60\u6C92\u6709\u5BEB\u5165\u6B0A\u9650\u3002\u8981\u9001\u81EA\u5DF1\u7684\u8CC7\u6599\u593E\uFF0C\u8ACB\u63DB\u4E00\u500B\u8CC7\u6599\u593E\u540D\u7A31\uFF0C\u6216\u8ACB\u7BA1\u7406\u54E1\u5354\u52A9\u3002`,
+        code: "library_not_yours"
+      }
+    };
+  }
+  await ensurePortalTemplates(env);
+  const email = (user.values.email ?? "").toLowerCase();
+  const existing = (await listRecordsByTemplate(env, LIBRARY_TEMPLATE)).find((l) => (l.values.name ?? "") === library);
+  if (existing) {
+    libraryAclCacheClear();
+    return checkLibraryWrite(env, user, library, meta);
+  }
+  const res = await kbdbFetch2(env, "/records", {
+    method: "POST",
+    body: JSON.stringify({
+      template: LIBRARY_TEMPLATE,
+      owner_id: portalNamespace(env),
+      values: {
+        name: library,
+        display_name: meta.display_name || library,
+        description: "",
+        status: "active",
+        root: meta.root ?? "",
+        mode: meta.mode ?? "",
+        reason: meta.reason ?? "",
+        owner: email,
+        owner_name: user.values.display_name ?? "",
+        scope: "private",
+        share_groups: "[]"
+      }
+    })
+  });
+  if (!res.ok) throw new KbdbError(`POST /records\uFF08portal_library\uFF0C\u8A8D\u9818\u5EAB\uFF09\u2192 ${res.status}`);
+  libraryAclCacheClear();
+  authCacheClear();
+  await recordAudit(env, {
+    ...auditWho(user),
+    action: "library_claim",
+    target: library,
+    detail: `\u9001\u9032\u516C\u53F8\u7684\u8CC7\u6599\u593E${meta.root ? `\uFF1A${meta.root}` : ""}`
+  });
+  return null;
 }
 async function requirePortalAdmin(c) {
   const auth = await requirePortalUser(c);
@@ -22925,7 +23273,7 @@ portalRouter.post(
       session_token: token,
       display_name: rec.values.display_name ?? "",
       role: rec.values.role ?? "user",
-      libraries: parseLibraries(rec.values.libraries),
+      libraries: await effectiveLibrariesOf(c.env, rec.values),
       // session 還能活多久（秒）。**非機密**（是這台實例的 TTL 設定，不是任何人的憑據），
       // 但呼叫端需要它才能把自己發的憑證對齊這個上限——arcrun-mcp 用它把 OAuth
       // access_token 的 TTL 夾到 min(自己的 TTL, 這個值)：否則 MCP token 活 30 天、
@@ -23330,8 +23678,17 @@ portalRouter.post(
       libraries,
       password_hash: await hashPassword2(password)
     });
+    let groups = [];
+    if (body?.groups !== void 0) {
+      if (!validGroupsInput(body.groups)) return c.json({ error: "groups \u9808\u70BA\u5B57\u4E32\u9663\u5217\uFF08\u6BCF\u500B\u7FA4\u7D44\u540D 1\u201332 \u5B57\uFF0C\u4E0D\u542B\u7A7A\u767D\u8207\u9017\u865F\uFF09" }, 400);
+      groups = body.groups;
+    }
+    if (groups.length > 0) {
+      await ensurePortalTemplates(c.env);
+      await patchRecordValues(c.env, recordId, { groups: JSON.stringify(groups) });
+    }
     const rec = await getRecordById(c.env, recordId);
-    await recordAudit(c.env, { ...auditWho(auth.user), action: "user_create", target: email, detail: `role=${role}` });
+    await recordAudit(c.env, { ...auditWho(auth.user), action: "user_create", target: email, detail: `role=${role}${groups.length ? `\uFF1Bgroups=${groups.join(",")}` : ""}` });
     return c.json({
       success: true,
       user: rec ? toPublicUser(rec) : { record_id: recordId, email },
@@ -23351,7 +23708,7 @@ portalRouter.patch(
     const body = await c.req.json().catch(() => null);
     if (!body) return c.json({ error: "body \u5FC5\u9808\u662F JSON" }, 400);
     const wasRemoved = (rec.values.status ?? "") === "removed";
-    if (wasRemoved && !(body.status === "active" && body.role === void 0 && body.libraries === void 0)) {
+    if (wasRemoved && !(body.status === "active" && body.role === void 0 && body.libraries === void 0 && body.groups === void 0)) {
       return c.json({ error: "\u9019\u4F4D\u540C\u4EC1\u5DF2\u88AB\u79FB\u51FA\u3002\u8981\u8ACB\u4ED6\u56DE\u4F86\uFF0C\u53EA\u80FD\u628A\u72C0\u614B\u6539\u56DE active\uFF08\u6062\u5FA9\uFF09\uFF0C\u5176\u4ED6\u8A2D\u5B9A\u6062\u5FA9\u5F8C\u518D\u6539\u3002" }, 409);
     }
     const patch2 = {};
@@ -23371,7 +23728,12 @@ portalRouter.patch(
       }
       patch2.libraries = JSON.stringify(body.libraries);
     }
-    if (Object.keys(patch2).length === 0) return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08status/role/libraries\uFF09" }, 400);
+    if (body.groups !== void 0) {
+      if (!validGroupsInput(body.groups)) return c.json({ error: "groups \u9808\u70BA\u5B57\u4E32\u9663\u5217\uFF08\u6BCF\u500B\u7FA4\u7D44\u540D 1\u201332 \u5B57\uFF0C\u4E0D\u542B\u7A7A\u767D\u8207\u9017\u865F\uFF09" }, 400);
+      await ensurePortalTemplates(c.env);
+      patch2.groups = JSON.stringify(body.groups);
+    }
+    if (Object.keys(patch2).length === 0) return c.json({ error: "\u6C92\u6709\u53EF\u66F4\u65B0\u7684\u6B04\u4F4D\uFF08status/role/libraries/groups\uFF09" }, 400);
     const isActiveAdmin = (rec.values.role ?? "") === "admin" && (rec.values.status ?? "") === "active";
     const wouldLoseAdmin = patch2.status === "disabled" || patch2.role === "user";
     if (isActiveAdmin && wouldLoseAdmin) {
@@ -23386,11 +23748,13 @@ portalRouter.patch(
     patch2.updated_at = (/* @__PURE__ */ new Date()).toISOString();
     const updated = await patchRecordValues(c.env, recordId, patch2);
     const changes = [];
-    for (const k of ["status", "role", "libraries"]) {
+    for (const k of ["status", "role", "libraries", "groups"]) {
       if (patch2[k] !== void 0 && patch2[k] !== (rec.values[k] ?? "")) {
-        changes.push(`${k}: ${k === "libraries" ? parseLibraries(rec.values[k]).join(",") : rec.values[k] ?? ""} \u2192 ${k === "libraries" ? parseLibraries(patch2[k]).join(",") : patch2[k]}`);
+        const show = (raw2) => k === "libraries" ? parseLibraries(raw2).join(",") : k === "groups" ? parseGroups(raw2).join(",") : raw2 ?? "";
+        changes.push(`${k}: ${show(rec.values[k])} \u2192 ${show(patch2[k])}`);
       }
     }
+    authCacheClear();
     await recordAudit(c.env, {
       ...auditWho(auth.user),
       action: wasRemoved ? "user_restore" : "user_update",
@@ -23524,7 +23888,12 @@ function toPublicLibrary(rec) {
     // （小幫手回報時登記，見 POST /portal/daemon/folder-tree），空字串＝這台小幫手還沒報過。
     root: v.root ?? "",
     mode: v.mode ?? "",
-    reason: v.reason ?? ""
+    reason: v.reason ?? "",
+    // inkstone/arcrun-rag#390：誰送的、開放給誰
+    owner: v.owner ?? "",
+    owner_name: v.owner_name ?? "",
+    scope: parseScope(v.scope),
+    share_groups: parseGroups(v.share_groups)
   };
 }
 function folderTreeKey(env, library) {
@@ -23665,6 +24034,11 @@ portalRouter.post(
     if (seeded.errors.length > 0) {
       return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
     }
+    const caller = await daemonCallerUser(c);
+    if (caller) {
+      const denied = await checkLibraryWrite(c.env, caller, library, { display_name: displayName, root, mode, reason });
+      if (denied) return c.json(denied.body, denied.status);
+    }
     const existing = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
     const mine = existing.find((l) => (l.values.name ?? "") === library);
     let registered = false;
@@ -23716,6 +24090,41 @@ portalRouter.post(
     }
     await markDaemonLibraryActive(c.env, library);
     return c.json({ success: true, library, registered, nodes: nodes.length, truncated: stored.truncated });
+  })
+);
+portalRouter.put(
+  "/portal/admin/libraries/:name/share",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const name = c.req.param("name");
+    if (!isValidLibraryName(name) || name === "*") return c.json({ error: "\u5EAB\u540D\u4E0D\u5408\u6CD5" }, 400);
+    const body = await c.req.json().catch(() => null);
+    const scope = body?.scope;
+    if (scope !== "private" && scope !== "groups" && scope !== "company") {
+      return c.json({ error: "scope \u53EA\u80FD\u662F private\uFF08\u53EA\u6709\u9001\u7684\u4EBA\uFF09\uFF0Fgroups\uFF08\u6307\u5B9A\u7FA4\u7D44\uFF09\uFF0Fcompany\uFF08\u5168\u516C\u53F8\uFF09" }, 400);
+    }
+    let groups = [];
+    if (scope === "groups") {
+      if (!validGroupsInput(body?.groups) || body.groups.length === 0) {
+        return c.json({ error: 'scope=groups \u6642 groups \u9808\u70BA\u975E\u7A7A\u5B57\u4E32\u9663\u5217\uFF08\u4F8B ["\u696D\u52D9"]\uFF09' }, 400);
+      }
+      groups = body.groups;
+    }
+    await ensurePortalTemplates(c.env);
+    const lib = (await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE)).find((l) => (l.values.name ?? "") === name);
+    if (!lib) return c.json({ error: `\u627E\u4E0D\u5230\u5EAB\u300C${name}\u300D` }, 404);
+    const before = `${parseScope(lib.values.scope)}${parseGroups(lib.values.share_groups).length ? `(${parseGroups(lib.values.share_groups).join(",")})` : ""}`;
+    const updated = await patchRecordValues(c.env, lib.record_id, { scope, share_groups: JSON.stringify(groups) });
+    libraryAclCacheClear();
+    authCacheClear();
+    await recordAudit(c.env, {
+      ...auditWho(auth.user),
+      action: "library_share",
+      target: name,
+      detail: `${before} \u2192 ${scope}${groups.length ? `(${groups.join(",")})` : ""}`
+    });
+    return c.json({ success: true, library: toPublicLibrary(updated) });
   })
 );
 portalRouter.get(
@@ -23945,6 +24354,16 @@ portalRouter.post(
     for (const item of wanted) {
       const name = String(item?.name ?? "").trim();
       if (!isValidLibraryName(name) || name === "*" || have.has(name)) continue;
+      if (isMemberRec(rec.values)) {
+        const denied = await checkLibraryWrite(c.env, { token: "", recordId: rec.record_id, values: rec.values }, name, {
+          display_name: String(item?.display_name ?? "").trim() || name
+        });
+        if (!denied) {
+          have.add(name);
+          created.push(name);
+        }
+        continue;
+      }
       const res = await kbdbFetch2(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({
@@ -23998,9 +24417,21 @@ portalRouter.post(
       email,
       instance_name: String(rec.values.display_name ?? "")
     };
-    const kbdbKey = await deriveKbdbProxyKey(c.env.KBDB_INTERNAL_TOKEN, daemonCfg.namespace);
+    const kbdbKey = isUnrestricted(rec.values) ? await deriveKbdbProxyKey(c.env.KBDB_INTERNAL_TOKEN, daemonCfg.namespace) : await deriveDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, daemonCfg.namespace, email);
     if (kbdbKey) daemonCfg.kbdb_key = kbdbKey;
     return c.json({ success: true, config: daemonCfg });
+  })
+);
+portalRouter.get(
+  "/portal/daemon/key",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const ns = String(knowledgeOwner(c.env));
+    const email = (auth.user.values.email ?? "").toLowerCase();
+    const kbdbKey = isUnrestricted({ ...auth.user.values, libraries: auth.user.values.libraries_explicit ?? auth.user.values.libraries ?? "[]" }) ? await deriveKbdbProxyKey(c.env.KBDB_INTERNAL_TOKEN, ns) : await deriveDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, ns, email);
+    if (!kbdbKey) return c.json({ error: "\u9019\u53F0\u6C92\u6709\u8A2D\u5B9A\u7C3D\u7AE0\u91D1\u9470\uFF0C\u7121\u6CD5\u767C\u6191\u8B49" }, 503);
+    return c.json({ success: true, kbdb_key: kbdbKey, scope: kbdbKey.startsWith("dk1.") ? "member" : "tenant" });
   })
 );
 portalRouter.post(
@@ -24161,6 +24592,15 @@ portalRouter.post(
         skipped.push(name);
         continue;
       }
+      if (isMemberRec(rec.values)) {
+        const denied = await checkLibraryWrite(c.env, { token: "", recordId: rec.record_id, values: rec.values }, name, { display_name: displayName });
+        if (denied) skipped.push(name);
+        else {
+          have.add(name);
+          registered.push(name);
+        }
+        continue;
+      }
       const res = await kbdbFetch2(c.env, "/records", {
         method: "POST",
         body: JSON.stringify({
@@ -24225,6 +24665,23 @@ async function readExtractAiRow(env) {
 async function readExtractAiConfig(env) {
   return (await readExtractAiRow(env))?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
 }
+portalRouter.get(
+  "/portal/extract-ai/current",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const row = await readExtractAiRow(c.env);
+    const config = row?.config ?? DEFAULT_EXTRACT_AI_CONFIG;
+    const p = findProvider(config.recipe);
+    return c.json({
+      success: true,
+      recipe: config.recipe,
+      provider_label: p?.label ?? config.recipe,
+      model: config.model ?? null,
+      is_default: !row
+    });
+  })
+);
 portalRouter.get(
   "/portal/admin/extract-ai",
   (c) => run(c, async () => {
@@ -24624,7 +25081,7 @@ portalRouter.get(
   (c) => run(c, async () => {
     const auth = await requirePortalUser(c);
     if (!auth.ok) return auth.res;
-    const isAdmin = (auth.user.values.role ?? "") === "admin";
+    const isAdmin2 = (auth.user.values.role ?? "") === "admin";
     const sub = String(c.env.WORKER_SUBDOMAIN ?? "").trim();
     const mcpBase = mcpBaseUrl(c.env);
     const mcpUrl = mcpBase ? `${mcpBase}/mcp` : mcpUrlFor(sub);
@@ -24635,16 +25092,16 @@ portalRouter.get(
       // 中途失敗（畫面卻說裝好了）。不要讓使用者以為是自己沒找到。
       mcp_url_reason: mcpUrl ? "" : "\u9019\u500B\u5BE6\u4F8B\u6C92\u6709\u8A18\u9304\u81EA\u5DF1\u7684\u90E8\u7F72\u4F4D\u7F6E\uFF08\u5B89\u88DD\u53EF\u80FD\u6C92\u6709\u5B8C\u6210\uFF09\uFF0C\u6240\u4EE5\u7B97\u4E0D\u51FA MCP \u7DB2\u5740",
       builtin_hosts: [...MCP_BUILTIN_REDIRECT_HOSTS],
-      can_edit: isAdmin
+      can_edit: isAdmin2
     };
     const ttl = await readMcpTokenTtl(c.env).catch(() => null);
     payload.token_ttl_seconds = ttl?.seconds ?? null;
     payload.token_ttl_default_seconds = DEFAULT_TOKEN_TTL_SECONDS;
-    if (isAdmin && ttl) {
+    if (isAdmin2 && ttl) {
       payload.token_ttl_updated_at = ttl.updated_at;
       payload.token_ttl_updated_by = ttl.updated_by;
     }
-    if (isAdmin) {
+    if (isAdmin2) {
       payload.hosts = (await listMcpRedirectHosts(c.env)).map((r) => ({
         record_id: r.record_id,
         host: r.values.host ?? "",
@@ -25143,13 +25600,31 @@ async function cypherTenantAuth(c, next) {
   if (!claimed) return path.startsWith("/artifacts/repos/") ? c.json(UNAUTHORIZED, 401) : next();
   const auth = c.req.header("Authorization") ?? "";
   const bearer = auth.match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+  if (claimed && !mismatch && bearer.startsWith(DAEMON_USER_KEY_PREFIX)) {
+    if (claimed === String(knowledgeOwner(c.env))) {
+      const v = await verifyDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, claimed, bearer);
+      const user = v ? await activeUserByEmail(c.env, v.email) : null;
+      if (user) {
+        rememberDaemonCaller(c.req.raw, user);
+        const blocked = await memberCallerGate(c, path, user);
+        if (blocked) return blocked;
+        return next();
+      }
+    }
+    return c.json(UNAUTHORIZED, 401);
+  }
   if (claimed && !mismatch && bearer) {
     const want = await deriveKbdbProxyKey(c.env.KBDB_INTERNAL_TOKEN, claimed);
     if (want && constantTimeEqual2(bearer, want)) return next();
     if (claimed === String(knowledgeOwner(c.env)) && await validateConsoleSession(c.env, auth)) return next();
     if (claimed === String(knowledgeOwner(c.env))) {
       const pu = await requirePortalUser(c);
-      if (pu.ok) return next();
+      if (pu.ok) {
+        rememberDaemonCaller(c.req.raw, pu.user);
+        const blocked = await memberCallerGate(c, path, pu.user);
+        if (blocked) return blocked;
+        return next();
+      }
     }
   }
   const until = claimed && !mismatch && !path.startsWith("/artifacts/repos/") ? compatWindowOpen(c.env) : null;
@@ -25160,6 +25635,47 @@ async function cypherTenantAuth(c, next) {
     return;
   }
   return c.json(UNAUTHORIZED, 401);
+}
+var MEMBER_OPEN_WORKFLOWS = /* @__PURE__ */ new Set(["feedback_report"]);
+async function memberCallerGate(c, path, user) {
+  const values = user.values;
+  const role = values.role ?? "user";
+  const libs = parseLibs(values.libraries);
+  if (role === "admin" || libs.includes("*")) return null;
+  if (path.startsWith("/portal/daemon/")) return null;
+  const method = c.req.method;
+  const trigger = path.match(/^\/webhooks\/named\/[^/]+\/([^/]+)\/trigger\/?$/);
+  if (method === "POST" && trigger) {
+    if (MEMBER_OPEN_WORKFLOWS.has(decodeURIComponent(trigger[1]))) return null;
+    let library = "";
+    try {
+      const body = await c.req.raw.clone().json();
+      library = typeof body?.library === "string" ? body.library.trim() : "";
+    } catch {
+      library = "";
+    }
+    if (!library) {
+      return c.json({ error: "\u4E00\u822C\u540C\u4EC1\u53EA\u80FD\u9001\u9032\u81EA\u5DF1\u7684\u5EAB\uFF1A\u8ACB\u6C42\u8981\u6307\u660E library\u3002\u8981\u8DD1\u5176\u4ED6\u5DE5\u4F5C\u6D41\u8ACB\u627E\u7BA1\u7406\u54E1\u3002", code: "library_required" }, 403);
+    }
+    const denied = await checkLibraryWrite(c.env, user, library);
+    return denied ? c.json(denied.body, denied.status) : null;
+  }
+  if (method === "GET" && /^\/kbdb\/entries\/?$/.test(path)) {
+    const library = (new URL(c.req.url).searchParams.get("library") ?? "").trim();
+    if (!library || !libs.includes(library)) {
+      return c.json({ error: "\u4E00\u822C\u540C\u4EC1\u53EA\u80FD\u67E5\u81EA\u5DF1\u6709\u6B0A\u9650\u7684\u5EAB\uFF1A\u8ACB\u6C42\u8981\u6307\u660E library\uFF0C\u4E14\u8981\u662F\u4F60\u67E5\u5F97\u5230\u7684\u5EAB\u3002", code: "library_not_yours" }, 403);
+    }
+    return null;
+  }
+  return c.json({ error: "\u9019\u500B\u52D5\u4F5C\u53EA\u6709\u7BA1\u7406\u54E1\u80FD\u505A\u3002", code: "admin_only" }, 403);
+}
+function parseLibs(raw2) {
+  try {
+    const v = JSON.parse(raw2 ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 // cypher-executor/src/index.ts
@@ -34094,6 +34610,7 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
 
 // cypher-executor/src/routes/portal-data.ts
 init_dist();
+init_credentials();
 
 // cypher-executor/src/lib/portal-actor.ts
 var PORTAL_ACTOR_TTL_SEC = 90;
@@ -37436,16 +37953,21 @@ portalDataRouter.post(
     const body = await c.req.json().catch(() => null);
     const action = typeof body?.action === "string" ? body.action : "";
     let prefetch;
+    const tAuth0 = Date.now();
     const auth = await requirePortalUser(c, () => {
       if (action) prefetch = prefetchAppAction(c.env, tenant2, appId, action);
     });
+    const authMs = Date.now() - tAuth0;
     if (!auth.ok) return auth.res;
     if (!action) return c.json({ error: "action \u5FC5\u586B" }, 400);
     const payload = body?.payload && typeof body.payload === "object" ? { ...body.payload } : {};
     delete payload._portal_actor;
+    const tSign0 = Date.now();
     const actor = await signPortalActor(c.env, tenant2, { login: auth.user.values.email, role: auth.user.values.role ?? "user" });
+    const signMs = Date.now() - tSign0;
     if (actor) payload._portal_actor = actor;
     const result = await runAppAction(c.env, tenant2, appId, action, payload, c.executionCtx, prefetch);
+    c.header("Server-Timing", [["auth", authMs], ["sign", signMs], ...result.timing ?? []].map(([n, d]) => `${n};dur=${d}`).join(", "));
     if (!result.ok) return c.json({ error: result.error }, result.status);
     return c.json({ ok: true, result: result.result });
   })
@@ -37922,9 +38444,10 @@ portalDataRouter.post(
     const links = scope ? allLinks.filter((l) => scope.has(l.link_id)) : allLinks;
     const companyIds = new Set(allLinks.filter((l) => l.company).map((l) => l.link_id));
     const remoteP = links.map(
-      (l) => callLinkedAccount(
-        l.base_url,
-        l.link_key,
+      (l) => callStoredLink(
+        c.env,
+        auth.user.recordId,
+        l,
         `/portal/link/retrieve?q=${encodeURIComponent(q)}`
       ).then((r) => ({ link: l, r }))
     );
@@ -37996,6 +38519,10 @@ portalDataRouter.post(
     });
   })
 );
+function linkSaveFailure(c, e) {
+  if (isSecretsNotReady(e)) return c.json({ error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE }, 502);
+  return c.json({ error: `\u9023\u7D50\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+}
 portalDataRouter.get(
   "/portal/data/links",
   (c) => run(c, async () => {
@@ -38058,7 +38585,9 @@ portalDataRouter.post(
     const remoteAccount = typeof who.body.account === "string" ? who.body.account : "";
     const company = typeof parsed.company === "string";
     const label = typeof body.label === "string" && body.label.trim() ? body.label.trim() : parsed.company || remoteAccount || new URL(parsed.baseUrl).hostname;
-    const { link, replaced } = await saveLink(c.env, auth.user.recordId, { baseUrl: parsed.baseUrl, key: parsed.key, label, remoteAccount, company });
+    const saved = await saveLink(c.env, auth.user.recordId, { baseUrl: parsed.baseUrl, key: parsed.key, label, remoteAccount, company }).catch((e) => linkSaveFailure(c, e));
+    if (saved instanceof Response) return saved;
+    const { link, replaced } = saved;
     await recordAudit(c.env, { ...linkActor(auth.user), action: "link_connect", target: parsed.baseUrl, detail: label });
     return c.json({ success: true, link, updated: replaced });
   })
@@ -38083,7 +38612,9 @@ portalDataRouter.post(
     const r = await connectByLogin(norm.baseUrl, email, password, self);
     if (!r.ok) return c.json({ error: r.error }, r.status);
     const label = typeof body.label === "string" && body.label.trim() ? body.label.trim() : r.account || new URL(norm.baseUrl).hostname;
-    const { link, replaced } = await saveLink(c.env, auth.user.recordId, { baseUrl: norm.baseUrl, key: r.key, label, remoteAccount: r.account });
+    const saved = await saveLink(c.env, auth.user.recordId, { baseUrl: norm.baseUrl, key: r.key, label, remoteAccount: r.account }).catch((e) => linkSaveFailure(c, e));
+    if (saved instanceof Response) return saved;
+    const { link, replaced } = saved;
     await recordAudit(c.env, { ...linkActor(auth.user), action: "link_connect", target: norm.baseUrl, detail: label });
     return c.json({ success: true, link, updated: replaced });
   })
