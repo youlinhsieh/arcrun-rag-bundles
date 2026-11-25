@@ -2560,10 +2560,16 @@ async function runWasm(input) {
     fetch_relay: async (sourceUrl, sourceHeadersJson, destUrl, destMethod, destHeadersJson, optionsJson) => {
       let maxBytes = DEFAULT_MAX_BYTES;
       let timeoutMs = DEFAULT_TIMEOUT_MS;
+      let includeResponseHeaders = false;
+      let acceptStatus = [];
       try {
         const opts = optionsJson ? JSON.parse(optionsJson) : {};
         if (typeof opts.max_bytes === "number" && opts.max_bytes > 0) maxBytes = opts.max_bytes;
         if (typeof opts.timeout_ms === "number" && opts.timeout_ms > 0) timeoutMs = opts.timeout_ms;
+        includeResponseHeaders = opts.include_response_headers === true;
+        if (Array.isArray(opts.accept_status)) {
+          acceptStatus = opts.accept_status.filter((n) => Number.isInteger(n));
+        }
       } catch {
       }
       const sourceHeaders = {};
@@ -2630,19 +2636,36 @@ async function runWasm(input) {
           });
           body = body.pipeThrough(counter);
         }
+        const srcLen = Number(srcRes.headers.get("content-length"));
+        const hasLen = Number.isFinite(srcLen) && srcLen > 0 && !srcRes.headers.get("content-encoding");
+        const FixedLen = globalThis.FixedLengthStream;
+        if (body && hasLen && FixedLen && !headers["Content-Length"] && !headers["content-length"]) {
+          body = body.pipeThrough(new FixedLen(srcLen));
+        }
         const destRes = await fetch(destUrl, {
           method: destMethod || "PUT",
           headers,
           body,
+          redirect: includeResponseHeaders || acceptStatus.length > 0 ? "manual" : "follow",
           // @ts-expect-error duplex 是串流 request body 在部分 runtime 需要的旗標
           duplex: "half",
           signal: controller.signal
         });
         const destText = await destRes.text();
-        if (!destRes.ok) {
-          return JSON.stringify({ error: `HTTP ${destRes.status}`, status: destRes.status, body: destText });
+        const resHeaders = {};
+        if (includeResponseHeaders) {
+          destRes.headers.forEach((v, k) => {
+            resHeaders[k] = v;
+          });
         }
-        return JSON.stringify({ status: destRes.status, body: destText });
+        if (!destRes.ok && !acceptStatus.includes(destRes.status)) {
+          const errEnv = { error: `HTTP ${destRes.status}`, status: destRes.status, body: destText };
+          if (includeResponseHeaders) errEnv.headers = resHeaders;
+          return JSON.stringify(errEnv);
+        }
+        const okEnv = { status: destRes.status, body: destText };
+        if (includeResponseHeaders) okEnv.headers = resHeaders;
+        return JSON.stringify(okEnv);
       } catch (e) {
         if (abortReason === "size_exceeded") {
           return JSON.stringify({

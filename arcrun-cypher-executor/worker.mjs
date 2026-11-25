@@ -2504,6 +2504,117 @@ var init_constants3 = __esm({
   }
 });
 
+// cypher-executor/src/lib/credential-verify.ts
+function normalizeVerifySpec(raw2) {
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return null;
+  const r = raw2;
+  if (typeof r.url !== "string" || !r.url.trim() || r.url.length > 2e3) return null;
+  const method = r.method === void 0 ? "GET" : r.method;
+  if (method !== "GET" && method !== "POST") return null;
+  let expect;
+  if (r.expect_status !== void 0) {
+    if (!Array.isArray(r.expect_status) || r.expect_status.length > 10) return null;
+    if (!r.expect_status.every((n) => Number.isInteger(n) && n >= 100 && n <= 599)) return null;
+    expect = r.expect_status;
+  }
+  return { method, url: r.url.trim(), ...expect ? { expect_status: expect } : {} };
+}
+function render(tpl, values) {
+  let missing = "";
+  const text = tpl.replace(TEMPLATE_RE, (_m, ref) => {
+    const v = values[ref];
+    if (v === void 0 || v === "") {
+      missing = missing || ref;
+      return "";
+    }
+    return v;
+  });
+  return missing ? { ok: false, missing } : { ok: true, text };
+}
+function redact(s, values) {
+  let out = s;
+  for (const v of Object.values(values)) {
+    if (v && v.length >= 4) out = out.split(v).join("***");
+  }
+  return out;
+}
+function reasonFrom(text) {
+  const t = text.trim();
+  if (!t) return "";
+  try {
+    const j = JSON.parse(t);
+    const err3 = j.error;
+    const pick = (typeof err3 === "string" ? err3 : err3 && typeof err3 === "object" ? err3.message : void 0) ?? j.message ?? j.error_description ?? j.detail;
+    const code = typeof err3 === "string" ? err3 : void 0;
+    if (typeof pick === "string" && pick) return code && code !== pick ? `${code}\uFF1A${pick}` : pick;
+  } catch {
+  }
+  return t.replace(/\s+/g, " ").slice(0, 200);
+}
+async function verifyWithRecipe(recipe, values, fetchFn = fetch) {
+  const v = recipe?.verify;
+  if (!recipe || !v || typeof v.url !== "string" || !v.url) return { status: "skipped", message: NO_VERIFY_MESSAGE };
+  let url;
+  try {
+    url = /^[a-z][a-z0-9+.-]*:\/\//i.test(v.url) ? new URL(v.url) : new URL((recipe.base_url ?? "").replace(/\/+$/, "") + "/" + v.url.replace(/^\/+/, ""));
+  } catch {
+    return { status: "skipped", message: "\u5B58\u597D\u4E86\uFF0C\u4F46\u9019\u500B\u670D\u52D9\u7684\u9A57\u8B49\u7DB2\u5740\u8A2D\u5B9A\u4E0D\u6B63\u78BA\uFF0C\u6C92\u8A66" };
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    return { status: "skipped", message: "\u5B58\u597D\u4E86\uFF0C\u4F46\u9A57\u8B49\u7DB2\u5740\u5FC5\u9808\u662F https\uFF0C\u6C92\u8A66" };
+  }
+  const headers = { Accept: "application/json" };
+  for (const [k, tpl] of Object.entries(recipe.inject?.header ?? {})) {
+    const r = render(tpl, values);
+    if (!r.ok) return { status: "skipped", message: `\u5B58\u597D\u4E86\uFF0C\u4F46\u9084\u7F3A\u300C${r.missing.replace(/^[a-z]+\./, "")}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86` };
+    headers[k] = r.text;
+  }
+  for (const [k, tpl] of Object.entries(recipe.inject?.query ?? {})) {
+    const r = render(tpl, values);
+    if (!r.ok) return { status: "skipped", message: `\u5B58\u597D\u4E86\uFF0C\u4F46\u9084\u7F3A\u300C${r.missing.replace(/^[a-z]+\./, "")}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86` };
+    url.searchParams.set(k, r.text);
+  }
+  let res;
+  try {
+    res = await fetchFn(url.toString(), { method: v.method ?? "GET", headers });
+  } catch (e) {
+    return { status: "failed", message: redact(`\u9023\u4E0D\u4E0A\u5C0D\u65B9\uFF1A${e instanceof Error ? e.message : String(e)}`, values) };
+  }
+  const text = await res.text().catch(() => "");
+  const expected = v.expect_status?.length ? v.expect_status.includes(res.status) : res.ok;
+  if (expected) return { status: "ok", message: `\u9A57\u8B49\u6210\u529F\uFF08\u5C0D\u65B9\u56DE ${res.status}\uFF09`, http_status: res.status };
+  const why = redact(reasonFrom(text), values);
+  return { status: "failed", message: `\u9A57\u8B49\u5931\u6557\uFF1A\u5C0D\u65B9\u56DE ${res.status}${why ? `\uFF08${why}\uFF09` : ""}`, http_status: res.status };
+}
+async function verifyStoredGroup(p) {
+  const names = Object.keys(p.stored);
+  const first = names[0] ?? "";
+  const candidates = [p.service, first, first.split("_")[0]].map((s) => (s ?? "").toLowerCase()).filter((s, i, a) => !!s && a.indexOf(s) === i);
+  let recipe = null;
+  for (const svc of candidates) {
+    const r = await p.loadRecipe(svc).catch(() => null);
+    if (r && (r.required_secrets ?? []).some((s) => names.includes(s.key))) {
+      recipe = r;
+      break;
+    }
+  }
+  if (!recipe || !recipe.verify) return { status: "skipped", message: NO_VERIFY_MESSAGE };
+  const missing = (recipe.required_secrets ?? []).filter((s) => !s.optional && !(s.key in p.stored)).map((s) => s.key);
+  const got = missing.length ? await p.loadOthers(missing).catch(() => ({})) : {};
+  const values = {};
+  for (const [k, v] of Object.entries(p.stored)) values[`secret.${k}`] = v;
+  for (const k of missing) if (got[k]) values[`secret.${k}`] = got[k];
+  return verifyWithRecipe(recipe, values, p.fetchFn);
+}
+var NO_VERIFY_MESSAGE, TEMPLATE_RE;
+var init_credential_verify = __esm({
+  "cypher-executor/src/lib/credential-verify.ts"() {
+    "use strict";
+    NO_VERIFY_MESSAGE = "\u5B58\u597D\u4E86\uFF0C\u4F46\u9019\u500B\u670D\u52D9\u6C92\u6709\u63D0\u4F9B\u9A57\u8B49\u65B9\u5F0F\uFF0C\u6C92\u8A66";
+    TEMPLATE_RE = /\{\{\s*((?:secret|runtime)\.[A-Za-z0-9_]+)\s*\}\}/g;
+  }
+});
+
 // cypher-executor/src/lib/builtin-ids.ts
 function isBuiltinApp(id) {
   return BUILTIN_APP_IDS.includes(id);
@@ -3339,7 +3450,7 @@ function deepPartialify(schema) {
   } else if (schema instanceof ZodNullable) {
     return ZodNullable.create(deepPartialify(schema.unwrap()));
   } else if (schema instanceof ZodTuple) {
-    return ZodTuple.create(schema.items.map((item) => deepPartialify(item)));
+    return ZodTuple.create(schema.items.map((item2) => deepPartialify(item2)));
   } else {
     return schema;
   }
@@ -3416,8 +3527,8 @@ var init_lib = __esm({
       util2.assertNever = assertNever;
       util2.arrayToEnum = (items) => {
         const obj = {};
-        for (const item of items) {
-          obj[item] = item;
+        for (const item2 of items) {
+          obj[item2] = item2;
         }
         return obj;
       };
@@ -3444,9 +3555,9 @@ var init_lib = __esm({
         return keys;
       };
       util2.find = (arr, checker) => {
-        for (const item of arr) {
-          if (checker(item))
-            return item;
+        for (const item2 of arr) {
+          if (checker(item2))
+            return item2;
         }
         return void 0;
       };
@@ -5353,14 +5464,14 @@ var init_lib = __esm({
           }
         }
         if (ctx.common.async) {
-          return Promise.all([...ctx.data].map((item, i) => {
-            return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+          return Promise.all([...ctx.data].map((item2, i) => {
+            return def.type._parseAsync(new ParseInputLazyPath(ctx, item2, ctx.path, i));
           })).then((result2) => {
             return ParseStatus.mergeArray(status, result2);
           });
         }
-        const result = [...ctx.data].map((item, i) => {
-          return def.type._parseSync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+        const result = [...ctx.data].map((item2, i) => {
+          return def.type._parseSync(new ParseInputLazyPath(ctx, item2, ctx.path, i));
         });
         return ParseStatus.mergeArray(status, result);
       }
@@ -6020,11 +6131,11 @@ var init_lib = __esm({
           });
           status.dirty();
         }
-        const items = [...ctx.data].map((item, itemIndex) => {
+        const items = [...ctx.data].map((item2, itemIndex) => {
           const schema = this._def.items[itemIndex] || this._def.rest;
           if (!schema)
             return null;
-          return schema._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
+          return schema._parse(new ParseInputLazyPath(ctx, item2, ctx.path, itemIndex));
         }).filter((x) => !!x);
         if (ctx.common.async) {
           return Promise.all(items).then((results) => {
@@ -6224,7 +6335,7 @@ var init_lib = __esm({
           }
           return { status: status.value, value: parsedSet };
         }
-        const elements = [...ctx.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx, item, ctx.path, i)));
+        const elements = [...ctx.data.values()].map((item2, i) => valueType._parse(new ParseInputLazyPath(ctx, item2, ctx.path, i)));
         if (ctx.common.async) {
           return Promise.all(elements).then((elements2) => finalizeSet(elements2));
         } else {
@@ -7649,7 +7760,7 @@ var init_trace_redaction = __esm({
         if (Array.isArray(value)) {
           const out2 = [];
           seen.set(value, out2);
-          for (const item of value) out2.push(this.walk(item, seen, depth + 1));
+          for (const item2 of value) out2.push(this.walk(item2, seen, depth + 1));
           return out2;
         }
         const out = {};
@@ -7738,7 +7849,7 @@ function looksLikeTypo(a, b) {
 }
 function interpolateValue(v, ctx, m) {
   if (typeof v === "string") return interpolateString(v, ctx, m);
-  if (Array.isArray(v)) return v.map((item) => interpolateValue(item, ctx, m));
+  if (Array.isArray(v)) return v.map((item2) => interpolateValue(item2, ctx, m));
   if (v !== null && typeof v === "object") {
     const result = {};
     for (const [k, val] of Object.entries(v)) {
@@ -8262,16 +8373,16 @@ var init_graph_executor = __esm({
               }
               const iterResults = [];
               const baseForeachCtx = propagateCtx(context, ownResult, node.id);
-              const runItem = (item) => {
+              const runItem = (item2) => {
                 const itemContext = {
                   ...baseForeachCtx,
-                  [iteratorKey]: item
+                  [iteratorKey]: item2
                 };
                 return this.executeNode(nextNode, graph, itemContext, /* @__PURE__ */ new Set(), trace, fanIn, kvStore);
               };
               const width = foreachWidth(edge.concurrency, items.length);
               if (width <= 1) {
-                for (const item of items) iterResults.push(await runItem(item));
+                for (const item2 of items) iterResults.push(await runItem(item2));
               } else {
                 iterResults.push(...await runBounded(items, width, runItem));
               }
@@ -12888,56 +12999,56 @@ var init_ui_surface = __esm({
 });
 
 // cypher-executor/src/lib/app-mcp.ts
-function validateToolInputSchema(schema, where) {
+function validateToolInputSchema(schema, where3) {
   const errors = [];
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6\uFF08JSON Schema\uFF0Ctype: "object"\uFF09`];
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [`${where3} \u5FC5\u9808\u662F\u7269\u4EF6\uFF08JSON Schema\uFF0Ctype: "object"\uFF09`];
   const s = schema;
-  if (s.type !== "object") errors.push(`${where}.type \u5FC5\u9808\u662F "object"`);
+  if (s.type !== "object") errors.push(`${where3}.type \u5FC5\u9808\u662F "object"`);
   const props = s.properties ?? {};
   if (!props || typeof props !== "object" || Array.isArray(props)) {
-    errors.push(`${where}.properties \u5FC5\u9808\u662F\u7269\u4EF6`);
+    errors.push(`${where3}.properties \u5FC5\u9808\u662F\u7269\u4EF6`);
     return errors;
   }
   for (const [k, v] of Object.entries(props)) {
     if (!PROP_RE.test(k)) {
-      errors.push(`${where}.properties.${k}\uFF1A\u53C3\u6578\u540D\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u5E95\u7DDA\u958B\u982D\u7684 _caller\uFF0F_tool \u662F MCP \u81EA\u5DF1\u9644\u7684\uFF09`);
+      errors.push(`${where3}.properties.${k}\uFF1A\u53C3\u6578\u540D\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u5E95\u7DDA\u958B\u982D\u7684 _caller\uFF0F_tool \u662F MCP \u81EA\u5DF1\u9644\u7684\uFF09`);
       continue;
     }
-    errors.push(...validateProp(v, `${where}.properties.${k}`, 0));
+    errors.push(...validateProp(v, `${where3}.properties.${k}`, 0));
   }
   if (s.required !== void 0) {
     if (!Array.isArray(s.required) || s.required.some((r) => typeof r !== "string")) {
-      errors.push(`${where}.required \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
+      errors.push(`${where3}.required \u5FC5\u9808\u662F\u5B57\u4E32\u9663\u5217`);
     } else {
       for (const r of s.required) {
-        if (!(r in props)) errors.push(`${where}.required \u88E1\u7684\u300C${r}\u300D\u4E0D\u5728 properties`);
+        if (!(r in props)) errors.push(`${where3}.required \u88E1\u7684\u300C${r}\u300D\u4E0D\u5728 properties`);
       }
     }
   }
   return errors;
 }
-function validateProp(v, where, depth) {
-  if (!v || typeof v !== "object" || Array.isArray(v)) return [`${where} \u5FC5\u9808\u662F\u7269\u4EF6`];
+function validateProp(v, where3, depth) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return [`${where3} \u5FC5\u9808\u662F\u7269\u4EF6`];
   const p = v;
   const errors = [];
-  if (p.description !== void 0 && typeof p.description !== "string") errors.push(`${where}.description \u5FC5\u9808\u662F\u5B57\u4E32`);
+  if (p.description !== void 0 && typeof p.description !== "string") errors.push(`${where3}.description \u5FC5\u9808\u662F\u5B57\u4E32`);
   if (p.type === "array") {
-    if (depth > 0) return [...errors, `${where}\uFF1A\u9663\u5217\u53EA\u80FD\u653E\u4E00\u5C64\uFF08\u9663\u5217\u88E1\u4E0D\u80FD\u518D\u653E\u9663\u5217\uFF09`];
-    if (!p.items || typeof p.items !== "object") return [...errors, `${where}.items \u5FC5\u586B`];
+    if (depth > 0) return [...errors, `${where3}\uFF1A\u9663\u5217\u53EA\u80FD\u653E\u4E00\u5C64\uFF08\u9663\u5217\u88E1\u4E0D\u80FD\u518D\u653E\u9663\u5217\uFF09`];
+    if (!p.items || typeof p.items !== "object") return [...errors, `${where3}.items \u5FC5\u586B`];
     const it = p.items;
-    if (!SCALAR_TYPES.includes(String(it.type))) errors.push(`${where}.items.type \u53EA\u80FD\u662F ${SCALAR_TYPES.join("\uFF0F")}`);
-    if (it.enum !== void 0) errors.push(...validateEnum(it.enum, String(it.type), `${where}.items`));
+    if (!SCALAR_TYPES.includes(String(it.type))) errors.push(`${where3}.items.type \u53EA\u80FD\u662F ${SCALAR_TYPES.join("\uFF0F")}`);
+    if (it.enum !== void 0) errors.push(...validateEnum(it.enum, String(it.type), `${where3}.items`));
     return errors;
   }
   if (!SCALAR_TYPES.includes(String(p.type))) {
-    return [...errors, `${where}.type \u53EA\u80FD\u662F ${[...SCALAR_TYPES, "array"].join("\uFF0F")}\uFF08\u5DE2\u72C0\u7269\u4EF6\u8ACB\u6524\u5E73\u6210\u5E7E\u500B\u53C3\u6578\uFF09`];
+    return [...errors, `${where3}.type \u53EA\u80FD\u662F ${[...SCALAR_TYPES, "array"].join("\uFF0F")}\uFF08\u5DE2\u72C0\u7269\u4EF6\u8ACB\u6524\u5E73\u6210\u5E7E\u500B\u53C3\u6578\uFF09`];
   }
-  if (p.enum !== void 0) errors.push(...validateEnum(p.enum, String(p.type), where));
+  if (p.enum !== void 0) errors.push(...validateEnum(p.enum, String(p.type), where3));
   return errors;
 }
-function validateEnum(e, type, where) {
-  if (type !== "string") return [`${where}.enum \u53EA\u652F\u63F4 string`];
-  if (!Array.isArray(e) || e.length === 0 || e.some((x) => typeof x !== "string")) return [`${where}.enum \u5FC5\u9808\u662F\u975E\u7A7A\u7684\u5B57\u4E32\u9663\u5217`];
+function validateEnum(e, type, where3) {
+  if (type !== "string") return [`${where3}.enum \u53EA\u652F\u63F4 string`];
+  if (!Array.isArray(e) || e.length === 0 || e.some((x) => typeof x !== "string")) return [`${where3}.enum \u5FC5\u9808\u662F\u975E\u7A7A\u7684\u5B57\u4E32\u9663\u5217`];
   return [];
 }
 function validateAppMcp(raw2, workflows) {
@@ -13578,6 +13689,648 @@ var init_rules = __esm({
   }
 });
 
+// shared/dataflow-graph/advice.mjs
+function item(rule, workflow, nodes, f) {
+  const base = { rule, level: "advice", workflow, node: nodes[0] ?? "", nodes, ...f };
+  return { ...base, fix_prompt: fixPrompt(base) };
+}
+function adviceA1(w, ctx) {
+  if (w.nodes.some((n) => /^try_catch$/.test(String(n.component)))) return null;
+  const hasFail = new Set(w.edges.filter((e) => e.type === "ON_FAIL").map((e) => e.from));
+  const ids = [];
+  for (const n of w.nodes) {
+    const f = ctx.facts.get(n.id);
+    if (!f || hasFail.has(n.id)) continue;
+    if (f.req && ctx.isExternal(f) || f.isSend || f.isLlm) ids.push(n.id);
+  }
+  if (!ids.length) return null;
+  return item("A1", w.name, ids, {
+    title: "\u5916\u90E8\u670D\u52D9\u51FA\u72C0\u6CC1\u6642\u6C92\u6709\u4E0B\u4E00\u6B65",
+    message: `${where(w.name)}\u7684 ${nodeList(ids)}\u6703\u547C\u53EB\u5916\u90E8\u670D\u52D9\uFF08\u5BC4\u4FE1\u3001\u767C\u8A0A\u3001AI \u6216\u5225\u4EBA\u7684 API\uFF09\uFF0C\u4F46\u6C92\u6709\u63A5\u300C\u5931\u6557\u6642\u300D\u7684\u8DEF\u3002\u5C0D\u65B9\u6162\u3001\u7576\u6A5F\u6216\u56DE\u932F\u7684\u90A3\u4E00\u6B21\uFF0C\u6574\u652F\u5C31\u5728\u90A3\u4E00\u6B65\u505C\u6389\uFF1A\u4E0D\u6703\u91CD\u8A66\uFF0C\u4E5F\u6C92\u4EBA\u77E5\u9053\u3002`,
+    next_action: "\u5728\u90A3\u500B\u7BC0\u9EDE\u52A0\u4E00\u689D\u300C\u5931\u6557\u6642\u300D\uFF08ON_FAIL\uFF09\u7684\u908A\uFF1A\u63A5\u4E00\u500B wait \u7B49\u5E7E\u79D2\u5F8C\u518D\u6253\u4E00\u6B21\uFF0C\u518D\u5931\u6557\u5C31\u767C\u901A\u77E5\u7D66\u81EA\u5DF1\u3002\u6392\u7A0B\u81EA\u5DF1\u8DD1\u7684\u5DE5\u4F5C\u6D41\u6700\u9700\u8981\uFF0C\u56E0\u70BA\u5931\u6557\u6642\u6C92\u4EBA\u5728\u770B\u3002"
+  });
+}
+function firstThenField(code) {
+  if (/\btry\s*\{/.test(code)) return false;
+  if (FIND_THEN_FIELD_RE.test(code)) return true;
+  for (const m of code.matchAll(INPUT_FIRST_RE)) {
+    const path = escRe(m[1]);
+    const guarded = new RegExp(`${path}\\s*(\\.length|\\?\\.|&&|\\?|\\|\\|)|(&&|\\?|\\|\\||!)\\s*${path}\\b`).test(code);
+    if (!guarded) return true;
+  }
+  return false;
+}
+function adviceA2(w) {
+  const tz = [];
+  const empty = [];
+  for (const n of w.nodes) {
+    const code = typeof n.data?.code === "string" ? n.data.code : "";
+    if (!code) continue;
+    if (/\bDate\b/.test(code)) {
+      for (const m of code.matchAll(LOCAL_TIME_RE)) {
+        if (m[3] !== void 0 && /timeZone/.test(m[3])) continue;
+        tz.push(n.id);
+        break;
+      }
+    }
+    if (firstThenField(code)) empty.push(n.id);
+  }
+  const out = [];
+  if (tz.length) {
+    out.push(item("A2", w.name, tz, {
+      kind: "timezone",
+      title: "\u6642\u9593\u7528\u4E86\u4F3A\u670D\u5668\u7684\u7576\u5730\u6642\u9593",
+      message: `${where(w.name)}\u7684 ${nodeList(tz)}\u7528\u7A0B\u5F0F\u53D6\u300C\u4ECA\u5929\u300D\u300C\u5E7E\u9EDE\u300D\u300C\u661F\u671F\u5E7E\u300D\uFF08getHours\u3001toLocaleString \u9019\u985E\uFF09\uFF0C\u6C92\u6307\u5B9A\u6642\u5340\u3002\u4F3A\u670D\u5668\u8DD1\u5728\u4E16\u754C\u6A19\u6E96\u6642\u9593\uFF0C\u53F0\u7063\u7684\u4F7F\u7528\u8005\u6703\u770B\u5230\u5DEE 8 \u5C0F\u6642\u2014\u2014\u534A\u591C 12 \u9EDE\u524D\u5F8C\u7684\u8CC7\u6599\u6703\u7B97\u5230\u524D\u4E00\u5929\u3002`,
+      next_action: '\u8981\u53F0\u7063\u6642\u9593\u5C31\u660E\u8B1B\uFF1AtoLocaleString("zh-TW", { timeZone: "Asia/Taipei" })\uFF0C\u6216\u6539\u7528 getUTC\u2026 \u7CFB\u5217\u518D\u81EA\u5DF1\u52A0 8 \u5C0F\u6642\u3002'
+    }));
+  }
+  if (empty.length) {
+    out.push(item("A2", w.name, empty, {
+      kind: "empty",
+      title: "\u6C92\u6709\u8CC7\u6599\u7684\u6642\u5019\u6703\u5D29",
+      message: `${where(w.name)}\u7684 ${nodeList(empty)}\u53D6\u300C\u7B2C\u4E00\u7B46\u300D\u6216\u300C\u627E\u5230\u7684\u90A3\u4E00\u7B46\u300D\u4E4B\u5F8C\u76F4\u63A5\u53D6\u6B04\u4F4D\uFF08\u4F8B\u5982 list[0].name\uFF09\u3002\u6E05\u55AE\u662F\u7A7A\u7684\u3001\u6216\u6C92\u627E\u5230\u7684\u90A3\u4E00\u6B21\uFF0C\u9019\u4E00\u884C\u5C31\u6703\u5831\u932F\uFF0C\u6574\u652F\u8DDF\u8457\u5931\u6557\u3002`,
+      next_action: "\u53D6\u6B04\u4F4D\u524D\u5148\u5224\u65B7\u6709\u6C92\u6709\uFF08list[0]?.name\uFF09\uFF0C\u6216\u5148\u5224\u65B7\u6E05\u55AE\u662F\u4E0D\u662F\u7A7A\u7684\u518D\u5F80\u4E0B\u8D70\u3002"
+    }));
+  }
+  return out;
+}
+function adviceA3(w) {
+  const codeNodes = w.nodes.filter((n) => typeof n.data?.code === "string");
+  if (!codeNodes.length) return null;
+  const fetching = codeNodes.filter((n) => /\bfetch\s*\(/.test(n.data.code)).map((n) => n.id);
+  const body = w.nodes.filter((n) => n.id !== "input" && n.component !== "input");
+  const mostlyCode = body.length >= 3 && codeNodes.length === body.length;
+  if (!fetching.length && !mostlyCode) return null;
+  const why = [];
+  if (fetching.length) why.push(`${nodeList(fetching)}\u5728 code \u88E1\u76F4\u63A5 fetch\uFF08\u6253\u7DB2\u8DEF\uFF09`);
+  if (mostlyCode) why.push(`${body.length} \u500B\u7BC0\u9EDE\u5168\u90E8\u90FD\u662F code`);
+  const ids = [.../* @__PURE__ */ new Set([...fetching, ...mostlyCode ? codeNodes.map((n) => n.id) : []])];
+  return item("A3", w.name, ids, {
+    title: "\u6574\u652F\u6D41\u7A0B\u5BEB\u6210\u4E86\u7A0B\u5F0F",
+    message: `${where(w.name)}\uFF1A${why.join("\uFF1B")}\u3002\u9019\u6A23\u8868\u9762\u4E0A\u662F\u5DE5\u4F5C\u6D41\u3001\u5BE6\u969B\u662F\u4E00\u652F\u7A0B\u5F0F\u2014\u2014\u6BCF\u4E00\u500B\u5BEB\u9032\u7A0B\u5F0F\u88E1\u7684\u5224\u65B7\u90FD\u6C92\u6709\u88AB\u6E2C\u904E\uFF0C\u51FA\u932F\u6642\u4E5F\u770B\u4E0D\u51FA\u662F\u54EA\u4E00\u6B65\u3002`,
+    next_action: "code \u53EA\u7559\u7D66\u300C\u6574\u7406\u8CC7\u6599\u300D\u9019\u7A2E\u5C0F\u4E8B\u3002\u8981\u6253\u5916\u90E8\u670D\u52D9\uFF0C\u6539\u7528 http_request \u52A0 recipe\uFF08\u7F3A\u7684 recipe \u53EF\u4EE5\u81EA\u5DF1\u88DC\uFF09\uFF1B\u8981\u5224\u65B7\uFF0C\u6539\u7528\u689D\u4EF6\u908A\uFF08if_control \u914D ON_TRUE\uFF0FON_FALSE\uFF09\uFF1B\u8981\u8FF4\u5708\uFF0C\u6539\u7528\u300C\u5C0D\u6BCF\u500B\u300D\u3002"
+  });
+}
+function adviceA4(w) {
+  if (TEST_NAME_RE.test(w.name)) return null;
+  const hits = /* @__PURE__ */ new Map();
+  for (const n of w.nodes) {
+    walkStrings(n.data ?? {}, [], (s, path) => {
+      if (path[0] === "code" || path.some((k) => NOTE_KEYS.has(String(k).toLowerCase()))) return;
+      if (/^__[A-Z0-9_]+__/.test(s) || /^\s*\{\{/.test(s)) return;
+      const m = s.match(TEST_EMAIL_RE) || s.match(TEST_URL_RE) || s.match(PLACEHOLDER_RE2) || s.match(TODO_RE);
+      if (!m) return;
+      const field = path.filter((k) => k !== "[]").join(".") || "(\u5167\u5BB9)";
+      if (!hits.has(n.id)) hits.set(n.id, []);
+      hits.get(n.id).push({ field, sample: m[0].trim().replace(/[「」]/g, "").slice(0, 40) });
+    });
+  }
+  if (!hits.size) return null;
+  const ids = [...hits.keys()];
+  const first = hits.get(ids[0])[0];
+  return item("A4", w.name, ids, {
+    title: "\u5BEB\u6B7B\u4E86\u770B\u8D77\u4F86\u662F\u6E2C\u8A66\u7528\u7684\u503C",
+    message: `${where(w.name)}\u7684 ${nodeList(ids)}\u88E1\u5BEB\u6B7B\u4E86\u50CF\u662F\u6E2C\u8A66\u7528\u7684\u503C\uFF08\u300C${first.sample}\u300D\u5728\u300C${first.field}\u300D\uFF09\u3002\u4E0A\u7DDA\u5F8C\u4FE1\u6703\u5BC4\u5230\u4E0D\u5B58\u5728\u7684\u5730\u65B9\u3001\u8ACB\u6C42\u6703\u6253\u5230\u6E2C\u8A66\u7DB2\u7AD9\uFF0C\u800C\u4E14\u4E0D\u6703\u5831\u932F\u2014\u2014\u770B\u8D77\u4F86\u6210\u529F\uFF0C\u5176\u5BE6\u6C92\u9001\u5230\u3002`,
+    next_action: "\u628A\u5B83\u63DB\u6210\u771F\u6B63\u7684\u503C\uFF1B\u6703\u8B8A\u7684\u503C\u6539\u6210\u5F9E\u8F38\u5165\u6216\u8CC7\u6599\u8868\u53D6\uFF08{{input.\u6B04\u4F4D}}\uFF09\uFF0C\u4E0D\u8981\u5BEB\u6B7B\u5728\u7BC0\u9EDE\u88E1\u3002",
+    evidence: Object.fromEntries(ids.slice(0, MAX_NODES_LISTED).map((id) => [id, hits.get(id).slice(0, 3)]))
+  });
+}
+function adviceFor(w, ctx) {
+  return [adviceA1(w, ctx), ...adviceA2(w), adviceA3(w), adviceA4(w)].filter(Boolean);
+}
+function appAdvice(decl) {
+  const out = [];
+  if (!decl || typeof decl !== "object") return out;
+  const id = String(decl.id ?? decl.name ?? "");
+  if (decl.entry === "kb") {
+    out.push(item("A5", id, [], {
+      app: id,
+      title: "\u88DD\u4E86\u4E4B\u5F8C\u770B\u4E0D\u5230\u6771\u897F",
+      message: `App\u300C${decl.name ?? id}\u300D\u5BA3\u544A\u5165\u53E3\u53EA\u5728\u77E5\u8B58\u5EAB\uFF08entry: 'kb'\uFF09\uFF1A\u88DD\u5B8C\u9996\u9801\u4E0D\u6703\u591A\u4E00\u500B\u5716\u793A\uFF0C\u4E5F\u6C92\u6709\u81EA\u5DF1\u7684\u756B\u9762\u3002\u4F7F\u7528\u8005\u6309\u4E86\u5B89\u88DD\u537B\u4EC0\u9EBC\u90FD\u6C92\u51FA\u73FE\uFF0C\u6703\u4EE5\u70BA\u6C92\u88DD\u6210\u529F\uFF0C\u4E5F\u4E0D\u77E5\u9053\u600E\u9EBC\u79FB\u9664\u5B83\u3002`,
+      next_action: "\u7D66\u5B83\u4E00\u500B\u9996\u9801\u5716\u793A\u548C\u756B\u9762\uFF08ui\uFF09\uFF0C\u54EA\u6015\u6253\u958B\u53EA\u986F\u793A\u5E7E\u500B\u6846\uFF1B\u77E5\u8B58\u5EAB\u88E1\u7684\u5167\u5BB9\u53EF\u4EE5\u5F9E\u756B\u9762\u8DF3\u904E\u53BB\u770B\u3002"
+    }));
+  }
+  return out;
+}
+var MAX_NODES_LISTED, walkStrings, where, nodeList, fixPrompt, LOCAL_TIME_RE, FIND_THEN_FIELD_RE, INPUT_FIRST_RE, escRe, TEST_EMAIL_RE, TEST_URL_RE, PLACEHOLDER_RE2, TODO_RE, NOTE_KEYS, TEST_NAME_RE, adviceNextActions;
+var init_advice = __esm({
+  "shared/dataflow-graph/advice.mjs"() {
+    MAX_NODES_LISTED = 4;
+    walkStrings = (v, path, cb) => {
+      if (typeof v === "string") cb(v, path);
+      else if (Array.isArray(v)) v.forEach((x) => walkStrings(x, [...path, "[]"], cb));
+      else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walkStrings(x, [...path, k], cb);
+    };
+    where = (workflow) => `\u5DE5\u4F5C\u6D41\u300C${workflow}\u300D`;
+    nodeList = (ids) => ids.slice(0, MAX_NODES_LISTED).map((n) => `\u300C${n}\u300D`).join("\u3001") + (ids.length > MAX_NODES_LISTED ? `\u7B49 ${ids.length} \u500B\u7BC0\u9EDE` : "");
+    fixPrompt = (a) => `\u8ACB\u5E6B\u6211\u6539${a.app ? `App\u300C${a.app}\u300D` : `\u5DE5\u4F5C\u6D41\u300C${a.workflow}\u300D`}${a.nodes.length ? `\uFF08\u7BC0\u9EDE ${a.nodes.slice(0, MAX_NODES_LISTED).join("\u3001")}\uFF09` : ""}\u3002\u63D0\u9192\uFF1A${a.title}\u3002${a.message} \u6539\u6CD5\uFF1A${a.next_action} \u6539\u5B8C\u518D\u5B58\u4E00\u6B21\u3002`;
+    LOCAL_TIME_RE = /\.(getHours|getMinutes|getDay|getDate|getMonth|getFullYear)\s*\(\s*\)|\.toLocale(Date|Time)?String\s*\(([^)]*)\)/g;
+    FIND_THEN_FIELD_RE = /\.find\([^)]*\)\s*\.\s*[A-Za-z_]|\.match\([^)]*\)\s*\[\s*\d+\s*\]\s*\.\s*[A-Za-z_]/;
+    INPUT_FIRST_RE = /(\binput(?:\.[A-Za-z_]\w*)+)\[0\]\s*\.\s*[A-Za-z_]/g;
+    escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    TEST_EMAIL_RE = /[\w.+-]+@(example\.(com|org|net)|test\.com|foo\.com|bar\.com|domain\.com|email\.com|yourdomain\.com|your-?company\.com)\b/i;
+    TEST_URL_RE = /\bhttps?:\/\/([^/\s"']*\.)?(example\.(com|org|net)|httpbin\.org|jsonplaceholder\.typicode\.com|webhook\.site|requestbin\.[a-z]+|ngrok(-free)?\.(io|app|dev)|localhost|127\.0\.0\.1)(:\d+)?(\/|\b)/i;
+    PLACEHOLDER_RE2 = /(^|[^A-Za-z])(YOUR[_ -](API[_ -]?KEY|TOKEN|EMAIL|NAME|ID)|CHANGE[_ -]?ME|REPLACE[_ -]?ME|lorem ipsum|0912[-\s]?345[-\s]?678|0900[-\s]?000[-\s]?000|test@test)/i;
+    TODO_RE = /(^|[^A-Za-z.])(TODO|FIXME)\b/;
+    NOTE_KEYS = /* @__PURE__ */ new Set(["description", "note", "notes", "comment", "label", "example", "examples", "hint", "doc", "docs", "name", "placeholder"]);
+    TEST_NAME_RE = /(^|[_-])(test|demo|example|sample|sandbox)([_-]|$)/i;
+    adviceNextActions = (advice) => (advice ?? []).map((a) => `${a.rule} ${a.workflow}${a.nodes?.length ? "\uFF0F" + a.nodes.slice(0, MAX_NODES_LISTED).join("\u3001") : ""}\uFF1A${a.title}\u3002${a.next_action}`);
+  }
+});
+
+// shared/dataflow-graph/security.mjs
+function walkStrings2(v, path, cb) {
+  if (typeof v === "string") cb(v, path);
+  else if (Array.isArray(v)) v.forEach((x) => walkStrings2(x, [...path, "[]"], cb));
+  else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walkStrings2(x, [...path, k], cb);
+}
+function credentialRefs(node) {
+  const out = [];
+  walkStrings2(node.data ?? {}, [], (s, path) => {
+    for (const e of refsIn(s)) {
+      const m = e.match(CRED_REF_RE);
+      if (m) out.push({ kind: m[1], name: m[2], path });
+    }
+  });
+  return out;
+}
+function familyOf(credName) {
+  const t = new Set(tokensOf(credName));
+  return FAMILIES.find((f) => f.tokens.some((x) => t.has(x))) ?? null;
+}
+function destinationOf(url, { selfOrigins = [] } = {}) {
+  if (typeof url !== "string" || !url.trim()) return { kind: "none" };
+  const s = url.trim();
+  const lead = s.match(/^(__[A-Z0-9_]+__|\{\{\s*([^{}]+?)\s*\}\})/);
+  if (lead) {
+    if (lead[1].startsWith("__")) return { kind: "self" };
+    const expr = lead[2];
+    if (expr.startsWith("_")) return { kind: "self" };
+    return INPUT_REF_RE.test(expr) ? { kind: "input", ref: expr } : { kind: "dynamic", ref: expr };
+  }
+  const m = s.match(/^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)/i);
+  if (!m) return { kind: "dynamic", ref: s.slice(0, 40) };
+  const scheme = m[1].toLowerCase();
+  const hp = m[2].replace(/^[^@]*@/, "").toLowerCase();
+  if (hp.includes("{{")) {
+    const expr = refsIn(hp)[0] ?? "";
+    return INPUT_REF_RE.test(expr) ? { kind: "input", ref: expr, scheme } : { kind: "dynamic", ref: expr, scheme };
+  }
+  const h = hp.replace(/:\d+$/, "");
+  if (selfOrigins.some((o) => {
+    try {
+      return new URL(o).hostname.toLowerCase() === h;
+    } catch {
+      return false;
+    }
+  })) return { kind: "self", host: h, scheme };
+  return { kind: "literal", host: h, scheme, local: LOCAL_HOST_RE.test(h) };
+}
+function isPlatformHost(h, trustedHosts) {
+  if (!h) return false;
+  if (LOCAL_HOST_RE.test(h)) return true;
+  if (FIRST_PARTY_SUFFIX.some((x) => h === x || h.endsWith("." + x))) return true;
+  for (const t of trustedHosts) {
+    if (h === t) return true;
+    if (t.endsWith(".workers.dev") && h.endsWith(".workers.dev")) {
+      const a = t.split(".").slice(-3).join(".");
+      const b = h.split(".").slice(-3).join(".");
+      if (a === b) return true;
+    }
+  }
+  return false;
+}
+function nodeFacts(node, ctx) {
+  const comp = String(node.component ?? "");
+  const compTokens = /^https?:|^__/.test(comp) ? [] : tokensOf(comp);
+  const req = requestOf(node, ctx.recipeMap);
+  const dest = req ? destinationOf(req.url, ctx) : { kind: "none" };
+  const method = req?.method ?? "";
+  let isSend = compTokens.some((t) => SEND_TOKENS.has(t));
+  let isLlm = compTokens.some((t) => LLM_TOKENS.has(t));
+  if (dest.kind === "literal") {
+    if (!isSend && /^(POST|PUT|PATCH)$/.test(method) && SEND_HOSTS.some((x) => x.host.test(dest.host) && x.path.test(pathOf(req.url)))) isSend = true;
+    if (LLM_HOSTS.test(dest.host)) isLlm = true;
+  }
+  const isDelete = method === "DELETE" || compTokens.includes("delete") || compTokens.includes("remove");
+  const isCode = typeof node.data?.code === "string";
+  return { req, dest, method, isSend, isLlm, isDelete, isCode, comp, isWriteReq: Boolean(req) && method !== "GET" && method !== "HEAD" };
+}
+function hasCap(node, byId, depth = 2) {
+  if (!node) return false;
+  const d = node.data ?? {};
+  for (const [k, v] of Object.entries(d)) if (CAP_KEY_RE.test(k) && v !== void 0 && v !== "" && v !== null) return true;
+  if (typeof d.code === "string" && CAP_CODE_RE.test(d.code)) return true;
+  if (typeof d.url === "string" && CAP_URL_RE.test(d.url)) return true;
+  if (depth > 0) {
+    const ups = /* @__PURE__ */ new Set();
+    walkStrings2(d, [], (s) => {
+      for (const e of refsIn(s)) {
+        const id = e.split(".")[0];
+        if (byId.has(id) && id !== node.id) ups.add(id);
+      }
+    });
+    for (const id of ups) if (hasCap(byId.get(id), byId, depth - 1)) return true;
+  }
+  return false;
+}
+function loopsOf(wf) {
+  const out = [];
+  for (const e of wf.edges) {
+    if (e.type !== "FOREACH") continue;
+    const seen = /* @__PURE__ */ new Set();
+    const stack = [e.to];
+    while (stack.length) {
+      const id = stack.pop();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const x of wf.edges) if (x.from === id && x.type !== "FOREACH") stack.push(x.to);
+    }
+    out.push({ source: e.from, body: seen });
+  }
+  return out;
+}
+function broadWriteReason(req) {
+  if (!req || !/^(DELETE|PUT|PATCH)$/.test(req.method)) return null;
+  const [p, q = ""] = pathOf(String(req.url).split("#")[0]).split("?");
+  const segs = p.split("/").filter(Boolean);
+  const last = segs[segs.length - 1] ?? "";
+  if (BULK_QUERY.test("?" + q)) return "\u7DB2\u5740\u5E36\u4E86\u300C\u5168\u90E8\u300D\u300C\u5F37\u5236\u300D\u4E4B\u985E\u7684\u65D7\u6A19";
+  if (req.method === "DELETE" && segs.some((s) => BULK_SEGMENT.test(s))) return `\u7DB2\u5740\u7684\u8DEF\u5F91\u662F\u300C\u6574\u6279\u300D\uFF08${segs.find((s) => BULK_SEGMENT.test(s))}\uFF09`;
+  if (last && !last.includes("{{") && COLLECTION_WORDS.test(last) && !/[?&](id|record_id|entry_id)=/.test("?" + q)) return `\u7DB2\u5740\u6700\u5F8C\u4E00\u6BB5\u662F\u300C${last}\u300D\uFF08\u6574\u500B\u96C6\u5408\uFF09\uFF0C\u6C92\u6709\u6307\u5B9A\u54EA\u4E00\u7B46`;
+  return null;
+}
+function outsideContentOf(node, ctx) {
+  const hits = /* @__PURE__ */ new Set();
+  walkStrings2(node.data ?? {}, [], (s) => {
+    for (const e of refsIn(s)) {
+      if (INPUT_REF_RE.test(e)) {
+        hits.add(`\u547C\u53EB\u8005\u5E36\u9032\u4F86\u7684\u8CC7\u6599\uFF08${e}\uFF09`);
+        continue;
+      }
+      const f = ctx.facts.get(e.split(".")[0]);
+      if (!f?.req) continue;
+      const ext = f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, ctx.trustedHosts) || f.dest.kind === "input";
+      if (ext) hits.add(`\u5916\u90E8\u7DB2\u7AD9\u7684\u56DE\u61C9\uFF08\u7BC0\u9EDE ${e.split(".")[0]}\uFF09`);
+    }
+  });
+  return [...hits];
+}
+function scanSecurity(input) {
+  const recipeMap = new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r]));
+  const selfOrigins = input.selfOrigins ?? [];
+  const trustedHosts = [.../* @__PURE__ */ new Set([
+    ...(input.trustedHosts ?? []).map((h) => String(h).toLowerCase()),
+    ...selfOrigins.map((o) => {
+      try {
+        return new URL(o).hostname.toLowerCase();
+      } catch {
+        return "";
+      }
+    }).filter(Boolean)
+  ])];
+  const blocks = [];
+  const notices = [];
+  const advice = [];
+  const perWorkflow = [];
+  for (const raw2 of input.subjects ?? []) {
+    const w = normalizeWorkflow(raw2);
+    if (!w.name && !w.nodes.length) continue;
+    const byId = new Map(w.nodes.map((n) => [n.id, n]));
+    const ctx = { recipeMap, selfOrigins, trustedHosts, facts: /* @__PURE__ */ new Map() };
+    for (const n of w.nodes) ctx.facts.set(n.id, nodeFacts(n, ctx));
+    const inv = { workflow: w.name, credentials: /* @__PURE__ */ new Map(), egress: /* @__PURE__ */ new Map(), dynamic_egress: [], senders: [] };
+    const add = (rule, node, f) => {
+      if (blocks.some((b) => b.rule === rule && b.workflow === w.name && b.node === node)) return;
+      const full = { rule, level: "block", workflow: w.name, node, ...f };
+      blocks.push({ ...full, fix_prompt: fixPrompt2(full) });
+    };
+    const notice = (rule, node, message2) => notices.push({ rule, level: "notice", workflow: w.name, node, message: message2 });
+    for (const n of w.nodes) {
+      const f = ctx.facts.get(n.id);
+      const creds = credentialRefs(n);
+      if (f.isSend) inv.senders.push({ node: n.id, host: f.dest.kind === "literal" && !f.dest.local ? f.dest.host : null });
+      if (f.req) {
+        if (f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts)) {
+          const e = inv.egress.get(f.dest.host) ?? { host: f.dest.host, nodes: [], methods: /* @__PURE__ */ new Set() };
+          e.nodes.push(n.id);
+          e.methods.add(f.method);
+          inv.egress.set(f.dest.host, e);
+        } else if (f.dest.kind === "input" || f.dest.kind === "dynamic") {
+          inv.dynamic_egress.push({ node: n.id, kind: f.dest.kind, ref: f.dest.ref });
+        }
+      }
+      for (const c of creds) {
+        const fam = familyOf(c.name);
+        const row = inv.credentials.get(c.name) ?? { name: c.name, family: fam?.id ?? null, nodes: [], hosts: /* @__PURE__ */ new Set() };
+        if (!row.nodes.includes(n.id)) row.nodes.push(n.id);
+        if (f.req && f.dest.kind === "literal" && !f.dest.local) row.hosts.add(f.dest.host);
+        inv.credentials.set(c.name, row);
+      }
+      if (!creds.length || !f.req) continue;
+      for (const name of new Set(creds.map((c) => c.name))) {
+        const fam = familyOf(name);
+        const d = f.dest;
+        if (d.kind === "input") {
+          add("S1", n.id, {
+            title: "\u91D1\u9470\u6703\u88AB\u9001\u53BB\u547C\u53EB\u8005\u6307\u5B9A\u7684\u7DB2\u5740",
+            message: `${where2(w.name, n.id)}\u8981\u628A\u91D1\u9470\u300C${name}\u300D\u9001\u5230\u4E00\u500B\u7DB2\u5740\uFF0C\u800C\u90A3\u500B\u7DB2\u5740\u662F\u7531\u300C\u53EB\u9019\u652F\u5DE5\u4F5C\u6D41\u7684\u4EBA\u300D\u5E36\u9032\u4F86\u7684\uFF08${d.ref}\uFF09\u3002\u4EFB\u4F55\u4EBA\u90FD\u80FD\u628A\u5B83\u6307\u5230\u81EA\u5DF1\u7684\u7DB2\u7AD9\uFF0C\u628A\u4F60\u7684\u91D1\u9470\u6536\u8D70\u3002`,
+            next_action: "\u628A\u7DB2\u5740\u5BEB\u6B7B\u6210\u9019\u500B\u670D\u52D9\u771F\u6B63\u7684\u7DB2\u5740\uFF08\u4F8B\u5982 https://api.example.com/\u2026\uFF09\uFF0C\u4E0D\u8981\u5F9E input \u53D6\u3002",
+            evidence: { credential: name, destination: d.ref }
+          });
+        } else if (d.kind === "literal" && !d.local) {
+          if (d.scheme === "http") {
+            add("S1", n.id, {
+              title: "\u91D1\u9470\u7528\u660E\u78BC\u9001\u51FA",
+              message: `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${name}\u300D\u7528 http:// \u9001\u53BB ${d.host}\u3002http \u4E0D\u52A0\u5BC6\uFF0C\u8DEF\u4E0A\u7684\u4EBA\u770B\u5F97\u5230\u91D1\u9470\u3002`,
+              next_action: `\u7DB2\u5740\u6539\u6210 https://${d.host}/\u2026\uFF08\u5C0D\u65B9\u4E0D\u652F\u63F4 https \u5C31\u4E0D\u8981\u628A\u91D1\u9470\u7D66\u5B83\uFF09\u3002`,
+              evidence: { credential: name, destination: d.host }
+            });
+          } else if (fam?.platform) {
+            if (!isPlatformHost(d.host, trustedHosts)) {
+              add("S1", n.id, {
+                title: "\u5E73\u53F0\u5167\u90E8\u91D1\u9470\u88AB\u9001\u53BB\u5916\u9762\u7684\u7DB2\u7AD9",
+                message: `${where2(w.name, n.id)}\u8981\u628A\u5E73\u53F0\u5167\u90E8\u7528\u7684\u91D1\u9470\u300C${name}\u300D\u9001\u5230 ${d.host}\u3002\u90A3\u4E0D\u662F\u9019\u53F0\u5BE6\u4F8B\u81EA\u5DF1\u7684\u7DB2\u5740\uFF0C\u91D1\u9470\u4E00\u9001\u51FA\u53BB\u5C31\u7B49\u65BC\u4EA4\u7D66\u5225\u4EBA\u3002`,
+                next_action: "\u9019\u628A\u91D1\u9470\u53EA\u51C6\u7528\u5728\u9019\u53F0\u5BE6\u4F8B\u81EA\u5DF1\u7684\u670D\u52D9\uFF08\u7DB2\u5740\u7528 __CYPHER_BASE__\uFF0F__KBDB_BASE__\uFF09\uFF1B\u8981\u6253\u5916\u90E8\u670D\u52D9\uFF0C\u8ACB\u6539\u7528\u90A3\u500B\u670D\u52D9\u81EA\u5DF1\u7684\u91D1\u9470\u3002",
+                evidence: { credential: name, destination: d.host }
+              });
+            }
+          } else if (fam?.ok && !fam.ok(d.host)) {
+            add("S1", n.id, {
+              title: "\u91D1\u9470\u88AB\u9001\u53BB\u4E0D\u5C0D\u7684\u7DB2\u5740",
+              message: `${where2(w.name, n.id)}\u6703\u628A\u4F60\u7684 ${fam.label} \u91D1\u9470\u300C${name}\u300D\u9001\u5230 ${d.host}\uFF0C\u90A3\u4E0D\u662F ${fam.label} \u7684\u7DB2\u5740\u3002`,
+              next_action: `\u5982\u679C\u4F60\u771F\u7684\u8981\u6253 ${d.host}\uFF0C\u8ACB\u70BA\u5B83\u53E6\u5916\u5EFA\u4E00\u628A\u91D1\u9470\u3001\u540D\u5B57\u5225\u53D6\u5F97\u50CF ${fam.label} \u7684\uFF1B\u5426\u5247\u628A\u7DB2\u5740\u6539\u56DE ${fam.label} \u5B98\u65B9\u7684\u7DB2\u5740\u3002`,
+              evidence: { credential: name, destination: d.host, service: fam.id }
+            });
+          }
+        } else if (d.kind === "dynamic") {
+          notice("S1", n.id, `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${name}\u300D\u9001\u53BB\u4E00\u500B\u57F7\u884C\u6642\u624D\u7B97\u5F97\u51FA\u7684\u7DB2\u5740\uFF08${d.ref}\uFF09\uFF0C\u9019\u6B21\u770B\u4E0D\u51FA\u5B83\u6703\u4E0D\u6703\u662F\u5C0D\u7684\u670D\u52D9\u3002`);
+        }
+      }
+    }
+    for (const n of w.nodes) {
+      const f = ctx.facts.get(n.id);
+      const outward = f.isSend || f.isLlm || f.req && f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts);
+      walkStrings2(n.data ?? {}, [], (s, path) => {
+        if (path[0] === "code") return;
+        const contentKey = path.find((k) => CONTENT_KEYS.has(String(k).toLowerCase()));
+        if (!contentKey) return;
+        for (const e of refsIn(s)) {
+          const cm = e.match(CRED_REF_RE);
+          if (cm) {
+            add("S2", n.id, {
+              title: "\u91D1\u9470\u6703\u88AB\u5BEB\u9032\u6587\u5B57\u5167\u5BB9",
+              message: `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${cm[2]}\u300D\u653E\u9032\u300C${contentKey}\u300D\u6B04\u2014\u2014\u90A3\u4E00\u6B04\u7684\u5167\u5BB9\u6703\u88AB\u5B58\u8D77\u4F86\u3001\u5BC4\u51FA\u53BB\u3001\u767C\u51FA\u53BB\uFF0C\u6216\u4EA4\u7D66 AI\uFF0F\u5916\u90E8\u670D\u52D9\uFF0C\u770B\u5F97\u5230\u7684\u4EBA\u5C31\u62FF\u5230\u4F60\u7684\u91D1\u9470\u4E86\u3002`,
+              next_action: `\u91D1\u9470\u53EA\u653E\u5728 headers \u7684 Authorization \u9019\u985E\u300C\u9A57\u8B49\u7528\u300D\u7684\u4F4D\u7F6E\uFF1B\u300C${contentKey}\u300D\u6B04\u62FF\u6389\u5B83\u3002`,
+              evidence: { credential: cm[2], field: path.join(".") }
+            });
+          } else if (outward && SENSITIVE_RE.test(e)) {
+            add("S2", n.id, {
+              title: "\u6A5F\u5BC6\u6B04\u4F4D\u6703\u88AB\u5BEB\u9032\u5C0D\u5916\u7684\u6587\u5B57",
+              message: `${where2(w.name, n.id)}\u628A\u300C${e}\u300D\uFF08\u770B\u8D77\u4F86\u662F\u5BC6\u78BC\u3001\u91D1\u9470\u6216\u8B49\u4EF6\u4E4B\u985E\u7684\u6A5F\u5BC6\uFF09\u653E\u9032\u300C${contentKey}\u300D\u6B04\uFF0C\u6703\u88AB\u5BC4\u51FA\u6216\u4EA4\u7D66\u5916\u90E8\u670D\u52D9\u3002`,
+              next_action: "\u4E0D\u8981\u628A\u9019\u500B\u6B04\u4F4D\u653E\u9032\u5C0D\u5916\u7684\u6587\u5B57\uFF1B\u53EA\u50B3\u9700\u8981\u7684\u90E8\u5206\uFF08\u4F8B\u5982\u53EA\u50B3\u300C\u5DF2\u6536\u5230\u300D\uFF0C\u4E0D\u50B3\u6574\u4EFD\u8CC7\u6599\uFF09\u3002",
+              evidence: { field: path.join("."), ref: e }
+            });
+          }
+        }
+      });
+      if (f.isCode) {
+        const code = n.data.code;
+        const secretKeys = /* @__PURE__ */ new Set();
+        walkStrings2(n.data.input ?? {}, [], (s, path) => {
+          for (const e of refsIn(s)) if ((CRED_REF_RE.test(e) || SENSITIVE_RE.test(e)) && path[0]) secretKeys.add(`${path[0]}\0${e}`);
+        });
+        for (const sk of secretKeys) {
+          const [key, ref] = sk.split("\0");
+          if (new RegExp(`console\\.(log|info|warn|error|debug)\\([^)]*\\b${escRe2(key)}\\b`).test(code)) {
+            add("S2", n.id, {
+              title: "\u91D1\u9470\u6703\u88AB\u5370\u9032\u57F7\u884C\u7D00\u9304",
+              message: `${where2(w.name, n.id)}\u7684\u7A0B\u5F0F\u628A\u300C${key}\u300D\uFF08\u53D6\u81EA ${ref}\uFF09\u7528 console \u5370\u51FA\u4F86\uFF0C\u57F7\u884C\u7D00\u9304\u88E1\u5C31\u6703\u7559\u4E0B\u5B83\u7684\u771F\u8EAB\u3002`,
+              next_action: "\u62FF\u6389\u90A3\u884C console\uFF1B\u8981\u9664\u932F\u5C31\u53EA\u5370\u300C\u6709\u6C92\u6709\u503C\u300D\uFF0C\u4E0D\u8981\u5370\u503C\u672C\u8EAB\u3002",
+              evidence: { field: key, ref }
+            });
+          }
+        }
+      }
+    }
+    const isPublic = w.nodes.some((n) => n.component === "input" || n.id === "input") && !w.nodes.some((n) => n.component === "cron");
+    if (isPublic) {
+      let gated = null;
+      const hasGate = () => {
+        if (gated !== null) return gated;
+        gated = false;
+        for (const n of w.nodes) {
+          if (ctx.facts.get(n.id).isSend) continue;
+          const code = typeof n.data?.code === "string" ? n.data.code : "";
+          if (code && GATE_WORD_RE.test(code)) {
+            gated = true;
+            break;
+          }
+          let inputGate = false;
+          let secret = false;
+          walkStrings2(n.data ?? {}, [], (s, path) => {
+            if (path[0] === "code") return;
+            for (const e of refsIn(s)) {
+              if (GATE_FIELD_RE.test(e)) inputGate = true;
+              if (CRED_REF_RE.test(e)) secret = true;
+            }
+          });
+          if (inputGate && (secret || /^(if_control|switch|filter)$/.test(String(n.component)))) {
+            gated = true;
+            break;
+          }
+        }
+        return gated;
+      };
+      for (const n of w.nodes) {
+        if (!ctx.facts.get(n.id).isSend) continue;
+        const hits = [];
+        walkStrings2(n.data ?? {}, [], (s, path) => {
+          const key = lastKey(path);
+          if (!key || !DEST_KEYS.has(String(key).toLowerCase())) return;
+          for (const e of refsIn(s)) if (INPUT_REF_RE.test(e)) hits.push({ field: key, ref: e });
+        });
+        if (!hits.length || hasGate()) continue;
+        add("S3", n.id, {
+          title: "\u516C\u958B\u5165\u53E3\u6C92\u9396\uFF0C\u4EFB\u4F55\u4EBA\u90FD\u80FD\u53EB\u5B83\u767C\u8A0A\u606F",
+          message: `${where2(w.name, n.id)}\u6703\u628A\u8A0A\u606F\u9001\u7D66\u300C\u547C\u53EB\u8005\u6307\u5B9A\u7684\u5C0D\u8C61\u300D\uFF08${hits[0].field} \u2190 ${hits[0].ref}\uFF09\uFF0C\u800C\u9019\u652F\u5DE5\u4F5C\u6D41\u7684\u5165\u53E3\u662F\u516C\u958B\u7684\u3001\u6C92\u6709\u4EFB\u4F55\u6AA2\u67E5\u3002\u4EFB\u4F55\u4EBA\u62FF\u5230\u7DB2\u5740\u5C31\u80FD\u53EB\u5B83\u5C0D\u4EFB\u610F\u5C0D\u8C61\u5BC4\u4FE1\u6216\u767C\u8A0A\uFF0C\u8B8A\u6210\u4F60\u7684\u5783\u573E\u8A0A\u606F\u6A5F\u3002`,
+          next_action: "\u4E8C\u9078\u4E00\uFF1A\u2460 \u6536\u4EF6\u5C0D\u8C61\u5BEB\u6B7B\uFF08\u6216\u53EA\u5F9E\u4F60\u81EA\u5DF1\u7684\u8CC7\u6599\u8868\u67E5\uFF09\uFF1B\u2461 \u5728\u9001\u51FA\u524D\u52A0\u4E00\u500B\u6AA2\u67E5\u7BC0\u9EDE\uFF0C\u8981\u6C42\u547C\u53EB\u8005\u5E36\u4E00\u500B\u53EA\u6709\u4F60\u77E5\u9053\u7684\u5BC6\u78BC\uFF08\u8DDF {{credential.\u2026}} \u6BD4\u5C0D\uFF09\uFF0C\u5C0D\u4E0D\u4E0A\u5C31\u505C\u3002",
+          evidence: { destination_field: hits[0].field, from: hits[0].ref }
+        });
+      }
+    }
+    for (const loop of loopsOf(w)) {
+      if (hasCap(byId.get(loop.source), byId)) continue;
+      for (const id of loop.body) {
+        const f = ctx.facts.get(id);
+        if (!f) continue;
+        if (f.isSend || f.isLlm && isPublic) {
+          add("S4", id, {
+            title: "\u8FF4\u5708\u88E1\u4E00\u76F4\u767C\u9001\uFF0C\u6C92\u6709\u4E0A\u9650",
+            message: `${where2(w.name, id)}\u5728\u300C\u5C0D\u6BCF\u500B\u300D\u8FF4\u5708\u88E1${f.isLlm ? "\u547C\u53EB\u4ED8\u8CBB\u7684 AI\uFF0FAPI" : "\u5BC4\u4FE1\u6216\u767C\u8A0A"}\uFF0C\u800C\u8FF4\u5708\u7684\u6E05\u55AE\uFF08${loop.source}\uFF09\u6C92\u6709\u8A2D\u4E0A\u9650\u3002\u6E05\u55AE\u4E00\u9577\uFF08\u6216\u88AB\u704C\u9577\uFF09\uFF0C\u5C31\u6703\u767C\u51FA\u5E7E\u767E\u5E7E\u5343\u7B46\u3001\u82B1\u6389\u4F60\u7684\u984D\u5EA6\u3002`,
+            next_action: `\u5728\u7522\u751F\u6E05\u55AE\u7684\u7BC0\u9EDE\uFF08${loop.source}\uFF09\u52A0\u4E0A\u4E0A\u9650\uFF08\u4F8B\u5982 limit: 20\uFF0C\u6216\u7A0B\u5F0F\u88E1 .slice(0, 20)\uFF09\u3002`,
+            evidence: { loop_source: loop.source }
+          });
+        }
+        if (f.isDelete) {
+          const srcF = ctx.facts.get(loop.source);
+          if (!srcF?.req) {
+            notice("S5", id, `${where2(w.name, id)}\u5728\u8FF4\u5708\u88E1\u9010\u7B46\u522A\u9664\uFF0C\u6E05\u55AE\u7531\u7A0B\u5F0F\u7B97\u51FA\uFF08${loop.source}\uFF09\uFF0C\u9019\u6B21\u770B\u4E0D\u51FA\u7BC4\u570D\u6709\u591A\u5927\u3002`);
+            continue;
+          }
+          add("S5", id, {
+            title: "\u8FF4\u5708\u9010\u7B46\u522A\u9664\uFF0C\u6C92\u6709\u4E0A\u9650",
+            message: `${where2(w.name, id)}\u5728\u300C\u5C0D\u6BCF\u500B\u300D\u8FF4\u5708\u88E1\u9010\u7B46\u522A\u9664\uFF0C\u800C\u8FF4\u5708\u7684\u6E05\u55AE\uFF08${loop.source}\uFF09\u6C92\u6709\u8A2D\u4E0A\u9650\u3002\u6E05\u55AE\u5982\u679C\u662F\u6574\u5F35\u8868\uFF0C\u5C31\u6703\u628A\u6574\u5F35\u8868\u522A\u5149\u3002`,
+            next_action: `\u5728\u7522\u751F\u6E05\u55AE\u7684\u7BC0\u9EDE\uFF08${loop.source}\uFF09\u52A0\u4E0A\u4E0A\u9650\uFF0C\u6216\u5148\u7528\u689D\u4EF6\u628A\u300C\u8981\u522A\u7684\u90A3\u5E7E\u7B46\u300D\u7BE9\u51FA\u4F86\u518D\u522A\u3002`,
+            evidence: { loop_source: loop.source }
+          });
+        }
+      }
+    }
+    for (const n of w.nodes) {
+      const f = ctx.facts.get(n.id);
+      const why = broadWriteReason(f.req);
+      if (!why) continue;
+      add("S5", n.id, {
+        title: "\u4E00\u6B21\u522A\u9664\uFF08\u8986\u5BEB\uFF09\u7684\u7BC4\u570D\u592A\u5927",
+        message: `${where2(w.name, n.id)}\u5C0D\u300C\u6574\u500B\u96C6\u5408\u300D\u52D5\u624B\uFF08${f.method} ${String(f.req.url).slice(0, 80)}\uFF09\uFF1A${why}\u3002\u4E00\u500B\u8ACB\u6C42\u5C31\u53EF\u80FD\u522A\u5149\u6216\u84CB\u6389\u4E00\u6574\u5F35\u8868\u3002`,
+        next_action: "\u6307\u5B9A\u8981\u52D5\u7684\u90A3\u4E00\u7B46\uFF08\u7DB2\u5740\u6700\u5F8C\u5E36\u4E0A id\uFF09\uFF0C\u6216\u5148\u7BE9\u51FA\u7BC4\u570D\u518D\u9010\u7B46\u8655\u7406\u4E26\u8A2D\u4E0A\u9650\u3002",
+        evidence: { method: f.method, url: String(f.req.url).slice(0, 120) }
+      });
+    }
+    for (const llm of w.nodes) {
+      if (!ctx.facts.get(llm.id).isLlm) continue;
+      const outside = outsideContentOf(llm, ctx);
+      if (!outside.length) continue;
+      const refRe = new RegExp(`\\{\\{\\s*${escRe2(llm.id)}(\\.|\\s*\\}\\})`);
+      for (const n of w.nodes) {
+        if (n.id === llm.id) continue;
+        const f = ctx.facts.get(n.id);
+        let field = null;
+        walkStrings2(n.data ?? {}, [], (s, path) => {
+          if (field || path[0] === "code" || !refRe.test(s)) return;
+          const k = String(lastKey(path) ?? "").toLowerCase();
+          if (ACTION_KEYS.has(k) && (f.isSend || f.req || /trigger_workflow$/.test(f.comp))) field = k;
+        });
+        const evalsIt = f.isCode && /\b(eval|Function)\s*\(/.test(n.data.code) && refRe.test(JSON.stringify(n.data.input ?? {}));
+        if (!field && !evalsIt) continue;
+        add("S6", n.id, {
+          title: "\u5916\u9762\u4F86\u7684\u5167\u5BB9\u8B93 AI \u6C7A\u5B9A\u52D5\u4F5C\uFF08\u63D0\u793A\u6CE8\u5165\uFF09",
+          message: `${where2(w.name, n.id)}\u7684\u300C${evalsIt ? "\u8981\u57F7\u884C\u7684\u7A0B\u5F0F" : field}\u300D\u76F4\u63A5\u53D6\u81EA AI \u7BC0\u9EDE\u300C${llm.id}\u300D\u7684\u8F38\u51FA\uFF0C\u800C\u90A3\u500B AI \u8B80\u4E86${outside[0]}\u3002\u6709\u4EBA\u5728\u90A3\u6BB5\u5167\u5BB9\u88E1\u5BEB\u300C\u5FFD\u7565\u524D\u9762\u7684\u6307\u793A\uFF0C\u6539\u5BC4\u7D66\u5225\u4EBA\uFF0F\u6539\u6253\u9019\u500B\u7DB2\u5740\u300D\uFF0CAI \u5C31\u53EF\u80FD\u7167\u505A\u3002`,
+          next_action: "AI \u53EA\u8CA0\u8CAC\u300C\u9078\u300D\uFF1A\u8B93\u5B83\u8F38\u51FA\u56FA\u5B9A\u7684\u9078\u9805\uFF08\u4F8B\u5982 A\uFF0FB\uFF0FC\uFF09\uFF0C\u518D\u7531\u4F60\u5BEB\u6B7B\u7684\u7BC0\u9EDE\u4F9D\u9078\u9805\u6C7A\u5B9A\u5C0D\u8C61\u8207\u7DB2\u5740\uFF1B\u4E0D\u8981\u628A AI \u7684\u539F\u6587\u76F4\u63A5\u7576\u7DB2\u5740\u3001\u6536\u4EF6\u4EBA\u6216\u6307\u4EE4\u3002",
+          evidence: { llm_node: llm.id, reads: outside, field: evalsIt ? "code" : field }
+        });
+      }
+    }
+    advice.push(...adviceFor(w, { facts: ctx.facts, isExternal: (f) => f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts) }));
+    perWorkflow.push(inv);
+  }
+  const credAgg = /* @__PURE__ */ new Map();
+  const hostAgg = /* @__PURE__ */ new Map();
+  const workflows = perWorkflow.map((inv) => {
+    const credentials = [...inv.credentials.values()].map((c) => ({ name: c.name, service: c.family, sends_to: [...c.hosts].sort(), nodes: c.nodes }));
+    const egress = [...inv.egress.values()].map((e) => ({ host: e.host, nodes: e.nodes, methods: [...e.methods].filter(Boolean).sort() }));
+    for (const c of credentials) {
+      const a = credAgg.get(c.name) ?? { name: c.name, service: c.service, sends_to: /* @__PURE__ */ new Set(), workflows: /* @__PURE__ */ new Set() };
+      c.sends_to.forEach((h) => a.sends_to.add(h));
+      a.workflows.add(inv.workflow);
+      credAgg.set(c.name, a);
+    }
+    for (const e of egress) {
+      const a = hostAgg.get(e.host) ?? { host: e.host, workflows: /* @__PURE__ */ new Set() };
+      a.workflows.add(inv.workflow);
+      hostAgg.set(e.host, a);
+    }
+    return { workflow: inv.workflow, credentials, egress, dynamic_egress: inv.dynamic_egress, senders: inv.senders };
+  });
+  const inventory = {
+    credentials: [...credAgg.values()].map((a) => ({ name: a.name, service: a.service, sends_to: [...a.sends_to].sort(), workflows: [...a.workflows].sort() })).sort((a, b) => a.name.localeCompare(b.name)),
+    egress_hosts: [...hostAgg.values()].map((a) => ({ host: a.host, workflows: [...a.workflows].sort() })).sort((a, b) => a.host.localeCompare(b.host)),
+    dynamic_egress: workflows.flatMap((x) => x.dynamic_egress.map((d) => ({ workflow: x.workflow, ...d }))),
+    message_senders: workflows.flatMap((x) => x.senders.map((d) => ({ workflow: x.workflow, ...d }))),
+    workflows
+  };
+  return { ok: blocks.length === 0, blocks, notices, advice, inventory };
+}
+function securitySummary(report) {
+  const n = report.blocks.length;
+  if (!n) return "";
+  const kinds = [...new Set(report.blocks.map((b) => b.title))];
+  return `\u6C92\u6709\u5B58\uFF1A\u9019\u4EFD\u5167\u5BB9\u6709 ${n} \u500B\u5B89\u5168\u554F\u984C\uFF08${kinds.slice(0, 3).join("\u3001")}${kinds.length > 3 ? "\u2026" : ""}\uFF09\u3002`;
+}
+var tokensOf, escRe2, REF_RE, refsIn, CRED_REF_RE, INPUT_REF_RE, lastKey, host, FAMILIES, LOCAL_HOST_RE, FIRST_PARTY_SUFFIX, SEND_TOKENS, SEND_HOSTS, LLM_TOKENS, LLM_HOSTS, pathOf, where2, fixPrompt2, CONTENT_KEYS, SENSITIVE_RE, DEST_KEYS, ACTION_KEYS, GATE_WORD_RE, GATE_FIELD_RE, CAP_KEY_RE, CAP_CODE_RE, CAP_URL_RE, COLLECTION_WORDS, BULK_SEGMENT, BULK_QUERY;
+var init_security = __esm({
+  "shared/dataflow-graph/security.mjs"() {
+    init_extract();
+    init_advice();
+    tokensOf = (s) => String(s ?? "").replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    escRe2 = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    REF_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+    refsIn = (s) => [...String(s).matchAll(REF_RE)].map((m) => m[1].trim());
+    CRED_REF_RE = /^(credential|secret)\.([\w.-]+)$/;
+    INPUT_REF_RE = /^input[.[]/;
+    lastKey = (path) => [...path].reverse().find((k) => typeof k === "string" && k !== "[]");
+    host = (re) => (h) => re.test(h);
+    FAMILIES = [
+      { id: "platform", label: "\u5E73\u53F0\u5167\u90E8", tokens: ["kbdb", "cypher", "namespace", "internal", "proxy"], platform: true },
+      { id: "github", label: "GitHub", tokens: ["github"], ok: host(/(^|\.)(github\.com|githubusercontent\.com)$/) },
+      { id: "line", label: "LINE", tokens: ["line"], ok: host(/(^|\.)line\.me$/) },
+      { id: "facebook", label: "Facebook\uFF0FInstagram", tokens: ["fb", "facebook", "instagram", "meta"], ok: host(/(^|\.)(facebook\.com|instagram\.com|fbcdn\.net)$/) },
+      { id: "telegram", label: "Telegram", tokens: ["telegram", "tg"], ok: host(/(^|\.)telegram\.org$/) },
+      { id: "slack", label: "Slack", tokens: ["slack"], ok: host(/(^|\.)slack\.com$/) },
+      { id: "discord", label: "Discord", tokens: ["discord"], ok: host(/(^|\.)(discord\.com|discordapp\.com)$/) },
+      { id: "notion", label: "Notion", tokens: ["notion"], ok: host(/(^|\.)notion\.(com|so)$/) },
+      { id: "google", label: "Google", tokens: ["google", "gmail", "gemini", "youtube", "ga4", "gsc", "gcp", "gcs", "gdrive", "gsheets"], ok: host(/(^|\.)(googleapis\.com|google\.com|googleusercontent\.com)$/) },
+      { id: "openai", label: "OpenAI", tokens: ["openai"], ok: host(/(^|\.)openai\.com$/) },
+      { id: "anthropic", label: "Anthropic", tokens: ["anthropic", "claude"], ok: host(/(^|\.)(anthropic\.com|claude\.ai)$/) },
+      { id: "mailgun", label: "Mailgun", tokens: ["mailgun"], ok: host(/(^|\.)mailgun\.(net|org|com)$/) },
+      { id: "sendgrid", label: "SendGrid", tokens: ["sendgrid"], ok: host(/(^|\.)sendgrid\.(com|net)$/) },
+      { id: "resend", label: "Resend", tokens: ["resend"], ok: host(/(^|\.)resend\.com$/) },
+      { id: "twilio", label: "Twilio", tokens: ["twilio"], ok: host(/(^|\.)twilio\.com$/) },
+      { id: "stripe", label: "Stripe", tokens: ["stripe"], ok: host(/(^|\.)stripe\.com$/) },
+      { id: "trello", label: "Trello", tokens: ["trello"], ok: host(/(^|\.)(trello\.com|atlassian\.com)$/) },
+      { id: "kit", label: "Kit", tokens: ["kit", "convertkit"], ok: host(/(^|\.)(kit\.com|convertkit\.com)$/) },
+      { id: "cloudflare", label: "Cloudflare", tokens: ["cloudflare", "cf"], ok: host(/(^|\.)(cloudflare\.com|workers\.dev)$/) },
+      { id: "airtable", label: "Airtable", tokens: ["airtable"], ok: host(/(^|\.)airtable\.com$/) },
+      { id: "hubspot", label: "HubSpot", tokens: ["hubspot"], ok: host(/(^|\.)(hubapi\.com|hubspot\.com)$/) },
+      { id: "linear", label: "Linear", tokens: ["linear"], ok: host(/(^|\.)linear\.app$/) }
+    ];
+    LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\])$/;
+    FIRST_PARTY_SUFFIX = ["arcrun.dev", "uncle6.me"];
+    SEND_TOKENS = /* @__PURE__ */ new Set(["send", "sms", "mail", "email", "notify", "notification", "broadcast", "publish", "tweet", "dm", "whatsapp", "reply"]);
+    SEND_HOSTS = [
+      { host: /(^|\.)api\.telegram\.org$/, path: /\/bot[^/]*\/send/i },
+      { host: /(^|\.)hooks\.slack\.com$/, path: /./ },
+      { host: /(^|\.)slack\.com$/, path: /chat\.(postMessage|update)/i },
+      { host: /(^|\.)api\.line\.me$/, path: /\/message\/(push|multicast|broadcast|narrowcast|reply)/i },
+      { host: /(^|\.)graph\.facebook\.com$/, path: /\/(feed|messages|photos|videos|comments)(\?|$)/i },
+      { host: /(^|\.)(api\.mailgun\.net|api\.eu\.mailgun\.net)$/, path: /\/messages/i },
+      { host: /(^|\.)api\.sendgrid\.com$/, path: /\/mail\/send/i },
+      { host: /(^|\.)api\.resend\.com$/, path: /\/emails/i },
+      { host: /(^|\.)api\.twilio\.com$/, path: /\/Messages/i },
+      { host: /(^|\.)gmail\.googleapis\.com$/, path: /\/messages\/send|\/drafts\/send/i },
+      { host: /(^|\.)(discord\.com|discordapp\.com)$/, path: /\/webhooks\/|\/channels\/[^/]+\/messages/i }
+    ];
+    LLM_TOKENS = /* @__PURE__ */ new Set(["claude", "gemini", "openai", "gpt", "llm", "anthropic", "chatgpt", "whisper", "dalle", "imagen"]);
+    LLM_HOSTS = /(^|\.)(api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.cohere\.(ai|com)|openrouter\.ai|api\.groq\.com|api\.perplexity\.ai)$/;
+    pathOf = (url) => String(url).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, "");
+    where2 = (workflow, node) => `\u5DE5\u4F5C\u6D41\u300C${workflow}\u300D\u7684\u7BC0\u9EDE\u300C${node}\u300D`;
+    fixPrompt2 = (f) => `\u8ACB\u5E6B\u6211\u6539\u5DE5\u4F5C\u6D41\u300C${f.workflow}\u300D\u7684\u7BC0\u9EDE\u300C${f.node}\u300D\u3002\u554F\u984C\uFF1A${f.message} \u6539\u6CD5\uFF1A${f.next_action} \u6539\u5B8C\u518D\u5B58\u4E00\u6B21\u3002`;
+    CONTENT_KEYS = /* @__PURE__ */ new Set(["text", "message", "msg", "content", "subject", "html", "caption", "prompt", "plain", "markdown", "reply", "status_text"]);
+    SENSITIVE_RE = /(password|passwd|\bpwd\b|api[_-]?key|secret|(access|auth|bearer|refresh|api|session)[_-]?token|id[_-]?card|\bssn\b|credit[_-]?card|card[_-]?number|\bcvv\b|\biban\b)/i;
+    DEST_KEYS = /* @__PURE__ */ new Set(["to", "cc", "bcc", "recipient", "recipients", "chat_id", "channel", "email", "phone", "mobile", "number", "user_id", "target", "to_email"]);
+    ACTION_KEYS = /* @__PURE__ */ new Set([...DEST_KEYS, "url", "method", "path", "endpoint", "command", "cmd", "sql", "workflow_name"]);
+    GATE_WORD_RE = /(hmac|signature|timingSafeEqual|x-hub|x-line-signature|verify|webhook[_-]?secret|shared[_-]?secret|passcode)/i;
+    GATE_FIELD_RE = /^input\.(token|secret|key|sig|signature|hmac|auth|password|passcode|api_?key|access_?key)(\b|[._[])/i;
+    CAP_KEY_RE = /^(limit|max|max_items|max_results|maxresults|top|take|first|page_size|per_page|size|n)$/i;
+    CAP_CODE_RE = /\.slice\(|\.splice\(|Math\.min\(|\blimit\b|\bMAX_[A-Z_]+\b|\btake\(|\.length\s*=/;
+    CAP_URL_RE = /[?&](limit|max|max_results|top|per_page|page_size|size|count|maxResults)=/i;
+    COLLECTION_WORDS = /^(records|entries|templates|items|users|rows|files|documents|pages|posts|messages|tickets|issues|workflows|apps|projects|tasks|notes|cards|events|customers|orders|contacts|subscribers|sessions|sources|libraries|all|bulk|batch|everything)$/i;
+    BULK_SEGMENT = /^(by-template|by-source|by-library|bulk|purge|truncate|wipe|drop|clear|all)$/i;
+    BULK_QUERY = /[?&](all|force|purge|truncate|wipe|drop|confirm_all)=(true|1|yes|\*)(&|$)/i;
+  }
+});
+
 // shared/dataflow-graph/declarations.mjs
 var init_declarations = __esm({
   "shared/dataflow-graph/declarations.mjs"() {
@@ -13703,6 +14456,8 @@ var init_dataflow_graph = __esm({
   "shared/dataflow-graph/index.mjs"() {
     init_extract();
     init_rules();
+    init_security();
+    init_advice();
     init_declarations();
     init_platform_io_generated();
   }
@@ -13806,6 +14561,58 @@ var init_dataflow_check = __esm({
     "use strict";
     init_dataflow_graph();
     init_endpoints();
+  }
+});
+
+// cypher-executor/src/lib/security-scan.ts
+function runSecurityScan(env, subjects, opts = {}) {
+  const trusted = [];
+  try {
+    trusted.push(hostOf(kbdbBaseUrl(env)));
+  } catch {
+  }
+  const reg = env.REGISTRY_BASE_URL;
+  if (reg) trusted.push(hostOf(reg));
+  return scanSecurity({
+    subjects,
+    recipes: opts.recipes ?? [],
+    selfOrigins: (opts.selfOrigins ?? []).filter(Boolean),
+    trustedHosts: trusted.filter(Boolean)
+  });
+}
+function securityError(report) {
+  return securitySummary(report);
+}
+function securityNextActions(report) {
+  return report.blocks.map((b) => `${b.rule} ${b.workflow}\uFF0F${b.node}\uFF1A${b.title}\u3002${b.next_action}`);
+}
+function securityText(report) {
+  return report.blocks.map((b, i) => `${i + 1}. ${b.title}
+   ${b.message}
+   \u600E\u9EBC\u6539\uFF1A${b.next_action}`).join("\n");
+}
+function securityPayload(report) {
+  return { blocks: report.blocks, notices: report.notices, advice: report.advice ?? [], inventory: report.inventory };
+}
+function adviceForApp(decl, report) {
+  return [...appAdvice(decl), ...report?.advice ?? []];
+}
+function adviceActions(advice) {
+  return adviceNextActions(advice);
+}
+var hostOf;
+var init_security_scan = __esm({
+  "cypher-executor/src/lib/security-scan.ts"() {
+    "use strict";
+    init_dataflow_graph();
+    init_endpoints();
+    hostOf = (u) => {
+      try {
+        return new URL(String(u)).hostname.toLowerCase();
+      } catch {
+        return "";
+      }
+    };
   }
 });
 
@@ -14819,6 +15626,24 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     };
   }
   const decl = applyDeclarationDefaults(decl0);
+  let advice = [];
+  {
+    const scan = runSecurityScan(env, decl.workflows.map((wf) => ({ name: `${decl.id}__${wf.name}`, graph: wf.graph })), {
+      selfOrigins: opts.coords ? [opts.coords.cypherBase] : [],
+      recipes: decl.requires?.recipes ?? []
+    });
+    if (!scan.ok) {
+      return {
+        ok: false,
+        step: "\u5B89\u5168\u6383\u63CF",
+        errors: [`\u9019\u500B App \u6709 ${scan.blocks.length} \u500B\u5B89\u5168\u554F\u984C\uFF0C\u6240\u4EE5\u6C92\u6709\u5B89\u88DD\uFF1A
+${securityText(scan)}`],
+        hint: "\u9019\u8981\u7531 App \u7684\u4F5C\u8005\u4FEE\uFF08\u6216\u4F60\u8ACB AI \u6539\u597D\u518D\u91CD\u65B0\u5B89\u88DD\uFF0F\u532F\u5165\uFF09\u3002\u4E0A\u9762\u6BCF\u4E00\u689D\u90FD\u5BEB\u4E86\u600E\u9EBC\u6539\u3002",
+        security: securityPayload(scan)
+      };
+    }
+    advice = adviceForApp(decl, scan);
+  }
   const contentHash2 = await computeContentHash(decl0);
   const existing = await getInstalledApp(env, tenant2, decl.id);
   const ulCtx = existing ? { layer: layerOf(existing), by: "app-update", now: (/* @__PURE__ */ new Date()).toISOString(), dirty: false } : void 0;
@@ -14865,7 +15690,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
       };
     }
     const pendingIdx2 = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
-    return { ok: true, changed: false, app: existing, ...needs2, ...pendingIdx2.length ? { field_index_pending: pendingIdx2 } : {} };
+    return { ok: true, changed: false, app: existing, ...needs2, ...pendingIdx2.length ? { field_index_pending: pendingIdx2 } : {}, ...advice.length ? { advice } : {} };
   }
   const units = [];
   let recipesInstalled = [];
@@ -15097,7 +15922,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     };
   }
   const pendingIdx = await ensureFieldIndexes(env, decl.data, Math.max(1, INSTALL_REQUEST_BUDGET + FINAL_RESERVE - spent()));
-  return { ok: true, changed: true, app: record, ...needs, ...keptUserChanges.length ? { kept_user_changes: keptUserChanges } : {}, ...pendingIdx.length ? { field_index_pending: pendingIdx } : {}, dataflow };
+  return { ok: true, changed: true, app: record, ...needs, ...keptUserChanges.length ? { kept_user_changes: keptUserChanges } : {}, ...pendingIdx.length ? { field_index_pending: pendingIdx } : {}, dataflow, ...advice.length ? { advice } : {} };
 }
 async function uninstallApp(env, tenant2, id) {
   if (isBuiltinApp(id)) {
@@ -15267,6 +16092,7 @@ var init_app_system = __esm({
     init_app_mcp();
     init_subrequest_meter();
     init_dataflow_check();
+    init_security_scan();
     init_app_userlayer();
     init_app_rulebook();
     APP_WORKFLOW_TRIGGERS = ["manual", "schedule", "event"];
@@ -15694,6 +16520,7 @@ var init_recipes = __esm({
     init_dist();
     init_hash();
     init_endpoints();
+    init_credential_verify();
     recipesRouter = new Hono2();
     DISPATCHABLE_AUTH_PRIMITIVES = /* @__PURE__ */ new Set(["static_key", "service_account", "oauth2"]);
     kIdxCanonical = (canonicalId) => `idx:canonical:${canonicalId}`;
@@ -15922,6 +16749,27 @@ var init_recipes = __esm({
           requires: "help_url"
         }, 400);
       }
+      let verify;
+      if (body.verify !== void 0) {
+        const v = normalizeVerifySpec(body.verify);
+        if (!v) return c.json({ success: false, error: "verify \u683C\u5F0F\u4E0D\u5C0D\uFF1A\u8981 {url, method?: GET|POST, expect_status?: [\u72C0\u614B\u78BC\u2026]}" }, 400);
+        verify = v;
+      }
+      let oauth2;
+      if (body.oauth2 !== void 0) {
+        const o = body.oauth2;
+        if (!o || typeof o !== "object" || typeof o.token_endpoint !== "string" || typeof o.client_id !== "string") {
+          return c.json({ success: false, error: "oauth2 \u683C\u5F0F\u4E0D\u5C0D\uFF1A\u8981 {token_endpoint, client_id, client_secret_key?, scopes?}" }, 400);
+        }
+        oauth2 = {
+          token_endpoint: o.token_endpoint,
+          client_id: o.client_id,
+          // 密鑰本身不進 recipe（D36，credential 只帶名字）：只收它在 credential 中心的名字（client_secret_key）。
+          client_secret: "",
+          ...typeof o.client_secret_key === "string" ? { client_secret_key: o.client_secret_key } : {},
+          ...Array.isArray(o.scopes) ? { scopes: o.scopes.filter((x) => typeof x === "string") } : {}
+        };
+      }
       const now2 = Date.now();
       const existing = await c.env.RECIPES.get(`auth_recipe:${service}`, "json");
       const recipe = {
@@ -15936,6 +16784,8 @@ var init_recipes = __esm({
         token_exchange: body.token_exchange,
         required_secrets: body.required_secrets,
         inject: body.inject,
+        ...verify ? { verify } : {},
+        ...oauth2 ? { oauth2 } : {},
         created_at: existing?.created_at ?? now2,
         updated_at: now2
       };
@@ -15981,7 +16831,7 @@ function renderBodyTemplate(template, ctx) {
 }
 function renderValue(v, ctx) {
   if (typeof v === "string") return renderString(v, ctx);
-  if (Array.isArray(v)) return v.map((item) => renderValue(item, ctx));
+  if (Array.isArray(v)) return v.map((item2) => renderValue(item2, ctx));
   if (v !== null && typeof v === "object") {
     const out = {};
     for (const [k, val] of Object.entries(v)) {
@@ -18337,7 +19187,7 @@ function computeBattery(input) {
       reset_at
     };
   }
-  const where = "\u5230\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\uFF0C\u6309\u300C\u653E\u884C\u300D\u6216\u95DC\u6389\u81EA\u52D5\u524E\u8ECA\u5373\u53EF\u4E0D\u518D\u53D7\u9650";
+  const where3 = "\u5230\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\uFF0C\u6309\u300C\u653E\u884C\u300D\u6216\u95DC\u6389\u81EA\u52D5\u524E\u8ECA\u5373\u53EF\u4E0D\u518D\u53D7\u9650";
   const unit = limiting === "ai" ? "\u4ECA\u5929\u7684 AI \u514D\u8CBB\u984D\u5EA6" : isPaid ? "\u672C\u6708\u5167\u542B\u984D\u5EA6" : "\u4ECA\u5929\u7684\u514D\u8CBB\u984D\u5EA6";
   const stops = limiting === "ai" ? "\u96F2\u7AEF\u8403\u53D6\u66AB\u505C" : "\u4E00\u822C\u5BEB\u5165\u66AB\u505C";
   const stopsNext = limiting === "ai" ? "\u96F2\u7AEF\u8403\u53D6" : "\u4E00\u822C\u5BEB\u5165";
@@ -18353,7 +19203,7 @@ function computeBattery(input) {
       warn: true,
       saver: true,
       reset_at,
-      message: `${unit}\u7528\u5B8C\u4E86\uFF1A${stops}\uFF0C\u767B\u5165\u3001\u653E\u884C\u3001\u66F4\u65B0\u4ECD\u53EF\u4F7F\u7528\u3002${where}\u3002`
+      message: `${unit}\u7528\u5B8C\u4E86\uFF1A${stops}\uFF0C\u767B\u5165\u3001\u653E\u884C\u3001\u66F4\u65B0\u4ECD\u53EF\u4F7F\u7528\u3002${where3}\u3002`
     };
   }
   if (remaining <= BATTERY_SAVER_AT) {
@@ -18368,7 +19218,7 @@ function computeBattery(input) {
       warn: true,
       saver: true,
       reset_at,
-      message: `\u5269\u9918\u7528\u91CF\u53EA\u6709 ${remaining}%\uFF0C\u5DF2\u9032\u5165\u7701\u96FB\u6A21\u5F0F\uFF08\u80CC\u666F\u540C\u6B65\u653E\u6162\uFF09\uFF0C\u518D\u7528\u5B8C\u5C31\u6703\u66AB\u505C${stopsNext}\u3002${where}\u3002`
+      message: `\u5269\u9918\u7528\u91CF\u53EA\u6709 ${remaining}%\uFF0C\u5DF2\u9032\u5165\u7701\u96FB\u6A21\u5F0F\uFF08\u80CC\u666F\u540C\u6B65\u653E\u6162\uFF09\uFF0C\u518D\u7528\u5B8C\u5C31\u6703\u66AB\u505C${stopsNext}\u3002${where3}\u3002`
     };
   }
   if (remaining <= BATTERY_WARN_AT) {
@@ -18383,7 +19233,7 @@ function computeBattery(input) {
       warn: true,
       saver: false,
       reset_at,
-      message: `\u5269\u9918\u7528\u91CF ${remaining}%\uFF0C\u5FEB\u7528\u5B8C\u6642\u6703\u81EA\u52D5\u9032\u5165\u7701\u96FB\u6A21\u5F0F\u3002${where}\u3002`
+      message: `\u5269\u9918\u7528\u91CF ${remaining}%\uFF0C\u5FEB\u7528\u5B8C\u6642\u6703\u81EA\u52D5\u9032\u5165\u7701\u96FB\u6A21\u5F0F\u3002${where3}\u3002`
     };
   }
   return { state: "normal", remaining_percent: remaining, billing: false, plan, basis, estimated_overage_usd: usd, limiting, warn: false, saver: false, message: null, reset_at };
@@ -18452,7 +19302,7 @@ function buildUsage(input) {
     let used;
     if (key === "vec_store") used = Math.max(0, ...Object.values(series).map((v) => Number(v) || 0));
     else used = daily ? Number(series[today] ?? 0) : sum(series);
-    const item = {
+    const item2 = {
       key,
       used: Math.round(used),
       limit: line,
@@ -18461,13 +19311,13 @@ function buildUsage(input) {
       unit_usd: UNIT_USD[key]
     };
     if (key !== "vec_store" && key !== "vec_query") {
-      item.rate_per_min = Math.round(Number(series[today] ?? 0) / minutesToday * 100) / 100;
+      item2.rate_per_min = Math.round(Number(series[today] ?? 0) / minutesToday * 100) / 100;
     }
     let over;
     if (daily) over = Object.values(series).reduce((a, v) => a + Math.max(0, (Number(v) || 0) - line), 0);
     else over = Math.max(0, used - line);
-    item.cost_usd = plan === "paid" || key === "ai" ? round4(over * UNIT_USD[key]) : 0;
-    items.push(item);
+    item2.cost_usd = plan === "paid" || key === "ai" ? round4(over * UNIT_USD[key]) : 0;
+    items.push(item2);
   }
   return {
     plan,
@@ -18711,8 +19561,8 @@ var MCP_REDIRECT_HOST_TEMPLATE = "portal_mcp_redirect_host";
 function normalizeRedirectHost(input) {
   const raw2 = String(input ?? "").trim();
   if (!raw2) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
-  let host = raw2.toLowerCase();
-  if (host.includes("://")) {
+  let host2 = raw2.toLowerCase();
+  if (host2.includes("://")) {
     let u;
     try {
       u = new URL(raw2);
@@ -18722,29 +19572,29 @@ function normalizeRedirectHost(input) {
     if (u.protocol !== "https:" && u.protocol !== "http:") {
       return { ok: false, error: "\u53EA\u6536 https:// \u958B\u982D\u7684\u7DB2\u5740\uFF08\u672C\u6A5F\u6E2C\u8A66\u53EF\u7528 localhost\uFF09" };
     }
-    host = u.hostname.toLowerCase();
+    host2 = u.hostname.toLowerCase();
   } else {
-    host = host.split("/")[0].split("?")[0];
-    if (host.includes("@")) return { ok: false, error: "\u8ACB\u4E0D\u8981\u5E36\u5E33\u865F\u5BC6\u78BC\uFF0C\u53EA\u8981\u7DB2\u57DF\u5C31\u597D" };
-    if (host.startsWith("[")) return { ok: false, error: "\u4E0D\u652F\u63F4 IPv6 \u4F4D\u5740\uFF0C\u672C\u6A5F\u6E2C\u8A66\u8ACB\u586B localhost" };
-    host = host.split(":")[0];
+    host2 = host2.split("/")[0].split("?")[0];
+    if (host2.includes("@")) return { ok: false, error: "\u8ACB\u4E0D\u8981\u5E36\u5E33\u865F\u5BC6\u78BC\uFF0C\u53EA\u8981\u7DB2\u57DF\u5C31\u597D" };
+    if (host2.startsWith("[")) return { ok: false, error: "\u4E0D\u652F\u63F4 IPv6 \u4F4D\u5740\uFF0C\u672C\u6A5F\u6E2C\u8A66\u8ACB\u586B localhost" };
+    host2 = host2.split(":")[0];
   }
-  if (!host) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host)) {
+  if (!host2) return { ok: false, error: "\u8ACB\u586B\u5165\u7DB2\u5740\u6216\u7DB2\u57DF\uFF08\u4F8B\u5982 n8n.example.com\uFF09" };
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host2)) {
     return { ok: false, error: `\u300C${raw2}\u300D\u4E0D\u662F\u5408\u6CD5\u7684\u7DB2\u57DF\u3002\u4E0D\u63A5\u53D7\u842C\u7528\u5B57\u5143\uFF0C\u8ACB\u586B\u78BA\u5207\u7684\u7DB2\u57DF` };
   }
-  const isLocal = host === "localhost" || host === "127.0.0.1";
-  if (!isLocal && !host.includes(".")) {
-    return { ok: false, error: `\u300C${host}\u300D\u770B\u8D77\u4F86\u4E0D\u662F\u5B8C\u6574\u7DB2\u57DF\uFF08\u5C11\u4E86 .com \u4E4B\u985E\u7684\u7D50\u5C3E\uFF09` };
+  const isLocal = host2 === "localhost" || host2 === "127.0.0.1";
+  if (!isLocal && !host2.includes(".")) {
+    return { ok: false, error: `\u300C${host2}\u300D\u770B\u8D77\u4F86\u4E0D\u662F\u5B8C\u6574\u7DB2\u57DF\uFF08\u5C11\u4E86 .com \u4E4B\u985E\u7684\u7D50\u5C3E\uFF09` };
   }
-  if (host.length > 253) return { ok: false, error: "\u7DB2\u57DF\u592A\u9577" };
-  if (!isLocal && host.split(".").length < 2) {
-    return { ok: false, error: `\u300C${host}\u300D\u7BC4\u570D\u592A\u5927\uFF0C\u8ACB\u586B\u5B8C\u6574\u7DB2\u57DF` };
+  if (host2.length > 253) return { ok: false, error: "\u7DB2\u57DF\u592A\u9577" };
+  if (!isLocal && host2.split(".").length < 2) {
+    return { ok: false, error: `\u300C${host2}\u300D\u7BC4\u570D\u592A\u5927\uFF0C\u8ACB\u586B\u5B8C\u6574\u7DB2\u57DF` };
   }
-  if (MCP_BUILTIN_REDIRECT_HOSTS.some((h) => host === h || host.endsWith("." + h))) {
-    return { ok: false, error: `\u300C${host}\u300D\u662F\u5167\u5EFA\u5C31\u5141\u8A31\u7684\u7DB2\u57DF\uFF08Claude \u5B98\u65B9\uFF09\uFF0C\u4E0D\u5FC5\u518D\u52A0\u4E00\u6B21` };
+  if (MCP_BUILTIN_REDIRECT_HOSTS.some((h) => host2 === h || host2.endsWith("." + h))) {
+    return { ok: false, error: `\u300C${host2}\u300D\u662F\u5167\u5EFA\u5C31\u5141\u8A31\u7684\u7DB2\u57DF\uFF08Claude \u5B98\u65B9\uFF09\uFF0C\u4E0D\u5FC5\u518D\u52A0\u4E00\u6B21` };
   }
-  return { ok: true, host };
+  return { ok: true, host: host2 };
 }
 function mcpUrlFor(subdomain) {
   const sub = String(subdomain ?? "").trim();
@@ -19575,6 +20425,37 @@ init_tenant();
 init_credentials();
 init_release_body();
 
+// cypher-executor/src/lib/credential-check.ts
+init_recipes();
+init_auth_dispatcher();
+init_credential_verify();
+async function verifyCredentialsNow(env, owner, stored, service) {
+  try {
+    return await verifyStoredGroup({
+      stored,
+      service,
+      loadRecipe: async (svc) => await resolveAuthRecipe(svc, env.RECIPES),
+      loadOthers: (names) => resolveSecretsFromNewHome(env, owner, names)
+    });
+  } catch (e) {
+    return { status: "skipped", message: `\u5B58\u597D\u4E86\uFF0C\u4F46\u9A57\u8B49\u6C92\u8DD1\u6210\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+async function verifyCredentialNow(env, owner, name, value, service) {
+  return verifyCredentialsNow(env, owner, { [name]: value }, service);
+}
+async function credentialShape(env, service) {
+  const r = await resolveAuthRecipe(service.toLowerCase(), env.RECIPES).catch(() => null);
+  const list = r?.required_secrets ?? [];
+  if (!r || !list.length) return null;
+  const scopes = Array.isArray(r.oauth2?.scopes) ? r.oauth2.scopes.filter((x) => typeof x === "string") : [];
+  return {
+    fields: list.map((s) => ({ name: s.key, label: s.label ?? s.key, help: s.help ?? "", optional: !!s.optional })),
+    scopes,
+    token_url: typeof r.oauth2?.token_endpoint === "string" ? r.oauth2.token_endpoint : ""
+  };
+}
+
 // cypher-executor/src/lib/portal-session-cache.ts
 var AUTH_CACHE_MS = 1e4;
 var AUTH_CACHE_MAX = 200;
@@ -19925,7 +20806,7 @@ async function purgeLinksOf(env, userRecordId) {
 var LINK_RECONNECT_MARK = "reconnect";
 var RECONNECT_DETAIL = "\u9019\u689D\u9023\u7D50\u8981\u91CD\u9023\u4E00\u6B21\uFF08\u820A\u7684\u91D1\u9470\u5B58\u653E\u65B9\u5F0F\u5DF2\u505C\u7528\uFF09\uFF1A\u8ACB\u79FB\u9664\u5F8C\u91CD\u65B0\u9023\u7DDA";
 var SECRET_MISSING_DETAIL = "\u9019\u689D\u9023\u7D50\u7684\u91D1\u9470\u9084\u6C92\u751F\u6548\uFF08\u525B\u5B58\u597D\u8981\u5E7E\u79D2\uFF09\u6216\u5DF2\u907A\u5931\uFF1A\u8ACB\u7A0D\u5F8C\u518D\u554F\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u79FB\u9664\u5F8C\u91CD\u65B0\u9023\u7DDA";
-var CRED_REF_RE = /^\{\{credential\.(link_[0-9a-f]{16})\}\}$/;
+var CRED_REF_RE2 = /^\{\{credential\.(link_[0-9a-f]{16})\}\}$/;
 var LINK_CRED_SERVICE = "account_link";
 var isLegacyPlainKey = (v) => /^alk_[0-9a-f]{48}$/.test(v);
 function linkCredentialOwner(env, userRecordId) {
@@ -20064,7 +20945,7 @@ async function deleteLink(env, userRecordId, linkId) {
 }
 async function resolveLinkKey(env, userRecordId, l) {
   if (l.link_key === LINK_RECONNECT_MARK) return null;
-  const m = CRED_REF_RE.exec(l.link_key);
+  const m = CRED_REF_RE2.exec(l.link_key);
   if (m) {
     const got = await resolveSecretsFromNewHome(env, linkCredentialOwner(env, userRecordId), [m[1]]);
     return got[m[1]] ?? null;
@@ -24351,12 +25232,12 @@ portalRouter.post(
     const have = new Set(existing.map((l) => String(l.values.name ?? "")));
     const ns = portalNamespace(c.env);
     const created = [];
-    for (const item of wanted) {
-      const name = String(item?.name ?? "").trim();
+    for (const item2 of wanted) {
+      const name = String(item2?.name ?? "").trim();
       if (!isValidLibraryName(name) || name === "*" || have.has(name)) continue;
       if (isMemberRec(rec.values)) {
         const denied = await checkLibraryWrite(c.env, { token: "", recordId: rec.record_id, values: rec.values }, name, {
-          display_name: String(item?.display_name ?? "").trim() || name
+          display_name: String(item2?.display_name ?? "").trim() || name
         });
         if (!denied) {
           have.add(name);
@@ -24371,7 +25252,7 @@ portalRouter.post(
           owner_id: ns,
           values: {
             name,
-            display_name: String(item?.display_name ?? "").trim() || name,
+            display_name: String(item2?.display_name ?? "").trim() || name,
             description: "\u540C\u6B65\u5C0F\u5E6B\u624B\u770B\u5B88\u7684\u8CC7\u6599\u593E",
             status: "active"
           }
@@ -24382,7 +25263,7 @@ portalRouter.post(
       created.push(name);
     }
     const after = await listRecordsByTemplate(c.env, LIBRARY_TEMPLATE);
-    const activeNames = wanted.map((item) => String(item?.name ?? "").trim()).filter(Boolean);
+    const activeNames = wanted.map((item2) => String(item2?.name ?? "").trim()).filter(Boolean);
     if (activeNames.length > 0) {
       await c.env.WEBHOOKS.put(daemonActiveKey(c.env), JSON.stringify(activeNames), { expirationTtl: 172800 });
     }
@@ -25316,28 +26197,64 @@ portalRouter.get(
     }
   })
 );
+portalRouter.get(
+  "/portal/admin/credential-shape",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const service = (c.req.query("service") ?? "").trim();
+    if (!/^[A-Za-z][A-Za-z0-9_]{0,60}$/.test(service)) return c.json({ success: true, found: false, fields: [], scopes: [] });
+    const shape2 = await credentialShape(c.env, service);
+    return c.json({ success: true, found: !!shape2, fields: shape2?.fields ?? [], scopes: shape2?.scopes ?? [], token_url: shape2?.token_url ?? "" });
+  })
+);
 portalRouter.post(
   "/portal/admin/credentials",
   (c) => run(c, async () => {
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const body = await c.req.json().catch(() => null);
+    const service = typeof body?.service === "string" && body.service.trim() ? body.service.trim() : void 0;
+    const sensitivity = typeof body?.sensitivity === "string" ? body.sensitivity : void 0;
+    const tenantSlug = credentialOwner(c.env);
+    if (Array.isArray(body?.fields)) {
+      const raw2 = body.fields;
+      if (raw2.length < 1 || raw2.length > 20) return c.json({ error: "\u4E00\u7D44\u8981\u6709 1 \u5230 20 \u6B04" }, 400);
+      const fields = [];
+      for (const f of raw2) {
+        if (!validateName(f?.name)) return c.json({ error: "\u6B04\u4F4D\u540D\u7A31\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
+        if (typeof f.value !== "string" || !f.value) return c.json({ error: `\u300C${String(f.name)}\u300D\u7684\u503C\u5FC5\u586B` }, 400);
+        if (fields.some((x) => x.name === f.name)) return c.json({ error: `\u6B04\u4F4D\u300C${String(f.name)}\u300D\u91CD\u8907\u4E86` }, 400);
+        fields.push({ name: f.name, value: f.value });
+      }
+      const saved = [];
+      for (const f of fields) {
+        try {
+          await writeCredential(c.env, tenantSlug, f.name, f.value, service, sensitivity);
+          saved.push(f.name);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const res = credFail(c, `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF08\u300C${f.name}\u300D${saved.length ? `\uFF1B\u524D\u9762\u5DF2\u5B58 ${saved.join("\u3001")}` : ""}\uFF09`, e, msg.includes("\u4F54\u7528") ? 409 : 502);
+          return res;
+        }
+      }
+      const verify2 = await verifyCredentialsNow(c.env, tenantSlug, Object.fromEntries(fields.map((f) => [f.name, f.value])), service);
+      return c.json({ success: true, names: saved, service: service ?? null, verify: verify2 });
+    }
     if (!validateName(body?.name)) {
       return c.json({ error: "name \u5FC5\u586B\uFF0C\u53EA\u80FD\u5305\u542B\u82F1\u6587\u5B57\u6BCD\u3001\u6578\u5B57\u548C\u5E95\u7DDA" }, 400);
     }
     if (!body?.value || typeof body.value !== "string") {
       return c.json({ error: "value \u5FC5\u586B\uFF08\u91D1\u9470\u660E\u6587\u503C\uFF0C\u7D93 TLS \u50B3\u8F38\uFF0C\u4E0D\u843D\u5730\u3001\u4E0D\u8A18 log\uFF09" }, 400);
     }
-    const service = typeof body.service === "string" ? body.service : void 0;
-    const sensitivity = typeof body.sensitivity === "string" ? body.sensitivity : void 0;
-    const tenantSlug = credentialOwner(c.env);
     try {
       await writeCredential(c.env, tenantSlug, body.name, body.value, service, sensitivity);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return credFail(c, "\u91D1\u9470\u5132\u5B58\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
     }
-    return c.json({ success: true, name: body.name, service: service ?? null });
+    const verify = await verifyCredentialNow(c.env, tenantSlug, body.name, body.value, service);
+    return c.json({ success: true, name: body.name, service: service ?? null, verify });
   })
 );
 portalRouter.put(
@@ -25362,7 +26279,8 @@ portalRouter.put(
       const msg = e instanceof Error ? e.message : String(e);
       return credFail(c, "\u91D1\u9470\u8986\u5BEB\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
     }
-    return c.json({ success: true, name, service: service ?? null });
+    const verify = await verifyCredentialNow(c.env, tenantSlug, name, body.value, service);
+    return c.json({ success: true, name, service: service ?? null, verify });
   })
 );
 portalRouter.patch(
@@ -25381,7 +26299,8 @@ portalRouter.patch(
     const tenantSlug = credentialOwner(c.env);
     try {
       const result = await editCredential(c.env, tenantSlug, name, { newName, service, value });
-      return c.json({ success: true, ...result });
+      const verify = value ? await verifyCredentialNow(c.env, tenantSlug, newName ?? name, value, service) : { status: "skipped", message: "\u6C92\u63DB\u503C\uFF0C\u6C92\u8A66" };
+      return c.json({ success: true, ...result, verify });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
@@ -25912,24 +26831,24 @@ function parseRepoUrl(input) {
   }
   if (u.protocol !== "https:") return { error: "\u53EA\u63A5\u53D7 https \u958B\u982D\u7684\u9023\u7D50" };
   if (u.username || u.password) return { error: "\u9023\u7D50\u88E1\u4E0D\u8981\u653E\u5E33\u865F\u5BC6\u78BC\uFF1B\u8B80\u79C1\u6709 repo \u7684\u91D1\u9470\u7531\u7BA1\u7406\u54E1\u5B58\u5728\u96F2\u7AEF\uFF0C\u4E0D\u5728\u9019\u88E1\u8CBC" };
-  const host = u.hostname.toLowerCase();
-  const am = ARTIFACTS_HOST.exec(host);
+  const host2 = u.hostname.toLowerCase();
+  const am = ARTIFACTS_HOST.exec(host2);
   if (am) return parseArtifactsUrl(new URL(s), am[1]);
-  if (host !== "github.com" && host !== "gitlab.com") return { error: "\u53EA\u80FD\u639B Artifacts\u3001github.com \u6216 gitlab.com \u7684 repo" };
+  if (host2 !== "github.com" && host2 !== "gitlab.com") return { error: "\u53EA\u80FD\u639B Artifacts\u3001github.com \u6216 gitlab.com \u7684 repo" };
   const parts = u.pathname.split("/").filter(Boolean).map(decodeURIComponent);
   if (parts.length < 2) return { error: "\u9023\u7D50\u8981\u6307\u5230\u4E00\u500B repo\uFF08\u50CF https://github.com/\u516C\u53F8/\u898F\u7AE0\uFF09" };
   const [owner, repo, ...rest] = parts;
   if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return { error: "\u9019\u500B repo \u9023\u7D50\u770B\u8D77\u4F86\u4E0D\u5C0D" };
   let ref = "HEAD", path = "";
   if (rest.length) {
-    const at = host === "github.com" ? 0 : 1;
-    const ok = host === "github.com" ? rest[0] === "tree" : rest[0] === "-" && rest[1] === "tree";
+    const at = host2 === "github.com" ? 0 : 1;
+    const ok = host2 === "github.com" ? rest[0] === "tree" : rest[0] === "-" && rest[1] === "tree";
     if (!ok || !rest[at + 1]) return { error: "\u9023\u7D50\u53EA\u8981\u5230 repo \u672C\u8EAB\uFF0C\u6216\u50CF \u2026/tree/main/\u8CC7\u6599\u593E \u9019\u6A23\u6307\u5230\u8CC7\u6599\u593E" };
     ref = rest[at + 1];
     path = rest.slice(at + 2).join("/");
   }
   if (!/^[A-Za-z0-9_./-]+$/.test(ref) || ref.includes("..") || path.includes("..")) return { error: "\u5206\u652F\u6216\u8CC7\u6599\u593E\u540D\u7A31\u4E0D\u5408\u6CD5" };
-  return { host, owner, repo, ref, path };
+  return { host: host2, owner, repo, ref, path };
 }
 function rulebookFiles(p) {
   const base = p.path ? `${p.path.replace(/\/$/, "")}/` : "";
@@ -29086,7 +30005,7 @@ var component_catalog_generated_default = {
         "workerd",
         "wazero"
       ],
-      description: "\u628A source_url \u7684\u56DE\u61C9 body \u4E32\u6D41\u8F49\u767C\u6210 dest_url \u7684\u8ACB\u6C42 body\uFF0C\u5169\u7AEF\u4E4B\u9593\u7684\u8CC7\u6599\u5168\u7A0B\u4E0D\u9032 WASM \u7684 stdin/stdout JSON \u901A\u9053\uFF08host-to-host \u76F4\u63A5\u8F49\u767C\uFF0Cbyte \u4E0D\u843D\u5730\u5728\u96F6\u4EF6\u8A18\u61B6\u9AD4\uFF09\u3002 \u7528\u9014\uFF1A\u4EFB\u4F55\u300C\u628A\u4E00\u4EFD\u4E0D\u77E5\u9053\u5927\u5C0F\u7684\u9060\u7AEF\u5167\u5BB9\uFF0C\u539F\u5C01\u4E0D\u52D5\u9001\u5230\u53E6\u4E00\u500B\u7AEF\u9EDE\u300D\u7684\u5834\u666F\u2014\u2014\u4F8B\u5982 \u628A Gitea release asset / R2 \u516C\u958B\u7269\u4EF6\u7576\u6210 Cloudflare Workers Module Upload \u7684 multipart body\uFF0C\u90E8\u7F72\u4E00\u5305 Worker\uFF0C\u800C\u4E0D\u5FC5\u628A\u6574\u5305\u585E\u9032\u5C0D\u8A71\u4E0A\u4E0B\u6587\u6216 http_request \u7684 64KB \u8F38\u51FA\u4E0A\u9650\u3002\u9019\u662F\u901A\u7528\u539F\u8A9E\uFF0C\u4E0D\u7D81\u5B9A Cloudflare\uFF1A\u4EFB\u4F55\u300C\u4F86\u6E90\u7DB2\u5740\u2192\u76EE\u7684\u5730\u7DB2\u5740\u300D\u7684 \u8F49\u767C\u90FD\u80FD\u7528\u3002\u53D7 max_bytes\uFF0Ftimeout_ms \u9650\u5236\uFF0C\u4E0D\u662F\u7121\u754C\u4E32\u6D41\uFF08component-pr-review-standard \u5BE9\u6838\u689D\u4EF6 C\uFF0C2026-09-25\uFF09\u3002\n",
+      description: "\u628A source_url \u7684\u56DE\u61C9 body \u4E32\u6D41\u8F49\u767C\u6210 dest_url \u7684\u8ACB\u6C42 body\uFF0C\u5169\u7AEF\u4E4B\u9593\u7684\u8CC7\u6599\u5168\u7A0B\u4E0D\u9032 WASM \u7684 stdin/stdout JSON \u901A\u9053\uFF08host-to-host \u76F4\u63A5\u8F49\u767C\uFF0Cbyte \u4E0D\u843D\u5730\u5728\u96F6\u4EF6\u8A18\u61B6\u9AD4\uFF09\u3002 \u7528\u9014\uFF1A\u4EFB\u4F55\u300C\u628A\u4E00\u4EFD\u4E0D\u77E5\u9053\u5927\u5C0F\u7684\u9060\u7AEF\u5167\u5BB9\uFF0C\u539F\u5C01\u4E0D\u52D5\u9001\u5230\u53E6\u4E00\u500B\u7AEF\u9EDE\u300D\u7684\u5834\u666F\u2014\u2014\u4F8B\u5982 \u628A Gitea release asset / R2 \u516C\u958B\u7269\u4EF6\u7576\u6210 Cloudflare Workers Module Upload \u7684 multipart body\uFF0C\u90E8\u7F72\u4E00\u5305 Worker\uFF0C\u800C\u4E0D\u5FC5\u628A\u6574\u5305\u585E\u9032\u5C0D\u8A71\u4E0A\u4E0B\u6587\u6216 http_request \u7684 64KB \u8F38\u51FA\u4E0A\u9650\u3002\u9019\u662F\u901A\u7528\u539F\u8A9E\uFF0C\u4E0D\u7D81\u5B9A Cloudflare\uFF1A\u4EFB\u4F55\u300C\u4F86\u6E90\u7DB2\u5740\u2192\u76EE\u7684\u5730\u7DB2\u5740\u300D\u7684 \u8F49\u767C\u90FD\u80FD\u7528\u3002\u53D7 max_bytes\uFF0Ftimeout_ms \u9650\u5236\uFF0C\u4E0D\u662F\u7121\u754C\u4E32\u6D41\uFF08component-pr-review-standard \u5BE9\u6838\u689D\u4EF6 C\uFF0C2026-09-25\uFF09\u3002 \u5927\u6A94\u5206\u6BB5\uFF1Asource_headers \u5E36 Range\uFF08\u4F8B\u5982 bytes=0-8388607\uFF09\uFF0C\u4F86\u6E90\u56DE 206 \u8207\u5B9A\u9577 body\uFF0C dest_headers \u5E36\u5C0D\u61C9\u7684 Content-Range\uFF0C\u7528 foreach \u4E00\u6BB5\u4E00\u6BB5\u9001\uFF1B\u4F86\u6E90\u53EF\u4EE5\u662F R2 \u7684\u7C3D\u540D\u7DB2\u5740\u6216\u516C\u958B\u7DB2\u5740\u3002\n",
       aliases: [],
       tags: [
         "integration",
@@ -29129,6 +30048,18 @@ var component_catalog_generated_default = {
               type: "string"
             }
           },
+          include_response_headers: {
+            type: "boolean",
+            description: "\u8A2D true \u624D\u8B80\u56DE dest \u7684\u56DE\u61C9\u6A19\u982D\uFF08\u8F38\u51FA\u591A data.status \u8207 data.headers\uFF0C\u6A19\u982D\u540D\u5C0F\u5BEB\uFF09\uFF0C\u4E26\u4E14\u4E0D\u81EA\u52D5\u8DDF\u8F49\u5740\u3002 \u9810\u8A2D false\uFF0C\u8F38\u51FA\u8207\u820A\u7248\u76F8\u540C\u3002\u4F8B\uFF1A\u7E8C\u50B3\u4E0A\u50B3\u5206\u6BB5 PUT \u5F8C\u8B80 data.headers.range \u77E5\u9053\u4F3A\u670D\u5668\u6536\u5230\u54EA\u88E1\u3002\n",
+            default: false
+          },
+          accept_status: {
+            type: "array",
+            items: {
+              type: "integer"
+            },
+            description: "dest \u56DE\u9019\u4E9B\u975E 2xx \u72C0\u614B\u78BC\u4E5F\u8996\u70BA\u6210\u529F\uFF08\u4F8B\u5982 YouTube \u7E8C\u50B3\u4E0A\u50B3\u4E2D\u9014\u5206\u6BB5\u56DE 308\uFF09\u3002\u9810\u8A2D\u7A7A\u3002"
+          },
           max_bytes: {
             type: "integer",
             description: "\u50B3\u8F38\u5927\u5C0F\u4E0A\u9650\uFF08bytes\uFF09\uFF0C\u9810\u8A2D 26214400\uFF0825MB\uFF0C\u5C0D\u9F4A Cloudflare Workers \u8173\u672C\u4E0A\u50B3\u4E0A\u9650\uFF09\u3002\u8D85\u904E\u5373\u4E2D\u6B62\u8F49\u767C\uFF0C\u56DE\u7D50\u69CB\u5316\u932F\u8AA4\uFF0C\u4E0D\u8B93 worker \u639B",
@@ -29157,6 +30088,17 @@ var component_catalog_generated_default = {
               body: {
                 type: "string",
                 description: "dest_url \u56DE\u61C9\u7684\u7CBE\u7C21\u5167\u5BB9\uFF08JSON \u5B57\u4E32\uFF09\uFF0C\u4E0D\u542B\u8F49\u767C\u7684\u5927\u578B body"
+              },
+              status: {
+                type: "integer",
+                description: "dest \u7684 HTTP \u72C0\u614B\u78BC\uFF08\u53EA\u5728 include_response_headers \u6216 accept_status \u6709\u8A2D\u6642\u51FA\u73FE\uFF09"
+              },
+              headers: {
+                type: "object",
+                description: "dest \u7684\u56DE\u61C9\u6A19\u982D\uFF08\u5C0F\u5BEB\u540D\u7A31\uFF1B\u53EA\u5728 include_response_headers \u70BA true \u6642\u51FA\u73FE\uFF09",
+                additionalProperties: {
+                  type: "string"
+                }
               }
             }
           }
@@ -29522,6 +30464,18 @@ var component_catalog_generated_default = {
           body_json: {
             type: "object",
             description: "\u6A21\u5F0F B \u2014 body \u7269\u4EF6\uFF0C\u96F6\u4EF6\u5167\u90E8 JSON.stringify\uFF08yaml \u7AEF\u4E0D\u7528\u624B\u7D44\u5B57\u4E32\uFF09"
+          },
+          include_response_headers: {
+            type: "boolean",
+            description: "\u8A2D true \u624D\u8B80\u56DE\u56DE\u61C9\u6A19\u982D\uFF08\u8F38\u51FA\u591A data.status \u8207 data.headers\uFF0C\u6A19\u982D\u540D\u4E00\u5F8B\u5C0F\u5BEB\uFF09\uFF0C \u4E26\u4E14\u4E0D\u81EA\u52D5\u8DDF\u8F49\u5740\uFF083xx \u539F\u6A23\u4EA4\u51FA\uFF0CLocation \u8B80\u5F97\u5230\uFF09\u3002\u9810\u8A2D false\uFF0C\u8F38\u51FA\u8207\u820A\u7248\u5B8C\u5168\u76F8\u540C\u3002 \u4F8B\uFF1AYouTube \u7E8C\u50B3\u4E0A\u50B3 videos.insert?uploadType=resumable \u7684\u4E0A\u50B3\u7DB2\u5740\u5728 data.headers.location\u3002\n",
+            default: false
+          },
+          accept_status: {
+            type: "array",
+            items: {
+              type: "integer"
+            },
+            description: "\u9019\u4E9B\u975E 2xx \u72C0\u614B\u78BC\u4E5F\u8996\u70BA\u6210\u529F\uFF08\u4F8B\u5982\u7E8C\u50B3\u4E0A\u50B3\u4E2D\u9014\u5206\u6BB5\u56DE 308\uFF09\u3002\u9810\u8A2D\u7A7A\uFF0C\u975E 2xx \u4E00\u5F8B\u662F\u5931\u6557\u3002"
           }
         }
       },
@@ -29537,6 +30491,17 @@ var component_catalog_generated_default = {
               body: {
                 type: "string",
                 description: "HTTP \u56DE\u61C9 body\uFF08\u5B57\u4E32\uFF09"
+              },
+              status: {
+                type: "integer",
+                description: "HTTP \u72C0\u614B\u78BC\uFF08\u53EA\u5728 include_response_headers \u6216 accept_status \u6709\u8A2D\u6642\u51FA\u73FE\uFF09"
+              },
+              headers: {
+                type: "object",
+                description: "\u56DE\u61C9\u6A19\u982D\uFF08\u5C0F\u5BEB\u540D\u7A31\uFF1B\u53EA\u5728 include_response_headers \u70BA true \u6642\u51FA\u73FE\uFF09",
+                additionalProperties: {
+                  type: "string"
+                }
               }
             }
           }
@@ -29554,7 +30519,7 @@ var component_catalog_generated_default = {
           then_contains: '{"success":true'
         }
       ],
-      config_example: 'http_call:                     # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  url: ""                      # \u76EE\u6A19 URL\uFF08\u5FC5\u586B\uFF09\n  method: "GET"                # HTTP \u65B9\u6CD5\uFF08\u9078\u586B\uFF0C\u9810\u8A2D GET\uFF09\n  headers:                     # \u81EA\u8A02 headers\uFF08\u9078\u586B\uFF0C\u7528\u6236\u624B\u52D5\u586B\u5165\uFF09\n    Content-Type: "application/json"\n    Authorization: "Bearer <your_token>"\n  body: {}                     # \u8ACB\u6C42 body\uFF08\u9078\u586B\uFF09\n',
+      config_example: 'http_call:                     # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  url: ""                      # \u76EE\u6A19 URL\uFF08\u5FC5\u586B\uFF09\n  method: "GET"                # HTTP \u65B9\u6CD5\uFF08\u9078\u586B\uFF0C\u9810\u8A2D GET\uFF09\n  headers:                     # \u81EA\u8A02 headers\uFF08\u9078\u586B\uFF0C\u7528\u6236\u624B\u52D5\u586B\u5165\uFF09\n    Content-Type: "application/json"\n    Authorization: "Bearer <your_token>"\n  body: {}                     # \u8ACB\u6C42 body\uFF08\u9078\u586B\uFF09\n  include_response_headers: true   # \u9078\u586B\uFF1A\u8B80\u56DE\u56DE\u61C9\u6A19\u982D \u2192 {{http_call.data.headers.location}}\n  # \u5927\u6A94\uFF0F\u4E8C\u9032\u4F4D body \u4E0D\u8D70\u672C\u96F6\u4EF6\uFF08stdin \u662F JSON \u5B57\u4E32\uFF09\uFF1A\u7528 fetch_relay \u5F9E\u7DB2\u5740\uFF0FR2 \u4E32\u6D41\u9001\u51FA\n',
       source: "registry/components/http_request/component.contract.yaml"
     },
     {
@@ -31719,6 +32684,7 @@ async function coalesce(scope, key, run2, now2 = Date.now()) {
 
 // cypher-executor/src/routes/webhooks-named.ts
 init_dataflow_check();
+init_security_scan();
 var webhooksNamedRouter = new Hono2();
 function kvKey(apiKey, name) {
   return `${apiKey}:wf:${name}`;
@@ -31800,6 +32766,15 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
       return c.json({ error: "\u5716\u5B9A\u7FA9\u7DE8\u8B6F\u5F8C\u4ECD\u7121\u6548\uFF0C\u8ACB\u6AA2\u67E5 flow \u4E09\u5143\u7D44\u8207 config", details: compiled.error.issues }, 400);
     }
   }
+  const security = runSecurityScan(c.env, [{ name, graph, config: body.config }], { selfOrigins: [new URL(c.req.url).origin] });
+  if (!security.ok) {
+    return c.json({
+      error: securityError(security),
+      code: "unsafe_workflow",
+      security: securityPayload(security),
+      next_actions: securityNextActions(security)
+    }, 422);
+  }
   const dataflow = await runDataflowCheck(c.env, apiKey, [{ name, graph, config: body.config }], {
     selfOrigin: new URL(c.req.url).origin
   });
@@ -31862,7 +32837,11 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
     credentials_used: extractCredentialNames({ graph, config: body.config }),
     // Arcrun#339：讀寫／呼叫檢查（存了不代表沒問題——errors 不是空的就是會空轉）
     dataflow,
-    ...dataflow.errors.length ? { next_actions: dataflowNextActions(dataflow) } : {}
+    ...security.notices.length ? { security_notices: security.notices } : {},
+    // inkstone/Arcrun#518：AI 常漏的提醒（逾時重試、空值時區、整支寫成 code、測試資料寫死）。已經存了——這只是提醒，不擋；
+    // AI 呼叫的路從 next_actions 拿到「哪個節點、怎麼改」，可以自己修了再推一次。
+    ...security.advice.length ? { advice: security.advice } : {},
+    ...dataflow.errors.length || security.advice.length ? { next_actions: [...dataflow.errors.length ? dataflowNextActions(dataflow) : [], ...adviceActions(security.advice)] } : {}
   }, 201);
 });
 webhooksNamedRouter.get("/workflows/dataflow", async (c) => {
@@ -32890,6 +33869,8 @@ var AUTH_RECIPE_SEEDS = [
         "Notion-Version": "2022-06-28"
       }
     },
+    // 存 credential 的當下拿來試一次的唯讀請求（inkstone/Arcrun#515）。
+    verify: { method: "GET", url: "users/me" },
     created_at: now,
     updated_at: now
   },
@@ -32940,6 +33921,8 @@ var AUTH_RECIPE_SEEDS = [
         "X-GitHub-Api-Version": "2022-11-28"
       }
     },
+    // 存 credential 的當下拿來試一次的唯讀請求（inkstone/Arcrun#515）。
+    verify: { method: "GET", url: "user" },
     created_at: now,
     updated_at: now
   },
@@ -32964,6 +33947,8 @@ var AUTH_RECIPE_SEEDS = [
         Authorization: "Bearer {{secret.openai_api_key}}"
       }
     },
+    // 存 credential 的當下拿來試一次的唯讀請求（inkstone/Arcrun#515）。
+    verify: { method: "GET", url: "models" },
     created_at: now,
     updated_at: now
   },
@@ -34001,14 +34986,14 @@ function parseSprintWaitingTable(md, sprintFile) {
     if (!m) continue;
     sawTable = true;
     const id = m[1];
-    const item = m[2].trim();
+    const item2 = m[2].trim();
     const urgency = m[3].trim();
-    if (item.startsWith("~~")) continue;
+    if (item2.startsWith("~~")) continue;
     if (CLOSED_MARKERS.test(urgency)) continue;
     items.push({
       id,
       urgency: urgency.match(URGENCY_EMOJI)?.[1] ?? "",
-      title: cleanWaitingTitle(item),
+      title: cleanWaitingTitle(item2),
       sprint: sprintFile
     });
   }
@@ -34608,6 +35593,348 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
   return c.json({ success: true, entry_id: entryId, action, status: action === "restore" ? "new" : "done" });
 });
 
+// cypher-executor/src/routes/portal-oauth.ts
+init_dist();
+init_credentials();
+init_tenant();
+init_secret_backend();
+init_auth_dispatcher();
+
+// cypher-executor/src/lib/oauth-connect.ts
+var OAUTH_CALLBACK_PATH = "/portal/oauth/callback";
+var OAUTH_STATE_TEMPLATE = "oauth_state_generic";
+var OAUTH_STATE_TTL_SECONDS = 600;
+var OAUTH_DEFAULT_CRED_SERVICE = "oauth";
+var OAUTH_SETUP_STEPS = [
+  { text: "\u5230\u8A72\u670D\u52D9\u7684\u958B\u767C\u8005\u5F8C\u53F0\uFF0C\u5EFA\u7ACB\u4E00\u500B OAuth \u7528\u6236\u7AEF\uFF08\u7DB2\u9801\u61C9\u7528\u7A0B\u5F0F\u985E\u578B\uFF09" },
+  { text: "\u300C\u91CD\u65B0\u5C0E\u5411 URI\u300D\uFF08Redirect\uFF0FCallback URL\uFF09\u8CBC\u4E0A\u65B9\u7684\u56DE\u547C\u7DB2\u5740" },
+  { text: "\u628A\u7528\u6236\u7AEF ID\u3001\u5BC6\u9470\uFF0C\u548C\u670D\u52D9\u6587\u4EF6\u5BEB\u7684\u6388\u6B0A\u7DB2\u5740\u3001token \u7DB2\u5740\u586B\u5230\u4E0B\u9762" },
+  { text: "\u7BC4\u570D\u586B\u4F60\u8981\u7528\u7684\u6B0A\u9650\uFF08\u7A7A\u767D\u5206\u9694\uFF09\uFF1B\u9A57\u8B49\u7DB2\u5740\u586B\u4E00\u500B\u552F\u8B80\u7684 API \u7DB2\u5740\uFF0C\u9023\u7DDA\u5B8C\u6210\u6642\u6703\u7576\u5834\u8A66\u4E00\u6B21" }
+];
+var OAUTH_EXPIRY_WARNING = "\u6709\u4E9B\u670D\u52D9\u7684\u6E2C\u8A66\uFF0F\u958B\u767C\u6A21\u5F0F\uFF0C\u6388\u6B0A\u5E7E\u5929\u5F8C\u5C31\u6703\u5931\u6548\uFF1B\u5230\u671F\u8ACB\u91CD\u65B0\u6309\u9023\u7DDA\u3002";
+function callbackUrl(origin2) {
+  return origin2.replace(/\/+$/, "") + OAUTH_CALLBACK_PATH;
+}
+var NAME_RE3 = /^[A-Za-z][A-Za-z0-9_]{0,40}$/;
+function validConnectName(name) {
+  return typeof name === "string" && NAME_RE3.test(name);
+}
+function clientSecretName(name) {
+  return `${name}_client_secret`;
+}
+function refreshTokenName(name) {
+  return `${name}_refresh_token`;
+}
+function normalizeHttpsUrl(raw2) {
+  if (typeof raw2 !== "string") return null;
+  const t = raw2.trim();
+  if (!t || t.length > 2e3) return null;
+  try {
+    const u = new URL(t);
+    if (u.protocol !== "https:" || u.username || u.password || !u.hostname) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+function normalizeScopes(raw2) {
+  let list;
+  if (raw2 === void 0 || raw2 === null || raw2 === "") list = [];
+  else if (typeof raw2 === "string") list = raw2.split(/[\s,]+/).filter(Boolean);
+  else if (Array.isArray(raw2)) list = raw2;
+  else return null;
+  if (list.length > 30) return null;
+  const out = [];
+  for (const s of list) {
+    if (typeof s !== "string") return null;
+    const v = s.trim();
+    if (!v || v.length > 300 || /[\s\u0000-\u001f]/.test(v)) return null;
+    if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
+var RESERVED_PARAMS = /* @__PURE__ */ new Set(["client_id", "redirect_uri", "response_type", "scope", "state", "client_secret", "code"]);
+function normalizeExtraParams(raw2) {
+  if (raw2 === void 0 || raw2 === null || raw2 === "") return "";
+  if (typeof raw2 !== "string" || raw2.length > 500) return null;
+  const q = new URLSearchParams(raw2.trim().replace(/^[?&]+/, ""));
+  const pairs = [];
+  for (const [k, v] of q.entries()) {
+    if (!k || RESERVED_PARAMS.has(k.toLowerCase())) return null;
+    pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+  }
+  return pairs.join("&");
+}
+function buildAuthorizeUrl(p) {
+  const u = new URL(p.authorizeUrl);
+  u.searchParams.set("client_id", p.clientId);
+  u.searchParams.set("redirect_uri", p.redirectUri);
+  u.searchParams.set("response_type", "code");
+  if (p.scopes.length) u.searchParams.set("scope", p.scopes.join(" "));
+  u.searchParams.set("state", p.state);
+  if (p.extra) for (const [k, v] of new URLSearchParams(p.extra).entries()) u.searchParams.set(k, v);
+  return u.toString();
+}
+var OAUTH_ERROR_HINT = {
+  redirect_uri_mismatch: "\u56DE\u547C\u7DB2\u5740\u548C\u670D\u52D9\u5F8C\u53F0\u586B\u7684\u4E0D\u4E00\u81F4",
+  invalid_client: "\u7528\u6236\u7AEF ID \u6216\u5BC6\u9470\u4E0D\u5C0D",
+  invalid_grant: "\u6388\u6B0A\u78BC\u5DF2\u7528\u904E\u6216\u904E\u671F\uFF0C\u8ACB\u91CD\u65B0\u9023\u7DDA",
+  unauthorized_client: "\u9019\u500B\u7528\u6236\u7AEF\u4E0D\u80FD\u7528\u9019\u7A2E\u6388\u6B0A\u65B9\u5F0F",
+  invalid_request: "\u8ACB\u6C42\u7F3A\u6B04\u4F4D\u6216\u683C\u5F0F\u4E0D\u5C0D",
+  invalid_scope: "\u7BC4\u570D\u4E0D\u88AB\u63A5\u53D7"
+};
+async function exchangeAuthorizationCode(p, fetchFn = fetch) {
+  let res;
+  try {
+    res = await fetchFn(p.tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({
+        code: p.code,
+        client_id: p.clientId,
+        client_secret: p.clientSecret,
+        redirect_uri: p.redirectUri,
+        grant_type: "authorization_code"
+      })
+    });
+  } catch (e) {
+    return { ok: false, code: "unreachable", message: `\u9023\u4E0D\u4E0A token \u7DB2\u5740\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body || body.error) {
+    const code = body?.error || `http_${res.status}`;
+    const hint = OAUTH_ERROR_HINT[code];
+    const desc = body?.error_description ? `\uFF08${body.error_description}\uFF09` : "";
+    return { ok: false, code, message: `\u5C0D\u65B9\u62D2\u7D55\uFF1A${hint ?? code}${desc}` };
+  }
+  if (!body.refresh_token) {
+    return {
+      ok: false,
+      code: "no_refresh_token",
+      message: "\u5C0D\u65B9\u6C92\u6709\u7D66\u9577\u671F\u6388\u6B0A\uFF08refresh token\uFF09\u3002\u6709\u4E9B\u670D\u52D9\u8981\u5728\u300C\u984D\u5916\u53C3\u6578\u300D\u52A0\u4E0A\u96E2\u7DDA\u6388\u6B0A\u7684\u53C3\u6578\u624D\u6703\u7D66\uFF1B\u4E5F\u53EF\u80FD\u9019\u500B\u670D\u52D9\u7684\u6388\u6B0A\u4E0D\u6703\u904E\u671F\u3001\u4E0D\u8D70 refresh"
+    };
+  }
+  return { ok: true, refreshToken: body.refresh_token, accessToken: body.access_token ?? "", scope: body.scope ?? "" };
+}
+function buildOauthRecipe(p) {
+  const base = p.apiBaseUrl || new URL(p.tokenUrl).origin;
+  return {
+    kind: "auth_recipe",
+    service: p.name,
+    version: 1,
+    primitive: "oauth2",
+    base_url: base,
+    display_name: `OAuth \u9023\u7DDA\uFF08${p.name}\uFF09`,
+    description: p.scopes.length ? `Portal \u9023\u7DDA\u5EFA\u7ACB\u3002\u7BC4\u570D\uFF1A${p.scopes.join(" ")}` : "Portal \u9023\u7DDA\u5EFA\u7ACB",
+    oauth2: {
+      token_endpoint: p.tokenUrl,
+      client_id: p.clientId,
+      client_secret: "",
+      client_secret_key: clientSecretName(p.name),
+      scopes: p.scopes
+    },
+    required_secrets: [
+      { key: refreshTokenName(p.name), label: "OAuth refresh token" },
+      { key: clientSecretName(p.name), label: "OAuth \u7528\u6236\u7AEF\u5BC6\u9470" }
+    ],
+    inject: { header: { Authorization: "Bearer {{runtime.access_token}}" } },
+    ...p.verifyUrl ? { verify: { method: "GET", url: p.verifyUrl } } : {},
+    created_at: p.now,
+    updated_at: p.now
+  };
+}
+function portalReturnUrl(uiOrigin, params) {
+  const q = new URLSearchParams(params).toString();
+  return `${uiOrigin.replace(/\/+$/, "")}/portal/?${q}#/admin`;
+}
+
+// cypher-executor/src/routes/portal-oauth.ts
+init_credential_verify();
+var portalOauthRouter = new Hono2();
+var STATE_SLOTS = ["cred_service", "name", "client_id", "scopes", "token_url", "verify_url", "api_base_url", "ui_origin", "created_at"];
+function randomState() {
+  const a = new Uint8Array(24);
+  crypto.getRandomValues(a);
+  return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function canWriteSecrets(env) {
+  const mode = secretBackendMode(env);
+  if (mode === "local") return localBackendReady(env);
+  if (mode === "invalid") return false;
+  return Boolean((env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN) && env.CF_ACCOUNT_ID);
+}
+var NEED_GRANT = { error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE };
+function selfOrigin(c) {
+  return c.env.SELF_ORIGIN || new URL(c.req.url).origin;
+}
+portalOauthRouter.get(
+  "/portal/admin/oauth/setup",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    return c.json({
+      success: true,
+      callback_url: callbackUrl(selfOrigin(c)),
+      steps: OAUTH_SETUP_STEPS,
+      warning: OAUTH_EXPIRY_WARNING
+    });
+  })
+);
+portalOauthRouter.post(
+  "/portal/admin/oauth/start",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    if (!validConnectName(body?.name)) {
+      return c.json({ error: "\u9023\u7DDA\u540D\u7A31\uFF1A\u82F1\u6587\u958B\u982D\uFF0C\u53EA\u80FD\u82F1\u6587\u3001\u6578\u5B57\u3001\u5E95\u7DDA" }, 400);
+    }
+    const clientId = typeof body?.client_id === "string" ? body.client_id.trim() : "";
+    if (!clientId) return c.json({ error: "\u7528\u6236\u7AEF ID \u5FC5\u586B" }, 400);
+    const authorizeUrl = normalizeHttpsUrl(body?.authorize_url);
+    if (!authorizeUrl) return c.json({ error: "\u6388\u6B0A\u7DB2\u5740\u5FC5\u586B\uFF0C\u4E14\u8981\u662F https \u958B\u982D" }, 400);
+    const tokenUrl = normalizeHttpsUrl(body?.token_url);
+    if (!tokenUrl) return c.json({ error: "token \u7DB2\u5740\u5FC5\u586B\uFF0C\u4E14\u8981\u662F https \u958B\u982D" }, 400);
+    const scopes = normalizeScopes(body?.scopes);
+    if (!scopes) return c.json({ error: "\u7BC4\u570D\u683C\u5F0F\u4E0D\u5C0D\uFF08\u7A7A\u767D\u5206\u9694\uFF0C\u6BCF\u500B\u4E0D\u542B\u7A7A\u767D\uFF09" }, 400);
+    const extra = normalizeExtraParams(body?.extra_params);
+    if (extra === null) return c.json({ error: "\u984D\u5916\u53C3\u6578\u683C\u5F0F\u8981\u50CF a=b&c=d\uFF0C\u4E14\u4E0D\u80FD\u84CB\u6389 client_id\uFF0Fredirect_uri\uFF0Fscope\uFF0Fstate \u9019\u4E9B\u5354\u5B9A\u6B04\u4F4D" }, 400);
+    const verifyRaw = typeof body?.verify_url === "string" ? body.verify_url.trim() : "";
+    const verifyUrl = verifyRaw ? normalizeHttpsUrl(verifyRaw) : "";
+    if (verifyUrl === null) return c.json({ error: "\u9A57\u8B49\u7DB2\u5740\u8981\u662F https \u958B\u982D\uFF08\u6216\u7559\u7A7A\uFF09" }, 400);
+    const apiRaw = typeof body?.api_base_url === "string" ? body.api_base_url.trim() : "";
+    const apiBase = apiRaw ? normalizeHttpsUrl(apiRaw) : "";
+    if (apiBase === null) return c.json({ error: "API \u7DB2\u5740\u8981\u662F https \u958B\u982D\uFF08\u6216\u7559\u7A7A\uFF09" }, 400);
+    const credService = typeof body?.service === "string" && body.service.trim() ? body.service.trim() : OAUTH_DEFAULT_CRED_SERVICE;
+    const owner = credentialOwner(c.env);
+    const name = body.name;
+    const secret = typeof body?.client_secret === "string" ? body.client_secret.trim() : "";
+    const secretName = clientSecretName(name);
+    if (secret) {
+      try {
+        await writeCredential(c.env, owner, secretName, secret, credService, void 0);
+      } catch (e) {
+        if (isSecretsNotReady(e)) return c.json(NEED_GRANT, 502);
+        return c.json({ error: `\u5BC6\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+    } else if (!await hasCredential(c.env, owner, secretName)) {
+      return c.json({ error: "\u7528\u6236\u7AEF\u5BC6\u9470\u5FC5\u586B" }, 400);
+    }
+    const uiOrigin = c.req.header("origin") || selfOrigin(c);
+    const state = randomState();
+    await ephemeralPut(c.env, {
+      template: OAUTH_STATE_TEMPLATE,
+      slots: STATE_SLOTS,
+      hashField: "state_hash",
+      rawKey: state,
+      values: {
+        cred_service: credService,
+        name,
+        client_id: clientId,
+        scopes: scopes.join(" "),
+        token_url: tokenUrl,
+        verify_url: verifyUrl,
+        api_base_url: apiBase,
+        ui_origin: uiOrigin,
+        created_at: String(Date.now())
+      },
+      ttlSeconds: OAUTH_STATE_TTL_SECONDS,
+      fresh: true
+    });
+    return c.json({
+      success: true,
+      authorize_url: buildAuthorizeUrl({
+        authorizeUrl,
+        clientId,
+        redirectUri: callbackUrl(selfOrigin(c)),
+        scopes,
+        state,
+        extra
+      })
+    });
+  })
+);
+async function completeConnect(env, origin2, code, stateRaw) {
+  const st = await ephemeralGet(env, { template: OAUTH_STATE_TEMPLATE, hashField: "state_hash", rawKey: stateRaw });
+  if (!st) return { ok: false, status: 400, error: "\u9023\u7DDA\u5DF2\u904E\u671F\u6216\u91CD\u8907\u4F7F\u7528\uFF0C\u8ACB\u91CD\u65B0\u6309\u9023\u7DDA" };
+  const uiOrigin = st.ui_origin || origin2;
+  if (!canWriteSecrets(env)) return { ok: false, status: 502, ...NEED_GRANT, uiOrigin };
+  const owner = credentialOwner(env);
+  const name = st.name;
+  const secretName = clientSecretName(name);
+  const got = await resolveSecretsFromNewHome(env, owner, [secretName]);
+  const clientSecret = got[secretName];
+  if (!clientSecret) {
+    return { ok: false, status: 503, error: "\u7528\u6236\u7AEF\u5BC6\u9470\u9084\u6C92\u751F\u6548\uFF0C\u8ACB\u7B49\u5E7E\u79D2\u518D\u6309\u4E00\u6B21", code: "secret_propagating", uiOrigin };
+  }
+  await ephemeralGet(env, { template: OAUTH_STATE_TEMPLATE, hashField: "state_hash", rawKey: stateRaw, consume: true });
+  const ex = await exchangeAuthorizationCode({
+    tokenUrl: st.token_url,
+    code,
+    clientId: st.client_id,
+    clientSecret,
+    redirectUri: callbackUrl(origin2)
+  });
+  if (!ex.ok) return { ok: false, status: 400, error: ex.message, code: ex.code, uiOrigin };
+  try {
+    await writeCredential(env, owner, refreshTokenName(name), ex.refreshToken, st.cred_service || OAUTH_DEFAULT_CRED_SERVICE, void 0);
+  } catch (e) {
+    if (isSecretsNotReady(e)) return { ok: false, status: 502, ...NEED_GRANT, uiOrigin };
+    return { ok: false, status: 502, error: `\u6388\u6B0A\u5DF2\u53D6\u5F97\u4F46\u5B58\u4E0D\u9032\u91D1\u9470\uFF1A${e instanceof Error ? e.message : String(e)}`, uiOrigin };
+  }
+  const scopes = (st.scopes || "").split(" ").filter(Boolean);
+  const recipe = buildOauthRecipe({
+    name,
+    clientId: st.client_id,
+    tokenUrl: st.token_url,
+    scopes,
+    apiBaseUrl: st.api_base_url || void 0,
+    verifyUrl: st.verify_url || void 0,
+    now: Date.now()
+  });
+  await env.RECIPES.put(
+    // kv-ok: RECIPES 是 KBDB record 撐腰的資產儲存（kbdb-asset-store.ts, #98），不是 KV；與 POST /auth-recipes 同一條寫入路徑
+    `auth_recipe:${name}`,
+    JSON.stringify(recipe)
+  );
+  const verify = ex.accessToken ? await verifyWithRecipe(recipe, { "runtime.access_token": ex.accessToken }) : { status: "skipped", message: st.verify_url ? "\u5B58\u597D\u4E86\uFF0C\u4F46\u5C0D\u65B9\u63DB\u78BC\u6642\u6C92\u7D66 access token\uFF0C\u6C92\u8A66" : NO_VERIFY_MESSAGE };
+  return { ok: true, name, scopes, uiOrigin, verify };
+}
+portalOauthRouter.get("/portal/oauth/callback", async (c) => {
+  const code = c.req.query("code") ?? "";
+  const state = c.req.query("state") ?? "";
+  const error = c.req.query("error") ?? "";
+  const origin2 = selfOrigin(c);
+  const st = state ? await ephemeralGet(c.env, { template: OAUTH_STATE_TEMPLATE, hashField: "state_hash", rawKey: state }) : null;
+  const ui = st?.ui_origin || origin2;
+  if (error || !code || !state || !st) {
+    const msg = error === "access_denied" ? "\u4F60\u53D6\u6D88\u4E86\u6388\u6B0A" : error || "\u9023\u7DDA\u5DF2\u904E\u671F\uFF0C\u8ACB\u91CD\u65B0\u6309\u9023\u7DDA";
+    return c.redirect(portalReturnUrl(ui, { oauth: "error", oauth_msg: msg }), 302);
+  }
+  if (canWriteSecrets(c.env)) {
+    const r = await completeConnect(c.env, origin2, code, state);
+    return c.redirect(
+      r.ok ? portalReturnUrl(r.uiOrigin, { oauth: "ok", oauth_name: r.name, oauth_verify: r.verify.status, oauth_vmsg: r.verify.message }) : portalReturnUrl(r.uiOrigin ?? ui, { oauth: "error", oauth_msg: r.error }),
+      302
+    );
+  }
+  return c.redirect(portalReturnUrl(ui, { oauth: "pending", oauth_code: code, oauth_state: state }), 302);
+});
+portalOauthRouter.post(
+  "/portal/admin/oauth/complete",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const code = typeof body?.code === "string" ? body.code : "";
+    const state = typeof body?.state === "string" ? body.state : "";
+    if (!code || !state) return c.json({ error: "\u7F3A\u6388\u6B0A\u78BC" }, 400);
+    const r = await completeConnect(c.env, selfOrigin(c), code, state);
+    if (!r.ok) return c.json({ error: r.error, ...r.code ? { code: r.code } : {} }, r.status);
+    return c.json({ success: true, name: r.name, scopes: r.scopes, verify: r.verify });
+  })
+);
+
 // cypher-executor/src/routes/portal-data.ts
 init_dist();
 init_credentials();
@@ -34714,7 +36041,114 @@ function scopeDataflowReport(report, scope) {
   return out;
 }
 
+// cypher-executor/src/routes/portal-data.ts
+init_security_scan();
+
+// cypher-executor/src/lib/permission-table.ts
+init_dataflow_graph();
+init_security_scan();
+init_app_system();
+var CRED_IN_TEXT_RE = /\{\{\s*(?:credential|secret)\.([\w.-]+)\s*\}\}/g;
+function credentialNamesInRecipes(recipes) {
+  const out = /* @__PURE__ */ new Set();
+  for (const r of recipes) {
+    let text = "";
+    try {
+      text = JSON.stringify(r) ?? "";
+    } catch {
+      continue;
+    }
+    for (const m of text.matchAll(CRED_IN_TEXT_RE)) out.add(m[1]);
+  }
+  return out;
+}
+var labelOf = (name) => {
+  const f = familyOf(name);
+  return f?.label ? { service_label: f.label } : {};
+};
+function buildPermissionTable(report, declared = [], recipes = []) {
+  const inv = report.inventory;
+  const declaredBy = new Map(declared.map((d) => [d.name, d]));
+  const viaRecipe = credentialNamesInRecipes(recipes);
+  const rows = /* @__PURE__ */ new Map();
+  for (const c of inv.credentials) {
+    const d = declaredBy.get(c.name);
+    rows.set(c.name, {
+      name: c.name,
+      ...d?.purpose ? { purpose: d.purpose } : {},
+      ...labelOf(c.name),
+      sends_to: [...c.sends_to],
+      workflows: [...c.workflows],
+      declared: Boolean(d),
+      used: true
+    });
+  }
+  for (const d of declared) {
+    if (rows.has(d.name)) continue;
+    rows.set(d.name, {
+      name: d.name,
+      ...d.purpose ? { purpose: d.purpose } : {},
+      ...labelOf(d.name),
+      sends_to: [],
+      workflows: [],
+      declared: true,
+      // 只出現在隨 App 帶的 recipe 裡也算「有用到」（掃描看不進 recipe 內部，不能因此說作者宣告錯）
+      used: viaRecipe.has(d.name)
+    });
+  }
+  for (const name of viaRecipe) {
+    if (rows.has(name)) continue;
+    rows.set(name, { name, ...labelOf(name), sends_to: [], workflows: [], declared: false, used: true });
+  }
+  const credentials = [...rows.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const undeclared = credentials.filter((c) => c.used && !c.declared).map((c) => c.name);
+  const unused = credentials.filter((c) => c.declared && !c.used).map((c) => c.name);
+  const egress_hosts = inv.egress_hosts.map((h) => ({ host: h.host, workflows: [...h.workflows] }));
+  const message_senders = (inv.message_senders ?? []).map((m) => ({ workflow: m.workflow, node: m.node, host: m.host ?? null }));
+  const bits = [];
+  bits.push(credentials.length ? `\u6703\u7528 ${credentials.length} \u628A\u91D1\u9470` : "\u4E0D\u7528\u4EFB\u4F55\u91D1\u9470");
+  bits.push(egress_hosts.length ? `\u6703\u9023 ${egress_hosts.length} \u500B\u5916\u90E8\u7DB2\u7AD9` : "\u4E0D\u9023\u5916\u90E8\u7DB2\u7AD9");
+  if (message_senders.length) bits.push("\u6703\u5C0D\u5916\u5BC4\u4FE1\u6216\u767C\u8A0A");
+  return {
+    credentials,
+    egress_hosts,
+    dynamic_egress_count: inv.dynamic_egress.length,
+    message_senders,
+    sends_messages: message_senders.length > 0,
+    mismatch: { undeclared, unused },
+    consistent: undeclared.length === 0 && unused.length === 0,
+    headline: bits.join("\u3001")
+  };
+}
+function previewAppPermissions(env, rawDecl, coords) {
+  let decl0 = rawDecl;
+  if (coords) {
+    try {
+      decl0 = resolveDeclarationPlaceholders(rawDecl, coords);
+    } catch (e) {
+      return { ok: false, step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740", error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  const left = remainingPlaceholders(decl0);
+  if (left.length > 0) return { ok: false, step: "\u88DC\u4E0A\u9019\u53F0\u5BE6\u4F8B\u7684\u4F4D\u5740", error: `\u9019\u4EFD\u5BA3\u544A\u88E1\u9084\u6709\u6C92\u586B\u7684\u4F4D\u7F6E\uFF1A${left.join("\u3001")}` };
+  const v = validateAppDeclaration(decl0);
+  if (!v.ok) return { ok: false, step: "\u6AA2\u67E5\u9019\u500B App \u7684\u5BA3\u544A", error: v.errors.join("\uFF1B") };
+  const decl = applyDeclarationDefaults(decl0);
+  const recipes = decl.requires?.recipes ?? [];
+  const scan = runSecurityScan(env, decl.workflows.map((wf) => ({ name: `${decl.id}__${wf.name}`, graph: wf.graph })), {
+    selfOrigins: coords ? [coords.cypherBase] : [],
+    recipes
+  });
+  return {
+    ok: true,
+    app: { id: decl.id, name: decl.name, ...decl.version ? { version: String(decl.version) } : {} },
+    table: buildPermissionTable(scan, normalizeRequiredCredentials(decl.requires), recipes),
+    ...scan.ok ? {} : { security: securityPayload(scan) }
+  };
+}
+
 // cypher-executor/src/lib/app-package.ts
+init_security_scan();
 init_app_system();
 init_recipes();
 init_kbdb_proxy();
@@ -35098,6 +36532,7 @@ async function packWorkflowsAsApp(env, tenant2, input, coords) {
   }
   const decl = { id, name, ...input.icon ? { icon: input.icon } : {}, version: "0.1.0", workflows };
   const r = await installApp(env, tenant2, decl, { coords, origin: "authored", ...input.author ? { author: input.author } : {} });
+  if (!r.ok && r.security) return { ok: false, code: "unsafe", error: (r.errors ?? ["\u5B89\u5168\u6383\u63CF\u6C92\u904E"]).join("\uFF1B"), ...r.hint ? { hint: r.hint } : {}, security: r.security };
   if (!r.ok) return { ok: false, code: "install_failed", error: (r.errors ?? ["\u6253\u5305\u5931\u6557"]).join("\uFF1B"), ...r.step ? { step: r.step } : {}, ...r.hint ? { hint: r.hint } : {} };
   if (r.in_progress || !r.app) return { ok: false, code: "too_many", error: "\u5DE5\u4F5C\u6D41\u592A\u591A\uFF0C\u4E00\u6B21\u6253\u5305\u4E0D\u5B8C", hint: "\u5148\u5C11\u9078\u5E7E\u689D\uFF0C\u4E4B\u5F8C\u5728 App \u88E1\u518D\u65B0\u589E\u3002" };
   return { ok: true, app: r.app, notes };
@@ -35135,6 +36570,11 @@ async function addWorkflowToApp(env, tenant2, appId, input) {
   if (app2.workflows.some((w) => w.name === local)) return { ok: false, code: "name_taken", error: `\u9019\u500B App \u5DF2\u7D93\u6709\u53EB\u300C${local}\u300D\u7684\u5DE5\u4F5C\u6D41`, hint: "\u63DB\u4E00\u500B\u540D\u5B57\u3002" };
   graph = { ...graph, name: typeof graph.name === "string" && graph.name ? graph.name : local };
   const wfKey2 = `${appId}__${local}`;
+  const scan = runSecurityScan(env, [{ name: wfKey2, graph }]);
+  if (!scan.ok) {
+    return { ok: false, code: "unsafe", error: `\u9019\u689D\u5DE5\u4F5C\u6D41\u6709 ${scan.blocks.length} \u500B\u5B89\u5168\u554F\u984C\uFF0C\u6240\u4EE5\u6C92\u6709\u52A0\u9032\u4F86\uFF1A
+${securityText(scan)}`, hint: "\u4E0A\u9762\u6BCF\u4E00\u689D\u90FD\u5BEB\u4E86\u600E\u9EBC\u6539\uFF1B\u6539\u597D\uFF08\u6216\u8ACB AI \u6539\u597D\uFF09\u518D\u52A0\u3002", security: securityPayload(scan) };
+  }
   const ref = { name: local, wf_key: wfKey2, description: description ?? "", trigger: "manual", ...typeof graph.id === "string" ? { graph_id: graph.id } : {} };
   const next = {
     ...app2,
@@ -35149,7 +36589,7 @@ async function addWorkflowToApp(env, tenant2, appId, input) {
   } catch (e) {
     return { ok: false, code: "write_failed", error: e instanceof Error ? e.message : String(e) };
   }
-  return { ok: true, app: next, added: local };
+  return { ok: true, app: next, added: local, ...scan.advice.length ? { advice: scan.advice } : {} };
 }
 
 // cypher-executor/src/routes/portal-data.ts
@@ -36290,10 +37730,10 @@ var SYSTEM_PROMPT_NO_SURFACE = BASE_RULES.join("\n");
 function buildUserPrompt(question, cards, history) {
   const multiAccount = new Set(cards.map((c) => c.account_id)).size > 1;
   const cardText = cards.length ? cards.map((c, i) => {
-    const where = multiAccount ? `\u5E33\u865F\u300C${c.account}\u300D\uFF0F\u5EAB\u300C${c.library}\u300D` : `\u5EAB\u300C${c.library}\u300D`;
+    const where3 = multiAccount ? `\u5E33\u865F\u300C${c.account}\u300D\uFF0F\u5EAB\u300C${c.library}\u300D` : `\u5EAB\u300C${c.library}\u300D`;
     const body = c.content.length > MAX_CARD_CHARS ? `${c.content.slice(0, MAX_CARD_CHARS)}
 \uFF08\u4EE5\u4E0B\u7701\u7565\uFF09` : c.content;
-    return `[${i + 1}] \u5361\u540D\u300C${c.page_name}\u300D\uFF08${where}\uFF09
+    return `[${i + 1}] \u5361\u540D\u300C${c.page_name}\u300D\uFF08${where3}\uFF09
 ${body}`;
   }).join("\n\n---\n\n") : "\uFF08\u9019\u6B21\u6C92\u6709\u627E\u5230\u4EFB\u4F55\u77E5\u8B58\u5361\uFF09";
   const hist = history.length ? `
@@ -36432,7 +37872,7 @@ init_app_rulebook();
 
 // cypher-executor/src/lib/form-surface.ts
 var FORM_FIELD_TYPES = ["text", "longtext", "number", "date", "datetime", "select", "multiselect", "checkbox"];
-var NAME_RE3 = /^[a-z][a-z0-9_]{0,39}$/;
+var NAME_RE4 = /^[a-z][a-z0-9_]{0,39}$/;
 var KEY_RE2 = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 var MAX_FIELDS = 30;
 var MAX_OPTIONS = 50;
@@ -36444,11 +37884,11 @@ function parseFormSpec(body) {
   if (!body || typeof body !== "object") return { ok: false, error: "\u9700\u8981 JSON \u7269\u4EF6\uFF1A{ name, title, fields[] }" };
   const b = body;
   const name = str4(b.name, 40);
-  if (!NAME_RE3.test(name)) return { ok: false, error: "name \u5FC5\u9808\u662F\u5C0F\u5BEB\u82F1\u6587\u5B57\u6BCD\u958B\u982D\u3001\u53EA\u542B\u5C0F\u5BEB\u82F1\u6578\u8207\u5E95\u7DDA\u3001\u6700\u9577 40 \u5B57\uFF08\u4F8B\uFF1Aleave_request\uFF09" };
+  if (!NAME_RE4.test(name)) return { ok: false, error: "name \u5FC5\u9808\u662F\u5C0F\u5BEB\u82F1\u6587\u5B57\u6BCD\u958B\u982D\u3001\u53EA\u542B\u5C0F\u5BEB\u82F1\u6578\u8207\u5E95\u7DDA\u3001\u6700\u9577 40 \u5B57\uFF08\u4F8B\uFF1Aleave_request\uFF09" };
   const title = str4(b.title, 80);
   if (!title) return { ok: false, error: "title \u5FC5\u586B\uFF08\u8868\u55AE\u6A19\u984C\uFF0C\u7D66\u4EBA\u770B\u7684\u5B57\uFF09" };
   const template = b.template === void 0 ? name : str4(b.template, 40);
-  if (!NAME_RE3.test(template)) {
+  if (!NAME_RE4.test(template)) {
     return { ok: false, error: "template \u5FC5\u9808\u662F\u5C0F\u5BEB\u82F1\u6587\u5B57\u6BCD\u958B\u982D\u3001\u53EA\u542B\u5C0F\u5BEB\u82F1\u6578\u8207\u5E95\u7DDA\uFF08\u9810\u8A2D\u8207 name \u76F8\u540C\uFF09" };
   }
   if (!Array.isArray(b.fields) || b.fields.length === 0) return { ok: false, error: "fields \u5FC5\u586B\uFF0C\u4E14\u81F3\u5C11\u4E00\u500B\u6B04\u4F4D" };
@@ -36675,19 +38115,19 @@ function dedupeSourcesByPage(sources) {
   const seen = /* @__PURE__ */ new Map();
   for (const s of sources) {
     if (!s || typeof s !== "object") continue;
-    const item = s;
-    const page = typeof item.page_name === "string" ? item.page_name : typeof item.page === "string" ? item.page : "";
-    const machine = typeof item.machine === "string" ? item.machine : "";
+    const item2 = s;
+    const page = typeof item2.page_name === "string" ? item2.page_name : typeof item2.page === "string" ? item2.page : "";
+    const machine = typeof item2.machine === "string" ? item2.machine : "";
     const key = `${page}\0${machine}`;
     const existing = seen.get(key);
     if (existing) {
       existing.count += 1;
     } else {
-      seen.set(key, { item, count: 1 });
+      seen.set(key, { item: item2, count: 1 });
     }
   }
   return [...seen.values()].map(
-    ({ item, count: count2 }) => count2 > 1 ? { ...item, hit_count: count2 } : item
+    ({ item: item2, count: count2 }) => count2 > 1 ? { ...item2, hit_count: count2 } : item2
   );
 }
 function notFound3(c) {
@@ -37356,13 +38796,13 @@ portalDataRouter.get(
       try {
         const r = await resolveRecipe(id, c.env.RECIPES);
         if (!r) return;
-        let host;
+        let host2;
         try {
-          host = new URL(r.endpoint).hostname || void 0;
+          host2 = new URL(r.endpoint).hostname || void 0;
         } catch {
-          host = void 0;
+          host2 = void 0;
         }
-        recipeInfo.set(id, { name: r.display_name && r.display_name !== r.canonical_id ? r.display_name : void 0, host });
+        recipeInfo.set(id, { name: r.display_name && r.display_name !== r.canonical_id ? r.display_name : void 0, host: host2 });
       } catch {
       }
     }));
@@ -37385,6 +38825,8 @@ portalDataRouter.get(
       edges: edges.map((e) => ({ from: e.from, to: e.to, type: e.type, how: edgeLabel(e.type, e) })),
       io,
       ...lastRunJson(last),
+      // inkstone/Arcrun#518：「AI 常漏」提醒。掃剛讀進來的這一條（純計算、零額外讀取），不擋、不是錯誤。
+      advice: runSecurityScan(c.env, [{ name, graph: rec.graph, config: rec.config }], { selfOrigins: [new URL(c.req.url).origin] }).advice,
       read_only: true
     });
   })
@@ -37397,13 +38839,13 @@ portalDataRouter.get(
     if (!(await studioScope(c.env, knowledgeOwner(c.env), showSystemOf(c))).hasRecipe(c.req.param("id").trim().toLowerCase())) return c.json({ found: false }, 404);
     const r = await resolveRecipe(c.req.param("id"), c.env.RECIPES);
     if (!r) return c.json({ found: false }, 404);
-    let host = "", path = "";
+    let host2 = "", path = "";
     try {
       const u = new URL(r.endpoint);
-      host = u.host;
+      host2 = u.host;
       path = u.pathname;
     } catch {
-      host = String(r.endpoint ?? "").split("/")[0] ?? "";
+      host2 = String(r.endpoint ?? "").split("/")[0] ?? "";
     }
     const credentials = [.../* @__PURE__ */ new Set([...recipeCredentialNames(r), ...await recipeAuthSecretNames(r, c.env.RECIPES)])];
     const keys = (o) => o && typeof o === "object" ? Object.keys(o).slice(0, 30) : [];
@@ -37413,7 +38855,7 @@ portalDataRouter.get(
       display_name: r.display_name || r.canonical_id,
       description: r.description ?? "",
       method: (r.method ?? "POST").toUpperCase(),
-      host,
+      host: host2,
       path,
       auth: r.auth ?? (credentials.length ? "static_key" : "none"),
       auth_service: r.auth_service ?? null,
@@ -37443,11 +38885,11 @@ portalDataRouter.get(
     const authCache = /* @__PURE__ */ new Map();
     const recipes = (await Promise.all(
       all.map(async (r) => {
-        let host = "";
+        let host2 = "";
         try {
-          host = new URL(r.endpoint).host;
+          host2 = new URL(r.endpoint).host;
         } catch {
-          host = String(r.endpoint ?? "").split("/")[0] ?? "";
+          host2 = String(r.endpoint ?? "").split("/")[0] ?? "";
         }
         const credentials = [
           .../* @__PURE__ */ new Set([...recipeCredentialNames(r), ...await recipeAuthSecretNames(r, c.env.RECIPES, authCache)])
@@ -37457,7 +38899,7 @@ portalDataRouter.get(
           display_name: r.display_name || r.canonical_id,
           description: r.description ?? "",
           method: (r.method ?? "POST").toUpperCase(),
-          host,
+          host: host2,
           // 金鑰名單＝執行時真的會回填的：宣告 ∪ headers/body 裡的 {{credential.*}}（#152 c17107）
           // ∪ auth recipe 的必填 required_secrets（#286）。只看前者會把 gmail_send 標成「免金鑰」。
           credentials,
@@ -37557,6 +38999,49 @@ portalDataRouter.get(
     });
   })
 );
+portalDataRouter.get(
+  "/portal/data/apps/catalog/:id/permissions",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") {
+      return c.json({ error: "\u53EA\u6709\u7BA1\u7406\u54E1\u53EF\u4EE5\u5B89\u88DD App", step: "\u6AA2\u67E5\u6B0A\u9650", hint: "\u9019\u53F0\u5BE6\u4F8B\u7684 App \u6E05\u55AE\u662F\u5168\u7AD9\u5171\u7528\u7684\uFF0C\u6240\u4EE5\u8981\u7BA1\u7406\u54E1\u4F86\u88DD\u3002" }, 403);
+    }
+    const id = c.req.param("id");
+    const catalog = await resolveCatalog(c.env);
+    const entry = findCatalogEntry(id, catalog.entries);
+    if (!entry) return c.json({ error: `\u5E02\u96C6\u88E1\u6C92\u6709\u300C${id}\u300D\u9019\u500B App`, step: "\u5728\u5E02\u96C6\u88E1\u627E\u9019\u500B App" }, 404);
+    let declaration = entry.declaration;
+    if (!declaration && isMarketEntry(entry)) {
+      const got = await fetchMarketDeclaration(entry);
+      if (!got.ok) return c.json({ error: got.error, step: "\u4E0B\u8F09\u5B89\u88DD\u5305", code: got.code, hint: got.hint }, 502);
+      declaration = got.declaration;
+    }
+    const tenant2 = knowledgeOwner(c.env);
+    const pv = previewAppPermissions(c.env, declaration, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) });
+    if (!pv.ok) return c.json({ error: pv.error, step: pv.step }, 422);
+    return c.json(pv);
+  })
+);
+portalDataRouter.post(
+  "/portal/data/apps/import/permissions",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    if ((auth.user.values.role ?? "user") !== "admin") {
+      return c.json({ error: "\u53EA\u6709\u7BA1\u7406\u54E1\u53EF\u4EE5\u532F\u5165 App", step: "\u6AA2\u67E5\u6B0A\u9650" }, 403);
+    }
+    const body = await c.req.json().catch(() => null);
+    const pkg = body && typeof body === "object" && "package" in body ? body.package : body;
+    if (!pkg) return c.json({ error: "\u6C92\u6709\u6536\u5230 App \u5305", code: "not_a_package", hint: "\u8ACB\u9078\u5F9E\u300C\u532F\u51FA\u300D\u5F97\u5230\u7684\u90A3\u500B\u6A94\u3002" }, 400);
+    const checked = checkPackage(pkg);
+    if (!checked.ok) return c.json({ error: checked.error, code: checked.code, hint: checked.hint, ...checked.details ? { details: checked.details } : {} }, 400);
+    const tenant2 = knowledgeOwner(c.env);
+    const pv = previewAppPermissions(c.env, checked.pkg.declaration, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) });
+    if (!pv.ok) return c.json({ error: pv.error, step: pv.step }, 422);
+    return c.json(pv);
+  })
+);
 portalDataRouter.post(
   "/portal/data/apps/catalog/:id/install",
   (c) => run(c, async () => {
@@ -37615,6 +39100,9 @@ portalDataRouter.post(
       declaration = got.declaration;
     }
     const result = await installApp(c.env, tenant2, declaration, { coords, resumeFrom, resumeHash: c.req.query("h"), origin: "market" });
+    if (!result.ok && result.security) {
+      return c.json({ error: (result.errors ?? ["\u5B89\u5168\u6383\u63CF\u6C92\u904E"]).join("\uFF1B"), code: "unsafe_app", step: result.step, hint: result.hint, security: result.security }, 422);
+    }
     if (!result.ok) {
       return c.json(
         {
@@ -37639,7 +39127,9 @@ portalDataRouter.post(
       // inkstone/Arcrun#285：幫忙裝好的 recipe 名字、還缺的金鑰（名字＋用途；永遠沒有值）。
       recipes_installed: result.recipes_installed ?? [],
       missing_credentials: result.missing_credentials ?? [],
-      ...result.credentials_check_failed ? { credentials_check_failed: true } : {}
+      ...result.credentials_check_failed ? { credentials_check_failed: true } : {},
+      // inkstone/Arcrun#518：AI 常漏的提醒（白話）。不擋安裝，只讓使用者看得到。
+      ...result.advice?.length ? { advice: result.advice } : {}
     });
   })
 );
@@ -37730,7 +39220,9 @@ portalDataRouter.get(
       total: detail.workflows.length,
       offset,
       page_size: FLOWS_PAGE,
-      flows
+      flows,
+      // inkstone/Arcrun#518：App 層的提醒（裝了看不到）。只用已讀進來的這個 App，零額外讀取。
+      advice: adviceForApp({ id: app2.id, name: app2.name, entry: app2.entry })
     });
   })
 );
@@ -37764,7 +39256,10 @@ portalDataRouter.get(
         ...w.cron_expr ? { cron_expr: w.cron_expr } : {}
       },
       steps,
-      ...lastRunJson(last)
+      ...lastRunJson(last),
+      // inkstone/Arcrun#518：這條工作流的「AI 常漏」提醒（逾時重試、空值時區、整支寫成 code、測試資料寫死）。
+      // 掃的是剛讀進來的這一條定義（純計算、零額外讀取）；不擋、不是錯誤，只是請使用者／他的 AI 看一眼。
+      advice: runSecurityScan(c.env, [{ name: ref.wf_key, graph }], { selfOrigins: [new URL(c.req.url).origin] }).advice
     });
   })
 );
@@ -37888,7 +39383,7 @@ portalDataRouter.post(
     }
     const result = r.result;
     if (!result.ok) {
-      return c.json({ error: (result.errors ?? ["\u5B89\u88DD\u5931\u6557"]).join("\uFF1B"), step: result.step ?? "\u5B89\u88DD", hint: result.hint ?? "\u518D\u8A66\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u6BB5\u8A0A\u606F\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002", ...result.resume_from !== void 0 ? { resume_from: result.resume_from, resume_hash: result.resume_hash } : {} }, 502);
+      return c.json({ error: (result.errors ?? ["\u5B89\u88DD\u5931\u6557"]).join("\uFF1B"), step: result.step ?? "\u5B89\u88DD", hint: result.hint ?? "\u518D\u8A66\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u6BB5\u8A0A\u606F\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002", ...result.security ? { code: "unsafe_app", security: result.security } : {}, ...result.resume_from !== void 0 ? { resume_from: result.resume_from, resume_hash: result.resume_hash } : {} }, result.security ? 422 : 502);
     }
     if (result.in_progress) return c.json({ installed: false, in_progress: true, progress: result.progress, resume_from: result.resume_from, resume_hash: result.resume_hash });
     return c.json({
@@ -37900,7 +39395,8 @@ portalDataRouter.post(
       app: result.app ? summarizeApp(result.app) : void 0,
       recipes_installed: result.recipes_installed ?? [],
       missing_credentials: result.missing_credentials ?? [],
-      ...result.credentials_check_failed ? { credentials_check_failed: true } : {}
+      ...result.credentials_check_failed ? { credentials_check_failed: true } : {},
+      ...result.advice?.length ? { advice: result.advice } : {}
     });
   })
 );
@@ -37922,7 +39418,7 @@ portalDataRouter.post(
       workflows: wfs,
       author: String(g.user.values.email ?? g.user.values.name ?? "") || void 0
     }, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) });
-    if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {} }, r.code === "install_failed" ? 502 : r.code === "id_taken" ? 409 : r.code === "workflow_not_found" ? 404 : 400);
+    if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {}, ..."security" in r && r.security ? { security: r.security } : {} }, r.code === "unsafe" ? 422 : r.code === "install_failed" ? 502 : r.code === "id_taken" ? 409 : r.code === "workflow_not_found" ? 404 : 400);
     return c.json({ packed: true, app: summarizeApp(r.app), notes: r.notes });
   })
 );
@@ -37941,8 +39437,8 @@ portalDataRouter.post(
       ...typeof body?.name === "string" ? { name: body.name } : {},
       ...typeof body?.description === "string" ? { description: body.description } : {}
     });
-    if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {} }, r.code === "not_found" || r.code === "workflow_not_found" ? 404 : r.code === "not_yours" ? 403 : r.code === "name_taken" ? 409 : r.code === "write_failed" ? 502 : 400);
-    return c.json({ added: r.added, app: summarizeApp(r.app) });
+    if (!r.ok) return c.json({ error: r.error, code: r.code, ...r.hint ? { hint: r.hint } : {}, ...r.security ? { security: r.security } : {} }, r.code === "unsafe" ? 422 : r.code === "not_found" || r.code === "workflow_not_found" ? 404 : r.code === "not_yours" ? 403 : r.code === "name_taken" ? 409 : r.code === "write_failed" ? 502 : 400);
+    return c.json({ added: r.added, app: summarizeApp(r.app), ...r.advice?.length ? { advice: r.advice } : {} });
   })
 );
 portalDataRouter.post(
@@ -38379,7 +39875,7 @@ portalDataRouter.post(
     const coords = { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) };
     const result = await installApp(c.env, tenant2, buildFormApp(spec), { coords, origin: "authored", author: String(auth.user.values.email ?? auth.user.values.name ?? "") || void 0 });
     if (!result.ok) {
-      return c.json({ error: (result.errors ?? ["\u5EFA\u7ACB\u5931\u6557"]).join("\uFF1B"), step: result.step ?? "\u5B89\u88DD", hint: result.hint }, result.step === "\u5B89\u88DD\u5DE5\u4F5C\u6D41" ? 502 : 400);
+      return c.json({ error: (result.errors ?? ["\u5EFA\u7ACB\u5931\u6557"]).join("\uFF1B"), step: result.step ?? "\u5B89\u88DD", hint: result.hint, ...result.security ? { code: "unsafe_app", security: result.security } : {} }, result.security ? 422 : result.step === "\u5B89\u88DD\u5DE5\u4F5C\u6D41" ? 502 : 400);
     }
     return c.json({
       success: true,
@@ -39530,6 +41026,7 @@ portalActorRouter.post("/portal/actor/verify", async (c) => {
 });
 
 // cypher-executor/src/routes/apps.ts
+init_security_scan();
 init_dist();
 init_app_glyphs();
 init_app_system();
@@ -39562,6 +41059,16 @@ appsRouter.post("/apps/install", async (c) => {
     resumeFrom,
     resumeHash: c.req.query("h")
   });
+  if (!result.ok && result.security) {
+    return c.json({
+      error: (result.errors ?? ["\u5B89\u5168\u6383\u63CF\u6C92\u904E"]).join("\uFF1B"),
+      code: "unsafe_app",
+      step: result.step,
+      hint: result.hint,
+      security: result.security,
+      next_actions: securityNextActions({ ok: false, ...result.security })
+    }, 422);
+  }
   if (!result.ok) {
     return c.json(
       { error: "\u5BA3\u544A\u672A\u901A\u904E\u9A57\u8B49", step: result.step, hint: result.hint, details: result.errors, ...result.resume_from !== void 0 ? { resume_from: result.resume_from, resume_hash: result.resume_hash } : {} },
@@ -39620,7 +41127,8 @@ appsRouter.post("/apps/import", async (c) => {
     app: result.app ? summarizeApp(result.app) : void 0,
     recipes_installed: result.recipes_installed ?? [],
     missing_credentials: result.missing_credentials ?? [],
-    ...result.credentials_check_failed ? { credentials_check_failed: true } : {}
+    ...result.credentials_check_failed ? { credentials_check_failed: true } : {},
+    ...result.advice?.length ? { advice: result.advice } : {}
   });
 });
 appsRouter.delete("/apps/:id", async (c) => {
@@ -40080,6 +41588,7 @@ app.route("/", kbdbProxyRouter);
 app.route("/", consoleAuthRouter);
 app.route("/", consoleDashboardRouter);
 app.route("/", portalRouter);
+app.route("/", portalOauthRouter);
 app.route("/", portalActorRouter);
 app.route("/", portalProofreadRouter);
 app.route("/", portalNoteImagesRouter);

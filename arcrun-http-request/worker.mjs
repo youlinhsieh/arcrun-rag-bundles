@@ -2550,12 +2550,21 @@ async function runWasm(input) {
   const hostFunctions = {
     http_request: async (url, method, headersJson, body) => {
       const headers = {};
+      let includeResponseHeaders = false;
+      let acceptStatus = [];
       if (headersJson) {
         try {
           const parsed = JSON.parse(headersJson);
           if (parsed && typeof parsed === "object") {
             for (const [k, v] of Object.entries(parsed)) {
               if (typeof v === "string") headers[k] = v;
+              else if (k === "__arcrun_opts" && v && typeof v === "object") {
+                const o = v;
+                includeResponseHeaders = o.include_response_headers === true;
+                if (Array.isArray(o.accept_status)) {
+                  acceptStatus = o.accept_status.filter((n) => Number.isInteger(n));
+                }
+              }
             }
           }
         } catch {
@@ -2565,12 +2574,30 @@ async function runWasm(input) {
       if (body && method.toUpperCase() !== "GET" && method.toUpperCase() !== "HEAD") {
         init.body = body;
       }
+      if (includeResponseHeaders || acceptStatus.length > 0) init.redirect = "manual";
       const res = await fetch(url, init);
       const text = await res.text();
-      if (!res.ok) {
-        return JSON.stringify({
+      const ok = res.ok || acceptStatus.includes(res.status);
+      const resHeaders = {};
+      if (includeResponseHeaders) {
+        res.headers.forEach((v, k) => {
+          resHeaders[k] = v;
+        });
+      }
+      if (!ok) {
+        const errEnv = {
           error: `HTTP ${res.status}`,
           status: res.status,
+          body: text
+        };
+        if (includeResponseHeaders) errEnv.headers = resHeaders;
+        return JSON.stringify(errEnv);
+      }
+      if (includeResponseHeaders || acceptStatus.length > 0) {
+        return JSON.stringify({
+          _arcrun_envelope: 1,
+          status: res.status,
+          headers: resHeaders,
           body: text
         });
       }

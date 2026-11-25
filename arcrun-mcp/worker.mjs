@@ -31220,6 +31220,14 @@ function registerPushWorkflow(server, env, partnerToken) {
         });
         const body = await res.json().catch(() => ({}));
         const apiNext = Array.isArray(body.next_actions) ? body.next_actions : [];
+        if (res.status === 422 && body.security) {
+          return errorResponse(
+            "security_blocked",
+            String(body.error ?? "\u5B89\u5168\u6383\u63CF\u6C92\u904E\uFF0C\u6C92\u6709\u5B58"),
+            [...apiNext, "\u9019\u4E9B\u554F\u984C force \u7E5E\u4E0D\u904E\uFF1B\u7167\u4E0A\u9762\u6BCF\u4E00\u689D\u6539\u5B8C\u518D\u63A8"],
+            JSON.stringify(body.security)
+          );
+        }
         if (res.status === 422 && body.dataflow) {
           return errorResponse(
             "dataflow_check_failed",

@@ -2516,21 +2516,31 @@ async function createRecord(db, input) {
   }
   return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
 }
-async function updateRecord(db, recordId, values) {
+async function updateRecord(db, recordId, values, opts) {
   const ci = await cardIdentity(db, recordId);
-  if (ci) return updateCard(db, ci, values);
-  const belongs = await recordBelongs(db, recordId);
-  if (!belongs) return null;
-  const templateId = belongs.dst_id;
-  const tpl = await getTemplate(db, templateId);
-  const mapBefore = tpl && isMapTrackedTemplate(tpl.name) ? await getRecord(db, recordId) : null;
-  const cellRes = await db.all(
-    `SELECT f.content AS slot_name, r.dst_id AS entry_id, v.content AS cur
+  if (ci) {
+    opts?.onOwner?.(ci.row.owner_id ?? null);
+    return updateCard(db, ci, values);
+  }
+  const [belongs, cellRes, identity] = await Promise.all([
+    recordBelongs(db, recordId),
+    db.all(
+      // inkstone/arcrun-rag#292：連現值一起讀，值沒變的格子不寫（大實例每句寫入都是一趟慢來回）。
+      `SELECT f.content AS slot_name, r.dst_id AS entry_id, v.content AS cur
        FROM entries r JOIN entries f ON r.rel_id = f.id
        LEFT JOIN entries v ON v.id = r.dst_id
        WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
-    [recordId]
-  );
+      [recordId]
+    ),
+    // record 的歸屬＝身分 entry 的 owner（grow 建新 entry 時沿用，防孤兒 entry）
+    db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId])
+  ]);
+  if (!belongs) return null;
+  const templateId = belongs.dst_id;
+  const recordOwnerId = identity?.owner_id ?? null;
+  opts?.onOwner?.(recordOwnerId);
+  const tpl = await getTemplate(db, templateId);
+  const mapBefore = tpl && isMapTrackedTemplate(tpl.name) ? await getRecord(db, recordId) : null;
   const cells = cellRes.results ?? [];
   const slotToEntries = /* @__PURE__ */ new Map();
   const entryCurrent = /* @__PURE__ */ new Map();
@@ -2540,22 +2550,23 @@ async function updateRecord(db, recordId, values) {
     slotToEntries.set(c.slot_name, list);
     entryCurrent.set(c.entry_id, c.cur ?? null);
   }
-  const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
-  const recordOwnerId = identity?.owner_id ?? null;
   const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntries.keys()];
   const canon = canonicalizeEntityValues(allowed, values);
-  for (const [slot, content] of Object.entries(canon)) {
+  for (const slot of Object.keys(canon)) {
     if (!allowed.includes(slot)) {
       throw new Error(`slot not in template: ${slot}`);
     }
     if (isRelationSlot(slot)) {
       throw new Error(`relation slot ${slot}: use POST /records/:id/relation (add/remove), not PATCH`);
     }
+  }
+  const updates = [];
+  for (const [slot, content] of Object.entries(canon)) {
     const entryIds = slotToEntries.get(slot);
     if (entryIds && entryIds.length > 0) {
       for (const entryId of entryIds) {
         if (entryCurrent.get(entryId) === content) continue;
-        await db.run(`UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`, [content, entryId]);
+        updates.push({ sql: `UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`, params: [content, entryId] });
       }
     } else {
       await ensureFieldEntries(db, templateId, [slot]);
@@ -2563,15 +2574,13 @@ async function updateRecord(db, recordId, values) {
       await insertCellRelation(db, recordId, templateId, slot, entry.id, recordOwnerId);
     }
   }
-  const after = await getRecord(db, recordId);
-  if (tpl && mapBefore) await noteRecordWrite(db, tpl.name, recordOwnerId, mapBefore.values, after?.values ?? null);
+  if (updates.length === 1) await db.run(updates[0].sql, updates[0].params);
+  else if (updates.length > 1) await db.batch(updates);
+  const after = await readRecordKnown(db, recordId, templateId, recordOwnerId);
+  if (tpl && mapBefore) await noteRecordWrite(db, tpl.name, recordOwnerId, mapBefore.values, after.values);
   return after;
 }
-async function getRecord(db, recordId) {
-  const ci = await cardIdentity(db, recordId);
-  if (ci) return (await decodeCards(db, ci.tpl, [ci.row]))[0];
-  const belongs = await recordBelongs(db, recordId);
-  if (!belongs) return null;
+async function readRecordKnown(db, recordId, templateId, ownerId) {
   const res = await db.all(
     `SELECT f.content AS slot, v.content AS content
        FROM entries r
@@ -2582,7 +2591,26 @@ async function getRecord(db, recordId) {
   );
   const values = {};
   for (const r of res.results ?? []) putCell(values, r.slot, r.content);
-  const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
+  return { record_id: recordId, template_id: templateId, values, owner_id: ownerId };
+}
+async function getRecord(db, recordId) {
+  const ci = await cardIdentity(db, recordId);
+  if (ci) return (await decodeCards(db, ci.tpl, [ci.row]))[0];
+  const [belongs, res, identity] = await Promise.all([
+    recordBelongs(db, recordId),
+    db.all(
+      `SELECT f.content AS slot, v.content AS content
+       FROM entries r
+       JOIN entries f ON r.rel_id = f.id
+       JOIN entries v ON r.dst_id = v.id
+       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
+      [recordId]
+    ),
+    db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId])
+  ]);
+  if (!belongs) return null;
+  const values = {};
+  for (const r of res.results ?? []) putCell(values, r.slot, r.content);
   return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
 }
 async function getRecords(db, recordIds, ownerId) {
@@ -9611,10 +9639,10 @@ recordRoutes.patch("/:recordId", async (c) => {
     return c.json({ success: false, error: "values required" }, 400);
   }
   const recordId = c.req.param("recordId");
-  const existing = await getRecord(dbOf(c.env), recordId);
-  if (existing) releaseDailyWriteBrakeIfSystemOwner(c.env, existing.owner_id);
   try {
-    const rec = await updateRecord(dbOf(c.env), recordId, body.values);
+    const rec = await updateRecord(dbOf(c.env), recordId, body.values, {
+      onOwner: (ownerId) => releaseDailyWriteBrakeIfSystemOwner(c.env, ownerId)
+    });
     if (!rec) return c.json({ success: false, error: "not found" }, 404);
     return c.json({ success: true, record: rec });
   } catch (e) {
