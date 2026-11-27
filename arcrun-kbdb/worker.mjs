@@ -2465,10 +2465,12 @@ async function createRecord(db, input) {
   const mapTracked = isMapTrackedTemplate(tpl.name);
   const mapBefore = mapTracked && input.record_id ? (await getRecord(db, input.record_id))?.values ?? null : null;
   const claimStmt = entryRowStatement({ id: recordId, owner_id: ownerId }, { ignore: true });
-  const claim = await db.run(claimStmt.sql, claimStmt.params);
-  if (input.create_only && claim.meta?.changes !== 1) {
-    if (claim.meta?.changes === void 0) throw new Error("create_only needs a storage driver that reports meta.changes");
-    throw new RecordExistsError(recordId);
+  if (input.create_only) {
+    const claim = await db.run(claimStmt.sql, claimStmt.params);
+    if (claim.meta?.changes !== 1) {
+      if (claim.meta?.changes === void 0) throw new Error("create_only needs a storage driver that reports meta.changes");
+      throw new RecordExistsError(recordId);
+    }
   }
   const writtenSlots = slots.filter((s) => s in entryIds || s in values);
   const cellMeta = (slot) => {
@@ -2478,6 +2480,8 @@ async function createRecord(db, input) {
     return lib && lib !== UNLABELLED_LIBRARY ? { metadata_json: JSON.stringify({ library: lib }) } : {};
   };
   const stmts = [
+    // 身分列（create_only 時已在上面單獨送過，這裡不重送）
+    ...input.create_only ? [] : [claimStmt],
     // 歸屬＝一條關係（舊 template_id 欄的下場）
     belongsStatement(recordId, tpl.id, ownerId),
     // 欄位謂詞自癒（決定性 id，冪等）——只補這次真的要寫的 slot
@@ -3076,36 +3080,17 @@ async function addEntryWriteUsage(db, by) {
   }
 }
 async function entryWriteBudgetToday(env, db, paid = false) {
-  let disabled = false;
-  try {
-    disabled = !await brakeEnabled(db);
-  } catch {
-    disabled = false;
-  }
+  const brakeP = brakeEnabled(db).then((on) => !on, () => false);
+  const usageP = getEntryWriteUsageToday(db).catch(() => 0);
+  const ftsP = paid ? null : readFtsMigrationState(db).then((st) => st.cutoffRowid === 0, () => false);
+  const [disabled, used] = await Promise.all([brakeP, usageP]);
   if (disabled || paid) {
-    const limit2 = instanceDailyWriteLimit(env);
-    let used2 = 0;
-    try {
-      used2 = await getEntryWriteUsageToday(db);
-    } catch {
-      used2 = 0;
-    }
-    return { limit: limit2, used: used2, remaining: Number.MAX_SAFE_INTEGER };
+    ftsP?.catch(() => void 0);
+    return { limit: instanceDailyWriteLimit(env), used, remaining: Number.MAX_SAFE_INTEGER };
   }
-  let ftsDone = false;
-  try {
-    ftsDone = (await readFtsMigrationState(db)).cutoffRowid === 0;
-  } catch {
-    ftsDone = false;
-  }
+  const ftsDone = await ftsP;
   const reserve = ftsDone ? 0 : ftsBackfillReserve(env);
   const limit = Math.max(0, instanceDailyWriteLimit(env) - reserve);
-  let used = 0;
-  try {
-    used = await getEntryWriteUsageToday(db);
-  } catch {
-    used = 0;
-  }
   return { limit, used, remaining: Math.max(0, limit - used) };
 }
 function writeBudgetExhaustedBody(budget) {
@@ -3718,7 +3703,68 @@ function ollamaJudge(baseUrl, fetchImpl = fetch) {
     }
   };
 }
-var WORKERS_AI_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, WORKERS_AI_JUDGE_MODEL, OLLAMA_JUDGE_MODEL;
+async function lemonadeHeaders(getKey) {
+  const h = { "content-type": "application/json" };
+  const key = getKey ? await getKey().catch(() => "") : "";
+  if (key) h.authorization = `Bearer ${key}`;
+  return h;
+}
+function lemonadeError(path, status, detail) {
+  const hint = status === 401 || status === 403 ? "\uFF08Lemonade \u8A2D\u4E86 API \u91D1\u9470\uFF1A\u5230 Portal\u300C\u641C\u5C0B\u8A2D\u5B9A\u300D\u586B\u5165\u91D1\u9470\uFF09" : status === 404 ? "\uFF08\u627E\u4E0D\u5230\u9019\u500B\u8DEF\u5F91\u6216\u6A21\u578B\uFF1A\u78BA\u8A8D\u7DB2\u5740\u53EA\u5230\u4E3B\u6A5F\u52A0\u57E0\u3001\u6A21\u578B\u540D\u7A31\u6C92\u6253\u932F\uFF09" : status === 400 || status === 501 ? "\uFF08\u9019\u500B\u6A21\u578B\u53EF\u80FD\u4E0D\u662F\u5D4C\u5165\u6A21\u578B\uFF1A\u5230 Portal\u300C\u641C\u5C0B\u8A2D\u5B9A\u300D\u6539\u9078\u6709\u300Cembeddings\u300D\u6A19\u7C64\u7684\u6A21\u578B\uFF09" : "";
+  return new Error(`Lemonade ${path} \u56DE ${status}${detail ? `\uFF1A${detail}` : ""}${hint}`);
+}
+function lemonadeProvider(baseUrl, getKey, fetchImpl = fetch) {
+  const base = baseUrl.replace(/\/+$/, "");
+  return {
+    name: "lemonade",
+    // 沒有放諸四海皆準的預設：Lemonade 上有哪些嵌入模型看那台裝了什麼，設定頁會列出來讓管理員選（EMBED_MODEL）。
+    defaultModel: "",
+    async embed(model, texts) {
+      const res = await fetchImpl(`${base}/v1/embeddings`, {
+        method: "POST",
+        headers: await lemonadeHeaders(getKey),
+        body: JSON.stringify({ model, input: texts })
+      });
+      if (!res.ok) throw lemonadeError("/v1/embeddings", res.status, (await res.text().catch(() => "")).slice(0, 200));
+      const j = await res.json();
+      const rows = (j.data ?? []).slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+      return rows.map((r) => r.embedding).filter((e) => Array.isArray(e));
+    }
+  };
+}
+function lemonadeJudge(baseUrl, getKey, fetchImpl = fetch) {
+  const base = baseUrl.replace(/\/+$/, "");
+  return {
+    name: "lemonade",
+    defaultModel: "",
+    async complete(model, system, user) {
+      const res = await fetchImpl(`${base}/v1/chat/completions`, {
+        method: "POST",
+        headers: await lemonadeHeaders(getKey),
+        body: JSON.stringify({ model, stream: false, temperature: 0, max_tokens: 40, messages: [{ role: "system", content: system }, { role: "user", content: user }] })
+      });
+      if (!res.ok) throw lemonadeError("/v1/chat/completions", res.status, (await res.text().catch(() => "")).slice(0, 200));
+      const j = await res.json();
+      const out = j.choices?.[0]?.message?.content;
+      return typeof out === "string" ? out : "";
+    }
+  };
+}
+function lemonadeKeyGetter(url, token, fetchImpl = fetch) {
+  const u = (url ?? "").trim();
+  if (!u) return void 0;
+  return async () => {
+    const hit = keyCache.get(u);
+    if (hit && Date.now() - hit.at < KEY_TTL_MS) return hit.v;
+    const res = await fetchImpl(u, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error(`\u5411\u6191\u8B49\u4E2D\u5FC3\u53D6 Lemonade \u91D1\u9470\u5931\u6557\uFF08${res.status}\uFF09`);
+    const j = await res.json();
+    const v = typeof j.api_key === "string" ? j.api_key : "";
+    keyCache.set(u, { at: Date.now(), v });
+    return v;
+  };
+}
+var WORKERS_AI_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL, WORKERS_AI_JUDGE_MODEL, OLLAMA_JUDGE_MODEL, keyCache, KEY_TTL_MS;
 var init_provider = __esm({
   "kbdb/src/vector/provider.ts"() {
     "use strict";
@@ -3726,6 +3772,8 @@ var init_provider = __esm({
     OLLAMA_DEFAULT_MODEL = "bge-m3";
     WORKERS_AI_JUDGE_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
     OLLAMA_JUDGE_MODEL = "qwen2.5:7b";
+    keyCache = /* @__PURE__ */ new Map();
+    KEY_TTL_MS = 3e4;
   }
 });
 
@@ -3745,6 +3793,10 @@ function embedProviderOf(env) {
     const url = (env.OLLAMA_URL ?? "").trim();
     return url ? ollamaProvider(url) : null;
   }
+  if (p === "lemonade") {
+    const url = (env.LEMONADE_URL ?? "").trim();
+    return url && (env.EMBED_MODEL ?? "").trim() ? lemonadeProvider(url, lemonadeKeyGetter(env.LEMONADE_KEY_URL, env.LEMONADE_KEY_TOKEN)) : null;
+  }
   return null;
 }
 function judgeProviderOf(env) {
@@ -3754,6 +3806,10 @@ function judgeProviderOf(env) {
   if (p === "ollama") {
     const url = (env.OLLAMA_URL ?? "").trim();
     return url ? ollamaJudge(url) : null;
+  }
+  if (p === "lemonade") {
+    const url = (env.LEMONADE_URL ?? "").trim();
+    return url && (env.ENTITY_JUDGE_MODEL ?? "").trim() ? lemonadeJudge(url, lemonadeKeyGetter(env.LEMONADE_KEY_URL, env.LEMONADE_KEY_TOKEN)) : null;
   }
   return null;
 }
@@ -3775,8 +3831,11 @@ function embedConfigProblem(env) {
       if (!env.AI) parts.push("\u7F3A AI binding\uFF08EMBED_PROVIDER=workers-ai\uFF09");
     } else if (p === "ollama") {
       if (!(env.OLLAMA_URL ?? "").trim()) parts.push("EMBED_PROVIDER=ollama \u4F46\u6C92\u8A2D OLLAMA_URL");
+    } else if (p === "lemonade") {
+      if (!(env.LEMONADE_URL ?? "").trim()) parts.push("EMBED_PROVIDER=lemonade \u4F46\u6C92\u8A2D LEMONADE_URL");
+      if (!(env.EMBED_MODEL ?? "").trim()) parts.push("EMBED_PROVIDER=lemonade \u4F46\u6C92\u6307\u5B9A\u5D4C\u5165\u6A21\u578B\uFF08EMBED_MODEL\uFF09");
     } else {
-      parts.push(`EMBED_PROVIDER \u7121\u6CD5\u8FA8\u8B58\uFF1A\u300C${env.EMBED_PROVIDER}\u300D\uFF08\u53EA\u8A8D workers-ai\uFF0Follama\uFF09`);
+      parts.push(`EMBED_PROVIDER \u7121\u6CD5\u8FA8\u8B58\uFF1A\u300C${env.EMBED_PROVIDER}\u300D\uFF08\u53EA\u8A8D workers-ai\uFF0Follama\uFF0Flemonade\uFF09`);
     }
   }
   const b = norm2(env.VECTOR_BACKEND);
@@ -9420,10 +9479,15 @@ recordRoutes.post("/", async (c) => {
     const tally = { rowsWritten: 0 };
     const rec = await createRecord(withWriteTally(dbOf(c.env), tally), body);
     if (!isSystemAssetOwner(body.owner_id)) {
+      const booked = addEntryWriteUsage(dbOf(c.env), tally.rowsWritten).catch(() => void 0);
+      let ctx;
       try {
-        await addEntryWriteUsage(dbOf(c.env), tally.rowsWritten);
+        ctx = c.executionCtx;
       } catch {
+        ctx = void 0;
       }
+      if (ctx) ctx.waitUntil(booked);
+      else await booked;
     }
     return c.json({ success: true, record: rec });
   } catch (e) {
@@ -9581,6 +9645,10 @@ recordRoutes.get("/by-source/:template", async (c) => {
   const all = await filterExistingRecordIds(dbOf(c.env), tpl.id, candidates);
   all.sort();
   const page = all.slice(offset, offset + limit);
+  if (c.req.query("with_values") === "1") {
+    const records = page.length > 0 ? await hydrateRecordValues(dbOf(c.env), tpl.id, page) : [];
+    return c.json({ success: true, record_ids: page, records, count: page.length, total: all.length, limit, offset });
+  }
   return c.json({ success: true, record_ids: page, count: page.length, total: all.length, limit, offset });
 });
 recordRoutes.post("/field-index", async (c) => {

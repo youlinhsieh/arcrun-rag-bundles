@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-25T07:30:48.245Z",
+  "generated_at": "2026-11-27T05:44:54.428Z",
   "apps": [
     {
       "id": "notes",
@@ -11,7 +11,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/notes-1.6.0.json",
-        "sha256": "c61fa71ad9e055d12c4e84ba68a665a7a330d944482cbc886ade35bf45645251"
+        "sha256": "d96bb4b5b77730f90ff2b1b72030e5eec802820c467ff360e2f493520c555efa"
       }
     },
     {
@@ -23,7 +23,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/flow_canvas-0.2.1.json",
-        "sha256": "62e9621c127a77c4829581f8820e462efdf6f80708c8fbb5050f4e148f62adb0"
+        "sha256": "89af82dee11611b1f709b44e75c2702d2e6c69e1e0b874ce1944bccaeb99a3ad"
       }
     },
     {
@@ -58,7 +58,7 @@
       },
       "package": {
         "url": "packages/global_index-0.2.0.json",
-        "sha256": "d406a1387ac14ab44ef0571df33ce9b25818e30332dbc11fb1e6ccb51e1a47e4"
+        "sha256": "c910ae34cd5d1c1268891787ea211771ada80af7d398a9e827928766488fb28b"
       }
     },
     {
@@ -66,7 +66,7 @@
       "name": "票地圖",
       "icon": "🗂️",
       "summary": "（已併入 AHub）專案、里程碑、票的結構與看板，以及目標指向的進度，現在都在 AHub 一個畫面裡；已裝的按更新就換成同一個畫面，資料不變。",
-      "version": "0.9.19",
+      "version": "0.9.20",
       "author": "Arcrun 內建",
       "retired": true,
       "requires": {
@@ -93,8 +93,8 @@
         ]
       },
       "package": {
-        "url": "packages/kanban-0.9.19.json",
-        "sha256": "093076b5182c1ffa16f61242894f456fb7be47c007fefc5b693f5bc2cb9d0e7a"
+        "url": "packages/kanban-0.9.20.json",
+        "sha256": "2395a84aea3e2377a6b7c348e17a295f0ae1c66942def376086193e930b32af4"
       }
     },
     {
@@ -102,7 +102,7 @@
       "name": "AHub",
       "icon": "🧭",
       "summary": "把票、留言、標籤、相依與里程碑存在你自己的知識庫裡，用和 Gitea 一樣的方式讀寫；打開就能新增、修改、關閉票與里程碑，留言用 Markdown，簽核人由你在「設定」指定。連上 Arcrun MCP 的 AI 自動拿到管票與請你簽核的工具。選裝，沒裝的實例不受影響。",
-      "version": "0.64.3",
+      "version": "0.64.4",
       "author": "Arcrun 內建",
       "requires": {
         "recipes": [
@@ -402,8 +402,8 @@
         ]
       },
       "package": {
-        "url": "packages/ahub-0.64.3.json",
-        "sha256": "2cfcf29565560ddb2f9525ffc736d9098a0819be9bb811481a60a9d676f22d6e"
+        "url": "packages/ahub-0.64.4.json",
+        "sha256": "38057216716986d8645849c3a88abea8b043392b942adb677aaf7e7e23c8aab5"
       }
     },
     {
@@ -438,7 +438,7 @@
       },
       "package": {
         "url": "packages/releases-0.1.2.json",
-        "sha256": "9fc57e93db3a031f836aa476905ca3a47539180f7f8cb055b94edfd103f8e9e6"
+        "sha256": "d85d8fad8ee99c2adfc2208afd227c14bf788fde792f2b343ec75575a4b65d43"
       }
     },
     {
@@ -502,7 +502,7 @@
       },
       "package": {
         "url": "packages/imbot-0.1.1.json",
-        "sha256": "9203f90c28c9e8eaeb52f028f337decf99f92cd0d09c09435df815cf00aa1724"
+        "sha256": "9c7f3499e6bedcae9088a4114fa1e8b7719bd45fb29dbbc369695baae16a0233"
       }
     },
     {
@@ -510,7 +510,7 @@
       "name": "報社",
       "icon": "📰",
       "summary": "全系統只有一份報紙：照訂閱表定時抓 RSS、網址上的數字、AHub 意圖庫存，存成一期。首頁列出「訂了哪些報紙」（每個數據源最新抓到什麼、誰訂、沒抓到的原因），點進去看歷刊。同期重送續跑、漏刊補出、每期有回執。不需要任何金鑰；先安裝 AHub。",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "author": "Arcrun 內建",
       "requires": {
         "recipes": [
@@ -623,8 +623,8 @@
         "credentials": []
       },
       "package": {
-        "url": "packages/paper-0.5.0.json",
-        "sha256": "27a0bb03978109d8aa5786259b0aa9a0fd635e7fffbf72951a4be0ec5ed51e77"
+        "url": "packages/paper-0.5.1.json",
+        "sha256": "a776c28f72dd2044f88523680575c3b296f72555d0ac8756788c2fe2a5214a55"
       }
     },
     {
@@ -636,7 +636,7 @@
       "author": "Arcrun 示範",
       "package": {
         "url": "packages/company_rules-0.1.1.json",
-        "sha256": "b8507047dad05cc4152dba30fe5b5c23c94ba5b3daf96f69b13233b756be2a75"
+        "sha256": "5866c92bd2d9e074b7470862fa642384fdcf7cd19cb2568b20fb3e41d4521052"
       }
     }
   ]

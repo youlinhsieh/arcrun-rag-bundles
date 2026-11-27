@@ -237,15 +237,15 @@ var init_url = __esm({
       }
       const match2 = label.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/);
       if (match2) {
-        const cacheKey = `${label}#${next}`;
-        if (!patternCache[cacheKey]) {
+        const cacheKey2 = `${label}#${next}`;
+        if (!patternCache[cacheKey2]) {
           if (match2[2]) {
-            patternCache[cacheKey] = next && next[0] !== ":" && next[0] !== "*" ? [cacheKey, match2[1], new RegExp(`^${match2[2]}(?=/${next})`)] : [label, match2[1], new RegExp(`^${match2[2]}$`)];
+            patternCache[cacheKey2] = next && next[0] !== ":" && next[0] !== "*" ? [cacheKey2, match2[1], new RegExp(`^${match2[2]}(?=/${next})`)] : [label, match2[1], new RegExp(`^${match2[2]}$`)];
           } else {
-            patternCache[cacheKey] = [label, match2[1], true];
+            patternCache[cacheKey2] = [label, match2[1], true];
           }
         }
-        return patternCache[cacheKey];
+        return patternCache[cacheKey2];
       }
       return null;
     };
@@ -3090,6 +3090,7 @@ function gateInfo(pathname) {
     }
     return { gated: false };
   }
+  if (a === "p" || a === "u") return { gated: false };
   if (a === "workflows") return b === "resume" ? { gated: false } : { gated: true };
   if (a === "portal") return b === "daemon" && seg[2] !== "config" ? { gated: true } : { gated: false };
   if (["kbdb", "artifacts", "execute", "cypher", "credentials", "apps", "recipes", "auth-recipes", "storage", "executions", "init"].includes(a)) {
@@ -14295,7 +14296,7 @@ var init_security = __esm({
       { id: "hubspot", label: "HubSpot", tokens: ["hubspot"], ok: host(/(^|\.)(hubapi\.com|hubspot\.com)$/) },
       { id: "linear", label: "Linear", tokens: ["linear"], ok: host(/(^|\.)linear\.app$/) }
     ];
-    LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\])$/;
+    LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.priv\.local)$/;
     FIRST_PARTY_SUFFIX = ["arcrun.dev", "uncle6.me"];
     SEND_TOKENS = /* @__PURE__ */ new Set(["send", "sms", "mail", "email", "notify", "notification", "broadcast", "publish", "tweet", "dm", "whatsapp", "reply"]);
     SEND_HOSTS = [
@@ -14612,6 +14613,140 @@ var init_security_scan = __esm({
       } catch {
         return "";
       }
+    };
+  }
+});
+
+// cypher-executor/src/lib/permission-core.ts
+function credentialNamesInRecipes(recipes) {
+  const out = /* @__PURE__ */ new Set();
+  for (const r of recipes) {
+    let text = "";
+    try {
+      text = JSON.stringify(r) ?? "";
+    } catch {
+      continue;
+    }
+    for (const m of text.matchAll(CRED_IN_TEXT_RE)) out.add(m[1]);
+  }
+  return out;
+}
+function buildPermissionTable(report, declared = [], recipes = []) {
+  const inv = report.inventory;
+  const declaredBy = new Map(declared.map((d) => [d.name, d]));
+  const viaRecipe = credentialNamesInRecipes(recipes);
+  const rows = /* @__PURE__ */ new Map();
+  for (const c of inv.credentials) {
+    const d = declaredBy.get(c.name);
+    rows.set(c.name, {
+      name: c.name,
+      ...d?.purpose ? { purpose: d.purpose } : {},
+      ...labelOf(c.name),
+      sends_to: [...c.sends_to],
+      workflows: [...c.workflows],
+      declared: Boolean(d),
+      used: true
+    });
+  }
+  for (const d of declared) {
+    if (rows.has(d.name)) continue;
+    rows.set(d.name, {
+      name: d.name,
+      ...d.purpose ? { purpose: d.purpose } : {},
+      ...labelOf(d.name),
+      sends_to: [],
+      workflows: [],
+      declared: true,
+      // 只出現在隨 App 帶的 recipe 裡也算「有用到」（掃描看不進 recipe 內部，不能因此說作者宣告錯）
+      used: viaRecipe.has(d.name)
+    });
+  }
+  for (const name of viaRecipe) {
+    if (rows.has(name)) continue;
+    rows.set(name, { name, ...labelOf(name), sends_to: [], workflows: [], declared: false, used: true });
+  }
+  const credentials = [...rows.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const undeclared = credentials.filter((c) => c.used && !c.declared).map((c) => c.name);
+  const unused = credentials.filter((c) => c.declared && !c.used).map((c) => c.name);
+  const egress_hosts = inv.egress_hosts.map((h) => ({ host: h.host, workflows: [...h.workflows] }));
+  const message_senders = (inv.message_senders ?? []).map((m) => ({ workflow: m.workflow, node: m.node, host: m.host ?? null }));
+  const bits = [];
+  bits.push(credentials.length ? `\u6703\u7528 ${credentials.length} \u628A\u91D1\u9470` : "\u4E0D\u7528\u4EFB\u4F55\u91D1\u9470");
+  bits.push(egress_hosts.length ? `\u6703\u9023 ${egress_hosts.length} \u500B\u5916\u90E8\u7DB2\u7AD9` : "\u4E0D\u9023\u5916\u90E8\u7DB2\u7AD9");
+  if (message_senders.length) bits.push("\u6703\u5C0D\u5916\u5BC4\u4FE1\u6216\u767C\u8A0A");
+  return {
+    credentials,
+    egress_hosts,
+    dynamic_egress_count: inv.dynamic_egress.length,
+    message_senders,
+    sends_messages: message_senders.length > 0,
+    mismatch: { undeclared, unused },
+    consistent: undeclared.length === 0 && unused.length === 0,
+    headline: bits.join("\u3001")
+  };
+}
+function permissionSnapshot(t) {
+  return {
+    v: 1,
+    credentials: t.credentials.map((c) => ({ name: c.name, sends_to: [...c.sends_to].sort() })),
+    egress_hosts: t.egress_hosts.map((h) => h.host).sort(),
+    message_hosts: [...new Set(t.message_senders.map((m) => m.host).filter((h) => Boolean(h)))].sort(),
+    sends_messages: t.sends_messages,
+    dynamic_egress_count: t.dynamic_egress_count
+  };
+}
+function diffPermissions(before, after) {
+  const oldCred = new Map(before.credentials.map((c) => [c.name, new Set(c.sends_to)]));
+  const credentials_added = [];
+  const credential_hosts_added = [];
+  for (const c of after.credentials) {
+    const old = oldCred.get(c.name);
+    if (!old) {
+      credentials_added.push({
+        name: c.name,
+        ...c.purpose ? { purpose: c.purpose } : {},
+        ...c.service_label ? { service_label: c.service_label } : {},
+        sends_to: [...c.sends_to]
+      });
+      continue;
+    }
+    const hosts = c.sends_to.filter((h) => !old.has(h));
+    if (hosts.length) credential_hosts_added.push({ name: c.name, ...c.service_label ? { service_label: c.service_label } : {}, hosts });
+  }
+  const oldHosts = new Set(before.egress_hosts);
+  const egress_hosts_added = after.egress_hosts.map((h) => h.host).filter((h) => !oldHosts.has(h));
+  const newMsgHosts = [...new Set(after.message_senders.map((m) => m.host).filter((h) => Boolean(h)))];
+  const oldMsg = new Set(before.message_hosts);
+  const starts_sending_messages = after.sends_messages && !before.sends_messages;
+  const message_hosts_added = starts_sending_messages ? [] : newMsgHosts.filter((h) => !oldMsg.has(h));
+  const dynamic_egress_added = Math.max(0, after.dynamic_egress_count - before.dynamic_egress_count);
+  const nowCred = new Set(after.credentials.map((c) => c.name));
+  const nowHosts = new Set(after.egress_hosts.map((h) => h.host));
+  const removed = {
+    credentials: before.credentials.map((c) => c.name).filter((n) => !nowCred.has(n)),
+    egress_hosts: before.egress_hosts.filter((h) => !nowHosts.has(h))
+  };
+  const needs_consent = credentials_added.length > 0 || credential_hosts_added.length > 0 || egress_hosts_added.length > 0 || starts_sending_messages || message_hosts_added.length > 0 || dynamic_egress_added > 0;
+  return { credentials_added, credential_hosts_added, egress_hosts_added, starts_sending_messages, message_hosts_added, dynamic_egress_added, removed, needs_consent };
+}
+function permissionUpdateFor(installed, after) {
+  if (!installed) return void 0;
+  if (!installed.permissions || installed.permissions.v !== 1) {
+    const asksNothing = after.credentials.length === 0 && after.egress_hosts.length === 0 && after.dynamic_egress_count === 0 && !after.sends_messages;
+    return { installed_version: installed.version, baseline: "unknown", needs_consent: !asksNothing };
+  }
+  const diff = diffPermissions(installed.permissions, after);
+  return { installed_version: installed.version, baseline: "recorded", diff, needs_consent: diff.needs_consent };
+}
+var CRED_IN_TEXT_RE, labelOf;
+var init_permission_core = __esm({
+  "cypher-executor/src/lib/permission-core.ts"() {
+    "use strict";
+    init_dataflow_graph();
+    CRED_IN_TEXT_RE = /\{\{\s*(?:credential|secret)\.([\w.-]+)\s*\}\}/g;
+    labelOf = (name) => {
+      const f = familyOf(name);
+      return f?.label ? { service_label: f.label } : {};
     };
   }
 });
@@ -15627,6 +15762,7 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
   }
   const decl = applyDeclarationDefaults(decl0);
   let advice = [];
+  let permissions;
   {
     const scan = runSecurityScan(env, decl.workflows.map((wf) => ({ name: `${decl.id}__${wf.name}`, graph: wf.graph })), {
       selfOrigins: opts.coords ? [opts.coords.cypherBase] : [],
@@ -15643,6 +15779,7 @@ ${securityText(scan)}`],
       };
     }
     advice = adviceForApp(decl, scan);
+    permissions = permissionSnapshot(buildPermissionTable(scan, normalizeRequiredCredentials(decl.requires), decl.requires?.recipes ?? []));
   }
   const contentHash2 = await computeContentHash(decl0);
   const existing = await getInstalledApp(env, tenant2, decl.id);
@@ -15659,20 +15796,20 @@ ${securityText(scan)}`],
   const requestStart = subrequestCount();
   const spent = () => subrequestCount() - requestStart;
   if (existing && existing.content_hash === contentHash2 && existing.status === "active") {
-    const ensured3 = await ensureAppRecipes(env, wantedRecipes, ulCtx);
-    if (!ensured3.ok) {
+    const ensured4 = await ensureAppRecipes(env, wantedRecipes, ulCtx);
+    if (!ensured4.ok) {
       return {
         ok: false,
         step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
-        errors: [ensured3.error],
+        errors: [ensured4.error],
         hint: "\u9019\u500B App \u9700\u8981\u7684 recipe \u5BEB\u4E0D\u9032\u9019\u53F0\u5BE6\u4F8B\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
       };
     }
     const credCheck2 = await findMissingCredentials(env, tenant2, wantedCreds);
     await flushUl();
     const needs2 = {
-      recipes_installed: ensured3.installed,
-      ...ensured3.kept.length ? { kept_user_changes: ensured3.kept } : {},
+      recipes_installed: ensured4.installed,
+      ...ensured4.kept.length ? { kept_user_changes: ensured4.kept } : {},
       missing_credentials: credCheck2.missing,
       ...credCheck2.checked ? {} : { credentials_check_failed: true }
     };
@@ -15700,10 +15837,10 @@ ${securityText(scan)}`],
       label: String(r.canonical_id ?? ""),
       cost: 3,
       run: async () => {
-        const ensured3 = await ensureAppRecipes(env, [r], ulCtx);
-        if (!ensured3.ok) throw new Error(ensured3.error);
-        recipesInstalled = recipesInstalled.concat(ensured3.installed);
-        keptUserChanges.push(...ensured3.kept);
+        const ensured4 = await ensureAppRecipes(env, [r], ulCtx);
+        if (!ensured4.ok) throw new Error(ensured4.error);
+        recipesInstalled = recipesInstalled.concat(ensured4.installed);
+        keptUserChanges.push(...ensured4.kept);
         await flushUl();
       }
     });
@@ -15899,6 +16036,7 @@ ${securityText(scan)}`],
     ...decl.entry === "kb" ? { entry: "kb" } : {},
     ...wantedRecipes.length || wantedCreds.length ? { requires: { recipes: wantedRecipes.map((r) => String(r.canonical_id).trim().toLowerCase()), credentials: wantedCreds } } : {},
     ...mcp ? { mcp } : {},
+    ...permissions ? { permissions } : {},
     declared: { data: decl.data, ...decl.engine_min ? { engine_min: decl.engine_min } : {} },
     ...ulCtx && (Object.keys(ulCtx.layer.items).length || ulCtx.layer.log.length || ulCtx.layer.proposals || ulCtx.layer.pages || ulCtx.layer.rule_sources) ? { user_layer: ulCtx.layer } : {},
     ...opts.source ?? existing?.source ? { source: opts.source ?? existing?.source } : {},
@@ -16093,6 +16231,7 @@ var init_app_system = __esm({
     init_subrequest_meter();
     init_dataflow_check();
     init_security_scan();
+    init_permission_core();
     init_app_userlayer();
     init_app_rulebook();
     APP_WORKFLOW_TRIGGERS = ["manual", "schedule", "event"];
@@ -16948,24 +17087,37 @@ function makeTriggerWorkflowRunner(env, bg) {
     if (!workflowName) return { success: false, error: "trigger_workflow \u7F3A workflow_name" };
     if (!apiKey) return { success: false, error: "trigger_workflow \u7F3A api_key" };
     const wfKey2 = `${apiKey}:wf:${workflowName}`;
-    const wfRaw = await env.WEBHOOKS.get(wfKey2, "text");
-    if (!wfRaw) return { success: false, error: `\u627E\u4E0D\u5230 workflow "${workflowName}" (key=${wfKey2})` };
-    let record;
-    try {
-      record = JSON.parse(wfRaw);
-    } catch {
-      return { success: false, error: `workflow "${workflowName}" KV \u5167\u5BB9\u975E JSON` };
-    }
-    if (!record.graph) return { success: false, error: `workflow "${workflowName}" \u7F3A graph \u6B04\u4F4D` };
-    const { executeWebhookGraph: executeWebhookGraph2 } = await Promise.resolve().then(() => (init_webhook_handlers(), webhook_handlers_exports));
+    const loadGraph = async () => {
+      const wfRaw = await env.WEBHOOKS.get(wfKey2, "text");
+      if (!wfRaw) return { error: `\u627E\u4E0D\u5230 workflow "${workflowName}" (key=${wfKey2})` };
+      let record;
+      try {
+        record = JSON.parse(wfRaw);
+      } catch {
+        return { error: `workflow "${workflowName}" KV \u5167\u5BB9\u975E JSON` };
+      }
+      if (!record.graph) return { error: `workflow "${workflowName}" \u7F3A graph \u6B04\u4F4D` };
+      return { graph: record.graph };
+    };
     const triggerContext = { ...input, _triggered_by: "trigger_workflow" };
     if (!wait && bg?.waitUntil) {
       bg.waitUntil(
-        executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey, bg).catch((e) => console.error("[trigger_workflow] background fail", workflowName, e))
+        (async () => {
+          const loaded2 = await loadGraph();
+          if ("error" in loaded2) {
+            console.error("[trigger_workflow] background skip", loaded2.error);
+            return;
+          }
+          const { executeWebhookGraph: executeWebhookGraph3 } = await Promise.resolve().then(() => (init_webhook_handlers(), webhook_handlers_exports));
+          await executeWebhookGraph3(env, loaded2.graph, triggerContext, workflowName, apiKey, bg);
+        })().catch((e) => console.error("[trigger_workflow] background fail", workflowName, e))
       );
       return { success: true, triggered_workflow: workflowName, status: "running_background", mode: "background" };
     }
-    const r = await executeWebhookGraph2(env, record.graph, triggerContext, workflowName, apiKey);
+    const loaded = await loadGraph();
+    if ("error" in loaded) return { success: false, error: loaded.error };
+    const { executeWebhookGraph: executeWebhookGraph2 } = await Promise.resolve().then(() => (init_webhook_handlers(), webhook_handlers_exports));
+    const r = await executeWebhookGraph2(env, loaded.graph, triggerContext, workflowName, apiKey);
     const isPaused = !r.success && typeof r.error === "string" && /workflow paused/i.test(r.error);
     return {
       success: r.success || isPaused,
@@ -18597,7 +18749,7 @@ async function ensureTemplate2(env, name, slots) {
 async function findByHash(env, template, hashField, hash) {
   const res = await kFetch(
     env,
-    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(hashField)}&value=${encodeURIComponent(hash)}`
+    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(hashField)}&value=${encodeURIComponent(hash)}&limit=1&with_values=1`
   );
   if (!res.ok) {
     releaseBody(res);
@@ -18606,6 +18758,8 @@ async function findByHash(env, template, hashField, hash) {
   const body = await res.json().catch(() => null);
   const id = body?.record_ids?.[0];
   if (!id) return null;
+  const inline2 = body?.records?.find((r) => r?.record_id === id);
+  if (inline2 && inline2.values && typeof inline2.values === "object") return { record_id: inline2.record_id, values: inline2.values };
   const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
   if (rec.status === 404) {
     releaseBody(rec);
@@ -19745,6 +19899,8 @@ var PORTAL_TEMPLATE_SEEDS = [
 // cypher-executor/src/lib/extract-ai-providers.ts
 var GENERIC_OPENAI_COMPAT_ID = "extract_ai_openai_compat";
 var GENERIC_OPENAI_COMPAT_CREDENTIAL = "extract_ai_api_key";
+var LEMONADE_ID = "extract_ai_lemonade";
+var LEMONADE_CREDENTIAL = "extract_ai_lemonade_key";
 var EXTRACT_AI_PROVIDERS = [
   {
     id: "extract_ai_workers_ai",
@@ -19887,6 +20043,18 @@ var EXTRACT_AI_PROVIDERS = [
     models: [],
     credential: "extract_ai_ollama_key",
     description: "\u5730\u7AEF\u6216\u5167\u7DB2\u7684 Ollama\u3002\u91D1\u9470\u901A\u5E38\u4E0D\u9700\u8981\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
+  },
+  {
+    id: LEMONADE_ID,
+    label: "Lemonade\uFF08\u5730\u7AEF\uFF09",
+    group: "local",
+    kind: "http",
+    key: "optional",
+    needs_base_url: true,
+    default_base_url: "http://localhost:13305",
+    models: [],
+    credential: LEMONADE_CREDENTIAL,
+    description: "\u5730\u7AEF\u6216\u5167\u7DB2\u7684 Lemonade\uFF08\u5B83\u8B1B OpenAI \u7684\u8A9E\u8A00\uFF0C\u6240\u4EE5\u9019\u88E1\u5E6B\u4F60\u8A2D\u597D\u4E86\uFF09\u3002\u586B\u4E3B\u6A5F\u7DB2\u5740\u5C31\u597D\uFF08\u65B0\u7248\u9810\u8A2D\u57E0 13305\uFF0C\u820A\u7248 8000\uFF09\uFF0C\u5F8C\u9762\u4E0D\u7528\u52A0 /v1\uFF1B\u65B0\u820A\u7248\u90FD\u8A8D\u5F97\u3002Lemonade \u6709\u8A2D\u91D1\u9470\u624D\u9700\u8981\u586B\uFF1B\u6A21\u578B\u6E05\u55AE\u73FE\u5834\u5411\u7AEF\u9EDE\u53D6\u3002"
   },
   {
     id: GENERIC_OPENAI_COMPAT_ID,
@@ -20117,6 +20285,15 @@ var EXTRACT_AI_TEMPLATE = "portal_extract_ai";
 var DEFAULT_EXTRACT_AI_RECIPE = "extract_ai_workers_ai";
 var EXTRACT_AI_RECIPE_IDS = EXTRACT_AI_PROVIDERS.map((p) => p.id);
 var DEFAULT_EXTRACT_AI_CONFIG = { recipe: DEFAULT_EXTRACT_AI_RECIPE };
+function normalizeOpenAiBase(raw2) {
+  let b = raw2.trim().replace(/\/+$/, "");
+  for (let i = 0; i < 3; i++) {
+    const before = b;
+    b = b.replace(/\/(v1\/)?(chat\/completions|models|embeddings)$/i, "").replace(/\/v1$/i, "").replace(/\/+$/, "");
+    if (b === before) break;
+  }
+  return b;
+}
 function validateExtractAiConfig(raw2) {
   if (!raw2 || typeof raw2 !== "object") return { ok: false, error: "body \u5FC5\u9808\u662F JSON \u7269\u4EF6" };
   const o = raw2;
@@ -20135,7 +20312,7 @@ function validateExtractAiConfig(raw2) {
     return { ok: false, error: `${provider.label} \u5FC5\u9808\u5F9E\u9078\u55AE\u6311\u4E00\u500B\u6A21\u578B\uFF08model\uFF09` };
   }
   if (provider.needs_base_url) {
-    const baseUrl = typeof o.base_url === "string" ? o.base_url.trim().replace(/\/+$/, "") : "";
+    const baseUrl = typeof o.base_url === "string" ? normalizeOpenAiBase(o.base_url) : "";
     if (!baseUrl) return { ok: false, error: `${provider.label} \u5FC5\u9808\u586B base_url\uFF08\u4F8B ${provider.default_base_url ?? "http://ollama.internal:11434"}\uFF09` };
     let u;
     try {
@@ -20241,7 +20418,8 @@ async function runExtractAi(env, tenant2, config, req) {
     });
     const text = await res.text();
     if (!res.ok) {
-      return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u56DE ${res.status}\uFF1A${text.slice(0, 200)}` };
+      const hint = config.recipe === LEMONADE_ID ? lemonadeChatHint(res.status) : "";
+      return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u56DE ${res.status}\uFF1A${text.slice(0, 200)}${hint}` };
     }
     let json;
     try {
@@ -20251,21 +20429,64 @@ async function runExtractAi(env, tenant2, config, req) {
     }
     return { ok: true, out: json, model, provider: recipe.canonical_id };
   } catch (e) {
-    return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
+    const hint = config.recipe === LEMONADE_ID ? "\uFF08\u8ACB\u78BA\u8A8D Lemonade \u6709\u5728\u8DD1\u3001\u7DB2\u5740\u8207\u57E0\u5C0D\uFF0C\u800C\u4E14\u9019\u53F0 Arcrun \u9023\u5F97\u5230\u90A3\u53F0\u4E3B\u6A5F\uFF09" : "";
+    return { ok: false, code: "ai_failed", error: `\u8403\u53D6 AI \u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}${hint}` };
   }
 }
 var NON_CHAT_MODEL = /(embed|whisper|tts|dall-e|moderation|image|audio|realtime|transcribe|rerank|imagen|veo)/i;
 async function fetchModelIds(url, headers) {
+  const r = await fetchModelRows(url, headers);
+  return "error" in r ? r : { ids: r.rows.map((x) => x.id) };
+}
+async function fetchModelRows(url, headers) {
   try {
     const res = await fetch(url, { headers });
-    if (!res.ok) return { error: `\u7AEF\u9EDE\u56DE ${res.status}\uFF0C\u5217\u4E0D\u51FA\u6A21\u578B` };
-    const json = await res.json();
+    if (!res.ok) return { error: `\u7AEF\u9EDE\u56DE ${res.status}\uFF0C\u5217\u4E0D\u51FA\u6A21\u578B`, status: res.status };
+    let json;
+    try {
+      json = await res.json();
+    } catch {
+      return { error: "\u7AEF\u9EDE\u6709\u56DE\u61C9\uFF0C\u4F46\u56DE\u7684\u4E0D\u662F\u6A21\u578B\u6E05\u55AE\uFF08\u50CF\u662F\u7DB2\u9801\u6216\u5225\u7684\u670D\u52D9\uFF09\uFF0C\u9019\u500B\u7DB2\u5740\u53EF\u80FD\u4E0D\u662F Lemonade \u6216 OpenAI \u76F8\u5BB9\u670D\u52D9" };
+    }
     const raw2 = json.data ?? json.models ?? [];
-    const ids = raw2.map((m) => typeof m.id === "string" ? m.id : typeof m.name === "string" ? m.name : "").map((id) => id.replace(/^models\//, "")).filter(Boolean);
-    return { ids };
+    const rows = raw2.map((m) => ({
+      id: (typeof m.id === "string" ? m.id : typeof m.name === "string" ? m.name : "").replace(/^models\//, ""),
+      labels: Array.isArray(m.labels) ? m.labels.filter((x) => typeof x === "string").map((x) => x.toLowerCase()) : []
+    })).filter((m) => m.id);
+    return { rows };
   } catch (e) {
-    return { error: `\u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}` };
+    return { error: `\u7AEF\u9EDE\u9023\u4E0D\u4E0A\uFF1A${e instanceof Error ? e.message : String(e)}`, network: true };
   }
+}
+var LEMONADE_NON_CHAT_LABELS = /* @__PURE__ */ new Set(["embeddings", "embedding", "reranking", "rerank", "audio", "tts", "transcription", "speech", "image", "esrgan"]);
+async function probeLemonade(base, headers) {
+  const root = normalizeOpenAiBase(base);
+  const first = await fetchModelRows(`${root}/v1/models`, headers);
+  if ("rows" in first) return { ok: true, base: root, rows: first.rows };
+  if ("network" in first && first.network) return { ok: false, error: lemonadeNetworkError(root, first.error) };
+  if (first.status === 401 || first.status === 403) return { ok: false, error: lemonadeKeyError(first.status) };
+  if (first.status === 404) {
+    const second = await fetchModelRows(`${root}/api/v1/models`, headers);
+    if ("rows" in second) return { ok: true, base: `${root}/api`, rows: second.rows };
+    if ("status" in second && (second.status === 401 || second.status === 403)) return { ok: false, error: lemonadeKeyError(second.status) };
+    return {
+      ok: false,
+      error: `\u9023\u5F97\u5230 ${root}\uFF0C\u4F46\u5B83\u6C92\u6709 /v1/models \u4E5F\u6C92\u6709 /api/v1/models\u2014\u2014\u9019\u500B\u7DB2\u5740\u53EF\u80FD\u4E0D\u662F Lemonade\uFF0C\u6216\u5F8C\u9762\u591A\u5BEB\u4E86\u8DEF\u5F91\u3002Lemonade \u7684\u7DB2\u5740\u53EA\u8981\u4E3B\u6A5F\u52A0\u57E0\uFF0C\u4F8B\u5982 http://\u4E3B\u6A5F:13305\uFF08\u820A\u7248\u57E0 8000\uFF09\u3002`
+    };
+  }
+  return { ok: false, error: `Lemonade \u56DE ${first.status ?? "\u932F\u8AA4"}\uFF0C\u5217\u4E0D\u51FA\u6A21\u578B\uFF1A${first.error}` };
+}
+function lemonadeChatHint(status) {
+  if (status === 401 || status === 403) return "\uFF08Lemonade \u8A2D\u4E86 API \u91D1\u9470\uFF0C\u9019\u88E1\u7684\u91D1\u9470\u6C92\u586B\u6216\u586B\u932F\uFF1A\u5230\u300CAI \u8A2D\u5B9A\u300D\u586B\u5165 Lemonade \u7684\u91D1\u9470\uFF09";
+  if (status === 404) return "\uFF08Lemonade \u627E\u4E0D\u5230\u9019\u500B\u8DEF\u5F91\u6216\u6A21\u578B\uFF1A\u78BA\u8A8D\u7DB2\u5740\u53EA\u5230\u4E3B\u6A5F\u52A0\u57E0\uFF0C\u4E26\u91CD\u9078\u4E00\u6B21\u6A21\u578B\uFF1B\u820A\u7248 Lemonade \u7684 API \u5728 /api/v1 \u5E95\u4E0B\uFF09";
+  if (status === 400 || status === 501) return "\uFF08\u9019\u500B\u6A21\u578B\u53EF\u80FD\u4E0D\u662F\u5C0D\u8A71\u6A21\u578B\uFF1A\u5728 AI \u8A2D\u5B9A\u7684\u6A21\u578B\u9078\u55AE\u6539\u9078\u4E00\u500B\u5C0D\u8A71\u6A21\u578B\uFF09";
+  return "";
+}
+function lemonadeNetworkError(root, detail) {
+  return `\u9023\u4E0D\u5230 ${root}\uFF1A${detail.replace(/^端點連不上：/, "")}\u3002\u8ACB\u78BA\u8A8D\u7DB2\u5740\u8207\u57E0\u662F\u5C0D\u7684\uFF08Lemonade \u65B0\u7248\u9810\u8A2D 13305\u3001\u820A\u7248 8000\uFF09\uFF0CLemonade \u6709\u5728\u8DD1\uFF0C\u800C\u4E14\u9019\u53F0 Arcrun \u9023\u5F97\u5230\u90A3\u53F0\u4E3B\u6A5F\uFF08\u9632\u706B\u7246\u3001docker \u7DB2\u8DEF\uFF09\u3002`;
+}
+function lemonadeKeyError(status) {
+  return `Lemonade \u56DE ${status}\uFF1A\u5B83\u8A2D\u4E86 API \u91D1\u9470\uFF08LEMONADE_API_KEY\uFF09\uFF0C\u800C\u9019\u88E1\u7684\u91D1\u9470\u6C92\u586B\u6216\u586B\u932F\u3002\u8ACB\u5728\u300C\u91D1\u9470\u300D\u6B04\u586B\u5165 Lemonade \u8A2D\u7684\u90A3\u7D44\u3002`;
 }
 var WORKERS_AI_TEXT_TASK = "Text Generation";
 var WORKERS_AI_FREE_NEURONS_PER_DAY = 1e4;
@@ -20332,12 +20553,12 @@ async function listWorkersAiModels(env, fallback) {
   waiCache = { at: Date.now(), models };
   return { models, source: "live" };
 }
-async function listProviderModels(env, tenant2, providerId, baseUrl) {
+async function listProviderModels(env, tenant2, providerId, baseUrl, keyOverride) {
   const provider = findProvider(providerId);
   if (!provider) return { models: [], source: "none", error: `\u6C92\u6709\u9019\u500B\u63D0\u4F9B\u5546\uFF1A${providerId}` };
   if (provider.live_binding) return listWorkersAiModels(env, provider.models);
-  let key = "";
-  if (provider.credential) {
+  let key = keyOverride?.trim() ?? "";
+  if (!key && provider.credential) {
     try {
       key = (await resolveSecretsFromNewHome(env, tenant2, [provider.credential]))[provider.credential] ?? "";
     } catch {
@@ -20349,8 +20570,19 @@ async function listProviderModels(env, tenant2, providerId, baseUrl) {
     headers.Authorization = `Bearer ${key}`;
     if (provider.id === "extract_ai_anthropic") headers["x-api-key"] = key;
   }
+  if (provider.id === LEMONADE_ID) {
+    const root = normalizeOpenAiBase(baseUrl ?? "");
+    if (!/^https?:\/\//.test(root)) return { models: [], source: "none", error: "\u5148\u586B Lemonade \u7684\u7DB2\u5740\uFF08\u4F8B\u5982 http://\u4E3B\u6A5F:13305\uFF09\uFF0C\u624D\u80FD\u5217\u51FA\u5B83\u6709\u54EA\u4E9B\u6A21\u578B" };
+    const p = await probeLemonade(root, headers);
+    if (!p.ok) return { models: [], source: "none", error: p.error };
+    const chat2 = p.rows.filter((m) => !m.labels.some((l) => LEMONADE_NON_CHAT_LABELS.has(l)));
+    if (chat2.length === 0) {
+      return { models: [], source: "none", error: "Lemonade \u9023\u5F97\u4E0A\uFF0C\u4F46\u6C92\u6709\u53EF\u4EE5\u804A\u5929\u7684\u6A21\u578B\u3002\u8ACB\u5148\u5728 Lemonade \u4E0B\u8F09\u4E00\u500B\u5C0D\u8A71\u6A21\u578B\uFF08\u9810\u8A2D\u53EA\u5217\u5DF2\u4E0B\u8F09\u7684\uFF09\u3002", base_url: p.base };
+    }
+    return { models: chat2.map((m) => ({ id: m.id })).sort((a, b) => a.id.localeCompare(b.id)), source: "live", base_url: p.base };
+  }
   if (provider.needs_base_url) {
-    const base = (baseUrl ?? "").trim().replace(/\/+$/, "");
+    const base = normalizeOpenAiBase(baseUrl ?? "");
     if (!/^https?:\/\//.test(base)) return { models: [], source: "none", error: "\u5148\u586B\u7AEF\u9EDE\u7DB2\u5740\uFF0C\u624D\u80FD\u5217\u51FA\u5B83\u6709\u54EA\u4E9B\u6A21\u578B" };
     const r2 = await fetchModelIds(`${base}/v1/models`, headers);
     if ("error" in r2) return { models: [], source: "none", error: r2.error };
@@ -20368,6 +20600,12 @@ async function listProviderModels(env, tenant2, providerId, baseUrl) {
   const chat = r.ids.filter((id) => !NON_CHAT_MODEL.test(id));
   return { models: (chat.length ? chat : r.ids).sort().map((id) => ({ id })), source: "live" };
 }
+
+// cypher-executor/src/routes/portal.ts
+init_auth_dispatcher();
+
+// cypher-executor/src/lib/embed-ai.ts
+var EMBED_LEMONADE_CREDENTIAL = "embed_lemonade_key";
 
 // cypher-executor/src/lib/reset-mail-workflow.ts
 init_webhook_handlers();
@@ -25617,6 +25855,25 @@ portalRouter.get(
     return c.json({ success: true, recipe, ...list, ...quota });
   })
 );
+portalRouter.post(
+  "/portal/admin/extract-ai/models",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const recipe = typeof body?.recipe === "string" ? body.recipe.trim() : "";
+    if (!findProvider(recipe)) return c.json({ error: "\u4E0D\u8A8D\u5F97\u9019\u500B\u63D0\u4F9B\u5546" }, 400);
+    const list = await listProviderModels(
+      c.env,
+      credentialOwner(c.env),
+      recipe,
+      typeof body?.base_url === "string" ? body.base_url : void 0,
+      typeof body?.api_key === "string" ? body.api_key : void 0
+    );
+    const quota = findProvider(recipe)?.live_binding ? { free_neurons_per_day: WORKERS_AI_FREE_NEURONS_PER_DAY } : {};
+    return c.json({ success: true, recipe, ...list, ...quota });
+  })
+);
 portalRouter.put(
   "/portal/admin/extract-ai",
   (c) => run(c, async () => {
@@ -25645,6 +25902,20 @@ portalRouter.put(
         return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
       }
     }
+    let warning;
+    if (v.config.recipe === LEMONADE_ID && v.config.base_url) {
+      let key = apiKey;
+      if (!key && provider.credential) {
+        try {
+          key = (await resolveSecretsFromNewHome(c.env, credentialOwner(c.env), [provider.credential]))[provider.credential] ?? "";
+        } catch {
+          key = "";
+        }
+      }
+      const pr = await probeLemonade(v.config.base_url, key ? { Authorization: `Bearer ${key}` } : {});
+      if (pr.ok) v.config.base_url = pr.base;
+      else warning = pr.error;
+    }
     const seeded = await ensurePortalTemplates(c.env);
     if (seeded.errors.length > 0) {
       return c.json({ error: `portal templates seed \u5931\u6557\uFF1A${seeded.errors.join("; ")}` }, 502);
@@ -25666,7 +25937,7 @@ portalRouter.put(
       });
       if (!res.ok) throw new KbdbError(`POST /records\uFF08${EXTRACT_AI_TEMPLATE}\uFF09\u2192 ${res.status}`);
     }
-    return c.json({ success: true, recipe: v.config.recipe, base_url: v.config.base_url ?? null, model: v.config.model ?? null });
+    return c.json({ success: true, recipe: v.config.recipe, base_url: v.config.base_url ?? null, model: v.config.model ?? null, ...warning ? { warning } : {} });
   })
 );
 portalRouter.delete(
@@ -25678,6 +25949,57 @@ portalRouter.delete(
     if (!existing) return c.json({ success: true, already: true });
     const found = await deleteKbdbRecord(c.env, existing.record_id);
     return c.json({ success: true, removed: found });
+  })
+);
+portalRouter.get(
+  "/portal/admin/embed-ai/auth",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    let has_key = false;
+    try {
+      has_key = await hasCredential(c.env, credentialOwner(c.env), EMBED_LEMONADE_CREDENTIAL);
+    } catch {
+      has_key = false;
+    }
+    return c.json({ success: true, email: auth.user.values.email ?? "", credential: EMBED_LEMONADE_CREDENTIAL, has_key });
+  })
+);
+portalRouter.put(
+  "/portal/admin/embed-ai/key",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const key = typeof body?.api_key === "string" ? body.api_key.trim() : "";
+    if (!key) return c.json({ error: "api_key \u4E0D\u80FD\u662F\u7A7A\u7684\uFF08\u8981\u6E05\u6389\u91D1\u9470\u8ACB\u7528 DELETE\uFF09" }, 400);
+    try {
+      await storeCredential(c.env, credentialOwner(c.env), EMBED_LEMONADE_CREDENTIAL, key, "embed_ai");
+    } catch (e) {
+      return c.json({ error: `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+    }
+    return c.json({ success: true, credential: EMBED_LEMONADE_CREDENTIAL });
+  })
+);
+portalRouter.delete(
+  "/portal/admin/embed-ai/key",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const r = await deleteCredentialByName(c.env, credentialOwner(c.env), EMBED_LEMONADE_CREDENTIAL);
+    if (!r.ok && r.status !== 404) return c.json({ error: r.error }, r.status);
+    return c.json({ success: true, removed: r.ok });
+  })
+);
+portalRouter.get(
+  "/portal/internal/embed-credential",
+  (c) => run(c, async () => {
+    const expected = c.env.KBDB_INTERNAL_TOKEN ?? "";
+    if (!expected) return c.json({ error: "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u8A2D\u5B9A\u670D\u52D9\u5167\u90E8\u91D1\u9470\uFF08KBDB_INTERNAL_TOKEN\uFF09\uFF0C\u7121\u6CD5\u56DE\u7B54" }, 503);
+    const got = (c.req.header("authorization") ?? "").match(/^Bearer\s+(\S+)/i)?.[1] ?? "";
+    if (!got || !constantTimeEqual(got, expected)) return c.json({ error: "unauthorized" }, 401);
+    const got2 = await resolveSecretsFromNewHome(c.env, credentialOwner(c.env), [EMBED_LEMONADE_CREDENTIAL]);
+    return c.json({ success: true, api_key: got2[EMBED_LEMONADE_CREDENTIAL] ?? null });
   })
 );
 function extractPromptName(c) {
@@ -25875,8 +26197,8 @@ portalRouter.get(
     const now2 = Date.now();
     const accountId = c.env.CF_ACCOUNT_ID || "";
     const priv = isPrivateCloud(c.env);
-    const cacheKey = `${accountId}|${priv}`;
-    if (usageCache && usageCache.key === cacheKey && now2 - usageCache.at < USAGE_TTL_MS) {
+    const cacheKey2 = `${accountId}|${priv}`;
+    if (usageCache && usageCache.key === cacheKey2 && now2 - usageCache.at < USAGE_TTL_MS) {
       return c.json({ success: true, usage: usageCache.snap });
     }
     const [settingsRes, usageRes] = await Promise.all([
@@ -25915,7 +26237,7 @@ portalRouter.get(
     } else {
       snap = selfSnap();
     }
-    usageCache = { at: now2, key: cacheKey, snap };
+    usageCache = { at: now2, key: cacheKey2, snap };
     return c.json({ success: true, usage: snap });
   })
 );
@@ -35330,12 +35652,12 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
   if (!env.GITEA_BASE_URL || !env.GITEA_TOKEN) return null;
   const repo = env.GITEA_SPRINT_REPO ?? "inkstone/InkStoneCo";
   const dir = env.GITEA_SPRINT_DIR ?? "system-dev/docs/3-specs/autonomy-dispatch";
-  const cacheKey = new Request(
+  const cacheKey2 = new Request(
     `https://console-dashboard.arcrun.internal/gitea-waiting?${new URLSearchParams({ base: env.GITEA_BASE_URL, repo, dir }).toString()}`
   );
   const cache3 = caches.default;
   try {
-    const hit = await cache3.match(cacheKey);
+    const hit = await cache3.match(cacheKey2);
     if (hit) {
       const envelope2 = await hit.json();
       return {
@@ -35352,7 +35674,7 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
   try {
     waitUntil(
       cache3.put(
-        cacheKey,
+        cacheKey2,
         new Response(JSON.stringify(envelope), {
           headers: {
             "Content-Type": "application/json",
@@ -36045,81 +36367,10 @@ function scopeDataflowReport(report, scope) {
 init_security_scan();
 
 // cypher-executor/src/lib/permission-table.ts
-init_dataflow_graph();
 init_security_scan();
+init_permission_core();
 init_app_system();
-var CRED_IN_TEXT_RE = /\{\{\s*(?:credential|secret)\.([\w.-]+)\s*\}\}/g;
-function credentialNamesInRecipes(recipes) {
-  const out = /* @__PURE__ */ new Set();
-  for (const r of recipes) {
-    let text = "";
-    try {
-      text = JSON.stringify(r) ?? "";
-    } catch {
-      continue;
-    }
-    for (const m of text.matchAll(CRED_IN_TEXT_RE)) out.add(m[1]);
-  }
-  return out;
-}
-var labelOf = (name) => {
-  const f = familyOf(name);
-  return f?.label ? { service_label: f.label } : {};
-};
-function buildPermissionTable(report, declared = [], recipes = []) {
-  const inv = report.inventory;
-  const declaredBy = new Map(declared.map((d) => [d.name, d]));
-  const viaRecipe = credentialNamesInRecipes(recipes);
-  const rows = /* @__PURE__ */ new Map();
-  for (const c of inv.credentials) {
-    const d = declaredBy.get(c.name);
-    rows.set(c.name, {
-      name: c.name,
-      ...d?.purpose ? { purpose: d.purpose } : {},
-      ...labelOf(c.name),
-      sends_to: [...c.sends_to],
-      workflows: [...c.workflows],
-      declared: Boolean(d),
-      used: true
-    });
-  }
-  for (const d of declared) {
-    if (rows.has(d.name)) continue;
-    rows.set(d.name, {
-      name: d.name,
-      ...d.purpose ? { purpose: d.purpose } : {},
-      ...labelOf(d.name),
-      sends_to: [],
-      workflows: [],
-      declared: true,
-      // 只出現在隨 App 帶的 recipe 裡也算「有用到」（掃描看不進 recipe 內部，不能因此說作者宣告錯）
-      used: viaRecipe.has(d.name)
-    });
-  }
-  for (const name of viaRecipe) {
-    if (rows.has(name)) continue;
-    rows.set(name, { name, ...labelOf(name), sends_to: [], workflows: [], declared: false, used: true });
-  }
-  const credentials = [...rows.values()].sort((a, b) => a.name.localeCompare(b.name));
-  const undeclared = credentials.filter((c) => c.used && !c.declared).map((c) => c.name);
-  const unused = credentials.filter((c) => c.declared && !c.used).map((c) => c.name);
-  const egress_hosts = inv.egress_hosts.map((h) => ({ host: h.host, workflows: [...h.workflows] }));
-  const message_senders = (inv.message_senders ?? []).map((m) => ({ workflow: m.workflow, node: m.node, host: m.host ?? null }));
-  const bits = [];
-  bits.push(credentials.length ? `\u6703\u7528 ${credentials.length} \u628A\u91D1\u9470` : "\u4E0D\u7528\u4EFB\u4F55\u91D1\u9470");
-  bits.push(egress_hosts.length ? `\u6703\u9023 ${egress_hosts.length} \u500B\u5916\u90E8\u7DB2\u7AD9` : "\u4E0D\u9023\u5916\u90E8\u7DB2\u7AD9");
-  if (message_senders.length) bits.push("\u6703\u5C0D\u5916\u5BC4\u4FE1\u6216\u767C\u8A0A");
-  return {
-    credentials,
-    egress_hosts,
-    dynamic_egress_count: inv.dynamic_egress.length,
-    message_senders,
-    sends_messages: message_senders.length > 0,
-    mismatch: { undeclared, unused },
-    consistent: undeclared.length === 0 && unused.length === 0,
-    headline: bits.join("\u3001")
-  };
-}
+init_permission_core();
 function previewAppPermissions(env, rawDecl, coords) {
   let decl0 = rawDecl;
   if (coords) {
@@ -36145,6 +36396,13 @@ function previewAppPermissions(env, rawDecl, coords) {
     table: buildPermissionTable(scan, normalizeRequiredCredentials(decl.requires), recipes),
     ...scan.ok ? {} : { security: securityPayload(scan) }
   };
+}
+async function withInstalledUpdate(env, tenant2, pv) {
+  if (!pv.ok) return pv;
+  const installed = await getInstalledApp(env, tenant2, pv.app.id);
+  const update = permissionUpdateFor(installed, pv.table);
+  if (!update) return pv;
+  return { ...pv, update: { ...update, ...pv.app.version ? { to_version: pv.app.version } : {} } };
 }
 
 // cypher-executor/src/lib/app-package.ts
@@ -39018,7 +39276,8 @@ portalDataRouter.get(
       declaration = got.declaration;
     }
     const tenant2 = knowledgeOwner(c.env);
-    const pv = previewAppPermissions(c.env, declaration, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) });
+    const preview2 = previewAppPermissions(c.env, declaration, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) });
+    const pv = c.req.query("update") === "1" ? await withInstalledUpdate(c.env, String(tenant2), preview2) : preview2;
     if (!pv.ok) return c.json({ error: pv.error, step: pv.step }, 422);
     return c.json(pv);
   })
@@ -39037,7 +39296,7 @@ portalDataRouter.post(
     const checked = checkPackage(pkg);
     if (!checked.ok) return c.json({ error: checked.error, code: checked.code, hint: checked.hint, ...checked.details ? { details: checked.details } : {} }, 400);
     const tenant2 = knowledgeOwner(c.env);
-    const pv = previewAppPermissions(c.env, checked.pkg.declaration, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) });
+    const pv = await withInstalledUpdate(c.env, String(tenant2), previewAppPermissions(c.env, checked.pkg.declaration, { namespace: String(tenant2), cypherBase: selfBaseFromRequest(c.env, c.req.url) }));
     if (!pv.ok) return c.json({ error: pv.error, step: pv.step }, 422);
     return c.json(pv);
   })
@@ -40999,6 +41258,655 @@ portalNoteImagesRouter.get(
   })
 );
 
+// cypher-executor/src/routes/portal-publish.ts
+init_dist();
+init_tenant();
+init_release_body();
+init_endpoints();
+
+// cypher-executor/src/lib/public-page.ts
+var MAX_SNAPSHOT_BYTES = 15e5;
+var MAX_CARD_CHARS2 = 2e5;
+var MAX_IMAGES = 8;
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function cardTextFromEntries(entries) {
+  const rows = entries.map((e, i) => {
+    let m = null;
+    try {
+      m = JSON.parse(e.metadata_json || "null");
+    } catch {
+      m = null;
+    }
+    const mm = m && typeof m.source === "string" ? m.source.match(/#(\d+)$/) : null;
+    return { i, a: mm ? Number(mm[1]) : null, t: String(e.content ?? "") };
+  });
+  rows.sort((x, y) => x.a == null || y.a == null ? x.i - y.i : x.a - y.a || x.i - y.i);
+  return rows.map((r) => r.t).join("\n\n");
+}
+function kbimgIds(text) {
+  const out = [];
+  const re = /!\[[^\]]*\]\(kbimg:([A-Za-z0-9_.:-]{1,200})\)/g;
+  let m;
+  while (m = re.exec(text)) if (!out.includes(m[1])) out.push(m[1]);
+  return out;
+}
+function stripTitleLine(text, title) {
+  return String(text).replace(/^\s*#\s+(.+?)\s*(\r?\n|$)/, (m, t) => t === title ? "" : m);
+}
+function inline(escaped, opts) {
+  return escaped.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^\\])`([^`]+)`/g, "$1<code>$2</code>").replace(/!\[([^\]]*)\]\(kbimg:([A-Za-z0-9_.:-]+)\)/g, (_m, alt, id) => {
+    const uri = opts.images?.get(id);
+    return uri ? `<img src="${uri}" alt="${alt}" loading="lazy">` : alt ? `<span class="muted">\uFF3B\u5716\uFF1A${alt}\uFF3D</span>` : "";
+  }).replace(/\[\[([^\]\n]+?)\]\]/g, (_m, nm) => `<span class="ref">${nm.split("|")[0].trim()}</span>`).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener nofollow ugc">$1</a>').replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?![*\w])/g, "$1<em>$2</em>");
+}
+function renderCardHtml(src, opts = {}) {
+  const lines = String(src || "").split(/\r?\n/);
+  const out = [];
+  let inCode = false;
+  let list = "";
+  const closeList = () => {
+    if (list) {
+      out.push(list === "ul" ? "</ul>" : "</ol>");
+      list = "";
+    }
+  };
+  for (const raw2 of lines) {
+    if (/^\s*```/.test(raw2)) {
+      closeList();
+      if (inCode) {
+        out.push("</code></pre>");
+        inCode = false;
+      } else {
+        out.push("<pre><code>");
+        inCode = true;
+      }
+      continue;
+    }
+    if (inCode) {
+      out.push(escapeHtml(raw2) + "\n");
+      continue;
+    }
+    const line = escapeHtml(raw2);
+    const h = raw2.match(/^(#{1,4})\s+(.*)$/);
+    if (h) {
+      closeList();
+      const lv = h[1].length + 1;
+      out.push(`<h${lv}>${inline(escapeHtml(h[2]), opts)}</h${lv}>`);
+      continue;
+    }
+    if (/^\s*&gt;\s?/.test(line)) {
+      closeList();
+      out.push(`<blockquote>${inline(line.replace(/^\s*&gt;\s?/, ""), opts)}</blockquote>`);
+      continue;
+    }
+    const li = raw2.match(/^\s*[-*+]\s+(.*)$/);
+    if (li) {
+      if (list !== "ul") {
+        closeList();
+        out.push("<ul>");
+        list = "ul";
+      }
+      out.push(`<li>${inline(escapeHtml(li[1]), opts)}</li>`);
+      continue;
+    }
+    const oli = raw2.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (oli) {
+      if (list !== "ol") {
+        closeList();
+        out.push("<ol>");
+        list = "ol";
+      }
+      out.push(`<li>${inline(escapeHtml(oli[1]), opts)}</li>`);
+      continue;
+    }
+    if (/^\s*$/.test(raw2)) {
+      closeList();
+      continue;
+    }
+    closeList();
+    out.push(`<p>${inline(line, opts)}</p>`);
+  }
+  closeList();
+  if (inCode) out.push("</code></pre>");
+  return out.join("");
+}
+function plainSummary(markdown, max = 140) {
+  const t = String(markdown).replace(/```[\s\S]*?```/g, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g, "$1").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "").replace(/[*`_]/g, "").replace(/\s+/g, " ").trim();
+  const chars = [...t];
+  return chars.length > max ? chars.slice(0, max).join("") + "\u2026" : t;
+}
+function firstDataImage(html) {
+  const m = html.match(/<img src="data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)"/);
+  return m ? { mime: m[1], b64: m[2] } : null;
+}
+function newPublicCode() {
+  const b = crypto.getRandomValues(new Uint8Array(12));
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+var PUBLIC_CODE_RE = /^[A-Za-z0-9_-]{16}$/;
+var PUBLIC_RECORD_PREFIX = "pub_";
+function taipeiDate(iso) {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  return new Date(ms + 8 * 36e5).toISOString().slice(0, 10);
+}
+var CSS = `
+:root{--bg:#fdfcfb;--fg:#1c1d1f;--mut:#6b6f76;--line:#e6e3df;--acc:#b45309;--code:#f3f1ee;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#17181a;--fg:#ecebe8;--mut:#9a9ea5;--line:#2c2e32;--acc:#f59e0b;--code:#202226;--card:#1d1f22}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.75 system-ui,-apple-system,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+main{max-width:720px;margin:0 auto;padding:28px 16px 12px}
+.tag{display:inline-block;font-size:12px;letter-spacing:.08em;color:var(--acc);border:1px solid var(--acc);border-radius:999px;padding:1px 10px}
+h1{font-size:28px;line-height:1.35;margin:14px 0 6px;overflow-wrap:anywhere}
+.meta{color:var(--mut);font-size:13px;margin-bottom:22px}
+.body h2{font-size:22px;margin:1.6em 0 .4em}.body h3{font-size:19px;margin:1.4em 0 .3em}.body h4,.body h5{font-size:16px;margin:1.2em 0 .2em}
+.body p{margin:.7em 0;overflow-wrap:anywhere}
+.body ul,.body ol{padding-left:1.4em;margin:.6em 0}
+.body li{margin:.25em 0;overflow-wrap:anywhere}
+.body blockquote{margin:.9em 0;padding:.1em 1em;border-left:3px solid var(--line);color:var(--mut)}
+.body pre{background:var(--code);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:14px;line-height:1.55}
+.body code{background:var(--code);border-radius:4px;padding:.05em .35em;font-size:.92em}
+.body pre code{background:none;padding:0}
+.body img{max-width:100%;height:auto;border-radius:8px;display:block;margin:.8em 0}
+.body a{color:var(--acc);overflow-wrap:anywhere}
+.ref{border-bottom:1px dotted var(--mut)}
+.muted{color:var(--mut)}
+footer{max-width:720px;margin:28px auto 0;padding:0 16px 40px}
+.cta{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:16px 18px}
+.cta b{display:block;font-size:16px;margin-bottom:4px}
+.cta span{display:block;color:var(--mut);font-size:14px;margin-bottom:12px}
+.cta a{display:inline-block;background:var(--acc);color:#fff;text-decoration:none;border-radius:8px;padding:9px 16px;font-size:15px}
+.note{border-left:3px solid var(--acc);padding:2px 0 2px 14px;margin:0 0 22px;font-size:17px}
+.note p{margin:.5em 0;overflow-wrap:anywhere}
+.list a.item{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:14px 16px;margin:12px 0}
+.list .t{font-weight:600;font-size:17px;overflow-wrap:anywhere}.list .s{color:var(--mut);font-size:14px;margin-top:4px;overflow-wrap:anywhere}.list .d{color:var(--mut);font-size:12px;margin-top:6px}
+.pager{display:flex;justify-content:space-between;margin:18px 0}.pager a{color:var(--acc)}
+.fine{color:var(--mut);font-size:12px;margin-top:14px}
+`;
+function renderPublicPage(v) {
+  const t = escapeHtml(v.title);
+  const sum2 = escapeHtml(v.summary);
+  const pub = taipeiDate(v.publishedAt);
+  const upd = taipeiDate(v.updatedAt);
+  const meta = pub ? `\u767C\u4F48 ${pub}${upd && upd !== pub ? `\u3000\xB7\u3000\u66F4\u65B0 ${upd}` : ""}` : "";
+  const og = [
+    `<meta property="og:type" content="article">`,
+    `<meta property="og:title" content="${t}">`,
+    sum2 ? `<meta property="og:description" content="${sum2}">` : "",
+    `<meta property="og:url" content="${escapeHtml(v.url)}">`,
+    v.ogImage ? `<meta property="og:image" content="${escapeHtml(v.ogImage)}">` : "",
+    `<meta name="twitter:card" content="${v.ogImage ? "summary_large_image" : "summary"}">`,
+    `<meta name="twitter:title" content="${t}">`,
+    sum2 ? `<meta name="twitter:description" content="${sum2}">` : "",
+    v.ogImage ? `<meta name="twitter:image" content="${escapeHtml(v.ogImage)}">` : ""
+  ].filter(Boolean).join("\n");
+  const cta = v.installUrl ? `<div class="cta"><b>\u7528 AR \u505A\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB</b><span>\u4E1F\u9032\u6587\u4EF6\u3001\u5BEB\u7B46\u8A18\uFF0CAI \u5E6B\u4F60\u6574\u7406\u6210\u50CF\u9019\u6A23\u7684\u77E5\u8B58\u5361\u3002</span><a href="${escapeHtml(v.installUrl)}" rel="noopener">\u770B\u770B AR</a></div>` : "";
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${t}</title>
+<meta name="description" content="${sum2}">
+<meta name="robots" content="noindex">
+<link rel="canonical" href="${escapeHtml(v.url)}">
+${og}
+<style>${CSS}</style>
+</head>
+<body>
+<main>
+<span class="tag">\u77E5\u8B58\u5361</span>
+<h1>${t}</h1>
+<div class="meta">${escapeHtml(meta)}${v.home ? `\u3000\xB7\u3000<a href="${escapeHtml(v.home.url)}">${escapeHtml(v.home.name)} \u7684\u9801\u9762</a>` : ""}</div>
+${v.note ? `<div class="note">${noteHtml(v.note)}</div>` : ""}
+<div class="body">${v.html}</div>
+</main>
+<footer>
+${cta}
+<div class="fine">\u9019\u662F\u767C\u4F48\u7576\u4E0B\u7684\u552F\u8B80\u5FEB\u7167\uFF0C\u539F\u5361\u4E4B\u5F8C\u7684\u4FEE\u6539\u4E0D\u6703\u81EA\u52D5\u51FA\u73FE\u5728\u9019\u88E1\u3002</div>
+</footer>
+</body>
+</html>`;
+}
+function renderGonePage(revoked) {
+  const msg = revoked ? "\u9019\u9801\u5DF2\u6536\u56DE" : "\u627E\u4E0D\u5230\u9019\u4E00\u9801";
+  const sub = revoked ? "\u767C\u4F48\u7684\u4EBA\u5DF2\u7D93\u628A\u9019\u500B\u7DB2\u5740\u6536\u56DE\u4E86\u3002" : "\u9019\u500B\u7DB2\u5740\u4E0D\u5B58\u5728\uFF0C\u6216\u662F\u8F38\u5165\u6642\u5C11\u4E86\u4E00\u6BB5\u3002";
+  return `<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${msg}</title><style>${CSS}</style></head>
+<body><main><h1>${msg}</h1><p class="muted">${sub}</p></main></body></html>`;
+}
+var PUBLIC_PAGE_HEADERS = {
+  "Content-Type": "text/html; charset=utf-8",
+  "Content-Security-Policy": "default-src 'none'; img-src data: 'self' https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "X-Robots-Tag": "noindex"
+};
+function noteHtml(note) {
+  return String(note).split(/\n{2,}|\r\n\r\n/).map((p) => p.trim()).filter(Boolean).map((p) => `<p>${escapeHtml(p).replace(/\r?\n/g, "<br>")}</p>`).join("");
+}
+var MAX_NOTE_CHARS = 2e3;
+async function ownerHandle(tenant2, email) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`public-home-v1
+${tenant2}
+${email.trim().toLowerCase()}`));
+  return [...new Uint8Array(d)].slice(0, 6).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var HANDLE_RE = /^[0-9a-f]{12}$/;
+function renderHomePage(v) {
+  const t = escapeHtml(`${v.name} \u7684\u77E5\u8B58\u9801`);
+  const desc = escapeHtml(`${v.name} \u5728 AR \u4E0A\u767C\u4F48\u7684\u77E5\u8B58\u5361`);
+  const items = v.items.map((i) => `<a class="item" href="${escapeHtml(i.url)}"><div class="t">${escapeHtml(i.title)}</div>${i.summary ? `<div class="s">${escapeHtml(i.summary)}</div>` : ""}<div class="d">${escapeHtml(i.date)}</div></a>`).join("");
+  const pager = v.prevUrl || v.nextUrl ? `<div class="pager"><span>${v.prevUrl ? `<a href="${escapeHtml(v.prevUrl)}">\u2190 \u65B0\u4E00\u9EDE</a>` : ""}</span><span>${v.nextUrl ? `<a href="${escapeHtml(v.nextUrl)}">\u66F4\u65E9 \u2192</a>` : ""}</span></div>` : "";
+  const cta = v.installUrl ? `<div class="cta"><b>\u4E5F\u990A\u4E00\u500B\u4F60\u81EA\u5DF1\u7684\u77E5\u8B58\u5EAB</b><span>\u4E1F\u9032\u6587\u4EF6\u3001\u5BEB\u7B46\u8A18\uFF0CAI \u5E6B\u4F60\u6574\u7406\u6210\u77E5\u8B58\u5361\uFF0C\u518D\u6311\u60F3\u5206\u4EAB\u7684\u767C\u4F48\u3002</span><a href="${escapeHtml(v.installUrl)}" rel="noopener">\u770B\u770B AR</a></div>` : "";
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${t}</title>
+<meta name="description" content="${desc}">
+<meta name="robots" content="noindex">
+<meta property="og:type" content="profile">
+<meta property="og:title" content="${t}">
+<meta property="og:description" content="${desc}">
+<meta property="og:url" content="${escapeHtml(v.url)}">
+${v.ogImage ? `<meta property="og:image" content="${escapeHtml(v.ogImage)}">` : ""}
+<style>${CSS}</style>
+</head>
+<body>
+<main>
+<span class="tag">\u77E5\u8B58\u9801</span>
+<h1>${escapeHtml(v.name)}</h1>
+<div class="meta">\u4ED6\u5728 AR \u4E0A\u767C\u4F48\u7684\u77E5\u8B58\u5361\uFF0C\u65B0\u5230\u820A</div>
+<div class="list">${items || '<p class="muted">\u9084\u6C92\u6709\u767C\u4F48\u4EFB\u4F55\u6771\u897F\u3002</p>'}</div>
+${pager}
+</main>
+<footer>${cta}</footer>
+</body>
+</html>`;
+}
+
+// cypher-executor/src/lib/og-default-png.ts
+var OG_DEFAULT_PNG_B64 = "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ECwAIFgAQLAAECwAIFgAQLAAECwAIFgAQLAAECwAIFgAQLAAECwAIFgAQLAAECwAIFgAQLAAECwAIFgAQLAAECwAIFgAQLAAECwAIFgACBYAECwAIFgACBYAECwAIFgACBYAECwAIFgACBYAECwAIFgACBYAECwAIFgACBYAECwAIFgACBYAECwAIFgACBYAECwAIFgACBYAECwABItvAQCCBQAECwDBAgCCBQAECwDBAgCCBQAECwDBAgCCBQAECwDBAgCCBQAECwDBAgCCBQAECwDBAgCCBQAECwDBAgCCBQAECwDBAgCCBQAECwDBAgCCBYBgAQDBAgCCBYBgAQDBAgCCBYBgAQDBAgCCBYBgAQDBAgCCBYBgAQDBAgCCBYBgAQDBAgCCBYBgAQDBAgCCBYBgAQDBAgCCBYBgAQDBAgCCBYBgAQDBAkCwAIBgAQDBAkCwAIBgAQDBAkCwAIBgAQDBAkCwAIBgAQDBAkCwAIBgAQDBAkCwAIBgAQDBAkCwAIBgAQDBAkCwAIBgAQDBAkCwAIBgAQDBAkCwAIBgASBYAECwAIBgASBYAECwAIBgASBYAECwAIBgASBYAECwAIBgASBYAECwAIBgAfh1/gPxJyavMbDsLwAAAABJRU5ErkJggg==";
+
+// cypher-executor/src/routes/portal-publish.ts
+var portalPublishRouter = new Hono2();
+var publicPageRouter = new Hono2();
+var PUBLIC_PAGE_TEMPLATE = "public_page";
+var PAGE_SLOTS = ["kind", "title", "summary", "html", "note", "owner_handle", "owner_name", "library", "page_name", "publisher", "published_at", "updated_at", "revoked_at"];
+var LIST_SLOTS = ["kind", "title", "note", "owner_handle", "library", "page_name", "publisher", "published_at", "updated_at", "revoked_at"];
+var HOME_PAGE_SIZE = 20;
+var POLICY_TEMPLATE = "portal_publish_policy";
+var POLICY_ID = "publish_policy";
+var PUBLIC_CACHE_S = 60;
+var MAX_IMAGE_TOTAL = 9e5;
+var ensured3 = false;
+async function ensureTemplates(env) {
+  if (ensured3) return;
+  for (const [name, slots] of [[PUBLIC_PAGE_TEMPLATE, PAGE_SLOTS], [POLICY_TEMPLATE, ["enabled", "set_by", "set_at"]]]) {
+    const got = await kbdbFetch2(env, `/templates/${name}`);
+    releaseBody(got);
+    if (!got.ok) releaseBody(await kbdbFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name, slots }) }).catch(() => void 0));
+  }
+  ensured3 = true;
+}
+var portalOwner = (env) => `${portalTenant(env)}::portal`;
+async function getRec2(env, id) {
+  const res = await kbdbFetch2(env, `/records/${encodeURIComponent(id)}`);
+  if (res.status === 404) {
+    releaseBody(res);
+    return null;
+  }
+  if (!res.ok) {
+    releaseBody(res);
+    throw new Error(`KBDB /records/${id} \u2192 ${res.status}`);
+  }
+  const body = await res.json().catch(() => null);
+  return body?.record ?? null;
+}
+async function activeUserCount(env) {
+  const users = await listRecordsByTemplate(env, "portal_user");
+  return users.filter((u) => (u.values.status ?? "") === "active").length;
+}
+async function publishPolicy(env) {
+  const [multi, rec] = await Promise.all([activeUserCount(env).then((n) => n > 1), getRec2(env, POLICY_ID).catch(() => null)]);
+  const v = rec?.values.enabled;
+  const explicit = v === "true" ? true : v === "false" ? false : null;
+  return { allowed: explicit ?? !multi, multi_user: multi, explicit };
+}
+portalPublishRouter.get(
+  "/portal/data/publish/policy",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const p = await publishPolicy(c.env);
+    return c.json({ success: true, ...p, is_admin: (auth.user.values.role ?? "") === "admin" });
+  })
+);
+portalPublishRouter.put(
+  "/portal/admin/publish-policy",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const b = await c.req.json().catch(() => null);
+    if (typeof b?.enabled !== "boolean") return c.json({ error: "enabled \u8981\u662F true \u6216 false" }, 400);
+    await ensureTemplates(c.env);
+    const values = { enabled: String(b.enabled), set_by: String(auth.user.values.email ?? ""), set_at: (/* @__PURE__ */ new Date()).toISOString() };
+    const exists = await getRec2(c.env, POLICY_ID);
+    const res = exists ? await kbdbFetch2(c.env, `/records/${POLICY_ID}`, { method: "PATCH", body: JSON.stringify({ values }) }) : await kbdbFetch2(c.env, "/records", { method: "POST", body: JSON.stringify({ template: POLICY_TEMPLATE, record_id: POLICY_ID, owner_id: portalOwner(c.env), values }) });
+    if (!res.ok) {
+      releaseBody(res);
+      return c.json({ error: `\u8A2D\u5B9A\u6C92\u6709\u5B58\u9032\u77E5\u8B58\u5EAB\uFF08HTTP ${res.status}\uFF09` }, 502);
+    }
+    releaseBody(res);
+    return c.json({ success: true, ...await publishPolicy(c.env) });
+  })
+);
+function pageUrl(c, code) {
+  return `${selfBaseFromRequest(c.env, c.req.url)}/p/${code}`;
+}
+function publicView(c, r) {
+  const v = r.values;
+  const code = r.record_id.slice(PUBLIC_RECORD_PREFIX.length);
+  return {
+    code,
+    url: pageUrl(c, code),
+    kind: v.kind ?? "card",
+    title: v.title ?? "",
+    note: v.note ?? "",
+    library: v.library ?? "",
+    page_name: v.page_name ?? "",
+    home_url: HANDLE_RE.test(v.owner_handle ?? "") ? `${selfBaseFromRequest(c.env, c.req.url)}/u/${v.owner_handle}` : "",
+    published_at: v.published_at ?? "",
+    updated_at: v.updated_at ?? "",
+    revoked: !!(v.revoked_at ?? "").trim()
+  };
+}
+async function listMine(env, email) {
+  const q = new URLSearchParams({ owner_id: portalOwner(env), field: "publisher", value: email, fields: LIST_SLOTS.join(","), limit: "200" });
+  const res = await kbdbFetch2(env, `/records/by-template/${PUBLIC_PAGE_TEMPLATE}?${q.toString()}`);
+  if (!res.ok) {
+    releaseBody(res);
+    throw new Error(`KBDB by-template/${PUBLIC_PAGE_TEMPLATE} \u2192 ${res.status}`);
+  }
+  const body = await res.json().catch(() => null);
+  return (body?.records ?? []).filter((r) => r.record_id.startsWith(PUBLIC_RECORD_PREFIX));
+}
+portalPublishRouter.get(
+  "/portal/data/publish",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const recs = await listMine(c.env, String(auth.user.values.email ?? ""));
+    const pages = recs.map((r) => publicView(c, r)).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+    return c.json({ success: true, pages, count: pages.length });
+  })
+);
+function b64ToBytes2(b642) {
+  try {
+    const bin = atob(b642);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+portalPublishRouter.post(
+  "/portal/data/publish",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const policy = await publishPolicy(c.env);
+    if (!policy.allowed) {
+      return c.json({ error: "\u9019\u53F0\u76EE\u524D\u6C92\u6709\u958B\u653E\u767C\u4F48\u514D\u767B\u5165\u7DB2\u5740\u2014\u2014\u8ACB\u7BA1\u7406\u54E1\u5230\u300C\u6211\u767C\u4F48\u904E\u7684\u300D\u6253\u958B\u3002", code: "publish_disabled" }, 403);
+    }
+    const b = await c.req.json().catch(() => null);
+    const library = typeof b?.library === "string" ? b.library.trim() : "";
+    const pageName = typeof b?.page_name === "string" ? b.page_name.trim() : "";
+    if (!library || !pageName) return c.json({ error: "\u7F3A\u5C11 library \u6216 page_name\uFF08\u8981\u767C\u4F48\u54EA\u500B\u5EAB\u7684\u54EA\u5F35\u5361\uFF09" }, 400);
+    if (!canReadLibrary(parseLibraries(auth.user.values.libraries), library)) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u5F35\u5361" }, 404);
+    const params = new URLSearchParams({ library, page_name: pageName, limit: "200", owner_id: String(knowledgeOwner(c.env)) });
+    const er = await kbdbFetch2(c.env, `/entries?${params.toString()}`);
+    if (!er.ok) {
+      releaseBody(er);
+      return c.json({ error: `\u8B80\u4E0D\u5230\u9019\u5F35\u5361\uFF08HTTP ${er.status}\uFF09` }, 502);
+    }
+    const eb = await er.json().catch(() => null);
+    const entries = filterDeprecatedEntries(Array.isArray(eb?.entries) ? eb.entries : []);
+    if (entries.length === 0) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u5F35\u5361" }, 404);
+    const text = cardTextFromEntries(entries);
+    if (text.length > MAX_CARD_CHARS2) return c.json({ error: "\u9019\u5F35\u5361\u592A\u9577\uFF0C\u6C92\u8FA6\u6CD5\u767C\u4F48\u6210\u4E00\u9801", code: "card_too_large" }, 413);
+    const images = /* @__PURE__ */ new Map();
+    let imgTotal = 0;
+    for (const id of kbimgIds(text).slice(0, MAX_IMAGES)) {
+      const r = await getRec2(c.env, id).catch(() => null);
+      const bytes = r && typeof r.values.data === "string" ? b64ToBytes2(r.values.data) : null;
+      const mime = bytes ? sniffImage(bytes) : null;
+      if (!bytes || !mime) continue;
+      imgTotal += bytes.length;
+      if (imgTotal > MAX_IMAGE_TOTAL) break;
+      images.set(id, `data:${mime};base64,${r.values.data}`);
+    }
+    const note = typeof b?.comment === "string" ? b.comment.trim() : "";
+    if ([...note].length > MAX_NOTE_CHARS) return c.json({ error: `\u4F60\u7684\u8A71\u592A\u9577\u4E86\uFF08\u4E0A\u9650 ${MAX_NOTE_CHARS} \u5B57\uFF09`, code: "comment_too_long" }, 413);
+    const body = stripTitleLine(text, pageName);
+    const html = renderCardHtml(body, { images });
+    if (html.length > MAX_SNAPSHOT_BYTES) return c.json({ error: "\u9019\u5F35\u5361\u9023\u540C\u5716\u7247\u592A\u5927\uFF0C\u6C92\u8FA6\u6CD5\u767C\u4F48\u6210\u4E00\u9801", code: "snapshot_too_large" }, 413);
+    await ensureTemplates(c.env);
+    const email = String(auth.user.values.email ?? "");
+    const now2 = (/* @__PURE__ */ new Date()).toISOString();
+    const mine = await listMine(c.env, email);
+    const existing = mine.find((r) => r.values.library === library && r.values.page_name === pageName);
+    const handle = await ownerHandle(portalTenant(c.env), email);
+    const ownerName = String(auth.user.values.display_name ?? "").trim().slice(0, 40) || "AR \u4F7F\u7528\u8005";
+    const base = { kind: "card", title: pageName, summary: plainSummary(note || body), html, note, owner_handle: handle, owner_name: ownerName, library, page_name: pageName, publisher: email, updated_at: now2, revoked_at: "" };
+    if (existing) {
+      const res = await kbdbFetch2(c.env, `/records/${encodeURIComponent(existing.record_id)}`, { method: "PATCH", body: JSON.stringify({ values: base }) });
+      if (!res.ok) {
+        releaseBody(res);
+        return c.json({ error: `\u6C92\u6709\u5B58\u9032\u77E5\u8B58\u5EAB\uFF08HTTP ${res.status}\uFF09\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66` }, 502);
+      }
+      releaseBody(res);
+      await dropCache(c, existing.record_id.slice(PUBLIC_RECORD_PREFIX.length));
+      const code = existing.record_id.slice(PUBLIC_RECORD_PREFIX.length);
+      return c.json({ success: true, updated: true, code, url: pageUrl(c, code) });
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const code = newPublicCode();
+      const res = await kbdbFetch2(c.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({ template: PUBLIC_PAGE_TEMPLATE, record_id: PUBLIC_RECORD_PREFIX + code, create_only: true, owner_id: portalOwner(c.env), values: { ...base, published_at: now2 } })
+      });
+      if (res.status === 409) {
+        releaseBody(res);
+        continue;
+      }
+      if (!res.ok) {
+        releaseBody(res);
+        return c.json({ error: `\u6C92\u6709\u5B58\u9032\u77E5\u8B58\u5EAB\uFF08HTTP ${res.status}\uFF09\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66` }, 502);
+      }
+      releaseBody(res);
+      return c.json({ success: true, updated: false, code, url: pageUrl(c, code) });
+    }
+    return c.json({ error: "\u7522\u751F\u7DB2\u5740\u5931\u6557\uFF0C\u8ACB\u518D\u8A66\u4E00\u6B21" }, 502);
+  })
+);
+portalPublishRouter.post(
+  "/portal/data/publish/:code/revoke",
+  (c) => run(c, async () => {
+    const auth = await requirePortalUser(c);
+    if (!auth.ok) return auth.res;
+    const code = c.req.param("code");
+    if (!PUBLIC_CODE_RE.test(code)) return c.json({ error: "\u627E\u4E0D\u5230\u9019\u4E00\u9801" }, 404);
+    const rec = await getRec2(c.env, PUBLIC_RECORD_PREFIX + code);
+    const mine = rec && rec.values.publisher === String(auth.user.values.email ?? "");
+    if (!rec || typeof rec.values.html !== "string" || !mine && (auth.user.values.role ?? "") !== "admin") return c.json({ error: "\u627E\u4E0D\u5230\u9019\u4E00\u9801" }, 404);
+    const res = await kbdbFetch2(c.env, `/records/${encodeURIComponent(rec.record_id)}`, { method: "PATCH", body: JSON.stringify({ values: { revoked_at: (/* @__PURE__ */ new Date()).toISOString() } }) });
+    if (!res.ok) {
+      releaseBody(res);
+      return c.json({ error: `\u6C92\u6709\u6536\u56DE\u6210\u529F\uFF08HTTP ${res.status}\uFF09\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66` }, 502);
+    }
+    releaseBody(res);
+    await dropCache(c, code);
+    return c.json({ success: true, note: `\u7DB2\u5740\u5DF2\u6536\u56DE\uFF1B\u5404\u5730\u7684\u5FEB\u53D6\u6700\u4E45 ${PUBLIC_CACHE_S} \u79D2\u5167\u6703\u9678\u7E8C\u5931\u6548\u3002` });
+  })
+);
+function cacheKey(c, code, suffix = "") {
+  return new Request(`${new URL(c.req.url).origin}/p/${code}${suffix}`, { method: "GET" });
+}
+async function dropCache(c, code) {
+  try {
+    await caches.default.delete(cacheKey(c, code));
+    await caches.default.delete(cacheKey(c, code, "/cover"));
+  } catch {
+  }
+}
+async function readSnapshot(env, code) {
+  const res = await kbdbFetch2(env, `/records/${PUBLIC_RECORD_PREFIX}${code}`);
+  const rowsRead = res.headers.get("x-kbdb-rows-read");
+  if (!res.ok) {
+    releaseBody(res);
+    if (res.status === 404) return { rec: null, rowsRead };
+    throw new Error(`KBDB \u2192 ${res.status}`);
+  }
+  const body = await res.json().catch(() => null);
+  const rec = body?.record;
+  if (!rec || rec.record_id !== PUBLIC_RECORD_PREFIX + code || typeof rec.values?.html !== "string" || rec.values.kind !== "card") return { rec: null, rowsRead };
+  return { rec, rowsRead };
+}
+function htmlResponse(body, status, extra = {}) {
+  return new Response(body, { status, headers: { ...PUBLIC_PAGE_HEADERS, ...extra } });
+}
+publicPageRouter.get("/p/:code", async (c) => {
+  const code = c.req.param("code");
+  if (!PUBLIC_CODE_RE.test(code)) return htmlResponse(renderGonePage(false), 404, { "Cache-Control": "no-store" });
+  const key = cacheKey(c, code);
+  try {
+    const hit = await caches.default.match(key);
+    if (hit) {
+      const h = new Response(hit.body, hit);
+      h.headers.set("X-Arcrun-Cache", "HIT");
+      return h;
+    }
+  } catch {
+  }
+  let snap;
+  try {
+    snap = await readSnapshot(c.env, code);
+  } catch {
+    return htmlResponse(renderGonePage(false), 503, { "Cache-Control": "no-store", "Retry-After": "5" });
+  }
+  const { rec, rowsRead } = snap;
+  if (!rec) return htmlResponse(renderGonePage(false), 404, { "Cache-Control": "no-store" });
+  const v = rec.values;
+  const revoked = !!(v.revoked_at ?? "").trim();
+  if (revoked) return htmlResponse(renderGonePage(true), 410, { "Cache-Control": `public, max-age=0, s-maxage=${PUBLIC_CACHE_S}`, "X-Arcrun-Cache": "MISS" });
+  const origin2 = selfBaseFromRequest(c.env, c.req.url);
+  const hasImg = !!firstDataImage(v.html);
+  const html = renderPublicPage({
+    title: v.title ?? "",
+    html: v.html,
+    summary: v.summary ?? "",
+    url: `${origin2}/p/${code}`,
+    ogImage: hasImg ? `${origin2}/p/${code}/cover` : `${origin2}/p/_/og.png`,
+    publishedAt: v.published_at ?? "",
+    updatedAt: v.updated_at ?? "",
+    installUrl: installerOrigin(c.env),
+    note: v.note ?? "",
+    home: HANDLE_RE.test(v.owner_handle ?? "") ? { url: `${origin2}/u/${v.owner_handle}`, name: v.owner_name || "AR \u4F7F\u7528\u8005" } : null
+  });
+  const res = htmlResponse(html, 200, { "Cache-Control": `public, max-age=0, s-maxage=${PUBLIC_CACHE_S}`, "X-Arcrun-Cache": "MISS", ...rowsRead ? { "X-KBDB-Rows-Read": rowsRead } : {} });
+  try {
+    c.executionCtx.waitUntil(caches.default.put(key, res.clone()));
+  } catch {
+  }
+  return res;
+});
+publicPageRouter.get("/p/:code/cover", async (c) => {
+  const code = c.req.param("code");
+  if (!PUBLIC_CODE_RE.test(code)) return new Response("not found", { status: 404 });
+  let snap;
+  try {
+    snap = await readSnapshot(c.env, code);
+  } catch {
+    return new Response("busy", { status: 503, headers: { "Retry-After": "5" } });
+  }
+  const v = snap.rec?.values;
+  const img = v && !(v.revoked_at ?? "").trim() ? firstDataImage(v.html) : null;
+  const bytes = img ? b64ToBytes2(img.b64) : null;
+  if (!img || !bytes) return new Response("not found", { status: 404 });
+  return new Response(bytes, {
+    status: 200,
+    headers: { "Content-Type": img.mime, "Content-Length": String(bytes.length), "Cache-Control": `public, max-age=0, s-maxage=${PUBLIC_CACHE_S}`, "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox" }
+  });
+});
+publicPageRouter.get("/u/:handle", async (c) => {
+  const handle = c.req.param("handle");
+  if (!HANDLE_RE.test(handle)) return htmlResponse(renderGonePage(false), 404, { "Cache-Control": "no-store" });
+  const page = Math.max(1, Math.min(500, Math.floor(Number(c.req.query("page") ?? "1")) || 1));
+  const key = new Request(`${new URL(c.req.url).origin}/u/${handle}?page=${page}`, { method: "GET" });
+  try {
+    const hit = await caches.default.match(key);
+    if (hit) {
+      const h = new Response(hit.body, hit);
+      h.headers.set("X-Arcrun-Cache", "HIT");
+      return h;
+    }
+  } catch {
+  }
+  const q = new URLSearchParams({
+    owner_id: portalOwner(c.env),
+    field: "owner_handle",
+    value: handle,
+    fields: "kind,title,summary,note,owner_name,published_at,updated_at,revoked_at",
+    limit: String(HOME_PAGE_SIZE),
+    offset: String((page - 1) * HOME_PAGE_SIZE)
+  });
+  const res = await kbdbFetch2(c.env, `/records/by-template/${PUBLIC_PAGE_TEMPLATE}?${q.toString()}`).catch(() => null);
+  if (!res || !res.ok) {
+    if (res) releaseBody(res);
+    return htmlResponse(renderGonePage(false), 503, { "Cache-Control": "no-store", "Retry-After": "5" });
+  }
+  const rowsRead = res.headers.get("x-kbdb-rows-read");
+  const body = await res.json().catch(() => null);
+  const recs = (body?.records ?? []).filter((r) => r.record_id.startsWith(PUBLIC_RECORD_PREFIX));
+  if (recs.length === 0 && page === 1) return htmlResponse(renderGonePage(false), 404, { "Cache-Control": "no-store" });
+  const origin2 = selfBaseFromRequest(c.env, c.req.url);
+  const live = recs.filter((r) => !(r.values.revoked_at ?? "").trim()).sort((a, b) => String(b.values.published_at ?? "").localeCompare(String(a.values.published_at ?? "")));
+  const items = live.map((r) => ({
+    url: `${origin2}/p/${r.record_id.slice(PUBLIC_RECORD_PREFIX.length)}`,
+    title: r.values.title ?? "",
+    summary: r.values.summary ?? "",
+    date: String(r.values.published_at ?? "").slice(0, 10)
+  }));
+  const html = renderHomePage({
+    name: recs[0]?.values.owner_name || "AR \u4F7F\u7528\u8005",
+    url: `${origin2}/u/${handle}`,
+    items,
+    ogImage: `${origin2}/p/_/og.png`,
+    installUrl: installerOrigin(c.env),
+    prevUrl: page > 1 ? `${origin2}/u/${handle}?page=${page - 1}` : null,
+    nextUrl: recs.length >= HOME_PAGE_SIZE ? `${origin2}/u/${handle}?page=${page + 1}` : null
+  });
+  const out = htmlResponse(html, 200, { "Cache-Control": `public, max-age=0, s-maxage=${PUBLIC_CACHE_S}`, "X-Arcrun-Cache": "MISS", ...rowsRead ? { "X-KBDB-Rows-Read": rowsRead } : {} });
+  try {
+    c.executionCtx.waitUntil(caches.default.put(key, out.clone()));
+  } catch {
+  }
+  return out;
+});
+publicPageRouter.get("/p/_/og.png", (c) => {
+  const bin = Uint8Array.from(atob(OG_DEFAULT_PNG_B64), (ch) => ch.charCodeAt(0));
+  return new Response(bin, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+});
+
 // cypher-executor/src/routes/portal-actor.ts
 init_dist();
 var SPENT_TEMPLATE = "portal_actor_spent";
@@ -41592,6 +42500,8 @@ app.route("/", portalOauthRouter);
 app.route("/", portalActorRouter);
 app.route("/", portalProofreadRouter);
 app.route("/", portalNoteImagesRouter);
+app.route("/", portalPublishRouter);
+app.route("/", publicPageRouter);
 app.route("/", portalCompanyRouter);
 app.route("/", portalDataRouter);
 app.route("/", storageRouter);
