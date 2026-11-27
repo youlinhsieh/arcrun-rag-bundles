@@ -20773,8 +20773,10 @@ var AUDIT_ACTIONS = [
   // 有人拿連結金鑰來查
   "library_claim",
   // 同仁用小幫手送資料夾進公司、成為他的庫（inkstone/arcrun-rag#390）
-  "library_share"
+  "library_share",
   // 管理員改庫的可見範圍（私人／群組／全公司）
+  "ledger_consent"
+  // 管理員在 Portal 決定小幫手修不了的檔要不要通報（inkstone/Arcrun#532）
 ];
 function randomHex3(bytes) {
   const a = new Uint8Array(bytes);
@@ -23339,6 +23341,9 @@ async function fetchInstallerLatest(env, fetchImpl = fetch) {
 }
 var LEDGER_FIX_STATES = ["trying", "cannot_fix", "asked", "reported"];
 var LEDGER_USER_ACTION_KINDS = ["network_login", "relogin", "start_daemon", "other"];
+var LEDGER_STALE_ACTION_SEC = 3 * 86400;
+var LEDGER_STALE_REPORTED_SEC = 14 * 86400;
+var LEDGER_ASK_EXPIRE_SEC = 14 * 86400;
 var LEDGER_KINDS = ["network_login_required", "network", "quota", "unreadable", "other"];
 function normalizeLedgerSummary(raw2) {
   if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return null;
@@ -23376,6 +23381,14 @@ function normalizeLedgerSummary(raw2) {
     const text = typeof u.text === "string" ? u.text.trim().slice(0, 120) : "";
     if (kind !== "other" || text) out.user_action = { kind, text };
   }
+  const cs = r.consent;
+  if (cs && typeof cs === "object" && !Array.isArray(cs)) {
+    const c = cs;
+    const fingerprint = typeof c.fingerprint === "string" ? c.fingerprint.trim().slice(0, 120) : "";
+    const sha = typeof c.sha === "string" ? c.sha.trim().slice(0, 64) : "";
+    const preview2 = typeof c.preview === "string" ? c.preview.slice(0, 4e3) : "";
+    if (fingerprint && sha && preview2) out.consent = { fingerprint, sha, preview: preview2 };
+  }
   const rp = r.report;
   if (rp && typeof rp === "object" && !Array.isArray(rp)) {
     const p = rp;
@@ -23387,16 +23400,19 @@ function normalizeLedgerSummary(raw2) {
   }
   return out;
 }
-function trackLedger(prev, next) {
+function trackLedger(prev, next, nowSec = Math.floor(Date.now() / 1e3)) {
   const missing = Math.max(0, next.total - next.confirmed);
+  const sameAsk = !!(next.consent && prev?.consent && prev.consent.fingerprint === next.consent.fingerprint);
+  const askedSince = next.consent ? sameAsk && prev?.asked_since ? prev.asked_since : nowSec : void 0;
+  const extra = askedSince ? { asked_since: askedSince } : {};
   if (prev && next.round_at && prev.round_at === next.round_at) {
-    return { ...next, missing, no_progress_rounds: prev.no_progress_rounds };
+    return { ...next, missing, no_progress_rounds: prev.no_progress_rounds, ...extra };
   }
   let rounds = 0;
   if (missing > 0) {
     rounds = prev && prev.missing > 0 && missing >= prev.missing ? prev.no_progress_rounds + 1 : 1;
   }
-  return { ...next, missing, no_progress_rounds: rounds };
+  return { ...next, missing, no_progress_rounds: rounds, ...extra };
 }
 var REASON_TEXT = {
   network_login_required: "\u9019\u500B\u7DB2\u8DEF\u9700\u8981\u5148\u767B\u5165",
@@ -23427,21 +23443,44 @@ var CONSENT_ACTION = {
 };
 function consentText(missing, subject) {
   const what = subject ? `\u300C${subject}\u300D${missing > 1 ? `\u7B49 ${missing} \u4EF6` : ""}` : `${missing} \u4EF6`;
-  return `${what}\u9084\u6C92\u9032\u77E5\u8B58\u5EAB\uFF1A\u5C0F\u5E6B\u624B\u8A66\u904E\u4FEE\u3001\u4FEE\u4E0D\u597D\uFF0C\u60F3\u628A\u8A3A\u65B7\u8CC7\u6599\uFF08\u4E0D\u542B\u6587\u4EF6\u5167\u5BB9\uFF09\u5BC4\u7D66\u958B\u767C\u5718\u968A\uFF0C\u8981\u4F60\u540C\u610F\u624D\u6703\u5BC4\u3002\u4E0D\u540C\u610F\u4E5F\u6C92\u95DC\u4FC2\uFF0C\u53EA\u6709${missing > 1 ? "\u9019\u5E7E\u4EFD" : "\u9019\u4EFD"}\u66AB\u6642\u4E0D\u9032\u77E5\u8B58\u5EAB\uFF0C\u5176\u4ED6\u7167\u5E38\u3002`;
+  return `${what}\u5C0F\u5E6B\u624B\u9019\u908A\u6C92\u80FD\u78BA\u8A8D\u9001\u9054\uFF0C\u8A66\u904E\u4FEE\u4E5F\u6C92\u4FEE\u597D\u3002\u60F3\u628A\u8A3A\u65B7\u8CC7\u6599\uFF08\u4E0D\u542B\u6587\u4EF6\u5167\u5BB9\uFF09\u5BC4\u7D66\u958B\u767C\u5718\u968A\uFF0C\u8981\u4F60\u540C\u610F\u624D\u6703\u5BC4\u3002\u4E0D\u540C\u610F\u4E5F\u6C92\u95DC\u4FC2\uFF0C\u5176\u4ED6\u7167\u5E38\u3002`;
 }
-function ledgerNotice(l) {
+function ledgerNotice(l, ctx = {}) {
   if (l.missing <= 0) return { kind: "none", text: "" };
   const left = `\u9084\u6709 ${l.missing} \u4EF6\u6C92\u9001\u4E0A\u53BB\u3002`;
+  const now2 = ctx.nowSec ?? Math.floor(Date.now() / 1e3);
+  const age = ctx.receivedAt ? now2 - ctx.receivedAt : 0;
+  const stale = (limit) => !!ctx.receivedAt && age > limit;
   if (l.user_action) {
+    if (stale(LEDGER_STALE_ACTION_SEC)) return { kind: "none", text: "" };
     const a = l.user_action;
     const base = a.kind === "other" ? { type: "other", label: "\u7167\u8AAA\u660E\u505A", hint: a.text } : USER_ACTION_TEXT[a.kind];
     return { kind: "user_action", text: `${left}${a.text || base.hint}`, action: { ...base, hint: a.text || base.hint } };
   }
   if (l.fix_state === "asked" && !l.report?.ticket) {
+    if (stale(LEDGER_STALE_ACTION_SEC)) return { kind: "none", text: "" };
     const subject = l.reasons.find((r) => r.sample)?.sample ?? "";
+    const ask = l.consent;
+    const d = ctx.decision;
+    if (ask && d && d.fingerprint === ask.fingerprint && d.sha === ask.sha) {
+      if (d.decision === "dismiss") return { kind: "none", text: "" };
+      if (stale(LEDGER_STALE_ACTION_SEC)) return { kind: "none", text: "" };
+      return { kind: "reported", text: `${left}\u4F60\u5DF2\u540C\u610F\u901A\u5831\uFF0C\u5C0F\u5E6B\u624B\u4E0B\u6B21\u9023\u7DDA\u6642\u6703\u5BC4\u51FA\uFF0C\u5BC4\u51FA\u5F8C\u9019\u88E1\u6703\u986F\u793A\u7968\u865F\u3002`, report_status: "pending", subject: subject || void 0 };
+    }
+    if (l.asked_since && now2 - l.asked_since > LEDGER_ASK_EXPIRE_SEC) return { kind: "none", text: "" };
+    if (ask) {
+      return {
+        kind: "user_action",
+        text: consentText(l.missing, subject),
+        action: { type: "consent_report", label: "\u540C\u610F\u5BC4\u51FA", hint: "\u770B\u904E\u4E0B\u9762\u8981\u5BC4\u7684\u5167\u5BB9\u518D\u6C7A\u5B9A\uFF1B\u4E0D\u60F3\u5BC4\u6309\u300C\u4E0D\u7528\u4E86\u300D\uFF0C\u53EA\u662F\u9019\u4EFD\u4E0D\u518D\u554F\u4F60\u3002" },
+        subject: subject || void 0,
+        consent: ask
+      };
+    }
     return { kind: "user_action", text: `${consentText(l.missing, subject)}${CONSENT_ACTION.hint}`, action: CONSENT_ACTION, subject: subject || void 0 };
   }
   if (l.fix_state === "reported" || l.report) {
+    if (stale(LEDGER_STALE_REPORTED_SEC)) return { kind: "none", text: "" };
     const rp = l.report;
     const t = rp?.ticket ? `\uFF08${rp.ticket}\uFF09` : "";
     if (rp?.status === "fixed") {
@@ -23451,16 +23490,17 @@ function ledgerNotice(l) {
     return { kind: "reported", text: `${left}\u5DF2\u56DE\u5831\u7D66\u958B\u767C\u5718\u968A\u3001\u8655\u7406\u4E2D${t}\u3002`, ticket: rp?.ticket || void 0, report_status: "open" };
   }
   if (!l.fix_state && l.no_progress_rounds >= 2 && l.reasons.some((r) => r.kind === "network_login_required")) {
+    if (stale(LEDGER_STALE_ACTION_SEC)) return { kind: "none", text: "" };
     const a = USER_ACTION_TEXT.network_login;
     return { kind: "user_action", text: `${left}${a.hint}`, action: a };
   }
   return { kind: "none", text: "" };
 }
-function ledgerView(l) {
+function ledgerView(l, ctx = {}) {
   if (!l) {
     return { state: "unsupported", text: "\u9019\u53F0\u9084\u4E0D\u6703\u56DE\u5831\u9001\u4EF6\u5E33\uFF08\u5C0F\u5E6B\u624B\u66F4\u65B0\u5F8C\u624D\u6709\uFF09\u3002", notice: { kind: "none", text: "" }, alert: false };
   }
-  const notice = ledgerNotice(l);
+  const notice = ledgerNotice(l, ctx);
   const text = l.missing === 0 ? `\u61C9\u9001 ${l.total} \u4EF6\uFF0C\u5DF2\u5168\u90E8\u9001\u9054\u3002` : notice.kind !== "none" ? notice.text : `\u9084\u6709 ${l.missing} \u4EF6\u5728\u9001\uFF0C\u5C0F\u5E6B\u624B\u6703\u81EA\u5DF1\u8655\u7406\uFF0C\u4E0D\u7528\u4F60\u505A\u4EC0\u9EBC\u3002`;
   return {
     state: l.missing > 0 ? "short" : "ok",
@@ -23473,7 +23513,8 @@ function ledgerView(l) {
     round_at: l.round_at,
     no_progress_rounds: l.no_progress_rounds,
     notice,
-    alert: notice.kind !== "none"
+    alert: notice.kind !== "none",
+    ...ctx.library ? { library: ctx.library } : {}
   };
 }
 function engineStatus(current, latest2) {
@@ -23547,7 +23588,7 @@ function buildUpdateCenter(input) {
         latest: daemonLatest,
         status: st,
         reported_at: m.received_at,
-        ledger: ledgerView(m.ledger),
+        ledger: ledgerView(m.ledger, { receivedAt: m.received_at, decision: m.consent_decision, library: m.library }),
         note: st === "update" ? `\u6709\u65B0\u7248\u3002${DAEMON_HOWTO}` : st === "current" ? "\u5DF2\u662F\u6700\u65B0\u7248\u3002" : !m.daemon_version ? `\u9019\u53F0\u7684\u5C0F\u5E6B\u624B\u662F\u820A\u7248\uFF0C\u4E0D\u6703\u56DE\u5831\u81EA\u5DF1\u7684\u7248\u672C\uFF0C\u96F2\u7AEF\u770B\u4E0D\u5230\u5B83\u662F\u4E0D\u662F\u6700\u65B0\u3002${DAEMON_HOWTO}` : !daemonLatest ? "\u66AB\u6642\u67E5\u4E0D\u5230\u6700\u65B0\u7248\uFF0C\u7A0D\u5F8C\u518D\u8A66\u3002" : "\u8B80\u4E0D\u61C2\u9019\u53F0\u56DE\u5831\u7684\u7248\u865F\uFF0C\u7121\u6CD5\u6BD4\u5C0D\u3002",
         action: { type: "daemon_self_update", admin_only: false, downloads }
       });
@@ -25085,6 +25126,8 @@ async function listDaemonReports(env) {
     machine_label: t.machine_label ?? "",
     daemon_version: t.daemon_version ?? "",
     received_at: t.received_at ?? 0,
+    library: t.library ?? "",
+    ...t.consent_decision ? { consent_decision: t.consent_decision } : {},
     ...t.ledger ? { ledger: t.ledger } : {}
   }));
 }
@@ -25202,13 +25245,47 @@ portalRouter.post(
     if (ledgerIn) {
       const prevTree = await readFolderTree(c.env, library);
       stored.ledger = trackLedger(prevTree?.ledger, ledgerIn);
+      const d = prevTree?.consent_decision;
+      const ask = ledgerIn.consent;
+      if (d && ask && d.fingerprint === ask.fingerprint && d.sha === ask.sha) stored.consent_decision = d;
     }
     await c.env.WEBHOOKS.put(folderTreeKey(c.env, library), JSON.stringify(stored));
     if (stored.ledger && stored.ledger.no_progress_rounds === 2 && !stored.ledger.report?.ticket) {
       await notifyLedgerStuck(c.env, stored);
     }
     await markDaemonLibraryActive(c.env, library);
-    return c.json({ success: true, library, registered, nodes: nodes.length, truncated: stored.truncated });
+    const consent = stored.consent_decision ? { fingerprint: stored.consent_decision.fingerprint, sha: stored.consent_decision.sha, decision: stored.consent_decision.decision } : void 0;
+    return c.json({ success: true, library, registered, nodes: nodes.length, truncated: stored.truncated, ...consent ? { consent } : {} });
+  })
+);
+portalRouter.post(
+  "/portal/admin/ledger-consent",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const library = typeof body?.library === "string" ? body.library : "";
+    const fingerprint = typeof body?.fingerprint === "string" ? body.fingerprint : "";
+    const sha = typeof body?.sha === "string" ? body.sha : "";
+    const decision = body?.decision;
+    if (!isValidLibraryName(library) || library === "*") return c.json({ error: "\u5EAB\u540D\u4E0D\u5408\u6CD5" }, 400);
+    if (!fingerprint || !sha || decision !== "agree" && decision !== "dismiss") {
+      return c.json({ error: "\u8981\u5E36 library\u3001fingerprint\u3001sha\uFF0Cdecision \u53EA\u80FD\u662F agree \u6216 dismiss" }, 400);
+    }
+    const tree = await readFolderTree(c.env, library);
+    const ask = tree?.ledger?.consent;
+    if (!tree || tree.ledger?.fix_state !== "asked" || !ask || ask.fingerprint !== fingerprint || ask.sha !== sha) {
+      return c.json({ error: "\u9019\u4EFD\u63D0\u554F\u5DF2\u7D93\u8B8A\u4E86\u6216\u5DF2\u7D93\u6C92\u6709\u4E86\uFF0C\u8ACB\u91CD\u65B0\u6574\u7406\u518D\u770B", code: "ask_changed" }, 409);
+    }
+    tree.consent_decision = { fingerprint, sha, decision, at: Math.floor(Date.now() / 1e3) };
+    await c.env.WEBHOOKS.put(folderTreeKey(c.env, library), JSON.stringify(tree));
+    await recordAudit(c.env, {
+      ...auditWho(auth.user),
+      action: "ledger_consent",
+      target: library,
+      detail: `${decision === "agree" ? "\u540C\u610F\u901A\u5831" : "\u4E0D\u7528\u4E86"}\uFF08${fingerprint.slice(0, 40)}\uFF09`
+    });
+    return c.json({ success: true, decision });
   })
 );
 portalRouter.put(
@@ -30798,6 +30875,11 @@ var component_catalog_generated_default = {
               type: "integer"
             },
             description: "\u9019\u4E9B\u975E 2xx \u72C0\u614B\u78BC\u4E5F\u8996\u70BA\u6210\u529F\uFF08\u4F8B\u5982\u7E8C\u50B3\u4E0A\u50B3\u4E2D\u9014\u5206\u6BB5\u56DE 308\uFF09\u3002\u9810\u8A2D\u7A7A\uFF0C\u975E 2xx \u4E00\u5F8B\u662F\u5931\u6557\u3002"
+          },
+          max_bytes: {
+            type: "integer",
+            description: "\u56DE\u61C9\u63A5\u6536\u4E0A\u9650\uFF08bytes\uFF09\u3002\u9810\u8A2D 65536\uFF0864 KB\uFF09\uFF1B\u6293\u5927\u9801\uFF08\u4F8B\uFF1A\u6574\u9801 HTML\u3001150 KB \u7684 RSS\uFF09\u6642\u8ABF\u9AD8\uFF0C \u6700\u5927 1048576\uFF081 MB\uFF09\uFF0C\u8D85\u904E\u6703\u88AB\u58D3\u5230 1 MB\u3002\u56DE\u61C9\u8D85\u904E\u4E0A\u9650\u6642\u56DE\u660E\u78BA\u7684\u300C\u56DE\u61C9\u592A\u5927\u300D\u932F\u8AA4\uFF0C\u4E0D\u6703\u622A\u65B7\u3002\n",
+            default: 65536
           }
         }
       },
