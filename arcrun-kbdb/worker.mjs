@@ -2903,16 +2903,25 @@ function toSettings(rec) {
 async function getBrakeSettings(db) {
   const now = Date.now();
   if (settingsCache && now - settingsCache.at <= SETTINGS_CACHE_MS) return settingsCache.settings;
-  try {
-    await ensureSettingsTemplate(db);
-    const rec = await getRecord(db, SETTINGS_RECORD_ID);
-    const settings = toSettings(rec);
-    settingsCache = { at: now, settings };
-    return settings;
-  } catch (e) {
-    if (settingsCache) return settingsCache.settings;
-    throw e;
-  }
+  if (settingsInflight) return settingsInflight;
+  const p = (async () => {
+    try {
+      const [, rec] = await Promise.all([ensureSettingsTemplate(db), getRecord(db, SETTINGS_RECORD_ID)]);
+      const settings = toSettings(rec);
+      settingsCache = { at: Date.now(), settings };
+      return settings;
+    } catch (e) {
+      if (settingsCache) return settingsCache.settings;
+      throw e;
+    }
+  })().finally(() => {
+    settingsInflight = null;
+  });
+  settingsInflight = p;
+  return p;
+}
+function brakeKnownDisabled() {
+  return !!settingsCache && settingsCache.settings.brake_enabled === false;
 }
 async function brakeEnabled(db) {
   return (await getBrakeSettings(db)).brake_enabled;
@@ -2926,10 +2935,11 @@ async function setBrakeEnabled(db, enabled, by, now = Date.now()) {
   };
   const existing = await getRecord(db, SETTINGS_RECORD_ID);
   const rec = existing ? await updateRecord(db, SETTINGS_RECORD_ID, values) : await createRecord(db, { template: SETTINGS_TEMPLATE_ID, record_id: SETTINGS_RECORD_ID, values, owner_id: null, derived_cell_ids: true });
+  settingsInflight = null;
   settingsCache = null;
   return toSettings(rec);
 }
-var SETTINGS_TEMPLATE_ID, SETTINGS_SLOTS, SETTINGS_RECORD_ID, SETTINGS_CACHE_MS, settingsCache;
+var SETTINGS_TEMPLATE_ID, SETTINGS_SLOTS, SETTINGS_RECORD_ID, SETTINGS_CACHE_MS, settingsCache, settingsInflight;
 var init_brake_settings = __esm({
   "kbdb/src/actions/brake-settings.ts"() {
     "use strict";
@@ -2939,6 +2949,7 @@ var init_brake_settings = __esm({
     SETTINGS_RECORD_ID = "kbdb_settings";
     SETTINGS_CACHE_MS = 3e4;
     settingsCache = null;
+    settingsInflight = null;
   }
 });
 
@@ -7221,9 +7232,18 @@ function nextMonthStart(now) {
   const d = new Date(now);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
 }
+var monthInflight = null;
 async function loadMonthBase(db, now = Date.now()) {
   const day = utcDay2(now);
   if (monthBase && monthBase.day === day && now - monthBase.at < MONTH_BASE_CACHE_MS) return monthBase;
+  if (monthInflight) return monthInflight;
+  const p = readMonthBase(db, now, day).finally(() => {
+    monthInflight = null;
+  });
+  monthInflight = p;
+  return p;
+}
+async function readMonthBase(db, now, day) {
   const month = day.slice(0, 7);
   const dom = Number(day.slice(8, 10));
   const ids = Array.from({ length: dom - 1 }, (_, i) => usageDayRecordId(`${month}-${String(i + 1).padStart(2, "0")}`));
@@ -7242,6 +7262,11 @@ async function loadMonthBase(db, now = Date.now()) {
   }
   monthBase = { day, at: now, r, w, days, exceeded };
   return monthBase;
+}
+function warmBrakeState(db) {
+  if (brakeKnownDisabled()) return;
+  void recentBrakes(db).catch(() => void 0);
+  void loadMonthBase(db).catch(() => void 0);
 }
 function monthBaseSnapshot(now = Date.now()) {
   return monthBase && monthBase.day === utcDay2(now) ? monthBase : null;
@@ -7337,6 +7362,10 @@ function add(t, sql, meta) {
   }
   if (isOver(t)) t.over = true;
 }
+function noteD1(t, t0) {
+  t.d1Calls = (t.d1Calls ?? 0) + 1;
+  t.d1Ms = (t.d1Ms ?? 0) + (Date.now() - t0);
+}
 function guard(t, sqls) {
   if (isOver(t)) {
     t.over = true;
@@ -7365,25 +7394,33 @@ function meterDb(db, t) {
     info: db.info,
     async all(sql, params) {
       guard(t, [sql]);
+      const t0 = Date.now();
       const r = await db.all(sql, params);
+      noteD1(t, t0);
       add(t, sql, r.meta);
       return r;
     },
     async run(sql, params) {
       guard(t, [sql]);
+      const t0 = Date.now();
       const r = await db.run(sql, params);
+      noteD1(t, t0);
       add(t, sql, r.meta);
       return r;
     },
     async first(sql, params) {
       guard(t, [sql]);
+      const t0 = Date.now();
       const r = await db.all(sql, params);
+      noteD1(t, t0);
       add(t, sql, r.meta);
       return r.results?.[0] ?? null;
     },
     async batch(stmts) {
       guard(t, stmts.map((x) => x.sql));
+      const t0 = Date.now();
       const results = await db.batch(stmts);
+      noteD1(t, t0);
       results.forEach((r, i) => add(t, stmts[i].sql, r.meta));
       return results;
     }
@@ -7594,43 +7631,51 @@ async function listBrakes(db, limit = 100) {
   return recs.map((r) => toBrake(r, now));
 }
 var BRAKE_PAGE = 5;
-async function listBrakesSince(db, sinceIso, maxRecords = 100) {
-  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
-  if (!tpl) return [];
+async function readBrakesSince(db, tplId, sinceIso, maxRecords) {
   const now = Date.now();
   const out = [];
+  let newestId = null;
   for (let offset = 0; out.length < maxRecords; offset += BRAKE_PAGE) {
-    const ids = await memberRecordIds(db, tpl.id, void 0, BRAKE_PAGE, offset);
+    const ids = await memberRecordIds(db, tplId, void 0, BRAKE_PAGE, offset);
+    if (offset === 0) newestId = ids[0] ?? null;
     if (ids.length === 0) break;
-    const recs = await hydrateRecordValues(db, tpl.id, ids);
+    const recs = await hydrateRecordValues(db, tplId, ids);
     const page = recs.map((r) => toBrake(r, now));
     out.push(...page);
     if (ids.length < BRAKE_PAGE) break;
     const oldest = page[page.length - 1]?.tripped_at ?? "";
     if (oldest && oldest < sinceIso) break;
   }
-  return out;
+  return { out, newestId };
 }
+var brakesInflight = null;
 async function recentBrakes(db) {
   const now = Date.now();
-  const today = utcDay2(now);
   if (activeCache && now - activeCache.at <= ACTIVE_CACHE_MS) return activeCache.brakes;
+  if (brakesInflight) return brakesInflight;
+  const p = loadRecentBrakes(db).finally(() => {
+    brakesInflight = null;
+  });
+  brakesInflight = p;
+  return p;
+}
+async function loadRecentBrakes(db) {
+  const now = Date.now();
+  const today = utcDay2(now);
+  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
   if (activeCache && activeCache.day === today && now - activeCache.fullAt < ACTIVE_FULL_RELOAD_MS) {
-    const tpl2 = await getTemplate(db, BRAKE_TEMPLATE_ID);
-    const [newest] = tpl2 ? await memberRecordIds(db, tpl2.id, void 0, 1, 0) : [];
+    const [newest] = tpl ? await memberRecordIds(db, tpl.id, void 0, 1, 0) : [];
     if ((newest ?? null) === activeCache.newestId) {
       activeCache = { ...activeCache, at: now };
       return activeCache.brakes;
     }
   }
-  const tpl = await getTemplate(db, BRAKE_TEMPLATE_ID);
-  const [newestNow] = tpl ? await memberRecordIds(db, tpl.id, void 0, 1, 0) : [];
-  const all = await listBrakesSince(db, `${today}T00:00:00.000Z`, 100);
+  const { out: all, newestId } = tpl ? await readBrakesSince(db, tpl.id, `${today}T00:00:00.000Z`, 100) : { out: [], newestId: null };
   activeCache = {
     at: now,
     fullAt: now,
     day: today,
-    newestId: newestNow ?? null,
+    newestId,
     brakes: all.filter((b) => b.active || (b.op.startsWith("DAILY") || !!b.released_at) && b.tripped_at.startsWith(today))
   };
   return activeCache.brakes;
@@ -7786,6 +7831,7 @@ async function releaseBrake(db, id, by) {
   const existing = await getBrake(db, id);
   if (!existing) return null;
   const updated = await updateRecord(db, id, { released_at: (/* @__PURE__ */ new Date()).toISOString(), released_by: by || "manual" });
+  brakesInflight = null;
   activeCache = null;
   return updated ? toBrake(updated, Date.now()) : null;
 }
@@ -11784,10 +11830,12 @@ var speedometer = async (c, next) => {
   const t = newTally(op);
   const isEssential = !exempt(path) && essentialReserveApplies(path, c.req.header(ESSENTIAL_HEADER));
   const isExempt = exempt(path) || isEssential;
+  const tGate0 = Date.now();
   if (isExempt) {
     t.ceiling = { ...t.ceiling, write: Number.POSITIVE_INFINITY, read: Number.POSITIVE_INFINITY };
     t.dailyReleased = { writes: true, reads: true };
   } else {
+    warmBrakeState(self);
     let enabled = true;
     try {
       enabled = (await getBrakeSettings(self)).brake_enabled;
@@ -11822,6 +11870,7 @@ var speedometer = async (c, next) => {
   }
   const execRaw = c.env.__kbdbExecLogDb || c.env.EXEC_LOG_DB ? execLogDbOf(c.env) : void 0;
   c.env = { ...c.env, __kbdbDb: meterDb(rawDb, t), __kbdbTally: t, ...execRaw ? { __kbdbExecLogDb: meterDb(execRaw, t) } : {} };
+  const gateMs = Date.now() - tGate0;
   await next();
   if (!isExempt && (t.over || t.dailyBlocked)) {
     let brake = null;
@@ -11847,6 +11896,10 @@ var speedometer = async (c, next) => {
     }
   }
   setMeterHeaders(c, t);
+  try {
+    c.res.headers.append("Server-Timing", `kbdb_gate;dur=${gateMs}, kbdb_d1;dur=${t.d1Ms ?? 0};desc="${t.d1Calls ?? 0} calls"`);
+  } catch {
+  }
   const p = scheduleFlush(c, rawDb);
   if (p) await p;
 };
@@ -11980,6 +12033,16 @@ var replicaSession = async (c, next) => {
 
 // kbdb/src/index.ts
 var app = new Hono2();
+app.use("*", async (c, next) => {
+  const t0 = Date.now();
+  await next();
+  try {
+    c.res.headers.append("Server-Timing", `kbdb_in;dur=${Date.now() - t0}`);
+    const colo = c.req.raw.cf?.colo;
+    if (typeof colo === "string" && /^[A-Z]{3,4}$/.test(colo)) c.res.headers.set("X-KBDB-Colo", colo);
+  } catch {
+  }
+});
 app.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
   if (path === "/" || path === "/health") return next();

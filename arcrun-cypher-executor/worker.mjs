@@ -2519,6 +2519,9 @@ function normalizeVerifySpec(raw2) {
   }
   return { method, url: r.url.trim(), ...expect ? { expect_status: expect } : {} };
 }
+function skip(mode, text, saveTail = "") {
+  return { status: "skipped", message: mode === "save" ? `\u5B58\u597D\u4E86\uFF0C\u4F46${text}${saveTail}` : `\u6C92\u6E2C\u904E\uFF1A${text}` };
+}
 function render(tpl, values) {
   let missing = "";
   const text = tpl.replace(TEMPLATE_RE, (_m, ref) => {
@@ -2551,67 +2554,139 @@ function reasonFrom(text) {
   }
   return t.replace(/\s+/g, " ").slice(0, 200);
 }
-async function verifyWithRecipe(recipe, values, fetchFn = fetch) {
-  const v = recipe?.verify;
-  if (!recipe || !v || typeof v.url !== "string" || !v.url) return { status: "skipped", message: NO_VERIFY_MESSAGE };
+function hostWithPlaceholders(tpl) {
+  try {
+    return new URL(tpl.replace(TEMPLATE_RE, "x")).host;
+  } catch {
+    return "";
+  }
+}
+async function readText(res) {
+  const t = await res.text().catch(() => "");
+  return t.length > NO_FETCH_BODY_LIMIT ? t.slice(0, NO_FETCH_BODY_LIMIT) : t;
+}
+async function verifyByRequest(recipe, v, values, fetchFn, mode) {
+  const all = { ...values };
+  for (const [k, tpl] of Object.entries(recipe.inject?.path ?? {})) {
+    const r = render(tpl, values);
+    if (!r.ok) return skip(mode, `\u9084\u7F3A\u300C${r.missing.replace(/^[a-z]+\./, "")}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86`);
+    all[`auth.${k}`] = r.text;
+  }
+  const abs = /^[a-z][a-z0-9+.-]*:\/\//i.test(v.url) ? v.url : (recipe.base_url ?? "").replace(/\/+$/, "") + "/" + v.url.replace(/^\/+/, "");
+  const rendered = render(abs, all);
+  if (!rendered.ok) return skip(mode, `\u9084\u7F3A\u300C${rendered.missing.replace(/^[a-z]+\./, "")}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86`);
   let url;
   try {
-    url = /^[a-z][a-z0-9+.-]*:\/\//i.test(v.url) ? new URL(v.url) : new URL((recipe.base_url ?? "").replace(/\/+$/, "") + "/" + v.url.replace(/^\/+/, ""));
+    url = new URL(rendered.text);
   } catch {
-    return { status: "skipped", message: "\u5B58\u597D\u4E86\uFF0C\u4F46\u9019\u500B\u670D\u52D9\u7684\u9A57\u8B49\u7DB2\u5740\u8A2D\u5B9A\u4E0D\u6B63\u78BA\uFF0C\u6C92\u8A66" };
+    return skip(mode, "\u9019\u500B\u670D\u52D9\u7684\u9A57\u8B49\u7DB2\u5740\u8A2D\u5B9A\u4E0D\u6B63\u78BA", "\uFF0C\u6C92\u8A66");
   }
   if (url.protocol !== "https:" || url.username || url.password) {
-    return { status: "skipped", message: "\u5B58\u597D\u4E86\uFF0C\u4F46\u9A57\u8B49\u7DB2\u5740\u5FC5\u9808\u662F https\uFF0C\u6C92\u8A66" };
+    return skip(mode, "\u9A57\u8B49\u7DB2\u5740\u5FC5\u9808\u662F https", "\uFF0C\u6C92\u8A66");
   }
+  const tplHost = hostWithPlaceholders(abs);
+  if (!tplHost || tplHost !== url.host) return skip(mode, "\u9A57\u8B49\u7DB2\u5740\u4E0D\u51C6\u628A\u91D1\u9470\u653E\u5728\u4E3B\u6A5F\u540D\u7A31\u88E1", "\uFF0C\u6C92\u8A66");
   const headers = { Accept: "application/json" };
   for (const [k, tpl] of Object.entries(recipe.inject?.header ?? {})) {
-    const r = render(tpl, values);
-    if (!r.ok) return { status: "skipped", message: `\u5B58\u597D\u4E86\uFF0C\u4F46\u9084\u7F3A\u300C${r.missing.replace(/^[a-z]+\./, "")}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86` };
+    const r = render(tpl, all);
+    if (!r.ok) return skip(mode, `\u9084\u7F3A\u300C${r.missing.replace(/^[a-z]+\./, "")}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86`);
     headers[k] = r.text;
   }
   for (const [k, tpl] of Object.entries(recipe.inject?.query ?? {})) {
-    const r = render(tpl, values);
-    if (!r.ok) return { status: "skipped", message: `\u5B58\u597D\u4E86\uFF0C\u4F46\u9084\u7F3A\u300C${r.missing.replace(/^[a-z]+\./, "")}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86` };
+    const r = render(tpl, all);
+    if (!r.ok) return skip(mode, `\u9084\u7F3A\u300C${r.missing.replace(/^[a-z]+\./, "")}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86`);
     url.searchParams.set(k, r.text);
   }
   let res;
   try {
     res = await fetchFn(url.toString(), { method: v.method ?? "GET", headers });
   } catch (e) {
-    return { status: "failed", message: redact(`\u9023\u4E0D\u4E0A\u5C0D\u65B9\uFF1A${e instanceof Error ? e.message : String(e)}`, values) };
+    return { status: "failed", message: redact(`\u9023\u4E0D\u4E0A\u5C0D\u65B9\uFF1A${e instanceof Error ? e.message : String(e)}`, all) };
   }
-  const text = await res.text().catch(() => "");
+  const text = await readText(res);
   const expected = v.expect_status?.length ? v.expect_status.includes(res.status) : res.ok;
   if (expected) return { status: "ok", message: `\u9A57\u8B49\u6210\u529F\uFF08\u5C0D\u65B9\u56DE ${res.status}\uFF09`, http_status: res.status };
-  const why = redact(reasonFrom(text), values);
+  const why = redact(reasonFrom(text), all);
   return { status: "failed", message: `\u9A57\u8B49\u5931\u6557\uFF1A\u5C0D\u65B9\u56DE ${res.status}${why ? `\uFF08${why}\uFF09` : ""}`, http_status: res.status };
 }
+async function verifyByTokenExchange(recipe, values, mode, authenticate) {
+  if (!authenticate) return skip(mode, "\u9019\u500B\u74B0\u5883\u6C92\u6709\u63A5\u4E0A\u63DB token \u7684\u96F6\u4EF6", "\uFF0C\u6C92\u8A66");
+  const resolved = {};
+  for (const [k, v] of Object.entries(values)) if (k.startsWith("secret.")) resolved[k.slice(7)] = v;
+  const keys = recipeSecretKeys(recipe).required;
+  const missing = recipe.primitive === "service_account" ? (resolved.client_email || Object.values(resolved).some((v) => v.trim().startsWith("{")) ? [] : ["client_email"]).concat(resolved.private_key || Object.values(resolved).some((v) => v.trim().startsWith("{")) ? [] : ["private_key"]) : keys.filter((k) => !resolved[k]);
+  if (missing.length) return skip(mode, `\u9084\u7F3A\u300C${missing[0]}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86`);
+  let r;
+  try {
+    r = await authenticate(recipe.primitive, recipe, resolved);
+  } catch (e) {
+    return { status: "failed", message: redact(`\u9023\u4E0D\u4E0A\u63DB token \u7684\u96F6\u4EF6\uFF1A${e instanceof Error ? e.message : String(e)}`, values) };
+  }
+  if (r.unreachable) return skip(mode, "\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u90E8\u7F72\u63DB token \u7684\u96F6\u4EF6\uFF0C\u6E2C\u4E0D\u4E86", "");
+  if (r.ok) return { status: "ok", message: "\u9A57\u8B49\u6210\u529F\uFF08\u63DB token \u6210\u529F\uFF09", ...r.token ? { token: r.token } : {} };
+  return { status: "failed", message: `\u9A57\u8B49\u5931\u6557\uFF1A${redact(reasonFrom(r.error ?? "") || "\u5C0D\u65B9\u6C92\u6709\u63A5\u53D7\u9019\u7D44\u91D1\u9470", values)}` };
+}
+function declaredTestKind(recipe) {
+  if (!recipe) return null;
+  if (recipe.primitive === "service_account" && recipe.service_account_kind === "google_jwt" && recipe.token_exchange?.endpoint) return "service_account";
+  if (recipe.primitive === "oauth2" && recipe.oauth2?.token_endpoint) return "oauth2";
+  if (recipe.verify && typeof recipe.verify.url === "string" && recipe.verify.url) return "request";
+  return null;
+}
+async function verifyWithRecipe(recipe, values, fetchFn = fetch, mode = "save", authenticate) {
+  const kind = declaredTestKind(recipe);
+  if (!recipe || !kind) return { status: "skipped", message: mode === "save" ? NO_VERIFY_MESSAGE : NO_TEST_MESSAGE };
+  const hasVerify = !!(recipe.verify && typeof recipe.verify.url === "string" && recipe.verify.url);
+  if (kind === "request" || hasVerify && values["runtime.access_token"]) {
+    return verifyByRequest(recipe, recipe.verify, values, fetchFn, mode);
+  }
+  const ex = await verifyByTokenExchange(recipe, values, mode, authenticate);
+  const { token, ...outcome } = ex;
+  if (outcome.status !== "ok" || !hasVerify || !token) return outcome;
+  return verifyByRequest(recipe, recipe.verify, { ...values, "runtime.access_token": token }, fetchFn, mode);
+}
+function recipeSecretKeys(recipe) {
+  const required = (recipe.required_secrets ?? []).filter((s) => !s.optional).map((s) => s.key);
+  const extra = recipe.primitive === "oauth2" && recipe.oauth2?.client_secret_key ? [recipe.oauth2.client_secret_key] : [];
+  return { required: [...required, ...extra], all: [...(recipe.required_secrets ?? []).map((s) => s.key), ...extra] };
+}
 async function verifyStoredGroup(p) {
-  const names = Object.keys(p.stored);
+  const mode = p.mode ?? "save";
+  const names = p.names ?? Object.keys(p.stored);
   const first = names[0] ?? "";
   const candidates = [p.service, first, first.split("_")[0]].map((s) => (s ?? "").toLowerCase()).filter((s, i, a) => !!s && a.indexOf(s) === i);
+  const overlaps = (r) => recipeSecretKeys(r).all.some((k) => names.includes(k));
   let recipe = null;
   for (const svc of candidates) {
     const r = await p.loadRecipe(svc).catch(() => null);
-    if (r && (r.required_secrets ?? []).some((s) => names.includes(s.key))) {
-      recipe = r;
+    if (r && overlaps(r)) {
+      recipe = { ...r, service: r.service ?? svc };
       break;
     }
   }
-  if (!recipe || !recipe.verify) return { status: "skipped", message: NO_VERIFY_MESSAGE };
-  const missing = (recipe.required_secrets ?? []).filter((s) => !s.optional && !(s.key in p.stored)).map((s) => s.key);
+  if (!recipe && p.loadAllRecipes) {
+    const all = await p.loadAllRecipes().catch(() => []);
+    const scored = all.filter(overlaps).map((r) => ({ r, n: recipeSecretKeys(r).all.filter((k) => names.includes(k)).length })).sort((a, b) => b.n - a.n || String(a.r.service ?? "").localeCompare(String(b.r.service ?? "")));
+    recipe = scored[0]?.r ?? null;
+  }
+  if (!recipe || !declaredTestKind(recipe)) return { status: "skipped", message: mode === "save" ? NO_VERIFY_MESSAGE : NO_TEST_MESSAGE };
+  const keys = recipeSecretKeys(recipe);
+  const missing = keys.required.filter((k) => !(k in p.stored));
   const got = missing.length ? await p.loadOthers(missing).catch(() => ({})) : {};
   const values = {};
   for (const [k, v] of Object.entries(p.stored)) values[`secret.${k}`] = v;
   for (const k of missing) if (got[k]) values[`secret.${k}`] = got[k];
-  return verifyWithRecipe(recipe, values, p.fetchFn);
+  const out = await verifyWithRecipe(recipe, values, p.fetchFn, mode, p.authenticate);
+  return { ...out, ...recipe.service ? { recipe_service: recipe.service } : {} };
 }
-var NO_VERIFY_MESSAGE, TEMPLATE_RE;
+var NO_VERIFY_MESSAGE, NO_TEST_MESSAGE, TEMPLATE_RE, NO_FETCH_BODY_LIMIT;
 var init_credential_verify = __esm({
   "cypher-executor/src/lib/credential-verify.ts"() {
     "use strict";
     NO_VERIFY_MESSAGE = "\u5B58\u597D\u4E86\uFF0C\u4F46\u9019\u500B\u670D\u52D9\u6C92\u6709\u63D0\u4F9B\u9A57\u8B49\u65B9\u5F0F\uFF0C\u6C92\u8A66";
-    TEMPLATE_RE = /\{\{\s*((?:secret|runtime)\.[A-Za-z0-9_]+)\s*\}\}/g;
+    NO_TEST_MESSAGE = "\u6C92\u6E2C\u904E\uFF1A\u9019\u500B\u670D\u52D9\u6C92\u6709\u5BA3\u544A\u6E2C\u8A66\u65B9\u5F0F";
+    TEMPLATE_RE = /\{\{\s*((?:secret|runtime|auth)\.[A-Za-z0-9_]+)\s*\}\}/g;
+    NO_FETCH_BODY_LIMIT = 4e3;
   }
 });
 
@@ -2919,6 +2994,98 @@ var init_secret_backend = __esm({
   }
 });
 
+// cypher-executor/src/lib/credential-service.ts
+function normalizeServiceKey(raw2) {
+  if (!raw2) return "";
+  return raw2.normalize("NFKC").toLowerCase().replace(/[\s_\-./\\()[\]{}:,、]+/g, "_").replace(/^_+|_+$/g, "");
+}
+function aliasesFromRecipes(recipes) {
+  const out = {};
+  for (const r of recipes) {
+    const svc = normalizeServiceKey(r.service);
+    if (!svc) continue;
+    out[svc] = svc;
+    const dn = normalizeServiceKey(r.display_name);
+    if (dn && !(dn in out)) out[dn] = svc;
+  }
+  return out;
+}
+function canonicalServiceKey(raw2, recipeAliases = {}) {
+  const k = normalizeServiceKey(raw2);
+  if (!k) return "";
+  return recipeAliases[k] ?? BUILTIN_ALIASES[k] ?? k;
+}
+function latestTest(rows) {
+  let best = null;
+  for (const r of rows) {
+    if (r.last_test_at === null || r.last_test_status === null) continue;
+    if (!best || r.last_test_at > best.last_test_at || r.last_test_at === best.last_test_at && r.last_test_status === "failed" && best.last_test_status !== "failed") best = r;
+  }
+  return best;
+}
+function groupByService(rows, opts = {}) {
+  const aliases = opts.recipeAliases ?? {};
+  const groups = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const key = canonicalServiceKey(r.service, aliases);
+    const g = groups.get(key);
+    if (g) g.push(r);
+    else groups.set(key, [r]);
+  }
+  const services = [];
+  const merge_hints = [];
+  for (const [key, g] of groups) {
+    const counts = /* @__PURE__ */ new Map();
+    for (const r of g) if (r.service && r.service.trim()) counts.set(r.service.trim(), (counts.get(r.service.trim()) ?? 0) + 1);
+    const variants = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
+    const latest2 = latestTest(g);
+    services.push({
+      key,
+      display_name: opts.displayNames?.[key] ?? variants[0] ?? "",
+      variants,
+      credentials: g.map((r) => r.name),
+      description: opts.notes?.[key] ?? "",
+      status: latest2?.last_test_status ?? "untested",
+      last_test_at: latest2?.last_test_at ?? null,
+      last_test_message: latest2?.last_test_message ?? null,
+      last_test_source: latest2?.last_test_source ?? null
+    });
+    if (key && variants.length > 1) merge_hints.push({ key, variants, credentials: g.map((r) => r.name) });
+  }
+  services.sort((a, b) => (a.key === "" ? 1 : 0) - (b.key === "" ? 1 : 0) || a.key.localeCompare(b.key));
+  return { services, merge_hints };
+}
+function clampTestMessage(msg) {
+  const one = msg.replace(/\s+/g, " ").trim();
+  return one.length > TEST_MESSAGE_MAX ? one.slice(0, TEST_MESSAGE_MAX - 1) + "\u2026" : one;
+}
+function isAuthRejection(status) {
+  return status === 401 || status === 403;
+}
+var NO_TEST_RECORD, TEST_MESSAGE_MAX, BUILTIN_ALIASES;
+var init_credential_service = __esm({
+  "cypher-executor/src/lib/credential-service.ts"() {
+    "use strict";
+    NO_TEST_RECORD = {
+      last_test_at: null,
+      last_test_status: null,
+      last_test_message: null,
+      last_test_source: null
+    };
+    TEST_MESSAGE_MAX = 300;
+    BUILTIN_ALIASES = {
+      \u670D\u52D9\u5E33\u865F: "google_service_account",
+      \u8C37\u6B4C\u670D\u52D9\u5E33\u865F: "google_service_account",
+      google_\u670D\u52D9\u5E33\u865F: "google_service_account",
+      gcp_service_account: "google_service_account",
+      google_cloud_service_account: "google_service_account",
+      google_sa: "google_service_account",
+      telegram_bot: "telegram",
+      telegram_bot_token: "telegram"
+    };
+  }
+});
+
 // cypher-executor/src/lib/tenant.ts
 function knowledgeOwner(env) {
   const injected = (env.ARCRUN_NAMESPACE ?? "").trim();
@@ -3113,6 +3280,19 @@ var init_kbdb_proxy_key = __esm({
 async function resolveSecretsFromNewHome(env, apiKey, names) {
   return (await resolveSecretsFromNewHomeDetailed(env, apiKey, names)).resolved;
 }
+function lookupCredentialRef(refs, name) {
+  if (Object.prototype.hasOwnProperty.call(refs, name)) return { key: name, ref: refs[name] };
+  const lower = name.toLowerCase();
+  let found;
+  let hits = 0;
+  for (const k of Object.keys(refs)) {
+    if (k.toLowerCase() === lower) {
+      found = { key: k, ref: refs[k] };
+      hits++;
+    }
+  }
+  return hits === 1 ? found : void 0;
+}
 async function resolveSecretsFromNewHomeDetailed(env, apiKey, names) {
   const resolved = {};
   if (names.length === 0) return { resolved, directoryError: null };
@@ -3129,12 +3309,13 @@ async function resolveSecretsFromNewHomeDetailed(env, apiKey, names) {
   if (!secretGet2) return { resolved, directoryError };
   const resolvedNames = [];
   for (const name of names) {
-    const ref = refs[name];
-    if (!ref) continue;
+    const hit = lookupCredentialRef(refs, name);
+    if (!hit) continue;
+    const ref = hit.ref;
     const value = await secretGet2(ref);
     if (value === null) continue;
     resolved[name] = value;
-    resolvedNames.push(name);
+    resolvedNames.push(hit.key);
   }
   if (resolvedNames.length > 0) touchLastUsed(env, apiKey, resolvedNames);
   return { resolved, directoryError };
@@ -3169,7 +3350,7 @@ async function writeOAuth2Cache(_env, apiKey, service, accessToken, expiresAt) {
   }
   oauth2Cache.set(oauth2CacheKey(apiKey, service), { accessToken, expiresAt });
 }
-async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
+async function tryAuthDispatch(componentId, input, env, apiKey, redactor, usedCredentials) {
   if (AUTH_PRIMITIVE_IDS.has(componentId)) {
     return null;
   }
@@ -3186,6 +3367,7 @@ async function tryAuthDispatch(componentId, input, env, apiKey, redactor) {
   if (!recipe) return null;
   if (!SUPPORTED_PRIMITIVES.has(recipe.primitive)) return null;
   const secretNames2 = recipe.required_secrets.filter((s) => !s.optional).map((s) => s.key);
+  for (const n of secretNames2) usedCredentials?.add(n);
   const { resolved: resolvedSecrets, directoryError } = await resolveSecretsFromNewHomeDetailed(env, apiKey, secretNames2);
   redactor?.addRecord(resolvedSecrets, (name) => `credential:${name}`);
   const oauth2Cache2 = recipe.primitive === "oauth2" ? await readOAuth2Cache(env, apiKey, service) : null;
@@ -3307,6 +3489,35 @@ async function resolveCredentialRefs(data, env, apiKey, redactor) {
   redactor?.addRecord(result.credentials, (name) => `credential:${name}`);
   return replaceCredentialRefs(data, { ...result.credentials ?? {}, ...virtual });
 }
+function credentialNamesIn(data) {
+  const names = /* @__PURE__ */ new Set();
+  collectCredentialNames(data, names);
+  names.delete(VIRTUAL_KBDB_PROXY_KEY);
+  return [...names];
+}
+async function noteCredentialRejection(env, apiKey, names, evidence) {
+  const list = [...names];
+  if (list.length === 0) return;
+  let status = null;
+  const out = evidence.output;
+  if (out && typeof out === "object") {
+    if (isAuthRejection(out.status)) status = out.status;
+    else if (out.data && typeof out.data === "object" && isAuthRejection(out.data.status)) status = out.data.status;
+    else if (typeof out.error === "string") {
+      const m = /\bHTTP (401|403)\b/.exec(out.error);
+      if (m) status = Number(m[1]);
+    }
+  }
+  if (status === null && evidence.error) {
+    const m = /\bHTTP (401|403)\b/.exec(evidence.error);
+    if (m) status = Number(m[1]);
+  }
+  if (status === null) return;
+  try {
+    await recordCredentialTest(env, apiKey, list, { status: "failed", message: `\u5DE5\u4F5C\u6D41\u57F7\u884C\u6642\u5C0D\u65B9\u56DE ${status}\uFF08\u91D1\u9470\u88AB\u5C0D\u65B9\u62D2\u7D55\uFF0C\u53EF\u80FD\u5DF2\u904E\u671F\u3001\u88AB\u64A4\u92B7\u6216\u586B\u932F\uFF09` }, "workflow");
+  } catch {
+  }
+}
 var VIRTUAL_KBDB_PROXY_KEY, MISSING_CREDENTIAL_RE, oauth2Cache, OAUTH2_CACHE_MAX, SUPPORTED_PRIMITIVES, AUTH_PRIMITIVE_IDS, CREDENTIAL_REF;
 var init_auth_dispatcher = __esm({
   "cypher-executor/src/actions/auth-dispatcher.ts"() {
@@ -3317,6 +3528,7 @@ var init_auth_dispatcher = __esm({
     init_wasi_shim();
     init_secret_backend();
     init_credentials();
+    init_credential_service();
     init_tenant();
     init_kbdb_proxy_key();
     VIRTUAL_KBDB_PROXY_KEY = "kbdb_proxy_key";
@@ -8017,6 +8229,68 @@ var init_graph_executor = __esm({
         this.env = env;
         this.apiKey = apiKey;
       }
+      /**
+       * inkstone/Arcrun#536 第三輪：冷的 isolate 上，每個 recipe 節點要序列讀好幾趟 KBDB（auth recipe→安裝索引→recipe 本體），
+       * 節點又一個接一個跑 ⇒ 冷的第一下要等「節點數×趟數」個 KBDB 往返（每趟冷時約 0.3 秒）。
+       * 開跑前就把圖上所有 recipe 節點的定義同時讀起來（走 isolate 快取＋同請求共用，後面真正要用時已在手上或已在路上）。
+       * 只預讀「一定會走到」的節點（沿無條件邊，加上每條分支之後都會走到的）；只有某一條分支才走得到的不做，
+       * 以免替沒走到的分支多讀（D1 讀取列數不增加的鐵律）。讀失敗一律吞掉：預讀只是加速，不是正確性依賴。
+       */
+      prewarmRecipes(graph) {
+        const kv = this.env?.RECIPES;
+        if (!kv) return;
+        const outs = /* @__PURE__ */ new Map();
+        for (const e of graph.edges) {
+          const l = outs.get(e.from);
+          if (l) l.push(e);
+          else outs.set(e.from, [e]);
+        }
+        const memo = /* @__PURE__ */ new Map();
+        const sureFrom = (id, path) => {
+          const known = memo.get(id);
+          if (known) return known;
+          const res = /* @__PURE__ */ new Set([id]);
+          if (path.has(id)) return res;
+          path.add(id);
+          const es = outs.get(id) ?? [];
+          for (const e of es) {
+            if (e.type === "PIPE" || e.type === "ON_SUCCESS" || e.type === "FOREACH" || e.type === "CONTINUE") {
+              for (const x of sureFrom(e.to, path)) res.add(x);
+            }
+          }
+          const groups = /* @__PURE__ */ new Map();
+          for (const e of es) {
+            if (e.type === "ON_BRANCH" || e.type === "ON_TRUE" || e.type === "ON_FALSE" || e.type === "IF") {
+              const key = `${e.type}:${e.branch ?? ""}`;
+              const g = groups.get(key) ?? /* @__PURE__ */ new Set();
+              for (const x of sureFrom(e.to, path)) g.add(x);
+              groups.set(key, g);
+            }
+          }
+          if (groups.size > 1) {
+            const all = [...groups.values()];
+            for (const x of all[0]) if (all.every((g) => g.has(x))) res.add(x);
+          }
+          path.delete(id);
+          memo.set(id, res);
+          return res;
+        };
+        const hasIncoming = new Set(graph.edges.map((e) => e.to));
+        const sure = /* @__PURE__ */ new Set();
+        for (const n of graph.nodes) if (!hasIncoming.has(n.id)) for (const x of sureFrom(n.id, /* @__PURE__ */ new Set())) sure.add(x);
+        const ids = /* @__PURE__ */ new Set();
+        for (const n of graph.nodes) {
+          if (!sure.has(n.id)) continue;
+          const id = n.type === "Component" ? n.componentId : void 0;
+          if (!id || RUNTIME_NATIVE_COMPONENT_IDS.has(id)) continue;
+          if (id.startsWith("http://") || id.startsWith("https://") || id.startsWith("cmp_")) continue;
+          ids.add(id);
+        }
+        for (const id of ids) {
+          void resolveAuthRecipe(id, kv).catch(() => void 0);
+          void resolveRecipe(id, kv).catch(() => void 0);
+        }
+      }
       async execute(graph, initialContext, kvNamespace) {
         const trace = [];
         this.redactor = new TraceRedactor();
@@ -8028,6 +8302,7 @@ var init_graph_executor = __esm({
           ...buildMagicVars(),
           ...this.apiKey !== void 0 ? { _tenant: this.apiKey } : {}
         };
+        this.prewarmRecipes(graph);
         const hasIncoming = new Set(graph.edges.map((e) => e.to));
         const startNodes = graph.nodes.filter((n) => !hasIncoming.has(n.id));
         if (startNodes.length === 0) {
@@ -8150,6 +8425,7 @@ var init_graph_executor = __esm({
         const start = Date.now();
         let result = context;
         let nodeInput = context;
+        const usedCreds = /* @__PURE__ */ new Set();
         try {
           switch (node.type) {
             case "Input":
@@ -8161,6 +8437,7 @@ var init_graph_executor = __esm({
               const runner = await this.loader(node.componentId);
               const ctx = context;
               const authoredData = node.data ?? {};
+              for (const n of credentialNamesIn(authoredData)) usedCreds.add(n);
               const dataWithCredentials = this.env && this.apiKey ? await resolveCredentialRefs(authoredData, this.env, this.apiKey, this.redactor) : authoredData;
               const unresolvedRefs = { hard: /* @__PURE__ */ new Set(), nodeIds: graph.nodes.map((n) => n.id), keepLiteral: allowUnresolvedRefs(this.env) };
               const resolvedData = interpolateData(dataWithCredentials, ctx, unresolvedRefs);
@@ -8197,7 +8474,7 @@ var init_graph_executor = __esm({
                 }
               }
               if (this.env && this.apiKey) {
-                const dispatched = await tryAuthDispatch(node.componentId, mergedContext, this.env, this.apiKey, this.redactor);
+                const dispatched = await tryAuthDispatch(node.componentId, mergedContext, this.env, this.apiKey, this.redactor, usedCreds);
                 if (dispatched) {
                   mergedContext = dispatched;
                 }
@@ -8214,6 +8491,9 @@ var init_graph_executor = __esm({
               }
               nodeInput = mergedContext;
               result = await runner(mergedContext);
+              if (usedCreds.size > 0 && this.env && this.apiKey) {
+                await noteCredentialRejection(this.env, this.apiKey, usedCreds, { output: result });
+              }
               const pending = isResumablePending(result);
               if (pending && this.env?.EXEC_CONTEXT && this.currentGraph && this.currentRunId) {
                 trace.push({
@@ -8257,6 +8537,9 @@ var init_graph_executor = __esm({
         } catch (e) {
           if (e instanceof WorkflowPaused) throw e;
           const errMsg = this.redactor.redactString(e.message || String(e));
+          if (usedCreds.size > 0 && this.env && this.apiKey) {
+            await noteCredentialRejection(this.env, this.apiKey, usedCreds, { error: errMsg });
+          }
           const duration_ms2 = Date.now() - start;
           trace.push({
             nodeId: node.id,
@@ -16119,7 +16402,12 @@ async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch)
   if (Array.isArray(result.trace)) {
     for (const st of result.trace) {
       if (typeof st?.nodeId === "string" && typeof st.duration_ms === "number" && st.nodeId !== "input") {
-        timing.push([`n_${st.nodeId.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40)}`, st.duration_ms]);
+        const nid = `n_${st.nodeId.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40)}`;
+        timing.push([nid, st.duration_ms]);
+        const nested = st.output?.server_timing;
+        if (typeof nested === "string") {
+          for (const m of nested.matchAll(/([A-Za-z0-9_]+);dur=(\d+)/g)) timing.push([`${nid}_${m[1]}`, Number(m[2])]);
+        }
       }
     }
   }
@@ -17033,6 +17321,96 @@ var init_recipe_payload = __esm({
   }
 });
 
+// cypher-executor/src/lib/self-dispatch.ts
+function disabled(env) {
+  return /^(0|off|false|no)$/i.test(String(env.SELF_DISPATCH_MODE ?? "").trim());
+}
+function trySelfFetch(env, url, init) {
+  const sd = env.SELF_DISPATCH;
+  if (!sd || disabled(env)) return null;
+  if (sd.depth >= MAX_SELF_DEPTH || sd.hops.n >= MAX_SELF_HOPS) return null;
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  if (!ownCypherHosts(env).has(u.host)) return null;
+  sd.hops.n++;
+  return sd.fetch(new Request(u.toString(), init));
+}
+var MAX_SELF_DEPTH, MAX_SELF_HOPS;
+var init_self_dispatch = __esm({
+  "cypher-executor/src/lib/self-dispatch.ts"() {
+    "use strict";
+    init_kbdb_proxy_key();
+    MAX_SELF_DEPTH = 3;
+    MAX_SELF_HOPS = 16;
+  }
+});
+
+// cypher-executor/src/lib/kbdb-trace.ts
+import { AsyncLocalStorage } from "node:async_hooks";
+function withKbdbTrace(fn) {
+  const marks = [];
+  return als.run(marks, async () => ({ value: await fn(), marks }));
+}
+function opOf(method, path) {
+  const p = path.split("?")[0].replace(/\/(rec|tpl|cell)?[_-]?[0-9a-f]{8}[0-9a-f-]{8,}/gi, "/:id");
+  const segs = p.split("/").filter(Boolean);
+  const head = segs.slice(0, segs[0] === "records" && segs[1] === "by-source" ? 2 : segs[0] === "records" && segs[1] ? 2 : 1).join("/");
+  return `${method} /${head}${segs.length > 2 && segs[0] === "records" && segs[1] === "by-source" ? "/:t" : ""}`;
+}
+function num(h, name) {
+  const m = h ? new RegExp(`${name};dur=([0-9.]+)`).exec(h) : null;
+  return m ? Math.round(Number(m[1])) : void 0;
+}
+function noteKbdbCall(method, path, t0, res) {
+  const marks = als.getStore();
+  if (!marks || marks.length >= 40) return;
+  const st = res.headers.get("server-timing");
+  marks.push({
+    op: opOf(method.toUpperCase(), path),
+    ms: Date.now() - t0,
+    inMs: num(st, "kbdb_in"),
+    gateMs: num(st, "kbdb_gate"),
+    d1Ms: num(st, "kbdb_d1"),
+    colo: res.headers.get("x-kbdb-colo") ?? void 0
+  });
+}
+function kbdbMarksToTiming(marks) {
+  return marks.map((m, i) => {
+    const name = `kb${i + 1}_${m.op.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`.slice(0, 48);
+    const parts = [m.inMs != null ? `in=${m.inMs}` : "", m.gateMs != null ? `gate=${m.gateMs}` : "", m.d1Ms != null ? `d1=${m.d1Ms}` : "", m.colo ? `colo=${m.colo}` : ""].filter(Boolean);
+    return `${name};dur=${m.ms}${parts.length ? `;desc="${parts.join(",")}"` : ""}`;
+  });
+}
+function currentKbdbMarks() {
+  return als.getStore() ?? [];
+}
+function isolateAgeMs() {
+  const now2 = Date.now();
+  if (!isolateFirstSeen) {
+    isolateFirstSeen = now2;
+    return 0;
+  }
+  return now2 - isolateFirstSeen;
+}
+function noteTimed(op, t0) {
+  const marks = als.getStore();
+  if (!marks || marks.length >= 40) return;
+  marks.push({ op, ms: Date.now() - t0 });
+}
+var als, isolateFirstSeen;
+var init_kbdb_trace = __esm({
+  "cypher-executor/src/lib/kbdb-trace.ts"() {
+    "use strict";
+    als = new AsyncLocalStorage();
+    isolateFirstSeen = 0;
+  }
+});
+
 // cypher-executor/src/lib/component-loader.ts
 function wasmWorkerUrl(canonicalId, subdomain) {
   const kebab = canonicalId.replace(/_/g, "-");
@@ -17066,9 +17444,11 @@ function createComponentLoader(env, ctx) {
     if (WASM_HTTP_RUNNER_IDS.has(componentId)) {
       return makeHttpRunner(componentUrl(componentId, env));
     }
-    const authRecipe = await resolveAuthRecipe(componentId, env.RECIPES);
+    const [authRecipe, kvRecipe] = await Promise.all([
+      resolveAuthRecipe(componentId, env.RECIPES),
+      resolveRecipe(componentId, env.RECIPES)
+    ]);
     if (authRecipe) return makeAuthRecipeRunner(authRecipe);
-    const kvRecipe = await resolveRecipe(componentId, env.RECIPES);
     if (kvRecipe) return pickRecipeRunner(kvRecipe, env);
     throw new Error(
       `\u627E\u4E0D\u5230\u96F6\u4EF6 "${componentId}"\u3002
@@ -17129,11 +17509,19 @@ function makeTriggerWorkflowRunner(env, bg) {
 }
 function makeHttpRunner(url) {
   return async (ctx) => {
+    const tRun = Date.now();
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(ctx)
     });
+    noteTimed(`runner ${(() => {
+      try {
+        return new URL(url).hostname.split(".")[0];
+      } catch {
+        return "url";
+      }
+    })()}`, tRun);
     if (!res.ok) {
       const text2 = await res.text();
       return { success: false, status: res.status, error: text2.slice(0, 200) };
@@ -17171,7 +17559,7 @@ function makeLogicRunner(canonicalId, env) {
   return makeHttpRunner(componentUrl(canonicalId, env));
 }
 function pickRecipeRunner(recipe, env) {
-  return recipe.auth === "binding" ? makeBindingRecipeRunner(recipe, env) : makeRecipeRunner(recipe);
+  return recipe.auth === "binding" ? makeBindingRecipeRunner(recipe, env) : makeRecipeRunner(recipe, env);
 }
 function makeBindingRecipeRunner(recipe, env) {
   return async (ctx) => {
@@ -17208,7 +17596,7 @@ function makeBindingRecipeRunner(recipe, env) {
     }
   };
 }
-function makeRecipeRunner(recipe) {
+function makeRecipeRunner(recipe, env) {
   return async (ctx) => {
     const ctxObj = ctx && typeof ctx === "object" ? ctx : {};
     const authPath = ctxObj._auth_path ?? {};
@@ -17238,12 +17626,13 @@ function makeRecipeRunner(recipe) {
     }
     const t0 = Date.now();
     let res;
+    let viaSelf = false;
     try {
-      res = await fetch(interpolate2(recipe.endpoint), {
-        method,
-        headers,
-        body: bodyStr
-      });
+      const url = interpolate2(recipe.endpoint);
+      const init = { method, headers, body: bodyStr };
+      const own = env ? trySelfFetch(env, url, init) : null;
+      viaSelf = own !== null;
+      res = own ? await own : await fetch(url, init);
     } catch (e) {
       const what = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
       throw new Error(`${method} ${interpolate2(recipe.endpoint).split("?")[0]} \u6C92\u6709\u6536\u5230\u56DE\u61C9\uFF08${Date.now() - t0}ms\uFF1B${what}\uFF09`);
@@ -17251,11 +17640,14 @@ function makeRecipeRunner(recipe) {
     const ms = Date.now() - t0;
     const data = await readBodyOnce(res);
     const evidence = res.ok ? void 0 : httpFailureEvidence(res, ms, data);
+    const stRaw = viaSelf ? res.headers.get("server-timing") : null;
+    const st = stRaw && (recipe.canonical_id === "ahub_call" || stRaw.includes("kbdb_up")) ? stRaw : null;
+    const timing = st ? { server_timing: st.slice(0, 800) } : {};
     if (recipe.response_map) {
       const normalized = applyResponseMap(data, recipe.response_map);
-      return { success: res.ok, status: res.status, data, text: normalized.text, ...evidence ? { evidence } : {} };
+      return { success: res.ok, status: res.status, data, text: normalized.text, ...timing, ...evidence ? { evidence } : {} };
     }
-    return { success: res.ok, status: res.status, data, ...evidence ? { evidence } : {} };
+    return { success: res.ok, status: res.status, data, ...timing, ...evidence ? { evidence } : {} };
   };
 }
 function makeAuthRecipeRunner(recipe) {
@@ -17303,6 +17695,8 @@ var init_component_loader = __esm({
     init_recipes();
     init_recipe_payload();
     init_endpoints();
+    init_self_dispatch();
+    init_kbdb_trace();
     WASM_HTTP_RUNNER_IDS = /* @__PURE__ */ new Set([
       // 通用 HTTP 零件
       "http_request",
@@ -17535,7 +17929,7 @@ async function fetchRead(url, init) {
 }
 function relay(res) {
   const headers = { "Content-Type": "application/json" };
-  for (const h of ["X-KBDB-Rows-Read", "X-KBDB-Rows-Written", "X-KBDB-Statements"]) {
+  for (const h of ["X-KBDB-Rows-Read", "X-KBDB-Rows-Written", "X-KBDB-Statements", "X-KBDB-Colo"]) {
     const v = res.headers.get(h);
     if (v !== null) headers[h] = v;
   }
@@ -17554,6 +17948,16 @@ function relay(res) {
       headers["X-Upstream-Attempts"] = String(meta.attempts);
     }
     if (ray) headers["X-Upstream-Cf-Ray"] = ray;
+  }
+  const meta2 = upstreamMeta.get(res);
+  if (meta2) {
+    const upstream = res.headers.get("server-timing") ?? "";
+    const parts = [`kbdb_up;dur=${meta2.ms}`];
+    for (const k of ["kbdb_in", "kbdb_gate", "kbdb_d1"]) {
+      const m = upstream.match(new RegExp(`${k};dur=(\\d+)`))?.[1];
+      if (m) parts.push(`${k};dur=${m}`);
+    }
+    headers["Server-Timing"] = parts.join(", ");
   }
   return new Response(res.body, { status: res.status, headers });
 }
@@ -18204,6 +18608,175 @@ var init_worker_secret_lineage = __esm({
   }
 });
 
+// cypher-executor/src/lib/credential-check.ts
+var credential_check_exports = {};
+__export(credential_check_exports, {
+  TestTargetNotFound: () => TestTargetNotFound,
+  authenticateViaComponent: () => authenticateViaComponent,
+  credentialOverview: () => credentialOverview,
+  credentialShape: () => credentialShape,
+  loadAllAuthRecipes: () => loadAllAuthRecipes,
+  resetRecipeCache: () => resetRecipeCache,
+  testCredentialGroup: () => testCredentialGroup,
+  verifyCredentialNow: () => verifyCredentialNow,
+  verifyCredentialsNow: () => verifyCredentialsNow
+});
+function authenticateViaComponent(env, owner) {
+  return async (primitive, recipe, resolvedSecrets) => {
+    let url;
+    try {
+      url = componentUrl(`auth_${primitive}`, env);
+    } catch {
+      return { ok: false, unreachable: true };
+    }
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "authenticate", api_key: owner, service: recipe.service ?? "", resolved_secrets: resolvedSecrets, recipe })
+    });
+    const text = await res.text().catch(() => "");
+    if (res.status === 404 || /error code: 1042/.test(text)) return { ok: false, unreachable: true };
+    let j = null;
+    try {
+      j = JSON.parse(text);
+    } catch {
+    }
+    if (res.ok && j?.success) return { ok: true, token: j.runtime?.access_token ?? j.cache?.access_token };
+    return { ok: false, error: j?.error ?? `\u63DB token \u7684\u96F6\u4EF6\u56DE ${res.status}` };
+  };
+}
+async function loadAllAuthRecipes(env) {
+  if (recipeCache && Date.now() - recipeCache.at < 6e4) return recipeCache.recipes;
+  const list = await env.RECIPES.list({ prefix: "auth_recipe:" });
+  const recipes = (await Promise.all(list.keys.map((k) => env.RECIPES.get(k.name, "json").catch(() => null)))).filter(Boolean);
+  recipeCache = { at: Date.now(), recipes };
+  return recipes;
+}
+function resetRecipeCache() {
+  recipeCache = null;
+}
+async function verifyCredentialsNow(env, owner, stored, service) {
+  try {
+    return await verifyStoredGroup({
+      stored,
+      service,
+      loadRecipe: async (svc) => await resolveAuthRecipe(svc, env.RECIPES),
+      loadOthers: (names) => resolveSecretsFromNewHome(env, owner, names),
+      authenticate: authenticateViaComponent(env, owner)
+    });
+  } catch (e) {
+    return { status: "skipped", message: `\u5B58\u597D\u4E86\uFF0C\u4F46\u9A57\u8B49\u6C92\u8DD1\u6210\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+async function verifyCredentialNow(env, owner, name, value, service) {
+  return verifyCredentialsNow(env, owner, { [name]: value }, service);
+}
+async function credentialShape(env, service) {
+  const r = await resolveAuthRecipe(service.toLowerCase(), env.RECIPES).catch(() => null);
+  const list = r?.required_secrets ?? [];
+  if (!r || !list.length) return null;
+  const scopes = Array.isArray(r.oauth2?.scopes) ? r.oauth2.scopes.filter((x) => typeof x === "string") : [];
+  return {
+    fields: list.map((s) => ({ name: s.key, label: s.label ?? s.key, help: s.help ?? "", optional: !!s.optional })),
+    scopes,
+    token_url: typeof r.oauth2?.token_endpoint === "string" ? r.oauth2.token_endpoint : ""
+  };
+}
+async function testCredentialGroup(env, owner, target, fetchFn) {
+  const rows = await listCredentialRows(env, owner);
+  const recipes = await loadAllAuthRecipes(env).catch(() => []);
+  const aliases = aliasesFromRecipes(recipes);
+  let key = "";
+  let group = [];
+  if (target.name) {
+    const row = rows.find((r) => r.name === target.name);
+    if (!row) throw new TestTargetNotFound(`\u627E\u4E0D\u5230\u91D1\u9470\u300C${target.name}\u300D`);
+    key = canonicalServiceKey(row.service, aliases);
+    group = key ? rows.filter((r) => canonicalServiceKey(r.service, aliases) === key) : [row];
+  } else if (target.service) {
+    key = canonicalServiceKey(target.service, aliases);
+    group = key ? rows.filter((r) => canonicalServiceKey(r.service, aliases) === key) : [];
+    if (!group.length) throw new TestTargetNotFound(`\u627E\u4E0D\u5230\u670D\u52D9\u300C${target.service}\u300D\u5E95\u4E0B\u7684\u91D1\u9470`);
+  } else {
+    throw new TestTargetNotFound("\u8981\u7D66\u91D1\u9470\u540D\u5B57\uFF08name\uFF09\u6216\u670D\u52D9\u540D\uFF08service\uFF09");
+  }
+  const names = group.map((r) => r.name);
+  let out;
+  try {
+    out = await verifyStoredGroup({
+      stored: {},
+      names,
+      service: key || void 0,
+      mode: "test",
+      fetchFn,
+      loadRecipe: async (svc) => await resolveAuthRecipe(svc, env.RECIPES),
+      loadAllRecipes: async () => recipes,
+      loadOthers: (ns) => resolveSecretsFromNewHome(env, owner, ns),
+      authenticate: authenticateViaComponent(env, owner)
+    });
+  } catch (e) {
+    out = { status: "skipped", message: `\u6C92\u6E2C\u904E\uFF1A\u6E2C\u8A66\u6C92\u8DD1\u6210\uFF08${e instanceof Error ? e.message : String(e)}\uFF09` };
+  }
+  const tested_at = Math.floor(Date.now() / 1e3);
+  let recorded = false;
+  try {
+    recorded = (await recordCredentialTest(env, owner, names, { status: out.status, message: out.message }, "manual")).length > 0;
+  } catch {
+  }
+  return {
+    service_key: key,
+    names,
+    status: out.status,
+    message: out.message,
+    ...out.http_status !== void 0 ? { http_status: out.http_status } : {},
+    tested_at,
+    recorded,
+    ...out.recipe_service ? { recipe_service: out.recipe_service } : {}
+  };
+}
+async function credentialOverview(env, owner) {
+  await backfillValueLengths(env, owner).catch(() => 0);
+  const [rows, notes, recipes] = await Promise.all([
+    listCredentialRows(env, owner),
+    listServiceNotes(env, owner).catch(() => ({})),
+    loadAllAuthRecipes(env).catch(() => [])
+  ]);
+  const aliases = aliasesFromRecipes(recipes);
+  const displayNames = {};
+  const known = [];
+  for (const r of recipes) {
+    const k = canonicalServiceKey(r.service, aliases);
+    const dn = r.display_name ?? r.service ?? k;
+    if (k) {
+      displayNames[k] = dn;
+      known.push({ key: k, display_name: dn });
+    }
+  }
+  known.sort((a, b) => a.key.localeCompare(b.key));
+  const { services, merge_hints } = groupByService(rows, { recipeAliases: aliases, displayNames, notes });
+  return {
+    credentials: rows.map((r) => ({ ...r, service_key: canonicalServiceKey(r.service, aliases) })),
+    services,
+    merge_hints,
+    known_services: known
+  };
+}
+var recipeCache, TestTargetNotFound;
+var init_credential_check = __esm({
+  "cypher-executor/src/lib/credential-check.ts"() {
+    "use strict";
+    init_recipes();
+    init_auth_dispatcher();
+    init_credential_verify();
+    init_endpoints();
+    init_credential_service();
+    init_credentials();
+    recipeCache = null;
+    TestTargetNotFound = class extends Error {
+    };
+  }
+});
+
 // cypher-executor/src/routes/credentials.ts
 function legacyOwnerFor(env, apiKey) {
   return apiKey === credentialOwner(env) ? legacyCredentialOwner(env) : null;
@@ -18215,7 +18788,7 @@ async function deriveSecretRef(apiKey, name) {
 async function storeCredential(env, apiKey, name, value, service) {
   const secretRef = await deriveSecretRef(apiKey, name);
   await putCredentialSecret(env, apiKey, secretRef, value);
-  await upsertCredentialEntry(env, apiKey, name, service, "standard", secretRef);
+  await upsertCredentialEntry(env, apiKey, name, service, "standard", secretRef, true, value.length);
 }
 function validateName(name) {
   return typeof name === "string" && /^\w+$/.test(name);
@@ -18297,10 +18870,16 @@ function parseMeta(row) {
       service: typeof m.service === "string" ? m.service : null,
       sensitivity: m.sensitivity === "high" ? "high" : "standard",
       secret_ref: typeof m.secret_ref === "string" ? m.secret_ref : "",
-      last_used_at: typeof m.last_used_at === "number" ? m.last_used_at : null
+      last_used_at: typeof m.last_used_at === "number" ? m.last_used_at : null,
+      value_length: typeof m.value_length === "number" && m.value_length >= 0 ? m.value_length : null,
+      // inkstone/Arcrun#535：最近一次連線測試（只有時間／結果／一句原因，值從不進來）
+      last_test_at: typeof m.last_test_at === "number" ? m.last_test_at : null,
+      last_test_status: m.last_test_status === "ok" || m.last_test_status === "failed" || m.last_test_status === "skipped" ? m.last_test_status : null,
+      last_test_message: typeof m.last_test_message === "string" ? m.last_test_message : null,
+      last_test_source: m.last_test_source === "manual" || m.last_test_source === "save" || m.last_test_source === "workflow" ? m.last_test_source : null
     };
   } catch {
-    return { service: null, sensitivity: "standard", secret_ref: "", last_used_at: null };
+    return { service: null, sensitivity: "standard", secret_ref: "", last_used_at: null, value_length: null, ...NO_TEST_RECORD };
   }
 }
 async function kbdbCredFetch(env, path, init) {
@@ -18329,7 +18908,12 @@ async function fetchDirectoryRows(env, owner) {
       secret_ref: meta.secret_ref,
       service: meta.service,
       sensitivity: meta.sensitivity,
-      last_used_at: meta.last_used_at
+      last_used_at: meta.last_used_at,
+      value_length: meta.value_length,
+      last_test_at: meta.last_test_at,
+      last_test_status: meta.last_test_status,
+      last_test_message: meta.last_test_message,
+      last_test_source: meta.last_test_source
     };
   });
   return { rows, error: null };
@@ -18371,7 +18955,12 @@ function touchLastUsed(env, apiKey, names) {
       service: r.service,
       sensitivity: r.sensitivity,
       secret_ref: r.secret_ref,
-      last_used_at: now2
+      last_used_at: now2,
+      value_length: r.value_length,
+      last_test_at: r.last_test_at,
+      last_test_status: r.last_test_status,
+      last_test_message: r.last_test_message,
+      last_test_source: r.last_test_source
     };
     kbdbCredFetch(env, `/entries/${encodeURIComponent(r.id)}`, {
       method: "PATCH",
@@ -18404,13 +18993,16 @@ async function locateCredentialEntry(env, apiKey, name) {
   }
   return null;
 }
-async function upsertCredentialEntry(env, apiKey, name, service, sensitivity, secretRef) {
+async function upsertCredentialEntry(env, apiKey, name, service, sensitivity, secretRef, resetTest = false, valueLength) {
   const existing = await findCredentialEntry(env, apiKey, name);
+  const prev = existing ? parseMeta(existing) : null;
   const meta = {
     service,
     sensitivity,
     secret_ref: secretRef,
-    last_used_at: existing ? parseMeta(existing).last_used_at : null
+    last_used_at: prev ? prev.last_used_at : null,
+    value_length: valueLength ?? prev?.value_length ?? null,
+    ...prev && !resetTest ? { last_test_at: prev.last_test_at, last_test_status: prev.last_test_status, last_test_message: prev.last_test_message, last_test_source: prev.last_test_source } : NO_TEST_RECORD
   };
   if (existing) {
     const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(existing.id)}`, {
@@ -18442,7 +19034,18 @@ async function listCredentialRows(env, apiKey) {
     const body = await res.json().catch(() => null);
     return (body?.entries ?? []).filter((e) => !!e.page_name).map((e) => {
       const meta = parseMeta(e);
-      return { name: e.page_name, service: meta.service, sensitivity: meta.sensitivity, created_at: e.created_at, last_used_at: meta.last_used_at };
+      return {
+        name: e.page_name,
+        service: meta.service,
+        sensitivity: meta.sensitivity,
+        created_at: e.created_at,
+        last_used_at: meta.last_used_at,
+        value_length: meta.value_length,
+        last_test_at: meta.last_test_at,
+        last_test_status: meta.last_test_status,
+        last_test_message: meta.last_test_message,
+        last_test_source: meta.last_test_source
+      };
     });
   };
   const rows = await fetchOwner(apiKey);
@@ -18473,7 +19076,7 @@ async function writeCredential(env, apiKey, name, value, service, sensitivityRaw
     );
   }
   await putCredentialSecret(env, apiKey, secretRef, value);
-  await upsertCredentialEntry(env, apiKey, name, service ?? null, sensitivity, secretRef);
+  await upsertCredentialEntry(env, apiKey, name, service ?? null, sensitivity, secretRef, true, value.length);
   return { secretRef, sensitivity };
 }
 async function deleteCredentialByName(env, apiKey, name) {
@@ -18518,7 +19121,10 @@ async function editCredential(env, apiKey, currentName, updates) {
     service,
     sensitivity: meta.sensitivity,
     secret_ref: meta.secret_ref,
-    last_used_at: meta.last_used_at
+    last_used_at: meta.last_used_at,
+    value_length: updates.value ? updates.value.length : meta.value_length,
+    // 換了值＝上次測試不再說明現在這把（#535）；只改名／服務就保留
+    ...updates.value ? NO_TEST_RECORD : { last_test_at: meta.last_test_at, last_test_status: meta.last_test_status, last_test_message: meta.last_test_message, last_test_source: meta.last_test_source }
   };
   const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(entry.id)}`, {
     method: "PATCH",
@@ -18529,7 +19135,111 @@ async function editCredential(env, apiKey, currentName, updates) {
   invalidateCredentialCache(apiKey);
   return { name: newName, service, sensitivity: meta.sensitivity };
 }
-var credentialsRouter, CYPHER_SCRIPT_NAME, SECRETS_NOT_READY_CODE, SecretsNotReadyError, CREDENTIAL_TEMPLATE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS;
+async function backfillValueLengths(env, apiKey) {
+  const { rows } = await getCredentialDirectory(env, apiKey);
+  const bag = env;
+  let n = 0;
+  for (const r of rows) {
+    if (r.value_length !== null || !r.secret_ref) continue;
+    const v = bag[r.secret_ref];
+    if (typeof v !== "string" || v.length === 0) continue;
+    const meta = {
+      service: r.service,
+      sensitivity: r.sensitivity,
+      secret_ref: r.secret_ref,
+      last_used_at: r.last_used_at,
+      value_length: v.length,
+      last_test_at: r.last_test_at,
+      last_test_status: r.last_test_status,
+      last_test_message: r.last_test_message,
+      last_test_source: r.last_test_source
+    };
+    const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata_json: JSON.stringify(meta) })
+    });
+    if (res.ok) n++;
+  }
+  if (n > 0) invalidateCredentialCache(apiKey);
+  return n;
+}
+async function recordCredentialTest(env, apiKey, names, outcome, source) {
+  if (names.length === 0) return [];
+  invalidateCredentialCache(apiKey);
+  const { rows } = await getCredentialDirectory(env, apiKey);
+  const now2 = Math.floor(Date.now() / 1e3);
+  const done = [];
+  for (const r of rows) {
+    if (!names.includes(r.name)) continue;
+    const meta = {
+      service: r.service,
+      sensitivity: r.sensitivity,
+      secret_ref: r.secret_ref,
+      last_used_at: r.last_used_at,
+      value_length: r.value_length,
+      last_test_at: now2,
+      last_test_status: outcome.status,
+      last_test_message: clampTestMessage(outcome.message),
+      last_test_source: source
+    };
+    const res = await kbdbCredFetch(env, `/entries/${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata_json: JSON.stringify(meta) })
+    });
+    if (res.ok) done.push(r.name);
+  }
+  invalidateCredentialCache(apiKey);
+  return done;
+}
+async function fetchServiceNoteRows(env, owner, key) {
+  const qs = new URLSearchParams({ owner_id: owner, template: SERVICE_NOTE_TEMPLATE, limit: "200" });
+  if (key) {
+    qs.set("page_name", key);
+    qs.set("limit", "1");
+  }
+  const res = await kbdbCredFetch(env, `/entries?${qs.toString()}`);
+  if (!res.ok) throw new Error(`\u670D\u52D9\u8AAA\u660E\u67E5\u8A62\u5931\u6557\uFF1AHTTP ${res.status}`);
+  const body = await res.json().catch(() => null);
+  return body?.entries ?? [];
+}
+async function listServiceNotes(env, owner) {
+  const out = {};
+  for (const e of await fetchServiceNoteRows(env, owner)) {
+    if (!e.page_name) continue;
+    try {
+      const m = JSON.parse(e.metadata_json ?? "{}");
+      if (typeof m.description === "string" && m.description) out[e.page_name] = m.description;
+    } catch {
+    }
+  }
+  return out;
+}
+async function setServiceNote(env, owner, key, description) {
+  if (!key) throw new Error("\u670D\u52D9\u540D\u4E0D\u80FD\u662F\u7A7A\u7684");
+  if (description.length > SERVICE_NOTE_MAX) throw new Error(`\u7528\u9014\u8AAA\u660E\u6700\u591A ${SERVICE_NOTE_MAX} \u5B57`);
+  const existing = (await fetchServiceNoteRows(env, owner, key))[0];
+  if (!description.trim()) {
+    if (existing) {
+      const res2 = await kbdbCredFetch(env, `/entries/${encodeURIComponent(existing.id)}`, { method: "DELETE" });
+      if (!res2.ok) throw new Error(`\u670D\u52D9\u8AAA\u660E\u6E05\u9664\u5931\u6557\uFF1AHTTP ${res2.status}`);
+    }
+    return;
+  }
+  const meta = JSON.stringify({ description: description.trim(), updated_at: Math.floor(Date.now() / 1e3) });
+  const res = existing ? await kbdbCredFetch(env, `/entries/${encodeURIComponent(existing.id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metadata_json: meta })
+  }) : await kbdbCredFetch(env, `/entries`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ template: SERVICE_NOTE_TEMPLATE, owner_id: owner, page_name: key, metadata_json: meta })
+  });
+  if (!res.ok) throw new Error(`\u670D\u52D9\u8AAA\u660E\u5132\u5B58\u5931\u6557\uFF1AHTTP ${res.status}`);
+}
+var credentialsRouter, CYPHER_SCRIPT_NAME, SECRETS_NOT_READY_CODE, SecretsNotReadyError, CREDENTIAL_TEMPLATE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS, SERVICE_NOTE_TEMPLATE, SERVICE_NOTE_MAX;
 var init_credentials = __esm({
   "cypher-executor/src/routes/credentials.ts"() {
     "use strict";
@@ -18538,6 +19248,7 @@ var init_credentials = __esm({
     init_kbdb_proxy();
     init_secret_backend();
     init_tenant();
+    init_credential_service();
     init_worker_secret_lineage();
     credentialsRouter = new Hono2();
     CYPHER_SCRIPT_NAME = "arcrun-cypher-executor";
@@ -18640,6 +19351,8 @@ var init_credentials = __esm({
         return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
       }
     });
+    SERVICE_NOTE_TEMPLATE = "credential_service";
+    SERVICE_NOTE_MAX = 500;
     credentialsRouter.delete("/credentials/:name", async (c) => {
       const apiKey = c.req.header("X-Arcrun-API-Key");
       if (!apiKey) {
@@ -18667,6 +19380,25 @@ var init_credentials = __esm({
         const msg = e instanceof Error ? e.message : String(e);
         const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
         return c.json({ success: false, error: msg }, status);
+      }
+    });
+    credentialsRouter.post("/credentials/test", async (c) => {
+      const apiKey = c.req.header("X-Arcrun-API-Key");
+      if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+      const body = await c.req.json().catch(() => null);
+      const name = typeof body?.name === "string" && body.name.trim() ? body.name.trim() : void 0;
+      const service = typeof body?.service === "string" && body.service.trim() ? body.service.trim() : void 0;
+      if (!name && !service) return c.json({ error: "\u8981\u7D66\u91D1\u9470\u540D\u5B57\uFF08name\uFF09\u6216\u670D\u52D9\u540D\uFF08service\uFF09" }, 400);
+      try {
+        const { testCredentialGroup: testCredentialGroup2, TestTargetNotFound: TestTargetNotFound2 } = await Promise.resolve().then(() => (init_credential_check(), credential_check_exports));
+        try {
+          return c.json({ success: true, ...await testCredentialGroup2(c.env, apiKey, { name, service }) });
+        } catch (e) {
+          if (e instanceof TestTargetNotFound2) return c.json({ success: false, error: e.message }, 404);
+          throw e;
+        }
+      } catch (e) {
+        return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
       }
     });
     credentialsRouter.get("/credentials/catalog", async (c) => {
@@ -18709,6 +19441,7 @@ init_credentials();
 init_kbdb_proxy();
 init_release_body();
 init_kbdb_caller();
+init_kbdb_trace();
 var EphemeralStoreError = class extends Error {
   constructor(message2, status) {
     super(message2);
@@ -18719,12 +19452,15 @@ var EphemeralStoreError = class extends Error {
 };
 async function kFetch(env, path, init) {
   const { base, headers } = kbdbBase(env);
+  const tTrace = Date.now();
   try {
-    return await fetch(`${base}${path}`, {
+    const res = await fetch(`${base}${path}`, {
       ...init,
       // 短效資料＝session／鎖定計數／密碼重設票，全是帳號基本操作（#293）：走保留額度。
       headers: { ...withEssential(headers), ...init?.headers }
     });
+    noteKbdbCall(init?.method ?? "GET", path, tTrace, res);
+    return res;
   } catch (e) {
     throw new EphemeralStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
   }
@@ -18796,6 +19532,41 @@ async function ephemeralPut(env, opts) {
   });
   releaseBody(res);
   if (!res.ok) throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 ${res.status}`, res.status);
+}
+async function ephemeralClaimOnce(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const body = JSON.stringify({
+    template: opts.template,
+    record_id: `once_${opts.template}_${hash}`,
+    values: { [opts.hashField]: hash, exp: String(Date.now() + opts.ttlSeconds * 1e3) },
+    create_only: true,
+    derived_cell_ids: true
+  });
+  const send = async () => kFetch(env, "/records", { method: "POST", body });
+  if (!ensuredTemplates.has(opts.template)) {
+    let res = await send();
+    if (res.status === 400) {
+      const text = await res.text().catch(() => "");
+      if (/template not found/i.test(text)) {
+        await ensureTemplate2(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
+        res = await send();
+      } else {
+        throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 400 ${text.slice(0, 120)}`, 400);
+      }
+    }
+    return settleClaim(res, opts.template);
+  }
+  return settleClaim(await send(), opts.template);
+}
+async function settleClaim(res, template) {
+  if (res.status === 409) {
+    releaseBody(res);
+    return false;
+  }
+  releaseBody(res);
+  if (!res.ok) throw new EphemeralStoreError(`POST /records(${template}, claim) \u2192 ${res.status}`, res.status);
+  ensuredTemplates.add(template);
+  return true;
 }
 async function ephemeralGet(env, opts) {
   const hash = await sha256Hex(opts.rawKey);
@@ -19296,19 +20067,19 @@ var PAID_PRICE_PER_MILLION_READ = 1e-3;
 var PAID_PRICE_PER_MILLION_WRITTEN = 1;
 var BATTERY_WARN_AT = 20;
 var BATTERY_SAVER_AT = 10;
-function num(n) {
+function num2(n) {
   const v = typeof n === "number" ? n : Number(n);
   return Number.isFinite(v) ? v : 0;
 }
 function monthPaid(m) {
   if (!m) return null;
-  const incR = num(m.paid_included_rows_read);
-  const incW = num(m.paid_included_rows_written);
+  const incR = num2(m.paid_included_rows_read);
+  const incW = num2(m.paid_included_rows_written);
   if (incR <= 0 || incW <= 0) return null;
-  const pr = num(m.rows_read) / incR * 100;
-  const pw = num(m.rows_written) / incW * 100;
-  const overR = Math.max(0, num(m.rows_read) - incR);
-  const overW = Math.max(0, num(m.rows_written) - incW);
+  const pr = num2(m.rows_read) / incR * 100;
+  const pw = num2(m.rows_written) / incW * 100;
+  const overR = Math.max(0, num2(m.rows_read) - incR);
+  const overW = Math.max(0, num2(m.rows_written) - incW);
   const usd = overR / 1e6 * PAID_PRICE_PER_MILLION_READ + overW / 1e6 * PAID_PRICE_PER_MILLION_WRITTEN;
   return { used: Math.max(pr, pw), usd: Math.round(usd * 100) / 100 };
 }
@@ -19316,8 +20087,8 @@ function computeBattery(input) {
   const paidMonth = monthPaid(input.month);
   const isPaid = paidMonth !== null && (input.brake_enabled === false || input.month?.exceeded_free_daily === true || input.kbdb_plan === "paid");
   const reset_at = (isPaid ? input.month?.next_reset_at : null) ?? input.reset_at ?? null;
-  const d1Used = isPaid ? paidMonth.used : Math.max(num(input.percent_written), num(input.percent_read));
-  const aiUsed = num(input.percent_ai);
+  const d1Used = isPaid ? paidMonth.used : Math.max(num2(input.percent_written), num2(input.percent_read));
+  const aiUsed = num2(input.percent_ai);
   const limiting = aiUsed > d1Used ? "ai" : "d1";
   const rawUsed = Math.max(d1Used, aiUsed);
   const used = Math.min(100, Math.max(0, rawUsed));
@@ -19635,6 +20406,7 @@ async function aiBrakeVerdict(env, kbdbFetch4, now2 = Date.now()) {
 
 // cypher-executor/src/routes/portal.ts
 init_dist();
+init_kbdb_trace();
 init_kbdb_proxy();
 
 // cypher-executor/src/lib/portal-auth.ts
@@ -20662,37 +21434,8 @@ async function runResetMailWorkflow(env, ns, ctx, input) {
 init_tenant();
 init_credentials();
 init_release_body();
-
-// cypher-executor/src/lib/credential-check.ts
-init_recipes();
-init_auth_dispatcher();
-init_credential_verify();
-async function verifyCredentialsNow(env, owner, stored, service) {
-  try {
-    return await verifyStoredGroup({
-      stored,
-      service,
-      loadRecipe: async (svc) => await resolveAuthRecipe(svc, env.RECIPES),
-      loadOthers: (names) => resolveSecretsFromNewHome(env, owner, names)
-    });
-  } catch (e) {
-    return { status: "skipped", message: `\u5B58\u597D\u4E86\uFF0C\u4F46\u9A57\u8B49\u6C92\u8DD1\u6210\uFF1A${e instanceof Error ? e.message : String(e)}` };
-  }
-}
-async function verifyCredentialNow(env, owner, name, value, service) {
-  return verifyCredentialsNow(env, owner, { [name]: value }, service);
-}
-async function credentialShape(env, service) {
-  const r = await resolveAuthRecipe(service.toLowerCase(), env.RECIPES).catch(() => null);
-  const list = r?.required_secrets ?? [];
-  if (!r || !list.length) return null;
-  const scopes = Array.isArray(r.oauth2?.scopes) ? r.oauth2.scopes.filter((x) => typeof x === "string") : [];
-  return {
-    fields: list.map((s) => ({ name: s.key, label: s.label ?? s.key, help: s.help ?? "", optional: !!s.optional })),
-    scopes,
-    token_url: typeof r.oauth2?.token_endpoint === "string" ? r.oauth2.token_endpoint : ""
-  };
-}
+init_credential_check();
+init_credential_service();
 
 // cypher-executor/src/lib/portal-session-cache.ts
 var AUTH_CACHE_MS = 1e4;
@@ -23348,7 +24091,7 @@ var LEDGER_KINDS = ["network_login_required", "network", "quota", "unreadable", 
 function normalizeLedgerSummary(raw2) {
   if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return null;
   const r = raw2;
-  const num2 = (v) => {
+  const num3 = (v) => {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
   };
@@ -23358,17 +24101,17 @@ function normalizeLedgerSummary(raw2) {
       if (!x || typeof x !== "object") continue;
       const k = String(x.kind ?? "");
       const kind = LEDGER_KINDS.includes(k) ? k : "other";
-      const count2 = num2(x.count);
+      const count2 = num3(x.count);
       if (count2 <= 0) continue;
       reasons.push({ kind, count: count2, sample: String(x.sample ?? "").slice(0, 200) });
     }
   }
   const out = {
     round_at: typeof r.round_at === "string" ? r.round_at.slice(0, 40) : "",
-    total: num2(r.total),
-    confirmed: num2(r.confirmed),
-    retrying: num2(r.retrying),
-    stalled: num2(r.stalled),
+    total: num3(r.total),
+    confirmed: num3(r.confirmed),
+    retrying: num3(r.retrying),
+    stalled: num3(r.stalled),
     reasons
   };
   const fs = typeof r.fix_state === "string" ? r.fix_state : "";
@@ -23674,11 +24417,13 @@ async function kbdbFetch2(env, path, init, opts) {
   const { base, headers } = kbdbBase(env);
   const baseHeaders = opts?.essential ? withEssential(headers) : headers;
   let res;
+  const tTrace = Date.now();
   try {
     res = await fetch(`${base}${path}`, { ...init, headers: { ...bookmarkHeader(), ...baseHeaders, ...init?.headers } });
   } catch (e) {
     throw new KbdbError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
   }
+  noteKbdbCall(init?.method ?? "GET", path, tTrace, res);
   rememberBookmark(res);
   return res;
 }
@@ -25076,7 +25821,7 @@ function normalizeFolderNode(raw2) {
   if (!raw2 || typeof raw2 !== "object") return null;
   const r = raw2;
   const path = typeof r.path === "string" ? r.path : "";
-  const num2 = (v) => {
+  const num3 = (v) => {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
   };
@@ -25084,13 +25829,13 @@ function normalizeFolderNode(raw2) {
     path,
     name: typeof r.name === "string" && r.name ? r.name : path.split("/").pop() || "",
     parent: typeof r.parent === "string" ? r.parent : "-",
-    depth: num2(r.depth),
-    total_files: num2(r.total_files),
-    synced_files: num2(r.synced_files),
-    pending_files: num2(r.pending_files),
-    error_files: num2(r.error_files),
-    unsupported_files: num2(r.unsupported_files),
-    excluded_files: num2(r.excluded_files)
+    depth: num3(r.depth),
+    total_files: num3(r.total_files),
+    synced_files: num3(r.synced_files),
+    pending_files: num3(r.pending_files),
+    error_files: num3(r.error_files),
+    unsupported_files: num3(r.unsupported_files),
+    excluded_files: num3(r.excluded_files)
   };
   if (r.skipped === true) {
     node.skipped = true;
@@ -26589,10 +27334,47 @@ portalRouter.get(
     if (!auth.ok) return auth.res;
     const tenantSlug = credentialOwner(c.env);
     try {
-      const rows = await listCredentialRows(c.env, tenantSlug);
-      return c.json({ success: true, credentials: rows, total: rows.length });
+      const ov = await credentialOverview(c.env, tenantSlug);
+      return c.json({ success: true, credentials: ov.credentials, total: ov.credentials.length, services: ov.services, merge_hints: ov.merge_hints, known_services: ov.known_services });
     } catch (e) {
       return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  })
+);
+portalRouter.post(
+  "/portal/admin/credentials/test",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    const name = typeof body?.name === "string" && body.name.trim() ? body.name.trim() : void 0;
+    const service = typeof body?.service === "string" && body.service.trim() ? body.service.trim() : void 0;
+    if (!name && !service) return c.json({ error: "\u8981\u7D66\u91D1\u9470\u540D\u5B57\uFF08name\uFF09\u6216\u670D\u52D9\u540D\uFF08service\uFF09" }, 400);
+    try {
+      const r = await testCredentialGroup(c.env, credentialOwner(c.env), { name, service });
+      return c.json({ success: true, ...r });
+    } catch (e) {
+      if (e instanceof TestTargetNotFound) return c.json({ success: false, error: e.message }, 404);
+      return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  })
+);
+portalRouter.put(
+  "/portal/admin/credential-services/:service",
+  (c) => run(c, async () => {
+    const auth = await requirePortalAdmin(c);
+    if (!auth.ok) return auth.res;
+    const body = await c.req.json().catch(() => null);
+    if (typeof body?.description !== "string") return c.json({ error: "description \u5FC5\u586B\uFF08\u5B57\u4E32\uFF1B\u7A7A\u5B57\u4E32\uFF1D\u6E05\u6389\uFF09" }, 400);
+    const aliases = aliasesFromRecipes(await loadAllAuthRecipes(c.env).catch(() => []));
+    const key = canonicalServiceKey(decodeURIComponent(c.req.param("service")), aliases);
+    if (!key) return c.json({ error: "\u670D\u52D9\u540D\u4E0D\u80FD\u662F\u7A7A\u7684" }, 400);
+    try {
+      await setServiceNote(c.env, credentialOwner(c.env), key, body.description);
+      return c.json({ success: true, service_key: key, description: body.description.trim() });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return c.json({ success: false, error: msg }, msg.includes("\u6700\u591A") ? 400 : 502);
     }
   })
 );
@@ -26638,6 +27420,7 @@ portalRouter.post(
         }
       }
       const verify2 = await verifyCredentialsNow(c.env, tenantSlug, Object.fromEntries(fields.map((f) => [f.name, f.value])), service);
+      await recordCredentialTest(c.env, tenantSlug, saved, verify2, "save").catch(() => []);
       return c.json({ success: true, names: saved, service: service ?? null, verify: verify2 });
     }
     if (!validateName(body?.name)) {
@@ -26653,6 +27436,7 @@ portalRouter.post(
       return credFail(c, "\u91D1\u9470\u5132\u5B58\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
     }
     const verify = await verifyCredentialNow(c.env, tenantSlug, body.name, body.value, service);
+    await recordCredentialTest(c.env, tenantSlug, [body.name], verify, "save").catch(() => []);
     return c.json({ success: true, name: body.name, service: service ?? null, verify });
   })
 );
@@ -26679,6 +27463,7 @@ portalRouter.put(
       return credFail(c, "\u91D1\u9470\u8986\u5BEB\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
     }
     const verify = await verifyCredentialNow(c.env, tenantSlug, name, body.value, service);
+    await recordCredentialTest(c.env, tenantSlug, [name], verify, "save").catch(() => []);
     return c.json({ success: true, name, service: service ?? null, verify });
   })
 );
@@ -26699,6 +27484,7 @@ portalRouter.patch(
     try {
       const result = await editCredential(c.env, tenantSlug, name, { newName, service, value });
       const verify = value ? await verifyCredentialNow(c.env, tenantSlug, newName ?? name, value, service) : { status: "skipped", message: "\u6C92\u63DB\u503C\uFF0C\u6C92\u8A66" };
+      if (value) await recordCredentialTest(c.env, tenantSlug, [result.name], verify, "save").catch(() => []);
       return c.json({ success: true, ...result, verify });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -28766,6 +29552,7 @@ init_kbdb_caller();
 init_kbdb_tally();
 init_endpoints();
 init_subrequest_meter();
+init_kbdb_trace();
 init_kbdb_write_retry();
 function kbdbBase2(env) {
   return kbdbBaseUrl(env);
@@ -29092,6 +29879,7 @@ async function kbdbFetch3(env, path, init, op) {
     const baseH = essential ? withEssential(kbdbHeaders(env)) : kbdbHeaders(env);
     const res = await fetch(`${kbdbBase2(env)}${path}`, { ...init, headers: { ...baseH, ...extra } });
     addKbdbResponse(env.__kbdbTally, res);
+    noteKbdbCall(method, path, t0, res);
     elapsedOf.set(res, Date.now() - t0);
     return res;
   } catch (e) {
@@ -29267,11 +30055,12 @@ async function listLegacyEnvelopes(env, template, owner) {
 var RECIPE_CACHE_MS = 3e4;
 var WORKFLOW_DEF_CACHE_MS = 1e4;
 var RECIPE_STALE_ON_ERROR_MS = 10 * 6e4;
-var recipeCache = /* @__PURE__ */ new Map();
+var recipeCache2 = /* @__PURE__ */ new Map();
+var inflightReads = /* @__PURE__ */ new Map();
 var recipeCacheGen = 0;
 function clearRecipeCache() {
   recipeCacheGen++;
-  recipeCache.clear();
+  recipeCache2.clear();
 }
 function cacheTtlFor(store2, key) {
   if (store2 === "RECIPES") return RECIPE_CACHE_MS;
@@ -29364,18 +30153,30 @@ var KbdbAssetStore = class {
     const ttl = cacheTtlFor(this.store, key);
     if (ttl > 0) {
       const ck = `${this.store}\0${key}`;
-      const hit = recipeCache.get(ck);
+      const hit = recipeCache2.get(ck);
       if (hit && Date.now() - hit.at < hit.ttl) return shape(hit.value, type);
       const gen2 = recipeCacheGen;
       const stale = hit && hit.value !== null && Date.now() - hit.at < RECIPE_STALE_ON_ERROR_MS ? hit : null;
       let raw2;
       try {
-        raw2 = await this.readRaw(key, stale === null);
+        const shared = inflightReads.get(ck);
+        if (shared && shared.gen === gen2) {
+          raw2 = await shared.p;
+        } else {
+          const p = this.readRaw(key, stale === null);
+          const slot = { gen: gen2, p };
+          inflightReads.set(ck, slot);
+          const done = () => {
+            if (inflightReads.get(ck) === slot) inflightReads.delete(ck);
+          };
+          p.then(done, done);
+          raw2 = await p;
+        }
       } catch (e) {
         if (e instanceof AssetStoreUnavailableError && stale) return shape(stale.value, type);
         throw e;
       }
-      if (gen2 === recipeCacheGen) recipeCache.set(ck, { at: Date.now(), ttl, value: raw2 });
+      if (gen2 === recipeCacheGen) recipeCache2.set(ck, { at: Date.now(), ttl, value: raw2 });
       return shape(raw2, type);
     }
     return shape(await this.readRaw(key, isHumanActionAsset(this.store, key)), type);
@@ -32991,6 +33792,24 @@ init_credentials();
 
 // cypher-executor/src/routes/webhooks-named.ts
 init_dist();
+
+// cypher-executor/src/lib/server-timing.ts
+function buildServerTiming(trace) {
+  if (!Array.isArray(trace)) return "";
+  const parts = [];
+  for (const st of trace.slice(0, 60)) {
+    if (typeof st?.nodeId !== "string" || typeof st.duration_ms !== "number" || st.nodeId === "input") continue;
+    const nid = `n_${st.nodeId.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40)}`;
+    parts.push(`${nid};dur=${st.duration_ms}`);
+    const nested = st.output?.server_timing;
+    if (typeof nested === "string") {
+      for (const m of nested.matchAll(/(kbdb_(?:up|in|gate|d1));dur=(\d+)/g)) parts.push(`${nid}_${m[1]};dur=${m[2]}`);
+    }
+  }
+  return parts.slice(0, 120).join(", ");
+}
+
+// cypher-executor/src/routes/webhooks-named.ts
 init_webhook_handlers();
 init_schemas();
 init_execution_logger();
@@ -33467,11 +34286,13 @@ async function queryNamedRun(c, apiKey, name, triggerContext) {
       413
     );
   }
+  const timing = buildServerTiming(result.trace);
   return new Response(serialized, {
     status: 200,
     headers: {
       "Content-Type": "application/json; charset=UTF-8",
-      "X-Arcrun-Duration-Ms": String(result.duration_ms)
+      "X-Arcrun-Duration-Ms": String(result.duration_ms),
+      ...timing ? { "Server-Timing": timing } : {}
     }
   });
 }
@@ -34812,6 +35633,8 @@ var AUTH_RECIPE_SEEDS = [
         bot_token: "{{secret.telegram_bot_token}}"
       }
     },
+    // token 在網址路徑裡：verify.url 的 {{auth.K}} 指 inject.path 的鍵（inkstone/Arcrun#535）。
+    verify: { method: "GET", url: "/bot{{auth.bot_token}}/getMe" },
     created_at: now,
     updated_at: now
   },
@@ -37218,6 +38041,9 @@ async function fetchMarketDeclaration(entry, fetchImpl = fetch) {
   return { ok: true, declaration: decl };
 }
 
+// cypher-executor/src/routes/portal-data.ts
+init_kbdb_trace();
+
 // cypher-executor/src/lib/proofread-store.ts
 init_kbdb_proxy();
 init_release_body();
@@ -37226,15 +38052,15 @@ init_tenant();
 // cypher-executor/src/lib/proofread.ts
 var DEFAULT_SETTINGS = { supportMin: 2, fadeDays: 30, probeDailyCap: 3, probeStopVotes: 6 };
 function mergeSettings(raw2) {
-  const num2 = (v, d, min, max) => {
+  const num3 = (v, d, min, max) => {
     const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
     return Number.isFinite(n) && n >= min && n <= max ? Math.floor(n) : d;
   };
   return {
-    supportMin: num2(raw2?.supportMin, DEFAULT_SETTINGS.supportMin, 1, 20),
-    fadeDays: num2(raw2?.fadeDays, DEFAULT_SETTINGS.fadeDays, 1, 365),
-    probeDailyCap: num2(raw2?.probeDailyCap, DEFAULT_SETTINGS.probeDailyCap, 0, 50),
-    probeStopVotes: num2(raw2?.probeStopVotes, DEFAULT_SETTINGS.probeStopVotes, 2, 100)
+    supportMin: num3(raw2?.supportMin, DEFAULT_SETTINGS.supportMin, 1, 20),
+    fadeDays: num3(raw2?.fadeDays, DEFAULT_SETTINGS.fadeDays, 1, 365),
+    probeDailyCap: num3(raw2?.probeDailyCap, DEFAULT_SETTINGS.probeDailyCap, 0, 50),
+    probeStopVotes: num3(raw2?.probeStopVotes, DEFAULT_SETTINGS.probeStopVotes, 2, 100)
   };
 }
 var MAX_PARAGRAPH = 600;
@@ -39790,23 +40616,27 @@ portalDataRouter.post(
     const body = await c.req.json().catch(() => null);
     const action = typeof body?.action === "string" ? body.action : "";
     let prefetch;
-    const tAuth0 = Date.now();
-    const auth = await requirePortalUser(c, () => {
-      if (action) prefetch = prefetchAppAction(c.env, tenant2, appId, action);
-    });
-    const authMs = Date.now() - tAuth0;
-    if (!auth.ok) return auth.res;
-    if (!action) return c.json({ error: "action \u5FC5\u586B" }, 400);
-    const payload = body?.payload && typeof body.payload === "object" ? { ...body.payload } : {};
-    delete payload._portal_actor;
-    const tSign0 = Date.now();
-    const actor = await signPortalActor(c.env, tenant2, { login: auth.user.values.email, role: auth.user.values.role ?? "user" });
-    const signMs = Date.now() - tSign0;
-    if (actor) payload._portal_actor = actor;
-    const result = await runAppAction(c.env, tenant2, appId, action, payload, c.executionCtx, prefetch);
-    c.header("Server-Timing", [["auth", authMs], ["sign", signMs], ...result.timing ?? []].map(([n, d]) => `${n};dur=${d}`).join(", "));
-    if (!result.ok) return c.json({ error: result.error }, result.status);
-    return c.json({ ok: true, result: result.result });
+    const isoAge = isolateAgeMs();
+    return (await withKbdbTrace(() => handleAction())).value;
+    async function handleAction() {
+      const tAuth0 = Date.now();
+      const auth = await requirePortalUser(c, () => {
+        if (action) prefetch = prefetchAppAction(c.env, tenant2, appId, action);
+      });
+      const authMs = Date.now() - tAuth0;
+      if (!auth.ok) return auth.res;
+      if (!action) return c.json({ error: "action \u5FC5\u586B" }, 400);
+      const payload = body?.payload && typeof body.payload === "object" ? { ...body.payload } : {};
+      delete payload._portal_actor;
+      const tSign0 = Date.now();
+      const actor = await signPortalActor(c.env, tenant2, { login: auth.user.values.email, role: auth.user.values.role ?? "user" });
+      const signMs = Date.now() - tSign0;
+      if (actor) payload._portal_actor = actor;
+      const result = await runAppAction(c.env, tenant2, appId, action, payload, c.executionCtx, prefetch);
+      c.header("Server-Timing", [["iso_age", isoAge], ["auth", authMs], ["sign", signMs], ...result.timing ?? []].map(([n, d]) => `${n};dur=${d}`).join(", ") + ", " + kbdbMarksToTiming(currentKbdbMarks()).join(", "));
+      if (!result.ok) return c.json({ error: result.error }, result.status);
+      return c.json({ ok: true, result: result.result });
+    }
   })
 );
 portalDataRouter.delete(
@@ -41786,9 +42616,9 @@ portalPublishRouter.post(
     const now2 = (/* @__PURE__ */ new Date()).toISOString();
     const mine = await listMine(c.env, email);
     const existing = mine.find((r) => r.values.library === library && r.values.page_name === pageName);
-    const handle = await ownerHandle(portalTenant(c.env), email);
+    const handle2 = await ownerHandle(portalTenant(c.env), email);
     const ownerName = String(auth.user.values.display_name ?? "").trim().slice(0, 40) || "AR \u4F7F\u7528\u8005";
-    const base = { kind: "card", title: pageName, summary: plainSummary(note || body), html, note, owner_handle: handle, owner_name: ownerName, library, page_name: pageName, publisher: email, updated_at: now2, revoked_at: "" };
+    const base = { kind: "card", title: pageName, summary: plainSummary(note || body), html, note, owner_handle: handle2, owner_name: ownerName, library, page_name: pageName, publisher: email, updated_at: now2, revoked_at: "" };
     if (existing) {
       const res = await kbdbFetch2(c.env, `/records/${encodeURIComponent(existing.record_id)}`, { method: "PATCH", body: JSON.stringify({ values: base }) });
       if (!res.ok) {
@@ -41930,10 +42760,10 @@ publicPageRouter.get("/p/:code/cover", async (c) => {
   });
 });
 publicPageRouter.get("/u/:handle", async (c) => {
-  const handle = c.req.param("handle");
-  if (!HANDLE_RE.test(handle)) return htmlResponse(renderGonePage(false), 404, { "Cache-Control": "no-store" });
+  const handle2 = c.req.param("handle");
+  if (!HANDLE_RE.test(handle2)) return htmlResponse(renderGonePage(false), 404, { "Cache-Control": "no-store" });
   const page = Math.max(1, Math.min(500, Math.floor(Number(c.req.query("page") ?? "1")) || 1));
-  const key = new Request(`${new URL(c.req.url).origin}/u/${handle}?page=${page}`, { method: "GET" });
+  const key = new Request(`${new URL(c.req.url).origin}/u/${handle2}?page=${page}`, { method: "GET" });
   try {
     const hit = await caches.default.match(key);
     if (hit) {
@@ -41946,7 +42776,7 @@ publicPageRouter.get("/u/:handle", async (c) => {
   const q = new URLSearchParams({
     owner_id: portalOwner(c.env),
     field: "owner_handle",
-    value: handle,
+    value: handle2,
     fields: "kind,title,summary,note,owner_name,published_at,updated_at,revoked_at",
     limit: String(HOME_PAGE_SIZE),
     offset: String((page - 1) * HOME_PAGE_SIZE)
@@ -41970,12 +42800,12 @@ publicPageRouter.get("/u/:handle", async (c) => {
   }));
   const html = renderHomePage({
     name: recs[0]?.values.owner_name || "AR \u4F7F\u7528\u8005",
-    url: `${origin2}/u/${handle}`,
+    url: `${origin2}/u/${handle2}`,
     items,
     ogImage: `${origin2}/p/_/og.png`,
     installUrl: installerOrigin(c.env),
-    prevUrl: page > 1 ? `${origin2}/u/${handle}?page=${page - 1}` : null,
-    nextUrl: recs.length >= HOME_PAGE_SIZE ? `${origin2}/u/${handle}?page=${page + 1}` : null
+    prevUrl: page > 1 ? `${origin2}/u/${handle2}?page=${page - 1}` : null,
+    nextUrl: recs.length >= HOME_PAGE_SIZE ? `${origin2}/u/${handle2}?page=${page + 1}` : null
   });
   const out = htmlResponse(html, 200, { "Cache-Control": `public, max-age=0, s-maxage=${PUBLIC_CACHE_S}`, "X-Arcrun-Cache": "MISS", ...rowsRead ? { "X-KBDB-Rows-Read": rowsRead } : {} });
   try {
@@ -42008,10 +42838,8 @@ portalActorRouter.post("/portal/actor/verify", async (c) => {
   const r = await verifyPortalActor(c.env, tenant2, actor);
   if (!r.valid) return c.json({ valid: false, reason: r.reason });
   const sig = String(actor.sig ?? "").toLowerCase();
-  if (await ephemeralGet(c.env, { template: SPENT_TEMPLATE, hashField: "sig_hash", rawKey: sig })) {
-    return c.json({ valid: false, reason: "already_used" });
-  }
-  await ephemeralPut(c.env, { template: SPENT_TEMPLATE, slots: [], hashField: "sig_hash", rawKey: sig, values: {}, ttlSeconds: PORTAL_ACTOR_TTL_SEC + 30, fresh: true });
+  const first = await ephemeralClaimOnce(c.env, { template: SPENT_TEMPLATE, slots: [], hashField: "sig_hash", rawKey: sig, ttlSeconds: PORTAL_ACTOR_TTL_SEC + 30 });
+  if (!first) return c.json({ valid: false, reason: "already_used" });
   return c.json({ valid: true, login: r.login, role: r.role });
 });
 
@@ -42591,10 +43419,11 @@ app.route("/", appsRouter);
 app.route("/", uiComponentsRouter);
 app.route("/", componentsRouter);
 app.route("/", openLinkRouter);
-var index_default = {
-  fetch: (req, env, ctx) => {
+function handle(req, env, ctx, depth = 0, hops = { n: 0 }) {
+  {
     const perRequest = withAssetStores(env, newKbdbTally());
     perRequest.SELF_ORIGIN = new URL(req.url).origin;
+    perRequest.SELF_DISPATCH = { depth, hops, fetch: (r) => Promise.resolve(handle(r, env, ctx, depth + 1, hops)) };
     const cfToken = req.headers.get("x-cf-secrets-token");
     if (cfToken) perRequest.CF_SECRETS_TOKEN_FROM_REQUEST = cfToken;
     const grant = req.headers.get(GRANT_HEADER);
@@ -42621,7 +43450,10 @@ var index_default = {
       });
     }
     return app.fetch(req, perRequest, ctx);
-  },
+  }
+}
+var index_default = {
+  fetch: (req, env, ctx) => handle(req, env, ctx),
   scheduled: (controller, env, ctx) => handleScheduled(controller, withAssetStores(env), ctx)
 };
 export {
