@@ -1,9 +1,9 @@
 {
  "schema": 2,
- "release": "1.4.319",
- "fingerprint": "b840a839a9db92c878643cf7b22b495d737cbdf3d1bb3c7974814252693b6938",
+ "release": "1.4.324",
+ "fingerprint": "cd352b3e348fcb7228f0fdd3c28a8657c6672f75ec00f5b9680ced16f1acda6b",
  "built": "2026-11-27",
- "source": "Arcrun@6489469a4a30",
+ "source": "Arcrun@191ed09a7595",
  "daemon": {
   "version": "0.18.124",
   "built": "20261121-1351",
@@ -204,7 +204,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1941541,
+   "js_bytes": 1948848,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -225,6 +225,12 @@
      "binding": "ARTIFACTS",
      "namespace": "default"
     },
+    "services": [
+     {
+      "binding": "KBDB",
+      "service": "arcrun-kbdb"
+     }
+    ],
     "vars": {
      "ENVIRONMENT": "production",
      "CYPHER_AUTH_COMPAT_UNTIL": "2026-12-15",
@@ -246,10 +252,10 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "313406dc81857b1eacb50727d0ec313fe7beffe5",
-   "source_content_sha256": "da7bb1737a8b16d591d068557fbe70041d9d38fea9fb639e5469fbc8c67f0053",
-   "sha256": "da7bb1737a8b16d591d068557fbe70041d9d38fea9fb639e5469fbc8c67f0053",
-   "bytes": 1941541
+   "source_commit": "191ed09a75958fa7e33e882e57440e07b26aabeb",
+   "source_content_sha256": "251d38673edd01d03235a01f1895ff755440cb277f519c0f85d27a280e210ba1",
+   "sha256": "251d38673edd01d03235a01f1895ff755440cb277f519c0f85d27a280e210ba1",
+   "bytes": 1948848
   },
   {
    "name": "arcrun-date-ops",
@@ -464,7 +470,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 510049,
+   "js_bytes": 511136,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -488,10 +494,10 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "e2d9aaa3831bb07849b2947a699610a1591bd66c",
-   "source_content_sha256": "5a4cced462c03430647bd5917a1e7f440a35cc357dd713967ac69a20020e8c0b",
-   "sha256": "5a4cced462c03430647bd5917a1e7f440a35cc357dd713967ac69a20020e8c0b",
-   "bytes": 510049
+   "source_commit": "92fd33b2acbc17e046035d7e2e4a7d7c19b9c30a",
+   "source_content_sha256": "9e96f718103bb237bcbc9327a445fdfc93b181683f47ea01009def52d257cedc",
+   "sha256": "9e96f718103bb237bcbc9327a445fdfc93b181683f47ea01009def52d257cedc",
+   "bytes": 511136
   },
   {
    "name": "arcrun-mcp",
@@ -508,6 +514,16 @@
     "d1": [],
     "vectorize": 0,
     "ai": false,
+    "services": [
+     {
+      "binding": "CYPHER_EXECUTOR",
+      "service": "arcrun-cypher-executor"
+     },
+     {
+      "binding": "KBDB",
+      "service": "arcrun-kbdb"
+     }
+    ],
     "vars": {}
    },
    "source_commit": "65a69e243fa669893654047d16392f5a10454f79",
@@ -951,7 +967,7 @@
    "name": "arcrun-cypher-executor",
    "main_module": "worker.mjs",
    "main_file": "arcrun-cypher-executor/worker.mjs",
-   "js_bytes": 1941541,
+   "js_bytes": 1948848,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -972,6 +988,12 @@
      "binding": "ARTIFACTS",
      "namespace": "default"
     },
+    "services": [
+     {
+      "binding": "KBDB",
+      "service": "arcrun-kbdb"
+     }
+    ],
     "vars": {
      "ENVIRONMENT": "production",
      "CYPHER_AUTH_COMPAT_UNTIL": "2026-12-15",
@@ -993,8 +1015,8 @@
    "stripped": {
     "services": 13
    },
-   "source_commit": "313406dc81857b1eacb50727d0ec313fe7beffe5",
-   "source_content_sha256": "da7bb1737a8b16d591d068557fbe70041d9d38fea9fb639e5469fbc8c67f0053",
+   "source_commit": "191ed09a75958fa7e33e882e57440e07b26aabeb",
+   "source_content_sha256": "251d38673edd01d03235a01f1895ff755440cb277f519c0f85d27a280e210ba1",
    "first_install": true
   },
   {
@@ -1196,7 +1218,7 @@
    "name": "arcrun-kbdb",
    "main_module": "worker.mjs",
    "main_file": "arcrun-kbdb/worker.mjs",
-   "js_bytes": 510049,
+   "js_bytes": 511136,
    "modules": [],
    "compat_date": "2025-02-19",
    "compat_flags": [
@@ -1220,8 +1242,8 @@
      "ENVIRONMENT": "production"
     }
    },
-   "source_commit": "e2d9aaa3831bb07849b2947a699610a1591bd66c",
-   "source_content_sha256": "5a4cced462c03430647bd5917a1e7f440a35cc357dd713967ac69a20020e8c0b",
+   "source_commit": "92fd33b2acbc17e046035d7e2e4a7d7c19b9c30a",
+   "source_content_sha256": "9e96f718103bb237bcbc9327a445fdfc93b181683f47ea01009def52d257cedc",
    "first_install": true
   },
   {
@@ -1239,6 +1261,16 @@
     "d1": [],
     "vectorize": 0,
     "ai": false,
+    "services": [
+     {
+      "binding": "CYPHER_EXECUTOR",
+      "service": "arcrun-cypher-executor"
+     },
+     {
+      "binding": "KBDB",
+      "service": "arcrun-kbdb"
+     }
+    ],
     "vars": {}
    },
    "source_commit": "65a69e243fa669893654047d16392f5a10454f79",
@@ -1868,9 +1900,9 @@
   }
  ],
  "installer": {
-  "version": "1.0.108"
+  "version": "1.0.111"
  },
  "payload_fingerprint": "565f58d013ff476663c83d136938a38f8ca63dc9f620c330a961fe9f9a572c03",
  "fingerprint_daemon": "0.18.124",
- "fingerprint_apps": "d753c21dd0eb8ca2e56efe0703ada840a53e4ea07c8b5bbae92a2ca11d50b3fd"
+ "fingerprint_apps": "767cafdd20e27b9c9028abcb6984da44cb6243aea2674264270c30c68315276b"
 }

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-27T12:02:20.346Z",
+  "generated_at": "2026-11-27T15:00:21.641Z",
   "apps": [
     {
       "id": "notes",
@@ -11,7 +11,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/notes-1.6.0.json",
-        "sha256": "8268cecc4b9695d863a399e0d5c2fbbf123fe8cc2dce5f6fae8fb8ab43469db2"
+        "sha256": "ceaf01f29a2a4b653ac8a66ef2013b20222a9a3d2f1f0fb6ee6f0b26129b314b"
       }
     },
     {
@@ -23,7 +23,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/flow_canvas-0.2.1.json",
-        "sha256": "143b343d46228d641bfc689f4ed9842655e8a867f55c9ef9c261db117a2d297a"
+        "sha256": "f084c868510208a8bf4d1099ac30b03e61e03dcd9629be7e62669158cae12bea"
       }
     },
     {
@@ -58,7 +58,7 @@
       },
       "package": {
         "url": "packages/global_index-0.2.0.json",
-        "sha256": "befafe8bfb8796a61018517d84dad19b54ac146811421aa940f7521192dc1c3f"
+        "sha256": "dc269f41f39580110ff4b3dbe0b832d1a8edb3104e7a5f3a21bdd1ec4ff0ff62"
       }
     },
     {
@@ -66,7 +66,7 @@
       "name": "票地圖",
       "icon": "🗂️",
       "summary": "（已併入 AHub）專案、里程碑、票的結構與看板，以及目標指向的進度，現在都在 AHub 一個畫面裡；已裝的按更新就換成同一個畫面，資料不變。",
-      "version": "0.9.26",
+      "version": "0.9.27",
       "author": "Arcrun 內建",
       "retired": true,
       "requires": {
@@ -93,8 +93,8 @@
         ]
       },
       "package": {
-        "url": "packages/kanban-0.9.26.json",
-        "sha256": "4e6b59905d9a44d15c8aa9e2f605453f35a972cce58a01d6a8d4851c4f5140b6"
+        "url": "packages/kanban-0.9.27.json",
+        "sha256": "8ceaf607bc3f7e1a578eb1ba50fa1430b632a48e6c1f8c0c51d29c916e1b5540"
       }
     },
     {
@@ -102,7 +102,7 @@
       "name": "AHub",
       "icon": "🧭",
       "summary": "把票、留言、標籤、相依與里程碑存在你自己的知識庫裡，用和 Gitea 一樣的方式讀寫；打開就能新增、修改、關閉票與里程碑，留言用 Markdown，簽核人由你在「設定」指定。連上 Arcrun MCP 的 AI 自動拿到管票與請你簽核的工具。選裝，沒裝的實例不受影響。",
-      "version": "0.69.0",
+      "version": "0.69.1",
       "author": "Arcrun 內建",
       "requires": {
         "recipes": [
@@ -402,8 +402,8 @@
         ]
       },
       "package": {
-        "url": "packages/ahub-0.69.0.json",
-        "sha256": "f8134882a5fc092acff5b99305d9d4d4717b49183faefbf2fb437d0ee8600711"
+        "url": "packages/ahub-0.69.1.json",
+        "sha256": "46da32d71bfd24e2e21cb88b16c602996c919fd049559cd06f524a7c69496c74"
       }
     },
     {
@@ -438,7 +438,7 @@
       },
       "package": {
         "url": "packages/releases-0.1.2.json",
-        "sha256": "f06ada8e35b4d78147e3a4f6c46e52ee8c52c26f909c84276becda7cc503a823"
+        "sha256": "190b9e7cc34432392f2c45f41f3c944cf1074010ef3eada9e8c28fc125e22bde"
       }
     },
     {
@@ -502,7 +502,7 @@
       },
       "package": {
         "url": "packages/imbot-0.1.1.json",
-        "sha256": "08ba0fa68512a1c5d0575cb76c90b6c7bf5f64930b0b729543effefc540ac9ca"
+        "sha256": "aaadf05a9af91ed83f4f937ebb28b18d7ae13e0bd2c8b5bc451a4336ea27bdad"
       }
     },
     {
@@ -624,7 +624,7 @@
       },
       "package": {
         "url": "packages/paper-0.5.1.json",
-        "sha256": "cccdcb1ad0eeec7290eb891037d98d1fc8f565ca2e0c06c20055b5512152ec03"
+        "sha256": "4e8909b89f9d265fc73366eadeb128fd86af91a1db2d48422b9ac408d5ae2aad"
       }
     },
     {
@@ -636,7 +636,7 @@
       "author": "Arcrun 示範",
       "package": {
         "url": "packages/company_rules-0.1.1.json",
-        "sha256": "eb1db7fcf73e69b89884b8c94b231c1b8d6ab3784487c9050a23753f894c4bd8"
+        "sha256": "303ebcf9ab73a6a76692392add896185708a90953e31ab55f41f9a9c56593bf4"
       }
     }
   ]

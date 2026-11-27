@@ -9559,6 +9559,17 @@ recordRoutes.post("/batch-get", async (c) => {
     }
   }
   const records = await getRecords(dbOf(c.env), body.ids, typeof body.owner_id === "string" && body.owner_id ? body.owner_id : null);
+  if (Array.isArray(body.follow) && body.follow.length > 0 && body.follow.length <= 8 && ownerId === null) {
+    const extra = [];
+    for (const f of body.follow) {
+      if (typeof f?.from !== "string" || typeof f?.slot !== "string" || typeof f?.prefix !== "string") continue;
+      const v = records.find((r) => r.record_id === f.from)?.values?.[f.slot];
+      if (typeof v === "string" && v) extra.push(`${f.prefix}${v}`);
+    }
+    const have = new Set(records.map((r) => r.record_id));
+    const want = [...new Set(extra)].filter((id) => !have.has(id));
+    if (want.length > 0) records.push(...await getRecords(dbOf(c.env), want, null));
+  }
   const got = new Set(records.map((r) => r.record_id));
   const missing = [...new Set(body.ids)].filter((id) => !got.has(id));
   return c.json({ success: true, records, missing, count: records.length });
@@ -9693,6 +9704,12 @@ recordRoutes.get("/by-source/:template", async (c) => {
   const page = all.slice(offset, offset + limit);
   if (c.req.query("with_values") === "1") {
     const records = page.length > 0 ? await hydrateRecordValues(dbOf(c.env), tpl.id, page) : [];
+    const followSlot = c.req.query("follow");
+    if (followSlot) {
+      const target = records[0]?.values?.[followSlot];
+      const followed = typeof target === "string" && target ? await getRecord(dbOf(c.env), target) : null;
+      return c.json({ success: true, record_ids: page, records, count: page.length, total: all.length, limit, offset, followed: followed ? { record_id: followed.record_id, record: followed } : null });
+    }
     return c.json({ success: true, record_ids: page, records, count: page.length, total: all.length, limit, offset });
   }
   return c.json({ success: true, record_ids: page, count: page.length, total: all.length, limit, offset });
