@@ -24,30 +24,6 @@ var init_transient_error = __esm({
   }
 });
 
-// kbdb/src/actions/library-predicate.ts
-function libraryOf(expr) {
-  return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
-}
-function libraryOfValue(value) {
-  const v = (value ?? "").trim();
-  return v === "" ? UNLABELLED_LIBRARY : v;
-}
-function parseLibraryList(raw2) {
-  if (!raw2) return void 0;
-  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
-  return libs.length > 0 ? libs : void 0;
-}
-var UNLABELLED_LIBRARY, ENTRY_LIBRARY_EXPR, ENTRY_LIBRARY, ENTRY_UNLABELLED;
-var init_library_predicate = __esm({
-  "kbdb/src/actions/library-predicate.ts"() {
-    "use strict";
-    UNLABELLED_LIBRARY = "general";
-    ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
-    ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
-    ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
-  }
-});
-
 // kbdb/src/actions/kind.ts
 function belongsRowId(entryId, templateId) {
   return `relb_${entryId}_${templateId}`;
@@ -160,11 +136,98 @@ var init_kind = __esm({
       "dst_id",
       "created_at",
       "updated_at",
+      "sort_key",
+      "origin",
+      "created_by",
+      "perm_class",
+      // 0018：樹的節點欄位（D100 3.3；inkstone/Arcrun#550）
       "props",
       "tpl_id",
       "fmt"
       // 0017：一張卡一列（props＝屬性 JSON；tpl_id＝所屬 template；fmt＝格式版本）
     ];
+  }
+});
+
+// kbdb/src/actions/entity-canon.ts
+function unwrapWhole(t) {
+  const code = /^(`+)([\s\S]*?)(`+)$/.exec(t);
+  if (code) {
+    const inner = code[2].trim();
+    if (inner && !inner.includes("`")) return inner;
+  }
+  if (t.startsWith("[[") && t.endsWith("]]") && t.length > 4) {
+    const inner = t.slice(2, -2).trim();
+    if (inner && !inner.includes("[[") && !inner.includes("]]")) return inner;
+  }
+  return t;
+}
+function canonicalEntity(raw2) {
+  if (typeof raw2 !== "string") return raw2;
+  const fallback = raw2.trim();
+  let t = raw2.normalize("NFC").trim();
+  if (!t) return fallback;
+  for (let i = 0; i < 4; i++) {
+    const before = t;
+    t = unwrapWhole(t);
+    if (t === before) break;
+  }
+  if (NOTE_EXT.test(t)) {
+    t = t.replace(NOTE_EXT, "");
+    const cut = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"));
+    if (cut >= 0) t = t.slice(cut + 1);
+  }
+  t = t.replace(/\s+/g, " ").trim();
+  return t || fallback;
+}
+function isTripletShaped(slots) {
+  return slots.includes("subject") && slots.includes("predicate") && slots.includes("object");
+}
+function canonicalizeEntityValues(slots, values) {
+  if (!isTripletShaped(slots)) return values;
+  let touched = false;
+  const out = { ...values };
+  for (const slot of ENTITY_SLOTS) {
+    const v = out[slot];
+    if (typeof v !== "string") continue;
+    const c = canonicalEntity(v);
+    if (c !== v) {
+      out[slot] = c;
+      touched = true;
+    }
+  }
+  return touched ? out : values;
+}
+var NOTE_EXT, ENTITY_SLOTS;
+var init_entity_canon = __esm({
+  "kbdb/src/actions/entity-canon.ts"() {
+    "use strict";
+    NOTE_EXT = /\.(md|markdown|mdx|txt|org)$/i;
+    ENTITY_SLOTS = ["subject", "object"];
+  }
+});
+
+// kbdb/src/actions/library-predicate.ts
+function libraryOf(expr) {
+  return `COALESCE(NULLIF(${expr}, ''), '${UNLABELLED_LIBRARY}')`;
+}
+function libraryOfValue(value) {
+  const v = (value ?? "").trim();
+  return v === "" ? UNLABELLED_LIBRARY : v;
+}
+function parseLibraryList(raw2) {
+  if (!raw2) return void 0;
+  const libs = raw2.split(",").map((s) => s.trim()).filter(Boolean);
+  return libs.length > 0 ? libs : void 0;
+}
+var UNLABELLED_LIBRARY, ENTRY_LIBRARY_EXPR, ENTRY_LIBRARY, ENTRY_UNLABELLED;
+var init_library_predicate = __esm({
+  "kbdb/src/actions/library-predicate.ts"() {
+    "use strict";
+    UNLABELLED_LIBRARY = "general";
+    ENTRY_LIBRARY_EXPR = "json_extract(metadata_json, '$.library')";
+    ENTRY_LIBRARY = libraryOf(ENTRY_LIBRARY_EXPR);
+    ENTRY_UNLABELLED = `(${ENTRY_LIBRARY_EXPR} IS NULL OR ${ENTRY_LIBRARY_EXPR} = '')`;
   }
 });
 
@@ -194,7 +257,7 @@ async function ensureLibraryMapTemplate(db) {
       description: LIBRARY_MAP_TEMPLATE_DESCRIPTION,
       slots: LIBRARY_MAP_SLOTS,
       created_by: "system"
-    });
+    }, { skipShapeGate: true });
   } catch {
     if (!await getTemplate(db, LIBRARY_MAP_TEMPLATE_NAME)) throw new Error("ensureLibraryMapTemplate failed");
   }
@@ -1155,24 +1218,1593 @@ var init_library_map_store = __esm({
   }
 });
 
-// kbdb/src/actions/entry-crud.ts
+// kbdb/src/actions/template-guard.ts
+function editDistance(a, b, cap) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function looksUnresolved(name) {
+  return /\{\{|\}\}|\$\{/.test(name);
+}
+function forgetTemplateNames(db) {
+  nameCache.delete(db);
+}
+async function templateNames(db, now = Date.now()) {
+  const key = db;
+  const hit = nameCache.get(key);
+  if (hit && now - hit.at < TEMPLATE_NAMES_TTL_MS) return hit.names;
+  const res = await db.all("SELECT name FROM templates");
+  const names = (res.results ?? []).map((r) => r.name);
+  nameCache.set(key, { at: now, names });
+  return names;
+}
+async function similarTemplateNames(db, name) {
+  const names = await templateNames(db);
+  const target = norm(name);
+  const out = [];
+  for (const rn of names) {
+    const r = { name: rn };
+    if (r.name === name) continue;
+    const n2 = norm(r.name);
+    if (n2 === target || target.length >= 4 && n2.length >= 4 && editDistance(n2, target, 2) <= 2) out.push(r.name);
+  }
+  return out.slice(0, 5);
+}
+async function assertKindTemplateWritable(db, name, allowCreate = false) {
+  const key = String(name ?? "").trim();
+  if (looksUnresolved(key)) {
+    throw new TemplateNameError(
+      "template_name_unresolved",
+      `template \u540D\u7A31 "${key}" \u542B\u6C92\u89E3\u958B\u7684\u53D6\u503C\u5F0F\uFF08{{\u2026}}\uFF09\u2014\u2014\u4E0A\u6E38\u6C92\u6709\u7D66\u51FA\u9019\u500B\u503C\u3002\u4E0D\u6703\u7528\u5B83\u5EFA\u7ACB\u65B0\u7684 template\u3002`
+    );
+  }
+  const hit = await db.first("SELECT id FROM templates WHERE name = ? OR id = ?", [key, key]);
+  if (hit || allowCreate) return;
+  const near = await similarTemplateNames(db, key);
+  if (near.length > 0) {
+    throw new TemplateNameError(
+      "template_name_suspect",
+      `template "${key}" \u4E0D\u5B58\u5728\uFF0C\u4F46\u6709\u5F88\u50CF\u7684\u65E2\u6709\u540D\u5B57\uFF1A${near.join("\u3001")}\u3002\u62FC\u932F\u5C31\u6539\u6210\u90A3\u500B\uFF1B\u771F\u7684\u8981\u65B0\u7A2E\u985E\u8ACB\u5728\u8ACB\u6C42\u5E36 create_template:true\u3002`,
+      near
+    );
+  }
+}
+async function templateMissingInfo(db, name) {
+  const near = await similarTemplateNames(db, name).catch(() => []);
+  return {
+    template_exists: false,
+    error_code: "template_not_found",
+    did_you_mean: near,
+    hint: `template "${name}" \u4E0D\u5B58\u5728\uFF08\u4E0D\u662F\u300C\u5B58\u5728\u4F46 0 \u7B46\u300D\uFF09\u3002${near.length ? `\u4F60\u662F\u4E0D\u662F\u8981\u627E\uFF1A${near.join("\u3001")}\uFF1F` : "\u6AA2\u67E5\u540D\u5B57\u62FC\u5BEB\uFF0C\u6216\u5148\u5BEB\u5165\u4E00\u7B46\u5EFA\u7ACB\u5B83\u3002"}`
+  };
+}
+var TemplateNameError, norm, TEMPLATE_NAMES_TTL_MS, nameCache;
+var init_template_guard = __esm({
+  "kbdb/src/actions/template-guard.ts"() {
+    "use strict";
+    TemplateNameError = class extends Error {
+      constructor(code, message, didYouMean = []) {
+        super(message);
+        this.code = code;
+        this.didYouMean = didYouMean;
+        this.name = "TemplateNameError";
+      }
+      code;
+      didYouMean;
+    };
+    norm = (s) => s.trim().toLowerCase().replace(/[_\s-]+/g, "");
+    TEMPLATE_NAMES_TTL_MS = 6e4;
+    nameCache = /* @__PURE__ */ new WeakMap();
+  }
+});
+
+// kbdb/src/actions/template-shape.ts
+function parseSlots(json) {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+function jaccard(a, b) {
+  if (a.size === 0 && b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+async function findSimilarShapes(db, slots, excludeName) {
+  const mine = new Set(slots.map(normSlot).filter(Boolean));
+  if (mine.size < SHAPE_MIN_SLOTS) return [];
+  const res = await db.all("SELECT id, name, description, slots_json FROM templates");
+  const out = [];
+  for (const t of res.results ?? []) {
+    if (excludeName && t.name === excludeName) continue;
+    const theirs = parseSlots(t.slots_json);
+    const set = new Set(theirs.map(normSlot).filter(Boolean));
+    if (set.size < SHAPE_MIN_SLOTS) continue;
+    const sim = jaccard(mine, set);
+    if (sim >= SHAPE_SIMILARITY_THRESHOLD) out.push({ id: t.id, name: t.name, description: t.description ?? null, slots: theirs, similarity: Math.round(sim * 100) / 100 });
+  }
+  out.sort((a, b) => b.similarity - a.similarity);
+  return out.slice(0, 5);
+}
+async function assertNoDuplicateShape(db, name, slots, compared = []) {
+  const cands = await findSimilarShapes(db, slots, name);
+  if (cands.length === 0) return;
+  const seen = new Set(compared.map((s) => String(s).trim().toLowerCase()));
+  const unseen = cands.filter((c) => !seen.has(c.name.toLowerCase()) && !seen.has(c.id.toLowerCase()));
+  if (unseen.length > 0) throw new DuplicateTemplateShapeError(cands);
+}
+function tokenize(text) {
+  const out = /* @__PURE__ */ new Set();
+  const lower = String(text).toLowerCase();
+  for (const w of lower.match(/[a-z0-9]+/g) ?? []) if (w.length >= 2) out.add(w);
+  for (const run of lower.match(/[㐀-鿿぀-ヿ]+/g) ?? []) {
+    const chars = [...run];
+    for (let i = 0; i < chars.length - 1; i++) out.add(chars[i] + chars[i + 1]);
+    if (chars.length === 1) out.add(chars[0]);
+  }
+  return [...out];
+}
+async function searchTemplates(db, query, limit = 8) {
+  const qTokens = tokenize(query);
+  if (qTokens.length === 0) return [];
+  const res = await db.all("SELECT id, name, description, slots_json FROM templates");
+  const hits = [];
+  for (const t of res.results ?? []) {
+    const slots = parseSlots(t.slots_json);
+    const nameT = new Set(tokenize(t.name.replace(/[_-]+/g, " ")));
+    const descT = new Set(tokenize(t.description ?? ""));
+    const slotT = new Set(slots.flatMap((s) => tokenize(s.replace(/[_-]+/g, " "))));
+    let score = 0;
+    for (const q of qTokens) {
+      if (nameT.has(q)) score += 3;
+      if (descT.has(q)) score += 2;
+      if (slotT.has(q)) score += 1;
+    }
+    if (score === 0) continue;
+    hits.push({ id: t.id, name: t.name, description: t.description ?? null, slots, similarity: 0, score: Math.round(score / (qTokens.length * 3) * 100) / 100 });
+  }
+  hits.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  return hits.slice(0, limit);
+}
+var SHAPE_SIMILARITY_THRESHOLD, SHAPE_MIN_SLOTS, DuplicateTemplateShapeError, normSlot;
+var init_template_shape = __esm({
+  "kbdb/src/actions/template-shape.ts"() {
+    "use strict";
+    SHAPE_SIMILARITY_THRESHOLD = 0.8;
+    SHAPE_MIN_SLOTS = 2;
+    DuplicateTemplateShapeError = class extends Error {
+      constructor(candidates) {
+        super(
+          `\u6B04\u4F4D\u5F62\u72C0\u8DDF\u73FE\u6709 template \u76F8\u540C\u6216\u5E7E\u4E4E\u76F8\u540C\uFF1A${candidates.map((c) => `${c.name}\uFF08${Math.round(c.similarity * 100)}%\uFF09`).join("\u3001")}\u3002\u80FD\u7528\u73FE\u6709\u7684\u5C31\u7528\u73FE\u6709\u7684\uFF1B\u78BA\u5B9A\u8981\u53E6\u5EFA\uFF0C\u8ACB\u5728\u8ACB\u6C42\u5E36 compared\uFF08\u5217\u51FA\u4F60\u770B\u904E\u7684\u9019\u5E7E\u5F35\u7684 name \u6216 id\uFF09\u3002`
+        );
+        this.candidates = candidates;
+        this.name = "DuplicateTemplateShapeError";
+      }
+      candidates;
+      code = "template_shape_duplicate";
+    };
+    normSlot = (s) => String(s).trim().toLowerCase().replace(/[\s_-]+/g, "");
+  }
+});
+
+// kbdb/src/actions/card-row.ts
+function isCardTemplate(tpl) {
+  return !!tpl && tpl.card_format === 1;
+}
+function parseFieldMap(json) {
+  if (json) {
+    try {
+      const m = JSON.parse(json);
+      if (m && m.v === 1 && m.by_name && typeof m.next === "number") return { ...m, retired: m.retired ?? [] };
+    } catch {
+    }
+  }
+  return { v: 1, next: 1, by_name: {}, retired: [] };
+}
+function syncFieldMap(map, slots) {
+  const out = { ...map, by_name: { ...map.by_name }, retired: [...map.retired], retired_names: { ...map.retired_names ?? {} } };
+  let changed = false;
+  const want = new Set(slots);
+  for (const [name, f] of Object.entries(out.by_name)) {
+    if (!want.has(name)) {
+      delete out.by_name[name];
+      out.retired.push(f);
+      out.retired_names[name] = f;
+      changed = true;
+    }
+  }
+  for (const name of slots) {
+    if (out.by_name[name]) continue;
+    const back = out.retired_names[name];
+    if (back) {
+      out.by_name[name] = back;
+      out.retired = out.retired.filter((x) => x !== back);
+      delete out.retired_names[name];
+    } else {
+      out.by_name[name] = `f${out.next}`;
+      out.next += 1;
+    }
+    changed = true;
+  }
+  if (Object.keys(out.retired_names).length === 0) delete out.retired_names;
+  return { map: out, changed };
+}
+function isRelationName(slot) {
+  return slot.length > 2 && slot.endsWith("[]");
+}
+function isRef(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v) && typeof v.$ref === "string";
+}
+function parseProps(text) {
+  if (!text) return {};
+  try {
+    const p = JSON.parse(text);
+    return p && typeof p === "object" && !Array.isArray(p) ? p : {};
+  } catch {
+    return {};
+  }
+}
+function decodeProps(map, props, refContent) {
+  const out = {};
+  for (const [slot, f] of Object.entries(map.by_name)) {
+    const v = props[f];
+    if (v === void 0) continue;
+    if (isRef(v)) {
+      if (v.mode === "snapshot" && v.v !== void 0) out[slot] = String(v.v);
+      else out[slot] = refContent.get(v.$ref) ?? REF_GONE;
+    } else if (Array.isArray(v)) {
+      out[slot] = JSON.stringify([...new Set(v.map(String))].sort());
+    } else {
+      out[slot] = String(v);
+    }
+  }
+  return out;
+}
+function refTargets(props) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const p of props) for (const v of Object.values(p)) if (isRef(v) && v.mode !== "snapshot") ids.add(v.$ref);
+  return [...ids];
+}
+async function loadRefContent(db, ids) {
+  const out = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const res = await db.all(`SELECT id, content FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
+    for (const r of res.results ?? []) out.set(r.id, r.content);
+  }
+  return out;
+}
+function parseRelationInput(slot, raw2, maxKeyLen, maxPerCall) {
+  let list;
+  try {
+    list = JSON.parse(raw2);
+  } catch {
+    list = raw2;
+  }
+  const arr = Array.isArray(list) ? list : [list];
+  const out = [...new Set(arr.map((x) => String(x)).filter((x) => x !== ""))].sort();
+  for (const fk of out) if (fk.length > maxKeyLen) throw new Error(`relation slot ${slot}: key too long (>${maxKeyLen})`);
+  if (out.length > maxPerCall) throw new Error(`relation slot ${slot}: too many keys in one write (>${maxPerCall})`);
+  return out;
+}
+function encodeProps(map, values, entryIds, relation) {
+  const props = {};
+  for (const [slot, raw2] of Object.entries(values)) {
+    const f = map.by_name[slot];
+    if (!f) continue;
+    props[f] = isRelationName(slot) ? relation(slot, raw2) : raw2;
+  }
+  for (const [slot, id] of Object.entries(entryIds)) {
+    const f = map.by_name[slot];
+    if (f) props[f] = { $ref: id };
+  }
+  return props;
+}
+async function orLegacy(db, fn, none) {
+  if (noCardColumns.has(db)) return none;
+  try {
+    return await fn();
+  } catch (e) {
+    if (/no such column:\s*(\w+\.)?(props|tpl_id|fmt)\b/i.test(String(e?.message ?? e))) {
+      noCardColumns.add(db);
+      return none;
+    }
+    throw e;
+  }
+}
+async function getTemplateById(db, id) {
+  return await db.first("SELECT * FROM templates WHERE id = ?", [id]) ?? null;
+}
+async function decodeCards(db, tpl, rows) {
+  const map = parseFieldMap(tpl.fields_json);
+  const parsed = rows.map((r) => ({ r, p: parseProps(r.props) }));
+  const refs = refTargets(parsed.map((x) => x.p));
+  const content = refs.length > 0 ? await loadRefContent(db, refs) : /* @__PURE__ */ new Map();
+  return parsed.map(({ r, p }) => ({ record_id: r.id, template_id: tpl.id, values: decodeProps(map, p, content), owner_id: r.owner_id }));
+}
+async function cardPage(db, tpl, owner_id, limit, offset, filter) {
+  const where = ["tpl_id = ?"];
+  const params = [tpl.id];
+  if (owner_id) {
+    where.push("+owner_id = ?");
+    params.push(owner_id);
+  }
+  if (filter) {
+    const f = parseFieldMap(tpl.fields_json).by_name[filter.slot];
+    if (!f) return [];
+    where.push(`json_extract(props, '$.${f}') = ?`);
+    params.push(filter.value);
+  }
+  const res = await db.all(
+    `SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE ${where.join(" AND ")} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
+  return decodeCards(db, tpl, res.results ?? []);
+}
+async function cardCount(db, tplId, owner_id) {
+  const row = owner_id ? await db.first("SELECT COUNT(*) AS n FROM entries WHERE tpl_id = ? AND +owner_id = ?", [tplId, owner_id]) : await db.first("SELECT COUNT(*) AS n FROM entries WHERE tpl_id = ?", [tplId]);
+  return row?.n ?? 0;
+}
+async function cardRowsByIds(db, ids) {
+  return orLegacy(db, async () => {
+    const out = [];
+    for (let i = 0; i < ids.length; i += 90) {
+      const chunk = ids.slice(i, i + 90);
+      const res = await db.all(`SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
+      out.push(...res.results ?? []);
+    }
+    return out;
+  }, []);
+}
+async function cardRowById(db, id) {
+  return orLegacy(db, async () => await db.first("SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE id = ?", [id]) ?? null, null);
+}
+function cardInsertStatement(id, tplId, ownerId, props, opts = {}) {
+  return entryRowStatement({ id, owner_id: ownerId, tpl_id: tplId, props: JSON.stringify(props), fmt: CARD_FORMAT_VERSION }, { ignore: opts.ignore });
+}
+function cardSetStatement(id, changes) {
+  const keys = Object.keys(changes);
+  if (keys.length === 0) return null;
+  const sets = keys.map(() => `?, json(?)`).join(", ");
+  const params = [];
+  for (const k of keys) params.push(`$.${k}`, JSON.stringify(changes[k]));
+  return { sql: `UPDATE entries SET props = json_set(COALESCE(props, '{}'), ${sets}), updated_at = unixepoch() WHERE id = ?`, params: [...params, id] };
+}
+function cardRelationStatement(id, key, add2, remove) {
+  return {
+    sql: `UPDATE entries SET props = json_set(COALESCE(props, '{}'), '$.${key}', json((
+        SELECT COALESCE(json_group_array(v), '[]') FROM (
+          SELECT value AS v FROM json_each(COALESCE(json_extract(props, '$.${key}'), '[]')) WHERE value NOT IN (SELECT value FROM json_each(?))
+          UNION SELECT value FROM json_each(?)
+          ORDER BY v)))), updated_at = unixepoch() WHERE id = ?`,
+    params: [JSON.stringify(remove), JSON.stringify(add2), id]
+  };
+}
+var CARD_FORMAT_VERSION, REF_GONE, noCardColumns;
+var init_card_row = __esm({
+  "kbdb/src/actions/card-row.ts"() {
+    "use strict";
+    init_kind();
+    CARD_FORMAT_VERSION = 1;
+    REF_GONE = "\u4F86\u6E90\u5DF2\u522A\u9664";
+    noCardColumns = /* @__PURE__ */ new WeakSet();
+  }
+});
+
+// kbdb/src/actions/record-crud.ts
+var record_crud_exports = {};
+__export(record_crud_exports, {
+  RecordExistsError: () => RecordExistsError,
+  SYS_BELONGS: () => SYS_BELONGS,
+  SYS_FIELD_OF: () => SYS_FIELD_OF,
+  SYS_ROOT: () => SYS_ROOT,
+  createRecord: () => createRecord,
+  createTemplate: () => createTemplate,
+  deleteRecord: () => deleteRecord,
+  derivedCellIds: () => derivedCellIds,
+  editRelation: () => editRelation,
+  ensureKindTemplate: () => ensureKindTemplate,
+  fieldEntryId: () => fieldEntryId,
+  filterExistingRecordIds: () => filterExistingRecordIds,
+  getRecord: () => getRecord,
+  getRecords: () => getRecords,
+  getTemplate: () => getTemplate,
+  hydrateRecordValues: () => hydrateRecordValues,
+  isRelationSlot: () => isRelationSlot,
+  kindTemplateId: () => kindTemplateId,
+  listTemplates: () => listTemplates,
+  memberRecordIds: () => memberRecordIds,
+  planCreateRecord: () => planCreateRecord,
+  planEditRelation: () => planEditRelation,
+  planUpdateRecord: () => planUpdateRecord,
+  relationCellIds: () => relationCellIds,
+  searchByTemplate: () => searchByTemplate,
+  searchByTemplatePage: () => searchByTemplatePage,
+  updateRecord: () => updateRecord,
+  updateTemplate: () => updateTemplate
+});
 function uid(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
+function fieldEntryId(templateId, slot) {
+  return `fld_${templateId}_${slot}`;
+}
+async function ensureAnchors(db) {
+  await insertEntryRow(db, { id: SYS_ROOT, content: "root" }, { ignore: true });
+  await insertEntryRow(db, { id: SYS_BELONGS, content: "belongs" }, { ignore: true });
+  await insertEntryRow(db, { id: SYS_FIELD_OF, content: "field_of" }, { ignore: true });
+}
+function fieldEntryStatements(templateId, slots) {
+  const out = [];
+  for (const slot of slots) {
+    const fid = fieldEntryId(templateId, slot);
+    out.push(entryRowStatement({ id: fid, content: slot }, { ignore: true }));
+    out.push(entryRowStatement({ id: `relf_${templateId}_${slot}`, src_id: fid, rel_id: SYS_FIELD_OF, dst_id: templateId }, { ignore: true }));
+  }
+  return out;
+}
+async function ensureFieldEntries(db, templateId, slots) {
+  const stmts = fieldEntryStatements(templateId, slots);
+  if (stmts.length > 0) await db.batch(stmts);
+}
+async function createTemplate(db, input, opts = {}) {
+  if (!opts.skipShapeGate) await assertNoDuplicateShape(db, input.name, input.slots, opts.compared);
+  const id = input.id ?? uid("tpl");
+  await db.run(`INSERT INTO templates (id, name, description, slots_json, created_by) VALUES (?, ?, ?, ?, ?)`, [id, input.name, input.description ?? null, JSON.stringify(input.slots), input.created_by ?? null]);
+  forgetTemplateNames(db);
+  await ensureAnchors(db);
+  await insertEntryRow(db, { id, content: input.name }, { ignore: true });
+  await insertEntryRow(db, { id: `relb_${id}`, src_id: id, rel_id: SYS_BELONGS, dst_id: SYS_ROOT }, { ignore: true });
+  await ensureFieldEntries(db, id, input.slots);
+  const row = await getTemplate(db, id);
+  if (!row) throw new Error("createTemplate: row not found after insert");
+  return row;
+}
+function kindTemplateId(name) {
+  return `tpl-${name.replace(/_/g, "-")}`;
+}
+async function ensureKindTemplate(db, name) {
+  const key = name.trim();
+  if (!key) throw new Error("template name required");
+  if (/\{\{|\}\}|\$\{/.test(key)) throw new Error(`template name unresolved: ${key}`);
+  let cache2 = kindTemplateIds.get(db);
+  if (!cache2) {
+    cache2 = /* @__PURE__ */ new Map();
+    kindTemplateIds.set(db, cache2);
+  }
+  const hit = cache2.get(key);
+  if (hit) return hit;
+  const found = await db.first("SELECT id FROM templates WHERE name = ?", [key]);
+  let id = found?.id;
+  if (!id) {
+    for (const candidate of [kindTemplateId(key), uid("tpl")]) {
+      try {
+        await createTemplate(db, { id: candidate, name: key, description: `\u5167\u5BB9\u7A2E\u985E\uFF1A${key}`, slots: [], created_by: "system" }, { skipShapeGate: true });
+        id = candidate;
+        break;
+      } catch {
+        id = (await db.first("SELECT id FROM templates WHERE name = ?", [key]))?.id;
+        if (id) break;
+      }
+    }
+    if (!id) throw new Error(`ensureKindTemplate failed: ${key}`);
+  }
+  cache2.set(key, id);
+  return id;
+}
+async function getTemplate(db, idOrName) {
+  const row = await db.first("SELECT * FROM templates WHERE id = ? OR name = ? LIMIT 1", [idOrName, idOrName]);
+  return row ?? null;
+}
+async function listTemplates(db) {
+  const res = await db.all("SELECT * FROM templates ORDER BY created_at DESC");
+  return res.results ?? [];
+}
+async function updateTemplate(db, id, patch) {
+  const cols = [];
+  const params = [];
+  if (patch.description !== void 0) {
+    cols.push("description = ?");
+    params.push(patch.description);
+  }
+  if (patch.slots !== void 0) {
+    cols.push("slots_json = ?");
+    params.push(JSON.stringify(patch.slots));
+    const cur = await getTemplateById(db, id);
+    if (cur?.fields_json) {
+      const synced = syncFieldMap(parseFieldMap(cur.fields_json), patch.slots);
+      if (synced.changed) {
+        cols.push("fields_json = ?");
+        params.push(JSON.stringify(synced.map));
+      }
+    }
+  }
+  if (cols.length === 0) return getTemplate(db, id);
+  cols.push("updated_at = unixepoch()");
+  await db.run(`UPDATE templates SET ${cols.join(", ")} WHERE id = ?`, [...params, id]);
+  if (patch.slots !== void 0) await ensureFieldEntries(db, id, patch.slots);
+  return getTemplate(db, id);
+}
+function derivedCellIds(recordId, slot) {
+  return { value: `${recordId}~v~${slot}`, relation: `${recordId}~r~${slot}` };
+}
+function isRelationSlot(slot) {
+  return slot.length > 2 && slot.endsWith("[]");
+}
+function relKeyPart(fk) {
+  return encodeURIComponent(fk).replace(/~/g, "%7E");
+}
+function relationCellIds(recordId, slot, fk) {
+  const k = relKeyPart(fk);
+  return { value: `${recordId}~mv~${slot}~${k}`, relation: `${recordId}~mr~${slot}~${k}` };
+}
+function putCell(values, slot, content) {
+  if (!isRelationSlot(slot)) {
+    values[slot] = content;
+    return;
+  }
+  let arr = [];
+  try {
+    const cur = JSON.parse(values[slot] ?? "[]");
+    if (Array.isArray(cur)) arr = cur.map(String);
+  } catch {
+    arr = [];
+  }
+  if (!arr.includes(content)) arr.push(content);
+  arr.sort();
+  values[slot] = JSON.stringify(arr);
+}
+function parseRelationInput2(slot, raw2) {
+  let list;
+  try {
+    list = JSON.parse(raw2);
+  } catch {
+    list = raw2;
+  }
+  const arr = Array.isArray(list) ? list : [list];
+  const out = [...new Set(arr.map((x) => String(x)).filter((x) => x !== ""))];
+  for (const fk of out) if (fk.length > RELATION_MAX_KEY_LEN) throw new Error(`relation slot ${slot}: key too long (>${RELATION_MAX_KEY_LEN})`);
+  if (out.length > RELATION_MAX_PER_CALL) throw new Error(`relation slot ${slot}: too many keys in one write (>${RELATION_MAX_PER_CALL})`);
+  return out;
+}
+async function loadReferencedEntries(db, entryIds, recordOwnerId) {
+  const ids = [...new Set(Object.values(entryIds))];
+  if (ids.length === 0) return /* @__PURE__ */ new Map();
+  const rows = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const res = await db.all(`SELECT id, content, owner_id FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
+    rows.push(...res.results ?? []);
+  }
+  const found = new Map(rows.map((r) => [r.id, r]));
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length > 0) throw new Error(`entry not found: ${missing.join(", ")}`);
+  if (recordOwnerId != null) {
+    const foreign = rows.filter((r) => r.owner_id != null && r.owner_id !== recordOwnerId);
+    if (foreign.length > 0) {
+      throw new Error(
+        `entry owner mismatch: ${foreign.map((r) => `${r.id}(${r.owner_id})`).join(", ")} != ${recordOwnerId}`
+      );
+    }
+  }
+  return new Map(rows.map((r) => [r.id, r.content]));
+}
+async function recordBelongs(db, recordId) {
+  const row = await db.first(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}' LIMIT 1`, [recordId]);
+  return row ?? null;
+}
+async function filterExistingRecordIds(db, templateId, ids) {
+  const keep = /* @__PURE__ */ new Set();
+  const CHUNK = 80;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const ph = chunk.map(() => "?").join(",");
+    const rows = await db.all(
+      `SELECT DISTINCT src_id FROM entries WHERE src_id IN (${ph}) AND rel_id = '${SYS_BELONGS}' AND dst_id = ?`,
+      [...chunk, templateId]
+    );
+    for (const r of rows.results ?? []) keep.add(r.src_id);
+  }
+  return ids.filter((id) => keep.has(id));
+}
+async function cardIdentity(db, recordId) {
+  const row = await cardRowById(db, recordId);
+  if (!row || row.fmt !== 1 || !row.tpl_id) return null;
+  const tpl = await getTemplateById(db, row.tpl_id);
+  return tpl && isCardTemplate(tpl) ? { row, tpl } : null;
+}
+async function coveredFieldMap(db, tpl) {
+  const slots = JSON.parse(tpl.slots_json);
+  const synced = syncFieldMap(parseFieldMap(tpl.fields_json), slots);
+  if (synced.changed || !tpl.fields_json) {
+    await db.run("UPDATE templates SET fields_json = ? WHERE id = ?", [JSON.stringify(synced.map), tpl.id]);
+    tpl.fields_json = JSON.stringify(synced.map);
+  }
+  return synced.map;
+}
+async function createCard(db, tpl, recordId, values, entryIds, ownerId, referenced, createOnly) {
+  const slots = JSON.parse(tpl.slots_json);
+  const map = await coveredFieldMap(db, tpl);
+  const known = Object.fromEntries(Object.entries(values).filter(([s]) => slots.includes(s)));
+  const props = encodeProps(map, known, entryIds, (slot, raw2) => parseRelationInput(slot, raw2, RELATION_MAX_KEY_LEN, RELATION_MAX_PER_CALL));
+  const st = cardInsertStatement(recordId, tpl.id, ownerId, props, { ignore: true });
+  const claim = await db.run(st.sql, st.params);
+  if (claim.meta?.changes !== 1) {
+    if (claim.meta?.changes === void 0 && createOnly) throw new Error("create_only needs a storage driver that reports meta.changes");
+    if (createOnly) throw new RecordExistsError(recordId);
+    const cur = await db.first("SELECT fmt, tpl_id FROM entries WHERE id = ?", [recordId]);
+    if (cur?.fmt !== 1 || cur.tpl_id !== tpl.id) throw new Error(`record exists in another format: ${recordId}`);
+    const set = cardSetStatement(recordId, props);
+    if (set) await db.run(set.sql, set.params);
+  }
+  const out = { ...values };
+  for (const [slot, entryId] of Object.entries(entryIds)) out[slot] = referenced.get(entryId) ?? "";
+  return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
+}
+async function planUpdateCard(db, ci, values) {
+  const { row, tpl } = ci;
+  const allowed = JSON.parse(tpl.slots_json);
+  const map = await coveredFieldMap(db, tpl);
+  const canon = canonicalizeEntityValues(allowed, values);
+  const cur = parseProps(row.props);
+  const changes = {};
+  for (const [slot, content] of Object.entries(canon)) {
+    if (!allowed.includes(slot)) throw new Error(`slot not in template: ${slot}`);
+    if (isRelationSlot(slot)) throw new Error(`relation slot ${slot}: use POST /records/:id/relation (add/remove), not PATCH`);
+    const key = map.by_name[slot];
+    if (cur[key] === content) continue;
+    changes[key] = content;
+  }
+  const set = cardSetStatement(row.id, changes);
+  return {
+    stmts: set ? [set] : [],
+    finish: async () => {
+      const merged = { ...row, props: JSON.stringify({ ...cur, ...changes }) };
+      return (await decodeCards(db, tpl, [merged]))[0];
+    }
+  };
+}
+async function deleteCard(db, ci) {
+  const id = ci.row.id;
+  const legacy = await recordBelongs(db, id);
+  if (legacy) await db.run(`DELETE FROM entries WHERE src_id = ?1 AND (rel_id != '${SYS_BELONGS}' OR dst_id = ?2)`, [id, legacy.dst_id]);
+  await db.run("DELETE FROM entries WHERE id = ? AND fmt = 1", [id]);
+}
+async function planEditCardRelation(db, ci, slot, add2, remove) {
+  const map = await coveredFieldMap(db, ci.tpl);
+  const key = map.by_name[slot];
+  if (!key) throw new Error(`slot not in template: ${slot}`);
+  const stmts = [];
+  if (add2.length > 0 || remove.length > 0) stmts.push(cardRelationStatement(ci.row.id, key, add2, remove));
+  return {
+    stmts,
+    finish: async () => {
+      const now = await db.first("SELECT props FROM entries WHERE id = ?", [ci.row.id]);
+      const arr = parseProps(now?.props)[key];
+      const keys = Array.isArray(arr) ? [...new Set(arr.map(String))].sort() : [];
+      return { record_id: ci.row.id, slot, keys };
+    }
+  };
+}
+async function prepareCreate(db, input) {
+  if (input.create_only && !input.record_id) throw new Error("create_only requires record_id");
+  const tpl = await getTemplate(db, input.template);
+  if (!tpl) throw new Error(`template not found: ${input.template}`);
+  const slots = JSON.parse(tpl.slots_json);
+  const recordId = input.record_id ?? uid("rec");
+  const values = canonicalizeEntityValues(slots, input.values ?? {});
+  const entryIds = input.entry_ids ?? {};
+  const refSlots = Object.keys(entryIds);
+  const ownerId = input.owner_id ?? null;
+  const both = refSlots.filter((s) => s in values);
+  if (both.length > 0) throw new Error(`slot given both value and entry_id: ${both.join(", ")}`);
+  const unknown = refSlots.filter((s) => !slots.includes(s));
+  if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
+  const referenced = await loadReferencedEntries(db, entryIds, ownerId);
+  return { tpl, slots, recordId, values, entryIds, ownerId, referenced };
+}
+function nonCardCreateStatements(ctx, input, claimStmt, includeClaim) {
+  const { tpl, slots, recordId, values, entryIds, ownerId, referenced } = ctx;
+  const writtenSlots = slots.filter((s) => s in entryIds || s in values);
+  const cellMeta = (slot) => {
+    if (slot !== "subject" && slot !== "object") return {};
+    const raw2 = "library" in entryIds ? referenced.get(entryIds["library"]) : values["library"];
+    const lib = typeof raw2 === "string" ? raw2.trim() : "";
+    return lib && lib !== UNLABELLED_LIBRARY ? { metadata_json: JSON.stringify({ library: lib }) } : {};
+  };
+  const stmts = [
+    // 身分列（create_only 時已單獨送過，這裡不重送）
+    ...includeClaim ? [claimStmt] : [],
+    // 歸屬＝一條關係（舊 template_id 欄的下場）
+    belongsStatement(recordId, tpl.id, ownerId),
+    // 欄位謂詞自癒（決定性 id，冪等）——只補這次真的要寫的 slot
+    ...fieldEntryStatements(tpl.id, writtenSlots)
+  ];
+  for (const slot of writtenSlots) {
+    if (slot in entryIds) {
+      stmts.push(entryRowStatement({ id: uid("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: entryIds[slot] }));
+      continue;
+    }
+    if (isRelationSlot(slot)) {
+      for (const fk of parseRelationInput2(slot, values[slot])) {
+        const ids = relationCellIds(recordId, slot, fk);
+        stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId, ...cellMeta(slot) }, { ignore: true }));
+        stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
+      }
+      continue;
+    }
+    if (input.derived_cell_ids) {
+      const ids = derivedCellIds(recordId, slot);
+      stmts.push(entryRowStatement({ id: ids.value, content: values[slot], owner_id: ownerId, ...cellMeta(slot) }, { ignore: true }));
+      stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
+      continue;
+    }
+    const valueId = uid("e");
+    stmts.push(entryRowStatement({ id: valueId, content: values[slot], owner_id: ownerId, refs_json: "[]", tags_json: "[]", ...cellMeta(slot) }));
+    stmts.push(entryRowStatement({ id: uid("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: valueId }));
+  }
+  return stmts;
+}
+function createResultOf(ctx) {
+  const out = { ...ctx.values };
+  for (const [slot, entryId] of Object.entries(ctx.entryIds)) out[slot] = ctx.referenced.get(entryId) ?? "";
+  return { record_id: ctx.recordId, template_id: ctx.tpl.id, values: out, owner_id: ctx.ownerId };
+}
+async function runPlan(db, plan) {
+  if (plan.stmts.length === 1) await db.run(plan.stmts[0].sql, plan.stmts[0].params);
+  else if (plan.stmts.length > 1) await db.batch(plan.stmts);
+  return plan.finish();
+}
+async function planCreateRecord(db, input) {
+  if (input.create_only) throw new Error("create_only is not supported in a batch (use single POST /records)");
+  const ctx = await prepareCreate(db, input);
+  const { tpl, recordId, values, entryIds, ownerId } = ctx;
+  if (isCardTemplate(tpl)) {
+    const map = await coveredFieldMap(db, tpl);
+    const known = Object.fromEntries(Object.entries(values).filter(([s]) => ctx.slots.includes(s)));
+    const props = encodeProps(map, known, entryIds, (slot, raw2) => parseRelationInput(slot, raw2, RELATION_MAX_KEY_LEN, RELATION_MAX_PER_CALL));
+    return { stmts: [cardInsertStatement(recordId, tpl.id, ownerId, props, { ignore: true })], finish: async () => createResultOf(ctx) };
+  }
+  const placement = await resolvePlacement(db, input.parent_id, ownerId);
+  const claimStmt = entryRowStatement({ id: recordId, owner_id: ownerId, ...placement?.placed ? { parent_id: placement.parent_id } : {} }, { ignore: true });
+  const stmts = nonCardCreateStatements(ctx, { ...input, derived_cell_ids: true }, claimStmt, true);
+  const mapTracked = isMapTrackedTemplate(tpl.name);
+  return {
+    stmts,
+    finish: async () => {
+      const res = { ...createResultOf(ctx), ...placement ? { placement } : {} };
+      if (mapTracked) {
+        const stored = Object.fromEntries(Object.entries(res.values).filter(([slot]) => ctx.slots.includes(slot)));
+        await noteRecordWrite(db, tpl.name, ownerId, null, stored);
+      }
+      return res;
+    }
+  };
+}
+async function createRecord(db, input) {
+  const ctx = await prepareCreate(db, input);
+  const { tpl, slots, recordId, values, entryIds, ownerId, referenced } = ctx;
+  if (isCardTemplate(tpl)) return createCard(db, tpl, recordId, values, entryIds, ownerId, referenced, !!input.create_only);
+  const mapTracked = isMapTrackedTemplate(tpl.name);
+  const mapBefore = mapTracked && input.record_id ? (await getRecord(db, input.record_id))?.values ?? null : null;
+  const placement = await resolvePlacement(db, input.parent_id, ownerId);
+  const claimStmt = entryRowStatement({ id: recordId, owner_id: ownerId, ...placement?.placed ? { parent_id: placement.parent_id } : {} }, { ignore: true });
+  if (input.create_only) {
+    const claim = await db.run(claimStmt.sql, claimStmt.params);
+    if (claim.meta?.changes !== 1) {
+      if (claim.meta?.changes === void 0) throw new Error("create_only needs a storage driver that reports meta.changes");
+      throw new RecordExistsError(recordId);
+    }
+  }
+  await db.batch(nonCardCreateStatements(ctx, input, claimStmt, !input.create_only));
+  const out = createResultOf(ctx).values;
+  if (mapTracked) {
+    const stored = Object.fromEntries(Object.entries(out).filter(([slot]) => slots.includes(slot)));
+    const mapAfter = input.record_id ? (await getRecord(db, recordId))?.values ?? stored : stored;
+    await noteRecordWrite(db, tpl.name, ownerId, mapBefore, mapAfter);
+  }
+  return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId, ...placement ? { placement } : {} };
+}
+async function resolvePlacement(db, parentId, ownerId) {
+  if (parentId === void 0 || parentId === null || parentId === "") return void 0;
+  const row = await db.first("SELECT owner_id FROM entries WHERE id = ? AND src_id IS NULL", [parentId]);
+  if (!row || (row.owner_id ?? null) !== (ownerId ?? null)) return { parent_id: parentId, placed: false, reason: "parent_not_found" };
+  return { parent_id: parentId, placed: true };
+}
+async function updateRecord(db, recordId, values, opts) {
+  const plan = await planUpdateRecord(db, recordId, values, opts);
+  return plan ? runPlan(db, plan) : null;
+}
+async function planUpdateRecord(db, recordId, values, opts) {
+  const ci = await cardIdentity(db, recordId);
+  if (ci) {
+    opts?.onOwner?.(ci.row.owner_id ?? null);
+    return planUpdateCard(db, ci, values);
+  }
+  const [belongs, cellRes, identity] = await Promise.all([
+    recordBelongs(db, recordId),
+    db.all(
+      // inkstone/arcrun-rag#292：連現值一起讀，值沒變的格子不寫（大實例每句寫入都是一趟慢來回）。
+      `SELECT f.content AS slot_name, r.dst_id AS entry_id, v.content AS cur
+       FROM entries r JOIN entries f ON r.rel_id = f.id
+       LEFT JOIN entries v ON v.id = r.dst_id
+       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
+      [recordId]
+    ),
+    // record 的歸屬＝身分 entry 的 owner（grow 建新 entry 時沿用，防孤兒 entry）
+    db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId])
+  ]);
+  if (!belongs) return null;
+  const templateId = belongs.dst_id;
+  const recordOwnerId = identity?.owner_id ?? null;
+  opts?.onOwner?.(recordOwnerId);
+  const tpl = await getTemplate(db, templateId);
+  const mapBefore = tpl && isMapTrackedTemplate(tpl.name) ? await getRecord(db, recordId) : null;
+  const cells = cellRes.results ?? [];
+  const slotToEntries = /* @__PURE__ */ new Map();
+  const entryCurrent = /* @__PURE__ */ new Map();
+  for (const c of cells) {
+    const list = slotToEntries.get(c.slot_name) ?? [];
+    list.push(c.entry_id);
+    slotToEntries.set(c.slot_name, list);
+    entryCurrent.set(c.entry_id, c.cur ?? null);
+  }
+  const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntries.keys()];
+  const canon = canonicalizeEntityValues(allowed, values);
+  for (const slot of Object.keys(canon)) {
+    if (!allowed.includes(slot)) {
+      throw new Error(`slot not in template: ${slot}`);
+    }
+    if (isRelationSlot(slot)) {
+      throw new Error(`relation slot ${slot}: use POST /records/:id/relation (add/remove), not PATCH`);
+    }
+  }
+  const updates = [];
+  for (const [slot, content] of Object.entries(canon)) {
+    const entryIds = slotToEntries.get(slot);
+    if (entryIds && entryIds.length > 0) {
+      for (const entryId of entryIds) {
+        if (entryCurrent.get(entryId) === content) continue;
+        updates.push({ sql: `UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`, params: [content, entryId] });
+      }
+    } else {
+      updates.push(...fieldEntryStatements(templateId, [slot]));
+      if (opts?.deterministic) {
+        const ids = derivedCellIds(recordId, slot);
+        updates.push(entryRowStatement({ id: ids.value, content, owner_id: recordOwnerId, refs_json: "[]", tags_json: "[]" }, { ignore: true }));
+        updates.push(entryRowStatement({ id: ids.relation, owner_id: recordOwnerId, src_id: recordId, rel_id: fieldEntryId(templateId, slot), dst_id: ids.value }, { ignore: true }));
+      } else {
+        const valueId = uid("e");
+        updates.push(entryRowStatement({ id: valueId, content, owner_id: recordOwnerId, refs_json: "[]", tags_json: "[]" }));
+        updates.push(entryRowStatement({ id: uid("relv"), owner_id: recordOwnerId, src_id: recordId, rel_id: fieldEntryId(templateId, slot), dst_id: valueId }));
+      }
+    }
+  }
+  return {
+    stmts: updates,
+    finish: async () => {
+      const after = await readRecordKnown(db, recordId, templateId, recordOwnerId);
+      if (tpl && mapBefore) await noteRecordWrite(db, tpl.name, recordOwnerId, mapBefore.values, after.values);
+      return after;
+    }
+  };
+}
+async function readRecordKnown(db, recordId, templateId, ownerId) {
+  const res = await db.all(
+    `SELECT f.content AS slot, v.content AS content
+       FROM entries r
+       JOIN entries f ON r.rel_id = f.id
+       JOIN entries v ON r.dst_id = v.id
+       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
+    [recordId]
+  );
+  const values = {};
+  for (const r of res.results ?? []) putCell(values, r.slot, r.content);
+  return { record_id: recordId, template_id: templateId, values, owner_id: ownerId };
+}
+async function getRecord(db, recordId) {
+  const ci = await cardIdentity(db, recordId);
+  if (ci) return (await decodeCards(db, ci.tpl, [ci.row]))[0];
+  const [belongs, res, identity] = await Promise.all([
+    recordBelongs(db, recordId),
+    db.all(
+      `SELECT f.content AS slot, v.content AS content
+       FROM entries r
+       JOIN entries f ON r.rel_id = f.id
+       JOIN entries v ON r.dst_id = v.id
+       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
+      [recordId]
+    ),
+    db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId])
+  ]);
+  if (!belongs) return null;
+  const values = {};
+  for (const r of res.results ?? []) putCell(values, r.slot, r.content);
+  return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
+}
+async function getRecords(db, recordIds, ownerId) {
+  const ids = [...new Set(recordIds)];
+  if (ids.length === 0) return [];
+  const rows = await cardRowsByIds(db, ids);
+  const cardRows = rows.filter((r) => r.fmt === 1 && r.tpl_id);
+  if (cardRows.length === 0) return getRecordsLegacy(db, ids, ownerId);
+  const tpls = /* @__PURE__ */ new Map();
+  for (const t of new Set(cardRows.map((r) => r.tpl_id))) tpls.set(t, await getTemplateById(db, t));
+  const decoded = /* @__PURE__ */ new Map();
+  for (const [tid, tpl] of tpls) {
+    if (!isCardTemplate(tpl)) continue;
+    for (const r of await decodeCards(db, tpl, cardRows.filter((x) => x.tpl_id === tid))) decoded.set(r.record_id, r);
+  }
+  const rest = ids.filter((id) => !decoded.has(id));
+  const legacy = rest.length > 0 ? await getRecordsLegacy(db, rest, ownerId) : [];
+  const legacyById = new Map(legacy.map((r) => [r.record_id, r]));
+  const out = [];
+  for (const id of ids) {
+    const c = decoded.get(id);
+    if (c) {
+      if (ownerId == null || c.owner_id === ownerId) out.push(c);
+      continue;
+    }
+    const l = legacyById.get(id);
+    if (l) out.push(l);
+  }
+  return out;
+}
+async function getRecordsLegacy(db, recordIds, ownerId) {
+  const ids = [...new Set(recordIds)];
+  const belongs = /* @__PURE__ */ new Map();
+  const owners = /* @__PURE__ */ new Map();
+  const values = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const ph = chunk.map(() => "?").join(",");
+    const b = await db.all(
+      `SELECT src_id, dst_id FROM entries WHERE src_id IN (${ph}) AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}'`,
+      [...chunk]
+    );
+    for (const r of b.results ?? []) if (!belongs.has(r.src_id)) belongs.set(r.src_id, r.dst_id);
+    const o = await db.all(`SELECT id, owner_id FROM entries WHERE id IN (${ph})`, [...chunk]);
+    for (const r of o.results ?? []) owners.set(r.id, r.owner_id);
+    const v = await db.all(
+      `SELECT r.src_id AS rid, f.content AS slot, v.content AS content
+       FROM entries r
+       JOIN entries f ON r.rel_id = f.id
+       JOIN entries v ON r.dst_id = v.id
+       WHERE r.src_id IN (${ph}) AND r.rel_id != '${SYS_BELONGS}'`,
+      [...chunk]
+    );
+    for (const r of v.results ?? []) {
+      const m = values.get(r.rid) ?? {};
+      putCell(m, r.slot, r.content);
+      values.set(r.rid, m);
+    }
+  }
+  const out = [];
+  for (const id of ids) {
+    const tpl = belongs.get(id);
+    if (!tpl) continue;
+    const owner = owners.get(id) ?? null;
+    if (ownerId != null && owner !== ownerId) continue;
+    out.push({ record_id: id, template_id: tpl, values: values.get(id) ?? {}, owner_id: owner });
+  }
+  return out;
+}
+async function searchByTemplate(db, template, owner_id, limit = 100, offset = 0) {
+  return (await searchByTemplatePage(db, template, owner_id, limit, offset)).records;
+}
+async function resolveTotal(db, sheetId, owner_id, offset, limit, got, exactTotal) {
+  if (offset === 0 && got < limit) return { total: got, totalExact: true };
+  if (!exactTotal) return { total: offset + got + 1, totalExact: false };
+  const row = owner_id ? await db.first(`SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?`, [sheetId, owner_id]) : await db.first(`SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`, [sheetId]);
+  return { total: row?.total ?? 0, totalExact: true };
+}
+async function memberRecordIds(db, tplId, owner_id, limit, offset) {
+  const cardTpl = await getTemplateById(db, tplId);
+  if (isCardTemplate(cardTpl)) {
+    const res2 = owner_id ? await db.all("SELECT id FROM entries WHERE tpl_id = ? AND +owner_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", [tplId, owner_id, limit, offset]) : await db.all("SELECT id FROM entries WHERE tpl_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", [tplId, limit, offset]);
+    return (res2.results ?? []).map((r) => r.id);
+  }
+  const res = owner_id ? await db.all(
+    `SELECT src_id AS record_id FROM entries
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
+    [tplId, owner_id, limit, offset]
+  ) : await db.all(
+    `SELECT src_id AS record_id FROM entries
+           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
+    [tplId, limit, offset]
+  );
+  return (res.results ?? []).map((r) => r.record_id);
+}
+async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false, slots) {
+  const tpl = await getTemplate(db, template);
+  if (!tpl) return { records: [], total: 0, totalExact: true, templateExists: false };
+  const cap = Math.min(Math.max(limit, 1), 500);
+  const skip = Math.max(offset, 0);
+  if (isCardTemplate(tpl)) {
+    const records = await cardPage(db, tpl, owner_id, cap, skip);
+    if (skip === 0 && records.length < cap) return { records, total: records.length, totalExact: true };
+    if (!exactTotal) return { records, total: skip + records.length + 1, totalExact: false };
+    return { records, total: await cardCount(db, tpl.id, owner_id), totalExact: true };
+  }
+  const ids = await memberRecordIds(db, tpl.id, owner_id, cap, skip);
+  const { total, totalExact } = await resolveTotal(db, tpl.id, owner_id, skip, cap, ids.length, exactTotal);
+  if (ids.length === 0) return { records: [], total, totalExact };
+  return { records: await hydrateRecordValues(db, tpl.id, ids, slots), total, totalExact };
+}
+async function hydrateRecordValues(db, tplId, ids, slots) {
+  const cardTpl = await getTemplateById(db, tplId);
+  if (isCardTemplate(cardTpl)) {
+    const decoded = new Map((await decodeCards(db, cardTpl, await cardRowsByIds(db, ids))).map((r) => [r.record_id, r]));
+    const want = slots && slots.length > 0 ? new Set(slots) : null;
+    return ids.map((id) => decoded.get(id)).filter((r) => !!r).map((r) => want ? { ...r, values: Object.fromEntries(Object.entries(r.values).filter(([k]) => want.has(k))) } : r);
+  }
+  const byId = /* @__PURE__ */ new Map();
+  for (const id of ids) byId.set(id, { record_id: id, template_id: tplId, values: {}, owner_id: null });
+  const wanted = slots && slots.length > 0 ? [...new Set(slots)].map((s) => fieldEntryId(tplId, s)) : null;
+  const only = wanted && wanted.length <= D1_PARAM_CAP - 10 ? wanted : null;
+  const onlyClause = only ? ` AND +r.rel_id IN (${only.map(() => "?").join(",")})` : "";
+  const batch = Math.max(1, Math.min(90, D1_PARAM_CAP - (only?.length ?? 0)));
+  for (let i = 0; i < ids.length; i += batch) {
+    const chunk = ids.slice(i, i + batch);
+    const placeholders = chunk.map(() => "?").join(",");
+    const [cellRes, identRes] = await Promise.all([
+      db.all(
+        `SELECT r.src_id AS record_id, f.content AS slot, v.content AS content
+           FROM entries r
+           JOIN entries f ON r.rel_id = f.id
+           JOIN entries v ON r.dst_id = v.id
+           WHERE r.src_id IN (${placeholders}) AND r.rel_id != '${SYS_BELONGS}'${onlyClause}`,
+        [...chunk, ...only ?? []]
+      ),
+      db.all(`SELECT id, owner_id FROM entries WHERE id IN (${placeholders})`, [...chunk])
+    ]);
+    for (const r of cellRes.results ?? []) {
+      const rec = byId.get(r.record_id);
+      if (rec) putCell(rec.values, r.slot, r.content);
+    }
+    for (const r of identRes.results ?? []) {
+      const rec = byId.get(r.id);
+      if (rec) rec.owner_id = r.owner_id;
+    }
+  }
+  return ids.map((id) => byId.get(id)).filter((r) => !!r);
+}
+async function deleteRecord(db, recordId) {
+  const ci = await cardIdentity(db, recordId);
+  if (ci) {
+    await deleteCard(db, ci);
+    return true;
+  }
+  const belongs = await recordBelongs(db, recordId);
+  if (!belongs) return false;
+  const mapTpl = await getTemplate(db, belongs.dst_id);
+  const mapBefore = mapTpl && isMapTrackedTemplate(mapTpl.name) ? await getRecord(db, recordId) : null;
+  const cellRes = await db.all(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id != '${SYS_BELONGS}'`, [recordId]);
+  const dsts = (cellRes.results ?? []).map((r) => r.dst_id);
+  await db.run(`DELETE FROM entries WHERE src_id = ?1 AND (rel_id != '${SYS_BELONGS}' OR dst_id = ?2)`, [recordId, belongs.dst_id]);
+  await db.run(
+    `DELETE FROM entries WHERE id = ?1 AND content IS NULL AND metadata_json IS NULL AND src_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
+        AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`,
+    [recordId]
+  );
+  for (const dst of dsts) {
+    await db.run(
+      `DELETE FROM entries WHERE id = ?1
+          AND substr(id, 1, 4) <> 'sys_'
+          AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
+          AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`,
+      [dst]
+    );
+  }
+  if (mapTpl && mapBefore) await noteRecordWrite(db, mapTpl.name, mapBefore.owner_id, mapBefore.values, null);
+  return true;
+}
+async function editRelation(db, recordId, slot, edit) {
+  const plan = await planEditRelation(db, recordId, slot, edit);
+  return plan ? runPlan(db, plan) : null;
+}
+async function planEditRelation(db, recordId, slot, edit, opts) {
+  const ci = await cardIdentity(db, recordId);
+  const belongs = ci ? null : await recordBelongs(db, recordId);
+  if (!ci && !belongs) return null;
+  const tpl = ci ? ci.tpl : await getTemplate(db, belongs.dst_id);
+  if (!tpl) return null;
+  if (!isRelationSlot(slot)) throw new Error(`not a relation slot (name must end with []): ${slot}`);
+  const slots = JSON.parse(tpl.slots_json);
+  if (!slots.includes(slot)) throw new Error(`slot not in template: ${slot}`);
+  const clean2 = (xs, what) => {
+    if (xs === void 0) return [];
+    if (!Array.isArray(xs)) throw new Error(`${what} must be an array of strings`);
+    const out = [...new Set(xs.map((x) => String(x)).filter((x) => x !== ""))];
+    for (const k of out) if (k.length > RELATION_MAX_KEY_LEN) throw new Error(`${what}: key too long (>${RELATION_MAX_KEY_LEN})`);
+    if (out.length > RELATION_MAX_PER_CALL) throw new Error(`${what}: too many keys in one call (>${RELATION_MAX_PER_CALL})`);
+    return out;
+  };
+  const add2 = clean2(edit.add, "add");
+  const remove = clean2(edit.remove, "remove").filter((k) => !add2.includes(k));
+  if (ci) {
+    opts?.onOwner?.(ci.row.owner_id ?? null);
+    return planEditCardRelation(db, ci, slot, add2, remove);
+  }
+  const relId = fieldEntryId(tpl.id, slot);
+  const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
+  const ownerId = identity?.owner_id ?? null;
+  opts?.onOwner?.(ownerId);
+  const stmts = [];
+  if (remove.length > 0) {
+    const ph = remove.map(() => "?").join(",");
+    const found = await db.all(
+      `SELECT r.id AS rid, v.id AS vid FROM entries r JOIN entries v ON r.dst_id = v.id
+        WHERE r.src_id = ? AND r.rel_id = ? AND v.content IN (${ph})`,
+      [recordId, relId, ...remove]
+    );
+    for (const row of found.results ?? []) {
+      stmts.push({ sql: "DELETE FROM entries WHERE id = ?", params: [row.rid] });
+      stmts.push({ sql: "DELETE FROM entries WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1 AND id != ?2)", params: [row.vid, row.rid] });
+    }
+  }
+  if (add2.length > 0) {
+    stmts.push(...fieldEntryStatements(tpl.id, [slot]));
+    for (const fk of add2) {
+      const ids = relationCellIds(recordId, slot, fk);
+      stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId }, { ignore: true }));
+      stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: relId, dst_id: ids.value }, { ignore: true }));
+    }
+  }
+  return {
+    stmts,
+    finish: async () => {
+      const cur = await db.all(
+        `SELECT v.content AS content FROM entries r JOIN entries v ON r.dst_id = v.id WHERE r.src_id = ? AND r.rel_id = ?`,
+        [recordId, relId]
+      );
+      const keys = [...new Set((cur.results ?? []).map((r) => r.content))].sort();
+      return { record_id: recordId, slot, keys };
+    }
+  };
+}
+var kindTemplateIds, RecordExistsError, RELATION_MAX_PER_CALL, RELATION_MAX_KEY_LEN, D1_PARAM_CAP;
+var init_record_crud = __esm({
+  "kbdb/src/actions/record-crud.ts"() {
+    "use strict";
+    init_kind();
+    init_entity_canon();
+    init_library_predicate();
+    init_library_map_store();
+    init_template_guard();
+    init_template_shape();
+    init_card_row();
+    kindTemplateIds = /* @__PURE__ */ new WeakMap();
+    RecordExistsError = class extends Error {
+      recordId;
+      constructor(recordId) {
+        super(`record already exists: ${recordId}`);
+        this.name = "RecordExistsError";
+        this.recordId = recordId;
+      }
+    };
+    RELATION_MAX_PER_CALL = 100;
+    RELATION_MAX_KEY_LEN = 512;
+    D1_PARAM_CAP = 99;
+  }
+});
+
+// kbdb/src/actions/brake-settings.ts
+async function ensureSettingsTemplate(db) {
+  const tpl = await getTemplate(db, SETTINGS_TEMPLATE_ID);
+  if (tpl) {
+    const have = JSON.parse(tpl.slots_json);
+    if (SETTINGS_SLOTS.every((s) => have.includes(s))) return;
+    await updateTemplate(db, SETTINGS_TEMPLATE_ID, { slots: [.../* @__PURE__ */ new Set([...have, ...SETTINGS_SLOTS])] });
+    return;
+  }
+  await createTemplate(db, {
+    id: SETTINGS_TEMPLATE_ID,
+    name: "kbdb_settings",
+    description: "\u9019\u53F0 KBDB \u7684\u71DF\u904B\u8A2D\u5B9A\uFF08inkstone/arcrun-rag#207\uFF09\uFF1A\u76EE\u524D\u53EA\u6709 brake_enabled \u4E00\u683C\u2014\u2014\u5E33\u865F\u4E3B\u4EBA\u81EA\u5DF1\u80FD\u4E0D\u80FD\u95DC\u6389\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u3002\u4E00\u500B\u5BE6\u4F8B\u4E00\u7B46\uFF0C\u4E0D\u639B owner\u3002",
+    slots: SETTINGS_SLOTS,
+    created_by: "kbdb-speedometer"
+  }, { skipShapeGate: true });
+}
+function toSettings(rec) {
+  const v = rec?.values ?? {};
+  return {
+    brake_enabled: v.brake_enabled !== "false",
+    updated_at: v.updated_at || null,
+    updated_by: v.updated_by || null
+  };
+}
+async function getBrakeSettings(db) {
+  const now = Date.now();
+  if (settingsCache && now - settingsCache.at <= SETTINGS_CACHE_MS) return settingsCache.settings;
+  if (settingsInflight) return settingsInflight;
+  const p = (async () => {
+    try {
+      const [, rec] = await Promise.all([ensureSettingsTemplate(db), getRecord(db, SETTINGS_RECORD_ID)]);
+      const settings = toSettings(rec);
+      settingsCache = { at: Date.now(), settings };
+      return settings;
+    } catch (e) {
+      if (settingsCache) return settingsCache.settings;
+      throw e;
+    }
+  })().finally(() => {
+    settingsInflight = null;
+  });
+  settingsInflight = p;
+  return p;
+}
+function brakeKnownDisabled() {
+  return !!settingsCache && settingsCache.settings.brake_enabled === false;
+}
+async function brakeEnabled(db) {
+  return (await getBrakeSettings(db)).brake_enabled;
+}
+async function setBrakeEnabled(db, enabled, by, now = Date.now()) {
+  await ensureSettingsTemplate(db);
+  const values = {
+    brake_enabled: String(enabled),
+    updated_at: new Date(now).toISOString(),
+    updated_by: (by || "manual").slice(0, 120)
+  };
+  const existing = await getRecord(db, SETTINGS_RECORD_ID);
+  const rec = existing ? await updateRecord(db, SETTINGS_RECORD_ID, values) : await createRecord(db, { template: SETTINGS_TEMPLATE_ID, record_id: SETTINGS_RECORD_ID, values, owner_id: null, derived_cell_ids: true });
+  settingsInflight = null;
+  settingsCache = null;
+  return toSettings(rec);
+}
+var SETTINGS_TEMPLATE_ID, SETTINGS_SLOTS, SETTINGS_RECORD_ID, SETTINGS_CACHE_MS, settingsCache, settingsInflight;
+var init_brake_settings = __esm({
+  "kbdb/src/actions/brake-settings.ts"() {
+    "use strict";
+    init_record_crud();
+    SETTINGS_TEMPLATE_ID = "tpl-kbdb-settings";
+    SETTINGS_SLOTS = ["brake_enabled", "updated_at", "updated_by"];
+    SETTINGS_RECORD_ID = "kbdb_settings";
+    SETTINGS_CACHE_MS = 3e4;
+    settingsCache = null;
+    settingsInflight = null;
+  }
+});
+
+// kbdb/src/actions/tree.ts
+function isPermClass(v) {
+  return typeof v === "string" && PERM_CLASSES.includes(v);
+}
+function digit(ch) {
+  return ch === void 0 ? 0 : ALPHA.indexOf(ch);
+}
+function midpoint(a, b) {
+  if (b !== null) {
+    let n2 = 0;
+    while ((a[n2] ?? ALPHA[0]) === b[n2]) n2++;
+    if (n2 > 0) return b.slice(0, n2) + midpoint(a.slice(n2), b.slice(n2));
+  }
+  const da = digit(a[0]);
+  const db = b !== null ? digit(b[0]) : ALPHA.length;
+  if (db - da > 1) return ALPHA[Math.round((da + db) / 2)];
+  if (b !== null && b.length > 1) return b.slice(0, 1);
+  return ALPHA[da] + midpoint(a.slice(1), null);
+}
+function keyBetween(a, b) {
+  if (a !== null && b !== null && !(a < b)) throw new TreeError("bad_order", `sort_key \u5340\u9593\u4E0D\u5408\u6CD5\uFF1A${a} \u4E0D\u5C0F\u65BC ${b}`);
+  if (a !== null && a.endsWith(ALPHA[0]) || b !== null && b.endsWith(ALPHA[0])) throw new TreeError("bad_sort_key", "sort_key \u4E0D\u80FD\u4EE5 0 \u7D50\u5C3E");
+  return midpoint(a ?? "", b);
+}
+async function nodeExists(db, id, owner) {
+  const row = await db.first(
+    "SELECT id, parent_id, owner_id FROM entries WHERE id = ? AND src_id IS NULL",
+    [id]
+  );
+  if (!row) return null;
+  if (owner !== void 0 && row.owner_id !== owner) return null;
+  return row;
+}
+async function decorate(db, rows, withContent) {
+  const named = await withTemplates(db, rows);
+  return named.map((r) => {
+    const n2 = {
+      id: String(r.id),
+      parent_id: r.parent_id ?? null,
+      sort_key: r.sort_key ?? null,
+      template: r.template,
+      task_status: r.task_status ?? null,
+      origin: r.origin ?? null,
+      created_by: r.created_by ?? null,
+      perm_class: r.perm_class ?? null,
+      owner_id: r.owner_id ?? null,
+      page_name: r.page_name ?? null,
+      created_at: Number(r.created_at),
+      updated_at: Number(r.updated_at)
+    };
+    if (withContent) n2.content = r.content ?? null;
+    return n2;
+  });
+}
+async function childrenOf(db, id, opts = {}) {
+  if (!await nodeExists(db, id, opts.owner)) throw new TreeError("not_found", `\u7BC0\u9EDE ${id} \u4E0D\u5B58\u5728`, 404);
+  const limit = Math.min(Math.max(opts.limit ?? SUBTREE_DEFAULT_LIMIT, 1), SUBTREE_MAX_LIMIT);
+  const r = await db.all(
+    `SELECT ${NODE_COLS}${opts.content ? ", e.content" : ""} FROM entries e WHERE e.parent_id = ? ${ORDER} LIMIT ?`,
+    [id, limit]
+  );
+  return { rows_read: r.meta?.rows_read ?? null, data: await decorate(db, r.results ?? [], !!opts.content) };
+}
+async function subtreeOf(db, id, opts = {}) {
+  if (!await nodeExists(db, id, opts.owner)) throw new TreeError("not_found", `\u7BC0\u9EDE ${id} \u4E0D\u5B58\u5728`, 404);
+  const maxDepth = Math.min(Math.max(Math.floor(opts.maxDepth ?? SUBTREE_DEFAULT_DEPTH), 0), SUBTREE_MAX_DEPTH);
+  const limit = Math.min(Math.max(Math.floor(opts.limit ?? SUBTREE_DEFAULT_LIMIT), 1), SUBTREE_MAX_LIMIT);
+  const cols = (src) => `${src}.id, ${src}.parent_id, ${src}.sort_key, ${src}.task_status, ${src}.origin, ${src}.created_by, ${src}.perm_class, ${src}.owner_id, ${src}.page_name, ${src}.created_at, ${src}.updated_at, ${src}.rowid AS rid${opts.content ? `, ${src}.content` : ""}`;
+  const r = await db.all(
+    `WITH RECURSIVE sub AS (
+       SELECT ${cols("b")}, 0 AS depth FROM entries b WHERE b.id = ?1
+       UNION ALL
+       SELECT ${cols("e")}, sub.depth + 1 FROM entries e JOIN sub ON e.parent_id = sub.id WHERE sub.depth < ?2
+     )
+     SELECT * FROM sub ORDER BY depth, sort_key IS NULL, sort_key, created_at, rid LIMIT ?3`,
+    [id, maxDepth, limit + 1]
+  );
+  const rows = r.results ?? [];
+  const truncated = rows.length > limit;
+  const kept = truncated ? rows.slice(0, limit) : rows;
+  const nodes = (await decorate(db, kept, !!opts.content)).map((n2, i) => ({ ...n2, depth: Number(kept[i].depth) }));
+  const byId = new Map(nodes.map((n2) => [n2.id, n2]));
+  for (const n2 of nodes) {
+    if (n2.id === id) continue;
+    const p = n2.parent_id ? byId.get(n2.parent_id) : void 0;
+    if (p) (p.children ??= []).push(n2);
+  }
+  let deeper = truncated;
+  if (!deeper && maxDepth < SUBTREE_MAX_DEPTH) {
+    const edge = nodes.filter((n2) => n2.depth === maxDepth).map((n2) => n2.id);
+    if (edge.length > 0) {
+      const ph = edge.map(() => "?").join(",");
+      const more = await db.first(`SELECT 1 AS x FROM entries WHERE parent_id IN (${ph}) LIMIT 1`, edge);
+      deeper = !!more;
+    }
+  }
+  return { rows_read: r.meta?.rows_read ?? null, data: { root: byId.get(id), nodes, truncated: deeper, max_depth: maxDepth } };
+}
+async function ancestorsOf(db, id, opts = {}) {
+  if (!await nodeExists(db, id, opts.owner)) throw new TreeError("not_found", `\u7BC0\u9EDE ${id} \u4E0D\u5B58\u5728`, 404);
+  const cols = (src) => `${src}.id, ${src}.parent_id, ${src}.sort_key, ${src}.task_status, ${src}.origin, ${src}.created_by, ${src}.perm_class, ${src}.owner_id, ${src}.page_name, ${src}.created_at, ${src}.updated_at${opts.content ? `, ${src}.content` : ""}`;
+  const r = await db.all(
+    `WITH RECURSIVE anc AS (
+       SELECT ${cols("b")}, 0 AS depth FROM entries b WHERE b.id = ?1
+       UNION ALL
+       SELECT ${cols("e")}, anc.depth + 1 FROM entries e JOIN anc ON e.id = anc.parent_id WHERE anc.depth < ?2
+     )
+     SELECT * FROM anc WHERE depth > 0 ORDER BY depth`,
+    [id, ANCESTORS_MAX_DEPTH]
+  );
+  const rows = r.results ?? [];
+  const nodes = await decorate(db, rows, !!opts.content);
+  return { rows_read: r.meta?.rows_read ?? null, data: nodes };
+}
+async function assertNoCycle(db, id, newParentId) {
+  if (newParentId === id) throw new TreeError("cycle", "\u4E0D\u80FD\u628A\u7BC0\u9EDE\u642C\u5230\u81EA\u5DF1\u5E95\u4E0B", 409);
+  const anc = await db.all(
+    `WITH RECURSIVE up(id, parent_id, depth) AS (
+       SELECT id, parent_id, 0 FROM entries WHERE id = ?1
+       UNION ALL
+       SELECT e.id, e.parent_id, up.depth + 1 FROM entries e JOIN up ON e.id = up.parent_id WHERE up.depth < ?2
+     ) SELECT id FROM up WHERE id = ?3 LIMIT 1`,
+    [newParentId, ANCESTORS_MAX_DEPTH, id]
+  );
+  if ((anc.results ?? []).length > 0) throw new TreeError("cycle", `\u4E0D\u80FD\u628A ${id} \u642C\u5230\u81EA\u5DF1\u7684\u5B50\u5B6B ${newParentId} \u5E95\u4E0B\uFF08\u6703\u6210\u74B0\uFF09`, 409);
+  return anc.meta?.rows_read ?? 0;
+}
+async function sortKeyFor(db, parentId, selfId, position) {
+  if (parentId === null) {
+    if (position && ("before" in position || "after" in position)) throw new TreeError("bad_position", "\u6700\u4E0A\u5C64\u4E0D\u7DAD\u8B77\u5144\u5F1F\u9806\u5E8F\uFF08\u5217\u5168\u90E8\u6839\u7BC0\u9EDE\u8981\u6383\u6574\u5F35\u8868\uFF09\uFF1B\u8981\u6392\u9806\u5E8F\u8ACB\u639B\u5230\u4E00\u500B\u7238\u7238\u5E95\u4E0B");
+    return { key: keyBetween(null, null), read: 0 };
+  }
+  const sibs = await db.all(
+    "SELECT id, sort_key FROM entries WHERE parent_id = ?2 AND sort_key IS NOT NULL AND id <> ?1 ORDER BY sort_key LIMIT 2000",
+    [selfId, parentId]
+  );
+  const keys = (sibs.results ?? []).map((s) => ({ id: s.id, k: s.sort_key }));
+  const read = sibs.meta?.rows_read ?? 0;
+  const pos = position ?? { last: true };
+  if ("first" in pos) return { key: keyBetween(null, keys[0]?.k ?? null), read };
+  if ("last" in pos) return { key: keyBetween(keys.length ? keys[keys.length - 1].k : null, null), read };
+  const ref = "before" in pos ? pos.before : pos.after;
+  const idx = keys.findIndex((s) => s.id === ref);
+  if (idx < 0) {
+    const exists = await db.first("SELECT parent_id FROM entries WHERE id = ?", [ref]);
+    if (!exists || (exists.parent_id ?? null) !== parentId) throw new TreeError("bad_position", `${ref} \u4E0D\u662F ${parentId ?? "\u6839"} \u5E95\u4E0B\u7684\u5C0F\u5B69`);
+    throw new TreeError("bad_position", `${ref} \u9084\u6C92\u6709\u5144\u5F1F\u9806\u5E8F\uFF08sort_key\uFF09\uFF1B\u5148\u7528 position:{"last":true} \u6216 {"first":true} \u642C\u9032\u4F86\uFF0C\u6216\u5C0D\u5168\u90E8\u5144\u5F1F\u91CD\u6392`);
+  }
+  if ("before" in pos) return { key: keyBetween(idx > 0 ? keys[idx - 1].k : null, keys[idx].k), read };
+  return { key: keyBetween(keys[idx].k, idx + 1 < keys.length ? keys[idx + 1].k : null), read };
+}
+async function moveNode(db, id, input) {
+  const node = await nodeExists(db, id, input.owner);
+  if (!node) throw new TreeError("not_found", `\u7BC0\u9EDE ${id} \u4E0D\u5B58\u5728`, 404);
+  let readTotal = 0;
+  if (input.parent_id !== null) {
+    if (input.parent_id === id) throw new TreeError("cycle", "\u4E0D\u80FD\u628A\u7BC0\u9EDE\u642C\u5230\u81EA\u5DF1\u5E95\u4E0B", 409);
+    const parent = await nodeExists(db, input.parent_id);
+    if (!parent) throw new TreeError("parent_not_found", `\u65B0\u7684\u7238\u7238 ${input.parent_id} \u4E0D\u5B58\u5728`, 404);
+    if ((parent.owner_id ?? null) !== (node.owner_id ?? null)) throw new TreeError("owner_mismatch", "\u4E0D\u80FD\u642C\u5230\u5225\u7684\u79DF\u6236\u7684\u7BC0\u9EDE\u5E95\u4E0B", 409);
+    readTotal += await assertNoCycle(db, id, input.parent_id);
+  }
+  const { key, read } = await sortKeyFor(db, input.parent_id, id, input.position);
+  readTotal += read;
+  await db.run("UPDATE entries SET parent_id = ?, sort_key = ?, updated_at = unixepoch() WHERE id = ?", [input.parent_id, key, id]);
+  return { id, parent_id: input.parent_id, sort_key: key, rows_read: readTotal };
+}
+function assertNodeFields(f) {
+  if (f.perm_class !== void 0 && f.perm_class !== null && !isPermClass(f.perm_class)) {
+    throw new TreeError("bad_perm_class", `perm_class \u53EA\u80FD\u662F ${PERM_CLASSES.join("\uFF0F")}\uFF08\u63CF\u8FF0\u578B AI \u53EF\u91CD\u6574\uFF0F\u898F\u7BC4\u578B\u53EA\u80FD\u7D93 ADR \u6539\uFF0F\u7B46\u8A18\u4EBA\u53EF\u6539\uFF09`);
+  }
+  if (f.sort_key !== void 0 && f.sort_key !== null && (typeof f.sort_key !== "string" || !/^[0-9A-Za-z]{0,255}[1-9A-Za-z]$/.test(f.sort_key))) {
+    throw new TreeError("bad_sort_key", "sort_key \u53EA\u80FD\u662F 0-9A-Za-z \u7D44\u6210\u30011\uFF5E256 \u5B57\u3001\u4E0D\u4EE5 0 \u7D50\u5C3E\u7684\u5B57\u4E32\uFF08\u8981\u6392\u9032\u5144\u5F1F\u4E2D\u9593\u8ACB\u7528 POST /entries/:id/move\uFF09");
+  }
+}
+var PERM_CLASSES, SUBTREE_DEFAULT_DEPTH, SUBTREE_MAX_DEPTH, SUBTREE_DEFAULT_LIMIT, SUBTREE_MAX_LIMIT, ANCESTORS_MAX_DEPTH, TreeError, NODE_COLS, ALPHA, ORDER;
+var init_tree = __esm({
+  "kbdb/src/actions/tree.ts"() {
+    "use strict";
+    init_kind();
+    PERM_CLASSES = ["descriptive", "normative", "note"];
+    SUBTREE_DEFAULT_DEPTH = 8;
+    SUBTREE_MAX_DEPTH = 32;
+    SUBTREE_DEFAULT_LIMIT = 500;
+    SUBTREE_MAX_LIMIT = 2e3;
+    ANCESTORS_MAX_DEPTH = 64;
+    TreeError = class extends Error {
+      constructor(code, message, status = 400) {
+        super(message);
+        this.code = code;
+        this.status = status;
+      }
+      code;
+      status;
+    };
+    NODE_COLS = "e.id, e.parent_id, e.sort_key, e.task_status, e.origin, e.created_by, e.perm_class, e.owner_id, e.page_name, e.created_at, e.updated_at";
+    ALPHA = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    ORDER = "ORDER BY e.sort_key IS NULL, e.sort_key, e.created_at, e.rowid";
+  }
+});
+
+// kbdb/src/actions/kb-tree.ts
+function folderSegments(sourcePath) {
+  const parts = String(sourcePath ?? "").replace(/\\/g, "/").split("/").filter((x) => x && x !== ".");
+  parts.pop();
+  return parts;
+}
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function kbNodeId(owner, library, folder) {
+  const h = await sha256Hex([owner ?? "", library, ...folder].join(""));
+  return `kbn_${h.slice(0, 32)}`;
+}
+function kbNodeOrigin(library, folder) {
+  return `kb://${[library, ...folder].join("/")}`;
+}
+function cardPlacementOf(input) {
+  if (input.template !== "block" || !input.page_name || !input.metadata_json) return null;
+  let meta;
+  try {
+    const m = JSON.parse(input.metadata_json);
+    if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+    meta = m;
+  } catch {
+    return null;
+  }
+  if (meta.kind === "library_map") return null;
+  const sp = typeof meta.source_path === "string" && meta.source_path ? meta.source_path : null;
+  const lib = typeof meta.library === "string" ? meta.library : "";
+  if (!sp && !lib.trim()) return null;
+  return { library: libraryOfValue(lib), folder: folderSegments(sp), sourcePath: sp };
+}
+async function chainStatements(db, owner, library, folder) {
+  const libTpl = await ensureKindTemplate(db, KB_LIBRARY_TEMPLATE);
+  const folderTpl = await ensureKindTemplate(db, KB_FOLDER_TEMPLATE);
+  const stmts = [];
+  const ids = [];
+  let parent = null;
+  for (let depth = 0; depth <= folder.length; depth++) {
+    const segs = folder.slice(0, depth);
+    const id = await kbNodeId(owner, library, segs);
+    const tpl = depth === 0 ? libTpl : folderTpl;
+    stmts.push(entryRowStatement({
+      id,
+      owner_id: owner,
+      parent_id: parent,
+      origin: kbNodeOrigin(library, segs),
+      created_by: CREATED_BY,
+      metadata_json: JSON.stringify({ kb_node: depth === 0 ? "library" : "folder" })
+    }, { ignore: true }));
+    stmts.push(belongsStatement(id, tpl, owner));
+    ids.push(id);
+    parent = id;
+  }
+  return { stmts, ids };
+}
+async function ensureFolderChain(db, owner, library, folder) {
+  const deepest = await kbNodeId(owner, library, folder);
+  let known = knownNodes.get(db);
+  if (!known) {
+    known = /* @__PURE__ */ new Set();
+    knownNodes.set(db, known);
+  }
+  if (known.has(deepest)) return deepest;
+  if (!await nodeExists(db, deepest)) {
+    const { stmts } = await chainStatements(db, owner, library, folder);
+    await db.batch(stmts);
+  }
+  known.add(deepest);
+  return deepest;
+}
+async function placementFor(db, input) {
+  const p = cardPlacementOf(input);
+  if (!p) return null;
+  try {
+    const parent_id = await ensureFolderChain(db, input.owner_id ?? null, p.library, p.folder);
+    return { parent_id, origin: p.sourcePath };
+  } catch (e) {
+    if (isTransientD1Error(e)) throw e;
+    return null;
+  }
+}
+var KB_LIBRARY_TEMPLATE, KB_FOLDER_TEMPLATE, CREATED_BY, knownNodes;
+var init_kb_tree = __esm({
+  "kbdb/src/actions/kb-tree.ts"() {
+    "use strict";
+    init_kind();
+    init_record_crud();
+    init_tree();
+    init_library_predicate();
+    init_transient_error();
+    KB_LIBRARY_TEMPLATE = "kb_library";
+    KB_FOLDER_TEMPLATE = "kb_folder";
+    CREATED_BY = "kbdb:kb-tree";
+    knownNodes = /* @__PURE__ */ new WeakMap();
+  }
+});
+
+// kbdb/src/actions/entry-crud.ts
+function uid2(prefix) {
+  return `${prefix}_${crypto.randomUUID()}`;
+}
 async function createEntry(db, input) {
-  const id = input.id ?? uid("e");
+  assertNodeFields(input);
+  const id = input.id ?? uid2("e");
   const tplId = input.template ? await ensureKindTemplate(db, input.template) : null;
+  const place = input.parent_id == null ? await placementFor(db, input) : null;
   await insertEntryRow(db, {
     id,
     content: input.content ?? null,
     owner_id: input.owner_id ?? null,
-    parent_id: input.parent_id ?? null,
+    parent_id: input.parent_id ?? place?.parent_id ?? null,
     page_name: input.page_name ?? null,
     refs_json: input.refs_json ?? "[]",
     tags_json: input.tags_json ?? "[]",
     task_status: input.task_status ?? null,
     confidence: input.confidence ?? null,
-    metadata_json: input.metadata_json ?? null
+    metadata_json: input.metadata_json ?? null,
+    sort_key: input.sort_key ?? void 0,
+    origin: input.origin ?? place?.origin ?? void 0,
+    created_by: input.created_by ?? void 0,
+    perm_class: input.perm_class ?? void 0
   });
   if (tplId) await insertBelongs(db, id, tplId, input.owner_id ?? null);
   const row = await getEntry(db, id);
@@ -1297,10 +2929,12 @@ async function blocksOfPages(db, pages, perPageLimit = 8) {
   return await withTemplates(db, rows.results ?? []);
 }
 async function updateEntry(db, id, patch) {
+  assertNodeFields(patch);
+  if (typeof patch.parent_id === "string") await assertNoCycle(db, id, patch.parent_id);
   const cols = [];
   const params = [];
   const map = patch;
-  for (const k of ["content", "parent_id", "page_name", "refs_json", "tags_json", "task_status", "confidence", "metadata_json"]) {
+  for (const k of ["content", "parent_id", "page_name", "refs_json", "tags_json", "task_status", "confidence", "metadata_json", "sort_key", "origin", "created_by", "perm_class"]) {
     if (k in map && map[k] !== void 0) {
       cols.push(`${k} = ?`);
       params.push(map[k]);
@@ -1325,6 +2959,7 @@ async function deleteEntry(db, id) {
 async function upsertEntry(db, id, input) {
   const existing = await getEntry(db, id);
   if (!existing) return createEntry(db, { ...input, id });
+  const place = input.parent_id == null ? await placementFor(db, input) : null;
   await db.run(
     `UPDATE entries
           SET content = ?, owner_id = ?, parent_id = ?, page_name = ?,
@@ -1334,7 +2969,7 @@ async function upsertEntry(db, id, input) {
     [
       input.content ?? null,
       input.owner_id ?? null,
-      input.parent_id ?? null,
+      input.parent_id ?? place?.parent_id ?? null,
       input.page_name ?? null,
       input.refs_json ?? "[]",
       input.tags_json ?? "[]",
@@ -1349,6 +2984,9 @@ async function upsertEntry(db, id, input) {
     await db.run(`DELETE FROM entries WHERE src_id = ?1 AND rel_id = '${SYS_BELONGS}' AND dst_id <> ?2 AND dst_id <> 'sys_root'`, [id, tplId]);
     await insertBelongs(db, id, tplId, input.owner_id ?? null);
   }
+  const nodeFields = {};
+  for (const k of ["sort_key", "origin", "created_by", "perm_class"]) if (input[k] !== void 0) nodeFields[k] = input[k];
+  if (Object.keys(nodeFields).length > 0) await updateEntry(db, id, nodeFields);
   const row = await getEntry(db, id);
   if (!row) throw new Error("upsertEntry: update succeeded but row not found");
   await noteEntriesChanged(db, [{ before: existing, after: row }]);
@@ -1722,6 +3360,8 @@ var init_entry_crud = __esm({
     init_library_map_store();
     init_kind();
     init_record_crud();
+    init_tree();
+    init_kb_tree();
     IDENTITY_COLUMNS = "id, owner_id, page_name, created_at, updated_at, json_object('source_path', json_extract(metadata_json, '$.source_path'), 'source', json_extract(metadata_json, '$.source'), 'machine', json_extract(metadata_json, '$.machine'), 'card_hash', json_extract(metadata_json, '$.card_hash'), 'card_blocks', json_extract(metadata_json, '$.card_blocks'), 'library', json_extract(metadata_json, '$.library'), 'card_rels', json_extract(metadata_json, '$.card_rels')) AS metadata_json";
     UnscopedListError = class extends Error {
       constructor(filters) {
@@ -1806,1150 +3446,6 @@ var init_entry_crud = __esm({
     RESIDUAL_SWEEP_ROTATION_PERIOD_MS = 1e3;
     FTS_MIGRATION_CUTOFF_ID = "kbdb-fts-migration-cutoff";
     NOT_DEPRECATED_PREDICATE = "(json_extract(metadata_json, '$.status') IS NULL OR json_extract(metadata_json, '$.status') != 'deprecated')";
-  }
-});
-
-// kbdb/src/actions/entity-canon.ts
-function unwrapWhole(t) {
-  const code = /^(`+)([\s\S]*?)(`+)$/.exec(t);
-  if (code) {
-    const inner = code[2].trim();
-    if (inner && !inner.includes("`")) return inner;
-  }
-  if (t.startsWith("[[") && t.endsWith("]]") && t.length > 4) {
-    const inner = t.slice(2, -2).trim();
-    if (inner && !inner.includes("[[") && !inner.includes("]]")) return inner;
-  }
-  return t;
-}
-function canonicalEntity(raw2) {
-  if (typeof raw2 !== "string") return raw2;
-  const fallback = raw2.trim();
-  let t = raw2.normalize("NFC").trim();
-  if (!t) return fallback;
-  for (let i = 0; i < 4; i++) {
-    const before = t;
-    t = unwrapWhole(t);
-    if (t === before) break;
-  }
-  if (NOTE_EXT.test(t)) {
-    t = t.replace(NOTE_EXT, "");
-    const cut = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"));
-    if (cut >= 0) t = t.slice(cut + 1);
-  }
-  t = t.replace(/\s+/g, " ").trim();
-  return t || fallback;
-}
-function isTripletShaped(slots) {
-  return slots.includes("subject") && slots.includes("predicate") && slots.includes("object");
-}
-function canonicalizeEntityValues(slots, values) {
-  if (!isTripletShaped(slots)) return values;
-  let touched = false;
-  const out = { ...values };
-  for (const slot of ENTITY_SLOTS) {
-    const v = out[slot];
-    if (typeof v !== "string") continue;
-    const c = canonicalEntity(v);
-    if (c !== v) {
-      out[slot] = c;
-      touched = true;
-    }
-  }
-  return touched ? out : values;
-}
-var NOTE_EXT, ENTITY_SLOTS;
-var init_entity_canon = __esm({
-  "kbdb/src/actions/entity-canon.ts"() {
-    "use strict";
-    NOTE_EXT = /\.(md|markdown|mdx|txt|org)$/i;
-    ENTITY_SLOTS = ["subject", "object"];
-  }
-});
-
-// kbdb/src/actions/template-guard.ts
-function editDistance(a, b, cap) {
-  if (Math.abs(a.length - b.length) > cap) return cap + 1;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    for (let j = 1; j <= b.length; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = cur;
-  }
-  return prev[b.length];
-}
-function looksUnresolved(name) {
-  return /\{\{|\}\}|\$\{/.test(name);
-}
-function forgetTemplateNames(db) {
-  nameCache.delete(db);
-}
-async function templateNames(db, now = Date.now()) {
-  const key = db;
-  const hit = nameCache.get(key);
-  if (hit && now - hit.at < TEMPLATE_NAMES_TTL_MS) return hit.names;
-  const res = await db.all("SELECT name FROM templates");
-  const names = (res.results ?? []).map((r) => r.name);
-  nameCache.set(key, { at: now, names });
-  return names;
-}
-async function similarTemplateNames(db, name) {
-  const names = await templateNames(db);
-  const target = norm(name);
-  const out = [];
-  for (const rn of names) {
-    const r = { name: rn };
-    if (r.name === name) continue;
-    const n2 = norm(r.name);
-    if (n2 === target || target.length >= 4 && n2.length >= 4 && editDistance(n2, target, 2) <= 2) out.push(r.name);
-  }
-  return out.slice(0, 5);
-}
-async function assertKindTemplateWritable(db, name, allowCreate = false) {
-  const key = String(name ?? "").trim();
-  if (looksUnresolved(key)) {
-    throw new TemplateNameError(
-      "template_name_unresolved",
-      `template \u540D\u7A31 "${key}" \u542B\u6C92\u89E3\u958B\u7684\u53D6\u503C\u5F0F\uFF08{{\u2026}}\uFF09\u2014\u2014\u4E0A\u6E38\u6C92\u6709\u7D66\u51FA\u9019\u500B\u503C\u3002\u4E0D\u6703\u7528\u5B83\u5EFA\u7ACB\u65B0\u7684 template\u3002`
-    );
-  }
-  const hit = await db.first("SELECT id FROM templates WHERE name = ? OR id = ?", [key, key]);
-  if (hit || allowCreate) return;
-  const near = await similarTemplateNames(db, key);
-  if (near.length > 0) {
-    throw new TemplateNameError(
-      "template_name_suspect",
-      `template "${key}" \u4E0D\u5B58\u5728\uFF0C\u4F46\u6709\u5F88\u50CF\u7684\u65E2\u6709\u540D\u5B57\uFF1A${near.join("\u3001")}\u3002\u62FC\u932F\u5C31\u6539\u6210\u90A3\u500B\uFF1B\u771F\u7684\u8981\u65B0\u7A2E\u985E\u8ACB\u5728\u8ACB\u6C42\u5E36 create_template:true\u3002`,
-      near
-    );
-  }
-}
-async function templateMissingInfo(db, name) {
-  const near = await similarTemplateNames(db, name).catch(() => []);
-  return {
-    template_exists: false,
-    error_code: "template_not_found",
-    did_you_mean: near,
-    hint: `template "${name}" \u4E0D\u5B58\u5728\uFF08\u4E0D\u662F\u300C\u5B58\u5728\u4F46 0 \u7B46\u300D\uFF09\u3002${near.length ? `\u4F60\u662F\u4E0D\u662F\u8981\u627E\uFF1A${near.join("\u3001")}\uFF1F` : "\u6AA2\u67E5\u540D\u5B57\u62FC\u5BEB\uFF0C\u6216\u5148\u5BEB\u5165\u4E00\u7B46\u5EFA\u7ACB\u5B83\u3002"}`
-  };
-}
-var TemplateNameError, norm, TEMPLATE_NAMES_TTL_MS, nameCache;
-var init_template_guard = __esm({
-  "kbdb/src/actions/template-guard.ts"() {
-    "use strict";
-    TemplateNameError = class extends Error {
-      constructor(code, message, didYouMean = []) {
-        super(message);
-        this.code = code;
-        this.didYouMean = didYouMean;
-        this.name = "TemplateNameError";
-      }
-      code;
-      didYouMean;
-    };
-    norm = (s) => s.trim().toLowerCase().replace(/[_\s-]+/g, "");
-    TEMPLATE_NAMES_TTL_MS = 6e4;
-    nameCache = /* @__PURE__ */ new WeakMap();
-  }
-});
-
-// kbdb/src/actions/card-row.ts
-function isCardTemplate(tpl) {
-  return !!tpl && tpl.card_format === 1;
-}
-function parseFieldMap(json) {
-  if (json) {
-    try {
-      const m = JSON.parse(json);
-      if (m && m.v === 1 && m.by_name && typeof m.next === "number") return { ...m, retired: m.retired ?? [] };
-    } catch {
-    }
-  }
-  return { v: 1, next: 1, by_name: {}, retired: [] };
-}
-function syncFieldMap(map, slots) {
-  const out = { ...map, by_name: { ...map.by_name }, retired: [...map.retired], retired_names: { ...map.retired_names ?? {} } };
-  let changed = false;
-  const want = new Set(slots);
-  for (const [name, f] of Object.entries(out.by_name)) {
-    if (!want.has(name)) {
-      delete out.by_name[name];
-      out.retired.push(f);
-      out.retired_names[name] = f;
-      changed = true;
-    }
-  }
-  for (const name of slots) {
-    if (out.by_name[name]) continue;
-    const back = out.retired_names[name];
-    if (back) {
-      out.by_name[name] = back;
-      out.retired = out.retired.filter((x) => x !== back);
-      delete out.retired_names[name];
-    } else {
-      out.by_name[name] = `f${out.next}`;
-      out.next += 1;
-    }
-    changed = true;
-  }
-  if (Object.keys(out.retired_names).length === 0) delete out.retired_names;
-  return { map: out, changed };
-}
-function isRelationName(slot) {
-  return slot.length > 2 && slot.endsWith("[]");
-}
-function isRef(v) {
-  return typeof v === "object" && v !== null && !Array.isArray(v) && typeof v.$ref === "string";
-}
-function parseProps(text) {
-  if (!text) return {};
-  try {
-    const p = JSON.parse(text);
-    return p && typeof p === "object" && !Array.isArray(p) ? p : {};
-  } catch {
-    return {};
-  }
-}
-function decodeProps(map, props, refContent) {
-  const out = {};
-  for (const [slot, f] of Object.entries(map.by_name)) {
-    const v = props[f];
-    if (v === void 0) continue;
-    if (isRef(v)) {
-      if (v.mode === "snapshot" && v.v !== void 0) out[slot] = String(v.v);
-      else out[slot] = refContent.get(v.$ref) ?? REF_GONE;
-    } else if (Array.isArray(v)) {
-      out[slot] = JSON.stringify([...new Set(v.map(String))].sort());
-    } else {
-      out[slot] = String(v);
-    }
-  }
-  return out;
-}
-function refTargets(props) {
-  const ids = /* @__PURE__ */ new Set();
-  for (const p of props) for (const v of Object.values(p)) if (isRef(v) && v.mode !== "snapshot") ids.add(v.$ref);
-  return [...ids];
-}
-async function loadRefContent(db, ids) {
-  const out = /* @__PURE__ */ new Map();
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
-    const res = await db.all(`SELECT id, content FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
-    for (const r of res.results ?? []) out.set(r.id, r.content);
-  }
-  return out;
-}
-function parseRelationInput(slot, raw2, maxKeyLen, maxPerCall) {
-  let list;
-  try {
-    list = JSON.parse(raw2);
-  } catch {
-    list = raw2;
-  }
-  const arr = Array.isArray(list) ? list : [list];
-  const out = [...new Set(arr.map((x) => String(x)).filter((x) => x !== ""))].sort();
-  for (const fk of out) if (fk.length > maxKeyLen) throw new Error(`relation slot ${slot}: key too long (>${maxKeyLen})`);
-  if (out.length > maxPerCall) throw new Error(`relation slot ${slot}: too many keys in one write (>${maxPerCall})`);
-  return out;
-}
-function encodeProps(map, values, entryIds, relation) {
-  const props = {};
-  for (const [slot, raw2] of Object.entries(values)) {
-    const f = map.by_name[slot];
-    if (!f) continue;
-    props[f] = isRelationName(slot) ? relation(slot, raw2) : raw2;
-  }
-  for (const [slot, id] of Object.entries(entryIds)) {
-    const f = map.by_name[slot];
-    if (f) props[f] = { $ref: id };
-  }
-  return props;
-}
-async function orLegacy(db, fn, none) {
-  if (noCardColumns.has(db)) return none;
-  try {
-    return await fn();
-  } catch (e) {
-    if (/no such column:\s*(\w+\.)?(props|tpl_id|fmt)\b/i.test(String(e?.message ?? e))) {
-      noCardColumns.add(db);
-      return none;
-    }
-    throw e;
-  }
-}
-async function getTemplateById(db, id) {
-  return await db.first("SELECT * FROM templates WHERE id = ?", [id]) ?? null;
-}
-async function decodeCards(db, tpl, rows) {
-  const map = parseFieldMap(tpl.fields_json);
-  const parsed = rows.map((r) => ({ r, p: parseProps(r.props) }));
-  const refs = refTargets(parsed.map((x) => x.p));
-  const content = refs.length > 0 ? await loadRefContent(db, refs) : /* @__PURE__ */ new Map();
-  return parsed.map(({ r, p }) => ({ record_id: r.id, template_id: tpl.id, values: decodeProps(map, p, content), owner_id: r.owner_id }));
-}
-async function cardPage(db, tpl, owner_id, limit, offset, filter) {
-  const where = ["tpl_id = ?"];
-  const params = [tpl.id];
-  if (owner_id) {
-    where.push("+owner_id = ?");
-    params.push(owner_id);
-  }
-  if (filter) {
-    const f = parseFieldMap(tpl.fields_json).by_name[filter.slot];
-    if (!f) return [];
-    where.push(`json_extract(props, '$.${f}') = ?`);
-    params.push(filter.value);
-  }
-  const res = await db.all(
-    `SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE ${where.join(" AND ")} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
-  );
-  return decodeCards(db, tpl, res.results ?? []);
-}
-async function cardCount(db, tplId, owner_id) {
-  const row = owner_id ? await db.first("SELECT COUNT(*) AS n FROM entries WHERE tpl_id = ? AND +owner_id = ?", [tplId, owner_id]) : await db.first("SELECT COUNT(*) AS n FROM entries WHERE tpl_id = ?", [tplId]);
-  return row?.n ?? 0;
-}
-async function cardRowsByIds(db, ids) {
-  return orLegacy(db, async () => {
-    const out = [];
-    for (let i = 0; i < ids.length; i += 90) {
-      const chunk = ids.slice(i, i + 90);
-      const res = await db.all(`SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
-      out.push(...res.results ?? []);
-    }
-    return out;
-  }, []);
-}
-async function cardRowById(db, id) {
-  return orLegacy(db, async () => await db.first("SELECT id, owner_id, tpl_id, props, fmt FROM entries WHERE id = ?", [id]) ?? null, null);
-}
-function cardInsertStatement(id, tplId, ownerId, props, opts = {}) {
-  return entryRowStatement({ id, owner_id: ownerId, tpl_id: tplId, props: JSON.stringify(props), fmt: CARD_FORMAT_VERSION }, { ignore: opts.ignore });
-}
-function cardSetStatement(id, changes) {
-  const keys = Object.keys(changes);
-  if (keys.length === 0) return null;
-  const sets = keys.map(() => `?, json(?)`).join(", ");
-  const params = [];
-  for (const k of keys) params.push(`$.${k}`, JSON.stringify(changes[k]));
-  return { sql: `UPDATE entries SET props = json_set(COALESCE(props, '{}'), ${sets}), updated_at = unixepoch() WHERE id = ?`, params: [...params, id] };
-}
-function cardRelationStatement(id, key, add2, remove) {
-  return {
-    sql: `UPDATE entries SET props = json_set(COALESCE(props, '{}'), '$.${key}', json((
-        SELECT COALESCE(json_group_array(v), '[]') FROM (
-          SELECT value AS v FROM json_each(COALESCE(json_extract(props, '$.${key}'), '[]')) WHERE value NOT IN (SELECT value FROM json_each(?))
-          UNION SELECT value FROM json_each(?)
-          ORDER BY v)))), updated_at = unixepoch() WHERE id = ?`,
-    params: [JSON.stringify(remove), JSON.stringify(add2), id]
-  };
-}
-var CARD_FORMAT_VERSION, REF_GONE, noCardColumns;
-var init_card_row = __esm({
-  "kbdb/src/actions/card-row.ts"() {
-    "use strict";
-    init_kind();
-    CARD_FORMAT_VERSION = 1;
-    REF_GONE = "\u4F86\u6E90\u5DF2\u522A\u9664";
-    noCardColumns = /* @__PURE__ */ new WeakSet();
-  }
-});
-
-// kbdb/src/actions/record-crud.ts
-var record_crud_exports = {};
-__export(record_crud_exports, {
-  RecordExistsError: () => RecordExistsError,
-  SYS_BELONGS: () => SYS_BELONGS,
-  SYS_FIELD_OF: () => SYS_FIELD_OF,
-  SYS_ROOT: () => SYS_ROOT,
-  createRecord: () => createRecord,
-  createTemplate: () => createTemplate,
-  deleteRecord: () => deleteRecord,
-  derivedCellIds: () => derivedCellIds,
-  editRelation: () => editRelation,
-  ensureKindTemplate: () => ensureKindTemplate,
-  fieldEntryId: () => fieldEntryId,
-  filterExistingRecordIds: () => filterExistingRecordIds,
-  getRecord: () => getRecord,
-  getRecords: () => getRecords,
-  getTemplate: () => getTemplate,
-  hydrateRecordValues: () => hydrateRecordValues,
-  isRelationSlot: () => isRelationSlot,
-  kindTemplateId: () => kindTemplateId,
-  listTemplates: () => listTemplates,
-  memberRecordIds: () => memberRecordIds,
-  relationCellIds: () => relationCellIds,
-  searchByTemplate: () => searchByTemplate,
-  searchByTemplatePage: () => searchByTemplatePage,
-  updateRecord: () => updateRecord,
-  updateTemplate: () => updateTemplate
-});
-function uid2(prefix) {
-  return `${prefix}_${crypto.randomUUID()}`;
-}
-function fieldEntryId(templateId, slot) {
-  return `fld_${templateId}_${slot}`;
-}
-async function ensureAnchors(db) {
-  await insertEntryRow(db, { id: SYS_ROOT, content: "root" }, { ignore: true });
-  await insertEntryRow(db, { id: SYS_BELONGS, content: "belongs" }, { ignore: true });
-  await insertEntryRow(db, { id: SYS_FIELD_OF, content: "field_of" }, { ignore: true });
-}
-function fieldEntryStatements(templateId, slots) {
-  const out = [];
-  for (const slot of slots) {
-    const fid = fieldEntryId(templateId, slot);
-    out.push(entryRowStatement({ id: fid, content: slot }, { ignore: true }));
-    out.push(entryRowStatement({ id: `relf_${templateId}_${slot}`, src_id: fid, rel_id: SYS_FIELD_OF, dst_id: templateId }, { ignore: true }));
-  }
-  return out;
-}
-async function ensureFieldEntries(db, templateId, slots) {
-  const stmts = fieldEntryStatements(templateId, slots);
-  if (stmts.length > 0) await db.batch(stmts);
-}
-async function createTemplate(db, input) {
-  const id = input.id ?? uid2("tpl");
-  await db.run(`INSERT INTO templates (id, name, description, slots_json, created_by) VALUES (?, ?, ?, ?, ?)`, [id, input.name, input.description ?? null, JSON.stringify(input.slots), input.created_by ?? null]);
-  forgetTemplateNames(db);
-  await ensureAnchors(db);
-  await insertEntryRow(db, { id, content: input.name }, { ignore: true });
-  await insertEntryRow(db, { id: `relb_${id}`, src_id: id, rel_id: SYS_BELONGS, dst_id: SYS_ROOT }, { ignore: true });
-  await ensureFieldEntries(db, id, input.slots);
-  const row = await getTemplate(db, id);
-  if (!row) throw new Error("createTemplate: row not found after insert");
-  return row;
-}
-function kindTemplateId(name) {
-  return `tpl-${name.replace(/_/g, "-")}`;
-}
-async function ensureKindTemplate(db, name) {
-  const key = name.trim();
-  if (!key) throw new Error("template name required");
-  if (/\{\{|\}\}|\$\{/.test(key)) throw new Error(`template name unresolved: ${key}`);
-  let cache2 = kindTemplateIds.get(db);
-  if (!cache2) {
-    cache2 = /* @__PURE__ */ new Map();
-    kindTemplateIds.set(db, cache2);
-  }
-  const hit = cache2.get(key);
-  if (hit) return hit;
-  const found = await db.first("SELECT id FROM templates WHERE name = ?", [key]);
-  let id = found?.id;
-  if (!id) {
-    for (const candidate of [kindTemplateId(key), uid2("tpl")]) {
-      try {
-        await createTemplate(db, { id: candidate, name: key, description: `\u5167\u5BB9\u7A2E\u985E\uFF1A${key}`, slots: [], created_by: "system" });
-        id = candidate;
-        break;
-      } catch {
-        id = (await db.first("SELECT id FROM templates WHERE name = ?", [key]))?.id;
-        if (id) break;
-      }
-    }
-    if (!id) throw new Error(`ensureKindTemplate failed: ${key}`);
-  }
-  cache2.set(key, id);
-  return id;
-}
-async function getTemplate(db, idOrName) {
-  const row = await db.first("SELECT * FROM templates WHERE id = ? OR name = ? LIMIT 1", [idOrName, idOrName]);
-  return row ?? null;
-}
-async function listTemplates(db) {
-  const res = await db.all("SELECT * FROM templates ORDER BY created_at DESC");
-  return res.results ?? [];
-}
-async function updateTemplate(db, id, patch) {
-  const cols = [];
-  const params = [];
-  if (patch.description !== void 0) {
-    cols.push("description = ?");
-    params.push(patch.description);
-  }
-  if (patch.slots !== void 0) {
-    cols.push("slots_json = ?");
-    params.push(JSON.stringify(patch.slots));
-    const cur = await getTemplateById(db, id);
-    if (cur?.fields_json) {
-      const synced = syncFieldMap(parseFieldMap(cur.fields_json), patch.slots);
-      if (synced.changed) {
-        cols.push("fields_json = ?");
-        params.push(JSON.stringify(synced.map));
-      }
-    }
-  }
-  if (cols.length === 0) return getTemplate(db, id);
-  cols.push("updated_at = unixepoch()");
-  await db.run(`UPDATE templates SET ${cols.join(", ")} WHERE id = ?`, [...params, id]);
-  if (patch.slots !== void 0) await ensureFieldEntries(db, id, patch.slots);
-  return getTemplate(db, id);
-}
-function derivedCellIds(recordId, slot) {
-  return { value: `${recordId}~v~${slot}`, relation: `${recordId}~r~${slot}` };
-}
-function isRelationSlot(slot) {
-  return slot.length > 2 && slot.endsWith("[]");
-}
-function relKeyPart(fk) {
-  return encodeURIComponent(fk).replace(/~/g, "%7E");
-}
-function relationCellIds(recordId, slot, fk) {
-  const k = relKeyPart(fk);
-  return { value: `${recordId}~mv~${slot}~${k}`, relation: `${recordId}~mr~${slot}~${k}` };
-}
-function putCell(values, slot, content) {
-  if (!isRelationSlot(slot)) {
-    values[slot] = content;
-    return;
-  }
-  let arr = [];
-  try {
-    const cur = JSON.parse(values[slot] ?? "[]");
-    if (Array.isArray(cur)) arr = cur.map(String);
-  } catch {
-    arr = [];
-  }
-  if (!arr.includes(content)) arr.push(content);
-  arr.sort();
-  values[slot] = JSON.stringify(arr);
-}
-function parseRelationInput2(slot, raw2) {
-  let list;
-  try {
-    list = JSON.parse(raw2);
-  } catch {
-    list = raw2;
-  }
-  const arr = Array.isArray(list) ? list : [list];
-  const out = [...new Set(arr.map((x) => String(x)).filter((x) => x !== ""))];
-  for (const fk of out) if (fk.length > RELATION_MAX_KEY_LEN) throw new Error(`relation slot ${slot}: key too long (>${RELATION_MAX_KEY_LEN})`);
-  if (out.length > RELATION_MAX_PER_CALL) throw new Error(`relation slot ${slot}: too many keys in one write (>${RELATION_MAX_PER_CALL})`);
-  return out;
-}
-async function loadReferencedEntries(db, entryIds, recordOwnerId) {
-  const ids = [...new Set(Object.values(entryIds))];
-  if (ids.length === 0) return /* @__PURE__ */ new Map();
-  const rows = [];
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
-    const res = await db.all(`SELECT id, content, owner_id FROM entries WHERE id IN (${chunk.map(() => "?").join(",")})`, [...chunk]);
-    rows.push(...res.results ?? []);
-  }
-  const found = new Map(rows.map((r) => [r.id, r]));
-  const missing = ids.filter((id) => !found.has(id));
-  if (missing.length > 0) throw new Error(`entry not found: ${missing.join(", ")}`);
-  if (recordOwnerId != null) {
-    const foreign = rows.filter((r) => r.owner_id != null && r.owner_id !== recordOwnerId);
-    if (foreign.length > 0) {
-      throw new Error(
-        `entry owner mismatch: ${foreign.map((r) => `${r.id}(${r.owner_id})`).join(", ")} != ${recordOwnerId}`
-      );
-    }
-  }
-  return new Map(rows.map((r) => [r.id, r.content]));
-}
-async function recordBelongs(db, recordId) {
-  const row = await db.first(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}' LIMIT 1`, [recordId]);
-  return row ?? null;
-}
-async function filterExistingRecordIds(db, templateId, ids) {
-  const keep = /* @__PURE__ */ new Set();
-  const CHUNK = 80;
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const chunk = ids.slice(i, i + CHUNK);
-    const ph = chunk.map(() => "?").join(",");
-    const rows = await db.all(
-      `SELECT DISTINCT src_id FROM entries WHERE src_id IN (${ph}) AND rel_id = '${SYS_BELONGS}' AND dst_id = ?`,
-      [...chunk, templateId]
-    );
-    for (const r of rows.results ?? []) keep.add(r.src_id);
-  }
-  return ids.filter((id) => keep.has(id));
-}
-async function insertCellRelation(db, recordId, templateId, slot, dstEntryId, ownerId) {
-  await insertEntryRow(db, { id: uid2("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(templateId, slot), dst_id: dstEntryId });
-}
-async function cardIdentity(db, recordId) {
-  const row = await cardRowById(db, recordId);
-  if (!row || row.fmt !== 1 || !row.tpl_id) return null;
-  const tpl = await getTemplateById(db, row.tpl_id);
-  return tpl && isCardTemplate(tpl) ? { row, tpl } : null;
-}
-async function coveredFieldMap(db, tpl) {
-  const slots = JSON.parse(tpl.slots_json);
-  const synced = syncFieldMap(parseFieldMap(tpl.fields_json), slots);
-  if (synced.changed || !tpl.fields_json) {
-    await db.run("UPDATE templates SET fields_json = ? WHERE id = ?", [JSON.stringify(synced.map), tpl.id]);
-    tpl.fields_json = JSON.stringify(synced.map);
-  }
-  return synced.map;
-}
-async function createCard(db, tpl, recordId, values, entryIds, ownerId, referenced, createOnly) {
-  const slots = JSON.parse(tpl.slots_json);
-  const map = await coveredFieldMap(db, tpl);
-  const known = Object.fromEntries(Object.entries(values).filter(([s]) => slots.includes(s)));
-  const props = encodeProps(map, known, entryIds, (slot, raw2) => parseRelationInput(slot, raw2, RELATION_MAX_KEY_LEN, RELATION_MAX_PER_CALL));
-  const st = cardInsertStatement(recordId, tpl.id, ownerId, props, { ignore: true });
-  const claim = await db.run(st.sql, st.params);
-  if (claim.meta?.changes !== 1) {
-    if (claim.meta?.changes === void 0 && createOnly) throw new Error("create_only needs a storage driver that reports meta.changes");
-    if (createOnly) throw new RecordExistsError(recordId);
-    const cur = await db.first("SELECT fmt, tpl_id FROM entries WHERE id = ?", [recordId]);
-    if (cur?.fmt !== 1 || cur.tpl_id !== tpl.id) throw new Error(`record exists in another format: ${recordId}`);
-    const set = cardSetStatement(recordId, props);
-    if (set) await db.run(set.sql, set.params);
-  }
-  const out = { ...values };
-  for (const [slot, entryId] of Object.entries(entryIds)) out[slot] = referenced.get(entryId) ?? "";
-  return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
-}
-async function updateCard(db, ci, values) {
-  const { row, tpl } = ci;
-  const allowed = JSON.parse(tpl.slots_json);
-  const map = await coveredFieldMap(db, tpl);
-  const canon = canonicalizeEntityValues(allowed, values);
-  const cur = parseProps(row.props);
-  const changes = {};
-  for (const [slot, content] of Object.entries(canon)) {
-    if (!allowed.includes(slot)) throw new Error(`slot not in template: ${slot}`);
-    if (isRelationSlot(slot)) throw new Error(`relation slot ${slot}: use POST /records/:id/relation (add/remove), not PATCH`);
-    const key = map.by_name[slot];
-    if (cur[key] === content) continue;
-    changes[key] = content;
-  }
-  const set = cardSetStatement(row.id, changes);
-  if (set) await db.run(set.sql, set.params);
-  const merged = { ...row, props: JSON.stringify({ ...cur, ...changes }) };
-  return (await decodeCards(db, tpl, [merged]))[0];
-}
-async function deleteCard(db, ci) {
-  const id = ci.row.id;
-  const legacy = await recordBelongs(db, id);
-  if (legacy) await db.run(`DELETE FROM entries WHERE src_id = ?1 AND (rel_id != '${SYS_BELONGS}' OR dst_id = ?2)`, [id, legacy.dst_id]);
-  await db.run("DELETE FROM entries WHERE id = ? AND fmt = 1", [id]);
-}
-async function editCardRelation(db, ci, slot, add2, remove) {
-  const map = await coveredFieldMap(db, ci.tpl);
-  const key = map.by_name[slot];
-  if (!key) throw new Error(`slot not in template: ${slot}`);
-  if (add2.length > 0 || remove.length > 0) {
-    const st = cardRelationStatement(ci.row.id, key, add2, remove);
-    await db.run(st.sql, st.params);
-  }
-  const now = await db.first("SELECT props FROM entries WHERE id = ?", [ci.row.id]);
-  const arr = parseProps(now?.props)[key];
-  const keys = Array.isArray(arr) ? [...new Set(arr.map(String))].sort() : [];
-  return { record_id: ci.row.id, slot, keys };
-}
-async function createRecord(db, input) {
-  if (input.create_only && !input.record_id) throw new Error("create_only requires record_id");
-  const tpl = await getTemplate(db, input.template);
-  if (!tpl) throw new Error(`template not found: ${input.template}`);
-  const slots = JSON.parse(tpl.slots_json);
-  const recordId = input.record_id ?? uid2("rec");
-  const values = canonicalizeEntityValues(slots, input.values ?? {});
-  const entryIds = input.entry_ids ?? {};
-  const refSlots = Object.keys(entryIds);
-  const ownerId = input.owner_id ?? null;
-  const both = refSlots.filter((s) => s in values);
-  if (both.length > 0) throw new Error(`slot given both value and entry_id: ${both.join(", ")}`);
-  const unknown = refSlots.filter((s) => !slots.includes(s));
-  if (unknown.length > 0) throw new Error(`slot not in template: ${unknown.join(", ")}`);
-  const referenced = await loadReferencedEntries(db, entryIds, ownerId);
-  if (isCardTemplate(tpl)) return createCard(db, tpl, recordId, values, entryIds, ownerId, referenced, !!input.create_only);
-  const mapTracked = isMapTrackedTemplate(tpl.name);
-  const mapBefore = mapTracked && input.record_id ? (await getRecord(db, input.record_id))?.values ?? null : null;
-  const claimStmt = entryRowStatement({ id: recordId, owner_id: ownerId }, { ignore: true });
-  if (input.create_only) {
-    const claim = await db.run(claimStmt.sql, claimStmt.params);
-    if (claim.meta?.changes !== 1) {
-      if (claim.meta?.changes === void 0) throw new Error("create_only needs a storage driver that reports meta.changes");
-      throw new RecordExistsError(recordId);
-    }
-  }
-  const writtenSlots = slots.filter((s) => s in entryIds || s in values);
-  const cellMeta = (slot) => {
-    if (slot !== "subject" && slot !== "object") return {};
-    const raw2 = "library" in entryIds ? referenced.get(entryIds["library"]) : values["library"];
-    const lib = typeof raw2 === "string" ? raw2.trim() : "";
-    return lib && lib !== UNLABELLED_LIBRARY ? { metadata_json: JSON.stringify({ library: lib }) } : {};
-  };
-  const stmts = [
-    // 身分列（create_only 時已在上面單獨送過，這裡不重送）
-    ...input.create_only ? [] : [claimStmt],
-    // 歸屬＝一條關係（舊 template_id 欄的下場）
-    belongsStatement(recordId, tpl.id, ownerId),
-    // 欄位謂詞自癒（決定性 id，冪等）——只補這次真的要寫的 slot
-    ...fieldEntryStatements(tpl.id, writtenSlots)
-  ];
-  for (const slot of writtenSlots) {
-    if (slot in entryIds) {
-      stmts.push(entryRowStatement({ id: uid2("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: entryIds[slot] }));
-      continue;
-    }
-    if (isRelationSlot(slot)) {
-      for (const fk of parseRelationInput2(slot, values[slot])) {
-        const ids = relationCellIds(recordId, slot, fk);
-        stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId, ...cellMeta(slot) }, { ignore: true }));
-        stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
-      }
-      continue;
-    }
-    if (input.derived_cell_ids) {
-      const ids = derivedCellIds(recordId, slot);
-      stmts.push(entryRowStatement({ id: ids.value, content: values[slot], owner_id: ownerId, ...cellMeta(slot) }, { ignore: true }));
-      stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: ids.value }, { ignore: true }));
-      continue;
-    }
-    const valueId = uid2("e");
-    stmts.push(entryRowStatement({ id: valueId, content: values[slot], owner_id: ownerId, refs_json: "[]", tags_json: "[]", ...cellMeta(slot) }));
-    stmts.push(entryRowStatement({ id: uid2("relv"), owner_id: ownerId, src_id: recordId, rel_id: fieldEntryId(tpl.id, slot), dst_id: valueId }));
-  }
-  await db.batch(stmts);
-  const out = { ...values };
-  for (const [slot, entryId] of Object.entries(entryIds)) out[slot] = referenced.get(entryId) ?? "";
-  if (mapTracked) {
-    const stored = Object.fromEntries(Object.entries(out).filter(([slot]) => slots.includes(slot)));
-    const mapAfter = input.record_id ? (await getRecord(db, recordId))?.values ?? stored : stored;
-    await noteRecordWrite(db, tpl.name, ownerId, mapBefore, mapAfter);
-  }
-  return { record_id: recordId, template_id: tpl.id, values: out, owner_id: ownerId };
-}
-async function updateRecord(db, recordId, values, opts) {
-  const ci = await cardIdentity(db, recordId);
-  if (ci) {
-    opts?.onOwner?.(ci.row.owner_id ?? null);
-    return updateCard(db, ci, values);
-  }
-  const [belongs, cellRes, identity] = await Promise.all([
-    recordBelongs(db, recordId),
-    db.all(
-      // inkstone/arcrun-rag#292：連現值一起讀，值沒變的格子不寫（大實例每句寫入都是一趟慢來回）。
-      `SELECT f.content AS slot_name, r.dst_id AS entry_id, v.content AS cur
-       FROM entries r JOIN entries f ON r.rel_id = f.id
-       LEFT JOIN entries v ON v.id = r.dst_id
-       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
-      [recordId]
-    ),
-    // record 的歸屬＝身分 entry 的 owner（grow 建新 entry 時沿用，防孤兒 entry）
-    db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId])
-  ]);
-  if (!belongs) return null;
-  const templateId = belongs.dst_id;
-  const recordOwnerId = identity?.owner_id ?? null;
-  opts?.onOwner?.(recordOwnerId);
-  const tpl = await getTemplate(db, templateId);
-  const mapBefore = tpl && isMapTrackedTemplate(tpl.name) ? await getRecord(db, recordId) : null;
-  const cells = cellRes.results ?? [];
-  const slotToEntries = /* @__PURE__ */ new Map();
-  const entryCurrent = /* @__PURE__ */ new Map();
-  for (const c of cells) {
-    const list = slotToEntries.get(c.slot_name) ?? [];
-    list.push(c.entry_id);
-    slotToEntries.set(c.slot_name, list);
-    entryCurrent.set(c.entry_id, c.cur ?? null);
-  }
-  const allowed = tpl ? JSON.parse(tpl.slots_json) : [...slotToEntries.keys()];
-  const canon = canonicalizeEntityValues(allowed, values);
-  for (const slot of Object.keys(canon)) {
-    if (!allowed.includes(slot)) {
-      throw new Error(`slot not in template: ${slot}`);
-    }
-    if (isRelationSlot(slot)) {
-      throw new Error(`relation slot ${slot}: use POST /records/:id/relation (add/remove), not PATCH`);
-    }
-  }
-  const updates = [];
-  for (const [slot, content] of Object.entries(canon)) {
-    const entryIds = slotToEntries.get(slot);
-    if (entryIds && entryIds.length > 0) {
-      for (const entryId of entryIds) {
-        if (entryCurrent.get(entryId) === content) continue;
-        updates.push({ sql: `UPDATE entries SET content = ?, updated_at = unixepoch() WHERE id = ?`, params: [content, entryId] });
-      }
-    } else {
-      await ensureFieldEntries(db, templateId, [slot]);
-      const entry = await createEntry(db, { content, template: null, owner_id: recordOwnerId });
-      await insertCellRelation(db, recordId, templateId, slot, entry.id, recordOwnerId);
-    }
-  }
-  if (updates.length === 1) await db.run(updates[0].sql, updates[0].params);
-  else if (updates.length > 1) await db.batch(updates);
-  const after = await readRecordKnown(db, recordId, templateId, recordOwnerId);
-  if (tpl && mapBefore) await noteRecordWrite(db, tpl.name, recordOwnerId, mapBefore.values, after.values);
-  return after;
-}
-async function readRecordKnown(db, recordId, templateId, ownerId) {
-  const res = await db.all(
-    `SELECT f.content AS slot, v.content AS content
-       FROM entries r
-       JOIN entries f ON r.rel_id = f.id
-       JOIN entries v ON r.dst_id = v.id
-       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
-    [recordId]
-  );
-  const values = {};
-  for (const r of res.results ?? []) putCell(values, r.slot, r.content);
-  return { record_id: recordId, template_id: templateId, values, owner_id: ownerId };
-}
-async function getRecord(db, recordId) {
-  const ci = await cardIdentity(db, recordId);
-  if (ci) return (await decodeCards(db, ci.tpl, [ci.row]))[0];
-  const [belongs, res, identity] = await Promise.all([
-    recordBelongs(db, recordId),
-    db.all(
-      `SELECT f.content AS slot, v.content AS content
-       FROM entries r
-       JOIN entries f ON r.rel_id = f.id
-       JOIN entries v ON r.dst_id = v.id
-       WHERE r.src_id = ? AND r.rel_id != '${SYS_BELONGS}'`,
-      [recordId]
-    ),
-    db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId])
-  ]);
-  if (!belongs) return null;
-  const values = {};
-  for (const r of res.results ?? []) putCell(values, r.slot, r.content);
-  return { record_id: recordId, template_id: belongs.dst_id, values, owner_id: identity?.owner_id ?? null };
-}
-async function getRecords(db, recordIds, ownerId) {
-  const ids = [...new Set(recordIds)];
-  if (ids.length === 0) return [];
-  const rows = await cardRowsByIds(db, ids);
-  const cardRows = rows.filter((r) => r.fmt === 1 && r.tpl_id);
-  if (cardRows.length === 0) return getRecordsLegacy(db, ids, ownerId);
-  const tpls = /* @__PURE__ */ new Map();
-  for (const t of new Set(cardRows.map((r) => r.tpl_id))) tpls.set(t, await getTemplateById(db, t));
-  const decoded = /* @__PURE__ */ new Map();
-  for (const [tid, tpl] of tpls) {
-    if (!isCardTemplate(tpl)) continue;
-    for (const r of await decodeCards(db, tpl, cardRows.filter((x) => x.tpl_id === tid))) decoded.set(r.record_id, r);
-  }
-  const rest = ids.filter((id) => !decoded.has(id));
-  const legacy = rest.length > 0 ? await getRecordsLegacy(db, rest, ownerId) : [];
-  const legacyById = new Map(legacy.map((r) => [r.record_id, r]));
-  const out = [];
-  for (const id of ids) {
-    const c = decoded.get(id);
-    if (c) {
-      if (ownerId == null || c.owner_id === ownerId) out.push(c);
-      continue;
-    }
-    const l = legacyById.get(id);
-    if (l) out.push(l);
-  }
-  return out;
-}
-async function getRecordsLegacy(db, recordIds, ownerId) {
-  const ids = [...new Set(recordIds)];
-  const belongs = /* @__PURE__ */ new Map();
-  const owners = /* @__PURE__ */ new Map();
-  const values = /* @__PURE__ */ new Map();
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
-    const ph = chunk.map(() => "?").join(",");
-    const b = await db.all(
-      `SELECT src_id, dst_id FROM entries WHERE src_id IN (${ph}) AND rel_id = '${SYS_BELONGS}' AND dst_id != '${SYS_ROOT}'`,
-      [...chunk]
-    );
-    for (const r of b.results ?? []) if (!belongs.has(r.src_id)) belongs.set(r.src_id, r.dst_id);
-    const o = await db.all(`SELECT id, owner_id FROM entries WHERE id IN (${ph})`, [...chunk]);
-    for (const r of o.results ?? []) owners.set(r.id, r.owner_id);
-    const v = await db.all(
-      `SELECT r.src_id AS rid, f.content AS slot, v.content AS content
-       FROM entries r
-       JOIN entries f ON r.rel_id = f.id
-       JOIN entries v ON r.dst_id = v.id
-       WHERE r.src_id IN (${ph}) AND r.rel_id != '${SYS_BELONGS}'`,
-      [...chunk]
-    );
-    for (const r of v.results ?? []) {
-      const m = values.get(r.rid) ?? {};
-      putCell(m, r.slot, r.content);
-      values.set(r.rid, m);
-    }
-  }
-  const out = [];
-  for (const id of ids) {
-    const tpl = belongs.get(id);
-    if (!tpl) continue;
-    const owner = owners.get(id) ?? null;
-    if (ownerId != null && owner !== ownerId) continue;
-    out.push({ record_id: id, template_id: tpl, values: values.get(id) ?? {}, owner_id: owner });
-  }
-  return out;
-}
-async function searchByTemplate(db, template, owner_id, limit = 100, offset = 0) {
-  return (await searchByTemplatePage(db, template, owner_id, limit, offset)).records;
-}
-async function resolveTotal(db, sheetId, owner_id, offset, limit, got, exactTotal) {
-  if (offset === 0 && got < limit) return { total: got, totalExact: true };
-  if (!exactTotal) return { total: offset + got + 1, totalExact: false };
-  const row = owner_id ? await db.first(`SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?`, [sheetId, owner_id]) : await db.first(`SELECT COUNT(*) AS total FROM entries WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?`, [sheetId]);
-  return { total: row?.total ?? 0, totalExact: true };
-}
-async function memberRecordIds(db, tplId, owner_id, limit, offset) {
-  const cardTpl = await getTemplateById(db, tplId);
-  if (isCardTemplate(cardTpl)) {
-    const res2 = owner_id ? await db.all("SELECT id FROM entries WHERE tpl_id = ? AND +owner_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", [tplId, owner_id, limit, offset]) : await db.all("SELECT id FROM entries WHERE tpl_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", [tplId, limit, offset]);
-    return (res2.results ?? []).map((r) => r.id);
-  }
-  const res = owner_id ? await db.all(
-    `SELECT src_id AS record_id FROM entries
-           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ? AND +owner_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
-    [tplId, owner_id, limit, offset]
-  ) : await db.all(
-    `SELECT src_id AS record_id FROM entries
-           WHERE rel_id = '${SYS_BELONGS}' AND dst_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
-    [tplId, limit, offset]
-  );
-  return (res.results ?? []).map((r) => r.record_id);
-}
-async function searchByTemplatePage(db, template, owner_id, limit = 100, offset = 0, exactTotal = false, slots) {
-  const tpl = await getTemplate(db, template);
-  if (!tpl) return { records: [], total: 0, totalExact: true, templateExists: false };
-  const cap = Math.min(Math.max(limit, 1), 500);
-  const skip = Math.max(offset, 0);
-  if (isCardTemplate(tpl)) {
-    const records = await cardPage(db, tpl, owner_id, cap, skip);
-    if (skip === 0 && records.length < cap) return { records, total: records.length, totalExact: true };
-    if (!exactTotal) return { records, total: skip + records.length + 1, totalExact: false };
-    return { records, total: await cardCount(db, tpl.id, owner_id), totalExact: true };
-  }
-  const ids = await memberRecordIds(db, tpl.id, owner_id, cap, skip);
-  const { total, totalExact } = await resolveTotal(db, tpl.id, owner_id, skip, cap, ids.length, exactTotal);
-  if (ids.length === 0) return { records: [], total, totalExact };
-  return { records: await hydrateRecordValues(db, tpl.id, ids, slots), total, totalExact };
-}
-async function hydrateRecordValues(db, tplId, ids, slots) {
-  const cardTpl = await getTemplateById(db, tplId);
-  if (isCardTemplate(cardTpl)) {
-    const decoded = new Map((await decodeCards(db, cardTpl, await cardRowsByIds(db, ids))).map((r) => [r.record_id, r]));
-    const want = slots && slots.length > 0 ? new Set(slots) : null;
-    return ids.map((id) => decoded.get(id)).filter((r) => !!r).map((r) => want ? { ...r, values: Object.fromEntries(Object.entries(r.values).filter(([k]) => want.has(k))) } : r);
-  }
-  const byId = /* @__PURE__ */ new Map();
-  for (const id of ids) byId.set(id, { record_id: id, template_id: tplId, values: {}, owner_id: null });
-  const wanted = slots && slots.length > 0 ? [...new Set(slots)].map((s) => fieldEntryId(tplId, s)) : null;
-  const only = wanted && wanted.length <= D1_PARAM_CAP - 10 ? wanted : null;
-  const onlyClause = only ? ` AND +r.rel_id IN (${only.map(() => "?").join(",")})` : "";
-  const batch = Math.max(1, Math.min(90, D1_PARAM_CAP - (only?.length ?? 0)));
-  for (let i = 0; i < ids.length; i += batch) {
-    const chunk = ids.slice(i, i + batch);
-    const placeholders = chunk.map(() => "?").join(",");
-    const [cellRes, identRes] = await Promise.all([
-      db.all(
-        `SELECT r.src_id AS record_id, f.content AS slot, v.content AS content
-           FROM entries r
-           JOIN entries f ON r.rel_id = f.id
-           JOIN entries v ON r.dst_id = v.id
-           WHERE r.src_id IN (${placeholders}) AND r.rel_id != '${SYS_BELONGS}'${onlyClause}`,
-        [...chunk, ...only ?? []]
-      ),
-      db.all(`SELECT id, owner_id FROM entries WHERE id IN (${placeholders})`, [...chunk])
-    ]);
-    for (const r of cellRes.results ?? []) {
-      const rec = byId.get(r.record_id);
-      if (rec) putCell(rec.values, r.slot, r.content);
-    }
-    for (const r of identRes.results ?? []) {
-      const rec = byId.get(r.id);
-      if (rec) rec.owner_id = r.owner_id;
-    }
-  }
-  return ids.map((id) => byId.get(id)).filter((r) => !!r);
-}
-async function deleteRecord(db, recordId) {
-  const ci = await cardIdentity(db, recordId);
-  if (ci) {
-    await deleteCard(db, ci);
-    return true;
-  }
-  const belongs = await recordBelongs(db, recordId);
-  if (!belongs) return false;
-  const mapTpl = await getTemplate(db, belongs.dst_id);
-  const mapBefore = mapTpl && isMapTrackedTemplate(mapTpl.name) ? await getRecord(db, recordId) : null;
-  const cellRes = await db.all(`SELECT dst_id FROM entries WHERE src_id = ? AND rel_id != '${SYS_BELONGS}'`, [recordId]);
-  const dsts = (cellRes.results ?? []).map((r) => r.dst_id);
-  await db.run(`DELETE FROM entries WHERE src_id = ?1 AND (rel_id != '${SYS_BELONGS}' OR dst_id = ?2)`, [recordId, belongs.dst_id]);
-  await db.run(
-    `DELETE FROM entries WHERE id = ?1 AND content IS NULL AND metadata_json IS NULL AND src_id IS NULL
-        AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
-        AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`,
-    [recordId]
-  );
-  for (const dst of dsts) {
-    await db.run(
-      `DELETE FROM entries WHERE id = ?1
-          AND substr(id, 1, 4) <> 'sys_'
-          AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1)
-          AND NOT EXISTS (SELECT 1 FROM entries WHERE src_id = ?1)`,
-      [dst]
-    );
-  }
-  if (mapTpl && mapBefore) await noteRecordWrite(db, mapTpl.name, mapBefore.owner_id, mapBefore.values, null);
-  return true;
-}
-async function editRelation(db, recordId, slot, edit) {
-  const ci = await cardIdentity(db, recordId);
-  const belongs = ci ? null : await recordBelongs(db, recordId);
-  if (!ci && !belongs) return null;
-  const tpl = ci ? ci.tpl : await getTemplate(db, belongs.dst_id);
-  if (!tpl) return null;
-  if (!isRelationSlot(slot)) throw new Error(`not a relation slot (name must end with []): ${slot}`);
-  const slots = JSON.parse(tpl.slots_json);
-  if (!slots.includes(slot)) throw new Error(`slot not in template: ${slot}`);
-  const clean = (xs, what) => {
-    if (xs === void 0) return [];
-    if (!Array.isArray(xs)) throw new Error(`${what} must be an array of strings`);
-    const out = [...new Set(xs.map((x) => String(x)).filter((x) => x !== ""))];
-    for (const k of out) if (k.length > RELATION_MAX_KEY_LEN) throw new Error(`${what}: key too long (>${RELATION_MAX_KEY_LEN})`);
-    if (out.length > RELATION_MAX_PER_CALL) throw new Error(`${what}: too many keys in one call (>${RELATION_MAX_PER_CALL})`);
-    return out;
-  };
-  const add2 = clean(edit.add, "add");
-  const remove = clean(edit.remove, "remove").filter((k) => !add2.includes(k));
-  if (ci) return editCardRelation(db, ci, slot, add2, remove);
-  const relId = fieldEntryId(tpl.id, slot);
-  const identity = await db.first("SELECT owner_id FROM entries WHERE id = ?", [recordId]);
-  const ownerId = identity?.owner_id ?? null;
-  const stmts = [];
-  if (remove.length > 0) {
-    const ph = remove.map(() => "?").join(",");
-    const found = await db.all(
-      `SELECT r.id AS rid, v.id AS vid FROM entries r JOIN entries v ON r.dst_id = v.id
-        WHERE r.src_id = ? AND r.rel_id = ? AND v.content IN (${ph})`,
-      [recordId, relId, ...remove]
-    );
-    for (const row of found.results ?? []) {
-      stmts.push({ sql: "DELETE FROM entries WHERE id = ?", params: [row.rid] });
-      stmts.push({ sql: "DELETE FROM entries WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM entries WHERE dst_id = ?1 AND id != ?2)", params: [row.vid, row.rid] });
-    }
-  }
-  if (add2.length > 0) {
-    stmts.push(...fieldEntryStatements(tpl.id, [slot]));
-    for (const fk of add2) {
-      const ids = relationCellIds(recordId, slot, fk);
-      stmts.push(entryRowStatement({ id: ids.value, content: fk, owner_id: ownerId }, { ignore: true }));
-      stmts.push(entryRowStatement({ id: ids.relation, owner_id: ownerId, src_id: recordId, rel_id: relId, dst_id: ids.value }, { ignore: true }));
-    }
-  }
-  if (stmts.length > 0) await db.batch(stmts);
-  const cur = await db.all(
-    `SELECT v.content AS content FROM entries r JOIN entries v ON r.dst_id = v.id WHERE r.src_id = ? AND r.rel_id = ?`,
-    [recordId, relId]
-  );
-  const keys = [...new Set((cur.results ?? []).map((r) => r.content))].sort();
-  return { record_id: recordId, slot, keys };
-}
-var kindTemplateIds, RecordExistsError, RELATION_MAX_PER_CALL, RELATION_MAX_KEY_LEN, D1_PARAM_CAP;
-var init_record_crud = __esm({
-  "kbdb/src/actions/record-crud.ts"() {
-    "use strict";
-    init_entry_crud();
-    init_kind();
-    init_entity_canon();
-    init_library_predicate();
-    init_library_map_store();
-    init_template_guard();
-    init_card_row();
-    kindTemplateIds = /* @__PURE__ */ new WeakMap();
-    RecordExistsError = class extends Error {
-      recordId;
-      constructor(recordId) {
-        super(`record already exists: ${recordId}`);
-        this.name = "RecordExistsError";
-        this.recordId = recordId;
-      }
-    };
-    RELATION_MAX_PER_CALL = 100;
-    RELATION_MAX_KEY_LEN = 512;
-    D1_PARAM_CAP = 99;
-  }
-});
-
-// kbdb/src/actions/brake-settings.ts
-async function ensureSettingsTemplate(db) {
-  const tpl = await getTemplate(db, SETTINGS_TEMPLATE_ID);
-  if (tpl) {
-    const have = JSON.parse(tpl.slots_json);
-    if (SETTINGS_SLOTS.every((s) => have.includes(s))) return;
-    await updateTemplate(db, SETTINGS_TEMPLATE_ID, { slots: [.../* @__PURE__ */ new Set([...have, ...SETTINGS_SLOTS])] });
-    return;
-  }
-  await createTemplate(db, {
-    id: SETTINGS_TEMPLATE_ID,
-    name: "kbdb_settings",
-    description: "\u9019\u53F0 KBDB \u7684\u71DF\u904B\u8A2D\u5B9A\uFF08inkstone/arcrun-rag#207\uFF09\uFF1A\u76EE\u524D\u53EA\u6709 brake_enabled \u4E00\u683C\u2014\u2014\u5E33\u865F\u4E3B\u4EBA\u81EA\u5DF1\u80FD\u4E0D\u80FD\u95DC\u6389\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u3002\u4E00\u500B\u5BE6\u4F8B\u4E00\u7B46\uFF0C\u4E0D\u639B owner\u3002",
-    slots: SETTINGS_SLOTS,
-    created_by: "kbdb-speedometer"
-  });
-}
-function toSettings(rec) {
-  const v = rec?.values ?? {};
-  return {
-    brake_enabled: v.brake_enabled !== "false",
-    updated_at: v.updated_at || null,
-    updated_by: v.updated_by || null
-  };
-}
-async function getBrakeSettings(db) {
-  const now = Date.now();
-  if (settingsCache && now - settingsCache.at <= SETTINGS_CACHE_MS) return settingsCache.settings;
-  if (settingsInflight) return settingsInflight;
-  const p = (async () => {
-    try {
-      const [, rec] = await Promise.all([ensureSettingsTemplate(db), getRecord(db, SETTINGS_RECORD_ID)]);
-      const settings = toSettings(rec);
-      settingsCache = { at: Date.now(), settings };
-      return settings;
-    } catch (e) {
-      if (settingsCache) return settingsCache.settings;
-      throw e;
-    }
-  })().finally(() => {
-    settingsInflight = null;
-  });
-  settingsInflight = p;
-  return p;
-}
-function brakeKnownDisabled() {
-  return !!settingsCache && settingsCache.settings.brake_enabled === false;
-}
-async function brakeEnabled(db) {
-  return (await getBrakeSettings(db)).brake_enabled;
-}
-async function setBrakeEnabled(db, enabled, by, now = Date.now()) {
-  await ensureSettingsTemplate(db);
-  const values = {
-    brake_enabled: String(enabled),
-    updated_at: new Date(now).toISOString(),
-    updated_by: (by || "manual").slice(0, 120)
-  };
-  const existing = await getRecord(db, SETTINGS_RECORD_ID);
-  const rec = existing ? await updateRecord(db, SETTINGS_RECORD_ID, values) : await createRecord(db, { template: SETTINGS_TEMPLATE_ID, record_id: SETTINGS_RECORD_ID, values, owner_id: null, derived_cell_ids: true });
-  settingsInflight = null;
-  settingsCache = null;
-  return toSettings(rec);
-}
-var SETTINGS_TEMPLATE_ID, SETTINGS_SLOTS, SETTINGS_RECORD_ID, SETTINGS_CACHE_MS, settingsCache, settingsInflight;
-var init_brake_settings = __esm({
-  "kbdb/src/actions/brake-settings.ts"() {
-    "use strict";
-    init_record_crud();
-    SETTINGS_TEMPLATE_ID = "tpl-kbdb-settings";
-    SETTINGS_SLOTS = ["brake_enabled", "updated_at", "updated_by"];
-    SETTINGS_RECORD_ID = "kbdb_settings";
-    SETTINGS_CACHE_MS = 3e4;
-    settingsCache = null;
-    settingsInflight = null;
   }
 });
 
@@ -3585,8 +4081,8 @@ async function newestRecordIdsByFieldValue(db, tplId, fields, value, owner_id, n
     cursor = rows[rows.length - 1].rid;
     const dstIds = rows.map((r) => r.id);
     const rp = owner_id ? [...dstIds, ...fieldIds, owner_id] : [...dstIds, ...fieldIds];
-    const rr = await db.all(relSql(dstIds.length), rp);
-    for (const r of rr.results ?? []) if (!seen.has(r.record_id)) {
+    const rr2 = await db.all(relSql(dstIds.length), rp);
+    for (const r of rr2.results ?? []) if (!seen.has(r.record_id)) {
       seen.add(r.record_id);
       out.push(r.record_id);
     }
@@ -7440,7 +7936,7 @@ async function ensureTemplate(db, id, name, description, slots) {
     await updateTemplate(db, id, { slots: [.../* @__PURE__ */ new Set([...have, ...slots])] });
     return;
   }
-  await createTemplate(db, { id, name, description, slots, created_by: "kbdb-speedometer" });
+  await createTemplate(db, { id, name, description, slots, created_by: "kbdb-speedometer" }, { skipShapeGate: true });
 }
 async function ensureUsageDay(db, day) {
   if (odoEnsuredDay === day) return;
@@ -7953,7 +8449,9 @@ async function listLibraryCards(db, f) {
            MAX(CASE WHEN ${glossLike} THEN content END) AS gloss_block,
            MAX(json_extract(metadata_json, '$.source_path')) AS source_path,
            MAX(json_extract(metadata_json, '$.source')) AS source,
-           MAX(updated_at) AS updated_at
+           MAX(updated_at) AS updated_at,
+           MAX(parent_id) AS parent_id,
+           MIN(id) AS entry_id
          FROM ${members.from}
          ${where}
          GROUP BY page_name
@@ -7984,7 +8482,9 @@ async function listLibraryCards(db, f) {
     gloss: glossOf(r.gloss_block),
     source_path: r.source_path ?? null,
     source: r.source ?? null,
-    updated_at: Number(r.updated_at) || 0
+    updated_at: Number(r.updated_at) || 0,
+    parent_id: r.parent_id ?? null,
+    entry_id: r.entry_id ?? null
   }));
   return {
     library,
@@ -8782,6 +9282,872 @@ async function fillCardPassages(env, db, input) {
 // kbdb/src/routes/entries.ts
 init_maintenance_quota();
 init_d1();
+init_tree();
+
+// kbdb/src/actions/tree-actions.ts
+init_kind();
+init_tree();
+var READY_STATUS = "ready_for_visa";
+var OPEN_STATUS = "open";
+var isLeafDone = (s) => s === "closed" || s === "done";
+var isDoneish = (s) => isLeafDone(s) || s === READY_STATUS;
+var rr = (m) => m?.rows_read ?? 0;
+async function rootOf(db, id, opts = {}) {
+  if (!await nodeExists(db, id, opts.owner)) throw new TreeError("not_found", `\u7BC0\u9EDE ${id} \u4E0D\u5B58\u5728`, 404);
+  const cols = (src) => `${src}.id, ${src}.parent_id, ${src}.sort_key, ${src}.task_status, ${src}.origin, ${src}.created_by, ${src}.perm_class, ${src}.owner_id, ${src}.page_name, ${src}.created_at, ${src}.updated_at`;
+  const r = await db.all(
+    `WITH RECURSIVE anc AS (
+       SELECT ${cols("b")}, 0 AS depth FROM entries b WHERE b.id = ?1
+       UNION ALL
+       SELECT ${cols("e")}, anc.depth + 1 FROM entries e JOIN anc ON e.id = anc.parent_id WHERE anc.depth < ?2
+     )
+     SELECT * FROM anc ORDER BY depth`,
+    [id, ANCESTORS_MAX_DEPTH]
+  );
+  const rows = r.results ?? [];
+  const top = rows[rows.length - 1];
+  const [root] = await decorate(db, [top], false);
+  return { rows_read: r.meta?.rows_read ?? null, data: { root, depth: rows.length - 1, path: rows.map((x) => String(x.id)).reverse() } };
+}
+function progressOf(closed, total, rootDone) {
+  return { open: total - closed, closed, total, percent: total ? Math.round(closed * 100 / total) : rootDone ? 100 : 0 };
+}
+async function rollupOf(db, id, opts = {}) {
+  if (!await nodeExists(db, id, opts.owner)) throw new TreeError("not_found", `\u7BC0\u9EDE ${id} \u4E0D\u5B58\u5728`, 404);
+  const maxDepth = Math.min(Math.max(Math.floor(opts.maxDepth ?? SUBTREE_MAX_DEPTH), 0), SUBTREE_MAX_DEPTH);
+  const limit = Math.min(Math.max(Math.floor(opts.limit ?? SUBTREE_MAX_LIMIT), 1), SUBTREE_MAX_LIMIT);
+  const r = await db.all(
+    `WITH RECURSIVE sub(id, parent_id, task_status, page_name, depth) AS (
+       SELECT b.id, b.parent_id, b.task_status, b.page_name, 0 FROM entries b WHERE b.id = ?1
+       UNION ALL
+       SELECT e.id, e.parent_id, e.task_status, e.page_name, sub.depth + 1 FROM entries e JOIN sub ON e.parent_id = sub.id WHERE sub.depth < ?2
+     )
+     SELECT id, parent_id, task_status, page_name, depth FROM sub ORDER BY depth LIMIT ?3`,
+    [id, maxDepth, limit + 1]
+  );
+  let read = rr(r.meta);
+  let rows = r.results ?? [];
+  let truncated = rows.length > limit;
+  if (truncated) rows = rows.slice(0, limit);
+  const kids = /* @__PURE__ */ new Map();
+  for (const n2 of rows) if (n2.id !== id && n2.parent_id) {
+    const l = kids.get(n2.parent_id) ?? [];
+    l.push(n2);
+    kids.set(n2.parent_id, l);
+  }
+  if (!truncated && maxDepth < SUBTREE_MAX_DEPTH) {
+    const edge = rows.filter((n2) => n2.depth === maxDepth).map((n2) => n2.id);
+    if (edge.length > 0) {
+      const more = await db.all(`SELECT 1 AS x FROM entries WHERE parent_id IN (${edge.map(() => "?").join(",")}) LIMIT 1`, edge);
+      read += rr(more.meta);
+      truncated = (more.results ?? []).length > 0;
+    }
+  }
+  const memo = /* @__PURE__ */ new Map();
+  const tally = (nid) => {
+    const hit = memo.get(nid);
+    if (hit) return hit;
+    const out = { closed: 0, total: 0, untracked: 0, by: {} };
+    for (const k of kids.get(nid) ?? []) {
+      if ((kids.get(k.id) ?? []).length > 0) {
+        const s = tally(k.id);
+        out.closed += s.closed;
+        out.total += s.total;
+        out.untracked += s.untracked;
+        for (const [st, n2] of Object.entries(s.by)) out.by[st] = (out.by[st] ?? 0) + n2;
+      } else if (k.task_status === null) {
+        out.untracked++;
+      } else {
+        out.total++;
+        if (isLeafDone(k.task_status)) out.closed++;
+        out.by[k.task_status] = (out.by[k.task_status] ?? 0) + 1;
+      }
+    }
+    memo.set(nid, out);
+    return out;
+  };
+  const self = rows.find((n2) => n2.id === id);
+  const t = tally(id);
+  const rootDone = isLeafDone(self.task_status);
+  const prog = progressOf(t.closed, t.total, rootDone);
+  const children = (kids.get(id) ?? []).map((k) => {
+    const isLeaf = (kids.get(k.id) ?? []).length === 0;
+    const s = isLeaf ? { closed: isLeafDone(k.task_status) ? 1 : 0, total: k.task_status === null ? 0 : 1 } : tally(k.id);
+    return { id: k.id, task_status: k.task_status, page_name: k.page_name, ...progressOf(s.closed, s.total, isLeafDone(k.task_status)) };
+  });
+  return {
+    rows_read: read,
+    data: { id, task_status: self.task_status, ...prog, ready_for_visa: t.total > 0 && prog.open === 0, untracked: t.untracked, by_status: t.by, children, truncated }
+  };
+}
+async function settleUp(db, startId) {
+  const changed = [];
+  let read = 0;
+  let cur = startId ?? null;
+  for (let guard2 = 0; cur && guard2 < ANCESTORS_MAX_DEPTH; guard2++) {
+    const me = await db.all(
+      "SELECT id, parent_id, task_status FROM entries WHERE id = ? AND src_id IS NULL",
+      [cur]
+    );
+    read += rr(me.meta);
+    const row = (me.results ?? [])[0];
+    if (!row) break;
+    const kids = await db.all("SELECT task_status FROM entries WHERE parent_id = ? AND task_status IS NOT NULL", [cur]);
+    read += rr(kids.meta);
+    const st = (kids.results ?? []).map((k) => k.task_status);
+    let next = null;
+    let reason = "all_children_done";
+    if (st.length === 0) {
+      if (row.task_status === READY_STATUS) {
+        next = OPEN_STATUS;
+        reason = "no_children";
+      }
+    } else if (st.every(isDoneish)) {
+      if (!isDoneish(row.task_status)) next = READY_STATUS;
+    } else if (isDoneish(row.task_status)) {
+      next = OPEN_STATUS;
+      reason = "child_not_done";
+    }
+    if (next === null) break;
+    await db.run("UPDATE entries SET task_status = ?, updated_at = unixepoch() WHERE id = ?", [next, cur]);
+    changed.push({ id: cur, from: row.task_status, to: next, reason });
+    cur = row.parent_id;
+  }
+  return { changed, rows_read: read };
+}
+async function moveAndSettle(db, id, input) {
+  const before = await db.all("SELECT parent_id FROM entries WHERE id = ? AND src_id IS NULL", [id]);
+  const oldParent = (before.results ?? [])[0]?.parent_id ?? null;
+  const moved = await moveNode(db, id, input);
+  if (input.settle === false) return { ...moved, settled: [] };
+  let read = (moved.rows_read ?? 0) + rr(before.meta);
+  const settled = [];
+  for (const p of /* @__PURE__ */ new Set([oldParent, input.parent_id])) {
+    if (!p) continue;
+    const s = await settleUp(db, p);
+    read += s.rows_read;
+    settled.push(...s.changed);
+  }
+  return { ...moved, rows_read: read, settled };
+}
+async function readNodeBefore(db, id) {
+  const r = await db.first("SELECT parent_id, task_status FROM entries WHERE id = ? AND src_id IS NULL", [id]);
+  return r ?? null;
+}
+async function settleAfterWrite(db, id, before) {
+  const now = await readNodeBefore(db, id);
+  if (!now) return { changed: [], rows_read: 0 };
+  const parents = /* @__PURE__ */ new Set();
+  if (before === null) {
+    if (now.parent_id && now.task_status !== null) parents.add(now.parent_id);
+  } else {
+    const statusChanged = before.task_status !== now.task_status;
+    const parentChanged = before.parent_id !== now.parent_id;
+    if (now.parent_id && (statusChanged || parentChanged)) parents.add(now.parent_id);
+    if (before.parent_id && parentChanged) parents.add(before.parent_id);
+  }
+  const out = { changed: [], rows_read: 0 };
+  for (const p of parents) {
+    const s = await settleUp(db, p);
+    out.changed.push(...s.changed);
+    out.rows_read += s.rows_read;
+  }
+  return out;
+}
+function titleAndText(n2) {
+  const content = (n2.content ?? "").replace(/\r\n/g, "\n").trim();
+  if (n2.page_name && n2.page_name.trim()) return { title: n2.page_name.trim(), text: content };
+  const nl = content.indexOf("\n");
+  const first = (nl < 0 ? content : content.slice(0, nl)).replace(/^#+\s*/, "").trim();
+  if (!first) return { title: n2.id, text: "" };
+  return { title: first.length > 100 ? first.slice(0, 100) + "\u2026" : first, text: nl < 0 ? "" : content.slice(nl + 1).trim() };
+}
+async function flattenOf(db, id, opts = {}) {
+  const sub = await subtreeOf(db, id, { owner: opts.owner, content: true, maxDepth: opts.maxDepth, limit: opts.limit });
+  const out = [];
+  const walk = (n2) => {
+    const { title, text } = titleAndText(n2);
+    out.push({ id: n2.id, depth: n2.depth, title, text, task_status: n2.task_status, template: n2.template, parent_id: n2.parent_id });
+    for (const c of n2.children ?? []) walk(c);
+  };
+  walk(sub.data.root);
+  const md = [];
+  for (const b of out) {
+    md.push(`${"#".repeat(Math.min(b.depth + 1, 6))} ${b.title}${opts.ids ? ` <!-- id:${b.id} -->` : ""}`);
+    if (b.text) md.push("", b.text);
+    md.push("");
+  }
+  return { rows_read: sub.rows_read, data: { blocks: out, markdown: md.join("\n").trimEnd() + "\n", count: out.length, truncated: sub.data.truncated } };
+}
+var QUERY_SORTS = ["created_at", "updated_at", "page_name", "sort_key", "depth"];
+var QUERY_MAX_LIMIT = 200;
+var QUERY_SCAN_CAP = 3e3;
+var QUERY_MAX_WINDOW_DAYS = 31;
+var likeEsc = (s) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
+async function queryNodes(db, q) {
+  const limit = Math.min(Math.max(Math.floor(q.limit ?? 50), 1), QUERY_MAX_LIMIT);
+  const offset = Math.min(Math.max(Math.floor(q.offset ?? 0), 0), 5e3);
+  const sort = q.sort ?? "created_at";
+  if (!QUERY_SORTS.includes(sort)) throw new TreeError("bad_sort", `sort \u53EA\u80FD\u662F ${QUERY_SORTS.join("\uFF0F")}`);
+  const dir = q.order === "asc" ? "ASC" : "DESC";
+  const needContent = !!q.content || !!(q.q && q.q.trim());
+  const scope = q.under ? "subtree" : q.template ? "template" : "window";
+  const conds = [];
+  const params = [];
+  let tplId;
+  if (q.template) {
+    tplId = await templateIdByName(db, q.template);
+    if (!tplId) return { rows_read: 0, data: { nodes: [], total_matched: 0, scan_capped: false, scope } };
+  }
+  if (q.status && q.status.length > 0) {
+    conds.push(`task_status IN (${q.status.map(() => "?").join(",")})`);
+    params.push(...q.status);
+  }
+  if (q.created_by) {
+    conds.push("created_by = ?");
+    params.push(q.created_by);
+  }
+  if (q.perm_class) {
+    conds.push("perm_class = ?");
+    params.push(q.perm_class);
+  }
+  if (q.parent_id) {
+    conds.push("parent_id = ?");
+    params.push(q.parent_id);
+  }
+  if (q.origin) {
+    if (q.origin.endsWith("*")) {
+      conds.push("origin LIKE ? ESCAPE '\\'");
+      params.push(likeEsc(q.origin.slice(0, -1)) + "%");
+    } else {
+      conds.push("origin = ?");
+      params.push(q.origin);
+    }
+  }
+  if (q.created_from !== void 0) {
+    conds.push("created_at >= ?");
+    params.push(q.created_from);
+  }
+  if (q.created_to !== void 0) {
+    conds.push("created_at < ?");
+    params.push(q.created_to);
+  }
+  if (q.updated_from !== void 0) {
+    conds.push("updated_at >= ?");
+    params.push(q.updated_from);
+  }
+  if (q.updated_to !== void 0) {
+    conds.push("updated_at < ?");
+    params.push(q.updated_to);
+  }
+  if (q.q && q.q.trim()) {
+    const pat = `%${likeEsc(q.q.trim().slice(0, 40))}%`;
+    conds.push("(page_name LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')");
+    params.push(pat, pat);
+  }
+  const colList = ["id", "parent_id", "sort_key", "task_status", "origin", "created_by", "perm_class", "owner_id", "page_name", "created_at", "updated_at", ...needContent ? ["content"] : []];
+  const orderBy = () => {
+    switch (sort) {
+      case "sort_key":
+        return `sort_key IS NULL, sort_key ${dir}, created_at, id`;
+      case "depth":
+        return `depth ${dir}, sort_key IS NULL, sort_key, created_at, id`;
+      case "page_name":
+        return `page_name IS NULL, page_name ${dir}, id`;
+      default:
+        return `${sort} ${dir}, id`;
+    }
+  };
+  if (q.under) {
+    if (!await nodeExists(db, q.under, q.owner)) throw new TreeError("not_found", `\u7BC0\u9EDE ${q.under} \u4E0D\u5B58\u5728`, 404);
+    const maxDepth = Math.min(Math.max(Math.floor(q.max_depth ?? SUBTREE_MAX_DEPTH), 0), SUBTREE_MAX_DEPTH);
+    const pre = (src) => colList.map((x) => `${src}.${x}`).join(", ");
+    const where2 = [...q.include_self ? [] : ["id <> ?1"], ...conds];
+    if (tplId) {
+      where2.push(belongsToSql("id"));
+      params.push(tplId);
+    }
+    const cte = `WITH RECURSIVE sub AS (
+         SELECT ${pre("b")}, 0 AS depth FROM entries b WHERE b.id = ?1
+         UNION ALL
+         SELECT ${pre("e")}, sub.depth + 1 FROM entries e JOIN sub ON e.parent_id = sub.id WHERE sub.depth < ?2
+         LIMIT ?3
+       )`;
+    const head = [q.under, maxDepth, QUERY_SCAN_CAP + 1];
+    const r2 = await db.all(
+      `${cte}
+       SELECT *, COUNT(*) OVER () AS total_matched, (SELECT COUNT(*) FROM sub) AS scanned FROM sub${where2.length ? ` WHERE ${where2.join(" AND ")}` : ""}
+       ORDER BY ${orderBy()} LIMIT ? OFFSET ?`,
+      [...head, ...params, limit, offset]
+    );
+    let read = r2.meta?.rows_read ?? 0;
+    const rows2 = r2.results ?? [];
+    let scanned = rows2.length ? Number(rows2[0].scanned) : -1;
+    if (scanned < 0) {
+      const c = await db.first(`${cte} SELECT COUNT(*) AS n FROM sub`, head);
+      scanned = c?.n ?? 0;
+      read += 0;
+    }
+    const nodes2 = (await decorate(db, rows2, !!q.content)).map((n2, i) => ({ ...n2, depth: Number(rows2[i].depth) }));
+    return { rows_read: read, data: { nodes: nodes2, total_matched: rows2.length ? Number(rows2[0].total_matched) : 0, scan_capped: scanned > QUERY_SCAN_CAP, scope } };
+  }
+  if (!q.owner) throw new TreeError("unscoped_query", "\u8981\u67E5\u8A62\u8ACB\u7D66\u7BC4\u570D\uFF1Aunder\uFF08\u67D0\u7BC0\u9EDE\u7684\u5B50\u6A39\uFF09\u3001\u6216 owner_id \u52A0 template\u3001\u6216 owner_id \u52A0\u6709\u754C\u7684\u65E5\u671F\u8996\u7A97\uFF08created_from\uFF0Bcreated_to\uFF09");
+  if (sort === "depth") throw new TreeError("bad_sort", "sort=depth \u53EA\u5728 under \u7BC4\u570D\u53EF\u7528");
+  const windowOk = q.created_from !== void 0 && q.created_to !== void 0 && q.created_to > q.created_from && q.created_to - q.created_from <= QUERY_MAX_WINDOW_DAYS * 86400;
+  if (!tplId && !windowOk) throw new TreeError("unscoped_query", `\u6C92\u7D66 under\uFF0Ftemplate \u6642\uFF0C\u65E5\u671F\u8996\u7A97\u8981\u6709\u4E0A\u4E0B\u754C\u4E14\u4E0D\u8D85\u904E ${QUERY_MAX_WINDOW_DAYS} \u5929\uFF08created_from\uFF0Bcreated_to\uFF0Cepoch \u79D2\uFF09\u2014\u2014\u4E0D\u9ED8\u9ED8\u6383\u6574\u500B\u79DF\u6236`);
+  let from = "entries";
+  const fromParams = [];
+  const where = [...conds];
+  if (tplId) {
+    const m = membersOf(tplId, q.owner);
+    from = m.from;
+    fromParams.push(...m.params);
+    where.push("owner_id = ?");
+    params.push(q.owner);
+  } else {
+    where.push("owner_id = ?", "src_id IS NULL", notStructureSql());
+    params.push(q.owner);
+  }
+  const r = await db.all(
+    `SELECT ${colList.join(", ")}, COUNT(*) OVER () AS total_matched FROM ${from} WHERE ${where.join(" AND ")} ORDER BY ${orderBy()} LIMIT ? OFFSET ?`,
+    [...fromParams, ...params, limit, offset]
+  );
+  const rows = r.results ?? [];
+  const nodes = await decorate(db, rows, !!q.content);
+  return { rows_read: r.meta?.rows_read ?? null, data: { nodes, total_matched: rows.length ? Number(rows[0].total_matched) : 0, scan_capped: false, scope } };
+}
+
+// kbdb/src/actions/same-thing.ts
+init_kind();
+init_entry_crud();
+
+// kbdb/src/actions/entity-resolve.ts
+init_entity_canon();
+init_library_predicate();
+init_record_crud();
+init_kind();
+init_embed();
+init_select();
+var TPL_ENTITY_ID = "tpl-entity";
+var TPL_ENTITY_NAME = "entity";
+var TPL_ALIAS_ID = "tpl-alias";
+var TPL_ALIAS_NAME = "alias";
+var ENTITY_SLOTS_DEF = ["name", "description", "alias"];
+var DEFAULT_NORMALIZE_MIN_SCORE = 0.8;
+var DEFAULT_JUDGE_MIN_SCORE = 0.55;
+var MAX_JUDGE_CANDIDATES = 2;
+var DEFAULT_RECENT_WINDOW_SEC = 600;
+var MAX_RECENT_CANDIDATES = 20;
+var entityLibraryExpr = (alias) => ENTRY_LIBRARY.replace(/metadata_json/g, `${alias}.metadata_json`);
+function normLibrary(raw2) {
+  if (typeof raw2 !== "string") return void 0;
+  const v = raw2.trim();
+  return v === "" ? void 0 : v;
+}
+function cosine(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  const n2 = Math.min(a.length, b.length);
+  for (let i = 0; i < n2; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+}
+async function recentNeighbors(env, db, tplId, owner, vec, seen, library) {
+  const n2 = Number(env.ENTITY_RECENT_WINDOW_SEC);
+  const windowSec = Number.isFinite(n2) && n2 >= 0 ? n2 : DEFAULT_RECENT_WINDOW_SEC;
+  if (windowSec === 0) return [];
+  const since = Math.floor(Date.now() / 1e3) - windowSec;
+  const rows = await db.all(
+    `SELECT e.id AS id, e.content AS name, d.content AS description
+       FROM entries b JOIN entries e ON e.id = b.src_id JOIN entries d ON d.id = e.id || '~v~description'
+      WHERE b.dst_id = ? AND b.rel_id = '${SYS_BELONGS}' AND b.created_at >= ? AND +b.owner_id = ?
+        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? `
+        AND ${entityLibraryExpr("e")} = ?` : ""}
+      ORDER BY b.created_at DESC LIMIT ?`,
+    [tplId, since, owner, ...library ? [library] : [], MAX_RECENT_CANDIDATES + seen.size]
+  );
+  const cands = (rows.results ?? []).filter((r) => !seen.has(r.id)).slice(0, MAX_RECENT_CANDIDATES);
+  if (cands.length === 0) return [];
+  const vecs = await embedManyForEntity(env, cands.map((r) => `${r.name}\uFF1A${r.description}`));
+  if (!vecs || vecs.length !== cands.length) return [];
+  return cands.map((r, i) => ({ id: r.id, score: cosine(vec, vecs[i]) })).sort((a, b) => b.score - a.score);
+}
+var EntityError = class extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+  status;
+};
+async function digest(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var entityIdOf = async (owner, canonical) => `ent_${await digest(`${owner}\0${canonical}`)}`;
+var aliasIdOf = async (owner, alias) => `als_${await digest(`${owner}\0${alias}`)}`;
+function minScore(env) {
+  const n2 = Number(env.ENTITY_NORMALIZE_MIN_SCORE);
+  return Number.isFinite(n2) && n2 > 0 && n2 <= 1 ? n2 : DEFAULT_NORMALIZE_MIN_SCORE;
+}
+function judgeMinScore(env, threshold) {
+  const n2 = Number(env.ENTITY_JUDGE_MIN_SCORE);
+  const v = Number.isFinite(n2) && n2 > 0 && n2 < 1 ? n2 : DEFAULT_JUDGE_MIN_SCORE;
+  return Math.min(v, threshold);
+}
+var JUDGE_SYSTEM = "\u4F60\u5224\u65B7\u5169\u500B\u540D\u5B57\u662F\u4E0D\u662F\u5728\u6307\u300C\u540C\u4E00\u500B\u771F\u5BE6\u4E16\u754C\u7684\u6771\u897F\u300D\uFF08\u540C\u4E00\u500B\u4EBA\u3001\u540C\u4E00\u9593\u516C\u53F8\u3001\u540C\u4E00\u500B\u7522\u54C1\u2026\u2026\uFF09\u3002\u53EA\u770B\u63CF\u8FF0\u5BEB\u7684\u4E8B\u5BE6\uFF0C\u4E0D\u770B\u540D\u5B57\u50CF\u4E0D\u50CF\u3002\u540C\u4E00\u500B\u6771\u897F\u7684\u4E0D\u540C\u7A31\u547C\u3001\u66B1\u7A31\u3001\u5916\u865F\u3001\u8B6F\u540D \u21D2 same\uFF1B\u76F8\u95DC\u4F46\u4E0D\u662F\u540C\u4E00\u500B\uFF08\u4F8B\u5982\u5275\u8FA6\u4EBA\u8207\u4ED6\u7684\u516C\u53F8\u3001\u7522\u54C1\u8207\u88FD\u9020\u5546\u3001\u4E0A\u4E0B\u4F4D\u6982\u5FF5\uFF09\u21D2 different\uFF1B\u62FF\u4E0D\u6E96 \u21D2 different\u3002\u53EA\u56DE\u4E00\u500B\u5B57\uFF1Asame \u6216 different\u3002";
+async function judgeSame(env, name, description, cand) {
+  const judge = judgeProviderOf(env);
+  if (!judge) return "unavailable";
+  const user = `\u7532\uFF1A${name}
+\u7532\u7684\u63CF\u8FF0\uFF1A${description}
+\u4E59\uFF1A${cand.name}
+\u4E59\u7684\u63CF\u8FF0\uFF1A${cand.description ?? "\uFF08\u6C92\u6709\u63CF\u8FF0\uFF09"}
+\u7532\u548C\u4E59\u662F\u540C\u4E00\u500B\u55CE\uFF1F`;
+  try {
+    const out = (await judge.complete((env.ENTITY_JUDGE_MODEL ?? "").trim() || judge.defaultModel, JUDGE_SYSTEM, user)).trim().toLowerCase();
+    return /^same\b/.test(out) ? "same" : "different";
+  } catch {
+    return "failed";
+  }
+}
+async function ensureEntityTemplate(db) {
+  let tpl = await getTemplate(db, TPL_ENTITY_NAME);
+  if (!tpl) {
+    try {
+      tpl = await createTemplate(db, {
+        id: TPL_ENTITY_ID,
+        name: TPL_ENTITY_NAME,
+        description: "\u6B63\u5F0F entity\uFF1A\u540D\u5B57\u3001\u4E00\u53E5\u63CF\u8FF0\u3001\u5225\u540D\u3002\u6BCF\u500B\u5E33\u865F\u6BCF\u500B\u540D\u5B57\u53EA\u6709\u4E00\u7B46\u3002",
+        slots: [...ENTITY_SLOTS_DEF]
+      }, { skipShapeGate: true });
+    } catch {
+      tpl = await getTemplate(db, TPL_ENTITY_NAME);
+    }
+    if (!tpl) throw new Error("entity template \u5EFA\u7ACB\u5931\u6557");
+    return tpl.id;
+  }
+  let have = [];
+  try {
+    have = JSON.parse(tpl.slots_json);
+  } catch {
+    have = [];
+  }
+  const missing = ENTITY_SLOTS_DEF.filter((s) => !have.includes(s));
+  if (missing.length > 0) await updateTemplate(db, tpl.id, { slots: [...have, ...missing] });
+  return tpl.id;
+}
+async function ensureAliasTemplate(db) {
+  const tpl = await getTemplate(db, TPL_ALIAS_NAME);
+  if (tpl) return tpl.id;
+  try {
+    return (await createTemplate(db, { id: TPL_ALIAS_ID, name: TPL_ALIAS_NAME, description: "\u6B63\u5F0F entity \u7684\u5225\u540D\uFF08\u53EA\u6709\u4E00\u689D\u6B78\u5C6C\u8207\u4E00\u689D\u6307\u56DE\u6B63\u5F0F entity \u7684\u95DC\u4FC2\uFF0C\u81EA\u5DF1\u6C92\u6709\u5411\u91CF\uFF09\u3002", slots: ["name"] }, { skipShapeGate: true })).id;
+  } catch {
+    const again = await getTemplate(db, TPL_ALIAS_NAME);
+    if (!again) throw new Error("alias template \u5EFA\u7ACB\u5931\u6557");
+    return again.id;
+  }
+}
+var isEntityExpr = (idExpr) => `EXISTS (SELECT 1 FROM entries b WHERE b.id = 'relb_' || ${idExpr} || '_' || ?)`;
+async function findEntity(db, owner, rawName) {
+  const canon = canonicalEntity(rawName);
+  const id = await entityIdOf(owner, canon);
+  const tpl = await getTemplate(db, TPL_ENTITY_NAME);
+  if (!tpl) return null;
+  const hit = await db.first(`SELECT e.id AS id, e.content AS content, ${entityLibraryExpr("e")} AS lib FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [id, tpl.id]);
+  if (hit) return { id: hit.id, name: hit.content, matched_by: "canonical", library: libraryOfValue(hit.lib) };
+  const aid = await aliasIdOf(owner, canon);
+  const holder = await db.first(
+    `SELECT e.id AS id, e.content AS content, ${entityLibraryExpr("e")} AS lib FROM entries r JOIN entries e ON e.id = r.src_id
+      WHERE r.dst_id = ? AND r.rel_id = ? AND ${isEntityExpr("e.id")} LIMIT 1`,
+    [aid, fieldEntryId(tpl.id, "alias"), tpl.id]
+  );
+  return holder ? { id: holder.id, name: holder.content, matched_by: "alias", library: libraryOfValue(holder.lib) } : null;
+}
+async function attachAlias(db, tplId, owner, entityId, aliasName, library) {
+  const aid = await aliasIdOf(owner, aliasName);
+  const same = await db.first(`SELECT e.id AS id FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [await entityIdOf(owner, aliasName), tplId]);
+  if (same) return same.id === entityId;
+  const aliasTpl = await ensureAliasTemplate(db);
+  await insertEntryRow(db, { id: aid, content: aliasName, owner_id: owner, ...library ? { metadata_json: JSON.stringify({ library }) } : {} }, { ignore: true });
+  await insertBelongs(db, aid, aliasTpl, owner);
+  await insertEntryRow(db, { id: fieldEntryId(tplId, "alias"), content: "alias" }, { ignore: true });
+  await insertEntryRow(db, { id: `rela_${entityId}~${aid}`, owner_id: owner, src_id: entityId, rel_id: fieldEntryId(tplId, "alias"), dst_id: aid }, { ignore: true });
+  return true;
+}
+async function resolveEntity(env, db, input) {
+  const owner = (input.owner_id ?? "").trim();
+  if (!owner) throw new EntityError("owner_id \u5FC5\u586B");
+  if (typeof input.name !== "string" || !input.name.trim()) throw new EntityError("name \u5FC5\u586B\uFF08\u975E\u7A7A\u5B57\u4E32\uFF09");
+  const canon = canonicalEntity(input.name);
+  const description = typeof input.description === "string" ? input.description.trim() : "";
+  const library = normLibrary(input.library);
+  const tplId = await ensureEntityTemplate(db);
+  const mismatch = (entityLib) => library && libraryOfValue(entityLib) !== library ? { library_mismatch: true } : {};
+  const known = await findEntity(db, owner, canon);
+  if (known) {
+    if (description && await fillDescriptionIfEmpty(db, tplId, known.id, owner, description, known.library === "general" ? void 0 : known.library)) {
+      const row2 = await db.first("SELECT * FROM entries WHERE id = ?", [known.id]);
+      if (row2) await embedOnWrite(env, row2).catch(() => false);
+    }
+    return { entity_id: known.id, name: known.name, matched_by: known.matched_by, created: false, library: known.library, ...mismatch(known.library), alias_added: false, vector: "skipped" };
+  }
+  let vec = null;
+  let vectorState = "no_description";
+  let judgeState = "not_needed";
+  let judgeCalls = 0;
+  if (description) {
+    if (!embedEnabled(env)) {
+      vectorState = "unavailable";
+    } else {
+      try {
+        vec = await embedForEntity(env, `${canon}\uFF1A${description}`);
+        vectorState = vec ? "compared" : "failed";
+      } catch {
+        vectorState = "failed";
+      }
+    }
+  }
+  if (vec) {
+    const threshold = minScore(env);
+    let neighbors = [];
+    try {
+      neighbors = await nearestEntities(env, vec, owner, 3);
+    } catch {
+      vectorState = "failed";
+    }
+    const recentIds = /* @__PURE__ */ new Set();
+    if (vectorState !== "failed" && !neighbors.some((n2) => n2.score >= threshold)) {
+      try {
+        const extra = await recentNeighbors(env, db, tplId, owner, vec, new Set(neighbors.map((n2) => n2.id)), library);
+        for (const x of extra) recentIds.add(x.id);
+        if (extra.length) neighbors = [...neighbors, ...extra].sort((a, b) => b.score - a.score);
+      } catch {
+      }
+    }
+    for (const n2 of neighbors) {
+      if (recentIds.has(n2.id)) continue;
+      if (n2.score < threshold) break;
+      const target = await db.first(
+        `SELECT e.id AS id, e.content AS content FROM entries e WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")}
+            AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? ` AND ${entityLibraryExpr("e")} = ?` : ""}`,
+        [n2.id, owner, tplId, ...library ? [library] : []]
+      );
+      if (!target) continue;
+      if (!await attachAlias(db, tplId, owner, target.id, canon, library)) continue;
+      return { entity_id: target.id, name: target.content, matched_by: "vector", created: false, library: library ?? "general", alias_added: true, score: n2.score, vector: "compared", judge: "not_needed", judge_calls: 0 };
+    }
+    const gray = neighbors.filter((n2) => n2.score >= judgeMinScore(env, threshold) && (n2.score < threshold || recentIds.has(n2.id))).slice(0, MAX_JUDGE_CANDIDATES);
+    judgeState = gray.length ? "different" : "not_needed";
+    for (const n2 of gray) {
+      const cand = await db.first(
+        `SELECT e.id AS id, e.content AS content, d.content AS description FROM entries e LEFT JOIN entries d ON d.id = e.id || '~v~description'
+          WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")} AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? ` AND ${entityLibraryExpr("e")} = ?` : ""}`,
+        [n2.id, owner, tplId, ...library ? [library] : []]
+      );
+      if (!cand) continue;
+      judgeCalls++;
+      const verdict = await judgeSame(env, canon, description, { name: cand.content, description: cand.description });
+      judgeState = verdict;
+      if (verdict === "unavailable" || verdict === "failed") break;
+      if (verdict !== "same") continue;
+      if (!await attachAlias(db, tplId, owner, cand.id, canon, library)) continue;
+      return { entity_id: cand.id, name: cand.content, matched_by: "ai", created: false, library: library ?? "general", alias_added: true, score: n2.score, vector: "compared", judge: "same", judge_calls: judgeCalls };
+    }
+  }
+  const id = await entityIdOf(owner, canon);
+  await insertEntryRow(db, { id, content: canon, owner_id: owner, metadata_json: JSON.stringify(library ? { embed: true, library } : { embed: true }) }, { ignore: true });
+  await createRecord(db, {
+    template: tplId,
+    record_id: id,
+    owner_id: owner,
+    values: description ? { name: canon, description } : { name: canon },
+    derived_cell_ids: true
+  });
+  if (library) {
+    await db.run(
+      `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.library', ?) WHERE id IN (?, ?)`,
+      [library, derivedCellIds(id, "name").value, derivedCellIds(id, "description").value]
+    );
+  }
+  const row = await db.first("SELECT * FROM entries WHERE id = ?", [id]);
+  if (row) await embedOnWrite(env, row, vec ? { vec } : {}).catch(() => false);
+  return { entity_id: id, name: canon, matched_by: "new", created: true, library: library ?? "general", alias_added: false, vector: vectorState, judge: judgeState, judge_calls: judgeCalls };
+}
+async function fillDescriptionIfEmpty(db, tplId, entityId, owner, description, library) {
+  const ids = derivedCellIds(entityId, "description");
+  const exists = await db.first("SELECT id FROM entries WHERE id = ?", [ids.value]);
+  if (exists) return false;
+  await insertEntryRow(db, { id: ids.value, content: description, owner_id: owner, ...library ? { metadata_json: JSON.stringify({ library }) } : {} }, { ignore: true });
+  await insertEntryRow(db, { id: ids.relation, owner_id: owner, src_id: entityId, rel_id: fieldEntryId(tplId, "description"), dst_id: ids.value }, { ignore: true });
+  await insertEntryRow(db, { id: fieldEntryId(tplId, "description"), content: "description" }, { ignore: true });
+  await db.run(`UPDATE entries SET is_embedded = 0 WHERE id = ?`, [entityId]);
+  return true;
+}
+async function entityCatalog(db, owner, limit = 200, offset = 0, libraries) {
+  const n2 = Math.min(Math.max(Math.trunc(limit) || 200, 1), 500);
+  const o = Math.max(Math.trunc(offset) || 0, 0);
+  const libs = libraries && libraries.length > 0 ? libraries : void 0;
+  const tpl = await getTemplate(db, TPL_ENTITY_NAME);
+  if (!tpl) return [];
+  const res = await db.all(
+    `SELECT e.id AS id, e.content AS name, d.content AS description
+       FROM entries b JOIN entries e ON e.id = b.src_id LEFT JOIN entries d ON d.id = e.id || '~v~description'
+      WHERE b.dst_id = ? AND b.rel_id = '${SYS_BELONGS}' AND +b.owner_id = ?
+        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${libs ? `
+        AND ${entityLibraryExpr("e")} IN (${libs.map(() => "?").join(",")})` : ""}
+      ORDER BY b.created_at DESC, e.id LIMIT ? OFFSET ?`,
+    [tpl.id, owner, ...libs ?? [], n2, o]
+  );
+  return res.results ?? [];
+}
+
+// kbdb/src/actions/same-thing.ts
+var SAME_MAX = 6;
+var SAME_MIN_SCORE = 0.1;
+var SAME_REL = 0.15;
+var SAME_COMMON = 0.2;
+var SAME_SHARED = 8;
+var SAME_SHARED_FRAC = 0.5;
+var SAME_SHARED_MIN = 4;
+var SAME_STRONG_SCORE = 0.3;
+var SAME_STRONG_SHARED = 6;
+var SAME_NOVEL_W = 0.1;
+var SAME_BODY_W = 0.6;
+var SAME_QBODY_W = 0.25;
+var SAME_DOC_HEAD = 800;
+var SAME_Q_HEAD = 1200;
+var SAME_QTOK = 400;
+var SAME_LAYER_LIMIT = 30;
+var SAME_POOL_FLOOR = 50;
+var STOP = /* @__PURE__ */ new Set(["the", "and", "for", "with", "that", "this", "not", "you", "are", "was", "but", "can", "has", "have", "will", "from", "into", "http", "https", "com", "www"]);
+function clean(s) {
+  let t = String(s ?? "").toLowerCase();
+  t = t.replace(/```[\s\S]*?```/g, " ").replace(/https?:\/\/\S+/g, " ");
+  t = t.replace(/【身份】[^\n]*/g, " ");
+  t = t.replace(/身為|我才不會|我才不用|我才能|我才可以|我才|我要/g, " ");
+  return t;
+}
+function sameTokens(s) {
+  const out = /* @__PURE__ */ new Set();
+  const c = clean(s);
+  for (const run of c.match(/[㐀-鿿]+/g) ?? []) for (let j = 0; j + 1 < run.length; j++) out.add(run.slice(j, j + 2));
+  for (const w of c.match(/[a-z][a-z0-9_]{2,}/g) ?? []) if (!STOP.has(w)) out.add(w);
+  return out;
+}
+function titleOf(d) {
+  if (d.page_name && d.page_name.trim()) return d.page_name.trim();
+  const first = d.head.replace(/\r\n/g, "\n").split("\n").find((l) => l.trim()) ?? "";
+  return first.replace(/^#+\s*/, "").trim().slice(0, 100) || d.id;
+}
+function summaryOf(head) {
+  const s = head.replace(/```[\s\S]*?```/g, " ").replace(/【身份】[^\n]*/g, " ").replace(/[#>*`\-]+/g, " ").replace(/\s+/g, " ").trim();
+  return s.length > 90 ? s.slice(0, 90) + "\u2026" : s;
+}
+function rankSame(docs, title, body, exclude) {
+  const tt = sameTokens(title);
+  const bt = sameTokens(body.slice(0, SAME_Q_HEAD));
+  const toks = [];
+  const w = /* @__PURE__ */ new Map();
+  for (const k of tt) {
+    toks.push(k);
+    w.set(k, 1);
+  }
+  for (const k of bt) if (!w.has(k)) {
+    toks.push(k);
+    w.set(k, SAME_QBODY_W);
+  }
+  if (toks.length > SAME_QTOK) toks.length = SAME_QTOK;
+  const N = Math.max(docs.length, SAME_POOL_FLOOR);
+  const maxDf = Math.max(2, Math.floor(N * SAME_COMMON));
+  const need = Math.max(SAME_SHARED_MIN, Math.min(SAME_SHARED, Math.ceil(toks.length * SAME_SHARED_FRAC)));
+  const docTitleTok = docs.map((d) => sameTokens(titleOf(d)));
+  const docAllTok = docs.map((d, i) => {
+    const s = sameTokens(d.head.slice(0, SAME_DOC_HEAD));
+    for (const t of docTitleTok[i]) s.add(t);
+    return s;
+  });
+  const score = docs.map(() => 0);
+  const shared = docs.map(() => 0);
+  let denom = 0;
+  for (const t of toks) {
+    const hit = [];
+    docs.forEach((_, i) => {
+      if (docAllTok[i].has(t)) hit.push(i);
+    });
+    const df = hit.length;
+    if (df > maxDf) continue;
+    const wt = (w.get(t) ?? 0) * Math.log((N + 1) / (df + 0.5));
+    if (df === 0) {
+      denom += wt * SAME_NOVEL_W;
+      continue;
+    }
+    denom += wt;
+    for (const i of hit) {
+      shared[i]++;
+      score[i] += wt * (docTitleTok[i].has(t) ? 1 : SAME_BODY_W);
+    }
+  }
+  if (denom <= 0) return [];
+  const all = [];
+  docs.forEach((d, i) => {
+    if (score[i] <= 0 || exclude.has(d.id)) return;
+    const sc = score[i] / denom;
+    if (shared[i] < need && !(shared[i] >= SAME_STRONG_SHARED && sc >= SAME_STRONG_SCORE)) return;
+    all.push({ doc: d, score: sc });
+  });
+  all.sort((a, b) => b.score - a.score || (a.doc.id < b.doc.id ? -1 : 1));
+  const best = all.length ? all[0].score : 0;
+  const out = [];
+  for (const c of all) {
+    if (out.length >= SAME_MAX) break;
+    if (c.score < SAME_MIN_SCORE || c.score < best * SAME_REL) break;
+    out.push(c);
+  }
+  return out;
+}
+var round2 = (n2) => Math.round(n2 * 100) / 100;
+async function findSame(db, input) {
+  const owner = input.owner_id.trim();
+  const title = input.title.trim();
+  const body = (input.body ?? "").slice(0, SAME_Q_HEAD * 2);
+  const limit = Math.min(Math.max(Math.floor(input.limit ?? SAME_MAX), 1), SAME_MAX);
+  const exclude = new Set(input.exclude ?? []);
+  let read = 0;
+  const found = /* @__PURE__ */ new Map();
+  let tplId;
+  if (input.template) {
+    const t = await db.first("SELECT id FROM templates WHERE name = ?", [input.template]);
+    if (!t) return { candidates: [], rows_read: 0, mode: "none", text_pool: 0 };
+    tplId = t.id;
+  }
+  const fil = (alias, params) => {
+    let sql = "";
+    if (input.parent_id) {
+      sql += ` AND ${alias}.parent_id = ?`;
+      params.push(input.parent_id);
+    }
+    if (tplId) {
+      sql += ` AND ${belongsToSql(`${alias}.id`)}`;
+      params.push(tplId);
+    }
+    return sql;
+  };
+  {
+    const params = [title, owner];
+    const r = await db.all(
+      `SELECT e.id, e.page_name, substr(e.content, 1, ${SAME_DOC_HEAD}) AS head, e.task_status, e.parent_id FROM entries e WHERE e.page_name = ? AND e.owner_id = ? AND e.src_id IS NULL${fil("e", params)} LIMIT 5`,
+      params
+    );
+    read += r.meta?.rows_read ?? 0;
+    for (const d of r.results ?? []) {
+      if (exclude.has(d.id)) continue;
+      found.set(d.id, { id: d.id, title: titleOf({ ...d, head: d.head ?? "" }), summary: summaryOf(d.head ?? ""), task_status: d.task_status ?? null, parent_id: d.parent_id ?? null, score: 1, matched_by: "page_name" });
+    }
+  }
+  if (!input.template || input.template === "entity") {
+    const ent = await findEntity(db, owner, title).catch(() => null);
+    if (ent && !exclude.has(ent.id) && !found.has(ent.id)) {
+      found.set(ent.id, { id: ent.id, title: ent.name, summary: "", task_status: null, parent_id: null, score: 1, matched_by: "entity", entity_match: ent.matched_by });
+    }
+  }
+  let pool = 0;
+  const layers = buildFtsCandidateLayers(title);
+  if (layers.length > 0) {
+    const ids = /* @__PURE__ */ new Set();
+    const docs = [];
+    for (const layer of layers) {
+      const params = [layer, owner];
+      const r = await db.all(
+        `SELECT e.id, e.page_name, substr(e.content, 1, ${SAME_DOC_HEAD}) AS head, e.task_status, e.parent_id
+           FROM entries_fts JOIN entries e ON e.rowid = entries_fts.rowid
+          WHERE entries_fts MATCH ? AND e.owner_id = ? AND e.src_id IS NULL${fil("e", params)} LIMIT ${SAME_LAYER_LIMIT}`,
+        params
+      );
+      read += r.meta?.rows_read ?? 0;
+      for (const d of r.results ?? []) if (!ids.has(d.id)) {
+        ids.add(d.id);
+        docs.push({ ...d, head: d.head ?? "" });
+      }
+    }
+    pool = docs.length;
+    for (const { doc, score } of rankSame(docs, title, body, exclude)) {
+      if (found.has(doc.id)) continue;
+      found.set(doc.id, { id: doc.id, title: titleOf(doc), summary: summaryOf(doc.head), task_status: doc.task_status ?? null, parent_id: doc.parent_id ?? null, score: round2(score), matched_by: "text" });
+    }
+  }
+  const candidates = [...found.values()].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).slice(0, limit);
+  const mode = candidates.length === 0 ? "none" : candidates[0].matched_by === "page_name" ? "exact" : candidates[0].matched_by === "entity" ? "entity" : "text";
+  return { candidates, rows_read: read, mode, text_pool: pool };
+}
+
+// kbdb/src/actions/kb-tree-backfill.ts
+init_kind();
+init_library_predicate();
+init_maintenance_quota();
+init_kb_tree();
+var DEFAULT_LIMIT2 = 100;
+var HARD_LIMIT_CAP3 = 500;
+async function backfillKbTree(db, env, opts) {
+  const library = (opts.library ?? "").trim();
+  const owner = (opts.owner_id ?? "").trim();
+  if (!library) throw new Error("library required");
+  if (!owner) throw new Error("owner_id required\uFF08\u88DC\u7238\u7238\u662F\u5C0D\u5927\u91CF\u65E2\u6709\u8CC7\u6599\u7684\u6279\u6B21\u5BEB\u5165\uFF0C\u4E0D\u51C6\u7121\u79DF\u6236\u7BC4\u570D\u5730\u6383\uFF09");
+  const limit = Math.min(Math.max(Math.floor(opts.limit ?? DEFAULT_LIMIT2), 1), HARD_LIMIT_CAP3);
+  const m = /^(\d+):(\d+)$/.exec(opts.cursor ?? "");
+  const cc = m ? Number(m[1]) : -1;
+  const cr = m ? Number(m[2]) : -1;
+  const budget = await maintenanceBudgetToday(env, db);
+  const blockTpl = await templateIdByName(db, "block");
+  const base = { quota_limit: budget.limit, quota_used_today: budget.used, quota_exceeded: false };
+  if (!blockTpl) return { scanned: 0, placed: 0, next_cursor: null, done: true, ...base };
+  const members = membersOf(blockTpl, owner);
+  const res = await db.all(
+    `SELECT id, owner_id, page_name, metadata_json, k_created AS cur_created, k_rowid AS cur_rowid
+       FROM ${members.from}
+      WHERE (k_created > ? OR (k_created = ? AND k_rowid > ?))
+        AND parent_id IS NULL AND page_name IS NOT NULL AND page_name != ''
+        AND ${ENTRY_LIBRARY} = ?
+      ORDER BY k_created, k_rowid
+      LIMIT ?`,
+    [...members.params, cc, cc, cr, library, limit]
+  );
+  const rows = res.results ?? [];
+  const take = rows.slice(0, Math.max(budget.remaining, 0));
+  const quotaExceeded = take.length < rows.length;
+  const stmts = [];
+  let placed = 0;
+  for (const r of take) {
+    const p = cardPlacementOf({ template: "block", page_name: r.page_name, metadata_json: r.metadata_json });
+    if (!p) continue;
+    const parent = await ensureFolderChain(db, r.owner_id, p.library, p.folder);
+    stmts.push({
+      sql: "UPDATE entries SET parent_id = ?1, origin = COALESCE(origin, ?2) WHERE id = ?3 AND parent_id IS NULL",
+      params: [parent, p.sourcePath, r.id]
+    });
+    placed++;
+  }
+  if (stmts.length > 0) await db.batch(stmts);
+  try {
+    await addMaintenanceUsage(db, placed);
+  } catch {
+  }
+  const last = take[take.length - 1];
+  const done = rows.length < limit && !quotaExceeded;
+  return {
+    scanned: take.length,
+    placed,
+    next_cursor: done ? null : last ? `${last.cur_created}:${last.cur_rowid}` : opts.cursor ?? null,
+    done,
+    quota_limit: budget.limit,
+    quota_used_today: budget.used + placed,
+    quota_exceeded: quotaExceeded
+  };
+}
+
+// kbdb/src/routes/entries.ts
+init_kb_tree();
 init_transient_error();
 
 // kbdb/src/lib/entry-echo.ts
@@ -8837,6 +10203,8 @@ entryRoutes.post("/", async (c) => {
   if (!body || typeof body.template !== "string" || !body.template.trim()) return c.json({ success: false, error: "template required\uFF08\u9019\u7B46\u8CC7\u6599\u5C6C\u65BC\u54EA\u500B template\uFF1B\u7A2E\u985E\u7531\u5B83\u6C7A\u5B9A\uFF09" }, 400);
   const nameBad = await templateNameGate(c, body);
   if (nameBad) return nameBad;
+  const nodeBad = nodeFieldsGate(c, body);
+  if (nodeBad) return nodeBad;
   const budget = await entryWriteBudgetToday(c.env, dbOf(c.env), judgePlan().plan === "paid");
   if (budget.remaining <= 0) {
     return c.json(writeBudgetExhaustedBody(budget), 429);
@@ -8849,7 +10217,8 @@ entryRoutes.post("/", async (c) => {
   }
   if (embedEnabled(c.env)) c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
   }));
-  return c.json({ success: true, entry: c.req.query("view") === "identity" ? slimEntryEcho(entry) : entry });
+  const settledPost = body.parent_id && body.task_status != null && body.settle !== false ? await settleAfterWrite(dbOf(c.env), entry.id, null) : null;
+  return c.json({ success: true, entry: c.req.query("view") === "identity" ? slimEntryEcho(entry) : entry, ...settledPost && settledPost.changed.length ? { settled: settledPost.changed } : {} });
 });
 async function blockScopeOf(db, owner) {
   const tplId = await templateIdByName(db, "block");
@@ -8873,6 +10242,34 @@ entryRoutes.get("/libraries", async (c) => {
   );
   const libraries = (rows.results ?? []).map((r) => r.library).filter(Boolean).sort();
   return c.json({ success: true, libraries, count: libraries.length });
+});
+entryRoutes.get("/kb-node", async (c) => {
+  const library = (c.req.query("library") || "").trim();
+  if (!library) return c.json({ success: false, error: "library required" }, 400);
+  const owner = c.req.query("owner_id") || null;
+  const folder = folderSegments(`${c.req.query("path") || ""}/x`);
+  const id = await kbNodeId(owner, library, folder);
+  const node = await nodeExists(dbOf(c.env), id, owner ?? void 0);
+  if (!node) return c.json({ success: false, error: `\u6A39\u4E0A\u6C92\u6709\u9019\u500B\u7BC0\u9EDE\uFF08${kbNodeOrigin(library, folder)}\uFF09\uFF1A\u9019\u500B\u5EAB\u9084\u6C92\u4E0A\u50B3\u904E\uFF0C\u6216\u88DC\u5B58\u91CF\uFF08POST /entries/kb-tree-backfill\uFF09\u9084\u6C92\u8DD1`, code: "not_found", id }, 404);
+  return c.json({ success: true, id, parent_id: node.parent_id, origin: kbNodeOrigin(library, folder) });
+});
+entryRoutes.post("/kb-tree-backfill", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const library = String(body.library ?? "").trim();
+  const ownerId = String(body.owner_id ?? "").trim();
+  if (!library || !ownerId) return c.json({ success: false, error: "library \u8207 owner_id \u5FC5\u586B" }, 400);
+  try {
+    const result = await backfillKbTree(dbOf(c.env), c.env, {
+      library,
+      owner_id: ownerId,
+      cursor: body.cursor || null,
+      limit: body.limit !== void 0 ? Number(body.limit) : void 0
+    });
+    return c.json({ success: true, ...result });
+  } catch (e) {
+    if (isTransientD1Error(e)) throw e;
+    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
 });
 entryRoutes.get("/library-cards", async (c) => {
   const library = c.req.query("library") || "";
@@ -9153,6 +10550,189 @@ entryRoutes.get("/source-summary", async (c) => {
   const summary = await summarizeLiveEntriesBySource(dbOf(c.env), ownerId, source);
   return c.json({ success: true, source, ...summary });
 });
+function treeErrorResponse(c, err) {
+  return c.json({ success: false, error: err.message, code: err.code }, err.status);
+}
+function nodeFieldsGate(c, body) {
+  if (!body || typeof body !== "object") return null;
+  try {
+    assertNodeFields(body);
+    return null;
+  } catch (err) {
+    if (err instanceof TreeError) return c.json({ success: false, error: err.message, code: err.code }, 400);
+    throw err;
+  }
+}
+function treeNum(v) {
+  if (v === void 0 || v === "") return void 0;
+  const n2 = Number(v);
+  return Number.isFinite(n2) ? n2 : void 0;
+}
+function treeActionError(c, err) {
+  if (err instanceof TreeError) return treeErrorResponse(c, err);
+  throw err;
+}
+function epochParam(v) {
+  if (v === void 0 || v === "") return void 0;
+  if (/^-?\d+$/.test(v)) return Number(v);
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? Math.floor(t / 1e3) : void 0;
+}
+entryRoutes.get("/query", async (c) => {
+  const g = (k) => c.req.query(k) || void 0;
+  let createdFrom = epochParam(g("created_from"));
+  let createdTo = epochParam(g("created_to"));
+  let updatedFrom = epochParam(g("updated_from"));
+  let updatedTo = epochParam(g("updated_to"));
+  const day = g("day");
+  if (day) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return c.json({ success: false, error: "day \u8981\u662F YYYY-MM-DD", code: "bad_request" }, 400);
+    const tz = Number(g("tz_offset_min") ?? 0);
+    const start = Math.floor(Date.parse(`${day}T00:00:00Z`) / 1e3) - (Number.isFinite(tz) ? tz : 0) * 60;
+    if (g("date_field") === "updated") {
+      updatedFrom = start;
+      updatedTo = start + 86400;
+    } else {
+      createdFrom = start;
+      createdTo = start + 86400;
+    }
+  }
+  const sort = g("sort") ?? "created_at";
+  if (!QUERY_SORTS.includes(sort)) return c.json({ success: false, error: `sort \u53EA\u80FD\u662F ${QUERY_SORTS.join("\uFF0F")}`, code: "bad_sort" }, 400);
+  try {
+    const r = await queryNodes(dbOf(c.env), {
+      owner: g("owner_id"),
+      under: g("under"),
+      include_self: g("include_self") === "1",
+      max_depth: treeNum(g("max_depth")),
+      template: g("template"),
+      status: g("status")?.split(",").map((x) => x.trim()).filter(Boolean),
+      created_by: g("created_by"),
+      perm_class: g("perm_class"),
+      origin: g("origin"),
+      parent_id: g("parent_id"),
+      q: g("q"),
+      created_from: createdFrom,
+      created_to: createdTo,
+      updated_from: updatedFrom,
+      updated_to: updatedTo,
+      sort,
+      order: g("order") === "asc" ? "asc" : "desc",
+      limit: treeNum(g("limit")),
+      offset: treeNum(g("offset")),
+      content: g("content") === "1"
+    });
+    return c.json({ success: true, nodes: r.data.nodes, count: r.data.nodes.length, total_matched: r.data.total_matched, scan_capped: r.data.scan_capped, scope: r.data.scope, rows_read: r.rows_read });
+  } catch (err) {
+    return treeActionError(c, err);
+  }
+});
+entryRoutes.post("/find-same", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.owner_id !== "string" || !body.owner_id.trim() || typeof body.title !== "string" || !body.title.trim()) {
+    return c.json({ success: false, error: "owner_id \u8207 title \u5FC5\u586B\uFF08\u975E\u7A7A\u5B57\u4E32\uFF09", code: "bad_request" }, 400);
+  }
+  const r = await findSame(dbOf(c.env), {
+    owner_id: body.owner_id,
+    title: body.title,
+    body: typeof body.body === "string" ? body.body : void 0,
+    template: typeof body.template === "string" ? body.template : void 0,
+    parent_id: typeof body.parent_id === "string" ? body.parent_id : void 0,
+    exclude: Array.isArray(body.exclude) ? body.exclude.filter((x) => typeof x === "string").slice(0, 50) : void 0,
+    limit: typeof body.limit === "number" ? body.limit : void 0
+  });
+  return c.json({ success: true, ...r });
+});
+entryRoutes.get("/:id/root", async (c) => {
+  try {
+    const r = await rootOf(dbOf(c.env), c.req.param("id"), { owner: c.req.query("owner_id") || void 0 });
+    return c.json({ success: true, ...r.data, rows_read: r.rows_read });
+  } catch (err) {
+    return treeActionError(c, err);
+  }
+});
+entryRoutes.get("/:id/rollup", async (c) => {
+  try {
+    const r = await rollupOf(dbOf(c.env), c.req.param("id"), { owner: c.req.query("owner_id") || void 0, maxDepth: treeNum(c.req.query("max_depth")), limit: treeNum(c.req.query("limit")) });
+    return c.json({ success: true, ...r.data, rows_read: r.rows_read });
+  } catch (err) {
+    return treeActionError(c, err);
+  }
+});
+entryRoutes.post("/:id/settle", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const owner = c.req.query("owner_id") || void 0;
+    const roll = await rollupOf(dbOf(c.env), id, { owner });
+    const s = await settleUp(dbOf(c.env), id);
+    return c.json({ success: true, settled: s.changed, rollup: roll.data, rows_read: (roll.rows_read ?? 0) + s.rows_read });
+  } catch (err) {
+    return treeActionError(c, err);
+  }
+});
+entryRoutes.get("/:id/flatten", async (c) => {
+  try {
+    const r = await flattenOf(dbOf(c.env), c.req.param("id"), { owner: c.req.query("owner_id") || void 0, maxDepth: treeNum(c.req.query("max_depth")), limit: treeNum(c.req.query("limit")), ids: c.req.query("ids") === "1" });
+    if (c.req.query("format") === "json") return c.json({ success: true, blocks: r.data.blocks, count: r.data.count, truncated: r.data.truncated, rows_read: r.rows_read });
+    return c.json({ success: true, markdown: r.data.markdown, count: r.data.count, truncated: r.data.truncated, rows_read: r.rows_read });
+  } catch (err) {
+    return treeActionError(c, err);
+  }
+});
+entryRoutes.get("/:id/children", async (c) => {
+  try {
+    const r = await childrenOf(dbOf(c.env), c.req.param("id"), { owner: c.req.query("owner_id") || void 0, content: c.req.query("content") === "1", limit: treeNum(c.req.query("limit")) });
+    return c.json({ success: true, children: r.data, count: r.data.length, rows_read: r.rows_read });
+  } catch (err) {
+    if (err instanceof TreeError) return treeErrorResponse(c, err);
+    throw err;
+  }
+});
+entryRoutes.get("/:id/subtree", async (c) => {
+  try {
+    const r = await subtreeOf(dbOf(c.env), c.req.param("id"), {
+      owner: c.req.query("owner_id") || void 0,
+      content: c.req.query("content") === "1",
+      maxDepth: treeNum(c.req.query("max_depth")),
+      limit: treeNum(c.req.query("limit"))
+    });
+    return c.json({ success: true, root: r.data.root, nodes: r.data.nodes, count: r.data.nodes.length, truncated: r.data.truncated, max_depth: r.data.max_depth, rows_read: r.rows_read });
+  } catch (err) {
+    if (err instanceof TreeError) return treeErrorResponse(c, err);
+    throw err;
+  }
+});
+entryRoutes.get("/:id/ancestors", async (c) => {
+  try {
+    const r = await ancestorsOf(dbOf(c.env), c.req.param("id"), { owner: c.req.query("owner_id") || void 0, content: c.req.query("content") === "1" });
+    return c.json({ success: true, ancestors: r.data, count: r.data.length, rows_read: r.rows_read });
+  } catch (err) {
+    if (err instanceof TreeError) return treeErrorResponse(c, err);
+    throw err;
+  }
+});
+entryRoutes.post("/:id/move", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !("parent_id" in body) || body.parent_id !== null && typeof body.parent_id !== "string") {
+    return c.json({ success: false, error: "parent_id required\uFF08\u65B0\u7684\u7238\u7238\u7684 id\uFF1B\u642C\u5230\u6700\u4E0A\u5C64\u7D66 null\uFF09", code: "bad_request" }, 400);
+  }
+  let position;
+  const p = body.position;
+  if (p !== void 0) {
+    if (p && p.first === true) position = { first: true };
+    else if (p && p.last === true) position = { last: true };
+    else if (p && typeof p.before === "string") position = { before: p.before };
+    else if (p && typeof p.after === "string") position = { after: p.after };
+    else return c.json({ success: false, error: 'position \u53EA\u80FD\u662F {"first":true}\uFF0F{"last":true}\uFF0F{"before":"<\u5144\u5F1Fid>"}\uFF0F{"after":"<\u5144\u5F1Fid>"}', code: "bad_position" }, 400);
+  }
+  try {
+    const r = await moveAndSettle(dbOf(c.env), c.req.param("id"), { parent_id: body.parent_id, position, owner: typeof body.owner_id === "string" ? body.owner_id : void 0, settle: body.settle === false ? false : void 0 });
+    return c.json({ success: true, ...r });
+  } catch (err) {
+    if (err instanceof TreeError) return treeErrorResponse(c, err);
+    throw err;
+  }
+});
 entryRoutes.get("/:id", async (c) => {
   const entry = await getEntry(dbOf(c.env), c.req.param("id"));
   if (!entry) return c.json({ success: false, error: "not found" }, 404);
@@ -9268,20 +10848,36 @@ entryRoutes.put("/:id", async (c) => {
   if (!body || typeof body.template !== "string" || !body.template.trim()) return c.json({ success: false, error: "template required\uFF08\u9019\u7B46\u8CC7\u6599\u5C6C\u65BC\u54EA\u500B template\uFF1B\u7A2E\u985E\u7531\u5B83\u6C7A\u5B9A\uFF09" }, 400);
   const nameBadPut = await templateNameGate(c, body);
   if (nameBadPut) return nameBadPut;
+  const nodeBadPut = nodeFieldsGate(c, body);
+  if (nodeBadPut) return nodeBadPut;
+  const settlePut = body.settle !== false && (!!body.parent_id || body.task_status != null);
+  const beforePut = settlePut ? await readNodeBefore(dbOf(c.env), c.req.param("id")) : null;
   const entry = await upsertEntry(dbOf(c.env), c.req.param("id"), body);
+  const settledPut = settlePut ? await settleAfterWrite(dbOf(c.env), entry.id, beforePut) : null;
   if (embedEnabled(c.env)) c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
   }));
-  return c.json({ success: true, entry });
+  return c.json({ success: true, entry, ...settledPut && settledPut.changed.length ? { settled: settledPut.changed } : {} });
 });
 entryRoutes.patch("/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const entry = await updateEntry(dbOf(c.env), c.req.param("id"), body);
+  const nodeBadPatch = nodeFieldsGate(c, body);
+  if (nodeBadPatch) return nodeBadPatch;
+  let entry;
+  const settleOn = ("task_status" in body || "parent_id" in body) && body.settle !== false;
+  const beforeNode = settleOn ? await readNodeBefore(dbOf(c.env), c.req.param("id")) : null;
+  try {
+    entry = await updateEntry(dbOf(c.env), c.req.param("id"), body);
+  } catch (err) {
+    if (err instanceof TreeError) return treeErrorResponse(c, err);
+    throw err;
+  }
   if (!entry) return c.json({ success: false, error: "not found" }, 404);
   if (embedEnabled(c.env) && body.content !== void 0) {
     c.executionCtx.waitUntil(embedOnWrite(c.env, entry).catch(() => {
     }));
   }
-  return c.json({ success: true, entry });
+  const settledPatch = settleOn && beforeNode ? await settleAfterWrite(dbOf(c.env), entry.id, beforeNode) : null;
+  return c.json({ success: true, entry, ...settledPatch && settledPatch.changed.length ? { settled: settledPatch.changed } : {} });
 });
 entryRoutes.delete("/:id", async (c) => {
   const id = c.req.param("id");
@@ -9301,6 +10897,7 @@ entryRoutes.delete("/:id", async (c) => {
 // kbdb/src/routes/templates.ts
 init_record_crud();
 init_d1();
+init_template_shape();
 function readFields(body) {
   if (!body) return void 0;
   const raw2 = Array.isArray(body.slots) ? body.slots : Array.isArray(body.fields) ? body.fields : void 0;
@@ -9313,8 +10910,32 @@ templateRoutes.post("/", async (c) => {
   if (!body || !body.name || !Array.isArray(fields)) {
     return c.json({ success: false, error: "name and slots[] (alias: fields[]) required" }, 400);
   }
-  const tpl = await createTemplate(dbOf(c.env), { ...body, slots: fields });
-  return c.json({ success: true, template: tpl });
+  const compared = Array.isArray(body.compared) ? body.compared.map(String) : [];
+  try {
+    const tpl = await createTemplate(
+      dbOf(c.env),
+      { name: body.name, description: body.description, created_by: body.created_by, id: body.id, slots: fields },
+      { skipShapeGate: body.check_shape !== true, compared }
+    );
+    return c.json({ success: true, template: tpl });
+  } catch (e) {
+    if (e instanceof DuplicateTemplateShapeError) {
+      return c.json({
+        success: false,
+        error_code: e.code,
+        error: e.message,
+        candidates: e.candidates,
+        hint: "\u5148\u770B\u5019\u9078\u80FD\u4E0D\u80FD\u76F4\u63A5\u7528\uFF08kbdb_create_record \u586B\u5B83\u7684\u6B04\u4F4D\uFF09\uFF1B\u771F\u8981\u53E6\u5EFA\uFF0C\u8ACB\u6C42\u52A0 compared:[\u5019\u9078\u7684 name]\u3002"
+      }, 409);
+    }
+    throw e;
+  }
+});
+templateRoutes.get("/search", async (c) => {
+  const q = (c.req.query("q") ?? "").trim();
+  if (!q) return c.json({ success: false, error: "q required" }, 400);
+  const results = await searchTemplates(dbOf(c.env), q);
+  return c.json({ success: true, query: q, results, count: results.length });
 });
 templateRoutes.get("/", async (c) => {
   const templates = await listTemplates(dbOf(c.env));
@@ -9341,6 +10962,235 @@ init_record_crud();
 init_template_guard();
 init_graph_query();
 init_field_index();
+
+// kbdb/src/actions/record-batch.ts
+init_transient_error();
+init_record_crud();
+
+// kbdb/src/actions/node-op.ts
+init_kind();
+init_tree();
+var ID_RE = /^[A-Za-z0-9_.~-]{1,128}$/;
+var STATUS_RE = /^[A-Za-z0-9_.-]{1,32}$/;
+function validateNodeOp(o) {
+  if (typeof o.id !== "string" || !ID_RE.test(o.id)) return "node \u9700\u8981 id\uFF08\u82F1\u6578\u5B57\u8207 _.~-\uFF0C\u6700\u9577 128\uFF09";
+  if (o.parent_id !== void 0 && o.parent_id !== null && (typeof o.parent_id !== "string" || !ID_RE.test(o.parent_id))) return "parent_id \u8981\u662F\u7BC0\u9EDE id \u6216 null";
+  if (o.parent_id === o.id) return "\u7BC0\u9EDE\u4E0D\u80FD\u662F\u81EA\u5DF1\u7684\u7238\u7238";
+  if (o.task_status !== void 0 && o.task_status !== null && (typeof o.task_status !== "string" || !STATUS_RE.test(o.task_status))) return "task_status \u8981\u662F\u77ED\u5B57\u4E32\u6216 null";
+  for (const k of ["origin", "created_by"]) {
+    if (o[k] !== void 0 && o[k] !== null && (typeof o[k] !== "string" || o[k].length > 300)) return `${k} \u8981\u662F\u5B57\u4E32\uFF08\u6700\u9577 300\uFF09\u6216 null`;
+  }
+  return null;
+}
+async function planNodeOp(db, o, ownerId) {
+  const row = await db.first(
+    "SELECT id, owner_id, parent_id, task_status, origin, created_by, content, metadata_json, page_name, tpl_id FROM entries WHERE id = ? AND src_id IS NULL",
+    [o.id]
+  );
+  if (row) {
+    const rel = row.tpl_id === null ? await db.first("SELECT 1 AS x FROM entries WHERE src_id = ? LIMIT 1", [o.id]) : { x: 1 };
+    if (rel || row.content !== null || row.metadata_json !== null || row.page_name !== null) throw new Error(`${o.id} \u4E0D\u662F\u6A39\u7BC0\u9EDE\uFF08\u5B83\u6709\u5167\u6587\uFF0Fmetadata\uFF0F\u9801\u540D\uFF09\uFF1Anode \u53EA\u80FD\u52D5\u88F8\u8EAB\u5206\u7684\u7BC0\u9EDE\uFF0C\u4E0D\u80FD\u6539\u77E5\u8B58\u5361\u6216 record \u7684\u7238\u7238`);
+    if ((row.owner_id ?? null) !== (ownerId ?? null)) throw new Error(`${o.id} \u5C6C\u65BC\u5225\u7684\u79DF\u6236\uFF08owner_mismatch\uFF09`);
+  }
+  if (o.parent_id) {
+    const par = await db.first("SELECT owner_id FROM entries WHERE id = ? AND src_id IS NULL", [o.parent_id]);
+    if (par && (par.owner_id ?? null) !== (ownerId ?? null)) throw new Error(`\u65B0\u7684\u7238\u7238 ${o.parent_id} \u5C6C\u65BC\u5225\u7684\u79DF\u6236\uFF08owner_mismatch\uFF09`);
+    if (row && row.parent_id !== o.parent_id) {
+      try {
+        await assertNoCycle(db, o.id, o.parent_id);
+      } catch (e) {
+        if (e instanceof TreeError) throw new Error(e.message);
+        throw e;
+      }
+    }
+  }
+  const has = (k) => o[k] !== void 0;
+  const stmts = [];
+  let result;
+  if (!row) {
+    const base = { id: o.id, owner_id: ownerId, parent_id: o.parent_id ?? null, task_status: o.task_status ?? null, origin: o.origin ?? void 0, created_by: o.created_by ?? void 0 };
+    stmts.push(entryRowStatement(base, { ignore: true }));
+    result = { id: o.id, parent_id: base.parent_id, task_status: base.task_status, created: true, changed: true };
+  } else {
+    const sets = [];
+    const params = [];
+    const next = { parent_id: row.parent_id, task_status: row.task_status };
+    if (has("parent_id") && (o.parent_id ?? null) !== row.parent_id) {
+      sets.push("parent_id = ?");
+      params.push(o.parent_id ?? null);
+      next.parent_id = o.parent_id ?? null;
+    }
+    if (has("task_status") && (o.task_status ?? null) !== row.task_status) {
+      sets.push("task_status = ?");
+      params.push(o.task_status ?? null);
+      next.task_status = o.task_status ?? null;
+    }
+    if (has("origin") && (o.origin ?? null) !== row.origin) {
+      sets.push("origin = ?");
+      params.push(o.origin ?? null);
+    }
+    if (has("created_by") && (o.created_by ?? null) !== row.created_by) {
+      sets.push("created_by = ?");
+      params.push(o.created_by ?? null);
+    }
+    if (sets.length) stmts.push({ sql: `UPDATE entries SET ${sets.join(", ")}, updated_at = unixepoch() WHERE id = ? AND src_id IS NULL`, params: [...params, o.id] });
+    result = { id: o.id, parent_id: next.parent_id, task_status: next.task_status, created: false, changed: sets.length > 0 };
+  }
+  return { stmts, finish: async () => result };
+}
+var TREE_READ_OPS = ["ancestors", "children", "rollup", "root"];
+function isTreeReadPath(p) {
+  return p === "/_tree" || p.startsWith("/_tree?");
+}
+function checkTreeRead(p) {
+  const q = new URL(`http://kbdb.local${p}`).searchParams;
+  const op = q.get("op");
+  const id = q.get("id");
+  if (!op || !TREE_READ_OPS.includes(op)) return `op \u53EA\u80FD\u662F ${TREE_READ_OPS.join("\uFF0F")}`;
+  if (!id || !ID_RE.test(id)) return "id \u5FC5\u586B\uFF08\u7BC0\u9EDE id\uFF09";
+  for (const k of ["limit", "max_depth"]) {
+    const v = q.get(k);
+    if (v !== null && !/^[0-9]{1,5}$/.test(v)) return `${k} \u8981\u662F\u6574\u6578`;
+  }
+  return null;
+}
+async function runTreeRead(db, p, owner) {
+  const q = new URL(`http://kbdb.local${p}`).searchParams;
+  const op = q.get("op");
+  const id = q.get("id");
+  const num2 = (k) => {
+    const v = q.get(k);
+    return v === null ? void 0 : Number(v);
+  };
+  try {
+    if (op === "ancestors") {
+      const r2 = await ancestorsOf(db, id, { owner });
+      return { success: true, op, id, nodes: r2.data, rows_read: r2.rows_read };
+    }
+    if (op === "children") {
+      const r2 = await childrenOf(db, id, { owner, limit: num2("limit") });
+      return { success: true, op, id, nodes: r2.data, rows_read: r2.rows_read };
+    }
+    if (op === "root") {
+      const r2 = await rootOf(db, id, { owner });
+      return { success: true, op, id, ...r2.data, rows_read: r2.rows_read };
+    }
+    const r = await rollupOf(db, id, { owner, maxDepth: num2("max_depth"), limit: num2("limit") });
+    return { success: true, op, ...r.data, rows_read: r.rows_read };
+  } catch (e) {
+    if (e instanceof TreeError && e.code === "not_found") return { success: true, op, id, found: false, nodes: [], open: 0, closed: 0, total: 0, by_status: {}, children: [], rows_read: null };
+    if (e instanceof TreeError) return { success: false, status: e.status, code: e.code, error: e.message };
+    throw e;
+  }
+}
+
+// kbdb/src/actions/record-batch.ts
+var RECORD_BATCH_MAX = 20;
+function validateBatchOps(ops) {
+  if (!Array.isArray(ops) || ops.length === 0) return "ops[] \u5FC5\u586B\u4E14\u4E0D\u53EF\u70BA\u7A7A";
+  if (ops.length > RECORD_BATCH_MAX) return `ops \u4E00\u6B21\u6700\u591A ${RECORD_BATCH_MAX} \u7B46`;
+  const isMap = (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
+  for (let i = 0; i < ops.length; i++) {
+    const o = ops[i];
+    const bad = (m) => `ops[${i}]\uFF1A${m}`;
+    if (!o || typeof o !== "object") return bad("\u5FC5\u9808\u662F\u7269\u4EF6");
+    if (o.op === "post") {
+      if (!o.template || typeof o.template !== "string") return bad("post \u9700\u8981 template");
+      if (o.values === void 0 && o.entry_ids === void 0) return bad("post \u9700\u8981 values\uFF08\u6216 entry_ids\uFF09");
+      if (o.values !== void 0 && !isMap(o.values)) return bad("values \u5FC5\u9808\u662F {slot: \u5B57\u4E32}");
+      if (o.entry_ids !== void 0 && !isMap(o.entry_ids)) return bad("entry_ids \u5FC5\u9808\u662F {slot: entry_id}");
+      if (o.record_id !== void 0 && (typeof o.record_id !== "string" || !o.record_id)) return bad("record_id \u5FC5\u9808\u662F\u975E\u7A7A\u5B57\u4E32");
+      if (o.parent_id !== void 0 && o.parent_id !== null && o.parent_id !== "" && (typeof o.parent_id !== "string" || o.parent_id.length > 256)) return bad("parent_id \u5FC5\u9808\u662F\u5B57\u4E32\uFF08\u81F3\u591A 256 \u5B57\uFF09\uFF1B\u7A7A\u5B57\u4E32\uFF1D\u4E0D\u639B\u6A39");
+    } else if (o.op === "patch") {
+      if (!o.id || typeof o.id !== "string") return bad("patch \u9700\u8981 id");
+      if (!o.values || typeof o.values !== "object" || Array.isArray(o.values)) return bad("patch \u9700\u8981 values");
+    } else if (o.op === "relation") {
+      if (!o.id || typeof o.id !== "string") return bad("relation \u9700\u8981 id");
+      if (!o.slot || typeof o.slot !== "string") return bad("relation \u9700\u8981 slot");
+      const okList = (x) => x === void 0 || Array.isArray(x) && x.every((y) => typeof y === "string");
+      if (!okList(o.add) || !okList(o.remove)) return bad("relation \u7684 add\uFF0Fremove \u8981\u662F\u5B57\u4E32\u9663\u5217");
+      if (!(Array.isArray(o.add) && o.add.length) && !(Array.isArray(o.remove) && o.remove.length)) return bad("relation \u8981\u6709 add \u6216 remove");
+    } else if (o.op === "node") {
+      const why = validateNodeOp(o);
+      if (why) return bad(why);
+    } else {
+      return bad("op \u53EA\u80FD\u662F 'post'\u3001'patch'\u3001'relation' \u6216 'node'");
+    }
+  }
+  return null;
+}
+function labelOf(o) {
+  return o.op === "post" ? `post ${o.template}` : `${o.op} ${o.id}`;
+}
+async function applyRecordBatch(db, ops, opts = {}) {
+  const ownerId = opts.ownerId ?? null;
+  const settled = await Promise.allSettled(
+    ops.map(async (o) => {
+      if (o.op === "post") {
+        const recordId = o.record_id ?? `rec_${crypto.randomUUID()}`;
+        o.record_id = recordId;
+        opts.onOwner?.(ownerId);
+        return { plan: await planCreateRecord(db, { template: o.template, values: o.values, entry_ids: o.entry_ids, owner_id: ownerId, record_id: recordId, derived_cell_ids: true, parent_id: o.parent_id }) };
+      }
+      if (o.op === "patch") {
+        const p2 = await planUpdateRecord(db, o.id, o.values, { onOwner: opts.onOwner, deterministic: true });
+        return p2 ? { plan: p2 } : { notFound: true };
+      }
+      if (o.op === "node") {
+        opts.onOwner?.(ownerId);
+        return { plan: await planNodeOp(db, o, ownerId) };
+      }
+      const p = await planEditRelation(db, o.id, o.slot, { add: o.add, remove: o.remove }, { onOwner: opts.onOwner });
+      return p ? { plan: p } : { notFound: true };
+    })
+  );
+  for (const s of settled) if (s.status === "rejected" && isTransientD1Error(s.reason)) throw s.reason;
+  let failedIndex = -1;
+  let failStatus = 400;
+  let failError = "";
+  const planned = [];
+  for (let i = 0; i < settled.length; i++) {
+    const s = settled[i];
+    if (s.status === "rejected") {
+      if (failedIndex < 0) {
+        failedIndex = i;
+        failStatus = 400;
+        failError = s.reason instanceof Error ? s.reason.message : String(s.reason);
+      }
+    } else if ("notFound" in s.value) {
+      if (failedIndex < 0) {
+        failedIndex = i;
+        failStatus = 404;
+        failError = "not found";
+      }
+    } else {
+      planned.push(s.value.plan);
+    }
+  }
+  if (failedIndex >= 0) {
+    const message = `ops[${failedIndex}]\uFF08${labelOf(ops[failedIndex])}\uFF09\uFF1A${failError}\uFF1B\u6574\u6279 ${ops.length} \u7B46\u5168\u90E8\u6C92\u6709\u5BEB\u5165\uFF08\u539F\u5B50\u6279\u6B21\uFF1A\u6709\u4E00\u7B46\u4E0D\u6210\u7ACB\uFF0C\u6574\u6279\u4E0D\u751F\u6548\uFF09`;
+    const results2 = ops.map(
+      (_, i) => i === failedIndex ? { status: failStatus, body: { success: false, error: failError } } : { status: 424, body: { success: false, code: "rolled_back", error: `\u672A\u5BEB\u5165\uFF1Aops[${failedIndex}] \u4E0D\u6210\u7ACB\uFF0C\u6574\u6279\u4E0D\u751F\u6548` } }
+    );
+    return { ok: false, failed_index: failedIndex, status: failStatus, error: message, results: results2 };
+  }
+  const stmts = [];
+  for (const p of planned) stmts.push(...p.stmts);
+  if (stmts.length > 0) await db.batch(stmts);
+  const results = [];
+  for (let i = 0; i < ops.length; i++) {
+    const o = ops[i];
+    try {
+      const out = await planned[i].finish();
+      results.push({ status: 200, body: o.op === "relation" ? { success: true, ...out } : o.op === "node" ? { success: true, node: out } : { success: true, record: out } });
+    } catch (e) {
+      results.push({ status: 200, body: { success: true, written: true, warning: `\u5DF2\u5BEB\u5165\uFF0C\u4F46\u8B80\u56DE\u7D50\u679C\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`, ...o.op === "post" ? { record: { record_id: o.record_id } } : {} } });
+    }
+  }
+  return { ok: true, results };
+}
+
+// kbdb/src/routes/records.ts
 init_maintenance_quota();
 init_d1();
 
@@ -9521,6 +11371,9 @@ recordRoutes.post("/", async (c) => {
     }
   }
   releaseDailyWriteBrakeIfSystemOwner(c.env, body.owner_id);
+  if (body.parent_id !== void 0 && body.parent_id !== null && body.parent_id !== "" && (typeof body.parent_id !== "string" || body.parent_id.length > 256)) {
+    return c.json({ success: false, error: "parent_id must be a string (at most 256 chars), empty or null = not placed" }, 400);
+  }
   try {
     const tally = { rowsWritten: 0 };
     const rec = await createRecord(withWriteTally(dbOf(c.env), tally), body);
@@ -9540,6 +11393,38 @@ recordRoutes.post("/", async (c) => {
     if (e instanceof RecordExistsError) return c.json({ success: false, error: e.message, code: "record_exists", record_id: e.recordId }, 409);
     return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 400);
   }
+});
+recordRoutes.post("/batch-write", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const bad = validateBatchOps(body?.ops);
+  if (bad) return c.json({ success: false, ok: false, error: bad }, 400);
+  const ops = body.ops;
+  const ownerId = typeof body.owner_id === "string" && body.owner_id ? body.owner_id : null;
+  const hasPost = ops.some((o) => o.op === "post" || o.op === "node");
+  if (hasPost && !isSystemAssetOwner(ownerId)) {
+    const budget = await entryWriteBudgetToday(c.env, dbOf(c.env), judgePlan().plan === "paid");
+    if (budget.remaining <= 0) return c.json(writeBudgetExhaustedBody(budget), 429);
+  }
+  const tally = { rowsWritten: 0 };
+  const outcome = await applyRecordBatch(withWriteTally(dbOf(c.env), tally), ops, {
+    ownerId,
+    onOwner: (o) => releaseDailyWriteBrakeIfSystemOwner(c.env, o)
+  });
+  if (!outcome.ok) {
+    return c.json({ success: false, ok: false, atomic: true, committed: false, failed_index: outcome.failed_index, error: outcome.error, results: outcome.results }, 422);
+  }
+  if (hasPost && !isSystemAssetOwner(ownerId)) {
+    const booked = addEntryWriteUsage(dbOf(c.env), tally.rowsWritten).catch(() => void 0);
+    let ctx;
+    try {
+      ctx = c.executionCtx;
+    } catch {
+      ctx = void 0;
+    }
+    if (ctx) ctx.waitUntil(booked);
+    else await booked;
+  }
+  return c.json({ success: true, ok: true, atomic: true, count: outcome.results.length, results: outcome.results });
 });
 recordRoutes.post("/batch-get", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -9589,6 +11474,12 @@ recordRoutes.post("/multi-read", async (c) => {
   const urls = [];
   for (let i = 0; i < reads.length; i++) {
     const p = reads[i]?.path;
+    if (typeof p === "string" && MULTI_READ_PATH.test(p) && isTreeReadPath(p)) {
+      const badTree = checkTreeRead(p);
+      if (badTree) return c.json({ success: false, error: `reads[${i}].path\uFF1A${badTree}` }, 400);
+      urls.push(p);
+      continue;
+    }
     if (typeof p !== "string" || !MULTI_READ_PATH.test(p)) {
       return c.json({ success: false, error: `reads[${i}].path must look like "/<template>?field=&value=&limit="` }, 400);
     }
@@ -9603,6 +11494,14 @@ recordRoutes.post("/multi-read", async (c) => {
   const port = coalescingPort(dbOf(c.env));
   const env2 = { ...c.env, __kbdbDb: port };
   const results = await Promise.all(urls.map(async (url) => {
+    if (isTreeReadPath(url)) {
+      try {
+        return await runTreeRead(dbOf(c.env), url, body.owner_id);
+      } catch (e) {
+        if (isTransientD1Error(e)) throw e;
+        return { success: false, status: 500, error: e instanceof Error ? e.message : String(e) };
+      }
+    }
     try {
       const res = await recordRoutes.request(url, { method: "GET" }, env2);
       const text = await res.text();
@@ -9864,6 +11763,71 @@ recipeStatRoutes.get("/:canonical_id", async (c) => {
   return c.json({ success: true, stat });
 });
 
+// kbdb/src/routes/sequences.ts
+init_d1();
+
+// kbdb/src/actions/sequence.ts
+var SEQ_MAX_COUNT = 1e3;
+var SEQ_NAME_MAX = 200;
+var SEQ_CEILING = Number.MAX_SAFE_INTEGER - SEQ_MAX_COUNT;
+var SequenceInputError = class extends Error {
+};
+function sequenceId(owner, name) {
+  return `sys_seq~${owner}~${name}`;
+}
+function parseSequenceInput(body) {
+  const b = body && typeof body === "object" ? body : {};
+  const name = typeof b.name === "string" ? b.name : "";
+  if (!name || name.length > SEQ_NAME_MAX || /[\u0000-\u001f]/.test(name)) {
+    throw new SequenceInputError(`name \u5FC5\u586B\uFF0C1-${SEQ_NAME_MAX} \u5B57\uFF0C\u4E0D\u542B\u63A7\u5236\u5B57\u5143`);
+  }
+  const count = b.count === void 0 ? 1 : b.count;
+  if (typeof count !== "number" || !Number.isInteger(count) || count < 1 || count > SEQ_MAX_COUNT) {
+    throw new SequenceInputError(`count \u8981\u662F 1-${SEQ_MAX_COUNT} \u7684\u6574\u6578\uFF08\u4E00\u6B21\u9818\u4E00\u6BB5\u9023\u865F\uFF1B\u8981\u66F4\u591A\u8ACB\u5206\u6B21\u9818\uFF09`);
+  }
+  const atLeast = b.at_least === void 0 ? 1 : b.at_least;
+  if (typeof atLeast !== "number" || !Number.isInteger(atLeast) || atLeast < 1 || atLeast > SEQ_CEILING) {
+    throw new SequenceInputError("at_least \u8981\u662F \u22651 \u7684\u6574\u6578\uFF08\u6211\u63A5\u53D7\u7684\u6700\u5C0F\u8D77\u865F\uFF09");
+  }
+  return { name, count, atLeast };
+}
+async function nextSequence(db, owner, input) {
+  const count = input.count ?? 1;
+  const floor = (input.atLeast ?? 1) - 1;
+  const id = sequenceId(owner, input.name);
+  const row = await db.first(
+    `INSERT INTO entries (id, content, entry_type, owner_id, metadata_json)
+     VALUES (?1, NULL, 'system', ?2, json_object('n', CAST(?3 AS INTEGER) + CAST(?4 AS INTEGER)))
+     ON CONFLICT(id) DO UPDATE SET
+       metadata_json = json_object('n', CAST(MAX(COALESCE(json_extract(entries.metadata_json, '$.n'), 0), ?3) AS INTEGER) + CAST(?4 AS INTEGER)),
+       updated_at = unixepoch()
+     RETURNING CAST(json_extract(metadata_json, '$.n') AS INTEGER) AS n`,
+    [id, owner, floor, count]
+  );
+  const last = row ? Number(row.n) : NaN;
+  if (!Number.isSafeInteger(last) || last < count) {
+    throw new Error(`sequence_corrupt: \u8A08\u6578\u5668 ${input.name} \u56DE\u4E86\u4E0D\u5408\u7406\u7684\u865F\u78BC\uFF08${String(row?.n)}\uFF09`);
+  }
+  return { name: input.name, first: last - count + 1, last, count };
+}
+
+// kbdb/src/routes/sequences.ts
+var sequenceRoutes = new Hono2();
+sequenceRoutes.post("/next", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const owner = body && typeof body.owner_id === "string" ? body.owner_id : "";
+  if (!owner) return c.json({ success: false, error: "owner_id required" }, 400);
+  let input;
+  try {
+    input = parseSequenceInput(body);
+  } catch (e) {
+    if (e instanceof SequenceInputError) return c.json({ success: false, error: e.message }, 400);
+    throw e;
+  }
+  const grant = await nextSequence(dbOf(c.env), owner, { name: input.name, count: input.count, atLeast: input.atLeast });
+  return c.json({ success: true, ...grant });
+});
+
 // kbdb/src/routes/embed.ts
 init_embed();
 init_select();
@@ -9937,290 +11901,6 @@ embedRoutes.get("/selftest", async (c) => {
 // kbdb/src/routes/entities.ts
 init_library_predicate();
 init_d1();
-
-// kbdb/src/actions/entity-resolve.ts
-init_entity_canon();
-init_library_predicate();
-init_record_crud();
-init_kind();
-init_embed();
-init_select();
-var TPL_ENTITY_ID = "tpl-entity";
-var TPL_ENTITY_NAME = "entity";
-var TPL_ALIAS_ID = "tpl-alias";
-var TPL_ALIAS_NAME = "alias";
-var ENTITY_SLOTS_DEF = ["name", "description", "alias"];
-var DEFAULT_NORMALIZE_MIN_SCORE = 0.8;
-var DEFAULT_JUDGE_MIN_SCORE = 0.55;
-var MAX_JUDGE_CANDIDATES = 2;
-var DEFAULT_RECENT_WINDOW_SEC = 600;
-var MAX_RECENT_CANDIDATES = 20;
-var entityLibraryExpr = (alias) => ENTRY_LIBRARY.replace(/metadata_json/g, `${alias}.metadata_json`);
-function normLibrary(raw2) {
-  if (typeof raw2 !== "string") return void 0;
-  const v = raw2.trim();
-  return v === "" ? void 0 : v;
-}
-function cosine(a, b) {
-  let dot = 0, na = 0, nb = 0;
-  const n2 = Math.min(a.length, b.length);
-  for (let i = 0; i < n2; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
-}
-async function recentNeighbors(env, db, tplId, owner, vec, seen, library) {
-  const n2 = Number(env.ENTITY_RECENT_WINDOW_SEC);
-  const windowSec = Number.isFinite(n2) && n2 >= 0 ? n2 : DEFAULT_RECENT_WINDOW_SEC;
-  if (windowSec === 0) return [];
-  const since = Math.floor(Date.now() / 1e3) - windowSec;
-  const rows = await db.all(
-    `SELECT e.id AS id, e.content AS name, d.content AS description
-       FROM entries b JOIN entries e ON e.id = b.src_id JOIN entries d ON d.id = e.id || '~v~description'
-      WHERE b.dst_id = ? AND b.rel_id = '${SYS_BELONGS}' AND b.created_at >= ? AND +b.owner_id = ?
-        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? `
-        AND ${entityLibraryExpr("e")} = ?` : ""}
-      ORDER BY b.created_at DESC LIMIT ?`,
-    [tplId, since, owner, ...library ? [library] : [], MAX_RECENT_CANDIDATES + seen.size]
-  );
-  const cands = (rows.results ?? []).filter((r) => !seen.has(r.id)).slice(0, MAX_RECENT_CANDIDATES);
-  if (cands.length === 0) return [];
-  const vecs = await embedManyForEntity(env, cands.map((r) => `${r.name}\uFF1A${r.description}`));
-  if (!vecs || vecs.length !== cands.length) return [];
-  return cands.map((r, i) => ({ id: r.id, score: cosine(vec, vecs[i]) })).sort((a, b) => b.score - a.score);
-}
-var EntityError = class extends Error {
-  constructor(message, status = 400) {
-    super(message);
-    this.status = status;
-  }
-  status;
-};
-async function digest(s) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-var entityIdOf = async (owner, canonical) => `ent_${await digest(`${owner}\0${canonical}`)}`;
-var aliasIdOf = async (owner, alias) => `als_${await digest(`${owner}\0${alias}`)}`;
-function minScore(env) {
-  const n2 = Number(env.ENTITY_NORMALIZE_MIN_SCORE);
-  return Number.isFinite(n2) && n2 > 0 && n2 <= 1 ? n2 : DEFAULT_NORMALIZE_MIN_SCORE;
-}
-function judgeMinScore(env, threshold) {
-  const n2 = Number(env.ENTITY_JUDGE_MIN_SCORE);
-  const v = Number.isFinite(n2) && n2 > 0 && n2 < 1 ? n2 : DEFAULT_JUDGE_MIN_SCORE;
-  return Math.min(v, threshold);
-}
-var JUDGE_SYSTEM = "\u4F60\u5224\u65B7\u5169\u500B\u540D\u5B57\u662F\u4E0D\u662F\u5728\u6307\u300C\u540C\u4E00\u500B\u771F\u5BE6\u4E16\u754C\u7684\u6771\u897F\u300D\uFF08\u540C\u4E00\u500B\u4EBA\u3001\u540C\u4E00\u9593\u516C\u53F8\u3001\u540C\u4E00\u500B\u7522\u54C1\u2026\u2026\uFF09\u3002\u53EA\u770B\u63CF\u8FF0\u5BEB\u7684\u4E8B\u5BE6\uFF0C\u4E0D\u770B\u540D\u5B57\u50CF\u4E0D\u50CF\u3002\u540C\u4E00\u500B\u6771\u897F\u7684\u4E0D\u540C\u7A31\u547C\u3001\u66B1\u7A31\u3001\u5916\u865F\u3001\u8B6F\u540D \u21D2 same\uFF1B\u76F8\u95DC\u4F46\u4E0D\u662F\u540C\u4E00\u500B\uFF08\u4F8B\u5982\u5275\u8FA6\u4EBA\u8207\u4ED6\u7684\u516C\u53F8\u3001\u7522\u54C1\u8207\u88FD\u9020\u5546\u3001\u4E0A\u4E0B\u4F4D\u6982\u5FF5\uFF09\u21D2 different\uFF1B\u62FF\u4E0D\u6E96 \u21D2 different\u3002\u53EA\u56DE\u4E00\u500B\u5B57\uFF1Asame \u6216 different\u3002";
-async function judgeSame(env, name, description, cand) {
-  const judge = judgeProviderOf(env);
-  if (!judge) return "unavailable";
-  const user = `\u7532\uFF1A${name}
-\u7532\u7684\u63CF\u8FF0\uFF1A${description}
-\u4E59\uFF1A${cand.name}
-\u4E59\u7684\u63CF\u8FF0\uFF1A${cand.description ?? "\uFF08\u6C92\u6709\u63CF\u8FF0\uFF09"}
-\u7532\u548C\u4E59\u662F\u540C\u4E00\u500B\u55CE\uFF1F`;
-  try {
-    const out = (await judge.complete((env.ENTITY_JUDGE_MODEL ?? "").trim() || judge.defaultModel, JUDGE_SYSTEM, user)).trim().toLowerCase();
-    return /^same\b/.test(out) ? "same" : "different";
-  } catch {
-    return "failed";
-  }
-}
-async function ensureEntityTemplate(db) {
-  let tpl = await getTemplate(db, TPL_ENTITY_NAME);
-  if (!tpl) {
-    try {
-      tpl = await createTemplate(db, {
-        id: TPL_ENTITY_ID,
-        name: TPL_ENTITY_NAME,
-        description: "\u6B63\u5F0F entity\uFF1A\u540D\u5B57\u3001\u4E00\u53E5\u63CF\u8FF0\u3001\u5225\u540D\u3002\u6BCF\u500B\u5E33\u865F\u6BCF\u500B\u540D\u5B57\u53EA\u6709\u4E00\u7B46\u3002",
-        slots: [...ENTITY_SLOTS_DEF]
-      });
-    } catch {
-      tpl = await getTemplate(db, TPL_ENTITY_NAME);
-    }
-    if (!tpl) throw new Error("entity template \u5EFA\u7ACB\u5931\u6557");
-    return tpl.id;
-  }
-  let have = [];
-  try {
-    have = JSON.parse(tpl.slots_json);
-  } catch {
-    have = [];
-  }
-  const missing = ENTITY_SLOTS_DEF.filter((s) => !have.includes(s));
-  if (missing.length > 0) await updateTemplate(db, tpl.id, { slots: [...have, ...missing] });
-  return tpl.id;
-}
-async function ensureAliasTemplate(db) {
-  const tpl = await getTemplate(db, TPL_ALIAS_NAME);
-  if (tpl) return tpl.id;
-  try {
-    return (await createTemplate(db, { id: TPL_ALIAS_ID, name: TPL_ALIAS_NAME, description: "\u6B63\u5F0F entity \u7684\u5225\u540D\uFF08\u53EA\u6709\u4E00\u689D\u6B78\u5C6C\u8207\u4E00\u689D\u6307\u56DE\u6B63\u5F0F entity \u7684\u95DC\u4FC2\uFF0C\u81EA\u5DF1\u6C92\u6709\u5411\u91CF\uFF09\u3002", slots: ["name"] })).id;
-  } catch {
-    const again = await getTemplate(db, TPL_ALIAS_NAME);
-    if (!again) throw new Error("alias template \u5EFA\u7ACB\u5931\u6557");
-    return again.id;
-  }
-}
-var isEntityExpr = (idExpr) => `EXISTS (SELECT 1 FROM entries b WHERE b.id = 'relb_' || ${idExpr} || '_' || ?)`;
-async function findEntity(db, owner, rawName) {
-  const canon = canonicalEntity(rawName);
-  const id = await entityIdOf(owner, canon);
-  const tpl = await getTemplate(db, TPL_ENTITY_NAME);
-  if (!tpl) return null;
-  const hit = await db.first(`SELECT e.id AS id, e.content AS content, ${entityLibraryExpr("e")} AS lib FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [id, tpl.id]);
-  if (hit) return { id: hit.id, name: hit.content, matched_by: "canonical", library: libraryOfValue(hit.lib) };
-  const aid = await aliasIdOf(owner, canon);
-  const holder = await db.first(
-    `SELECT e.id AS id, e.content AS content, ${entityLibraryExpr("e")} AS lib FROM entries r JOIN entries e ON e.id = r.src_id
-      WHERE r.dst_id = ? AND r.rel_id = ? AND ${isEntityExpr("e.id")} LIMIT 1`,
-    [aid, fieldEntryId(tpl.id, "alias"), tpl.id]
-  );
-  return holder ? { id: holder.id, name: holder.content, matched_by: "alias", library: libraryOfValue(holder.lib) } : null;
-}
-async function attachAlias(db, tplId, owner, entityId, aliasName, library) {
-  const aid = await aliasIdOf(owner, aliasName);
-  const same = await db.first(`SELECT e.id AS id FROM entries e WHERE e.id = ? AND ${isEntityExpr("e.id")}`, [await entityIdOf(owner, aliasName), tplId]);
-  if (same) return same.id === entityId;
-  const aliasTpl = await ensureAliasTemplate(db);
-  await insertEntryRow(db, { id: aid, content: aliasName, owner_id: owner, ...library ? { metadata_json: JSON.stringify({ library }) } : {} }, { ignore: true });
-  await insertBelongs(db, aid, aliasTpl, owner);
-  await insertEntryRow(db, { id: fieldEntryId(tplId, "alias"), content: "alias" }, { ignore: true });
-  await insertEntryRow(db, { id: `rela_${entityId}~${aid}`, owner_id: owner, src_id: entityId, rel_id: fieldEntryId(tplId, "alias"), dst_id: aid }, { ignore: true });
-  return true;
-}
-async function resolveEntity(env, db, input) {
-  const owner = (input.owner_id ?? "").trim();
-  if (!owner) throw new EntityError("owner_id \u5FC5\u586B");
-  if (typeof input.name !== "string" || !input.name.trim()) throw new EntityError("name \u5FC5\u586B\uFF08\u975E\u7A7A\u5B57\u4E32\uFF09");
-  const canon = canonicalEntity(input.name);
-  const description = typeof input.description === "string" ? input.description.trim() : "";
-  const library = normLibrary(input.library);
-  const tplId = await ensureEntityTemplate(db);
-  const mismatch = (entityLib) => library && libraryOfValue(entityLib) !== library ? { library_mismatch: true } : {};
-  const known = await findEntity(db, owner, canon);
-  if (known) {
-    if (description && await fillDescriptionIfEmpty(db, tplId, known.id, owner, description, known.library === "general" ? void 0 : known.library)) {
-      const row2 = await db.first("SELECT * FROM entries WHERE id = ?", [known.id]);
-      if (row2) await embedOnWrite(env, row2).catch(() => false);
-    }
-    return { entity_id: known.id, name: known.name, matched_by: known.matched_by, created: false, library: known.library, ...mismatch(known.library), alias_added: false, vector: "skipped" };
-  }
-  let vec = null;
-  let vectorState = "no_description";
-  let judgeState = "not_needed";
-  let judgeCalls = 0;
-  if (description) {
-    if (!embedEnabled(env)) {
-      vectorState = "unavailable";
-    } else {
-      try {
-        vec = await embedForEntity(env, `${canon}\uFF1A${description}`);
-        vectorState = vec ? "compared" : "failed";
-      } catch {
-        vectorState = "failed";
-      }
-    }
-  }
-  if (vec) {
-    const threshold = minScore(env);
-    let neighbors = [];
-    try {
-      neighbors = await nearestEntities(env, vec, owner, 3);
-    } catch {
-      vectorState = "failed";
-    }
-    const recentIds = /* @__PURE__ */ new Set();
-    if (vectorState !== "failed" && !neighbors.some((n2) => n2.score >= threshold)) {
-      try {
-        const extra = await recentNeighbors(env, db, tplId, owner, vec, new Set(neighbors.map((n2) => n2.id)), library);
-        for (const x of extra) recentIds.add(x.id);
-        if (extra.length) neighbors = [...neighbors, ...extra].sort((a, b) => b.score - a.score);
-      } catch {
-      }
-    }
-    for (const n2 of neighbors) {
-      if (recentIds.has(n2.id)) continue;
-      if (n2.score < threshold) break;
-      const target = await db.first(
-        `SELECT e.id AS id, e.content AS content FROM entries e WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")}
-            AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? ` AND ${entityLibraryExpr("e")} = ?` : ""}`,
-        [n2.id, owner, tplId, ...library ? [library] : []]
-      );
-      if (!target) continue;
-      if (!await attachAlias(db, tplId, owner, target.id, canon, library)) continue;
-      return { entity_id: target.id, name: target.content, matched_by: "vector", created: false, library: library ?? "general", alias_added: true, score: n2.score, vector: "compared", judge: "not_needed", judge_calls: 0 };
-    }
-    const gray = neighbors.filter((n2) => n2.score >= judgeMinScore(env, threshold) && (n2.score < threshold || recentIds.has(n2.id))).slice(0, MAX_JUDGE_CANDIDATES);
-    judgeState = gray.length ? "different" : "not_needed";
-    for (const n2 of gray) {
-      const cand = await db.first(
-        `SELECT e.id AS id, e.content AS content, d.content AS description FROM entries e LEFT JOIN entries d ON d.id = e.id || '~v~description'
-          WHERE e.id = ? AND e.owner_id = ? AND ${isEntityExpr("e.id")} AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${library ? ` AND ${entityLibraryExpr("e")} = ?` : ""}`,
-        [n2.id, owner, tplId, ...library ? [library] : []]
-      );
-      if (!cand) continue;
-      judgeCalls++;
-      const verdict = await judgeSame(env, canon, description, { name: cand.content, description: cand.description });
-      judgeState = verdict;
-      if (verdict === "unavailable" || verdict === "failed") break;
-      if (verdict !== "same") continue;
-      if (!await attachAlias(db, tplId, owner, cand.id, canon, library)) continue;
-      return { entity_id: cand.id, name: cand.content, matched_by: "ai", created: false, library: library ?? "general", alias_added: true, score: n2.score, vector: "compared", judge: "same", judge_calls: judgeCalls };
-    }
-  }
-  const id = await entityIdOf(owner, canon);
-  await insertEntryRow(db, { id, content: canon, owner_id: owner, metadata_json: JSON.stringify(library ? { embed: true, library } : { embed: true }) }, { ignore: true });
-  await createRecord(db, {
-    template: tplId,
-    record_id: id,
-    owner_id: owner,
-    values: description ? { name: canon, description } : { name: canon },
-    derived_cell_ids: true
-  });
-  if (library) {
-    await db.run(
-      `UPDATE entries SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.library', ?) WHERE id IN (?, ?)`,
-      [library, derivedCellIds(id, "name").value, derivedCellIds(id, "description").value]
-    );
-  }
-  const row = await db.first("SELECT * FROM entries WHERE id = ?", [id]);
-  if (row) await embedOnWrite(env, row, vec ? { vec } : {}).catch(() => false);
-  return { entity_id: id, name: canon, matched_by: "new", created: true, library: library ?? "general", alias_added: false, vector: vectorState, judge: judgeState, judge_calls: judgeCalls };
-}
-async function fillDescriptionIfEmpty(db, tplId, entityId, owner, description, library) {
-  const ids = derivedCellIds(entityId, "description");
-  const exists = await db.first("SELECT id FROM entries WHERE id = ?", [ids.value]);
-  if (exists) return false;
-  await insertEntryRow(db, { id: ids.value, content: description, owner_id: owner, ...library ? { metadata_json: JSON.stringify({ library }) } : {} }, { ignore: true });
-  await insertEntryRow(db, { id: ids.relation, owner_id: owner, src_id: entityId, rel_id: fieldEntryId(tplId, "description"), dst_id: ids.value }, { ignore: true });
-  await insertEntryRow(db, { id: fieldEntryId(tplId, "description"), content: "description" }, { ignore: true });
-  await db.run(`UPDATE entries SET is_embedded = 0 WHERE id = ?`, [entityId]);
-  return true;
-}
-async function entityCatalog(db, owner, limit = 200, offset = 0, libraries) {
-  const n2 = Math.min(Math.max(Math.trunc(limit) || 200, 1), 500);
-  const o = Math.max(Math.trunc(offset) || 0, 0);
-  const libs = libraries && libraries.length > 0 ? libraries : void 0;
-  const tpl = await getTemplate(db, TPL_ENTITY_NAME);
-  if (!tpl) return [];
-  const res = await db.all(
-    `SELECT e.id AS id, e.content AS name, d.content AS description
-       FROM entries b JOIN entries e ON e.id = b.src_id LEFT JOIN entries d ON d.id = e.id || '~v~description'
-      WHERE b.dst_id = ? AND b.rel_id = '${SYS_BELONGS}' AND +b.owner_id = ?
-        AND COALESCE(json_extract(e.metadata_json, '$.status'), '') != 'deprecated'${libs ? `
-        AND ${entityLibraryExpr("e")} IN (${libs.map(() => "?").join(",")})` : ""}
-      ORDER BY b.created_at DESC, e.id LIMIT ? OFFSET ?`,
-    [tpl.id, owner, ...libs ?? [], n2, o]
-  );
-  return res.results ?? [];
-}
-
-// kbdb/src/routes/entities.ts
 init_maintenance_quota();
 var entityRoutes = new Hono2();
 var MAX_ITEMS = 50;
@@ -10352,12 +12032,12 @@ init_record_crud();
 init_entity_canon();
 init_maintenance_quota();
 init_library_predicate();
-var HARD_LIMIT_CAP3 = 2e3;
-var DEFAULT_LIMIT2 = 500;
+var HARD_LIMIT_CAP4 = 2e3;
+var DEFAULT_LIMIT3 = 500;
 async function canonicalizeTripletEntities(db, env, opts = {}) {
   const templateName = opts.template ?? "triplet";
   const dryRun = opts.dry_run !== false;
-  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT2, 1), HARD_LIMIT_CAP3);
+  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT3, 1), HARD_LIMIT_CAP4);
   const offset = Math.max(opts.offset ?? 0, 0);
   const ownerId = opts.owner_id?.trim() || void 0;
   const tpl = await getTemplate(db, templateName);
@@ -11627,6 +13307,19 @@ var GENERATIONS = [
       // 查詢不會因此退成全表掃描——template 切成一卡一列的第一步（card-format copy）會先確保它存在（ensureMemberIndex）。
     ],
     rows_per_card: 548
+  },
+  {
+    n: 18,
+    file: "0018_tree_node_fields.sql",
+    what: "\u6A39\u7684\u7BC0\u9EDE\u6B04\u4F4D\u2014\u2014entries \u52A0 sort_key\uFF08\u5144\u5F1F\u9806\u5E8F\uFF09\uFF0Forigin\uFF08\u4F86\u6E90\uFF09\uFF0Fcreated_by\uFF0Fperm_class\uFF08\u6B0A\u9650\u985E\u5225\uFF09\uFF1B\u5B50\u6A39\u8207\u7956\u5148\u7528\u905E\u8FF4\u67E5\u8A62\u73FE\u7B97\uFF08D100 3.3\uFF0Cinkstone/Arcrun#550\uFF09",
+    // 只加欄、不加索引、舊列全 NULL ⇒ 寫入與第 17 代一字不差，rows_per_card 沿用。
+    checks: [
+      { kind: "entries_column", name: "sort_key" },
+      { kind: "entries_column", name: "origin" },
+      { kind: "entries_column", name: "created_by" },
+      { kind: "entries_column", name: "perm_class" }
+    ],
+    rows_per_card: 548
   }
 ];
 var EXPECTED_GENERATION = GENERATIONS[GENERATIONS.length - 1].n;
@@ -12197,6 +13890,7 @@ app.route("/templates", templateRoutes);
 app.route("/sheets", templateRoutes);
 app.route("/records", recordRoutes);
 app.route("/recipe-stats", recipeStatRoutes);
+app.route("/sequences", sequenceRoutes);
 app.route("/execution-log", executionLogRoutes);
 app.route("/embed", embedRoutes);
 app.route("/entities", entityRoutes);

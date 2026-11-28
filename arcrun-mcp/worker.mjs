@@ -9071,6 +9071,14 @@ async function portalError(res, what) {
       detail
     );
   }
+  if (res.status === 409 && detail.includes("template_shape_duplicate")) {
+    return errorResponse(
+      "template_shape_duplicate",
+      `${what}\u88AB\u64CB\u4E0B\uFF1A\u6B04\u4F4D\u5F62\u72C0\u8DDF\u73FE\u6709\u7684\u865B\u64EC\u8868\u76F8\u540C\u6216\u5E7E\u4E4E\u76F8\u540C\u3002`,
+      ["detail \u88E1\u7684 candidates \u662F\u73FE\u6709\u7684\u76F8\u8FD1\u865B\u64EC\u8868\u2014\u2014\u80FD\u7528\u5C31\u76F4\u63A5\u7528\u5B83\uFF08kbdb_create_record\uFF09", "\u78BA\u5B9A\u8981\u53E6\u5EFA\uFF1A\u628A\u770B\u904E\u7684\u5019\u9078\u540D\u5B57\u653E\u9032 compared \u518D\u9001\u4E00\u6B21"],
+      detail
+    );
+  }
   return errorResponse(`portal_${res.status}`, `${what}\u5931\u6557\uFF08HTTP ${res.status}\uFF09`, ["\u7A0D\u5F8C\u91CD\u8A66"], detail);
 }
 async function refreshPortalIdentity(env, portal) {
@@ -32033,21 +32041,23 @@ function registerCreateTemplate(server, env, identity) {
       name: external_exports.string().min(1).describe("\u865B\u64EC\u8868\u7684\u540D\u5B57\uFF08\u552F\u4E00\u8B58\u5225\uFF0C\u4E4B\u5F8C\u586B record \u7528\u9019\u500B\u540D\u5B57\uFF09\uFF0C\u5982 'contact' / 'note'"),
       slots: external_exports.array(external_exports.string().min(1)).min(1).describe("**\u865B\u64EC\u6B04\u4F4D**\u540D\u6E05\u55AE\uFF0C\u5982 ['name','email','phone']\uFF08\u53C3\u6578\u540D slots \u662F\u6B77\u53F2\u6CBF\u7528\uFF0C\u4E0D\u662F\u90A3\u5F35\u4E0D\u5B58\u5728\u7684 slots \u8868\uFF09"),
       description: external_exports.string().optional().describe("\u9019\u5F35\u865B\u64EC\u8868\u7528\u9014\u7684\u7C21\u8FF0\uFF08\u9078\u586B\uFF09"),
-      created_by: external_exports.string().optional().describe("\u5EFA\u7ACB\u8005\u6A19\u8A18\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u7531 server \u8A18\u9304\uFF0C\u4E0D\u5403\u6B64\u503C\uFF09")
+      created_by: external_exports.string().optional().describe("\u5EFA\u7ACB\u8005\u6A19\u8A18\uFF08\u9078\u586B\uFF1B\u767B\u5165\u8EAB\u5206\u4E0B\u7531 server \u8A18\u9304\uFF0C\u4E0D\u5403\u6B64\u503C\uFF09"),
+      compared: external_exports.array(external_exports.string()).optional().describe("\u5EFA\u4E4B\u524D\u5148\u7528 arcrun \u7684 /cypher/search\uFF08target=template\uFF09\u627E\u904E\u73FE\u6709\u865B\u64EC\u8868\u3002\u82E5\u6B04\u4F4D\u5F62\u72C0\u8DDF\u73FE\u6709\u7684\u76F8\u540C\u6216\u5E7E\u4E4E\u76F8\u540C\u6703\u56DE 409 \u5217\u51FA\u5019\u9078\uFF1B\u78BA\u5B9A\u8981\u53E6\u5EFA\uFF0C\u628A\u4F60\u770B\u904E\u7684\u5019\u9078\u540D\u5B57\u653E\u9019\u88E1\u518D\u9001\u4E00\u6B21\u3002")
     },
-    async ({ name, slots, description, created_by }) => {
+    async ({ name, slots, description, created_by, compared }) => {
       if (identity.kind === "stale") return staleIdentityError();
       try {
         const res = identity.kind === "portal" ? await portalFetch(env, identity.portal.session, "/portal/data/templates", {
           method: "POST",
-          body: { name, slots, description }
+          body: { name, slots, description, compared }
         }) : await kbdbFetch(env, "/templates", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, slots, description, created_by })
+          body: JSON.stringify({ name, slots, description, created_by, check_shape: true, compared })
         });
         if (!res.ok) {
           if (identity.kind === "portal") return portalError(res, `\u5EFA template\u300C${name}\u300D`);
+          if (res.status === 409) return errorResponse("template_shape_duplicate", `\u5EFA template\u300C${name}\u300D\u88AB\u64CB\u4E0B\uFF1A\u6B04\u4F4D\u5F62\u72C0\u8DDF\u73FE\u6709\u7684\u76F8\u540C\u6216\u5E7E\u4E4E\u76F8\u540C`, ["detail \u88E1\u7684 candidates \u662F\u73FE\u6709\u7684\u76F8\u8FD1\u865B\u64EC\u8868\u2014\u2014\u80FD\u7528\u5C31\u76F4\u63A5\u7528\u5B83\uFF08kbdb_create_record\uFF09", "\u78BA\u5B9A\u8981\u53E6\u5EFA\uFF1A\u628A\u5019\u9078\u540D\u5B57\u653E\u9032 compared \u518D\u9001\u4E00\u6B21"], await res.text().catch(() => ""));
           return errorResponse("create_template_failed", `\u5EFA template \u5931\u6557`, ["\u6AA2\u67E5 name \u662F\u5426\u91CD\u8907", "\u78BA\u8A8D slots \u662F\u975E\u7A7A\u5B57\u4E32\u9663\u5217"], await res.text().catch(() => ""));
         }
         const data = await res.json();
@@ -33511,6 +33521,9 @@ function zodOf(p) {
       return external_exports.boolean();
     case "array":
       return external_exports.array(zodOf(p.items ?? {}));
+    case "object":
+      return external_exports.record(external_exports.unknown());
+    // 自由形狀的物件：原型別進工作流（#548）
     default:
       return external_exports.unknown();
   }
@@ -33524,6 +33537,22 @@ function callerOf(identity) {
 function isObj(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
+function applyToolMap(map2, args) {
+  if (!map2) return args;
+  const out = {};
+  for (const [to, m] of Object.entries(map2)) {
+    if (typeof m === "string") {
+      if (args[m] !== void 0) out[to] = args[m];
+    } else if (isObj(m) && "const" in m) {
+      out[to] = m.const;
+    } else if (isObj(m) && typeof m.param === "string") {
+      const v = args[m.param];
+      if (v !== void 0) out[to] = v;
+      else if ("default" in m && m.default !== void 0) out[to] = m.default;
+    }
+  }
+  return out;
+}
 async function callAppTool(env, ns, app2, tool, args, caller) {
   const url = `http://cypher-executor/webhooks/named/${encodeURIComponent(ns)}/${encodeURIComponent(tool.wf_key)}/query`;
   let res;
@@ -33532,7 +33561,7 @@ async function callAppTool(env, ns, app2, tool, args, caller) {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": "arcrun-mcp-app-tool/1.0", ...await cypherAuthHeaders(env, ns) },
       // 參數在前、_caller／_tool 在後：AI 在參數裡塞同名欄位會被蓋掉。
-      body: JSON.stringify({ ...args, _caller: caller, _tool: `${app2.app_id}.${tool.name}` })
+      body: JSON.stringify({ ...applyToolMap(tool.map, args), _caller: caller, _tool: `${app2.app_id}.${tool.name}` })
     });
   } catch (e) {
     return errorResponse("app_unreachable", `\u6253\u4E0D\u5230 ${app2.app_name} \u7684\u5DE5\u4F5C\u6D41\uFF1A${e instanceof Error ? e.message : String(e)}`, ["\u7A0D\u5F8C\u518D\u8A66\u4E00\u6B21"]);

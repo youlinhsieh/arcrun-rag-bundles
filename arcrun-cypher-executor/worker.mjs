@@ -201,10 +201,10 @@ var init_hash = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -250,21 +250,21 @@ var init_compose = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -295,7 +295,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -342,10 +342,10 @@ var init_body = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -551,10 +551,10 @@ var init_url = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants2();
     init_body();
@@ -704,6 +704,21 @@ var init_request = __esm({
         return this.#cachedBody("arrayBuffer");
       }
       /**
+       * `.bytes()` parses the request body as a `Uint8Array`.
+       *
+       * @see {@link https://hono.dev/docs/api/request#bytes}
+       *
+       * @example
+       * ```ts
+       * app.post('/entry', async (c) => {
+       *   const body = await c.req.bytes()
+       * })
+       * ```
+       */
+      bytes() {
+        return this.#cachedBody("arrayBuffer").then((buffer) => new Uint8Array(buffer));
+      }
+      /**
        * Parses the request body as a `Blob`.
        * @example
        * ```ts
@@ -828,10 +843,10 @@ var init_request = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -875,10 +890,10 @@ var init_html = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1289,10 +1304,10 @@ var init_context = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1302,18 +1317,18 @@ var init_router = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants3 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1433,7 +1448,7 @@ var init_hono_base = __esm({
             handler = async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res;
             handler[COMPOSED_HANDLER] = r.handler;
           }
-          subApp.#addRoute(r.method, r.path, handler);
+          subApp.#addRoute(r.method, r.path, handler, r.basePath);
         });
         return this;
       }
@@ -1557,7 +1572,7 @@ var init_hono_base = __esm({
           const pathPrefixLength = mergedPath === "/" ? 0 : mergedPath.length;
           return (request) => {
             const url = new URL(request.url);
-            url.pathname = url.pathname.slice(pathPrefixLength) || "/";
+            url.pathname = this.getPath(request).slice(pathPrefixLength) || "/";
             return new Request(url, request);
           };
         })();
@@ -1571,10 +1586,15 @@ var init_hono_base = __esm({
         this.#addRoute(METHOD_NAME_ALL, mergePath(path, "*"), handler);
         return this;
       }
-      #addRoute(method, path, handler) {
+      #addRoute(method, path, handler, baseRoutePath) {
         method = method.toUpperCase();
         path = mergePath(this._basePath, path);
-        const r = { basePath: this._basePath, path, method, handler };
+        const r = {
+          basePath: baseRoutePath !== void 0 ? mergePath(this._basePath, baseRoutePath) : this._basePath,
+          path,
+          method,
+          handler
+        };
         this.router.add(method, path, [handler, r]);
         this.routes.push(r);
       }
@@ -1691,7 +1711,7 @@ var init_hono_base = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1712,13 +1732,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1740,7 +1760,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1831,10 +1851,10 @@ var init_node = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1893,7 +1913,7 @@ var init_trie = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1975,7 +1995,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -2082,27 +2102,27 @@ var init_router2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -2160,17 +2180,17 @@ var init_router3 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2349,10 +2369,10 @@ var init_node2 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2378,17 +2398,17 @@ var init_router4 = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2409,10 +2429,11 @@ var init_hono = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/index.js"() {
     init_hono();
+    init_context();
   }
 });
 
@@ -2527,6 +2548,10 @@ async function verifyByTokenExchange(recipe, values, mode, authenticate) {
   for (const [k, v] of Object.entries(values)) if (k.startsWith("secret.")) resolved[k.slice(7)] = v;
   const keys = recipeSecretKeys(recipe).required;
   const missing = recipe.primitive === "service_account" ? (resolved.client_email || Object.values(resolved).some((v) => v.trim().startsWith("{")) ? [] : ["client_email"]).concat(resolved.private_key || Object.values(resolved).some((v) => v.trim().startsWith("{")) ? [] : ["private_key"]) : keys.filter((k) => !resolved[k]);
+  const refreshKey = recipe.required_secrets?.[0]?.key;
+  if (recipe.primitive === "oauth2" && refreshKey && missing.includes(refreshKey)) {
+    return { status: "failed", message: "\u9084\u6C92\u5B8C\u6210\u6388\u6B0A\uFF1A\u6C92\u6709\u62FF\u5230 refresh token\uFF0C\u8ACB\u6309\u300C\u91CD\u65B0\u9023\u7DDA\u300D\u5230\u670D\u52D9\u7684\u540C\u610F\u9801\u6388\u6B0A\u4E00\u6B21" };
+  }
   if (missing.length) return skip(mode, `\u9084\u7F3A\u300C${missing[0]}\u300D\uFF0C\u88DC\u9F4A\u5F8C\u624D\u8A66\u5F97\u4E86`);
   let r;
   try {
@@ -2611,6 +2636,1419 @@ var init_builtin_ids = __esm({
   "cypher-executor/src/lib/builtin-ids.ts"() {
     "use strict";
     BUILTIN_APP_IDS = ["notes", "company_rules"];
+  }
+});
+
+// shared/dataflow-graph/extract.mjs
+function normalizeWorkflow(input) {
+  const wf = input && typeof input === "object" ? input : {};
+  const name = String(wf.name ?? wf.graph?.name ?? wf.id ?? "");
+  const graph = wf.graph && typeof wf.graph === "object" ? wf.graph : wf;
+  const config = (wf.config && typeof wf.config === "object" ? wf.config : null) ?? (graph.config && typeof graph.config === "object" ? graph.config : null) ?? {};
+  if (Array.isArray(graph.nodes) && graph.nodes.some((n) => n && (n.data || n.componentId))) {
+    const nodes2 = graph.nodes.map((n) => {
+      const cfg = config[n.label] ?? config[n.id] ?? {};
+      const { component: cfgComponent, ...cfgRest } = cfg;
+      const data = { ...cfgRest, ...n.data ?? {} };
+      const component = String(
+        (n.componentId && n.componentId !== n.id ? n.componentId : void 0) ?? cfgComponent ?? n.componentId ?? ""
+      );
+      return { id: String(n.id), component, data };
+    });
+    const edges2 = (Array.isArray(graph.edges) ? graph.edges : []).map((e) => ({
+      from: String(e.from),
+      to: String(e.to),
+      type: String(e.type ?? ""),
+      branch: e.branch
+    }));
+    return { name, nodes: nodes2, edges: edges2 };
+  }
+  const flow = Array.isArray(graph.flow) ? graph.flow : [];
+  const ids = /* @__PURE__ */ new Set();
+  const edges = [];
+  for (const line of flow) {
+    const parts = String(line).split(">>").map((s) => s.trim());
+    if (parts.length !== 3) continue;
+    const [from, label, to] = parts;
+    ids.add(from);
+    ids.add(to);
+    edges.push({ from, to, type: edgeTypeOf(label), ...branchOf(label) ? { branch: branchOf(label) } : {} });
+  }
+  for (const k of Object.keys(config)) ids.add(k);
+  const nodes = [...ids].map((id) => {
+    const { component, ...data } = config[id] ?? {};
+    return { id, component: String(component ?? (id === "input" ? "input" : "")), data };
+  });
+  return { name, nodes, edges };
+}
+function edgeTypeOf(label) {
+  const l = String(label).trim();
+  if (/^(ON_FAIL|FAIL|失敗時)$/i.test(l)) return "ON_FAIL";
+  if (/^(ON_SUCCESS|成功後|SUCCESS)$/i.test(l)) return "ON_SUCCESS";
+  if (/^(ON_TRUE|TRUE)$/i.test(l)) return "ON_TRUE";
+  if (/^(ON_FALSE|FALSE|ELSE)$/i.test(l)) return "ON_FALSE";
+  if (/^(ON_BRANCH|分支)/i.test(l)) return "ON_BRANCH";
+  if (/^(對每個|FOREACH)/i.test(l)) return "FOREACH";
+  return l;
+}
+function branchOf(label) {
+  const m = String(label).match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
+  return m ? m[1] : void 0;
+}
+function classifyName(v) {
+  if (typeof v !== "string") return "dynamic";
+  const s = v.trim();
+  if (s === "") return "invalid";
+  if (DYNAMIC_RE.test(s)) return "dynamic";
+  if (PLACEHOLDER_RE.test(s)) return "placeholder";
+  if (!NAME_RE.test(s)) return "invalid";
+  return "literal";
+}
+function isKbdbUrl(url) {
+  if (typeof url !== "string") return false;
+  return /__KBDB_BASE__/.test(url) || /\/\/[^/]*kbdb[^/]*\//i.test(url) || /\{\{[^}]*kbdb[^}]*\}\}/i.test(url) || /(^|[^\w])\/kbdb\//.test(url) || /__[A-Z0-9_]+__\/kbdb\//.test(url) || /^[a-z]+:\/\/[^/]+\/kbdb\//i.test(url);
+}
+function splitKbdbUrl(url) {
+  let rest = url.replace(/^\{\{[^}]*\}\}/, "").replace(/^__[A-Z0-9_]+__/, "").replace(/^[a-z]+:\/\/[^/]+/i, "");
+  rest = rest.replace(/^\/kbdb(?=\/)/, "");
+  const qi = rest.indexOf("?");
+  const path = qi >= 0 ? rest.slice(0, qi) : rest;
+  const query = {};
+  if (qi >= 0) {
+    for (const kv of rest.slice(qi + 1).split("&")) {
+      const [k, ...v] = kv.split("=");
+      if (k) query[decodeSafe(k)] = decodeSafe(v.join("="));
+    }
+  }
+  return { path, query };
+}
+function decodeSafe(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+function workflowCallOf(url, selfOrigins = []) {
+  if (typeof url !== "string") return null;
+  const m = url.match(/\/webhooks\/named\/(?:([^/?#]+)\/)?([^/?#]+)\/(trigger|query)(?:[?#]|$)/);
+  if (!m) return null;
+  const head = url.slice(0, m.index);
+  const local = head === "" || /^__[A-Z0-9_]+__$/.test(head) || /^\{\{[^}]*\}\}$/.test(head) || selfOrigins.some((o) => head === o.replace(/\/$/, ""));
+  if (!local) return { external: true, url };
+  const name = m[2];
+  return { workflow: name, kind: classifyName(name) };
+}
+function substitute(template, data) {
+  return String(template).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (all, key) => {
+    if (key.startsWith("_")) return all;
+    const v = data[key];
+    return typeof v === "string" && !DYNAMIC_RE.test(v) ? v : all;
+  });
+}
+function requestOf(node, recipes) {
+  const d = node.data ?? {};
+  const recipe = recipes?.get?.(String(node.component).toLowerCase());
+  if (recipe && typeof recipe.endpoint === "string") {
+    return {
+      method: String(recipe.method ?? "GET").toUpperCase(),
+      url: substitute(recipe.endpoint, d),
+      body: d.body_json ?? d.body ?? recipe.body_template,
+      via: `recipe:${recipe.canonical_id}`
+    };
+  }
+  if (typeof d.url !== "string") return null;
+  return { method: String(d.method ?? "GET").toUpperCase(), url: d.url, body: d.body_json ?? d.body, via: "http" };
+}
+function parseBody2(body) {
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return null;
+    }
+  }
+  return body && typeof body === "object" ? body : null;
+}
+function extractNodeIO(node, { recipes, selfOrigins } = {}) {
+  const out = { reads: [], writes: [], calls: [], dynamic: [] };
+  const d = node.data ?? {};
+  const comp = String(node.component ?? "");
+  if (comp === "trigger_workflow" || /\/trigger_workflow$/.test(comp)) {
+    const w = d.workflow_name;
+    const kind = classifyName(w);
+    if (kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
+    else out.calls.push({ workflow: String(w ?? ""), kind, node: node.id, via: "trigger_workflow" });
+    return out;
+  }
+  const req = requestOf(node, recipes);
+  if (!req) return out;
+  const call = workflowCallOf(req.url, selfOrigins);
+  if (call && !call.external) {
+    if (call.kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
+    else out.calls.push({ workflow: call.workflow, kind: call.kind, node: node.id, via: req.via });
+    return out;
+  }
+  if (!isKbdbUrl(req.url)) return out;
+  const { path, query } = splitKbdbUrl(req.url);
+  const body = parseBody2(req.body);
+  const push = (list, kind, template, fields) => {
+    const tk = classifyName(template);
+    if (tk === "dynamic") {
+      out.dynamic.push({ node: node.id, what: list === out.reads ? "read" : "write" });
+      return;
+    }
+    list.push({ kind, template: String(template ?? ""), template_kind: tk, ...fields?.length ? { fields } : {}, node: node.id, via: req.via });
+  };
+  const fieldOf = (q) => q.field && classifyName(q.field) === "literal" ? [q.field] : void 0;
+  let m;
+  if (m = path.match(/^\/records\/by-(template|source)\/([^/]+)$/)) {
+    push(out.reads, "record", decodeSafe(m[2]), fieldOf(query));
+  } else if (path === "/records" && req.method === "GET" && query.template) {
+    push(out.reads, "record", query.template, fieldOf(query));
+  } else if (path === "/records" && req.method === "POST" && body) {
+    const fields = [...Object.keys(body.values ?? {}), ...Object.keys(body.entry_ids ?? {})];
+    push(out.writes, "record", body.template, fields);
+  } else if (/^\/records\/[^/]+$/.test(path) && ["PATCH", "PUT"].includes(req.method)) {
+    if (body?.template) push(out.writes, "record", body.template, Object.keys(body.values ?? {}));
+    else out.dynamic.push({ node: node.id, what: "write" });
+  } else if (/^\/entries(\/search)?$/.test(path) && req.method === "GET" && query.template) {
+    push(out.reads, "entry", query.template);
+  } else if (path === "/entries" && req.method === "POST" && body && "template" in body) {
+    push(out.writes, "entry", body.template);
+  } else if (/^\/entries\/[^/]+$/.test(path) && ["PUT", "PATCH"].includes(req.method) && body && "template" in body) {
+    push(out.writes, "entry", body.template);
+  }
+  return out;
+}
+function codeLiterals(code) {
+  const found = /* @__PURE__ */ new Set();
+  if (typeof code !== "string") return found;
+  const re = /(['"`])([a-z][a-z0-9_]{2,63})\1/g;
+  let m;
+  while ((m = re.exec(code)) !== null) found.add(m[2]);
+  return found;
+}
+function swallowsFailure(node, fromId) {
+  const code = node?.data?.code;
+  if (typeof code !== "string") return false;
+  if (/\bthrow\b/.test(code)) return false;
+  if (!/\bsuccess\s*:\s*true\b/.test(code)) return false;
+  if (fromId) {
+    const { code: _c, ...rest } = node.data;
+    const esc2 = String(fromId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\{\\{\\s*${esc2}(\\.|\\s*\\}\\})`).test(JSON.stringify(rest))) return false;
+  }
+  return true;
+}
+function extractWorkflowIO(input, opts = {}) {
+  const wf = normalizeWorkflow(input);
+  const res = { name: wf.name, reads: [], writes: [], calls: [], dynamic: [], mentions: [], swallows: [] };
+  const byId = new Map(wf.nodes.map((n) => [n.id, n]));
+  const callNodes = /* @__PURE__ */ new Map();
+  for (const n of wf.nodes) {
+    const io = extractNodeIO(n, opts);
+    res.reads.push(...io.reads);
+    res.writes.push(...io.writes);
+    res.calls.push(...io.calls);
+    res.dynamic.push(...io.dynamic);
+    for (const c of io.calls) callNodes.set(n.id, c);
+    for (const lit of codeLiterals(n.data?.code)) res.mentions.push({ template: lit, node: n.id });
+  }
+  for (const e of wf.edges) {
+    const isFail = e.type === "ON_FAIL" || e.type === "ON_BRANCH" && e.branch === "catch";
+    if (!isFail) continue;
+    const call = callNodes.get(e.from);
+    const handler = byId.get(e.to);
+    if (call && handler && swallowsFailure(handler, e.from)) {
+      res.swallows.push({ node: e.to, from: e.from, workflow: call.workflow });
+    }
+  }
+  return res;
+}
+var DYNAMIC_RE, PLACEHOLDER_RE, NAME_RE;
+var init_extract = __esm({
+  "shared/dataflow-graph/extract.mjs"() {
+    DYNAMIC_RE = /\{\{[\s\S]*?\}\}/;
+    PLACEHOLDER_RE = /^__[A-Z0-9_]+__$/;
+    NAME_RE = /^[\w.:-]+$/;
+  }
+});
+
+// shared/dataflow-graph/rules.mjs
+function slotsOf(t) {
+  if (Array.isArray(t?.slots)) return t.slots.map(String);
+  if (typeof t?.slots_json === "string") {
+    try {
+      const s = JSON.parse(t.slots_json);
+      return Array.isArray(s) ? s.map(String) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+function editDistance(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return dp[a.length][b.length];
+}
+function closest(name, pool2) {
+  let best = null;
+  for (const c of pool2) {
+    const d = editDistance(name, c);
+    if (d <= Math.max(1, Math.floor(name.length / 5)) && (!best || d < best.d)) best = { c, d };
+  }
+  return best?.c;
+}
+function addTo(map, key, owner) {
+  if (!map.has(key)) map.set(key, /* @__PURE__ */ new Set());
+  map.get(key).add(owner);
+}
+function checkDataflow(input) {
+  const opts = {
+    recipes: new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r])),
+    selfOrigins: input.selfOrigins ?? []
+  };
+  const subjectIO = (input.subjects ?? []).map((w) => extractWorkflowIO(w, opts));
+  const subjectNames = new Set(subjectIO.map((w) => w.name));
+  const deployedIO = (input.deployed ?? []).map((w) => ({ name: normalizeWorkflow(w).name, w })).filter((x) => x.name && !subjectNames.has(x.name)).map((x) => extractWorkflowIO(x.w, opts));
+  const universe = [...deployedIO, ...subjectIO];
+  const installed = new Set(universe.map((w) => w.name));
+  const writers = /* @__PURE__ */ new Map();
+  const readers = /* @__PURE__ */ new Map();
+  const touchers = /* @__PURE__ */ new Map();
+  const slots = /* @__PURE__ */ new Map();
+  const existing = /* @__PURE__ */ new Set();
+  const recordable = /* @__PURE__ */ new Set();
+  const templatesKnown = Array.isArray(input.templates);
+  for (const t of input.templates ?? []) {
+    if (!t?.name) continue;
+    existing.add(t.name);
+    recordable.add(t.name);
+    const s = slotsOf(t);
+    if (s) slots.set(t.name, s);
+  }
+  for (const app2 of input.apps ?? []) {
+    for (const d of app2.data ?? []) {
+      if (!d?.name) continue;
+      existing.add(d.name);
+      recordable.add(d.name);
+      if (Array.isArray(d.slots)) slots.set(d.name, d.slots.map(String));
+      addTo(touchers, d.name, `app:${app2.id}`);
+    }
+  }
+  for (const p of input.platform ?? []) {
+    addTo(p.direction === "write" ? writers : readers, p.template, `platform:${p.owner}`);
+    if (p.direction === "write") existing.add(p.template);
+  }
+  for (const w of universe) {
+    const owner = `workflow:${w.name}`;
+    for (const x of w.writes) if (x.template_kind === "literal") {
+      addTo(writers, x.template, owner);
+      if (x.kind === "entry") existing.add(x.template);
+    }
+    for (const x of w.reads) if (x.template_kind === "literal") addTo(readers, x.template, owner);
+    for (const x of w.mentions) addTo(touchers, x.template, owner);
+  }
+  const errors = [];
+  const warnings = [];
+  const uncertain = [];
+  const allTemplateNames = [.../* @__PURE__ */ new Set([...existing, ...writers.keys()])];
+  for (const w of subjectIO) {
+    const at = (node) => ({ workflow: w.name, node });
+    const seenRead = /* @__PURE__ */ new Set();
+    for (const r of w.reads) {
+      if (r.template_kind !== "literal") {
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D${r.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u628A\u5B83\u63DB\u6210\u9019\u53F0\u5BE6\u4F8B\u4E0A\u771F\u7684 template \u540D\u5B57\uFF08arcrun \u7684 /kbdb/templates \u5217\u5F97\u51FA\u4F86\uFF09\u3002"
+        });
+        continue;
+      }
+      const key = `${r.template}|${r.node}`;
+      if (seenRead.has(key)) continue;
+      seenRead.add(key);
+      const hasWriter = (writers.get(r.template)?.size ?? 0) > 0 || (touchers.get(r.template)?.size ?? 0) > 0;
+      if (!hasWriter) {
+        errors.push({
+          rule: "R1",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          missing: { writer_of: r.template },
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u5DF2\u90E8\u7F72\u7684\u5DE5\u4F5C\u6D41\u3001App \u6216\u5E73\u53F0\u7A0B\u5F0F\u5BEB\u5B83\u2014\u2014\u9019\u652F\u5DE5\u4F5C\u6D41\u8B80\u5230\u7684\u6C38\u9060\u662F\u7A7A\u7684\u3002`,
+          next_action: `\u5148\u90E8\u7F72\u6703\u5BEB\u300C${r.template}\u300D\u7684\u90A3\u652F\u5DE5\u4F5C\u6D41\uFF08\u6216 App\uFF09\uFF0C\u518D\u63A8\u9019\u652F\uFF1B\u78BA\u5B9A\u53EA\u662F\u66AB\u6642\u6C92\u4EBA\u5BEB\uFF0C\u53EF\u4EE5\u5E36 force \u5F37\u63A8\u3002`
+        });
+      }
+      if (templatesKnown && !existing.has(r.template)) {
+        const hint = closest(r.template, allTemplateNames);
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(r.node),
+          template: r.template,
+          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u4E0D\u5B58\u5728${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u518D\u63A8\u3002` : "\u78BA\u8A8D template \u540D\u5B57\uFF1B\u5B83\u8981\u5148\u88AB\u67D0\u652F\u5DE5\u4F5C\u6D41\u5BEB\u904E\u6216\u7531 App \u5BA3\u544A\u624D\u6703\u5B58\u5728\u3002"
+        });
+      }
+      const s = slots.get(r.template);
+      for (const f of r.fields ?? []) {
+        if (s && !s.includes(f)) {
+          const hint = closest(f, s);
+          errors.push({
+            rule: "R3",
+            level: "error",
+            ...at(r.node),
+            template: r.template,
+            field: f,
+            message: `\u7BC0\u9EDE ${r.node} \u7528\u6B04\u4F4D\u300C${f}\u300D\u67E5\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
+            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\u3002`
+          });
+        }
+      }
+    }
+    const seenWrite = /* @__PURE__ */ new Set();
+    for (const x of w.writes) {
+      if (x.template_kind !== "literal") {
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u7684 template\u300C${x.template}\u300D${x.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u628A\u5B83\u63DB\u6210\u771F\u7684 template \u540D\u5B57\u3002"
+        });
+        continue;
+      }
+      if (x.kind === "record" && templatesKnown && !recordable.has(x.template)) {
+        const hint = closest(x.template, [...recordable]);
+        errors.push({
+          rule: "R3",
+          level: "error",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u8981\u5BEB\u4E00\u7B46\u300C${x.template}\u300Drecord\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u9019\u500B template\uFF08\u5BEB record \u4E0D\u6703\u81EA\u52D5\u5EFA template\uFF0CKBDB \u6703\u56DE template not found\uFF09${hint ? `\uFF1B\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F` : "\u3002"}`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : "\u5148\u7531 App \u7684 data \u5BA3\u544A\u5B83\uFF08\u6216 POST /kbdb/templates \u5EFA\u597D\uFF09\uFF0C\u518D\u63A8\u9019\u652F\u3002"
+        });
+      }
+      const s = slots.get(x.template);
+      for (const f of x.fields ?? []) {
+        if (s && !s.includes(f)) {
+          const hint = closest(f, s);
+          errors.push({
+            rule: "R3",
+            level: "error",
+            ...at(x.node),
+            template: x.template,
+            field: f,
+            message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\u7684\u6B04\u4F4D\u300C${f}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
+            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\uFF0C\u6216\u5148\u66FF template \u52A0\u6B04\u4F4D\u3002`
+          });
+        }
+      }
+      if (seenWrite.has(x.template)) continue;
+      seenWrite.add(x.template);
+      const hasReader = (readers.get(x.template)?.size ?? 0) > 0 || (touchers.get(x.template)?.size ?? 0) > 0;
+      if (!hasReader) {
+        warnings.push({
+          rule: "R4",
+          level: "warning",
+          ...at(x.node),
+          template: x.template,
+          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u6771\u897F\u8B80\u5B83\u3002`,
+          next_action: "\u5982\u679C\u662F\u7D66\u4EBA\u6216\u4E4B\u5F8C\u7684\u5DE5\u4F5C\u6D41\u7528\u7684\uFF0C\u53EF\u4EE5\u4E0D\u7406\uFF1B\u5982\u679C\u672C\u4F86\u8A72\u6709\u4EBA\u8B80\uFF0C\u6AA2\u67E5\u8B80\u7684\u90A3\u652F\u662F\u4E0D\u662F\u6C92\u88DD\u6216\u540D\u5B57\u62FC\u932F\u3002"
+        });
+      }
+    }
+    const seenCall = /* @__PURE__ */ new Set();
+    for (const c of w.calls) {
+      const key = `${c.workflow}|${c.node}`;
+      if (seenCall.has(key)) continue;
+      seenCall.add(key);
+      if (c.kind !== "literal") {
+        errors.push({
+          rule: "R2",
+          level: "error",
+          ...at(c.node),
+          workflow_called: c.workflow,
+          message: `\u7BC0\u9EDE ${c.node} \u53EB\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u300C${c.workflow}\u300D${c.kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
+          next_action: "\u63DB\u6210\u771F\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u3002"
+        });
+        continue;
+      }
+      if (!installed.has(c.workflow)) {
+        const hint = closest(c.workflow, [...installed]);
+        errors.push({
+          rule: "R2",
+          level: "error",
+          ...at(c.node),
+          workflow_called: c.workflow,
+          missing: { workflow: c.workflow },
+          message: `\u7BC0\u9EDE ${c.node} \u53EB\u5DE5\u4F5C\u6D41\u300C${c.workflow}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u88DD\u5B83${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
+          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\uFF0C\u6216\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u3002` : `\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u518D\u63A8\u9019\u652F\u3002`
+        });
+      }
+    }
+    for (const s of w.swallows) {
+      errors.push({
+        rule: "R5",
+        level: "error",
+        ...at(s.node),
+        workflow_called: s.workflow,
+        message: `\u7BC0\u9EDE ${s.from} \u53EB\u300C${s.workflow}\u300D\u5931\u6557\u6642\uFF08\u5305\u62EC\u5B83\u6839\u672C\u6C92\u88DD\uFF09\uFF0C\u7531 ${s.node} \u63A5\u624B\u4E26\u56DE success:true\u2014\u2014\u4F9D\u8CF4\u6C92\u88DD\u4E5F\u6703\u88AB\u8A18\u6210\u6210\u529F\uFF0C\u6C92\u6709\u4EBA\u6703\u77E5\u9053\u5B83\u4E00\u76F4\u5728\u7A7A\u8F49\u3002`,
+        next_action: `\u8B93 ${s.node} \u7528 throw \u7D50\u675F\uFF08\u7BC0\u9EDE\u5931\u6557\u624D\u6703\u88AB\u770B\u898B\uFF09\uFF0C\u6216\u62FF\u6389\u9019\u689D ON_FAIL\uFF1B\u771F\u7684\u8981\u5BB9\u5FCD\uFF0C\u56DE\u50B3\u7684\u7D50\u679C\u4E5F\u8981\u8B93\u547C\u53EB\u7AEF\u770B\u5F97\u51FA\u300C\u9019\u4E00\u6B65\u6C92\u505A\u300D\u4E26\u8A08\u5165 verdict\u3002`
+      });
+    }
+    if (w.dynamic.length) uncertain.push({ workflow: w.name, nodes: [...new Set(w.dynamic.map((d) => d.node))] });
+  }
+  const skipped = templatesKnown ? [] : [{ rule: "R3", reason: "\u6C92\u6709\u62FF\u5230 template \u6E05\u55AE\uFF0Ctemplate\uFF0F\u6B04\u4F4D\u5B58\u4E0D\u5B58\u5728\u9019\u6B21\u6C92\u6AA2\u67E5\u3002" }];
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    uncertain,
+    skipped,
+    graph: buildGraph({ universe, writers, readers, touchers, installed })
+  };
+}
+function buildGraph({ universe, writers, readers, touchers, installed }) {
+  const nodes = /* @__PURE__ */ new Map();
+  const edges = [];
+  const node = (id, type, extra = {}) => {
+    if (!nodes.has(id)) nodes.set(id, { id, type, ...extra });
+  };
+  for (const w of universe) node(`workflow:${w.name}`, "workflow");
+  const ownerNode = (o) => {
+    const [type] = o.split(":");
+    node(o, type);
+    return o;
+  };
+  for (const [t, set] of writers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "writes" });
+  }
+  for (const [t, set] of readers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: `template:${t}`, to: ownerNode(o), type: "reads" });
+  }
+  for (const [t, set] of touchers) {
+    node(`template:${t}`, "template");
+    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "touches" });
+  }
+  for (const w of universe) {
+    for (const c of w.calls) {
+      if (c.kind !== "literal") continue;
+      const to = installed.has(c.workflow) ? `workflow:${c.workflow}` : `missing:${c.workflow}`;
+      if (!installed.has(c.workflow)) node(to, "missing");
+      edges.push({ from: `workflow:${w.name}`, to, type: "calls", node: c.node });
+    }
+  }
+  for (const n of nodes.values()) {
+    if (n.type !== "template") continue;
+    const t = n.id.slice("template:".length);
+    n.orphan_read = (readers.get(t)?.size ?? 0) > 0 && (writers.get(t)?.size ?? 0) === 0 && (touchers.get(t)?.size ?? 0) === 0;
+  }
+  return { nodes: [...nodes.values()], edges };
+}
+var init_rules = __esm({
+  "shared/dataflow-graph/rules.mjs"() {
+    init_extract();
+  }
+});
+
+// shared/dataflow-graph/advice.mjs
+function item(rule, workflow, nodes, f) {
+  const base = { rule, level: "advice", workflow, node: nodes[0] ?? "", nodes, ...f };
+  return { ...base, fix_prompt: fixPrompt(base) };
+}
+function adviceA1(w, ctx) {
+  if (w.nodes.some((n) => /^try_catch$/.test(String(n.component)))) return null;
+  const hasFail = new Set(w.edges.filter((e) => e.type === "ON_FAIL").map((e) => e.from));
+  const ids = [];
+  for (const n of w.nodes) {
+    const f = ctx.facts.get(n.id);
+    if (!f || hasFail.has(n.id)) continue;
+    if (f.req && ctx.isExternal(f) || f.isSend || f.isLlm) ids.push(n.id);
+  }
+  if (!ids.length) return null;
+  return item("A1", w.name, ids, {
+    title: "\u5916\u90E8\u670D\u52D9\u51FA\u72C0\u6CC1\u6642\u6C92\u6709\u4E0B\u4E00\u6B65",
+    message: `${where(w.name)}\u7684 ${nodeList(ids)}\u6703\u547C\u53EB\u5916\u90E8\u670D\u52D9\uFF08\u5BC4\u4FE1\u3001\u767C\u8A0A\u3001AI \u6216\u5225\u4EBA\u7684 API\uFF09\uFF0C\u4F46\u6C92\u6709\u63A5\u300C\u5931\u6557\u6642\u300D\u7684\u8DEF\u3002\u5C0D\u65B9\u6162\u3001\u7576\u6A5F\u6216\u56DE\u932F\u7684\u90A3\u4E00\u6B21\uFF0C\u6574\u652F\u5C31\u5728\u90A3\u4E00\u6B65\u505C\u6389\uFF1A\u4E0D\u6703\u91CD\u8A66\uFF0C\u4E5F\u6C92\u4EBA\u77E5\u9053\u3002`,
+    next_action: "\u5728\u90A3\u500B\u7BC0\u9EDE\u52A0\u4E00\u689D\u300C\u5931\u6557\u6642\u300D\uFF08ON_FAIL\uFF09\u7684\u908A\uFF1A\u63A5\u4E00\u500B wait \u7B49\u5E7E\u79D2\u5F8C\u518D\u6253\u4E00\u6B21\uFF0C\u518D\u5931\u6557\u5C31\u767C\u901A\u77E5\u7D66\u81EA\u5DF1\u3002\u6392\u7A0B\u81EA\u5DF1\u8DD1\u7684\u5DE5\u4F5C\u6D41\u6700\u9700\u8981\uFF0C\u56E0\u70BA\u5931\u6557\u6642\u6C92\u4EBA\u5728\u770B\u3002"
+  });
+}
+function firstThenField(code) {
+  if (/\btry\s*\{/.test(code)) return false;
+  if (FIND_THEN_FIELD_RE.test(code)) return true;
+  for (const m of code.matchAll(INPUT_FIRST_RE)) {
+    const path = escRe(m[1]);
+    const guarded = new RegExp(`${path}\\s*(\\.length|\\?\\.|&&|\\?|\\|\\|)|(&&|\\?|\\|\\||!)\\s*${path}\\b`).test(code);
+    if (!guarded) return true;
+  }
+  return false;
+}
+function adviceA2(w) {
+  const tz = [];
+  const empty = [];
+  for (const n of w.nodes) {
+    const code = typeof n.data?.code === "string" ? n.data.code : "";
+    if (!code) continue;
+    if (/\bDate\b/.test(code)) {
+      for (const m of code.matchAll(LOCAL_TIME_RE)) {
+        if (m[3] !== void 0 && /timeZone/.test(m[3])) continue;
+        tz.push(n.id);
+        break;
+      }
+    }
+    if (firstThenField(code)) empty.push(n.id);
+  }
+  const out = [];
+  if (tz.length) {
+    out.push(item("A2", w.name, tz, {
+      kind: "timezone",
+      title: "\u6642\u9593\u7528\u4E86\u4F3A\u670D\u5668\u7684\u7576\u5730\u6642\u9593",
+      message: `${where(w.name)}\u7684 ${nodeList(tz)}\u7528\u7A0B\u5F0F\u53D6\u300C\u4ECA\u5929\u300D\u300C\u5E7E\u9EDE\u300D\u300C\u661F\u671F\u5E7E\u300D\uFF08getHours\u3001toLocaleString \u9019\u985E\uFF09\uFF0C\u6C92\u6307\u5B9A\u6642\u5340\u3002\u4F3A\u670D\u5668\u8DD1\u5728\u4E16\u754C\u6A19\u6E96\u6642\u9593\uFF0C\u53F0\u7063\u7684\u4F7F\u7528\u8005\u6703\u770B\u5230\u5DEE 8 \u5C0F\u6642\u2014\u2014\u534A\u591C 12 \u9EDE\u524D\u5F8C\u7684\u8CC7\u6599\u6703\u7B97\u5230\u524D\u4E00\u5929\u3002`,
+      next_action: '\u8981\u53F0\u7063\u6642\u9593\u5C31\u660E\u8B1B\uFF1AtoLocaleString("zh-TW", { timeZone: "Asia/Taipei" })\uFF0C\u6216\u6539\u7528 getUTC\u2026 \u7CFB\u5217\u518D\u81EA\u5DF1\u52A0 8 \u5C0F\u6642\u3002'
+    }));
+  }
+  if (empty.length) {
+    out.push(item("A2", w.name, empty, {
+      kind: "empty",
+      title: "\u6C92\u6709\u8CC7\u6599\u7684\u6642\u5019\u6703\u5D29",
+      message: `${where(w.name)}\u7684 ${nodeList(empty)}\u53D6\u300C\u7B2C\u4E00\u7B46\u300D\u6216\u300C\u627E\u5230\u7684\u90A3\u4E00\u7B46\u300D\u4E4B\u5F8C\u76F4\u63A5\u53D6\u6B04\u4F4D\uFF08\u4F8B\u5982 list[0].name\uFF09\u3002\u6E05\u55AE\u662F\u7A7A\u7684\u3001\u6216\u6C92\u627E\u5230\u7684\u90A3\u4E00\u6B21\uFF0C\u9019\u4E00\u884C\u5C31\u6703\u5831\u932F\uFF0C\u6574\u652F\u8DDF\u8457\u5931\u6557\u3002`,
+      next_action: "\u53D6\u6B04\u4F4D\u524D\u5148\u5224\u65B7\u6709\u6C92\u6709\uFF08list[0]?.name\uFF09\uFF0C\u6216\u5148\u5224\u65B7\u6E05\u55AE\u662F\u4E0D\u662F\u7A7A\u7684\u518D\u5F80\u4E0B\u8D70\u3002"
+    }));
+  }
+  return out;
+}
+function adviceA3(w) {
+  const codeNodes = w.nodes.filter((n) => typeof n.data?.code === "string");
+  if (!codeNodes.length) return null;
+  const fetching = codeNodes.filter((n) => /\bfetch\s*\(/.test(n.data.code)).map((n) => n.id);
+  const body = w.nodes.filter((n) => n.id !== "input" && n.component !== "input");
+  const mostlyCode = body.length >= 3 && codeNodes.length === body.length;
+  if (!fetching.length && !mostlyCode) return null;
+  const why = [];
+  if (fetching.length) why.push(`${nodeList(fetching)}\u5728 code \u88E1\u76F4\u63A5 fetch\uFF08\u6253\u7DB2\u8DEF\uFF09`);
+  if (mostlyCode) why.push(`${body.length} \u500B\u7BC0\u9EDE\u5168\u90E8\u90FD\u662F code`);
+  const ids = [.../* @__PURE__ */ new Set([...fetching, ...mostlyCode ? codeNodes.map((n) => n.id) : []])];
+  return item("A3", w.name, ids, {
+    title: "\u6574\u652F\u6D41\u7A0B\u5BEB\u6210\u4E86\u7A0B\u5F0F",
+    message: `${where(w.name)}\uFF1A${why.join("\uFF1B")}\u3002\u9019\u6A23\u8868\u9762\u4E0A\u662F\u5DE5\u4F5C\u6D41\u3001\u5BE6\u969B\u662F\u4E00\u652F\u7A0B\u5F0F\u2014\u2014\u6BCF\u4E00\u500B\u5BEB\u9032\u7A0B\u5F0F\u88E1\u7684\u5224\u65B7\u90FD\u6C92\u6709\u88AB\u6E2C\u904E\uFF0C\u51FA\u932F\u6642\u4E5F\u770B\u4E0D\u51FA\u662F\u54EA\u4E00\u6B65\u3002`,
+    next_action: "code \u53EA\u7559\u7D66\u300C\u6574\u7406\u8CC7\u6599\u300D\u9019\u7A2E\u5C0F\u4E8B\u3002\u8981\u6253\u5916\u90E8\u670D\u52D9\uFF0C\u6539\u7528 http_request \u52A0 recipe\uFF08\u7F3A\u7684 recipe \u53EF\u4EE5\u81EA\u5DF1\u88DC\uFF09\uFF1B\u8981\u5224\u65B7\uFF0C\u6539\u7528\u689D\u4EF6\u908A\uFF08if_control \u914D ON_TRUE\uFF0FON_FALSE\uFF09\uFF1B\u8981\u8FF4\u5708\uFF0C\u6539\u7528\u300C\u5C0D\u6BCF\u500B\u300D\u3002"
+  });
+}
+function adviceA4(w) {
+  if (TEST_NAME_RE.test(w.name)) return null;
+  const hits = /* @__PURE__ */ new Map();
+  for (const n of w.nodes) {
+    walkStrings(n.data ?? {}, [], (s, path) => {
+      if (path[0] === "code" || path.some((k) => NOTE_KEYS.has(String(k).toLowerCase()))) return;
+      if (/^__[A-Z0-9_]+__/.test(s) || /^\s*\{\{/.test(s)) return;
+      const m = s.match(TEST_EMAIL_RE) || s.match(TEST_URL_RE) || s.match(PLACEHOLDER_RE2) || s.match(TODO_RE);
+      if (!m) return;
+      const field = path.filter((k) => k !== "[]").join(".") || "(\u5167\u5BB9)";
+      if (!hits.has(n.id)) hits.set(n.id, []);
+      hits.get(n.id).push({ field, sample: m[0].trim().replace(/[「」]/g, "").slice(0, 40) });
+    });
+  }
+  if (!hits.size) return null;
+  const ids = [...hits.keys()];
+  const first = hits.get(ids[0])[0];
+  return item("A4", w.name, ids, {
+    title: "\u5BEB\u6B7B\u4E86\u770B\u8D77\u4F86\u662F\u6E2C\u8A66\u7528\u7684\u503C",
+    message: `${where(w.name)}\u7684 ${nodeList(ids)}\u88E1\u5BEB\u6B7B\u4E86\u50CF\u662F\u6E2C\u8A66\u7528\u7684\u503C\uFF08\u300C${first.sample}\u300D\u5728\u300C${first.field}\u300D\uFF09\u3002\u4E0A\u7DDA\u5F8C\u4FE1\u6703\u5BC4\u5230\u4E0D\u5B58\u5728\u7684\u5730\u65B9\u3001\u8ACB\u6C42\u6703\u6253\u5230\u6E2C\u8A66\u7DB2\u7AD9\uFF0C\u800C\u4E14\u4E0D\u6703\u5831\u932F\u2014\u2014\u770B\u8D77\u4F86\u6210\u529F\uFF0C\u5176\u5BE6\u6C92\u9001\u5230\u3002`,
+    next_action: "\u628A\u5B83\u63DB\u6210\u771F\u6B63\u7684\u503C\uFF1B\u6703\u8B8A\u7684\u503C\u6539\u6210\u5F9E\u8F38\u5165\u6216\u8CC7\u6599\u8868\u53D6\uFF08{{input.\u6B04\u4F4D}}\uFF09\uFF0C\u4E0D\u8981\u5BEB\u6B7B\u5728\u7BC0\u9EDE\u88E1\u3002",
+    evidence: Object.fromEntries(ids.slice(0, MAX_NODES_LISTED).map((id) => [id, hits.get(id).slice(0, 3)]))
+  });
+}
+function adviceFor(w, ctx) {
+  return [adviceA1(w, ctx), ...adviceA2(w), adviceA3(w), adviceA4(w)].filter(Boolean);
+}
+function appAdvice(decl) {
+  const out = [];
+  if (!decl || typeof decl !== "object") return out;
+  const id = String(decl.id ?? decl.name ?? "");
+  if (decl.entry === "kb") {
+    out.push(item("A5", id, [], {
+      app: id,
+      title: "\u88DD\u4E86\u4E4B\u5F8C\u770B\u4E0D\u5230\u6771\u897F",
+      message: `App\u300C${decl.name ?? id}\u300D\u5BA3\u544A\u5165\u53E3\u53EA\u5728\u77E5\u8B58\u5EAB\uFF08entry: 'kb'\uFF09\uFF1A\u88DD\u5B8C\u9996\u9801\u4E0D\u6703\u591A\u4E00\u500B\u5716\u793A\uFF0C\u4E5F\u6C92\u6709\u81EA\u5DF1\u7684\u756B\u9762\u3002\u4F7F\u7528\u8005\u6309\u4E86\u5B89\u88DD\u537B\u4EC0\u9EBC\u90FD\u6C92\u51FA\u73FE\uFF0C\u6703\u4EE5\u70BA\u6C92\u88DD\u6210\u529F\uFF0C\u4E5F\u4E0D\u77E5\u9053\u600E\u9EBC\u79FB\u9664\u5B83\u3002`,
+      next_action: "\u7D66\u5B83\u4E00\u500B\u9996\u9801\u5716\u793A\u548C\u756B\u9762\uFF08ui\uFF09\uFF0C\u54EA\u6015\u6253\u958B\u53EA\u986F\u793A\u5E7E\u500B\u6846\uFF1B\u77E5\u8B58\u5EAB\u88E1\u7684\u5167\u5BB9\u53EF\u4EE5\u5F9E\u756B\u9762\u8DF3\u904E\u53BB\u770B\u3002"
+    }));
+  }
+  return out;
+}
+var MAX_NODES_LISTED, walkStrings, where, nodeList, fixPrompt, LOCAL_TIME_RE, FIND_THEN_FIELD_RE, INPUT_FIRST_RE, escRe, TEST_EMAIL_RE, TEST_URL_RE, PLACEHOLDER_RE2, TODO_RE, NOTE_KEYS, TEST_NAME_RE, adviceNextActions;
+var init_advice = __esm({
+  "shared/dataflow-graph/advice.mjs"() {
+    MAX_NODES_LISTED = 4;
+    walkStrings = (v, path, cb) => {
+      if (typeof v === "string") cb(v, path);
+      else if (Array.isArray(v)) v.forEach((x) => walkStrings(x, [...path, "[]"], cb));
+      else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walkStrings(x, [...path, k], cb);
+    };
+    where = (workflow) => `\u5DE5\u4F5C\u6D41\u300C${workflow}\u300D`;
+    nodeList = (ids) => ids.slice(0, MAX_NODES_LISTED).map((n) => `\u300C${n}\u300D`).join("\u3001") + (ids.length > MAX_NODES_LISTED ? `\u7B49 ${ids.length} \u500B\u7BC0\u9EDE` : "");
+    fixPrompt = (a) => `\u8ACB\u5E6B\u6211\u6539${a.app ? `App\u300C${a.app}\u300D` : `\u5DE5\u4F5C\u6D41\u300C${a.workflow}\u300D`}${a.nodes.length ? `\uFF08\u7BC0\u9EDE ${a.nodes.slice(0, MAX_NODES_LISTED).join("\u3001")}\uFF09` : ""}\u3002\u63D0\u9192\uFF1A${a.title}\u3002${a.message} \u6539\u6CD5\uFF1A${a.next_action} \u6539\u5B8C\u518D\u5B58\u4E00\u6B21\u3002`;
+    LOCAL_TIME_RE = /\.(getHours|getMinutes|getDay|getDate|getMonth|getFullYear)\s*\(\s*\)|\.toLocale(Date|Time)?String\s*\(([^)]*)\)/g;
+    FIND_THEN_FIELD_RE = /\.find\([^)]*\)\s*\.\s*[A-Za-z_]|\.match\([^)]*\)\s*\[\s*\d+\s*\]\s*\.\s*[A-Za-z_]/;
+    INPUT_FIRST_RE = /(\binput(?:\.[A-Za-z_]\w*)+)\[0\]\s*\.\s*[A-Za-z_]/g;
+    escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    TEST_EMAIL_RE = /[\w.+-]+@(example\.(com|org|net)|test\.com|foo\.com|bar\.com|domain\.com|email\.com|yourdomain\.com|your-?company\.com)\b/i;
+    TEST_URL_RE = /\bhttps?:\/\/([^/\s"']*\.)?(example\.(com|org|net)|httpbin\.org|jsonplaceholder\.typicode\.com|webhook\.site|requestbin\.[a-z]+|ngrok(-free)?\.(io|app|dev)|localhost|127\.0\.0\.1)(:\d+)?(\/|\b)/i;
+    PLACEHOLDER_RE2 = /(^|[^A-Za-z])(YOUR[_ -](API[_ -]?KEY|TOKEN|EMAIL|NAME|ID)|CHANGE[_ -]?ME|REPLACE[_ -]?ME|lorem ipsum|0912[-\s]?345[-\s]?678|0900[-\s]?000[-\s]?000|test@test)/i;
+    TODO_RE = /(^|[^A-Za-z.])(TODO|FIXME)\b/;
+    NOTE_KEYS = /* @__PURE__ */ new Set(["description", "note", "notes", "comment", "label", "example", "examples", "hint", "doc", "docs", "name", "placeholder"]);
+    TEST_NAME_RE = /(^|[_-])(test|demo|example|sample|sandbox)([_-]|$)/i;
+    adviceNextActions = (advice) => (advice ?? []).map((a) => `${a.rule} ${a.workflow}${a.nodes?.length ? "\uFF0F" + a.nodes.slice(0, MAX_NODES_LISTED).join("\u3001") : ""}\uFF1A${a.title}\u3002${a.next_action}`);
+  }
+});
+
+// shared/dataflow-graph/security.mjs
+function walkStrings2(v, path, cb) {
+  if (typeof v === "string") cb(v, path);
+  else if (Array.isArray(v)) v.forEach((x) => walkStrings2(x, [...path, "[]"], cb));
+  else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walkStrings2(x, [...path, k], cb);
+}
+function credentialRefs(node) {
+  const out = [];
+  walkStrings2(node.data ?? {}, [], (s, path) => {
+    for (const e of refsIn(s)) {
+      const m = e.match(CRED_REF_RE);
+      if (m) out.push({ kind: m[1], name: m[2], path });
+    }
+  });
+  return out;
+}
+function familyOf(credName) {
+  const t = new Set(tokensOf(credName));
+  return FAMILIES.find((f) => f.tokens.some((x) => t.has(x))) ?? null;
+}
+function destinationOf(url, { selfOrigins = [] } = {}) {
+  if (typeof url !== "string" || !url.trim()) return { kind: "none" };
+  const s = url.trim();
+  const lead = s.match(/^(__[A-Z0-9_]+__|\{\{\s*([^{}]+?)\s*\}\})/);
+  if (lead) {
+    if (lead[1].startsWith("__")) return { kind: "self" };
+    const expr = lead[2];
+    if (expr.startsWith("_")) return { kind: "self" };
+    return INPUT_REF_RE.test(expr) ? { kind: "input", ref: expr } : { kind: "dynamic", ref: expr };
+  }
+  const m = s.match(/^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)/i);
+  if (!m) return { kind: "dynamic", ref: s.slice(0, 40) };
+  const scheme = m[1].toLowerCase();
+  const hp = m[2].replace(/^[^@]*@/, "").toLowerCase();
+  if (hp.includes("{{")) {
+    const expr = refsIn(hp)[0] ?? "";
+    return INPUT_REF_RE.test(expr) ? { kind: "input", ref: expr, scheme } : { kind: "dynamic", ref: expr, scheme };
+  }
+  const h = hp.replace(/:\d+$/, "");
+  if (selfOrigins.some((o) => {
+    try {
+      return new URL(o).hostname.toLowerCase() === h;
+    } catch {
+      return false;
+    }
+  })) return { kind: "self", host: h, scheme };
+  return { kind: "literal", host: h, scheme, local: LOCAL_HOST_RE.test(h) };
+}
+function isPlatformHost(h, trustedHosts) {
+  if (!h) return false;
+  if (LOCAL_HOST_RE.test(h)) return true;
+  if (FIRST_PARTY_SUFFIX.some((x) => h === x || h.endsWith("." + x))) return true;
+  for (const t of trustedHosts) {
+    if (h === t) return true;
+    if (t.endsWith(".workers.dev") && h.endsWith(".workers.dev")) {
+      const a = t.split(".").slice(-3).join(".");
+      const b = h.split(".").slice(-3).join(".");
+      if (a === b) return true;
+    }
+  }
+  return false;
+}
+function nodeFacts(node, ctx) {
+  const comp = String(node.component ?? "");
+  const compTokens = /^https?:|^__/.test(comp) ? [] : tokensOf(comp);
+  const req = requestOf(node, ctx.recipeMap);
+  const dest = req ? destinationOf(req.url, ctx) : { kind: "none" };
+  const method = req?.method ?? "";
+  let isSend = compTokens.some((t) => SEND_TOKENS.has(t));
+  let isLlm = compTokens.some((t) => LLM_TOKENS.has(t));
+  if (dest.kind === "literal") {
+    if (!isSend && /^(POST|PUT|PATCH)$/.test(method) && SEND_HOSTS.some((x) => x.host.test(dest.host) && x.path.test(pathOf(req.url)))) isSend = true;
+    if (LLM_HOSTS.test(dest.host)) isLlm = true;
+  }
+  const isDelete = method === "DELETE" || compTokens.includes("delete") || compTokens.includes("remove");
+  const isCode = typeof node.data?.code === "string";
+  return { req, dest, method, isSend, isLlm, isDelete, isCode, comp, isWriteReq: Boolean(req) && method !== "GET" && method !== "HEAD" };
+}
+function hasCap(node, byId, depth = 2) {
+  if (!node) return false;
+  const d = node.data ?? {};
+  for (const [k, v] of Object.entries(d)) if (CAP_KEY_RE.test(k) && v !== void 0 && v !== "" && v !== null) return true;
+  if (typeof d.code === "string" && CAP_CODE_RE.test(d.code)) return true;
+  if (typeof d.url === "string" && CAP_URL_RE.test(d.url)) return true;
+  if (depth > 0) {
+    const ups = /* @__PURE__ */ new Set();
+    walkStrings2(d, [], (s) => {
+      for (const e of refsIn(s)) {
+        const id = e.split(".")[0];
+        if (byId.has(id) && id !== node.id) ups.add(id);
+      }
+    });
+    for (const id of ups) if (hasCap(byId.get(id), byId, depth - 1)) return true;
+  }
+  return false;
+}
+function loopsOf(wf) {
+  const out = [];
+  for (const e of wf.edges) {
+    if (e.type !== "FOREACH") continue;
+    const seen = /* @__PURE__ */ new Set();
+    const stack = [e.to];
+    while (stack.length) {
+      const id = stack.pop();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const x of wf.edges) if (x.from === id && x.type !== "FOREACH") stack.push(x.to);
+    }
+    out.push({ source: e.from, body: seen });
+  }
+  return out;
+}
+function broadWriteReason(req) {
+  if (!req || !/^(DELETE|PUT|PATCH)$/.test(req.method)) return null;
+  const [p, q = ""] = pathOf(String(req.url).split("#")[0]).split("?");
+  const segs = p.split("/").filter(Boolean);
+  const last = segs[segs.length - 1] ?? "";
+  if (BULK_QUERY.test("?" + q)) return "\u7DB2\u5740\u5E36\u4E86\u300C\u5168\u90E8\u300D\u300C\u5F37\u5236\u300D\u4E4B\u985E\u7684\u65D7\u6A19";
+  if (req.method === "DELETE" && segs.some((s) => BULK_SEGMENT.test(s))) return `\u7DB2\u5740\u7684\u8DEF\u5F91\u662F\u300C\u6574\u6279\u300D\uFF08${segs.find((s) => BULK_SEGMENT.test(s))}\uFF09`;
+  if (last && !last.includes("{{") && COLLECTION_WORDS.test(last) && !/[?&](id|record_id|entry_id)=/.test("?" + q)) return `\u7DB2\u5740\u6700\u5F8C\u4E00\u6BB5\u662F\u300C${last}\u300D\uFF08\u6574\u500B\u96C6\u5408\uFF09\uFF0C\u6C92\u6709\u6307\u5B9A\u54EA\u4E00\u7B46`;
+  return null;
+}
+function outsideContentOf(node, ctx) {
+  const hits = /* @__PURE__ */ new Set();
+  walkStrings2(node.data ?? {}, [], (s) => {
+    for (const e of refsIn(s)) {
+      if (INPUT_REF_RE.test(e)) {
+        hits.add(`\u547C\u53EB\u8005\u5E36\u9032\u4F86\u7684\u8CC7\u6599\uFF08${e}\uFF09`);
+        continue;
+      }
+      const f = ctx.facts.get(e.split(".")[0]);
+      if (!f?.req) continue;
+      const ext = f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, ctx.trustedHosts) || f.dest.kind === "input";
+      if (ext) hits.add(`\u5916\u90E8\u7DB2\u7AD9\u7684\u56DE\u61C9\uFF08\u7BC0\u9EDE ${e.split(".")[0]}\uFF09`);
+    }
+  });
+  return [...hits];
+}
+function scanSecurity(input) {
+  const recipeMap = new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r]));
+  const selfOrigins = input.selfOrigins ?? [];
+  const trustedHosts = [.../* @__PURE__ */ new Set([
+    ...(input.trustedHosts ?? []).map((h) => String(h).toLowerCase()),
+    ...selfOrigins.map((o) => {
+      try {
+        return new URL(o).hostname.toLowerCase();
+      } catch {
+        return "";
+      }
+    }).filter(Boolean)
+  ])];
+  const blocks = [];
+  const notices = [];
+  const advice = [];
+  const perWorkflow = [];
+  for (const raw2 of input.subjects ?? []) {
+    const w = normalizeWorkflow(raw2);
+    if (!w.name && !w.nodes.length) continue;
+    const byId = new Map(w.nodes.map((n) => [n.id, n]));
+    const ctx = { recipeMap, selfOrigins, trustedHosts, facts: /* @__PURE__ */ new Map() };
+    for (const n of w.nodes) ctx.facts.set(n.id, nodeFacts(n, ctx));
+    const inv = { workflow: w.name, credentials: /* @__PURE__ */ new Map(), egress: /* @__PURE__ */ new Map(), dynamic_egress: [], senders: [] };
+    const add = (rule, node, f) => {
+      if (blocks.some((b) => b.rule === rule && b.workflow === w.name && b.node === node)) return;
+      const full = { rule, level: "block", workflow: w.name, node, ...f };
+      blocks.push({ ...full, fix_prompt: fixPrompt2(full) });
+    };
+    const notice = (rule, node, message2) => notices.push({ rule, level: "notice", workflow: w.name, node, message: message2 });
+    for (const n of w.nodes) {
+      const f = ctx.facts.get(n.id);
+      const creds = credentialRefs(n);
+      if (f.isSend) inv.senders.push({ node: n.id, host: f.dest.kind === "literal" && !f.dest.local ? f.dest.host : null });
+      if (f.req) {
+        if (f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts)) {
+          const e = inv.egress.get(f.dest.host) ?? { host: f.dest.host, nodes: [], methods: /* @__PURE__ */ new Set() };
+          e.nodes.push(n.id);
+          e.methods.add(f.method);
+          inv.egress.set(f.dest.host, e);
+        } else if (f.dest.kind === "input" || f.dest.kind === "dynamic") {
+          inv.dynamic_egress.push({ node: n.id, kind: f.dest.kind, ref: f.dest.ref });
+        }
+      }
+      for (const c of creds) {
+        const fam = familyOf(c.name);
+        const row = inv.credentials.get(c.name) ?? { name: c.name, family: fam?.id ?? null, nodes: [], hosts: /* @__PURE__ */ new Set() };
+        if (!row.nodes.includes(n.id)) row.nodes.push(n.id);
+        if (f.req && f.dest.kind === "literal" && !f.dest.local) row.hosts.add(f.dest.host);
+        inv.credentials.set(c.name, row);
+      }
+      if (!creds.length || !f.req) continue;
+      for (const name of new Set(creds.map((c) => c.name))) {
+        const fam = familyOf(name);
+        const d = f.dest;
+        if (d.kind === "input") {
+          add("S1", n.id, {
+            title: "\u91D1\u9470\u6703\u88AB\u9001\u53BB\u547C\u53EB\u8005\u6307\u5B9A\u7684\u7DB2\u5740",
+            message: `${where2(w.name, n.id)}\u8981\u628A\u91D1\u9470\u300C${name}\u300D\u9001\u5230\u4E00\u500B\u7DB2\u5740\uFF0C\u800C\u90A3\u500B\u7DB2\u5740\u662F\u7531\u300C\u53EB\u9019\u652F\u5DE5\u4F5C\u6D41\u7684\u4EBA\u300D\u5E36\u9032\u4F86\u7684\uFF08${d.ref}\uFF09\u3002\u4EFB\u4F55\u4EBA\u90FD\u80FD\u628A\u5B83\u6307\u5230\u81EA\u5DF1\u7684\u7DB2\u7AD9\uFF0C\u628A\u4F60\u7684\u91D1\u9470\u6536\u8D70\u3002`,
+            next_action: "\u628A\u7DB2\u5740\u5BEB\u6B7B\u6210\u9019\u500B\u670D\u52D9\u771F\u6B63\u7684\u7DB2\u5740\uFF08\u4F8B\u5982 https://api.example.com/\u2026\uFF09\uFF0C\u4E0D\u8981\u5F9E input \u53D6\u3002",
+            evidence: { credential: name, destination: d.ref }
+          });
+        } else if (d.kind === "literal" && !d.local) {
+          if (d.scheme === "http") {
+            add("S1", n.id, {
+              title: "\u91D1\u9470\u7528\u660E\u78BC\u9001\u51FA",
+              message: `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${name}\u300D\u7528 http:// \u9001\u53BB ${d.host}\u3002http \u4E0D\u52A0\u5BC6\uFF0C\u8DEF\u4E0A\u7684\u4EBA\u770B\u5F97\u5230\u91D1\u9470\u3002`,
+              next_action: `\u7DB2\u5740\u6539\u6210 https://${d.host}/\u2026\uFF08\u5C0D\u65B9\u4E0D\u652F\u63F4 https \u5C31\u4E0D\u8981\u628A\u91D1\u9470\u7D66\u5B83\uFF09\u3002`,
+              evidence: { credential: name, destination: d.host }
+            });
+          } else if (fam?.platform) {
+            if (!isPlatformHost(d.host, trustedHosts)) {
+              add("S1", n.id, {
+                title: "\u5E73\u53F0\u5167\u90E8\u91D1\u9470\u88AB\u9001\u53BB\u5916\u9762\u7684\u7DB2\u7AD9",
+                message: `${where2(w.name, n.id)}\u8981\u628A\u5E73\u53F0\u5167\u90E8\u7528\u7684\u91D1\u9470\u300C${name}\u300D\u9001\u5230 ${d.host}\u3002\u90A3\u4E0D\u662F\u9019\u53F0\u5BE6\u4F8B\u81EA\u5DF1\u7684\u7DB2\u5740\uFF0C\u91D1\u9470\u4E00\u9001\u51FA\u53BB\u5C31\u7B49\u65BC\u4EA4\u7D66\u5225\u4EBA\u3002`,
+                next_action: "\u9019\u628A\u91D1\u9470\u53EA\u51C6\u7528\u5728\u9019\u53F0\u5BE6\u4F8B\u81EA\u5DF1\u7684\u670D\u52D9\uFF08\u7DB2\u5740\u7528 __CYPHER_BASE__\uFF0F__KBDB_BASE__\uFF09\uFF1B\u8981\u6253\u5916\u90E8\u670D\u52D9\uFF0C\u8ACB\u6539\u7528\u90A3\u500B\u670D\u52D9\u81EA\u5DF1\u7684\u91D1\u9470\u3002",
+                evidence: { credential: name, destination: d.host }
+              });
+            }
+          } else if (fam?.ok && !fam.ok(d.host)) {
+            add("S1", n.id, {
+              title: "\u91D1\u9470\u88AB\u9001\u53BB\u4E0D\u5C0D\u7684\u7DB2\u5740",
+              message: `${where2(w.name, n.id)}\u6703\u628A\u4F60\u7684 ${fam.label} \u91D1\u9470\u300C${name}\u300D\u9001\u5230 ${d.host}\uFF0C\u90A3\u4E0D\u662F ${fam.label} \u7684\u7DB2\u5740\u3002`,
+              next_action: `\u5982\u679C\u4F60\u771F\u7684\u8981\u6253 ${d.host}\uFF0C\u8ACB\u70BA\u5B83\u53E6\u5916\u5EFA\u4E00\u628A\u91D1\u9470\u3001\u540D\u5B57\u5225\u53D6\u5F97\u50CF ${fam.label} \u7684\uFF1B\u5426\u5247\u628A\u7DB2\u5740\u6539\u56DE ${fam.label} \u5B98\u65B9\u7684\u7DB2\u5740\u3002`,
+              evidence: { credential: name, destination: d.host, service: fam.id }
+            });
+          }
+        } else if (d.kind === "dynamic") {
+          notice("S1", n.id, `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${name}\u300D\u9001\u53BB\u4E00\u500B\u57F7\u884C\u6642\u624D\u7B97\u5F97\u51FA\u7684\u7DB2\u5740\uFF08${d.ref}\uFF09\uFF0C\u9019\u6B21\u770B\u4E0D\u51FA\u5B83\u6703\u4E0D\u6703\u662F\u5C0D\u7684\u670D\u52D9\u3002`);
+        }
+      }
+    }
+    for (const n of w.nodes) {
+      const f = ctx.facts.get(n.id);
+      const outward = f.isSend || f.isLlm || f.req && f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts);
+      walkStrings2(n.data ?? {}, [], (s, path) => {
+        if (path[0] === "code") return;
+        const contentKey = path.find((k) => CONTENT_KEYS.has(String(k).toLowerCase()));
+        if (!contentKey) return;
+        for (const e of refsIn(s)) {
+          const cm = e.match(CRED_REF_RE);
+          if (cm) {
+            add("S2", n.id, {
+              title: "\u91D1\u9470\u6703\u88AB\u5BEB\u9032\u6587\u5B57\u5167\u5BB9",
+              message: `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${cm[2]}\u300D\u653E\u9032\u300C${contentKey}\u300D\u6B04\u2014\u2014\u90A3\u4E00\u6B04\u7684\u5167\u5BB9\u6703\u88AB\u5B58\u8D77\u4F86\u3001\u5BC4\u51FA\u53BB\u3001\u767C\u51FA\u53BB\uFF0C\u6216\u4EA4\u7D66 AI\uFF0F\u5916\u90E8\u670D\u52D9\uFF0C\u770B\u5F97\u5230\u7684\u4EBA\u5C31\u62FF\u5230\u4F60\u7684\u91D1\u9470\u4E86\u3002`,
+              next_action: `\u91D1\u9470\u53EA\u653E\u5728 headers \u7684 Authorization \u9019\u985E\u300C\u9A57\u8B49\u7528\u300D\u7684\u4F4D\u7F6E\uFF1B\u300C${contentKey}\u300D\u6B04\u62FF\u6389\u5B83\u3002`,
+              evidence: { credential: cm[2], field: path.join(".") }
+            });
+          } else if (outward && SENSITIVE_RE.test(e)) {
+            add("S2", n.id, {
+              title: "\u6A5F\u5BC6\u6B04\u4F4D\u6703\u88AB\u5BEB\u9032\u5C0D\u5916\u7684\u6587\u5B57",
+              message: `${where2(w.name, n.id)}\u628A\u300C${e}\u300D\uFF08\u770B\u8D77\u4F86\u662F\u5BC6\u78BC\u3001\u91D1\u9470\u6216\u8B49\u4EF6\u4E4B\u985E\u7684\u6A5F\u5BC6\uFF09\u653E\u9032\u300C${contentKey}\u300D\u6B04\uFF0C\u6703\u88AB\u5BC4\u51FA\u6216\u4EA4\u7D66\u5916\u90E8\u670D\u52D9\u3002`,
+              next_action: "\u4E0D\u8981\u628A\u9019\u500B\u6B04\u4F4D\u653E\u9032\u5C0D\u5916\u7684\u6587\u5B57\uFF1B\u53EA\u50B3\u9700\u8981\u7684\u90E8\u5206\uFF08\u4F8B\u5982\u53EA\u50B3\u300C\u5DF2\u6536\u5230\u300D\uFF0C\u4E0D\u50B3\u6574\u4EFD\u8CC7\u6599\uFF09\u3002",
+              evidence: { field: path.join("."), ref: e }
+            });
+          }
+        }
+      });
+      if (f.isCode) {
+        const code = n.data.code;
+        const secretKeys = /* @__PURE__ */ new Set();
+        walkStrings2(n.data.input ?? {}, [], (s, path) => {
+          for (const e of refsIn(s)) if ((CRED_REF_RE.test(e) || SENSITIVE_RE.test(e)) && path[0]) secretKeys.add(`${path[0]}\0${e}`);
+        });
+        for (const sk of secretKeys) {
+          const [key, ref] = sk.split("\0");
+          if (new RegExp(`console\\.(log|info|warn|error|debug)\\([^)]*\\b${escRe2(key)}\\b`).test(code)) {
+            add("S2", n.id, {
+              title: "\u91D1\u9470\u6703\u88AB\u5370\u9032\u57F7\u884C\u7D00\u9304",
+              message: `${where2(w.name, n.id)}\u7684\u7A0B\u5F0F\u628A\u300C${key}\u300D\uFF08\u53D6\u81EA ${ref}\uFF09\u7528 console \u5370\u51FA\u4F86\uFF0C\u57F7\u884C\u7D00\u9304\u88E1\u5C31\u6703\u7559\u4E0B\u5B83\u7684\u771F\u8EAB\u3002`,
+              next_action: "\u62FF\u6389\u90A3\u884C console\uFF1B\u8981\u9664\u932F\u5C31\u53EA\u5370\u300C\u6709\u6C92\u6709\u503C\u300D\uFF0C\u4E0D\u8981\u5370\u503C\u672C\u8EAB\u3002",
+              evidence: { field: key, ref }
+            });
+          }
+        }
+      }
+    }
+    const isPublic = w.nodes.some((n) => n.component === "input" || n.id === "input") && !w.nodes.some((n) => n.component === "cron");
+    if (isPublic) {
+      let gated = null;
+      const hasGate = () => {
+        if (gated !== null) return gated;
+        gated = false;
+        for (const n of w.nodes) {
+          if (ctx.facts.get(n.id).isSend) continue;
+          const code = typeof n.data?.code === "string" ? n.data.code : "";
+          if (code && GATE_WORD_RE.test(code)) {
+            gated = true;
+            break;
+          }
+          let inputGate = false;
+          let secret = false;
+          walkStrings2(n.data ?? {}, [], (s, path) => {
+            if (path[0] === "code") return;
+            for (const e of refsIn(s)) {
+              if (GATE_FIELD_RE.test(e)) inputGate = true;
+              if (CRED_REF_RE.test(e)) secret = true;
+            }
+          });
+          if (inputGate && (secret || /^(if_control|switch|filter)$/.test(String(n.component)))) {
+            gated = true;
+            break;
+          }
+        }
+        return gated;
+      };
+      for (const n of w.nodes) {
+        if (!ctx.facts.get(n.id).isSend) continue;
+        const hits = [];
+        walkStrings2(n.data ?? {}, [], (s, path) => {
+          const key = lastKey(path);
+          if (!key || !DEST_KEYS.has(String(key).toLowerCase())) return;
+          for (const e of refsIn(s)) if (INPUT_REF_RE.test(e)) hits.push({ field: key, ref: e });
+        });
+        if (!hits.length || hasGate()) continue;
+        add("S3", n.id, {
+          title: "\u516C\u958B\u5165\u53E3\u6C92\u9396\uFF0C\u4EFB\u4F55\u4EBA\u90FD\u80FD\u53EB\u5B83\u767C\u8A0A\u606F",
+          message: `${where2(w.name, n.id)}\u6703\u628A\u8A0A\u606F\u9001\u7D66\u300C\u547C\u53EB\u8005\u6307\u5B9A\u7684\u5C0D\u8C61\u300D\uFF08${hits[0].field} \u2190 ${hits[0].ref}\uFF09\uFF0C\u800C\u9019\u652F\u5DE5\u4F5C\u6D41\u7684\u5165\u53E3\u662F\u516C\u958B\u7684\u3001\u6C92\u6709\u4EFB\u4F55\u6AA2\u67E5\u3002\u4EFB\u4F55\u4EBA\u62FF\u5230\u7DB2\u5740\u5C31\u80FD\u53EB\u5B83\u5C0D\u4EFB\u610F\u5C0D\u8C61\u5BC4\u4FE1\u6216\u767C\u8A0A\uFF0C\u8B8A\u6210\u4F60\u7684\u5783\u573E\u8A0A\u606F\u6A5F\u3002`,
+          next_action: "\u4E8C\u9078\u4E00\uFF1A\u2460 \u6536\u4EF6\u5C0D\u8C61\u5BEB\u6B7B\uFF08\u6216\u53EA\u5F9E\u4F60\u81EA\u5DF1\u7684\u8CC7\u6599\u8868\u67E5\uFF09\uFF1B\u2461 \u5728\u9001\u51FA\u524D\u52A0\u4E00\u500B\u6AA2\u67E5\u7BC0\u9EDE\uFF0C\u8981\u6C42\u547C\u53EB\u8005\u5E36\u4E00\u500B\u53EA\u6709\u4F60\u77E5\u9053\u7684\u5BC6\u78BC\uFF08\u8DDF {{credential.\u2026}} \u6BD4\u5C0D\uFF09\uFF0C\u5C0D\u4E0D\u4E0A\u5C31\u505C\u3002",
+          evidence: { destination_field: hits[0].field, from: hits[0].ref }
+        });
+      }
+    }
+    for (const loop of loopsOf(w)) {
+      if (hasCap(byId.get(loop.source), byId)) continue;
+      for (const id of loop.body) {
+        const f = ctx.facts.get(id);
+        if (!f) continue;
+        if (f.isSend || f.isLlm && isPublic) {
+          add("S4", id, {
+            title: "\u8FF4\u5708\u88E1\u4E00\u76F4\u767C\u9001\uFF0C\u6C92\u6709\u4E0A\u9650",
+            message: `${where2(w.name, id)}\u5728\u300C\u5C0D\u6BCF\u500B\u300D\u8FF4\u5708\u88E1${f.isLlm ? "\u547C\u53EB\u4ED8\u8CBB\u7684 AI\uFF0FAPI" : "\u5BC4\u4FE1\u6216\u767C\u8A0A"}\uFF0C\u800C\u8FF4\u5708\u7684\u6E05\u55AE\uFF08${loop.source}\uFF09\u6C92\u6709\u8A2D\u4E0A\u9650\u3002\u6E05\u55AE\u4E00\u9577\uFF08\u6216\u88AB\u704C\u9577\uFF09\uFF0C\u5C31\u6703\u767C\u51FA\u5E7E\u767E\u5E7E\u5343\u7B46\u3001\u82B1\u6389\u4F60\u7684\u984D\u5EA6\u3002`,
+            next_action: `\u5728\u7522\u751F\u6E05\u55AE\u7684\u7BC0\u9EDE\uFF08${loop.source}\uFF09\u52A0\u4E0A\u4E0A\u9650\uFF08\u4F8B\u5982 limit: 20\uFF0C\u6216\u7A0B\u5F0F\u88E1 .slice(0, 20)\uFF09\u3002`,
+            evidence: { loop_source: loop.source }
+          });
+        }
+        if (f.isDelete) {
+          const srcF = ctx.facts.get(loop.source);
+          if (!srcF?.req) {
+            notice("S5", id, `${where2(w.name, id)}\u5728\u8FF4\u5708\u88E1\u9010\u7B46\u522A\u9664\uFF0C\u6E05\u55AE\u7531\u7A0B\u5F0F\u7B97\u51FA\uFF08${loop.source}\uFF09\uFF0C\u9019\u6B21\u770B\u4E0D\u51FA\u7BC4\u570D\u6709\u591A\u5927\u3002`);
+            continue;
+          }
+          add("S5", id, {
+            title: "\u8FF4\u5708\u9010\u7B46\u522A\u9664\uFF0C\u6C92\u6709\u4E0A\u9650",
+            message: `${where2(w.name, id)}\u5728\u300C\u5C0D\u6BCF\u500B\u300D\u8FF4\u5708\u88E1\u9010\u7B46\u522A\u9664\uFF0C\u800C\u8FF4\u5708\u7684\u6E05\u55AE\uFF08${loop.source}\uFF09\u6C92\u6709\u8A2D\u4E0A\u9650\u3002\u6E05\u55AE\u5982\u679C\u662F\u6574\u5F35\u8868\uFF0C\u5C31\u6703\u628A\u6574\u5F35\u8868\u522A\u5149\u3002`,
+            next_action: `\u5728\u7522\u751F\u6E05\u55AE\u7684\u7BC0\u9EDE\uFF08${loop.source}\uFF09\u52A0\u4E0A\u4E0A\u9650\uFF0C\u6216\u5148\u7528\u689D\u4EF6\u628A\u300C\u8981\u522A\u7684\u90A3\u5E7E\u7B46\u300D\u7BE9\u51FA\u4F86\u518D\u522A\u3002`,
+            evidence: { loop_source: loop.source }
+          });
+        }
+      }
+    }
+    for (const n of w.nodes) {
+      const f = ctx.facts.get(n.id);
+      const why = broadWriteReason(f.req);
+      if (!why) continue;
+      add("S5", n.id, {
+        title: "\u4E00\u6B21\u522A\u9664\uFF08\u8986\u5BEB\uFF09\u7684\u7BC4\u570D\u592A\u5927",
+        message: `${where2(w.name, n.id)}\u5C0D\u300C\u6574\u500B\u96C6\u5408\u300D\u52D5\u624B\uFF08${f.method} ${String(f.req.url).slice(0, 80)}\uFF09\uFF1A${why}\u3002\u4E00\u500B\u8ACB\u6C42\u5C31\u53EF\u80FD\u522A\u5149\u6216\u84CB\u6389\u4E00\u6574\u5F35\u8868\u3002`,
+        next_action: "\u6307\u5B9A\u8981\u52D5\u7684\u90A3\u4E00\u7B46\uFF08\u7DB2\u5740\u6700\u5F8C\u5E36\u4E0A id\uFF09\uFF0C\u6216\u5148\u7BE9\u51FA\u7BC4\u570D\u518D\u9010\u7B46\u8655\u7406\u4E26\u8A2D\u4E0A\u9650\u3002",
+        evidence: { method: f.method, url: String(f.req.url).slice(0, 120) }
+      });
+    }
+    for (const llm of w.nodes) {
+      if (!ctx.facts.get(llm.id).isLlm) continue;
+      const outside = outsideContentOf(llm, ctx);
+      if (!outside.length) continue;
+      const refRe = new RegExp(`\\{\\{\\s*${escRe2(llm.id)}(\\.|\\s*\\}\\})`);
+      for (const n of w.nodes) {
+        if (n.id === llm.id) continue;
+        const f = ctx.facts.get(n.id);
+        let field = null;
+        walkStrings2(n.data ?? {}, [], (s, path) => {
+          if (field || path[0] === "code" || !refRe.test(s)) return;
+          const k = String(lastKey(path) ?? "").toLowerCase();
+          if (ACTION_KEYS.has(k) && (f.isSend || f.req || /trigger_workflow$/.test(f.comp))) field = k;
+        });
+        const evalsIt = f.isCode && /\b(eval|Function)\s*\(/.test(n.data.code) && refRe.test(JSON.stringify(n.data.input ?? {}));
+        if (!field && !evalsIt) continue;
+        add("S6", n.id, {
+          title: "\u5916\u9762\u4F86\u7684\u5167\u5BB9\u8B93 AI \u6C7A\u5B9A\u52D5\u4F5C\uFF08\u63D0\u793A\u6CE8\u5165\uFF09",
+          message: `${where2(w.name, n.id)}\u7684\u300C${evalsIt ? "\u8981\u57F7\u884C\u7684\u7A0B\u5F0F" : field}\u300D\u76F4\u63A5\u53D6\u81EA AI \u7BC0\u9EDE\u300C${llm.id}\u300D\u7684\u8F38\u51FA\uFF0C\u800C\u90A3\u500B AI \u8B80\u4E86${outside[0]}\u3002\u6709\u4EBA\u5728\u90A3\u6BB5\u5167\u5BB9\u88E1\u5BEB\u300C\u5FFD\u7565\u524D\u9762\u7684\u6307\u793A\uFF0C\u6539\u5BC4\u7D66\u5225\u4EBA\uFF0F\u6539\u6253\u9019\u500B\u7DB2\u5740\u300D\uFF0CAI \u5C31\u53EF\u80FD\u7167\u505A\u3002`,
+          next_action: "AI \u53EA\u8CA0\u8CAC\u300C\u9078\u300D\uFF1A\u8B93\u5B83\u8F38\u51FA\u56FA\u5B9A\u7684\u9078\u9805\uFF08\u4F8B\u5982 A\uFF0FB\uFF0FC\uFF09\uFF0C\u518D\u7531\u4F60\u5BEB\u6B7B\u7684\u7BC0\u9EDE\u4F9D\u9078\u9805\u6C7A\u5B9A\u5C0D\u8C61\u8207\u7DB2\u5740\uFF1B\u4E0D\u8981\u628A AI \u7684\u539F\u6587\u76F4\u63A5\u7576\u7DB2\u5740\u3001\u6536\u4EF6\u4EBA\u6216\u6307\u4EE4\u3002",
+          evidence: { llm_node: llm.id, reads: outside, field: evalsIt ? "code" : field }
+        });
+      }
+    }
+    advice.push(...adviceFor(w, { facts: ctx.facts, isExternal: (f) => f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts) }));
+    perWorkflow.push(inv);
+  }
+  const credAgg = /* @__PURE__ */ new Map();
+  const hostAgg = /* @__PURE__ */ new Map();
+  const workflows = perWorkflow.map((inv) => {
+    const credentials = [...inv.credentials.values()].map((c) => ({ name: c.name, service: c.family, sends_to: [...c.hosts].sort(), nodes: c.nodes }));
+    const egress = [...inv.egress.values()].map((e) => ({ host: e.host, nodes: e.nodes, methods: [...e.methods].filter(Boolean).sort() }));
+    for (const c of credentials) {
+      const a = credAgg.get(c.name) ?? { name: c.name, service: c.service, sends_to: /* @__PURE__ */ new Set(), workflows: /* @__PURE__ */ new Set() };
+      c.sends_to.forEach((h) => a.sends_to.add(h));
+      a.workflows.add(inv.workflow);
+      credAgg.set(c.name, a);
+    }
+    for (const e of egress) {
+      const a = hostAgg.get(e.host) ?? { host: e.host, workflows: /* @__PURE__ */ new Set() };
+      a.workflows.add(inv.workflow);
+      hostAgg.set(e.host, a);
+    }
+    return { workflow: inv.workflow, credentials, egress, dynamic_egress: inv.dynamic_egress, senders: inv.senders };
+  });
+  const inventory = {
+    credentials: [...credAgg.values()].map((a) => ({ name: a.name, service: a.service, sends_to: [...a.sends_to].sort(), workflows: [...a.workflows].sort() })).sort((a, b) => a.name.localeCompare(b.name)),
+    egress_hosts: [...hostAgg.values()].map((a) => ({ host: a.host, workflows: [...a.workflows].sort() })).sort((a, b) => a.host.localeCompare(b.host)),
+    dynamic_egress: workflows.flatMap((x) => x.dynamic_egress.map((d) => ({ workflow: x.workflow, ...d }))),
+    message_senders: workflows.flatMap((x) => x.senders.map((d) => ({ workflow: x.workflow, ...d }))),
+    workflows
+  };
+  return { ok: blocks.length === 0, blocks, notices, advice, inventory };
+}
+function securitySummary(report) {
+  const n = report.blocks.length;
+  if (!n) return "";
+  const kinds = [...new Set(report.blocks.map((b) => b.title))];
+  return `\u6C92\u6709\u5B58\uFF1A\u9019\u4EFD\u5167\u5BB9\u6709 ${n} \u500B\u5B89\u5168\u554F\u984C\uFF08${kinds.slice(0, 3).join("\u3001")}${kinds.length > 3 ? "\u2026" : ""}\uFF09\u3002`;
+}
+var tokensOf, escRe2, REF_RE, refsIn, CRED_REF_RE, INPUT_REF_RE, lastKey, host, FAMILIES, LOCAL_HOST_RE, FIRST_PARTY_SUFFIX, SEND_TOKENS, SEND_HOSTS, LLM_TOKENS, LLM_HOSTS, pathOf, where2, fixPrompt2, CONTENT_KEYS, SENSITIVE_RE, DEST_KEYS, ACTION_KEYS, GATE_WORD_RE, GATE_FIELD_RE, CAP_KEY_RE, CAP_CODE_RE, CAP_URL_RE, COLLECTION_WORDS, BULK_SEGMENT, BULK_QUERY;
+var init_security = __esm({
+  "shared/dataflow-graph/security.mjs"() {
+    init_extract();
+    init_advice();
+    tokensOf = (s) => String(s ?? "").replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    escRe2 = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    REF_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+    refsIn = (s) => [...String(s).matchAll(REF_RE)].map((m) => m[1].trim());
+    CRED_REF_RE = /^(credential|secret)\.([\w.-]+)$/;
+    INPUT_REF_RE = /^input[.[]/;
+    lastKey = (path) => [...path].reverse().find((k) => typeof k === "string" && k !== "[]");
+    host = (re) => (h) => re.test(h);
+    FAMILIES = [
+      { id: "platform", label: "\u5E73\u53F0\u5167\u90E8", tokens: ["kbdb", "cypher", "namespace", "internal", "proxy"], platform: true },
+      { id: "github", label: "GitHub", tokens: ["github"], ok: host(/(^|\.)(github\.com|githubusercontent\.com)$/) },
+      { id: "line", label: "LINE", tokens: ["line"], ok: host(/(^|\.)line\.me$/) },
+      { id: "facebook", label: "Facebook\uFF0FInstagram", tokens: ["fb", "facebook", "instagram", "meta"], ok: host(/(^|\.)(facebook\.com|instagram\.com|fbcdn\.net)$/) },
+      { id: "telegram", label: "Telegram", tokens: ["telegram", "tg"], ok: host(/(^|\.)telegram\.org$/) },
+      { id: "slack", label: "Slack", tokens: ["slack"], ok: host(/(^|\.)slack\.com$/) },
+      { id: "discord", label: "Discord", tokens: ["discord"], ok: host(/(^|\.)(discord\.com|discordapp\.com)$/) },
+      { id: "notion", label: "Notion", tokens: ["notion"], ok: host(/(^|\.)notion\.(com|so)$/) },
+      { id: "google", label: "Google", tokens: ["google", "gmail", "gemini", "youtube", "ga4", "gsc", "gcp", "gcs", "gdrive", "gsheets"], ok: host(/(^|\.)(googleapis\.com|google\.com|googleusercontent\.com)$/) },
+      { id: "openai", label: "OpenAI", tokens: ["openai"], ok: host(/(^|\.)openai\.com$/) },
+      { id: "anthropic", label: "Anthropic", tokens: ["anthropic", "claude"], ok: host(/(^|\.)(anthropic\.com|claude\.ai)$/) },
+      { id: "mailgun", label: "Mailgun", tokens: ["mailgun"], ok: host(/(^|\.)mailgun\.(net|org|com)$/) },
+      { id: "sendgrid", label: "SendGrid", tokens: ["sendgrid"], ok: host(/(^|\.)sendgrid\.(com|net)$/) },
+      { id: "resend", label: "Resend", tokens: ["resend"], ok: host(/(^|\.)resend\.com$/) },
+      { id: "twilio", label: "Twilio", tokens: ["twilio"], ok: host(/(^|\.)twilio\.com$/) },
+      { id: "stripe", label: "Stripe", tokens: ["stripe"], ok: host(/(^|\.)stripe\.com$/) },
+      { id: "trello", label: "Trello", tokens: ["trello"], ok: host(/(^|\.)(trello\.com|atlassian\.com)$/) },
+      { id: "kit", label: "Kit", tokens: ["kit", "convertkit"], ok: host(/(^|\.)(kit\.com|convertkit\.com)$/) },
+      { id: "cloudflare", label: "Cloudflare", tokens: ["cloudflare", "cf"], ok: host(/(^|\.)(cloudflare\.com|workers\.dev)$/) },
+      { id: "airtable", label: "Airtable", tokens: ["airtable"], ok: host(/(^|\.)airtable\.com$/) },
+      { id: "hubspot", label: "HubSpot", tokens: ["hubspot"], ok: host(/(^|\.)(hubapi\.com|hubspot\.com)$/) },
+      { id: "linear", label: "Linear", tokens: ["linear"], ok: host(/(^|\.)linear\.app$/) }
+    ];
+    LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.priv\.local)$/;
+    FIRST_PARTY_SUFFIX = ["arcrun.dev", "uncle6.me"];
+    SEND_TOKENS = /* @__PURE__ */ new Set(["send", "sms", "mail", "email", "notify", "notification", "broadcast", "publish", "tweet", "dm", "whatsapp", "reply"]);
+    SEND_HOSTS = [
+      { host: /(^|\.)api\.telegram\.org$/, path: /\/bot[^/]*\/send/i },
+      { host: /(^|\.)hooks\.slack\.com$/, path: /./ },
+      { host: /(^|\.)slack\.com$/, path: /chat\.(postMessage|update)/i },
+      { host: /(^|\.)api\.line\.me$/, path: /\/message\/(push|multicast|broadcast|narrowcast|reply)/i },
+      { host: /(^|\.)graph\.facebook\.com$/, path: /\/(feed|messages|photos|videos|comments)(\?|$)/i },
+      { host: /(^|\.)(api\.mailgun\.net|api\.eu\.mailgun\.net)$/, path: /\/messages/i },
+      { host: /(^|\.)api\.sendgrid\.com$/, path: /\/mail\/send/i },
+      { host: /(^|\.)api\.resend\.com$/, path: /\/emails/i },
+      { host: /(^|\.)api\.twilio\.com$/, path: /\/Messages/i },
+      { host: /(^|\.)gmail\.googleapis\.com$/, path: /\/messages\/send|\/drafts\/send/i },
+      { host: /(^|\.)(discord\.com|discordapp\.com)$/, path: /\/webhooks\/|\/channels\/[^/]+\/messages/i }
+    ];
+    LLM_TOKENS = /* @__PURE__ */ new Set(["claude", "gemini", "openai", "gpt", "llm", "anthropic", "chatgpt", "whisper", "dalle", "imagen"]);
+    LLM_HOSTS = /(^|\.)(api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.cohere\.(ai|com)|openrouter\.ai|api\.groq\.com|api\.perplexity\.ai)$/;
+    pathOf = (url) => String(url).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, "");
+    where2 = (workflow, node) => `\u5DE5\u4F5C\u6D41\u300C${workflow}\u300D\u7684\u7BC0\u9EDE\u300C${node}\u300D`;
+    fixPrompt2 = (f) => `\u8ACB\u5E6B\u6211\u6539\u5DE5\u4F5C\u6D41\u300C${f.workflow}\u300D\u7684\u7BC0\u9EDE\u300C${f.node}\u300D\u3002\u554F\u984C\uFF1A${f.message} \u6539\u6CD5\uFF1A${f.next_action} \u6539\u5B8C\u518D\u5B58\u4E00\u6B21\u3002`;
+    CONTENT_KEYS = /* @__PURE__ */ new Set(["text", "message", "msg", "content", "subject", "html", "caption", "prompt", "plain", "markdown", "reply", "status_text"]);
+    SENSITIVE_RE = /(password|passwd|\bpwd\b|api[_-]?key|secret|(access|auth|bearer|refresh|api|session)[_-]?token|id[_-]?card|\bssn\b|credit[_-]?card|card[_-]?number|\bcvv\b|\biban\b)/i;
+    DEST_KEYS = /* @__PURE__ */ new Set(["to", "cc", "bcc", "recipient", "recipients", "chat_id", "channel", "email", "phone", "mobile", "number", "user_id", "target", "to_email"]);
+    ACTION_KEYS = /* @__PURE__ */ new Set([...DEST_KEYS, "url", "method", "path", "endpoint", "command", "cmd", "sql", "workflow_name"]);
+    GATE_WORD_RE = /(hmac|signature|timingSafeEqual|x-hub|x-line-signature|verify|webhook[_-]?secret|shared[_-]?secret|passcode)/i;
+    GATE_FIELD_RE = /^input\.(token|secret|key|sig|signature|hmac|auth|password|passcode|api_?key|access_?key)(\b|[._[])/i;
+    CAP_KEY_RE = /^(limit|max|max_items|max_results|maxresults|top|take|first|page_size|per_page|size|n)$/i;
+    CAP_CODE_RE = /\.slice\(|\.splice\(|Math\.min\(|\blimit\b|\bMAX_[A-Z_]+\b|\btake\(|\.length\s*=/;
+    CAP_URL_RE = /[?&](limit|max|max_results|top|per_page|page_size|size|count|maxResults)=/i;
+    COLLECTION_WORDS = /^(records|entries|templates|items|users|rows|files|documents|pages|posts|messages|tickets|issues|workflows|apps|projects|tasks|notes|cards|events|customers|orders|contacts|subscribers|sessions|sources|libraries|all|bulk|batch|everything)$/i;
+    BULK_SEGMENT = /^(by-template|by-source|by-library|bulk|purge|truncate|wipe|drop|clear|all)$/i;
+    BULK_QUERY = /[?&](all|force|purge|truncate|wipe|drop|confirm_all)=(true|1|yes|\*)(&|$)/i;
+  }
+});
+
+// shared/dataflow-graph/code-ratchet.mjs
+function countCodeNodes(decl) {
+  const nodes = [];
+  for (const w of Array.isArray(decl?.workflows) ? decl.workflows : []) {
+    const wf = normalizeWorkflow({ name: w?.name, graph: w?.graph });
+    for (const n of wf.nodes) if (typeof n.data?.code === "string") nodes.push(`${wf.name}/${n.id}`);
+  }
+  return { count: nodes.length, nodes };
+}
+function checkCodeRatchet(decl, baseline) {
+  const id = String(decl?.id ?? "");
+  const { count: count2, nodes } = countCodeNodes(decl);
+  const rec = baseline?.apps?.[id];
+  const isNew = !rec;
+  const previous = isNew ? 0 : Number(rec.code_nodes) || 0;
+  const older = !isNew && olderThan(decl?.version, rec.version);
+  const ok = older || count2 <= previous;
+  const listed = nodes.slice(0, MAX_LISTED).map((n) => `\u300C${n}\u300D`).join("\u3001") + (nodes.length > MAX_LISTED ? ` \u7B49 ${nodes.length} \u500B` : "");
+  let message2 = "";
+  if (!ok) {
+    message2 = isNew ? `\u81EA\u5BB6 App\u300C${id}\u300D\u662F\u65B0 App\uFF0Ccode \u7BC0\u9EDE\u5FC5\u9808 0 \u500B\uFF0C\u9019\u7248\u6709 ${count2} \u500B\uFF08\u4E0A\u4E00\u7248 0 \u500B\u3001\u9019\u7248 ${count2} \u500B\uFF09\u3002\u7F3A\u4EC0\u9EBC\u5C31\u88DC\u5F15\u64CE\u96F6\u4EF6\u6216 recipe\uFF0C\u4E0D\u8981\u7528 JS \u84CB\u904E\u53BB\u3002` : `\u81EA\u5BB6 App\u300C${id}\u300D\u7684 code \u7BC0\u9EDE\u4E0D\u80FD\u6BD4\u4E0A\u4E00\u7248\u591A\uFF1A\u4E0A\u4E00\u7248 ${previous} \u500B\u3001\u9019\u7248 ${count2} \u500B\uFF08\u591A\u4E86 ${count2 - previous} \u500B\uFF09\u3002\u628A\u65B0\u589E\u7684\u908F\u8F2F\u6539\u6210\u5F15\u64CE\u96F6\u4EF6\u3001recipe \u6216\u689D\u4EF6\u908A\uFF1B\u771F\u7684\u7F3A\u96F6\u4EF6\u5C31\u5148\u88DC\u96F6\u4EF6\u3002`;
+    if (nodes.length) message2 += `
+code \u7BC0\u9EDE\uFF08\u524D\u5E7E\u500B\uFF09\uFF1A${listed}`;
+  }
+  return { ok, count: count2, previous, isNew, message: message2, nodes, lowered: ok && count2 < previous };
+}
+var MAX_LISTED, semverParts, olderThan, isOwnAuthor;
+var init_code_ratchet = __esm({
+  "shared/dataflow-graph/code-ratchet.mjs"() {
+    init_extract();
+    MAX_LISTED = 5;
+    semverParts = (v) => {
+      const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v ?? ""));
+      return m ? [+m[1], +m[2], +m[3]] : null;
+    };
+    olderThan = (a, b) => {
+      const x = semverParts(a), y = semverParts(b);
+      if (!x || !y) return false;
+      for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+      return false;
+    };
+    isOwnAuthor = (author, baseline) => Array.isArray(baseline?.own_authors) && baseline.own_authors.includes(String(author ?? ""));
+  }
+});
+
+// shared/dataflow-graph/declarations.mjs
+var init_declarations = __esm({
+  "shared/dataflow-graph/declarations.mjs"() {
+  }
+});
+
+// shared/dataflow-graph/platform-io.generated.mjs
+var platform_io_generated_default;
+var init_platform_io_generated = __esm({
+  "shared/dataflow-graph/platform-io.generated.mjs"() {
+    platform_io_generated_default = [
+      {
+        "owner": "cypher-executor/src/lib/workflow-search.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "workflow",
+        "note": "\u641C\u5DE5\u4F5C\u6D41\uFF08\u5BEB\u5165\u8005\u662F webhooks-named.ts \u7684 push\uFF09"
+      },
+      {
+        "owner": "cypher-executor/src/routes/webhooks-named.ts",
+        "direction": "write",
+        "kind": "entry",
+        "template": "workflow",
+        "note": "\u6BCF\u652F push \u4E0A\u4F86\u7684\u5DE5\u4F5C\u6D41\u90FD\u5BEB\u4E00\u7B46\uFF0C\u4F9B /workflows/search"
+      },
+      {
+        "owner": "kbdb/src/actions/kb-tree-backfill.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "block",
+        "note": "\u88DC\u7238\u7238\uFF1A\u7167\u6210\u54E1\u540D\u55AE\uFF08\u5EFA\u7ACB\u6642\u9593\u5E8F\uFF09\u4E00\u6279\u4E00\u6279\u8B80\u9084\u6C92\u6709\u7238\u7238\u7684\u5361\u6BB5"
+      },
+      {
+        "owner": "kbdb/src/actions/library-index.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "block",
+        "note": "\u5B50\u5EAB\u76EE\u9304\u3001\u627E\u5361\uFF08card-lookup\uFF09\u3001retrieve \u90FD\u8B80\u5361\u7684\u6BB5\u843D\uFF08\u5BEB\u5165\u8005\u662F rag_ingest_card\uFF09"
+      },
+      {
+        "owner": "kbdb/src/actions/library-map-store.ts",
+        "direction": "read",
+        "kind": "record",
+        "template": "triplet",
+        "note": "\u5730\u5716\u91CD\u7B97\uFF0F\u5716\u67E5\u8A62\u8B80\u4E09\u5143\u7D44\uFF08\u5BEB\u5165\u8005\u662F ingest \u5DE5\u4F5C\u6D41\uFF09"
+      },
+      {
+        "owner": "kbdb/src/actions/library-map-store.ts",
+        "direction": "write",
+        "kind": "entry",
+        "template": "library_card_tally",
+        "note": "\u6BCF\u5EAB\u73FE\u5F79\u5361\u5F35\u6578\uFF08\u5BEB\u5165\u7AEF\u589E\u6E1B\u3001\u8B80\u7AEF\u53EA\u8B80\uFF1Binkstone/Arcrun#393\uFF09"
+      },
+      {
+        "owner": "kbdb/src/actions/library-map-store.ts",
+        "direction": "write",
+        "kind": "entry",
+        "template": "library_map",
+        "note": "\u85CF\u66F8\u5730\u5716\u7531 kbdb \u81EA\u5DF1\u91CD\u7B97\u5BEB\u5165\uFF08inkstone/Arcrun#339\uFF09"
+      },
+      {
+        "owner": "kbdb/src/actions/record-crud.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "value",
+        "note": "record \u7684\u683C\u5B50\u53EF\u4EE5\u639B\u4E00\u9846\u65E2\u6709 entry\uFF08\u4F8B\uFF1Arag_ingest_card \u5148\u5BEB value \u5E38\u6578\u518D\u639B\u4E0A triplet\uFF09\uFF0C\u8B80 record \u6642\u4E00\u4F75\u8B80\u56DE"
+      },
+      {
+        "owner": "kbdb/src/embed.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "alias",
+        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+        "const": "VECTOR_ENTRY_TYPES",
+        "constValues": [
+          "alias",
+          "entity",
+          "predicate",
+          "source_passage"
+        ]
+      },
+      {
+        "owner": "kbdb/src/embed.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "entity",
+        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+        "const": "VECTOR_ENTRY_TYPES",
+        "constValues": [
+          "alias",
+          "entity",
+          "predicate",
+          "source_passage"
+        ]
+      },
+      {
+        "owner": "kbdb/src/embed.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "predicate",
+        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+        "const": "VECTOR_ENTRY_TYPES",
+        "constValues": [
+          "alias",
+          "entity",
+          "predicate",
+          "source_passage"
+        ]
+      },
+      {
+        "owner": "kbdb/src/embed.ts",
+        "direction": "read",
+        "kind": "entry",
+        "template": "source_passage",
+        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
+        "const": "VECTOR_ENTRY_TYPES",
+        "constValues": [
+          "alias",
+          "entity",
+          "predicate",
+          "source_passage"
+        ]
+      }
+    ];
+  }
+});
+
+// shared/dataflow-graph/index.mjs
+var init_dataflow_graph = __esm({
+  "shared/dataflow-graph/index.mjs"() {
+    init_extract();
+    init_rules();
+    init_security();
+    init_advice();
+    init_code_ratchet();
+    init_declarations();
+    init_platform_io_generated();
+  }
+});
+
+// app-market/code-node-baseline.json
+var code_node_baseline_default;
+var init_code_node_baseline = __esm({
+  "app-market/code-node-baseline.json"() {
+    code_node_baseline_default = {
+      _: [
+        "\u81EA\u5BB6 App \u7684 code \u7BC0\u9EDE\u68D8\u8F2A\u57FA\u6E96\uFF08inkstone/Arcrun#562\uFF0C\u610F\u5716 inkstone/InkStoneCo#376\uFF09\u3002",
+        "own_authors\uFF1A\u5E02\u96C6\u76EE\u9304 author \u5728\u9019\u4EFD\u540D\u55AE\u88E1\u7684\u5C31\u662F\u81EA\u5BB6 App\uFF1B\u5916\u90E8\u7528\u6236\u7684 App \u4E0D\u67E5\uFF08\u53EA\u6709 advice.mjs A3 \u7684\u63D0\u9192\uFF09\u3002",
+        "apps.<id>.code_nodes\uFF1A\u4E0A\u4E00\u7248\u7684 code \u7BC0\u9EDE\u6578\u3002\u65B0 App\uFF08\u4E0D\u5728\u9019\u88E1\uFF09\u4E00\u5F8B 0 \u500B\uFF1B\u820A App \u9019\u4E00\u7248\u4E0D\u5F97\u6BD4\u9019\u500B\u6578\u591A\u3002",
+        "\u6253\u5305\uFF08node app-market/build-feed.mjs --check\uFF0F--out\uFF09\u8207\u5B89\u88DD\uFF08cypher-executor installApp\uFF09\u90FD\u7528\u9019\u4EFD\u64CB\u3002",
+        "\u628A code \u63DB\u6210\u5F15\u64CE\u96F6\u4EF6\u4E4B\u5F8C\uFF1Anode app-market/build-feed.mjs --update-baseline\uFF08\u53EA\u51C6\u5F80\u4E0B\uFF09\u3002",
+        "\u591A\u689D\u7DDA\u540C\u6642\u6539 App\u3001\u5408\u4F75\u5F8C\u57FA\u6E96\u8981\u91CD\u7B97\uFF1Anode app-market/build-feed.mjs --update-baseline --allow-raise\uFF08commit \u8AAA\u660E\u7406\u7531\uFF09\u3002"
+      ],
+      own_authors: [
+        "Arcrun \u5167\u5EFA",
+        "Arcrun \u793A\u7BC4"
+      ],
+      apps: {
+        ahub: {
+          version: "0.71.0",
+          code_nodes: 537
+        },
+        company_rules: {
+          version: "0.1.1",
+          code_nodes: 2
+        },
+        flow_canvas: {
+          version: "0.2.1",
+          code_nodes: 0
+        },
+        global_index: {
+          version: "0.2.0",
+          code_nodes: 3
+        },
+        imbot: {
+          version: "0.1.1",
+          code_nodes: 37
+        },
+        kanban: {
+          version: "0.9.29",
+          code_nodes: 17
+        },
+        notes: {
+          version: "1.6.0",
+          code_nodes: 20
+        },
+        paper: {
+          version: "0.5.1",
+          code_nodes: 43
+        },
+        releases: {
+          version: "0.1.2",
+          code_nodes: 6
+        }
+      }
+    };
   }
 });
 
@@ -2743,7 +4181,9 @@ var init_kbdb_caller = __esm({
       /** execution-logger.ts 的 writeExecutionVerdict：執行結束後寫入 KBDB 執行紀錄（fire-and-forget）。 */
       executionLog: "cypher-execution-log",
       /** lib/telemetry.ts 的 recordTelemetry：agent-telemetry entry（fire-and-forget，inkstone/Arcrun#268）。 */
-      telemetry: "cypher-telemetry"
+      telemetry: "cypher-telemetry",
+      /** lib/code-fingerprint-io.ts：推送時記 code 節點的函式指紋（背景、失敗不擋；inkstone/Arcrun#565）。 */
+      codeFingerprint: "cypher-code-fingerprint"
     };
     KBDB_ESSENTIAL_HEADER = "X-Arcrun-Essential";
   }
@@ -2996,7 +4436,7 @@ var init_kbdb_proxy = __esm({
         method: "POST",
         headers,
         // created_by 帶上租戶當溯源，但 template 本身全域可見可用
-        body: JSON.stringify({ name: body.name, slots: body.slots, description: body.description, created_by: owner })
+        body: JSON.stringify({ name: body.name, slots: body.slots, description: body.description, created_by: owner, check_shape: true, compared: Array.isArray(body.compared) ? body.compared : void 0 })
       });
       return relay(res);
     });
@@ -3031,6 +4471,9 @@ var init_kbdb_proxy = __esm({
       if (body.create_only === true && !body.record_id) {
         return c.json({ error: "create_only \u5FC5\u9808\u642D\u914D record_id" }, 400);
       }
+      if (body.parent_id !== void 0 && body.parent_id !== null && body.parent_id !== "" && (typeof body.parent_id !== "string" || body.parent_id.length > 256)) {
+        return c.json({ error: "parent_id \u5FC5\u9808\u662F\u5B57\u4E32\uFF08\u81F3\u591A 256 \u5B57\uFF09\uFF1B\u7A7A\u5B57\u4E32\uFF1D\u4E0D\u639B\u6A39" }, 400);
+      }
       const { base, headers } = kbdbBase(c.env);
       const idem = !body.record_id && !body.entry_ids;
       const recordId = body.record_id ?? (idem ? newRecordId() : void 0);
@@ -3038,6 +4481,7 @@ var init_kbdb_proxy = __esm({
         template: body.template,
         ...body.values ? { values: body.values } : {},
         ...body.entry_ids ? { entry_ids: body.entry_ids } : {},
+        ...body.parent_id ? { parent_id: body.parent_id } : {},
         // 強制以租戶身份隔離：忽略 caller 自帶 owner_id，一律用 header 身份（防跨租戶寫入）
         ...body.record_id ? { record_id: body.record_id, create_only: true } : idem ? { record_id: recordId, derived_cell_ids: true } : {},
         owner_id: owner
@@ -3051,6 +4495,24 @@ var init_kbdb_proxy = __esm({
         if (same) return relay(same);
         return c.json({ success: false, error: `record ${body.record_id} already exists`, code: "record_exists", record_id: body.record_id }, 409);
       }
+      return relay(res);
+    });
+    kbdbProxyRouter.post("/kbdb/sequences/next", async (c) => {
+      const owner = tenant(c);
+      if (!owner) return c.json(NEED_KEY, 401);
+      const body = await c.req.json().catch(() => null);
+      if (!body || typeof body.name !== "string" || !body.name) return c.json({ error: "name \u5FC5\u586B\uFF08\u8A08\u6578\u5668\u540D\u5B57\uFF09" }, 400);
+      const { base, headers } = kbdbBase(c.env);
+      const res = await timedFetch(`${base}/sequences/next`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: body.name,
+          ...body.count !== void 0 ? { count: body.count } : {},
+          ...body.at_least !== void 0 ? { at_least: body.at_least } : {},
+          owner_id: owner
+        })
+      });
       return relay(res);
     });
     kbdbProxyRouter.post("/kbdb/records/batch-get", async (c) => {
@@ -3099,6 +4561,7 @@ var init_kbdb_proxy = __esm({
         if (o.op === "post") {
           if (!o.template || typeof o.template !== "string") return bad("post \u9700\u8981 template");
           if (typeof o.values !== "object" || o.values === null) return bad("post \u9700\u8981 values");
+          if (o.parent_id !== void 0 && o.parent_id !== "" && (typeof o.parent_id !== "string" || o.parent_id.length > 256)) return bad("post \u7684 parent_id \u5FC5\u9808\u662F\u5B57\u4E32\uFF08\u81F3\u591A 256 \u5B57\uFF09\uFF1B\u7A7A\u5B57\u4E32\uFF1D\u4E0D\u639B\u6A39");
         } else if (o.op === "patch") {
           if (!o.id || typeof o.id !== "string") return bad("patch \u9700\u8981 id");
           if (typeof o.values !== "object" || o.values === null) return bad("patch \u9700\u8981 values");
@@ -3108,41 +4571,45 @@ var init_kbdb_proxy = __esm({
           const okList = (x) => x === void 0 || Array.isArray(x) && x.every((y) => typeof y === "string");
           if (!okList(o.add) || !okList(o.remove)) return bad("relation \u7684 add\uFF0Fremove \u8981\u662F\u5B57\u4E32\u9663\u5217");
           if (!(o.add && o.add.length) && !(o.remove && o.remove.length)) return bad("relation \u8981\u6709 add \u6216 remove");
+        } else if (o.op === "node") {
+          if (!o.id || typeof o.id !== "string") return bad("node \u9700\u8981 id");
         } else {
-          return bad("op \u53EA\u80FD\u662F 'post'\u3001'patch' \u6216 'relation'");
+          return bad("op \u53EA\u80FD\u662F 'post'\u3001'patch'\u3001'relation' \u6216 'node'");
         }
       }
       const { base, headers } = kbdbBase(c.env);
-      const results = await Promise.all(
-        body.ops.map(async (o) => {
-          try {
-            const postId = o.op === "post" ? newRecordId() : "";
-            const { res, out } = await writeRetrying(c.env, () => o.op === "relation" ? timedFetch(`${base}/records/${encodeURIComponent(o.id)}/relation`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({ slot: o.slot, add: o.add, remove: o.remove })
-            }) : o.op === "post" ? timedFetch(`${base}/records`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({ template: o.template, values: o.values, record_id: postId, derived_cell_ids: true, owner_id: owner })
-            }) : timedFetch(`${base}/records/${encodeURIComponent(o.id)}`, {
-              method: "PATCH",
-              headers,
-              body: JSON.stringify({ values: o.values })
-            }), BATCH_WRITE_RETRY_DELAYS_MS);
-            const text = await res.text();
-            let parsed = text;
-            try {
-              parsed = JSON.parse(text);
-            } catch {
-            }
-            return { status: res.status, body: parsed, ...out.attempts > 1 ? { attempts: out.attempts, ms: out.ms } : {} };
-          } catch (e) {
-            return { status: 502, body: { error: e instanceof Error ? e.message : String(e) } };
-          }
-        })
-      );
-      return c.json({ ok: results.every((r) => r.status >= 200 && r.status < 300), results });
+      const ops = body.ops.map((o) => o.op === "post" ? { op: "post", template: o.template, values: o.values, record_id: newRecordId(), ...o.parent_id ? { parent_id: o.parent_id } : {} } : o.op === "patch" ? { op: "patch", id: o.id, values: o.values } : o.op === "node" ? { op: "node", id: o.id, ..."parent_id" in o ? { parent_id: o.parent_id } : {}, ..."task_status" in o ? { task_status: o.task_status } : {}, ..."origin" in o ? { origin: o.origin } : {}, ..."created_by" in o ? { created_by: o.created_by } : {} } : { op: "relation", id: o.id, slot: o.slot, add: o.add, remove: o.remove });
+      const payload = JSON.stringify({ ops, owner_id: owner });
+      const allFailed = (status, error, committed) => c.json({ ok: false, atomic: true, committed, error, results: ops.map(() => ({ status, body: { error } })) });
+      let res;
+      let attempts = 1;
+      let ms;
+      try {
+        const sent = await writeRetrying(c.env, () => timedFetch(`${base}/records/batch-write`, { method: "POST", headers, body: payload }), BATCH_WRITE_RETRY_DELAYS_MS);
+        res = sent.res;
+        attempts = sent.out.attempts;
+        ms = sent.out.ms;
+      } catch (e) {
+        return allFailed(502, e instanceof Error ? e.message : String(e), "unknown");
+      }
+      const text = await res.text();
+      let parsed = null;
+      try {
+        const j = JSON.parse(text);
+        if (j && typeof j === "object") parsed = j;
+      } catch {
+      }
+      const meta = attempts > 1 ? { attempts, ms } : {};
+      if (res.status === 200 && parsed && Array.isArray(parsed.results)) {
+        const results = parsed.results.map((r) => ({ ...r, ...meta }));
+        return c.json({ ok: results.every((r) => typeof r.status === "number" && r.status >= 200 && r.status < 300), atomic: true, committed: true, results });
+      }
+      if (res.status === 422 && parsed && Array.isArray(parsed.results)) {
+        return c.json({ ok: false, atomic: true, committed: false, failed_index: parsed.failed_index, error: parsed.error, results: parsed.results });
+      }
+      const detail = parsed && typeof parsed.error === "string" ? parsed.error : text.slice(0, 300);
+      const definite = res.status === 429 || res.status === 400 || res.status === 503 || res.status === 404;
+      return allFailed(res.status, detail || `KBDB \u56DE ${res.status}`, definite ? false : "unknown");
     });
     kbdbProxyRouter.get("/kbdb/records/by-template/:template", async (c) => {
       const owner = tenant(c);
@@ -3764,8 +5231,8 @@ function groupByService(rows, opts = {}) {
   services.sort((a, b) => (a.key === "" ? 1 : 0) - (b.key === "" ? 1 : 0) || a.key.localeCompare(b.key));
   return { services, merge_hints };
 }
-function clampTestMessage(msg) {
-  const one = msg.replace(/\s+/g, " ").trim();
+function clampTestMessage(msg2) {
+  const one = msg2.replace(/\s+/g, " ").trim();
   return one.length > TEST_MESSAGE_MAX ? one.slice(0, TEST_MESSAGE_MAX - 1) + "\u2026" : one;
 }
 function isAuthRejection(status) {
@@ -3930,6 +5397,7 @@ __export(credential_check_exports, {
   credentialOverview: () => credentialOverview,
   credentialShape: () => credentialShape,
   loadAllAuthRecipes: () => loadAllAuthRecipes,
+  oauthSettingsFor: () => oauthSettingsFor,
   resetRecipeCache: () => resetRecipeCache,
   testCredentialGroup: () => testCredentialGroup,
   verifyCredentialNow: () => verifyCredentialNow,
@@ -3993,7 +5461,9 @@ async function credentialShape(env, service) {
   return {
     fields: list.map((s) => ({ name: s.key, label: s.label ?? s.key, help: s.help ?? "", optional: !!s.optional })),
     scopes,
-    token_url: typeof r.oauth2?.token_endpoint === "string" ? r.oauth2.token_endpoint : ""
+    token_url: typeof r.oauth2?.token_endpoint === "string" ? r.oauth2.token_endpoint : "",
+    authorize_url: typeof r.oauth2?.authorize_endpoint === "string" ? r.oauth2.authorize_endpoint : "",
+    verify_url: typeof r.verify?.url === "string" && /^https:\/\//.test(r.verify.url) ? r.verify.url : ""
   };
 }
 async function testCredentialGroup(env, owner, target, fetchFn) {
@@ -4050,9 +5520,9 @@ async function testCredentialGroup(env, owner, target, fetchFn) {
 }
 async function credentialOverview(env, owner) {
   await backfillValueLengths(env, owner).catch(() => 0);
-  const [rows, notes, recipes] = await Promise.all([
+  const [rows, meta, recipes] = await Promise.all([
     listCredentialRows(env, owner),
-    listServiceNotes(env, owner).catch(() => ({})),
+    listServiceMeta(env, owner).catch(() => ({ notes: {}, names: {} })),
     loadAllAuthRecipes(env).catch(() => [])
   ]);
   const aliases = aliasesFromRecipes(recipes);
@@ -4067,13 +5537,36 @@ async function credentialOverview(env, owner) {
     }
   }
   known.sort((a, b) => a.key.localeCompare(b.key));
-  const { services, merge_hints } = groupByService(rows, { recipeAliases: aliases, displayNames, notes });
+  const { services, merge_hints } = groupByService(rows, { recipeAliases: aliases, displayNames: { ...displayNames, ...meta.names }, notes: meta.notes });
   return {
     credentials: rows.map((r) => ({ ...r, service_key: canonicalServiceKey(r.service, aliases) })),
-    services,
+    services: services.map((s) => {
+      const oauth = oauthSettingsFor(s.credentials, recipes);
+      return oauth ? { ...s, oauth } : s;
+    }),
     merge_hints,
     known_services: known
   };
+}
+function oauthSettingsFor(credentialNames, recipes) {
+  for (const r of recipes) {
+    if (r.primitive !== "oauth2" || !r.oauth2?.token_endpoint) continue;
+    const keys = recipeSecretKeys(r);
+    if (!keys.all.some((k) => credentialNames.includes(k))) continue;
+    const o = r.oauth2;
+    const refreshKey = r.required_secrets?.[0]?.key ?? "";
+    return {
+      connection: r.service ?? "",
+      client_id: o.client_id ?? "",
+      authorize_url: o.authorize_endpoint ?? "",
+      token_url: r.oauth2.token_endpoint ?? "",
+      scopes: Array.isArray(o.scopes) ? o.scopes.filter((x) => typeof x === "string") : [],
+      verify_url: typeof r.verify?.url === "string" ? r.verify.url : "",
+      api_base_url: r.base_url ?? "",
+      authorized: !!refreshKey && credentialNames.includes(refreshKey)
+    };
+  }
+  return null;
 }
 var recipeCache, TestTargetNotFound;
 var init_credential_check = __esm({
@@ -4112,8 +5605,8 @@ function validSensitivity(s) {
 }
 function isSecretsNotReady(e) {
   if (e instanceof SecretsNotReadyError) return true;
-  const msg = e instanceof Error ? e.message : String(e);
-  return /缺 CF_SECRETS_API_TOKEN \/ CF_ACCOUNT_ID 設定/.test(msg);
+  const msg2 = e instanceof Error ? e.message : String(e);
+  return /缺 CF_SECRETS_API_TOKEN \/ CF_ACCOUNT_ID 設定/.test(msg2);
 }
 async function putWorkerSecret(env, secretRef, value, tokenOverride) {
   const token = tokenOverride || env.CF_SECRETS_TOKEN_FROM_REQUEST || env.CF_SECRETS_API_TOKEN;
@@ -4518,30 +6011,43 @@ async function fetchServiceNoteRows(env, owner, key) {
   const body = await res.json().catch(() => null);
   return body?.entries ?? [];
 }
-async function listServiceNotes(env, owner) {
-  const out = {};
+async function listServiceMeta(env, owner) {
+  const notes = {}, names = {};
   for (const e of await fetchServiceNoteRows(env, owner)) {
     if (!e.page_name) continue;
     try {
       const m = JSON.parse(e.metadata_json ?? "{}");
-      if (typeof m.description === "string" && m.description) out[e.page_name] = m.description;
+      if (typeof m.description === "string" && m.description) notes[e.page_name] = m.description;
+      if (typeof m.display_name === "string" && m.display_name) names[e.page_name] = m.display_name;
     } catch {
     }
   }
-  return out;
+  return { notes, names };
 }
-async function setServiceNote(env, owner, key, description) {
+async function setServiceMeta(env, owner, key, patch2) {
   if (!key) throw new Error("\u670D\u52D9\u540D\u4E0D\u80FD\u662F\u7A7A\u7684");
-  if (description.length > SERVICE_NOTE_MAX) throw new Error(`\u7528\u9014\u8AAA\u660E\u6700\u591A ${SERVICE_NOTE_MAX} \u5B57`);
+  if (patch2.description !== void 0 && patch2.description.length > SERVICE_NOTE_MAX) throw new Error(`\u7528\u9014\u8AAA\u660E\u6700\u591A ${SERVICE_NOTE_MAX} \u5B57`);
+  if (patch2.display_name !== void 0 && patch2.display_name.trim().length > SERVICE_NAME_MAX) throw new Error(`\u7D44\u540D\u6700\u591A ${SERVICE_NAME_MAX} \u5B57`);
   const existing = (await fetchServiceNoteRows(env, owner, key))[0];
-  if (!description.trim()) {
+  let old = {};
+  try {
+    old = JSON.parse(existing?.metadata_json ?? "{}");
+  } catch {
+  }
+  const description = patch2.description !== void 0 ? patch2.description.trim() : old.description ?? "";
+  const display_name = patch2.display_name !== void 0 ? patch2.display_name.trim() : old.display_name ?? "";
+  if (!description && !display_name) {
     if (existing) {
       const res2 = await kbdbCredFetch(env, `/entries/${encodeURIComponent(existing.id)}`, { method: "DELETE" });
       if (!res2.ok) throw new Error(`\u670D\u52D9\u8AAA\u660E\u6E05\u9664\u5931\u6557\uFF1AHTTP ${res2.status}`);
     }
     return;
   }
-  const meta = JSON.stringify({ description: description.trim(), updated_at: Math.floor(Date.now() / 1e3) });
+  const meta = JSON.stringify({
+    ...description ? { description } : {},
+    ...display_name ? { display_name } : {},
+    updated_at: Math.floor(Date.now() / 1e3)
+  });
   const res = existing ? await kbdbCredFetch(env, `/entries/${encodeURIComponent(existing.id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -4553,7 +6059,7 @@ async function setServiceNote(env, owner, key, description) {
   });
   if (!res.ok) throw new Error(`\u670D\u52D9\u8AAA\u660E\u5132\u5B58\u5931\u6557\uFF1AHTTP ${res.status}`);
 }
-var credentialsRouter, CYPHER_SCRIPT_NAME, SECRETS_NOT_READY_CODE, SecretsNotReadyError, CREDENTIAL_TEMPLATE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS, SERVICE_NOTE_TEMPLATE, SERVICE_NOTE_MAX;
+var credentialsRouter, CYPHER_SCRIPT_NAME, SECRETS_NOT_READY_CODE, SecretsNotReadyError, CREDENTIAL_TEMPLATE, DIR_CACHE_TTL_MS, dirCache, LAST_USED_MIN_INTERVAL_S, VALUE_LIKE_FIELDS, SERVICE_NOTE_TEMPLATE, SERVICE_NOTE_MAX, SERVICE_NAME_MAX;
 var init_credentials = __esm({
   "cypher-executor/src/routes/credentials.ts"() {
     "use strict";
@@ -4634,8 +6140,8 @@ var init_credentials = __esm({
         );
         return c.json({ success: true, name: body.name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
+        const msg2 = e instanceof Error ? e.message : String(e);
+        return c.json({ success: false, error: msg2 }, msg2.includes("\u4F54\u7528") ? 409 : 502);
       }
     });
     credentialsRouter.put("/credentials/:name", async (c) => {
@@ -4662,12 +6168,13 @@ var init_credentials = __esm({
         );
         return c.json({ success: true, name, service: body.service ?? null, sensitivity, secret_ref: secretRef });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return c.json({ success: false, error: msg }, msg.includes("\u4F54\u7528") ? 409 : 502);
+        const msg2 = e instanceof Error ? e.message : String(e);
+        return c.json({ success: false, error: msg2 }, msg2.includes("\u4F54\u7528") ? 409 : 502);
       }
     });
     SERVICE_NOTE_TEMPLATE = "credential_service";
     SERVICE_NOTE_MAX = 500;
+    SERVICE_NAME_MAX = 60;
     credentialsRouter.delete("/credentials/:name", async (c) => {
       const apiKey = c.req.header("X-Arcrun-API-Key");
       if (!apiKey) {
@@ -4692,9 +6199,9 @@ var init_credentials = __esm({
         const result = await editCredential(c.env, apiKey, name, { newName, service, value });
         return c.json({ success: true, ...result });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
-        return c.json({ success: false, error: msg }, status);
+        const msg2 = e instanceof Error ? e.message : String(e);
+        const status = msg2.includes("\u627E\u4E0D\u5230") ? 404 : msg2.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
+        return c.json({ success: false, error: msg2 }, status);
       }
     });
     credentialsRouter.post("/credentials/test", async (c) => {
@@ -5146,7 +6653,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -5328,7 +6835,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -9749,6 +11256,57 @@ function evaluateCondition(condition, context) {
   if (key && key in ctx) return !!ctx[key];
   return true;
 }
+function resolveWhenOperand(raw2, ctx) {
+  const t = raw2.trim();
+  const single = t.match(/^\{\{([\w.]+)\}\}$/);
+  if (single) return getNestedValue(ctx, single[1]);
+  const interpolated = t.replace(/\{\{([\w.]+)\}\}/g, (_, key) => {
+    const v = getNestedValue(ctx, key);
+    return v === void 0 || v === null ? "" : typeof v === "string" ? v : JSON.stringify(v);
+  });
+  return interpolated.replace(/^(["'])(.*)\1$/, "$2");
+}
+function whenTruthy(v) {
+  if (v === void 0 || v === null || v === false || v === 0 || v === "") return false;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return !(s === "" || s === "false" || s === "0" || s === "null" || s === "undefined");
+  }
+  if (Array.isArray(v)) return v.length > 0;
+  return true;
+}
+function evaluateWhen(expr, ctx) {
+  const e = expr.trim();
+  const m = e.match(/^(.*?)\s*(===|!==|==|!=|>=|<=|>|<)\s*(.*)$/s);
+  if (m && m[1] !== "") {
+    const l = resolveWhenOperand(m[1], ctx), r = resolveWhenOperand(m[3], ctx);
+    const op = m[2];
+    if (op === "==" || op === "===" || op === "!=" || op === "!==") {
+      const str5 = (x) => x === void 0 || x === null ? "" : typeof x === "string" ? x : JSON.stringify(x);
+      const same = str5(l) === str5(r);
+      return op === "==" || op === "===" ? same : !same;
+    }
+    const a = typeof l === "number" ? l : parseFloat(String(l)), b = typeof r === "number" ? r : parseFloat(String(r));
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+    return op === ">" ? a > b : op === "<" ? a < b : op === ">=" ? a >= b : a <= b;
+  }
+  if (e.startsWith("!")) return !whenTruthy(resolveWhenOperand(e.slice(1), ctx));
+  return whenTruthy(resolveWhenOperand(e, ctx));
+}
+function resolveForeachItems(spec, ctx) {
+  if (Array.isArray(spec)) return spec;
+  if (typeof spec !== "string") return [];
+  const single = spec.trim().match(/^\{\{([\w.]+)\}\}$/);
+  let v = single ? getNestedValue(ctx, single[1]) : spec;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(v) ? v : [];
+}
 function getIterableFromContext(context, key) {
   if (!context || typeof context !== "object") return [];
   const variants = [
@@ -9775,7 +11333,7 @@ function getIterableFromContext(context, key) {
   }
   return [];
 }
-var GraphExecutor, MAX_FOREACH_CONCURRENCY;
+var GraphExecutor, MAX_FOREACH_CONCURRENCY, FOREACH_SKIPPED;
 var init_graph_executor = __esm({
   "cypher-executor/src/graph-executor.ts"() {
     "use strict";
@@ -9854,7 +11412,7 @@ var init_graph_executor = __esm({
           path.add(id);
           const es = outs.get(id) ?? [];
           for (const e of es) {
-            if (e.type === "PIPE" || e.type === "ON_SUCCESS" || e.type === "FOREACH" || e.type === "CONTINUE") {
+            if ((e.type === "PIPE" || e.type === "ON_SUCCESS" || e.type === "FOREACH" || e.type === "CONTINUE") && !e.when) {
               for (const x of sureFrom(e.to, path)) res.add(x);
             }
           }
@@ -10180,6 +11738,7 @@ var init_graph_executor = __esm({
         for (const edge of outEdges) {
           const nextNode = graph.nodes.find((n) => n.id === edge.to);
           if (!nextNode) continue;
+          if (edge.when !== void 0 && edge.type !== "FOREACH" && !evaluateWhen(edge.when, propagateCtx(context, ownResult, node.id))) continue;
           switch (edge.type) {
             case "PIPE": {
               const pipeContext = propagateCtx(context, ownResult, node.id);
@@ -10253,17 +11812,27 @@ var init_graph_executor = __esm({
             }
             case "FOREACH": {
               const iteratorKey = edge.iterator ?? "item";
-              let items = getIterableFromContext(ownResult, iteratorKey);
-              if (items.length === 0) {
-                items = getIterableFromContext(context, iteratorKey);
+              let items;
+              if (edge.items !== void 0) {
+                items = resolveForeachItems(edge.items, propagateCtx(context, ownResult, node.id));
+              } else {
+                items = getIterableFromContext(ownResult, iteratorKey);
+                if (items.length === 0) {
+                  items = getIterableFromContext(context, iteratorKey);
+                }
               }
               const iterResults = [];
+              let skippedByWhen = 0;
               const baseForeachCtx = propagateCtx(context, ownResult, node.id);
-              const runItem = (item2) => {
+              const runItem = async (item2) => {
                 const itemContext = {
                   ...baseForeachCtx,
                   [iteratorKey]: item2
                 };
+                if (edge.when !== void 0 && !evaluateWhen(edge.when, itemContext)) {
+                  skippedByWhen++;
+                  return FOREACH_SKIPPED;
+                }
                 return this.executeNode(nextNode, graph, itemContext, /* @__PURE__ */ new Set(), trace, fanIn, kvStore);
               };
               const width = foreachWidth(edge.concurrency, items.length);
@@ -10271,6 +11840,9 @@ var init_graph_executor = __esm({
                 for (const item2 of items) iterResults.push(await runItem(item2));
               } else {
                 iterResults.push(...await runBounded(items, width, runItem));
+              }
+              if (skippedByWhen > 0) {
+                for (let i = iterResults.length - 1; i >= 0; i--) if (iterResults[i] === FOREACH_SKIPPED) iterResults.splice(i, 1);
               }
               if (iterResults.length > 0) {
                 const failures = iterResults.filter(
@@ -10283,7 +11855,11 @@ var init_graph_executor = __esm({
                   );
                 }
               }
-              returnValue = { ...ownResult, results: iterResults };
+              returnValue = {
+                ...ownResult,
+                results: iterResults,
+                ...edge.when !== void 0 ? { skipped: skippedByWhen } : {}
+              };
               if (ownResult !== null && typeof ownResult === "object" && !Array.isArray(ownResult)) {
                 ownResult = { ...ownResult, results: iterResults };
               }
@@ -10331,6 +11907,7 @@ var init_graph_executor = __esm({
       }
     };
     MAX_FOREACH_CONCURRENCY = 6;
+    FOREACH_SKIPPED = /* @__PURE__ */ Symbol("foreach-skipped");
   }
 });
 
@@ -10343,6 +11920,8 @@ var init_schemas = __esm({
     graphSchema = z.object({
       id: z.string().min(1),
       name: z.string().min(1),
+      // inkstone/Arcrun#549：宣告「進圖之前平台先驗呼叫者」，結果放 input._caller（見 lib/caller-verify.ts）。
+      caller: z.union([z.boolean(), z.object({ token_template: z.string().optional(), required: z.boolean().optional() })]).optional(),
       nodes: z.array(z.object({
         id: z.string(),
         type: z.enum(["Input", "Component", "Output"]),
@@ -10358,6 +11937,10 @@ var init_schemas = __esm({
         iterator: z.string().optional(),
         concurrency: z.number().int().min(1).max(64).optional(),
         // FOREACH 並行圈數（引擎再夾到 MAX_FOREACH_CONCURRENCY）
+        items: z.union([z.string(), z.array(z.unknown())]).optional(),
+        // FOREACH 直接指定清單（inkstone/Arcrun#572）
+        when: z.string().optional(),
+        // FOREACH 每一圈的條件（inkstone/Arcrun#572）
         branch: z.string().optional()
         // ON_BRANCH 的具名分支（SDD workflow-discovery 3.11）
       }))
@@ -10541,20 +12124,20 @@ var init_release_body = __esm({
 
 // cypher-executor/src/lib/run-explain.ts
 function messageWithFailedStep(message2, failedStep) {
-  const msg = message2 ?? "";
-  if (!failedStep) return msg;
-  if (STEP_PREFIX_RE.test(msg)) return msg;
-  return `\u6B65\u9A5F\u300C${failedStep}\u300D\u5931\u6557\uFF1A${msg}`;
+  const msg2 = message2 ?? "";
+  if (!failedStep) return msg2;
+  if (STEP_PREFIX_RE.test(msg2)) return msg2;
+  return `\u6B65\u9A5F\u300C${failedStep}\u300D\u5931\u6557\uFF1A${msg2}`;
 }
 function parseFailedStep(message2) {
-  const msg = String(message2 ?? "");
-  const m = STEP_PREFIX_RE.exec(msg);
-  if (m) return { step: m[1], error: msg.slice(m[0].length) };
+  const msg2 = String(message2 ?? "");
+  const m = STEP_PREFIX_RE.exec(msg2);
+  if (m) return { step: m[1], error: msg2.slice(m[0].length) };
   for (const re of LEGACY_NODE_RES) {
-    const lm = re.exec(msg);
-    if (lm) return { step: lm[1], error: msg };
+    const lm = re.exec(msg2);
+    if (lm) return { step: lm[1], error: msg2 };
   }
-  return { step: null, error: msg };
+  return { step: null, error: msg2 };
 }
 function humanReason(error) {
   const e = String(error ?? "").trim();
@@ -10585,8 +12168,8 @@ function shownName(n) {
 function componentLabel(componentId) {
   if (!componentId) return "\uFF08\u6C92\u6709\u6307\u5B9A\u96F6\u4EF6\uFF09";
   const w = /^https?:\/\/arcrun-([a-z0-9-]+)\./i.exec(componentId);
-  const ph = /^__([A-Z0-9_]+?)(?:_URL)?__$/.exec(componentId);
-  const id = w ? w[1].replace(/-/g, "_") : ph ? ph[1] === "HTTP_REQ" ? "http_request" : ph[1].toLowerCase() : componentId;
+  const ph2 = /^__([A-Z0-9_]+?)(?:_URL)?__$/.exec(componentId);
+  const id = w ? w[1].replace(/-/g, "_") : ph2 ? ph2[1] === "HTTP_REQ" ? "http_request" : ph2[1].toLowerCase() : componentId;
   if (COMPONENT_LABELS[id]) return COMPONENT_LABELS[id];
   return /^https?:\/\//i.test(componentId) ? "\u5916\u90E8\u670D\u52D9" : id;
 }
@@ -14923,12 +16506,13 @@ function validateProp(v, where3, depth) {
     if (depth > 0) return [...errors, `${where3}\uFF1A\u9663\u5217\u53EA\u80FD\u653E\u4E00\u5C64\uFF08\u9663\u5217\u88E1\u4E0D\u80FD\u518D\u653E\u9663\u5217\uFF09`];
     if (!p.items || typeof p.items !== "object") return [...errors, `${where3}.items \u5FC5\u586B`];
     const it = p.items;
-    if (!SCALAR_TYPES.includes(String(it.type))) errors.push(`${where3}.items.type \u53EA\u80FD\u662F ${SCALAR_TYPES.join("\uFF0F")}`);
+    if (!ITEM_TYPES.includes(String(it.type))) errors.push(`${where3}.items.type \u53EA\u80FD\u662F ${ITEM_TYPES.join("\uFF0F")}`);
     if (it.enum !== void 0) errors.push(...validateEnum(it.enum, String(it.type), `${where3}.items`));
     return errors;
   }
+  if (p.type === "object") return errors;
   if (!SCALAR_TYPES.includes(String(p.type))) {
-    return [...errors, `${where3}.type \u53EA\u80FD\u662F ${[...SCALAR_TYPES, "array"].join("\uFF0F")}\uFF08\u5DE2\u72C0\u7269\u4EF6\u8ACB\u6524\u5E73\u6210\u5E7E\u500B\u53C3\u6578\uFF09`];
+    return [...errors, `${where3}.type \u53EA\u80FD\u662F ${[...SCALAR_TYPES, "array", "object"].join("\uFF0F")}`];
   }
   if (p.enum !== void 0) errors.push(...validateEnum(p.enum, String(p.type), where3));
   return errors;
@@ -14937,6 +16521,43 @@ function validateEnum(e, type, where3) {
   if (type !== "string") return [`${where3}.enum \u53EA\u652F\u63F4 string`];
   if (!Array.isArray(e) || e.length === 0 || e.some((x) => typeof x !== "string")) return [`${where3}.enum \u5FC5\u9808\u662F\u975E\u7A7A\u7684\u5B57\u4E32\u9663\u5217`];
   return [];
+}
+function validateToolMap(map, params, where3) {
+  if (!map || typeof map !== "object" || Array.isArray(map)) return [`${where3} \u5FC5\u9808\u662F\u7269\u4EF6\uFF08{ "<\u5DE5\u4F5C\u6D41\u8F38\u5165\u540D>": "<\u53C3\u6578\u540D>" | {param, default?} | {const} }\uFF09`];
+  const errors = [];
+  const known = new Set(params);
+  const used = /* @__PURE__ */ new Set();
+  const entries = Object.entries(map);
+  if (entries.length === 0) errors.push(`${where3} \u4E0D\u80FD\u662F\u7A7A\u7684\uFF08\u8981\u4E0D\u50B3\u53C3\u6578\uFF0C\u5C31\u4E0D\u8981\u5BEB map\uFF09`);
+  for (const [k, v] of entries) {
+    const at = `${where3}.${k}`;
+    if (!PROP_RE.test(k)) {
+      errors.push(`${at}\uFF1A\u5DE5\u4F5C\u6D41\u8F38\u5165\u540D\u53EA\u80FD\u662F\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u5E95\u7DDA\u958B\u982D\u7684 _caller\uFF0F_tool \u662F MCP \u81EA\u5DF1\u9644\u7684\uFF09`);
+      continue;
+    }
+    if (typeof v === "string") {
+      if (!known.has(v)) errors.push(`${at}\uFF1A\u6307\u5230\u53C3\u6578\u300C${v}\u300D\uFF0C\u4F46\u9019\u652F\u5DE5\u5177\u6C92\u5BA3\u544A\u5B83\u3002\u5BA3\u544A\u7684\u53C3\u6578\u662F\uFF1A${params.join("\uFF0F") || "\uFF08\u6C92\u6709\uFF09"}`);
+      else used.add(v);
+      continue;
+    }
+    if (!v || typeof v !== "object" || Array.isArray(v)) {
+      errors.push(`${at} \u5FC5\u9808\u662F\u53C3\u6578\u540D\u5B57\u4E32\u3001{param, default?} \u6216 {const}`);
+      continue;
+    }
+    const o = v;
+    const keys = Object.keys(o);
+    if ("const" in o) {
+      if (keys.length !== 1) errors.push(`${at}\uFF1A{const} \u4E0D\u80FD\u518D\u5E36\u5225\u7684\u6B04\u4F4D`);
+    } else if ("param" in o) {
+      if (keys.some((x) => x !== "param" && x !== "default")) errors.push(`${at}\uFF1A{param} \u53EA\u80FD\u518D\u5E36 default`);
+      if (typeof o.param !== "string" || !known.has(o.param)) errors.push(`${at}.param\uFF1A\u6307\u5230\u6C92\u5BA3\u544A\u7684\u53C3\u6578\u300C${String(o.param)}\u300D\u3002\u5BA3\u544A\u7684\u53C3\u6578\u662F\uFF1A${params.join("\uFF0F") || "\uFF08\u6C92\u6709\uFF09"}`);
+      else used.add(o.param);
+    } else {
+      errors.push(`${at} \u5FC5\u9808\u662F\u53C3\u6578\u540D\u5B57\u4E32\u3001{param, default?} \u6216 {const}`);
+    }
+  }
+  for (const p of params) if (!used.has(p)) errors.push(`${where3}\uFF1A\u53C3\u6578\u300C${p}\u300D\u5BA3\u544A\u4E86\u3001\u4F46 map \u6C92\u6709\u4EFB\u4F55\u4E00\u683C\u7528\u5230\u5B83\uFF08AI \u7D66\u7684\u503C\u6703\u88AB\u6084\u6084\u4E1F\u6389\uFF09`);
+  return errors;
 }
 function validateAppMcp(raw2, workflows) {
   if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return ["mcp \u5FC5\u9808\u662F\u7269\u4EF6\uFF08\u53EF\u6709 tools\u3001guides \u5169\u6B04\uFF09"];
@@ -14959,7 +16580,7 @@ function validateAppMcp(raw2, workflows) {
         }
         const tool = t;
         const label = typeof tool.name === "string" ? `mcp.tools\u300C${tool.name}\u300D` : at;
-        if (typeof tool.name !== "string" || !NAME_RE.test(tool.name)) {
+        if (typeof tool.name !== "string" || !NAME_RE2.test(tool.name)) {
           errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D\uFF08\u226440 \u5B57\uFF09`);
         } else if (seen.has(tool.name)) {
           errors.push(`${label} \u91CD\u8907\u4E86`);
@@ -14977,7 +16598,13 @@ function validateAppMcp(raw2, workflows) {
           );
         }
         if (tool.read_only !== void 0 && typeof tool.read_only !== "boolean") errors.push(`${label}.read_only \u5FC5\u9808\u662F true\uFF0Ffalse`);
-        errors.push(...validateToolInputSchema(tool.input_schema, `${label}.input_schema`));
+        const schemaErrs = validateToolInputSchema(tool.input_schema, `${label}.input_schema`);
+        errors.push(...schemaErrs);
+        if (tool.map !== void 0) {
+          const props = tool.input_schema?.properties;
+          const names = props && typeof props === "object" && !Array.isArray(props) ? Object.keys(props) : [];
+          errors.push(...validateToolMap(tool.map, names, `${label}.map`));
+        }
       });
     }
   }
@@ -14994,7 +16621,7 @@ function validateAppMcp(raw2, workflows) {
           return;
         }
         const guide = g;
-        if (typeof guide.name !== "string" || !NAME_RE.test(guide.name)) errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D`);
+        if (typeof guide.name !== "string" || !NAME_RE2.test(guide.name)) errors.push(`${at}.name \u5FC5\u586B\uFF0C\u53EA\u80FD\u662F\u5C0F\u5BEB\u82F1\u6578\u5B57\u8207\u5E95\u7DDA\u3001\u5B57\u6BCD\u958B\u982D`);
         else if (seen.has(guide.name)) errors.push(`${at}.name\u300C${guide.name}\u300D\u91CD\u8907\u4E86`);
         else seen.add(guide.name);
         if (typeof guide.description !== "string" || guide.description.trim() === "") errors.push(`${at}.description \u5FC5\u586B`);
@@ -15011,7 +16638,8 @@ function installedMcpOf(appId, mcp) {
     description: t.description,
     input_schema: t.input_schema,
     wf_key: `${appId}__${t.workflow}`,
-    read_only: t.read_only === true
+    read_only: t.read_only === true,
+    ...t.map ? { map: t.map } : {}
   }));
   const guides = (mcp?.guides ?? []).map((g) => ({ name: g.name, description: g.description, text: g.text }));
   if (tools.length === 0 && guides.length === 0) return void 0;
@@ -15020,7 +16648,7 @@ function installedMcpOf(appId, mcp) {
 function mcpCatalogOf(apps) {
   return apps.filter((a) => a.mcp && (a.status === void 0 || a.status === "active")).map((a) => ({ app_id: a.id, app_name: a.name, version: a.version, tools: a.mcp.tools, guides: a.mcp.guides })).sort((x, y) => x.app_id.localeCompare(y.app_id));
 }
-var MAX_APP_MCP_TOOLS, MAX_APP_MCP_GUIDES, MAX_DESCRIPTION, MAX_GUIDE_TEXT, NAME_RE, PROP_RE, SCALAR_TYPES;
+var MAX_APP_MCP_TOOLS, MAX_APP_MCP_GUIDES, MAX_DESCRIPTION, MAX_GUIDE_TEXT, NAME_RE2, PROP_RE, SCALAR_TYPES, ITEM_TYPES;
 var init_app_mcp = __esm({
   "cypher-executor/src/lib/app-mcp.ts"() {
     "use strict";
@@ -15028,9 +16656,10 @@ var init_app_mcp = __esm({
     MAX_APP_MCP_GUIDES = 10;
     MAX_DESCRIPTION = 2e3;
     MAX_GUIDE_TEXT = 2e4;
-    NAME_RE = /^[a-z][a-z0-9_]{0,39}$/;
+    NAME_RE2 = /^[a-z][a-z0-9_]{0,39}$/;
     PROP_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
     SCALAR_TYPES = ["string", "integer", "number", "boolean"];
+    ITEM_TYPES = [...SCALAR_TYPES, "object"];
   }
 });
 
@@ -15046,1307 +16675,6 @@ var init_subrequest_meter = __esm({
   "cypher-executor/src/lib/subrequest-meter.ts"() {
     "use strict";
     count = 0;
-  }
-});
-
-// shared/dataflow-graph/extract.mjs
-function normalizeWorkflow(input) {
-  const wf = input && typeof input === "object" ? input : {};
-  const name = String(wf.name ?? wf.graph?.name ?? wf.id ?? "");
-  const graph = wf.graph && typeof wf.graph === "object" ? wf.graph : wf;
-  const config = (wf.config && typeof wf.config === "object" ? wf.config : null) ?? (graph.config && typeof graph.config === "object" ? graph.config : null) ?? {};
-  if (Array.isArray(graph.nodes) && graph.nodes.some((n) => n && (n.data || n.componentId))) {
-    const nodes2 = graph.nodes.map((n) => {
-      const cfg = config[n.label] ?? config[n.id] ?? {};
-      const { component: cfgComponent, ...cfgRest } = cfg;
-      const data = { ...cfgRest, ...n.data ?? {} };
-      const component = String(
-        (n.componentId && n.componentId !== n.id ? n.componentId : void 0) ?? cfgComponent ?? n.componentId ?? ""
-      );
-      return { id: String(n.id), component, data };
-    });
-    const edges2 = (Array.isArray(graph.edges) ? graph.edges : []).map((e) => ({
-      from: String(e.from),
-      to: String(e.to),
-      type: String(e.type ?? ""),
-      branch: e.branch
-    }));
-    return { name, nodes: nodes2, edges: edges2 };
-  }
-  const flow = Array.isArray(graph.flow) ? graph.flow : [];
-  const ids = /* @__PURE__ */ new Set();
-  const edges = [];
-  for (const line of flow) {
-    const parts = String(line).split(">>").map((s) => s.trim());
-    if (parts.length !== 3) continue;
-    const [from, label, to] = parts;
-    ids.add(from);
-    ids.add(to);
-    edges.push({ from, to, type: edgeTypeOf(label), ...branchOf(label) ? { branch: branchOf(label) } : {} });
-  }
-  for (const k of Object.keys(config)) ids.add(k);
-  const nodes = [...ids].map((id) => {
-    const { component, ...data } = config[id] ?? {};
-    return { id, component: String(component ?? (id === "input" ? "input" : "")), data };
-  });
-  return { name, nodes, edges };
-}
-function edgeTypeOf(label) {
-  const l = String(label).trim();
-  if (/^(ON_FAIL|FAIL|失敗時)$/i.test(l)) return "ON_FAIL";
-  if (/^(ON_SUCCESS|成功後|SUCCESS)$/i.test(l)) return "ON_SUCCESS";
-  if (/^(ON_TRUE|TRUE)$/i.test(l)) return "ON_TRUE";
-  if (/^(ON_FALSE|FALSE|ELSE)$/i.test(l)) return "ON_FALSE";
-  if (/^(ON_BRANCH|分支)/i.test(l)) return "ON_BRANCH";
-  if (/^(對每個|FOREACH)/i.test(l)) return "FOREACH";
-  return l;
-}
-function branchOf(label) {
-  const m = String(label).match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
-  return m ? m[1] : void 0;
-}
-function classifyName(v) {
-  if (typeof v !== "string") return "dynamic";
-  const s = v.trim();
-  if (s === "") return "invalid";
-  if (DYNAMIC_RE.test(s)) return "dynamic";
-  if (PLACEHOLDER_RE.test(s)) return "placeholder";
-  if (!NAME_RE2.test(s)) return "invalid";
-  return "literal";
-}
-function isKbdbUrl(url) {
-  if (typeof url !== "string") return false;
-  return /__KBDB_BASE__/.test(url) || /\/\/[^/]*kbdb[^/]*\//i.test(url) || /\{\{[^}]*kbdb[^}]*\}\}/i.test(url) || /(^|[^\w])\/kbdb\//.test(url) || /__[A-Z0-9_]+__\/kbdb\//.test(url) || /^[a-z]+:\/\/[^/]+\/kbdb\//i.test(url);
-}
-function splitKbdbUrl(url) {
-  let rest = url.replace(/^\{\{[^}]*\}\}/, "").replace(/^__[A-Z0-9_]+__/, "").replace(/^[a-z]+:\/\/[^/]+/i, "");
-  rest = rest.replace(/^\/kbdb(?=\/)/, "");
-  const qi = rest.indexOf("?");
-  const path = qi >= 0 ? rest.slice(0, qi) : rest;
-  const query = {};
-  if (qi >= 0) {
-    for (const kv of rest.slice(qi + 1).split("&")) {
-      const [k, ...v] = kv.split("=");
-      if (k) query[decodeSafe(k)] = decodeSafe(v.join("="));
-    }
-  }
-  return { path, query };
-}
-function decodeSafe(s) {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-}
-function workflowCallOf(url, selfOrigins = []) {
-  if (typeof url !== "string") return null;
-  const m = url.match(/\/webhooks\/named\/(?:([^/?#]+)\/)?([^/?#]+)\/(trigger|query)(?:[?#]|$)/);
-  if (!m) return null;
-  const head = url.slice(0, m.index);
-  const local = head === "" || /^__[A-Z0-9_]+__$/.test(head) || /^\{\{[^}]*\}\}$/.test(head) || selfOrigins.some((o) => head === o.replace(/\/$/, ""));
-  if (!local) return { external: true, url };
-  const name = m[2];
-  return { workflow: name, kind: classifyName(name) };
-}
-function substitute(template, data) {
-  return String(template).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (all, key) => {
-    if (key.startsWith("_")) return all;
-    const v = data[key];
-    return typeof v === "string" && !DYNAMIC_RE.test(v) ? v : all;
-  });
-}
-function requestOf(node, recipes) {
-  const d = node.data ?? {};
-  const recipe = recipes?.get?.(String(node.component).toLowerCase());
-  if (recipe && typeof recipe.endpoint === "string") {
-    return {
-      method: String(recipe.method ?? "GET").toUpperCase(),
-      url: substitute(recipe.endpoint, d),
-      body: d.body_json ?? d.body ?? recipe.body_template,
-      via: `recipe:${recipe.canonical_id}`
-    };
-  }
-  if (typeof d.url !== "string") return null;
-  return { method: String(d.method ?? "GET").toUpperCase(), url: d.url, body: d.body_json ?? d.body, via: "http" };
-}
-function parseBody2(body) {
-  if (typeof body === "string") {
-    try {
-      return JSON.parse(body);
-    } catch {
-      return null;
-    }
-  }
-  return body && typeof body === "object" ? body : null;
-}
-function extractNodeIO(node, { recipes, selfOrigins } = {}) {
-  const out = { reads: [], writes: [], calls: [], dynamic: [] };
-  const d = node.data ?? {};
-  const comp = String(node.component ?? "");
-  if (comp === "trigger_workflow" || /\/trigger_workflow$/.test(comp)) {
-    const w = d.workflow_name;
-    const kind = classifyName(w);
-    if (kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
-    else out.calls.push({ workflow: String(w ?? ""), kind, node: node.id, via: "trigger_workflow" });
-    return out;
-  }
-  const req = requestOf(node, recipes);
-  if (!req) return out;
-  const call = workflowCallOf(req.url, selfOrigins);
-  if (call && !call.external) {
-    if (call.kind === "dynamic") out.dynamic.push({ node: node.id, what: "call" });
-    else out.calls.push({ workflow: call.workflow, kind: call.kind, node: node.id, via: req.via });
-    return out;
-  }
-  if (!isKbdbUrl(req.url)) return out;
-  const { path, query } = splitKbdbUrl(req.url);
-  const body = parseBody2(req.body);
-  const push = (list, kind, template, fields) => {
-    const tk = classifyName(template);
-    if (tk === "dynamic") {
-      out.dynamic.push({ node: node.id, what: list === out.reads ? "read" : "write" });
-      return;
-    }
-    list.push({ kind, template: String(template ?? ""), template_kind: tk, ...fields?.length ? { fields } : {}, node: node.id, via: req.via });
-  };
-  const fieldOf = (q) => q.field && classifyName(q.field) === "literal" ? [q.field] : void 0;
-  let m;
-  if (m = path.match(/^\/records\/by-(template|source)\/([^/]+)$/)) {
-    push(out.reads, "record", decodeSafe(m[2]), fieldOf(query));
-  } else if (path === "/records" && req.method === "GET" && query.template) {
-    push(out.reads, "record", query.template, fieldOf(query));
-  } else if (path === "/records" && req.method === "POST" && body) {
-    const fields = [...Object.keys(body.values ?? {}), ...Object.keys(body.entry_ids ?? {})];
-    push(out.writes, "record", body.template, fields);
-  } else if (/^\/records\/[^/]+$/.test(path) && ["PATCH", "PUT"].includes(req.method)) {
-    if (body?.template) push(out.writes, "record", body.template, Object.keys(body.values ?? {}));
-    else out.dynamic.push({ node: node.id, what: "write" });
-  } else if (/^\/entries(\/search)?$/.test(path) && req.method === "GET" && query.template) {
-    push(out.reads, "entry", query.template);
-  } else if (path === "/entries" && req.method === "POST" && body && "template" in body) {
-    push(out.writes, "entry", body.template);
-  } else if (/^\/entries\/[^/]+$/.test(path) && ["PUT", "PATCH"].includes(req.method) && body && "template" in body) {
-    push(out.writes, "entry", body.template);
-  }
-  return out;
-}
-function codeLiterals(code) {
-  const found = /* @__PURE__ */ new Set();
-  if (typeof code !== "string") return found;
-  const re = /(['"`])([a-z][a-z0-9_]{2,63})\1/g;
-  let m;
-  while ((m = re.exec(code)) !== null) found.add(m[2]);
-  return found;
-}
-function swallowsFailure(node, fromId) {
-  const code = node?.data?.code;
-  if (typeof code !== "string") return false;
-  if (/\bthrow\b/.test(code)) return false;
-  if (!/\bsuccess\s*:\s*true\b/.test(code)) return false;
-  if (fromId) {
-    const { code: _c, ...rest } = node.data;
-    const esc2 = String(fromId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`\\{\\{\\s*${esc2}(\\.|\\s*\\}\\})`).test(JSON.stringify(rest))) return false;
-  }
-  return true;
-}
-function extractWorkflowIO(input, opts = {}) {
-  const wf = normalizeWorkflow(input);
-  const res = { name: wf.name, reads: [], writes: [], calls: [], dynamic: [], mentions: [], swallows: [] };
-  const byId = new Map(wf.nodes.map((n) => [n.id, n]));
-  const callNodes = /* @__PURE__ */ new Map();
-  for (const n of wf.nodes) {
-    const io = extractNodeIO(n, opts);
-    res.reads.push(...io.reads);
-    res.writes.push(...io.writes);
-    res.calls.push(...io.calls);
-    res.dynamic.push(...io.dynamic);
-    for (const c of io.calls) callNodes.set(n.id, c);
-    for (const lit of codeLiterals(n.data?.code)) res.mentions.push({ template: lit, node: n.id });
-  }
-  for (const e of wf.edges) {
-    const isFail = e.type === "ON_FAIL" || e.type === "ON_BRANCH" && e.branch === "catch";
-    if (!isFail) continue;
-    const call = callNodes.get(e.from);
-    const handler = byId.get(e.to);
-    if (call && handler && swallowsFailure(handler, e.from)) {
-      res.swallows.push({ node: e.to, from: e.from, workflow: call.workflow });
-    }
-  }
-  return res;
-}
-var DYNAMIC_RE, PLACEHOLDER_RE, NAME_RE2;
-var init_extract = __esm({
-  "shared/dataflow-graph/extract.mjs"() {
-    DYNAMIC_RE = /\{\{[\s\S]*?\}\}/;
-    PLACEHOLDER_RE = /^__[A-Z0-9_]+__$/;
-    NAME_RE2 = /^[\w.:-]+$/;
-  }
-});
-
-// shared/dataflow-graph/rules.mjs
-function slotsOf(t) {
-  if (Array.isArray(t?.slots)) return t.slots.map(String);
-  if (typeof t?.slots_json === "string") {
-    try {
-      const s = JSON.parse(t.slots_json);
-      return Array.isArray(s) ? s.map(String) : null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-function editDistance(a, b) {
-  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
-  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-  }
-  return dp[a.length][b.length];
-}
-function closest(name, pool) {
-  let best = null;
-  for (const c of pool) {
-    const d = editDistance(name, c);
-    if (d <= Math.max(1, Math.floor(name.length / 5)) && (!best || d < best.d)) best = { c, d };
-  }
-  return best?.c;
-}
-function addTo(map, key, owner) {
-  if (!map.has(key)) map.set(key, /* @__PURE__ */ new Set());
-  map.get(key).add(owner);
-}
-function checkDataflow(input) {
-  const opts = {
-    recipes: new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r])),
-    selfOrigins: input.selfOrigins ?? []
-  };
-  const subjectIO = (input.subjects ?? []).map((w) => extractWorkflowIO(w, opts));
-  const subjectNames = new Set(subjectIO.map((w) => w.name));
-  const deployedIO = (input.deployed ?? []).map((w) => ({ name: normalizeWorkflow(w).name, w })).filter((x) => x.name && !subjectNames.has(x.name)).map((x) => extractWorkflowIO(x.w, opts));
-  const universe = [...deployedIO, ...subjectIO];
-  const installed = new Set(universe.map((w) => w.name));
-  const writers = /* @__PURE__ */ new Map();
-  const readers = /* @__PURE__ */ new Map();
-  const touchers = /* @__PURE__ */ new Map();
-  const slots = /* @__PURE__ */ new Map();
-  const existing = /* @__PURE__ */ new Set();
-  const recordable = /* @__PURE__ */ new Set();
-  const templatesKnown = Array.isArray(input.templates);
-  for (const t of input.templates ?? []) {
-    if (!t?.name) continue;
-    existing.add(t.name);
-    recordable.add(t.name);
-    const s = slotsOf(t);
-    if (s) slots.set(t.name, s);
-  }
-  for (const app2 of input.apps ?? []) {
-    for (const d of app2.data ?? []) {
-      if (!d?.name) continue;
-      existing.add(d.name);
-      recordable.add(d.name);
-      if (Array.isArray(d.slots)) slots.set(d.name, d.slots.map(String));
-      addTo(touchers, d.name, `app:${app2.id}`);
-    }
-  }
-  for (const p of input.platform ?? []) {
-    addTo(p.direction === "write" ? writers : readers, p.template, `platform:${p.owner}`);
-    if (p.direction === "write") existing.add(p.template);
-  }
-  for (const w of universe) {
-    const owner = `workflow:${w.name}`;
-    for (const x of w.writes) if (x.template_kind === "literal") {
-      addTo(writers, x.template, owner);
-      if (x.kind === "entry") existing.add(x.template);
-    }
-    for (const x of w.reads) if (x.template_kind === "literal") addTo(readers, x.template, owner);
-    for (const x of w.mentions) addTo(touchers, x.template, owner);
-  }
-  const errors = [];
-  const warnings = [];
-  const uncertain = [];
-  const allTemplateNames = [.../* @__PURE__ */ new Set([...existing, ...writers.keys()])];
-  for (const w of subjectIO) {
-    const at = (node) => ({ workflow: w.name, node });
-    const seenRead = /* @__PURE__ */ new Set();
-    for (const r of w.reads) {
-      if (r.template_kind !== "literal") {
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D${r.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u628A\u5B83\u63DB\u6210\u9019\u53F0\u5BE6\u4F8B\u4E0A\u771F\u7684 template \u540D\u5B57\uFF08arcrun \u7684 /kbdb/templates \u5217\u5F97\u51FA\u4F86\uFF09\u3002"
-        });
-        continue;
-      }
-      const key = `${r.template}|${r.node}`;
-      if (seenRead.has(key)) continue;
-      seenRead.add(key);
-      const hasWriter = (writers.get(r.template)?.size ?? 0) > 0 || (touchers.get(r.template)?.size ?? 0) > 0;
-      if (!hasWriter) {
-        errors.push({
-          rule: "R1",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          missing: { writer_of: r.template },
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u5DF2\u90E8\u7F72\u7684\u5DE5\u4F5C\u6D41\u3001App \u6216\u5E73\u53F0\u7A0B\u5F0F\u5BEB\u5B83\u2014\u2014\u9019\u652F\u5DE5\u4F5C\u6D41\u8B80\u5230\u7684\u6C38\u9060\u662F\u7A7A\u7684\u3002`,
-          next_action: `\u5148\u90E8\u7F72\u6703\u5BEB\u300C${r.template}\u300D\u7684\u90A3\u652F\u5DE5\u4F5C\u6D41\uFF08\u6216 App\uFF09\uFF0C\u518D\u63A8\u9019\u652F\uFF1B\u78BA\u5B9A\u53EA\u662F\u66AB\u6642\u6C92\u4EBA\u5BEB\uFF0C\u53EF\u4EE5\u5E36 force \u5F37\u63A8\u3002`
-        });
-      }
-      if (templatesKnown && !existing.has(r.template)) {
-        const hint = closest(r.template, allTemplateNames);
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(r.node),
-          template: r.template,
-          message: `\u7BC0\u9EDE ${r.node} \u8B80\u7684 template\u300C${r.template}\u300D\u5728\u9019\u53F0\u5BE6\u4F8B\u4E0A\u4E0D\u5B58\u5728${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u518D\u63A8\u3002` : "\u78BA\u8A8D template \u540D\u5B57\uFF1B\u5B83\u8981\u5148\u88AB\u67D0\u652F\u5DE5\u4F5C\u6D41\u5BEB\u904E\u6216\u7531 App \u5BA3\u544A\u624D\u6703\u5B58\u5728\u3002"
-        });
-      }
-      const s = slots.get(r.template);
-      for (const f of r.fields ?? []) {
-        if (s && !s.includes(f)) {
-          const hint = closest(f, s);
-          errors.push({
-            rule: "R3",
-            level: "error",
-            ...at(r.node),
-            template: r.template,
-            field: f,
-            message: `\u7BC0\u9EDE ${r.node} \u7528\u6B04\u4F4D\u300C${f}\u300D\u67E5\u300C${r.template}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
-            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\u3002`
-          });
-        }
-      }
-    }
-    const seenWrite = /* @__PURE__ */ new Set();
-    for (const x of w.writes) {
-      if (x.template_kind !== "literal") {
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u7684 template\u300C${x.template}\u300D${x.template_kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u628A\u5B83\u63DB\u6210\u771F\u7684 template \u540D\u5B57\u3002"
-        });
-        continue;
-      }
-      if (x.kind === "record" && templatesKnown && !recordable.has(x.template)) {
-        const hint = closest(x.template, [...recordable]);
-        errors.push({
-          rule: "R3",
-          level: "error",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u8981\u5BEB\u4E00\u7B46\u300C${x.template}\u300Drecord\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u6709\u9019\u500B template\uFF08\u5BEB record \u4E0D\u6703\u81EA\u52D5\u5EFA template\uFF0CKBDB \u6703\u56DE template not found\uFF09${hint ? `\uFF1B\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F` : "\u3002"}`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : "\u5148\u7531 App \u7684 data \u5BA3\u544A\u5B83\uFF08\u6216 POST /kbdb/templates \u5EFA\u597D\uFF09\uFF0C\u518D\u63A8\u9019\u652F\u3002"
-        });
-      }
-      const s = slots.get(x.template);
-      for (const f of x.fields ?? []) {
-        if (s && !s.includes(f)) {
-          const hint = closest(f, s);
-          errors.push({
-            rule: "R3",
-            level: "error",
-            ...at(x.node),
-            template: x.template,
-            field: f,
-            message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\u7684\u6B04\u4F4D\u300C${f}\u300D\uFF0C\u4F46\u9019\u500B template \u6C92\u6709\u9019\u500B\u6B04\u4F4D${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002\u5B83\u7684\u6B04\u4F4D\u662F\uFF1A${s.join("\u3001")}\u3002`,
-            next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\u3002` : `\u5F9E ${s.join("\u3001")} \u88E1\u6311\u4E00\u500B\uFF0C\u6216\u5148\u66FF template \u52A0\u6B04\u4F4D\u3002`
-          });
-        }
-      }
-      if (seenWrite.has(x.template)) continue;
-      seenWrite.add(x.template);
-      const hasReader = (readers.get(x.template)?.size ?? 0) > 0 || (touchers.get(x.template)?.size ?? 0) > 0;
-      if (!hasReader) {
-        warnings.push({
-          rule: "R4",
-          level: "warning",
-          ...at(x.node),
-          template: x.template,
-          message: `\u7BC0\u9EDE ${x.node} \u5BEB\u300C${x.template}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u4E0A\u6C92\u6709\u4EFB\u4F55\u6771\u897F\u8B80\u5B83\u3002`,
-          next_action: "\u5982\u679C\u662F\u7D66\u4EBA\u6216\u4E4B\u5F8C\u7684\u5DE5\u4F5C\u6D41\u7528\u7684\uFF0C\u53EF\u4EE5\u4E0D\u7406\uFF1B\u5982\u679C\u672C\u4F86\u8A72\u6709\u4EBA\u8B80\uFF0C\u6AA2\u67E5\u8B80\u7684\u90A3\u652F\u662F\u4E0D\u662F\u6C92\u88DD\u6216\u540D\u5B57\u62FC\u932F\u3002"
-        });
-      }
-    }
-    const seenCall = /* @__PURE__ */ new Set();
-    for (const c of w.calls) {
-      const key = `${c.workflow}|${c.node}`;
-      if (seenCall.has(key)) continue;
-      seenCall.add(key);
-      if (c.kind !== "literal") {
-        errors.push({
-          rule: "R2",
-          level: "error",
-          ...at(c.node),
-          workflow_called: c.workflow,
-          message: `\u7BC0\u9EDE ${c.node} \u53EB\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u300C${c.workflow}\u300D${c.kind === "placeholder" ? "\u662F\u6C92\u63DB\u6389\u7684\u4F54\u4F4D\u5B57\u4E32" : "\u4E0D\u662F\u5408\u6CD5\u7684\u540D\u5B57"}\u3002`,
-          next_action: "\u63DB\u6210\u771F\u7684\u5DE5\u4F5C\u6D41\u540D\u5B57\u3002"
-        });
-        continue;
-      }
-      if (!installed.has(c.workflow)) {
-        const hint = closest(c.workflow, [...installed]);
-        errors.push({
-          rule: "R2",
-          level: "error",
-          ...at(c.node),
-          workflow_called: c.workflow,
-          missing: { workflow: c.workflow },
-          message: `\u7BC0\u9EDE ${c.node} \u53EB\u5DE5\u4F5C\u6D41\u300C${c.workflow}\u300D\uFF0C\u4F46\u9019\u53F0\u5BE6\u4F8B\u6C92\u88DD\u5B83${hint ? `\uFF08\u662F\u4E0D\u662F\u300C${hint}\u300D\uFF1F\uFF09` : ""}\u3002`,
-          next_action: hint ? `\u6539\u6210\u300C${hint}\u300D\uFF0C\u6216\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u3002` : `\u5148\u90E8\u7F72\u300C${c.workflow}\u300D\u518D\u63A8\u9019\u652F\u3002`
-        });
-      }
-    }
-    for (const s of w.swallows) {
-      errors.push({
-        rule: "R5",
-        level: "error",
-        ...at(s.node),
-        workflow_called: s.workflow,
-        message: `\u7BC0\u9EDE ${s.from} \u53EB\u300C${s.workflow}\u300D\u5931\u6557\u6642\uFF08\u5305\u62EC\u5B83\u6839\u672C\u6C92\u88DD\uFF09\uFF0C\u7531 ${s.node} \u63A5\u624B\u4E26\u56DE success:true\u2014\u2014\u4F9D\u8CF4\u6C92\u88DD\u4E5F\u6703\u88AB\u8A18\u6210\u6210\u529F\uFF0C\u6C92\u6709\u4EBA\u6703\u77E5\u9053\u5B83\u4E00\u76F4\u5728\u7A7A\u8F49\u3002`,
-        next_action: `\u8B93 ${s.node} \u7528 throw \u7D50\u675F\uFF08\u7BC0\u9EDE\u5931\u6557\u624D\u6703\u88AB\u770B\u898B\uFF09\uFF0C\u6216\u62FF\u6389\u9019\u689D ON_FAIL\uFF1B\u771F\u7684\u8981\u5BB9\u5FCD\uFF0C\u56DE\u50B3\u7684\u7D50\u679C\u4E5F\u8981\u8B93\u547C\u53EB\u7AEF\u770B\u5F97\u51FA\u300C\u9019\u4E00\u6B65\u6C92\u505A\u300D\u4E26\u8A08\u5165 verdict\u3002`
-      });
-    }
-    if (w.dynamic.length) uncertain.push({ workflow: w.name, nodes: [...new Set(w.dynamic.map((d) => d.node))] });
-  }
-  const skipped = templatesKnown ? [] : [{ rule: "R3", reason: "\u6C92\u6709\u62FF\u5230 template \u6E05\u55AE\uFF0Ctemplate\uFF0F\u6B04\u4F4D\u5B58\u4E0D\u5B58\u5728\u9019\u6B21\u6C92\u6AA2\u67E5\u3002" }];
-  return {
-    ok: errors.length === 0,
-    errors,
-    warnings,
-    uncertain,
-    skipped,
-    graph: buildGraph({ universe, writers, readers, touchers, installed })
-  };
-}
-function buildGraph({ universe, writers, readers, touchers, installed }) {
-  const nodes = /* @__PURE__ */ new Map();
-  const edges = [];
-  const node = (id, type, extra = {}) => {
-    if (!nodes.has(id)) nodes.set(id, { id, type, ...extra });
-  };
-  for (const w of universe) node(`workflow:${w.name}`, "workflow");
-  const ownerNode = (o) => {
-    const [type] = o.split(":");
-    node(o, type);
-    return o;
-  };
-  for (const [t, set] of writers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "writes" });
-  }
-  for (const [t, set] of readers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: `template:${t}`, to: ownerNode(o), type: "reads" });
-  }
-  for (const [t, set] of touchers) {
-    node(`template:${t}`, "template");
-    for (const o of set) edges.push({ from: ownerNode(o), to: `template:${t}`, type: "touches" });
-  }
-  for (const w of universe) {
-    for (const c of w.calls) {
-      if (c.kind !== "literal") continue;
-      const to = installed.has(c.workflow) ? `workflow:${c.workflow}` : `missing:${c.workflow}`;
-      if (!installed.has(c.workflow)) node(to, "missing");
-      edges.push({ from: `workflow:${w.name}`, to, type: "calls", node: c.node });
-    }
-  }
-  for (const n of nodes.values()) {
-    if (n.type !== "template") continue;
-    const t = n.id.slice("template:".length);
-    n.orphan_read = (readers.get(t)?.size ?? 0) > 0 && (writers.get(t)?.size ?? 0) === 0 && (touchers.get(t)?.size ?? 0) === 0;
-  }
-  return { nodes: [...nodes.values()], edges };
-}
-var init_rules = __esm({
-  "shared/dataflow-graph/rules.mjs"() {
-    init_extract();
-  }
-});
-
-// shared/dataflow-graph/advice.mjs
-function item(rule, workflow, nodes, f) {
-  const base = { rule, level: "advice", workflow, node: nodes[0] ?? "", nodes, ...f };
-  return { ...base, fix_prompt: fixPrompt(base) };
-}
-function adviceA1(w, ctx) {
-  if (w.nodes.some((n) => /^try_catch$/.test(String(n.component)))) return null;
-  const hasFail = new Set(w.edges.filter((e) => e.type === "ON_FAIL").map((e) => e.from));
-  const ids = [];
-  for (const n of w.nodes) {
-    const f = ctx.facts.get(n.id);
-    if (!f || hasFail.has(n.id)) continue;
-    if (f.req && ctx.isExternal(f) || f.isSend || f.isLlm) ids.push(n.id);
-  }
-  if (!ids.length) return null;
-  return item("A1", w.name, ids, {
-    title: "\u5916\u90E8\u670D\u52D9\u51FA\u72C0\u6CC1\u6642\u6C92\u6709\u4E0B\u4E00\u6B65",
-    message: `${where(w.name)}\u7684 ${nodeList(ids)}\u6703\u547C\u53EB\u5916\u90E8\u670D\u52D9\uFF08\u5BC4\u4FE1\u3001\u767C\u8A0A\u3001AI \u6216\u5225\u4EBA\u7684 API\uFF09\uFF0C\u4F46\u6C92\u6709\u63A5\u300C\u5931\u6557\u6642\u300D\u7684\u8DEF\u3002\u5C0D\u65B9\u6162\u3001\u7576\u6A5F\u6216\u56DE\u932F\u7684\u90A3\u4E00\u6B21\uFF0C\u6574\u652F\u5C31\u5728\u90A3\u4E00\u6B65\u505C\u6389\uFF1A\u4E0D\u6703\u91CD\u8A66\uFF0C\u4E5F\u6C92\u4EBA\u77E5\u9053\u3002`,
-    next_action: "\u5728\u90A3\u500B\u7BC0\u9EDE\u52A0\u4E00\u689D\u300C\u5931\u6557\u6642\u300D\uFF08ON_FAIL\uFF09\u7684\u908A\uFF1A\u63A5\u4E00\u500B wait \u7B49\u5E7E\u79D2\u5F8C\u518D\u6253\u4E00\u6B21\uFF0C\u518D\u5931\u6557\u5C31\u767C\u901A\u77E5\u7D66\u81EA\u5DF1\u3002\u6392\u7A0B\u81EA\u5DF1\u8DD1\u7684\u5DE5\u4F5C\u6D41\u6700\u9700\u8981\uFF0C\u56E0\u70BA\u5931\u6557\u6642\u6C92\u4EBA\u5728\u770B\u3002"
-  });
-}
-function firstThenField(code) {
-  if (/\btry\s*\{/.test(code)) return false;
-  if (FIND_THEN_FIELD_RE.test(code)) return true;
-  for (const m of code.matchAll(INPUT_FIRST_RE)) {
-    const path = escRe(m[1]);
-    const guarded = new RegExp(`${path}\\s*(\\.length|\\?\\.|&&|\\?|\\|\\|)|(&&|\\?|\\|\\||!)\\s*${path}\\b`).test(code);
-    if (!guarded) return true;
-  }
-  return false;
-}
-function adviceA2(w) {
-  const tz = [];
-  const empty = [];
-  for (const n of w.nodes) {
-    const code = typeof n.data?.code === "string" ? n.data.code : "";
-    if (!code) continue;
-    if (/\bDate\b/.test(code)) {
-      for (const m of code.matchAll(LOCAL_TIME_RE)) {
-        if (m[3] !== void 0 && /timeZone/.test(m[3])) continue;
-        tz.push(n.id);
-        break;
-      }
-    }
-    if (firstThenField(code)) empty.push(n.id);
-  }
-  const out = [];
-  if (tz.length) {
-    out.push(item("A2", w.name, tz, {
-      kind: "timezone",
-      title: "\u6642\u9593\u7528\u4E86\u4F3A\u670D\u5668\u7684\u7576\u5730\u6642\u9593",
-      message: `${where(w.name)}\u7684 ${nodeList(tz)}\u7528\u7A0B\u5F0F\u53D6\u300C\u4ECA\u5929\u300D\u300C\u5E7E\u9EDE\u300D\u300C\u661F\u671F\u5E7E\u300D\uFF08getHours\u3001toLocaleString \u9019\u985E\uFF09\uFF0C\u6C92\u6307\u5B9A\u6642\u5340\u3002\u4F3A\u670D\u5668\u8DD1\u5728\u4E16\u754C\u6A19\u6E96\u6642\u9593\uFF0C\u53F0\u7063\u7684\u4F7F\u7528\u8005\u6703\u770B\u5230\u5DEE 8 \u5C0F\u6642\u2014\u2014\u534A\u591C 12 \u9EDE\u524D\u5F8C\u7684\u8CC7\u6599\u6703\u7B97\u5230\u524D\u4E00\u5929\u3002`,
-      next_action: '\u8981\u53F0\u7063\u6642\u9593\u5C31\u660E\u8B1B\uFF1AtoLocaleString("zh-TW", { timeZone: "Asia/Taipei" })\uFF0C\u6216\u6539\u7528 getUTC\u2026 \u7CFB\u5217\u518D\u81EA\u5DF1\u52A0 8 \u5C0F\u6642\u3002'
-    }));
-  }
-  if (empty.length) {
-    out.push(item("A2", w.name, empty, {
-      kind: "empty",
-      title: "\u6C92\u6709\u8CC7\u6599\u7684\u6642\u5019\u6703\u5D29",
-      message: `${where(w.name)}\u7684 ${nodeList(empty)}\u53D6\u300C\u7B2C\u4E00\u7B46\u300D\u6216\u300C\u627E\u5230\u7684\u90A3\u4E00\u7B46\u300D\u4E4B\u5F8C\u76F4\u63A5\u53D6\u6B04\u4F4D\uFF08\u4F8B\u5982 list[0].name\uFF09\u3002\u6E05\u55AE\u662F\u7A7A\u7684\u3001\u6216\u6C92\u627E\u5230\u7684\u90A3\u4E00\u6B21\uFF0C\u9019\u4E00\u884C\u5C31\u6703\u5831\u932F\uFF0C\u6574\u652F\u8DDF\u8457\u5931\u6557\u3002`,
-      next_action: "\u53D6\u6B04\u4F4D\u524D\u5148\u5224\u65B7\u6709\u6C92\u6709\uFF08list[0]?.name\uFF09\uFF0C\u6216\u5148\u5224\u65B7\u6E05\u55AE\u662F\u4E0D\u662F\u7A7A\u7684\u518D\u5F80\u4E0B\u8D70\u3002"
-    }));
-  }
-  return out;
-}
-function adviceA3(w) {
-  const codeNodes = w.nodes.filter((n) => typeof n.data?.code === "string");
-  if (!codeNodes.length) return null;
-  const fetching = codeNodes.filter((n) => /\bfetch\s*\(/.test(n.data.code)).map((n) => n.id);
-  const body = w.nodes.filter((n) => n.id !== "input" && n.component !== "input");
-  const mostlyCode = body.length >= 3 && codeNodes.length === body.length;
-  if (!fetching.length && !mostlyCode) return null;
-  const why = [];
-  if (fetching.length) why.push(`${nodeList(fetching)}\u5728 code \u88E1\u76F4\u63A5 fetch\uFF08\u6253\u7DB2\u8DEF\uFF09`);
-  if (mostlyCode) why.push(`${body.length} \u500B\u7BC0\u9EDE\u5168\u90E8\u90FD\u662F code`);
-  const ids = [.../* @__PURE__ */ new Set([...fetching, ...mostlyCode ? codeNodes.map((n) => n.id) : []])];
-  return item("A3", w.name, ids, {
-    title: "\u6574\u652F\u6D41\u7A0B\u5BEB\u6210\u4E86\u7A0B\u5F0F",
-    message: `${where(w.name)}\uFF1A${why.join("\uFF1B")}\u3002\u9019\u6A23\u8868\u9762\u4E0A\u662F\u5DE5\u4F5C\u6D41\u3001\u5BE6\u969B\u662F\u4E00\u652F\u7A0B\u5F0F\u2014\u2014\u6BCF\u4E00\u500B\u5BEB\u9032\u7A0B\u5F0F\u88E1\u7684\u5224\u65B7\u90FD\u6C92\u6709\u88AB\u6E2C\u904E\uFF0C\u51FA\u932F\u6642\u4E5F\u770B\u4E0D\u51FA\u662F\u54EA\u4E00\u6B65\u3002`,
-    next_action: "code \u53EA\u7559\u7D66\u300C\u6574\u7406\u8CC7\u6599\u300D\u9019\u7A2E\u5C0F\u4E8B\u3002\u8981\u6253\u5916\u90E8\u670D\u52D9\uFF0C\u6539\u7528 http_request \u52A0 recipe\uFF08\u7F3A\u7684 recipe \u53EF\u4EE5\u81EA\u5DF1\u88DC\uFF09\uFF1B\u8981\u5224\u65B7\uFF0C\u6539\u7528\u689D\u4EF6\u908A\uFF08if_control \u914D ON_TRUE\uFF0FON_FALSE\uFF09\uFF1B\u8981\u8FF4\u5708\uFF0C\u6539\u7528\u300C\u5C0D\u6BCF\u500B\u300D\u3002"
-  });
-}
-function adviceA4(w) {
-  if (TEST_NAME_RE.test(w.name)) return null;
-  const hits = /* @__PURE__ */ new Map();
-  for (const n of w.nodes) {
-    walkStrings(n.data ?? {}, [], (s, path) => {
-      if (path[0] === "code" || path.some((k) => NOTE_KEYS.has(String(k).toLowerCase()))) return;
-      if (/^__[A-Z0-9_]+__/.test(s) || /^\s*\{\{/.test(s)) return;
-      const m = s.match(TEST_EMAIL_RE) || s.match(TEST_URL_RE) || s.match(PLACEHOLDER_RE2) || s.match(TODO_RE);
-      if (!m) return;
-      const field = path.filter((k) => k !== "[]").join(".") || "(\u5167\u5BB9)";
-      if (!hits.has(n.id)) hits.set(n.id, []);
-      hits.get(n.id).push({ field, sample: m[0].trim().replace(/[「」]/g, "").slice(0, 40) });
-    });
-  }
-  if (!hits.size) return null;
-  const ids = [...hits.keys()];
-  const first = hits.get(ids[0])[0];
-  return item("A4", w.name, ids, {
-    title: "\u5BEB\u6B7B\u4E86\u770B\u8D77\u4F86\u662F\u6E2C\u8A66\u7528\u7684\u503C",
-    message: `${where(w.name)}\u7684 ${nodeList(ids)}\u88E1\u5BEB\u6B7B\u4E86\u50CF\u662F\u6E2C\u8A66\u7528\u7684\u503C\uFF08\u300C${first.sample}\u300D\u5728\u300C${first.field}\u300D\uFF09\u3002\u4E0A\u7DDA\u5F8C\u4FE1\u6703\u5BC4\u5230\u4E0D\u5B58\u5728\u7684\u5730\u65B9\u3001\u8ACB\u6C42\u6703\u6253\u5230\u6E2C\u8A66\u7DB2\u7AD9\uFF0C\u800C\u4E14\u4E0D\u6703\u5831\u932F\u2014\u2014\u770B\u8D77\u4F86\u6210\u529F\uFF0C\u5176\u5BE6\u6C92\u9001\u5230\u3002`,
-    next_action: "\u628A\u5B83\u63DB\u6210\u771F\u6B63\u7684\u503C\uFF1B\u6703\u8B8A\u7684\u503C\u6539\u6210\u5F9E\u8F38\u5165\u6216\u8CC7\u6599\u8868\u53D6\uFF08{{input.\u6B04\u4F4D}}\uFF09\uFF0C\u4E0D\u8981\u5BEB\u6B7B\u5728\u7BC0\u9EDE\u88E1\u3002",
-    evidence: Object.fromEntries(ids.slice(0, MAX_NODES_LISTED).map((id) => [id, hits.get(id).slice(0, 3)]))
-  });
-}
-function adviceFor(w, ctx) {
-  return [adviceA1(w, ctx), ...adviceA2(w), adviceA3(w), adviceA4(w)].filter(Boolean);
-}
-function appAdvice(decl) {
-  const out = [];
-  if (!decl || typeof decl !== "object") return out;
-  const id = String(decl.id ?? decl.name ?? "");
-  if (decl.entry === "kb") {
-    out.push(item("A5", id, [], {
-      app: id,
-      title: "\u88DD\u4E86\u4E4B\u5F8C\u770B\u4E0D\u5230\u6771\u897F",
-      message: `App\u300C${decl.name ?? id}\u300D\u5BA3\u544A\u5165\u53E3\u53EA\u5728\u77E5\u8B58\u5EAB\uFF08entry: 'kb'\uFF09\uFF1A\u88DD\u5B8C\u9996\u9801\u4E0D\u6703\u591A\u4E00\u500B\u5716\u793A\uFF0C\u4E5F\u6C92\u6709\u81EA\u5DF1\u7684\u756B\u9762\u3002\u4F7F\u7528\u8005\u6309\u4E86\u5B89\u88DD\u537B\u4EC0\u9EBC\u90FD\u6C92\u51FA\u73FE\uFF0C\u6703\u4EE5\u70BA\u6C92\u88DD\u6210\u529F\uFF0C\u4E5F\u4E0D\u77E5\u9053\u600E\u9EBC\u79FB\u9664\u5B83\u3002`,
-      next_action: "\u7D66\u5B83\u4E00\u500B\u9996\u9801\u5716\u793A\u548C\u756B\u9762\uFF08ui\uFF09\uFF0C\u54EA\u6015\u6253\u958B\u53EA\u986F\u793A\u5E7E\u500B\u6846\uFF1B\u77E5\u8B58\u5EAB\u88E1\u7684\u5167\u5BB9\u53EF\u4EE5\u5F9E\u756B\u9762\u8DF3\u904E\u53BB\u770B\u3002"
-    }));
-  }
-  return out;
-}
-var MAX_NODES_LISTED, walkStrings, where, nodeList, fixPrompt, LOCAL_TIME_RE, FIND_THEN_FIELD_RE, INPUT_FIRST_RE, escRe, TEST_EMAIL_RE, TEST_URL_RE, PLACEHOLDER_RE2, TODO_RE, NOTE_KEYS, TEST_NAME_RE, adviceNextActions;
-var init_advice = __esm({
-  "shared/dataflow-graph/advice.mjs"() {
-    MAX_NODES_LISTED = 4;
-    walkStrings = (v, path, cb) => {
-      if (typeof v === "string") cb(v, path);
-      else if (Array.isArray(v)) v.forEach((x) => walkStrings(x, [...path, "[]"], cb));
-      else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walkStrings(x, [...path, k], cb);
-    };
-    where = (workflow) => `\u5DE5\u4F5C\u6D41\u300C${workflow}\u300D`;
-    nodeList = (ids) => ids.slice(0, MAX_NODES_LISTED).map((n) => `\u300C${n}\u300D`).join("\u3001") + (ids.length > MAX_NODES_LISTED ? `\u7B49 ${ids.length} \u500B\u7BC0\u9EDE` : "");
-    fixPrompt = (a) => `\u8ACB\u5E6B\u6211\u6539${a.app ? `App\u300C${a.app}\u300D` : `\u5DE5\u4F5C\u6D41\u300C${a.workflow}\u300D`}${a.nodes.length ? `\uFF08\u7BC0\u9EDE ${a.nodes.slice(0, MAX_NODES_LISTED).join("\u3001")}\uFF09` : ""}\u3002\u63D0\u9192\uFF1A${a.title}\u3002${a.message} \u6539\u6CD5\uFF1A${a.next_action} \u6539\u5B8C\u518D\u5B58\u4E00\u6B21\u3002`;
-    LOCAL_TIME_RE = /\.(getHours|getMinutes|getDay|getDate|getMonth|getFullYear)\s*\(\s*\)|\.toLocale(Date|Time)?String\s*\(([^)]*)\)/g;
-    FIND_THEN_FIELD_RE = /\.find\([^)]*\)\s*\.\s*[A-Za-z_]|\.match\([^)]*\)\s*\[\s*\d+\s*\]\s*\.\s*[A-Za-z_]/;
-    INPUT_FIRST_RE = /(\binput(?:\.[A-Za-z_]\w*)+)\[0\]\s*\.\s*[A-Za-z_]/g;
-    escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    TEST_EMAIL_RE = /[\w.+-]+@(example\.(com|org|net)|test\.com|foo\.com|bar\.com|domain\.com|email\.com|yourdomain\.com|your-?company\.com)\b/i;
-    TEST_URL_RE = /\bhttps?:\/\/([^/\s"']*\.)?(example\.(com|org|net)|httpbin\.org|jsonplaceholder\.typicode\.com|webhook\.site|requestbin\.[a-z]+|ngrok(-free)?\.(io|app|dev)|localhost|127\.0\.0\.1)(:\d+)?(\/|\b)/i;
-    PLACEHOLDER_RE2 = /(^|[^A-Za-z])(YOUR[_ -](API[_ -]?KEY|TOKEN|EMAIL|NAME|ID)|CHANGE[_ -]?ME|REPLACE[_ -]?ME|lorem ipsum|0912[-\s]?345[-\s]?678|0900[-\s]?000[-\s]?000|test@test)/i;
-    TODO_RE = /(^|[^A-Za-z.])(TODO|FIXME)\b/;
-    NOTE_KEYS = /* @__PURE__ */ new Set(["description", "note", "notes", "comment", "label", "example", "examples", "hint", "doc", "docs", "name", "placeholder"]);
-    TEST_NAME_RE = /(^|[_-])(test|demo|example|sample|sandbox)([_-]|$)/i;
-    adviceNextActions = (advice) => (advice ?? []).map((a) => `${a.rule} ${a.workflow}${a.nodes?.length ? "\uFF0F" + a.nodes.slice(0, MAX_NODES_LISTED).join("\u3001") : ""}\uFF1A${a.title}\u3002${a.next_action}`);
-  }
-});
-
-// shared/dataflow-graph/security.mjs
-function walkStrings2(v, path, cb) {
-  if (typeof v === "string") cb(v, path);
-  else if (Array.isArray(v)) v.forEach((x) => walkStrings2(x, [...path, "[]"], cb));
-  else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walkStrings2(x, [...path, k], cb);
-}
-function credentialRefs(node) {
-  const out = [];
-  walkStrings2(node.data ?? {}, [], (s, path) => {
-    for (const e of refsIn(s)) {
-      const m = e.match(CRED_REF_RE);
-      if (m) out.push({ kind: m[1], name: m[2], path });
-    }
-  });
-  return out;
-}
-function familyOf(credName) {
-  const t = new Set(tokensOf(credName));
-  return FAMILIES.find((f) => f.tokens.some((x) => t.has(x))) ?? null;
-}
-function destinationOf(url, { selfOrigins = [] } = {}) {
-  if (typeof url !== "string" || !url.trim()) return { kind: "none" };
-  const s = url.trim();
-  const lead = s.match(/^(__[A-Z0-9_]+__|\{\{\s*([^{}]+?)\s*\}\})/);
-  if (lead) {
-    if (lead[1].startsWith("__")) return { kind: "self" };
-    const expr = lead[2];
-    if (expr.startsWith("_")) return { kind: "self" };
-    return INPUT_REF_RE.test(expr) ? { kind: "input", ref: expr } : { kind: "dynamic", ref: expr };
-  }
-  const m = s.match(/^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)/i);
-  if (!m) return { kind: "dynamic", ref: s.slice(0, 40) };
-  const scheme = m[1].toLowerCase();
-  const hp = m[2].replace(/^[^@]*@/, "").toLowerCase();
-  if (hp.includes("{{")) {
-    const expr = refsIn(hp)[0] ?? "";
-    return INPUT_REF_RE.test(expr) ? { kind: "input", ref: expr, scheme } : { kind: "dynamic", ref: expr, scheme };
-  }
-  const h = hp.replace(/:\d+$/, "");
-  if (selfOrigins.some((o) => {
-    try {
-      return new URL(o).hostname.toLowerCase() === h;
-    } catch {
-      return false;
-    }
-  })) return { kind: "self", host: h, scheme };
-  return { kind: "literal", host: h, scheme, local: LOCAL_HOST_RE.test(h) };
-}
-function isPlatformHost(h, trustedHosts) {
-  if (!h) return false;
-  if (LOCAL_HOST_RE.test(h)) return true;
-  if (FIRST_PARTY_SUFFIX.some((x) => h === x || h.endsWith("." + x))) return true;
-  for (const t of trustedHosts) {
-    if (h === t) return true;
-    if (t.endsWith(".workers.dev") && h.endsWith(".workers.dev")) {
-      const a = t.split(".").slice(-3).join(".");
-      const b = h.split(".").slice(-3).join(".");
-      if (a === b) return true;
-    }
-  }
-  return false;
-}
-function nodeFacts(node, ctx) {
-  const comp = String(node.component ?? "");
-  const compTokens = /^https?:|^__/.test(comp) ? [] : tokensOf(comp);
-  const req = requestOf(node, ctx.recipeMap);
-  const dest = req ? destinationOf(req.url, ctx) : { kind: "none" };
-  const method = req?.method ?? "";
-  let isSend = compTokens.some((t) => SEND_TOKENS.has(t));
-  let isLlm = compTokens.some((t) => LLM_TOKENS.has(t));
-  if (dest.kind === "literal") {
-    if (!isSend && /^(POST|PUT|PATCH)$/.test(method) && SEND_HOSTS.some((x) => x.host.test(dest.host) && x.path.test(pathOf(req.url)))) isSend = true;
-    if (LLM_HOSTS.test(dest.host)) isLlm = true;
-  }
-  const isDelete = method === "DELETE" || compTokens.includes("delete") || compTokens.includes("remove");
-  const isCode = typeof node.data?.code === "string";
-  return { req, dest, method, isSend, isLlm, isDelete, isCode, comp, isWriteReq: Boolean(req) && method !== "GET" && method !== "HEAD" };
-}
-function hasCap(node, byId, depth = 2) {
-  if (!node) return false;
-  const d = node.data ?? {};
-  for (const [k, v] of Object.entries(d)) if (CAP_KEY_RE.test(k) && v !== void 0 && v !== "" && v !== null) return true;
-  if (typeof d.code === "string" && CAP_CODE_RE.test(d.code)) return true;
-  if (typeof d.url === "string" && CAP_URL_RE.test(d.url)) return true;
-  if (depth > 0) {
-    const ups = /* @__PURE__ */ new Set();
-    walkStrings2(d, [], (s) => {
-      for (const e of refsIn(s)) {
-        const id = e.split(".")[0];
-        if (byId.has(id) && id !== node.id) ups.add(id);
-      }
-    });
-    for (const id of ups) if (hasCap(byId.get(id), byId, depth - 1)) return true;
-  }
-  return false;
-}
-function loopsOf(wf) {
-  const out = [];
-  for (const e of wf.edges) {
-    if (e.type !== "FOREACH") continue;
-    const seen = /* @__PURE__ */ new Set();
-    const stack = [e.to];
-    while (stack.length) {
-      const id = stack.pop();
-      if (seen.has(id)) continue;
-      seen.add(id);
-      for (const x of wf.edges) if (x.from === id && x.type !== "FOREACH") stack.push(x.to);
-    }
-    out.push({ source: e.from, body: seen });
-  }
-  return out;
-}
-function broadWriteReason(req) {
-  if (!req || !/^(DELETE|PUT|PATCH)$/.test(req.method)) return null;
-  const [p, q = ""] = pathOf(String(req.url).split("#")[0]).split("?");
-  const segs = p.split("/").filter(Boolean);
-  const last = segs[segs.length - 1] ?? "";
-  if (BULK_QUERY.test("?" + q)) return "\u7DB2\u5740\u5E36\u4E86\u300C\u5168\u90E8\u300D\u300C\u5F37\u5236\u300D\u4E4B\u985E\u7684\u65D7\u6A19";
-  if (req.method === "DELETE" && segs.some((s) => BULK_SEGMENT.test(s))) return `\u7DB2\u5740\u7684\u8DEF\u5F91\u662F\u300C\u6574\u6279\u300D\uFF08${segs.find((s) => BULK_SEGMENT.test(s))}\uFF09`;
-  if (last && !last.includes("{{") && COLLECTION_WORDS.test(last) && !/[?&](id|record_id|entry_id)=/.test("?" + q)) return `\u7DB2\u5740\u6700\u5F8C\u4E00\u6BB5\u662F\u300C${last}\u300D\uFF08\u6574\u500B\u96C6\u5408\uFF09\uFF0C\u6C92\u6709\u6307\u5B9A\u54EA\u4E00\u7B46`;
-  return null;
-}
-function outsideContentOf(node, ctx) {
-  const hits = /* @__PURE__ */ new Set();
-  walkStrings2(node.data ?? {}, [], (s) => {
-    for (const e of refsIn(s)) {
-      if (INPUT_REF_RE.test(e)) {
-        hits.add(`\u547C\u53EB\u8005\u5E36\u9032\u4F86\u7684\u8CC7\u6599\uFF08${e}\uFF09`);
-        continue;
-      }
-      const f = ctx.facts.get(e.split(".")[0]);
-      if (!f?.req) continue;
-      const ext = f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, ctx.trustedHosts) || f.dest.kind === "input";
-      if (ext) hits.add(`\u5916\u90E8\u7DB2\u7AD9\u7684\u56DE\u61C9\uFF08\u7BC0\u9EDE ${e.split(".")[0]}\uFF09`);
-    }
-  });
-  return [...hits];
-}
-function scanSecurity(input) {
-  const recipeMap = new Map((input.recipes ?? []).filter((r) => r?.canonical_id).map((r) => [String(r.canonical_id).toLowerCase(), r]));
-  const selfOrigins = input.selfOrigins ?? [];
-  const trustedHosts = [.../* @__PURE__ */ new Set([
-    ...(input.trustedHosts ?? []).map((h) => String(h).toLowerCase()),
-    ...selfOrigins.map((o) => {
-      try {
-        return new URL(o).hostname.toLowerCase();
-      } catch {
-        return "";
-      }
-    }).filter(Boolean)
-  ])];
-  const blocks = [];
-  const notices = [];
-  const advice = [];
-  const perWorkflow = [];
-  for (const raw2 of input.subjects ?? []) {
-    const w = normalizeWorkflow(raw2);
-    if (!w.name && !w.nodes.length) continue;
-    const byId = new Map(w.nodes.map((n) => [n.id, n]));
-    const ctx = { recipeMap, selfOrigins, trustedHosts, facts: /* @__PURE__ */ new Map() };
-    for (const n of w.nodes) ctx.facts.set(n.id, nodeFacts(n, ctx));
-    const inv = { workflow: w.name, credentials: /* @__PURE__ */ new Map(), egress: /* @__PURE__ */ new Map(), dynamic_egress: [], senders: [] };
-    const add = (rule, node, f) => {
-      if (blocks.some((b) => b.rule === rule && b.workflow === w.name && b.node === node)) return;
-      const full = { rule, level: "block", workflow: w.name, node, ...f };
-      blocks.push({ ...full, fix_prompt: fixPrompt2(full) });
-    };
-    const notice = (rule, node, message2) => notices.push({ rule, level: "notice", workflow: w.name, node, message: message2 });
-    for (const n of w.nodes) {
-      const f = ctx.facts.get(n.id);
-      const creds = credentialRefs(n);
-      if (f.isSend) inv.senders.push({ node: n.id, host: f.dest.kind === "literal" && !f.dest.local ? f.dest.host : null });
-      if (f.req) {
-        if (f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts)) {
-          const e = inv.egress.get(f.dest.host) ?? { host: f.dest.host, nodes: [], methods: /* @__PURE__ */ new Set() };
-          e.nodes.push(n.id);
-          e.methods.add(f.method);
-          inv.egress.set(f.dest.host, e);
-        } else if (f.dest.kind === "input" || f.dest.kind === "dynamic") {
-          inv.dynamic_egress.push({ node: n.id, kind: f.dest.kind, ref: f.dest.ref });
-        }
-      }
-      for (const c of creds) {
-        const fam = familyOf(c.name);
-        const row = inv.credentials.get(c.name) ?? { name: c.name, family: fam?.id ?? null, nodes: [], hosts: /* @__PURE__ */ new Set() };
-        if (!row.nodes.includes(n.id)) row.nodes.push(n.id);
-        if (f.req && f.dest.kind === "literal" && !f.dest.local) row.hosts.add(f.dest.host);
-        inv.credentials.set(c.name, row);
-      }
-      if (!creds.length || !f.req) continue;
-      for (const name of new Set(creds.map((c) => c.name))) {
-        const fam = familyOf(name);
-        const d = f.dest;
-        if (d.kind === "input") {
-          add("S1", n.id, {
-            title: "\u91D1\u9470\u6703\u88AB\u9001\u53BB\u547C\u53EB\u8005\u6307\u5B9A\u7684\u7DB2\u5740",
-            message: `${where2(w.name, n.id)}\u8981\u628A\u91D1\u9470\u300C${name}\u300D\u9001\u5230\u4E00\u500B\u7DB2\u5740\uFF0C\u800C\u90A3\u500B\u7DB2\u5740\u662F\u7531\u300C\u53EB\u9019\u652F\u5DE5\u4F5C\u6D41\u7684\u4EBA\u300D\u5E36\u9032\u4F86\u7684\uFF08${d.ref}\uFF09\u3002\u4EFB\u4F55\u4EBA\u90FD\u80FD\u628A\u5B83\u6307\u5230\u81EA\u5DF1\u7684\u7DB2\u7AD9\uFF0C\u628A\u4F60\u7684\u91D1\u9470\u6536\u8D70\u3002`,
-            next_action: "\u628A\u7DB2\u5740\u5BEB\u6B7B\u6210\u9019\u500B\u670D\u52D9\u771F\u6B63\u7684\u7DB2\u5740\uFF08\u4F8B\u5982 https://api.example.com/\u2026\uFF09\uFF0C\u4E0D\u8981\u5F9E input \u53D6\u3002",
-            evidence: { credential: name, destination: d.ref }
-          });
-        } else if (d.kind === "literal" && !d.local) {
-          if (d.scheme === "http") {
-            add("S1", n.id, {
-              title: "\u91D1\u9470\u7528\u660E\u78BC\u9001\u51FA",
-              message: `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${name}\u300D\u7528 http:// \u9001\u53BB ${d.host}\u3002http \u4E0D\u52A0\u5BC6\uFF0C\u8DEF\u4E0A\u7684\u4EBA\u770B\u5F97\u5230\u91D1\u9470\u3002`,
-              next_action: `\u7DB2\u5740\u6539\u6210 https://${d.host}/\u2026\uFF08\u5C0D\u65B9\u4E0D\u652F\u63F4 https \u5C31\u4E0D\u8981\u628A\u91D1\u9470\u7D66\u5B83\uFF09\u3002`,
-              evidence: { credential: name, destination: d.host }
-            });
-          } else if (fam?.platform) {
-            if (!isPlatformHost(d.host, trustedHosts)) {
-              add("S1", n.id, {
-                title: "\u5E73\u53F0\u5167\u90E8\u91D1\u9470\u88AB\u9001\u53BB\u5916\u9762\u7684\u7DB2\u7AD9",
-                message: `${where2(w.name, n.id)}\u8981\u628A\u5E73\u53F0\u5167\u90E8\u7528\u7684\u91D1\u9470\u300C${name}\u300D\u9001\u5230 ${d.host}\u3002\u90A3\u4E0D\u662F\u9019\u53F0\u5BE6\u4F8B\u81EA\u5DF1\u7684\u7DB2\u5740\uFF0C\u91D1\u9470\u4E00\u9001\u51FA\u53BB\u5C31\u7B49\u65BC\u4EA4\u7D66\u5225\u4EBA\u3002`,
-                next_action: "\u9019\u628A\u91D1\u9470\u53EA\u51C6\u7528\u5728\u9019\u53F0\u5BE6\u4F8B\u81EA\u5DF1\u7684\u670D\u52D9\uFF08\u7DB2\u5740\u7528 __CYPHER_BASE__\uFF0F__KBDB_BASE__\uFF09\uFF1B\u8981\u6253\u5916\u90E8\u670D\u52D9\uFF0C\u8ACB\u6539\u7528\u90A3\u500B\u670D\u52D9\u81EA\u5DF1\u7684\u91D1\u9470\u3002",
-                evidence: { credential: name, destination: d.host }
-              });
-            }
-          } else if (fam?.ok && !fam.ok(d.host)) {
-            add("S1", n.id, {
-              title: "\u91D1\u9470\u88AB\u9001\u53BB\u4E0D\u5C0D\u7684\u7DB2\u5740",
-              message: `${where2(w.name, n.id)}\u6703\u628A\u4F60\u7684 ${fam.label} \u91D1\u9470\u300C${name}\u300D\u9001\u5230 ${d.host}\uFF0C\u90A3\u4E0D\u662F ${fam.label} \u7684\u7DB2\u5740\u3002`,
-              next_action: `\u5982\u679C\u4F60\u771F\u7684\u8981\u6253 ${d.host}\uFF0C\u8ACB\u70BA\u5B83\u53E6\u5916\u5EFA\u4E00\u628A\u91D1\u9470\u3001\u540D\u5B57\u5225\u53D6\u5F97\u50CF ${fam.label} \u7684\uFF1B\u5426\u5247\u628A\u7DB2\u5740\u6539\u56DE ${fam.label} \u5B98\u65B9\u7684\u7DB2\u5740\u3002`,
-              evidence: { credential: name, destination: d.host, service: fam.id }
-            });
-          }
-        } else if (d.kind === "dynamic") {
-          notice("S1", n.id, `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${name}\u300D\u9001\u53BB\u4E00\u500B\u57F7\u884C\u6642\u624D\u7B97\u5F97\u51FA\u7684\u7DB2\u5740\uFF08${d.ref}\uFF09\uFF0C\u9019\u6B21\u770B\u4E0D\u51FA\u5B83\u6703\u4E0D\u6703\u662F\u5C0D\u7684\u670D\u52D9\u3002`);
-        }
-      }
-    }
-    for (const n of w.nodes) {
-      const f = ctx.facts.get(n.id);
-      const outward = f.isSend || f.isLlm || f.req && f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts);
-      walkStrings2(n.data ?? {}, [], (s, path) => {
-        if (path[0] === "code") return;
-        const contentKey = path.find((k) => CONTENT_KEYS.has(String(k).toLowerCase()));
-        if (!contentKey) return;
-        for (const e of refsIn(s)) {
-          const cm = e.match(CRED_REF_RE);
-          if (cm) {
-            add("S2", n.id, {
-              title: "\u91D1\u9470\u6703\u88AB\u5BEB\u9032\u6587\u5B57\u5167\u5BB9",
-              message: `${where2(w.name, n.id)}\u628A\u91D1\u9470\u300C${cm[2]}\u300D\u653E\u9032\u300C${contentKey}\u300D\u6B04\u2014\u2014\u90A3\u4E00\u6B04\u7684\u5167\u5BB9\u6703\u88AB\u5B58\u8D77\u4F86\u3001\u5BC4\u51FA\u53BB\u3001\u767C\u51FA\u53BB\uFF0C\u6216\u4EA4\u7D66 AI\uFF0F\u5916\u90E8\u670D\u52D9\uFF0C\u770B\u5F97\u5230\u7684\u4EBA\u5C31\u62FF\u5230\u4F60\u7684\u91D1\u9470\u4E86\u3002`,
-              next_action: `\u91D1\u9470\u53EA\u653E\u5728 headers \u7684 Authorization \u9019\u985E\u300C\u9A57\u8B49\u7528\u300D\u7684\u4F4D\u7F6E\uFF1B\u300C${contentKey}\u300D\u6B04\u62FF\u6389\u5B83\u3002`,
-              evidence: { credential: cm[2], field: path.join(".") }
-            });
-          } else if (outward && SENSITIVE_RE.test(e)) {
-            add("S2", n.id, {
-              title: "\u6A5F\u5BC6\u6B04\u4F4D\u6703\u88AB\u5BEB\u9032\u5C0D\u5916\u7684\u6587\u5B57",
-              message: `${where2(w.name, n.id)}\u628A\u300C${e}\u300D\uFF08\u770B\u8D77\u4F86\u662F\u5BC6\u78BC\u3001\u91D1\u9470\u6216\u8B49\u4EF6\u4E4B\u985E\u7684\u6A5F\u5BC6\uFF09\u653E\u9032\u300C${contentKey}\u300D\u6B04\uFF0C\u6703\u88AB\u5BC4\u51FA\u6216\u4EA4\u7D66\u5916\u90E8\u670D\u52D9\u3002`,
-              next_action: "\u4E0D\u8981\u628A\u9019\u500B\u6B04\u4F4D\u653E\u9032\u5C0D\u5916\u7684\u6587\u5B57\uFF1B\u53EA\u50B3\u9700\u8981\u7684\u90E8\u5206\uFF08\u4F8B\u5982\u53EA\u50B3\u300C\u5DF2\u6536\u5230\u300D\uFF0C\u4E0D\u50B3\u6574\u4EFD\u8CC7\u6599\uFF09\u3002",
-              evidence: { field: path.join("."), ref: e }
-            });
-          }
-        }
-      });
-      if (f.isCode) {
-        const code = n.data.code;
-        const secretKeys = /* @__PURE__ */ new Set();
-        walkStrings2(n.data.input ?? {}, [], (s, path) => {
-          for (const e of refsIn(s)) if ((CRED_REF_RE.test(e) || SENSITIVE_RE.test(e)) && path[0]) secretKeys.add(`${path[0]}\0${e}`);
-        });
-        for (const sk of secretKeys) {
-          const [key, ref] = sk.split("\0");
-          if (new RegExp(`console\\.(log|info|warn|error|debug)\\([^)]*\\b${escRe2(key)}\\b`).test(code)) {
-            add("S2", n.id, {
-              title: "\u91D1\u9470\u6703\u88AB\u5370\u9032\u57F7\u884C\u7D00\u9304",
-              message: `${where2(w.name, n.id)}\u7684\u7A0B\u5F0F\u628A\u300C${key}\u300D\uFF08\u53D6\u81EA ${ref}\uFF09\u7528 console \u5370\u51FA\u4F86\uFF0C\u57F7\u884C\u7D00\u9304\u88E1\u5C31\u6703\u7559\u4E0B\u5B83\u7684\u771F\u8EAB\u3002`,
-              next_action: "\u62FF\u6389\u90A3\u884C console\uFF1B\u8981\u9664\u932F\u5C31\u53EA\u5370\u300C\u6709\u6C92\u6709\u503C\u300D\uFF0C\u4E0D\u8981\u5370\u503C\u672C\u8EAB\u3002",
-              evidence: { field: key, ref }
-            });
-          }
-        }
-      }
-    }
-    const isPublic = w.nodes.some((n) => n.component === "input" || n.id === "input") && !w.nodes.some((n) => n.component === "cron");
-    if (isPublic) {
-      let gated = null;
-      const hasGate = () => {
-        if (gated !== null) return gated;
-        gated = false;
-        for (const n of w.nodes) {
-          if (ctx.facts.get(n.id).isSend) continue;
-          const code = typeof n.data?.code === "string" ? n.data.code : "";
-          if (code && GATE_WORD_RE.test(code)) {
-            gated = true;
-            break;
-          }
-          let inputGate = false;
-          let secret = false;
-          walkStrings2(n.data ?? {}, [], (s, path) => {
-            if (path[0] === "code") return;
-            for (const e of refsIn(s)) {
-              if (GATE_FIELD_RE.test(e)) inputGate = true;
-              if (CRED_REF_RE.test(e)) secret = true;
-            }
-          });
-          if (inputGate && (secret || /^(if_control|switch|filter)$/.test(String(n.component)))) {
-            gated = true;
-            break;
-          }
-        }
-        return gated;
-      };
-      for (const n of w.nodes) {
-        if (!ctx.facts.get(n.id).isSend) continue;
-        const hits = [];
-        walkStrings2(n.data ?? {}, [], (s, path) => {
-          const key = lastKey(path);
-          if (!key || !DEST_KEYS.has(String(key).toLowerCase())) return;
-          for (const e of refsIn(s)) if (INPUT_REF_RE.test(e)) hits.push({ field: key, ref: e });
-        });
-        if (!hits.length || hasGate()) continue;
-        add("S3", n.id, {
-          title: "\u516C\u958B\u5165\u53E3\u6C92\u9396\uFF0C\u4EFB\u4F55\u4EBA\u90FD\u80FD\u53EB\u5B83\u767C\u8A0A\u606F",
-          message: `${where2(w.name, n.id)}\u6703\u628A\u8A0A\u606F\u9001\u7D66\u300C\u547C\u53EB\u8005\u6307\u5B9A\u7684\u5C0D\u8C61\u300D\uFF08${hits[0].field} \u2190 ${hits[0].ref}\uFF09\uFF0C\u800C\u9019\u652F\u5DE5\u4F5C\u6D41\u7684\u5165\u53E3\u662F\u516C\u958B\u7684\u3001\u6C92\u6709\u4EFB\u4F55\u6AA2\u67E5\u3002\u4EFB\u4F55\u4EBA\u62FF\u5230\u7DB2\u5740\u5C31\u80FD\u53EB\u5B83\u5C0D\u4EFB\u610F\u5C0D\u8C61\u5BC4\u4FE1\u6216\u767C\u8A0A\uFF0C\u8B8A\u6210\u4F60\u7684\u5783\u573E\u8A0A\u606F\u6A5F\u3002`,
-          next_action: "\u4E8C\u9078\u4E00\uFF1A\u2460 \u6536\u4EF6\u5C0D\u8C61\u5BEB\u6B7B\uFF08\u6216\u53EA\u5F9E\u4F60\u81EA\u5DF1\u7684\u8CC7\u6599\u8868\u67E5\uFF09\uFF1B\u2461 \u5728\u9001\u51FA\u524D\u52A0\u4E00\u500B\u6AA2\u67E5\u7BC0\u9EDE\uFF0C\u8981\u6C42\u547C\u53EB\u8005\u5E36\u4E00\u500B\u53EA\u6709\u4F60\u77E5\u9053\u7684\u5BC6\u78BC\uFF08\u8DDF {{credential.\u2026}} \u6BD4\u5C0D\uFF09\uFF0C\u5C0D\u4E0D\u4E0A\u5C31\u505C\u3002",
-          evidence: { destination_field: hits[0].field, from: hits[0].ref }
-        });
-      }
-    }
-    for (const loop of loopsOf(w)) {
-      if (hasCap(byId.get(loop.source), byId)) continue;
-      for (const id of loop.body) {
-        const f = ctx.facts.get(id);
-        if (!f) continue;
-        if (f.isSend || f.isLlm && isPublic) {
-          add("S4", id, {
-            title: "\u8FF4\u5708\u88E1\u4E00\u76F4\u767C\u9001\uFF0C\u6C92\u6709\u4E0A\u9650",
-            message: `${where2(w.name, id)}\u5728\u300C\u5C0D\u6BCF\u500B\u300D\u8FF4\u5708\u88E1${f.isLlm ? "\u547C\u53EB\u4ED8\u8CBB\u7684 AI\uFF0FAPI" : "\u5BC4\u4FE1\u6216\u767C\u8A0A"}\uFF0C\u800C\u8FF4\u5708\u7684\u6E05\u55AE\uFF08${loop.source}\uFF09\u6C92\u6709\u8A2D\u4E0A\u9650\u3002\u6E05\u55AE\u4E00\u9577\uFF08\u6216\u88AB\u704C\u9577\uFF09\uFF0C\u5C31\u6703\u767C\u51FA\u5E7E\u767E\u5E7E\u5343\u7B46\u3001\u82B1\u6389\u4F60\u7684\u984D\u5EA6\u3002`,
-            next_action: `\u5728\u7522\u751F\u6E05\u55AE\u7684\u7BC0\u9EDE\uFF08${loop.source}\uFF09\u52A0\u4E0A\u4E0A\u9650\uFF08\u4F8B\u5982 limit: 20\uFF0C\u6216\u7A0B\u5F0F\u88E1 .slice(0, 20)\uFF09\u3002`,
-            evidence: { loop_source: loop.source }
-          });
-        }
-        if (f.isDelete) {
-          const srcF = ctx.facts.get(loop.source);
-          if (!srcF?.req) {
-            notice("S5", id, `${where2(w.name, id)}\u5728\u8FF4\u5708\u88E1\u9010\u7B46\u522A\u9664\uFF0C\u6E05\u55AE\u7531\u7A0B\u5F0F\u7B97\u51FA\uFF08${loop.source}\uFF09\uFF0C\u9019\u6B21\u770B\u4E0D\u51FA\u7BC4\u570D\u6709\u591A\u5927\u3002`);
-            continue;
-          }
-          add("S5", id, {
-            title: "\u8FF4\u5708\u9010\u7B46\u522A\u9664\uFF0C\u6C92\u6709\u4E0A\u9650",
-            message: `${where2(w.name, id)}\u5728\u300C\u5C0D\u6BCF\u500B\u300D\u8FF4\u5708\u88E1\u9010\u7B46\u522A\u9664\uFF0C\u800C\u8FF4\u5708\u7684\u6E05\u55AE\uFF08${loop.source}\uFF09\u6C92\u6709\u8A2D\u4E0A\u9650\u3002\u6E05\u55AE\u5982\u679C\u662F\u6574\u5F35\u8868\uFF0C\u5C31\u6703\u628A\u6574\u5F35\u8868\u522A\u5149\u3002`,
-            next_action: `\u5728\u7522\u751F\u6E05\u55AE\u7684\u7BC0\u9EDE\uFF08${loop.source}\uFF09\u52A0\u4E0A\u4E0A\u9650\uFF0C\u6216\u5148\u7528\u689D\u4EF6\u628A\u300C\u8981\u522A\u7684\u90A3\u5E7E\u7B46\u300D\u7BE9\u51FA\u4F86\u518D\u522A\u3002`,
-            evidence: { loop_source: loop.source }
-          });
-        }
-      }
-    }
-    for (const n of w.nodes) {
-      const f = ctx.facts.get(n.id);
-      const why = broadWriteReason(f.req);
-      if (!why) continue;
-      add("S5", n.id, {
-        title: "\u4E00\u6B21\u522A\u9664\uFF08\u8986\u5BEB\uFF09\u7684\u7BC4\u570D\u592A\u5927",
-        message: `${where2(w.name, n.id)}\u5C0D\u300C\u6574\u500B\u96C6\u5408\u300D\u52D5\u624B\uFF08${f.method} ${String(f.req.url).slice(0, 80)}\uFF09\uFF1A${why}\u3002\u4E00\u500B\u8ACB\u6C42\u5C31\u53EF\u80FD\u522A\u5149\u6216\u84CB\u6389\u4E00\u6574\u5F35\u8868\u3002`,
-        next_action: "\u6307\u5B9A\u8981\u52D5\u7684\u90A3\u4E00\u7B46\uFF08\u7DB2\u5740\u6700\u5F8C\u5E36\u4E0A id\uFF09\uFF0C\u6216\u5148\u7BE9\u51FA\u7BC4\u570D\u518D\u9010\u7B46\u8655\u7406\u4E26\u8A2D\u4E0A\u9650\u3002",
-        evidence: { method: f.method, url: String(f.req.url).slice(0, 120) }
-      });
-    }
-    for (const llm of w.nodes) {
-      if (!ctx.facts.get(llm.id).isLlm) continue;
-      const outside = outsideContentOf(llm, ctx);
-      if (!outside.length) continue;
-      const refRe = new RegExp(`\\{\\{\\s*${escRe2(llm.id)}(\\.|\\s*\\}\\})`);
-      for (const n of w.nodes) {
-        if (n.id === llm.id) continue;
-        const f = ctx.facts.get(n.id);
-        let field = null;
-        walkStrings2(n.data ?? {}, [], (s, path) => {
-          if (field || path[0] === "code" || !refRe.test(s)) return;
-          const k = String(lastKey(path) ?? "").toLowerCase();
-          if (ACTION_KEYS.has(k) && (f.isSend || f.req || /trigger_workflow$/.test(f.comp))) field = k;
-        });
-        const evalsIt = f.isCode && /\b(eval|Function)\s*\(/.test(n.data.code) && refRe.test(JSON.stringify(n.data.input ?? {}));
-        if (!field && !evalsIt) continue;
-        add("S6", n.id, {
-          title: "\u5916\u9762\u4F86\u7684\u5167\u5BB9\u8B93 AI \u6C7A\u5B9A\u52D5\u4F5C\uFF08\u63D0\u793A\u6CE8\u5165\uFF09",
-          message: `${where2(w.name, n.id)}\u7684\u300C${evalsIt ? "\u8981\u57F7\u884C\u7684\u7A0B\u5F0F" : field}\u300D\u76F4\u63A5\u53D6\u81EA AI \u7BC0\u9EDE\u300C${llm.id}\u300D\u7684\u8F38\u51FA\uFF0C\u800C\u90A3\u500B AI \u8B80\u4E86${outside[0]}\u3002\u6709\u4EBA\u5728\u90A3\u6BB5\u5167\u5BB9\u88E1\u5BEB\u300C\u5FFD\u7565\u524D\u9762\u7684\u6307\u793A\uFF0C\u6539\u5BC4\u7D66\u5225\u4EBA\uFF0F\u6539\u6253\u9019\u500B\u7DB2\u5740\u300D\uFF0CAI \u5C31\u53EF\u80FD\u7167\u505A\u3002`,
-          next_action: "AI \u53EA\u8CA0\u8CAC\u300C\u9078\u300D\uFF1A\u8B93\u5B83\u8F38\u51FA\u56FA\u5B9A\u7684\u9078\u9805\uFF08\u4F8B\u5982 A\uFF0FB\uFF0FC\uFF09\uFF0C\u518D\u7531\u4F60\u5BEB\u6B7B\u7684\u7BC0\u9EDE\u4F9D\u9078\u9805\u6C7A\u5B9A\u5C0D\u8C61\u8207\u7DB2\u5740\uFF1B\u4E0D\u8981\u628A AI \u7684\u539F\u6587\u76F4\u63A5\u7576\u7DB2\u5740\u3001\u6536\u4EF6\u4EBA\u6216\u6307\u4EE4\u3002",
-          evidence: { llm_node: llm.id, reads: outside, field: evalsIt ? "code" : field }
-        });
-      }
-    }
-    advice.push(...adviceFor(w, { facts: ctx.facts, isExternal: (f) => f.dest.kind === "literal" && !f.dest.local && !isPlatformHost(f.dest.host, trustedHosts) }));
-    perWorkflow.push(inv);
-  }
-  const credAgg = /* @__PURE__ */ new Map();
-  const hostAgg = /* @__PURE__ */ new Map();
-  const workflows = perWorkflow.map((inv) => {
-    const credentials = [...inv.credentials.values()].map((c) => ({ name: c.name, service: c.family, sends_to: [...c.hosts].sort(), nodes: c.nodes }));
-    const egress = [...inv.egress.values()].map((e) => ({ host: e.host, nodes: e.nodes, methods: [...e.methods].filter(Boolean).sort() }));
-    for (const c of credentials) {
-      const a = credAgg.get(c.name) ?? { name: c.name, service: c.service, sends_to: /* @__PURE__ */ new Set(), workflows: /* @__PURE__ */ new Set() };
-      c.sends_to.forEach((h) => a.sends_to.add(h));
-      a.workflows.add(inv.workflow);
-      credAgg.set(c.name, a);
-    }
-    for (const e of egress) {
-      const a = hostAgg.get(e.host) ?? { host: e.host, workflows: /* @__PURE__ */ new Set() };
-      a.workflows.add(inv.workflow);
-      hostAgg.set(e.host, a);
-    }
-    return { workflow: inv.workflow, credentials, egress, dynamic_egress: inv.dynamic_egress, senders: inv.senders };
-  });
-  const inventory = {
-    credentials: [...credAgg.values()].map((a) => ({ name: a.name, service: a.service, sends_to: [...a.sends_to].sort(), workflows: [...a.workflows].sort() })).sort((a, b) => a.name.localeCompare(b.name)),
-    egress_hosts: [...hostAgg.values()].map((a) => ({ host: a.host, workflows: [...a.workflows].sort() })).sort((a, b) => a.host.localeCompare(b.host)),
-    dynamic_egress: workflows.flatMap((x) => x.dynamic_egress.map((d) => ({ workflow: x.workflow, ...d }))),
-    message_senders: workflows.flatMap((x) => x.senders.map((d) => ({ workflow: x.workflow, ...d }))),
-    workflows
-  };
-  return { ok: blocks.length === 0, blocks, notices, advice, inventory };
-}
-function securitySummary(report) {
-  const n = report.blocks.length;
-  if (!n) return "";
-  const kinds = [...new Set(report.blocks.map((b) => b.title))];
-  return `\u6C92\u6709\u5B58\uFF1A\u9019\u4EFD\u5167\u5BB9\u6709 ${n} \u500B\u5B89\u5168\u554F\u984C\uFF08${kinds.slice(0, 3).join("\u3001")}${kinds.length > 3 ? "\u2026" : ""}\uFF09\u3002`;
-}
-var tokensOf, escRe2, REF_RE, refsIn, CRED_REF_RE, INPUT_REF_RE, lastKey, host, FAMILIES, LOCAL_HOST_RE, FIRST_PARTY_SUFFIX, SEND_TOKENS, SEND_HOSTS, LLM_TOKENS, LLM_HOSTS, pathOf, where2, fixPrompt2, CONTENT_KEYS, SENSITIVE_RE, DEST_KEYS, ACTION_KEYS, GATE_WORD_RE, GATE_FIELD_RE, CAP_KEY_RE, CAP_CODE_RE, CAP_URL_RE, COLLECTION_WORDS, BULK_SEGMENT, BULK_QUERY;
-var init_security = __esm({
-  "shared/dataflow-graph/security.mjs"() {
-    init_extract();
-    init_advice();
-    tokensOf = (s) => String(s ?? "").replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-    escRe2 = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    REF_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
-    refsIn = (s) => [...String(s).matchAll(REF_RE)].map((m) => m[1].trim());
-    CRED_REF_RE = /^(credential|secret)\.([\w.-]+)$/;
-    INPUT_REF_RE = /^input[.[]/;
-    lastKey = (path) => [...path].reverse().find((k) => typeof k === "string" && k !== "[]");
-    host = (re) => (h) => re.test(h);
-    FAMILIES = [
-      { id: "platform", label: "\u5E73\u53F0\u5167\u90E8", tokens: ["kbdb", "cypher", "namespace", "internal", "proxy"], platform: true },
-      { id: "github", label: "GitHub", tokens: ["github"], ok: host(/(^|\.)(github\.com|githubusercontent\.com)$/) },
-      { id: "line", label: "LINE", tokens: ["line"], ok: host(/(^|\.)line\.me$/) },
-      { id: "facebook", label: "Facebook\uFF0FInstagram", tokens: ["fb", "facebook", "instagram", "meta"], ok: host(/(^|\.)(facebook\.com|instagram\.com|fbcdn\.net)$/) },
-      { id: "telegram", label: "Telegram", tokens: ["telegram", "tg"], ok: host(/(^|\.)telegram\.org$/) },
-      { id: "slack", label: "Slack", tokens: ["slack"], ok: host(/(^|\.)slack\.com$/) },
-      { id: "discord", label: "Discord", tokens: ["discord"], ok: host(/(^|\.)(discord\.com|discordapp\.com)$/) },
-      { id: "notion", label: "Notion", tokens: ["notion"], ok: host(/(^|\.)notion\.(com|so)$/) },
-      { id: "google", label: "Google", tokens: ["google", "gmail", "gemini", "youtube", "ga4", "gsc", "gcp", "gcs", "gdrive", "gsheets"], ok: host(/(^|\.)(googleapis\.com|google\.com|googleusercontent\.com)$/) },
-      { id: "openai", label: "OpenAI", tokens: ["openai"], ok: host(/(^|\.)openai\.com$/) },
-      { id: "anthropic", label: "Anthropic", tokens: ["anthropic", "claude"], ok: host(/(^|\.)(anthropic\.com|claude\.ai)$/) },
-      { id: "mailgun", label: "Mailgun", tokens: ["mailgun"], ok: host(/(^|\.)mailgun\.(net|org|com)$/) },
-      { id: "sendgrid", label: "SendGrid", tokens: ["sendgrid"], ok: host(/(^|\.)sendgrid\.(com|net)$/) },
-      { id: "resend", label: "Resend", tokens: ["resend"], ok: host(/(^|\.)resend\.com$/) },
-      { id: "twilio", label: "Twilio", tokens: ["twilio"], ok: host(/(^|\.)twilio\.com$/) },
-      { id: "stripe", label: "Stripe", tokens: ["stripe"], ok: host(/(^|\.)stripe\.com$/) },
-      { id: "trello", label: "Trello", tokens: ["trello"], ok: host(/(^|\.)(trello\.com|atlassian\.com)$/) },
-      { id: "kit", label: "Kit", tokens: ["kit", "convertkit"], ok: host(/(^|\.)(kit\.com|convertkit\.com)$/) },
-      { id: "cloudflare", label: "Cloudflare", tokens: ["cloudflare", "cf"], ok: host(/(^|\.)(cloudflare\.com|workers\.dev)$/) },
-      { id: "airtable", label: "Airtable", tokens: ["airtable"], ok: host(/(^|\.)airtable\.com$/) },
-      { id: "hubspot", label: "HubSpot", tokens: ["hubspot"], ok: host(/(^|\.)(hubapi\.com|hubspot\.com)$/) },
-      { id: "linear", label: "Linear", tokens: ["linear"], ok: host(/(^|\.)linear\.app$/) }
-    ];
-    LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.priv\.local)$/;
-    FIRST_PARTY_SUFFIX = ["arcrun.dev", "uncle6.me"];
-    SEND_TOKENS = /* @__PURE__ */ new Set(["send", "sms", "mail", "email", "notify", "notification", "broadcast", "publish", "tweet", "dm", "whatsapp", "reply"]);
-    SEND_HOSTS = [
-      { host: /(^|\.)api\.telegram\.org$/, path: /\/bot[^/]*\/send/i },
-      { host: /(^|\.)hooks\.slack\.com$/, path: /./ },
-      { host: /(^|\.)slack\.com$/, path: /chat\.(postMessage|update)/i },
-      { host: /(^|\.)api\.line\.me$/, path: /\/message\/(push|multicast|broadcast|narrowcast|reply)/i },
-      { host: /(^|\.)graph\.facebook\.com$/, path: /\/(feed|messages|photos|videos|comments)(\?|$)/i },
-      { host: /(^|\.)(api\.mailgun\.net|api\.eu\.mailgun\.net)$/, path: /\/messages/i },
-      { host: /(^|\.)api\.sendgrid\.com$/, path: /\/mail\/send/i },
-      { host: /(^|\.)api\.resend\.com$/, path: /\/emails/i },
-      { host: /(^|\.)api\.twilio\.com$/, path: /\/Messages/i },
-      { host: /(^|\.)gmail\.googleapis\.com$/, path: /\/messages\/send|\/drafts\/send/i },
-      { host: /(^|\.)(discord\.com|discordapp\.com)$/, path: /\/webhooks\/|\/channels\/[^/]+\/messages/i }
-    ];
-    LLM_TOKENS = /* @__PURE__ */ new Set(["claude", "gemini", "openai", "gpt", "llm", "anthropic", "chatgpt", "whisper", "dalle", "imagen"]);
-    LLM_HOSTS = /(^|\.)(api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.cohere\.(ai|com)|openrouter\.ai|api\.groq\.com|api\.perplexity\.ai)$/;
-    pathOf = (url) => String(url).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, "");
-    where2 = (workflow, node) => `\u5DE5\u4F5C\u6D41\u300C${workflow}\u300D\u7684\u7BC0\u9EDE\u300C${node}\u300D`;
-    fixPrompt2 = (f) => `\u8ACB\u5E6B\u6211\u6539\u5DE5\u4F5C\u6D41\u300C${f.workflow}\u300D\u7684\u7BC0\u9EDE\u300C${f.node}\u300D\u3002\u554F\u984C\uFF1A${f.message} \u6539\u6CD5\uFF1A${f.next_action} \u6539\u5B8C\u518D\u5B58\u4E00\u6B21\u3002`;
-    CONTENT_KEYS = /* @__PURE__ */ new Set(["text", "message", "msg", "content", "subject", "html", "caption", "prompt", "plain", "markdown", "reply", "status_text"]);
-    SENSITIVE_RE = /(password|passwd|\bpwd\b|api[_-]?key|secret|(access|auth|bearer|refresh|api|session)[_-]?token|id[_-]?card|\bssn\b|credit[_-]?card|card[_-]?number|\bcvv\b|\biban\b)/i;
-    DEST_KEYS = /* @__PURE__ */ new Set(["to", "cc", "bcc", "recipient", "recipients", "chat_id", "channel", "email", "phone", "mobile", "number", "user_id", "target", "to_email"]);
-    ACTION_KEYS = /* @__PURE__ */ new Set([...DEST_KEYS, "url", "method", "path", "endpoint", "command", "cmd", "sql", "workflow_name"]);
-    GATE_WORD_RE = /(hmac|signature|timingSafeEqual|x-hub|x-line-signature|verify|webhook[_-]?secret|shared[_-]?secret|passcode)/i;
-    GATE_FIELD_RE = /^input\.(token|secret|key|sig|signature|hmac|auth|password|passcode|api_?key|access_?key)(\b|[._[])/i;
-    CAP_KEY_RE = /^(limit|max|max_items|max_results|maxresults|top|take|first|page_size|per_page|size|n)$/i;
-    CAP_CODE_RE = /\.slice\(|\.splice\(|Math\.min\(|\blimit\b|\bMAX_[A-Z_]+\b|\btake\(|\.length\s*=/;
-    CAP_URL_RE = /[?&](limit|max|max_results|top|per_page|page_size|size|count|maxResults)=/i;
-    COLLECTION_WORDS = /^(records|entries|templates|items|users|rows|files|documents|pages|posts|messages|tickets|issues|workflows|apps|projects|tasks|notes|cards|events|customers|orders|contacts|subscribers|sessions|sources|libraries|all|bulk|batch|everything)$/i;
-    BULK_SEGMENT = /^(by-template|by-source|by-library|bulk|purge|truncate|wipe|drop|clear|all)$/i;
-    BULK_QUERY = /[?&](all|force|purge|truncate|wipe|drop|confirm_all)=(true|1|yes|\*)(&|$)/i;
-  }
-});
-
-// shared/dataflow-graph/declarations.mjs
-var init_declarations = __esm({
-  "shared/dataflow-graph/declarations.mjs"() {
-  }
-});
-
-// shared/dataflow-graph/platform-io.generated.mjs
-var platform_io_generated_default;
-var init_platform_io_generated = __esm({
-  "shared/dataflow-graph/platform-io.generated.mjs"() {
-    platform_io_generated_default = [
-      {
-        "owner": "cypher-executor/src/lib/workflow-search.ts",
-        "direction": "read",
-        "kind": "entry",
-        "template": "workflow",
-        "note": "\u641C\u5DE5\u4F5C\u6D41\uFF08\u5BEB\u5165\u8005\u662F webhooks-named.ts \u7684 push\uFF09"
-      },
-      {
-        "owner": "cypher-executor/src/routes/webhooks-named.ts",
-        "direction": "write",
-        "kind": "entry",
-        "template": "workflow",
-        "note": "\u6BCF\u652F push \u4E0A\u4F86\u7684\u5DE5\u4F5C\u6D41\u90FD\u5BEB\u4E00\u7B46\uFF0C\u4F9B /workflows/search"
-      },
-      {
-        "owner": "kbdb/src/actions/library-index.ts",
-        "direction": "read",
-        "kind": "entry",
-        "template": "block",
-        "note": "\u5B50\u5EAB\u76EE\u9304\u3001\u627E\u5361\uFF08card-lookup\uFF09\u3001retrieve \u90FD\u8B80\u5361\u7684\u6BB5\u843D\uFF08\u5BEB\u5165\u8005\u662F rag_ingest_card\uFF09"
-      },
-      {
-        "owner": "kbdb/src/actions/library-map-store.ts",
-        "direction": "read",
-        "kind": "record",
-        "template": "triplet",
-        "note": "\u5730\u5716\u91CD\u7B97\uFF0F\u5716\u67E5\u8A62\u8B80\u4E09\u5143\u7D44\uFF08\u5BEB\u5165\u8005\u662F ingest \u5DE5\u4F5C\u6D41\uFF09"
-      },
-      {
-        "owner": "kbdb/src/actions/library-map-store.ts",
-        "direction": "write",
-        "kind": "entry",
-        "template": "library_card_tally",
-        "note": "\u6BCF\u5EAB\u73FE\u5F79\u5361\u5F35\u6578\uFF08\u5BEB\u5165\u7AEF\u589E\u6E1B\u3001\u8B80\u7AEF\u53EA\u8B80\uFF1Binkstone/Arcrun#393\uFF09"
-      },
-      {
-        "owner": "kbdb/src/actions/library-map-store.ts",
-        "direction": "write",
-        "kind": "entry",
-        "template": "library_map",
-        "note": "\u85CF\u66F8\u5730\u5716\u7531 kbdb \u81EA\u5DF1\u91CD\u7B97\u5BEB\u5165\uFF08inkstone/Arcrun#339\uFF09"
-      },
-      {
-        "owner": "kbdb/src/actions/record-crud.ts",
-        "direction": "read",
-        "kind": "entry",
-        "template": "value",
-        "note": "record \u7684\u683C\u5B50\u53EF\u4EE5\u639B\u4E00\u9846\u65E2\u6709 entry\uFF08\u4F8B\uFF1Arag_ingest_card \u5148\u5BEB value \u5E38\u6578\u518D\u639B\u4E0A triplet\uFF09\uFF0C\u8B80 record \u6642\u4E00\u4F75\u8B80\u56DE"
-      },
-      {
-        "owner": "kbdb/src/embed.ts",
-        "direction": "read",
-        "kind": "entry",
-        "template": "alias",
-        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-        "const": "VECTOR_ENTRY_TYPES",
-        "constValues": [
-          "alias",
-          "entity",
-          "predicate",
-          "source_passage"
-        ]
-      },
-      {
-        "owner": "kbdb/src/embed.ts",
-        "direction": "read",
-        "kind": "entry",
-        "template": "entity",
-        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-        "const": "VECTOR_ENTRY_TYPES",
-        "constValues": [
-          "alias",
-          "entity",
-          "predicate",
-          "source_passage"
-        ]
-      },
-      {
-        "owner": "kbdb/src/embed.ts",
-        "direction": "read",
-        "kind": "entry",
-        "template": "predicate",
-        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-        "const": "VECTOR_ENTRY_TYPES",
-        "constValues": [
-          "alias",
-          "entity",
-          "predicate",
-          "source_passage"
-        ]
-      },
-      {
-        "owner": "kbdb/src/embed.ts",
-        "direction": "read",
-        "kind": "entry",
-        "template": "source_passage",
-        "note": "\u9019\u56DB\u7A2E\u9032\u5411\u91CF\uFF08entity \u7B49\u4E09\u7A2E\u6392\u91CD normalize \u7528\uFF1Bsource_passage\uFF1D\u539F\u7A3F\u6BB5\u843D\u8A9E\u610F\u67E5\u8A62\uFF09",
-        "const": "VECTOR_ENTRY_TYPES",
-        "constValues": [
-          "alias",
-          "entity",
-          "predicate",
-          "source_passage"
-        ]
-      }
-    ];
-  }
-});
-
-// shared/dataflow-graph/index.mjs
-var init_dataflow_graph = __esm({
-  "shared/dataflow-graph/index.mjs"() {
-    init_extract();
-    init_rules();
-    init_security();
-    init_advice();
-    init_declarations();
-    init_platform_io_generated();
   }
 });
 
@@ -16837,6 +17165,48 @@ var init_app_userlayer = __esm({
   }
 });
 
+// cypher-executor/src/lib/app-lean.ts
+function leanOfApp(app2) {
+  if (!app2 || typeof app2 !== "object") return null;
+  if (typeof app2.id !== "string" || app2.status !== "active") return null;
+  if (!Array.isArray(app2.actions) || !Array.isArray(app2.workflows)) return null;
+  const actions = app2.actions.filter((a) => typeof a === "string");
+  const want = new Set(actions);
+  const workflows = [];
+  for (const w of app2.workflows) {
+    if (w && typeof w.name === "string" && typeof w.wf_key === "string" && want.has(w.name)) {
+      workflows.push({ name: w.name, wf_key: w.wf_key });
+    }
+  }
+  const engineMin = app2.declared && typeof app2.declared.engine_min === "string" ? app2.declared.engine_min : void 0;
+  return {
+    id: app2.id,
+    name: typeof app2.name === "string" ? app2.name : "",
+    version: typeof app2.version === "string" ? app2.version : "",
+    status: "active",
+    actions,
+    workflows,
+    ...engineMin ? { declared: { engine_min: engineMin } } : {}
+  };
+}
+function parseLeanApp(raw2) {
+  if (!raw2) return null;
+  try {
+    const v = JSON.parse(raw2);
+    if (v && v.status === "active" && typeof v.id === "string" && Array.isArray(v.actions) && Array.isArray(v.workflows)) return v;
+  } catch {
+  }
+  return null;
+}
+function leanKey(tenant2, id) {
+  return `${tenant2}:applean:${id}`;
+}
+var init_app_lean = __esm({
+  "cypher-executor/src/lib/app-lean.ts"() {
+    "use strict";
+  }
+});
+
 // cypher-executor/src/lib/app-rulebook.ts
 function validateRulebook(raw2, workflowNames) {
   const errors = [];
@@ -16968,6 +17338,467 @@ var init_app_rulebook = __esm({
   }
 });
 
+// cypher-executor/src/lib/portal-actor.ts
+function hex2(buf) {
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function hmacHex(secret, msg2) {
+  const key = await crypto.subtle.importKey("raw", enc2.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex2(await crypto.subtle.sign("HMAC", key, enc2.encode(msg2)));
+}
+function message(a) {
+  return [DOMAIN, a.tenant, a.login, a.role, String(a.ts), a.nonce].join("\n");
+}
+function randomHex(bytes) {
+  const b = new Uint8Array(bytes);
+  crypto.getRandomValues(b);
+  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+function clean(s) {
+  return String(s ?? "").replace(/[\r\n]/g, " ").trim().slice(0, 128);
+}
+async function signPortalActor(env, tenant2, who, nowMs = Date.now()) {
+  const secret = (env.KBDB_INTERNAL_TOKEN ?? "").trim();
+  if (!secret) return null;
+  const a = { login: clean(who.login), role: clean(who.role) || "user", tenant: clean(tenant2), ts: Math.floor(nowMs / 1e3), nonce: randomHex(12) };
+  if (!a.login || !a.tenant) return null;
+  const sig = await hmacHex(secret, message(a));
+  noteIssued(sig, a.ts * 1e3 + PORTAL_ACTOR_TTL_SEC * 1e3);
+  return { ...a, sig };
+}
+function prune(m, now2) {
+  if (m.size < MEM_MAX) return;
+  for (const [k, exp] of m) if (exp < now2) m.delete(k);
+  while (m.size >= MEM_MAX) {
+    const k = m.keys().next().value;
+    if (k === void 0) break;
+    m.delete(k);
+  }
+}
+function noteIssued(sig, expMs) {
+  prune(issuedSigs, Date.now());
+  issuedSigs.set(sig.toLowerCase(), expMs);
+}
+function takeIssuedActor(sig, now2 = Date.now()) {
+  const k = sig.toLowerCase();
+  const exp = issuedSigs.get(k);
+  if (exp === void 0) return false;
+  issuedSigs.delete(k);
+  return exp >= now2;
+}
+function markSpentActor(sig, now2 = Date.now()) {
+  prune(spentSigs, now2);
+  spentSigs.set(sig.toLowerCase(), now2 + (PORTAL_ACTOR_TTL_SEC + 30) * 1e3);
+}
+function spentHereActor(sig, now2 = Date.now()) {
+  const exp = spentSigs.get(sig.toLowerCase());
+  return exp !== void 0 && exp >= now2;
+}
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+async function verifyPortalActor(env, tenant2, raw2, nowMs = Date.now()) {
+  const secret = (env.KBDB_INTERNAL_TOKEN ?? "").trim();
+  if (!secret) return { valid: false, reason: "no_signing_key" };
+  const a = raw2 && typeof raw2 === "object" ? raw2 : null;
+  if (!a) return { valid: false, reason: "malformed" };
+  const ts = Number(a.ts);
+  const sig = typeof a.sig === "string" ? a.sig.toLowerCase() : "";
+  if (!Number.isFinite(ts) || !/^[0-9a-f]{64}$/.test(sig)) return { valid: false, reason: "malformed" };
+  const login = clean(a.login), role = clean(a.role), nonce = clean(a.nonce);
+  if (!/^[0-9a-f]{8,64}$/.test(nonce)) return { valid: false, reason: "malformed" };
+  if (!login || clean(a.tenant) !== clean(tenant2)) return { valid: false, reason: "wrong_tenant" };
+  const want = await hmacHex(secret, message({ login, role, tenant: clean(tenant2), ts, nonce }));
+  if (!timingSafeEqual(want, sig)) return { valid: false, reason: "bad_signature" };
+  const age = Math.floor(nowMs / 1e3) - ts;
+  if (age < -5 || age > PORTAL_ACTOR_TTL_SEC) return { valid: false, reason: "expired" };
+  return { valid: true, login, role };
+}
+var PORTAL_ACTOR_TTL_SEC, DOMAIN, enc2, issuedSigs, spentSigs, MEM_MAX;
+var init_portal_actor = __esm({
+  "cypher-executor/src/lib/portal-actor.ts"() {
+    "use strict";
+    PORTAL_ACTOR_TTL_SEC = 90;
+    DOMAIN = "arcrun-portal-actor-v1";
+    enc2 = new TextEncoder();
+    issuedSigs = /* @__PURE__ */ new Map();
+    spentSigs = /* @__PURE__ */ new Map();
+    MEM_MAX = 2e3;
+  }
+});
+
+// cypher-executor/src/lib/kbdb-trace.ts
+import { AsyncLocalStorage } from "node:async_hooks";
+function withKbdbTrace(fn) {
+  const marks = [];
+  return als.run(marks, async () => ({ value: await fn(), marks }));
+}
+function opOf(method, path) {
+  const p = path.split("?")[0].replace(/\/(rec|tpl|cell)?[_-]?[0-9a-f]{8}[0-9a-f-]{8,}/gi, "/:id");
+  const segs = p.split("/").filter(Boolean);
+  const head = segs.slice(0, segs[0] === "records" && segs[1] === "by-source" ? 2 : segs[0] === "records" && segs[1] ? 2 : 1).join("/");
+  return `${method} /${head}${segs.length > 2 && segs[0] === "records" && segs[1] === "by-source" ? "/:t" : ""}`;
+}
+function num(h, name) {
+  const m = h ? new RegExp(`${name};dur=([0-9.]+)`).exec(h) : null;
+  return m ? Math.round(Number(m[1])) : void 0;
+}
+function noteKbdbCall(method, path, t0, res) {
+  const marks = als.getStore();
+  if (!marks || marks.length >= 40) return;
+  const st = res.headers.get("server-timing");
+  marks.push({
+    op: opOf(method.toUpperCase(), path),
+    ms: Date.now() - t0,
+    inMs: num(st, "kbdb_in"),
+    gateMs: num(st, "kbdb_gate"),
+    d1Ms: num(st, "kbdb_d1"),
+    colo: res.headers.get("x-kbdb-colo") ?? void 0,
+    rowsRead: intHeader(res, "x-kbdb-rows-read"),
+    rowsWritten: intHeader(res, "x-kbdb-rows-written")
+  });
+}
+function intHeader(res, name) {
+  const v = res.headers.get(name);
+  return v !== null && /^\d+$/.test(v) ? Number(v) : void 0;
+}
+function kbdbRowsTotal(marks, timing) {
+  let read = 0, written = 0;
+  for (const m of marks) {
+    read += m.rowsRead ?? 0;
+    written += m.rowsWritten ?? 0;
+  }
+  for (const [n, d] of timing ?? []) {
+    if (/_kbdb_rows$/.test(n)) read += d;
+    else if (/_kbdb_wrows$/.test(n)) written += d;
+  }
+  return { read, written };
+}
+function kbdbMarksToTiming(marks) {
+  return marks.map((m, i) => {
+    const name = `kb${i + 1}_${m.op.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`.slice(0, 48);
+    const parts = [m.inMs != null ? `in=${m.inMs}` : "", m.gateMs != null ? `gate=${m.gateMs}` : "", m.d1Ms != null ? `d1=${m.d1Ms}` : "", m.rowsRead != null ? `rows=${m.rowsRead}` : "", m.rowsWritten ? `wrows=${m.rowsWritten}` : "", m.colo ? `colo=${m.colo}` : ""].filter(Boolean);
+    return `${name};dur=${m.ms}${parts.length ? `;desc="${parts.join(",")}"` : ""}`;
+  });
+}
+function currentKbdbMarks() {
+  return als.getStore() ?? [];
+}
+function isolateAgeMs() {
+  const now2 = Date.now();
+  if (!isolateFirstSeen) {
+    isolateFirstSeen = now2;
+    return 0;
+  }
+  return now2 - isolateFirstSeen;
+}
+function noteTimed(op, t0) {
+  const marks = als.getStore();
+  if (!marks || marks.length >= 40) return;
+  marks.push({ op, ms: Date.now() - t0 });
+}
+var als, isolateFirstSeen;
+var init_kbdb_trace = __esm({
+  "cypher-executor/src/lib/kbdb-trace.ts"() {
+    "use strict";
+    als = new AsyncLocalStorage();
+    isolateFirstSeen = 0;
+  }
+});
+
+// cypher-executor/src/lib/ephemeral-store.ts
+async function kFetch(env, path, init) {
+  const { base, headers } = kbdbBase(env);
+  const tTrace = Date.now();
+  try {
+    const res = await kbdbFetchRaw(`${base}${path}`, {
+      ...init,
+      // 短效資料＝session／鎖定計數／密碼重設票，全是帳號基本操作（#293）：走保留額度。
+      headers: { ...withEssential(headers), ...init?.headers }
+    });
+    noteKbdbCall(init?.method ?? "GET", path, tTrace, res);
+    return res;
+  } catch (e) {
+    throw new EphemeralStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+async function sha256Hex(input) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function ensureTemplate(env, name, slots) {
+  if (ensuredTemplates.has(name)) return;
+  const got = await kFetch(env, `/templates/${encodeURIComponent(name)}`);
+  releaseBody(got);
+  if (!got.ok) {
+    releaseBody(await kFetch(env, "/templates", {
+      method: "POST",
+      body: JSON.stringify({ name, slots })
+    }).catch(() => void 0));
+  }
+  ensuredTemplates.add(name);
+}
+async function findByHash(env, template, hashField, hash, follow) {
+  const res = await kFetch(
+    env,
+    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(hashField)}&value=${encodeURIComponent(hash)}&limit=1&with_values=1${follow ? `&follow=${encodeURIComponent(follow)}` : ""}`
+  );
+  if (!res.ok) {
+    releaseBody(res);
+    throw new EphemeralStoreError(`GET /records/by-source(${template}) \u2192 ${res.status}`, res.status);
+  }
+  const body = await res.json().catch(() => null);
+  const id = body?.record_ids?.[0];
+  if (!id) return null;
+  const inline2 = body?.records?.find((r) => r?.record_id === id);
+  if (inline2 && inline2.values && typeof inline2.values === "object") {
+    const f = body?.followed?.record;
+    return { record_id: inline2.record_id, values: inline2.values, ...follow && body && "followed" in body ? { followed: f && f.values && typeof f.values === "object" ? f : null } : {} };
+  }
+  const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
+  if (rec.status === 404) {
+    releaseBody(rec);
+    return null;
+  }
+  if (!rec.ok) {
+    releaseBody(rec);
+    throw new EphemeralStoreError(`GET /records/:id(${template}) \u2192 ${rec.status}`, rec.status);
+  }
+  const recBody = await rec.json().catch(() => null);
+  return recBody?.record ?? null;
+}
+async function deleteRecordById(env, recordId) {
+  releaseBody(await kFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }).catch(() => void 0));
+}
+async function ephemeralPut(env, opts) {
+  await ensureTemplate(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
+  const hash = await sha256Hex(opts.rawKey);
+  const exp = opts.ttlSeconds === null ? "never" : String(Date.now() + opts.ttlSeconds * 1e3);
+  const values = { ...opts.values, [opts.hashField]: hash, exp };
+  const existing = opts.fresh ? null : await findByHash(env, opts.template, opts.hashField, hash);
+  if (existing) {
+    const res2 = await kFetch(env, `/records/${encodeURIComponent(existing.record_id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ values })
+    });
+    releaseBody(res2);
+    if (!res2.ok) throw new EphemeralStoreError(`PATCH /records(${opts.template}) \u2192 ${res2.status}`, res2.status);
+    return;
+  }
+  const res = await kFetch(env, "/records", {
+    method: "POST",
+    body: JSON.stringify({ template: opts.template, values })
+  });
+  releaseBody(res);
+  if (!res.ok) throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 ${res.status}`, res.status);
+}
+async function ephemeralClaimOnce(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const body = JSON.stringify({
+    template: opts.template,
+    record_id: `once_${opts.template}_${hash}`,
+    values: { [opts.hashField]: hash, exp: String(Date.now() + opts.ttlSeconds * 1e3) },
+    create_only: true,
+    derived_cell_ids: true
+  });
+  const send = async () => kFetch(env, "/records", { method: "POST", body });
+  if (!ensuredTemplates.has(opts.template)) {
+    let res = await send();
+    if (res.status === 400) {
+      const text = await res.text().catch(() => "");
+      if (/template not found/i.test(text)) {
+        await ensureTemplate(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
+        res = await send();
+      } else {
+        throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 400 ${text.slice(0, 120)}`, 400);
+      }
+    }
+    return settleClaim(res, opts.template);
+  }
+  return settleClaim(await send(), opts.template);
+}
+async function settleClaim(res, template) {
+  if (res.status === 409) {
+    releaseBody(res);
+    return false;
+  }
+  releaseBody(res);
+  if (!res.ok) throw new EphemeralStoreError(`POST /records(${template}, claim) \u2192 ${res.status}`, res.status);
+  ensuredTemplates.add(template);
+  return true;
+}
+async function ephemeralGet(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const found = await findByHash(env, opts.template, opts.hashField, hash);
+  if (!found) return null;
+  const exp = Number(found.values.exp);
+  const expired = Number.isFinite(exp) && exp < Date.now();
+  if (opts.consume || expired) await deleteRecordById(env, found.record_id);
+  if (expired) return null;
+  return found.values;
+}
+async function ephemeralDelete(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const found = await findByHash(env, opts.template, opts.hashField, hash);
+  if (found) await deleteRecordById(env, found.record_id);
+}
+async function ephemeralListBy(env, template, field, value, max = 50) {
+  const res = await kFetch(
+    env,
+    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(field)}&value=${encodeURIComponent(value)}`
+  );
+  if (!res.ok) {
+    releaseBody(res);
+    return [];
+  }
+  const body = await res.json().catch(() => null);
+  const ids = (body?.record_ids ?? []).slice(0, max);
+  const out = [];
+  for (const id of ids) {
+    const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
+    if (!rec.ok) {
+      releaseBody(rec);
+      continue;
+    }
+    const recBody = await rec.json().catch(() => null);
+    if (recBody?.record) out.push(recBody.record);
+  }
+  return out;
+}
+async function ephemeralPatchById(env, recordId, values) {
+  const res = await kFetch(env, `/records/${encodeURIComponent(recordId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ values })
+  });
+  releaseBody(res);
+  if (!res.ok) throw new EphemeralStoreError(`PATCH /records/:id \u2192 ${res.status}`, res.status);
+}
+async function ephemeralDeleteById(env, recordId) {
+  await deleteRecordById(env, recordId);
+}
+async function ephemeralGetFollow(env, opts) {
+  const hash = await sha256Hex(opts.rawKey);
+  const found = await findByHash(env, opts.template, opts.hashField, hash, opts.follow);
+  if (!found) return null;
+  const exp = Number(found.values.exp);
+  if (Number.isFinite(exp) && exp < Date.now()) {
+    await deleteRecordById(env, found.record_id);
+    return null;
+  }
+  return { values: found.values, followed: found.followed };
+}
+var EphemeralStoreError, ensuredTemplates;
+var init_ephemeral_store = __esm({
+  "cypher-executor/src/lib/ephemeral-store.ts"() {
+    "use strict";
+    init_kbdb_proxy();
+    init_release_body();
+    init_kbdb_caller();
+    init_kbdb_trace();
+    init_kbdb_transport();
+    EphemeralStoreError = class extends Error {
+      constructor(message2, status) {
+        super(message2);
+        this.status = status;
+        this.name = "EphemeralStoreError";
+      }
+      status;
+    };
+    ensuredTemplates = /* @__PURE__ */ new Set();
+  }
+});
+
+// cypher-executor/src/lib/caller-verify.ts
+function readCallerDecl(graph) {
+  const c = graph && typeof graph === "object" ? graph.caller : void 0;
+  if (c === void 0 || c === null || c === false) return null;
+  if (c === true) return {};
+  if (typeof c !== "object") return null;
+  const o = c;
+  return {
+    ...typeof o.token_template === "string" && /^[A-Za-z0-9_]{1,64}$/.test(o.token_template) ? { token_template: o.token_template } : {},
+    ...o.required === true ? { required: true } : {}
+  };
+}
+function stripCaller(ctx) {
+  if (!(CALLER_KEY in ctx)) return ctx;
+  const { [CALLER_KEY]: _drop, ...rest } = ctx;
+  void _drop;
+  return rest;
+}
+async function verifyActorOnce(env, tenant2, actor, waitUntil) {
+  const r = await verifyPortalActor(env, tenant2, actor);
+  if (!r.valid) return { valid: false, reason: r.reason };
+  const sig = String(actor.sig ?? "").toLowerCase();
+  const claim = () => ephemeralClaimOnce(env, { template: SPENT_TEMPLATE, slots: [], hashField: "sig_hash", rawKey: sig, ttlSeconds: PORTAL_ACTOR_TTL_SEC + 30 });
+  if (spentHereActor(sig)) return { valid: false, reason: "already_used" };
+  if (takeIssuedActor(sig) && waitUntil) {
+    waitUntil(claim().catch((e) => {
+      console.error("[portal-actor] spent claim failed (background)", e instanceof Error ? e.message : String(e));
+    }));
+    markSpentActor(sig);
+    return { valid: true, login: r.login, role: r.role };
+  }
+  const first = await claim();
+  if (!first) return { valid: false, reason: "already_used" };
+  return { valid: true, login: r.login, role: r.role };
+}
+function ph(v) {
+  const s = typeof v === "string" ? v.trim() : "";
+  return /^\{\{[^{}]*\}\}$/.test(s) ? "" : s;
+}
+function readCredential(ctx) {
+  const hasToken = ctx.token !== void 0 && ctx.token !== null && (typeof ctx.token !== "string" || ph(ctx.token) !== "");
+  const raw2 = hasToken ? ctx.token : ctx._portal_actor;
+  if (raw2 && typeof raw2 === "object") return { kind: "actor", actor: raw2 };
+  const s = ph(raw2);
+  if (!s) return { kind: "none" };
+  if (s.charAt(0) === "{") {
+    let a = null;
+    try {
+      a = JSON.parse(s);
+    } catch {
+    }
+    return { kind: "actor", actor: a };
+  }
+  return { kind: "token", token: s };
+}
+async function resolveCaller(env, tenant2, graph, ctx, waitUntil) {
+  const base = stripCaller(ctx);
+  const decl = readCallerDecl(graph);
+  if (!decl) return { ok: true, context: base };
+  const cred = readCredential(base);
+  let caller;
+  if (cred.kind === "none") {
+    if (decl.required) return fail("no_credential", "\u9019\u689D\u5DE5\u4F5C\u6D41\u8981\u5148\u9A57\u547C\u53EB\u8005\uFF1A\u6C92\u6709\u5E36\u6191\u8B49");
+    caller = { kind: "anonymous", verified: true, login: "", role: "", admin: false };
+  } else if (cred.kind === "actor") {
+    const v = await verifyActorOnce(env, tenant2, cred.actor, waitUntil);
+    if (!v.valid) return fail(v.reason, `\u547C\u53EB\u8005\u9A57\u8B49\u5931\u6557\uFF1A${v.reason}`);
+    caller = { kind: "portal", verified: true, login: v.login, role: v.role, admin: v.role === "admin" };
+  } else {
+    if (!decl.token_template) return fail("token_not_accepted", "\u9019\u689D\u5DE5\u4F5C\u6D41\u4E0D\u6536 token\uFF08\u6C92\u6709\u5BA3\u544A token_template\uFF09");
+    const row = await ephemeralGet(env, { template: decl.token_template, hashField: "token_sha256", rawKey: cred.token });
+    if (!row || row.revoked === "1" || !String(row.login ?? "").trim()) return fail("unknown_token", "\u547C\u53EB\u8005\u9A57\u8B49\u5931\u6557\uFF1Atoken \u4E0D\u5B58\u5728\u6216\u5DF2\u64A4\u92B7");
+    caller = { kind: "token", verified: true, login: String(row.login).trim(), role: "agent", admin: false };
+  }
+  return { ok: true, context: { ...base, [CALLER_KEY]: caller } };
+}
+var CALLER_KEY, SPENT_TEMPLATE, fail;
+var init_caller_verify = __esm({
+  "cypher-executor/src/lib/caller-verify.ts"() {
+    "use strict";
+    init_portal_actor();
+    init_ephemeral_store();
+    CALLER_KEY = "_caller";
+    SPENT_TEMPLATE = "portal_actor_spent";
+    fail = (reason, error) => ({ ok: false, status: 401, error, reason });
+  }
+});
+
 // cypher-executor/src/lib/app-system.ts
 var app_system_exports = {};
 __export(app_system_exports, {
@@ -16989,17 +17820,19 @@ __export(app_system_exports, {
   appStore: () => appStore,
   applyDeclarationDefaults: () => applyDeclarationDefaults,
   canonicalize: () => canonicalize,
+  codeRatchetViolation: () => codeRatchetViolation,
   computeContentHash: () => computeContentHash,
   copyApp: () => copyApp,
   detailApp: () => detailApp,
   ensureAppRecipes: () => ensureAppRecipes,
   ensureFieldIndexes: () => ensureFieldIndexes,
-  ensureTemplate: () => ensureTemplate,
+  ensureTemplate: () => ensureTemplate2,
   findMissingCredentials: () => findMissingCredentials,
   flowCanvasNotInstalledBody: () => flowCanvasNotInstalledBody,
   generateIcon: () => generateIcon,
   getAppWorkflowGraph: () => getAppWorkflowGraph,
   getInstalledApp: () => getInstalledApp,
+  getInstalledAppLean: () => getInstalledAppLean,
   installApp: () => installApp,
   isFlowCanvasInstalled: () => isFlowCanvasInstalled,
   isPlatformWorkflow: () => isPlatformWorkflow,
@@ -17029,8 +17862,8 @@ function appStore(env) {
   return env.WEBHOOKS;
 }
 function kbdbBehindHint(e) {
-  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-  if (!msg.includes("KbdbUnavailable")) return null;
+  const msg2 = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  if (!msg2.includes("KbdbUnavailable")) return null;
   return "\u9019\u53F0\u5BE6\u4F8B\u7684\u77E5\u8B58\u5EAB\uFF08KBDB\uFF09\u6C92\u6709\u56DE\u61C9\uFF0C\u6216\u5B83\u7684\u7248\u672C\u6BD4\u76EE\u524D\u7684\u7A0B\u5F0F\u78BC\u820A\u2014\u2014\u5B89\u88DD\u9700\u8981\u77E5\u8B58\u5EAB\u63D0\u4F9B\u300C\u540C\u4E00\u4EFD\u8CC7\u7522\u6C38\u9060\u540C\u4E00\u5217\u300D\u7684\u5BEB\u5165\u80FD\u529B\u3002\u8ACB\u7BA1\u7406\u8005\u628A\u77E5\u8B58\u5EAB\u4E00\u8D77\u66F4\u65B0\u5230\u540C\u4E00\u7248\uFF1B\u5728\u90A3\u4E4B\u524D**\u5DF2\u7D93\u88DD\u597D\u7684 App \u4E0D\u53D7\u5F71\u97FF**\uFF0C\u7167\u5E38\u53EF\u7528\u3002";
 }
 function resolveWorkflowTrigger(wf) {
@@ -17473,7 +18306,7 @@ async function listInstalledApps(env, tenant2) {
   );
   return apps.filter((a) => a !== null);
 }
-async function ensureTemplate(env, name, slots, description) {
+async function ensureTemplate2(env, name, slots, description) {
   const { base, headers } = kbdbBase(env);
   noteSubrequest();
   const getRes = await fetch(`${base}/templates/${encodeURIComponent(name)}`, { headers });
@@ -17614,6 +18447,11 @@ async function upsertAppSkill(env, tenant2, appId, skill) {
   if (!res.ok) throw new Error(`\u5EFA\u7ACB\u6280\u80FD ${skill.slug} \u5931\u6557\uFF1AHTTP ${res.status}`);
   return "created";
 }
+function codeRatchetViolation(decl, catalogAuthor) {
+  if (!isOwnAuthor(catalogAuthor, code_node_baseline_default)) return null;
+  const r = checkCodeRatchet(decl, code_node_baseline_default);
+  return r.ok ? null : r.message;
+}
 async function installApp(env, tenant2, rawDecl, opts = {}) {
   let decl0 = rawDecl;
   if (opts.coords) {
@@ -17647,6 +18485,17 @@ async function installApp(env, tenant2, rawDecl, opts = {}) {
     };
   }
   const decl = applyDeclarationDefaults(decl0);
+  {
+    const violation = codeRatchetViolation(decl, opts.catalogAuthor);
+    if (violation) {
+      return {
+        ok: false,
+        step: "\u81EA\u5BB6 App \u7684 code \u7BC0\u9EDE\u4E0A\u9650",
+        errors: [violation],
+        hint: "\u9019\u662F\u51FA App \u7684\u4EBA\uFF08\u6216\u4ED6\u7684 AI\uFF09\u8981\u4FEE\u7684\uFF1A\u628A\u65B0\u589E\u7684 code \u63DB\u6210\u5F15\u64CE\u96F6\u4EF6\u6216 recipe\uFF0C\u7F3A\u96F6\u4EF6\u5C31\u5148\u88DC\u96F6\u4EF6\uFF0C\u518D\u91CD\u65B0\u6253\u5305\u3002\u91CD\u8A66\u4E0D\u6703\u8B8A\u597D\u3002"
+      };
+    }
+  }
   let advice = [];
   let permissions;
   {
@@ -17682,27 +18531,27 @@ ${securityText(scan)}`],
   const requestStart = subrequestCount();
   const spent = () => subrequestCount() - requestStart;
   if (existing && existing.content_hash === contentHash2 && existing.status === "active") {
-    const ensured4 = await ensureAppRecipes(env, wantedRecipes, ulCtx);
-    if (!ensured4.ok) {
+    const ensured5 = await ensureAppRecipes(env, wantedRecipes, ulCtx);
+    if (!ensured5.ok) {
       return {
         ok: false,
         step: "\u5099\u9F4A\u9700\u8981\u7684 recipe",
-        errors: [ensured4.error],
+        errors: [ensured5.error],
         hint: "\u9019\u500B App \u9700\u8981\u7684 recipe \u5BEB\u4E0D\u9032\u9019\u53F0\u5BE6\u4F8B\u3002\u7A0D\u7B49\u4E00\u5206\u9418\u518D\u6309\u4E00\u6B21\uFF1B\u4E00\u76F4\u5931\u6557\u5C31\u628A\u9019\u53E5\u8A71\u56DE\u5831\u7D66\u7BA1\u7406\u8005\u3002"
       };
     }
     const credCheck2 = await findMissingCredentials(env, tenant2, wantedCreds);
     await flushUl();
     const needs2 = {
-      recipes_installed: ensured4.installed,
-      ...ensured4.kept.length ? { kept_user_changes: ensured4.kept } : {},
+      recipes_installed: ensured5.installed,
+      ...ensured5.kept.length ? { kept_user_changes: ensured5.kept } : {},
       missing_credentials: credCheck2.missing,
       ...credCheck2.checked ? {} : { credentials_check_failed: true }
     };
     try {
       for (const dt of decl.data) {
         if (spent() >= INSTALL_REQUEST_BUDGET) break;
-        await ensureTemplate(env, dt.name, dt.slots, dt.description);
+        await ensureTemplate2(env, dt.name, dt.slots, dt.description);
       }
     } catch (e) {
       return {
@@ -17723,10 +18572,10 @@ ${securityText(scan)}`],
       label: String(r.canonical_id ?? ""),
       cost: 3,
       run: async () => {
-        const ensured4 = await ensureAppRecipes(env, [r], ulCtx);
-        if (!ensured4.ok) throw new Error(ensured4.error);
-        recipesInstalled = recipesInstalled.concat(ensured4.installed);
-        keptUserChanges.push(...ensured4.kept);
+        const ensured5 = await ensureAppRecipes(env, [r], ulCtx);
+        if (!ensured5.ok) throw new Error(ensured5.error);
+        recipesInstalled = recipesInstalled.concat(ensured5.installed);
+        keptUserChanges.push(...ensured5.kept);
         await flushUl();
       }
     });
@@ -17739,7 +18588,7 @@ ${securityText(scan)}`],
       label: dt.name,
       cost: dtUnchanged ? 0 : 2,
       run: dtUnchanged ? async () => {
-      } : () => ensureTemplate(env, dt.name, dt.slots, dt.description)
+      } : () => ensureTemplate2(env, dt.name, dt.slots, dt.description)
     });
   }
   const prepared = await Promise.all(decl.workflows.map(async (wf) => {
@@ -17968,9 +18817,20 @@ async function uninstallApp(env, tenant2, id) {
   }
   return { ok: true };
 }
-function prefetchAppAction(env, tenant2, appId, action) {
+async function getInstalledAppLean(env, tenant2, id, ctx) {
+  const lk = leanKey(String(tenant2), id);
+  const lean = parseLeanApp(await appStore(env).get(lk, "text"));
+  if (lean) return lean;
+  const full = await getInstalledApp(env, tenant2, id);
+  const made = leanOfApp(full);
+  if (!made) return null;
+  const store2 = appStore(env);
+  if (ctx && typeof store2.putIfAbsent === "function") ctx.waitUntil(store2.putIfAbsent(lk, JSON.stringify(made)).catch(() => void 0));
+  return made;
+}
+function prefetchAppAction(env, tenant2, appId, action, ctx) {
   const guessedKey = `${appId}__${action}`;
-  const app2 = getInstalledApp(env, tenant2, appId);
+  const app2 = getInstalledAppLean(env, tenant2, appId, ctx);
   const guessedRaw = appStore(env).get(workflowKvKey(tenant2, guessedKey), "text");
   app2.catch(() => void 0);
   guessedRaw.catch(() => void 0);
@@ -17978,7 +18838,7 @@ function prefetchAppAction(env, tenant2, appId, action) {
 }
 async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch) {
   const tStart = Date.now();
-  const pre = prefetch ?? prefetchAppAction(env, tenant2, appId, action);
+  const pre = prefetch ?? prefetchAppAction(env, tenant2, appId, action, ctx);
   const guessedKey = pre.guessedKey;
   const [app2, guessedRaw] = await Promise.all([pre.app, pre.guessedRaw]);
   const tLoaded = Date.now();
@@ -17998,8 +18858,10 @@ async function runAppAction(env, tenant2, appId, action, payload, ctx, prefetch)
   } catch {
     return { ok: false, status: 500, error: "\u5DE5\u4F5C\u6D41\u5B9A\u7FA9\u640D\u6BC0" };
   }
+  const gated = await resolveCaller(env, String(tenant2), graph, payload, ctx ? (p) => ctx.waitUntil(p) : void 0);
+  if (!gated.ok) return { ok: false, status: 403, error: gated.error };
   const tExec = Date.now();
-  const result = await executeWebhookGraph(env, graph, payload, wfRef.wf_key, String(tenant2), ctx);
+  const result = await executeWebhookGraph(env, graph, gated.context, wfRef.wf_key, String(tenant2), ctx);
   const tDone = Date.now();
   const timing = [["load", tLoaded - tStart], ["run", tDone - tExec]];
   if (Array.isArray(result.trace)) {
@@ -18107,6 +18969,8 @@ var init_app_system = __esm({
   "cypher-executor/src/lib/app-system.ts"() {
     "use strict";
     init_builtin_ids();
+    init_dataflow_graph();
+    init_code_node_baseline();
     init_app_glyphs();
     init_version();
     init_kbdb_proxy();
@@ -18124,7 +18988,9 @@ var init_app_system = __esm({
     init_security_scan();
     init_permission_core();
     init_app_userlayer();
+    init_app_lean();
     init_app_rulebook();
+    init_caller_verify();
     APP_WORKFLOW_TRIGGERS = ["manual", "schedule", "event"];
     APP_UI_STYLES = ["inherit", "own"];
     DEFAULT_APP_UI_STYLE = "inherit";
@@ -18439,14 +19305,14 @@ function recipeCredentialNames(r) {
   scan(r.body_template);
   return [...names];
 }
-async function recipeAuthSecretNames(r, kv, cache3) {
+async function recipeAuthSecretNames(r, kv, cache4) {
   if (r.auth === "binding") return [];
   const service = r.auth_service || r.canonical_id;
   if (!service) return [];
-  let pending = cache3?.get(service);
+  let pending = cache4?.get(service);
   if (!pending) {
     pending = resolveAuthRecipe(service, kv).catch(() => null);
-    cache3?.set(service, pending);
+    cache4?.set(service, pending);
   }
   const ar = await pending;
   if (!ar || !DISPATCHABLE_AUTH_PRIMITIVES.has(ar.primitive)) return [];
@@ -18865,21 +19731,27 @@ function renderValue(v, ctx) {
   if (v !== null && typeof v === "object") {
     const out = {};
     for (const [k, val] of Object.entries(v)) {
-      out[k] = renderValue(val, ctx);
+      const r = renderValue(val, ctx);
+      if (r !== void 0) out[k] = r;
     }
     return out;
   }
   return v;
 }
+function keepsLiteral(key) {
+  const head = key.split(".")[0];
+  return head === "credential" || head === "auth";
+}
 function renderString(s, ctx) {
   const single = s.match(/^\s*\{\{([\w.]+)\}\}\s*$/);
   if (single) {
     const val = getPath2(ctx, single[1]);
-    return val === void 0 ? s : val;
+    if (val === void 0) return keepsLiteral(single[1]) ? s : void 0;
+    return val;
   }
   return s.replace(/\{\{([\w.]+)\}\}/g, (_, key) => {
     const val = getPath2(ctx, key);
-    if (val === void 0) return `{{${key}}}`;
+    if (val === void 0) return keepsLiteral(key) ? `{{${key}}}` : "";
     return typeof val === "string" ? val : JSON.stringify(val);
   });
 }
@@ -18950,85 +19822,6 @@ var init_self_dispatch = __esm({
     init_kbdb_proxy_key();
     MAX_SELF_DEPTH = 3;
     MAX_SELF_HOPS = 16;
-  }
-});
-
-// cypher-executor/src/lib/kbdb-trace.ts
-import { AsyncLocalStorage } from "node:async_hooks";
-function withKbdbTrace(fn) {
-  const marks = [];
-  return als.run(marks, async () => ({ value: await fn(), marks }));
-}
-function opOf(method, path) {
-  const p = path.split("?")[0].replace(/\/(rec|tpl|cell)?[_-]?[0-9a-f]{8}[0-9a-f-]{8,}/gi, "/:id");
-  const segs = p.split("/").filter(Boolean);
-  const head = segs.slice(0, segs[0] === "records" && segs[1] === "by-source" ? 2 : segs[0] === "records" && segs[1] ? 2 : 1).join("/");
-  return `${method} /${head}${segs.length > 2 && segs[0] === "records" && segs[1] === "by-source" ? "/:t" : ""}`;
-}
-function num(h, name) {
-  const m = h ? new RegExp(`${name};dur=([0-9.]+)`).exec(h) : null;
-  return m ? Math.round(Number(m[1])) : void 0;
-}
-function noteKbdbCall(method, path, t0, res) {
-  const marks = als.getStore();
-  if (!marks || marks.length >= 40) return;
-  const st = res.headers.get("server-timing");
-  marks.push({
-    op: opOf(method.toUpperCase(), path),
-    ms: Date.now() - t0,
-    inMs: num(st, "kbdb_in"),
-    gateMs: num(st, "kbdb_gate"),
-    d1Ms: num(st, "kbdb_d1"),
-    colo: res.headers.get("x-kbdb-colo") ?? void 0,
-    rowsRead: intHeader(res, "x-kbdb-rows-read"),
-    rowsWritten: intHeader(res, "x-kbdb-rows-written")
-  });
-}
-function intHeader(res, name) {
-  const v = res.headers.get(name);
-  return v !== null && /^\d+$/.test(v) ? Number(v) : void 0;
-}
-function kbdbRowsTotal(marks, timing) {
-  let read = 0, written = 0;
-  for (const m of marks) {
-    read += m.rowsRead ?? 0;
-    written += m.rowsWritten ?? 0;
-  }
-  for (const [n, d] of timing ?? []) {
-    if (/_kbdb_rows$/.test(n)) read += d;
-    else if (/_kbdb_wrows$/.test(n)) written += d;
-  }
-  return { read, written };
-}
-function kbdbMarksToTiming(marks) {
-  return marks.map((m, i) => {
-    const name = `kb${i + 1}_${m.op.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`.slice(0, 48);
-    const parts = [m.inMs != null ? `in=${m.inMs}` : "", m.gateMs != null ? `gate=${m.gateMs}` : "", m.d1Ms != null ? `d1=${m.d1Ms}` : "", m.rowsRead != null ? `rows=${m.rowsRead}` : "", m.rowsWritten ? `wrows=${m.rowsWritten}` : "", m.colo ? `colo=${m.colo}` : ""].filter(Boolean);
-    return `${name};dur=${m.ms}${parts.length ? `;desc="${parts.join(",")}"` : ""}`;
-  });
-}
-function currentKbdbMarks() {
-  return als.getStore() ?? [];
-}
-function isolateAgeMs() {
-  const now2 = Date.now();
-  if (!isolateFirstSeen) {
-    isolateFirstSeen = now2;
-    return 0;
-  }
-  return now2 - isolateFirstSeen;
-}
-function noteTimed(op, t0) {
-  const marks = als.getStore();
-  if (!marks || marks.length >= 40) return;
-  marks.push({ op, ms: Date.now() - t0 });
-}
-var als, isolateFirstSeen;
-var init_kbdb_trace = __esm({
-  "cypher-executor/src/lib/kbdb-trace.ts"() {
-    "use strict";
-    als = new AsyncLocalStorage();
-    isolateFirstSeen = 0;
   }
 });
 
@@ -19342,7 +20135,10 @@ var init_component_loader = __esm({
       // 出貨線版本號機制與成品指紋核對用它。no_network_syscall，故不走 LOGIC_BINDING_MAP
       // 的 Service Binding 路（rule 3.1 禁新增 binding），走這裡的通用 wasmWorkerUrl 推導，
       // 與 code/cron 同一形狀（獨立 Worker，白名單只是「知道這個 canonical_id 存在」）。
-      "hash"
+      "hash",
+      // check_fields（Arcrun#559）：照欄位宣告檢查輸入（必填／型別／長度／選項），不合格 success:false 走 ON_FAIL。
+      // 純計算、無網路 syscall，與 hash 同形狀：走通用 wasmWorkerUrl 推導，不新增 Service Binding（rule 3.1）。
+      "check_fields"
     ]);
     LOGIC_BINDING_MAP = {
       if_control: "SVC_IF_CONTROL",
@@ -19513,204 +20309,7 @@ init_dist();
 
 // cypher-executor/src/lib/portal-auth-store.ts
 init_credentials();
-
-// cypher-executor/src/lib/ephemeral-store.ts
-init_kbdb_proxy();
-init_release_body();
-init_kbdb_caller();
-init_kbdb_trace();
-init_kbdb_transport();
-var EphemeralStoreError = class extends Error {
-  constructor(message2, status) {
-    super(message2);
-    this.status = status;
-    this.name = "EphemeralStoreError";
-  }
-  status;
-};
-async function kFetch(env, path, init) {
-  const { base, headers } = kbdbBase(env);
-  const tTrace = Date.now();
-  try {
-    const res = await kbdbFetchRaw(`${base}${path}`, {
-      ...init,
-      // 短效資料＝session／鎖定計數／密碼重設票，全是帳號基本操作（#293）：走保留額度。
-      headers: { ...withEssential(headers), ...init?.headers }
-    });
-    noteKbdbCall(init?.method ?? "GET", path, tTrace, res);
-    return res;
-  } catch (e) {
-    throw new EphemeralStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
-  }
-}
-async function sha256Hex(input) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-var ensuredTemplates = /* @__PURE__ */ new Set();
-async function ensureTemplate2(env, name, slots) {
-  if (ensuredTemplates.has(name)) return;
-  const got = await kFetch(env, `/templates/${encodeURIComponent(name)}`);
-  releaseBody(got);
-  if (!got.ok) {
-    releaseBody(await kFetch(env, "/templates", {
-      method: "POST",
-      body: JSON.stringify({ name, slots })
-    }).catch(() => void 0));
-  }
-  ensuredTemplates.add(name);
-}
-async function findByHash(env, template, hashField, hash, follow) {
-  const res = await kFetch(
-    env,
-    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(hashField)}&value=${encodeURIComponent(hash)}&limit=1&with_values=1${follow ? `&follow=${encodeURIComponent(follow)}` : ""}`
-  );
-  if (!res.ok) {
-    releaseBody(res);
-    throw new EphemeralStoreError(`GET /records/by-source(${template}) \u2192 ${res.status}`, res.status);
-  }
-  const body = await res.json().catch(() => null);
-  const id = body?.record_ids?.[0];
-  if (!id) return null;
-  const inline2 = body?.records?.find((r) => r?.record_id === id);
-  if (inline2 && inline2.values && typeof inline2.values === "object") {
-    const f = body?.followed?.record;
-    return { record_id: inline2.record_id, values: inline2.values, ...follow && body && "followed" in body ? { followed: f && f.values && typeof f.values === "object" ? f : null } : {} };
-  }
-  const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
-  if (rec.status === 404) {
-    releaseBody(rec);
-    return null;
-  }
-  if (!rec.ok) {
-    releaseBody(rec);
-    throw new EphemeralStoreError(`GET /records/:id(${template}) \u2192 ${rec.status}`, rec.status);
-  }
-  const recBody = await rec.json().catch(() => null);
-  return recBody?.record ?? null;
-}
-async function deleteRecordById(env, recordId) {
-  releaseBody(await kFetch(env, `/records/${encodeURIComponent(recordId)}`, { method: "DELETE" }).catch(() => void 0));
-}
-async function ephemeralPut(env, opts) {
-  await ensureTemplate2(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
-  const hash = await sha256Hex(opts.rawKey);
-  const exp = opts.ttlSeconds === null ? "never" : String(Date.now() + opts.ttlSeconds * 1e3);
-  const values = { ...opts.values, [opts.hashField]: hash, exp };
-  const existing = opts.fresh ? null : await findByHash(env, opts.template, opts.hashField, hash);
-  if (existing) {
-    const res2 = await kFetch(env, `/records/${encodeURIComponent(existing.record_id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ values })
-    });
-    releaseBody(res2);
-    if (!res2.ok) throw new EphemeralStoreError(`PATCH /records(${opts.template}) \u2192 ${res2.status}`, res2.status);
-    return;
-  }
-  const res = await kFetch(env, "/records", {
-    method: "POST",
-    body: JSON.stringify({ template: opts.template, values })
-  });
-  releaseBody(res);
-  if (!res.ok) throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 ${res.status}`, res.status);
-}
-async function ephemeralClaimOnce(env, opts) {
-  const hash = await sha256Hex(opts.rawKey);
-  const body = JSON.stringify({
-    template: opts.template,
-    record_id: `once_${opts.template}_${hash}`,
-    values: { [opts.hashField]: hash, exp: String(Date.now() + opts.ttlSeconds * 1e3) },
-    create_only: true,
-    derived_cell_ids: true
-  });
-  const send = async () => kFetch(env, "/records", { method: "POST", body });
-  if (!ensuredTemplates.has(opts.template)) {
-    let res = await send();
-    if (res.status === 400) {
-      const text = await res.text().catch(() => "");
-      if (/template not found/i.test(text)) {
-        await ensureTemplate2(env, opts.template, [...opts.slots, opts.hashField, "exp"]);
-        res = await send();
-      } else {
-        throw new EphemeralStoreError(`POST /records(${opts.template}) \u2192 400 ${text.slice(0, 120)}`, 400);
-      }
-    }
-    return settleClaim(res, opts.template);
-  }
-  return settleClaim(await send(), opts.template);
-}
-async function settleClaim(res, template) {
-  if (res.status === 409) {
-    releaseBody(res);
-    return false;
-  }
-  releaseBody(res);
-  if (!res.ok) throw new EphemeralStoreError(`POST /records(${template}, claim) \u2192 ${res.status}`, res.status);
-  ensuredTemplates.add(template);
-  return true;
-}
-async function ephemeralGet(env, opts) {
-  const hash = await sha256Hex(opts.rawKey);
-  const found = await findByHash(env, opts.template, opts.hashField, hash);
-  if (!found) return null;
-  const exp = Number(found.values.exp);
-  const expired = Number.isFinite(exp) && exp < Date.now();
-  if (opts.consume || expired) await deleteRecordById(env, found.record_id);
-  if (expired) return null;
-  return found.values;
-}
-async function ephemeralDelete(env, opts) {
-  const hash = await sha256Hex(opts.rawKey);
-  const found = await findByHash(env, opts.template, opts.hashField, hash);
-  if (found) await deleteRecordById(env, found.record_id);
-}
-async function ephemeralListBy(env, template, field, value, max = 50) {
-  const res = await kFetch(
-    env,
-    `/records/by-source/${encodeURIComponent(template)}?field=${encodeURIComponent(field)}&value=${encodeURIComponent(value)}`
-  );
-  if (!res.ok) {
-    releaseBody(res);
-    return [];
-  }
-  const body = await res.json().catch(() => null);
-  const ids = (body?.record_ids ?? []).slice(0, max);
-  const out = [];
-  for (const id of ids) {
-    const rec = await kFetch(env, `/records/${encodeURIComponent(id)}`);
-    if (!rec.ok) {
-      releaseBody(rec);
-      continue;
-    }
-    const recBody = await rec.json().catch(() => null);
-    if (recBody?.record) out.push(recBody.record);
-  }
-  return out;
-}
-async function ephemeralPatchById(env, recordId, values) {
-  const res = await kFetch(env, `/records/${encodeURIComponent(recordId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ values })
-  });
-  releaseBody(res);
-  if (!res.ok) throw new EphemeralStoreError(`PATCH /records/:id \u2192 ${res.status}`, res.status);
-}
-async function ephemeralDeleteById(env, recordId) {
-  await deleteRecordById(env, recordId);
-}
-async function ephemeralGetFollow(env, opts) {
-  const hash = await sha256Hex(opts.rawKey);
-  const found = await findByHash(env, opts.template, opts.hashField, hash, opts.follow);
-  if (!found) return null;
-  const exp = Number(found.values.exp);
-  if (Number.isFinite(exp) && exp < Date.now()) {
-    await deleteRecordById(env, found.record_id);
-    return null;
-  }
-  return { values: found.values, followed: found.followed };
-}
-
-// cypher-executor/src/lib/portal-auth-store.ts
+init_ephemeral_store();
 init_secret_backend();
 var LOCAL_AUTH_OWNER = "__arcrun_auth_store__";
 var LOCAL_AUTH_REF = "ARCRUN_AUTH_STORE";
@@ -19959,6 +20558,7 @@ async function migrateConsoleCredentials(env, record, tokenOverride) {
 }
 
 // cypher-executor/src/routes/console-auth.ts
+init_ephemeral_store();
 init_tenant();
 var consoleAuthRouter = new Hono2();
 var SESSION_TEMPLATE = "console_session";
@@ -19969,7 +20569,7 @@ async function validateConsoleSession(env, authHeader) {
   const sess = await ephemeralGet(env, { template: SESSION_TEMPLATE, hashField: "token_hash", rawKey: token });
   return !!sess;
 }
-function randomHex(bytes) {
+function randomHex2(bytes) {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -20046,7 +20646,7 @@ consoleAuthRouter.post("/console/setup", async (c) => {
   const password = body?.password ?? "";
   if (!email || !password) return c.json({ error: "email \u8207 password \u5FC5\u586B" }, 400);
   if (password.length < 8) return c.json({ error: "\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
-  const salt = randomHex(16);
+  const salt = randomHex2(16);
   const hash = await hashPassword(password, salt);
   const record = { email: email.toLowerCase(), salt, hash, created_at: (/* @__PURE__ */ new Date()).toISOString() };
   try {
@@ -20054,7 +20654,7 @@ consoleAuthRouter.post("/console/setup", async (c) => {
   } catch (e) {
     return c.json({ error: `\u5E33\u5BC6\u6C92\u6709\u5B58\u8D77\u4F86\uFF1A${e instanceof Error ? e.message : String(e)}`, code: "auth_store_not_writable" }, 502);
   }
-  const token = randomHex(32);
+  const token = randomHex2(32);
   await ephemeralPut(c.env, {
     template: SESSION_TEMPLATE,
     slots: ["created_at"],
@@ -20076,7 +20676,7 @@ consoleAuthRouter.post("/console/setup/reset", async (c) => {
   if (password.length < 8) return c.json({ error: "\u65B0\u5BC6\u78BC\u81F3\u5C11 8 \u78BC" }, 400);
   const currentHash = await hashPassword(currentPassword, existing.salt);
   if (currentHash !== existing.hash) return c.json({ error: "\u820A\u5BC6\u78BC\u4E0D\u6B63\u78BA" }, 401);
-  const salt = randomHex(16);
+  const salt = randomHex2(16);
   const hash = await hashPassword(password, salt);
   const record = { email: email.toLowerCase(), salt, hash, created_at: existing.created_at };
   try {
@@ -20117,7 +20717,7 @@ consoleAuthRouter.post("/console/login", async (c) => {
     if (await authStoreStaleHere(c.env)) return consolePropagating(c);
     return c.json({ error: "email \u6216\u5BC6\u78BC\u932F\u8AA4" }, 401);
   }
-  const token = randomHex(32);
+  const token = randomHex2(32);
   await ephemeralPut(c.env, {
     template: SESSION_TEMPLATE,
     slots: ["created_at"],
@@ -20492,8 +21092,8 @@ async function aiBrakeVerdict(env, kbdbFetch4, now2 = Date.now()) {
   } catch (e) {
     console.warn("[ai-brake] \u8A18\u524E\u8ECA\u7D00\u9304\u5931\u6557\uFF08\u7167\u64CB\uFF09\uFF1A", e instanceof Error ? e.message : e);
   }
-  const msg = brake?.message ?? `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u4ECA\u5929\u7684 Workers AI \u5DF2\u7528 ${used.toLocaleString("en-US")} neurons\uFF0C\u5230\u4E86\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650 ${AI_BRAKE_LIMIT.toLocaleString("en-US")}\uFF0C\u96F2\u7AEF\u8403\u53D6\u5148\u66AB\u505C\uFF1BUTC 00:00\uFF08\u53F0\u5317 08:00\uFF09\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF0C\u6216\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\u3002`;
-  return { blocked: true, used, limit: AI_BRAKE_LIMIT, message: msg, brake };
+  const msg2 = brake?.message ?? `\u5DF2\u81EA\u52D5\u524E\u8ECA\uFF1A\u4ECA\u5929\u7684 Workers AI \u5DF2\u7528 ${used.toLocaleString("en-US")} neurons\uFF0C\u5230\u4E86\u514D\u8CBB\u65B9\u6848\u4E00\u5929\u7684\u4E0A\u9650 ${AI_BRAKE_LIMIT.toLocaleString("en-US")}\uFF0C\u96F2\u7AEF\u8403\u53D6\u5148\u66AB\u505C\uFF1BUTC 00:00\uFF08\u53F0\u5317 08:00\uFF09\u91CD\u7F6E\u6642\u81EA\u52D5\u6062\u5FA9\uFF0C\u6216\u5728 Portal\u300C\u7BA1\u7406\u300D\u9801\u7684\u300C\u6BCF\u65E5\u984D\u5EA6\u524E\u8ECA\u300D\u6309\u300C\u653E\u884C\u300D\u3002`;
+  return { blocked: true, used, limit: AI_BRAKE_LIMIT, message: msg2, brake };
 }
 
 // cypher-executor/src/routes/portal.ts
@@ -20556,7 +21156,7 @@ async function verifyPassword(password, stored) {
   const derived = await deriveBits(password, salt, iterations);
   return constantTimeEqual(b64encode(derived), parts[3]);
 }
-function randomHex2(bytes) {
+function randomHex3(bytes) {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -21529,6 +22129,7 @@ init_credentials();
 init_release_body();
 init_credential_check();
 init_credential_service();
+init_ephemeral_store();
 
 // cypher-executor/src/lib/portal-session-cache.ts
 var AUTH_CACHE_MS = 1e4;
@@ -21575,6 +22176,7 @@ init_kbdb_caller();
 init_kbdb_proxy();
 init_release_body();
 init_kbdb_caller();
+init_ephemeral_store();
 var AUDIT_TEMPLATE = "portal_audit";
 var AUDIT_SLOTS = ["audit_id", "ts", "day", "actor_id", "actor", "action", "target", "detail"];
 var AUDIT_RETENTION_DAYS = 90;
@@ -21614,7 +22216,7 @@ var AUDIT_ACTIONS = [
   "ledger_consent"
   // 管理員在 Portal 決定小幫手修不了的檔要不要通報（inkstone/Arcrun#532）
 ];
-function randomHex3(bytes) {
+function randomHex4(bytes) {
   const a = new Uint8Array(bytes);
   crypto.getRandomValues(a);
   return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -21642,7 +22244,7 @@ async function ensureDayIndex(env) {
 async function recordAudit(env, ev) {
   try {
     const ts = (/* @__PURE__ */ new Date()).toISOString();
-    const audit_id = `au_${randomHex3(8)}`;
+    const audit_id = `au_${randomHex4(8)}`;
     await ephemeralPut(env, {
       template: AUDIT_TEMPLATE,
       slots: AUDIT_SLOTS,
@@ -21724,6 +22326,7 @@ async function listAudit(env, q = {}) {
 }
 
 // cypher-executor/src/lib/account-link.ts
+init_ephemeral_store();
 init_credentials();
 init_auth_dispatcher();
 init_tenant();
@@ -21737,7 +22340,7 @@ var COMPANY_KEY_PREFIX = "ck_";
 var COMPANY_LINK_PREFIX = "co_";
 var isCompanyKeyId = (id) => id.startsWith(COMPANY_KEY_PREFIX);
 var isCompanyLinkId = (id) => id.startsWith(COMPANY_LINK_PREFIX);
-function randomHex4(bytes) {
+function randomHex5(bytes) {
   const a = new Uint8Array(bytes);
   crypto.getRandomValues(a);
   return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -21803,8 +22406,8 @@ function decodeLinkCode(code) {
   }
 }
 async function issueLinkKey(env, issuer, label, keyIdPrefix = "lk_") {
-  const key = `alk_${randomHex4(24)}`;
-  const key_id = `${keyIdPrefix}${randomHex4(8)}`;
+  const key = `alk_${randomHex5(24)}`;
+  const key_id = `${keyIdPrefix}${randomHex5(8)}`;
   await ephemeralPut(env, {
     template: LINK_KEY_TEMPLATE,
     slots: LINK_KEY_SLOTS,
@@ -21899,8 +22502,8 @@ ${baseUrl}`)}`;
 var refOf = (name) => `{{credential.${name}}}`;
 function isStructuralStoreFailure(e) {
   if (isSecretsNotReady(e)) return true;
-  const msg = e instanceof Error ? e.message : String(e);
-  return /金鑰保管未就緒|SECRET_BACKEND 設定值無法辨識/.test(msg);
+  const msg2 = e instanceof Error ? e.message : String(e);
+  return /金鑰保管未就緒|SECRET_BACKEND 設定值無法辨識/.test(msg2);
 }
 function toStored(r) {
   const link_key = r.values.link_key ?? "";
@@ -21969,7 +22572,7 @@ async function sweepLinkCredentials(env, userRecordId, keep) {
 }
 async function saveLink(env, userRecordId, input) {
   const company = input.company === true;
-  const link_id = `${company ? COMPANY_LINK_PREFIX : "al_"}${randomHex4(8)}`;
+  const link_id = `${company ? COMPANY_LINK_PREFIX : "al_"}${randomHex5(8)}`;
   const created_at = (/* @__PURE__ */ new Date()).toISOString();
   const credName = await linkCredentialName(userRecordId, input.baseUrl);
   await storeCredential(env, linkCredentialOwner(env, userRecordId), credName, input.key, LINK_CRED_SERVICE);
@@ -22082,8 +22685,8 @@ async function connectByLogin(baseUrl, email, password, from, timeoutMs = 2e4) {
   if (!out) return { ok: false, status: 502, error: "\u9019\u500B\u7DB2\u5740\u4E0D\u50CF\u662F Arcrun RAG \u77E5\u8B58\u5EAB\uFF0C\u8ACB\u518D\u78BA\u8A8D\u4E00\u6B21" };
   if (res.status === 401) return { ok: false, status: 401, error: "\u5E33\u865F\u6216\u5BC6\u78BC\u4E0D\u5C0D\u2014\u2014\u7528\u4F60\u5728\u5C0D\u65B9\u77E5\u8B58\u5EAB\u7DB2\u7AD9\u8A2D\u5B9A\u7684\u90A3\u7D44" };
   if (!out.success || typeof out.key !== "string" || !/^alk_[0-9a-f]{48}$/.test(out.key)) {
-    const msg = typeof out.error === "string" && out.error ? out.error : "\u9023\u7DDA\u5931\u6557\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u4E00\u6B21";
-    return { ok: false, status: res.status === 429 || res.status === 403 ? res.status : 502, error: msg };
+    const msg2 = typeof out.error === "string" && out.error ? out.error : "\u9023\u7DDA\u5931\u6557\uFF0C\u8ACB\u7A0D\u5F8C\u518D\u8A66\u4E00\u6B21";
+    return { ok: false, status: res.status === 429 || res.status === 403 ? res.status : 502, error: msg2 };
   }
   return { ok: true, key: out.key, account: typeof out.account === "string" ? out.account : "" };
 }
@@ -22146,9 +22749,9 @@ function pickChatContent(o) {
   if (!Array.isArray(choices) || choices.length === 0) return void 0;
   const first = choices[0];
   if (!first || typeof first !== "object") return void 0;
-  const msg = first.message;
-  if (!msg || typeof msg !== "object") return void 0;
-  const content = msg.content;
+  const msg2 = first.message;
+  if (!msg2 || typeof msg2 !== "object") return void 0;
+  const content = msg2.content;
   return typeof content === "string" && content.length > 0 ? content : void 0;
 }
 function pickResponseValue(out) {
@@ -24221,9 +24824,9 @@ function normalizeLedgerSummary(raw2) {
   if (cs && typeof cs === "object" && !Array.isArray(cs)) {
     const c = cs;
     const fingerprint = typeof c.fingerprint === "string" ? c.fingerprint.trim().slice(0, 120) : "";
-    const sha = typeof c.sha === "string" ? c.sha.trim().slice(0, 64) : "";
+    const sha2 = typeof c.sha === "string" ? c.sha.trim().slice(0, 64) : "";
     const preview2 = typeof c.preview === "string" ? c.preview.slice(0, 4e3) : "";
-    if (fingerprint && sha && preview2) out.consent = { fingerprint, sha, preview: preview2 };
+    if (fingerprint && sha2 && preview2) out.consent = { fingerprint, sha: sha2, preview: preview2 };
   }
   const rp = r.report;
   if (rp && typeof rp === "object" && !Array.isArray(rp)) {
@@ -25247,7 +25850,7 @@ portalRouter.post(
       if (migrated) sessionRecordId = migrated;
     }
     const t1 = Date.now();
-    const token = randomHex2(32);
+    const token = randomHex3(32);
     const sessionLife = await sessionLifeFor(c, body);
     await Promise.all([
       lock.hasFailures ? clearLoginFail(c.env, email) : Promise.resolve(),
@@ -25379,7 +25982,7 @@ function portalUiOrigin(env) {
   return sub ? `https://arcrun-rag-ui.${sub}.workers.dev` : null;
 }
 async function issueResetToken(env, recordId, email) {
-  const token = randomHex2(32);
+  const token = randomHex3(32);
   await ephemeralPut(env, {
     template: PWRESET_TEMPLATE,
     slots: ["record_id", "email", "created_at"],
@@ -25494,7 +26097,7 @@ portalRouter.post(
     const recordId = await findUserRecordId(c.env, email).catch(() => null);
     if (!recordId) return c.json(generic);
     const apiOrigin = new URL(c.req.url).origin;
-    const ticket = randomHex2(16);
+    const ticket = randomHex3(16);
     await ephemeralPut(c.env, {
       template: RELAY_TICKET_TEMPLATE,
       slots: ["email", "record_id", "api_origin"],
@@ -26106,18 +26709,18 @@ portalRouter.post(
     const body = await c.req.json().catch(() => null);
     const library = typeof body?.library === "string" ? body.library : "";
     const fingerprint = typeof body?.fingerprint === "string" ? body.fingerprint : "";
-    const sha = typeof body?.sha === "string" ? body.sha : "";
+    const sha2 = typeof body?.sha === "string" ? body.sha : "";
     const decision = body?.decision;
     if (!isValidLibraryName(library) || library === "*") return c.json({ error: "\u5EAB\u540D\u4E0D\u5408\u6CD5" }, 400);
-    if (!fingerprint || !sha || decision !== "agree" && decision !== "dismiss") {
+    if (!fingerprint || !sha2 || decision !== "agree" && decision !== "dismiss") {
       return c.json({ error: "\u8981\u5E36 library\u3001fingerprint\u3001sha\uFF0Cdecision \u53EA\u80FD\u662F agree \u6216 dismiss" }, 400);
     }
     const tree = await readFolderTree(c.env, library);
     const ask = tree?.ledger?.consent;
-    if (!tree || tree.ledger?.fix_state !== "asked" || !ask || ask.fingerprint !== fingerprint || ask.sha !== sha) {
+    if (!tree || tree.ledger?.fix_state !== "asked" || !ask || ask.fingerprint !== fingerprint || ask.sha !== sha2) {
       return c.json({ error: "\u9019\u4EFD\u63D0\u554F\u5DF2\u7D93\u8B8A\u4E86\u6216\u5DF2\u7D93\u6C92\u6709\u4E86\uFF0C\u8ACB\u91CD\u65B0\u6574\u7406\u518D\u770B", code: "ask_changed" }, 409);
     }
-    tree.consent_decision = { fingerprint, sha, decision, at: Math.floor(Date.now() / 1e3) };
+    tree.consent_decision = { fingerprint, sha: sha2, decision, at: Math.floor(Date.now() / 1e3) };
     await c.env.WEBHOOKS.put(folderTreeKey(c.env, library), JSON.stringify(tree));
     await recordAudit(c.env, {
       ...auditWho(auth.user),
@@ -27419,8 +28022,8 @@ portalRouter.post(
 );
 function credFail(c, label, e, fallbackStatus = 502) {
   if (isSecretsNotReady(e)) return c.json({ error: "\u9700 Cloudflare \u6388\u6B0A", code: SECRETS_NOT_READY_CODE }, 502);
-  const msg = e instanceof Error ? e.message : String(e);
-  return c.json({ error: `${label}\uFF1A${msg}` }, fallbackStatus);
+  const msg2 = e instanceof Error ? e.message : String(e);
+  return c.json({ error: `${label}\uFF1A${msg2}` }, fallbackStatus);
 }
 portalRouter.get(
   "/portal/admin/credentials",
@@ -27460,16 +28063,25 @@ portalRouter.put(
     const auth = await requirePortalAdmin(c);
     if (!auth.ok) return auth.res;
     const body = await c.req.json().catch(() => null);
-    if (typeof body?.description !== "string") return c.json({ error: "description \u5FC5\u586B\uFF08\u5B57\u4E32\uFF1B\u7A7A\u5B57\u4E32\uFF1D\u6E05\u6389\uFF09" }, 400);
+    const hasDesc = typeof body?.description === "string", hasName = typeof body?.display_name === "string";
+    if (!hasDesc && !hasName) return c.json({ error: "description \u6216 display_name \u81F3\u5C11\u8981\u7D66\u4E00\u500B\uFF08\u5B57\u4E32\uFF1B\u7A7A\u5B57\u4E32\uFF1D\u6E05\u6389\uFF09" }, 400);
     const aliases = aliasesFromRecipes(await loadAllAuthRecipes(c.env).catch(() => []));
     const key = canonicalServiceKey(decodeURIComponent(c.req.param("service")), aliases);
     if (!key) return c.json({ error: "\u670D\u52D9\u540D\u4E0D\u80FD\u662F\u7A7A\u7684" }, 400);
     try {
-      await setServiceNote(c.env, credentialOwner(c.env), key, body.description);
-      return c.json({ success: true, service_key: key, description: body.description.trim() });
+      await setServiceMeta(c.env, credentialOwner(c.env), key, {
+        ...hasDesc ? { description: body.description } : {},
+        ...hasName ? { display_name: body.display_name } : {}
+      });
+      return c.json({
+        success: true,
+        service_key: key,
+        ...hasDesc ? { description: body.description.trim() } : {},
+        ...hasName ? { display_name: body.display_name.trim() } : {}
+      });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return c.json({ success: false, error: msg }, msg.includes("\u6700\u591A") ? 400 : 502);
+      const msg2 = e instanceof Error ? e.message : String(e);
+      return c.json({ success: false, error: msg2 }, msg2.includes("\u6700\u591A") ? 400 : 502);
     }
   })
 );
@@ -27481,7 +28093,7 @@ portalRouter.get(
     const service = (c.req.query("service") ?? "").trim();
     if (!/^[A-Za-z][A-Za-z0-9_]{0,60}$/.test(service)) return c.json({ success: true, found: false, fields: [], scopes: [] });
     const shape2 = await credentialShape(c.env, service);
-    return c.json({ success: true, found: !!shape2, fields: shape2?.fields ?? [], scopes: shape2?.scopes ?? [], token_url: shape2?.token_url ?? "" });
+    return c.json({ success: true, found: !!shape2, fields: shape2?.fields ?? [], scopes: shape2?.scopes ?? [], token_url: shape2?.token_url ?? "", authorize_url: shape2?.authorize_url ?? "", verify_url: shape2?.verify_url ?? "" });
   })
 );
 portalRouter.post(
@@ -27509,8 +28121,8 @@ portalRouter.post(
           await writeCredential(c.env, tenantSlug, f.name, f.value, service, sensitivity);
           saved.push(f.name);
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          const res = credFail(c, `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF08\u300C${f.name}\u300D${saved.length ? `\uFF1B\u524D\u9762\u5DF2\u5B58 ${saved.join("\u3001")}` : ""}\uFF09`, e, msg.includes("\u4F54\u7528") ? 409 : 502);
+          const msg2 = e instanceof Error ? e.message : String(e);
+          const res = credFail(c, `\u91D1\u9470\u5132\u5B58\u5931\u6557\uFF08\u300C${f.name}\u300D${saved.length ? `\uFF1B\u524D\u9762\u5DF2\u5B58 ${saved.join("\u3001")}` : ""}\uFF09`, e, msg2.includes("\u4F54\u7528") ? 409 : 502);
           return res;
         }
       }
@@ -27527,8 +28139,8 @@ portalRouter.post(
     try {
       await writeCredential(c.env, tenantSlug, body.name, body.value, service, sensitivity);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return credFail(c, "\u91D1\u9470\u5132\u5B58\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
+      const msg2 = e instanceof Error ? e.message : String(e);
+      return credFail(c, "\u91D1\u9470\u5132\u5B58\u5931\u6557", e, msg2.includes("\u4F54\u7528") ? 409 : 502);
     }
     const verify = await verifyCredentialNow(c.env, tenantSlug, body.name, body.value, service);
     await recordCredentialTest(c.env, tenantSlug, [body.name], verify, "save").catch(() => []);
@@ -27554,8 +28166,8 @@ portalRouter.put(
     try {
       await writeCredential(c.env, tenantSlug, name, body.value, service, sensitivity);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return credFail(c, "\u91D1\u9470\u8986\u5BEB\u5931\u6557", e, msg.includes("\u4F54\u7528") ? 409 : 502);
+      const msg2 = e instanceof Error ? e.message : String(e);
+      return credFail(c, "\u91D1\u9470\u8986\u5BEB\u5931\u6557", e, msg2.includes("\u4F54\u7528") ? 409 : 502);
     }
     const verify = await verifyCredentialNow(c.env, tenantSlug, name, body.value, service);
     await recordCredentialTest(c.env, tenantSlug, [name], verify, "save").catch(() => []);
@@ -27582,8 +28194,8 @@ portalRouter.patch(
       if (value) await recordCredentialTest(c.env, tenantSlug, [result.name], verify, "save").catch(() => []);
       return c.json({ success: true, ...result, verify });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      const status = msg.includes("\u627E\u4E0D\u5230") ? 404 : msg.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
+      const msg2 = e instanceof Error ? e.message : String(e);
+      const status = msg2.includes("\u627E\u4E0D\u5230") ? 404 : msg2.includes("\u5DF2\u88AB\u4F7F\u7528") ? 409 : 502;
       return credFail(c, "\u91D1\u9470\u4FEE\u6539\u5931\u6557", e, status);
     }
   })
@@ -27880,16 +28492,13 @@ function parseLibs(raw2) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
+// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
-  const defaults = {
+  const opts = {
     origin: "*",
     allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
     allowHeaders: [],
-    exposeHeaders: []
-  };
-  const opts = {
-    ...defaults,
+    exposeHeaders: [],
     ...options
   };
   const findAllowOrigin = ((optsOrigin) => {
@@ -28251,8 +28860,8 @@ async function fetchArtifactsRulebook(p, env) {
       try {
         const lg = await h.log?.({ ref, limit: 1 });
         const first = Array.isArray(lg) ? lg[0] : Array.isArray(lg?.commits) ? lg.commits[0] : void 0;
-        const sha = String(first?.hash ?? first?.sha ?? first?.oid ?? "");
-        if (/^[0-9a-f]{40}$/.test(sha)) upstream = sha;
+        const sha2 = String(first?.hash ?? first?.sha ?? first?.oid ?? "");
+        if (/^[0-9a-f]{40}$/.test(sha2)) upstream = sha2;
       } catch {
       }
       return upstream ? { ...norm, upstream } : norm;
@@ -28406,9 +29015,9 @@ var PushError = class extends Error {
     this.status = status;
   }
 };
-var enc2 = new TextEncoder();
+var enc3 = new TextEncoder();
 var SHA_RE = /^[0-9a-f]{40}$/;
-function hex2(b) {
+function hex3(b) {
   const u = b instanceof Uint8Array ? b : new Uint8Array(b);
   let s = "";
   for (let i = 0; i < u.length; i++) s += u[i].toString(16).padStart(2, "0");
@@ -28440,20 +29049,20 @@ function b64ToBytes(s) {
   return out;
 }
 async function makeObj(type, body) {
-  const header = enc2.encode(`${type} ${body.length}\0`);
-  return { type, body, sha: hex2(await sha1(concat([header, body]))) };
+  const header = enc3.encode(`${type} ${body.length}\0`);
+  return { type, body, sha: hex3(await sha1(concat([header, body]))) };
 }
 function treeSortKey(e) {
   return e.type === "tree" || e.mode === "40000" ? e.name + "/" : e.name;
 }
 function serializeTree(entries) {
   const sorted = entries.slice().sort((a, b) => {
-    const ka = enc2.encode(treeSortKey(a)), kb = enc2.encode(treeSortKey(b));
+    const ka = enc3.encode(treeSortKey(a)), kb = enc3.encode(treeSortKey(b));
     const n = Math.min(ka.length, kb.length);
     for (let i = 0; i < n; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
     return ka.length - kb.length;
   });
-  return concat(sorted.map((e) => concat([enc2.encode(`${e.mode === "040000" ? "40000" : e.mode} ${e.name}\0`), fromHex(e.hash)])));
+  return concat(sorted.map((e) => concat([enc3.encode(`${e.mode === "040000" ? "40000" : e.mode} ${e.name}\0`), fromHex(e.hash)])));
 }
 async function deflate(data) {
   const cs = new CompressionStream("deflate");
@@ -28479,7 +29088,7 @@ function packObjHeader(type, size) {
 var TYPE_NUM = { commit: 1, tree: 2, blob: 3 };
 async function buildPack(objs) {
   const head = new Uint8Array(12);
-  head.set(enc2.encode("PACK"), 0);
+  head.set(enc3.encode("PACK"), 0);
   new DataView(head.buffer).setUint32(4, 2);
   new DataView(head.buffer).setUint32(8, objs.length);
   const parts = [head];
@@ -28491,8 +29100,8 @@ async function buildPack(objs) {
   return concat([body, await sha1(body)]);
 }
 function pkt(s) {
-  const b = typeof s === "string" ? enc2.encode(s) : s;
-  return concat([enc2.encode((b.length + 4).toString(16).padStart(4, "0")), b]);
+  const b = typeof s === "string" ? enc3.encode(s) : s;
+  return concat([enc3.encode((b.length + 4).toString(16).padStart(4, "0")), b]);
 }
 function parseAdvertisedRefs(text) {
   const refs = {};
@@ -28516,8 +29125,8 @@ async function pushCommit(req) {
   if (!branchOk(req.branch)) throw new PushError("bad_branch", `\u5206\u652F\u540D\u4E0D\u5408\u6CD5\uFF1A${req.branch}`);
   if (!req.files.length) throw new PushError("no_files", "\u6C92\u6709\u8981\u5BEB\u7684\u6A94\u6848\uFF08files \u662F\u7A7A\u7684\uFF09");
   if (req.files.length > MAX_FILES) throw new PushError("too_many_files", `\u4E00\u6B21\u6700\u591A ${MAX_FILES} \u500B\u6A94\uFF0C\u9019\u6B21\u7D66\u4E86 ${req.files.length} \u500B`);
-  const msg = String(req.message ?? "").trim();
-  if (!msg) throw new PushError("no_message", "message\uFF08commit \u8A0A\u606F\uFF09\u4E0D\u80FD\u7A7A");
+  const msg2 = String(req.message ?? "").trim();
+  if (!msg2) throw new PushError("no_message", "message\uFF08commit \u8A0A\u606F\uFF09\u4E0D\u80FD\u7A7A");
   const root = { children: /* @__PURE__ */ new Map() };
   const seen = /* @__PURE__ */ new Set();
   for (const fc of req.files) {
@@ -28527,7 +29136,7 @@ async function pushCommit(req) {
     seen.add(key);
     let content = null;
     if (!fc.delete) {
-      if (typeof fc.content === "string") content = enc2.encode(fc.content);
+      if (typeof fc.content === "string") content = enc3.encode(fc.content);
       else if (typeof fc.content_base64 === "string") {
         try {
           content = b64ToBytes(fc.content_base64);
@@ -28619,13 +29228,13 @@ ${baseSha ? `parent ${baseSha}
 ` : ""}author ${who}
 committer ${who}
 
-${msg}
+${msg2}
 `;
-  const commit = await makeObj("commit", enc2.encode(commitText));
+  const commit = await makeObj("commit", enc3.encode(commitText));
   objs.push(commit);
   const pack = await buildPack(objs);
   const cmd = pkt(`${oldSha} ${commit.sha} refs/heads/${req.branch}\0 report-status agent=arcrun-engine/416`);
-  const body = concat([cmd, enc2.encode("0000"), pack]);
+  const body = concat([cmd, enc3.encode("0000"), pack]);
   const res = await f(`${req.remote}/git-receive-pack`, {
     method: "POST",
     headers: { ...auth, "Content-Type": "application/x-git-receive-pack-request", Accept: "application/x-git-receive-pack-result" },
@@ -28648,14 +29257,14 @@ async function createBranch(req) {
   const refs = parseAdvertisedRefs(await adv.text());
   if (refs[`refs/heads/${req.branch}`]) throw new PushError("branch_exists", `\u5206\u652F ${req.branch} \u5DF2\u7D93\u5B58\u5728`, 409);
   const from = (req.from ?? "main").trim();
-  const sha = SHA_RE.test(from) ? from : refs[`refs/heads/${from}`] ?? refs[`refs/tags/${from}`];
-  if (!sha) throw new PushError("from_not_found", `from\uFF08${from}\uFF09\u627E\u4E0D\u5230`, 404);
+  const sha2 = SHA_RE.test(from) ? from : refs[`refs/heads/${from}`] ?? refs[`refs/tags/${from}`];
+  if (!sha2) throw new PushError("from_not_found", `from\uFF08${from}\uFF09\u627E\u4E0D\u5230`, 404);
   const pack = await buildPack([]);
-  const body = concat([pkt(`${"0".repeat(40)} ${sha} refs/heads/${req.branch}\0 report-status agent=arcrun-engine/416`), enc2.encode("0000"), pack]);
+  const body = concat([pkt(`${"0".repeat(40)} ${sha2} refs/heads/${req.branch}\0 report-status agent=arcrun-engine/416`), enc3.encode("0000"), pack]);
   const res = await f(`${req.remote}/git-receive-pack`, { method: "POST", headers: { ...auth, "Content-Type": "application/x-git-receive-pack-request" }, body });
   const rep = (await res.text()).replace(/[\u0000-\u0008\u000b-\u001f]/g, " ");
   if (!res.ok || !/unpack ok/.test(rep) || !/ok refs\/heads\//.test(rep)) throw new PushError("push_rejected", `Artifacts \u6C92\u6709\u63A5\u53D7\u5EFA\u5206\u652F\uFF08HTTP ${res.status}\uFF09\uFF1A${rep.trim().slice(0, 300)}`, 409);
-  return { ok: true, branch: req.branch, sha };
+  return { ok: true, branch: req.branch, sha: sha2 };
 }
 
 // cypher-executor/src/lib/rule-mirror.ts
@@ -28810,8 +29419,8 @@ function artifactsUpstream(env) {
           try {
             const lg = await h.log?.({ ref, limit: 1 });
             const first = Array.isArray(lg) ? lg[0] : Array.isArray(lg?.commits) ? lg.commits[0] : void 0;
-            const sha = String(first?.hash ?? first?.sha ?? first?.oid ?? "");
-            if (/^[0-9a-f]{40}$/.test(sha)) base = sha;
+            const sha2 = String(first?.hash ?? first?.sha ?? first?.oid ?? "");
+            if (/^[0-9a-f]{40}$/.test(sha2)) base = sha2;
           } catch {
           }
           return { path, text, baseBranch, ...base ? { base } : {} };
@@ -29649,6 +30258,7 @@ init_endpoints();
 init_subrequest_meter();
 init_kbdb_trace();
 init_kbdb_transport();
+init_app_lean();
 init_kbdb_write_retry();
 function kbdbBase2(env) {
   return kbdbBaseUrl(env);
@@ -29683,6 +30293,22 @@ var ASSET_TEMPLATES = {
     name: "arcrun_app_install",
     slots: ["app_id", "name", "version", "definition", "updated_at"],
     description: "Arcrun App \u7684\u5B89\u88DD\u614B\uFF08\u5E02\u96C6\u6309\u4E0B\u5B89\u88DD\u4E4B\u5F8C\u7559\u4E0B\u7684\u90A3\u7B46\uFF09\u3002"
+  },
+  // inkstone/Arcrun#543：App 安裝態的「精簡版」（只有跑動作要看的幾格：狀態、白名單、動作對應的工作流）。
+  // 完整安裝態帶畫面 HTML、MCP 說明、更新紀錄，AHub 的那筆有 563 KB——Portal 每按一次動作都整筆讀進來、整筆 JSON.parse，
+  // 只為了看「這個動作在不在白名單、對應哪條工作流」。精簡版跟著完整版同一次 put／delete 一起寫、一起刪，
+  // 沒有它（舊安裝態）就退回讀完整版，所以不需要遷移。
+  appLean: {
+    name: "arcrun_app_lean",
+    slots: ["app_id", "name", "version", "definition", "updated_at"],
+    description: "Arcrun App \u5B89\u88DD\u614B\u7684\u7CBE\u7C21\u7248\uFF08\u8DD1\u52D5\u4F5C\u7528\uFF1B\u8DDF arcrun_app_install \u540C\u9032\u540C\u51FA\uFF0C\u53EA\u662F\u4E0D\u5E36\u756B\u9762\u8207\u8AAA\u660E\uFF09\u3002"
+  },
+  // inkstone/Arcrun#564：工作流「結構指紋」索引（推送時比對「這跟某條是同一種」，固定幾次讀寫、不掃全部工作流）。
+  // 只是從工作流定義算出來的投影（掉了就在下次推送重建），不是第二份真相。signature 格＝這筆的種類與雜湊，names 格＝內容。
+  workflowSig: {
+    name: "arcrun_workflow_sig",
+    slots: ["signature", "names", "updated_at"],
+    description: "Arcrun \u5DE5\u4F5C\u6D41\u7684\u7D50\u69CB\u6307\u7D0B\u7D22\u5F15\uFF1A\u7528\u5230\u540C\u4E00\u7D44\u96F6\u4EF6\u7684\u5DE5\u4F5C\u6D41\u540D\u55AE\uFF0C\u8207\u6BCF\u689D\u5DE5\u4F5C\u6D41\u4E0A\u6B21\u767B\u8A18\u7684\u6307\u7D0B\uFF08\u63A8\u9001\u6642\u63D0\u9192\u300C\u8DDF\u67D0\u689D\u662F\u540C\u4E00\u7A2E\u300D\uFF09\u3002"
   },
   webhook: {
     name: "arcrun_webhook",
@@ -29888,6 +30514,34 @@ function classify(store2, key) {
       };
     }
     return null;
+  }
+  const leanAt = key.indexOf(":applean:");
+  if (leanAt > 0) {
+    const tenant2 = key.slice(0, leanAt);
+    const id = key.slice(leanAt + ":applean:".length);
+    if (!tenant2 || !id) return null;
+    return {
+      kind: "record",
+      tpl: "appLean",
+      recordId: `asset:applean:${tenant2}:${id}`,
+      owner: tenantAssetOwner(tenant2),
+      valueSlot: "definition",
+      lift: (v) => ({ app_id: id, name: jsonField(v, "name"), version: jsonField(v, "version") })
+    };
+  }
+  const sigAt = key.indexOf(":wfsig:");
+  if (sigAt > 0) {
+    const tenant2 = key.slice(0, sigAt);
+    const rest = key.slice(sigAt + ":wfsig:".length);
+    if (!tenant2 || !/^(n|of):.+/.test(rest)) return null;
+    return {
+      kind: "record",
+      tpl: "workflowSig",
+      recordId: `asset:wfsig:${tenant2}:${rest}`,
+      owner: tenantAssetOwner(tenant2),
+      valueSlot: "names",
+      lift: () => ({ signature: rest })
+    };
   }
   const appAt = key.indexOf(":app:");
   if (appAt > 0) {
@@ -30162,11 +30816,12 @@ function cacheTtlFor(store2, key) {
   if (store2 === "RECIPES") return RECIPE_CACHE_MS;
   if (store2 === "WEBHOOKS" && /:wf:/.test(key)) return WORKFLOW_DEF_CACHE_MS;
   if (store2 === "WEBHOOKS" && /^[^:]+:app:[^:]+$/.test(key)) return WORKFLOW_DEF_CACHE_MS;
+  if (store2 === "WEBHOOKS" && /^[^:]+:applean:[^:]+$/.test(key)) return WORKFLOW_DEF_CACHE_MS;
   return 0;
 }
 function isHumanActionAsset(store2, key) {
   const ref = classify(store2, key);
-  return !!ref && ref.kind === "record" && ref.tpl === "app";
+  return !!ref && ref.kind === "record" && (ref.tpl === "app" || ref.tpl === "appLean");
 }
 function shape(raw2, type) {
   if (raw2 === null) return null;
@@ -30264,8 +30919,8 @@ var KbdbAssetStore = class {
           try {
             raw2 = await shared.p;
           } catch (joinErr) {
-            const msg = joinErr instanceof Error ? joinErr.message : String(joinErr);
-            if (!/request that has since ended|can never settle|cross.?request/i.test(msg)) throw joinErr;
+            const msg2 = joinErr instanceof Error ? joinErr.message : String(joinErr);
+            if (!/request that has since ended|can never settle|cross.?request/i.test(msg2)) throw joinErr;
             if (inflightReads.get(ck) === shared) inflightReads.delete(ck);
             console.error("[asset-store] joined read failed, retrying privately", this.store, key.slice(0, 60), joinErr instanceof Error ? joinErr.message.slice(0, 120) : String(joinErr).slice(0, 120));
             raw2 = await this.readRaw(key, stale === null);
@@ -30376,12 +31031,76 @@ var KbdbAssetStore = class {
     }
     const owner = ref.ownerFromValue ? ref.ownerFromValue(value) : ref.owner;
     await upsertRecord(this.env, ASSET_TEMPLATES[ref.tpl], ref.recordId, owner, values);
+    if (ref.tpl === "app") await this.syncLean(key, owner, value);
+  }
+  /** `<租戶>:app:<id>` → 精簡版的 key `<租戶>:applean:<id>`（inkstone/Arcrun#543）。 */
+  leanKeyOf(appKey2) {
+    const at = appKey2.indexOf(":app:");
+    return `${appKey2.slice(0, at)}:applean:${appKey2.slice(at + ":app:".length)}`;
+  }
+  /**
+   * 完整安裝態寫好之後，同一次把精簡版寫成跟它一致（只是投影，不是第二份真相）。
+   * 完整版壞掉讀不出（leanOfApp 回 null）＝刪掉精簡版，讀的人退回完整版。
+   * 精簡版寫失敗：先設法刪掉它（讓讀的人退回完整版，不讀到舊的白名單），再把錯往上丟——安裝失敗是看得見的，使用者會重試。
+   */
+  async syncLean(key, owner, value) {
+    const lk = this.leanKeyOf(key);
+    const lref = classify(this.store, lk);
+    if (!lref || lref.kind !== "record") return;
+    this.memo.delete(lk);
+    let lean = null;
+    try {
+      lean = leanOfApp(JSON.parse(value));
+    } catch {
+    }
+    if (!lean) {
+      await deleteRecord(this.env, lref.recordId);
+      return;
+    }
+    const text = JSON.stringify(lean);
+    try {
+      await upsertRecord(this.env, ASSET_TEMPLATES[lref.tpl], lref.recordId, owner, { ...lref.lift(text), definition: text, updated_at: nowIso() });
+    } catch (e) {
+      await deleteRecord(this.env, lref.recordId).catch(() => void 0);
+      throw e;
+    }
+  }
+  /**
+   * 只補不蓋：這筆還不存在才建（已存在＝別人先寫了，更新的在那邊，不動它）。
+   * 給精簡版「舊安裝態第一次被讀到時順手補上」用——補寫的內容來自一次可能稍舊的讀，所以絕不能覆蓋正式寫入的那一份。
+   * 目前只開放精簡版這一型；失敗吞掉（補不上就下次再補，讀的人本來就會退回完整版）。
+   */
+  async putIfAbsent(key, value) {
+    const ref = classify(this.store, key);
+    if (!ref || ref.kind !== "record" || ref.tpl !== "appLean") return;
+    try {
+      await ensureTemplate3(this.env, ASSET_TEMPLATES.appLean);
+      const res = await kbdbWrite(this.env, "/records", {
+        method: "POST",
+        body: JSON.stringify({
+          template: ASSET_TEMPLATES.appLean.name,
+          record_id: ref.recordId,
+          owner_id: ref.owner,
+          values: { ...ref.lift(value), definition: value, updated_at: nowIso() },
+          derived_cell_ids: true,
+          create_only: true
+        })
+      });
+      await res.text().catch(() => "");
+    } catch {
+    }
   }
   async delete(key) {
     const ref = classify(this.store, key);
     if (!ref || ref.kind === "derived") return;
     if (cacheTtlFor(this.store, key) > 0) clearRecipeCache();
     this.memo.delete(key);
+    if (ref.tpl === "app") {
+      const lk = this.leanKeyOf(key);
+      const lref = classify(this.store, lk);
+      this.memo.delete(lk);
+      if (lref && lref.kind === "record") await deleteRecord(this.env, lref.recordId);
+    }
     await deleteRecord(this.env, ref.recordId);
     if (ref.legacyEntryId) {
       await kbdbFetch3(this.env, `/entries/${encodeURIComponent(ref.legacyEntryId)}`, { method: "DELETE" }, "delete").catch(() => null);
@@ -30426,6 +31145,7 @@ function withAssetStores(env, tally) {
 }
 
 // cypher-executor/src/index.ts
+init_ephemeral_store();
 init_kbdb_tally();
 
 // cypher-executor/src/lib/grant-session.ts
@@ -30706,7 +31426,7 @@ init_component_loader();
 // cypher-executor/src/lib/component-catalog.generated.json
 var component_catalog_generated_default = {
   catalog_id: "arcrun:components/v1",
-  count: 21,
+  count: 22,
   components: [
     {
       canonical_id: "array_ops",
@@ -30726,6 +31446,7 @@ var component_catalog_generated_default = {
         "\u6E05\u55AE",
         "\u5217\u8868"
       ],
+      intent_use: "\u5C0D\u4E00\u4E32\u6E05\u55AE\u7B97\u6578\u91CF\u3001\u7E3D\u548C\u3001\u5E73\u5747\u3001\u6700\u5927\u6700\u5C0F\uFF0C\u53D6\u7B2C\u4E00\u500B\u6216\u6700\u5F8C\u4E00\u500B\uFF0C\u6392\u5E8F\uFF0C\u53BB\u91CD",
       tags: [
         "builtin",
         "data",
@@ -30814,6 +31535,7 @@ var component_catalog_generated_default = {
       ],
       description: "OAuth2 auth primitive\u3002\u8B80\u53D6 auth_recipe\uFF08\u542B token_endpoint\u3001client_id\u3001client_secret\uFF09\n+ \u89E3\u5BC6 refresh_token + \u547C\u53EB token endpoint \u63DB access_token + \u5C55\u958B {{runtime.access_token}}\u3002\n\u652F\u63F4 authenticate / needs_refresh / refresh \u4E09\u500B action\u3002\n\u900F\u904E host function kv_get + crypto_decrypt + http_request\uFF0Cplaintext \u6C38\u4E0D\u96E2\u958B WASM\u3002\n",
       aliases: [],
+      intent_use: "\u7528 OAuth2 \u6388\u6B0A\u53D6\u5F97\u5B58\u53D6\u91D1\u9470\uFF0C\u4F8B\u5982\u4E32 Google \u6216 Kit \u6642\u63DB token",
       tags: [
         "auth",
         "credential",
@@ -30918,6 +31640,7 @@ var component_catalog_generated_default = {
       ],
       description: "Service Account auth primitive (Google JWT \u65B9\u6848)\u3002\u8B80\u53D6 auth_recipe + \u89E3\u5BC6 service_account_json \u2192 \u89E3\u6790 PEM private key \u2192 \u7D44 JWT \u2192 crypto_sign_rs256 (host function) \u2192 token exchange endpoint \u2192 \u53D6 access_token \u2192 \u5C55\u958B {{runtime.access_token}} \u6A21\u677F\u3002\u900F\u904E host function crypto_sign_rs256,private key \u50C5\u4EE5 PKCS8 bytes \u50B3\u7D66 host,\u89E3\u5BC6\u5F8C plaintext \u4E0D\u96E2\u958B WASM\u3002",
       aliases: [],
+      intent_use: "\u7528\u670D\u52D9\u5E33\u865F\u91D1\u9470\u63DB\u53D6 Google \u7684\u5B58\u53D6\u6191\u8B49",
       tags: [
         "auth",
         "credential",
@@ -31017,6 +31740,7 @@ var component_catalog_generated_default = {
       ],
       description: "Static key auth primitive\u3002\u8B80\u53D6 auth_recipe + \u89E3\u5BC6 required_secrets + \u5C55\u958B {{secret.X}} \u6A21\u677F,\u56DE\u50B3 auth_headers / auth_query / auth_body\u3002\u6DB5\u84CB Bearer token / API key / Basic auth / \u81EA\u8A02 header \u7B49 80% \u670D\u52D9\u3002\u900F\u904E host function kv_get + crypto_decrypt,plaintext \u6C38\u4E0D\u96E2\u958B WASM\u3002",
       aliases: [],
+      intent_use: "\u7528\u56FA\u5B9A\u7684 API \u91D1\u9470\u7D44\u51FA\u8A8D\u8B49\u6A19\u982D",
       tags: [
         "auth",
         "credential",
@@ -31098,6 +31822,211 @@ var component_catalog_generated_default = {
       source: "registry/components/auth_static_key/component.contract.yaml"
     },
     {
+      canonical_id: "check_fields",
+      display_name: "\u6AA2\u67E5\u8F38\u5165\u6B04\u4F4D",
+      category: "logic",
+      version: "v1",
+      stability: "floating",
+      runtime_compat: [
+        "cf-workers",
+        "workerd",
+        "wazero"
+      ],
+      description: "\u7167\u6B04\u4F4D\u5BA3\u544A\u6AA2\u67E5\u8F38\u5165\uFF1A\u5FC5\u586B\u3001\u578B\u5225\u3001\u9577\u5EA6\u3001\u6578\u503C\u7BC4\u570D\u3001\u5141\u8A31\u503C\u3002\u5168\u90E8\u5408\u683C\u8D70 ON_SUCCESS\uFF1B\u4EFB\u4E00\u4E0D\u5408\u683C success:false\uFF08\u8D70 ON_FAIL\uFF09\uFF0C\u4E26\u56DE\u300C\u6B04\u4F4D: \u539F\u56E0\u300D\u6E05\u55AE\u3002\u53D6\u4EE3\u6BCF\u689D\u5DE5\u4F5C\u6D41\u958B\u982D\u64CB\u58DE\u8F38\u5165\u7684\u90A3\u6BB5 JS\u3002",
+      aliases: [
+        "\u9A57\u8B49\u8F38\u5165",
+        "\u9A57\u8B49\u6B04\u4F4D",
+        "\u6B04\u4F4D\u9A57\u8B49",
+        "\u8868\u55AE\u9A57\u8B49",
+        "\u5FC5\u586B\u6AA2\u67E5",
+        "\u64CB\u58DE\u8F38\u5165",
+        "validate input",
+        "form validation",
+        "required fields"
+      ],
+      intent_use: "\u5728\u5DE5\u4F5C\u6D41\u958B\u982D\u6AA2\u67E5\u4F7F\u7528\u8005\u9001\u4F86\u7684\u8868\u55AE\u6B04\u4F4D\u6709\u6C92\u6709\u586B\u3001\u683C\u5F0F\u5C0D\u4E0D\u5C0D\u3001\u9577\u5EA6\u548C\u7BC4\u570D\u5408\u4E0D\u5408\u898F\u5B9A\uFF0C\u4E0D\u5408\u683C\u5C31\u64CB\u4E0B\u4F86",
+      tags: [
+        "builtin",
+        "validation",
+        "input",
+        "field",
+        "required",
+        "type",
+        "length",
+        "enum",
+        "check"
+      ],
+      input_schema: {
+        type: "object",
+        required: [
+          "fields"
+        ],
+        properties: {
+          input: {
+            type: "object",
+            description: '\u8981\u6AA2\u67E5\u7684\u7269\u4EF6\uFF08\u901A\u5E38\u5BEB "{{input}}" \u6216 "{{input.body}}"\uFF09\uFF1B\u7D66 JSON \u5B57\u4E32\u4E5F\u884C\uFF08\u9577\u5F97\u50CF\u7269\u4EF6\u5C31\u5148\u89E3\u958B\uFF09\uFF1B\u6C92\u7D66\u8996\u70BA\u7A7A\u7269\u4EF6'
+          },
+          fields: {
+            description: "\u6B04\u4F4D\u5BA3\u544A\u3002\u7269\u4EF6\u5F62\uFF08key\uFF1D\u6B04\u4F4D\u540D\uFF09\u6216\u9663\u5217\u5F62\uFF08\u6BCF\u9805\u5E36 name\uFF0C\u9806\u5E8F\u5373\u56DE\u5831\u9806\u5E8F\uFF09\uFF1B\u6B04\u4F4D\u540D\u53EF\u5BEB a.b \u53D6\u5DE2\u72C0\u6B04\u4F4D",
+            oneOf: [
+              {
+                type: "object"
+              },
+              {
+                type: "array"
+              }
+            ],
+            additionalProperties: {
+              type: "object",
+              properties: {
+                required: {
+                  type: "boolean",
+                  description: "\u7F3A\u3001null\u3001\u7A7A\u5B57\u4E32\u3001\u7A7A\u9663\u5217\u3001\u7A7A\u7269\u4EF6\u90FD\u7B97\u6C92\u586B"
+                },
+                type: {
+                  type: "string",
+                  enum: [
+                    "string",
+                    "number",
+                    "integer",
+                    "boolean",
+                    "array",
+                    "object"
+                  ]
+                },
+                trim: {
+                  type: "boolean",
+                  description: "\u5B57\u4E32\u5148\u53BB\u982D\u5C3E\u7A7A\u767D\u518D\u6AA2\u67E5\uFF08\u53EA\u542B\u7A7A\u767D\u4E5F\u7B97\u6C92\u586B\uFF09\uFF1B\u4E0D\u6539\u52D5\u8F38\u5165"
+                },
+                min_length: {
+                  type: "number",
+                  description: "\u5B57\u4E32\uFF1D\u6700\u5C11\u5B57\u5143\u6578\uFF1B\u9663\u5217\uFF1D\u6700\u5C11\u5143\u7D20\u6578"
+                },
+                max_length: {
+                  type: "number",
+                  description: "\u5B57\u4E32\uFF1D\u6700\u591A\u5B57\u5143\u6578\uFF1B\u9663\u5217\uFF1D\u6700\u591A\u5143\u7D20\u6578"
+                },
+                min: {
+                  type: "number",
+                  description: "\u6578\u503C\u4E0B\u9650\uFF08\u542B\uFF09"
+                },
+                max: {
+                  type: "number",
+                  description: "\u6578\u503C\u4E0A\u9650\uFF08\u542B\uFF09"
+                },
+                enum: {
+                  type: "array",
+                  description: "\u5141\u8A31\u503C\u6E05\u55AE\uFF08\u578B\u5225\u4E5F\u8981\u5C0D\uFF09"
+                },
+                message: {
+                  type: "string",
+                  description: "\u4E0D\u5408\u683C\u6642\u6539\u7528\u9019\u53E5\u7576\u539F\u56E0\uFF08\u53D6\u4EE3\u5167\u5EFA\u8AAA\u6CD5\uFF09"
+                }
+              }
+            }
+          }
+        }
+      },
+      output_schema: {
+        type: "object",
+        required: [
+          "success"
+        ],
+        properties: {
+          success: {
+            type: "boolean",
+            description: "\u5168\u90E8\u5408\u683C\u70BA true\uFF1B\u4EFB\u4E00\u6B04\u4F4D\u4E0D\u5408\u683C\u70BA false\uFF08\u8D70 ON_FAIL\uFF09"
+          },
+          error: {
+            type: "string",
+            description: "\u4E0D\u5408\u683C\u6642\uFF0C\u300C\u6B04\u4F4D: \u539F\u56E0\u300D\u4EE5\u300C\uFF1B\u300D\u4E32\u8D77\u4F86\u7684\u4E00\u53E5\u8A71"
+          },
+          data: {
+            type: "object",
+            properties: {
+              valid: {
+                type: "boolean"
+              },
+              result: {
+                type: "boolean",
+                description: "\u540C valid\uFF08\u8B93 ON_TRUE\uFF0FON_FALSE \u4E5F\u8B80\u5F97\u5230\uFF09"
+              },
+              checked: {
+                type: "integer",
+                description: "\u6AA2\u67E5\u4E86\u5E7E\u500B\u6B04\u4F4D"
+              },
+              errors: {
+                type: "array",
+                description: "\u4E0D\u5408\u683C\u6E05\u55AE\uFF0C\u6BCF\u9805 {field, reason}"
+              },
+              messages: {
+                type: "array",
+                description: "errors \u9010\u9805\u5BEB\u6210\u300C\u6B04\u4F4D: \u539F\u56E0\u300D"
+              },
+              config_error: {
+                type: "boolean",
+                description: "\u5BA3\u544A\u672C\u8EAB\u6709\u8AA4\uFF08\u6C92\u7D66 fields\u3001\u898F\u5247\u5BEB\u932F\uFF09\u6642\u70BA true"
+              }
+            }
+          }
+        }
+      },
+      gherkin_tests: [
+        {
+          scenario: "\u5168\u90E8\u5408\u683C\u8D70\u6210\u529F",
+          given: '{"input":{"name":"Leo","age":30},"fields":{"name":{"required":true,"type":"string"},"age":{"type":"integer","min":0}}}',
+          then_contains: '"success":true'
+        },
+        {
+          scenario: "\u5FC5\u586B\u6B04\u4F4D\u6C92\u586B",
+          given: '{"input":{},"fields":{"name":{"required":true}}}',
+          then_contains: '"messages":["name: \u5FC5\u586B"]'
+        },
+        {
+          scenario: "\u53EA\u542B\u7A7A\u767D\u5728 trim \u4E0B\u7B97\u6C92\u586B",
+          given: '{"input":{"name":"   "},"fields":{"name":{"required":true,"trim":true}}}',
+          then_contains: '"success":false'
+        },
+        {
+          scenario: "\u578B\u5225\u4E0D\u7B26",
+          given: '{"input":{"age":"30"},"fields":{"age":{"type":"integer"}}}',
+          then_contains: '"field":"age","reason":"\u5FC5\u9808\u662F\u6574\u6578\uFF08\u6536\u5230\u5B57\u4E32\uFF09"'
+        },
+        {
+          scenario: "\u5B57\u4E32\u592A\u77ED",
+          given: '{"input":{"pw":"ab"},"fields":{"pw":{"min_length":8}}}',
+          then_contains: "\u9577\u5EA6\u81F3\u5C11 8 \u500B\u5B57\uFF08\u76EE\u524D 2\uFF09"
+        },
+        {
+          scenario: "\u4E0D\u5728\u5141\u8A31\u503C\u5167",
+          given: '{"input":{"role":"x"},"fields":{"role":{"enum":["admin","user"]}}}',
+          then_contains: "\u5FC5\u9808\u662F\u9019\u4E9B\u503C\u4E4B\u4E00\uFF1Aadmin\u3001user"
+        },
+        {
+          scenario: "\u975E\u5FC5\u586B\u6B04\u4F4D\u6C92\u586B\u5C31\u7565\u904E\u5176\u9918\u898F\u5247",
+          given: '{"input":{},"fields":{"note":{"type":"string","min_length":5}}}',
+          then_contains: '"success":true'
+        },
+        {
+          scenario: "input \u662F JSON \u5B57\u4E32\u4E5F\u80FD\u6AA2\u67E5",
+          given: '{"input":"{\\"name\\":\\"\\"}","fields":{"name":{"required":true}}}',
+          then_contains: '"messages":["name: \u5FC5\u586B"]'
+        },
+        {
+          scenario: "message \u53D6\u4EE3\u5167\u5EFA\u8AAA\u6CD5",
+          given: '{"input":{},"fields":{"title":{"required":true,"message":"title is required"}}}',
+          then_contains: '"field":"title","reason":"title is required"'
+        },
+        {
+          scenario: "\u6C92\u7D66 fields \u662F\u8A2D\u5B9A\u932F\u8AA4",
+          given: '{"input":{"a":1}}',
+          then_contains: '"config_error":true'
+        }
+      ],
+      config_example: 'check_input:                              # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  input: "{{input}}"                      # \u8981\u6AA2\u67E5\u7684\u7269\u4EF6\n  fields:                                 # \u6B04\u4F4D\u5BA3\u544A\uFF08\u5FC5\u586B\uFF09\n    name:\n      required: true\n      type: string\n      trim: true\n      max_length: 80\n    role:\n      enum: [admin, user]\n    age:\n      type: integer\n      min: 0\n',
+      source: "registry/components/check_fields/component.contract.yaml"
+    },
+    {
       canonical_id: "code",
       display_name: "\u7A0B\u5F0F\u78BC\uFF08\u6C99\u7BB1 inline JS\uFF09",
       category: "logic",
@@ -31109,6 +32038,7 @@ var component_catalog_generated_default = {
       ],
       description: "\u901A\u7528\u300C\u7A0B\u5F0F\u78BC\u9003\u751F\u53E3\u300D\u3002\u8DD1\u4E00\u6BB5 sandbox inline JS\uFF08n8n Code node \u5F0F\uFF09\uFF1A config \u5E36 `code`\uFF08inline JS \u51FD\u5F0F\u9AD4\uFF09\uFF0Cstdin \u5E36 `input`\uFF08\u4E0A\u6E38 JSON\uFF09\uFF0C stdout \u56DE `{success, data}` \u6216 `{success:false, error, error_type}`\u3002 user code \u5728 QuickJS-wasm \u6C99\u7BB1\u5167\u57F7\u884C\uFF0C\u53EA\u6709\u7D14 ECMAScript \u5167\u5EFA + host \u660E\u78BA\u6CE8\u5165\u7684 curated builtin\uFF08\u76EE\u524D\uFF1A\u7D14\u51FD\u5F0F sha256\uFF09\uFF0C\u78B0\u4E0D\u5230\u7DB2\u8DEF/\u6A94\u6848/env/secret/Worker \u7269\u4EF6\u5716\u3002 \u7528\u65BC\u4E00\u6B21\u6027/\u5C0F\u6BB5\u7A0B\u5F0F\u908F\u8F2F\uFF08\u5982\u5361\u7247\u2192envelope \u6587\u5B57\u8655\u7406\uFF09\uFF0C\u907F\u514D\u5404\u81EA\u9444 domain \u96F6\u4EF6\u3002\n",
       aliases: [],
+      intent_use: "\u5BEB\u4E00\u5C0F\u6BB5 JavaScript \u505A\u5C40\u90E8\u7684\u8CC7\u6599\u6574\u5F62\uFF0C\u53EA\u5728\u6C92\u6709\u73FE\u6210\u96F6\u4EF6\u6642\u6700\u5F8C\u624B\u6BB5",
       tags: [
         "builtin",
         "logic",
@@ -31205,6 +32135,7 @@ var component_catalog_generated_default = {
       ],
       description: "\u9A57\u8B49 cron expression \u683C\u5F0F\u4E26\u56DE\u50B3 cron_id\u3002\u5BE6\u969B\u6392\u7A0B\u7531 Cypher Executor \u8CA0\u8CAC\u3002",
       aliases: [],
+      intent_use: "\u8A2D\u5B9A\u5B9A\u6642\u6392\u7A0B\uFF0C\u6BCF\u5929\u56FA\u5B9A\u5E7E\u9EDE\u6216\u6BCF\u9694\u4E00\u6BB5\u6642\u9593\u81EA\u52D5\u555F\u52D5\u9019\u689D\u5DE5\u4F5C\u6D41",
       tags: [
         "builtin",
         "cron",
@@ -31291,6 +32222,7 @@ var component_catalog_generated_default = {
         "datetime",
         "timestamp"
       ],
+      intent_use: "\u53D6\u5F97\u73FE\u5728\u7684\u6642\u9593\u3001\u628A\u65E5\u671F\u8F49\u6210\u6307\u5B9A\u683C\u5F0F\u6216\u6642\u5340\u3001\u89E3\u6790\u65E5\u671F\u5B57\u4E32",
       tags: [
         "builtin",
         "data",
@@ -31377,6 +32309,7 @@ var component_catalog_generated_default = {
       ],
       description: "\u628A source_url \u7684\u56DE\u61C9 body \u4E32\u6D41\u8F49\u767C\u6210 dest_url \u7684\u8ACB\u6C42 body\uFF0C\u5169\u7AEF\u4E4B\u9593\u7684\u8CC7\u6599\u5168\u7A0B\u4E0D\u9032 WASM \u7684 stdin/stdout JSON \u901A\u9053\uFF08host-to-host \u76F4\u63A5\u8F49\u767C\uFF0Cbyte \u4E0D\u843D\u5730\u5728\u96F6\u4EF6\u8A18\u61B6\u9AD4\uFF09\u3002 \u7528\u9014\uFF1A\u4EFB\u4F55\u300C\u628A\u4E00\u4EFD\u4E0D\u77E5\u9053\u5927\u5C0F\u7684\u9060\u7AEF\u5167\u5BB9\uFF0C\u539F\u5C01\u4E0D\u52D5\u9001\u5230\u53E6\u4E00\u500B\u7AEF\u9EDE\u300D\u7684\u5834\u666F\u2014\u2014\u4F8B\u5982 \u628A Gitea release asset / R2 \u516C\u958B\u7269\u4EF6\u7576\u6210 Cloudflare Workers Module Upload \u7684 multipart body\uFF0C\u90E8\u7F72\u4E00\u5305 Worker\uFF0C\u800C\u4E0D\u5FC5\u628A\u6574\u5305\u585E\u9032\u5C0D\u8A71\u4E0A\u4E0B\u6587\u6216 http_request \u7684 64KB \u8F38\u51FA\u4E0A\u9650\u3002\u9019\u662F\u901A\u7528\u539F\u8A9E\uFF0C\u4E0D\u7D81\u5B9A Cloudflare\uFF1A\u4EFB\u4F55\u300C\u4F86\u6E90\u7DB2\u5740\u2192\u76EE\u7684\u5730\u7DB2\u5740\u300D\u7684 \u8F49\u767C\u90FD\u80FD\u7528\u3002\u53D7 max_bytes\uFF0Ftimeout_ms \u9650\u5236\uFF0C\u4E0D\u662F\u7121\u754C\u4E32\u6D41\uFF08component-pr-review-standard \u5BE9\u6838\u689D\u4EF6 C\uFF0C2026-09-25\uFF09\u3002 \u5927\u6A94\u5206\u6BB5\uFF1Asource_headers \u5E36 Range\uFF08\u4F8B\u5982 bytes=0-8388607\uFF09\uFF0C\u4F86\u6E90\u56DE 206 \u8207\u5B9A\u9577 body\uFF0C dest_headers \u5E36\u5C0D\u61C9\u7684 Content-Range\uFF0C\u7528 foreach \u4E00\u6BB5\u4E00\u6BB5\u9001\uFF1B\u4F86\u6E90\u53EF\u4EE5\u662F R2 \u7684\u7C3D\u540D\u7DB2\u5740\u6216\u516C\u958B\u7DB2\u5740\u3002\n",
       aliases: [],
+      intent_use: "\u628A\u4E00\u500B\u7DB2\u5740\u4E0B\u8F09\u7684\u5927\u6A94\u6848\u76F4\u63A5\u4E32\u6D41\u8F49\u9001\u5230\u53E6\u4E00\u500B\u7DB2\u5740\uFF0C\u4E0D\u7D93\u904E\u8A18\u61B6\u9AD4",
       tags: [
         "integration",
         "http",
@@ -31502,6 +32435,7 @@ var component_catalog_generated_default = {
       ],
       description: "\u4F9D\u689D\u4EF6\u904E\u6FFE\u9663\u5217\uFF0C\u56DE\u50B3\u7B26\u5408\u689D\u4EF6\u7684\u5143\u7D20\u3002\u652F\u63F4 eq/ne/gt/lt/contains \u904B\u7B97\u5B50\u3002",
       aliases: [],
+      intent_use: "\u5F9E\u6E05\u55AE\u88E1\u7BE9\u9078\u51FA\u7B26\u5408\u689D\u4EF6\u7684\u9805\u76EE",
       tags: [
         "builtin",
         "filter",
@@ -31607,6 +32541,7 @@ var component_catalog_generated_default = {
         "\u904D\u6B77",
         "each"
       ],
+      intent_use: "\u5C0D\u6E05\u55AE\u88E1\u6BCF\u4E00\u7B46\u8CC7\u6599\u9010\u7B46\u91CD\u8907\u8655\u7406",
       tags: [
         "builtin",
         "control",
@@ -31683,7 +32618,21 @@ var component_catalog_generated_default = {
         "wazero"
       ],
       description: "\u8A08\u7B97\u5167\u5BB9\u96DC\u6E4A\uFF08sha256/sha1/md5\uFF0C\u8F38\u51FA hex \u6216 base64\uFF09\u3002\u7D14\u8A08\u7B97\uFF0C\u7121\u7DB2\u8DEF/\u6A94\u6848 syscall\u3002 \u7528\u9014\uFF1A\u51FA\u8CA8\u7DDA\u7248\u672C\u865F\u6A5F\u5236\uFF08Leo/Arcrun#91\uFF09\u2014\u2014\u5167\u5BB9\u4E00\u8B8A\u96DC\u6E4A\u5FC5\u8B8A\uFF0C\u662F\u300C\u6539\u4E86\u6771\u897F\u7248\u672C\u6C92\u52D5\u300D\u5728\u7D50\u69CB\u4E0A \u4E0D\u53EF\u80FD\u767C\u751F\u7684\u6A5F\u5236\u4F86\u6E90\uFF1Bbuild \u7AD9\u6838\u5C0D\u5B98\u65B9\u6210\u54C1\u6307\u7D0B\u4E5F\u7528\u5B83\u3002",
-      aliases: [],
+      aliases: [
+        "\u96DC\u6E4A",
+        "\u54C8\u5E0C",
+        "\u96DC\u6E4A\u503C",
+        "\u6307\u7D0B",
+        "\u5167\u5BB9\u6307\u7D0B",
+        "\u6821\u9A57\u78BC",
+        "\u6458\u8981",
+        "checksum",
+        "digest",
+        "sha256",
+        "sha1",
+        "md5"
+      ],
+      intent_use: "\u8A08\u7B97\u8CC7\u6599\u7684\u96DC\u6E4A\u503C\u3001\u5167\u5BB9\u6307\u7D0B\u3001\u6821\u9A57\u78BC\uFF0C\u4F8B\u5982 SHA-256\u3001MD5",
       tags: [
         "builtin",
         "logic",
@@ -31799,6 +32748,7 @@ var component_catalog_generated_default = {
         "\u5916\u90E8 api",
         "\u547C\u53EB api"
       ],
+      intent_use: "\u547C\u53EB\u5916\u90E8\u7DB2\u7AD9\u6216 API\uFF0C\u767C\u9001 HTTP \u8ACB\u6C42\u4E26\u53D6\u5F97\u56DE\u61C9",
       tags: [
         "integration",
         "http",
@@ -31914,8 +32864,13 @@ var component_catalog_generated_default = {
         "condition",
         "\u5224\u65B7",
         "branch",
-        "\u5206\u652F"
+        "\u5206\u652F",
+        "\u662F\u5426",
+        "\u5982\u679C",
+        "\u4E8C\u9078\u4E00",
+        "\u6210\u7ACB\u8207\u5426"
       ],
+      intent_use: "\u5224\u65B7\u4E00\u500B\u689D\u4EF6\u6210\u7ACB\u6216\u4E0D\u6210\u7ACB\uFF0C\u5169\u689D\u8DEF\u64C7\u4E00\uFF1A\u6210\u7ACB\u8D70\u4E00\u908A\u3001\u4E0D\u6210\u7ACB\u8D70\u53E6\u4E00\u908A",
       tags: [
         "builtin",
         "control",
@@ -31995,6 +32950,7 @@ var component_catalog_generated_default = {
       ],
       description: "\u5C07\u591A\u500B\u7269\u4EF6\u5408\u4F75\u70BA\u4E00\u500B\uFF0C\u5F8C\u8005\u6B04\u4F4D\u8986\u84CB\u524D\u8005\u540C\u540D\u6B04\u4F4D\u3002",
       aliases: [],
+      intent_use: "\u628A\u591A\u500B\u7269\u4EF6\u6216\u6B04\u4F4D\u5408\u4F75\u6210\u4E00\u500B",
       tags: [
         "builtin",
         "merge",
@@ -32068,6 +33024,7 @@ var component_catalog_generated_default = {
         "math",
         "\u8A08\u7B97"
       ],
+      intent_use: "\u505A\u6578\u5B57\u904B\u7B97\uFF1A\u52A0\u6E1B\u4E58\u9664\u3001\u56DB\u6368\u4E94\u5165\u3001\u53D6\u9918\u6578\u3001\u6578\u5B57\u683C\u5F0F\u5316",
       tags: [
         "builtin",
         "data",
@@ -32165,6 +33122,7 @@ var component_catalog_generated_default = {
       ],
       description: "\u8A2D\u5B9A\u6216\u8986\u5BEB\u8B8A\u6578\uFF0C\u652F\u63F4 assignments \u9663\u5217\u6216 values \u7269\u4EF6\u5169\u7A2E\u683C\u5F0F\uFF0C\u7D50\u679C\u5408\u4F75\u81EA context\u3002",
       aliases: [],
+      intent_use: "\u8A2D\u5B9A\u6216\u6539\u5BEB\u8B8A\u6578\u3001\u7D66\u6B04\u4F4D\u6307\u5B9A\u503C",
       tags: [
         "builtin",
         "set",
@@ -32252,6 +33210,7 @@ var component_catalog_generated_default = {
         "\u6587\u5B57",
         "str"
       ],
+      intent_use: "\u8655\u7406\u6587\u5B57\uFF1A\u8F49\u5927\u5C0F\u5BEB\u3001\u53BB\u7A7A\u767D\u3001\u53D6\u4EE3\u3001\u5207\u5272\u3001\u4E32\u63A5\u3001\u5224\u65B7\u5305\u542B\u3001\u53D6\u5B50\u5B57\u4E32",
       tags: [
         "builtin",
         "data",
@@ -32345,8 +33304,21 @@ var component_catalog_generated_default = {
         "\u591A\u8DEF\u7531",
         "route",
         "\u8DEF\u7531",
-        "case"
+        "case",
+        "\u5206\u5C94",
+        "\u5206\u6D41",
+        "\u591A\u9078\u4E00",
+        "\u4F9D\u6B04\u4F4D",
+        "\u4F9D\u503C",
+        "\u770B\u6B04\u4F4D",
+        "\u6B04\u4F4D\u503C",
+        "\u8D70\u54EA\u689D",
+        "\u6C7A\u5B9A\u8D70",
+        "\u8D70\u54EA\u4E00\u689D",
+        "\u4F9D\u72C0\u614B",
+        "\u4F9D\u985E\u578B"
       ],
+      intent_use: "\u770B\u67D0\u500B\u6B04\u4F4D\u7684\u503C\u662F\u4EC0\u9EBC\uFF0C\u4F9D\u4E0D\u540C\u7684\u503C\u8D70\u5411\u4E0D\u540C\u7684\u8DEF\u5F91\uFF0C\u4E09\u689D\u8DEF\u4EE5\u4E0A\u7684\u5206\u6D41",
       tags: [
         "builtin",
         "switch",
@@ -32439,6 +33411,7 @@ var component_catalog_generated_default = {
         "fallback",
         "\u4F8B\u5916"
       ],
+      intent_use: "\u4E0A\u4E00\u6B65\u5982\u679C\u51FA\u932F\u5C31\u6539\u8D70\u5099\u63F4\u6216\u932F\u8AA4\u8655\u7406\u7684\u8DEF\u5F91\uFF0C\u6C92\u51FA\u932F\u8D70\u6B63\u5E38\u8DEF\u5F91",
       tags: [
         "builtin",
         "control",
@@ -32513,7 +33486,15 @@ var component_catalog_generated_default = {
         "wazero"
       ],
       description: "\u9A57\u8B49\u8F38\u5165\u5B57\u4E32\u662F\u5426\u70BA\u5408\u6CD5 JSON \u683C\u5F0F\u3002\u8F38\u5165 json_string \u6B04\u4F4D\uFF0C\u56DE\u50B3 valid\uFF08\u5E03\u6797\u503C\uFF09\u8207 error\uFF08\u5931\u6557\u6642\u7684\u932F\u8AA4\u8A0A\u606F\uFF09\u3002",
-      aliases: [],
+      aliases: [
+        "\u9A57\u8B49 JSON",
+        "JSON \u9A57\u8B49",
+        "\u6AA2\u67E5 JSON",
+        "\u5408\u6CD5 JSON",
+        "\u662F\u4E0D\u662F JSON",
+        "JSON \u683C\u5F0F"
+      ],
+      intent_use: "\u6AA2\u67E5\u4E00\u6BB5\u6587\u5B57\u662F\u4E0D\u662F\u5408\u6CD5\u7684 JSON",
       tags: [
         "validation",
         "json",
@@ -32598,6 +33579,7 @@ var component_catalog_generated_default = {
         "sleep",
         "\u7B49\u5F85"
       ],
+      intent_use: "\u66AB\u505C\u7B49\u5F85\u5E7E\u79D2\u9418\u5F8C\u518D\u7E7C\u7E8C\u5F80\u4E0B\u505A",
       tags: [
         "builtin",
         "wait",
@@ -32683,11 +33665,80 @@ var BRANCH_HINTS = {
     edge_types: ["ON_BRANCH"],
     usage: '\u9019\u9846\u770B\u4E0A\u6E38 error \u662F\u5426\u975E\u7A7A\uFF0C\u8F38\u51FA data.branch\uFF08"try"\uFF1D\u6C92\u932F\uFF0F"catch"\uFF1D\u6709\u932F\uFF09\u3002\u4E0B\u6E38\u63A5\u5169\u689D ON_BRANCH \u908A\uFF0Cbranch \u5206\u5225\u6A19 "try" \u8207 "catch"\u3002**\u932F\u8AA4\u8655\u7406\u4E0D\u9700\u8981\u5BEB code**\u2014\u2014\u628A\u8981\u88DC\u6551\u7684\u7BC0\u9EDE\u63A5\u5728 catch \u90A3\u689D\u908A\u5F8C\u9762\u5373\u53EF\u3002',
     example: 'edges: [\n  {"from":"my_try_catch","to":"\u6B63\u5E38\u6D41\u7A0B","type":"ON_BRANCH","branch":"try"},\n  {"from":"my_try_catch","to":"\u88DC\u6551\u6D41\u7A0B","type":"ON_BRANCH","branch":"catch"}\n]'
+  },
+  check_fields: {
+    branch_field: "success",
+    branches: ["true", "false"],
+    edge_types: ["ON_SUCCESS", "ON_FAIL"],
+    usage: "\u9019\u9846\u7167 fields \u5BA3\u544A\u6AA2\u67E5 input\uFF1A\u5168\u90E8\u5408\u683C success:true\uFF08\u8D70 ON_SUCCESS\uFF09\uFF1B\u4EFB\u4E00\u6B04\u4F4D\u4E0D\u5408\u683C success:false\uFF08\u8D70 ON_FAIL\uFF09\uFF0C\u4E26\u5728 data.errors\uFF08[{field, reason}]\uFF09\u3001data.messages\uFF08\u300C\u6B04\u4F4D: \u539F\u56E0\u300D\uFF09\u8207 error\uFF08\u4E00\u53E5\u8A71\uFF09\u8AAA\u660E\u54EA\u88E1\u4E0D\u5408\u683C\u3002**\u64CB\u58DE\u8F38\u5165\u4E0D\u9700\u8981\u5BEB code**\u2014\u2014\u628A\u300C\u56DE\u932F\u8AA4\u300D\u7684\u7BC0\u9EDE\u63A5\u5728 ON_FAIL \u5F8C\u9762\u5373\u53EF\u3002",
+    example: 'edges: [\n  {"from":"check_input","to":"\u8655\u7406\u8CC7\u6599","type":"ON_SUCCESS"},\n  {"from":"check_input","to":"\u56DE\u5831\u6B04\u4F4D\u932F\u8AA4","type":"ON_FAIL"}\n]'
   }
 };
 function branchHintFor(componentId) {
   if (!componentId) return void 0;
   return BRANCH_HINTS[componentId.toLowerCase()];
+}
+
+// cypher-executor/src/lib/intent-match.ts
+var GENERIC_TOKENS = /* @__PURE__ */ new Set([
+  "\u9A57\u8B49",
+  "\u6AA2\u67E5",
+  "\u8655\u7406",
+  "\u8CC7\u6599",
+  "\u683C\u5F0F",
+  "\u8A08\u7B97",
+  "\u8F49\u63DB",
+  "\u53D6\u5F97",
+  "\u8A2D\u5B9A",
+  "\u57F7\u884C",
+  "\u529F\u80FD",
+  "\u7D50\u679C",
+  "\u5167\u5BB9",
+  "\u6B04\u4F4D",
+  "\u8F38\u5165",
+  "\u8F38\u51FA",
+  "\u4E00\u500B",
+  "\u9019\u500B",
+  "\u7136\u5F8C",
+  "\u4E4B\u5F8C"
+]);
+function normalizePhrase(s) {
+  return s.toLowerCase().replace(/[\s_\-]+/g, "");
+}
+function hasCjk(s) {
+  return /[぀-ヿ一-鿿]/.test(s);
+}
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function phraseIn(text, phrase) {
+  const p = phrase.trim().toLowerCase();
+  if (!p) return false;
+  if (hasCjk(p)) {
+    const np = normalizePhrase(p);
+    return np.length >= 2 && normalizePhrase(text).includes(np);
+  }
+  if (p.replace(/[^a-z0-9]/g, "").length < 3) return false;
+  const re = new RegExp(`(?<![a-z0-9])${escapeRe(p).replace(/\s+/g, "[\\s_\\-]*")}(?![a-z0-9])`);
+  return re.test(text.toLowerCase());
+}
+function matchByPhrase(text, entries) {
+  let bestLen = 0;
+  const best = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const phrases = [e.canonical_id, e.display_name ?? "", ...e.aliases ?? []];
+    for (const ph2 of phrases) {
+      if (!ph2 || !phraseIn(text, ph2)) continue;
+      const len = normalizePhrase(ph2).length;
+      if (len > bestLen) {
+        bestLen = len;
+        best.clear();
+      }
+      if (len === bestLen && !best.has(e.canonical_id)) best.set(e.canonical_id, { entry: e, phrase: ph2 });
+    }
+  }
+  if (best.size !== 1) return null;
+  return [...best.values()][0];
 }
 
 // cypher-executor/src/lib/component-catalog.ts
@@ -32750,6 +33801,7 @@ function scoreComponent(c, query, t) {
     else if (mediumWords.has(w)) score += 3;
     else if (weakWords.has(w)) score += 1;
   }
+  for (const a of c.aliases) if (a.trim().length >= 2 && phraseIn(query, a)) score += 6;
   for (const g of t.cjk) {
     if (strong.includes(g)) score += 3;
     else if (medium.includes(g)) score += 2;
@@ -32763,6 +33815,47 @@ function searchComponents(query, limit = 10) {
     const hint = branchHintFor(c.canonical_id);
     return { ...summarizeComponent(c), score: s, input_schema: c.input_schema, ...hint ? { branch_hint: hint } : {} };
   });
+}
+
+// cypher-executor/src/actions/graph-builder.ts
+var FOREACH_LABEL_RE = /^(?:對每個|FOREACH)\s+(\w+)(?:\s+(?:並行|PARALLEL)\s*[（(]?\s*(\d+)\s*[）)]?)?$/i;
+function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
+  const nodes = [...parsed.nodeNames].map((name) => {
+    const nr = nodeResults[name];
+    const id = name.toLowerCase().replace(/\s+/g, "-");
+    const nodeConfig = config?.[name] ?? {};
+    const componentId = nodeConfig.component ?? nr.componentId;
+    const { component: _component, ...staticParams } = nodeConfig;
+    const data = Object.keys(staticParams).length > 0 ? staticParams : void 0;
+    return { id, type: nr.type, componentId, label: name, data };
+  });
+  const edges = parsed.edges.map((e) => {
+    let iterator;
+    let concurrency;
+    let label = e.label;
+    const foreachMatch = label.match(FOREACH_LABEL_RE);
+    if (foreachMatch) {
+      iterator = foreachMatch[1];
+      if (foreachMatch[2]) concurrency = Number(foreachMatch[2]);
+      label = "\u5C0D\u6BCF\u500B";
+    }
+    let branch;
+    const branchMatch = label.match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
+    if (branchMatch) {
+      branch = branchMatch[1];
+      label = "ON_BRANCH";
+    }
+    const edge = {
+      from: e.from.toLowerCase().replace(/\s+/g, "-"),
+      to: e.to.toLowerCase().replace(/\s+/g, "-"),
+      type: toEdgeType(label)
+    };
+    if (iterator) edge.iterator = iterator;
+    if (concurrency !== void 0) edge.concurrency = concurrency;
+    if (branch) edge.branch = branch;
+    return edge;
+  });
+  return { id: graphId, name: graphName, nodes, edges };
 }
 
 // cypher-executor/src/actions/search-nodes.ts
@@ -32856,17 +33949,55 @@ async function searchNodes(parsed, config, env, mode = "discover", target) {
     }
     const similarComponents = similarFromCatalog(catalog.entries, nodeName);
     const similarRecipes = similarFromRecipes(recipes, nodeName);
+    const labelHit = labelHint(nodeName, parsed, catalog.entries);
+    if (labelHit && !similarComponents.includes(labelHit.componentId)) similarComponents.unshift(labelHit.componentId);
     nodeResults[nodeName] = {
       status: "not_found",
       componentId,
       type: role,
-      suggestion: buildSuggestion(componentId),
+      suggestion: (labelHit ? labelHit.note + " " : "") + buildSuggestion(componentId),
       ...similarComponents.length > 0 ? { similar_components: similarComponents } : {},
       ...similarRecipes.length > 0 ? { similar_recipes: similarRecipes } : {}
     };
     missingNodes.push(nodeName);
   }
   return { nodeResults, missingNodes };
+}
+function isStructuralLabel(label) {
+  return toEdgeType(label) !== "PIPE" || FOREACH_LABEL_RE.test(label) || /^(?:ON_BRANCH|分支)\s*[（(]/i.test(label);
+}
+function labelHint(nodeName, parsed, entries) {
+  for (const e of parsed.edges) {
+    if (e.to !== nodeName || isStructuralLabel(e.label)) continue;
+    const hit = matchByPhrase(e.label, entries);
+    if (hit) {
+      return {
+        componentId: hit.entry.canonical_id,
+        note: `\u908A\u6A19\u7C64\u300C${e.label}\u300D\u5C0D\u5F97\u4E0A\u96F6\u4EF6\u300C${hit.entry.canonical_id}\u300D\uFF08${hit.entry.display_name ?? ""}\uFF09\u2014\u2014\u908A\u6A19\u7C64\u4E0D\u53C3\u8207\u5A92\u5408\uFF1B\u8981\u7528\u5B83\u8ACB\u628A\u5B83\u5BEB\u6210\u7BC0\u9EDE\uFF08\u2026 >> ${hit.entry.canonical_id} >> \u2026\uFF09\u3002`
+      };
+    }
+  }
+  return null;
+}
+function buildEdgeHints(parsed, nodeResults) {
+  const hints = [];
+  for (const e of parsed.edges) {
+    const src = nodeResults[e.from];
+    if (!src?.branch_hint) continue;
+    if (/^(?:ON_BRANCH|分支)\s*[（(]/i.test(e.label)) continue;
+    const type = toEdgeType(e.label);
+    if (type === "ON_TRUE" || type === "ON_FALSE" || type === "ON_BRANCH") continue;
+    hints.push({
+      from: e.from,
+      to: e.to,
+      label: e.label,
+      edge_type: type,
+      component: src.componentId ?? e.from,
+      message: `\u300C${e.from}\u300D\u662F\u5206\u5C94\u96F6\u4EF6\uFF0C\u4F46\u9019\u689D\u908A\uFF08\u6A19\u7C64\u300C${e.label}\u300D\uFF09\u6703\u88AB\u7576\u6210 ${type}\uFF0C\u4E0D\u6703\u4F9D\u5206\u652F\u9078\u8DEF\u3002\u8ACB\u6539\u7528\u5206\u652F\u908A\uFF1A${src.branch_hint.edge_types.join("\uFF0F")}` + (src.branch_hint.edge_types.includes("ON_BRANCH") ? "\uFF08\u610F\u5716\u8A9E\u6CD5\u5BEB ON_BRANCH(\u5206\u652F\u540D)\uFF09" : "") + "\u3002",
+      example: src.branch_hint.example
+    });
+  }
+  return hints;
 }
 async function listAllRecipes2(kv) {
   try {
@@ -32933,13 +34064,32 @@ function trySubstitution(nodeName, catalogEntries, recipes) {
       }
     };
   }
+  const phrase = matchByPhrase(nodeName, catalogEntries);
+  if (phrase) {
+    const e = phrase.entry;
+    return {
+      status: "resolved",
+      componentId: e.canonical_id,
+      source: "component",
+      input_schema: e.input_schema,
+      success_rate: typeof e.success_rate === "number" ? e.success_rate : void 0,
+      stability: typeof e.stability === "string" ? e.stability : void 0,
+      branch_hint: branchHintFor(e.canonical_id),
+      substitution: {
+        from: nodeName,
+        componentId: e.canonical_id,
+        reason: `\u7BC0\u9EDE\u540D\u542B\u7247\u8A9E\u300C${phrase.phrase}\u300D\uFF1D\u96F6\u4EF6\u300C${e.canonical_id}\u300D\uFF08${e.display_name ?? ""}\uFF09\u7684\u540D\u7A31\uFF0F\u540C\u7FA9\u8A5E\uFF1B\u53EA\u9700\u7167 input_schema \u586B payload`
+      }
+    };
+  }
   const tokens = extractTokens(nodeName);
   if (tokens.length === 0) return null;
   const byCanonical = /* @__PURE__ */ new Map();
   for (const e of catalogEntries) {
-    const strongHay = [e.canonical_id, e.display_name ?? "", ...e.aliases ?? []].join(" ").toLowerCase();
+    const strongHay = [e.canonical_id, e.display_name ?? ""].join(" ").toLowerCase();
+    const aliasSet = new Set((e.aliases ?? []).map((a) => a.toLowerCase()));
     const weakHay = [e.description ?? "", ...e.tags ?? []].join(" ").toLowerCase();
-    const strongHits = tokens.filter((t) => strongHay.includes(t));
+    const strongHits = tokens.filter((t) => strongHay.includes(t) || aliasSet.has(t));
     const weakCount = tokens.filter((t) => weakHay.includes(t)).length;
     const score = strongHits.length * 10 + weakCount;
     if (score === 0) continue;
@@ -33049,6 +34199,12 @@ var COMPUTE_HINTS = [
   "csv",
   "xml"
 ];
+function classifyMissing(name) {
+  const lower = name.toLowerCase();
+  if (SERVICE_HINTS.some((w) => lower.includes(w))) return "recipe";
+  if (COMPUTE_HINTS.some((w) => lower.includes(w))) return "component";
+  return "either";
+}
 function buildSuggestion(componentId) {
   const lower = componentId.toLowerCase();
   const serviceHit = SERVICE_HINTS.find((w) => lower.includes(w));
@@ -33094,48 +34250,7 @@ function extractTokens(name) {
   for (const run2 of cjkRuns) {
     for (let i = 0; i + 2 <= run2.length; i++) tokens.push(run2.slice(i, i + 2));
   }
-  return [...new Set(tokens)].slice(0, 8);
-}
-
-// cypher-executor/src/actions/graph-builder.ts
-var FOREACH_LABEL_RE = /^(?:對每個|FOREACH)\s+(\w+)(?:\s+(?:並行|PARALLEL)\s*[（(]?\s*(\d+)\s*[）)]?)?$/i;
-function buildExecutionGraph(parsed, nodeResults, graphId, graphName, config) {
-  const nodes = [...parsed.nodeNames].map((name) => {
-    const nr = nodeResults[name];
-    const id = name.toLowerCase().replace(/\s+/g, "-");
-    const nodeConfig = config?.[name] ?? {};
-    const componentId = nodeConfig.component ?? nr.componentId;
-    const { component: _component, ...staticParams } = nodeConfig;
-    const data = Object.keys(staticParams).length > 0 ? staticParams : void 0;
-    return { id, type: nr.type, componentId, label: name, data };
-  });
-  const edges = parsed.edges.map((e) => {
-    let iterator;
-    let concurrency;
-    let label = e.label;
-    const foreachMatch = label.match(FOREACH_LABEL_RE);
-    if (foreachMatch) {
-      iterator = foreachMatch[1];
-      if (foreachMatch[2]) concurrency = Number(foreachMatch[2]);
-      label = "\u5C0D\u6BCF\u500B";
-    }
-    let branch;
-    const branchMatch = label.match(/^(?:ON_BRANCH|分支)\s*[（(]\s*([\w-]+)\s*[）)]$/i);
-    if (branchMatch) {
-      branch = branchMatch[1];
-      label = "ON_BRANCH";
-    }
-    const edge = {
-      from: e.from.toLowerCase().replace(/\s+/g, "-"),
-      to: e.to.toLowerCase().replace(/\s+/g, "-"),
-      type: toEdgeType(label)
-    };
-    if (iterator) edge.iterator = iterator;
-    if (concurrency !== void 0) edge.concurrency = concurrency;
-    if (branch) edge.branch = branch;
-    return edge;
-  });
-  return { id: graphId, name: graphName, nodes, edges };
+  return [...new Set(tokens)].filter((t) => !GENERIC_TOKENS.has(t)).slice(0, 8);
 }
 
 // cypher-executor/src/actions/cypher-handlers.ts
@@ -33147,7 +34262,13 @@ async function handleCypherSearch(triplets, env, mode = "discover", target) {
   }
   const { nodeResults, missingNodes } = await searchNodes(parsed, void 0, env, mode, target);
   const graph = buildExecutionGraph(parsed, nodeResults, "cypher-search-result", "Cypher Search Result");
-  return { nodes: nodeResults, cypher: { nodes: graph.nodes, edges: graph.edges }, missing: missingNodes };
+  const edgeHints = mode === "discover" ? buildEdgeHints(parsed, nodeResults) : [];
+  return {
+    nodes: nodeResults,
+    cypher: { nodes: graph.nodes, edges: graph.edges },
+    missing: missingNodes,
+    ...edgeHints.length > 0 ? { edge_hints: edgeHints } : {}
+  };
 }
 async function compileCypherBinding(flow, config, graphId, graphName, env) {
   const parsed = parseTriplets(flow);
@@ -33239,6 +34360,7 @@ async function fetchTenantWorkflowSearch(env, apiKey, q, mode = "semantic") {
 }
 
 // cypher-executor/src/actions/target-search.ts
+init_endpoints();
 async function searchByTarget(target, query, env, apiKey) {
   if (target === "component") {
     const results = searchComponents(query);
@@ -33275,6 +34397,23 @@ async function searchByTarget(target, query, env, apiKey) {
       }
     };
   }
+  if (target === "template") {
+    const headers = {};
+    if (env.KBDB_INTERNAL_TOKEN) headers["Authorization"] = `Bearer ${env.KBDB_INTERNAL_TOKEN}`;
+    const res2 = await fetch(`${kbdbBaseUrl(env)}/templates/search?q=${encodeURIComponent(query)}`, { headers });
+    if (!res2.ok) return { ok: false, status: 502, error: `template \u641C\u5C0B\u5931\u6557\uFF08KBDB HTTP ${res2.status}\uFF09` };
+    const body2 = await res2.json();
+    return {
+      ok: true,
+      body: {
+        target,
+        query,
+        results: body2.results ?? [],
+        count: body2.count ?? (body2.results?.length ?? 0),
+        note: "\u6BD4\u5C0D\u540D\u5B57\uFF0F\u63CF\u8FF0\uFF0F\u6B04\u4F4D\u7684\u5B57\u9762\u8207\u96D9\u5B57\u8A5E\uFF08\u4E0D\u547C\u53EB LLM\uFF09\u3002\u6C92\u7D50\u679C\u4E0D\u4EE3\u8868\u6C92\u6709\u76F8\u8FD1\u7684\u2014\u2014\u63DB\u500B\u8AAA\u6CD5\u518D\u641C\u3002\u5EFA\u65B0 template \u6642\u82E5\u6B04\u4F4D\u5F62\u72C0\u8207\u73FE\u6709\u7684\u76F8\u540C\u6216\u5E7E\u4E4E\u76F8\u540C\u6703\u88AB 409 \u64CB\u4E0B\u4E26\u5217\u5019\u9078\u3002"
+      }
+    };
+  }
   if (!apiKey) return { ok: false, status: 401, error: "target=workflow \u9700\u8981 X-Arcrun-API-Key header\uFF08workflow \u641C\u5C0B\u9650\u672C\u79DF\u6236\uFF09" };
   const res = await fetchTenantWorkflowSearch(env, apiKey, query);
   if (!res.ok) return { ok: false, status: 502, error: `workflow \u641C\u5C0B\u5931\u6557\uFF08KBDB HTTP ${res.status}\uFF09` };
@@ -33282,17 +34421,185 @@ async function searchByTarget(target, query, env, apiKey) {
   return { ok: true, body: { target, query, ...body } };
 }
 
+// cypher-executor/src/lib/part-vectors.ts
+var EMBED_MODEL = "@cf/baai/bge-m3";
+var cache3 = /* @__PURE__ */ new Map();
+async function embed(env, texts) {
+  if (!env.AI) return null;
+  const out = [];
+  const need = [...new Set(texts.filter((t) => !cache3.has(t)))];
+  try {
+    for (let i = 0; i < need.length; i += 90) {
+      const chunk = need.slice(i, i + 90);
+      const r = await env.AI.run(EMBED_MODEL, { text: chunk });
+      if (!r?.data || r.data.length !== chunk.length) return null;
+      chunk.forEach((t, k) => cache3.set(t, r.data[k]));
+    }
+  } catch {
+    return null;
+  }
+  for (const t of texts) out.push(cache3.get(t));
+  return out;
+}
+function cosine(a, b) {
+  let d = 0, x = 0, y = 0;
+  for (let i = 0; i < a.length; i++) {
+    d += a[i] * b[i];
+    x += a[i] * a[i];
+    y += b[i] * b[i];
+  }
+  return d / (Math.sqrt(x * y) || 1);
+}
+function docsOf(recipes) {
+  const docs = allComponents().filter((c) => c.canonical_id !== "input").map((c) => ({
+    kind: "component",
+    id: c.canonical_id,
+    label: c.display_name,
+    text: `${c.display_name}\u3002${c.intent_use ?? c.description.trim().replace(/\s+/g, " ").slice(0, 160)}${c.aliases.length ? `\u3002\u4E5F\u53EB\uFF1A${c.aliases.join("\u3001")}` : ""}`
+  }));
+  for (const r of recipes) {
+    docs.push({ kind: "recipe", id: r.canonical_id, label: r.display_name ?? r.canonical_id, text: `${r.display_name ?? r.canonical_id}\u3002${(r.description ?? "").slice(0, 200)}` });
+  }
+  return docs;
+}
+async function rankParts(env, sentences, recipes = [], topN = 3) {
+  if (sentences.length === 0) return /* @__PURE__ */ new Map();
+  const docs = docsOf(recipes);
+  const vecs = await embed(env, [...docs.map((d) => d.text), ...sentences]);
+  if (!vecs) return null;
+  const out = /* @__PURE__ */ new Map();
+  sentences.forEach((s, si) => {
+    const q = vecs[docs.length + si];
+    out.set(s, docs.map((d, di) => ({ kind: d.kind, id: d.id, label: d.label, score: Math.round(cosine(q, vecs[di]) * 1e3) / 1e3 })).sort((a, b) => b.score - a.score).slice(0, topN));
+  });
+  return out;
+}
+
+// cypher-executor/src/lib/intent-report.ts
+var STRUCT_LABEL = /^(ON_SUCCESS|ON_FAIL|ON_TRUE|ON_FALSE|ON_BRANCH.*|對每個.*|FOREACH.*|成功後|失敗時|成立時|否則|分支.*|PIPE)$/i;
+function splitIntent(text) {
+  const out = [];
+  for (const line of text.split(/\r?\n/)) {
+    for (const part of line.split(">>").map((s) => s.trim())) {
+      if (!part || STRUCT_LABEL.test(part)) continue;
+      if (!out.includes(part)) out.push(part);
+    }
+  }
+  return out;
+}
+function chainOf(sentences) {
+  const edges = sentences.slice(1).map((s, i) => ({ from: sentences[i], to: s, label: "ON_SUCCESS" }));
+  const to = new Set(edges.map((e) => e.to));
+  const from = new Set(edges.map((e) => e.from));
+  return {
+    edges,
+    nodeNames: new Set(sentences),
+    sourceNodes: new Set([...from].filter((n) => !to.has(n))),
+    sinkNodes: new Set([...to].filter((n) => !from.has(n)))
+  };
+}
+async function workflowCandidates(env, apiKey, sentence) {
+  try {
+    const res = await fetchTenantWorkflowSearch(env, apiKey, sentence, "semantic");
+    if (!res.ok) {
+      await res.arrayBuffer().catch(() => void 0);
+      return null;
+    }
+    const b = await res.json().catch(() => null);
+    return (b?.entries ?? []).map((e) => String(e.page_name ?? "")).filter(Boolean).slice(0, 3);
+  } catch {
+    return null;
+  }
+}
+var MAX_WF_SEARCH = 8;
+async function buildIntentReport(env, apiKey, sentences, prior) {
+  const real = sentences.filter((s) => !isVirtualIoName(s));
+  const nodeResults = prior ?? (await searchNodes(chainOf(sentences), void 0, env, "discover")).nodeResults;
+  const notFound5 = real.filter((s) => {
+    const r = nodeResults[s];
+    return !r || r.status !== "found" && r.status !== "resolved";
+  });
+  const wf = /* @__PURE__ */ new Map();
+  let searched = false;
+  if (apiKey && notFound5.length) {
+    searched = true;
+    await Promise.all(notFound5.slice(0, MAX_WF_SEARCH).map(async (s) => {
+      const c = await workflowCandidates(env, apiKey, s);
+      if (c) wf.set(s, c);
+      else searched = false;
+    }));
+  }
+  const recipeList = env.RECIPES ? await listAllRecipes2(env.RECIPES) : [];
+  const ranked = await rankParts(env, real, recipeList);
+  const SURE = 0.65, SURE_MARGIN = 0.1, WEAK = 0.5, CONFIRM = 0.5;
+  const items = real.map((sentence) => {
+    const r = nodeResults[sentence];
+    const top = ranked?.get(sentence) ?? [];
+    const semantic = top.length ? { semantic: top } : {};
+    const wire = (id, kind, verdict, note) => ({
+      sentence,
+      verdict,
+      ...semantic,
+      use: { kind, id, config: { [sentence]: { component: id } } },
+      next: `${note}config \u5BEB ${JSON.stringify(sentence)}: { component: ${JSON.stringify(id)} }\uFF0C\u7167 input_schema\uFF0Fpayload_hint \u586B payload`
+    });
+    const kw = r && (r.status === "found" || r.status === "resolved") ? r : void 0;
+    if (kw) {
+      const id = kw.status === "resolved" ? kw.substitution?.recipe ?? kw.componentId ?? sentence : kw.componentId ?? sentence;
+      const kind = kw.source === "recipe" || kw.substitution?.recipe ? "recipe" : "component";
+      if (kw.status === "found" || !ranked) return wire(id, kind, kw.status, "");
+      if (top.some((t) => t.id === id && t.score >= CONFIRM)) return wire(id, kind, "resolved", "\u8A9E\u610F\u8207\u7247\u8A9E\u90FD\u6307\u5411\u5B83\u3002");
+    } else if (top[0] && top[0].score >= SURE && (top[1] ? top[0].score - top[1].score >= SURE_MARGIN : true)) {
+      return wire(top[0].id, top[0].kind, "resolved", "\u8A9E\u610F\u6BD4\u5C0D\u7B2C\u4E00\u540D\u4E14\u8207\u7B2C\u4E8C\u540D\u5DEE\u8DDD\u5920\u5927\u3002");
+    }
+    const components = ranked ? top.filter((t) => t.kind === "component" && t.score >= WEAK).map((t) => t.id) : r?.similar_components ?? [];
+    const recipes = ranked ? top.filter((t) => t.kind === "recipe" && t.score >= WEAK).map((t) => t.id) : r?.similar_recipes ?? [];
+    const workflows = wf.get(sentence) ?? [];
+    if (components.length || recipes.length || workflows.length) {
+      return {
+        sentence,
+        verdict: "partial",
+        ...semantic,
+        candidates: { ...components.length ? { components } : {}, ...recipes.length ? { recipes } : {}, ...workflows.length ? { workflows } : {} },
+        next: "\u6C92\u6709\u8DB3\u5920\u78BA\u5B9A\u5C0D\u5230\u54EA\u4E00\u500B\uFF0C\u4F46\u6709\u76F8\u8FD1\u7684\uFF08semantic \u6B04\u6709\u5206\u6578\uFF09\uFF1A\u78BA\u8A8D\u80FD\u7528\u5C31\u63A5\u4E0A\uFF08\u96F6\u4EF6\uFF0Frecipe \u5BEB component: <id>\uFF1B\u73FE\u6709\u5DE5\u4F5C\u6D41\u5BEB component: trigger_workflow \uFF0B workflow_name\uFF09\uFF1B\u90FD\u4E0D\u5408\u624D\u88DC recipe \u6216\u96F6\u4EF6\u3002"
+      };
+    }
+    const suggest = classifyMissing(sentence);
+    return {
+      sentence,
+      verdict: "missing",
+      suggest,
+      ...semantic,
+      next: suggest === "recipe" ? "\u641C\u4E0D\u5230\u3002\u540D\u5B57\u50CF\u5916\u90E8\u670D\u52D9\uFF1A\u88DC\u4E00\u500B recipe\uFF08skill write_recipe\uFF09\u3002" : suggest === "component" ? "\u641C\u4E0D\u5230\u3002\u50CF\u662F\u8A08\u7B97\u80FD\u529B\uFF1A\u88DC\u4E00\u500B\u96F6\u4EF6\uFF08skill add_new_wasm_component\uFF0CPR\uFF09\u3002" : "\u641C\u4E0D\u5230\u3002\u7F3A\u5916\u90E8 API \u2192 \u88DC recipe\uFF08skill write_recipe\uFF09\uFF1B\u7F3A\u80FD\u529B \u2192 \u88DC\u96F6\u4EF6\uFF08skill add_new_wasm_component\uFF09\u3002\u4E0D\u8981\u62FF code \u9802\u66FF\u6574\u53E5\u3002"
+    };
+  });
+  const count2 = (v) => items.filter((i) => i.verdict === v).length;
+  return {
+    items,
+    summary: { total: items.length, found: count2("found"), resolved: count2("resolved"), partial: count2("partial"), missing: count2("missing") },
+    all_resolved: items.every((i) => i.verdict === "found" || i.verdict === "resolved"),
+    workflows_searched: searched,
+    method: ranked ? "semantic" : "keyword"
+  };
+}
+
 // cypher-executor/src/routes/cypher.ts
 var cypherRouter = new Hono2();
-var VALID_TARGETS = /* @__PURE__ */ new Set(["component", "recipe", "workflow"]);
+var VALID_TARGETS = /* @__PURE__ */ new Set(["component", "recipe", "workflow", "template"]);
 cypherRouter.post("/cypher/search", async (c) => {
   const body = await c.req.json();
   const rawTriplets = body?.triplets;
   const target = typeof body?.target === "string" ? body.target : void 0;
   if (target !== void 0 && !VALID_TARGETS.has(target)) {
-    return c.json({ error: `target \u53EA\u63A5\u53D7 component\uFF0Frecipe\uFF0Fworkflow\uFF0C\u6536\u5230\u300C${target}\u300D` }, 400);
+    return c.json({ error: `target \u53EA\u63A5\u53D7 component\uFF0Frecipe\uFF0Fworkflow\uFF0Ftemplate\uFF0C\u6536\u5230\u300C${target}\u300D` }, 400);
   }
   const query = typeof body?.query === "string" ? body.query.trim() : "";
+  if (query && query.includes(">>") && !target) {
+    const sentences = splitIntent(query);
+    if (sentences.length === 0) return c.json({ error: "\u610F\u5716\u88E1\u6C92\u6709\u53EF\u641C\u7684\u53E5\u5B50" }, 400);
+    const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
+    return c.json({ query, intent_report: await buildIntentReport(c.env, apiKey, sentences) });
+  }
   if (query) {
     if (!target) {
       return c.json({ error: "\u7D66 query \u5FC5\u9808\u540C\u6642\u7D66 target\uFF08component\uFF0Frecipe\uFF0Fworkflow\uFF09\uFF0C\u6307\u660E\u8981\u641C\u54EA\u500B\u5EAB" }, 400);
@@ -33309,6 +34616,9 @@ cypherRouter.post("/cypher/search", async (c) => {
   if (target && mode === "compile") {
     return c.json({ error: "mode=compile\uFF08\u8907\u88FD\u8DEF\u5F91\uFF09\u4E0D\u67E5\u5EAB\uFF0C\u4E0D\u63A5\u53D7 target\uFF1B\u8981\u6307\u5B9A\u641C\u5C0B\u5C0D\u8C61\u8ACB\u7528 discover\uFF08\u9810\u8A2D\uFF09" }, 400);
   }
+  if (target === "template") {
+    return c.json({ error: 'target=template \u662F\u610F\u5716\u641C\u5C0B\uFF0C\u8ACB\u6539\u5E36 { target: "template", query: "\u8A18\u9304\u6BCF\u5929\u7684\u9AD4\u91CD" }\uFF08\u4E0D\u5403 triplets\uFF09' }, 400);
+  }
   if (target === "workflow") {
     return c.json({ error: 'target=workflow \u662F\u540D\u5B57\u641C\u5C0B\uFF0C\u8ACB\u6539\u5E36 { target: "workflow", query: "..." }\uFF08\u4E0D\u5403 triplets\uFF09' }, 400);
   }
@@ -33317,13 +34627,20 @@ cypherRouter.post("/cypher/search", async (c) => {
     const timestamp = now2.toISOString();
     const versionId = `search-v1-${now2.getFullYear()}${String(now2.getMonth() + 1).padStart(2, "0")}${String(now2.getDate()).padStart(2, "0")}-${String(now2.getHours()).padStart(2, "0")}${String(now2.getMinutes()).padStart(2, "0")}${String(now2.getSeconds()).padStart(2, "0")}`;
     const result = await handleCypherSearch(rawTriplets, c.env, mode, target);
+    let intentReport;
+    if (mode === "discover" && !target) {
+      const sentences = Object.keys(result.nodes);
+      intentReport = await buildIntentReport(c.env, c.req.header("X-Arcrun-API-Key") ?? void 0, sentences, result.nodes);
+    }
     const response = {
       version: versionId,
       timestamp,
       triplets: rawTriplets,
       nodes: result.nodes,
       cypher: result.cypher,
-      missing: result.missing
+      missing: result.missing,
+      ...result.edge_hints ? { edge_hints: result.edge_hints } : {},
+      ...intentReport ? { intent_report: intentReport } : {}
     };
     return c.json(response);
   } catch (err3) {
@@ -33981,6 +35298,55 @@ function buildServerTiming(trace) {
 
 // cypher-executor/src/routes/webhooks-named.ts
 init_webhook_handlers();
+
+// cypher-executor/src/lib/http-response-spec.ts
+var DENY = /* @__PURE__ */ new Set([
+  "content-length",
+  "content-encoding",
+  "transfer-encoding",
+  "connection",
+  "host",
+  "set-cookie",
+  "set-cookie2",
+  "upgrade",
+  "keep-alive",
+  "te",
+  "trailer"
+]);
+function extractHttpSpec(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const obj = data;
+  const raw2 = obj._http;
+  if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return null;
+  const spec = raw2;
+  const status = spec.status;
+  if (typeof status !== "number" || !Number.isInteger(status) || status < 200 || status > 599) return null;
+  const headers = {};
+  if (spec.headers && typeof spec.headers === "object" && !Array.isArray(spec.headers)) {
+    for (const [k, v] of Object.entries(spec.headers)) {
+      if (typeof v !== "string" && typeof v !== "number") continue;
+      if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(k)) continue;
+      if (DENY.has(k.toLowerCase())) continue;
+      const val = String(v);
+      if (/[\r\n]/.test(val)) continue;
+      headers[k] = val;
+    }
+  }
+  let body;
+  if ("body" in spec) {
+    body = spec.body;
+  } else {
+    const { _http: _drop, ...rest } = obj;
+    body = rest;
+  }
+  return { status, headers, body };
+}
+function statusForbidsBody(status) {
+  return status === 204 || status === 205 || status === 304;
+}
+
+// cypher-executor/src/routes/webhooks-named.ts
+init_caller_verify();
 init_schemas();
 init_execution_logger();
 init_failure_evidence();
@@ -34077,8 +35443,779 @@ async function coalesce(scope, key, run2, now2 = Date.now()) {
 
 // cypher-executor/src/routes/webhooks-named.ts
 init_dataflow_check();
+
+// shared/dataflow-graph/code-fingerprint.mjs
+init_extract();
+
+// shared/dataflow-graph/code-fingerprint-known.mjs
+var KNOWN_COMPONENT_FINGERPRINTS = {
+  // AHub 的 sha256hex（workflows/ahub/lib/prelude.js）→ 引擎零件 hash
+  "9179aa9f040d9013": {
+    component: "hash",
+    label: "\u624B\u5BEB\u7684 SHA-256 \u96DC\u6E4A",
+    how: "\u7528 hash \u96F6\u4EF6\uFF0Calgorithm \u586B sha256\u3001\u8F38\u51FA hex"
+  }
+};
+
+// shared/dataflow-graph/code-fingerprint.mjs
+var MIN_FN_LEN = 200;
+var MAX_FPS_PER_WORKFLOW = 25;
+var isWord = (ch) => /[\w$]/.test(ch ?? "");
+function skipString(src, i) {
+  const q = src[i];
+  let j = i + 1;
+  if (q === "`") {
+    while (j < src.length) {
+      const ch = src[j];
+      if (ch === "\\") {
+        j += 2;
+        continue;
+      }
+      if (ch === "`") return j + 1;
+      if (ch === "$" && src[j + 1] === "{") {
+        let depth = 1;
+        j += 2;
+        while (j < src.length && depth > 0) {
+          const c2 = src[j];
+          if (c2 === '"' || c2 === "'" || c2 === "`") {
+            j = skipString(src, j);
+            continue;
+          }
+          if (c2 === "{") depth++;
+          else if (c2 === "}") depth--;
+          j++;
+        }
+        continue;
+      }
+      j++;
+    }
+    return j;
+  }
+  while (j < src.length) {
+    const ch = src[j];
+    if (ch === "\\") {
+      j += 2;
+      continue;
+    }
+    if (ch === q) return j + 1;
+    if (ch === "\n") return j;
+    j++;
+  }
+  return j;
+}
+function skipRegex(src, i) {
+  let j = i + 1, inClass = false;
+  while (j < src.length) {
+    const ch = src[j];
+    if (ch === "\\") {
+      j += 2;
+      continue;
+    }
+    if (ch === "\n") return j;
+    if (inClass) {
+      if (ch === "]") inClass = false;
+    } else if (ch === "[") inClass = true;
+    else if (ch === "/") {
+      j++;
+      while (isWord(src[j])) j++;
+      return j;
+    }
+    j++;
+  }
+  return j;
+}
+var REGEX_PREV = /* @__PURE__ */ new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^"]);
+var REGEX_WORD_PREV = /* @__PURE__ */ new Set(["return", "typeof", "case", "in", "of", "delete", "void", "throw", "new", "else"]);
+function lex(src) {
+  const out = [];
+  let i = 0, buf = "";
+  const pushCode = () => {
+    if (buf) {
+      out.push({ kind: "code", text: buf });
+      buf = "";
+    }
+  };
+  let prevSig = "", prevWord = "";
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch === "/" && src[i + 1] === "/") {
+      pushCode();
+      let j = i;
+      while (j < src.length && src[j] !== "\n") j++;
+      out.push({ kind: "comment", text: src.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "*") {
+      pushCode();
+      const e = src.indexOf("*/", i + 2);
+      const j = e < 0 ? src.length : e + 2;
+      out.push({ kind: "comment", text: src.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      pushCode();
+      const j = skipString(src, i);
+      out.push({ kind: "str", text: src.slice(i, j) });
+      i = j;
+      prevSig = "x";
+      prevWord = "";
+      continue;
+    }
+    if (ch === "/" && (REGEX_PREV.has(prevSig) || isWord(prevSig) && REGEX_WORD_PREV.has(prevWord))) {
+      pushCode();
+      const j = skipRegex(src, i);
+      out.push({ kind: "str", text: src.slice(i, j) });
+      i = j;
+      prevSig = "x";
+      prevWord = "";
+      continue;
+    }
+    buf += ch;
+    if (!/\s/.test(ch)) {
+      prevSig = ch;
+      prevWord = isWord(ch) ? isWord(src[i - 1]) ? prevWord + ch : ch : "";
+    }
+    i++;
+  }
+  pushCode();
+  return out;
+}
+function normalizeSource(src) {
+  let res = "", buf = "";
+  const flush = () => {
+    res += buf.replace(/\s+/g, " ").replace(/ ?([^\w$ ]) ?/g, "$1");
+    buf = "";
+  };
+  for (const p of lex(String(src ?? ""))) {
+    if (p.kind === "comment") buf += " ";
+    else if (p.kind === "code") buf += p.text;
+    else {
+      flush();
+      res += p.text;
+    }
+  }
+  flush();
+  return res.trim();
+}
+function extractFunctions(src) {
+  let flat = "";
+  const code = [];
+  for (const p of lex(String(src ?? ""))) {
+    if (p.kind === "comment") {
+      flat += " ";
+      code.push(false);
+      continue;
+    }
+    for (let k = 0; k < p.text.length; k++) {
+      flat += p.text[k];
+      code.push(p.kind === "code");
+    }
+  }
+  const fns = [];
+  let depth = 0, i = 0;
+  while (i < flat.length) {
+    if (!code[i]) {
+      i++;
+      continue;
+    }
+    const ch = flat[i];
+    if (ch === "{") {
+      depth++;
+      i++;
+      continue;
+    }
+    if (ch === "}") {
+      depth--;
+      i++;
+      continue;
+    }
+    if (depth === 0 && flat.startsWith("function", i) && !isWord(flat[i - 1]) && flat[i - 1] !== "." && !isWord(flat[i + 8])) {
+      const m = /^function\s+([\w$]+)\s*\(/.exec(flat.slice(i, i + 200));
+      if (m) {
+        let j = i + m[0].length, pd = 1;
+        while (j < flat.length && pd > 0) {
+          if (code[j]) {
+            if (flat[j] === "(") pd++;
+            else if (flat[j] === ")") pd--;
+          }
+          j++;
+        }
+        while (j < flat.length && !(code[j] && flat[j] === "{")) j++;
+        let bd = 0, k = j;
+        for (; k < flat.length; k++) {
+          if (!code[k]) continue;
+          if (flat[k] === "{") bd++;
+          else if (flat[k] === "}") {
+            bd--;
+            if (bd === 0) {
+              k++;
+              break;
+            }
+          }
+        }
+        if (bd === 0 && j < flat.length) {
+          fns.push({ name: m[1], text: flat.slice(i, k) });
+          i = k;
+          continue;
+        }
+      }
+    }
+    i++;
+  }
+  return fns;
+}
+async function sha256Hex5(s) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function fingerprintFunction(fn) {
+  const norm = normalizeSource(fn.text);
+  const afterName = norm.replace(/^function [\w$]+/, "function");
+  return { fp: (await sha256Hex5(afterName)).slice(0, 16), len: norm.length };
+}
+async function fingerprintWorkflow(wf) {
+  const w = normalizeWorkflow(wf);
+  const found = /* @__PURE__ */ new Map();
+  let codeNodes = 0;
+  for (const node of w.nodes) {
+    const src = node?.data?.code;
+    if (typeof src !== "string") continue;
+    codeNodes++;
+    const seen = /* @__PURE__ */ new Set();
+    for (const fn of extractFunctions(src)) {
+      const { fp, len } = await fingerprintFunction(fn);
+      if (len < MIN_FN_LEN || seen.has(fp)) continue;
+      seen.add(fp);
+      const cur = found.get(fp);
+      if (cur) {
+        cur.n++;
+        cur.nodes.push(node.id);
+        continue;
+      }
+      found.set(fp, { n: 1, len, name: fn.name, sample: fn.text.trim().slice(0, 800), nodes: [node.id] });
+    }
+  }
+  const ranked = [...found.entries()].sort((a, b) => b[1].len - a[1].len || (a[0] < b[0] ? -1 : 1));
+  const kept = ranked.slice(0, MAX_FPS_PER_WORKFLOW);
+  return { workflow: w.name, code_nodes: codeNodes, functions: new Map(kept), truncated: ranked.length - kept.length };
+}
+function replaceableHints(fpResult) {
+  const out = [];
+  for (const [fp, info] of fpResult.functions) {
+    const known = KNOWN_COMPONENT_FINGERPRINTS[fp];
+    if (!known) continue;
+    for (const node of info.nodes) {
+      out.push({
+        workflow: fpResult.workflow,
+        node,
+        fn: info.name,
+        component: known.component,
+        label: known.label,
+        message: `\u300C${fpResult.workflow}\uFF0F${node}\u300D\u88E1\u7684 ${info.name}() \u662F${known.label}\u2014\u2014\u9019\u6BB5\u53EF\u63DB\u6210\u5F15\u64CE\u96F6\u4EF6 ${known.component}\uFF08${known.how}\uFF09\u3002`
+      });
+    }
+  }
+  return out;
+}
+var knownComponentOf = (fp) => KNOWN_COMPONENT_FINGERPRINTS[fp] ?? null;
+function diffCounts(prev, next) {
+  const out = [];
+  const keys = /* @__PURE__ */ new Set([...Object.keys(prev ?? {}), ...Object.keys(next ?? {})]);
+  for (const fp of keys) {
+    const a = Number(prev?.[fp] ?? 0), b = Number(next?.[fp] ?? 0);
+    if (a === b) continue;
+    out.push({ fp, dn: b - a, dw: (a === 0 ? 1 : 0) - (b === 0 ? 1 : 0) });
+  }
+  return out;
+}
+function ticketTitle(info) {
+  return `\u8EAB\u70BA\u5E73\u53F0\uFF0C\u6211\u8981\u628A ${info.name}() \u9019\u6BB5\u88AB\u8907\u88FD\u4E86 ${info.wfs} \u689D\u5DE5\u4F5C\u6D41\u7684 code \u505A\u6210\u5F15\u64CE\u96F6\u4EF6\uFF0C\u6211\u624D\u8B93 code \u7BC0\u9EDE\u53EA\u662F\u8349\u7A3F\u3001\u4E0D\u662F\u6C38\u4E45\u7684\u6F0F\u6D1E`;
+}
+function ticketBody({ fp, name, len, wfs, total, sample }) {
+  return [
+    "## \u73FE\u8C61",
+    `\u540C\u4E00\u6BB5\u51FD\u5F0F\uFF08\u6307\u7D0B \`${fp}\`\uFF0C\u539F\u672C\u53EB \`${name}\`\uFF0C\u6B63\u898F\u5316\u5F8C ${len} \u5B57\uFF09\u51FA\u73FE\u5728 **${wfs} \u689D\u5DE5\u4F5C\u6D41\u3001\u5171 ${total} \u500B code \u7BC0\u9EDE**\u3002`,
+    "",
+    "## \u8981\u505A\u4EC0\u9EBC",
+    "\u628A\u5B83\u505A\u6210\u5F15\u64CE\u96F6\u4EF6\uFF08WASM\uFF09\u6216 recipe\uFF0C\u8B93\u7528\u6236\u7684 code \u7BC0\u9EDE\u4E0D\u5FC5\u518D\u5404\u81EA\u8907\u88FD\u4E00\u4EFD\u3002\u505A\u597D\u4E4B\u5F8C\u628A\u5B83\u767B\u8A18\u9032 `shared/dataflow-graph/code-fingerprint-known.mjs`\uFF0C\u63A8\u9001\u6642\u5C31\u6703\u56DE\u300C\u9019\u6BB5\u53EF\u63DB\u6210 X\u300D\uFF0C\u4E5F\u4E0D\u518D\u70BA\u5B83\u958B\u7968\u3002",
+    "",
+    "## \u6A23\u672C\uFF08\u524D 800 \u5B57\uFF09",
+    "```js",
+    String(sample ?? ""),
+    "```",
+    "",
+    "_\u9019\u5F35\u7968\u7531\u5F15\u64CE\u5728\u63A8\u9001\u6642\u81EA\u52D5\u958B\uFF08inkstone/Arcrun#565\uFF09\uFF1A\u53EA\u6293\u5F97\u5230\u300C\u540C\u4E00\u6BB5\u88AB\u8907\u88FD\u300D\uFF0C\u6293\u4E0D\u5230\u63DB\u5BEB\u6CD5\u91CD\u5BEB\u7684\u3002\u540C\u4E00\u6307\u7D0B\u53EA\u958B\u9019\u4E00\u5F35\uFF0C\u4E4B\u5F8C\u6B21\u6578\u8B8A\u591A\u6703\u4F75\u9032\u7559\u8A00\u3002_"
+  ].join("\n");
+}
+function ticketComment({ fp, wfs, total }) {
+  return `\u6307\u7D0B \`${fp}\` \u66F4\u65B0\uFF1A\u73FE\u5728\u51FA\u73FE\u5728 ${wfs} \u689D\u5DE5\u4F5C\u6D41\u3001\u5171 ${total} \u500B code \u7BC0\u9EDE\u3002`;
+}
+
+// cypher-executor/src/lib/code-fingerprint-io.ts
+init_kbdb_proxy();
+init_kbdb_caller();
+init_kbdb_transport();
+init_self_dispatch();
+
+// cypher-executor/src/lib/code-fingerprint-store.ts
+var T_WF = "code_fp_wf";
+var T_FP = "code_fp";
+var SLOTS = {
+  [T_WF]: ["wf", "fps", "updated_at"],
+  [T_FP]: ["fp", "name", "len", "wfs", "total", "sample", "ticket", "reported_total", "updated_at"]
+};
+var DEFAULT_MIN_WORKFLOWS = 10;
+var DEFAULT_WRITE_BUDGET = 150;
+var MAX_TICKETS_PER_CALL = 3;
+var MAX_COMMENTS_PER_CALL = 5;
+var COMMENT_GROWTH = 1.2;
+var TICKET_LOGIN = "arcrun-platform";
+async function sha256Hex6(s) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var short = async (s, n = 12) => (await sha256Hex6(s)).slice(0, n);
+var ensured = /* @__PURE__ */ new Set();
+async function ensureTemplate4(io, name) {
+  if (ensured.has(name)) return;
+  const got = await io.kbdb(`/templates/${encodeURIComponent(name)}`);
+  await got.arrayBuffer().catch(() => void 0);
+  if (!got.ok) {
+    const r = await io.kbdb("/templates", { method: "POST", body: JSON.stringify({ name, slots: SLOTS[name] }) });
+    await r.arrayBuffer().catch(() => void 0);
+  }
+  ensured.add(name);
+}
+async function batchGet(io, ids, counter) {
+  const out = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += 200) {
+    counter.reads++;
+    const res = await io.kbdb("/records/batch-get", { method: "POST", body: JSON.stringify({ ids: ids.slice(i, i + 200) }) });
+    if (!res.ok) {
+      await res.arrayBuffer().catch(() => void 0);
+      throw new Error(`batch-get \u2192 ${res.status}`);
+    }
+    const b = await res.json().catch(() => null);
+    for (const r of b?.records ?? []) out.set(r.record_id, r);
+  }
+  return out;
+}
+async function writeRec(io, template, id, values, exists, counter) {
+  counter.writes++;
+  const res = exists ? await io.kbdb(`/records/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ values }) }) : await io.kbdb("/records", { method: "POST", body: JSON.stringify({ template, record_id: id, values, derived_cell_ids: true }) });
+  await res.arrayBuffer().catch(() => void 0);
+  if (!res.ok) throw new Error(`${exists ? "PATCH" : "POST"} ${template} \u2192 ${res.status}`);
+}
+async function pool(items, size, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, async () => {
+    while (i < items.length) {
+      const x = items[i++];
+      await fn(x);
+    }
+  }));
+}
+var parseMap = (s) => {
+  try {
+    const o = JSON.parse(s ?? "{}");
+    return o && typeof o === "object" ? o : {};
+  } catch {
+    return {};
+  }
+};
+async function recordCodeFingerprints(io, results, opts = {}) {
+  const sum2 = { workflows: results.length, skipped_unchanged: 0, reads: 0, writes: 0, tickets_opened: [], tickets_commented: [], errors: [] };
+  const counter = { reads: 0, writes: 0 };
+  const now2 = (opts.now ?? (() => (/* @__PURE__ */ new Date()).toISOString()))();
+  const th = await short(io.tenant);
+  const wfId = async (wf) => `cfw~${th}~${await short(wf, 16)}`;
+  const fpId = (fp) => `cfp~${th}~${fp}`;
+  try {
+    await ensureTemplate4(io, T_WF);
+    await ensureTemplate4(io, T_FP);
+    const wfIds = await Promise.all(results.map((r) => wfId(r.workflow)));
+    const allFps = /* @__PURE__ */ new Set();
+    for (const r of results) for (const fp of r.functions.keys()) allFps.add(fp);
+    counter.reads = 0;
+    const wfRecs = await batchGet(io, wfIds, counter);
+    const prevMaps = results.map((r, i) => parseMap(wfRecs.get(wfIds[i])?.values.fps));
+    for (const m of prevMaps) for (const fp of Object.keys(m)) allFps.add(fp);
+    const aggRecs = await batchGet(io, [...allFps].map(fpId), counter);
+    const budget = opts.writeBudget ?? DEFAULT_WRITE_BUDGET;
+    const delta = /* @__PURE__ */ new Map();
+    const plan = [];
+    let cost = 0;
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      const next = {};
+      for (const [fp, info] of r.functions) next[fp] = info.n;
+      const prev = prevMaps[i];
+      const exists = wfRecs.has(wfIds[i]);
+      if (JSON.stringify(sortKeys(prev)) === JSON.stringify(sortKeys(next)) && (exists || Object.keys(next).length === 0)) {
+        sum2.skipped_unchanged++;
+        continue;
+      }
+      const diffs = diffCounts(prev, next);
+      const newAggs = diffs.filter((d) => !delta.has(d.fp)).length;
+      if (plan.length > 0 && cost + 1 + newAggs > budget) {
+        sum2.deferred = (sum2.deferred ?? 0) + 1;
+        continue;
+      }
+      cost += 1 + newAggs;
+      plan.push({ r, i, next, exists });
+      for (const d of diffs) {
+        const cur = delta.get(d.fp) ?? { dn: 0, dw: 0 };
+        cur.dn += d.dn;
+        cur.dw += d.dw;
+        const info = r.functions.get(d.fp);
+        if (info && !cur.info) cur.info = info;
+        delta.set(d.fp, cur);
+      }
+    }
+    const wcount = { writes: 0 };
+    const touched = [];
+    await pool([...delta.entries()], 8, async ([fp, d]) => {
+      const id = fpId(fp), old = aggRecs.get(id);
+      const wfs = Math.max(0, Number(old?.values.wfs ?? 0) + d.dw);
+      const total = Math.max(0, Number(old?.values.total ?? 0) + d.dn);
+      const vals = {
+        ...old?.values ?? {},
+        fp,
+        name: old?.values.name ?? d.info?.name ?? "",
+        len: old?.values.len ?? String(d.info?.len ?? 0),
+        sample: old?.values.sample ?? d.info?.sample ?? "",
+        wfs: String(wfs),
+        total: String(total),
+        updated_at: now2
+      };
+      try {
+        await writeRec(io, T_FP, id, vals, Boolean(old), wcount);
+        touched.push({ fp, id, vals });
+      } catch (e) {
+        sum2.errors.push(`code_fp ${fp}: ${msg(e)}`);
+      }
+    });
+    await pool(plan, 8, async ({ r, i, next, exists }) => {
+      try {
+        await writeRec(io, T_WF, wfIds[i], { wf: r.workflow, fps: JSON.stringify(next), updated_at: now2 }, exists, wcount);
+      } catch (e) {
+        sum2.errors.push(`${r.workflow}: ${msg(e)}`);
+      }
+    });
+    sum2.writes = wcount.writes;
+    sum2.reads = counter.reads;
+    const min = opts.minWorkflows ?? DEFAULT_MIN_WORKFLOWS;
+    const ready = touched.filter((t) => !knownComponentOf(t.fp) && Number(t.vals.wfs) >= min).sort((a, b) => Number(b.vals.wfs) * Number(b.vals.len) - Number(a.vals.wfs) * Number(a.vals.len));
+    let opened = 0, commented = 0;
+    const repo = opts.ticketRepo ?? "inkstone/Arcrun";
+    for (const t of ready) {
+      const v = t.vals;
+      const wfs = Number(v.wfs), total = Number(v.total);
+      if (!v.ticket) {
+        if (opened >= MAX_TICKETS_PER_CALL) continue;
+        const r = await openTicket(io, repo, opts.ticketParent, {
+          fp: t.fp,
+          name: v.name,
+          len: Number(v.len),
+          wfs,
+          total,
+          sample: v.sample
+        });
+        if (r.skipped) {
+          sum2.ticket_skipped = r.skipped;
+          break;
+        }
+        if (!r.ref) {
+          sum2.errors.push(`\u958B\u7968 ${t.fp}: ${r.error}`);
+          continue;
+        }
+        opened++;
+        sum2.tickets_opened.push({ fp: t.fp, ref: r.ref });
+        await writeRec(io, T_FP, t.id, { ...v, ticket: r.ref, reported_total: String(total) }, true, counter).catch((e) => sum2.errors.push(msg(e)));
+      } else if (total >= Math.ceil(Number(v.reported_total || 0) * COMMENT_GROWTH) && total !== Number(v.reported_total || 0)) {
+        if (commented >= MAX_COMMENTS_PER_CALL) continue;
+        const ok = await commentTicket(io, v.ticket, ticketComment({ fp: t.fp, wfs, total }));
+        if (!ok) {
+          sum2.errors.push(`\u7559\u8A00 ${v.ticket} \u5931\u6557`);
+          continue;
+        }
+        commented++;
+        sum2.tickets_commented.push({ fp: t.fp, ref: v.ticket });
+        await writeRec(io, T_FP, t.id, { ...v, reported_total: String(total) }, true, counter).catch((e) => sum2.errors.push(msg(e)));
+      }
+    }
+    sum2.writes = wcount.writes + counter.writes;
+  } catch (e) {
+    sum2.errors.push(msg(e));
+  }
+  return sum2;
+}
+var msg = (e) => e instanceof Error ? e.message : String(e);
+var sortKeys = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => a < b ? -1 : 1));
+async function platformToken(tenant2) {
+  const tok = "ahubapp_" + await sha256Hex6(`${TICKET_LOGIN}:${tenant2}`);
+  return { tok, hash: await sha256Hex6(tok) };
+}
+async function callAhub(io, wf, envelope) {
+  const res = await io.ahub(wf, envelope);
+  const j = await res.json().catch(() => null);
+  if (res.status === 404 && !j) return { status: 404, body: {} };
+  const o = j && typeof j.data === "object" && j.data && "status" in j.data ? j.data : j;
+  const status = typeof o?.status === "number" ? o.status : res.status;
+  return { status, body: o?.body && typeof o.body === "object" ? o.body : {} };
+}
+async function withToken(io, wf, build) {
+  const { tok, hash } = await platformToken(io.tenant);
+  let r = await callAhub(io, wf, build(tok));
+  if (r.status === 401) {
+    const reg = await callAhub(io, "token_register", { method: "POST", path: "/ahub/tokens", params: {}, query: {}, body: { login: TICKET_LOGIN, kind: "agent", token_sha256: hash, name: "code-fingerprint" }, token: "" });
+    if (reg.status >= 200 && reg.status < 300) r = await callAhub(io, wf, build(tok));
+  }
+  return r;
+}
+async function openTicket(io, repo, parent, info) {
+  const [owner, name] = repo.split("/");
+  const body = {
+    title: ticketTitle({ name: info.name, wfs: info.wfs }),
+    body: ticketBody(info),
+    event_key: `code-fp:${info.fp}`,
+    proposer: TICKET_LOGIN,
+    ...parent ? { parent } : {}
+  };
+  const r = await withToken(io, "issue_create", (token) => ({ method: "POST", path: `/repos/${repo}/issues`, params: { owner, repo: name }, query: {}, body, token }));
+  if (r.status === 404) return { skipped: "AHub \u6C92\u88DD\u6216\u6C92\u6709 " + repo };
+  if (r.status >= 200 && r.status < 300) {
+    const n = Number(r.body.number);
+    const ref = Number.isFinite(n) && n > 0 ? `${repo}#${n}` : String(r.body.ref ?? "");
+    return ref ? { ref } : { error: "\u958B\u7968\u56DE\u61C9\u6C92\u6709\u7968\u865F" };
+  }
+  return { error: `HTTP ${r.status} ${String(r.body.message ?? "").slice(0, 120)}` };
+}
+async function commentTicket(io, ref, text) {
+  const m = /^([^/]+)\/([^#]+)#(\d+)$/.exec(ref);
+  if (!m) return false;
+  const r = await withToken(io, "comment_create", (token) => ({ method: "POST", path: `/repos/${m[1]}/${m[2]}/issues/${m[3]}/comments`, params: { owner: m[1], repo: m[2], index: m[3] }, query: {}, body: { body: text }, token }));
+  return r.status >= 200 && r.status < 300;
+}
+
+// cypher-executor/src/lib/code-fingerprint-io.ts
+function fpEnabled(env) {
+  return !/^(0|off|false|no)$/i.test(String(env.CODE_FP_MODE ?? "").trim());
+}
+async function fingerprintSubjects(subjects) {
+  const out = [];
+  for (const s of subjects) {
+    try {
+      out.push(await fingerprintWorkflow({ name: s.name, graph: s.graph, config: s.config }));
+    } catch {
+    }
+  }
+  return out;
+}
+function hintsOf(results) {
+  return results.flatMap((r) => replaceableHints(r));
+}
+function makeFpIO(env, tenant2, origin2) {
+  return {
+    tenant: tenant2,
+    kbdb: (path, init) => {
+      const { base, headers } = kbdbBase(env);
+      return kbdbFetchRaw(`${base}${path}`, { ...init, headers: { ...withCaller(headers, KBDB_CALLERS.codeFingerprint), ...init?.headers } });
+    },
+    ahub: (wf, envelope) => {
+      const url = `${origin2.replace(/\/+$/, "")}/webhooks/named/${encodeURIComponent(tenant2)}/ahub__${wf}/query`;
+      const init = { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(envelope) };
+      return trySelfFetch(env, url, init) ?? fetch(url, init);
+    }
+  };
+}
+async function noteCodeFingerprints(env, tenant2, origin2, results) {
+  if (!fpEnabled(env) || results.length === 0) return null;
+  try {
+    return await recordCodeFingerprints(makeFpIO(env, tenant2, origin2), results, {
+      minWorkflows: Number(env.CODE_FP_MIN_WORKFLOWS) > 0 ? Number(env.CODE_FP_MIN_WORKFLOWS) : DEFAULT_MIN_WORKFLOWS,
+      ticketRepo: env.CODE_FP_TICKET_REPO || void 0,
+      ticketParent: env.CODE_FP_TICKET_PARENT || "inkstone/InkStoneCo#376",
+      ...Number(env.CODE_FP_WRITE_BUDGET) > 0 ? { writeBudget: Number(env.CODE_FP_WRITE_BUDGET) } : {}
+    });
+  } catch (e) {
+    console.error("[code-fingerprint] failed", e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+async function noteAppInstallFingerprints(env, tenant2, origin2, decl) {
+  if (!fpEnabled(env)) return null;
+  const d = decl;
+  if (!d || typeof d.id !== "string" || !Array.isArray(d.workflows)) return null;
+  const subjects = d.workflows.map((w) => ({ name: `${d.id}__${String(w.name)}`, graph: w.graph }));
+  return noteCodeFingerprints(env, tenant2, origin2, await fingerprintSubjects(subjects));
+}
+
+// cypher-executor/src/lib/needs-match.ts
+var TOP = 5;
+function nameOf(r) {
+  return String(r.name ?? r.page_name ?? r.workflow_name ?? r.canonical_id ?? "?");
+}
+async function matchNeeds(env, apiKey, needs, excludePrefix = "") {
+  const q = needs.trim().slice(0, 300);
+  const [wf, tp] = await Promise.all([searchByTarget("workflow", q, env, apiKey), searchByTarget("template", q, env, apiKey)]);
+  const errors = [];
+  const pick = (r, label) => {
+    if (!r.ok) {
+      errors.push(`${label}\u641C\u5C0B\u5931\u6557\uFF1A${r.error}`);
+      return [];
+    }
+    const list = r.body.results ?? r.body.entries;
+    return Array.isArray(list) ? list.map((e) => "page_name" in e ? { name: e.page_name, description: e.content } : e) : [];
+  };
+  const workflows = pick(wf, "\u5DE5\u4F5C\u6D41").filter((r) => !(excludePrefix && nameOf(r).startsWith(excludePrefix))).slice(0, TOP);
+  const templates = pick(tp, "\u8CC7\u6599\u683C").slice(0, TOP);
+  const parts = [];
+  if (workflows.length) parts.push(`\u73FE\u6709\u5DE5\u4F5C\u6D41\uFF1A${workflows.map(nameOf).join("\u3001")}`);
+  if (templates.length) parts.push(`\u73FE\u6709\u8CC7\u6599\u683C\uFF1A${templates.map(nameOf).join("\u3001")}`);
+  const summary = parts.length ? `\u9019\u8DDF\u73FE\u6709\u7684\u6771\u897F\u53EF\u80FD\u662F\u540C\u4E00\u7A2E\uFF08${parts.join("\uFF1B")}\uFF09\u3002\u5148\u770B\u904E\u518D\u6C7A\u5B9A\u8981\u4E0D\u8981\u53E6\u505A\u4E00\u5957\u3002` : errors.length ? `\u6BD4\u5C0D\u6C92\u505A\u5B8C\uFF08${errors.join("\uFF1B")}\uFF09\u3002` : "\u73FE\u6709\u5DE5\u4F5C\u6D41\u8207\u8CC7\u6599\u683C\u88E1\u6C92\u627E\u5230\u76F8\u8FD1\u7684\uFF08\u5B57\u9762\u6BD4\u5C0D\uFF0C\u63DB\u500B\u8AAA\u6CD5\u53EF\u80FD\u627E\u5F97\u5230\uFF09\u3002";
+  return { needs: q, workflows, templates, errors, queries: { kbdb: 2 }, summary };
+}
+
+// cypher-executor/src/lib/structure-fingerprint.ts
+var SIG_MAX = 30;
+var MIN_COMPONENTS = 2;
+function kindOf(n) {
+  const t = String(n.type ?? "");
+  if (t === "Input") return "input";
+  if (t === "Output") return "output";
+  const c = String(n.componentId ?? "").trim();
+  if (!c) return "component:?";
+  if (/^https?:\/\//i.test(c)) {
+    try {
+      return new URL(c).hostname.split(".")[0];
+    } catch {
+    }
+  }
+  return c;
+}
+async function sha(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+}
+async function structureFingerprint(graph) {
+  const g = graph;
+  if (!g || !Array.isArray(g.nodes) || !Array.isArray(g.edges)) return null;
+  const kindById = /* @__PURE__ */ new Map();
+  const kinds = [];
+  for (const raw2 of g.nodes) {
+    if (!raw2 || typeof raw2 !== "object") continue;
+    const k = kindOf(raw2);
+    kindById.set(String(raw2.id), k);
+    kinds.push(k);
+  }
+  if (kinds.filter((k) => k !== "input" && k !== "output").length < MIN_COMPONENTS) return null;
+  const edges = [];
+  for (const e of g.edges) {
+    if (!e || typeof e !== "object") continue;
+    edges.push(`${kindById.get(String(e.from)) ?? "?"}>${String(e.type ?? "ON_SUCCESS")}>${kindById.get(String(e.to)) ?? "?"}`);
+  }
+  const sortedKinds = [...kinds].sort();
+  const distinct = [...new Set(sortedKinds.filter((k) => k !== "input" && k !== "output"))];
+  return {
+    exact: await sha(sortedKinds.join(",") + "|" + edges.sort().join(",")),
+    near: await sha(distinct.join(",")),
+    kinds: distinct
+  };
+}
+var kn = (api, h) => `${api}:wfsig:n:${h}`;
+var ko = (api, name) => `${api}:wfsig:of:${name}`;
+var appOf = (name) => name.includes("__") ? name.split("__")[0] : "";
+async function readEntries(kv, key, q) {
+  q.kv_get++;
+  try {
+    const v = JSON.parse(await kv.get(key, "text") ?? "[]");
+    return Array.isArray(v) ? v.filter((e) => !!e && typeof e.name === "string" && typeof e.exact === "string") : [];
+  } catch {
+    return [];
+  }
+}
+async function writeEntries(kv, key, list, q) {
+  if (list.length) {
+    q.kv_put++;
+    await kv.put(key, JSON.stringify(list.slice(-SIG_MAX)));
+  } else {
+    q.kv_delete++;
+    await kv.delete(key);
+  }
+}
+async function readOf(kv, apiKey, name, q) {
+  q.kv_get++;
+  try {
+    const v = JSON.parse(await kv.get(ko(apiKey, name), "text") ?? "null");
+    return v && typeof v.near === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+async function registerAndFindTwins(kv, apiKey, name, graph) {
+  const q = { kv_get: 0, kv_put: 0, kv_delete: 0 };
+  const fp = await structureFingerprint(graph);
+  const prev = await readOf(kv, apiKey, name, q);
+  if (prev && (!fp || prev.near !== fp.near)) {
+    await writeEntries(kv, kn(apiKey, prev.near), (await readEntries(kv, kn(apiKey, prev.near), q)).filter((e) => e.name !== name), q);
+  }
+  if (!fp) {
+    if (prev) {
+      q.kv_delete++;
+      await kv.delete(ko(apiKey, name));
+    }
+    return { twins: [], queries: q };
+  }
+  const list = await readEntries(kv, kn(apiKey, fp.near), q);
+  const mine = appOf(name);
+  const others = list.filter((e) => e.name !== name && !(mine && appOf(e.name) === mine));
+  const twins = [
+    ...others.filter((e) => e.exact === fp.exact).map((e) => ({ name: e.name, level: "same" })),
+    ...others.filter((e) => e.exact !== fp.exact).map((e) => ({ name: e.name, level: "similar" }))
+  ];
+  const self = list.find((e) => e.name === name);
+  if (!self || self.exact !== fp.exact) {
+    await writeEntries(kv, kn(apiKey, fp.near), [...list.filter((e) => e.name !== name), { name, exact: fp.exact }], q);
+  }
+  if (!prev || prev.near !== fp.near) {
+    q.kv_put++;
+    await kv.put(ko(apiKey, name), JSON.stringify({ near: fp.near }));
+  }
+  return { twins: twins.slice(0, 10), queries: q };
+}
+async function unregisterStructure(kv, apiKey, name) {
+  const q = { kv_get: 0, kv_put: 0, kv_delete: 0 };
+  const prev = await readOf(kv, apiKey, name, q);
+  if (!prev) return;
+  await writeEntries(kv, kn(apiKey, prev.near), (await readEntries(kv, kn(apiKey, prev.near), q)).filter((e) => e.name !== name), q);
+  await kv.delete(ko(apiKey, name));
+}
+function twinActions(name, twins) {
+  const same = twins.filter((t) => t.level === "same").map((t) => t.name);
+  const sim = twins.filter((t) => t.level === "similar").map((t) => t.name);
+  const out = [];
+  if (same.length) out.push(`\u7D50\u69CB\u76F8\u540C ${name}\uFF1A\u96F6\u4EF6\u7A2E\u985E\u8207\u63A5\u7DDA\u8DDF\u300C${same.join("\u3001")}\u300D\u4E00\u6A23\uFF08\u540D\u5B57\u4E0D\u540C\uFF09\u3002\u5DF2\u7D93\u5B58\u4E86\u3001\u4E0D\u64CB\uFF1B\u82E5\u662F\u540C\u4E00\u7A2E\u6771\u897F\uFF0C\u8003\u616E\u6539\u7528\uFF0F\u64F4\u5145\u90A3\u689D\uFF08arcrun_get_workflow \u770B\u5167\u5BB9\uFF09\uFF0C\u907F\u514D\u5169\u5957\u5404\u81EA\u6F02\u79FB\u3002`);
+  if (sim.length) out.push(`\u7D50\u69CB\u76F8\u8FD1 ${name}\uFF1A\u7528\u5230\u7684\u96F6\u4EF6\u7A2E\u985E\u8DDF\u300C${sim.join("\u3001")}\u300D\u4E00\u6A23\u3001\u63A5\u6CD5\u4E0D\u540C\u3002\u5DF2\u7D93\u5B58\u4E86\u3001\u4E0D\u64CB\uFF1B\u5148\u770B\u770B\u662F\u4E0D\u662F\u53EF\u4EE5\u5171\u7528\u3002`);
+  return out;
+}
+
+// cypher-executor/src/routes/webhooks-named.ts
 init_security_scan();
 var webhooksNamedRouter = new Hono2();
+async function gateCaller(c, apiKey, graph, ctx) {
+  let bg;
+  try {
+    const ec = c.executionCtx;
+    bg = (p) => ec.waitUntil(p);
+  } catch {
+  }
+  const r = await resolveCaller(c.env, apiKey, graph, ctx, bg);
+  if (!r.ok) return { res: c.json({ success: false, error: r.error, reason: r.reason }, r.status) };
+  return { ctx: r.context };
+}
 function kvKey(apiKey, name) {
   return `${apiKey}:wf:${name}`;
 }
@@ -34178,6 +36315,8 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
       next_actions: dataflowNextActions(dataflow)
     }, 422);
   }
+  const codeFp = fpEnabled(c.env) ? await fingerprintSubjects([{ name, graph, config: body.config }]) : [];
+  const replaceable = hintsOf(codeFp);
   const cronExpr = extractCronExpr(graph);
   const record = {
     name,
@@ -34208,6 +36347,13 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
     } catch {
     }
   }
+  let twinRes = null;
+  try {
+    twinRes = await registerAndFindTwins(c.env.WEBHOOKS, apiKey, name, graph);
+  } catch (e) {
+    console.error("[structure-twins]", e instanceof Error ? e.message : e);
+  }
+  const twinNext = twinRes ? twinActions(name, twinRes.twins) : [];
   await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, cronExpr);
   c.executionCtx.waitUntil(
     writeWorkflowSearchEntry(c.env, apiKey, name, record.description).catch(() => {
@@ -34220,6 +36366,7 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
     agent_user_agent: c.req.header("User-Agent") ?? void 0
   }, c.executionCtx);
   const baseUrl = new URL(c.req.url).origin;
+  if (codeFp.length) c.executionCtx.waitUntil(noteCodeFingerprints(c.env, apiKey, baseUrl, codeFp).then(() => void 0));
   return c.json({
     name,
     webhook_url: `${baseUrl}/webhooks/named/${name}/trigger`,
@@ -34234,7 +36381,11 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
     // inkstone/Arcrun#518：AI 常漏的提醒（逾時重試、空值時區、整支寫成 code、測試資料寫死）。已經存了——這只是提醒，不擋；
     // AI 呼叫的路從 next_actions 拿到「哪個節點、怎麼改」，可以自己修了再推一次。
     ...security.advice.length ? { advice: security.advice } : {},
-    ...dataflow.errors.length || security.advice.length ? { next_actions: [...dataflow.errors.length ? dataflowNextActions(dataflow) : [], ...adviceActions(security.advice)] } : {}
+    // inkstone/Arcrun#565：指紋對到已有引擎零件的 code（只提醒、不改你的工作流）
+    ...replaceable.length ? { replaceable_code: replaceable } : {},
+    // Arcrun#564：跟現有工作流結構相同／相近（同一個 App 的兄弟不算）
+    ...twinRes ? { structure_twins: { twins: twinRes.twins, queries: twinRes.queries } } : {},
+    ...dataflow.errors.length || security.advice.length || replaceable.length || twinNext.length ? { next_actions: [...dataflow.errors.length ? dataflowNextActions(dataflow) : [], ...adviceActions(security.advice), ...replaceable.map((h) => h.message), ...twinNext] } : {}
   }, 201);
 });
 webhooksNamedRouter.get("/workflows/dataflow", async (c) => {
@@ -34245,6 +36396,14 @@ webhooksNamedRouter.get("/workflows/dataflow", async (c) => {
     withGraph: c.req.query("graph") !== "0"
   });
   return c.json({ ...report, next_actions: dataflowNextActions(report) });
+});
+webhooksNamedRouter.post("/workflows/needs-match", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const body = await c.req.json().catch(() => null);
+  const needs = typeof body?.needs === "string" ? body.needs.trim() : "";
+  if (!needs) return c.json({ error: "needs \u5FC5\u586B\uFF1A\u4E00\u53E5\u8A71\u5BEB\u300C\u9700\u8981\u54EA\u4E9B\u7D50\u69CB\u300D\uFF08\u4F8B\uFF1A\u6BCF\u65E5\u7D00\u9304\u4E00\u500B\u6578\u5B57\uFF09" }, 400);
+  return c.json(await matchNeeds(c.env, apiKey, needs, typeof body?.exclude_prefix === "string" ? body.exclude_prefix : ""));
 });
 webhooksNamedRouter.get("/workflows/search", async (c) => {
   const apiKey = c.req.header("X-Arcrun-API-Key");
@@ -34357,6 +36516,9 @@ async function triggerNamed(c, apiKey, name) {
   const workflowId = graph.id ?? name;
   const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
   const userAgent = c.req.header("User-Agent") ?? void 0;
+  const gate = await gateCaller(c, apiKey, record.graph, triggerContext);
+  if ("res" in gate) return gate.res;
+  triggerContext = gate.ctx;
   if (c.req.query("async") === "1") {
     c.executionCtx.waitUntil(
       executeWebhookGraph(c.env, record.graph, triggerContext, name, apiKey, c.executionCtx, userAgent).then(
@@ -34420,10 +36582,13 @@ async function queryNamedRun(c, apiKey, name, triggerContext) {
   const workflowId = graph.id ?? name;
   const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
   const userAgent = c.req.header("User-Agent") ?? void 0;
+  const gate = await gateCaller(c, apiKey, record.graph, triggerContext);
+  if ("res" in gate) return gate.res;
+  const verifiedCtx = gate.ctx;
   const result = await executeWebhookGraph(
     c.env,
     record.graph,
-    { ...triggerContext, _public_origin: new URL(c.req.url).origin },
+    { ...verifiedCtx, _public_origin: new URL(c.req.url).origin },
     name,
     apiKey,
     c.executionCtx,
@@ -34445,7 +36610,9 @@ async function queryNamedRun(c, apiKey, name, triggerContext) {
       paused ? 409 : isKbdbBusyFailure(result) ? 503 : 500
     );
   }
-  const serialized = JSON.stringify(result.data ?? null);
+  const httpSpec = extractHttpSpec(result.data);
+  const outBody = httpSpec ? httpSpec.body : result.data;
+  const serialized = JSON.stringify(outBody ?? null);
   const byteLen = new TextEncoder().encode(serialized).byteLength;
   if (byteLen > MAX_QUERY_OUTPUT_BYTES) {
     return c.json(
@@ -34457,9 +36624,10 @@ async function queryNamedRun(c, apiKey, name, triggerContext) {
     );
   }
   const timing = buildServerTiming(result.trace);
-  return new Response(serialized, {
-    status: 200,
+  return new Response(httpSpec && statusForbidsBody(httpSpec.status) ? null : serialized, {
+    status: httpSpec?.status ?? 200,
     headers: {
+      ...httpSpec?.headers ?? {},
       "Content-Type": "application/json; charset=UTF-8",
       "X-Arcrun-Duration-Ms": String(result.duration_ms),
       ...timing ? { "Server-Timing": timing } : {}
@@ -34535,15 +36703,19 @@ webhooksNamedRouter.delete("/webhooks/named/:name", async (c) => {
   }
   await c.env.WEBHOOKS.delete(kvKey(apiKey, name));
   await updateCronIndexEntry(c.env.WEBHOOKS, apiKey, name, null);
+  await unregisterStructure(c.env.WEBHOOKS, apiKey, name).catch(() => {
+  });
   return c.json({ deleted: true, name });
 });
 
 // cypher-executor/src/routes/auth.ts
 init_dist();
 init_credentials();
+init_ephemeral_store();
 
 // cypher-executor/src/lib/platform-oauth-users.ts
 init_kbdb_proxy();
+init_ephemeral_store();
 init_kbdb_transport();
 var PlatformUserStoreError = class extends Error {
 };
@@ -34558,12 +36730,12 @@ async function kFetch2(env, path, init) {
     throw new PlatformUserStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
   }
 }
-async function sha256Hex5(input) {
+async function sha256Hex7(input) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 var TEMPLATE = "platform_oauth_user";
-var SLOTS = [
+var SLOTS2 = [
   "provider_key_hash",
   "api_key_hash",
   "email",
@@ -34576,11 +36748,11 @@ var SLOTS = [
   "revoked"
 ];
 var templateEnsured = false;
-async function ensureTemplate4(env) {
+async function ensureTemplate5(env) {
   if (templateEnsured) return;
   const got = await kFetch2(env, `/templates/${TEMPLATE}`);
   if (!got.ok) {
-    await kFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name: TEMPLATE, slots: SLOTS }) }).catch(
+    await kFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name: TEMPLATE, slots: SLOTS2 }) }).catch(
       () => void 0
     );
   }
@@ -34612,20 +36784,20 @@ async function findByHash2(env, field, hash) {
   return recBody?.record ?? null;
 }
 async function findPlatformUserByProvider(env, provider, providerId) {
-  const hash = await sha256Hex5(`${provider}:${providerId}`);
+  const hash = await sha256Hex7(`${provider}:${providerId}`);
   const found = await findByHash2(env, "provider_key_hash", hash);
   return found ? toUser(found.record_id, found.values) : null;
 }
 async function findPlatformUserByApiKey(env, apiKey) {
-  const hash = await sha256Hex5(apiKey);
+  const hash = await sha256Hex7(apiKey);
   const found = await findByHash2(env, "api_key_hash", hash);
   return found ? toUser(found.record_id, found.values) : null;
 }
 async function createPlatformUser(env, input) {
-  await ensureTemplate4(env);
+  await ensureTemplate5(env);
   const values = {
-    provider_key_hash: await sha256Hex5(`${input.provider}:${input.provider_id}`),
-    api_key_hash: await sha256Hex5(input.api_key),
+    provider_key_hash: await sha256Hex7(`${input.provider}:${input.provider_id}`),
+    api_key_hash: await sha256Hex7(input.api_key),
     email: input.email,
     display_name: input.display_name,
     avatar_url: input.avatar_url ?? "",
@@ -34648,7 +36820,7 @@ async function updatePlatformUser(env, recordId, patch2) {
   if (patch2.avatar_url !== void 0) values.avatar_url = patch2.avatar_url ?? "";
   if (patch2.api_key !== void 0) {
     values.api_key = patch2.api_key;
-    values.api_key_hash = await sha256Hex5(patch2.api_key);
+    values.api_key_hash = await sha256Hex7(patch2.api_key);
   }
   if (patch2.revoked !== void 0) values.revoked = String(patch2.revoked);
   if (Object.keys(values).length === 0) return;
@@ -36179,10 +38351,10 @@ for (const [kind, method] of [["tree", "readTree"], ["commit", "readCommit"]]) {
   artifactsRouter.get(`/artifacts/repos/:repo/${kind}/:sha`, async (c) => {
     const r = await repoOf(c, c.req.param("repo"));
     if (isRes(r)) return r;
-    const sha = c.req.param("sha");
-    if (!SHA.test(sha)) return err2(c, 400, "bad_sha", "Invalid SHA-1");
+    const sha2 = c.req.param("sha");
+    if (!SHA.test(sha2)) return err2(c, 400, "bad_sha", "Invalid SHA-1");
     try {
-      const out = await r.h[method](sha);
+      const out = await r.h[method](sha2);
       if (out === null || out === void 0) return err2(c, 404, "not_found", `${kind} \u4E0D\u5B58\u5728`);
       return c.json({ success: true, result: out });
     } catch (e) {
@@ -36193,10 +38365,10 @@ for (const [kind, method] of [["tree", "readTree"], ["commit", "readCommit"]]) {
 artifactsRouter.get("/artifacts/repos/:repo/blob/:sha", async (c) => {
   const r = await repoOf(c, c.req.param("repo"));
   if (isRes(r)) return r;
-  const sha = c.req.param("sha");
-  if (!SHA.test(sha)) return err2(c, 400, "bad_sha", "Invalid SHA-1");
+  const sha2 = c.req.param("sha");
+  if (!SHA.test(sha2)) return err2(c, 400, "bad_sha", "Invalid SHA-1");
   try {
-    const blob = await r.h.readBlob(sha);
+    const blob = await r.h.readBlob(sha2);
     if (!blob) return err2(c, 404, "not_found", "blob \u4E0D\u5B58\u5728");
     if (blob.size > MAX_RAW_BYTES) return err2(c, 413, "too_large", `blob ${blob.size} \u4F4D\u5143\u7D44\uFF0C\u8D85\u904E\u8B80\u53D6\u4E0A\u9650 ${MAX_RAW_BYTES}`);
     return c.json({ success: true, result: await blob.text() });
@@ -36731,9 +38903,9 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
   const cacheKey2 = new Request(
     `https://console-dashboard.arcrun.internal/gitea-waiting?${new URLSearchParams({ base: env.GITEA_BASE_URL, repo, dir }).toString()}`
   );
-  const cache3 = caches.default;
+  const cache4 = caches.default;
   try {
-    const hit = await cache3.match(cacheKey2);
+    const hit = await cache4.match(cacheKey2);
     if (hit) {
       const envelope2 = await hit.json();
       return {
@@ -36749,7 +38921,7 @@ async function cachedGiteaSprint(env, nowMs, waitUntil, fetcher = fetchGiteaSpri
   const envelope = { snapshot: fresh, fetched_at_ms: nowMs };
   try {
     waitUntil(
-      cache3.put(
+      cache4.put(
         cacheKey2,
         new Response(JSON.stringify(envelope), {
           headers: {
@@ -36995,6 +39167,7 @@ consoleDashboardRouter.post("/console/triage-check", async (c) => {
 init_dist();
 init_credentials();
 init_tenant();
+init_ephemeral_store();
 init_secret_backend();
 init_auth_dispatcher();
 
@@ -37019,6 +39192,9 @@ function validConnectName(name) {
 }
 function clientSecretName(name) {
   return `${name}_client_secret`;
+}
+function clientIdName(name) {
+  return `${name}_client_id`;
 }
 function refreshTokenName(name) {
   return `${name}_refresh_token`;
@@ -37126,6 +39302,7 @@ function buildOauthRecipe(p) {
     description: p.scopes.length ? `Portal \u9023\u7DDA\u5EFA\u7ACB\u3002\u7BC4\u570D\uFF1A${p.scopes.join(" ")}` : "Portal \u9023\u7DDA\u5EFA\u7ACB",
     oauth2: {
       token_endpoint: p.tokenUrl,
+      ...p.authorizeUrl ? { authorize_endpoint: p.authorizeUrl } : {},
       client_id: p.clientId,
       client_secret: "",
       client_secret_key: clientSecretName(p.name),
@@ -37147,6 +39324,7 @@ function portalReturnUrl(uiOrigin, params) {
 }
 
 // cypher-executor/src/routes/portal-oauth.ts
+init_credential_check();
 init_credential_verify();
 var portalOauthRouter = new Hono2();
 var STATE_SLOTS = ["cred_service", "name", "client_id", "scopes", "token_url", "verify_url", "api_base_url", "ui_origin", "created_at"];
@@ -37154,6 +39332,14 @@ function randomState() {
   const a = new Uint8Array(24);
   crypto.getRandomValues(a);
   return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function env_putRecipe(env, name, recipe) {
+  await env.RECIPES.put(
+    // kv-ok: RECIPES 是 KBDB record 撐腰的資產儲存（kbdb-asset-store.ts, #98），不是 KV；與 POST /auth-recipes 同一條寫入路徑
+    `auth_recipe:${name}`,
+    JSON.stringify(recipe)
+  );
+  resetRecipeCache();
 }
 function canWriteSecrets(env) {
   const mode = secretBackendMode(env);
@@ -37218,6 +39404,20 @@ portalOauthRouter.post(
     } else if (!await hasCredential(c.env, owner, secretName)) {
       return c.json({ error: "\u7528\u6236\u7AEF\u5BC6\u9470\u5FC5\u586B" }, 400);
     }
+    try {
+      await env_putRecipe(c.env, name, buildOauthRecipe({
+        name,
+        clientId,
+        tokenUrl,
+        scopes,
+        authorizeUrl,
+        apiBaseUrl: apiBase || void 0,
+        verifyUrl: verifyUrl || void 0,
+        now: Date.now()
+      }));
+    } catch (e) {
+      return c.json({ error: `\u9023\u7DDA\u8A2D\u5B9A\u5132\u5B58\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+    }
     const uiOrigin = c.req.header("origin") || selfOrigin(c);
     const state = randomState();
     await ephemeralPut(c.env, {
@@ -37280,6 +39480,12 @@ async function completeConnect(env, origin2, code, stateRaw) {
     if (isSecretsNotReady(e)) return { ok: false, status: 502, ...NEED_GRANT, uiOrigin };
     return { ok: false, status: 502, error: `\u6388\u6B0A\u5DF2\u53D6\u5F97\u4F46\u5B58\u4E0D\u9032\u91D1\u9470\uFF1A${e instanceof Error ? e.message : String(e)}`, uiOrigin };
   }
+  try {
+    await writeCredential(env, owner, clientIdName(name), st.client_id, st.cred_service || OAUTH_DEFAULT_CRED_SERVICE, void 0);
+  } catch (e) {
+    if (isSecretsNotReady(e)) return { ok: false, status: 502, ...NEED_GRANT, uiOrigin };
+    return { ok: false, status: 502, error: `\u6388\u6B0A\u5DF2\u53D6\u5F97\u4F46 client id \u5B58\u4E0D\u9032\u91D1\u9470\uFF1A${e instanceof Error ? e.message : String(e)}`, uiOrigin };
+  }
   const scopes = (st.scopes || "").split(" ").filter(Boolean);
   const recipe = buildOauthRecipe({
     name,
@@ -37290,12 +39496,17 @@ async function completeConnect(env, origin2, code, stateRaw) {
     verifyUrl: st.verify_url || void 0,
     now: Date.now()
   });
-  await env.RECIPES.put(
-    // kv-ok: RECIPES 是 KBDB record 撐腰的資產儲存（kbdb-asset-store.ts, #98），不是 KV；與 POST /auth-recipes 同一條寫入路徑
-    `auth_recipe:${name}`,
-    JSON.stringify(recipe)
-  );
+  const prev = await env.RECIPES.get(`auth_recipe:${name}`, "json").catch(() => null);
+  const authorizeUrl = prev?.oauth2?.authorize_endpoint;
+  if (authorizeUrl) recipe.oauth2.authorize_endpoint = authorizeUrl;
+  await env_putRecipe(env, name, recipe);
   const verify = ex.accessToken ? await verifyWithRecipe(recipe, { "runtime.access_token": ex.accessToken }) : { status: "skipped", message: st.verify_url ? "\u5B58\u597D\u4E86\uFF0C\u4F46\u5C0D\u65B9\u63DB\u78BC\u6642\u6C92\u7D66 access token\uFF0C\u6C92\u8A66" : NO_VERIFY_MESSAGE };
+  if (verify.status === "ok" || verify.status === "failed") {
+    try {
+      await recordCredentialTest(env, owner, [clientIdName(name), secretName, refreshTokenName(name)], { status: verify.status, message: verify.message }, "manual");
+    } catch {
+    }
+  }
   return { ok: true, name, scopes, uiOrigin, verify };
 }
 portalOauthRouter.get("/portal/oauth/callback", async (c) => {
@@ -37306,8 +39517,8 @@ portalOauthRouter.get("/portal/oauth/callback", async (c) => {
   const st = state ? await ephemeralGet(c.env, { template: OAUTH_STATE_TEMPLATE, hashField: "state_hash", rawKey: state }) : null;
   const ui = st?.ui_origin || origin2;
   if (error || !code || !state || !st) {
-    const msg = error === "access_denied" ? "\u4F60\u53D6\u6D88\u4E86\u6388\u6B0A" : error || "\u9023\u7DDA\u5DF2\u904E\u671F\uFF0C\u8ACB\u91CD\u65B0\u6309\u9023\u7DDA";
-    return c.redirect(portalReturnUrl(ui, { oauth: "error", oauth_msg: msg }), 302);
+    const msg2 = error === "access_denied" ? "\u4F60\u53D6\u6D88\u4E86\u6388\u6B0A" : error || "\u9023\u7DDA\u5DF2\u904E\u671F\uFF0C\u8ACB\u91CD\u65B0\u6309\u9023\u7DDA";
+    return c.redirect(portalReturnUrl(ui, { oauth: "error", oauth_msg: msg2 }), 302);
   }
   if (canWriteSecrets(c.env)) {
     const r = await completeConnect(c.env, origin2, code, state);
@@ -37336,94 +39547,7 @@ portalOauthRouter.post(
 // cypher-executor/src/routes/portal-data.ts
 init_dist();
 init_credentials();
-
-// cypher-executor/src/lib/portal-actor.ts
-var PORTAL_ACTOR_TTL_SEC = 90;
-var DOMAIN = "arcrun-portal-actor-v1";
-var enc3 = new TextEncoder();
-function hex3(buf) {
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function hmacHex(secret, msg) {
-  const key = await crypto.subtle.importKey("raw", enc3.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return hex3(await crypto.subtle.sign("HMAC", key, enc3.encode(msg)));
-}
-function message(a) {
-  return [DOMAIN, a.tenant, a.login, a.role, String(a.ts), a.nonce].join("\n");
-}
-function randomHex5(bytes) {
-  const b = new Uint8Array(bytes);
-  crypto.getRandomValues(b);
-  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
-}
-function clean(s) {
-  return String(s ?? "").replace(/[\r\n]/g, " ").trim().slice(0, 128);
-}
-async function signPortalActor(env, tenant2, who, nowMs = Date.now()) {
-  const secret = (env.KBDB_INTERNAL_TOKEN ?? "").trim();
-  if (!secret) return null;
-  const a = { login: clean(who.login), role: clean(who.role) || "user", tenant: clean(tenant2), ts: Math.floor(nowMs / 1e3), nonce: randomHex5(12) };
-  if (!a.login || !a.tenant) return null;
-  const sig = await hmacHex(secret, message(a));
-  noteIssued(sig, a.ts * 1e3 + PORTAL_ACTOR_TTL_SEC * 1e3);
-  return { ...a, sig };
-}
-var issuedSigs = /* @__PURE__ */ new Map();
-var spentSigs = /* @__PURE__ */ new Map();
-var MEM_MAX = 2e3;
-function prune(m, now2) {
-  if (m.size < MEM_MAX) return;
-  for (const [k, exp] of m) if (exp < now2) m.delete(k);
-  while (m.size >= MEM_MAX) {
-    const k = m.keys().next().value;
-    if (k === void 0) break;
-    m.delete(k);
-  }
-}
-function noteIssued(sig, expMs) {
-  prune(issuedSigs, Date.now());
-  issuedSigs.set(sig.toLowerCase(), expMs);
-}
-function takeIssuedActor(sig, now2 = Date.now()) {
-  const k = sig.toLowerCase();
-  const exp = issuedSigs.get(k);
-  if (exp === void 0) return false;
-  issuedSigs.delete(k);
-  return exp >= now2;
-}
-function markSpentActor(sig, now2 = Date.now()) {
-  prune(spentSigs, now2);
-  spentSigs.set(sig.toLowerCase(), now2 + (PORTAL_ACTOR_TTL_SEC + 30) * 1e3);
-}
-function spentHereActor(sig, now2 = Date.now()) {
-  const exp = spentSigs.get(sig.toLowerCase());
-  return exp !== void 0 && exp >= now2;
-}
-function timingSafeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let d = 0;
-  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return d === 0;
-}
-async function verifyPortalActor(env, tenant2, raw2, nowMs = Date.now()) {
-  const secret = (env.KBDB_INTERNAL_TOKEN ?? "").trim();
-  if (!secret) return { valid: false, reason: "no_signing_key" };
-  const a = raw2 && typeof raw2 === "object" ? raw2 : null;
-  if (!a) return { valid: false, reason: "malformed" };
-  const ts = Number(a.ts);
-  const sig = typeof a.sig === "string" ? a.sig.toLowerCase() : "";
-  if (!Number.isFinite(ts) || !/^[0-9a-f]{64}$/.test(sig)) return { valid: false, reason: "malformed" };
-  const login = clean(a.login), role = clean(a.role), nonce = clean(a.nonce);
-  if (!/^[0-9a-f]{8,64}$/.test(nonce)) return { valid: false, reason: "malformed" };
-  if (!login || clean(a.tenant) !== clean(tenant2)) return { valid: false, reason: "wrong_tenant" };
-  const want = await hmacHex(secret, message({ login, role, tenant: clean(tenant2), ts, nonce }));
-  if (!timingSafeEqual(want, sig)) return { valid: false, reason: "bad_signature" };
-  const age = Math.floor(nowMs / 1e3) - ts;
-  if (age < -5 || age > PORTAL_ACTOR_TTL_SEC) return { valid: false, reason: "expired" };
-  return { valid: true, login, role };
-}
-
-// cypher-executor/src/routes/portal-data.ts
+init_portal_actor();
 init_tenant();
 init_webhook_handlers();
 init_recipes();
@@ -37594,7 +39718,8 @@ function mcpDeclFromInstalled(app2) {
       description: t.description,
       input_schema: t.input_schema,
       workflow: t.wf_key.startsWith(prefix) ? t.wf_key.slice(prefix.length) : t.wf_key,
-      ...t.read_only ? { read_only: true } : {}
+      ...t.read_only ? { read_only: true } : {},
+      ...t.map ? { map: t.map } : {}
     })),
     guides: app2.mcp?.guides ?? []
   };
@@ -37993,7 +40118,7 @@ async function ensureBuiltinApps(env, tenant2, installed, coords, now2 = Date.no
         let resumeFrom = progress.get(pk)?.from ?? 0;
         let resumeHash = progress.get(pk)?.hash;
         for (let step = 0; step < MAX_RESUME_STEPS; step++) {
-          const r = await installApp(env, tenant2, entry.declaration, { coords, resumeFrom, resumeHash, origin: "market" });
+          const r = await installApp(env, tenant2, entry.declaration, { coords, resumeFrom, resumeHash, origin: "market", catalogAuthor: entry.author });
           if (!r.ok) {
             out.failed.push({ id, error: (r.errors ?? [r.hint ?? "\u5B89\u88DD\u5931\u6557"]).join("\uFF1B") });
             break;
@@ -38115,8 +40240,8 @@ function parseMarketIndex(raw2, sourceUrl) {
       rejected.push(`${label}\uFF1Apackage.url \u7F3A\u6216\u4E0D\u662F\u7DB2\u5740`);
       continue;
     }
-    const sha = str2(pkg.sha256, 64)?.toLowerCase();
-    if (sha !== void 0 && !/^[0-9a-f]{64}$/.test(sha)) {
+    const sha2 = str2(pkg.sha256, 64)?.toLowerCase();
+    if (sha2 !== void 0 && !/^[0-9a-f]{64}$/.test(sha2)) {
       rejected.push(`${label}\uFF1Apackage.sha256 \u4E0D\u662F 64 \u78BC\u5341\u516D\u9032\u4F4D`);
       continue;
     }
@@ -38137,7 +40262,7 @@ function parseMarketIndex(raw2, sourceUrl) {
       ...str2(a.notes, 2e3) ? { notes: str2(a.notes, 2e3) } : {},
       ...a.retired === true ? { retired: true } : {},
       ...a.requires && typeof a.requires === "object" ? { requires: a.requires } : {},
-      package: { url: pkgUrl, ...sha ? { sha256: sha } : {} },
+      package: { url: pkgUrl, ...sha2 ? { sha256: sha2 } : {} },
       source_url: sourceUrl
     });
   }
@@ -38209,38 +40334,38 @@ async function resolveCatalog(env, fetchImpl = fetch, bundled = APP_CATALOG) {
     sources: reads.map((r) => r.report)
   };
 }
-async function sha256Hex6(buf) {
+async function sha256Hex8(buf) {
   const d = await crypto.subtle.digest("SHA-256", buf);
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function fetchMarketDeclaration(entry, fetchImpl = fetch) {
-  const fail = (code, error, hint) => ({ ok: false, code, error, hint });
+  const fail2 = (code, error, hint) => ({ ok: false, code, error, hint });
   let res;
   try {
     res = await fetchWithTimeout(entry.package.url, fetchImpl, 15e3);
   } catch {
-    return fail("package_unreachable", `\u9023\u4E0D\u4E0A\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305`, "\u5E02\u96C6\u4F86\u6E90\u66AB\u6642\u9023\u4E0D\u4E0A\uFF0C\u7A0D\u5F8C\u518D\u6309\u4E00\u6B21\uFF1B\u4F60\u5DF2\u88DD\u7684\u7248\u672C\u4E0D\u53D7\u5F71\u97FF\u3002");
+    return fail2("package_unreachable", `\u9023\u4E0D\u4E0A\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305`, "\u5E02\u96C6\u4F86\u6E90\u66AB\u6642\u9023\u4E0D\u4E0A\uFF0C\u7A0D\u5F8C\u518D\u6309\u4E00\u6B21\uFF1B\u4F60\u5DF2\u88DD\u7684\u7248\u672C\u4E0D\u53D7\u5F71\u97FF\u3002");
   }
-  if (!res.ok) return fail("package_unreachable", `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u53D6\u4E0D\u5230\uFF08\u4F86\u6E90\u56DE HTTP ${res.status}\uFF09`, "\u5E02\u96C6\u4F86\u6E90\u90A3\u908A\u7684\u6A94\u6848\u53EF\u80FD\u9084\u6C92\u653E\u597D\uFF0C\u7A0D\u5F8C\u518D\u6309\u4E00\u6B21\uFF1B\u4F60\u5DF2\u88DD\u7684\u7248\u672C\u4E0D\u53D7\u5F71\u97FF\u3002");
+  if (!res.ok) return fail2("package_unreachable", `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u53D6\u4E0D\u5230\uFF08\u4F86\u6E90\u56DE HTTP ${res.status}\uFF09`, "\u5E02\u96C6\u4F86\u6E90\u90A3\u908A\u7684\u6A94\u6848\u53EF\u80FD\u9084\u6C92\u653E\u597D\uFF0C\u7A0D\u5F8C\u518D\u6309\u4E00\u6B21\uFF1B\u4F60\u5DF2\u88DD\u7684\u7248\u672C\u4E0D\u53D7\u5F71\u97FF\u3002");
   const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_PACKAGE_BYTES) return fail("too_big", `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u592A\u5927\u4E86\uFF0C\u4E0D\u50CF\u662F\u4E00\u500B App`, "\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u78BA\u8A8D\u3002");
+  if (buf.byteLength > MAX_PACKAGE_BYTES) return fail2("too_big", `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u592A\u5927\u4E86\uFF0C\u4E0D\u50CF\u662F\u4E00\u500B App`, "\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u78BA\u8A8D\u3002");
   if (entry.package.sha256) {
-    const got = await sha256Hex6(buf);
+    const got = await sha256Hex8(buf);
     if (got !== entry.package.sha256) {
-      return fail("hash_mismatch", `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u8DDF\u76EE\u9304\u4E0A\u5BEB\u7684\u96DC\u6E4A\u5C0D\u4E0D\u4E0A\uFF0C\u6C92\u6709\u5B89\u88DD`, "\u6A94\u6848\u5728\u50B3\u8F38\u4E2D\u88AB\u6539\u904E\u3001\u6216\u4F86\u6E90\u7684\u76EE\u9304\u8207\u6A94\u6848\u4E0D\u540C\u6B65\uFF1B\u6C92\u6709\u52D5\u5230\u4F60\u5DF2\u88DD\u7684\u7248\u672C\u3002\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u8AAA\u3002");
+      return fail2("hash_mismatch", `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u8DDF\u76EE\u9304\u4E0A\u5BEB\u7684\u96DC\u6E4A\u5C0D\u4E0D\u4E0A\uFF0C\u6C92\u6709\u5B89\u88DD`, "\u6A94\u6848\u5728\u50B3\u8F38\u4E2D\u88AB\u6539\u904E\u3001\u6216\u4F86\u6E90\u7684\u76EE\u9304\u8207\u6A94\u6848\u4E0D\u540C\u6B65\uFF1B\u6C92\u6709\u52D5\u5230\u4F60\u5DF2\u88DD\u7684\u7248\u672C\u3002\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u8AAA\u3002");
     }
   }
   let json;
   try {
     json = JSON.parse(new TextDecoder().decode(buf));
   } catch {
-    return fail("not_a_package", `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u4E0D\u662F JSON`, "\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u8AAA\u3002");
+    return fail2("not_a_package", `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u4E0D\u662F JSON`, "\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u8AAA\u3002");
   }
   const checked = checkPackage(json);
-  if (!checked.ok) return fail(checked.code, `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u6709\u554F\u984C\uFF1A${checked.error}`, checked.hint ?? "\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u8AAA\u3002");
+  if (!checked.ok) return fail2(checked.code, `\u300C${entry.name}\u300D\u7684\u5B89\u88DD\u5305\u6709\u554F\u984C\uFF1A${checked.error}`, checked.hint ?? "\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u8AAA\u3002");
   const decl = checked.pkg.declaration;
   if (decl.id !== entry.id || decl.version !== entry.version) {
-    return fail("listing_mismatch", `\u76EE\u9304\u8AAA\u300C${entry.name}\u300D\u662F ${entry.id} v${entry.version}\uFF0C\u4F46\u5B89\u88DD\u5305\u88E1\u662F ${String(decl.id)} v${String(decl.version)}`, "\u76EE\u9304\u8207\u5B89\u88DD\u5305\u4E0D\u540C\u6B65\uFF0C\u6C92\u6709\u5B89\u88DD\u3002\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u8AAA\u3002");
+    return fail2("listing_mismatch", `\u76EE\u9304\u8AAA\u300C${entry.name}\u300D\u662F ${entry.id} v${entry.version}\uFF0C\u4F46\u5B89\u88DD\u5305\u88E1\u662F ${String(decl.id)} v${String(decl.version)}`, "\u76EE\u9304\u8207\u5B89\u88DD\u5305\u4E0D\u540C\u6B65\uFF0C\u6C92\u6709\u5B89\u88DD\u3002\u8ACB\u8DDF\u5E02\u96C6\u4F86\u6E90\u7684\u7DAD\u8B77\u8005\u8AAA\u3002");
   }
   return { ok: true, declaration: decl };
 }
@@ -38456,7 +40581,7 @@ var T_INDEX = "proofread_open_index";
 var T_SETTING = "proofread_setting";
 var T_PROBE = "proofread_probe";
 var T_PROBE_DAY = "proofread_probe_day";
-var SLOTS2 = {
+var SLOTS3 = {
   [T_OBJECTION]: ["card_key", "library", "page_name", "paragraph", "paragraph_id", "claim_b", "source", "author_id", "author_name", "created_at", "status", "card_version", "question", "reason", "decided_by", "decided_at", "decision_reason", "source_path", "machine"],
   [T_VOTE]: ["objection_id", "voter_id", "voter_name", "choice", "basis", "quote", "channel", "weight", "created_at"],
   [T_SIGNAL]: ["card_key", "kind", "user_id", "question", "created_at"],
@@ -38484,22 +40609,22 @@ async function kFetch3(env, path, init) {
     throw new ProofreadStoreError(`fetch ${path} \u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}`);
   }
 }
-async function sha256Hex7(input) {
+async function sha256Hex9(input) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function shortHash(input) {
-  return (await sha256Hex7(input)).slice(0, 16);
+  return (await sha256Hex9(input)).slice(0, 16);
 }
-var ensured = /* @__PURE__ */ new Set();
-async function ensureTemplate5(env, name) {
-  if (ensured.has(name)) return;
+var ensured2 = /* @__PURE__ */ new Set();
+async function ensureTemplate6(env, name) {
+  if (ensured2.has(name)) return;
   const got = await kFetch3(env, `/templates/${encodeURIComponent(name)}`);
   if (!got.ok) {
     releaseBody(got);
     releaseBody(await kFetch3(env, "/templates", {
       method: "POST",
-      body: JSON.stringify({ name, slots: [...SLOTS2[name], "k"] })
+      body: JSON.stringify({ name, slots: [...SLOTS3[name], "k"] })
     }).catch(() => void 0));
   } else {
     const b = await got.json().catch(() => null);
@@ -38509,7 +40634,7 @@ async function ensureTemplate5(env, name) {
     } catch {
       have = [];
     }
-    const missing = [...SLOTS2[name], "k"].filter((x) => !have.includes(x));
+    const missing = [...SLOTS3[name], "k"].filter((x) => !have.includes(x));
     if (have.length > 0 && missing.length > 0) {
       releaseBody(await kFetch3(env, `/templates/${encodeURIComponent(name)}`, {
         method: "PATCH",
@@ -38517,7 +40642,7 @@ async function ensureTemplate5(env, name) {
       }).catch(() => void 0));
     }
   }
-  ensured.add(name);
+  ensured2.add(name);
 }
 async function getRec(env, id) {
   const res = await kFetch3(env, `/records/${encodeURIComponent(id)}`);
@@ -38555,7 +40680,7 @@ async function listBy(env, template, field, value) {
   return getMany(env, await idsBy(env, template, field, value));
 }
 async function create(env, template, values) {
-  await ensureTemplate5(env, template);
+  await ensureTemplate6(env, template);
   const res = await kFetch3(env, "/records", { method: "POST", body: JSON.stringify({ template, values }) });
   if (!res.ok) {
     releaseBody(res);
@@ -38572,8 +40697,8 @@ async function patch(env, id, values) {
   if (!res.ok) throw new ProofreadStoreError(`PATCH /records \u2192 ${res.status}`, res.status);
 }
 async function upsertByKey(env, template, key, values) {
-  await ensureTemplate5(env, template);
-  const k = await sha256Hex7(`${template}:${key}`);
+  await ensureTemplate6(env, template);
+  const k = await sha256Hex9(`${template}:${key}`);
   const ids = await idsBy(env, template, "k", k);
   if (ids[0]) {
     await patch(env, ids[0], values);
@@ -38582,7 +40707,7 @@ async function upsertByKey(env, template, key, values) {
   return create(env, template, { ...values, k });
 }
 async function getByKey(env, template, key) {
-  const k = await sha256Hex7(`${template}:${key}`);
+  const k = await sha256Hex9(`${template}:${key}`);
   const ids = await idsBy(env, template, "k", k);
   return ids[0] ? getRec(env, ids[0]) : null;
 }
@@ -38798,13 +40923,13 @@ async function editObjection(env, o, input) {
   const values = { claim_b: normalizeClaim(input.claim_b) };
   if (typeof input.reason === "string") values.reason = input.reason.slice(0, 200);
   if (typeof input.source === "string") values.source = input.source.trim().slice(0, 500);
-  await ensureTemplate5(env, T_OBJECTION);
+  await ensureTemplate6(env, T_OBJECTION);
   await patch(env, o.id, values);
   idxCache.delete(o.library);
   return { ...o, claim_b: values.claim_b, reason: values.reason ?? o.reason, source: values.source ?? o.source };
 }
 async function withdrawObjection(env, o) {
-  await ensureTemplate5(env, T_OBJECTION);
+  await ensureTemplate6(env, T_OBJECTION);
   await patch(env, o.id, { status: "withdrawn" });
   const rest = (await listBy(env, T_OBJECTION, "card_key", o.card_key)).map(toObjection).filter((x) => x.id !== o.id && x.status !== "rejected" && x.status !== "withdrawn");
   if (rest.length === 0) await writeIndex2(env, o.library, (s) => {
@@ -40470,7 +42595,8 @@ portalDataRouter.post(
       }
       declaration = got.declaration;
     }
-    const result = await installApp(c.env, tenant2, declaration, { coords, resumeFrom, resumeHash: c.req.query("h"), origin: "market" });
+    const result = await installApp(c.env, tenant2, declaration, { coords, resumeFrom, resumeHash: c.req.query("h"), origin: "market", catalogAuthor: entry.author });
+    if (result.ok && !result.in_progress) c.executionCtx.waitUntil(noteAppInstallFingerprints(c.env, String(tenant2), new URL(c.req.url).origin, declaration).then(() => void 0));
     if (!result.ok && result.security) {
       return c.json({ error: (result.errors ?? ["\u5B89\u5168\u6383\u63CF\u6C92\u904E"]).join("\uFF1B"), code: "unsafe_app", step: result.step, hint: result.hint, security: result.security }, 422);
     }
@@ -40825,7 +42951,7 @@ portalDataRouter.post(
     async function handleAction() {
       const tAuth0 = Date.now();
       const auth = await requirePortalUser(c, () => {
-        if (action) prefetch = prefetchAppAction(c.env, tenant2, appId, action);
+        if (action) prefetch = prefetchAppAction(c.env, tenant2, appId, action, c.executionCtx);
       });
       const authMs = Date.now() - tAuth0;
       if (!auth.ok) return auth.res;
@@ -41121,9 +43247,13 @@ portalDataRouter.post(
         name: body.name,
         slots: body.slots,
         description: typeof body.description === "string" ? body.description : void 0,
-        created_by: knowledgeOwner(c.env)
+        created_by: knowledgeOwner(c.env),
+        // 面向 AI 的入口：欄位形狀跟現有的相同／幾乎相同 → KBDB 回 409 列候選（inkstone/Arcrun#561）
+        check_shape: true,
+        compared: Array.isArray(body.compared) ? body.compared : void 0
       })
     });
+    if (res.status === 409) return new Response(res.body, { status: 409, headers: { "Content-Type": "application/json" } });
     return res.ok ? new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } }) : relayKbdbFailure(res);
   })
 );
@@ -41881,7 +44011,7 @@ init_dist();
 init_tenant();
 var portalProofreadRouter = new Hono2();
 var notFound4 = (c) => c.json({ error: "\u627E\u4E0D\u5230\u9019\u7B46\u8CC7\u6599" }, 404);
-function nameOf(values) {
+function nameOf2(values) {
   const n = (values.display_name ?? "").trim();
   if (n) return n;
   const e = (values.email ?? "").trim();
@@ -41891,17 +44021,17 @@ function channelOf(raw2) {
   return raw2 === "mcp" || raw2 === "helper" ? raw2 : "portal";
 }
 function actorOf2(auth, rawChannel) {
-  return { id: auth.recordId, name: nameOf(auth.values), channel: channelOf(rawChannel) };
+  return { id: auth.recordId, name: nameOf2(auth.values), channel: channelOf(rawChannel) };
 }
 async function loadPeople(env) {
   const recs = await listRecordsByTemplate(env, "portal_user");
   const live = recs.filter((r) => (r.values.status ?? "") === "active");
   const admins = live.filter((r) => (r.values.role ?? "") === "admin").sort((a, b) => (a.values.created_at ?? "").localeCompare(b.values.created_at ?? ""));
-  const root = admins[0] ? { id: admins[0].record_id, name: nameOf(admins[0].values) } : null;
+  const root = admins[0] ? { id: admins[0].record_id, name: nameOf2(admins[0].values) } : null;
   return {
     active: new Set(live.map((r) => r.record_id)),
     root,
-    byEmail: new Map(live.map((r) => [(r.values.email ?? "").toLowerCase(), { id: r.record_id, name: nameOf(r.values) }]))
+    byEmail: new Map(live.map((r) => [(r.values.email ?? "").toLowerCase(), { id: r.record_id, name: nameOf2(r.values) }]))
   };
 }
 async function ownerOf(env, people, library, sourcePath, machine) {
@@ -42143,7 +44273,7 @@ portalProofreadRouter.post(
     const gate = await requireOwnerOf(c.env, auth.user, o.library, o.source_path, o.machine);
     if (!gate.ok) return c.json({ error: "\u53EA\u6709\u9019\u4EFD\u539F\u7A3F\u7684\u8CA0\u8CAC\u4EBA\u53EF\u4EE5\u88C1\u6C7A", code: "not_owner" }, 403);
     const reason = strField(b, "reason", 500);
-    const d = await decide(c.env, o, { id: auth.user.recordId, name: nameOf(auth.user.values) }, decision, reason);
+    const d = await decide(c.env, o, { id: auth.user.recordId, name: nameOf2(auth.user.values) }, decision, reason);
     return c.json({
       ok: true,
       status: d.status,
@@ -42265,7 +44395,7 @@ init_dist();
 init_release_body();
 var portalNoteImagesRouter = new Hono2();
 var NOTE_IMAGE_TEMPLATE = "note_image";
-var SLOTS3 = ["name", "mime", "data", "size", "author", "created_at"];
+var SLOTS4 = ["name", "mime", "data", "size", "author", "created_at"];
 var MAX_IMAGE_BYTES = 8e5;
 var ALLOWED = /* @__PURE__ */ new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 function sniffImage(bytes) {
@@ -42276,15 +44406,15 @@ function sniffImage(bytes) {
   if (bytes.length >= 12 && at(0, [82, 73, 70, 70]) && at(8, [87, 69, 66, 80])) return "image/webp";
   return null;
 }
-var ensured2 = false;
-async function ensureTemplate6(env) {
-  if (ensured2) return;
+var ensured3 = false;
+async function ensureTemplate7(env) {
+  if (ensured3) return;
   const got = await kbdbFetch2(env, `/templates/${NOTE_IMAGE_TEMPLATE}`);
   releaseBody(got);
   if (!got.ok) {
-    releaseBody(await kbdbFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name: NOTE_IMAGE_TEMPLATE, slots: SLOTS3 }) }).catch(() => void 0));
+    releaseBody(await kbdbFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name: NOTE_IMAGE_TEMPLATE, slots: SLOTS4 }) }).catch(() => void 0));
   }
-  ensured2 = true;
+  ensured3 = true;
 }
 function decodeB64(b642) {
   try {
@@ -42317,7 +44447,7 @@ portalNoteImagesRouter.post(
     const mime = sniffImage(bytes);
     if (!mime || !ALLOWED.has(mime)) return c.json({ error: "\u53EA\u6536 PNG\u3001JPEG\u3001GIF\u3001WebP \u5716\u7247", code: "unsupported_image" }, 415);
     const name = cleanName(b?.name) || "\u5716\u7247";
-    await ensureTemplate6(c.env);
+    await ensureTemplate7(c.env);
     const res = await kbdbFetch2(c.env, "/records", {
       method: "POST",
       body: JSON.stringify({
@@ -42591,11 +44721,11 @@ ${cta}
 </html>`;
 }
 function renderGonePage(revoked) {
-  const msg = revoked ? "\u9019\u9801\u5DF2\u6536\u56DE" : "\u627E\u4E0D\u5230\u9019\u4E00\u9801";
+  const msg2 = revoked ? "\u9019\u9801\u5DF2\u6536\u56DE" : "\u627E\u4E0D\u5230\u9019\u4E00\u9801";
   const sub = revoked ? "\u767C\u4F48\u7684\u4EBA\u5DF2\u7D93\u628A\u9019\u500B\u7DB2\u5740\u6536\u56DE\u4E86\u3002" : "\u9019\u500B\u7DB2\u5740\u4E0D\u5B58\u5728\uFF0C\u6216\u662F\u8F38\u5165\u6642\u5C11\u4E86\u4E00\u6BB5\u3002";
   return `<!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${msg}</title><style>${CSS}</style></head>
-<body><main><h1>${msg}</h1><p class="muted">${sub}</p></main></body></html>`;
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${msg2}</title><style>${CSS}</style></head>
+<body><main><h1>${msg2}</h1><p class="muted">${sub}</p></main></body></html>`;
 }
 var PUBLIC_PAGE_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
@@ -42663,15 +44793,15 @@ var POLICY_TEMPLATE = "portal_publish_policy";
 var POLICY_ID = "publish_policy";
 var PUBLIC_CACHE_S = 60;
 var MAX_IMAGE_TOTAL = 9e5;
-var ensured3 = false;
+var ensured4 = false;
 async function ensureTemplates(env) {
-  if (ensured3) return;
+  if (ensured4) return;
   for (const [name, slots] of [[PUBLIC_PAGE_TEMPLATE, PAGE_SLOTS], [POLICY_TEMPLATE, ["enabled", "set_by", "set_at"]]]) {
     const got = await kbdbFetch2(env, `/templates/${name}`);
     releaseBody(got);
     if (!got.ok) releaseBody(await kbdbFetch2(env, "/templates", { method: "POST", body: JSON.stringify({ name, slots }) }).catch(() => void 0));
   }
-  ensured3 = true;
+  ensured4 = true;
 }
 var portalOwner = (env) => `${portalTenant(env)}::portal`;
 async function getRec2(env, id) {
@@ -43026,7 +45156,7 @@ publicPageRouter.get("/p/_/og.png", (c) => {
 
 // cypher-executor/src/routes/portal-actor.ts
 init_dist();
-var SPENT_TEMPLATE = "portal_actor_spent";
+init_caller_verify();
 var portalActorRouter = new Hono2();
 portalActorRouter.post("/portal/actor/verify", async (c) => {
   const tenant2 = c.req.header("X-Arcrun-API-Key");
@@ -43040,27 +45170,14 @@ portalActorRouter.post("/portal/actor/verify", async (c) => {
       actor = null;
     }
   }
-  const r = await verifyPortalActor(c.env, tenant2, actor);
-  if (!r.valid) return c.json({ valid: false, reason: r.reason });
-  const sig = String(actor.sig ?? "").toLowerCase();
-  const claim = () => ephemeralClaimOnce(c.env, { template: SPENT_TEMPLATE, slots: [], hashField: "sig_hash", rawKey: sig, ttlSeconds: PORTAL_ACTOR_TTL_SEC + 30 });
-  if (spentHereActor(sig)) return c.json({ valid: false, reason: "already_used" });
-  if (takeIssuedActor(sig)) {
-    let bgOk = false;
-    try {
-      c.executionCtx.waitUntil(claim().catch((e) => {
-        console.error("[portal-actor] spent claim failed (background)", e instanceof Error ? e.message : String(e));
-      }));
-      bgOk = true;
-    } catch {
-    }
-    if (bgOk) {
-      markSpentActor(sig);
-      return c.json({ valid: true, login: r.login, role: r.role });
-    }
+  let bg;
+  try {
+    const ec = c.executionCtx;
+    bg = (p) => ec.waitUntil(p);
+  } catch {
   }
-  const first = await claim();
-  if (!first) return c.json({ valid: false, reason: "already_used" });
+  const r = await verifyActorOnce(c.env, tenant2, actor, bg);
+  if (!r.valid) return c.json({ valid: false, reason: r.reason });
   return c.json({ valid: true, login: r.login, role: r.role });
 });
 
@@ -43098,6 +45215,7 @@ appsRouter.post("/apps/install", async (c) => {
     resumeFrom,
     resumeHash: c.req.query("h")
   });
+  if (result.ok && !result.in_progress) c.executionCtx.waitUntil(noteAppInstallFingerprints(c.env, apiKey, new URL(c.req.url).origin, body).then(() => void 0));
   if (!result.ok && result.security) {
     return c.json({
       error: (result.errors ?? ["\u5B89\u5168\u6383\u63CF\u6C92\u904E"]).join("\uFF1B"),
