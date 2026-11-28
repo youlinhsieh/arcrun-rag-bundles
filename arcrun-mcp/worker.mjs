@@ -32779,8 +32779,12 @@ function buildFormSurface(service, mode, fields) {
   const ctx = {};
   fields.forEach((f, i) => {
     const id = `f${i}`;
-    comps.push({ id, component: "TextField", label: f.label, value: { path: `/form/${f.name}` }, variant: f.multiline ? "longText" : f.secret ? "obscured" : "shortText" });
-    kids.push(id);
+    comps.push(
+      { id: `n${i}`, component: "Text", text: f.name, variant: "caption", weight: 1 },
+      { id, component: "TextField", label: "", value: { path: `/form/${f.name}` }, variant: f.multiline ? "longText" : f.secret ? "obscured" : "shortText", weight: 2 },
+      { id: `r${i}`, component: "Row", children: [`n${i}`, id], align: "center" }
+    );
+    kids.push(`r${i}`);
     form[f.name] = "";
     ctx[f.name] = { path: `/form/${f.name}` };
   });
@@ -32805,7 +32809,7 @@ function buildTestSurface(service, mode) {
   return { components: comps, data: { btn: oauth ? "\u9023\u7DDA" : "\u6E2C\u8A66", status: "" } };
 }
 function connectHint(mode, fields) {
-  const helps = fields.filter((f) => f.help).map((f) => `${f.label}\uFF1A${f.help}`);
+  const helps = fields.filter((f) => f.help).map((f) => `${f.name}\uFF1A${f.help}`);
   const step = mode === "oauth2" ? "\u8CBC\u597D\u5F8C\u5132\u5B58\uFF0C\u6309\u300C\u9023\u7DDA\u300D\u5230\u670D\u52D9\u7684\u9801\u9762\u6309\u540C\u610F\uFF0C\u56DE\u4F86\u6309\u300C\u6E2C\u8A66\u300D\u3002" : "\u8CBC\u597D\u5F8C\u5132\u5B58\uFF0C\u518D\u6309\u300C\u6E2C\u8A66\u300D\u3002\u503C\u53EA\u9032\u91D1\u9470\u4E2D\u5FC3\uFF0C\u4E0D\u6703\u51FA\u73FE\u5728\u5C0D\u8A71\u88E1\u3002";
   return [...helps, step].join("\n");
 }

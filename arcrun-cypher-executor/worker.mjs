@@ -24762,6 +24762,7 @@ var LEDGER_USER_ACTION_KINDS = ["network_login", "relogin", "start_daemon", "oth
 var LEDGER_STALE_ACTION_SEC = 3 * 86400;
 var LEDGER_STALE_REPORTED_SEC = 14 * 86400;
 var LEDGER_ASK_EXPIRE_SEC = 14 * 86400;
+var LEDGER_ASK_EXPIRE_NO_PREVIEW_SEC = 3 * 86400;
 var LEDGER_KINDS = ["network_login_required", "network", "quota", "unreadable", "other"];
 function normalizeLedgerSummary(raw2) {
   if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) return null;
@@ -24820,8 +24821,9 @@ function normalizeLedgerSummary(raw2) {
 }
 function trackLedger(prev, next, nowSec = Math.floor(Date.now() / 1e3)) {
   const missing = Math.max(0, next.total - next.confirmed);
-  const sameAsk = !!(next.consent && prev?.consent && prev.consent.fingerprint === next.consent.fingerprint);
-  const askedSince = next.consent ? sameAsk && prev?.asked_since ? prev.asked_since : nowSec : void 0;
+  const sameAsk = next.consent ? !!(prev?.consent && prev.consent.fingerprint === next.consent.fingerprint) : next.fix_state === "asked" && prev?.fix_state === "asked" && !prev.consent;
+  const asking = !!next.consent || next.fix_state === "asked";
+  const askedSince = asking ? sameAsk && prev?.asked_since ? prev.asked_since : nowSec : void 0;
   const extra = askedSince ? { asked_since: askedSince } : {};
   if (prev && next.round_at && prev.round_at === next.round_at) {
     return { ...next, missing, no_progress_rounds: prev.no_progress_rounds, ...extra };
@@ -24857,7 +24859,7 @@ var USER_ACTION_TEXT = {
 var CONSENT_ACTION = {
   type: "consent_report",
   label: "",
-  hint: "\u8981\u540C\u610F\uFF1A\u5728\u9019\u53F0\u96FB\u8166\u81EA\u5DF1\u6253\u958B\u5C0F\u5E6B\u624B\uFF0C\u770B\u8981\u5BC4\u51FA\u7684\u8A3A\u65B7\u5167\u5BB9\uFF0C\u6309\u300C\u540C\u610F\u300D\u3002\u4E0D\u60F3\u540C\u610F\u5C31\u4E0D\u7528\u505A\u4EC0\u9EBC\u3002"
+  hint: "\u8981\u540C\u610F\uFF1A\u5728\u8DD1\u5C0F\u5E6B\u624B\u7684\u90A3\u53F0\u96FB\u8166\u4E0A\uFF0C\u6253\u958B\u5C0F\u5E6B\u624B\u770B\u8981\u5BC4\u51FA\u7684\u8A3A\u65B7\u5167\u5BB9\uFF0C\u6309\u300C\u540C\u610F\u300D\u3002\u4E0D\u60F3\u540C\u610F\u5C31\u4E0D\u7528\u505A\u4EC0\u9EBC\u3002"
 };
 function consentText(missing, subject) {
   const what = subject ? `\u300C${subject}\u300D${missing > 1 ? `\u7B49 ${missing} \u4EF6` : ""}` : `${missing} \u4EF6`;
@@ -24895,6 +24897,7 @@ function ledgerNotice(l, ctx = {}) {
         consent: ask
       };
     }
+    if (l.asked_since && now2 - l.asked_since > LEDGER_ASK_EXPIRE_NO_PREVIEW_SEC) return { kind: "none", text: "" };
     return { kind: "user_action", text: `${consentText(l.missing, subject)}${CONSENT_ACTION.hint}`, action: CONSENT_ACTION, subject: subject || void 0 };
   }
   if (l.fix_state === "reported" || l.report) {
@@ -25473,6 +25476,7 @@ function auditWho(user) {
 async function requirePortalUser(c, onSessionFound) {
   const token = bearerToken(c);
   if (!token) return { ok: false, res: c.json({ error: "\u672A\u767B\u5165" }, 401) };
+  if (token.startsWith(DAEMON_USER_KEY_PREFIX)) return requireByDaemonKey(c, token);
   const cacheMs = authCacheWindow(c.env);
   const hit = authCacheGet(token, cacheMs);
   if (hit) {
@@ -25517,6 +25521,25 @@ async function requirePortalUser(c, onSessionFound) {
   const values = await withEffectiveLibraries(c.env, rec.values);
   authCacheSet(token, { sessExp: Number.isFinite(sessExp) ? sessExp : Infinity, recordId, values }, startedGen, cacheMs);
   return { ok: true, user: { token, recordId, values } };
+}
+var DAEMON_KEY_PORTAL_PATHS = /^\/portal\/(session|data\/(ask|links|apps)(\/|$))/;
+async function requireByDaemonKey(c, token) {
+  const reconnect = (reason, status = 401) => ({
+    ok: false,
+    res: c.json(
+      { error: "\u540C\u6B65\u6191\u8B49\u5DF2\u5931\u6548\u6216\u5E33\u865F\u5DF2\u4E0D\u80FD\u4F7F\u7528\uFF0C\u8ACB\u5728\u5C0F\u5E6B\u624B\u91CD\u65B0\u9023\u7DDA\u4E00\u6B21\u3002", code: "reconnect_required", reason },
+      status
+    )
+  });
+  if (!DAEMON_KEY_PORTAL_PATHS.test(new URL(c.req.url).pathname)) return reconnect("key_not_for_this_route", 403);
+  const v = await verifyDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, String(knowledgeOwner(c.env)), token);
+  if (!v) return reconnect("key_invalid");
+  const user = await activeUserByEmail(c.env, v.email);
+  if (!user) {
+    if (await authStoreStaleHere(c.env)) return { ok: false, res: propagatingLogin(c) };
+    return reconnect("account_inactive");
+  }
+  return { ok: true, user };
 }
 var aclListCache = null;
 function libraryAclCacheClear() {
@@ -27035,7 +27058,7 @@ portalRouter.post(
       email,
       instance_name: String(rec.values.display_name ?? "")
     };
-    const kbdbKey = isUnrestricted(rec.values) ? await deriveKbdbProxyKey(c.env.KBDB_INTERNAL_TOKEN, daemonCfg.namespace) : await deriveDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, daemonCfg.namespace, email);
+    const kbdbKey = await deriveDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, daemonCfg.namespace, email);
     if (kbdbKey) daemonCfg.kbdb_key = kbdbKey;
     return c.json({ success: true, config: daemonCfg });
   })
@@ -27047,7 +27070,7 @@ portalRouter.get(
     if (!auth.ok) return auth.res;
     const ns = String(knowledgeOwner(c.env));
     const email = (auth.user.values.email ?? "").toLowerCase();
-    const kbdbKey = isUnrestricted({ ...auth.user.values, libraries: auth.user.values.libraries_explicit ?? auth.user.values.libraries ?? "[]" }) ? await deriveKbdbProxyKey(c.env.KBDB_INTERNAL_TOKEN, ns) : await deriveDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, ns, email);
+    const kbdbKey = await deriveDaemonUserKey(c.env.KBDB_INTERNAL_TOKEN, ns, email);
     if (!kbdbKey) return c.json({ error: "\u9019\u53F0\u6C92\u6709\u8A2D\u5B9A\u7C3D\u7AE0\u91D1\u9470\uFF0C\u7121\u6CD5\u767C\u6191\u8B49" }, 503);
     return c.json({ success: true, kbdb_key: kbdbKey, scope: kbdbKey.startsWith("dk1.") ? "member" : "tenant" });
   })
