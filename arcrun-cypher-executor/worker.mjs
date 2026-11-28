@@ -30261,7 +30261,15 @@ var KbdbAssetStore = class {
         }
         const shared = inflightReads.get(ck);
         if (shared && shared.gen === gen2) {
-          raw2 = await shared.p;
+          try {
+            raw2 = await shared.p;
+          } catch (joinErr) {
+            const msg = joinErr instanceof Error ? joinErr.message : String(joinErr);
+            if (!/request that has since ended|can never settle|cross.?request/i.test(msg)) throw joinErr;
+            if (inflightReads.get(ck) === shared) inflightReads.delete(ck);
+            console.error("[asset-store] joined read failed, retrying privately", this.store, key.slice(0, 60), joinErr instanceof Error ? joinErr.message.slice(0, 120) : String(joinErr).slice(0, 120));
+            raw2 = await this.readRaw(key, stale === null);
+          }
         } else {
           const p = this.readRaw(key, stale === null);
           const slot = { gen: gen2, p };
@@ -37356,7 +37364,40 @@ async function signPortalActor(env, tenant2, who, nowMs = Date.now()) {
   if (!secret) return null;
   const a = { login: clean(who.login), role: clean(who.role) || "user", tenant: clean(tenant2), ts: Math.floor(nowMs / 1e3), nonce: randomHex5(12) };
   if (!a.login || !a.tenant) return null;
-  return { ...a, sig: await hmacHex(secret, message(a)) };
+  const sig = await hmacHex(secret, message(a));
+  noteIssued(sig, a.ts * 1e3 + PORTAL_ACTOR_TTL_SEC * 1e3);
+  return { ...a, sig };
+}
+var issuedSigs = /* @__PURE__ */ new Map();
+var spentSigs = /* @__PURE__ */ new Map();
+var MEM_MAX = 2e3;
+function prune(m, now2) {
+  if (m.size < MEM_MAX) return;
+  for (const [k, exp] of m) if (exp < now2) m.delete(k);
+  while (m.size >= MEM_MAX) {
+    const k = m.keys().next().value;
+    if (k === void 0) break;
+    m.delete(k);
+  }
+}
+function noteIssued(sig, expMs) {
+  prune(issuedSigs, Date.now());
+  issuedSigs.set(sig.toLowerCase(), expMs);
+}
+function takeIssuedActor(sig, now2 = Date.now()) {
+  const k = sig.toLowerCase();
+  const exp = issuedSigs.get(k);
+  if (exp === void 0) return false;
+  issuedSigs.delete(k);
+  return exp >= now2;
+}
+function markSpentActor(sig, now2 = Date.now()) {
+  prune(spentSigs, now2);
+  spentSigs.set(sig.toLowerCase(), now2 + (PORTAL_ACTOR_TTL_SEC + 30) * 1e3);
+}
+function spentHereActor(sig, now2 = Date.now()) {
+  const exp = spentSigs.get(sig.toLowerCase());
+  return exp !== void 0 && exp >= now2;
 }
 function timingSafeEqual(a, b) {
   if (a.length !== b.length) return false;
@@ -43002,7 +43043,23 @@ portalActorRouter.post("/portal/actor/verify", async (c) => {
   const r = await verifyPortalActor(c.env, tenant2, actor);
   if (!r.valid) return c.json({ valid: false, reason: r.reason });
   const sig = String(actor.sig ?? "").toLowerCase();
-  const first = await ephemeralClaimOnce(c.env, { template: SPENT_TEMPLATE, slots: [], hashField: "sig_hash", rawKey: sig, ttlSeconds: PORTAL_ACTOR_TTL_SEC + 30 });
+  const claim = () => ephemeralClaimOnce(c.env, { template: SPENT_TEMPLATE, slots: [], hashField: "sig_hash", rawKey: sig, ttlSeconds: PORTAL_ACTOR_TTL_SEC + 30 });
+  if (spentHereActor(sig)) return c.json({ valid: false, reason: "already_used" });
+  if (takeIssuedActor(sig)) {
+    let bgOk = false;
+    try {
+      c.executionCtx.waitUntil(claim().catch((e) => {
+        console.error("[portal-actor] spent claim failed (background)", e instanceof Error ? e.message : String(e));
+      }));
+      bgOk = true;
+    } catch {
+    }
+    if (bgOk) {
+      markSpentActor(sig);
+      return c.json({ valid: true, login: r.login, role: r.role });
+    }
+  }
+  const first = await claim();
   if (!first) return c.json({ valid: false, reason: "already_used" });
   return c.json({ valid: true, login: r.login, role: r.role });
 });
