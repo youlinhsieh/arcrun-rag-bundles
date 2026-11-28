@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-28T09:26:22.681Z",
+  "generated_at": "2026-11-28T11:58:05.120Z",
   "apps": [
     {
       "id": "notes",
@@ -11,7 +11,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/notes-1.6.0.json",
-        "sha256": "7cb14f001dfb4b28b82de6f21f4446a1a14e1fd986c5b423aeb59eee9d1a077a"
+        "sha256": "a0ac69be17924ea8cf9c556b3028814e1f05bf7a83b99c572afe408535b421d6"
       }
     },
     {
@@ -23,7 +23,7 @@
       "author": "Arcrun 內建",
       "package": {
         "url": "packages/flow_canvas-0.2.1.json",
-        "sha256": "462a5baf8bd3c69bdae90076f3158d5b4db2848cca28e9874ac8751c3f350fc5"
+        "sha256": "0918b15b74da777671929f6efcd6ce42243adc18c7be1a25945400401564d0b4"
       }
     },
     {
@@ -58,7 +58,7 @@
       },
       "package": {
         "url": "packages/global_index-0.2.0.json",
-        "sha256": "612c0f7787fb37a6a3e907f45b68a2fc73a21d6cf529b64d70c24c178cbe15f1"
+        "sha256": "9cd128894acae4e77a340ea98296b5b1bace68ee1a9e51526603196d7a451916"
       }
     },
     {
@@ -94,7 +94,7 @@
       },
       "package": {
         "url": "packages/kanban-0.9.29.json",
-        "sha256": "a6ff24f70e9019fe89edfbe24e40137777b4788624c9eee3adb3b50f303da75e"
+        "sha256": "0d8242bd1f4d066e7ea111ffa111492ad3bbcf620536f7782ebeb689a51a895b"
       }
     },
     {
@@ -102,8 +102,9 @@
       "name": "AHub",
       "icon": "🧭",
       "summary": "把票、留言、標籤、相依與里程碑存在你自己的知識庫裡，用和 Gitea 一樣的方式讀寫；打開就能新增、修改、關閉票與里程碑，留言用 Markdown，簽核人由你在「設定」指定。連上 Arcrun MCP 的 AI 自動拿到管票與請你簽核的工具。選裝，沒裝的實例不受影響。",
-      "version": "0.72.0",
+      "version": "0.75.1",
       "author": "Arcrun 內建",
+      "engine_min": "1.4.333",
       "requires": {
         "recipes": [
           {
@@ -436,8 +437,8 @@
         ]
       },
       "package": {
-        "url": "packages/ahub-0.72.0.json",
-        "sha256": "f9a2fc7e285f1f61eaaf353cd6a99038e31bf095593f86bdfac3105905af9c95"
+        "url": "packages/ahub-0.75.1.json",
+        "sha256": "bf9d98e2b3a002d1b3b79110effda03c2ffc9b5e6338f21ed13299ae37be22b4"
       }
     },
     {
@@ -472,7 +473,7 @@
       },
       "package": {
         "url": "packages/releases-0.1.2.json",
-        "sha256": "e473514f34e4e9d154fcc5213dd5556e4b8327adeeac46df8497d69d965d4f76"
+        "sha256": "7200728637e9cbbb505860c01d2f27d7428b874d0f99fc0effdbeeea6bd1c018"
       }
     },
     {
@@ -536,7 +537,7 @@
       },
       "package": {
         "url": "packages/imbot-0.1.1.json",
-        "sha256": "ceddcc88b42664f3acb7e2b9cf24d82db5a96f2a96a5545b95300996d8d80fa0"
+        "sha256": "40d5a237f5133e5476e28b27276e858788ffc8bdd16aeaeddb986914e11d60db"
       }
     },
     {
@@ -658,7 +659,7 @@
       },
       "package": {
         "url": "packages/paper-0.5.1.json",
-        "sha256": "d5e0e1bbed237d05a6cb1ae54c561e6420b3e6db2482fa1418648deeba4a574d"
+        "sha256": "395f2a875578fcf44e3aa05a19ed436e92c49d11324feb65eaf1909cce39ca4e"
       }
     },
     {
@@ -666,11 +667,11 @@
       "name": "本公司管理規章",
       "icon": "📘",
       "summary": "把公司給 AI 和同仁的規矩寫成一本白話的書；覺得不對，說一句話請 AI 改，主管核准才生效，隨時可以回上一版。",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": "Arcrun 示範",
       "package": {
-        "url": "packages/company_rules-0.1.1.json",
-        "sha256": "052131543ea3bb273859141ccb6fdce3c01ed72fd2c26aeffbf63f1aad7c0a87"
+        "url": "packages/company_rules-0.1.2.json",
+        "sha256": "2d87f9d4d04c49a20d2fdefcdf7d161ec37d8ef6f03ce5483fc87a58d1367954"
       }
     }
   ]

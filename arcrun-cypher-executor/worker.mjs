@@ -201,10 +201,10 @@ var init_hash = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js
 var compose;
 var init_compose = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/compose.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/compose.js"() {
     compose = (middleware, onError, onNotFound) => {
       return (context, next) => {
         let index = -1;
@@ -250,21 +250,21 @@ var init_compose = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/http-exception.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js
 var init_http_exception = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/http-exception.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/http-exception.js"() {
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js
 var GET_MATCH_RESULT;
 var init_constants2 = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request/constants.js"() {
     GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js
 async function parseFormData(request, options) {
   const formData = await request.formData();
   if (formData) {
@@ -295,7 +295,7 @@ function convertFormDataToBodyData(formData, options) {
 }
 var parseBody, handleParsingAllValues, handleParsingNestedValues;
 var init_body = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/body.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/body.js"() {
     init_request();
     parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
       const { all = false, dot = false } = options;
@@ -342,10 +342,10 @@ var init_body = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js
 var splitPath, splitRoutingPath, extractGroupsFromPath, replaceGroupMarks, patternCache, getPattern, tryDecode, tryDecodeURI, getPath, getPathNoStrict, mergePath, checkOptionalParameter, _decodeURI, _getQueryParam, getQueryParam, getQueryParams, decodeURIComponent_;
 var init_url = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/url.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/url.js"() {
     splitPath = (path) => {
       const paths = path.split("/");
       if (paths[0] === "") {
@@ -551,10 +551,10 @@ var init_url = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js
 var tryDecodeURIComponent, HonoRequest;
 var init_request = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/request.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/request.js"() {
     init_http_exception();
     init_constants2();
     init_body();
@@ -704,21 +704,6 @@ var init_request = __esm({
         return this.#cachedBody("arrayBuffer");
       }
       /**
-       * `.bytes()` parses the request body as a `Uint8Array`.
-       *
-       * @see {@link https://hono.dev/docs/api/request#bytes}
-       *
-       * @example
-       * ```ts
-       * app.post('/entry', async (c) => {
-       *   const body = await c.req.bytes()
-       * })
-       * ```
-       */
-      bytes() {
-        return this.#cachedBody("arrayBuffer").then((buffer) => new Uint8Array(buffer));
-      }
-      /**
        * Parses the request body as a `Blob`.
        * @example
        * ```ts
@@ -843,10 +828,10 @@ var init_request = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase, raw, resolveCallback;
 var init_html = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/html.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/html.js"() {
     HtmlEscapedCallbackPhase = {
       Stringify: 1,
       BeforeStream: 2,
@@ -890,10 +875,10 @@ var init_html = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js
 var TEXT_PLAIN, setDefaultContentType, createResponseInstance, Context;
 var init_context = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/context.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/context.js"() {
     init_request();
     init_html();
     TEXT_PLAIN = "text/plain; charset=UTF-8";
@@ -1304,10 +1289,10 @@ var init_context = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js
 var METHOD_NAME_ALL, METHOD_NAME_ALL_LOWERCASE, METHODS, MESSAGE_MATCHER_IS_ALREADY_BUILT, UnsupportedPathError;
 var init_router = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router.js"() {
     METHOD_NAME_ALL = "ALL";
     METHOD_NAME_ALL_LOWERCASE = "all";
     METHODS = ["get", "post", "put", "delete", "options", "patch"];
@@ -1317,18 +1302,18 @@ var init_router = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER;
 var init_constants3 = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/utils/constants.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/utils/constants.js"() {
     COMPOSED_HANDLER = "__COMPOSED_HANDLER";
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js
 var notFoundHandler, errorHandler, Hono;
 var init_hono_base = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono-base.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono-base.js"() {
     init_compose();
     init_context();
     init_router();
@@ -1448,7 +1433,7 @@ var init_hono_base = __esm({
             handler = async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res;
             handler[COMPOSED_HANDLER] = r.handler;
           }
-          subApp.#addRoute(r.method, r.path, handler, r.basePath);
+          subApp.#addRoute(r.method, r.path, handler);
         });
         return this;
       }
@@ -1572,7 +1557,7 @@ var init_hono_base = __esm({
           const pathPrefixLength = mergedPath === "/" ? 0 : mergedPath.length;
           return (request) => {
             const url = new URL(request.url);
-            url.pathname = this.getPath(request).slice(pathPrefixLength) || "/";
+            url.pathname = url.pathname.slice(pathPrefixLength) || "/";
             return new Request(url, request);
           };
         })();
@@ -1586,15 +1571,10 @@ var init_hono_base = __esm({
         this.#addRoute(METHOD_NAME_ALL, mergePath(path, "*"), handler);
         return this;
       }
-      #addRoute(method, path, handler, baseRoutePath) {
+      #addRoute(method, path, handler) {
         method = method.toUpperCase();
         path = mergePath(this._basePath, path);
-        const r = {
-          basePath: baseRoutePath !== void 0 ? mergePath(this._basePath, baseRoutePath) : this._basePath,
-          path,
-          method,
-          handler
-        };
+        const r = { basePath: this._basePath, path, method, handler };
         this.router.add(method, path, [handler, r]);
         this.routes.push(r);
       }
@@ -1711,7 +1691,7 @@ var init_hono_base = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js
 function match(method, path) {
   const matchers = this.buildAllMatchers();
   const match2 = ((method2, path2) => {
@@ -1732,13 +1712,13 @@ function match(method, path) {
 }
 var emptyParam;
 var init_matcher = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/matcher.js"() {
     init_router();
     emptyParam = [];
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js
 function compareKey(a, b) {
   if (a.length === 1) {
     return b.length === 1 ? a < b ? -1 : 1 : -1;
@@ -1760,7 +1740,7 @@ function compareKey(a, b) {
 }
 var LABEL_REG_EXP_STR, ONLY_WILDCARD_REG_EXP_STR, TAIL_WILDCARD_REG_EXP_STR, PATH_ERROR, regExpMetaChars, Node;
 var init_node = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/node.js"() {
     LABEL_REG_EXP_STR = "[^/]+";
     ONLY_WILDCARD_REG_EXP_STR = ".*";
     TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
@@ -1851,10 +1831,10 @@ var init_node = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js
 var Trie;
 var init_trie = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/trie.js"() {
     init_node();
     Trie = class {
       #context = { varIndex: 0 };
@@ -1913,7 +1893,7 @@ var init_trie = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js
 function buildWildcardRegExp(path) {
   return wildcardRegExpCache[path] ??= new RegExp(
     path === "*" ? "" : `^${path.replace(
@@ -1995,7 +1975,7 @@ function findMiddleware(middleware, path) {
 }
 var nullMatcher, wildcardRegExpCache, RegExpRouter;
 var init_router2 = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/router.js"() {
     init_router();
     init_url();
     init_matcher();
@@ -2102,27 +2082,27 @@ var init_router2 = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js
 var init_prepared_router = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/prepared-router.js"() {
     init_router();
     init_matcher();
     init_router2();
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js
 var init_reg_exp_router = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/reg-exp-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/reg-exp-router/index.js"() {
     init_router2();
     init_prepared_router();
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js
 var SmartRouter;
 var init_router3 = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/router.js"() {
     init_router();
     SmartRouter = class {
       name = "SmartRouter";
@@ -2180,17 +2160,17 @@ var init_router3 = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js
 var init_smart_router = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/smart-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/smart-router/index.js"() {
     init_router3();
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js
 var emptyParams, hasChildren, Node2;
 var init_node2 = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/node.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/node.js"() {
     init_router();
     init_url();
     emptyParams = /* @__PURE__ */ Object.create(null);
@@ -2369,10 +2349,10 @@ var init_node2 = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js
 var TrieRouter;
 var init_router4 = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/router.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/router.js"() {
     init_url();
     init_node2();
     TrieRouter = class {
@@ -2398,17 +2378,17 @@ var init_router4 = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js
 var init_trie_router = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/router/trie-router/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/router/trie-router/index.js"() {
     init_router4();
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js
 var Hono2;
 var init_hono = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/hono.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/hono.js"() {
     init_hono_base();
     init_reg_exp_router();
     init_smart_router();
@@ -2429,11 +2409,10 @@ var init_hono = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js
 var init_dist = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/index.js"() {
+  "cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/index.js"() {
     init_hono();
-    init_context();
   }
 });
 
@@ -4967,8 +4946,8 @@ async function rsaPkcs1Sha256Sign(data, pkcs8) {
     false,
     ["sign"]
   );
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, data);
-  return new Uint8Array(sig);
+  const sig2 = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, data);
+  return new Uint8Array(sig2);
 }
 function secretGet(env, ref) {
   if (!/^CRED_/.test(ref)) return null;
@@ -6653,7 +6632,7 @@ var init_auth_dispatcher = __esm({
   }
 });
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
+// cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs
 function setErrorMap(map) {
   overrideErrorMap = map;
 }
@@ -6835,7 +6814,7 @@ function custom(check, params = {}, fatal) {
 }
 var util, objectUtil, ZodParsedType, getParsedType, ZodIssueCode, quotelessJson, ZodError, errorMap, overrideErrorMap, makeIssue, EMPTY_PATH, ParseStatus, INVALID, DIRTY, OK, isAborted, isDirty, isValid, isAsync, errorUtil, _ZodEnum_cache, _ZodNativeEnum_cache, ParseInputLazyPath, handleResult, ZodType, cuidRegex, cuid2Regex, ulidRegex, uuidRegex, nanoidRegex, durationRegex, emailRegex, _emojiRegex, emojiRegex, ipv4Regex, ipv6Regex, base64Regex, dateRegexSource, dateRegex, ZodString, ZodNumber, ZodBigInt, ZodBoolean, ZodDate, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodArray, ZodObject, ZodUnion, getDiscriminator, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodFunction, ZodLazy, ZodLiteral, ZodEnum, ZodNativeEnum, ZodPromise, ZodEffects, ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodNaN, BRAND, ZodBranded, ZodPipeline, ZodReadonly, late, ZodFirstPartyTypeKind, instanceOfType, stringType, numberType, nanType, bigIntType, booleanType, dateType, symbolType, undefinedType, nullType, anyType, unknownType, neverType, voidType, arrayType, objectType, strictObjectType, unionType, discriminatedUnionType, intersectionType, tupleType, recordType, mapType, setType, functionType, lazyType, literalType, enumType, nativeEnumType, promiseType, effectsType, optionalType, nullableType, preprocessType, pipelineType, ostring, onumber, oboolean, coerce, NEVER, z;
 var init_lib = __esm({
-  "../../../../../tmp/claude-0/deps/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
+  "cypher-executor/node_modules/.pnpm/zod@3.23.8/node_modules/zod/lib/index.mjs"() {
     (function(util2) {
       util2.assertEqual = (val) => val;
       function assertIs(_arg) {
@@ -17362,9 +17341,9 @@ async function signPortalActor(env, tenant2, who, nowMs = Date.now()) {
   if (!secret) return null;
   const a = { login: clean(who.login), role: clean(who.role) || "user", tenant: clean(tenant2), ts: Math.floor(nowMs / 1e3), nonce: randomHex(12) };
   if (!a.login || !a.tenant) return null;
-  const sig = await hmacHex(secret, message(a));
-  noteIssued(sig, a.ts * 1e3 + PORTAL_ACTOR_TTL_SEC * 1e3);
-  return { ...a, sig };
+  const sig2 = await hmacHex(secret, message(a));
+  noteIssued(sig2, a.ts * 1e3 + PORTAL_ACTOR_TTL_SEC * 1e3);
+  return { ...a, sig: sig2 };
 }
 function prune(m, now2) {
   if (m.size < MEM_MAX) return;
@@ -17375,23 +17354,23 @@ function prune(m, now2) {
     m.delete(k);
   }
 }
-function noteIssued(sig, expMs) {
+function noteIssued(sig2, expMs) {
   prune(issuedSigs, Date.now());
-  issuedSigs.set(sig.toLowerCase(), expMs);
+  issuedSigs.set(sig2.toLowerCase(), expMs);
 }
-function takeIssuedActor(sig, now2 = Date.now()) {
-  const k = sig.toLowerCase();
+function takeIssuedActor(sig2, now2 = Date.now()) {
+  const k = sig2.toLowerCase();
   const exp = issuedSigs.get(k);
   if (exp === void 0) return false;
   issuedSigs.delete(k);
   return exp >= now2;
 }
-function markSpentActor(sig, now2 = Date.now()) {
+function markSpentActor(sig2, now2 = Date.now()) {
   prune(spentSigs, now2);
-  spentSigs.set(sig.toLowerCase(), now2 + (PORTAL_ACTOR_TTL_SEC + 30) * 1e3);
+  spentSigs.set(sig2.toLowerCase(), now2 + (PORTAL_ACTOR_TTL_SEC + 30) * 1e3);
 }
-function spentHereActor(sig, now2 = Date.now()) {
-  const exp = spentSigs.get(sig.toLowerCase());
+function spentHereActor(sig2, now2 = Date.now()) {
+  const exp = spentSigs.get(sig2.toLowerCase());
   return exp !== void 0 && exp >= now2;
 }
 function timingSafeEqual(a, b) {
@@ -17406,13 +17385,13 @@ async function verifyPortalActor(env, tenant2, raw2, nowMs = Date.now()) {
   const a = raw2 && typeof raw2 === "object" ? raw2 : null;
   if (!a) return { valid: false, reason: "malformed" };
   const ts = Number(a.ts);
-  const sig = typeof a.sig === "string" ? a.sig.toLowerCase() : "";
-  if (!Number.isFinite(ts) || !/^[0-9a-f]{64}$/.test(sig)) return { valid: false, reason: "malformed" };
+  const sig2 = typeof a.sig === "string" ? a.sig.toLowerCase() : "";
+  if (!Number.isFinite(ts) || !/^[0-9a-f]{64}$/.test(sig2)) return { valid: false, reason: "malformed" };
   const login = clean(a.login), role = clean(a.role), nonce = clean(a.nonce);
   if (!/^[0-9a-f]{8,64}$/.test(nonce)) return { valid: false, reason: "malformed" };
   if (!login || clean(a.tenant) !== clean(tenant2)) return { valid: false, reason: "wrong_tenant" };
   const want = await hmacHex(secret, message({ login, role, tenant: clean(tenant2), ts, nonce }));
-  if (!timingSafeEqual(want, sig)) return { valid: false, reason: "bad_signature" };
+  if (!timingSafeEqual(want, sig2)) return { valid: false, reason: "bad_signature" };
   const age = Math.floor(nowMs / 1e3) - ts;
   if (age < -5 || age > PORTAL_ACTOR_TTL_SEC) return { valid: false, reason: "expired" };
   return { valid: true, login, role };
@@ -17732,14 +17711,14 @@ function stripCaller(ctx) {
 async function verifyActorOnce(env, tenant2, actor, waitUntil) {
   const r = await verifyPortalActor(env, tenant2, actor);
   if (!r.valid) return { valid: false, reason: r.reason };
-  const sig = String(actor.sig ?? "").toLowerCase();
-  const claim = () => ephemeralClaimOnce(env, { template: SPENT_TEMPLATE, slots: [], hashField: "sig_hash", rawKey: sig, ttlSeconds: PORTAL_ACTOR_TTL_SEC + 30 });
-  if (spentHereActor(sig)) return { valid: false, reason: "already_used" };
-  if (takeIssuedActor(sig) && waitUntil) {
+  const sig2 = String(actor.sig ?? "").toLowerCase();
+  const claim = () => ephemeralClaimOnce(env, { template: SPENT_TEMPLATE, slots: [], hashField: "sig_hash", rawKey: sig2, ttlSeconds: PORTAL_ACTOR_TTL_SEC + 30 });
+  if (spentHereActor(sig2)) return { valid: false, reason: "already_used" };
+  if (takeIssuedActor(sig2) && waitUntil) {
     waitUntil(claim().catch((e) => {
       console.error("[portal-actor] spent claim failed (background)", e instanceof Error ? e.message : String(e));
     }));
-    markSpentActor(sig);
+    markSpentActor(sig2);
     return { valid: true, login: r.login, role: r.role };
   }
   const first = await claim();
@@ -24531,7 +24510,7 @@ var company_rules_default = {
   name: "\u672C\u516C\u53F8\u7BA1\u7406\u898F\u7AE0",
   icon: "\u{1F4D8}",
   entry: "kb",
-  version: "0.1.1",
+  version: "0.1.2",
   workflows: [
     {
       name: "refund_guard",
@@ -28492,13 +28471,16 @@ function parseLibs(raw2) {
 // cypher-executor/src/index.ts
 init_dist();
 
-// ../../../../../tmp/claude-0/deps/node_modules/.pnpm/hono@4.12.23/node_modules/hono/dist/middleware/cors/index.js
+// cypher-executor/node_modules/.pnpm/hono@4.12.10/node_modules/hono/dist/middleware/cors/index.js
 var cors = (options) => {
-  const opts = {
+  const defaults = {
     origin: "*",
     allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
     allowHeaders: [],
-    exposeHeaders: [],
+    exposeHeaders: []
+  };
+  const opts = {
+    ...defaults,
     ...options
   };
   const findAllowOrigin = ((optsOrigin) => {
@@ -30135,8 +30117,8 @@ var RULE_PULL_MIN_INTERVAL_MS = 30 * 6e4;
 var ruleWebhookConfigured = (env) => !!String(env.RULE_WEBHOOK_SECRET ?? "").trim();
 async function ruleWebhookToken(env, tenant2, sourceId) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(env.RULE_WEBHOOK_SECRET ?? "")), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`rule-source:${tenant2}:${sourceId}`)));
-  return [...sig.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const sig2 = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`rule-source:${tenant2}:${sourceId}`)));
+  return [...sig2.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 var ruleUpstreamHookRouter = new Hono2();
 ruleUpstreamHookRouter.post("/hooks/rule-source/:tenant/:id/:token", async (c) => {
@@ -31439,20 +31421,22 @@ var component_catalog_generated_default = {
         "workerd",
         "wazero"
       ],
-      description: "\u9663\u5217\u64CD\u4F5C\uFF1Acount/first/last/reverse/sum/average/min/max/sort/unique\u3002",
+      description: "\u9663\u5217\u64CD\u4F5C\uFF1Acount/first/last/reverse/sum/average/min/max/sort/unique/replace_scoped\uFF08\u628A\u4E00\u500B\u5E36\u7BC4\u570D\u7684\u540D\u5B57\u52A0\u9032\u6E05\u55AE\uFF0C\u540C\u7BC4\u570D\u7684\u820A\u9805\u76EE\u63DB\u6389\uFF0C\u4F8B\u5982\u52A0\u72C0\u614B\u6A19\u7C64 s/pending \u63DB\u6389\u820A\u7684 s/doing\uFF09\u3002",
       aliases: [
         "\u9663\u5217",
         "list",
         "\u6E05\u55AE",
         "\u5217\u8868"
       ],
-      intent_use: "\u5C0D\u4E00\u4E32\u6E05\u55AE\u7B97\u6578\u91CF\u3001\u7E3D\u548C\u3001\u5E73\u5747\u3001\u6700\u5927\u6700\u5C0F\uFF0C\u53D6\u7B2C\u4E00\u500B\u6216\u6700\u5F8C\u4E00\u500B\uFF0C\u6392\u5E8F\uFF0C\u53BB\u91CD",
+      intent_use: "\u5C0D\u4E00\u4E32\u6E05\u55AE\u7B97\u6578\u91CF\u3001\u7E3D\u548C\u3001\u5E73\u5747\u3001\u6700\u5927\u6700\u5C0F\uFF0C\u53D6\u7B2C\u4E00\u500B\u6216\u6700\u5F8C\u4E00\u500B\uFF0C\u6392\u5E8F\uFF0C\u53BB\u91CD\uFF1B\u52A0\u6A19\u7C64\u6642\u63DB\u6389\u540C\u7BC4\u570D\u7684\u820A\u6A19\u7C64\uFF0C\u4F8B\u5982\u52A0\u72C0\u614B\u6A19\u7C64\u63DB\u6389\u820A\u7684\u72C0\u614B\u6A19\u7C64",
       tags: [
         "builtin",
         "data",
         "array",
         "list",
-        "transform"
+        "transform",
+        "label",
+        "scope"
       ],
       input_schema: {
         type: "object",
@@ -31473,7 +31457,8 @@ var component_catalog_generated_default = {
               "min",
               "max",
               "sort",
-              "unique"
+              "unique",
+              "replace_scoped"
             ]
           },
           input: {
@@ -31481,7 +31466,8 @@ var component_catalog_generated_default = {
             description: "\u8F38\u5165\u9663\u5217\uFF08\u5143\u7D20\u70BA\u6578\u5B57\u6216\u5B57\u4E32\uFF09"
           },
           args: {
-            type: "object"
+            type: "object",
+            description: "replace_scoped \u7528 add\uFF08\u8981\u52A0\u9032\u53BB\u7684\u9805\u76EE\uFF0C\u5FC5\u586B\uFF09\u3001sep\uFF08\u7BC4\u570D\u5206\u9694\u7B26\uFF0C\u9810\u8A2D /\uFF1B\u7BC4\u570D\uFF1D\u6700\u5F8C\u4E00\u500B\u5206\u9694\u7B26\u4E4B\u524D\uFF09\u3001scopes\uFF08\u9017\u865F\u5206\u9694\uFF0C\u53EA\u6709\u9019\u4E9B\u7BC4\u570D\u624D\u4E92\u65A5\uFF0C\u4E0D\u586B\uFF1Dadd \u7684\u7BC4\u570D\u4E00\u5F8B\u4E92\u65A5\uFF09"
           }
         }
       },
@@ -31494,7 +31480,13 @@ var component_catalog_generated_default = {
           data: {
             type: "object",
             properties: {
-              result: {},
+              result: {
+                description: "\u591A\u6578\u64CD\u4F5C\u56DE\u55AE\u4E00\u503C\uFF1Breplace_scoped \u56DE\u63DB\u5B8C\u7684\u9663\u5217"
+              },
+              removed: {
+                type: "array",
+                description: "replace_scoped \u624D\u6709\uFF1A\u88AB\u540C\u7BC4\u570D\u65B0\u9805\u76EE\u63DB\u6389\u7684\u820A\u9805\u76EE"
+              },
               operation: {
                 type: "string"
               }
@@ -31514,12 +31506,22 @@ var component_catalog_generated_default = {
           then_contains: '"result":6'
         },
         {
+          scenario: "replace_scoped \u63DB\u6389\u540C\u7BC4\u570D\u7684\u820A\u6A19\u7C64",
+          given: '{"operation":"replace_scoped","input":["bug","s/doing"],"args":{"add":"s/pending"}}',
+          then_contains: '"result":["bug","s/pending"]'
+        },
+        {
+          scenario: "replace_scoped \u6C92\u7BC4\u570D\u5C31\u758A\u4E0A\u53BB",
+          given: '{"operation":"replace_scoped","input":["bug"],"args":{"add":"Human"}}',
+          then_contains: '"result":["bug","Human"]'
+        },
+        {
           scenario: "\u7A7A\u9663\u5217 first",
           given: '{"operation":"first","input":[]}',
           then_contains: '{"success":false'
         }
       ],
-      config_example: 'my_array_op:                            # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "sort"                     # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Acount/first/last/reverse/sum/average/min/max/sort/unique\n  input: [3, 1, 4, 1, 5, 9, 2, 6]      # \u8F38\u5165\u9663\u5217\uFF0C\u5143\u7D20\u70BA\u6578\u5B57\u6216\u5B57\u4E32\uFF08\u5FC5\u586B\uFF09\n  args: {}                              # \u64CD\u4F5C\u53C3\u6578\uFF08\u9078\u586B\uFF0C\u76EE\u524D\u5404 operation \u4E0D\u9700\u984D\u5916\u53C3\u6578\uFF09\n',
+      config_example: 'my_array_op:                            # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "sort"                     # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Acount/first/last/reverse/sum/average/min/max/sort/unique/replace_scoped\n  input: [3, 1, 4, 1, 5, 9, 2, 6]      # \u8F38\u5165\u9663\u5217\uFF0C\u5143\u7D20\u70BA\u6578\u5B57\u6216\u5B57\u4E32\uFF08\u5FC5\u586B\uFF09\n  args: {}                              # \u64CD\u4F5C\u53C3\u6578\uFF08\u9078\u586B\uFF0Creplace_scoped \u8981 add\uFF09\n  # replace_scoped\uFF08#577\uFF09\uFF1Ainput: ["bug","s/doing"], args: { add: "s/pending" }\n  #   \u2192 data.result = ["bug","s/pending"]\uFF0Cdata.removed = ["s/doing"]\uFF1Badd \u6C92\u6709\u5206\u9694\u7B26\u5C31\u55AE\u7D14\u758A\u4E0A\u53BB\n',
       source: "registry/components/array_ops/component.contract.yaml"
     },
     {
@@ -32214,7 +32216,7 @@ var component_catalog_generated_default = {
         "workerd",
         "wazero"
       ],
-      description: "\u65E5\u671F\u64CD\u4F5C\uFF1Anow\uFF08\u7576\u524D\u6642\u9593\uFF09\u3001format\uFF08\u683C\u5F0F\u5316\uFF09\u3001parse\uFF08\u89E3\u6790 ISO \u5B57\u4E32\uFF09\u3002",
+      description: "\u65E5\u671F\u64CD\u4F5C\uFF1Anow\uFF08\u7576\u524D\u6642\u9593\uFF09\u3001format\uFF08\u683C\u5F0F\u5316\uFF09\u3001parse\uFF08\u89E3\u6790 ISO \u5B57\u4E32\uFF09\u3001compare\uFF08\u6BD4\u8F03\u5169\u500B\u65E5\u671F\u7684\u5148\u5F8C\uFF0C\u4E0D\u586B\u5C0D\u8C61\u5C31\u8DDF\u73FE\u5728\u6BD4\uFF1Bgranularity=day \u53EA\u6BD4\u65E5\u671F\uFF09\u3001diff\uFF08\u5169\u500B\u65E5\u671F\u5DEE\u5E7E\u5929\uFF0F\u5C0F\u6642\uFF0F\u5206\uFF0F\u79D2\uFF09\u3002",
       aliases: [
         "\u65E5\u671F",
         "time",
@@ -32222,13 +32224,15 @@ var component_catalog_generated_default = {
         "datetime",
         "timestamp"
       ],
-      intent_use: "\u53D6\u5F97\u73FE\u5728\u7684\u6642\u9593\u3001\u628A\u65E5\u671F\u8F49\u6210\u6307\u5B9A\u683C\u5F0F\u6216\u6642\u5340\u3001\u89E3\u6790\u65E5\u671F\u5B57\u4E32",
+      intent_use: "\u53D6\u5F97\u73FE\u5728\u7684\u6642\u9593\u3001\u628A\u65E5\u671F\u8F49\u6210\u6307\u5B9A\u683C\u5F0F\u6216\u6642\u5340\u3001\u89E3\u6790\u65E5\u671F\u5B57\u4E32\uFF1B\u6BD4\u8F03\u5169\u500B\u65E5\u671F\u7684\u5148\u5F8C\u3001\u6AA2\u67E5\u65E5\u662F\u5426\u5DF2\u904E\u4ECA\u5929\u3001\u7B97\u5169\u500B\u65E5\u671F\u5DEE\u5E7E\u5929",
       tags: [
         "builtin",
         "data",
         "date",
         "time",
-        "transform"
+        "transform",
+        "compare",
+        "diff"
       ],
       input_schema: {
         type: "object",
@@ -32241,19 +32245,47 @@ var component_catalog_generated_default = {
             enum: [
               "now",
               "format",
-              "parse"
+              "parse",
+              "compare",
+              "diff"
             ]
           },
           input: {
             type: "string",
-            description: "ISO \u65E5\u671F\u5B57\u4E32\uFF08now \u64CD\u4F5C\u53EF\u7701\u7565\uFF09"
+            description: "ISO \u65E5\u671F\u5B57\u4E32\u6216 YYYY-MM-DD\uFF08now \u64CD\u4F5C\u53EF\u7701\u7565\uFF09"
           },
           args: {
             type: "object",
             properties: {
               layout: {
                 type: "string",
-                description: "Go time layout\uFF08\u5982 2006-01-02\uFF09"
+                description: "format \u7528\uFF1AGo time layout\uFF08\u5982 2006-01-02\uFF09"
+              },
+              other: {
+                type: "string",
+                description: "compare\uFF0Fdiff \u7528\uFF1A\u62FF\u4F86\u6BD4\u7684\u53E6\u4E00\u500B\u65E5\u671F\uFF1B\u4E0D\u586B\uFF1D\u73FE\u5728"
+              },
+              granularity: {
+                type: "string",
+                enum: [
+                  "exact",
+                  "day"
+                ],
+                description: "compare\uFF0Fdiff \u7528\uFF1Aexact\uFF08\u9810\u8A2D\uFF09\u9023\u6642\u523B\u4E00\u8D77\u6BD4\uFF1Bday \u53EA\u6BD4\u65E5\u671F\uFF08\u6AA2\u67E5\u65E5\u300C\u4ECA\u5929\u7B97\u4E0D\u7B97\u5230\u300D\u7528\u9019\u500B\uFF09"
+              },
+              unit: {
+                type: "string",
+                enum: [
+                  "day",
+                  "hour",
+                  "minute",
+                  "second"
+                ],
+                description: "diff\uFF0Fcompare \u7684 diff \u6B04\u4F4D\u55AE\u4F4D\uFF0C\u9810\u8A2D day"
+              },
+              tz_offset: {
+                type: "integer",
+                description: "granularity=day \u6642\u300C\u4ECA\u5929\u300D\u7528\u54EA\u500B\u6642\u5340\uFF0CUTC \u52A0\u5E7E\u5C0F\u6642\uFF08\u53F0\u5317\uFF1D8\uFF09\uFF1B\u65E5\u671F\u5B57\u4E32\uFF08YYYY-MM-DD\uFF09\u4E0D\u4F4D\u79FB"
               }
             }
           }
@@ -32268,9 +32300,26 @@ var component_catalog_generated_default = {
           data: {
             type: "object",
             properties: {
-              result: {},
+              result: {
+                description: "compare \u56DE before\uFF0Fsame\uFF0Fafter\uFF08input \u76F8\u5C0D\u65BC other \u6216\u73FE\u5728\uFF09\uFF1Bdiff \u56DE input \u6E1B other \u7684\u6574\u6578\u5DEE"
+              },
               operation: {
                 type: "string"
+              },
+              before: {
+                type: "boolean",
+                description: "compare \u624D\u6709\uFF1Ainput \u65E9\u65BC other"
+              },
+              same: {
+                type: "boolean"
+              },
+              after: {
+                type: "boolean",
+                description: "compare \u624D\u6709\uFF1Ainput \u665A\u65BC other"
+              },
+              diff: {
+                type: "integer",
+                description: "compare \u624D\u6709\uFF1Ainput \u6E1B other\uFF0C\u55AE\u4F4D\u898B args.unit"
               }
             }
           }
@@ -32288,12 +32337,32 @@ var component_catalog_generated_default = {
           then_contains: '"year":2024'
         },
         {
+          scenario: "compare\uFF1A\u904E\u53BB\u7684\u65E5\u671F\u65E9\u65BC\u73FE\u5728",
+          given: '{"operation":"compare","input":"2020-01-01"}',
+          then_contains: '"result":"before"'
+        },
+        {
+          scenario: "compare\uFF1A\u6309\u65E5\u6BD4\uFF0C\u9060\u672A\u4F86\u665A\u65BC\u4ECA\u5929",
+          given: '{"operation":"compare","input":"2999-01-01","args":{"granularity":"day","tz_offset":8}}',
+          then_contains: '"after":true'
+        },
+        {
+          scenario: "diff\uFF1A\u5DEE\u5E7E\u5929",
+          given: '{"operation":"diff","input":"2026-12-05","args":{"other":"2026-11-28"}}',
+          then_contains: '"result":7'
+        },
+        {
+          scenario: "compare \u7121\u6548\u65E5\u671F",
+          given: '{"operation":"compare","input":"not-a-date"}',
+          then_contains: '{"success":false'
+        },
+        {
           scenario: "\u7121\u6548\u65E5\u671F",
           given: '{"operation":"parse","input":"not-a-date"}',
           then_contains: '{"success":false'
         }
       ],
-      config_example: 'my_date_op:                             # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "format"                   # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Anow/format/parse\n  input: "2024-01-15T10:30:00Z"        # ISO \u65E5\u671F\u5B57\u4E32\uFF08now \u64CD\u4F5C\u53EF\u7701\u7565\uFF0C\u5176\u9918\u5FC5\u586B\uFF09\n  args:                                 # \u64CD\u4F5C\u53C3\u6578\uFF08\u9078\u586B\uFF09\n    layout: "2006-01-02"               # format \u7528\uFF1AGo time layout \u683C\u5F0F\u5B57\u4E32\n',
+      config_example: 'my_date_op:                             # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "format"                   # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Anow/format/parse/compare/diff\n  input: "2024-01-15T10:30:00Z"        # ISO \u65E5\u671F\u5B57\u4E32\uFF08now \u64CD\u4F5C\u53EF\u7701\u7565\uFF0C\u5176\u9918\u5FC5\u586B\uFF09\n  args:                                 # \u64CD\u4F5C\u53C3\u6578\uFF08\u9078\u586B\uFF09\n    layout: "2006-01-02"               # format \u7528\uFF1AGo time layout \u683C\u5F0F\u5B57\u4E32\n    # compare\uFF0Fdiff \u7528\uFF08#577\uFF09\uFF1A\u6AA2\u67E5\u65E5\u662F\u5426\u5DF2\u5230\u2014\u2014\n    #   operation: compare, input: "2026-12-01", args: { granularity: day, tz_offset: 8 }\n    #   \u2192 data.result = before\uFF0Fsame\uFF0Fafter\uFF08\u4E5F\u6709 data.before\uFF0Fsame\uFF0Fafter \u5E03\u6797\uFF0C\u53EF\u76F4\u63A5\u63A5 if_control\uFF09\n    # other\uFF08\u5C0D\u8C61\u65E5\u671F\uFF0C\u4E0D\u586B\uFF1D\u73FE\u5728\uFF09\uFF0Funit\uFF08diff \u55AE\u4F4D\uFF09\u898B input_schema\n',
       source: "registry/components/date_ops/component.contract.yaml"
     },
     {
@@ -33203,20 +33272,21 @@ var component_catalog_generated_default = {
         "workerd",
         "wazero"
       ],
-      description: "\u5B57\u4E32\u64CD\u4F5C\uFF1Aupper/lower/trim/capitalize/replace/split/join/includes/starts_with/ends_with/length/substring\u3002",
+      description: "\u5B57\u4E32\u64CD\u4F5C\uFF1Aupper/lower/trim/capitalize/replace/split/join/includes/starts_with/ends_with/length/substring\uFF0C\u4EE5\u53CA\u7528\u6B63\u898F\u8868\u793A\u5F0F\u8655\u7406\u6587\u5B57\uFF1Aregex_extract\uFF08\u53D6\u51FA\u7B26\u5408\u7684\u90E8\u5206\u8207\u62EC\u865F\u7FA4\u7D44\uFF09\uFF0Fregex_match\uFF08\u5224\u65B7\u7B26\u4E0D\u7B26\u5408\uFF09\uFF0Fregex_replace\uFF08\u4F9D\u898F\u5247\u53D6\u4EE3\uFF09\u3002",
       aliases: [
         "\u5B57\u4E32",
         "text",
         "\u6587\u5B57",
         "str"
       ],
-      intent_use: "\u8655\u7406\u6587\u5B57\uFF1A\u8F49\u5927\u5C0F\u5BEB\u3001\u53BB\u7A7A\u767D\u3001\u53D6\u4EE3\u3001\u5207\u5272\u3001\u4E32\u63A5\u3001\u5224\u65B7\u5305\u542B\u3001\u53D6\u5B50\u5B57\u4E32",
+      intent_use: "\u8655\u7406\u6587\u5B57\uFF1A\u8F49\u5927\u5C0F\u5BEB\u3001\u53BB\u7A7A\u767D\u3001\u53D6\u4EE3\u3001\u5207\u5272\u3001\u4E32\u63A5\u3001\u5224\u65B7\u5305\u542B\u3001\u53D6\u5B50\u5B57\u4E32\uFF1B\u7528\u6B63\u898F\u8868\u793A\u5F0F\u5F9E\u8AAA\u660E\u6587\u5B57\u53D6\u51FA\u7B26\u5408\u7684\u90E8\u5206\u3001\u5224\u65B7\u6587\u5B57\u7B26\u4E0D\u7B26\u5408\u683C\u5F0F\u3001\u4F9D\u898F\u5247\u53D6\u4EE3",
       tags: [
         "builtin",
         "data",
         "string",
         "transform",
-        "text"
+        "text",
+        "regex"
       ],
       input_schema: {
         type: "object",
@@ -33239,7 +33309,10 @@ var component_catalog_generated_default = {
               "starts_with",
               "ends_with",
               "length",
-              "substring"
+              "substring",
+              "regex_extract",
+              "regex_match",
+              "regex_replace"
             ]
           },
           input: {
@@ -33247,7 +33320,7 @@ var component_catalog_generated_default = {
           },
           args: {
             type: "object",
-            description: "\u64CD\u4F5C\u53C3\u6578\uFF08\u4F9D operation \u800C\u5B9A\uFF09"
+            description: "\u64CD\u4F5C\u53C3\u6578\uFF08\u4F9D operation \u800C\u5B9A\uFF09\u3002regex_* \u7528 pattern\uFF08\u6B63\u898F\u8868\u793A\u5F0F\uFF0CGo RE2\uFF09\u3001flags\uFF08i\uFF0Fm\uFF0Fs\uFF09\u3001all\uFF08regex_extract \u53D6\u5168\u90E8\uFF09\u3001to\uFF08regex_replace \u7684\u53D6\u4EE3\u6587\u5B57\uFF0C\u53EF\u7528 $1\uFF09"
           }
         }
       },
@@ -33260,9 +33333,19 @@ var component_catalog_generated_default = {
           data: {
             type: "object",
             properties: {
-              result: {},
+              result: {
+                description: "regex_extract \u56DE\u5B57\u4E32\u9663\u5217\uFF08\u7B2C 0 \u500B\u662F\u6574\u6BB5\u7B26\u5408\uFF0C\u4E4B\u5F8C\u662F\u62EC\u865F\u7FA4\u7D44\uFF0C\u540C JS \u7684 match\uFF1B\u6C92\u7B26\u5408\u662F null\uFF1Ball=true \u662F\u9663\u5217\u7684\u9663\u5217\uFF09\uFF1Bregex_match \u56DE\u5E03\u6797"
+              },
               operation: {
                 type: "string"
+              },
+              matched: {
+                type: "boolean",
+                description: "regex_extract \u624D\u6709\uFF1A\u6709\u6C92\u6709\u7B26\u5408\uFF08\u6C92\u7B26\u5408\u4ECD\u662F success:true\uFF0C\u7528\u9019\u500B\u6B04\u4F4D\u5224\u65B7\uFF09"
+              },
+              named: {
+                type: "object",
+                description: "regex_extract \u624D\u6709\uFF1A\u5177\u540D\u7FA4\u7D44 (?P<\u540D\u5B57>\u2026) \u7684\u503C"
               }
             }
           }
@@ -33280,12 +33363,37 @@ var component_catalog_generated_default = {
           then_contains: '"result":"hello u6u"'
         },
         {
+          scenario: "regex_extract \u53D6\u62EC\u865F\u7FA4\u7D44",
+          given: '{"operation":"regex_extract","input":"\u7B49\u8AB0\uFF1AAnthropic\uFF5C\u7B49\u4EC0\u9EBC\uFF1A\u4FEE bug","args":{"pattern":"\u7B49\u8AB0\uFF1A(.*?)\uFF5C\u7B49\u4EC0\u9EBC\uFF1A(.*)$"}}',
+          then_contains: '"result":["\u7B49\u8AB0\uFF1AAnthropic\uFF5C\u7B49\u4EC0\u9EBC\uFF1A\u4FEE bug","Anthropic","\u4FEE bug"]'
+        },
+        {
+          scenario: "regex_extract \u6C92\u7B26\u5408",
+          given: '{"operation":"regex_extract","input":"abc","args":{"pattern":"\\\\d+"}}',
+          then_contains: '"matched":false'
+        },
+        {
+          scenario: "regex_match",
+          given: '{"operation":"regex_match","input":"2026-11-28","args":{"pattern":"^\\\\d{4}-\\\\d{2}-\\\\d{2}$"}}',
+          then_contains: '"result":true'
+        },
+        {
+          scenario: "regex_replace \u5F15\u7528\u7FA4\u7D44",
+          given: '{"operation":"regex_replace","input":"john smith","args":{"pattern":"(\\\\w+) (\\\\w+)","to":"$2 $1"}}',
+          then_contains: '"result":"smith john"'
+        },
+        {
+          scenario: "regex \u7121\u6548",
+          given: '{"operation":"regex_extract","input":"x","args":{"pattern":"("}}',
+          then_contains: '{"success":false'
+        },
+        {
           scenario: "\u4E0D\u652F\u63F4\u7684 operation",
           given: '{"operation":"unknown","input":"test"}',
           then_contains: '{"success":false'
         }
       ],
-      config_example: 'my_string_op:                           # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "replace"                  # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Aupper/lower/trim/capitalize/replace/split/join/includes/starts_with/ends_with/length/substring\n  input: "hello world"                  # \u8F38\u5165\u5B57\u4E32\uFF08\u5FC5\u586B\uFF09\n  args:                                 # \u64CD\u4F5C\u53C3\u6578\uFF0C\u4F9D operation \u800C\u5B9A\uFF08\u9078\u586B\uFF09\n    from: "world"                       # replace \u7528\uFF1A\u8981\u88AB\u53D6\u4EE3\u7684\u5B50\u5B57\u4E32\n    to: "arcrun"                        # replace \u7528\uFF1A\u53D6\u4EE3\u5F8C\u7684\u5B57\u4E32\n',
+      config_example: 'my_string_op:                           # \u7BC0\u9EDE\u540D\u7A31\uFF08\u53EF\u81EA\u8A02\uFF09\n  operation: "replace"                  # \u904B\u7B97\u985E\u578B\uFF08\u5FC5\u586B\uFF09\uFF0C\u53EF\u9078\u503C\uFF1Aupper/lower/trim/capitalize/replace/split/join/includes/starts_with/ends_with/length/substring\n  input: "hello world"                  # \u8F38\u5165\u5B57\u4E32\uFF08\u5FC5\u586B\uFF09\n  args:                                 # \u64CD\u4F5C\u53C3\u6578\uFF0C\u4F9D operation \u800C\u5B9A\uFF08\u9078\u586B\uFF09\n    from: "world"                       # replace \u7528\uFF1A\u8981\u88AB\u53D6\u4EE3\u7684\u5B50\u5B57\u4E32\n    to: "arcrun"                        # replace \u7528\uFF1A\u53D6\u4EE3\u5F8C\u7684\u5B57\u4E32\n    # \u6B63\u898F\u8868\u793A\u5F0F\uFF08#577\uFF09\uFF1Aoperation: regex_extract, input: "\u7B49\u8AB0\uFF1AA\uFF5C\u7B49\u4EC0\u9EBC\uFF1AB"\n    #   args: { pattern: "\u7B49\u8AB0\uFF1A(.*?)\uFF5C\u7B49\u4EC0\u9EBC\uFF1A(.*)$" }  \u2192 data.result = [\u6574\u6BB5, "A", "B"]\uFF0Cdata.matched = true\n    #   \u6C92\u7B26\u5408\u4E0D\u662F\u5931\u6557\uFF1Asuccess:true\u3001data.matched=false\u3001data.result=null\uFF1Bpattern \u7121\u6548\u624D\u662F success:false\n',
       source: "registry/components/string_ops/component.contract.yaml"
     },
     {
@@ -36079,6 +36187,121 @@ async function matchNeeds(env, apiKey, needs, excludePrefix = "") {
   return { needs: q, workflows, templates, errors, queries: { kbdb: 2 }, summary };
 }
 
+// cypher-executor/src/lib/intent-gate.ts
+init_extract();
+init_component_loader();
+var FOREIGN_COMPONENT = /^(https?:\/\/|component:\/\/|workflow:\/\/|ui:\/\/|style:\/\/)/i;
+var sig = (n) => JSON.stringify([n.component, n.data]);
+async function checkIntentGate(env, apiKey, next, prev) {
+  const sentenceNodes = (wf) => {
+    const g = wf?.graph ?? wf;
+    const label = /* @__PURE__ */ new Map();
+    for (const x of Array.isArray(g?.nodes) ? g.nodes : []) if (typeof x?.id === "string" && typeof x?.label === "string" && x.label) label.set(x.id, x.label);
+    return normalizeWorkflow(wf).nodes.map((n) => ({ ...n, id: label.get(n.id) ?? n.id }));
+  };
+  const nodes = sentenceNodes(next);
+  const before = /* @__PURE__ */ new Map();
+  if (prev) for (const n of sentenceNodes(prev)) before.set(n.id, sig(n));
+  const changed = nodes.filter((n) => !isVirtualIoName(n.id) && before.get(n.id) !== sig(n));
+  if (changed.length === 0) return { ok: true, checked: 0, unresolved: [], method: null };
+  const recipes = env.RECIPES ? await listAllRecipes2(env.RECIPES) : [];
+  const known = /* @__PURE__ */ new Set([
+    ...allComponents().map((c) => c.canonical_id),
+    ...RUNTIME_NATIVE_COMPONENT_IDS,
+    ...recipes.flatMap((r) => [r.canonical_id, r.hash_id].filter(Boolean))
+  ]);
+  const wired = (comp, id) => Boolean(comp) && comp !== id;
+  const isCode = (n) => n.component === "code" || typeof n.data.code === "string" && !n.component;
+  const toSearch = [...new Set(changed.filter(
+    (n) => !wired(n.component, n.id) || isCode(n) || (!known.has(n.component) && !FOREIGN_COMPONENT.test(n.component) && n.component !== "trigger_workflow").valueOf()
+  ).map((n) => n.id))];
+  let report = null;
+  if (toSearch.length) report = await buildIntentReport(env, apiKey, toSearch);
+  const itemOf = (s) => report?.items.find((i) => i.sentence === s);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const out = [];
+  const fromItem = (n, kind, lead) => {
+    const it = itemOf(n.id);
+    const cand = it?.candidates ? Object.values(it.candidates).flat().filter(Boolean) : [];
+    const top = it?.semantic?.slice(0, 3).map((t) => `${t.id}\uFF08${t.score}\uFF09`).join("\u3001");
+    return {
+      sentence: n.id,
+      kind,
+      ...it?.suggest ? { suggest: it.suggest } : {},
+      ...it?.semantic ? { semantic: it.semantic } : {},
+      ...it?.candidates ? { candidates: it.candidates } : {},
+      message: `\u610F\u5716\u300C${n.id}\u300D${lead}\u3002${top ? `\u8A9E\u610F\u6700\u63A5\u8FD1\uFF1A${top}\u3002` : ""}${cand.length && !top ? `\u76F8\u8FD1\u7684\u6709\uFF1A${cand.join("\u3001")}\u3002` : ""}${it?.next ?? ""}`
+    };
+  };
+  for (const n of changed) {
+    const comp = n.component;
+    if (isCode(n)) {
+      const it2 = itemOf(n.id);
+      if (it2 && it2.verdict !== "missing" && it2.verdict !== "partial" && it2.use && it2.use.id !== "code") {
+        out.push({
+          sentence: n.id,
+          kind: "code_replaces_intent",
+          use: { kind: it2.use.kind, id: it2.use.id },
+          semantic: it2.semantic,
+          message: `\u610F\u5716\u300C${n.id}\u300D\u5DF2\u7D93\u6709\u73FE\u6210\u7684${it2.use.kind === "recipe" ? " recipe " : "\u96F6\u4EF6"}\u300C${it2.use.id}\u300D\uFF0C\u4E0D\u51C6\u62FF code \u9802\u66FF\uFF1Aconfig \u5BEB ${JSON.stringify(n.id)}: { component: ${JSON.stringify(it2.use.id)} }\uFF0C\u7167 input_schema\uFF0Fpayload_hint \u586B payload\u3002`
+        });
+        continue;
+      }
+      const anchorName = typeof n.data.shape_of === "string" ? n.data.shape_of.trim() : "";
+      const a = anchorName && anchorName !== n.id ? byId.get(anchorName) : void 0;
+      const anchored = Boolean(a && wired(a.component, a.id) && a.component !== "code" && (known.has(a.component) || FOREIGN_COMPONENT.test(a.component) || a.component === "trigger_workflow"));
+      if (!anchored) {
+        const g = fromItem(n, "code_unanchored", `\u6C92\u6709\u5C0D\u4E0A\u4EFB\u4F55\u96F6\u4EF6\u3001recipe \u6216\u73FE\u6709\u5DE5\u4F5C\u6D41\uFF0C\u537B\u7528 code \u7BC0\u9EDE\u9802\u66FF\u6574\u53E5${anchorName ? `\uFF08shape_of\u300C${anchorName}\u300D\u4E0D\u662F\u4E00\u500B\u5DF2\u63A5\u4E0A\u96F6\u4EF6\uFF0Frecipe \u7684\u7BC0\u9EDE\uFF09` : ""}\u3002code \u53EA\u51C6\u505A\u5DF2\u89E3\u6790\u610F\u5716\u5E95\u4E0B\u7684\u5C40\u90E8\u6574\u5F62\uFF1A\u82E5\u5B83\u53EA\u662F\u67D0\u500B\u5DF2\u63A5\u4E0A\u7684\u6B65\u9A5F\u7684\u6574\u5F62\uFF0C\u5728\u7BC0\u9EDE\u5BEB shape_of: <\u90A3\u500B\u6B65\u9A5F\u7684\u7BC0\u9EDE\u540D>\uFF1B\u5426\u5247\u7167\u4E0B\u9762\u88DC`);
+        out.push(g);
+      }
+      continue;
+    }
+    if (comp === "trigger_workflow") {
+      const w = n.data.workflow_name;
+      if (typeof w !== "string" || !w.trim()) {
+        out.push({ sentence: n.id, kind: "workflow_unnamed", message: `\u610F\u5716\u300C${n.id}\u300D\u63A5\u7684\u662F\u73FE\u6709\u5DE5\u4F5C\u6D41\uFF08trigger_workflow\uFF09\uFF0C\u4F46\u6C92\u5BEB workflow_name\uFF1A\u8981\u53EB\u54EA\u4E00\u652F\uFF1F` });
+      }
+      continue;
+    }
+    if (wired(comp, n.id)) {
+      if (known.has(comp) || FOREIGN_COMPONENT.test(comp)) continue;
+      out.push(fromItem(n, "unknown_component", `\u63A5\u7684\u96F6\u4EF6\uFF0Frecipe\u300C${comp}\u300D\u4E0D\u5B58\u5728\uFF08\u96F6\u4EF6\u76EE\u9304\u3001\u57F7\u884C\u671F\u539F\u751F\u96F6\u4EF6\u3001recipe \u5EAB\u90FD\u67E5\u904E\uFF09`));
+      continue;
+    }
+    const it = itemOf(n.id);
+    if (it?.verdict === "found") continue;
+    if (it?.verdict === "resolved" && it.use) {
+      out.push({
+        sentence: n.id,
+        kind: "unwired",
+        use: { kind: it.use.kind, id: it.use.id },
+        semantic: it.semantic,
+        message: `\u610F\u5716\u300C${n.id}\u300D\u5C0D\u5230\u73FE\u6210\u7684${it.use.kind === "recipe" ? " recipe " : "\u96F6\u4EF6"}\u300C${it.use.id}\u300D\uFF0C\u4F46\u9019\u500B\u7BC0\u9EDE\u6C92\u63A5\u4E0A\u5B83\uFF08\u57F7\u884C\u6642\u6703\u627E\u4E0D\u5230\u96F6\u4EF6\uFF09\uFF1Aconfig \u5BEB ${JSON.stringify(n.id)}: { component: ${JSON.stringify(it.use.id)} }\uFF0C\u7167 input_schema\uFF0Fpayload_hint \u586B payload\u3002`
+      });
+      continue;
+    }
+    out.push(fromItem(
+      n,
+      it?.verdict === "partial" ? "partial" : "missing",
+      it?.verdict === "partial" ? "\u6C92\u6709\u8DB3\u5920\u78BA\u5B9A\u5C0D\u5230\u54EA\u4E00\u500B\uFF0C\u4E5F\u6C92\u6709\u63A5\u4E0A\u4EFB\u4F55\u96F6\u4EF6\uFF0Frecipe\uFF0F\u73FE\u6709\u5DE5\u4F5C\u6D41" : "\u641C\u4E0D\u5230\u4EFB\u4F55\u96F6\u4EF6\u3001recipe\u3001\u73FE\u6709\u5DE5\u4F5C\u6D41"
+    ));
+  }
+  return { ok: out.length === 0, checked: changed.length, unresolved: out, method: report?.method ?? null };
+}
+function gapsOf(r) {
+  const kinds = ["missing", "partial", "code_unanchored", "unknown_component"];
+  return [...new Set(r.unresolved.filter((i) => kinds.includes(i.kind)).map((i) => i.sentence))];
+}
+async function gapFingerprints(workflow, sentences) {
+  const functions = /* @__PURE__ */ new Map();
+  for (const s of sentences) {
+    const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`gap:${s.toLowerCase().replace(/[\s_\-]+/g, "")}`));
+    const fp = "gap" + [...new Uint8Array(d)].slice(0, 7).map((b) => b.toString(16).padStart(2, "0")).join("");
+    functions.set(fp, { n: 1, len: s.length, name: `\u7F3A\u96F6\u4EF6\uFF0Frecipe\uFF1A${s}`, sample: `\u610F\u5716\u53E5\u300C${s}\u300D\u5728\u63A8\u9001\u9598\u2461\u6C92\u6709\u5C0D\u4E0A\u4EFB\u4F55\u96F6\u4EF6\u3001recipe \u6216\u73FE\u6709\u5DE5\u4F5C\u6D41\u3002`, nodes: [s] });
+  }
+  return { workflow, code_nodes: 0, functions, truncated: 0 };
+}
+
 // cypher-executor/src/lib/structure-fingerprint.ts
 var SIG_MAX = 30;
 var MIN_COMPONENTS = 2;
@@ -36315,6 +36538,29 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
       next_actions: dataflowNextActions(dataflow)
     }, 422);
   }
+  let intentGate = null;
+  let intentGateError = "";
+  if (body.check === "strict" || body.check === "report") {
+    try {
+      const prevRaw = await c.env.WEBHOOKS.get(kvKey(apiKey, name)).catch(() => null);
+      intentGate = await checkIntentGate(c.env, apiKey, { name, graph, config: body.config }, prevRaw ? JSON.parse(prevRaw) : null);
+    } catch (e) {
+      intentGateError = e instanceof Error ? e.message : String(e);
+      console.error("[intent-gate]", intentGateError);
+    }
+  }
+  if (intentGate && !intentGate.ok && body.check === "strict") {
+    const gaps = gapsOf(intentGate);
+    if (gaps.length && fpEnabled(c.env)) {
+      c.executionCtx.waitUntil(gapFingerprints(name, gaps).then((fp) => noteCodeFingerprints(c.env, apiKey, new URL(c.req.url).origin, [fp])).catch(() => void 0));
+    }
+    return c.json({
+      error: `\u6C92\u6709\u5B58\uFF1A\u9019\u652F\u5DE5\u4F5C\u6D41\u6709 ${intentGate.unresolved.length} \u53E5\u610F\u5716\u9084\u6C92\u5C0D\u4E0A\u96F6\u4EF6\u3001recipe \u6216\u73FE\u6709\u5DE5\u4F5C\u6D41\u3002\u9010\u53E5\u88DC\u4E0A\u518D\u63A8\uFF1B\u641C\u4E0D\u5230\u5C31\u5148\u88DC recipe\uFF08\u7F3A\u5916\u90E8 API\uFF09\u6216\u96F6\u4EF6\uFF08\u7F3A\u80FD\u529B\uFF09\uFF0Ccode \u53EA\u80FD\u505A\u5DF2\u5C0D\u4E0A\u610F\u5716\u5E95\u4E0B\u7684\u5C40\u90E8\u6574\u5F62\u3002`,
+      code: "intent_unresolved",
+      intent_gate: intentGate,
+      next_actions: intentGate.unresolved.map((i) => i.message)
+    }, 422);
+  }
   const codeFp = fpEnabled(c.env) ? await fingerprintSubjects([{ name, graph, config: body.config }]) : [];
   const replaceable = hintsOf(codeFp);
   const cronExpr = extractCronExpr(graph);
@@ -36383,10 +36629,28 @@ webhooksNamedRouter.post("/webhooks/named", async (c) => {
     ...security.advice.length ? { advice: security.advice } : {},
     // inkstone/Arcrun#565：指紋對到已有引擎零件的 code（只提醒、不改你的工作流）
     ...replaceable.length ? { replaceable_code: replaceable } : {},
+    // #141 閘 ②：strict 擋下的在上面回了；這裡只剩 report（提醒）、或查不成的誠實標示
+    ...intentGate && (!intentGate.ok || intentGate.checked) ? { intent_gate: intentGate } : {},
+    ...intentGateError ? { intent_gate_skipped: `\u9598\u2461\u9019\u6B21\u6C92\u67E5\u6210\uFF08${intentGateError.slice(0, 120)}\uFF09\uFF0C\u7167\u653E\u884C\u8655\u7406` } : {},
     // Arcrun#564：跟現有工作流結構相同／相近（同一個 App 的兄弟不算）
     ...twinRes ? { structure_twins: { twins: twinRes.twins, queries: twinRes.queries } } : {},
-    ...dataflow.errors.length || security.advice.length || replaceable.length || twinNext.length ? { next_actions: [...dataflow.errors.length ? dataflowNextActions(dataflow) : [], ...adviceActions(security.advice), ...replaceable.map((h) => h.message), ...twinNext] } : {}
+    ...dataflow.errors.length || security.advice.length || replaceable.length || twinNext.length || intentGate?.unresolved.length ? { next_actions: [...dataflow.errors.length ? dataflowNextActions(dataflow) : [], ...adviceActions(security.advice), ...replaceable.map((h) => h.message), ...intentGate?.unresolved.map((i) => i.message) ?? [], ...twinNext] } : {}
   }, 201);
+});
+webhooksNamedRouter.post("/workflows/intent-check", async (c) => {
+  const apiKey = c.req.header("X-Arcrun-API-Key");
+  if (!apiKey) return c.json({ error: "\u7F3A\u5C11 X-Arcrun-API-Key header" }, 401);
+  const body = await c.req.json().catch(() => null);
+  const name = typeof body?.name === "string" && body.name.trim() ? body.name.trim() : "dry_run";
+  const graph = body?.graph ?? (Array.isArray(body?.flow) ? { flow: body.flow, config: body.config } : null);
+  if (!graph) return c.json({ error: "\u7F3A\u5C11 graph\uFF08\u6216 flow\uFF0Bconfig\uFF09" }, 400);
+  const prevRaw = body?.name ? await c.env.WEBHOOKS.get(kvKey(apiKey, name)).catch(() => null) : null;
+  try {
+    const gate = await checkIntentGate(c.env, apiKey, { name, graph, config: body?.config }, prevRaw ? JSON.parse(prevRaw) : null);
+    return c.json({ ...gate, next_actions: gate.unresolved.map((i) => i.message) });
+  } catch (e) {
+    return c.json({ error: `\u9598\u2461\u6AA2\u67E5\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` }, 502);
+  }
 });
 webhooksNamedRouter.get("/workflows/dataflow", async (c) => {
   const apiKey = c.req.header("X-Arcrun-API-Key");
@@ -37413,6 +37677,9 @@ var GOOGLE_SA_SECRETS = [
     help_url: "https://console.cloud.google.com/iam-admin/serviceaccounts"
   }
 ];
+function isUserConnectedOauth(seed, existing) {
+  return seed.primitive === "oauth2" && !seed.oauth2?.client_id && !!existing && existing.primitive === "oauth2" && !!existing.oauth2?.client_id;
+}
 var AUTH_RECIPE_SEEDS = [
   // ── Static Key 類 ──────────────────────────────────────────────────────────
   {
@@ -38145,6 +38412,57 @@ var AUTH_RECIPE_SEEDS = [
     },
     created_at: now,
     updated_at: now
+  },
+  // ── 一張表單接服務（inkstone/Arcrun#569）：YouTube（OAuth2）與通用 Google 服務帳號，都帶測法 ─────────────
+  // YouTube 是「用戶自己的 OAuth 用戶端」：client_id／secret 由用戶在 Google Cloud 建、貼進表單，
+  // 這裡只放公開的網址、scope 與測法（定義裡沒有任何值；client_id 留空，連線後由 Portal 寫成用戶自己的版本，
+  // 再次 seed 不會洗掉，見 isUserConnectedOauth）。refresh token／client secret 只在 credential 中心。
+  // 測法：換一次 token（refresh 失效＝授權被撤銷）＋ 唯讀的 channels.list（mine=true，1 單位配額）。
+  {
+    kind: "auth_recipe",
+    service: "youtube",
+    version: 1,
+    primitive: "oauth2",
+    base_url: "https://www.googleapis.com/youtube/v3",
+    display_name: "YouTube\uFF08OAuth2\uFF09",
+    description: "YouTube Data API v3 \u2014 \u8B80\u81EA\u5DF1\u7684\u983B\u9053\u8207\u5F71\u7247\uFF08scope youtube.readonly\uFF09\uFF1B\u8981\u4E0A\u50B3\u6216\u6539\u8CC7\u6599\u8ACB\u53E6\u52A0 scope \u5F8C\u91CD\u65B0\u9023\u7DDA\u3002",
+    oauth2: {
+      token_endpoint: "https://oauth2.googleapis.com/token",
+      authorize_endpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+      client_id: "",
+      client_secret: "",
+      client_secret_key: "youtube_client_secret",
+      scopes: ["https://www.googleapis.com/auth/youtube.readonly"]
+    },
+    required_secrets: [
+      { key: "youtube_refresh_token", label: "OAuth refresh token", help: "\u9023\u7DDA\u6642\u5728 Google \u6388\u6B0A\u9801\u6309\u540C\u610F\u5F8C\u81EA\u52D5\u5B58\u597D\uFF0C\u4E0D\u7528\u624B\u8CBC" },
+      { key: "youtube_client_secret", label: "OAuth \u7528\u6236\u7AEF\u5BC6\u9470\uFF08Client secret\uFF09", help: "Google Cloud Console \u25B8 API \u8207\u670D\u52D9 \u25B8 \u6191\u8B49 \u25B8 OAuth 2.0 \u7528\u6236\u7AEF ID", help_url: "https://console.cloud.google.com/apis/credentials" }
+    ],
+    inject: { header: { Authorization: "Bearer {{runtime.access_token}}" } },
+    verify: { method: "GET", url: "https://www.googleapis.com/youtube/v3/channels?part=id&mine=true" },
+    created_at: now,
+    updated_at: now
+  },
+  // 通用 Google 服務帳號：用來確認「這兩格（client_email＋private_key）是不是一把有效的服務帳號」——
+  // 換 token 換得到才算通（被停用／刪除／私鑰換新都會失敗，並帶原因）。scope 取最寬的 cloud-platform 只為換 token，
+  // 本身不打任何 API；實際呼叫哪個 Google 服務，用上面各 *_sa recipe（scope 較窄）。與它們共用同一組兩格。
+  {
+    kind: "auth_recipe",
+    service: "google_service_account",
+    version: 1,
+    primitive: "service_account",
+    service_account_kind: "google_jwt",
+    base_url: "https://oauth2.googleapis.com",
+    display_name: "Google \u670D\u52D9\u5E33\u865F\uFF08\u901A\u7528\uFF09",
+    description: "\u78BA\u8A8D\u670D\u52D9\u5E33\u865F\u91D1\u9470\u6709\u6548\uFF08\u63DB token \u6E2C\u8A66\uFF09\u3002\u8981\u547C\u53EB Sheets\uFF0FDrive\uFF0FGmail\uFF0FGA4\uFF0FSearch Console \u8ACB\u7528\u5404\u81EA\u7684 *_sa recipe\uFF0C\u540C\u4E00\u7D44\u5169\u683C\u3002",
+    token_exchange: {
+      endpoint: "https://oauth2.googleapis.com/token",
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"]
+    },
+    required_secrets: GOOGLE_SA_SECRETS,
+    inject: { header: { Authorization: "Bearer {{runtime.access_token}}" } },
+    created_at: now,
+    updated_at: now
   }
 ];
 
@@ -38219,7 +38537,7 @@ initSeedRouter.post("/init/seed", async (c) => {
         created_at: existing?.created_at ?? now2,
         updated_at: now2
       };
-      if (!existing || !sameContent2(recipe, existing, TIMESTAMP_FIELDS)) {
+      if (!isUserConnectedOauth(seed, existing) && (!existing || !sameContent2(recipe, existing, TIMESTAMP_FIELDS))) {
         await c.env.RECIPES.put(`auth_recipe:${service}`, JSON.stringify(recipe));
         authWritten++;
       }
@@ -39373,7 +39691,12 @@ portalOauthRouter.post(
     if (!validConnectName(body?.name)) {
       return c.json({ error: "\u9023\u7DDA\u540D\u7A31\uFF1A\u82F1\u6587\u958B\u982D\uFF0C\u53EA\u80FD\u82F1\u6587\u3001\u6578\u5B57\u3001\u5E95\u7DDA" }, 400);
     }
-    const clientId = typeof body?.client_id === "string" ? body.client_id.trim() : "";
+    let clientId = typeof body?.client_id === "string" ? body.client_id.trim() : "";
+    if (!clientId && validConnectName(body?.name)) {
+      const idName = clientIdName(body.name);
+      const got = await resolveSecretsFromNewHome(c.env, credentialOwner(c.env), [idName]).catch(() => ({}));
+      clientId = (got[idName] || "").trim();
+    }
     if (!clientId) return c.json({ error: "\u7528\u6236\u7AEF ID \u5FC5\u586B" }, 400);
     const authorizeUrl = normalizeHttpsUrl(body?.authorize_url);
     if (!authorizeUrl) return c.json({ error: "\u6388\u6B0A\u7DB2\u5740\u5FC5\u586B\uFF0C\u4E14\u8981\u662F https \u958B\u982D" }, 400);
@@ -40090,77 +40413,6 @@ init_app_glyphs();
 
 // cypher-executor/src/lib/builtin-apps.ts
 init_app_system();
-init_builtin_ids();
-var RETRY_AFTER_FAIL_MS = 6e4;
-var MAX_RESUME_STEPS = 30;
-var inflight2 = /* @__PURE__ */ new Map();
-var failedAt = /* @__PURE__ */ new Map();
-var progress = /* @__PURE__ */ new Map();
-function missingBuiltinIds(installedIds) {
-  const have = new Set(installedIds);
-  return APP_CATALOG.filter((e) => isBuiltinApp(e.id) && !have.has(e.id)).map((e) => e.id);
-}
-async function ensureBuiltinApps(env, tenant2, installed, coords, now2 = Date.now) {
-  const missing = missingBuiltinIds(installed.map((a) => a.id));
-  if (missing.length === 0) return { installed: [], failed: [] };
-  const key = `${tenant2}|${missing.join(",")}`;
-  const running = inflight2.get(key);
-  if (running) return running;
-  const last = failedAt.get(key);
-  if (last !== void 0 && now2() - last < RETRY_AFTER_FAIL_MS) return { installed: [], failed: [] };
-  const job = (async () => {
-    const out = { installed: [], failed: [] };
-    for (const id of missing) {
-      const entry = APP_CATALOG.find((e) => e.id === id);
-      if (!entry) continue;
-      try {
-        const pk = `${tenant2}|${id}`;
-        let resumeFrom = progress.get(pk)?.from ?? 0;
-        let resumeHash = progress.get(pk)?.hash;
-        for (let step = 0; step < MAX_RESUME_STEPS; step++) {
-          const r = await installApp(env, tenant2, entry.declaration, { coords, resumeFrom, resumeHash, origin: "market", catalogAuthor: entry.author });
-          if (!r.ok) {
-            out.failed.push({ id, error: (r.errors ?? [r.hint ?? "\u5B89\u88DD\u5931\u6557"]).join("\uFF1B") });
-            break;
-          }
-          if (r.in_progress) {
-            resumeFrom = r.resume_from ?? resumeFrom;
-            resumeHash = r.resume_hash;
-            progress.set(pk, { from: resumeFrom, hash: resumeHash });
-            continue;
-          }
-          progress.delete(pk);
-          out.installed.push(id);
-          break;
-        }
-        if (!out.installed.includes(id) && !out.failed.some((f) => f.id === id)) out.failed.push({ id, error: "\u5206\u6BB5\u5B89\u88DD\u8D85\u904E\u4E0A\u9650\uFF0C\u6C92\u6709\u88DD\u5B8C" });
-      } catch (e) {
-        out.failed.push({ id, error: e instanceof Error ? e.message : String(e) });
-      }
-    }
-    if (out.failed.length) failedAt.set(key, now2());
-    else failedAt.delete(key);
-    return out;
-  })();
-  inflight2.set(key, job);
-  try {
-    return await job;
-  } finally {
-    inflight2.delete(key);
-  }
-}
-async function listAppsWithBuiltins(env, tenant2, base, preloaded) {
-  const apps = preloaded ?? await listInstalledApps(env, tenant2);
-  if (missingBuiltinIds(apps.map((a) => a.id)).length === 0) return apps;
-  const r = await ensureBuiltinApps(env, tenant2, apps, { namespace: String(tenant2), cypherBase: base });
-  for (const f of r.failed) console.warn(`[builtin-app] \u88DC\u88DD ${f.id} \u5931\u6557\uFF1A${f.error}`);
-  if (r.installed.length === 0) return apps;
-  return listInstalledApps(env, tenant2);
-}
-
-// cypher-executor/src/routes/portal-data.ts
-init_app_system();
-init_run_explain();
 
 // cypher-executor/src/lib/app-market.ts
 init_endpoints();
@@ -40370,7 +40622,96 @@ async function fetchMarketDeclaration(entry, fetchImpl = fetch) {
   return { ok: true, declaration: decl };
 }
 
+// cypher-executor/src/lib/builtin-apps.ts
+init_builtin_ids();
+var RETRY_AFTER_FAIL_MS = 6e4;
+var MAX_RESUME_STEPS = 30;
+var inflight2 = /* @__PURE__ */ new Map();
+var failedAt = /* @__PURE__ */ new Map();
+var progress = /* @__PURE__ */ new Map();
+async function pickBuiltinSource(env, entry, fetchImpl = fetch) {
+  const bundled = { declaration: entry.declaration, author: entry.author, from: "bundled" };
+  try {
+    const cat = await resolveCatalog(env, fetchImpl);
+    const m = cat.entries.find((e) => e.id === entry.id);
+    if (!m || !isMarketEntry(m)) return bundled;
+    if (compareVersions(catalogVersion(m), catalogVersion(entry)) !== 1) return { ...bundled, why: "\u5E02\u96C6\u6C92\u6709\u6BD4\u5F15\u64CE\u5E36\u7684\u66F4\u65B0" };
+    const gate = checkEngineMin(catalogEngineMin(m), env.ARCRUN_BUNDLE_VERSION);
+    if (gate) return { ...bundled, why: `\u5E02\u96C6 v${catalogVersion(m)} ${gate.error}` };
+    const got = await fetchMarketDeclaration(m, fetchImpl);
+    if (!got.ok) return { ...bundled, why: `\u5E02\u96C6\u5B89\u88DD\u5305\u4E0D\u80FD\u7528\uFF1A${got.error}` };
+    return { declaration: got.declaration, author: m.author, from: "market" };
+  } catch (e) {
+    return { ...bundled, why: `\u8B80\u5E02\u96C6\u5931\u6557\uFF1A${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+function missingBuiltinIds(installedIds) {
+  const have = new Set(installedIds);
+  return APP_CATALOG.filter((e) => isBuiltinApp(e.id) && !have.has(e.id)).map((e) => e.id);
+}
+async function ensureBuiltinApps(env, tenant2, installed, coords, now2 = Date.now) {
+  const missing = missingBuiltinIds(installed.map((a) => a.id));
+  if (missing.length === 0) return { installed: [], failed: [] };
+  const key = `${tenant2}|${missing.join(",")}`;
+  const running = inflight2.get(key);
+  if (running) return running;
+  const last = failedAt.get(key);
+  if (last !== void 0 && now2() - last < RETRY_AFTER_FAIL_MS) return { installed: [], failed: [] };
+  const job = (async () => {
+    const out = { installed: [], failed: [] };
+    for (const id of missing) {
+      const entry = APP_CATALOG.find((e) => e.id === id);
+      if (!entry) continue;
+      try {
+        const src = await pickBuiltinSource(env, entry);
+        if (src.why) console.warn(`[builtin-app] ${id} \u7528\u5F15\u64CE\u81EA\u5E36\u90A3\u4EFD\uFF1A${src.why}`);
+        const pk = `${tenant2}|${id}`;
+        let resumeFrom = progress.get(pk)?.from ?? 0;
+        let resumeHash = progress.get(pk)?.hash;
+        for (let step = 0; step < MAX_RESUME_STEPS; step++) {
+          const r = await installApp(env, tenant2, src.declaration, { coords, resumeFrom, resumeHash, origin: "market", catalogAuthor: src.author });
+          if (!r.ok) {
+            out.failed.push({ id, error: (r.errors ?? [r.hint ?? "\u5B89\u88DD\u5931\u6557"]).join("\uFF1B") });
+            break;
+          }
+          if (r.in_progress) {
+            resumeFrom = r.resume_from ?? resumeFrom;
+            resumeHash = r.resume_hash;
+            progress.set(pk, { from: resumeFrom, hash: resumeHash });
+            continue;
+          }
+          progress.delete(pk);
+          out.installed.push(id);
+          break;
+        }
+        if (!out.installed.includes(id) && !out.failed.some((f) => f.id === id)) out.failed.push({ id, error: "\u5206\u6BB5\u5B89\u88DD\u8D85\u904E\u4E0A\u9650\uFF0C\u6C92\u6709\u88DD\u5B8C" });
+      } catch (e) {
+        out.failed.push({ id, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (out.failed.length) failedAt.set(key, now2());
+    else failedAt.delete(key);
+    return out;
+  })();
+  inflight2.set(key, job);
+  try {
+    return await job;
+  } finally {
+    inflight2.delete(key);
+  }
+}
+async function listAppsWithBuiltins(env, tenant2, base, preloaded) {
+  const apps = preloaded ?? await listInstalledApps(env, tenant2);
+  if (missingBuiltinIds(apps.map((a) => a.id)).length === 0) return apps;
+  const r = await ensureBuiltinApps(env, tenant2, apps, { namespace: String(tenant2), cypherBase: base });
+  for (const f of r.failed) console.warn(`[builtin-app] \u88DC\u88DD ${f.id} \u5931\u6557\uFF1A${f.error}`);
+  if (r.installed.length === 0) return apps;
+  return listInstalledApps(env, tenant2);
+}
+
 // cypher-executor/src/routes/portal-data.ts
+init_app_system();
+init_run_explain();
 init_kbdb_trace();
 
 // cypher-executor/src/lib/proofread-store.ts
@@ -45591,9 +45932,25 @@ componentsRouter.get("/components", (c) => {
     next: "\u8981\u67D0\u4E00\u9846\u600E\u9EBC\u586B payload \u2192 GET /components/:id\uFF08input_schema\uFF09\uFF1B\u7528\u4E00\u53E5\u8A71\u627E \u2192 GET /components/search?q="
   });
 });
-componentsRouter.get("/components/search", (c) => {
+componentsRouter.get("/components/search", async (c) => {
   const q = (c.req.query("q") ?? "").trim();
   if (!q) return c.json({ success: false, error: "\u7F3A\u5C11 q\uFF08\u8981\u627E\u4EC0\u9EBC\uFF09" }, 400);
+  if (q.includes(">>")) {
+    const sentences = splitIntent(q);
+    if (sentences.length > 0) {
+      const apiKey = c.req.header("X-Arcrun-API-Key") ?? void 0;
+      const intent_report = await buildIntentReport(c.env, apiKey, sentences);
+      const flat = searchComponents(q);
+      return c.json({
+        success: true,
+        catalog_id: COMPONENT_CATALOG_ID,
+        query: q,
+        count: flat.length,
+        results: flat,
+        intent_report
+      });
+    }
+  }
   const results = searchComponents(q);
   return c.json({
     success: true,
